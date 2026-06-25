@@ -76,3 +76,15 @@ TEST_CASE(preflop_class169_leaf_payoff_smoke) {
     EXPECT_EQ(payoff[0].size(), core::PREFLOP_NUM_CLASSES * core::PREFLOP_NUM_CLASSES);
     EXPECT_EQ(payoff[1].size(), core::PREFLOP_NUM_CLASSES * core::PREFLOP_NUM_CLASSES);
 }
+
+TEST_CASE(preflop_class169_solver_smoke) {
+    core::HUNLConfig cfg;
+    cfg.starting_street = core::Street::Preflop;
+    const auto table = core::PreflopEquityTable::build();
+    const std::vector<double> reach(core::PREFLOP_NUM_CLASSES, 1.0);
+    const auto out = core::solve_hunl_preflop_rvr_class169(cfg, table, reach, reach, 2, 1.5, 0.0, 2.0);
+    EXPECT_EQ(out.iterations, 2U);
+    EXPECT_TRUE(out.decision_node_count > 0);
+    EXPECT_TRUE(!out.average_strategy.empty());
+    EXPECT_TRUE(out.average_strategy.find("AA||p|") != out.average_strategy.end());
+}

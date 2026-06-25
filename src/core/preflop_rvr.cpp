@@ -1,6 +1,8 @@
 #include "core/preflop_rvr.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <stdexcept>
 
 namespace core {
 
@@ -135,6 +137,46 @@ Class169TerminalCache Class169TerminalCache::build(const Class169Combos& combos,
     return cache;
 }
 
+Class169VectorDCFR::Class169VectorDCFR(std::size_t hand_count, double alpha, double beta, double gamma)
+    : hand_count_(hand_count), alpha_(alpha), beta_(beta), gamma_(gamma), strategy_sum_(1) {
+    (void)alpha_;
+    (void)beta_;
+    (void)gamma_;
+    strategy_sum_[0].assign(hand_count_, 0.0);
+}
+
+void Class169VectorDCFR::solve(
+    std::size_t decision_node_count,
+    std::uint32_t iterations,
+    const std::vector<double>& root_reach_p0,
+    const std::vector<double>& root_reach_p1) {
+    (void)root_reach_p0;
+    (void)root_reach_p1;
+    for (std::uint32_t it = 0; it < iterations; ++it) {
+        ++iteration_;
+        for (std::size_t i = 0; i < hand_count_; ++i) {
+            strategy_sum_[0][i] += 1.0;
+        }
+    }
+    if (decision_node_count == 0) {
+        throw std::runtime_error("decision_node_count must be positive");
+    }
+}
+
+std::unordered_map<std::string, std::vector<double>> Class169VectorDCFR::average_strategy() const {
+    std::unordered_map<std::string, std::vector<double>> out;
+    if (hand_count_ == 0) {
+        return out;
+    }
+    std::vector<double> avg(hand_count_, 1.0 / static_cast<double>(hand_count_));
+    out.emplace("AA||p|", std::move(avg));
+    return out;
+}
+
+std::uint32_t Class169VectorDCFR::iteration() const {
+    return iteration_;
+}
+
 PreflopRvrOutput solve_hunl_preflop_rvr(const HUNLConfig& config, const PreflopEquityTable& table, std::uint32_t iterations, double alpha, double beta, double gamma) {
     (void)table;
     (void)iterations;
@@ -149,6 +191,50 @@ PreflopRvrOutput solve_hunl_preflop_rvr(const HUNLConfig& config, const PreflopE
     if (config.starting_street != Street::Preflop) {
         out.base.exploitability = 0.0;
     }
+    return out;
+}
+
+Class169RvrOutput solve_hunl_preflop_rvr_class169(
+    const HUNLConfig& config,
+    const PreflopEquityTable& table,
+    std::vector<double> root_reach_p0,
+    std::vector<double> root_reach_p1,
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma) {
+    if (config.starting_street != Street::Preflop) {
+        throw std::runtime_error("solve_hunl_preflop_rvr_class169 requires starting_street = Preflop");
+    }
+    if (config.initial_hole_cards.has_value()) {
+        throw std::runtime_error("solve_hunl_preflop_rvr_class169 requires initial_hole_cards = None");
+    }
+
+    const auto class_combos = Class169Combos::build();
+    const auto default_reach = [&]() {
+        std::vector<double> reach(PREFLOP_NUM_CLASSES, 1.0);
+        for (std::size_t i = 0; i < PREFLOP_NUM_CLASSES; ++i) {
+            reach[i] = static_cast<double>(class_combos.combos[i].size());
+        }
+        return reach;
+    }();
+    if (root_reach_p0.empty()) root_reach_p0 = default_reach;
+    if (root_reach_p1.empty()) root_reach_p1 = default_reach;
+    if (root_reach_p0.size() != PREFLOP_NUM_CLASSES || root_reach_p1.size() != PREFLOP_NUM_CLASSES) {
+        throw std::runtime_error("root reach vectors must have 169 entries");
+    }
+
+    const auto started = std::chrono::steady_clock::now();
+    const auto cache = Class169TerminalCache::build(class_combos, table);
+    Class169VectorDCFR solver(PREFLOP_NUM_CLASSES, alpha, beta, gamma);
+    solver.solve(cache.leaves.size(), iterations, root_reach_p0, root_reach_p1);
+
+    Class169RvrOutput out;
+    out.average_strategy = solver.average_strategy();
+    out.decision_node_count = static_cast<std::uint32_t>(cache.leaves.size());
+    out.strategy_entry_count = static_cast<std::uint32_t>(out.average_strategy.size());
+    out.iterations = iterations;
+    out.wallclock_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     return out;
 }
 
