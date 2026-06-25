@@ -2,6 +2,7 @@
 
 #include "core/dcfr.hpp"
 #include "core/kuhn.hpp"
+#include "core/leduc.hpp"
 
 #include <stdexcept>
 
@@ -20,9 +21,9 @@ SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, doub
 }
 
 SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma) {
-    (void)iterations;
     validate_dcfr_parameters(alpha, beta, gamma);
-    throw std::logic_error("solve_leduc is not implemented yet");
+    DCFRSolver<LeducState> solver(DCFRConfig{alpha, beta, gamma}, LeducState::initial());
+    return solver.solve(iterations);
 }
 
 }  // namespace core

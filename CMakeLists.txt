@@ -10,6 +10,7 @@ add_library(texas_core
     src/core/core.cpp
     src/core/dcfr.cpp
     src/core/kuhn.cpp
+    src/core/leduc.cpp
     src/core/solver.cpp
 )
 

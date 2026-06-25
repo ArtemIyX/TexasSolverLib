@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "core/kuhn.hpp"
+#include "core/leduc.hpp"
 #include "core/solver.hpp"
 
 #include <algorithm>
@@ -70,4 +71,57 @@ TEST(SolverTest, KuhnSolveProducesStrategiesAndFiniteMetrics) {
     EXPECT_NEAR((*root_jack)[0] + (*root_jack)[1], 1.0, 1e-9);
     EXPECT_GE((*root_jack)[0], 0.0);
     EXPECT_GE((*root_jack)[1], 0.0);
+}
+
+TEST(LeducStateTest, InitialStateMatchesRoundOneChanceSetup) {
+    const auto state = core::LeducState::initial();
+
+    EXPECT_EQ(state.current_player(), -1);
+    EXPECT_EQ(state.round_num, 1);
+    EXPECT_EQ(state.ante[0], 1);
+    EXPECT_EQ(state.ante[1], 1);
+    EXPECT_EQ(state.stakes, 1);
+    EXPECT_EQ(state.chance_outcomes().size(), 6U);
+}
+
+TEST(LeducStateTest, CompletingRoundOneTransitionsBackToChance) {
+    auto state = core::LeducState::initial();
+    state = state.next_state(11);
+    state = state.next_state(12);
+
+    ASSERT_EQ(state.current_player(), 0);
+    state = state.next_state(core::LEDUC_CALL);
+    ASSERT_EQ(state.current_player(), 1);
+    state = state.next_state(core::LEDUC_CALL);
+
+    EXPECT_EQ(state.current_player(), -1);
+    EXPECT_EQ(state.round_num, 1);
+    EXPECT_FALSE(state.public_card.has_value());
+    EXPECT_EQ(state.chance_outcomes().size(), 4U);
+}
+
+TEST(LeducStateTest, PublicCardStartsRoundTwoAndResetsRoundCounters) {
+    auto state = core::LeducState::initial();
+    state = state.next_state(11);
+    state = state.next_state(12);
+    state = state.next_state(core::LEDUC_CALL);
+    state = state.next_state(core::LEDUC_CALL);
+    state = state.next_state(13);
+
+    EXPECT_EQ(state.round_num, 2);
+    ASSERT_TRUE(state.public_card.has_value());
+    EXPECT_EQ(*state.public_card, 13);
+    EXPECT_EQ(state.current_player(), 0);
+    EXPECT_EQ(state.num_raises, 0);
+    EXPECT_EQ(state.num_calls, 0);
+    EXPECT_EQ(state.infoset_key(0), "11|cc|13|");
+}
+
+TEST(SolverTest, LeducSolveProducesStrategiesAndFiniteMetrics) {
+    const auto output = core::solve_leduc(50, 1.5, 0.0, 2.0);
+
+    EXPECT_EQ(output.iterations, 50U);
+    EXPECT_FALSE(output.average_strategy.empty());
+    EXPECT_TRUE(std::isfinite(output.game_value));
+    EXPECT_TRUE(std::isfinite(output.exploitability));
 }
