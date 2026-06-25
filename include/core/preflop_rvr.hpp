@@ -48,6 +48,11 @@ struct PreflopBettingTree {
         std::vector<std::size_t> children;
         std::vector<std::string> actions;
         std::string key_suffix;
+        std::array<int, 2> contributions = {0, 0};
+        std::array<int, 2> initial_contributions = {0, 0};
+        int big_blind = 100;
+        int initial_pot = 0;
+        std::size_t folded_player = 0;
     };
 
     std::vector<Node> nodes;
@@ -78,6 +83,7 @@ struct Class169RvrOutput {
     std::uint32_t decision_node_count = 0;
     std::uint32_t strategy_entry_count = 0;
     std::uint32_t iterations = 0;
+    std::array<std::size_t, 2> hand_count_per_player = {0, 0};
     double wallclock_seconds = 0.0;
 };
 

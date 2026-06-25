@@ -268,19 +268,30 @@ Class169TerminalCache Class169TerminalCache::build(
     cache.shared_blocker_mass = build_class169_blocker_mass(combos);
     cache.leaves.resize(tree.nodes.size());
     for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
-        switch (tree.nodes[i].kind) {
+        const auto& node = tree.nodes[i];
+        switch (node.kind) {
         case PreflopBettingTree::NodeKind::Fold:
             cache.leaves[i].kind = Class169LeafEntry::Kind::Fold;
+            cache.leaves[i].payoff = {
+                -static_cast<double>(node.contributions[0] - node.initial_contributions[0]) / node.big_blind,
+                (static_cast<double>(node.initial_pot + node.contributions[0] + node.contributions[1] - node.initial_contributions[0] - node.initial_contributions[1]) - (node.contributions[1] - node.initial_contributions[1])) / node.big_blind,
+            };
             break;
         case PreflopBettingTree::NodeKind::EquityLeaf:
             cache.leaves[i].kind = Class169LeafEntry::Kind::Equity;
+            cache.leaves[i].payoff_table = build_class169_leaf_payoff(
+                node.contributions,
+                node.big_blind,
+                node.initial_pot,
+                node.initial_contributions,
+                table,
+                combos);
             break;
         case PreflopBettingTree::NodeKind::Decision:
             cache.leaves[i].kind = Class169LeafEntry::Kind::NonTerminal;
             break;
         }
     }
-    (void)table;
     return cache;
 }
 
@@ -292,10 +303,19 @@ PreflopBettingTree PreflopBettingTree::build(const HUNLConfig& config) {
         tree.nodes.push_back({});
         if (state.folded[0] || state.folded[1]) {
             tree.nodes[idx].kind = NodeKind::Fold;
+            tree.nodes[idx].contributions = state.contributions;
+            tree.nodes[idx].initial_contributions = config.initial_contributions;
+            tree.nodes[idx].big_blind = config.big_blind;
+            tree.nodes[idx].initial_pot = config.initial_pot;
+            tree.nodes[idx].folded_player = state.folded[0] ? 0 : 1;
             return idx;
         }
         if (state.cur_player < 0) {
             tree.nodes[idx].kind = NodeKind::EquityLeaf;
+            tree.nodes[idx].contributions = state.contributions;
+            tree.nodes[idx].initial_contributions = config.initial_contributions;
+            tree.nodes[idx].big_blind = config.big_blind;
+            tree.nodes[idx].initial_pot = config.initial_pot;
             return idx;
         }
         const auto actions = enumerate_actions(state, config);
@@ -310,6 +330,10 @@ PreflopBettingTree PreflopBettingTree::build(const HUNLConfig& config) {
         tree.nodes[idx].children = std::move(children);
         tree.nodes[idx].actions = std::move(toks);
         tree.nodes[idx].key_suffix = "||p|" + state.history;
+        tree.nodes[idx].contributions = state.contributions;
+        tree.nodes[idx].initial_contributions = config.initial_contributions;
+        tree.nodes[idx].big_blind = config.big_blind;
+        tree.nodes[idx].initial_pot = config.initial_pot;
         return idx;
     };
     add(root);
@@ -552,6 +576,7 @@ Class169RvrOutput solve_hunl_preflop_rvr_class169(
     out.decision_node_count = static_cast<std::uint32_t>(tree.nodes.size());
     out.strategy_entry_count = static_cast<std::uint32_t>(out.average_strategy.size());
     out.iterations = iterations;
+    out.hand_count_per_player = {PREFLOP_NUM_CLASSES, PREFLOP_NUM_CLASSES};
     out.wallclock_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     return out;
 }
