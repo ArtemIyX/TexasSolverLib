@@ -14,8 +14,13 @@ inline constexpr std::size_t BLOCK_SIZE = 64;
 struct InfosetId {
     std::uint32_t value = 0;
 
-    constexpr bool operator==(const InfosetId& other) const noexcept = default;
-    constexpr bool operator!=(const InfosetId& other) const noexcept = default;
+    constexpr bool operator==(const InfosetId& other) const noexcept {
+        return value == other.value;
+    }
+
+    constexpr bool operator!=(const InfosetId& other) const noexcept {
+        return value != other.value;
+    }
 };
 
 struct RowMeta {
