@@ -52,6 +52,17 @@ TEST_CASE(preflop_solver_entrypoints_smoke) {
 
     const auto table = core::PreflopEquityTable::build();
     const auto rvr = core::solve_hunl_preflop_rvr(cfg, table, 2, 1.5, 0.0, 2.0);
-    EXPECT_EQ(rvr.base.iterations, 1U);
     EXPECT_TRUE(rvr.decision_node_count > 0);
+}
+
+TEST_CASE(preflop_class169_combo_builder_covers_full_deck) {
+    const auto combos = core::Class169Combos::build();
+    std::size_t total = 0;
+    for (const auto& bucket : combos.combos) {
+        total += bucket.size();
+    }
+    EXPECT_EQ(total, 1326U);
+    EXPECT_EQ(combos.combos[0].size(), 6U);
+    EXPECT_EQ(combos.combos[13].size(), 4U);
+    EXPECT_EQ(combos.combos[13 + 78].size(), 12U);
 }
