@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(texas_core
     src/core/core.cpp
     src/core/dcfr.cpp
+    src/core/exploit.cpp
     src/core/hunl.cpp
     src/core/hunl_eval.cpp
     src/core/hunl_tree.cpp

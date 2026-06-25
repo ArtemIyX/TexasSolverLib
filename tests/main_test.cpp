@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "core/exploit.hpp"
 #include "core/hunl.hpp"
 #include "core/hunl_eval.hpp"
 #include "core/hunl_tree.hpp"
@@ -358,4 +359,17 @@ TEST(HUNLTreeTest, DoubleAllInClassifiesAsShowdownTerminal) {
 
     EXPECT_EQ(kind.tag, core::TerminalKindTag::Showdown);
     EXPECT_TRUE(kind.board_complete);
+}
+
+TEST(ExploitTest, FixedComboRiverStrategyProducesFiniteOutput) {
+    auto config = core::default_tiny_subgame();
+    auto shared = std::make_shared<const core::HUNLConfig>(config);
+    const auto state = core::HUNLState::initial(shared);
+    std::unordered_map<std::string, std::vector<double>> strategy;
+    strategy.emplace(state.infoset_key(1), std::vector<double>(state.legal_actions().size(), 1.0 / state.legal_actions().size()));
+
+    const auto output = core::compute_exploitability_and_value(config, strategy);
+
+    EXPECT_TRUE(std::isfinite(output.exploitability));
+    EXPECT_TRUE(std::isfinite(output.game_value));
 }
