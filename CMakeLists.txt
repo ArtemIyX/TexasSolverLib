@@ -38,29 +38,33 @@ target_link_libraries(TexasSolver
     texas_core
 )
 
-add_executable(texas_core_tests
-    tests/test_main.cpp
-    tests/test_arena.cpp
-    tests/test_dcfr.cpp
-    tests/test_hunl_eval.cpp
-    tests/test_hunl_state.cpp
-    tests/test_hunl_tree.cpp
-    tests/test_kuhn.cpp
-    tests/test_layout.cpp
-    tests/test_leduc.cpp
-    tests/test_pcs.cpp
-    tests/test_simd.cpp
-)
+function(add_texas_core_test test_name test_source)
+    add_executable(${test_name}
+        tests/test_main.cpp
+        ${test_source}
+    )
 
-target_link_libraries(texas_core_tests
-    PRIVATE
-    texas_core
-)
+    target_link_libraries(${test_name}
+        PRIVATE
+        texas_core
+    )
 
-target_include_directories(texas_core_tests
-    PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests
-)
+    target_include_directories(${test_name}
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    )
 
-add_test(NAME texas_core_tests COMMAND texas_core_tests)
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endfunction()
+
+add_texas_core_test(texas_core_test_arena tests/test_arena.cpp)
+add_texas_core_test(texas_core_test_dcfr tests/test_dcfr.cpp)
+add_texas_core_test(texas_core_test_hunl_eval tests/test_hunl_eval.cpp)
+add_texas_core_test(texas_core_test_hunl_state tests/test_hunl_state.cpp)
+add_texas_core_test(texas_core_test_hunl_tree tests/test_hunl_tree.cpp)
+add_texas_core_test(texas_core_test_kuhn tests/test_kuhn.cpp)
+add_texas_core_test(texas_core_test_layout tests/test_layout.cpp)
+add_texas_core_test(texas_core_test_leduc tests/test_leduc.cpp)
+add_texas_core_test(texas_core_test_pcs tests/test_pcs.cpp)
+add_texas_core_test(texas_core_test_simd tests/test_simd.cpp)
