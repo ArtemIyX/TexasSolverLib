@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "core/hunl.hpp"
+#include "core/hunl_eval.hpp"
 #include "core/kuhn.hpp"
 #include "core/leduc.hpp"
 #include "core/solver.hpp"
@@ -175,4 +176,63 @@ TEST(HUNLStateTest, PreflopInitialStatePostsBlindsFromConfig) {
     EXPECT_EQ(state.to_call, config->big_blind - config->small_blind);
     EXPECT_EQ(state.cur_player, 0);
     EXPECT_EQ(state.street_aggressor, 1);
+}
+
+TEST(HUNLEvalTest, RoyalFlushBeatsQuads) {
+    const std::array<std::uint8_t, 5> royal_flush = {
+        core::card_to_int(14, 0),
+        core::card_to_int(13, 0),
+        core::card_to_int(12, 0),
+        core::card_to_int(11, 0),
+        core::card_to_int(10, 0),
+    };
+    const std::array<std::uint8_t, 5> quads = {
+        core::card_to_int(14, 1),
+        core::card_to_int(14, 2),
+        core::card_to_int(14, 3),
+        core::card_to_int(13, 1),
+        core::card_to_int(2, 0),
+    };
+
+    EXPECT_GT(core::Strength::evaluate_5(royal_flush), core::Strength::evaluate_5(quads));
+}
+
+TEST(HUNLEvalTest, WheelStraightRanksBelowSixHighStraight) {
+    const std::array<std::uint8_t, 5> wheel = {
+        core::card_to_int(14, 0),
+        core::card_to_int(2, 1),
+        core::card_to_int(3, 2),
+        core::card_to_int(4, 3),
+        core::card_to_int(5, 0),
+    };
+    const std::array<std::uint8_t, 5> six_high = {
+        core::card_to_int(6, 1),
+        core::card_to_int(2, 2),
+        core::card_to_int(3, 3),
+        core::card_to_int(4, 0),
+        core::card_to_int(5, 1),
+    };
+
+    EXPECT_LT(core::Strength::evaluate_5(wheel), core::Strength::evaluate_5(six_high));
+}
+
+TEST(HUNLEvalTest, SevenCardEvaluationPicksBestFive) {
+    const std::array<std::uint8_t, 7> seven = {
+        core::card_to_int(14, 0),
+        core::card_to_int(11, 0),
+        core::card_to_int(8, 0),
+        core::card_to_int(5, 0),
+        core::card_to_int(2, 0),
+        core::card_to_int(7, 1),
+        core::card_to_int(6, 2),
+    };
+    const std::array<std::uint8_t, 5> five = {
+        core::card_to_int(14, 0),
+        core::card_to_int(11, 0),
+        core::card_to_int(8, 0),
+        core::card_to_int(5, 0),
+        core::card_to_int(2, 0),
+    };
+
+    EXPECT_EQ(core::Strength::evaluate_7(seven), core::Strength::evaluate_5(five));
 }
