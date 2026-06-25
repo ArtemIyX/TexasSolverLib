@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
 
 namespace core {
@@ -11,6 +12,138 @@ namespace {
 
 bool disjoint(const std::array<std::uint8_t, 2>& a, const std::array<std::uint8_t, 2>& b) {
     return a[0] != b[0] && a[0] != b[1] && a[1] != b[0] && a[1] != b[1];
+}
+
+enum class ActionKind { Fold, Check, Call, OpenTo, RaiseTo, AllIn };
+
+struct Action {
+    ActionKind kind;
+    int amount = 0;
+    std::string token;
+};
+
+struct PreflopState {
+    std::array<int, 2> contributions{0, 0};
+    std::array<int, 2> stacks{0, 0};
+    int last_bet_size = 0;
+    int cur_player = -1;
+    std::uint8_t street_num_raises = 0;
+    int street_aggressor = -1;
+    int to_call = 0;
+    std::array<bool, 2> folded{false, false};
+    std::array<bool, 2> all_in{false, false};
+    std::string history;
+
+    static PreflopState initial(const HUNLConfig& config) {
+        PreflopState s;
+        const int sb = config.small_blind + config.ante;
+        const int bb = config.big_blind + config.ante;
+        s.contributions = {std::max(sb, config.initial_contributions[0]), std::max(bb, config.initial_contributions[1])};
+        s.stacks = {config.starting_stack - s.contributions[0], config.starting_stack - s.contributions[1]};
+        s.last_bet_size = config.big_blind;
+        s.cur_player = 0;
+        s.street_num_raises = 1;
+        s.street_aggressor = 1;
+        s.to_call = s.contributions[1] - s.contributions[0];
+        s.all_in = {s.stacks[0] == 0, s.stacks[1] == 0};
+        return s;
+    }
+};
+
+std::vector<Action> enumerate_actions(const PreflopState& state, const HUNLConfig& config) {
+    if (state.cur_player < 0 || state.stacks[state.cur_player] <= 0) return {};
+    const int p = state.cur_player;
+    const int opp = 1 - p;
+    const bool facing = state.to_call > 0;
+    std::vector<Action> out;
+    if (facing) {
+        out.push_back({ActionKind::Fold, 0, "f"});
+        out.push_back({ActionKind::Call, 0, "c"});
+    } else {
+        out.push_back({ActionKind::Check, 0, "x"});
+    }
+    const int cap = std::max<int>(1, config.preflop_raise_cap);
+    const int bb = config.big_blind;
+    const int cur_contrib = state.contributions[p];
+    const int max_to = cur_contrib + state.stacks[p];
+    const int min_raise_to = cur_contrib + std::max(state.to_call, bb);
+    if (state.street_num_raises < cap) {
+        if (state.street_num_raises <= 1 && state.street_aggressor == 1 && p == 0) {
+            std::vector<int> seen;
+            for (double size_bb : config.raise_size_xs) {
+                (void)size_bb;
+            }
+            for (double size_bb : std::vector<double>{2.0, 3.0, 4.0, 5.0}) {
+                int raise_to = static_cast<int>(std::lround(size_bb * bb));
+                raise_to = std::clamp(raise_to, min_raise_to, max_to);
+                if (raise_to >= max_to || std::find(seen.begin(), seen.end(), raise_to) != seen.end()) continue;
+                seen.push_back(raise_to);
+                out.push_back({ActionKind::OpenTo, raise_to, "b" + std::to_string(raise_to)});
+            }
+        } else if (facing) {
+            std::vector<int> seen;
+            const int prev_bet = std::max(state.last_bet_size, bb);
+            for (double mult : std::vector<double>{2.0, 3.0, 4.0, 5.0}) {
+                int raise_to = state.contributions[opp] + static_cast<int>(std::lround(mult * prev_bet));
+                raise_to = std::clamp(raise_to, min_raise_to, max_to);
+                if (raise_to >= max_to || std::find(seen.begin(), seen.end(), raise_to) != seen.end()) continue;
+                seen.push_back(raise_to);
+                out.push_back({ActionKind::RaiseTo, raise_to, "r" + std::to_string(raise_to)});
+            }
+        }
+        if (state.stacks[p] > state.to_call) {
+            out.push_back({ActionKind::AllIn, max_to, "A"});
+        }
+    }
+    return out;
+}
+
+PreflopState apply_action(const PreflopState& state, const Action& action) {
+    PreflopState next = state;
+    const int p = state.cur_player;
+    const int opp = 1 - p;
+    next.history += action.token;
+    switch (action.kind) {
+    case ActionKind::Fold:
+        next.folded[p] = true;
+        next.cur_player = -1;
+        break;
+    case ActionKind::Check:
+        next.cur_player = -1;
+        break;
+    case ActionKind::Call: {
+        const int pay = std::min(state.to_call, state.stacks[p]);
+        next.contributions[p] += pay;
+        next.stacks[p] -= pay;
+        next.to_call = 0;
+        next.cur_player = (state.street_aggressor == 1 && state.street_num_raises == 1 && p == 0 && !next.all_in[p] && !next.all_in[opp]) ? 1 : -1;
+        break;
+    }
+    case ActionKind::OpenTo:
+    case ActionKind::RaiseTo:
+    case ActionKind::AllIn: {
+        const int raise_to = action.kind == ActionKind::AllIn ? state.contributions[p] + state.stacks[p] : action.amount;
+        const int pay = raise_to - state.contributions[p];
+        next.contributions[p] = raise_to;
+        next.stacks[p] -= pay;
+        next.to_call = std::max(0, raise_to - state.contributions[opp]);
+        next.last_bet_size = std::max(1, raise_to - state.contributions[opp]);
+        next.street_aggressor = p;
+        ++next.street_num_raises;
+        next.cur_player = (next.stacks[opp] == 0 || next.all_in[opp]) ? -1 : opp;
+        break;
+    }
+    }
+    return next;
+}
+
+std::string class_label(std::uint16_t idx) {
+    const auto [hi, lo, suited] = class_decode(idx);
+    std::string s;
+    s += (hi == 14 ? "A" : std::to_string(hi));
+    s += (lo == 14 ? "A" : std::to_string(lo));
+    if (hi != lo) s += suited ? "s" : "o";
+    return s;
 }
 
 }  // namespace
@@ -140,10 +273,33 @@ Class169TerminalCache Class169TerminalCache::build(const Class169Combos& combos,
 
 PreflopBettingTree PreflopBettingTree::build(const HUNLConfig& config) {
     PreflopBettingTree tree;
-    tree.nodes.push_back(PreflopBettingTree::Node{NodeKind::Decision, 0, {1, 2}, {"f", "c"}, "||p|"});
-    tree.nodes.push_back(PreflopBettingTree::Node{NodeKind::Fold, 0, {}, {}, ""});
-    tree.nodes.push_back(PreflopBettingTree::Node{NodeKind::EquityLeaf, 0, {}, {}, ""});
-    (void)config;
+    const auto root = PreflopState::initial(config);
+    std::function<std::size_t(const PreflopState&)> add = [&](const PreflopState& state) -> std::size_t {
+        const std::size_t idx = tree.nodes.size();
+        tree.nodes.push_back({});
+        if (state.folded[0] || state.folded[1]) {
+            tree.nodes[idx].kind = NodeKind::Fold;
+            return idx;
+        }
+        if (state.cur_player < 0) {
+            tree.nodes[idx].kind = NodeKind::EquityLeaf;
+            return idx;
+        }
+        const auto actions = enumerate_actions(state, config);
+        std::vector<std::size_t> children;
+        std::vector<std::string> toks;
+        for (const auto& action : actions) {
+            children.push_back(add(apply_action(state, action)));
+            toks.push_back(action.token);
+        }
+        tree.nodes[idx].kind = NodeKind::Decision;
+        tree.nodes[idx].player = static_cast<std::uint8_t>(state.cur_player);
+        tree.nodes[idx].children = std::move(children);
+        tree.nodes[idx].actions = std::move(toks);
+        tree.nodes[idx].key_suffix = "||p|" + state.history;
+        return idx;
+    };
+    add(root);
     return tree;
 }
 
