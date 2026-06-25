@@ -19,6 +19,7 @@ add_library(texas_core
     src/core/kuhn.cpp
     src/core/layout.cpp
     src/core/leduc.cpp
+    src/core/pcs.cpp
     src/core/solver.cpp
 )
 
@@ -46,6 +47,7 @@ add_executable(texas_core_tests
     tests/test_kuhn.cpp
     tests/test_layout.cpp
     tests/test_leduc.cpp
+    tests/test_pcs.cpp
 )
 
 target_link_libraries(texas_core_tests
