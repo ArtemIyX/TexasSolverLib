@@ -2,6 +2,7 @@
 
 #include "core/hunl.hpp"
 #include "core/hunl_eval.hpp"
+#include "core/hunl_tree.hpp"
 #include "core/kuhn.hpp"
 #include "core/leduc.hpp"
 #include "core/solver.hpp"
@@ -235,4 +236,52 @@ TEST(HUNLEvalTest, SevenCardEvaluationPicksBestFive) {
     };
 
     EXPECT_EQ(core::Strength::evaluate_7(seven), core::Strength::evaluate_5(five));
+}
+
+TEST(HUNLTreeTest, BuildCreatesRootNodeFromInitialState) {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_street = core::Street::Flop;
+    config->initial_board = {
+        core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2)};
+    config->initial_contributions = {500, 500};
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(11, 0), core::card_to_int(11, 1)},
+        {core::card_to_int(10, 0), core::card_to_int(10, 1)},
+    }};
+    config->initial_pot = 1000;
+
+    const auto tree = core::HUNLTree::build(config);
+
+    ASSERT_EQ(tree.root, 0U);
+    ASSERT_EQ(tree.nodes.size(), 1U);
+    EXPECT_EQ(tree.nodes[0].player, 1);
+    EXPECT_EQ(tree.nodes[0].street, core::Street::Flop);
+    EXPECT_EQ(tree.nodes[0].terminal_kind.tag, core::TerminalKindTag::NonTerminal);
+}
+
+TEST(HUNLTreeTest, FoldedStateClassifiesAsFoldTerminal) {
+    core::HUNLState state;
+    state.street = core::Street::Turn;
+    state.contributions = {800, 800};
+    state.folded = {true, false};
+
+    const auto kind = core::classify_terminal_kind(state);
+
+    EXPECT_EQ(kind.tag, core::TerminalKindTag::Fold);
+    EXPECT_EQ(kind.winner, 1);
+    EXPECT_EQ(kind.contribution_loss, 800);
+}
+
+TEST(HUNLTreeTest, DoubleAllInClassifiesAsShowdownTerminal) {
+    core::HUNLState state;
+    state.street = core::Street::River;
+    state.board = {
+        core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2),
+        core::card_to_int(11, 3), core::card_to_int(10, 0)};
+    state.all_in = {true, true};
+
+    const auto kind = core::classify_terminal_kind(state);
+
+    EXPECT_EQ(kind.tag, core::TerminalKindTag::Showdown);
+    EXPECT_TRUE(kind.board_complete);
 }
