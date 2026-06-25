@@ -375,6 +375,17 @@ TEST(ExploitTest, FixedComboRiverStrategyProducesFiniteOutput) {
     EXPECT_TRUE(std::isfinite(output.game_value));
 }
 
+TEST(ExploitTest, ChanceEnumRiverStrategyProducesFiniteOutput) {
+    auto config = core::default_tiny_subgame();
+    config.initial_hole_cards = std::nullopt;
+    std::unordered_map<std::string, std::vector<double>> strategy;
+
+    const auto output = core::compute_exploitability_and_value(config, strategy);
+
+    EXPECT_TRUE(std::isfinite(output.exploitability));
+    EXPECT_TRUE(std::isfinite(output.game_value));
+}
+
 TEST(HUNLSolverTest, FixedComboPostflopSolveProducesStrategyBundle) {
     const auto config = core::default_tiny_subgame();
     const auto output = core::solve_hunl_postflop(config, 20, 1.5, 0.0, 2.0);
