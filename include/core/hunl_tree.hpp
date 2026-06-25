@@ -10,6 +10,8 @@
 
 namespace core {
 
+struct MemoKey;
+
 enum class TerminalKindTag : std::uint8_t {
     NonTerminal = 0,
     Fold = 1,

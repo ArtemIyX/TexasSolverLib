@@ -4,7 +4,7 @@
 
 namespace core {
 
-namespace {
+namespace detail {
 
 template <class T>
 void hash_combine(std::size_t& seed, const T& value) {
@@ -25,7 +25,7 @@ void hash_combine_range(std::size_t& seed, const std::vector<T>& values) {
     }
 }
 
-}
+}  // namespace detail
 
 TerminalKind TerminalKind::non_terminal() {
     return {};
@@ -187,29 +187,29 @@ namespace std {
 
 std::size_t hash<core::MemoKey>::operator()(const core::MemoKey& key) const noexcept {
     std::size_t seed = 0;
-    hash_combine(seed, key.cur_player);
-    hash_combine_range(seed, key.contributions);
-    hash_combine_range(seed, key.stacks);
-    hash_combine(seed, static_cast<std::uint8_t>(key.street));
-    hash_combine_range(seed, key.street_history);
+    core::detail::hash_combine(seed, key.cur_player);
+    core::detail::hash_combine_range(seed, key.contributions);
+    core::detail::hash_combine_range(seed, key.stacks);
+    core::detail::hash_combine(seed, static_cast<std::uint8_t>(key.street));
+    core::detail::hash_combine_range(seed, key.street_history);
     for (const auto& street : key.completed_streets) {
-        hash_combine_range(seed, street);
+        core::detail::hash_combine_range(seed, street);
     }
     for (const auto& token : key.current_street_tokens) {
-        hash_combine_range(seed, std::vector<char>(token.begin(), token.end()));
+        core::detail::hash_combine_range(seed, std::vector<char>(token.begin(), token.end()));
     }
-    hash_combine_range(seed, key.folded);
-    hash_combine_range(seed, key.all_in);
-    hash_combine_range(seed, key.board);
+    core::detail::hash_combine_range(seed, key.folded);
+    core::detail::hash_combine_range(seed, key.all_in);
+    core::detail::hash_combine_range(seed, key.board);
     if (key.hole_cards.has_value()) {
         for (const auto& hand : *key.hole_cards) {
-            hash_combine_range(seed, hand);
+            core::detail::hash_combine_range(seed, hand);
         }
     }
-    hash_combine(seed, key.pending_board_deals);
-    hash_combine(seed, key.to_call);
-    hash_combine(seed, key.street_num_raises);
-    hash_combine(seed, key.street_aggressor);
+    core::detail::hash_combine(seed, key.pending_board_deals);
+    core::detail::hash_combine(seed, key.to_call);
+    core::detail::hash_combine(seed, key.street_num_raises);
+    core::detail::hash_combine(seed, key.street_aggressor);
     return seed;
 }
 
