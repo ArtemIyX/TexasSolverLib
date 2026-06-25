@@ -3,6 +3,7 @@
 #include "core/core.hpp"
 #include "core/hunl.hpp"
 #include "core/preflop_equity.hpp"
+#include "core/dcfr_vector.hpp"
 #include "core/solver.hpp"
 
 #include <unordered_map>
@@ -32,6 +33,26 @@ struct Class169LeafEntry {
 
     std::array<double, 2> payoff = {0.0, 0.0};
     std::array<std::vector<double>, 2> payoff_table = {std::vector<double>{}, std::vector<double>{}};
+};
+
+struct PreflopBettingTree {
+    enum class NodeKind {
+        Fold,
+        EquityLeaf,
+        Decision,
+    };
+
+    struct Node {
+        NodeKind kind = NodeKind::Fold;
+        std::uint8_t player = 0;
+        std::vector<std::size_t> children;
+        std::vector<std::string> actions;
+        std::string key_suffix;
+    };
+
+    std::vector<Node> nodes;
+
+    static PreflopBettingTree build(const HUNLConfig& config);
 };
 
 struct Class169TerminalCache {
@@ -77,6 +98,17 @@ private:
     double gamma_ = 2.0;
     std::uint32_t iteration_ = 0;
     std::vector<std::vector<double>> strategy_sum_;
+
+    static void compute_strategy(const VectorInfosetData& info, std::vector<double>& out);
+    static void compute_avg_strategy(const VectorInfosetData& info, std::vector<double>& out);
+    static void discount(VectorInfosetData& info, std::uint32_t t, double alpha, double beta, double gamma);
+    std::vector<double> traverse(
+        const PreflopBettingTree& tree,
+        const Class169TerminalCache& cache,
+        std::size_t node_idx,
+        std::size_t update_player,
+        const std::vector<double>& reach_p,
+        const std::vector<double>& reach_opp);
 };
 
 PreflopRvrOutput solve_hunl_preflop_rvr(
