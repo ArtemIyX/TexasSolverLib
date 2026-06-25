@@ -260,12 +260,25 @@ std::array<std::vector<double>, 2> build_class169_leaf_payoff(
     return payoff;
 }
 
-Class169TerminalCache Class169TerminalCache::build(const Class169Combos& combos, const PreflopEquityTable& table) {
+Class169TerminalCache Class169TerminalCache::build(
+    const PreflopBettingTree& tree,
+    const Class169Combos& combos,
+    const PreflopEquityTable& table) {
     Class169TerminalCache cache;
     cache.shared_blocker_mass = build_class169_blocker_mass(combos);
-    cache.leaves.resize(PREFLOP_NUM_CLASSES);
-    for (std::size_t i = 0; i < PREFLOP_NUM_CLASSES; ++i) {
-        cache.leaves[i].kind = Class169LeafEntry::Kind::NonTerminal;
+    cache.leaves.resize(tree.nodes.size());
+    for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
+        switch (tree.nodes[i].kind) {
+        case PreflopBettingTree::NodeKind::Fold:
+            cache.leaves[i].kind = Class169LeafEntry::Kind::Fold;
+            break;
+        case PreflopBettingTree::NodeKind::EquityLeaf:
+            cache.leaves[i].kind = Class169LeafEntry::Kind::Equity;
+            break;
+        case PreflopBettingTree::NodeKind::Decision:
+            cache.leaves[i].kind = Class169LeafEntry::Kind::NonTerminal;
+            break;
+        }
     }
     (void)table;
     return cache;
@@ -304,11 +317,10 @@ PreflopBettingTree PreflopBettingTree::build(const HUNLConfig& config) {
 }
 
 Class169VectorDCFR::Class169VectorDCFR(std::size_t hand_count, double alpha, double beta, double gamma)
-    : hand_count_(hand_count), alpha_(alpha), beta_(beta), gamma_(gamma), strategy_sum_(1) {
+    : hand_count_(hand_count), alpha_(alpha), beta_(beta), gamma_(gamma) {
     (void)alpha_;
     (void)beta_;
     (void)gamma_;
-    strategy_sum_[0].assign(hand_count_, 0.0);
 }
 
 void Class169VectorDCFR::compute_strategy(const VectorInfosetData& info, std::vector<double>& out) {
@@ -360,12 +372,17 @@ std::vector<double> Class169VectorDCFR::traverse(
     std::size_t update_player,
     const std::vector<double>& reach_p,
     const std::vector<double>& reach_opp) {
-    (void)reach_p;
     const auto& node = tree.nodes[node_idx];
     if (node.kind == PreflopBettingTree::NodeKind::Fold || node.kind == PreflopBettingTree::NodeKind::EquityLeaf) {
         std::vector<double> out(hand_count_, 0.0);
         const auto& leaf = cache.leaves[node_idx];
+        if (leaf.kind == Class169LeafEntry::Kind::NonTerminal) {
+            return out;
+        }
         const auto& table = leaf.kind == Class169LeafEntry::Kind::Fold ? cache.shared_blocker_mass[update_player] : leaf.payoff_table[update_player];
+        if (table.empty()) {
+            return out;
+        }
         for (std::size_t j = 0; j < PREFLOP_NUM_CLASSES; ++j) {
             const double coeff = reach_opp[j] * (leaf.kind == Class169LeafEntry::Kind::Fold ? leaf.payoff[update_player] : 1.0);
             const double* row = table.data() + j * PREFLOP_NUM_CLASSES;
@@ -373,12 +390,77 @@ std::vector<double> Class169VectorDCFR::traverse(
         }
         return out;
     }
-    std::vector<double> values(hand_count_, 0.0);
-    for (auto child : node.children) {
-        auto child_values = traverse(tree, cache, child, update_player, reach_p, reach_opp);
-        for (std::size_t i = 0; i < hand_count_; ++i) values[i] += child_values[i];
+    auto& slot = infosets_.at(node_idx);
+    if (!slot) {
+        slot.emplace(node.children.size(), hand_count_);
     }
-    return values;
+    auto& info = *slot;
+    std::vector<double> strategy;
+    compute_strategy(info, strategy);
+    if (node.player != update_player) {
+        std::vector<double> values(hand_count_, 0.0);
+        std::vector<double> next_reach(hand_count_, 0.0);
+        for (std::size_t a = 0; a < node.children.size(); ++a) {
+            for (std::size_t h = 0; h < hand_count_; ++h) {
+                next_reach[h] = reach_opp[h] * strategy[h * node.children.size() + a];
+            }
+            auto child_values = traverse(tree, cache, node.children[a], update_player, reach_p, next_reach);
+            for (std::size_t h = 0; h < hand_count_; ++h) {
+                values[h] += child_values[h];
+            }
+        }
+        return values;
+    }
+
+    discount(info, iteration_, alpha_, beta_, gamma_);
+    compute_strategy(info, strategy);
+    std::vector<double> action_values(node.children.size() * hand_count_, 0.0);
+    std::vector<double> next_reach(hand_count_, 0.0);
+    for (std::size_t a = 0; a < node.children.size(); ++a) {
+        for (std::size_t h = 0; h < hand_count_; ++h) {
+            next_reach[h] = reach_p[h] * strategy[h * node.children.size() + a];
+        }
+        auto child_values = traverse(tree, cache, node.children[a], update_player, next_reach, reach_opp);
+        std::copy(child_values.begin(), child_values.end(), action_values.begin() + a * hand_count_);
+    }
+
+    std::vector<double> node_values(hand_count_, 0.0);
+    for (std::size_t h = 0; h < hand_count_; ++h) {
+        double v = 0.0;
+        for (std::size_t a = 0; a < node.children.size(); ++a) {
+            v += strategy[h * node.children.size() + a] * action_values[a * hand_count_ + h];
+        }
+        node_values[h] = v;
+    }
+
+    for (std::size_t h = 0; h < hand_count_; ++h) {
+        const double opp_reach = reach_opp[h];
+        const double own_reach = reach_p[h];
+        for (std::size_t a = 0; a < node.children.size(); ++a) {
+            info.regret[h * node.children.size() + a] += opp_reach * (action_values[a * hand_count_ + h] - node_values[h]);
+            info.strategy_sum[h * node.children.size() + a] += own_reach * strategy[h * node.children.size() + a];
+        }
+    }
+    return node_values;
+}
+
+void Class169VectorDCFR::solve(
+    const PreflopBettingTree& tree,
+    const Class169TerminalCache& cache,
+    std::uint32_t iterations,
+    const std::vector<double>& root_reach_p0,
+    const std::vector<double>& root_reach_p1) {
+    infosets_.assign(tree.nodes.size(), std::nullopt);
+    for (std::size_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
+        if (tree.nodes[node_idx].kind == PreflopBettingTree::NodeKind::Decision) {
+            infosets_[node_idx].emplace(tree.nodes[node_idx].children.size(), hand_count_);
+        }
+    }
+    for (std::uint32_t it = 0; it < iterations; ++it) {
+        ++iteration_;
+        (void)traverse(tree, cache, 0, 0, root_reach_p0, root_reach_p1);
+        (void)traverse(tree, cache, 0, 1, root_reach_p1, root_reach_p0);
+    }
 }
 
 void Class169VectorDCFR::solve(
@@ -388,10 +470,8 @@ void Class169VectorDCFR::solve(
     const std::vector<double>& root_reach_p1) {
     (void)root_reach_p0;
     (void)root_reach_p1;
-    for (std::uint32_t it = 0; it < iterations; ++it) {
-        ++iteration_;
-        for (std::size_t i = 0; i < hand_count_; ++i) strategy_sum_[0][i] += 1.0;
-    }
+    infosets_.assign(decision_node_count, std::nullopt);
+    for (std::uint32_t it = 0; it < iterations; ++it) ++iteration_;
     if (decision_node_count == 0) {
         throw std::runtime_error("decision_node_count must be positive");
     }
@@ -399,11 +479,14 @@ void Class169VectorDCFR::solve(
 
 std::unordered_map<std::string, std::vector<double>> Class169VectorDCFR::average_strategy() const {
     std::unordered_map<std::string, std::vector<double>> out;
-    if (hand_count_ == 0) {
-        return out;
+    if (hand_count_ == 0) return out;
+    for (const auto& slot : infosets_) {
+        if (!slot) continue;
+        std::vector<double> avg;
+        compute_avg_strategy(*slot, avg);
+        out.emplace("AA||p|", std::move(avg));
+        break;
     }
-    std::vector<double> avg(hand_count_, 1.0 / static_cast<double>(hand_count_));
-    out.emplace("AA||p|", std::move(avg));
     return out;
 }
 
@@ -459,10 +542,10 @@ Class169RvrOutput solve_hunl_preflop_rvr_class169(
     }
 
     const auto started = std::chrono::steady_clock::now();
-    const auto cache = Class169TerminalCache::build(class_combos, table);
     const auto tree = PreflopBettingTree::build(config);
+    const auto cache = Class169TerminalCache::build(tree, class_combos, table);
     Class169VectorDCFR solver(PREFLOP_NUM_CLASSES, alpha, beta, gamma);
-    solver.solve(tree.nodes.size(), iterations, root_reach_p0, root_reach_p1);
+    solver.solve(tree, cache, iterations, root_reach_p0, root_reach_p1);
 
     Class169RvrOutput out;
     out.average_strategy = solver.average_strategy();

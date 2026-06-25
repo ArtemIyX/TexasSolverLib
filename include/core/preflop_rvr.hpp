@@ -59,7 +59,10 @@ struct Class169TerminalCache {
     std::vector<Class169LeafEntry> leaves;
     std::array<std::vector<double>, 2> shared_blocker_mass;
 
-    static Class169TerminalCache build(const Class169Combos& combos, const PreflopEquityTable& table);
+    static Class169TerminalCache build(
+        const PreflopBettingTree& tree,
+        const Class169Combos& combos,
+        const PreflopEquityTable& table);
 };
 
 std::array<std::vector<double>, 2> build_class169_leaf_payoff(
@@ -83,6 +86,13 @@ public:
     Class169VectorDCFR(std::size_t hand_count, double alpha, double beta, double gamma);
 
     void solve(
+        const PreflopBettingTree& tree,
+        const Class169TerminalCache& cache,
+        std::uint32_t iterations,
+        const std::vector<double>& root_reach_p0,
+        const std::vector<double>& root_reach_p1);
+
+    void solve(
         std::size_t decision_node_count,
         std::uint32_t iterations,
         const std::vector<double>& root_reach_p0,
@@ -97,7 +107,7 @@ private:
     double beta_ = 0.0;
     double gamma_ = 2.0;
     std::uint32_t iteration_ = 0;
-    std::vector<std::vector<double>> strategy_sum_;
+    std::vector<std::optional<VectorInfosetData>> infosets_;
 
     static void compute_strategy(const VectorInfosetData& info, std::vector<double>& out);
     static void compute_avg_strategy(const VectorInfosetData& info, std::vector<double>& out);
