@@ -1,6 +1,5 @@
 #include "core/solver.hpp"
 
-#include "core/dcfr.hpp"
 #include "core/kuhn.hpp"
 #include "core/leduc.hpp"
 
@@ -15,15 +14,11 @@ void validate_dcfr_parameters(double alpha, double beta, double gamma) {
 }
 
 SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, double gamma) {
-    validate_dcfr_parameters(alpha, beta, gamma);
-    DCFRSolver<KuhnState> solver(DCFRConfig{alpha, beta, gamma}, KuhnState::initial());
-    return solver.solve(iterations);
+    return detail::solve_generic<KuhnState>(iterations, alpha, beta, gamma);
 }
 
 SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma) {
-    validate_dcfr_parameters(alpha, beta, gamma);
-    DCFRSolver<LeducState> solver(DCFRConfig{alpha, beta, gamma}, LeducState::initial());
-    return solver.solve(iterations);
+    return detail::solve_generic<LeducState>(iterations, alpha, beta, gamma);
 }
 
 }  // namespace core
