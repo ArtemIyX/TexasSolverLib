@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(texas_core
     src/core/core.cpp
+    src/core/dcfr.cpp
+    src/core/solver.cpp
 )
 
 target_include_directories(texas_core
