@@ -179,6 +179,57 @@ TEST(HUNLStateTest, PreflopInitialStatePostsBlindsFromConfig) {
     EXPECT_EQ(state.street_aggressor, 1);
 }
 
+TEST(HUNLStateTest, ActionContextMatchesRustStylePotAccounting) {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_street = core::Street::River;
+    config->initial_board = {
+        core::card_to_int(14, 0), core::card_to_int(7, 3), core::card_to_int(2, 2),
+        core::card_to_int(13, 1), core::card_to_int(5, 0)};
+    config->initial_contributions = {500, 500};
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(14, 1), core::card_to_int(13, 3)},
+        {core::card_to_int(12, 2), core::card_to_int(12, 1)},
+    }};
+    config->initial_pot = 1000;
+
+    const auto state = core::HUNLState::initial(config);
+    const auto ctx = state.action_context();
+
+    EXPECT_EQ(ctx.pot, 1000);
+    EXPECT_EQ(ctx.cur_player, 1);
+    EXPECT_EQ(ctx.street, core::Street::River);
+    EXPECT_EQ(ctx.street_action_count, 0U);
+}
+
+TEST(HUNLStateTest, InfosetKeyMatchesLosslessRustFormat) {
+    auto config = std::make_shared<core::HUNLConfig>(core::default_tiny_subgame());
+    const auto state = core::HUNLState::initial(config);
+
+    EXPECT_EQ(state.infoset_key(0), "KcAh|2d5s7cKhAs|r|");
+    EXPECT_EQ(state.infoset_key(1), "QhQd|2d5s7cKhAs|r|");
+}
+
+TEST(HUNLStateTest, RiverRootLegalActionsMatchRustStyleOpenNode) {
+    auto config = std::make_shared<core::HUNLConfig>(core::default_tiny_subgame());
+    const auto state = core::HUNLState::initial(config);
+    const auto actions = state.legal_actions();
+
+    EXPECT_EQ(actions.front(), core::ACTION_CHECK);
+    EXPECT_TRUE(std::find(actions.begin(), actions.end(), core::ACTION_BET_33) != actions.end());
+    EXPECT_TRUE(std::find(actions.begin(), actions.end(), core::ACTION_ALL_IN) != actions.end());
+}
+
+TEST(HUNLStateTest, CheckCheckAdvancesRiverToShowdown) {
+    auto config = std::make_shared<core::HUNLConfig>(core::default_tiny_subgame());
+    auto state = core::HUNLState::initial(config);
+    state = state.apply(core::ACTION_CHECK);
+    state = state.apply(core::ACTION_CHECK);
+
+    EXPECT_EQ(state.street, core::Street::Showdown);
+    EXPECT_TRUE(state.is_terminal());
+    EXPECT_EQ(state.current_player(), -1);
+}
+
 TEST(HUNLEvalTest, RoyalFlushBeatsQuads) {
     const std::array<std::uint8_t, 5> royal_flush = {
         core::card_to_int(14, 0),
@@ -257,6 +308,8 @@ TEST(HUNLTreeTest, BuildCreatesRootNodeFromInitialState) {
     EXPECT_EQ(tree.nodes[0].player, 1);
     EXPECT_EQ(tree.nodes[0].street, core::Street::Flop);
     EXPECT_EQ(tree.nodes[0].terminal_kind.tag, core::TerminalKindTag::NonTerminal);
+    EXPECT_FALSE(tree.nodes[0].legal_actions.empty());
+    ASSERT_TRUE(tree.nodes[0].infoset_key.has_value());
 }
 
 TEST(HUNLTreeTest, FoldedStateClassifiesAsFoldTerminal) {

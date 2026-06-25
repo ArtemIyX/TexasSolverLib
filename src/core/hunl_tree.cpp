@@ -106,7 +106,7 @@ TerminalKind classify_terminal_kind(const HUNLState& state) {
     if (state.folded[1]) {
         return TerminalKind::fold(0, state.contributions[1]);
     }
-    if (state.all_in[0] && state.all_in[1]) {
+    if (state.street == Street::Showdown || (state.all_in[0] && state.all_in[1])) {
         return TerminalKind::showdown(state.board.size() >= 5);
     }
     return TerminalKind::non_terminal();
@@ -119,16 +119,17 @@ HUNLTree HUNLTree::build(std::shared_ptr<const HUNLConfig> cfg) {
     const auto state = HUNLState::initial(cfg);
     auto root = HUNLTreeNode::empty(state.cur_player, state.contributions, state.street);
     root.terminal_kind = classify_terminal_kind(state);
-    root.chance_outcomes = {};
-    root.chance_children = {};
-    root.legal_actions = {};
-    root.children = {};
-    root.num_actions = 0;
+    root.chance_outcomes = state.chance_outcomes();
+    root.legal_actions = state.legal_actions();
+    root.num_actions = static_cast<std::uint8_t>(root.legal_actions.size());
+    if (state.cur_player >= 0) {
+        root.infoset_key = state.infoset_key(static_cast<std::uint8_t>(state.cur_player));
+    }
 
     tree.nodes.push_back(std::move(root));
     tree.root = 0;
     tree.max_depth = 0;
-    tree.max_actions = 0;
+    tree.max_actions = tree.nodes[0].num_actions;
     return tree;
 }
 

@@ -79,30 +79,6 @@ struct HUNLConfig {
     void validate() const;
 };
 
-struct HUNLState {
-    std::optional<std::array<std::array<std::uint8_t, 2>, 2>> hole_cards = std::nullopt;
-    std::vector<std::uint8_t> board;
-    Street street = Street::Preflop;
-    std::array<int, 2> contributions = {0, 0};
-    std::array<int, 2> stacks = {0, 0};
-    std::vector<ActionId> street_history;
-    PlayerId street_aggressor = -1;
-    std::uint8_t street_num_raises = 0;
-    int to_call = 0;
-    PlayerId cur_player = -1;
-    std::array<bool, 2> folded = {false, false};
-    std::array<bool, 2> all_in = {false, false};
-    std::shared_ptr<const HUNLConfig> config;
-    std::vector<std::vector<std::string>> betting_tokens;
-    std::vector<std::string> current_street_tokens;
-    std::uint8_t pending_board_deals = 0;
-
-    static HUNLState initial(std::shared_ptr<const HUNLConfig> config);
-
-private:
-    static HUNLState initial_preflop(std::shared_ptr<const HUNLConfig> config);
-};
-
 struct ActionContext {
     int pot = 0;
     int to_call = 0;
@@ -126,10 +102,63 @@ struct ActionContext {
     std::uint32_t street_action_count = 0;
 };
 
+struct HUNLState {
+    std::optional<std::array<std::array<std::uint8_t, 2>, 2>> hole_cards = std::nullopt;
+    std::vector<std::uint8_t> board;
+    Street street = Street::Preflop;
+    std::array<int, 2> contributions = {0, 0};
+    std::array<int, 2> stacks = {0, 0};
+    std::vector<ActionId> street_history;
+    PlayerId street_aggressor = -1;
+    std::uint8_t street_num_raises = 0;
+    int to_call = 0;
+    PlayerId cur_player = -1;
+    std::array<bool, 2> folded = {false, false};
+    std::array<bool, 2> all_in = {false, false};
+    std::shared_ptr<const HUNLConfig> config;
+    std::vector<std::vector<std::string>> betting_tokens;
+    std::vector<std::string> current_street_tokens;
+    std::uint8_t pending_board_deals = 0;
+
+    static HUNLState initial(std::shared_ptr<const HUNLConfig> config);
+
+    HUNLState clone_with_hole_cards(const std::array<std::array<std::uint8_t, 2>, 2>& hole) const;
+    ActionContext action_context() const;
+    bool is_terminal() const;
+    std::vector<Value> utility() const;
+    PlayerId current_player() const;
+    std::vector<ChanceOutcome> chance_outcomes() const;
+    std::vector<ActionId> legal_actions() const;
+    HUNLState apply(ActionId action) const;
+    std::string infoset_key(std::uint8_t player) const;
+    std::string format_history() const;
+
+private:
+    static HUNLState initial_preflop(std::shared_ptr<const HUNLConfig> config);
+    HUNLState apply_chance(std::uint8_t card) const;
+    HUNLState after_board_dealt(HUNLState state) const;
+    HUNLState apply_player(ActionId action) const;
+    bool street_complete(ActionId action, const HUNLState& new_state) const;
+    HUNLState begin_street_transition(HUNLState state) const;
+};
+
 bool is_preflop(const ActionContext& ctx);
 const std::vector<double>& bet_menu(const ActionContext& ctx);
 std::vector<double> raise_menu(const ActionContext& ctx);
 bool is_oop_flop_first_action(const ActionContext& ctx);
 std::uint8_t raise_cap(const ActionContext& ctx);
+int min_bet(const ActionContext& ctx);
+int force_allin_chip_threshold(const ActionContext& ctx);
+int stack_remaining(const ActionContext& ctx);
+int min_raise_increment(const ActionContext& ctx);
+int python_round_positive(double value);
+int bet_amount_for_fraction(const ActionContext& ctx, double fraction);
+int raise_to_for_multiplier(const ActionContext& ctx, double multiplier);
+int compute_bet_amount(std::uint8_t action_id, const ActionContext& ctx);
+int compute_raise_to(std::uint8_t action_id, const ActionContext& ctx);
+std::vector<ActionId> enumerate_bets(const ActionContext& ctx);
+std::vector<ActionId> enumerate_raises(const ActionContext& ctx);
+std::vector<ActionId> enumerate_legal_actions(const ActionContext& ctx);
+HUNLConfig default_tiny_subgame();
 
 }  // namespace core
