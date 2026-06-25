@@ -1,4 +1,5 @@
 #include "core/dcfr_vector.hpp"
+#include "core/exploit.hpp"
 #include "test_harness.hpp"
 
 #include <memory>
@@ -48,4 +49,76 @@ TEST_CASE(dcfr_vector_eval_context_from_root_enumerates_board_disjoint_holes) {
 TEST_CASE(dcfr_vector_eval_context_from_suit_iso_is_not_implemented_yet) {
     const auto initial = core::HUNLState::initial(std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame()));
     EXPECT_THROW(core::EvalContext::from_suit_iso(initial), std::logic_error);
+}
+
+TEST_CASE(dcfr_vector_compute_strategy_matches_row_regret_matching) {
+    core::VectorInfosetData info(3, 2);
+    info.regret = {
+        -1.0, 3.0, 1.0,
+        0.0, 0.0, 0.0,
+    };
+    std::vector<double> out;
+    core::VectorDCFR::compute_strategy(info, out);
+    EXPECT_EQ(out.size(), 6U);
+    EXPECT_NEAR(out[0], 0.0, 1e-12);
+    EXPECT_NEAR(out[1], 0.75, 1e-12);
+    EXPECT_NEAR(out[2], 0.25, 1e-12);
+    EXPECT_NEAR(out[3], 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(out[4], 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(out[5], 1.0 / 3.0, 1e-12);
+}
+
+TEST_CASE(dcfr_vector_compute_avg_strategy_normalizes_per_hand) {
+    core::VectorInfosetData info(2, 2);
+    info.strategy_sum = {
+        2.0, 6.0,
+        0.0, 0.0,
+    };
+    std::vector<double> out;
+    core::VectorDCFR::compute_avg_strategy(info, out);
+    EXPECT_NEAR(out[0], 0.25, 1e-12);
+    EXPECT_NEAR(out[1], 0.75, 1e-12);
+    EXPECT_NEAR(out[2], 0.5, 1e-12);
+    EXPECT_NEAR(out[3], 0.5, 1e-12);
+}
+
+TEST_CASE(dcfr_vector_discount_updates_regret_and_strategy_sum) {
+    core::VectorInfosetData info(2, 1);
+    info.regret = {4.0, -4.0};
+    info.strategy_sum = {8.0, 2.0};
+    core::VectorDCFR::discount(info, 1, 1.5, 0.0, 2.0);
+    EXPECT_NEAR(info.regret[0], 2.0, 1e-12);
+    EXPECT_NEAR(info.regret[1], -2.0, 1e-12);
+    EXPECT_NEAR(info.strategy_sum[0], 2.0, 1e-12);
+    EXPECT_NEAR(info.strategy_sum[1], 0.5, 1e-12);
+    EXPECT_EQ(info.last_discount_iter, 1U);
+}
+
+TEST_CASE(dcfr_vector_with_init_noise_allocates_decision_infosets) {
+    auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto state = core::HUNLState::initial(config);
+    const auto tree = core::BettingTree::build_from(state);
+    const auto solver = core::VectorDCFR::with_init_noise(tree, {2U, 3U}, 1.5, 0.0, 2.0, 0.1, 7);
+    EXPECT_EQ(solver.infosets.size(), tree.nodes.size());
+    bool saw_decision = false;
+    bool saw_nonzero = false;
+    for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
+        if (tree.nodes[i].tag == core::FlatNodeTag::Decision) {
+            saw_decision = true;
+            EXPECT_TRUE(solver.infosets[i].has_value());
+            const auto& info = *solver.infosets[i];
+            EXPECT_EQ(info.action_count, tree.nodes[i].actions.size());
+            EXPECT_EQ(info.hand_count, tree.nodes[i].player == 0 ? 2U : 3U);
+            for (double v : info.regret) {
+                if (v != 0.0) {
+                    saw_nonzero = true;
+                    break;
+                }
+            }
+        } else {
+            EXPECT_TRUE(!solver.infosets[i].has_value());
+        }
+    }
+    EXPECT_TRUE(saw_decision);
+    EXPECT_TRUE(saw_nonzero);
 }
