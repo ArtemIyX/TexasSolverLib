@@ -3,6 +3,7 @@
 #include "core/exploit.hpp"
 #include "core/hunl.hpp"
 #include "core/hunl_eval.hpp"
+#include "core/hunl_solver.hpp"
 #include "core/hunl_tree.hpp"
 #include "core/kuhn.hpp"
 #include "core/leduc.hpp"
@@ -372,4 +373,14 @@ TEST(ExploitTest, FixedComboRiverStrategyProducesFiniteOutput) {
 
     EXPECT_TRUE(std::isfinite(output.exploitability));
     EXPECT_TRUE(std::isfinite(output.game_value));
+}
+
+TEST(HUNLSolverTest, FixedComboPostflopSolveProducesStrategyBundle) {
+    const auto config = core::default_tiny_subgame();
+    const auto output = core::solve_hunl_postflop(config, 20, 1.5, 0.0, 2.0);
+
+    EXPECT_EQ(output.iterations, 20U);
+    EXPECT_FALSE(output.average_strategy.empty());
+    EXPECT_TRUE(std::isfinite(output.wallclock_seconds));
+    EXPECT_GT(output.infoset_count, 0U);
 }

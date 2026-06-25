@@ -206,6 +206,10 @@ HUNLState HUNLState::initial(std::shared_ptr<const HUNLConfig> cfg) {
     return state;
 }
 
+HUNLState HUNLState::initial() {
+    return initial(std::make_shared<const HUNLConfig>(default_tiny_subgame()));
+}
+
 HUNLState HUNLState::initial_preflop(std::shared_ptr<const HUNLConfig> cfg) {
     const auto blind_sb = cfg->small_blind + cfg->ante;
     const auto blind_bb = cfg->big_blind + cfg->ante;
@@ -368,6 +372,10 @@ std::vector<ActionId> HUNLState::legal_actions() const {
 
 HUNLState HUNLState::apply(ActionId action) const {
     return cur_player == -1 ? apply_chance(static_cast<std::uint8_t>(action)) : apply_player(action);
+}
+
+HUNLState HUNLState::next_state(ActionId action) const {
+    return apply(action);
 }
 
 std::string HUNLState::infoset_key(std::uint8_t player) const {

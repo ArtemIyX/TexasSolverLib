@@ -12,6 +12,7 @@ add_library(texas_core
     src/core/exploit.cpp
     src/core/hunl.cpp
     src/core/hunl_eval.cpp
+    src/core/hunl_solver.cpp
     src/core/hunl_tree.cpp
     src/core/kuhn.cpp
     src/core/leduc.cpp

@@ -120,6 +120,7 @@ struct HUNLState {
     std::vector<std::string> current_street_tokens;
     std::uint8_t pending_board_deals = 0;
 
+    static HUNLState initial();
     static HUNLState initial(std::shared_ptr<const HUNLConfig> config);
 
     HUNLState clone_with_hole_cards(const std::array<std::array<std::uint8_t, 2>, 2>& hole) const;
@@ -130,6 +131,7 @@ struct HUNLState {
     std::vector<ChanceOutcome> chance_outcomes() const;
     std::vector<ActionId> legal_actions() const;
     HUNLState apply(ActionId action) const;
+    HUNLState next_state(ActionId action) const;
     std::string infoset_key(std::uint8_t player) const;
     std::string format_history() const;
 
