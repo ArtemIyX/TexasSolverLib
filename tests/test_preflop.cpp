@@ -66,3 +66,13 @@ TEST_CASE(preflop_class169_combo_builder_covers_full_deck) {
     EXPECT_EQ(combos.combos[13].size(), 4U);
     EXPECT_EQ(combos.combos[13 + 78].size(), 12U);
 }
+
+TEST_CASE(preflop_class169_leaf_payoff_smoke) {
+    const auto combos = core::Class169Combos::build();
+    core::PreflopEquityTable table;
+    table.at(0, 1, 0) = 0.813;
+    const std::array<int, 2> contrib = {1000, 1000};
+    const auto payoff = core::build_class169_leaf_payoff(contrib, 100, 0, {0, 0}, table, combos);
+    EXPECT_EQ(payoff[0].size(), core::PREFLOP_NUM_CLASSES * core::PREFLOP_NUM_CLASSES);
+    EXPECT_EQ(payoff[1].size(), core::PREFLOP_NUM_CLASSES * core::PREFLOP_NUM_CLASSES);
+}
