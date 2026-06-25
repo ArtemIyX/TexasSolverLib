@@ -1,0 +1,70 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+out/
+bin/
+lib/
+libs/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# CMake temporary files
+CMakeDoxyfile.in
+CMakeDoxyfile
+
+# C++ build artifacts
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Dependency directories (if using vcpkg, conan, etc.)
+vcpkg_installed/
+.vcpkg/
+conan/
+.deps/
+
+# IDE / Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Documentation / generated content
+docs/_build/
+doxygen_html/
+doxygen_latex/
+
+# Profiling / Coverage
+*.gcda
+*.gcno
+*.prof
+coverage/
+lcov.info
