@@ -17,6 +17,7 @@ add_library(texas_core
     src/core/hunl_solver.cpp
     src/core/hunl_tree.cpp
     src/core/kuhn.cpp
+    src/core/layout.cpp
     src/core/leduc.cpp
     src/core/solver.cpp
 )
@@ -43,6 +44,7 @@ add_executable(texas_core_tests
     tests/test_hunl_state.cpp
     tests/test_hunl_tree.cpp
     tests/test_kuhn.cpp
+    tests/test_layout.cpp
     tests/test_leduc.cpp
 )
 
