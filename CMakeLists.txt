@@ -21,6 +21,9 @@ add_library(texas_core
     src/core/layout.cpp
     src/core/leduc.cpp
     src/core/pcs.cpp
+    src/core/preflop.cpp
+    src/core/preflop_equity.cpp
+    src/core/preflop_rvr.cpp
     src/core/simd.cpp
     src/core/solver.cpp
 )
