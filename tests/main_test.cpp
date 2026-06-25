@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "core/hunl.hpp"
 #include "core/kuhn.hpp"
 #include "core/leduc.hpp"
 #include "core/solver.hpp"
@@ -124,4 +125,54 @@ TEST(SolverTest, LeducSolveProducesStrategiesAndFiniteMetrics) {
     EXPECT_FALSE(output.average_strategy.empty());
     EXPECT_TRUE(std::isfinite(output.game_value));
     EXPECT_TRUE(std::isfinite(output.exploitability));
+}
+
+TEST(HUNLConfigTest, RejectsMalformedPreflopDeadMoneyMix) {
+    core::HUNLConfig config;
+    config.starting_street = core::Street::Preflop;
+    config.initial_contributions = {50, 100};
+    config.initial_pot = 0;
+
+    EXPECT_THROW(config.validate(), std::invalid_argument);
+}
+
+TEST(HUNLStateTest, BuildsPostflopInitialStateFromConfig) {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_street = core::Street::Flop;
+    config->initial_board = {
+        core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2)};
+    config->initial_contributions = {500, 500};
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(11, 0), core::card_to_int(11, 1)},
+        {core::card_to_int(10, 0), core::card_to_int(10, 1)},
+    }};
+    config->initial_pot = 1000;
+
+    const auto state = core::HUNLState::initial(config);
+
+    EXPECT_EQ(state.street, core::Street::Flop);
+    EXPECT_EQ(state.cur_player, 1);
+    EXPECT_EQ(state.to_call, 0);
+    EXPECT_EQ(state.street_aggressor, -1);
+    EXPECT_EQ(state.street_num_raises, 0);
+    ASSERT_TRUE(state.hole_cards.has_value());
+    EXPECT_EQ(state.board.size(), 3U);
+}
+
+TEST(HUNLStateTest, PreflopInitialStatePostsBlindsFromConfig) {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_street = core::Street::Preflop;
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(14, 0), core::card_to_int(13, 0)},
+        {core::card_to_int(12, 0), core::card_to_int(11, 0)},
+    }};
+
+    const auto state = core::HUNLState::initial(config);
+
+    EXPECT_EQ(state.street, core::Street::Preflop);
+    EXPECT_EQ(state.contributions[0], config->small_blind + config->ante);
+    EXPECT_EQ(state.contributions[1], config->big_blind + config->ante);
+    EXPECT_EQ(state.to_call, config->big_blind - config->small_blind);
+    EXPECT_EQ(state.cur_player, 0);
+    EXPECT_EQ(state.street_aggressor, 1);
 }
