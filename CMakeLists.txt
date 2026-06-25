@@ -20,6 +20,7 @@ add_library(texas_core
     src/core/layout.cpp
     src/core/leduc.cpp
     src/core/pcs.cpp
+    src/core/simd.cpp
     src/core/solver.cpp
 )
 
@@ -48,6 +49,7 @@ add_executable(texas_core_tests
     tests/test_layout.cpp
     tests/test_leduc.cpp
     tests/test_pcs.cpp
+    tests/test_simd.cpp
 )
 
 target_link_libraries(texas_core_tests
