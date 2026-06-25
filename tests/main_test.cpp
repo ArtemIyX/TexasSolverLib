@@ -304,12 +304,33 @@ TEST(HUNLTreeTest, BuildCreatesRootNodeFromInitialState) {
     const auto tree = core::HUNLTree::build(config);
 
     ASSERT_EQ(tree.root, 0U);
-    ASSERT_EQ(tree.nodes.size(), 1U);
+    ASSERT_GT(tree.nodes.size(), 1U);
     EXPECT_EQ(tree.nodes[0].player, 1);
     EXPECT_EQ(tree.nodes[0].street, core::Street::Flop);
     EXPECT_EQ(tree.nodes[0].terminal_kind.tag, core::TerminalKindTag::NonTerminal);
     EXPECT_FALSE(tree.nodes[0].legal_actions.empty());
     ASSERT_TRUE(tree.nodes[0].infoset_key.has_value());
+    EXPECT_GE(tree.max_actions, tree.nodes[0].num_actions);
+}
+
+TEST(HUNLTreeTest, RiverSubgameTreeBuildsAndHasLeaves) {
+    auto config = std::make_shared<core::HUNLConfig>(core::default_tiny_subgame());
+    const auto tree = core::HUNLTree::build(config);
+
+    bool fold_seen = false;
+    bool showdown_seen = false;
+    for (const auto& node : tree.nodes) {
+        if (node.terminal_kind.tag == core::TerminalKindTag::Fold) {
+            fold_seen = true;
+        }
+        if (node.terminal_kind.tag == core::TerminalKindTag::Showdown) {
+            showdown_seen = true;
+        }
+    }
+
+    EXPECT_TRUE(fold_seen);
+    EXPECT_TRUE(showdown_seen);
+    EXPECT_LT(tree.nodes.size(), 100000U);
 }
 
 TEST(HUNLTreeTest, FoldedStateClassifiesAsFoldTerminal) {

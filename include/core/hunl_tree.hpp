@@ -52,6 +52,12 @@ struct HUNLTree {
     std::shared_ptr<const HUNLConfig> config;
 
     static HUNLTree build(std::shared_ptr<const HUNLConfig> config);
+
+private:
+    std::uint32_t build_node(
+        const HUNLState& state,
+        std::unordered_map<MemoKey, std::uint32_t>& memo,
+        std::uint32_t depth);
 };
 
 struct MemoKey {

@@ -115,22 +115,70 @@ TerminalKind classify_terminal_kind(const HUNLState& state) {
 HUNLTree HUNLTree::build(std::shared_ptr<const HUNLConfig> cfg) {
     HUNLTree tree;
     tree.config = cfg;
-
+    std::unordered_map<MemoKey, std::uint32_t> memo;
     const auto state = HUNLState::initial(cfg);
-    auto root = HUNLTreeNode::empty(state.cur_player, state.contributions, state.street);
-    root.terminal_kind = classify_terminal_kind(state);
-    root.chance_outcomes = state.chance_outcomes();
-    root.legal_actions = state.legal_actions();
-    root.num_actions = static_cast<std::uint8_t>(root.legal_actions.size());
-    if (state.cur_player >= 0) {
-        root.infoset_key = state.infoset_key(static_cast<std::uint8_t>(state.cur_player));
+    tree.root = tree.build_node(state, memo, 0);
+    return tree;
+}
+
+std::uint32_t HUNLTree::build_node(
+    const HUNLState& state,
+    std::unordered_map<MemoKey, std::uint32_t>& memo,
+    std::uint32_t depth) {
+    const auto key = MemoKey::from_state(state);
+    if (const auto it = memo.find(key); it != memo.end()) {
+        return it->second;
     }
 
-    tree.nodes.push_back(std::move(root));
-    tree.root = 0;
-    tree.max_depth = 0;
-    tree.max_actions = tree.nodes[0].num_actions;
-    return tree;
+    const auto my_idx = static_cast<std::uint32_t>(nodes.size());
+    nodes.push_back(HUNLTreeNode::empty(state.cur_player, state.contributions, state.street));
+    memo.emplace(key, my_idx);
+    max_depth = std::max(max_depth, depth);
+
+    if (state.is_terminal()) {
+        auto& node = nodes[my_idx];
+        node.player = -2;
+        node.terminal_kind = classify_terminal_kind(state);
+        return my_idx;
+    }
+
+    if (state.cur_player == -1) {
+        const auto outcomes = state.chance_outcomes();
+        std::vector<std::uint32_t> chance_children;
+        chance_children.reserve(outcomes.size());
+        for (const auto& outcome : outcomes) {
+            const auto child_idx = build_node(state.apply(outcome.action), memo, depth + 1);
+            auto& child = nodes[child_idx];
+            if (!child.chance_action.has_value()) {
+                child.chance_action = static_cast<std::uint8_t>(outcome.action);
+                child.chance_prob = outcome.probability;
+            }
+            chance_children.push_back(child_idx);
+        }
+
+        auto& node = nodes[my_idx];
+        node.chance_outcomes.reserve(outcomes.size());
+        for (const auto& outcome : outcomes) {
+            node.chance_outcomes.emplace_back(static_cast<std::uint8_t>(outcome.action), outcome.probability);
+        }
+        node.chance_children = std::move(chance_children);
+        return my_idx;
+    }
+
+    const auto actions = state.legal_actions();
+    max_actions = std::max(max_actions, static_cast<std::uint8_t>(actions.size()));
+    std::vector<std::uint32_t> children;
+    children.reserve(actions.size());
+    for (const auto action : actions) {
+        children.push_back(build_node(state.apply(action), memo, depth + 1));
+    }
+
+    auto& node = nodes[my_idx];
+    node.num_actions = static_cast<std::uint8_t>(actions.size());
+    node.legal_actions = actions;
+    node.children = std::move(children);
+    node.infoset_key = state.infoset_key(static_cast<std::uint8_t>(state.cur_player));
+    return my_idx;
 }
 
 }  // namespace core
