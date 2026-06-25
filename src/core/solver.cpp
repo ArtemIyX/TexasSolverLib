@@ -8,8 +8,9 @@
 namespace core {
 
 void validate_dcfr_parameters(double alpha, double beta, double gamma) {
-    if (alpha < 0.0 || beta < 0.0 || gamma < 0.0) {
-        throw std::invalid_argument("DCFR alpha, beta, and gamma must be non-negative");
+    validate_alpha(alpha);
+    if (beta < 0.0 || gamma < 0.0) {
+        throw std::invalid_argument("DCFR beta and gamma must be non-negative");
     }
 }
 

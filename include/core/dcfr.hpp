@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <iostream>
 #include <numeric>
 #include <stdexcept>
 #include <type_traits>
@@ -154,6 +155,17 @@ double best_response_value(
 
 }  // namespace detail
 
+inline void validate_alpha(double alpha) {
+    if (!std::isfinite(alpha) || alpha <= 0.0) {
+        throw std::invalid_argument(
+            "DCFR alpha must be > 0 and finite; alpha=0 silently stalls convergence");
+    }
+    if (alpha < 0.5) {
+        std::cerr << "[dcfr] WARNING: alpha=" << alpha
+                  << " is below the paper's analyzed range; production uses 1.5.\n";
+    }
+}
+
 template <class G>
 class DCFRSolver : public DCFRSolverBase {
 public:
@@ -186,8 +198,9 @@ DCFRSolver<G>::DCFRSolver(DCFRConfig config, G root) : config_(config), root_(st
 
 template <class G>
 void DCFRSolver<G>::validate_config() const {
-    if (config_.alpha < 0.0 || config_.beta < 0.0 || config_.gamma < 0.0) {
-        throw std::invalid_argument("DCFR alpha, beta, and gamma must be non-negative");
+    validate_alpha(config_.alpha);
+    if (config_.beta < 0.0 || config_.gamma < 0.0) {
+        throw std::invalid_argument("DCFR beta and gamma must be non-negative");
     }
 }
 
