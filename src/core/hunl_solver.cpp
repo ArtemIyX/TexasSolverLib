@@ -39,6 +39,10 @@ void validate_config(const HUNLConfig& config) {
     if (config.starting_street == Street::Preflop) {
         throw std::invalid_argument("solve_hunl_postflop requires starting_street >= Flop");
     }
+    if (!config.initial_hole_cards.has_value()) {
+        throw std::invalid_argument(
+            "solve_hunl_postflop requires initial_hole_cards = Some([[c0,c1],[c2,c3]])");
+    }
     if (config.rake_rate != 0.0 || config.rake_cap != 0) {
         throw std::invalid_argument("solve_hunl_postflop does not support rake");
     }

@@ -399,6 +399,21 @@ TEST(ExploitTest, RestrictedGameValueSupportsExplicitHoleLists) {
     EXPECT_TRUE(std::isfinite(value));
 }
 
+TEST(ExploitTest, RestrictedSingleComboMatchesFixedComboGameValue) {
+    const auto config = core::default_tiny_subgame();
+    std::unordered_map<std::string, std::vector<double>> strategy;
+    const auto shared = std::make_shared<const core::HUNLConfig>(config);
+    const auto state = core::HUNLState::initial(shared);
+    strategy.emplace(state.infoset_key(1), std::vector<double>(state.legal_actions().size(), 1.0 / state.legal_actions().size()));
+
+    const auto full = core::compute_exploitability_and_value(config, strategy);
+    const std::vector<std::array<std::uint8_t, 2>> p0_holes = {{(*config.initial_hole_cards)[0][0], (*config.initial_hole_cards)[0][1]}};
+    const std::vector<std::array<std::uint8_t, 2>> p1_holes = {{(*config.initial_hole_cards)[1][0], (*config.initial_hole_cards)[1][1]}};
+    const auto restricted = core::compute_restricted_game_value(config, strategy, p0_holes, p1_holes);
+
+    EXPECT_NEAR(restricted, full.game_value, 1e-9);
+}
+
 TEST(HUNLSolverTest, FixedComboPostflopSolveProducesStrategyBundle) {
     const auto config = core::default_tiny_subgame();
     const auto output = core::solve_hunl_postflop(config, 20, 1.5, 0.0, 2.0);
@@ -407,4 +422,11 @@ TEST(HUNLSolverTest, FixedComboPostflopSolveProducesStrategyBundle) {
     EXPECT_FALSE(output.average_strategy.empty());
     EXPECT_TRUE(std::isfinite(output.wallclock_seconds));
     EXPECT_GT(output.infoset_count, 0U);
+}
+
+TEST(HUNLSolverTest, RejectsChanceEnumPostflopRoot) {
+    auto config = core::default_tiny_subgame();
+    config.initial_hole_cards = std::nullopt;
+
+    EXPECT_THROW(core::solve_hunl_postflop(config, 20, 1.5, 0.0, 2.0), std::invalid_argument);
 }
