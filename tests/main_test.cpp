@@ -386,6 +386,19 @@ TEST(ExploitTest, ChanceEnumRiverStrategyProducesFiniteOutput) {
     EXPECT_TRUE(std::isfinite(output.game_value));
 }
 
+TEST(ExploitTest, RestrictedGameValueSupportsExplicitHoleLists) {
+    const auto config = core::default_tiny_subgame();
+    std::unordered_map<std::string, std::vector<double>> strategy;
+    const std::vector<std::array<std::uint8_t, 2>> p0_holes = {{
+        core::card_to_int(14, 1), core::card_to_int(13, 3)}};
+    const std::vector<std::array<std::uint8_t, 2>> p1_holes = {{
+        core::card_to_int(12, 2), core::card_to_int(12, 1)}};
+
+    const auto value = core::compute_restricted_game_value(config, strategy, p0_holes, p1_holes);
+
+    EXPECT_TRUE(std::isfinite(value));
+}
+
 TEST(HUNLSolverTest, FixedComboPostflopSolveProducesStrategyBundle) {
     const auto config = core::default_tiny_subgame();
     const auto output = core::solve_hunl_postflop(config, 20, 1.5, 0.0, 2.0);
