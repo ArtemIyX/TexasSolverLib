@@ -8,6 +8,7 @@ include(CTest)
 
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" ON)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" ON)
+option(TEXASSOLVER_USE_POKER_HAND_EVALUATOR "Build vendored PokerHandEvaluator" ON)
 
 file(GLOB_RECURSE TEXASSOLVER_PUBLIC_HEADERS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
@@ -18,6 +19,18 @@ file(GLOB_RECURSE TEXASSOLVER_SOURCES CONFIGURE_DEPENDS
 )
 
 list(FILTER TEXASSOLVER_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
+
+if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
+    set(BUILD_TESTS OFF CACHE BOOL "Disable PokerHandEvaluator tests" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "Disable PokerHandEvaluator examples" FORCE)
+    set(BUILD_PLO4 OFF CACHE BOOL "Disable PokerHandEvaluator PLO4" FORCE)
+    set(BUILD_PLO5 OFF CACHE BOOL "Disable PokerHandEvaluator PLO5" FORCE)
+    set(BUILD_PLO6 OFF CACHE BOOL "Disable PokerHandEvaluator PLO6" FORCE)
+    set(BUILD_CARD5 ON CACHE BOOL "Enable PokerHandEvaluator 5-card" FORCE)
+    set(BUILD_CARD6 ON CACHE BOOL "Enable PokerHandEvaluator 6-card" FORCE)
+    set(BUILD_CARD7 ON CACHE BOOL "Enable PokerHandEvaluator 7-card" FORCE)
+    add_subdirectory(external/pokerHandEvaluator/cpp EXCLUDE_FROM_ALL)
+endif()
 
 add_library(texas_core STATIC)
 add_library(TexasSolver::texas_core ALIAS texas_core)
