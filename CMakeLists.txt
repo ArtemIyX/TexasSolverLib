@@ -36,6 +36,9 @@ add_library(texas_core STATIC)
 add_library(TexasSolver::texas_core ALIAS texas_core)
 
 target_sources(texas_core PRIVATE ${TEXASSOLVER_SOURCES})
+if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
+    target_link_libraries(texas_core PRIVATE pheval)
+endif()
 
 target_include_directories(texas_core
     PUBLIC
@@ -62,6 +65,16 @@ install(TARGETS texas_core
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
+    install(TARGETS pheval
+        EXPORT TexasSolverTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/phevaluator
+    )
+endif()
 
 install(DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
