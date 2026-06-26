@@ -48,8 +48,6 @@ These Rust modules exist in C++, but the Rust side still contains behavior or fo
   - The C++ port has the module, but this area should be treated as a known follow-up rather than a fully closed parity milestone.
 - `simd.rs`
   - The C++ file exists, but the Rust crate also has dispatch and platform-specific smoke coverage that is only partly reflected by the current C++ test surface.
-- `preflop_equity.rs`
-  - The C++ module exists, but the Rust crate also exposes generator-style workflows that are not yet mirrored as standalone tools.
 
 ### Still missing
 
