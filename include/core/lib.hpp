@@ -26,6 +26,9 @@
 
 namespace core::lib {
 
+/**
+ * @brief Stable convenience aliases for external consumers.
+ */
 using ::core::ActionId;
 using ::core::ChanceOutcome;
 using ::core::Class169RvrOutput;
@@ -41,10 +44,16 @@ using ::core::SolveOutput;
 using ::core::Value;
 using ::core::VectorSolveOutput;
 
+/**
+ * @brief Solve Kuhn poker through the library facade.
+ */
 inline SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, double gamma) {
     return ::core::solve_kuhn(iterations, alpha, beta, gamma);
 }
 
+/**
+ * @brief Solve Leduc poker through the library facade.
+ */
 inline SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma) {
     return ::core::solve_leduc(iterations, alpha, beta, gamma);
 }

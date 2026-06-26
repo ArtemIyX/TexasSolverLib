@@ -12,8 +12,17 @@
 
 namespace core {
 
+/**
+ * @brief Validate DCFR parameters before solving.
+ */
 void validate_dcfr_parameters(double alpha, double beta, double gamma);
+/**
+ * @brief Solve Kuhn poker with DCFR.
+ */
 SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, double gamma);
+/**
+ * @brief Solve Leduc poker with DCFR.
+ */
 SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma);
 
 namespace detail {

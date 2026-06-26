@@ -13,6 +13,9 @@ inline constexpr ActionId LEDUC_FOLD = 0;
 inline constexpr ActionId LEDUC_CALL = 1;
 inline constexpr ActionId LEDUC_RAISE = 2;
 
+/**
+ * @brief Leduc poker game state.
+ */
 class LeducState final : public Game {
 public:
     std::vector<int> private_cards;
@@ -27,12 +30,17 @@ public:
     int stakes;
     PlayerId cur_player;
 
+    /// Construct the default Leduc state.
     LeducState();
 
+    /// @return Initial Leduc state.
     static LeducState initial();
 
+    /// @return Current pot size.
     int pot() const;
+    /// @return True when the current betting round is complete.
     bool round_complete() const;
+    /// @return Compact round action history string.
     std::string round_string(const std::vector<ActionId>& history) const;
 
     bool is_terminal() const override;

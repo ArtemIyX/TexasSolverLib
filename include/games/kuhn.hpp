@@ -10,16 +10,22 @@ namespace core {
 inline constexpr ActionId PASS = 0;
 inline constexpr ActionId BET = 1;
 
+/**
+ * @brief Kuhn poker game state.
+ */
 class KuhnState final : public Game {
 public:
     std::array<int, 2> cards;
     std::vector<ActionId> history;
     std::uint8_t chance_phase;
 
+    /// Construct the initial chance node.
     KuhnState();
 
+    /// @return Initial Kuhn state.
     static KuhnState initial();
 
+    /// @return Compact action-history string.
     std::string history_string() const;
     bool is_terminal() const override;
     std::vector<Value> utility() const override;

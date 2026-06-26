@@ -13,6 +13,9 @@ namespace core {
 
 struct AbstractionTables;
 
+/**
+ * @brief Street in the Hold'em game tree.
+ */
 enum class Street : std::uint8_t {
     Preflop = 0,
     Flop = 1,
@@ -52,6 +55,9 @@ std::uint8_t suit_of(std::uint8_t card);
 std::string card_to_string(std::uint8_t card);
 std::string sorted_card_string(const std::vector<std::uint8_t>& cards);
 
+/**
+ * @brief Complete no-limit hold'em configuration.
+ */
 struct HUNLConfig {
     int starting_stack = 10'000;
     int small_blind = 50;
@@ -81,6 +87,9 @@ struct HUNLConfig {
     void validate() const;
 };
 
+/**
+ * @brief Runtime context for action enumeration.
+ */
 struct ActionContext {
     int pot = 0;
     int to_call = 0;
@@ -104,6 +113,9 @@ struct ActionContext {
     std::uint32_t street_action_count = 0;
 };
 
+/**
+ * @brief Hold'em game state used by the solver pipeline.
+ */
 struct HUNLState {
     std::optional<std::array<std::array<std::uint8_t, 2>, 2>> hole_cards = std::nullopt;
     std::vector<std::uint8_t> board;

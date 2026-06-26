@@ -17,12 +17,18 @@
 
 namespace core {
 
+/**
+ * @brief Discounted Counterfactual Regret Minimization parameters.
+ */
 struct DCFRConfig {
     double alpha = 1.5;
     double beta = 0.0;
     double gamma = 2.0;
 };
 
+/**
+ * @brief Base type for solver implementations.
+ */
 class DCFRSolverBase {
 public:
     virtual ~DCFRSolverBase() = default;
