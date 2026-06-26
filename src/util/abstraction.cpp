@@ -59,8 +59,6 @@ std::uint32_t read_u32(const char* p) {
 std::vector<ZipEntry> parse_zip_entries(const std::string& zip) {
     constexpr std::uint32_t EOCD_SIG = 0x06054b50;
     constexpr std::uint32_t CEN_SIG = 0x02014b50;
-    constexpr std::uint32_t LOC_SIG = 0x04034b50;
-
     const auto min_size = static_cast<std::ptrdiff_t>(22);
     if (zip.size() < static_cast<std::size_t>(min_size)) {
         throw std::runtime_error("npz too small");
@@ -145,7 +143,6 @@ std::vector<std::uint8_t> parse_npy_u8(const std::vector<std::uint8_t>& raw) {
         throw std::runtime_error("invalid npy magic");
     }
     const std::uint8_t major = raw[6];
-    const std::uint8_t minor = raw[7];
     std::size_t header_len = 0;
     std::size_t offset = 0;
     if (major == 1) {

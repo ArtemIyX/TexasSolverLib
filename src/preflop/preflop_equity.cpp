@@ -71,7 +71,7 @@ std::uint16_t class_index(std::uint8_t rank_hi, std::uint8_t rank_lo, bool suite
 std::tuple<std::uint8_t, std::uint8_t, bool> class_decode(std::uint16_t class_idx) {
     const auto idx = static_cast<std::size_t>(class_idx);
     if (idx < 13) {
-        return {RANKS[idx], RANKS[idx], false};
+        return {static_cast<std::uint8_t>(RANKS[idx]), static_cast<std::uint8_t>(RANKS[idx]), false};
     }
     const bool suited = idx < 13 + 78;
     const std::size_t pair_idx = suited ? (idx - 13) : (idx - 13 - 78);
@@ -79,11 +79,14 @@ std::tuple<std::uint8_t, std::uint8_t, bool> class_decode(std::uint16_t class_id
     for (std::size_t a = 0; a < 12; ++a) {
         const std::size_t row_len = 12 - a;
         if (remaining < row_len) {
-            return {RANKS[a], RANKS[a + 1 + remaining], suited};
+            return {
+                static_cast<std::uint8_t>(RANKS[a]),
+                static_cast<std::uint8_t>(RANKS[a + 1 + remaining]),
+                suited};
         }
         remaining -= row_len;
     }
-    return {2, 2, false};
+    return {static_cast<std::uint8_t>(2), static_cast<std::uint8_t>(2), false};
 }
 
 std::uint16_t hole_to_class(const std::array<std::uint8_t, 2>& hole) {

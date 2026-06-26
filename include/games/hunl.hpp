@@ -134,8 +134,8 @@ struct HUNLState {
     std::vector<ActionId> legal_actions() const;
     HUNLState apply(ActionId action) const;
     HUNLState next_state(ActionId action) const;
-    std::string infoset_key(std::uint8_t player) const;
-    std::string infoset_key(std::uint8_t player, const AbstractionTables* abstraction) const;
+    std::string infoset_key(PlayerId player) const;
+    std::string infoset_key(PlayerId player, const AbstractionTables* abstraction) const;
     std::string format_history() const;
 
 private:

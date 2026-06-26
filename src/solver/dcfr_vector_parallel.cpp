@@ -28,7 +28,16 @@ std::vector<ParallelChanceRange> derive_parallel_chance_ranges(
 }
 
 bool parallel_chance_enabled() {
-    const char* raw = std::getenv("CFR_RAYON_CHANCE");
+    char* raw_value = nullptr;
+    std::size_t len = 0;
+#if defined(_MSC_VER)
+    if (_dupenv_s(&raw_value, &len, "CFR_RAYON_CHANCE") != 0) {
+        raw_value = nullptr;
+    }
+#else
+    raw_value = std::getenv("CFR_RAYON_CHANCE");
+#endif
+    const char* raw = raw_value;
     if (raw == nullptr) {
         return true;
     }
@@ -42,6 +51,9 @@ bool parallel_chance_enabled() {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
     });
+#if defined(_MSC_VER)
+    free(raw_value);
+#endif
     return !(value == "0" || value == "false" || value == "off");
 }
 
