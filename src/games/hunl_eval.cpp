@@ -1,5 +1,7 @@
 #include "games/hunl_eval.hpp"
 
+#include <phevaluator/phevaluator.h>
+
 #include <algorithm>
 #include <array>
 #include <stdexcept>
@@ -17,6 +19,14 @@ constexpr std::uint64_t HAND_FLUSH = 5;
 constexpr std::uint64_t HAND_FULL_HOUSE = 6;
 constexpr std::uint64_t HAND_FOUR_OF_A_KIND = 7;
 constexpr std::uint64_t HAND_STRAIGHT_FLUSH = 8;
+
+std::uint8_t to_phevaluator_card(std::uint8_t card) {
+    return static_cast<std::uint8_t>((rank_of(card) - 2) * 4 + suit_of(card));
+}
+
+Strength from_phevaluator_rank(int rank) {
+    return Strength{static_cast<std::uint64_t>(7463 - rank)};
+}
 
 Strength pack(
     std::uint64_t category,
@@ -55,6 +65,34 @@ std::uint8_t straight_high(const std::vector<std::uint8_t>& unique_ranks_desc) {
 Strength evaluate_n(const std::vector<std::uint8_t>& cards) {
     if (cards.size() < 5) {
         throw std::invalid_argument("evaluate_n requires at least 5 cards");
+    }
+
+    if (cards.size() == 5) {
+        return from_phevaluator_rank(evaluate_5cards(
+            to_phevaluator_card(cards[0]),
+            to_phevaluator_card(cards[1]),
+            to_phevaluator_card(cards[2]),
+            to_phevaluator_card(cards[3]),
+            to_phevaluator_card(cards[4])));
+    }
+    if (cards.size() == 6) {
+        return from_phevaluator_rank(evaluate_6cards(
+            to_phevaluator_card(cards[0]),
+            to_phevaluator_card(cards[1]),
+            to_phevaluator_card(cards[2]),
+            to_phevaluator_card(cards[3]),
+            to_phevaluator_card(cards[4]),
+            to_phevaluator_card(cards[5])));
+    }
+    if (cards.size() == 7) {
+        return from_phevaluator_rank(evaluate_7cards(
+            to_phevaluator_card(cards[0]),
+            to_phevaluator_card(cards[1]),
+            to_phevaluator_card(cards[2]),
+            to_phevaluator_card(cards[3]),
+            to_phevaluator_card(cards[4]),
+            to_phevaluator_card(cards[5]),
+            to_phevaluator_card(cards[6])));
     }
 
     std::vector<std::uint8_t> ranks_desc;

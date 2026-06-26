@@ -11,6 +11,7 @@ TexasSolver is a reusable CMake library for poker solving and analysis. The curr
 - `include/solver` and `src/solver` for DCFR and exploitability code
 - `include/preflop` and `src/preflop` for preflop-specific logic
 - `include/util` and `src/util` for support code such as abstraction, layout, SIMD, PCS, and suit isomorphism
+- `external/pokerHandEvaluator` for the vendored fixed-size hand evaluator submodule used by HUNL evaluation
 - `tests` for local regression tests
 - `examples` for usage samples
 
@@ -52,6 +53,8 @@ If you need to add a new module, prefer placing it in the existing grouped struc
 
 Public headers under `include/` define the library surface. If you add a new function or type that external users should call, place it in the relevant public header and keep the implementation in `src/`.
 
+For HUNL hand ranking, the code now prefers the vendored `pokerHandEvaluator` submodule for 5-card, 6-card, and 7-card hands. The generic `evaluate_n` fallback still exists for larger or unusual inputs, but new tests should make it clear which path they are exercising.
+
 ### Include paths
 
 Use the grouped include style already in the repository, such as:
@@ -74,6 +77,8 @@ cmake --build build --config Release
 ```
 
 On multi-config generators, `Release` is the default verification configuration used in this repository.
+
+The top-level CMake project adds `external/pokerHandEvaluator/cpp` as a subdirectory and links `texas_core` to the `pheval` target. If you touch build files, keep that submodule wiring in mind so the fixed-size evaluator continues to build cleanly.
 
 ## Testing
 
@@ -98,6 +103,7 @@ Try to add or update tests for:
 - solver convergence or output structure
 - exploitability and game-value calculations
 - abstraction/load/save helpers
+- evaluator ordering and fixed-size hand ranking paths, especially `evaluate_5`, `evaluate_6`, and `evaluate_7`
 
 For tricky behavior, it helps to add at least one test that confirms a known edge case or a parity detail from the Rust implementation.
 
