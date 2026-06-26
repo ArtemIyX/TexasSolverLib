@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -90,6 +91,18 @@ struct VectorDCFR {
     static void compute_strategy(const VectorInfosetData& info, std::vector<double>& out);
     static void compute_avg_strategy(const VectorInfosetData& info, std::vector<double>& out);
     static void discount(VectorInfosetData& info, std::uint32_t t, double alpha, double beta, double gamma);
+
+    using TerminalEvaluator = std::function<std::vector<double>(std::size_t node_idx, std::size_t update_player)>;
+
+    std::vector<double> traverse(
+        const BettingTree& tree,
+        std::size_t node_idx,
+        std::size_t update_player,
+        const std::vector<double>& reach_p,
+        const std::vector<double>& reach_opp,
+        const TerminalEvaluator& terminal_eval);
+
+    void solve(const BettingTree& tree, std::uint32_t iterations, const TerminalEvaluator& terminal_eval);
 };
 
 }  // namespace core

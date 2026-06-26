@@ -2,11 +2,13 @@
 
 #include "core/dcfr.hpp"
 #include "core/abstraction.hpp"
+#include "core/exploit.hpp"
 #include "core/pcs.hpp"
 #include "core/simd.hpp"
 #include "core/suit_iso.hpp"
 
 #include <cmath>
+#include <algorithm>
 #include <utility>
 #include <stdexcept>
 
@@ -208,6 +210,93 @@ void VectorDCFR::discount(VectorInfosetData& info, std::uint32_t t, double alpha
         discount_strategy_sum(info.strategy_sum.data(), info.strategy_sum.size(), strat_scale);
     }
     info.last_discount_iter = t;
+}
+
+std::vector<double> VectorDCFR::traverse(
+    const BettingTree& tree,
+    std::size_t node_idx,
+    std::size_t update_player,
+    const std::vector<double>& reach_p,
+    const std::vector<double>& reach_opp,
+    const TerminalEvaluator& terminal_eval) {
+    const auto& node = tree.nodes.at(node_idx);
+    if (node.tag == FlatNodeTag::Fold || node.tag == FlatNodeTag::Showdown) {
+        return terminal_eval(node_idx, update_player);
+    }
+
+    if (node.tag == FlatNodeTag::Chance) {
+        std::vector<double> total(reach_p.size(), 0.0);
+        for (const auto child_idx : node.children) {
+            const auto child = traverse(tree, child_idx, update_player, reach_p, reach_opp, terminal_eval);
+            for (std::size_t h = 0; h < total.size() && h < child.size(); ++h) {
+                total[h] += node.prob * child[h];
+            }
+        }
+        return total;
+    }
+
+    auto& slot = infosets_.at(node_idx);
+    if (!slot) {
+        slot.emplace(node.actions.size(), reach_p.size());
+    }
+    auto& info = *slot;
+
+    std::vector<double> strategy;
+    compute_strategy(info, strategy);
+
+    std::vector<double> action_values(node.children.size() * reach_p.size(), 0.0);
+    for (std::size_t a = 0; a < node.children.size(); ++a) {
+        std::vector<double> next_reach_p = reach_p;
+        std::vector<double> next_reach_opp = reach_opp;
+        if (node.player == update_player) {
+            for (std::size_t h = 0; h < next_reach_p.size(); ++h) {
+                next_reach_p[h] *= strategy[h * node.children.size() + a];
+            }
+        } else {
+            for (std::size_t h = 0; h < next_reach_opp.size(); ++h) {
+                next_reach_opp[h] *= strategy[h * node.children.size() + a];
+            }
+        }
+        const auto child = traverse(tree, node.children[a], update_player, next_reach_p, next_reach_opp, terminal_eval);
+        for (std::size_t h = 0; h < child.size(); ++h) {
+            action_values[a * child.size() + h] = child[h];
+        }
+    }
+
+    std::vector<double> node_values(reach_p.size(), 0.0);
+    for (std::size_t h = 0; h < reach_p.size(); ++h) {
+        double value = 0.0;
+        for (std::size_t a = 0; a < node.children.size(); ++a) {
+            value += strategy[h * node.children.size() + a] * action_values[a * reach_p.size() + h];
+        }
+        node_values[h] = value;
+    }
+
+    const std::size_t action_count = node.children.size();
+    const std::size_t hand_count = reach_p.size();
+    for (std::size_t h = 0; h < hand_count; ++h) {
+        for (std::size_t a = 0; a < action_count; ++a) {
+            info.regret[h * action_count + a] += reach_opp[h] * (action_values[a * hand_count + h] - node_values[h]);
+            info.strategy_sum[h * action_count + a] += reach_p[h] * strategy[h * action_count + a];
+        }
+    }
+
+    return node_values;
+}
+
+void VectorDCFR::solve(const BettingTree& tree, std::uint32_t iterations, const TerminalEvaluator& terminal_eval) {
+    infosets_.assign(tree.nodes.size(), std::nullopt);
+    for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
+        if (tree.nodes[i].tag == FlatNodeTag::Decision) {
+            infosets_[i].emplace(tree.nodes[i].actions.size(), 1);
+        }
+    }
+    const std::vector<double> root_reach{1.0};
+    for (std::uint32_t it = 0; it < iterations; ++it) {
+        ++iteration;
+        (void)traverse(tree, 0, 0, root_reach, root_reach, terminal_eval);
+        (void)traverse(tree, 0, 1, root_reach, root_reach, terminal_eval);
+    }
 }
 
 }  // namespace core
