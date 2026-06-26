@@ -102,7 +102,11 @@ struct VectorDCFR {
         const std::vector<double>& reach_opp,
         const TerminalEvaluator& terminal_eval);
 
-    void solve(const BettingTree& tree, std::uint32_t iterations, const TerminalEvaluator& terminal_eval);
+    void solve(
+        const BettingTree& tree,
+        std::uint32_t iterations,
+        std::size_t hand_count,
+        const TerminalEvaluator& terminal_eval);
 };
 
 }  // namespace core

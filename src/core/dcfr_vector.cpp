@@ -284,14 +284,18 @@ std::vector<double> VectorDCFR::traverse(
     return node_values;
 }
 
-void VectorDCFR::solve(const BettingTree& tree, std::uint32_t iterations, const TerminalEvaluator& terminal_eval) {
+void VectorDCFR::solve(
+    const BettingTree& tree,
+    std::uint32_t iterations,
+    std::size_t hand_count,
+    const TerminalEvaluator& terminal_eval) {
     infosets.assign(tree.nodes.size(), std::nullopt);
     for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
         if (tree.nodes[i].tag == FlatNodeTag::Decision) {
-            infosets[i].emplace(tree.nodes[i].actions.size(), 1);
+            infosets[i].emplace(tree.nodes[i].actions.size(), hand_count);
         }
     }
-    const std::vector<double> root_reach{1.0};
+    const std::vector<double> root_reach(hand_count, 1.0);
     for (std::uint32_t it = 0; it < iterations; ++it) {
         ++iteration;
         (void)traverse(tree, 0, 0, root_reach, root_reach, terminal_eval);
