@@ -22,7 +22,7 @@ Please read:
 - [README.md](README.md)
 - [LICENSE](LICENSE)
 
-If you are changing solver behavior, it is also worth comparing against the Rust source in [amaster97/poker_solver](https://github.com/amaster97/poker_solver]/`cfr_core/`  to understand the intended semantics.
+If you are changing solver behavior, it is also worth comparing against the Rust source in [cfr_core](https://github.com/amaster97/poker_solver/tree/main/crates/cfr_core) to understand the intended semantics.
 
 ## Contributor Goals
 
