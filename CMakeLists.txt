@@ -13,6 +13,7 @@ add_library(texas_core
     src/core/core.cpp
     src/core/dcfr.cpp
     src/core/dcfr_vector.cpp
+    src/core/dcfr_vector_parallel.cpp
     src/core/exploit.cpp
     src/core/hunl.cpp
     src/core/hunl_eval.cpp
