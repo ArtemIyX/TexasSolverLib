@@ -303,4 +303,39 @@ void VectorDCFR::solve(
     }
 }
 
+VectorSolveOutput VectorDCFR::solve_to_output(
+    const BettingTree& tree,
+    std::uint32_t iterations,
+    std::size_t hand_count,
+    const TerminalEvaluator& terminal_eval) {
+    solve(tree, iterations, hand_count, terminal_eval);
+
+    VectorSolveOutput out;
+    out.iterations = iterations;
+    out.decision_node_count = static_cast<std::uint32_t>(tree.nodes.size());
+    out.hand_count_per_player = {hand_count, hand_count};
+
+    std::uint32_t strategy_entries = 0;
+    for (std::size_t node_idx = 0; node_idx < infosets.size(); ++node_idx) {
+        const auto& node = tree.nodes[node_idx];
+        const auto& slot = infosets[node_idx];
+        if (!slot.has_value() || node.tag != FlatNodeTag::Decision) {
+            continue;
+        }
+
+        const auto& info = *slot;
+        std::vector<double> avg;
+        compute_avg_strategy(info, avg);
+        out.average_strategy.emplace("n" + std::to_string(node_idx), std::move(avg));
+        ++strategy_entries;
+        ++out.memory_profile.infoset_count;
+        out.memory_profile.total_bytes += static_cast<std::uint64_t>(
+            sizeof(VectorInfosetData) + info.regret.size() * sizeof(double) + info.strategy_sum.size() * sizeof(double));
+    }
+
+    out.strategy_entry_count = strategy_entries;
+    out.memory_profile.hand_count = {hand_count, hand_count};
+    return out;
+}
+
 }  // namespace core

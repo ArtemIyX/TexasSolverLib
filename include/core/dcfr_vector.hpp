@@ -107,6 +107,12 @@ struct VectorDCFR {
         std::uint32_t iterations,
         std::size_t hand_count,
         const TerminalEvaluator& terminal_eval);
+
+    VectorSolveOutput solve_to_output(
+        const BettingTree& tree,
+        std::uint32_t iterations,
+        std::size_t hand_count,
+        const TerminalEvaluator& terminal_eval);
 };
 
 }  // namespace core
