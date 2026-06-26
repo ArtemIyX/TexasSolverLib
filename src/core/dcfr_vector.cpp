@@ -235,7 +235,7 @@ std::vector<double> VectorDCFR::traverse(
         return total;
     }
 
-    auto& slot = infosets_.at(node_idx);
+    auto& slot = infosets.at(node_idx);
     if (!slot) {
         slot.emplace(node.actions.size(), reach_p.size());
     }
@@ -285,10 +285,10 @@ std::vector<double> VectorDCFR::traverse(
 }
 
 void VectorDCFR::solve(const BettingTree& tree, std::uint32_t iterations, const TerminalEvaluator& terminal_eval) {
-    infosets_.assign(tree.nodes.size(), std::nullopt);
+    infosets.assign(tree.nodes.size(), std::nullopt);
     for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
         if (tree.nodes[i].tag == FlatNodeTag::Decision) {
-            infosets_[i].emplace(tree.nodes[i].actions.size(), 1);
+            infosets[i].emplace(tree.nodes[i].actions.size(), 1);
         }
     }
     const std::vector<double> root_reach{1.0};
