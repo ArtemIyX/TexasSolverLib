@@ -87,6 +87,13 @@ struct Class169RvrOutput {
     double wallclock_seconds = 0.0;
 };
 
+VectorSolveOutput solve_hunl_vector_dcfr(
+    const HUNLConfig& config,
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma);
+
 class Class169VectorDCFR {
 public:
     Class169VectorDCFR(std::size_t hand_count, double alpha, double beta, double gamma);

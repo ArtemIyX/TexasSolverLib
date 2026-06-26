@@ -581,4 +581,20 @@ Class169RvrOutput solve_hunl_preflop_rvr_class169(
     return out;
 }
 
+VectorSolveOutput solve_hunl_vector_dcfr(
+    const HUNLConfig& config,
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma) {
+    auto shared = std::make_shared<const HUNLConfig>(config);
+    const auto initial = HUNLState::initial(shared);
+    const auto tree = BettingTree::build_from(initial);
+    const auto hole_pairs = enumerate_hole_card_pairs(initial);
+    if (hole_pairs.empty()) {
+        return {};
+    }
+    return solve_vector_dcfr(tree, hole_pairs, iterations, alpha, beta, gamma);
+}
+
 }  // namespace core
