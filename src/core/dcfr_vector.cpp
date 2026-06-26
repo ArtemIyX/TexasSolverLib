@@ -284,6 +284,19 @@ std::vector<double> VectorDCFR::traverse(
     return node_values;
 }
 
+VectorDCFR::TerminalEvaluator VectorDCFR::make_terminal_evaluator(
+    const BettingTree& tree,
+    const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs) {
+    return [&tree, &hole_pairs](std::size_t node_idx, std::size_t update_player) -> std::vector<double> {
+        const auto& node = tree.nodes.at(node_idx);
+        std::vector<double> out(hole_pairs.size(), 0.0);
+        for (std::size_t h = 0; h < hole_pairs.size(); ++h) {
+            out[h] = terminal_utility(node, hole_pairs[h], update_player);
+        }
+        return out;
+    };
+}
+
 void VectorDCFR::solve(
     const BettingTree& tree,
     std::uint32_t iterations,

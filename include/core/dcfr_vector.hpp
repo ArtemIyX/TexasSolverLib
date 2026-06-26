@@ -113,6 +113,10 @@ struct VectorDCFR {
         std::uint32_t iterations,
         std::size_t hand_count,
         const TerminalEvaluator& terminal_eval);
+
+    static TerminalEvaluator make_terminal_evaluator(
+        const BettingTree& tree,
+        const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs);
 };
 
 }  // namespace core
