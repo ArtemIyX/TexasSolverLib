@@ -1,5 +1,12 @@
 #include "core/core.hpp"
 
 namespace core {
-// Core module anchor. Additional implementation files will grow under this namespace.
+// Top-level namespace anchor for the C++ port.
+// The public solver surface lives in the module headers:
+// - core/solver.hpp
+// - core/hunl_solver.hpp
+// - core/exploit.hpp
+// - core/preflop.hpp
+// - core/preflop_rvr.hpp
+// - core/dcfr_vector.hpp
 }

@@ -2,6 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
+#include <optional>
+#include <unordered_map>
 #include <string>
 #include <utility>
 #include <vector>

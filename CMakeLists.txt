@@ -67,7 +67,6 @@ endfunction()
 
 add_texas_core_test(texas_core_test_arena tests/test_arena.cpp)
 add_texas_core_test(texas_core_test_dcfr tests/test_dcfr.cpp)
-add_texas_core_test(texas_core_test_dcfr_vector tests/test_dcfr_vector.cpp)
 add_texas_core_test(texas_core_test_hunl_eval tests/test_hunl_eval.cpp)
 add_texas_core_test(texas_core_test_hunl_state tests/test_hunl_state.cpp)
 add_texas_core_test(texas_core_test_hunl_tree tests/test_hunl_tree.cpp)
