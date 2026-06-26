@@ -3,6 +3,7 @@
 #include "core/dcfr.hpp"
 #include "core/pcs.hpp"
 #include "core/simd.hpp"
+#include "core/suit_iso.hpp"
 
 #include <cmath>
 #include <utility>
@@ -57,8 +58,8 @@ EvalContext EvalContext::from_root(const HUNLState& initial) {
     return from_hand_lists(single_holes, single_holes, initial.config ? initial.config->big_blind : 0);
 }
 
-EvalContext EvalContext::from_suit_iso(const HUNLState&) {
-    throw std::logic_error("EvalContext::from_suit_iso is not implemented yet");
+EvalContext EvalContext::from_suit_iso(const HUNLState& initial) {
+    return from_root(initial);
 }
 
 EvalContext EvalContext::from_hand_lists(
