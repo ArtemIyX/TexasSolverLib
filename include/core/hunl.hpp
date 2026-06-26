@@ -11,6 +11,8 @@
 
 namespace core {
 
+struct AbstractionTables;
+
 enum class Street : std::uint8_t {
     Preflop = 0,
     Flop = 1,
@@ -133,6 +135,7 @@ struct HUNLState {
     HUNLState apply(ActionId action) const;
     HUNLState next_state(ActionId action) const;
     std::string infoset_key(std::uint8_t player) const;
+    std::string infoset_key(std::uint8_t player, const AbstractionTables* abstraction) const;
     std::string format_history() const;
 
 private:

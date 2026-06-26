@@ -1,5 +1,6 @@
 #include "core/hunl.hpp"
 
+#include "core/abstraction.hpp"
 #include "core/hunl_eval.hpp"
 
 #include <algorithm>
@@ -379,6 +380,14 @@ HUNLState HUNLState::next_state(ActionId action) const {
 }
 
 std::string HUNLState::infoset_key(std::uint8_t player) const {
+    return infoset_key(player, nullptr);
+}
+
+std::string HUNLState::infoset_key(std::uint8_t player, const AbstractionTables* abstraction) const {
+    if (abstraction && street >= Street::Flop && hole_cards.has_value()) {
+        const auto bucket = lookup_bucket(*abstraction, board, (*hole_cards)[player], street);
+        return "b" + std::to_string(bucket) + "|" + street_token(street) + "|" + format_history();
+    }
     const auto hole = hole_cards.has_value() ? sorted_card_string(
         std::vector<std::uint8_t>{(*hole_cards)[player][0], (*hole_cards)[player][1]}) : std::string();
     const auto board_str = sorted_card_string(board);

@@ -9,6 +9,7 @@ enable_testing()
 
 add_library(texas_core
     src/core/arena.cpp
+    src/core/abstraction.cpp
     src/core/core.cpp
     src/core/dcfr.cpp
     src/core/dcfr_vector.cpp
@@ -25,6 +26,7 @@ add_library(texas_core
     src/core/preflop_equity.cpp
     src/core/preflop_rvr.cpp
     src/core/simd.cpp
+    src/core/suit_iso.cpp
     src/core/solver.cpp
 )
 
