@@ -95,17 +95,23 @@ const std::vector<double>& PreflopEquityTable::data() const { return table_; }
 std::vector<double>& PreflopEquityTable::data() { return table_; }
 
 PreflopEquityTable PreflopEquityTable::build() {
-    PreflopEquityTable out;
-    for (std::size_t h = 0; h < PREFLOP_NUM_CLASSES; ++h) {
-        for (std::size_t v = 0; v < PREFLOP_NUM_CLASSES; ++v) {
-            for (std::size_t variant = 0; variant < PREFLOP_NUM_VARIANTS; ++variant) {
-                if (auto rep = build_hole_rep(static_cast<std::uint16_t>(h), static_cast<std::uint16_t>(v), static_cast<std::uint8_t>(variant))) {
-                    out.at(h, v, variant) = enumerate_pair_equity(rep->hero, rep->villain);
+    static const PreflopEquityTable cached = [] {
+        PreflopEquityTable out;
+        for (std::size_t h = 0; h < PREFLOP_NUM_CLASSES; ++h) {
+            for (std::size_t v = 0; v < PREFLOP_NUM_CLASSES; ++v) {
+                for (std::size_t variant = 0; variant < PREFLOP_NUM_VARIANTS; ++variant) {
+                    if (auto rep = build_hole_rep(
+                            static_cast<std::uint16_t>(h),
+                            static_cast<std::uint16_t>(v),
+                            static_cast<std::uint8_t>(variant))) {
+                        out.at(h, v, variant) = enumerate_pair_equity(rep->hero, rep->villain);
+                    }
                 }
             }
         }
-    }
-    return out;
+        return out;
+    }();
+    return cached;
 }
 
 PreflopEquityTable PreflopEquityTable::load_csv(const std::string& path) {
