@@ -1,78 +1,119 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(TexasSolver LANGUAGES CXX)
+project(TexasSolver VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-enable_testing()
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
-add_library(texas_core
-    src/core/arena.cpp
-    src/core/abstraction.cpp
-    src/core/core.cpp
-    src/core/dcfr.cpp
-    src/core/dcfr_vector.cpp
-    src/core/dcfr_vector_parallel.cpp
-    src/core/exploit.cpp
-    src/core/hunl.cpp
-    src/core/hunl_eval.cpp
-    src/core/hunl_solver.cpp
-    src/core/hunl_tree.cpp
-    src/core/kuhn.cpp
-    src/core/layout.cpp
-    src/core/leduc.cpp
-    src/core/pcs.cpp
-    src/core/preflop.cpp
-    src/core/preflop_equity.cpp
-    src/core/preflop_rvr.cpp
-    src/core/simd.cpp
-    src/core/suit_iso.cpp
-    src/core/solver.cpp
+option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" ON)
+
+add_library(texas_core)
+add_library(TexasSolver::texas_core ALIAS texas_core)
+
+target_sources(texas_core
+    PRIVATE
+        src/core/abstraction.cpp
+        src/core/arena.cpp
+        src/core/core.cpp
+        src/core/dcfr.cpp
+        src/core/dcfr_vector.cpp
+        src/core/dcfr_vector_parallel.cpp
+        src/core/exploit.cpp
+        src/core/hunl.cpp
+        src/core/hunl_eval.cpp
+        src/core/hunl_solver.cpp
+        src/core/hunl_tree.cpp
+        src/core/kuhn.cpp
+        src/core/layout.cpp
+        src/core/leduc.cpp
+        src/core/lib.cpp
+        src/core/pcs.cpp
+        src/core/preflop.cpp
+        src/core/preflop_equity.cpp
+        src/core/preflop_rvr.cpp
+        src/core/simd.cpp
+        src/core/solver.cpp
+        src/core/suit_iso.cpp
 )
 
 target_include_directories(texas_core
     PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-add_executable(TexasSolver
-    src/main.cpp
+target_compile_features(texas_core PUBLIC cxx_std_17)
+
+set_target_properties(texas_core PROPERTIES
+    EXPORT_NAME texas_core
+    OUTPUT_NAME texas_core
 )
 
-target_link_libraries(TexasSolver
-    PRIVATE
-    texas_core
+if (MSVC)
+    target_compile_options(texas_core PRIVATE /W4)
+else()
+    target_compile_options(texas_core PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+install(TARGETS texas_core
+    EXPORT TexasSolverTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-function(add_texas_core_test test_name test_source)
-    add_executable(${test_name}
-        tests/test_main.cpp
-        ${test_source}
-    )
+install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
 
-    target_link_libraries(${test_name}
-        PRIVATE
-        texas_core
-    )
+install(EXPORT TexasSolverTargets
+    NAMESPACE TexasSolver::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/TexasSolver
+)
 
-    target_include_directories(${test_name}
-        PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests
-    )
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/TexasSolverConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/TexasSolverConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/TexasSolver
+)
 
-    add_test(NAME ${test_name} COMMAND ${test_name})
-endfunction()
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/TexasSolverConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
 
-add_texas_core_test(texas_core_test_arena tests/test_arena.cpp)
-add_texas_core_test(texas_core_test_dcfr tests/test_dcfr.cpp)
-add_texas_core_test(texas_core_test_hunl_eval tests/test_hunl_eval.cpp)
-add_texas_core_test(texas_core_test_hunl_state tests/test_hunl_state.cpp)
-add_texas_core_test(texas_core_test_hunl_tree tests/test_hunl_tree.cpp)
-add_texas_core_test(texas_core_test_abstraction tests/test_abstraction.cpp)
-add_texas_core_test(texas_core_test_kuhn tests/test_kuhn.cpp)
-add_texas_core_test(texas_core_test_layout tests/test_layout.cpp)
-add_texas_core_test(texas_core_test_leduc tests/test_leduc.cpp)
-add_texas_core_test(texas_core_test_pcs tests/test_pcs.cpp)
-add_texas_core_test(texas_core_test_simd tests/test_simd.cpp)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/TexasSolverConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/TexasSolverConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/TexasSolver
+)
+
+if (TEXASSOLVER_BUILD_TESTS)
+    include(CTest)
+    if (BUILD_TESTING)
+        file(GLOB TEXASSOLVER_TEST_SOURCES CONFIGURE_DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.cpp
+        )
+
+        foreach(test_source IN LISTS TEXASSOLVER_TEST_SOURCES)
+            get_filename_component(test_name ${test_source} NAME_WE)
+            if (test_name STREQUAL "test_main" OR test_name STREQUAL "main_test")
+                continue()
+            endif()
+
+            add_executable(${test_name}
+                tests/test_main.cpp
+                ${test_source}
+            )
+
+            target_include_directories(${test_name} PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests
+            )
+            target_link_libraries(${test_name} PRIVATE texas_core)
+
+            add_test(NAME ${test_name} COMMAND ${test_name})
+        endforeach()
+    endif()
+endif()
