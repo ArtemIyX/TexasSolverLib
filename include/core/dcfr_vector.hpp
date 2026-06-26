@@ -108,10 +108,24 @@ struct VectorDCFR {
         std::size_t hand_count,
         const TerminalEvaluator& terminal_eval);
 
+    void solve(
+        const BettingTree& tree,
+        std::uint32_t iterations,
+        std::size_t hand_count,
+        const std::vector<bool>& skip_mask,
+        const TerminalEvaluator& terminal_eval);
+
     VectorSolveOutput solve_to_output(
         const BettingTree& tree,
         std::uint32_t iterations,
         std::size_t hand_count,
+        const TerminalEvaluator& terminal_eval);
+
+    VectorSolveOutput solve_to_output(
+        const BettingTree& tree,
+        std::uint32_t iterations,
+        std::size_t hand_count,
+        const std::vector<bool>& skip_mask,
         const TerminalEvaluator& terminal_eval);
 
     static TerminalEvaluator make_terminal_evaluator(
@@ -126,5 +140,14 @@ VectorSolveOutput solve_vector_dcfr(
     double alpha,
     double beta,
     double gamma);
+
+VectorSolveOutput solve_vector_dcfr(
+    const BettingTree& tree,
+    const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs,
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    const std::vector<bool>& skip_mask);
 
 }  // namespace core

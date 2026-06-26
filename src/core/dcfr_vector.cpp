@@ -302,9 +302,18 @@ void VectorDCFR::solve(
     std::uint32_t iterations,
     std::size_t hand_count,
     const TerminalEvaluator& terminal_eval) {
+    solve(tree, iterations, hand_count, std::vector<bool>{}, terminal_eval);
+}
+
+void VectorDCFR::solve(
+    const BettingTree& tree,
+    std::uint32_t iterations,
+    std::size_t hand_count,
+    const std::vector<bool>& skip_mask,
+    const TerminalEvaluator& terminal_eval) {
     infosets.assign(tree.nodes.size(), std::nullopt);
     for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
-        if (tree.nodes[i].tag == FlatNodeTag::Decision) {
+        if (tree.nodes[i].tag == FlatNodeTag::Decision && (skip_mask.empty() || !skip_mask[i])) {
             infosets[i].emplace(tree.nodes[i].actions.size(), hand_count);
         }
     }
@@ -321,7 +330,16 @@ VectorSolveOutput VectorDCFR::solve_to_output(
     std::uint32_t iterations,
     std::size_t hand_count,
     const TerminalEvaluator& terminal_eval) {
-    solve(tree, iterations, hand_count, terminal_eval);
+    return solve_to_output(tree, iterations, hand_count, std::vector<bool>{}, terminal_eval);
+}
+
+VectorSolveOutput VectorDCFR::solve_to_output(
+    const BettingTree& tree,
+    std::uint32_t iterations,
+    std::size_t hand_count,
+    const std::vector<bool>& skip_mask,
+    const TerminalEvaluator& terminal_eval) {
+    solve(tree, iterations, hand_count, skip_mask, terminal_eval);
 
     VectorSolveOutput out;
     out.iterations = iterations;
@@ -361,6 +379,19 @@ VectorSolveOutput solve_vector_dcfr(
     VectorDCFR solver = VectorDCFR::new_solver(tree, {hole_pairs.size(), hole_pairs.size()}, alpha, beta, gamma);
     const auto terminal_eval = VectorDCFR::make_terminal_evaluator(tree, hole_pairs);
     return solver.solve_to_output(tree, iterations, hole_pairs.size(), terminal_eval);
+}
+
+VectorSolveOutput solve_vector_dcfr(
+    const BettingTree& tree,
+    const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs,
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    const std::vector<bool>& skip_mask) {
+    VectorDCFR solver = VectorDCFR::new_solver(tree, {hole_pairs.size(), hole_pairs.size()}, alpha, beta, gamma);
+    const auto terminal_eval = VectorDCFR::make_terminal_evaluator(tree, hole_pairs);
+    return solver.solve_to_output(tree, iterations, hole_pairs.size(), skip_mask, terminal_eval);
 }
 
 }  // namespace core

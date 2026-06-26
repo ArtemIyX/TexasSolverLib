@@ -1,9 +1,11 @@
 #include "core/preflop_rvr.hpp"
+#include "core/suit_iso.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 
 namespace core {
@@ -593,6 +595,24 @@ VectorSolveOutput solve_hunl_vector_dcfr(
     const auto hole_pairs = enumerate_hole_card_pairs(initial);
     if (hole_pairs.empty()) {
         return {};
+    }
+    const auto root_reach = std::vector<double>(hole_pairs.size(), 1.0);
+    const std::array<const std::vector<double>*, 2> reach = {&root_reach, &root_reach};
+    const std::array<std::vector<std::array<std::uint8_t, 2>>, 2> holes = [&]() {
+        std::array<std::vector<std::array<std::uint8_t, 2>>, 2> out;
+        out[0].reserve(hole_pairs.size());
+        out[1].reserve(hole_pairs.size());
+        for (const auto& hp : hole_pairs) {
+            out[0].push_back(hp[0]);
+            out[1].push_back(hp[1]);
+        }
+        return out;
+    }();
+
+    const auto cache = build_suit_iso_cache(tree.nodes, tree.dealt_cards, initial.board, holes, reach);
+    if (cache.is_active()) {
+        const auto skip_mask = member_skip_mask(tree.nodes, cache);
+        return solve_vector_dcfr(tree, hole_pairs, iterations, alpha, beta, gamma, skip_mask);
     }
     return solve_vector_dcfr(tree, hole_pairs, iterations, alpha, beta, gamma);
 }
