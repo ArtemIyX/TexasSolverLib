@@ -1,4 +1,4 @@
-#include "core/pcs.hpp"
+#include "util/pcs.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -60,3 +60,5 @@ TEST_CASE(sample_uniform_outcome_negative_control_without_importance_weight) {
     EXPECT_TRUE(std::abs(est_unweighted - true_sum / static_cast<double>(values.size())) < 0.05);
     EXPECT_TRUE(std::abs(est_weighted_mean - true_sum / static_cast<double>(values.size())) < 0.05);
 }
+
+

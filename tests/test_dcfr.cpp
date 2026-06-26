@@ -1,5 +1,5 @@
-#include "core/dcfr.hpp"
-#include "core/kuhn.hpp"
+#include "solver/dcfr.hpp"
+#include "games/kuhn.hpp"
 #include "test_harness.hpp"
 
 #include <limits>
@@ -16,3 +16,5 @@ TEST_CASE(dcfr_alpha_warn_band_is_allowed) {
     const auto output = solver.solve(1);
     EXPECT_EQ(output.iterations, 1U);
 }
+
+

@@ -1,13 +1,13 @@
 #include <gtest/gtest.h>
 
-#include "core/exploit.hpp"
-#include "core/hunl.hpp"
-#include "core/hunl_eval.hpp"
-#include "core/hunl_solver.hpp"
-#include "core/hunl_tree.hpp"
-#include "core/kuhn.hpp"
-#include "core/leduc.hpp"
-#include "core/solver.hpp"
+#include "solver/exploit.hpp"
+#include "games/hunl.hpp"
+#include "games/hunl_eval.hpp"
+#include "games/hunl_solver.hpp"
+#include "games/hunl_tree.hpp"
+#include "games/kuhn.hpp"
+#include "games/leduc.hpp"
+#include "solver/solver.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -430,3 +430,5 @@ TEST(HUNLSolverTest, RejectsChanceEnumPostflopRoot) {
 
     EXPECT_THROW(core::solve_hunl_postflop(config, 20, 1.5, 0.0, 2.0), std::invalid_argument);
 }
+
+

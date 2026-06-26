@@ -1,25 +1,25 @@
 #pragma once
 
-#include "core/abstraction.hpp"
-#include "core/api.hpp"
-#include "core/dcfr.hpp"
-#include "core/dcfr_vector.hpp"
-#include "core/dcfr_vector_parallel.hpp"
-#include "core/exploit.hpp"
-#include "core/hunl.hpp"
-#include "core/hunl_eval.hpp"
-#include "core/hunl_solver.hpp"
-#include "core/hunl_tree.hpp"
-#include "core/kuhn.hpp"
-#include "core/layout.hpp"
-#include "core/leduc.hpp"
-#include "core/pcs.hpp"
-#include "core/preflop.hpp"
-#include "core/preflop_equity.hpp"
-#include "core/preflop_rvr.hpp"
-#include "core/simd.hpp"
-#include "core/solver.hpp"
-#include "core/suit_iso.hpp"
+#include "util/abstraction.hpp"
+#include "util/api.hpp"
+#include "solver/dcfr.hpp"
+#include "solver/dcfr_vector.hpp"
+#include "solver/dcfr_vector_parallel.hpp"
+#include "solver/exploit.hpp"
+#include "games/hunl.hpp"
+#include "games/hunl_eval.hpp"
+#include "games/hunl_solver.hpp"
+#include "games/hunl_tree.hpp"
+#include "games/kuhn.hpp"
+#include "util/layout.hpp"
+#include "games/leduc.hpp"
+#include "util/pcs.hpp"
+#include "preflop/preflop.hpp"
+#include "preflop/preflop_equity.hpp"
+#include "preflop/preflop_rvr.hpp"
+#include "util/simd.hpp"
+#include "solver/solver.hpp"
+#include "util/suit_iso.hpp"
 
 #include <memory>
 #include <unordered_map>
@@ -128,3 +128,5 @@ inline Class169RvrOutput solve_hunl_preflop_rvr_class169(
 }
 
 }  // namespace core::lib
+
+

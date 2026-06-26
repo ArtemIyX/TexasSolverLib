@@ -1,4 +1,4 @@
-#include "core/hunl_tree.hpp"
+#include "games/hunl_tree.hpp"
 #include "test_harness.hpp"
 
 #include <memory>
@@ -28,3 +28,5 @@ TEST_CASE(hunl_tree_node_count_is_bounded) {
     EXPECT_TRUE(tree.nodes.size() > 5U);
     EXPECT_TRUE(tree.nodes.size() < 100000U);
 }
+
+

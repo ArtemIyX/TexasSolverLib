@@ -27,3 +27,5 @@ TEST_CASE(arena_reset_rewinds_to_zero) {
     arena.reset();
     EXPECT_EQ(arena.mark(), 0U);
 }
+
+

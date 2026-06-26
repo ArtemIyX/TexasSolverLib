@@ -1,4 +1,4 @@
-#include "core/layout.hpp"
+#include "util/layout.hpp"
 #include "test_harness.hpp"
 
 TEST_CASE(layout_intern_returns_stable_id) {
@@ -38,3 +38,5 @@ TEST_CASE(layout_arena_grows_in_block_increments) {
     EXPECT_EQ(store.regret_arena_size() % (core::BLOCK_SIZE * 8), 0U);
     EXPECT_EQ(store.regret_arena_size(), store.strategy_arena_size());
 }
+
+

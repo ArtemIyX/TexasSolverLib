@@ -1,5 +1,5 @@
-#include "core/hunl.hpp"
-#include "core/hunl_eval.hpp"
+#include "games/hunl.hpp"
+#include "games/hunl_eval.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -44,3 +44,5 @@ TEST_CASE(hunl_eval_seven_card_uses_best_five) {
     const std::array<std::uint8_t, 5> five = {c(14, 0), c(11, 0), c(8, 0), c(5, 0), c(2, 0)};
     EXPECT_EQ(core::Strength::evaluate_7(seven), core::Strength::evaluate_5(five));
 }
+
+

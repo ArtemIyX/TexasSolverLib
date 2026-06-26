@@ -1,4 +1,4 @@
-#include "core/leduc.hpp"
+#include "games/leduc.hpp"
 #include "test_harness.hpp"
 
 #include <string>
@@ -39,3 +39,5 @@ TEST_CASE(leduc_infoset_key_and_fold_utility) {
     EXPECT_EQ(state.utility()[0], 1.0);
     EXPECT_EQ(state.utility()[1], -1.0);
 }
+
+

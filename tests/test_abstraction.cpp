@@ -1,4 +1,4 @@
-#include "core/abstraction.hpp"
+#include "util/abstraction.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -187,3 +187,5 @@ TEST_CASE(abstraction_loads_minimal_npz_layout) {
     EXPECT_EQ(core::lookup_bucket(tables, board, hole, core::Street::Flop), 7);
     std::filesystem::remove(tmp);
 }
+
+

@@ -26,3 +26,5 @@ int main() {
     std::cout << "All tests passed (" << test::registry().size() << ")\n";
     return 0;
 }
+
+

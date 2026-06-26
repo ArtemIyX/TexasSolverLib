@@ -101,3 +101,5 @@ void expect_throw(Fn&& fn, const char* expr, const char* file, int line) {
 #define EXPECT_EQ(actual, expected) ::test::expect_eq((actual), (expected), #actual " == " #expected, __FILE__, __LINE__)
 #define EXPECT_NEAR(actual, expected, epsilon) ::test::expect_near((actual), (expected), (epsilon), #actual " ~= " #expected, __FILE__, __LINE__)
 #define EXPECT_THROW(expr, exception_type) ::test::expect_throw<exception_type>([&]() { (void)(expr); }, #expr, __FILE__, __LINE__)
+
+

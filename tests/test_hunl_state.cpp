@@ -1,4 +1,4 @@
-#include "core/hunl.hpp"
+#include "games/hunl.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -97,3 +97,5 @@ TEST_CASE(hunl_postflop_raise_cap_blocks_further_raises) {
     EXPECT_TRUE(std::find(actions.begin(), actions.end(), core::ACTION_CALL) != actions.end());
     EXPECT_TRUE(std::find(actions.begin(), actions.end(), core::ACTION_ALL_IN) == actions.end());
 }
+
+

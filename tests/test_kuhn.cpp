@@ -1,4 +1,4 @@
-#include "core/kuhn.hpp"
+#include "games/kuhn.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -28,3 +28,5 @@ TEST_CASE(kuhn_infoset_key_includes_private_card_and_history) {
     EXPECT_EQ(state.infoset_key(0), std::string("12|pb"));
     EXPECT_EQ(state.infoset_key(1), std::string("13|pb"));
 }
+
+

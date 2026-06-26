@@ -1,5 +1,5 @@
-#include "core/simd.hpp"
-#include "core/solver.hpp"
+#include "util/simd.hpp"
+#include "solver/solver.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -88,3 +88,5 @@ TEST_CASE(simd_kuhn_solve_is_deterministic_under_current_backend) {
         }
     }
 }
+
+
