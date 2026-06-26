@@ -357,11 +357,16 @@ VectorSolveOutput VectorDCFR::solve_to_output(
         const auto& info = *slot;
         std::vector<double> avg;
         compute_avg_strategy(info, avg);
-        out.average_strategy.emplace("n" + std::to_string(node_idx), std::move(avg));
+        const auto key = node.key_suffix.empty() ? ("n" + std::to_string(node_idx)) : node.key_suffix;
+        out.average_strategy.emplace(key, std::move(avg));
         ++strategy_entries;
         ++out.memory_profile.infoset_count;
         out.memory_profile.total_bytes += static_cast<std::uint64_t>(
             sizeof(VectorInfosetData) + info.regret.size() * sizeof(double) + info.strategy_sum.size() * sizeof(double));
+        const auto street_key = std::string(1, static_cast<char>('0' + static_cast<int>(node.tag)));
+        out.memory_profile.by_street[street_key] += static_cast<std::uint64_t>(
+            info.regret.size() * sizeof(double) + info.strategy_sum.size() * sizeof(double));
+        out.memory_profile.infoset_count_by_street[street_key] += 1U;
     }
 
     out.strategy_entry_count = strategy_entries;
