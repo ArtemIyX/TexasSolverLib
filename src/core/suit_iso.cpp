@@ -1,6 +1,8 @@
 #include "core/suit_iso.hpp"
 
 #include <algorithm>
+#include <array>
+#include <functional>
 
 namespace core {
 
@@ -44,8 +46,9 @@ std::vector<std::size_t> board_stabilizer(const std::vector<std::uint8_t>& prefi
 }
 
 std::vector<IsoClass> group_chance_children(
-    const std::vector<std::uint8_t>&,
+    const std::vector<std::uint8_t>& prefix_board,
     const std::vector<std::uint8_t>& dealt_cards) {
+    (void)prefix_board;
     std::vector<IsoClass> classes;
     for (std::size_t i = 0; i < dealt_cards.size(); ++i) {
         classes.push_back(IsoClass{i, {{i, {0, 1, 2, 3}}}});
@@ -55,7 +58,14 @@ std::vector<IsoClass> group_chance_children(
 
 std::vector<std::array<std::uint8_t, 2>> build_hole_index(
     const std::vector<std::array<std::uint8_t, 2>>& holes) {
-    return holes;
+    std::vector<std::array<std::uint8_t, 2>> out;
+    out.reserve(holes.size());
+    for (const auto& hole : holes) {
+        auto sorted = hole;
+        if (sorted[1] < sorted[0]) std::swap(sorted[0], sorted[1]);
+        out.push_back(sorted);
+    }
+    return out;
 }
 
 std::optional<std::vector<std::uint32_t>> hand_index_permutation(
@@ -75,12 +85,19 @@ std::optional<std::vector<std::uint32_t>> hand_index_permutation(
 }
 
 SuitIsoCache build_suit_iso_cache(
-    const std::vector<FlatNode>&,
-    const std::vector<std::optional<std::uint8_t>>&,
-    const std::vector<std::uint8_t>&,
-    const std::array<std::vector<std::array<std::uint8_t, 2>>, 2>&,
-    const std::array<const std::vector<double>*, 2>&) {
-    return {};
+    const std::vector<FlatNode>& nodes,
+    const std::vector<std::optional<std::uint8_t>>& dealt_cards,
+    const std::vector<std::uint8_t>& initial_board,
+    const std::array<std::vector<std::array<std::uint8_t, 2>>, 2>& holes,
+    const std::array<const std::vector<double>*, 2>& reach) {
+    (void)dealt_cards;
+    (void)initial_board;
+    (void)holes;
+    (void)reach;
+
+    SuitIsoCache cache;
+    cache.nodes.resize(nodes.size());
+    return cache;
 }
 
 std::vector<bool> member_skip_mask(const std::vector<FlatNode>& nodes, const SuitIsoCache&) {
