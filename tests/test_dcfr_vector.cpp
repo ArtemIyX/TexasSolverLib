@@ -46,9 +46,15 @@ TEST_CASE(dcfr_vector_eval_context_from_root_enumerates_board_disjoint_holes) {
     EXPECT_EQ(ctx.hole[1].size(), ctx.hole_str[1].size());
 }
 
-TEST_CASE(dcfr_vector_eval_context_from_suit_iso_is_not_implemented_yet) {
+TEST_CASE(dcfr_vector_eval_context_from_suit_iso_matches_root_fallback) {
     const auto initial = core::HUNLState::initial(std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame()));
-    EXPECT_THROW(core::EvalContext::from_suit_iso(initial), std::logic_error);
+    const auto root = core::EvalContext::from_root(initial);
+    const auto suit_iso = core::EvalContext::from_suit_iso(initial);
+    EXPECT_EQ(suit_iso.hand_count[0], root.hand_count[0]);
+    EXPECT_EQ(suit_iso.hand_count[1], root.hand_count[1]);
+    EXPECT_EQ(suit_iso.big_blind, root.big_blind);
+    EXPECT_EQ(suit_iso.hole[0], root.hole[0]);
+    EXPECT_EQ(suit_iso.hole[1], root.hole[1]);
 }
 
 TEST_CASE(dcfr_vector_compute_strategy_matches_row_regret_matching) {
