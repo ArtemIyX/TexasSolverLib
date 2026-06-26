@@ -12,6 +12,7 @@ The code and layout here are organized so the project can be consumed as a norma
 - HUNL postflop and preflop solver code
 - Exploitability and game-value evaluation
 - Preflop equity helpers
+- Vendored `pokerHandEvaluator` submodule for fast 5-card, 6-card, and 7-card hand ranking
 - Abstraction / layout / SIMD / suit-isomorphism utilities
 
 
@@ -30,6 +31,8 @@ When installed, the package exports a CMake config file so another project can u
 - A working build toolchain for your platform
 
 On Windows the project builds with Visual Studio/MSBuild. On other platforms a normal CMake generator is fine.
+
+The repository includes `external/pokerHandEvaluator` as a Git submodule. The top-level CMake build wires that vendored library into `texas_core` so fixed-size hand evaluation can use the faster `evaluate_5cards`, `evaluate_6cards`, and `evaluate_7cards` paths.
 
 ## Build the project
 
@@ -66,6 +69,8 @@ This installs:
 - headers under `<prefix>/include`
 - the library archive / import library under `<prefix>/lib` or the platform equivalent
 - CMake package files under `<prefix>/lib/cmake/TexasSolver`
+
+When building from the repository, the vendored hand evaluator is also configured through CMake. If you need to turn it off for debugging or portability work, set `TEXASSOLVER_USE_POKER_HAND_EVALUATOR=OFF` during configuration.
 
 ## Use as a submodule
 
