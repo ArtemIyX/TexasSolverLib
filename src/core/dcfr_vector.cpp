@@ -1,6 +1,7 @@
 #include "core/dcfr_vector.hpp"
 
 #include "core/dcfr.hpp"
+#include "core/abstraction.hpp"
 #include "core/pcs.hpp"
 #include "core/simd.hpp"
 #include "core/suit_iso.hpp"
