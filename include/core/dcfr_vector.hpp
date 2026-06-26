@@ -119,4 +119,12 @@ struct VectorDCFR {
         const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs);
 };
 
+VectorSolveOutput solve_vector_dcfr(
+    const BettingTree& tree,
+    const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs,
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma);
+
 }  // namespace core

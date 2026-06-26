@@ -351,4 +351,16 @@ VectorSolveOutput VectorDCFR::solve_to_output(
     return out;
 }
 
+VectorSolveOutput solve_vector_dcfr(
+    const BettingTree& tree,
+    const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs,
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma) {
+    VectorDCFR solver = VectorDCFR::new_solver(tree, {hole_pairs.size(), hole_pairs.size()}, alpha, beta, gamma);
+    const auto terminal_eval = VectorDCFR::make_terminal_evaluator(tree, hole_pairs);
+    return solver.solve_to_output(tree, iterations, hole_pairs.size(), terminal_eval);
+}
+
 }  // namespace core
