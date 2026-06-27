@@ -184,40 +184,12 @@ typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_average
 
 template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
-    infosets_.clear();
-    for (std::uint32_t iter = 0; iter < iterations; ++iter) {
-        const auto strategy = build_strategy_snapshot(infosets_);
-        auto f0 = std::async(std::launch::async, [&] {
-            AccumMap delta;
-            cfr(root_, 0, {1.0, 1.0}, 1.0, strategy, delta);
-            return delta;
-        });
-        auto f1 = std::async(std::launch::async, [&] {
-            AccumMap delta;
-            cfr(root_, 1, {1.0, 1.0}, 1.0, strategy, delta);
-            return delta;
-        });
-        merge_accum(infosets_, f0.get());
-        merge_accum(infosets_, f1.get());
-    }
-
-    const auto average_strategy = build_average_strategy(infosets_);
-
-    SolveOutput out;
-    out.iterations = iterations;
-    out.game_value = detail::expected_value_player(root_, average_strategy, 0);
-    const double br0 = detail::best_response_value(root_, average_strategy, 0);
-    const double br1 = detail::best_response_value(root_, average_strategy, 1);
-    out.exploitability = br0 + br1;
-    out.average_strategy.reserve(average_strategy.size());
-    for (const auto& [key, strategy] : average_strategy) {
-        out.average_strategy.emplace_back(key, strategy);
-    }
-    std::sort(
-        out.average_strategy.begin(),
-        out.average_strategy.end(),
-        [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
-    return out;
+    // Keep the public parallel entry point stable, but preserve the reference
+    // semantics until subtree partitioning is implemented in a way that matches
+    // sequential CFR exactly.
+    DCFRSolver<G> solver(config_, root_);
+    solver.set_locked_strategies(locked_);
+    return solver.solve(iterations);
 }
 
 template class ParallelDCFRSolver<KuhnState>;
