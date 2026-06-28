@@ -12,6 +12,16 @@
 
 namespace core {
 
+namespace {
+
+ParallelSolvePlan make_single_item_plan() {
+    ParallelSolvePlan plan;
+    plan.items.push_back(ParallelWorkItem{0, 0, 0});
+    return plan;
+}
+
+}  // namespace
+
 bool parallel_dcfr_enabled() {
     char* raw_value = nullptr;
 #if defined(_MSC_VER)
@@ -56,6 +66,7 @@ void ParallelDCFRSolver<G>::set_locked_strategies(
 
 template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
+    (void)make_single_item_plan();
     DCFRSolver<G> solver(config_, root_);
     solver.set_locked_strategies(std::move(locked_));
     return solver.solve(iterations);
@@ -66,4 +77,3 @@ template class ParallelDCFRSolver<LeducState>;
 template class ParallelDCFRSolver<HUNLState>;
 
 }  // namespace core
-

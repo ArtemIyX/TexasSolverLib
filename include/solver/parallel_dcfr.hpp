@@ -4,10 +4,21 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <vector>
 
 namespace core {
 
 bool parallel_dcfr_enabled();
+
+struct ParallelWorkItem {
+    std::size_t root_node = 0;
+    std::size_t node_begin = 0;
+    std::size_t node_end = 0;
+};
+
+struct ParallelSolvePlan {
+    std::vector<ParallelWorkItem> items;
+};
 
 template <class G>
 class ParallelDCFRSolver : public DCFRSolverBase {
