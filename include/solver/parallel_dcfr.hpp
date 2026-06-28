@@ -17,6 +17,8 @@ struct ParallelWorkItem {
 };
 
 struct ParallelSolvePlan {
+    bool enabled = false;
+    std::size_t worker_count = 1;
     std::vector<ParallelWorkItem> items;
 };
 

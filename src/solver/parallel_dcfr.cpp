@@ -16,6 +16,8 @@ namespace {
 
 ParallelSolvePlan make_single_item_plan() {
     ParallelSolvePlan plan;
+    plan.enabled = false;
+    plan.worker_count = 1;
     plan.items.push_back(ParallelWorkItem{0, 0, 0});
     return plan;
 }
