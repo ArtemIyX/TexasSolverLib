@@ -59,6 +59,11 @@ ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root)
 }
 
 template <class G>
+ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
+    return make_single_item_plan();
+}
+
+template <class G>
 void ParallelDCFRSolver<G>::set_locked_strategies(
     std::unordered_map<InfosetKey, std::vector<Probability>> locked) {
     locked_ = std::move(locked);
@@ -66,7 +71,8 @@ void ParallelDCFRSolver<G>::set_locked_strategies(
 
 template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
-    (void)make_single_item_plan();
+    const auto plan = build_plan();
+    (void)plan;
     DCFRSolver<G> solver(config_, root_);
     solver.set_locked_strategies(std::move(locked_));
     return solver.solve(iterations);

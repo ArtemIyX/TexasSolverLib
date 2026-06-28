@@ -29,6 +29,7 @@ public:
     SolveOutput solve(std::uint32_t iterations);
 
 private:
+    ParallelSolvePlan build_plan() const;
     DCFRConfig config_;
     G root_;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
