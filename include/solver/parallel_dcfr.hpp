@@ -9,6 +9,7 @@
 namespace core {
 
 bool parallel_dcfr_enabled();
+std::size_t parallel_dcfr_worker_count();
 
 struct ParallelWorkItem {
     std::size_t root_node = 0;

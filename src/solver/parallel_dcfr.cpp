@@ -17,9 +17,21 @@ namespace {
 ParallelSolvePlan make_single_item_plan() {
     ParallelSolvePlan plan;
     plan.enabled = false;
-    plan.worker_count = 1;
+    plan.worker_count = parallel_dcfr_worker_count();
     plan.items.push_back(ParallelWorkItem{0, 0, 0});
     return plan;
+}
+
+std::size_t parse_worker_count(const char* raw) {
+    if (raw == nullptr) {
+        return 1;
+    }
+    try {
+        const auto value = std::stoul(raw);
+        return value == 0 ? 1U : static_cast<std::size_t>(value);
+    } catch (...) {
+        return 1;
+    }
 }
 
 }  // namespace
@@ -51,6 +63,25 @@ bool parallel_dcfr_enabled() {
         return static_cast<char>(std::tolower(ch));
     });
     return !(value == "0" || value == "false" || value == "off");
+}
+
+std::size_t parallel_dcfr_worker_count() {
+    const char* raw_value = nullptr;
+#if defined(_MSC_VER)
+    std::size_t len = 0;
+    if (_dupenv_s(&raw_value, &len, "TEXASSOLVER_PARALLEL_CFR_WORKERS") != 0) {
+        raw_value = nullptr;
+    }
+#else
+    raw_value = std::getenv("TEXASSOLVER_PARALLEL_CFR_WORKERS");
+#endif
+    const auto count = parse_worker_count(raw_value);
+#if defined(_MSC_VER)
+    if (raw_value != nullptr) {
+        free(raw_value);
+    }
+#endif
+    return count;
 }
 
 template <class G>
