@@ -14,7 +14,7 @@ namespace core {
 
 namespace {
 
-ParallelSolvePlan make_single_item_plan() {
+ParallelSolvePlan make_placeholder_partition_plan() {
     ParallelSolvePlan plan;
     plan.enabled = parallel_dcfr_enabled();
     plan.worker_count = parallel_dcfr_worker_count();
@@ -99,7 +99,7 @@ ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
     (void)config_;
     (void)root_;
     (void)locked_;
-    return make_single_item_plan();
+    return make_placeholder_partition_plan();
 }
 
 template <class G>
