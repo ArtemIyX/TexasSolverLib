@@ -2,6 +2,7 @@
 
 #include "core/types.hpp"
 #include "solver/dcfr.hpp"
+#include "solver/parallel_dcfr.hpp"
 
 #include <algorithm>
 #include <array>
@@ -232,9 +233,16 @@ SolveOutput solve_generic(
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_strategies = {}) {
     validate_dcfr_parameters(alpha, beta, gamma);
 
-    DCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial());
-    solver.set_locked_strategies(std::move(locked_strategies));
-    SolveOutput output = solver.solve(iterations);
+    SolveOutput output;
+    if (parallel_dcfr_enabled()) {
+        ParallelDCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial());
+        solver.set_locked_strategies(std::move(locked_strategies));
+        output = solver.solve(iterations);
+    } else {
+        DCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial());
+        solver.set_locked_strategies(std::move(locked_strategies));
+        output = solver.solve(iterations);
+    }
 
     const auto strategy = make_strategy_map<G>(output.average_strategy);
     const auto value = expected_value(G::initial(), strategy);

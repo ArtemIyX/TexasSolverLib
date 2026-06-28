@@ -65,8 +65,14 @@ HUNLSolveOutput solve_hunl_postflop(
     auto shared = std::make_shared<const HUNLConfig>(config);
     const auto root = HUNLState::initial(shared);
 
-    DCFRSolver<HUNLState> solver(DCFRConfig{alpha, beta, gamma}, root);
-    const auto solve_output = solver.solve(iterations);
+    SolveOutput solve_output;
+    if (parallel_dcfr_enabled()) {
+        ParallelDCFRSolver<HUNLState> solver(DCFRConfig{alpha, beta, gamma}, root);
+        solve_output = solver.solve(iterations);
+    } else {
+        DCFRSolver<HUNLState> solver(DCFRConfig{alpha, beta, gamma}, root);
+        solve_output = solver.solve(iterations);
+    }
     const auto finish = std::chrono::steady_clock::now();
 
     HUNLSolveOutput out;
