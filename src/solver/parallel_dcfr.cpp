@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
-#include <future>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -46,15 +44,8 @@ bool parallel_dcfr_enabled() {
 template <class G>
 ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root)
     : config_(config), root_(std::move(root)) {
-    validate_config();
-}
-
-template <class G>
-void ParallelDCFRSolver<G>::validate_config() const {
-    validate_alpha(config_.alpha);
-    if (config_.beta < 0.0 || config_.gamma < 0.0) {
-        throw std::invalid_argument("DCFR beta and gamma must be non-negative");
-    }
+    (void)config_;
+    (void)root_;
 }
 
 template <class G>
@@ -64,131 +55,9 @@ void ParallelDCFRSolver<G>::set_locked_strategies(
 }
 
 template <class G>
-typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_strategy_snapshot(
-    const AccumMap& accum) {
-    StrategyMap snapshot;
-    snapshot.reserve(accum.size());
-    for (const auto& [key, info] : accum) {
-        if (info.regret_sum.empty()) {
-            continue;
-        }
-        snapshot.emplace(key, detail::normalize_strategy(info.regret_sum));
-    }
-    return snapshot;
-}
-
-template <class G>
-void ParallelDCFRSolver<G>::merge_accum(AccumMap& dst, const AccumMap& src) {
-    for (const auto& [key, delta] : src) {
-        auto& out = dst[key];
-        if (out.regret_sum.empty()) {
-            out.regret_sum = delta.regret_sum;
-            out.strategy_sum = delta.strategy_sum;
-            continue;
-        }
-        if (out.regret_sum.size() != delta.regret_sum.size() ||
-            out.strategy_sum.size() != delta.strategy_sum.size()) {
-            throw std::logic_error("parallel CFR merge encountered mismatched action counts");
-        }
-        for (std::size_t i = 0; i < delta.regret_sum.size(); ++i) {
-            out.regret_sum[i] += delta.regret_sum[i];
-            out.strategy_sum[i] += delta.strategy_sum[i];
-        }
-    }
-}
-
-template <class G>
-double ParallelDCFRSolver<G>::cfr(
-    const G& state,
-    PlayerId traversing_player,
-    const std::array<double, 2>& reach_probs,
-    double chance_reach,
-    const StrategyMap& strategy,
-    AccumMap& accum) {
-    if (state.is_terminal()) {
-        return state.utility().at(static_cast<std::size_t>(traversing_player));
-    }
-
-    const PlayerId player = state.current_player();
-    if (player < 0) {
-        double value = 0.0;
-        for (const auto& outcome : state.chance_outcomes()) {
-            value += outcome.probability *
-                     cfr(state.next_state(outcome.action), traversing_player, reach_probs,
-                         chance_reach * outcome.probability, strategy, accum);
-        }
-        return value;
-    }
-
-    const auto actions = state.legal_actions();
-    const auto key = state.infoset_key(player);
-    auto& local = accum[key];
-    if (local.regret_sum.empty()) {
-        local.regret_sum.assign(actions.size(), 0.0);
-        local.strategy_sum.assign(actions.size(), 0.0);
-    }
-
-    std::vector<Probability> current_strategy;
-    if (const auto locked_it = locked_.find(key);
-        locked_it != locked_.end() && locked_it->second.size() == actions.size()) {
-        current_strategy = locked_it->second;
-    } else if (const auto it = strategy.find(key);
-               it != strategy.end() && it->second.size() == actions.size()) {
-        current_strategy = it->second;
-    } else {
-        current_strategy = std::vector<Probability>(actions.size(), 1.0 / static_cast<double>(actions.size()));
-    }
-
-    if (player == traversing_player) {
-        for (std::size_t i = 0; i < actions.size(); ++i) {
-            local.strategy_sum[i] +=
-                chance_reach * reach_probs[static_cast<std::size_t>(player)] * current_strategy[i];
-        }
-    }
-
-    std::vector<double> action_values(actions.size(), 0.0);
-    double node_value = 0.0;
-    for (std::size_t i = 0; i < actions.size(); ++i) {
-        auto next_reach = reach_probs;
-        next_reach[static_cast<std::size_t>(player)] *= current_strategy[i];
-        action_values[i] =
-            cfr(state.next_state(actions[i]), traversing_player, next_reach, chance_reach, strategy, accum);
-        node_value += current_strategy[i] * action_values[i];
-    }
-
-    if (player == traversing_player && locked_.find(key) == locked_.end()) {
-        const PlayerId opponent = 1 - traversing_player;
-        const double opponent_reach = chance_reach * reach_probs[static_cast<std::size_t>(opponent)];
-        for (std::size_t i = 0; i < actions.size(); ++i) {
-            local.regret_sum[i] += opponent_reach * (action_values[i] - node_value);
-        }
-    }
-
-    return node_value;
-}
-
-template <class G>
-typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_average_strategy(
-    const AccumMap& accum) const {
-    StrategyMap out;
-    for (const auto& [key, local] : accum) {
-        if (const auto locked_it = locked_.find(key);
-            locked_it != locked_.end() && locked_it->second.size() == local.strategy_sum.size()) {
-            out.emplace(key, locked_it->second);
-            continue;
-        }
-        out.emplace(key, detail::normalize_or_uniform(local.strategy_sum));
-    }
-    return out;
-}
-
-template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
-    // Keep the public parallel entry point stable, but preserve the reference
-    // semantics until subtree partitioning is implemented in a way that matches
-    // sequential CFR exactly.
     DCFRSolver<G> solver(config_, root_);
-    solver.set_locked_strategies(locked_);
+    solver.set_locked_strategies(std::move(locked_));
     return solver.solve(iterations);
 }
 
@@ -197,3 +66,4 @@ template class ParallelDCFRSolver<LeducState>;
 template class ParallelDCFRSolver<HUNLState>;
 
 }  // namespace core
+
