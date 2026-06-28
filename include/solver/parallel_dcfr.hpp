@@ -36,15 +36,28 @@ public:
     SolveOutput solve(std::uint32_t iterations);
 
 private:
+    using StrategyMap = std::unordered_map<InfosetKey, std::vector<Probability>>;
+
     ParallelSolvePlan build_plan() const;
     static void validate_plan(const ParallelSolvePlan& plan);
     ParallelWorkerState make_worker_state() const;
     static void merge_worker_state(
         std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
         ParallelWorkerState worker_state);
+    static StrategyMap build_strategy_snapshot(
+        const std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical);
+    double cfr(
+        const G& state,
+        PlayerId traversing_player,
+        const std::array<double, 2>& reach_probs,
+        double chance_reach,
+        const StrategyMap& strategy,
+        ParallelWorkerState& worker_state) const;
+    StrategyMap build_average_strategy() const;
     DCFRConfig config_;
     G root_;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
+    std::unordered_map<InfosetKey, detail::InfosetAccum> infosets_;
 };
 
 }  // namespace core
