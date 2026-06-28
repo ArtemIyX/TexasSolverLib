@@ -18,7 +18,10 @@ ParallelSolvePlan make_single_item_plan() {
     ParallelSolvePlan plan;
     plan.enabled = parallel_dcfr_enabled();
     plan.worker_count = parallel_dcfr_worker_count();
-    plan.items.push_back(ParallelWorkItem{0, 0, 0});
+    plan.items.reserve(plan.worker_count);
+    for (std::size_t worker = 0; worker < plan.worker_count; ++worker) {
+        plan.items.push_back(ParallelWorkItem{worker, worker, worker + 1});
+    }
     return plan;
 }
 
@@ -93,6 +96,9 @@ ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root)
 
 template <class G>
 ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
+    (void)config_;
+    (void)root_;
+    (void)locked_;
     return make_single_item_plan();
 }
 
