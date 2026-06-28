@@ -16,16 +16,10 @@ namespace core {
 
 namespace {
 
-ParallelSolvePlan make_placeholder_partition_plan() {
-    ParallelSolvePlan plan;
-    plan.enabled = parallel_dcfr_enabled();
-    plan.worker_count = parallel_dcfr_worker_count();
-    plan.items.reserve(plan.worker_count);
-    for (std::size_t worker = 0; worker < plan.worker_count; ++worker) {
-        plan.items.push_back(ParallelWorkItem{worker, worker, worker + 1});
-    }
-    return plan;
-}
+struct BranchResult {
+    std::vector<double> branch_values;
+    ParallelWorkerState worker_state;
+};
 
 std::size_t parse_worker_count(const char* raw) {
     if (raw == nullptr) {
@@ -37,6 +31,25 @@ std::size_t parse_worker_count(const char* raw) {
     } catch (...) {
         return 1;
     }
+}
+
+ParallelSolvePlan make_partition_plan(std::size_t branch_count) {
+    ParallelSolvePlan plan;
+    plan.enabled = parallel_dcfr_enabled();
+    const std::size_t requested_workers = parallel_dcfr_worker_count();
+    plan.worker_count = std::max<std::size_t>(1, std::min(requested_workers, branch_count));
+    plan.items.reserve(plan.worker_count);
+
+    const std::size_t base = branch_count / plan.worker_count;
+    const std::size_t remainder = branch_count % plan.worker_count;
+    std::size_t begin = 0;
+    for (std::size_t worker = 0; worker < plan.worker_count; ++worker) {
+        const std::size_t width = base + (worker < remainder ? 1 : 0);
+        const std::size_t end = begin + width;
+        plan.items.push_back(ParallelWorkItem{worker, begin, end});
+        begin = end;
+    }
+    return plan;
 }
 
 }  // namespace
@@ -100,7 +113,14 @@ ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root)
 
 template <class G>
 ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
-    return make_placeholder_partition_plan();
+    if (root_.is_terminal()) {
+        return make_partition_plan(1);
+    }
+
+    const auto branch_count = root_.current_player() < 0
+        ? root_.chance_outcomes().size()
+        : root_.legal_actions().size();
+    return make_partition_plan(std::max<std::size_t>(1, branch_count));
 }
 
 template <class G>
@@ -123,7 +143,7 @@ void ParallelDCFRSolver<G>::validate_plan(const ParallelSolvePlan& plan) {
 
 template <class G>
 ParallelWorkerState ParallelDCFRSolver<G>::make_worker_state() const {
-    return ParallelWorkerState{}; 
+    return ParallelWorkerState{};
 }
 
 template <class G>
@@ -257,24 +277,108 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     validate_plan(plan);
     infosets_.clear();
 
+    const auto root_player = root_.current_player();
+    const auto root_actions = root_player >= 0 ? root_.legal_actions() : std::vector<ActionId>{};
+    const auto root_outcomes = root_player < 0 ? root_.chance_outcomes() : std::vector<ChanceOutcome>{};
+    const auto root_key = root_player >= 0 ? root_.infoset_key(root_player) : InfosetKey{};
+
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
-        const auto strategy = build_strategy_snapshot(infosets_);
-        std::vector<std::future<ParallelWorkerState>> tasks;
-        tasks.reserve(plan.items.size());
+        for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
+            const auto strategy = build_strategy_snapshot(infosets_);
+            std::vector<std::future<BranchResult>> tasks;
+            tasks.reserve(plan.items.size());
 
-        for (const auto& item : plan.items) {
-            tasks.emplace_back(std::async(std::launch::async, [&, item] {
-                auto worker_state = make_worker_state();
-                if (item.root_node == 0) {
-                    cfr(root_, 0, {1.0, 1.0}, 1.0, strategy, worker_state);
-                    cfr(root_, 1, {1.0, 1.0}, 1.0, strategy, worker_state);
+            if (root_player < 0) {
+                for (const auto& item : plan.items) {
+                    tasks.emplace_back(std::async(std::launch::async, [&, item, strategy, traversing_player] {
+                        BranchResult result;
+                        result.branch_values.resize(item.node_end - item.node_begin, 0.0);
+                        result.worker_state = make_worker_state();
+                        for (std::size_t i = item.node_begin; i < item.node_end; ++i) {
+                            const auto& outcome = root_outcomes[i];
+                            result.branch_values[i - item.node_begin] =
+                                outcome.probability *
+                                cfr(
+                                    root_.next_state(outcome.action),
+                                    static_cast<PlayerId>(traversing_player),
+                                    {1.0, 1.0},
+                                    outcome.probability,
+                                    strategy,
+                                    result.worker_state);
+                        }
+                        return result;
+                    }));
                 }
-                return worker_state;
-            }));
-        }
 
-        for (auto& task : tasks) {
-            merge_worker_state(infosets_, task.get());
+                for (auto& task : tasks) {
+                    auto result = task.get();
+                    merge_worker_state(infosets_, std::move(result.worker_state));
+                }
+                continue;
+            }
+
+            auto& root_accum = infosets_[root_key];
+            if (root_accum.regret_sum.empty()) {
+                root_accum.regret_sum.assign(root_actions.size(), 0.0);
+                root_accum.strategy_sum.assign(root_actions.size(), 0.0);
+            }
+
+            std::vector<Probability> root_strategy;
+            if (const auto locked_it = locked_.find(root_key);
+                locked_it != locked_.end() && locked_it->second.size() == root_actions.size()) {
+                root_strategy = locked_it->second;
+            } else if (const auto it = strategy.find(root_key);
+                       it != strategy.end() && it->second.size() == root_actions.size()) {
+                root_strategy = it->second;
+            } else {
+                root_strategy = detail::normalize_strategy(root_accum.regret_sum);
+            }
+
+            if (root_player == static_cast<PlayerId>(traversing_player)) {
+                for (std::size_t i = 0; i < root_actions.size(); ++i) {
+                    root_accum.strategy_sum[i] += root_strategy[i];
+                }
+            }
+
+            for (const auto& item : plan.items) {
+                tasks.emplace_back(std::async(std::launch::async, [&, item, strategy, root_strategy, traversing_player] {
+                    BranchResult result;
+                    result.branch_values.resize(item.node_end - item.node_begin, 0.0);
+                    result.worker_state = make_worker_state();
+                    for (std::size_t i = item.node_begin; i < item.node_end; ++i) {
+                        result.branch_values[i - item.node_begin] =
+                            cfr(
+                                root_.next_state(root_actions[i]),
+                                static_cast<PlayerId>(traversing_player),
+                                {1.0, 1.0},
+                                1.0,
+                                strategy,
+                                result.worker_state);
+                    }
+                    return result;
+                }));
+            }
+
+            std::vector<double> action_values(root_actions.size(), 0.0);
+            for (const auto& item : plan.items) {
+                auto result = tasks[item.root_node].get();
+                for (std::size_t i = item.node_begin; i < item.node_end; ++i) {
+                    action_values[i] = result.branch_values[i - item.node_begin];
+                }
+                merge_worker_state(infosets_, std::move(result.worker_state));
+            }
+
+            double node_value = 0.0;
+            for (std::size_t i = 0; i < root_actions.size(); ++i) {
+                node_value += root_strategy[i] * action_values[i];
+            }
+
+            if (root_player == static_cast<PlayerId>(traversing_player) && locked_.find(root_key) == locked_.end()) {
+                const double opponent_reach = 1.0;
+                for (std::size_t i = 0; i < root_actions.size(); ++i) {
+                    root_accum.regret_sum[i] += opponent_reach * (action_values[i] - node_value);
+                }
+            }
         }
     }
 
