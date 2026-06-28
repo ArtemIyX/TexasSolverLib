@@ -103,6 +103,24 @@ ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
 }
 
 template <class G>
+void ParallelDCFRSolver<G>::validate_plan(const ParallelSolvePlan& plan) {
+    if (plan.worker_count == 0) {
+        throw std::logic_error("parallel solve plan requires at least one worker");
+    }
+    if (plan.items.empty()) {
+        throw std::logic_error("parallel solve plan must contain at least one work item");
+    }
+    if (plan.items.size() != plan.worker_count) {
+        throw std::logic_error("parallel solve plan worker count must match work item count");
+    }
+    for (const auto& item : plan.items) {
+        if (item.node_begin >= item.node_end) {
+            throw std::logic_error("parallel solve plan item has an empty node range");
+        }
+    }
+}
+
+template <class G>
 ParallelWorkerState ParallelDCFRSolver<G>::make_worker_state() const {
     return ParallelWorkerState{};
 }
@@ -137,7 +155,7 @@ void ParallelDCFRSolver<G>::set_locked_strategies(
 template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     const auto plan = build_plan();
-    (void)plan;
+    validate_plan(plan);
     auto worker_state = make_worker_state();
     (void)worker_state;
     DCFRSolver<G> solver(config_, root_);

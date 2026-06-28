@@ -37,6 +37,7 @@ public:
 
 private:
     ParallelSolvePlan build_plan() const;
+    static void validate_plan(const ParallelSolvePlan& plan);
     ParallelWorkerState make_worker_state() const;
     static void merge_worker_state(
         std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
