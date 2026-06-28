@@ -66,6 +66,32 @@ ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
 }
 
 template <class G>
+ParallelWorkerState ParallelDCFRSolver<G>::make_worker_state() const {
+    return ParallelWorkerState{};
+}
+
+template <class G>
+void ParallelDCFRSolver<G>::merge_worker_state(
+    std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
+    ParallelWorkerState worker_state) {
+    for (auto& [key, local] : worker_state.accum) {
+        auto& target = canonical[key];
+        if (target.regret_sum.empty()) {
+            target = std::move(local);
+            continue;
+        }
+        if (target.regret_sum.size() != local.regret_sum.size() ||
+            target.strategy_sum.size() != local.strategy_sum.size()) {
+            throw std::logic_error("parallel worker merge encountered mismatched action counts");
+        }
+        for (std::size_t i = 0; i < local.regret_sum.size(); ++i) {
+            target.regret_sum[i] += local.regret_sum[i];
+            target.strategy_sum[i] += local.strategy_sum[i];
+        }
+    }
+}
+
+template <class G>
 void ParallelDCFRSolver<G>::set_locked_strategies(
     std::unordered_map<InfosetKey, std::vector<Probability>> locked) {
     locked_ = std::move(locked);
@@ -75,6 +101,8 @@ template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     const auto plan = build_plan();
     (void)plan;
+    auto worker_state = make_worker_state();
+    (void)worker_state;
     DCFRSolver<G> solver(config_, root_);
     solver.set_locked_strategies(std::move(locked_));
     return solver.solve(iterations);

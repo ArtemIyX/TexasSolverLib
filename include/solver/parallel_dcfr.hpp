@@ -22,6 +22,10 @@ struct ParallelSolvePlan {
     std::vector<ParallelWorkItem> items;
 };
 
+struct ParallelWorkerState {
+    std::unordered_map<InfosetKey, detail::InfosetAccum> accum;
+};
+
 template <class G>
 class ParallelDCFRSolver : public DCFRSolverBase {
 public:
@@ -32,6 +36,10 @@ public:
 
 private:
     ParallelSolvePlan build_plan() const;
+    ParallelWorkerState make_worker_state() const;
+    static void merge_worker_state(
+        std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
+        ParallelWorkerState worker_state);
     DCFRConfig config_;
     G root_;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
