@@ -16,7 +16,7 @@ namespace {
 
 ParallelSolvePlan make_single_item_plan() {
     ParallelSolvePlan plan;
-    plan.enabled = false;
+    plan.enabled = parallel_dcfr_enabled();
     plan.worker_count = parallel_dcfr_worker_count();
     plan.items.push_back(ParallelWorkItem{0, 0, 0});
     return plan;
@@ -66,7 +66,7 @@ bool parallel_dcfr_enabled() {
 }
 
 std::size_t parallel_dcfr_worker_count() {
-    const char* raw_value = nullptr;
+    char* raw_value = nullptr;
 #if defined(_MSC_VER)
     std::size_t len = 0;
     if (_dupenv_s(&raw_value, &len, "TEXASSOLVER_PARALLEL_CFR_WORKERS") != 0) {
