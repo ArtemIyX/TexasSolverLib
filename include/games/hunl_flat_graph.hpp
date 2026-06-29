@@ -37,6 +37,22 @@ struct HUNLFlatNode {
     std::optional<std::string> infoset_key = std::nullopt;
 };
 
+struct HUNLFlatNodeMeta {
+    HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
+    PlayerId player = -1;
+    Street street = Street::Preflop;
+    std::array<int, 2> contributions = {0, 0};
+    std::uint32_t child_begin = 0;
+    std::uint32_t child_count = 0;
+    std::uint32_t action_begin = 0;
+    std::uint32_t chance_begin = 0;
+    std::uint32_t chance_count = 0;
+    std::uint8_t action_count = 0;
+    InfosetId infoset_id{};
+    bool has_infoset = false;
+    TerminalKind terminal_kind = TerminalKind::non_terminal();
+};
+
 struct HUNLFlatChanceOutcome {
     std::uint8_t action = 0;
     double probability = 0.0;
@@ -53,6 +69,7 @@ struct HUNLFlatInfoset {
 
 struct HUNLFlatSolveGraph {
     std::vector<HUNLFlatNode> nodes;
+    std::vector<HUNLFlatNodeMeta> node_meta;
     std::vector<std::uint32_t> children;
     std::vector<ActionId> actions;
     std::vector<HUNLFlatChanceOutcome> chance_outcomes;

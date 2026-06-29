@@ -31,6 +31,7 @@ HUNLFlatNodeType classify_flat_node_type(const HUNLTreeNode& node) {
 HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
     HUNLFlatSolveGraph graph;
     graph.nodes.reserve(tree.nodes.size());
+    graph.node_meta.reserve(tree.nodes.size());
     graph.children.reserve(tree.nodes.size() * 2);
     graph.actions.reserve(tree.nodes.size() * 2);
     graph.root = tree.root;
@@ -115,6 +116,21 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         }
 
         graph.nodes.push_back(std::move(flat_node));
+        graph.node_meta.push_back(HUNLFlatNodeMeta{
+            graph.nodes.back().type,
+            graph.nodes.back().player,
+            graph.nodes.back().street,
+            graph.nodes.back().contributions,
+            graph.nodes.back().child_begin,
+            graph.nodes.back().child_count,
+            graph.nodes.back().action_begin,
+            graph.nodes.back().chance_begin,
+            graph.nodes.back().chance_count,
+            graph.nodes.back().action_count,
+            graph.nodes.back().infoset_id,
+            graph.nodes.back().has_infoset,
+            graph.nodes.back().terminal_kind,
+        });
     }
 
     graph.infosets.reserve(infoset_keys.size());

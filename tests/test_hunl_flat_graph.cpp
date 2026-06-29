@@ -14,6 +14,7 @@ TEST_CASE(hunl_flat_graph_builds_from_tree_with_stable_indices) {
     EXPECT_EQ(graph.max_depth, tree.max_depth);
     EXPECT_EQ(graph.max_actions, tree.max_actions);
     EXPECT_EQ(static_cast<std::size_t>(graph.nodes.size()), static_cast<std::size_t>(tree.nodes.size()));
+    EXPECT_EQ(static_cast<std::size_t>(graph.node_meta.size()), static_cast<std::size_t>(tree.nodes.size()));
     EXPECT_TRUE(!graph.infosets.empty());
 }
 
@@ -119,4 +120,46 @@ TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
     }
 
     EXPECT_EQ(static_cast<std::size_t>(expected_ids_by_key.size()), static_cast<std::size_t>(graph.infosets.size()));
+}
+
+TEST_CASE(hunl_flat_graph_precomputes_compact_node_metadata) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto tree = core::HUNLTree::build(config);
+    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+
+    for (std::uint32_t node_idx = 0; node_idx < graph.nodes.size(); ++node_idx) {
+        const auto& node = graph.nodes[node_idx];
+        const auto& meta = graph.node_meta[node_idx];
+
+        EXPECT_EQ(meta.type, node.type);
+        EXPECT_EQ(meta.player, node.player);
+        EXPECT_EQ(meta.street, node.street);
+        EXPECT_EQ(meta.contributions, node.contributions);
+        EXPECT_EQ(meta.child_begin, node.child_begin);
+        EXPECT_EQ(meta.child_count, node.child_count);
+        EXPECT_EQ(meta.action_begin, node.action_begin);
+        EXPECT_EQ(meta.chance_begin, node.chance_begin);
+        EXPECT_EQ(meta.chance_count, node.chance_count);
+        EXPECT_EQ(meta.action_count, node.action_count);
+        EXPECT_EQ(meta.infoset_id.value, node.infoset_id.value);
+        EXPECT_EQ(meta.has_infoset, node.has_infoset);
+        EXPECT_EQ(meta.terminal_kind.tag, node.terminal_kind.tag);
+        EXPECT_EQ(meta.terminal_kind.winner, node.terminal_kind.winner);
+        EXPECT_EQ(meta.terminal_kind.contribution_loss, node.terminal_kind.contribution_loss);
+        EXPECT_EQ(meta.terminal_kind.board_complete, node.terminal_kind.board_complete);
+
+        for (std::uint32_t i = 0; i < meta.child_count; ++i) {
+            EXPECT_TRUE(meta.child_begin + i < graph.children.size());
+        }
+        for (std::uint32_t i = 0; i < meta.chance_count; ++i) {
+            EXPECT_TRUE(meta.chance_begin + i < graph.chance_outcomes.size());
+        }
+
+        if (meta.type == core::HUNLFlatNodeType::Decision) {
+            EXPECT_TRUE(meta.has_infoset);
+            EXPECT_TRUE(meta.infoset_id.value < graph.infosets.size());
+        } else {
+            EXPECT_TRUE(!meta.has_infoset);
+        }
+    }
 }

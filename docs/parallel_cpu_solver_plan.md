@@ -172,7 +172,7 @@ Output:
 
 - no runtime infoset interning in the hot path
 
-### Step 1.3. Precompute node metadata
+### + Step 1.3. Precompute node metadata
 
 Substeps:
 
