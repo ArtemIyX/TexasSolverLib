@@ -177,6 +177,7 @@ std::vector<ActionId> enumerate_bets(const ActionContext& ctx);
 std::vector<ActionId> enumerate_raises(const ActionContext& ctx);
 std::vector<ActionId> enumerate_legal_actions(const ActionContext& ctx);
 HUNLConfig default_tiny_subgame();
+HUNLConfig benchmark_turn_subgame();
 
 }  // namespace core
 

@@ -813,6 +813,21 @@ HUNLConfig default_tiny_subgame() {
     return cfg;
 }
 
+HUNLConfig benchmark_turn_subgame() {
+    HUNLConfig cfg;
+    cfg.starting_stack = 1000;
+    cfg.starting_street = Street::Turn;
+    cfg.initial_board = {
+        card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2), card_to_int(13, 1)};
+    cfg.initial_pot = 1000;
+    cfg.initial_contributions = {500, 500};
+    cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {card_to_int(14, 1), card_to_int(13, 3)},
+        {card_to_int(12, 2), card_to_int(12, 1)},
+    }};
+    return cfg;
+}
+
 }  // namespace core
 
 

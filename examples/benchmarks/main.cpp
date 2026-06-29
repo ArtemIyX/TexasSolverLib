@@ -108,7 +108,7 @@ std::string format_duration(std::chrono::steady_clock::duration elapsed) {
 }
 
 core::HUNLConfig make_benchmark_hunl_config() {
-    return core::default_tiny_subgame();
+    return core::benchmark_turn_subgame();
 }
 
 template <class SolveFn>
