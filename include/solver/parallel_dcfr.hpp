@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/arena.hpp"
 #include "solver/dcfr.hpp"
 
 #include <cstdint>
@@ -24,8 +25,33 @@ struct ParallelSolvePlan {
     std::vector<ParallelWorkItem> items;
 };
 
+namespace detail {
+
+struct WorkerInfosetAccumRow {
+    InfosetId id{};
+    std::uint16_t action_count = 0;
+    double* regret_sum = nullptr;
+    double* strategy_sum = nullptr;
+};
+
+class WorkerInfosetAccumTable {
+public:
+    void reset();
+    [[nodiscard]] std::size_t size() const noexcept;
+    [[nodiscard]] const std::vector<InfosetId>& active_ids() const noexcept;
+    InfosetAccumView ensure(InfosetId id, std::size_t action_count);
+    [[nodiscard]] ConstInfosetAccumView view(InfosetId id) const;
+
+private:
+    Arena arena_;
+    std::vector<WorkerInfosetAccumRow*> rows_by_id_;
+    std::vector<InfosetId> active_ids_;
+};
+
+}  // namespace detail
+
 struct ParallelWorkerState {
-    detail::InfosetAccumTable accum;
+    detail::WorkerInfosetAccumTable accum;
 };
 
 template <class G>
@@ -46,7 +72,7 @@ private:
 
     ParallelSolvePlan build_plan() const;
     static void validate_plan(const ParallelSolvePlan& plan);
-    ParallelWorkerState make_worker_state() const;
+    static void reset_worker_state(ParallelWorkerState& worker_state);
     static void merge_worker_state(
         detail::InfosetAccumTable& canonical,
         ParallelWorkerState worker_state);

@@ -20,6 +20,61 @@
 
 namespace core {
 
+namespace detail {
+
+void WorkerInfosetAccumTable::reset() {
+    for (const auto id : active_ids_) {
+        if (id.value < rows_by_id_.size()) {
+            rows_by_id_[id.value] = nullptr;
+        }
+    }
+    active_ids_.clear();
+    arena_.reset();
+}
+
+std::size_t WorkerInfosetAccumTable::size() const noexcept {
+    return active_ids_.size();
+}
+
+const std::vector<InfosetId>& WorkerInfosetAccumTable::active_ids() const noexcept {
+    return active_ids_;
+}
+
+InfosetAccumView WorkerInfosetAccumTable::ensure(InfosetId id, std::size_t action_count) {
+    if (id.value >= rows_by_id_.size()) {
+        rows_by_id_.resize(static_cast<std::size_t>(id.value) + 1, nullptr);
+    }
+
+    auto*& row = rows_by_id_[id.value];
+    if (row == nullptr) {
+        row = arena_.allocate<WorkerInfosetAccumRow>(1);
+        row->id = id;
+        row->action_count = static_cast<std::uint16_t>(action_count);
+        row->regret_sum = arena_.allocate<double>(action_count);
+        row->strategy_sum = arena_.allocate<double>(action_count);
+        std::fill_n(row->regret_sum, action_count, 0.0);
+        std::fill_n(row->strategy_sum, action_count, 0.0);
+        active_ids_.push_back(id);
+    } else if (row->action_count != action_count) {
+        throw std::logic_error("WorkerInfosetAccumTable encountered mismatched action_count");
+    }
+
+    return InfosetAccumView{row->regret_sum, row->strategy_sum, row->action_count};
+}
+
+ConstInfosetAccumView WorkerInfosetAccumTable::view(InfosetId id) const {
+    if (id.value >= rows_by_id_.size()) {
+        return {};
+    }
+    const auto* row = rows_by_id_[id.value];
+    if (row == nullptr) {
+        return {};
+    }
+    return ConstInfosetAccumView{row->regret_sum, row->strategy_sum, row->action_count};
+}
+
+}  // namespace detail
+
 namespace {
 
 struct WorkBatch {
@@ -387,8 +442,8 @@ void ParallelDCFRSolver<G>::validate_plan(const ParallelSolvePlan& plan) {
 }
 
 template <class G>
-ParallelWorkerState ParallelDCFRSolver<G>::make_worker_state() const {
-    return ParallelWorkerState{};
+void ParallelDCFRSolver<G>::reset_worker_state(ParallelWorkerState& worker_state) {
+    worker_state.accum.reset();
 }
 
 template <class G>
@@ -541,7 +596,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                 const auto snapshot_start = std::chrono::steady_clock::now();
                 const auto strategy = build_strategy_snapshot(infosets_);
                 const auto snapshot_finish = std::chrono::steady_clock::now();
-                ParallelWorkerState worker_state = make_worker_state();
+                ParallelWorkerState worker_state;
+                reset_worker_state(worker_state);
                 if (root_player < 0) {
                     for (const auto& outcome : root_.chance_outcomes()) {
                         cfr(
@@ -645,7 +701,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
             bool published = false;
             try {
-                auto local_state = make_worker_state();
+                auto& local_state = pool.results[worker_index];
+                reset_worker_state(local_state);
                 const auto local_cfr_start = std::chrono::steady_clock::now();
                 std::uint64_t local_batches_taken = 0;
                 std::uint64_t local_seeds_processed = 0;
@@ -669,14 +726,13 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                     }
                 }
                 const auto local_cfr_finish = std::chrono::steady_clock::now();
-                pool.results[worker_index] = std::move(local_state);
                 if (profile_enabled) {
                     auto& worker_profile = pool.worker_profiles[worker_index];
                     worker_profile.cfr_seconds =
                         std::chrono::duration<double>(local_cfr_finish - local_cfr_start).count();
                     worker_profile.batches_taken = local_batches_taken;
                     worker_profile.seeds_processed = local_seeds_processed;
-                    worker_profile.infoset_count = pool.results[worker_index].accum.size();
+                    worker_profile.infoset_count = local_state.accum.size();
                 }
                 published = true;
             } catch (...) {
