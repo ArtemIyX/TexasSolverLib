@@ -564,7 +564,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         std::mutex mutex;
         std::condition_variable cv;
         std::size_t phase_id = 0;
-        std::size_t completed = 0;
+        std::atomic<std::size_t> completed{0};
         std::atomic<std::size_t> next_batch{0};
         std::size_t traversing_player = 0;
         bool stop = false;
@@ -614,10 +614,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             local_state);
                     }
                 }
-                {
-                    std::lock_guard<std::mutex> guard(pool.mutex);
-                    pool.results[worker_index] = std::move(local_state);
-                }
+                pool.results[worker_index] = std::move(local_state);
                 published = true;
             } catch (...) {
                 std::lock_guard<std::mutex> guard(pool.mutex);
@@ -628,7 +625,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
             lock.lock();
             seen_phase = local_phase;
-            if (published && ++pool.completed == plan.worker_count) {
+            if (published &&
+                pool.completed.fetch_add(1, std::memory_order_acq_rel) + 1 == plan.worker_count) {
                 pool.cv.notify_all();
             }
             if (!published && pool.error) {
@@ -649,7 +647,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                 std::lock_guard<std::mutex> lock(pool.mutex);
                 pool.traversing_player = traversing_player;
                 pool.strategy = build_strategy_snapshot(infosets_);
-                pool.completed = 0;
+                pool.completed.store(0, std::memory_order_release);
                 pool.next_batch.store(0, std::memory_order_relaxed);
                 pool.error = nullptr;
                 ++pool.phase_id;
@@ -659,7 +657,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             {
                 std::unique_lock<std::mutex> lock(pool.mutex);
                 pool.cv.wait(lock, [&] {
-                    return pool.completed == plan.worker_count || pool.error != nullptr;
+                    return pool.completed.load(std::memory_order_acquire) == plan.worker_count || pool.error != nullptr;
                 });
                 if (pool.error) {
                     pool.stop = true;
