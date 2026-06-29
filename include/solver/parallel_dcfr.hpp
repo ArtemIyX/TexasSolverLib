@@ -25,7 +25,7 @@ struct ParallelSolvePlan {
 };
 
 struct ParallelWorkerState {
-    std::unordered_map<InfosetId, detail::InfosetAccum> accum;
+    detail::InfosetAccumTable accum;
 };
 
 template <class G>
@@ -48,10 +48,10 @@ private:
     static void validate_plan(const ParallelSolvePlan& plan);
     ParallelWorkerState make_worker_state() const;
     static void merge_worker_state(
-        std::unordered_map<InfosetId, detail::InfosetAccum>& canonical,
+        detail::InfosetAccumTable& canonical,
         ParallelWorkerState worker_state);
     static SharedStrategyMap build_strategy_snapshot(
-        const std::unordered_map<InfosetId, detail::InfosetAccum>& canonical);
+        const detail::InfosetAccumTable& canonical);
     double cfr(
         const G& state,
         PlayerId traversing_player,
@@ -67,7 +67,7 @@ private:
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
     InfosetRegistry registry_;
     std::unordered_map<InfosetId, std::vector<Probability>> locked_by_id_;
-    std::unordered_map<InfosetId, detail::InfosetAccum> infosets_;
+    detail::InfosetAccumTable infosets_;
 };
 
 }  // namespace core

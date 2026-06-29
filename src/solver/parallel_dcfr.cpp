@@ -393,19 +393,12 @@ ParallelWorkerState ParallelDCFRSolver<G>::make_worker_state() const {
 
 template <class G>
 void ParallelDCFRSolver<G>::merge_worker_state(
-    std::unordered_map<InfosetId, detail::InfosetAccum>& canonical,
+    detail::InfosetAccumTable& canonical,
     ParallelWorkerState worker_state) {
-    for (auto& [id, local] : worker_state.accum) {
-        auto& target = canonical[id];
-        if (target.regret_sum.empty()) {
-            target = std::move(local);
-            continue;
-        }
-        if (target.regret_sum.size() != local.regret_sum.size() ||
-            target.strategy_sum.size() != local.strategy_sum.size()) {
-            throw std::logic_error("parallel worker merge encountered mismatched action counts");
-        }
-        for (std::size_t i = 0; i < local.regret_sum.size(); ++i) {
+    for (const auto id : worker_state.accum.active_ids()) {
+        const auto local = worker_state.accum.view(id);
+        auto target = canonical.ensure(id, local.action_count);
+        for (std::size_t i = 0; i < local.action_count; ++i) {
             target.regret_sum[i] += local.regret_sum[i];
             target.strategy_sum[i] += local.strategy_sum[i];
         }
@@ -414,14 +407,12 @@ void ParallelDCFRSolver<G>::merge_worker_state(
 
 template <class G>
 typename ParallelDCFRSolver<G>::SharedStrategyMap ParallelDCFRSolver<G>::build_strategy_snapshot(
-    const std::unordered_map<InfosetId, detail::InfosetAccum>& canonical) {
+    const detail::InfosetAccumTable& canonical) {
     auto out = std::make_shared<StrategyMap>();
-    out->max_load_factor(0.7f);
     out->reserve(canonical.size());
-    for (const auto& [id, accum] : canonical) {
-        if (!accum.regret_sum.empty()) {
-            out->emplace(id, detail::normalize_strategy(accum.regret_sum));
-        }
+    for (const auto id : canonical.active_ids()) {
+        const auto accum = canonical.view(id);
+        out->emplace(id, detail::normalize_strategy(accum.regret_sum, accum.action_count));
     }
     return out;
 }
@@ -452,11 +443,7 @@ double ParallelDCFRSolver<G>::cfr(
     const auto actions = state.legal_actions();
     const auto id = core::lookup_infoset_id(
         state, player, registry_, actions.size(), &locked_, &locked_by_id_);
-    auto& accum = worker_state.accum[id];
-    if (accum.regret_sum.empty()) {
-        accum.regret_sum.assign(actions.size(), 0.0);
-        accum.strategy_sum.assign(actions.size(), 0.0);
-    }
+    auto accum = worker_state.accum.ensure(id, actions.size());
 
     std::vector<Probability> local_strategy;
     if (const auto locked_it = locked_by_id_.find(id);
@@ -501,13 +488,14 @@ template <class G>
 typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_average_strategy() const {
     StrategyMap out;
     out.reserve(infosets_.size());
-    for (const auto& [id, accum] : infosets_) {
+    for (const auto id : infosets_.active_ids()) {
+        const auto accum = infosets_.view(id);
         if (const auto locked_it = locked_by_id_.find(id);
-            locked_it != locked_by_id_.end() && locked_it->second.size() == accum.strategy_sum.size()) {
+            locked_it != locked_by_id_.end() && locked_it->second.size() == accum.action_count) {
             out.emplace(id, locked_it->second);
             continue;
         }
-        out.emplace(id, detail::normalize_or_uniform(accum.strategy_sum));
+        out.emplace(id, detail::normalize_or_uniform(accum.strategy_sum, accum.action_count));
     }
     return out;
 }
