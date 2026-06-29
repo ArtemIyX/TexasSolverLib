@@ -32,6 +32,7 @@ struct HUNLFlatRange {
 struct HUNLFlatWorkerAssignment {
     std::uint32_t worker_index = 0;
     HUNLFlatRange infoset_range;
+    HUNLFlatRange node_range;
     std::vector<HUNLFlatRange> depth_node_ranges;
 };
 
@@ -39,7 +40,9 @@ struct HUNLFlatWorkerScratch {
     std::vector<double> terminal_values;
     std::vector<double> node_values;
     std::vector<double> action_values;
-    std::vector<double> reach_buffer;
+    std::vector<double> player0_reach;
+    std::vector<double> player1_reach;
+    std::vector<double> chance_reach;
 
     void reset() noexcept;
 };

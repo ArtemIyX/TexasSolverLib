@@ -381,7 +381,7 @@ Output:
 
 - lock-free parallel node passes
 
-### Step 4.4. Keep ownership disjoint
+### + Step 4.4. Keep ownership disjoint
 
 Substeps:
 

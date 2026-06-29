@@ -109,6 +109,7 @@ private:
     std::size_t worker_count_ = 1;
     HUNLFlatParallelPlan parallel_plan_;
     std::unique_ptr<WorkerPool> worker_pool_;
+    std::vector<HUNLFlatWorkerScratch> worker_scratch_;
     double alpha_ = 1.5;
     double beta_ = 0.0;
     double gamma_ = 2.0;

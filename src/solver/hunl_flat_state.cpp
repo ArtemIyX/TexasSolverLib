@@ -29,19 +29,23 @@ void HUNLFlatWorkerScratch::reset() noexcept {
     terminal_values.clear();
     node_values.clear();
     action_values.clear();
-    reach_buffer.clear();
+    player0_reach.clear();
+    player1_reach.clear();
+    chance_reach.clear();
 }
 
 HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph, std::size_t worker_count) {
     HUNLFlatParallelPlan plan;
     const auto workers = std::max<std::size_t>(1, worker_count);
     const auto infoset_ranges = partition_range(static_cast<std::uint32_t>(graph.infosets.size()), workers);
+    const auto node_ranges = partition_range(static_cast<std::uint32_t>(graph.nodes.size()), workers);
 
     plan.workers.reserve(workers);
     for (std::size_t worker_index = 0; worker_index < workers; ++worker_index) {
         HUNLFlatWorkerAssignment assignment;
         assignment.worker_index = static_cast<std::uint32_t>(worker_index);
         assignment.infoset_range = infoset_ranges[worker_index];
+        assignment.node_range = node_ranges[worker_index];
         assignment.depth_node_ranges.reserve(graph.depth_slices.size());
 
         for (const auto& slice : graph.depth_slices) {

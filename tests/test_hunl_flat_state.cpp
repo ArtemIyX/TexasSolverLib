@@ -109,13 +109,19 @@ TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
     EXPECT_EQ(plan.workers.size(), 4U);
 
     std::uint32_t infoset_cursor = 0;
+    std::uint32_t node_cursor = 0;
     for (const auto& worker : plan.workers) {
         EXPECT_EQ(worker.infoset_range.begin, infoset_cursor);
         EXPECT_TRUE(worker.infoset_range.begin <= worker.infoset_range.end);
         infoset_cursor = worker.infoset_range.end;
+
+        EXPECT_EQ(worker.node_range.begin, node_cursor);
+        EXPECT_TRUE(worker.node_range.begin <= worker.node_range.end);
+        node_cursor = worker.node_range.end;
         EXPECT_EQ(worker.depth_node_ranges.size(), graph.depth_slices.size());
     }
     EXPECT_EQ(infoset_cursor, static_cast<std::uint32_t>(graph.infosets.size()));
+    EXPECT_EQ(node_cursor, static_cast<std::uint32_t>(graph.nodes.size()));
 
     for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
         const auto slice = graph.depth_slices[depth];
@@ -136,12 +142,16 @@ TEST_CASE(hunl_flat_worker_scratch_reset_clears_temporary_buffers) {
     scratch.terminal_values.assign(3, 1.0);
     scratch.node_values.assign(4, 2.0);
     scratch.action_values.assign(5, 3.0);
-    scratch.reach_buffer.assign(6, 4.0);
+    scratch.player0_reach.assign(6, 4.0);
+    scratch.player1_reach.assign(7, 5.0);
+    scratch.chance_reach.assign(8, 6.0);
 
     scratch.reset();
 
     EXPECT_TRUE(scratch.terminal_values.empty());
     EXPECT_TRUE(scratch.node_values.empty());
     EXPECT_TRUE(scratch.action_values.empty());
-    EXPECT_TRUE(scratch.reach_buffer.empty());
+    EXPECT_TRUE(scratch.player0_reach.empty());
+    EXPECT_TRUE(scratch.player1_reach.empty());
+    EXPECT_TRUE(scratch.chance_reach.empty());
 }

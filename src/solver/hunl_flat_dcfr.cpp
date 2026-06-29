@@ -115,12 +115,18 @@ HUNLFlatDCFR::HUNLFlatDCFR(
       action_values_(graph_.children.size(), 0.0),
       worker_count_(std::max<std::size_t>(1, workers)),
       parallel_plan_(HUNLFlatParallelPlan::build(graph_, std::max<std::size_t>(1, workers))),
+      worker_scratch_(std::max<std::size_t>(1, workers)),
       alpha_(alpha),
       beta_(beta),
       gamma_(gamma) {
     validate_alpha(alpha_);
     if (beta_ < 0.0 || gamma_ < 0.0) {
         throw std::invalid_argument("HUNLFlatDCFR beta and gamma must be non-negative");
+    }
+    for (auto& scratch : worker_scratch_) {
+        scratch.player0_reach.assign(graph_.nodes.size(), 0.0);
+        scratch.player1_reach.assign(graph_.nodes.size(), 0.0);
+        scratch.chance_reach.assign(graph_.nodes.size(), 0.0);
     }
     worker_pool_ = std::make_unique<WorkerPool>(worker_count_);
 }
@@ -371,6 +377,11 @@ void HUNLFlatDCFR::forward_reach_stage() {
 
     for (std::size_t depth = 0; depth < graph_.depth_slices.size(); ++depth) {
         run_stage_workers([&](std::size_t worker_index) {
+            auto& scratch = worker_scratch_[worker_index];
+            std::fill(scratch.player0_reach.begin(), scratch.player0_reach.end(), 0.0);
+            std::fill(scratch.player1_reach.begin(), scratch.player1_reach.end(), 0.0);
+            std::fill(scratch.chance_reach.begin(), scratch.chance_reach.end(), 0.0);
+
             const auto& worker = parallel_plan_.workers[worker_index];
             const auto range = worker.depth_node_ranges[depth];
             for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
@@ -386,9 +397,9 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 if (meta.type == HUNLFlatNodeType::Chance) {
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
                         const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
-                        player0_reach_[outcome.child] += reach0;
-                        player1_reach_[outcome.child] += reach1;
-                        chance_reach_[outcome.child] += chance * outcome.probability;
+                        scratch.player0_reach[outcome.child] += reach0;
+                        scratch.player1_reach[outcome.child] += reach1;
+                        scratch.chance_reach[outcome.child] += chance * outcome.probability;
                     }
                     continue;
                 }
@@ -410,14 +421,31 @@ void HUNLFlatDCFR::forward_reach_stage() {
                     }
 
                     if (meta.player == 0) {
-                        player0_reach_[child] += reach0 * action_prob;
-                        player1_reach_[child] += reach1;
+                        scratch.player0_reach[child] += reach0 * action_prob;
+                        scratch.player1_reach[child] += reach1;
                     } else {
-                        player0_reach_[child] += reach0;
-                        player1_reach_[child] += reach1 * action_prob;
+                        scratch.player0_reach[child] += reach0;
+                        scratch.player1_reach[child] += reach1 * action_prob;
                     }
-                    chance_reach_[child] += chance;
+                    scratch.chance_reach[child] += chance;
                 }
+            }
+        });
+
+        run_stage_workers([&](std::size_t worker_index) {
+            const auto range = parallel_plan_.workers[worker_index].node_range;
+            for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
+                double add0 = 0.0;
+                double add1 = 0.0;
+                double addc = 0.0;
+                for (const auto& scratch : worker_scratch_) {
+                    add0 += scratch.player0_reach[node_idx];
+                    add1 += scratch.player1_reach[node_idx];
+                    addc += scratch.chance_reach[node_idx];
+                }
+                player0_reach_[node_idx] += add0;
+                player1_reach_[node_idx] += add1;
+                chance_reach_[node_idx] += addc;
             }
         });
     }
