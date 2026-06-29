@@ -233,7 +233,7 @@ Substeps:
 
 Selected: Use infoset-action-hand
 
-### Step 2.3. Remove string-key dependence from the solve loop
+### + Step 2.3. Remove string-key dependence from the solve loop
 
 Substeps:
 

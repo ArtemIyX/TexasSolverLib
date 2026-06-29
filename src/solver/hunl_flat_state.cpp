@@ -1,8 +1,68 @@
 #include "solver/hunl_flat_state.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace core {
+
+namespace {
+
+std::vector<HUNLFlatRange> partition_range(std::uint32_t total_count, std::size_t worker_count) {
+    const auto workers = std::max<std::size_t>(1, worker_count);
+    std::vector<HUNLFlatRange> ranges;
+    ranges.reserve(workers);
+
+    const auto base = total_count / static_cast<std::uint32_t>(workers);
+    const auto remainder = total_count % static_cast<std::uint32_t>(workers);
+    std::uint32_t begin = 0;
+    for (std::size_t i = 0; i < workers; ++i) {
+        const auto width = base + (i < remainder ? 1U : 0U);
+        ranges.push_back(HUNLFlatRange{begin, begin + width});
+        begin += width;
+    }
+    return ranges;
+}
+
+}  // namespace
+
+void HUNLFlatWorkerScratch::reset() noexcept {
+    terminal_values.clear();
+    node_values.clear();
+    action_values.clear();
+    reach_buffer.clear();
+}
+
+HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph, std::size_t worker_count) {
+    HUNLFlatParallelPlan plan;
+    const auto workers = std::max<std::size_t>(1, worker_count);
+    const auto infoset_ranges = partition_range(static_cast<std::uint32_t>(graph.infosets.size()), workers);
+
+    plan.workers.reserve(workers);
+    for (std::size_t worker_index = 0; worker_index < workers; ++worker_index) {
+        HUNLFlatWorkerAssignment assignment;
+        assignment.worker_index = static_cast<std::uint32_t>(worker_index);
+        assignment.infoset_range = infoset_ranges[worker_index];
+        assignment.depth_node_ranges.reserve(graph.depth_slices.size());
+
+        for (const auto& slice : graph.depth_slices) {
+            const auto count = slice.count;
+            const auto base = count / static_cast<std::uint32_t>(workers);
+            const auto remainder = count % static_cast<std::uint32_t>(workers);
+            const auto relative_begin =
+                static_cast<std::uint32_t>(worker_index) * base +
+                std::min<std::uint32_t>(static_cast<std::uint32_t>(worker_index), remainder);
+            const auto width = base + (worker_index < remainder ? 1U : 0U);
+            assignment.depth_node_ranges.push_back(HUNLFlatRange{
+                slice.begin + relative_begin,
+                slice.begin + relative_begin + width,
+            });
+        }
+
+        plan.workers.push_back(std::move(assignment));
+    }
+
+    return plan;
+}
 
 HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     const HUNLFlatSolveGraph& graph,
@@ -96,6 +156,19 @@ std::size_t HUNLFlatInfosetTable::value_index(InfosetId id, std::size_t hand_idx
         return meta.offset + hand_idx * static_cast<std::size_t>(meta.action_count) + action_idx;
     }
     return meta.offset + action_idx * static_cast<std::size_t>(meta.hand_count) + hand_idx;
+}
+
+HUNLFlatRange HUNLFlatInfosetTable::infoset_value_range(HUNLFlatRange infoset_range) const {
+    if (infoset_range.begin > infoset_range.end || infoset_range.end > meta_.size()) {
+        throw std::out_of_range("HUNLFlatInfosetTable infoset range out of bounds");
+    }
+    if (infoset_range.begin == infoset_range.end) {
+        return {};
+    }
+
+    const auto begin = meta_[infoset_range.begin].offset;
+    const auto& last = meta_[infoset_range.end - 1];
+    return HUNLFlatRange{begin, last.offset + last.value_count};
 }
 
 const HUNLFlatInfosetTableMeta& HUNLFlatInfosetTable::meta_for(InfosetId id) const {

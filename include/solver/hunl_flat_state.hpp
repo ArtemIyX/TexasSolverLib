@@ -23,6 +23,32 @@ struct HUNLFlatInfosetTableMeta {
     PlayerId player = -1;
 };
 
+struct HUNLFlatRange {
+    std::uint32_t begin = 0;
+    std::uint32_t end = 0;
+};
+
+struct HUNLFlatWorkerAssignment {
+    std::uint32_t worker_index = 0;
+    HUNLFlatRange infoset_range;
+    std::vector<HUNLFlatRange> depth_node_ranges;
+};
+
+struct HUNLFlatWorkerScratch {
+    std::vector<double> terminal_values;
+    std::vector<double> node_values;
+    std::vector<double> action_values;
+    std::vector<double> reach_buffer;
+
+    void reset() noexcept;
+};
+
+struct HUNLFlatParallelPlan {
+    std::vector<HUNLFlatWorkerAssignment> workers;
+
+    static HUNLFlatParallelPlan build(const HUNLFlatSolveGraph& graph, std::size_t worker_count);
+};
+
 class HUNLFlatInfosetTable {
 public:
     static HUNLFlatInfosetTable build(
@@ -44,6 +70,7 @@ public:
     [[nodiscard]] std::size_t row_value_count(InfosetId id) const;
     [[nodiscard]] std::size_t total_value_count() const noexcept;
     [[nodiscard]] std::size_t value_index(InfosetId id, std::size_t hand_idx, std::size_t action_idx) const;
+    [[nodiscard]] HUNLFlatRange infoset_value_range(HUNLFlatRange infoset_range) const;
 
 private:
     const HUNLFlatInfosetTableMeta& meta_for(InfosetId id) const;
