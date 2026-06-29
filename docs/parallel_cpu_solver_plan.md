@@ -357,7 +357,7 @@ Output:
 
 - worker lifecycle cost removed from the hot benchmark
 
-### Step 4.2. Parallelize by infoset for strategy stages
+### + Step 4.2. Parallelize by infoset for strategy stages
 
 Substeps:
 
@@ -369,7 +369,7 @@ Output:
 
 - lock-free parallel strategy stages
 
-### Step 4.3. Parallelize by node range for propagation stages
+### + Step 4.3. Parallelize by node range for propagation stages
 
 Substeps:
 
