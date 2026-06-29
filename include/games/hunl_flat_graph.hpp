@@ -67,6 +67,16 @@ struct HUNLFlatInfoset {
     std::string key;
 };
 
+struct HUNLFlatSlice {
+    std::uint32_t begin = 0;
+    std::uint32_t count = 0;
+};
+
+struct HUNLFlatWorkerRange {
+    std::uint32_t begin = 0;
+    std::uint32_t end = 0;
+};
+
 struct HUNLFlatSolveGraph {
     std::vector<HUNLFlatNode> nodes;
     std::vector<HUNLFlatNodeMeta> node_meta;
@@ -75,6 +85,14 @@ struct HUNLFlatSolveGraph {
     std::vector<HUNLFlatChanceOutcome> chance_outcomes;
     std::vector<HUNLFlatInfoset> infosets;
     std::vector<std::uint32_t> infoset_nodes;
+    std::vector<std::uint32_t> forward_order;
+    std::vector<std::uint32_t> reverse_order;
+    std::vector<std::uint32_t> node_depths;
+    std::array<HUNLFlatSlice, 5> street_slices = {};
+    std::vector<std::uint32_t> street_order;
+    std::vector<HUNLFlatSlice> depth_slices;
+    std::vector<std::uint32_t> depth_order;
+    std::vector<std::vector<HUNLFlatWorkerRange>> depth_worker_ranges;
     std::uint32_t root = 0;
     std::uint32_t max_depth = 0;
     std::uint8_t max_actions = 0;

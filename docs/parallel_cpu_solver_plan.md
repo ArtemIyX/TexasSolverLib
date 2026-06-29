@@ -189,7 +189,7 @@ Output:
 
 - one compact metadata block for fast indexed traversal
 
-### Step 1.4. Precompute traversal orderings
+### + Step 1.4. Precompute traversal orderings
 
 Substeps:
 

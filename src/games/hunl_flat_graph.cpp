@@ -1,6 +1,8 @@
 #include "games/hunl_flat_graph.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <deque>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -24,6 +26,32 @@ HUNLFlatNodeType classify_flat_node_type(const HUNLTreeNode& node) {
         return HUNLFlatNodeType::Chance;
     }
     return HUNLFlatNodeType::Decision;
+}
+
+std::size_t street_index(Street street) {
+    return static_cast<std::size_t>(street);
+}
+
+std::vector<HUNLFlatWorkerRange> make_ranges_for_slice(std::uint32_t begin, std::uint32_t count) {
+    std::vector<HUNLFlatWorkerRange> ranges;
+    if (count == 0) {
+        return ranges;
+    }
+
+    const std::uint32_t chunk_target = std::max<std::uint32_t>(1U, std::min<std::uint32_t>(count, 4U));
+    const std::uint32_t base = count / chunk_target;
+    const std::uint32_t remainder = count % chunk_target;
+    std::uint32_t offset = begin;
+    ranges.reserve(chunk_target);
+    for (std::uint32_t i = 0; i < chunk_target; ++i) {
+        const std::uint32_t width = base + (i < remainder ? 1U : 0U);
+        if (width == 0) {
+            continue;
+        }
+        ranges.push_back(HUNLFlatWorkerRange{offset, offset + width});
+        offset += width;
+    }
+    return ranges;
 }
 
 }  // namespace
@@ -144,6 +172,76 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         infoset.key = infoset_keys[infoset_index];
         graph.infoset_nodes.insert(graph.infoset_nodes.end(), node_list.begin(), node_list.end());
         graph.infosets.push_back(std::move(infoset));
+    }
+
+    std::vector<std::uint32_t> indegree(graph.nodes.size(), 0);
+    std::vector<std::vector<std::uint32_t>> outgoing(graph.nodes.size());
+    for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        outgoing[node_idx].reserve(meta.child_count);
+        for (std::uint32_t i = 0; i < meta.child_count; ++i) {
+            const auto child = graph.children[meta.child_begin + i];
+            if (child >= graph.nodes.size()) {
+                throw std::logic_error("child index out of bounds in flat graph");
+            }
+            outgoing[node_idx].push_back(child);
+            ++indegree[child];
+        }
+    }
+
+    std::deque<std::uint32_t> ready;
+    for (std::uint32_t node_idx = 0; node_idx < indegree.size(); ++node_idx) {
+        if (indegree[node_idx] == 0) {
+            ready.push_back(node_idx);
+        }
+    }
+
+    graph.forward_order.reserve(graph.nodes.size());
+    graph.node_depths.assign(graph.nodes.size(), 0);
+    while (!ready.empty()) {
+        const auto node_idx = ready.front();
+        ready.pop_front();
+        graph.forward_order.push_back(node_idx);
+        const auto parent_depth = graph.node_depths[node_idx];
+        for (const auto child : outgoing[node_idx]) {
+            graph.node_depths[child] = std::max(graph.node_depths[child], parent_depth + 1U);
+            if (--indegree[child] == 0) {
+                ready.push_back(child);
+            }
+        }
+    }
+
+    if (graph.forward_order.size() != graph.nodes.size()) {
+        throw std::logic_error("flat graph must be acyclic");
+    }
+
+    graph.reverse_order = graph.forward_order;
+    std::reverse(graph.reverse_order.begin(), graph.reverse_order.end());
+
+    std::uint32_t max_topo_depth = 0;
+    for (const auto depth : graph.node_depths) {
+        max_topo_depth = std::max(max_topo_depth, depth);
+    }
+
+    std::vector<std::vector<std::uint32_t>> depth_buckets(static_cast<std::size_t>(max_topo_depth) + 1U);
+    std::array<std::vector<std::uint32_t>, 5> street_buckets;
+    for (const auto node_idx : graph.forward_order) {
+        depth_buckets[graph.node_depths[node_idx]].push_back(node_idx);
+        street_buckets[street_index(graph.node_meta[node_idx].street)].push_back(node_idx);
+    }
+
+    graph.depth_slices.reserve(depth_buckets.size());
+    for (const auto& bucket : depth_buckets) {
+        const auto begin = static_cast<std::uint32_t>(graph.depth_order.size());
+        graph.depth_order.insert(graph.depth_order.end(), bucket.begin(), bucket.end());
+        graph.depth_slices.push_back(HUNLFlatSlice{begin, static_cast<std::uint32_t>(bucket.size())});
+        graph.depth_worker_ranges.push_back(make_ranges_for_slice(begin, static_cast<std::uint32_t>(bucket.size())));
+    }
+
+    for (std::size_t i = 0; i < street_buckets.size(); ++i) {
+        const auto begin = static_cast<std::uint32_t>(graph.street_order.size());
+        graph.street_order.insert(graph.street_order.end(), street_buckets[i].begin(), street_buckets[i].end());
+        graph.street_slices[i] = HUNLFlatSlice{begin, static_cast<std::uint32_t>(street_buckets[i].size())};
     }
 
     return graph;

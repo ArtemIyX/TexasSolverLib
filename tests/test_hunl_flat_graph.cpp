@@ -1,6 +1,7 @@
 #include "games/hunl_flat_graph.hpp"
 #include "test_harness.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
@@ -162,4 +163,80 @@ TEST_CASE(hunl_flat_graph_precomputes_compact_node_metadata) {
             EXPECT_TRUE(!meta.has_infoset);
         }
     }
+}
+
+TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto tree = core::HUNLTree::build(config);
+    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+
+    EXPECT_EQ(graph.forward_order.size(), graph.nodes.size());
+    EXPECT_EQ(graph.reverse_order.size(), graph.nodes.size());
+    EXPECT_EQ(graph.node_depths.size(), graph.nodes.size());
+    EXPECT_EQ(graph.depth_order.size(), graph.nodes.size());
+    EXPECT_EQ(graph.street_order.size(), graph.nodes.size());
+
+    std::vector<std::uint32_t> forward_pos(graph.nodes.size(), 0);
+    for (std::uint32_t i = 0; i < graph.forward_order.size(); ++i) {
+        forward_pos[graph.forward_order[i]] = i;
+    }
+
+    std::vector<bool> seen_forward(graph.nodes.size(), false);
+    for (const auto node_idx : graph.forward_order) {
+        EXPECT_TRUE(node_idx < graph.nodes.size());
+        EXPECT_TRUE(!seen_forward[node_idx]);
+        seen_forward[node_idx] = true;
+    }
+
+    for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        for (std::uint32_t i = 0; i < meta.child_count; ++i) {
+            const auto child = graph.children[meta.child_begin + i];
+            EXPECT_TRUE(forward_pos[node_idx] < forward_pos[child]);
+            EXPECT_TRUE(graph.node_depths[child] > graph.node_depths[node_idx]);
+        }
+    }
+
+    auto sorted_forward = graph.forward_order;
+    auto sorted_reverse = graph.reverse_order;
+    std::sort(sorted_forward.begin(), sorted_forward.end());
+    std::sort(sorted_reverse.begin(), sorted_reverse.end());
+    for (std::uint32_t i = 0; i < graph.nodes.size(); ++i) {
+        EXPECT_EQ(sorted_forward[i], i);
+        EXPECT_EQ(sorted_reverse[i], i);
+    }
+
+    std::uint32_t depth_total = 0;
+    for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
+        const auto slice = graph.depth_slices[depth];
+        depth_total += slice.count;
+        for (std::uint32_t i = 0; i < slice.count; ++i) {
+            const auto node_idx = graph.depth_order[slice.begin + i];
+            EXPECT_EQ(graph.node_depths[node_idx], depth);
+        }
+
+        std::uint32_t ranged_total = 0;
+        std::uint32_t cursor = slice.begin;
+        for (const auto& range : graph.depth_worker_ranges[depth]) {
+            EXPECT_EQ(range.begin, cursor);
+            EXPECT_TRUE(range.begin < range.end);
+            EXPECT_TRUE(range.end <= slice.begin + slice.count);
+            ranged_total += range.end - range.begin;
+            cursor = range.end;
+        }
+        EXPECT_EQ(ranged_total, slice.count);
+        EXPECT_EQ(cursor, slice.begin + slice.count);
+    }
+    EXPECT_EQ(depth_total, static_cast<std::uint32_t>(graph.nodes.size()));
+
+    std::uint32_t street_total = 0;
+    for (std::size_t street = 0; street < graph.street_slices.size(); ++street) {
+        const auto slice = graph.street_slices[street];
+        street_total += slice.count;
+        for (std::uint32_t i = 0; i < slice.count; ++i) {
+            const auto node_idx = graph.street_order[slice.begin + i];
+            EXPECT_EQ(static_cast<std::size_t>(graph.node_meta[node_idx].street), street);
+        }
+    }
+    EXPECT_EQ(street_total, static_cast<std::uint32_t>(graph.nodes.size()));
 }
