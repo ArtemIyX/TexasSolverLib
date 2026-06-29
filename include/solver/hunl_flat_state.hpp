@@ -21,6 +21,7 @@ struct HUNLFlatInfosetTableMeta {
     std::uint32_t hand_count = 0;
     std::uint8_t action_count = 0;
     PlayerId player = -1;
+    std::uint32_t last_discount_iter = 0;
 };
 
 struct HUNLFlatRange {
@@ -57,6 +58,7 @@ public:
         HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetHandAction);
 
     [[nodiscard]] const std::vector<HUNLFlatInfosetTableMeta>& meta() const noexcept;
+    [[nodiscard]] std::vector<HUNLFlatInfosetTableMeta>& meta_mut() noexcept;
     [[nodiscard]] std::size_t infoset_count() const noexcept;
     [[nodiscard]] HUNLFlatValueLayout layout() const noexcept;
 

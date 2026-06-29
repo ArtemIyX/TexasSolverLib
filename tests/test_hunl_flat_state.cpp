@@ -54,6 +54,7 @@ TEST_CASE(hunl_flat_infoset_table_exposes_rw_rows_for_all_three_arenas) {
     EXPECT_EQ(table.regret(id)[0], 1.25);
     EXPECT_EQ(table.strategy_sum(id)[count - 1], 2.5);
     EXPECT_EQ(table.current_strategy(id)[0], 0.75);
+    EXPECT_EQ(table.meta()[id.value].last_discount_iter, 0U);
 }
 
 TEST_CASE(hunl_flat_infoset_table_value_index_matches_selected_layout) {

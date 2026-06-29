@@ -89,6 +89,7 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
             static_cast<std::uint32_t>(hand_count),
             infoset.action_count,
             infoset.player,
+            0,
         });
         running_offset += value_count;
     }
@@ -100,6 +101,10 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
 }
 
 const std::vector<HUNLFlatInfosetTableMeta>& HUNLFlatInfosetTable::meta() const noexcept {
+    return meta_;
+}
+
+std::vector<HUNLFlatInfosetTableMeta>& HUNLFlatInfosetTable::meta_mut() noexcept {
     return meta_;
 }
 

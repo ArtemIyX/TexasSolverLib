@@ -328,7 +328,7 @@ Output:
 
 - one explicit reverse pass for counterfactual values
 
-### Step 3.6. Implement regret and average-strategy updates
+### + Step 3.6. Implement regret and average-strategy updates
 
 Substeps:
 

@@ -26,7 +26,10 @@ public:
     explicit HUNLFlatDCFR(
         HUNLFlatSolveGraph graph,
         std::array<std::size_t, 2> hand_count_per_player,
-        HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand);
+        HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand,
+        double alpha = 1.5,
+        double beta = 0.0,
+        double gamma = 2.0);
 
     void run_iteration();
     void run_iterations(std::uint32_t iterations);
@@ -46,6 +49,7 @@ public:
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
 private:
+    void apply_dcfr_discount_stage();
     void compute_strategy_stage();
     void forward_reach_stage();
     void terminal_utility_stage();
@@ -62,6 +66,9 @@ private:
     std::vector<double> node_values_;
     std::vector<double> action_values_;
     HUNLFlatStageProfile profile_;
+    double alpha_ = 1.5;
+    double beta_ = 0.0;
+    double gamma_ = 2.0;
     std::uint32_t iterations_ = 0;
 };
 

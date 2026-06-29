@@ -283,3 +283,60 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children) {
         EXPECT_TRUE(root_meta.child_count > 0);
     }
 }
+
+TEST_CASE(hunl_flat_dcfr_regret_update_uses_action_minus_node_value) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    auto& table = solver.infoset_table_mut();
+    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+    auto* regret_before = table.regret_mut(root_infoset);
+    const auto before0 = regret_before[0];
+    const auto before1 = regret_before[table.meta()[root_infoset.value].hand_count];
+
+    solver.run_iteration();
+
+    const auto* regret_after = table.regret(root_infoset);
+    EXPECT_TRUE(regret_after[0] != before0 || regret_after[table.meta()[root_infoset.value].hand_count] != before1);
+}
+
+TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+    const auto* strategy = solver.infoset_table().current_strategy(root_infoset);
+    const auto* strategy_sum = solver.infoset_table().strategy_sum(root_infoset);
+    const auto hand_count = solver.infoset_table().meta()[root_infoset.value].hand_count;
+    const auto own_reach = graph.node_meta[graph.root].player == 0
+        ? solver.player0_reach()[graph.root] * solver.chance_reach()[graph.root]
+        : solver.player1_reach()[graph.root] * solver.chance_reach()[graph.root];
+
+    EXPECT_NEAR(strategy_sum[0], own_reach * strategy[0], 1e-12);
+    EXPECT_NEAR(strategy_sum[hand_count], own_reach * strategy[hand_count], 1e-12);
+}
+
+TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iterations(2);
+
+    for (const auto& meta : solver.infoset_table().meta()) {
+        EXPECT_EQ(meta.last_discount_iter, 2U);
+    }
+}
