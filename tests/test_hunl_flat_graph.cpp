@@ -1,0 +1,73 @@
+#include "games/hunl_flat_graph.hpp"
+#include "test_harness.hpp"
+
+#include <memory>
+
+TEST_CASE(hunl_flat_graph_builds_from_tree_with_stable_indices) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto tree = core::HUNLTree::build(config);
+    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+
+    EXPECT_EQ(graph.root, tree.root);
+    EXPECT_EQ(graph.max_depth, tree.max_depth);
+    EXPECT_EQ(graph.max_actions, tree.max_actions);
+    EXPECT_EQ(static_cast<std::size_t>(graph.nodes.size()), static_cast<std::size_t>(tree.nodes.size()));
+}
+
+TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto tree = core::HUNLTree::build(config);
+    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+
+    bool saw_decision = false;
+    bool saw_fold = false;
+    bool saw_showdown = false;
+
+    for (std::size_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
+        const auto& tree_node = tree.nodes[node_idx];
+        const auto& flat_node = graph.nodes[node_idx];
+
+        EXPECT_EQ(flat_node.player, tree_node.player);
+        EXPECT_EQ(flat_node.street, tree_node.street);
+        EXPECT_EQ(flat_node.contributions, tree_node.contrib);
+
+        if (tree_node.terminal_kind.tag == core::TerminalKindTag::Fold) {
+            EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::TerminalFold);
+            saw_fold = true;
+            continue;
+        }
+        if (tree_node.terminal_kind.tag == core::TerminalKindTag::Showdown) {
+            EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::TerminalShowdown);
+            saw_showdown = true;
+            continue;
+        }
+        if (!tree_node.chance_children.empty()) {
+            EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::Chance);
+            EXPECT_EQ(static_cast<std::size_t>(flat_node.child_count), static_cast<std::size_t>(tree_node.chance_children.size()));
+            EXPECT_EQ(static_cast<std::size_t>(flat_node.chance_count), static_cast<std::size_t>(tree_node.chance_outcomes.size()));
+            for (std::size_t i = 0; i < tree_node.chance_children.size(); ++i) {
+                EXPECT_EQ(graph.children[flat_node.child_begin + i], tree_node.chance_children[i]);
+                const auto& outcome = graph.chance_outcomes[flat_node.chance_begin + i];
+                EXPECT_EQ(outcome.child, tree_node.chance_children[i]);
+                EXPECT_EQ(outcome.action, tree_node.chance_outcomes[i].first);
+                EXPECT_NEAR(outcome.probability, tree_node.chance_outcomes[i].second, 1e-12);
+            }
+            continue;
+        }
+
+        EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::Decision);
+        EXPECT_EQ(static_cast<std::size_t>(flat_node.child_count), static_cast<std::size_t>(tree_node.children.size()));
+        EXPECT_EQ(static_cast<std::size_t>(flat_node.action_count), static_cast<std::size_t>(tree_node.legal_actions.size()));
+        EXPECT_TRUE(flat_node.infoset_key.has_value());
+        saw_decision = true;
+
+        for (std::size_t i = 0; i < tree_node.children.size(); ++i) {
+            EXPECT_EQ(graph.children[flat_node.child_begin + i], tree_node.children[i]);
+            EXPECT_EQ(graph.actions[flat_node.action_begin + i], tree_node.legal_actions[i]);
+        }
+    }
+
+    EXPECT_TRUE(saw_decision);
+    EXPECT_TRUE(saw_fold);
+    EXPECT_TRUE(saw_showdown);
+}

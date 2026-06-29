@@ -137,7 +137,7 @@ Output:
 
 - tests that allow us to safely replace the backend
 
-## Phase 1. Build a flat HUNL solve representation
+## + Phase 1. Build a flat HUNL solve representation
 
 Purpose:
 Move all game-structure discovery out of the hot path.
