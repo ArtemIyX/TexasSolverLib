@@ -74,6 +74,13 @@ struct SolveProfile {
     double merge_seconds = 0.0;
     double frontier_seconds = 0.0;
     double batch_build_seconds = 0.0;
+    double discount_seconds = 0.0;
+    double strategy_seconds = 0.0;
+    double reach_seconds = 0.0;
+    double terminal_seconds = 0.0;
+    double backward_seconds = 0.0;
+    double regret_seconds = 0.0;
+    double average_strategy_seconds = 0.0;
     std::uint64_t frontier_seed_count = 0;
     std::uint64_t batch_count = 0;
     std::vector<WorkerProfile> workers;

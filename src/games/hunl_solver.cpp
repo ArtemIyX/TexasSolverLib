@@ -57,6 +57,29 @@ bool should_use_flat_hunl_backend(
     return force_parallel || workers > 1 || config.starting_street == Street::Turn;
 }
 
+WorkerProfile to_worker_profile(const HUNLFlatStageProfile& flat_profile) {
+    WorkerProfile profile;
+    profile.cfr_seconds =
+        flat_profile.discount_seconds +
+        flat_profile.strategy_seconds +
+        flat_profile.reach_seconds +
+        flat_profile.terminal_seconds +
+        flat_profile.backward_seconds +
+        flat_profile.regret_seconds +
+        flat_profile.average_strategy_seconds;
+    return profile;
+}
+
+std::vector<WorkerProfile> to_worker_profiles(
+    const std::vector<HUNLFlatStageProfile>& flat_profiles) {
+    std::vector<WorkerProfile> out;
+    out.reserve(flat_profiles.size());
+    for (const auto& flat_profile : flat_profiles) {
+        out.push_back(to_worker_profile(flat_profile));
+    }
+    return out;
+}
+
 }  // namespace
 
 HUNLBackendSelection hunl_backend_selection_from_env() {
@@ -167,6 +190,16 @@ HUNLSolveOutput solve_hunl_postflop(
         const auto value = detail::expected_value(state, strategy);
         solve_output.game_value = value[0];
         solve_output.exploitability = detail::exploitability<HUNLState>(strategy);
+
+        solve_output.profile.enabled = true;
+        solve_output.profile.discount_seconds = solver.profile().discount_seconds;
+        solve_output.profile.strategy_seconds = solver.profile().strategy_seconds;
+        solve_output.profile.reach_seconds = solver.profile().reach_seconds;
+        solve_output.profile.terminal_seconds = solver.profile().terminal_seconds;
+        solve_output.profile.backward_seconds = solver.profile().backward_seconds;
+        solve_output.profile.regret_seconds = solver.profile().regret_seconds;
+        solve_output.profile.average_strategy_seconds = solver.profile().average_strategy_seconds;
+        solve_output.profile.workers = to_worker_profiles(solver.scheduler_diagnostics().worker_profiles);
     } else {
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto root = HUNLState::initial(shared);
