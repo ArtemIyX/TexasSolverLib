@@ -43,6 +43,31 @@ namespace detail {
 using StrategyMap = std::unordered_map<InfosetKey, std::vector<Probability>>;
 
 template <class G>
+inline std::size_t estimated_root_branch_count(const G& root) {
+    if (root.is_terminal()) {
+        return 1;
+    }
+
+    if (root.current_player() < 0) {
+        return std::max<std::size_t>(1, root.chance_outcomes().size());
+    }
+
+    return std::max<std::size_t>(1, root.legal_actions().size());
+}
+
+inline bool should_use_parallel_solver(
+    std::size_t workers,
+    std::size_t frontier_multiplier,
+    std::size_t estimated_branch_count) {
+    if (workers <= 1) {
+        return false;
+    }
+
+    const auto work_units = std::max<std::size_t>(1, workers * std::max<std::size_t>(1, frontier_multiplier));
+    return estimated_branch_count >= std::max<std::size_t>(2, work_units / 2);
+}
+
+template <class G>
 inline StrategyMap make_strategy_map(
     const std::vector<std::pair<InfosetKey, std::vector<Probability>>>& entries) {
     StrategyMap strategy;
@@ -248,7 +273,8 @@ SolveOutput solve_generic(
     validate_dcfr_parameters(alpha, beta, gamma);
 
     SolveOutput output;
-    if (workers > 1) {
+    const auto estimated_branch_count = estimated_root_branch_count(G::initial());
+    if (should_use_parallel_solver(workers, frontier_multiplier, estimated_branch_count)) {
         ParallelDCFRSolver<G> solver(
             DCFRConfig{alpha, beta, gamma},
             G::initial(),

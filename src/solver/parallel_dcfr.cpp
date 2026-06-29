@@ -11,6 +11,7 @@
 #include <mutex>
 #include <thread>
 #include <condition_variable>
+#include <atomic>
 #include <string>
 #include <utility>
 
@@ -21,6 +22,11 @@ namespace {
 struct BranchResult {
     std::vector<double> branch_values;
     ParallelWorkerState worker_state;
+};
+
+struct WorkBatch {
+    std::size_t begin = 0;
+    std::size_t end = 0;
 };
 
 template <class G>
@@ -192,6 +198,18 @@ std::size_t frontier_seed_target(std::size_t worker_count, std::size_t frontier_
     return std::max<std::size_t>(1, worker_count * frontier_multiplier);
 }
 
+std::vector<WorkBatch> make_work_batches(std::size_t seed_count, std::size_t worker_count) {
+    const std::size_t target_batches = std::max<std::size_t>(worker_count * 4, 1);
+    const std::size_t batch_size =
+        std::max<std::size_t>(1, (seed_count + target_batches - 1) / target_batches);
+
+    std::vector<WorkBatch> batches;
+    for (std::size_t begin = 0; begin < seed_count; begin += batch_size) {
+        batches.push_back(WorkBatch{begin, std::min(seed_count, begin + batch_size)});
+    }
+    return batches;
+}
+
 template <class G>
 void ParallelDCFRSolver<G>::validate_plan(const ParallelSolvePlan& plan) {
     if (plan.worker_count == 0) {
@@ -348,7 +366,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
     const auto root_player = root_.current_player();
     const auto frontier = build_frontier(root_, frontier_seed_target(plan.worker_count, frontier_multiplier_));
-    const auto frontier_plan = make_partition_plan(frontier.size(), plan.worker_count);
+    const auto batches = make_work_batches(frontier.size(), plan.worker_count);
     if (frontier.empty()) {
         SolveOutput out;
         out.iterations = iterations;
@@ -408,6 +426,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         std::condition_variable cv;
         std::size_t phase_id = 0;
         std::size_t completed = 0;
+        std::atomic<std::size_t> next_batch{0};
         std::size_t traversing_player = 0;
         bool stop = false;
         std::unordered_map<InfosetKey, std::vector<Probability>> strategy;
@@ -416,8 +435,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     };
 
     WorkerPoolState pool;
-    pool.results.resize(frontier_plan.items.size());
-    std::vector<std::size_t> merge_order(frontier_plan.items.size());
+    pool.results.resize(plan.worker_count);
+    std::vector<std::size_t> merge_order(plan.worker_count);
     for (std::size_t i = 0; i < merge_order.size(); ++i) {
         merge_order[i] = i;
     }
@@ -434,24 +453,28 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             const auto local_phase = pool.phase_id;
             const auto local_player = pool.traversing_player;
             const auto local_strategy = pool.strategy;
-            auto& result = pool.results[worker_index];
-            const auto item = frontier_plan.items[worker_index];
             lock.unlock();
 
             try {
-                result.worker_state = make_worker_state();
-                result.branch_values.resize(item.node_end - item.node_begin, 0.0);
-                for (std::size_t i = item.node_begin; i < item.node_end; ++i) {
-                    const auto& seed = frontier[i];
-                    result.branch_values[i - item.node_begin] =
+                auto local_state = make_worker_state();
+                for (;;) {
+                    const auto batch_index = pool.next_batch.fetch_add(1, std::memory_order_relaxed);
+                    if (batch_index >= batches.size()) {
+                        break;
+                    }
+                    const auto batch = batches[batch_index];
+                    for (std::size_t i = batch.begin; i < batch.end; ++i) {
+                        const auto& seed = frontier[i];
                         cfr(
                             seed.state,
                             static_cast<PlayerId>(local_player),
                             {1.0, 1.0},
                             seed.chance_reach,
                             local_strategy,
-                            result.worker_state);
+                            local_state);
+                    }
                 }
+                pool.results[worker_index].worker_state = std::move(local_state);
             } catch (...) {
                 std::lock_guard<std::mutex> guard(pool.mutex);
                 if (!pool.error) {
@@ -461,15 +484,15 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
             lock.lock();
             seen_phase = local_phase;
-            if (++pool.completed == frontier_plan.items.size()) {
+            if (++pool.completed == plan.worker_count) {
                 pool.cv.notify_all();
             }
         }
     };
 
     std::vector<std::thread> workers;
-    workers.reserve(frontier_plan.items.size());
-    for (std::size_t i = 0; i < frontier_plan.items.size(); ++i) {
+    workers.reserve(plan.worker_count);
+    for (std::size_t i = 0; i < plan.worker_count; ++i) {
         workers.emplace_back(worker_fn, i);
     }
 
@@ -480,6 +503,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                 pool.traversing_player = traversing_player;
                 pool.strategy = build_strategy_snapshot(infosets_);
                 pool.completed = 0;
+                pool.next_batch.store(0, std::memory_order_relaxed);
                 pool.error = nullptr;
                 ++pool.phase_id;
             }
@@ -488,7 +512,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             {
                 std::unique_lock<std::mutex> lock(pool.mutex);
                 pool.cv.wait(lock, [&] {
-                    return pool.completed == frontier_plan.items.size() || pool.error != nullptr;
+                    return pool.completed == plan.worker_count || pool.error != nullptr;
                 });
                 if (pool.error) {
                     pool.stop = true;

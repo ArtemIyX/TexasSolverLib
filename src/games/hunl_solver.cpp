@@ -1,7 +1,7 @@
 #include "games/hunl_solver.hpp"
 
-#include "solver/dcfr.hpp"
 #include "solver/exploit.hpp"
+#include "solver/solver.hpp"
 
 #include <chrono>
 #include <stdexcept>
@@ -68,7 +68,7 @@ HUNLSolveOutput solve_hunl_postflop(
     const auto root = HUNLState::initial(shared);
 
     SolveOutput solve_output;
-    if (workers > 1) {
+    if (detail::should_use_parallel_solver(workers, frontier_multiplier, detail::estimated_root_branch_count(root))) {
         ParallelDCFRSolver<HUNLState> solver(
             DCFRConfig{alpha, beta, gamma}, root, workers, frontier_multiplier);
         solve_output = solver.solve(iterations);
