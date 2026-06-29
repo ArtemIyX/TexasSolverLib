@@ -40,6 +40,8 @@ public:
     [[nodiscard]] const std::vector<double>& player1_reach() const noexcept;
     [[nodiscard]] const std::vector<double>& chance_reach() const noexcept;
     [[nodiscard]] const std::vector<double>& terminal_values() const noexcept;
+    [[nodiscard]] const std::vector<double>& node_values() const noexcept;
+    [[nodiscard]] const std::vector<double>& action_values() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
@@ -57,7 +59,8 @@ private:
     std::vector<double> player1_reach_;
     std::vector<double> chance_reach_;
     std::vector<double> terminal_values_;
-    std::vector<double> backward_values_;
+    std::vector<double> node_values_;
+    std::vector<double> action_values_;
     HUNLFlatStageProfile profile_;
     std::uint32_t iterations_ = 0;
 };

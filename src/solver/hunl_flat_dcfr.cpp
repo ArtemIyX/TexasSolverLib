@@ -18,7 +18,8 @@ HUNLFlatDCFR::HUNLFlatDCFR(
       player1_reach_(graph_.nodes.size(), 0.0),
       chance_reach_(graph_.nodes.size(), 0.0),
       terminal_values_(graph_.nodes.size(), 0.0),
-      backward_values_(graph_.nodes.size(), 0.0) {}
+      node_values_(graph_.nodes.size(), 0.0),
+      action_values_(graph_.children.size(), 0.0) {}
 
 void HUNLFlatDCFR::run_iteration() {
     using clock = std::chrono::steady_clock;
@@ -96,6 +97,14 @@ const std::vector<double>& HUNLFlatDCFR::chance_reach() const noexcept {
 
 const std::vector<double>& HUNLFlatDCFR::terminal_values() const noexcept {
     return terminal_values_;
+}
+
+const std::vector<double>& HUNLFlatDCFR::node_values() const noexcept {
+    return node_values_;
+}
+
+const std::vector<double>& HUNLFlatDCFR::action_values() const noexcept {
+    return action_values_;
 }
 
 std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_average_strategy() const {
@@ -268,30 +277,52 @@ void HUNLFlatDCFR::terminal_utility_stage() {
 }
 
 void HUNLFlatDCFR::backward_value_stage() {
-    std::fill(backward_values_.begin(), backward_values_.end(), 0.0);
+    std::fill(node_values_.begin(), node_values_.end(), 0.0);
+    std::fill(action_values_.begin(), action_values_.end(), 0.0);
     for (const auto node_idx : graph_.reverse_order) {
         const auto& meta = graph_.node_meta[node_idx];
         if (meta.type == HUNLFlatNodeType::TerminalFold || meta.type == HUNLFlatNodeType::TerminalShowdown) {
-            backward_values_[node_idx] = terminal_values_[node_idx];
+            node_values_[node_idx] = terminal_values_[node_idx];
             continue;
         }
         if (meta.child_count == 0) {
             continue;
         }
 
-        double total = 0.0;
         if (meta.type == HUNLFlatNodeType::Chance) {
+            double total = 0.0;
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
                 const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
-                total += outcome.probability * backward_values_[outcome.child];
+                const auto child_value = node_values_[outcome.child];
+                action_values_[meta.child_begin + i] = child_value;
+                total += outcome.probability * child_value;
             }
-        } else {
-            for (std::size_t i = 0; i < meta.child_count; ++i) {
-                total += backward_values_[graph_.children[meta.child_begin + i]];
-            }
-            total /= static_cast<double>(meta.child_count);
+            node_values_[node_idx] = total;
+            continue;
         }
-        backward_values_[node_idx] = total;
+
+        if (meta.type != HUNLFlatNodeType::Decision || !meta.has_infoset) {
+            continue;
+        }
+
+        const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
+        const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
+        const std::size_t representative_hand = 0;
+        double node_value = 0.0;
+        for (std::size_t i = 0; i < meta.child_count; ++i) {
+            const auto child = graph_.children[meta.child_begin + i];
+            const auto child_value = node_values_[child];
+            action_values_[meta.child_begin + i] = child_value;
+
+            double action_prob = 1.0 / static_cast<double>(meta.child_count);
+            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+                action_prob = strategy[i * static_cast<std::size_t>(infoset_meta.hand_count) + representative_hand];
+            } else {
+                action_prob = strategy[representative_hand * static_cast<std::size_t>(infoset_meta.action_count) + i];
+            }
+            node_value += action_prob * child_value;
+        }
+        node_values_[node_idx] = node_value;
     }
 }
 

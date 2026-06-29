@@ -316,7 +316,7 @@ Output:
 
 - one explicit leaf-value stage
 
-### Step 3.5. Implement backward counterfactual value propagation
+### + Step 3.5. Implement backward counterfactual value propagation
 
 Substeps:
 

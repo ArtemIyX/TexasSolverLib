@@ -195,3 +195,91 @@ TEST_CASE(hunl_flat_dcfr_terminal_stage_uses_precomputed_leaf_utilities) {
 
     EXPECT_TRUE(saw_terminal);
 }
+
+TEST_CASE(hunl_flat_dcfr_backward_stage_copies_terminal_values_into_node_values) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    bool saw_terminal = false;
+    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        if (meta.type != core::HUNLFlatNodeType::TerminalFold &&
+            meta.type != core::HUNLFlatNodeType::TerminalShowdown) {
+            continue;
+        }
+        saw_terminal = true;
+        EXPECT_NEAR(solver.node_values()[node_idx], solver.terminal_values()[node_idx], 1e-12);
+    }
+
+    EXPECT_TRUE(saw_terminal);
+}
+
+TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    bool checked_parent = false;
+    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        if (meta.child_count == 0) {
+            continue;
+        }
+
+        for (std::size_t i = 0; i < meta.child_count; ++i) {
+            const auto child = graph.children[meta.child_begin + i];
+            EXPECT_NEAR(
+                solver.action_values()[meta.child_begin + i],
+                solver.node_values()[child],
+                1e-12);
+        }
+        checked_parent = true;
+        break;
+    }
+
+    EXPECT_TRUE(checked_parent);
+}
+
+TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    auto& table = solver.infoset_table_mut();
+    const auto& root_meta = graph.node_meta[graph.root];
+    const auto infoset_id = root_meta.infoset_id;
+    auto* regret = table.regret_mut(infoset_id);
+    for (std::size_t i = 0; i < table.row_value_count(infoset_id); ++i) {
+        regret[i] = 0.0;
+    }
+    if (root_meta.child_count >= 2) {
+        const auto hand_count = table.meta()[infoset_id.value].hand_count;
+        regret[0] = 4.0;
+        regret[hand_count] = 1.0;
+    }
+
+    solver.run_iteration();
+
+    if (root_meta.type == core::HUNLFlatNodeType::Decision && root_meta.child_count >= 2) {
+        const auto a0 = solver.action_values()[root_meta.child_begin];
+        const auto a1 = solver.action_values()[root_meta.child_begin + 1];
+        EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
+        EXPECT_TRUE(solver.node_values()[graph.root] >= std::min(a0, a1) - 1e-12);
+    } else {
+        EXPECT_TRUE(root_meta.child_count > 0);
+    }
+}
