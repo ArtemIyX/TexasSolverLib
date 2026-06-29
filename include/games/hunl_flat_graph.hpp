@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/types.hpp"
 #include "games/hunl_tree.hpp"
 
 #include <array>
@@ -30,6 +31,8 @@ struct HUNLFlatNode {
     std::uint32_t chance_begin = 0;
     std::uint32_t chance_count = 0;
     std::uint8_t action_count = 0;
+    InfosetId infoset_id{};
+    bool has_infoset = false;
     TerminalKind terminal_kind = TerminalKind::non_terminal();
     std::optional<std::string> infoset_key = std::nullopt;
 };
@@ -40,11 +43,21 @@ struct HUNLFlatChanceOutcome {
     std::uint32_t child = 0;
 };
 
+struct HUNLFlatInfoset {
+    InfosetId id{};
+    std::uint32_t node_begin = 0;
+    std::uint32_t node_count = 0;
+    std::uint8_t action_count = 0;
+    std::string key;
+};
+
 struct HUNLFlatSolveGraph {
     std::vector<HUNLFlatNode> nodes;
     std::vector<std::uint32_t> children;
     std::vector<ActionId> actions;
     std::vector<HUNLFlatChanceOutcome> chance_outcomes;
+    std::vector<HUNLFlatInfoset> infosets;
+    std::vector<std::uint32_t> infoset_nodes;
     std::uint32_t root = 0;
     std::uint32_t max_depth = 0;
     std::uint8_t max_actions = 0;

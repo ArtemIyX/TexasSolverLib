@@ -1,7 +1,9 @@
 #include "games/hunl_flat_graph.hpp"
 #include "test_harness.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <unordered_map>
 
 TEST_CASE(hunl_flat_graph_builds_from_tree_with_stable_indices) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
@@ -12,6 +14,7 @@ TEST_CASE(hunl_flat_graph_builds_from_tree_with_stable_indices) {
     EXPECT_EQ(graph.max_depth, tree.max_depth);
     EXPECT_EQ(graph.max_actions, tree.max_actions);
     EXPECT_EQ(static_cast<std::size_t>(graph.nodes.size()), static_cast<std::size_t>(tree.nodes.size()));
+    EXPECT_TRUE(!graph.infosets.empty());
 }
 
 TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
@@ -70,4 +73,50 @@ TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
     EXPECT_TRUE(saw_decision);
     EXPECT_TRUE(saw_fold);
     EXPECT_TRUE(saw_showdown);
+}
+
+TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto tree = core::HUNLTree::build(config);
+    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+
+    std::unordered_map<std::string, std::uint32_t> expected_ids_by_key;
+    std::uint32_t expected_next_id = 0;
+
+    for (std::uint32_t node_idx = 0; node_idx < graph.nodes.size(); ++node_idx) {
+        const auto& node = graph.nodes[node_idx];
+        if (node.type != core::HUNLFlatNodeType::Decision) {
+            EXPECT_TRUE(!node.has_infoset);
+            continue;
+        }
+
+        EXPECT_TRUE(node.has_infoset);
+        EXPECT_TRUE(node.infoset_key.has_value());
+
+        const auto [it, inserted] =
+            expected_ids_by_key.emplace(*node.infoset_key, node.infoset_id.value);
+        if (inserted) {
+            EXPECT_EQ(node.infoset_id.value, expected_next_id);
+            ++expected_next_id;
+        } else {
+            EXPECT_EQ(node.infoset_id.value, it->second);
+        }
+
+        EXPECT_TRUE(node.infoset_id.value < graph.infosets.size());
+        const auto& infoset = graph.infosets[node.infoset_id.value];
+        EXPECT_EQ(infoset.id.value, node.infoset_id.value);
+        EXPECT_EQ(infoset.key, *node.infoset_key);
+        EXPECT_EQ(infoset.action_count, node.action_count);
+
+        bool found_node = false;
+        for (std::uint32_t i = 0; i < infoset.node_count; ++i) {
+            if (graph.infoset_nodes[infoset.node_begin + i] == node_idx) {
+                found_node = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found_node);
+    }
+
+    EXPECT_EQ(static_cast<std::size_t>(expected_ids_by_key.size()), static_cast<std::size_t>(graph.infosets.size()));
 }

@@ -142,7 +142,7 @@ Output:
 Purpose:
 Move all game-structure discovery out of the hot path.
 
-### Step 1.1. Introduce a dedicated flat HUNL solve graph
+### + Step 1.1. Introduce a dedicated flat HUNL solve graph
 
 Substeps:
 
@@ -159,7 +159,7 @@ Output:
 
 - a compact, index-addressable graph for solving
 
-### Step 1.2. Assign stable numeric infoset IDs during graph build
+### + Step 1.2. Assign stable numeric infoset IDs during graph build
 
 Substeps:
 
