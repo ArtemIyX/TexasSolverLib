@@ -25,7 +25,7 @@ struct ParallelSolvePlan {
 };
 
 struct ParallelWorkerState {
-    std::unordered_map<InfosetKey, detail::InfosetAccum> accum;
+    std::unordered_map<InfosetId, detail::InfosetAccum> accum;
 };
 
 template <class G>
@@ -41,31 +41,34 @@ public:
     SolveOutput solve(std::uint32_t iterations);
 
 private:
-    using StrategyMap = std::unordered_map<InfosetKey, std::vector<Probability>>;
+    using StrategyMap = std::unordered_map<InfosetId, std::vector<Probability>>;
     using SharedStrategyMap = std::shared_ptr<const StrategyMap>;
 
     ParallelSolvePlan build_plan() const;
     static void validate_plan(const ParallelSolvePlan& plan);
     ParallelWorkerState make_worker_state() const;
     static void merge_worker_state(
-        std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
+        std::unordered_map<InfosetId, detail::InfosetAccum>& canonical,
         ParallelWorkerState worker_state);
     static SharedStrategyMap build_strategy_snapshot(
-        const std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical);
+        const std::unordered_map<InfosetId, detail::InfosetAccum>& canonical);
     double cfr(
         const G& state,
         PlayerId traversing_player,
         const std::array<double, 2>& reach_probs,
         double chance_reach,
         const StrategyMap& strategy,
-        ParallelWorkerState& worker_state) const;
+        ParallelWorkerState& worker_state);
+    InfosetId lookup_infoset_id(const G& state, PlayerId player, std::size_t action_count);
     StrategyMap build_average_strategy() const;
     DCFRConfig config_;
     G root_;
     std::size_t worker_count_ = 1;
     std::size_t frontier_multiplier_ = 8;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
-    std::unordered_map<InfosetKey, detail::InfosetAccum> infosets_;
+    InfosetRegistry registry_;
+    std::unordered_map<InfosetId, std::vector<Probability>> locked_by_id_;
+    std::unordered_map<InfosetId, detail::InfosetAccum> infosets_;
 };
 
 }  // namespace core

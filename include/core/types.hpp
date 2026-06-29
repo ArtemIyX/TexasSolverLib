@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <array>
 #include <optional>
+#include <functional>
 #include <unordered_map>
 #include <string>
 #include <utility>
@@ -25,6 +26,24 @@ using ActionId = int;
  * @brief Infoset lookup key.
  */
 using InfosetKey = std::string;
+/**
+ * @brief Internal numeric infoset identifier used by solver internals.
+ */
+struct InfosetId {
+    std::uint32_t value = 0;
+
+    constexpr bool operator==(const InfosetId& other) const noexcept {
+        return value == other.value;
+    }
+
+    constexpr bool operator!=(const InfosetId& other) const noexcept {
+        return value != other.value;
+    }
+
+    constexpr bool operator<(const InfosetId& other) const noexcept {
+        return value < other.value;
+    }
+};
 /**
  * @brief Probability mass for strategy vectors and chance outcomes.
  */
@@ -75,5 +94,12 @@ struct SolveOutput {
 };
 
 }  // namespace core
+
+template <>
+struct std::hash<core::InfosetId> {
+    std::size_t operator()(const core::InfosetId& id) const noexcept {
+        return std::hash<std::uint32_t>{}(id.value);
+    }
+};
 
 

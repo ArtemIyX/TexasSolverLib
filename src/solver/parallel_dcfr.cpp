@@ -393,10 +393,10 @@ ParallelWorkerState ParallelDCFRSolver<G>::make_worker_state() const {
 
 template <class G>
 void ParallelDCFRSolver<G>::merge_worker_state(
-    std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
+    std::unordered_map<InfosetId, detail::InfosetAccum>& canonical,
     ParallelWorkerState worker_state) {
-    for (auto& [key, local] : worker_state.accum) {
-        auto& target = canonical[key];
+    for (auto& [id, local] : worker_state.accum) {
+        auto& target = canonical[id];
         if (target.regret_sum.empty()) {
             target = std::move(local);
             continue;
@@ -414,13 +414,13 @@ void ParallelDCFRSolver<G>::merge_worker_state(
 
 template <class G>
 typename ParallelDCFRSolver<G>::SharedStrategyMap ParallelDCFRSolver<G>::build_strategy_snapshot(
-    const std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical) {
+    const std::unordered_map<InfosetId, detail::InfosetAccum>& canonical) {
     auto out = std::make_shared<StrategyMap>();
     out->max_load_factor(0.7f);
     out->reserve(canonical.size());
-    for (const auto& [key, accum] : canonical) {
+    for (const auto& [id, accum] : canonical) {
         if (!accum.regret_sum.empty()) {
-            out->emplace(key, detail::normalize_strategy(accum.regret_sum));
+            out->emplace(id, detail::normalize_strategy(accum.regret_sum));
         }
     }
     return out;
@@ -433,7 +433,7 @@ double ParallelDCFRSolver<G>::cfr(
     const std::array<double, 2>& reach_probs,
     double chance_reach,
     const StrategyMap& strategy,
-    ParallelWorkerState& worker_state) const {
+    ParallelWorkerState& worker_state) {
     if (state.is_terminal()) {
         return state.utility().at(static_cast<std::size_t>(traversing_player));
     }
@@ -450,18 +450,18 @@ double ParallelDCFRSolver<G>::cfr(
     }
 
     const auto actions = state.legal_actions();
-    const auto key = state.infoset_key(player);
-    auto& accum = worker_state.accum[key];
+    const auto id = lookup_infoset_id(state, player, actions.size());
+    auto& accum = worker_state.accum[id];
     if (accum.regret_sum.empty()) {
         accum.regret_sum.assign(actions.size(), 0.0);
         accum.strategy_sum.assign(actions.size(), 0.0);
     }
 
     std::vector<Probability> local_strategy;
-    if (const auto locked_it = locked_.find(key);
-        locked_it != locked_.end() && locked_it->second.size() == actions.size()) {
+    if (const auto locked_it = locked_by_id_.find(id);
+        locked_it != locked_by_id_.end() && locked_it->second.size() == actions.size()) {
         local_strategy = locked_it->second;
-    } else if (const auto it = strategy.find(key);
+    } else if (const auto it = strategy.find(id);
                it != strategy.end() && it->second.size() == actions.size()) {
         local_strategy = it->second;
     } else {
@@ -485,7 +485,7 @@ double ParallelDCFRSolver<G>::cfr(
         node_value += local_strategy[i] * action_values[i];
     }
 
-    if (player == traversing_player && locked_.find(key) == locked_.end()) {
+    if (player == traversing_player && locked_by_id_.find(id) == locked_by_id_.end()) {
         const PlayerId opponent = 1 - traversing_player;
         const double opponent_reach = chance_reach * reach_probs[static_cast<std::size_t>(opponent)];
         for (std::size_t i = 0; i < actions.size(); ++i) {
@@ -497,16 +497,27 @@ double ParallelDCFRSolver<G>::cfr(
 }
 
 template <class G>
+InfosetId ParallelDCFRSolver<G>::lookup_infoset_id(const G& state, PlayerId player, std::size_t action_count) {
+    const auto key = state.infoset_key(player);
+    const auto id = registry_.intern(key, action_count);
+    if (const auto locked_it = locked_.find(key);
+        locked_it != locked_.end() && locked_it->second.size() == action_count) {
+        locked_by_id_.emplace(id, locked_it->second);
+    }
+    return id;
+}
+
+template <class G>
 typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_average_strategy() const {
     StrategyMap out;
     out.reserve(infosets_.size());
-    for (const auto& [key, accum] : infosets_) {
-        if (const auto locked_it = locked_.find(key);
-            locked_it != locked_.end() && locked_it->second.size() == accum.strategy_sum.size()) {
-            out.emplace(key, locked_it->second);
+    for (const auto& [id, accum] : infosets_) {
+        if (const auto locked_it = locked_by_id_.find(id);
+            locked_it != locked_by_id_.end() && locked_it->second.size() == accum.strategy_sum.size()) {
+            out.emplace(id, locked_it->second);
             continue;
         }
-        out.emplace(key, detail::normalize_or_uniform(accum.strategy_sum));
+        out.emplace(id, detail::normalize_or_uniform(accum.strategy_sum));
     }
     return out;
 }
@@ -524,6 +535,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     const auto plan = build_plan();
     validate_plan(plan);
     infosets_.clear();
+    registry_.clear();
+    locked_by_id_.clear();
     const bool profile_enabled = profile_parallel_dcfr_enabled();
 
     const auto root_player = root_.current_player();
@@ -583,6 +596,11 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
         const auto finalize_start = std::chrono::steady_clock::now();
         const auto average_strategy = build_average_strategy();
+        std::unordered_map<InfosetKey, std::vector<Probability>> average_strategy_by_key;
+        average_strategy_by_key.reserve(average_strategy.size());
+        for (const auto& [id, strategy] : average_strategy) {
+            average_strategy_by_key.emplace(registry_.key_for(id), strategy);
+        }
         SolveOutput out;
         out.iterations = iterations;
         out.used_parallel = false;
@@ -594,13 +612,13 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         out.profile.batch_count = batches.size();
         out.profile.snapshot_seconds = snapshot_seconds;
         out.profile.merge_seconds = merge_seconds;
-        out.game_value = detail::expected_value_player(root_, average_strategy, 0);
-        const double br0 = detail::best_response_value(root_, average_strategy, 0);
-        const double br1 = detail::best_response_value(root_, average_strategy, 1);
+        out.game_value = detail::expected_value_player(root_, average_strategy_by_key, 0);
+        const double br0 = detail::best_response_value(root_, average_strategy_by_key, 0);
+        const double br1 = detail::best_response_value(root_, average_strategy_by_key, 1);
         out.exploitability = br0 + br1;
         out.average_strategy.reserve(average_strategy.size());
-        for (const auto& [key, strategy] : average_strategy) {
-            out.average_strategy.emplace_back(key, strategy);
+        for (auto& [key, strategy] : average_strategy_by_key) {
+            out.average_strategy.emplace_back(std::move(key), std::move(strategy));
         }
         std::sort(
             out.average_strategy.begin(),
@@ -764,6 +782,11 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
     const auto finalize_start = std::chrono::steady_clock::now();
     const auto average_strategy = build_average_strategy();
+    std::unordered_map<InfosetKey, std::vector<Probability>> average_strategy_by_key;
+    average_strategy_by_key.reserve(average_strategy.size());
+    for (const auto& [id, strategy] : average_strategy) {
+        average_strategy_by_key.emplace(registry_.key_for(id), strategy);
+    }
     SolveOutput out;
     out.iterations = iterations;
     out.used_parallel = true;
@@ -776,13 +799,13 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     out.profile.snapshot_seconds = snapshot_seconds;
     out.profile.merge_seconds = merge_seconds;
     out.profile.workers = pool.worker_profiles;
-    out.game_value = detail::expected_value_player(root_, average_strategy, 0);
-    const double br0 = detail::best_response_value(root_, average_strategy, 0);
-    const double br1 = detail::best_response_value(root_, average_strategy, 1);
+    out.game_value = detail::expected_value_player(root_, average_strategy_by_key, 0);
+    const double br0 = detail::best_response_value(root_, average_strategy_by_key, 0);
+    const double br1 = detail::best_response_value(root_, average_strategy_by_key, 1);
     out.exploitability = br0 + br1;
     out.average_strategy.reserve(average_strategy.size());
-    for (const auto& [key, strategy] : average_strategy) {
-        out.average_strategy.emplace_back(key, strategy);
+    for (auto& [key, strategy] : average_strategy_by_key) {
+        out.average_strategy.emplace_back(std::move(key), std::move(strategy));
     }
     std::sort(
         out.average_strategy.begin(),
