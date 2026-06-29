@@ -20,11 +20,21 @@ void validate_dcfr_parameters(double alpha, double beta, double gamma);
 /**
  * @brief Solve Kuhn poker with DCFR.
  */
-SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, double gamma);
+SolveOutput solve_kuhn(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers = 1);
 /**
  * @brief Solve Leduc poker with DCFR.
  */
-SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma);
+SolveOutput solve_leduc(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers = 1);
 
 namespace detail {
 
@@ -230,12 +240,13 @@ SolveOutput solve_generic(
     double alpha,
     double beta,
     double gamma,
+    std::size_t workers,
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_strategies = {}) {
     validate_dcfr_parameters(alpha, beta, gamma);
 
     SolveOutput output;
-    if (parallel_dcfr_enabled()) {
-        ParallelDCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial());
+    if (workers > 1) {
+        ParallelDCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial(), workers);
         solver.set_locked_strategies(std::move(locked_strategies));
         output = solver.solve(iterations);
     } else {

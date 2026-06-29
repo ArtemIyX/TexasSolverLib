@@ -47,15 +47,25 @@ using ::core::VectorSolveOutput;
 /**
  * @brief Solve Kuhn poker through the library facade.
  */
-inline SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, double gamma) {
-    return ::core::solve_kuhn(iterations, alpha, beta, gamma);
+inline SolveOutput solve_kuhn(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers = 1) {
+    return ::core::solve_kuhn(iterations, alpha, beta, gamma, workers);
 }
 
 /**
  * @brief Solve Leduc poker through the library facade.
  */
-inline SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma) {
-    return ::core::solve_leduc(iterations, alpha, beta, gamma);
+inline SolveOutput solve_leduc(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers = 1) {
+    return ::core::solve_leduc(iterations, alpha, beta, gamma, workers);
 }
 
 inline HUNLSolveOutput solve_hunl_postflop(
@@ -63,8 +73,9 @@ inline HUNLSolveOutput solve_hunl_postflop(
     std::uint32_t iterations,
     double alpha,
     double beta,
-    double gamma) {
-    return ::core::solve_hunl_postflop(config, iterations, alpha, beta, gamma);
+    double gamma,
+    std::size_t workers = 1) {
+    return ::core::solve_hunl_postflop(config, iterations, alpha, beta, gamma, workers);
 }
 
 inline PreflopSolveOutput solve_hunl_preflop(

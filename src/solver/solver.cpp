@@ -14,12 +14,22 @@ void validate_dcfr_parameters(double alpha, double beta, double gamma) {
     }
 }
 
-SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, double gamma) {
-    return detail::solve_generic<KuhnState>(iterations, alpha, beta, gamma);
+SolveOutput solve_kuhn(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers) {
+    return detail::solve_generic<KuhnState>(iterations, alpha, beta, gamma, workers);
 }
 
-SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma) {
-    return detail::solve_generic<LeducState>(iterations, alpha, beta, gamma);
+SolveOutput solve_leduc(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers) {
+    return detail::solve_generic<LeducState>(iterations, alpha, beta, gamma, workers);
 }
 
 }  // namespace core

@@ -33,10 +33,9 @@ std::size_t parse_worker_count(const char* raw) {
     }
 }
 
-ParallelSolvePlan make_partition_plan(std::size_t branch_count) {
+ParallelSolvePlan make_partition_plan(std::size_t branch_count, std::size_t requested_workers) {
     ParallelSolvePlan plan;
-    plan.enabled = parallel_dcfr_enabled();
-    const std::size_t requested_workers = parallel_dcfr_worker_count();
+    plan.enabled = requested_workers > 1;
     plan.worker_count = std::max<std::size_t>(1, std::min(requested_workers, branch_count));
     plan.items.reserve(plan.worker_count);
 
@@ -103,8 +102,8 @@ std::size_t parallel_dcfr_worker_count() {
 }
 
 template <class G>
-ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root)
-    : config_(config), root_(std::move(root)) {
+ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root, std::size_t worker_count)
+    : config_(config), root_(std::move(root)), worker_count_(std::max<std::size_t>(1, worker_count)) {
     validate_alpha(config_.alpha);
     if (config_.beta < 0.0 || config_.gamma < 0.0) {
         throw std::invalid_argument("DCFR beta and gamma must be non-negative");
@@ -114,13 +113,13 @@ ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root)
 template <class G>
 ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
     if (root_.is_terminal()) {
-        return make_partition_plan(1);
+        return make_partition_plan(1, worker_count_);
     }
 
     const auto branch_count = root_.current_player() < 0
         ? root_.chance_outcomes().size()
         : root_.legal_actions().size();
-    return make_partition_plan(std::max<std::size_t>(1, branch_count));
+    return make_partition_plan(std::max<std::size_t>(1, branch_count), worker_count_);
 }
 
 template <class G>

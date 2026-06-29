@@ -30,7 +30,8 @@ HUNLSolveOutput solve_hunl_postflop(
     std::uint32_t iterations,
     double alpha,
     double beta,
-    double gamma);
+    double gamma,
+    std::size_t workers = 1);
 
 void validate_config(const HUNLConfig& config);
 

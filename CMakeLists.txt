@@ -109,6 +109,12 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     )
     target_link_libraries(texas_solver_example PRIVATE texas_core)
     target_include_directories(texas_solver_example PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+    add_executable(texas_solver_benchmark
+        examples/benchmarks/main.cpp
+    )
+    target_link_libraries(texas_solver_benchmark PRIVATE texas_core)
+    target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
 
 if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)

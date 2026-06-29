@@ -30,7 +30,10 @@ struct ParallelWorkerState {
 template <class G>
 class ParallelDCFRSolver : public DCFRSolverBase {
 public:
-    explicit ParallelDCFRSolver(DCFRConfig config, G root = G::initial());
+    explicit ParallelDCFRSolver(
+        DCFRConfig config,
+        G root = G::initial(),
+        std::size_t worker_count = 1);
 
     void set_locked_strategies(std::unordered_map<InfosetKey, std::vector<Probability>> locked);
     SolveOutput solve(std::uint32_t iterations);
@@ -56,6 +59,7 @@ private:
     StrategyMap build_average_strategy() const;
     DCFRConfig config_;
     G root_;
+    std::size_t worker_count_ = 1;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
     std::unordered_map<InfosetKey, detail::InfosetAccum> infosets_;
 };
