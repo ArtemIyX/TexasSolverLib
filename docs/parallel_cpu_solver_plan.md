@@ -201,7 +201,7 @@ Output:
 
 - explicit stage-friendly traversal order
 
-## Phase 2. Replace dynamic infoset storage with flat arrays
+## + Phase 2. Replace dynamic infoset storage with flat arrays
 
 Purpose:
 Make the solve state cache-friendly and thread-friendly.

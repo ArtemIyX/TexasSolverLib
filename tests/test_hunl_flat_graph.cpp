@@ -109,6 +109,7 @@ TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
         EXPECT_EQ(infoset.id.value, node.infoset_id.value);
         EXPECT_EQ(infoset.key, *node.infoset_key);
         EXPECT_EQ(infoset.action_count, node.action_count);
+        EXPECT_EQ(infoset.player, node.player);
 
         bool found_node = false;
         for (std::uint32_t i = 0; i < infoset.node_count; ++i) {

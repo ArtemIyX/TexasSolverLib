@@ -64,6 +64,7 @@ struct HUNLFlatInfoset {
     std::uint32_t node_begin = 0;
     std::uint32_t node_count = 0;
     std::uint8_t action_count = 0;
+    PlayerId player = -1;
     std::string key;
 };
 

@@ -76,6 +76,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
     std::unordered_map<std::string, InfosetId> infoset_ids_by_key;
     std::vector<std::vector<std::uint32_t>> infoset_node_lists;
     std::vector<std::uint8_t> infoset_action_counts;
+    std::vector<PlayerId> infoset_players;
     std::vector<std::string> infoset_keys;
 
     for (std::uint32_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
@@ -126,6 +127,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
                 infoset_ids_by_key.emplace(*node.infoset_key, id);
                 infoset_node_lists.push_back({});
                 infoset_action_counts.push_back(flat_node.action_count);
+                infoset_players.push_back(flat_node.player);
                 infoset_keys.push_back(*node.infoset_key);
                 flat_node.infoset_id = id;
             } else {
@@ -133,6 +135,10 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
                 const auto action_count = infoset_action_counts[flat_node.infoset_id.value];
                 if (action_count != flat_node.action_count) {
                     throw std::logic_error("infoset nodes must agree on action_count");
+                }
+                const auto player = infoset_players[flat_node.infoset_id.value];
+                if (player != flat_node.player) {
+                    throw std::logic_error("infoset nodes must agree on owning player");
                 }
             }
             infoset_node_lists[flat_node.infoset_id.value].push_back(node_idx);
@@ -169,6 +175,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         infoset.node_begin = static_cast<std::uint32_t>(graph.infoset_nodes.size());
         infoset.node_count = static_cast<std::uint32_t>(node_list.size());
         infoset.action_count = infoset_action_counts[infoset_index];
+        infoset.player = infoset_players[infoset_index];
         infoset.key = infoset_keys[infoset_index];
         graph.infoset_nodes.insert(graph.infoset_nodes.end(), node_list.begin(), node_list.end());
         graph.infosets.push_back(std::move(infoset));
