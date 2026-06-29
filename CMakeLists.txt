@@ -5,6 +5,7 @@ project(TexasSolver VERSION 0.1.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
+find_package(Threads REQUIRED)
 
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" ON)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" ON)
@@ -39,6 +40,7 @@ target_sources(texas_core PRIVATE ${TEXASSOLVER_SOURCES})
 if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
     target_link_libraries(texas_core PRIVATE pheval)
 endif()
+target_link_libraries(texas_core PRIVATE Threads::Threads)
 
 target_include_directories(texas_core
     PUBLIC

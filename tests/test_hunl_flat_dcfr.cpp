@@ -23,6 +23,37 @@ TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration) {
     EXPECT_TRUE(solver.profile().average_strategy_seconds >= 0.0);
 }
 
+TEST_CASE(hunl_flat_dcfr_keeps_configured_worker_pool_across_iterations) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 3},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        3);
+
+    EXPECT_EQ(solver.worker_count(), 3U);
+    solver.run_iteration();
+    solver.run_iteration();
+
+    EXPECT_EQ(solver.worker_count(), 3U);
+    EXPECT_EQ(solver.iterations(), 2U);
+}
+
+TEST_CASE(hunl_flat_dcfr_accepts_single_worker_pool_configuration) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1);
+
+    EXPECT_EQ(solver.worker_count(), 1U);
+    solver.run_iteration();
+    EXPECT_EQ(solver.iterations(), 1U);
+}
+
 TEST_CASE(hunl_flat_dcfr_strategy_stage_writes_normalized_rows) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
     const auto graph = core::HUNLFlatSolveGraph::build(config);

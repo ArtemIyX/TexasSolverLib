@@ -4,9 +4,14 @@
 #include "solver/hunl_flat_state.hpp"
 
 #include <array>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
+#include <functional>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -27,9 +32,17 @@ public:
         HUNLFlatSolveGraph graph,
         std::array<std::size_t, 2> hand_count_per_player,
         HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand,
+        std::size_t workers = 1,
         double alpha = 1.5,
         double beta = 0.0,
         double gamma = 2.0);
+
+    ~HUNLFlatDCFR();
+
+    HUNLFlatDCFR(const HUNLFlatDCFR&) = delete;
+    HUNLFlatDCFR& operator=(const HUNLFlatDCFR&) = delete;
+    HUNLFlatDCFR(HUNLFlatDCFR&&) = delete;
+    HUNLFlatDCFR& operator=(HUNLFlatDCFR&&) = delete;
 
     void run_iteration();
     void run_iterations(std::uint32_t iterations);
@@ -45,10 +58,37 @@ public:
     [[nodiscard]] const std::vector<double>& terminal_values() const noexcept;
     [[nodiscard]] const std::vector<double>& node_values() const noexcept;
     [[nodiscard]] const std::vector<double>& action_values() const noexcept;
+    [[nodiscard]] std::size_t worker_count() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
 private:
+    class WorkerPool {
+    public:
+        explicit WorkerPool(std::size_t worker_count);
+        ~WorkerPool();
+
+        WorkerPool(const WorkerPool&) = delete;
+        WorkerPool& operator=(const WorkerPool&) = delete;
+
+        void run_stage(const std::function<void(std::size_t)>& fn);
+        [[nodiscard]] std::size_t worker_count() const noexcept;
+
+    private:
+        void worker_loop(std::size_t worker_index);
+
+        std::vector<std::thread> threads_;
+        std::mutex mutex_;
+        std::condition_variable cv_;
+        std::condition_variable finished_cv_;
+        std::function<void(std::size_t)> stage_fn_;
+        std::exception_ptr stage_error_;
+        std::size_t generation_ = 0;
+        std::size_t completed_workers_ = 0;
+        bool stop_ = false;
+    };
+
+    void run_stage_workers(const std::function<void(std::size_t)>& fn);
     void apply_dcfr_discount_stage();
     void compute_strategy_stage();
     void forward_reach_stage();
@@ -66,6 +106,9 @@ private:
     std::vector<double> node_values_;
     std::vector<double> action_values_;
     HUNLFlatStageProfile profile_;
+    std::size_t worker_count_ = 1;
+    HUNLFlatParallelPlan parallel_plan_;
+    std::unique_ptr<WorkerPool> worker_pool_;
     double alpha_ = 1.5;
     double beta_ = 0.0;
     double gamma_ = 2.0;

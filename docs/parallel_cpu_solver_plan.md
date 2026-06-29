@@ -340,12 +340,12 @@ Output:
 
 - a complete non-recursive CFR iteration
 
-## Phase 4. Add CPU multithreading to the staged backend
+## + Phase 4. Add CPU multithreading to the staged backend
 
 Purpose:
 Parallelize the correct units of work.
 
-### Step 4.1. Introduce a reusable worker pool
+### + Step 4.1. Introduce a reusable worker pool
 
 Substeps:
 
