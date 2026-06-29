@@ -66,7 +66,7 @@ public:
     SolveOutput solve(std::uint32_t iterations);
 
 private:
-    using StrategyMap = std::unordered_map<InfosetId, std::vector<Probability>>;
+    using StrategyMap = detail::IndexedStrategyTable;
     using SharedStrategyMap = std::shared_ptr<const StrategyMap>;
 
     ParallelSolvePlan build_plan() const;
@@ -91,7 +91,7 @@ private:
     std::size_t frontier_multiplier_ = 8;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
     InfosetRegistry registry_;
-    std::unordered_map<InfosetId, std::vector<Probability>> locked_by_id_;
+    detail::IndexedStrategyTable locked_by_id_;
     detail::InfosetAccumTable infosets_;
 };
 

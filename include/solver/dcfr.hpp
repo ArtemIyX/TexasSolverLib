@@ -56,6 +56,45 @@ struct ConstInfosetAccumView {
     std::size_t action_count = 0;
 };
 
+class IndexedStrategyTable {
+public:
+    void clear() noexcept {
+        values_.clear();
+        present_.clear();
+        size_ = 0;
+    }
+
+    void set(InfosetId id, std::vector<Probability> strategy) {
+        const auto index = static_cast<std::size_t>(id.value);
+        if (index >= values_.size()) {
+            values_.resize(index + 1);
+            present_.resize(index + 1, false);
+        }
+        if (!present_[index]) {
+            ++size_;
+        }
+        values_[index] = std::move(strategy);
+        present_[index] = true;
+    }
+
+    [[nodiscard]] std::size_t size() const noexcept {
+        return size_;
+    }
+
+    [[nodiscard]] const std::vector<Probability>* get(InfosetId id) const noexcept {
+        const auto index = static_cast<std::size_t>(id.value);
+        if (index >= values_.size() || !present_[index]) {
+            return nullptr;
+        }
+        return &values_[index];
+    }
+
+private:
+    std::vector<std::vector<Probability>> values_;
+    std::vector<bool> present_;
+    std::size_t size_ = 0;
+};
+
 class InfosetAccumTable {
 public:
     void clear() noexcept {
@@ -266,7 +305,7 @@ public:
     SolveOutput solve(std::uint32_t iterations);
 
 private:
-    using StrategyMap = std::unordered_map<InfosetId, std::vector<Probability>>;
+    using StrategyMap = detail::IndexedStrategyTable;
 
     double cfr(
         const G& state,
@@ -280,7 +319,7 @@ private:
     G root_;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
     InfosetRegistry registry_;
-    std::unordered_map<InfosetId, std::vector<Probability>> locked_by_id_;
+    detail::IndexedStrategyTable locked_by_id_;
     detail::InfosetAccumTable infosets_;
 };
 
@@ -330,9 +369,9 @@ double DCFRSolver<G>::cfr(
     auto accum = infosets_.ensure(id, actions.size());
 
     std::vector<Probability> strategy;
-    if (const auto locked_it = locked_by_id_.find(id);
-        locked_it != locked_by_id_.end() && locked_it->second.size() == actions.size()) {
-        strategy = locked_it->second;
+    if (const auto* locked_strategy = locked_by_id_.get(id);
+        locked_strategy != nullptr && locked_strategy->size() == actions.size()) {
+        strategy = *locked_strategy;
     } else {
         strategy = detail::normalize_strategy(accum.regret_sum, accum.action_count);
     }
@@ -353,7 +392,7 @@ double DCFRSolver<G>::cfr(
         node_value += strategy[i] * action_values[i];
     }
 
-    if (player == traversing_player && locked_by_id_.find(id) == locked_by_id_.end()) {
+    if (player == traversing_player && locked_by_id_.get(id) == nullptr) {
         const PlayerId opponent = 1 - traversing_player;
         const double opponent_reach = chance_reach * reach_probs[static_cast<std::size_t>(opponent)];
         for (std::size_t i = 0; i < actions.size(); ++i) {
@@ -370,12 +409,12 @@ typename DCFRSolver<G>::StrategyMap DCFRSolver<G>::build_average_strategy() cons
     for (const auto id : infosets_.active_ids()) {
         const auto action_count = registry_.meta_for(id).action_count;
         const auto accum = infosets_.view(id, action_count);
-        if (const auto locked_it = locked_by_id_.find(id);
-            locked_it != locked_by_id_.end() && locked_it->second.size() == accum.action_count) {
-            out.emplace(id, locked_it->second);
+        if (const auto* locked_strategy = locked_by_id_.get(id);
+            locked_strategy != nullptr && locked_strategy->size() == accum.action_count) {
+            out.set(id, *locked_strategy);
             continue;
         }
-        out.emplace(id, detail::normalize_or_uniform(accum.strategy_sum, accum.action_count));
+        out.set(id, detail::normalize_or_uniform(accum.strategy_sum, accum.action_count));
     }
     return out;
 }
@@ -395,9 +434,11 @@ SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
     const auto finalize_start = std::chrono::steady_clock::now();
     const auto average_strategy = build_average_strategy();
     std::unordered_map<InfosetKey, std::vector<Probability>> average_strategy_by_key;
-    average_strategy_by_key.reserve(average_strategy.size());
-    for (const auto& [id, strategy] : average_strategy) {
-        average_strategy_by_key.emplace(registry_.key_for(id), strategy);
+    average_strategy_by_key.reserve(infosets_.size());
+    for (const auto id : infosets_.active_ids()) {
+        if (const auto* strategy = average_strategy.get(id); strategy != nullptr) {
+            average_strategy_by_key.emplace(registry_.key_for(id), *strategy);
+        }
     }
 
     SolveOutput out;

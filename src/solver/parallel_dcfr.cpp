@@ -462,11 +462,10 @@ template <class G>
 typename ParallelDCFRSolver<G>::SharedStrategyMap ParallelDCFRSolver<G>::build_strategy_snapshot(
     const detail::InfosetAccumTable& canonical) {
     auto out = std::make_shared<StrategyMap>();
-    out->reserve(canonical.size());
     for (const auto id : canonical.active_ids()) {
         const auto action_count = registry_.meta_for(id).action_count;
         const auto accum = canonical.view(id, action_count);
-        out->emplace(id, detail::normalize_strategy(accum.regret_sum, accum.action_count));
+        out->set(id, detail::normalize_strategy(accum.regret_sum, accum.action_count));
     }
     return out;
 }
@@ -500,12 +499,12 @@ double ParallelDCFRSolver<G>::cfr(
     auto accum = worker_state.accum.ensure(id, registry_.meta_for(id).action_count);
 
     std::vector<Probability> local_strategy;
-    if (const auto locked_it = locked_by_id_.find(id);
-        locked_it != locked_by_id_.end() && locked_it->second.size() == actions.size()) {
-        local_strategy = locked_it->second;
-    } else if (const auto it = strategy.find(id);
-               it != strategy.end() && it->second.size() == actions.size()) {
-        local_strategy = it->second;
+    if (const auto* locked_strategy = locked_by_id_.get(id);
+        locked_strategy != nullptr && locked_strategy->size() == actions.size()) {
+        local_strategy = *locked_strategy;
+    } else if (const auto* snapshot_strategy = strategy.get(id);
+               snapshot_strategy != nullptr && snapshot_strategy->size() == actions.size()) {
+        local_strategy = *snapshot_strategy;
     } else {
         local_strategy = std::vector<Probability>(actions.size(), 1.0 / static_cast<double>(actions.size()));
     }
@@ -527,7 +526,7 @@ double ParallelDCFRSolver<G>::cfr(
         node_value += local_strategy[i] * action_values[i];
     }
 
-    if (player == traversing_player && locked_by_id_.find(id) == locked_by_id_.end()) {
+    if (player == traversing_player && locked_by_id_.get(id) == nullptr) {
         const PlayerId opponent = 1 - traversing_player;
         const double opponent_reach = chance_reach * reach_probs[static_cast<std::size_t>(opponent)];
         for (std::size_t i = 0; i < actions.size(); ++i) {
@@ -541,16 +540,15 @@ double ParallelDCFRSolver<G>::cfr(
 template <class G>
 typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_average_strategy() const {
     StrategyMap out;
-    out.reserve(infosets_.size());
     for (const auto id : infosets_.active_ids()) {
         const auto action_count = registry_.meta_for(id).action_count;
         const auto accum = infosets_.view(id, action_count);
-        if (const auto locked_it = locked_by_id_.find(id);
-            locked_it != locked_by_id_.end() && locked_it->second.size() == accum.action_count) {
-            out.emplace(id, locked_it->second);
+        if (const auto* locked_strategy = locked_by_id_.get(id);
+            locked_strategy != nullptr && locked_strategy->size() == accum.action_count) {
+            out.set(id, *locked_strategy);
             continue;
         }
-        out.emplace(id, detail::normalize_or_uniform(accum.strategy_sum, accum.action_count));
+        out.set(id, detail::normalize_or_uniform(accum.strategy_sum, accum.action_count));
     }
     return out;
 }
@@ -631,9 +629,11 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         const auto finalize_start = std::chrono::steady_clock::now();
         const auto average_strategy = build_average_strategy();
         std::unordered_map<InfosetKey, std::vector<Probability>> average_strategy_by_key;
-        average_strategy_by_key.reserve(average_strategy.size());
-        for (const auto& [id, strategy] : average_strategy) {
-            average_strategy_by_key.emplace(registry_.key_for(id), strategy);
+        average_strategy_by_key.reserve(infosets_.size());
+        for (const auto id : infosets_.active_ids()) {
+            if (const auto* strategy = average_strategy.get(id); strategy != nullptr) {
+                average_strategy_by_key.emplace(registry_.key_for(id), *strategy);
+            }
         }
         SolveOutput out;
         out.iterations = iterations;
@@ -817,9 +817,11 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     const auto finalize_start = std::chrono::steady_clock::now();
     const auto average_strategy = build_average_strategy();
     std::unordered_map<InfosetKey, std::vector<Probability>> average_strategy_by_key;
-    average_strategy_by_key.reserve(average_strategy.size());
-    for (const auto& [id, strategy] : average_strategy) {
-        average_strategy_by_key.emplace(registry_.key_for(id), strategy);
+    average_strategy_by_key.reserve(infosets_.size());
+    for (const auto id : infosets_.active_ids()) {
+        if (const auto* strategy = average_strategy.get(id); strategy != nullptr) {
+            average_strategy_by_key.emplace(registry_.key_for(id), *strategy);
+        }
     }
     SolveOutput out;
     out.iterations = iterations;
