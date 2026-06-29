@@ -22,14 +22,15 @@ namespace core {
 namespace {
 
 struct WorkBatch {
-    std::size_t begin = 0;
-    std::size_t end = 0;
+    std::vector<std::size_t> seed_indices;
+    std::size_t estimated_weight = 0;
 };
 
 template <class G>
 struct FrontierSeed {
     G state;
     double chance_reach = 1.0;
+    std::size_t estimated_weight = 0;
 };
 
 template <class G>
@@ -41,6 +42,26 @@ std::size_t child_count(const G& state) {
         return state.chance_outcomes().size();
     }
     return state.legal_actions().size();
+}
+
+template <class G>
+std::size_t estimate_subtree_weight(const G& state, std::size_t depth_budget) {
+    const auto branches = child_count(state);
+    if (depth_budget == 0 || branches == 0) {
+        return std::max<std::size_t>(1, branches);
+    }
+
+    std::size_t weight = std::max<std::size_t>(1, branches);
+    if (state.current_player() < 0) {
+        for (const auto& outcome : state.chance_outcomes()) {
+            weight += estimate_subtree_weight(state.next_state(outcome.action), depth_budget - 1);
+        }
+    } else {
+        for (const auto action : state.legal_actions()) {
+            weight += estimate_subtree_weight(state.next_state(action), depth_budget - 1);
+        }
+    }
+    return weight;
 }
 
 std::size_t parse_worker_count(const char* raw) {
@@ -165,18 +186,19 @@ std::vector<FrontierSeed<G>> build_frontier(const G& root, std::size_t target_se
         for (const auto& outcome : outcomes) {
             frontier.push_back(FrontierSeed<G>{
                 root.next_state(outcome.action),
-                outcome.probability});
+                outcome.probability,
+                0});
         }
     } else {
         const auto actions = root.legal_actions();
         frontier.reserve(std::max<std::size_t>(actions.size(), target_seeds));
         for (const auto action : actions) {
-            frontier.push_back(FrontierSeed<G>{root.next_state(action), 1.0});
+            frontier.push_back(FrontierSeed<G>{root.next_state(action), 1.0, 0});
         }
     }
 
     if (frontier.empty()) {
-        frontier.push_back(FrontierSeed<G>{root, 1.0});
+        frontier.push_back(FrontierSeed<G>{root, 1.0, 0});
         return frontier;
     }
 
@@ -205,14 +227,22 @@ std::vector<FrontierSeed<G>> build_frontier(const G& root, std::size_t target_se
             for (const auto& outcome : state.chance_outcomes()) {
                 frontier.push_back(FrontierSeed<G>{
                     state.next_state(outcome.action),
-                    seed.chance_reach * outcome.probability});
+                    seed.chance_reach * outcome.probability,
+                    0});
             }
         } else {
             for (const auto action : state.legal_actions()) {
-                frontier.push_back(FrontierSeed<G>{state.next_state(action), seed.chance_reach});
+                frontier.push_back(FrontierSeed<G>{state.next_state(action), seed.chance_reach, 0});
             }
         }
     }
+
+    for (auto& seed : frontier) {
+        seed.estimated_weight = estimate_subtree_weight(seed.state, 2);
+    }
+    std::sort(frontier.begin(), frontier.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.estimated_weight > rhs.estimated_weight;
+    });
 
     return frontier;
 }
@@ -257,19 +287,59 @@ std::size_t effective_frontier_multiplier(
     return std::clamp<std::size_t>(effective, 1, 16);
 }
 
+template <class G>
 std::vector<WorkBatch> make_work_batches(
-    std::size_t seed_count,
+    const std::vector<FrontierSeed<G>>& frontier,
     std::size_t worker_count,
     std::size_t frontier_multiplier) {
+    const auto seed_count = frontier.size();
     const std::size_t target_batches = std::max<std::size_t>(1, std::min(seed_count, worker_count * 2));
     const std::size_t min_batch_size =
         std::max<std::size_t>(1, frontier_multiplier / 2);
-    const std::size_t batch_size =
-        std::max<std::size_t>(min_batch_size, (seed_count + target_batches - 1) / target_batches);
 
     std::vector<WorkBatch> batches;
-    for (std::size_t begin = 0; begin < seed_count; begin += batch_size) {
-        batches.push_back(WorkBatch{begin, std::min(seed_count, begin + batch_size)});
+    batches.resize(target_batches);
+
+    std::vector<std::size_t> order(seed_count);
+    for (std::size_t i = 0; i < seed_count; ++i) {
+        order[i] = i;
+    }
+    std::sort(order.begin(), order.end(), [&](std::size_t lhs, std::size_t rhs) {
+        return frontier[lhs].estimated_weight > frontier[rhs].estimated_weight;
+    });
+
+    for (const auto seed_index : order) {
+        std::size_t best_batch = 0;
+        for (std::size_t i = 1; i < batches.size(); ++i) {
+            const bool underfilled_best = batches[best_batch].seed_indices.size() < min_batch_size;
+            const bool underfilled_current = batches[i].seed_indices.size() < min_batch_size;
+            if (underfilled_current != underfilled_best) {
+                if (underfilled_current) {
+                    best_batch = i;
+                }
+                continue;
+            }
+            if (batches[i].estimated_weight < batches[best_batch].estimated_weight) {
+                best_batch = i;
+            }
+        }
+
+        batches[best_batch].seed_indices.push_back(seed_index);
+        batches[best_batch].estimated_weight += frontier[seed_index].estimated_weight;
+    }
+
+    batches.erase(
+        std::remove_if(batches.begin(), batches.end(), [](const auto& batch) {
+            return batch.seed_indices.empty();
+        }),
+        batches.end());
+
+    std::sort(batches.begin(), batches.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.estimated_weight > rhs.estimated_weight;
+    });
+
+    if (batches.empty()) {
+        batches.push_back(WorkBatch{});
     }
     return batches;
 }
@@ -435,7 +505,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     const auto tuned_frontier_multiplier =
         effective_frontier_multiplier(root_, plan.worker_count, frontier_multiplier_);
     const auto frontier = build_frontier(root_, frontier_seed_target(plan.worker_count, tuned_frontier_multiplier));
-    const auto batches = make_work_batches(frontier.size(), plan.worker_count, tuned_frontier_multiplier);
+    const auto batches = make_work_batches(frontier, plan.worker_count, tuned_frontier_multiplier);
     if (frontier.empty()) {
         SolveOutput out;
         out.iterations = iterations;
@@ -533,8 +603,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                         break;
                     }
                     const auto batch = batches[batch_index];
-                    for (std::size_t i = batch.begin; i < batch.end; ++i) {
-                        const auto& seed = frontier[i];
+                    for (const auto seed_index : batch.seed_indices) {
+                        const auto& seed = frontier[seed_index];
                         cfr(
                             seed.state,
                             static_cast<PlayerId>(local_player),
