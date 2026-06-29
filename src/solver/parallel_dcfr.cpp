@@ -35,6 +35,17 @@ struct FrontierSeed {
     double chance_reach = 1.0;
 };
 
+template <class G>
+std::size_t child_count(const G& state) {
+    if (state.is_terminal()) {
+        return 0;
+    }
+    if (state.current_player() < 0) {
+        return state.chance_outcomes().size();
+    }
+    return state.legal_actions().size();
+}
+
 std::size_t parse_worker_count(const char* raw) {
     if (raw == nullptr) {
         return 1;
@@ -146,7 +157,31 @@ ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
 template <class G>
 std::vector<FrontierSeed<G>> build_frontier(const G& root, std::size_t target_seeds) {
     std::vector<FrontierSeed<G>> frontier;
-    frontier.push_back(FrontierSeed<G>{root, 1.0});
+    if (root.is_terminal()) {
+        frontier.push_back(FrontierSeed<G>{root, 1.0});
+        return frontier;
+    }
+
+    if (root.current_player() < 0) {
+        const auto outcomes = root.chance_outcomes();
+        frontier.reserve(std::max<std::size_t>(outcomes.size(), target_seeds));
+        for (const auto& outcome : outcomes) {
+            frontier.push_back(FrontierSeed<G>{
+                root.next_state(outcome.action),
+                outcome.probability});
+        }
+    } else {
+        const auto actions = root.legal_actions();
+        frontier.reserve(std::max<std::size_t>(actions.size(), target_seeds));
+        for (const auto action : actions) {
+            frontier.push_back(FrontierSeed<G>{root.next_state(action), 1.0});
+        }
+    }
+
+    if (frontier.empty()) {
+        frontier.push_back(FrontierSeed<G>{root, 1.0});
+        return frontier;
+    }
 
     while (frontier.size() < target_seeds) {
         std::size_t best_index = frontier.size();
@@ -154,19 +189,10 @@ std::vector<FrontierSeed<G>> build_frontier(const G& root, std::size_t target_se
 
         for (std::size_t i = 0; i < frontier.size(); ++i) {
             const auto& state = frontier[i].state;
-            if (state.is_terminal()) {
-                continue;
-            }
+            const auto branch_count = child_count(state);
 
-            std::size_t child_count = 0;
-            if (state.current_player() < 0) {
-                child_count = state.chance_outcomes().size();
-            } else {
-                child_count = state.legal_actions().size();
-            }
-
-            if (child_count > best_children) {
-                best_children = child_count;
+            if (branch_count > best_children) {
+                best_children = branch_count;
                 best_index = i;
             }
         }
@@ -198,10 +224,15 @@ std::size_t frontier_seed_target(std::size_t worker_count, std::size_t frontier_
     return std::max<std::size_t>(1, worker_count * frontier_multiplier);
 }
 
-std::vector<WorkBatch> make_work_batches(std::size_t seed_count, std::size_t worker_count) {
-    const std::size_t target_batches = std::max<std::size_t>(worker_count * 4, 1);
+std::vector<WorkBatch> make_work_batches(
+    std::size_t seed_count,
+    std::size_t worker_count,
+    std::size_t frontier_multiplier) {
+    const std::size_t target_batches = std::max<std::size_t>(1, std::min(seed_count, worker_count * 2));
+    const std::size_t min_batch_size =
+        std::max<std::size_t>(1, frontier_multiplier / 2);
     const std::size_t batch_size =
-        std::max<std::size_t>(1, (seed_count + target_batches - 1) / target_batches);
+        std::max<std::size_t>(min_batch_size, (seed_count + target_batches - 1) / target_batches);
 
     std::vector<WorkBatch> batches;
     for (std::size_t begin = 0; begin < seed_count; begin += batch_size) {
@@ -366,7 +397,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
     const auto root_player = root_.current_player();
     const auto frontier = build_frontier(root_, frontier_seed_target(plan.worker_count, frontier_multiplier_));
-    const auto batches = make_work_batches(frontier.size(), plan.worker_count);
+    const auto batches = make_work_batches(frontier.size(), plan.worker_count, frontier_multiplier_);
     if (frontier.empty()) {
         SolveOutput out;
         out.iterations = iterations;
