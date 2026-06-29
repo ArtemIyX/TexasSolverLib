@@ -3,6 +3,7 @@
 #include "solver/dcfr.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -41,6 +42,7 @@ public:
 
 private:
     using StrategyMap = std::unordered_map<InfosetKey, std::vector<Probability>>;
+    using SharedStrategyMap = std::shared_ptr<const StrategyMap>;
 
     ParallelSolvePlan build_plan() const;
     static void validate_plan(const ParallelSolvePlan& plan);
@@ -48,7 +50,7 @@ private:
     static void merge_worker_state(
         std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
         ParallelWorkerState worker_state);
-    static StrategyMap build_strategy_snapshot(
+    static SharedStrategyMap build_strategy_snapshot(
         const std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical);
     double cfr(
         const G& state,

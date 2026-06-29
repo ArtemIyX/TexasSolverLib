@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <condition_variable>
@@ -281,13 +282,14 @@ void ParallelDCFRSolver<G>::merge_worker_state(
 }
 
 template <class G>
-typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_strategy_snapshot(
+typename ParallelDCFRSolver<G>::SharedStrategyMap ParallelDCFRSolver<G>::build_strategy_snapshot(
     const std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical) {
-    StrategyMap out;
-    out.reserve(canonical.size());
+    auto out = std::make_shared<StrategyMap>();
+    out->max_load_factor(0.7f);
+    out->reserve(canonical.size());
     for (const auto& [key, accum] : canonical) {
         if (!accum.regret_sum.empty()) {
-            out.emplace(key, detail::normalize_strategy(accum.regret_sum));
+            out->emplace(key, detail::normalize_strategy(accum.regret_sum));
         }
     }
     return out;
@@ -386,6 +388,8 @@ void ParallelDCFRSolver<G>::set_locked_strategies(
 
 template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
+    using SharedStrategyMap = typename ParallelDCFRSolver<G>::SharedStrategyMap;
+
     const auto plan = build_plan();
     validate_plan(plan);
     infosets_.clear();
@@ -411,7 +415,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             static_cast<PlayerId>(traversing_player),
                             {1.0, 1.0},
                             outcome.probability,
-                            strategy,
+                            *strategy,
                             worker_state);
                     }
                 } else {
@@ -421,7 +425,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             static_cast<PlayerId>(traversing_player),
                             {1.0, 1.0},
                             1.0,
-                            strategy,
+                            *strategy,
                             worker_state);
                     }
                 }
@@ -455,7 +459,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         std::atomic<std::size_t> next_batch{0};
         std::size_t traversing_player = 0;
         bool stop = false;
-        std::unordered_map<InfosetKey, std::vector<Probability>> strategy;
+        SharedStrategyMap strategy;
         std::vector<ParallelWorkerState> results;
         std::exception_ptr error;
     };
@@ -497,7 +501,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             static_cast<PlayerId>(local_player),
                             {1.0, 1.0},
                             seed.chance_reach,
-                            local_strategy,
+                            *local_strategy,
                             local_state);
                     }
                 }
