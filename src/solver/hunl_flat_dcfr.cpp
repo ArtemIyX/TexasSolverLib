@@ -496,13 +496,8 @@ void HUNLFlatDCFR::terminal_utility_stage() {
         }
 
         std::fill(terminal_values_.begin(), terminal_values_.end(), 0.0);
-        for (std::size_t node_idx = 0; node_idx < graph_.node_meta.size(); ++node_idx) {
-            const auto& meta = graph_.node_meta[node_idx];
-            if (meta.type == HUNLFlatNodeType::TerminalFold) {
-                terminal_values_[node_idx] = meta.terminal_utility[0];
-            } else if (meta.type == HUNLFlatNodeType::TerminalShowdown) {
-                terminal_values_[node_idx] = meta.terminal_utility[0];
-            }
+        for (std::size_t i = 0; i < graph_.terminal_nodes.size(); ++i) {
+            terminal_values_[graph_.terminal_nodes[i]] = graph_.terminal_node_values[i];
         }
     });
 }

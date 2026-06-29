@@ -240,3 +240,22 @@ TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
     }
     EXPECT_EQ(street_total, static_cast<std::uint32_t>(graph.nodes.size()));
 }
+
+TEST_CASE(hunl_flat_graph_precomputes_compact_terminal_tables) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+
+    EXPECT_EQ(graph.terminal_nodes.size(), graph.terminal_node_values.size());
+    EXPECT_EQ(graph.fold_terminal_nodes.size(), graph.fold_terminal_values.size());
+    EXPECT_EQ(graph.showdown_terminal_nodes.size(), graph.showdown_terminal_values.size());
+
+    for (std::size_t i = 0; i < graph.terminal_nodes.size(); ++i) {
+        const auto node_idx = graph.terminal_nodes[i];
+        EXPECT_TRUE(node_idx < graph.node_meta.size());
+        const auto& meta = graph.node_meta[node_idx];
+        EXPECT_TRUE(
+            meta.type == core::HUNLFlatNodeType::TerminalFold ||
+            meta.type == core::HUNLFlatNodeType::TerminalShowdown);
+        EXPECT_NEAR(graph.terminal_node_values[i], meta.terminal_utility[0], 1e-12);
+    }
+}

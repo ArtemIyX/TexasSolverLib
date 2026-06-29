@@ -450,7 +450,7 @@ Output:
 
 - better single-core throughput and better per-thread performance
 
-### Step 5.4. Precompute terminal helpers
+### + Step 5.4. Precompute terminal helpers
 
 Substeps:
 

@@ -94,6 +94,12 @@ struct HUNLFlatSolveGraph {
     std::vector<HUNLFlatSlice> depth_slices;
     std::vector<std::uint32_t> depth_order;
     std::vector<std::vector<HUNLFlatWorkerRange>> depth_worker_ranges;
+    std::vector<std::uint32_t> terminal_nodes;
+    std::vector<double> terminal_node_values;
+    std::vector<std::uint32_t> fold_terminal_nodes;
+    std::vector<double> fold_terminal_values;
+    std::vector<std::uint32_t> showdown_terminal_nodes;
+    std::vector<double> showdown_terminal_values;
     std::uint32_t root = 0;
     std::uint32_t max_depth = 0;
     std::uint8_t max_actions = 0;

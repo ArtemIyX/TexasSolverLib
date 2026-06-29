@@ -166,6 +166,18 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
             graph.nodes.back().terminal_kind,
             graph.nodes.back().terminal_utility,
         });
+
+        if (graph.nodes.back().type == HUNLFlatNodeType::TerminalFold) {
+            graph.terminal_nodes.push_back(node_idx);
+            graph.terminal_node_values.push_back(graph.nodes.back().terminal_utility[0]);
+            graph.fold_terminal_nodes.push_back(node_idx);
+            graph.fold_terminal_values.push_back(graph.nodes.back().terminal_utility[0]);
+        } else if (graph.nodes.back().type == HUNLFlatNodeType::TerminalShowdown) {
+            graph.terminal_nodes.push_back(node_idx);
+            graph.terminal_node_values.push_back(graph.nodes.back().terminal_utility[0]);
+            graph.showdown_terminal_nodes.push_back(node_idx);
+            graph.showdown_terminal_values.push_back(graph.nodes.back().terminal_utility[0]);
+        }
     }
 
     graph.infosets.reserve(infoset_keys.size());
