@@ -47,6 +47,16 @@ std::size_t expected_board_len(Street street) {
     }
 }
 
+bool should_use_flat_hunl_backend(
+    const HUNLConfig& config,
+    std::size_t workers,
+    bool force_parallel) {
+    if (config.starting_street == Street::River) {
+        return false;
+    }
+    return force_parallel || workers > 1 || config.starting_street == Street::Turn;
+}
+
 }  // namespace
 
 HUNLBackendSelection hunl_backend_selection_from_env() {
@@ -113,8 +123,12 @@ HUNLSolveOutput solve_hunl_postflop(
     const auto start = std::chrono::steady_clock::now();
     SolveOutput solve_output;
     const auto selection = hunl_backend_selection_from_env();
+    const bool use_flat_backend =
+        selection == HUNLBackendSelection::Flat ||
+        (selection == HUNLBackendSelection::Auto &&
+         should_use_flat_hunl_backend(config, workers, force_parallel));
 
-    if (selection == HUNLBackendSelection::Flat) {
+    if (use_flat_backend) {
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto graph = HUNLFlatSolveGraph::build(shared);
         std::array<std::size_t, 2> hand_count_per_player = {1326, 1326};

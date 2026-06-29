@@ -462,12 +462,12 @@ Output:
 
 - terminal stage no longer dominates scaling
 
-## Phase 6. Integrate backend selection and fallback policy
+## + Phase 6. Integrate backend selection and fallback policy
 
 Purpose:
 Make the new backend usable without breaking the existing library.
 
-### Step 6.1. Add a dedicated HUNL flat backend API
+### + Step 6.1. Add a dedicated HUNL flat backend API
 
 Substeps:
 
@@ -479,7 +479,7 @@ Output:
 
 - new backend available without breaking callers
 
-### Step 6.2. Keep the old solver as fallback
+### + Step 6.2. Keep the old solver as fallback
 
 Substeps:
 
