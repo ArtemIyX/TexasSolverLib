@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/hunl_flat_graph.hpp"
+#include "util/aligned_allocator.hpp"
 
 #include <array>
 #include <cstddef>
@@ -8,6 +9,11 @@
 #include <vector>
 
 namespace core {
+
+inline constexpr std::size_t HUNL_CACHELINE_BYTES = 64;
+
+template <class T>
+using HUNLAlignedVector = std::vector<T, AlignedAllocator<T, HUNL_CACHELINE_BYTES>>;
 
 enum class HUNLFlatValueLayout : std::uint8_t {
     InfosetHandAction = 0,
@@ -36,13 +42,13 @@ struct HUNLFlatWorkerAssignment {
     std::vector<HUNLFlatRange> depth_node_ranges;
 };
 
-struct HUNLFlatWorkerScratch {
-    std::vector<double> terminal_values;
-    std::vector<double> node_values;
-    std::vector<double> action_values;
-    std::vector<double> player0_reach;
-    std::vector<double> player1_reach;
-    std::vector<double> chance_reach;
+struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
+    HUNLAlignedVector<double> terminal_values;
+    HUNLAlignedVector<double> node_values;
+    HUNLAlignedVector<double> action_values;
+    HUNLAlignedVector<double> player0_reach;
+    HUNLAlignedVector<double> player1_reach;
+    HUNLAlignedVector<double> chance_reach;
 
     void reset_values() noexcept;
     void ensure_capacity(std::size_t node_count, std::size_t edge_count);
@@ -84,9 +90,9 @@ private:
 
     HUNLFlatValueLayout layout_ = HUNLFlatValueLayout::InfosetHandAction;
     std::vector<HUNLFlatInfosetTableMeta> meta_;
-    std::vector<double> regret_sum_;
-    std::vector<double> strategy_sum_;
-    std::vector<double> current_strategy_;
+    HUNLAlignedVector<double> regret_sum_;
+    HUNLAlignedVector<double> strategy_sum_;
+    HUNLAlignedVector<double> current_strategy_;
 };
 
 }  // namespace core

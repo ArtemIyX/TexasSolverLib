@@ -426,7 +426,7 @@ Output:
 
 - no repeated allocation in hot stages
 
-### Step 5.2. Tune memory alignment and locality
+### + Step 5.2. Tune memory alignment and locality
 
 Substeps:
 

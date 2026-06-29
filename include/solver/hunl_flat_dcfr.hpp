@@ -67,12 +67,12 @@ public:
     [[nodiscard]] HUNLFlatInfosetTable& infoset_table_mut() noexcept;
     [[nodiscard]] const HUNLFlatStageProfile& profile() const noexcept;
     [[nodiscard]] std::uint32_t iterations() const noexcept;
-    [[nodiscard]] const std::vector<double>& player0_reach() const noexcept;
-    [[nodiscard]] const std::vector<double>& player1_reach() const noexcept;
-    [[nodiscard]] const std::vector<double>& chance_reach() const noexcept;
-    [[nodiscard]] const std::vector<double>& terminal_values() const noexcept;
-    [[nodiscard]] const std::vector<double>& node_values() const noexcept;
-    [[nodiscard]] const std::vector<double>& action_values() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& player0_reach() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& player1_reach() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& chance_reach() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& terminal_values() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& node_values() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& action_values() const noexcept;
     [[nodiscard]] std::size_t worker_count() const noexcept;
     [[nodiscard]] const HUNLFlatSchedulerDiagnostics& scheduler_diagnostics() const noexcept;
 
@@ -116,17 +116,17 @@ private:
 
     HUNLFlatSolveGraph graph_;
     HUNLFlatInfosetTable infoset_table_;
-    std::vector<double> player0_reach_;
-    std::vector<double> player1_reach_;
-    std::vector<double> chance_reach_;
-    std::vector<double> terminal_values_;
-    std::vector<double> node_values_;
-    std::vector<double> action_values_;
+    HUNLAlignedVector<double> player0_reach_;
+    HUNLAlignedVector<double> player1_reach_;
+    HUNLAlignedVector<double> chance_reach_;
+    HUNLAlignedVector<double> terminal_values_;
+    HUNLAlignedVector<double> node_values_;
+    HUNLAlignedVector<double> action_values_;
     HUNLFlatStageProfile profile_;
     std::size_t worker_count_ = 1;
     HUNLFlatParallelPlan parallel_plan_;
     std::unique_ptr<WorkerPool> worker_pool_;
-    std::vector<HUNLFlatWorkerScratch> worker_scratch_;
+    std::vector<HUNLFlatWorkerScratch, AlignedAllocator<HUNLFlatWorkerScratch, HUNL_CACHELINE_BYTES>> worker_scratch_;
     HUNLFlatSchedulerDiagnostics scheduler_diagnostics_;
     double alpha_ = 1.5;
     double beta_ = 0.0;

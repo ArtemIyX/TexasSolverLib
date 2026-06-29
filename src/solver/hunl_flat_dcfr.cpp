@@ -258,27 +258,27 @@ std::uint32_t HUNLFlatDCFR::iterations() const noexcept {
     return iterations_;
 }
 
-const std::vector<double>& HUNLFlatDCFR::player0_reach() const noexcept {
+const HUNLAlignedVector<double>& HUNLFlatDCFR::player0_reach() const noexcept {
     return player0_reach_;
 }
 
-const std::vector<double>& HUNLFlatDCFR::player1_reach() const noexcept {
+const HUNLAlignedVector<double>& HUNLFlatDCFR::player1_reach() const noexcept {
     return player1_reach_;
 }
 
-const std::vector<double>& HUNLFlatDCFR::chance_reach() const noexcept {
+const HUNLAlignedVector<double>& HUNLFlatDCFR::chance_reach() const noexcept {
     return chance_reach_;
 }
 
-const std::vector<double>& HUNLFlatDCFR::terminal_values() const noexcept {
+const HUNLAlignedVector<double>& HUNLFlatDCFR::terminal_values() const noexcept {
     return terminal_values_;
 }
 
-const std::vector<double>& HUNLFlatDCFR::node_values() const noexcept {
+const HUNLAlignedVector<double>& HUNLFlatDCFR::node_values() const noexcept {
     return node_values_;
 }
 
-const std::vector<double>& HUNLFlatDCFR::action_values() const noexcept {
+const HUNLAlignedVector<double>& HUNLFlatDCFR::action_values() const noexcept {
     return action_values_;
 }
 
