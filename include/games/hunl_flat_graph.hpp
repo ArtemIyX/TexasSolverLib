@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -34,7 +33,6 @@ struct HUNLFlatNode {
     InfosetId infoset_id{};
     bool has_infoset = false;
     TerminalKind terminal_kind = TerminalKind::non_terminal();
-    std::optional<std::string> infoset_key = std::nullopt;
 };
 
 struct HUNLFlatNodeMeta {

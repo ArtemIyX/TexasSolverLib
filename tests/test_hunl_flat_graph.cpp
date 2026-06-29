@@ -63,7 +63,6 @@ TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
         EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::Decision);
         EXPECT_EQ(static_cast<std::size_t>(flat_node.child_count), static_cast<std::size_t>(tree_node.children.size()));
         EXPECT_EQ(static_cast<std::size_t>(flat_node.action_count), static_cast<std::size_t>(tree_node.legal_actions.size()));
-        EXPECT_TRUE(flat_node.infoset_key.has_value());
         saw_decision = true;
 
         for (std::size_t i = 0; i < tree_node.children.size(); ++i) {
@@ -93,10 +92,10 @@ TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
         }
 
         EXPECT_TRUE(node.has_infoset);
-        EXPECT_TRUE(node.infoset_key.has_value());
+        const auto& infoset = graph.infosets[node.infoset_id.value];
 
         const auto [it, inserted] =
-            expected_ids_by_key.emplace(*node.infoset_key, node.infoset_id.value);
+            expected_ids_by_key.emplace(infoset.key, node.infoset_id.value);
         if (inserted) {
             EXPECT_EQ(node.infoset_id.value, expected_next_id);
             ++expected_next_id;
@@ -105,9 +104,7 @@ TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
         }
 
         EXPECT_TRUE(node.infoset_id.value < graph.infosets.size());
-        const auto& infoset = graph.infosets[node.infoset_id.value];
         EXPECT_EQ(infoset.id.value, node.infoset_id.value);
-        EXPECT_EQ(infoset.key, *node.infoset_key);
         EXPECT_EQ(infoset.action_count, node.action_count);
         EXPECT_EQ(infoset.player, node.player);
 
