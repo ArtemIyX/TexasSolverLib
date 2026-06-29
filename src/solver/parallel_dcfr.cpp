@@ -418,6 +418,10 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
     PhaseContext phase;
     phase.results.resize(frontier_plan.items.size());
+    std::vector<std::size_t> merge_order(frontier_plan.items.size());
+    for (std::size_t i = 0; i < merge_order.size(); ++i) {
+        merge_order[i] = i;
+    }
 
     auto worker_fn = [&](std::size_t worker_index) {
         std::size_t seen_phase = 0;
@@ -498,8 +502,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                 }
             }
 
-            for (const auto& item : frontier_plan.items) {
-                merge_worker_state(infosets_, std::move(phase.results[item.root_node].worker_state));
+            for (const auto worker_index : merge_order) {
+                merge_worker_state(infosets_, std::move(phase.results[worker_index].worker_state));
             }
         }
     }
