@@ -29,7 +29,6 @@ namespace detail {
 
 struct WorkerInfosetAccumRow {
     InfosetId id{};
-    std::uint16_t action_count = 0;
     double* regret_sum = nullptr;
     double* strategy_sum = nullptr;
 };
@@ -40,7 +39,7 @@ public:
     [[nodiscard]] std::size_t size() const noexcept;
     [[nodiscard]] const std::vector<InfosetId>& active_ids() const noexcept;
     InfosetAccumView ensure(InfosetId id, std::size_t action_count);
-    [[nodiscard]] ConstInfosetAccumView view(InfosetId id) const;
+    [[nodiscard]] ConstInfosetAccumView view(InfosetId id, std::size_t action_count) const;
 
 private:
     Arena arena_;
@@ -73,10 +72,10 @@ private:
     ParallelSolvePlan build_plan() const;
     static void validate_plan(const ParallelSolvePlan& plan);
     static void reset_worker_state(ParallelWorkerState& worker_state);
-    static void merge_worker_state(
+    void merge_worker_state(
         detail::InfosetAccumTable& canonical,
         ParallelWorkerState worker_state);
-    static SharedStrategyMap build_strategy_snapshot(
+    SharedStrategyMap build_strategy_snapshot(
         const detail::InfosetAccumTable& canonical);
     double cfr(
         const G& state,

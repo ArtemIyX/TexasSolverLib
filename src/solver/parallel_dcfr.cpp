@@ -49,20 +49,17 @@ InfosetAccumView WorkerInfosetAccumTable::ensure(InfosetId id, std::size_t actio
     if (row == nullptr) {
         row = arena_.allocate<WorkerInfosetAccumRow>(1);
         row->id = id;
-        row->action_count = static_cast<std::uint16_t>(action_count);
         row->regret_sum = arena_.allocate<double>(action_count);
         row->strategy_sum = arena_.allocate<double>(action_count);
         std::fill_n(row->regret_sum, action_count, 0.0);
         std::fill_n(row->strategy_sum, action_count, 0.0);
         active_ids_.push_back(id);
-    } else if (row->action_count != action_count) {
-        throw std::logic_error("WorkerInfosetAccumTable encountered mismatched action_count");
     }
 
-    return InfosetAccumView{row->regret_sum, row->strategy_sum, row->action_count};
+    return InfosetAccumView{row->regret_sum, row->strategy_sum, action_count};
 }
 
-ConstInfosetAccumView WorkerInfosetAccumTable::view(InfosetId id) const {
+ConstInfosetAccumView WorkerInfosetAccumTable::view(InfosetId id, std::size_t action_count) const {
     if (id.value >= rows_by_id_.size()) {
         return {};
     }
@@ -70,7 +67,7 @@ ConstInfosetAccumView WorkerInfosetAccumTable::view(InfosetId id) const {
     if (row == nullptr) {
         return {};
     }
-    return ConstInfosetAccumView{row->regret_sum, row->strategy_sum, row->action_count};
+    return ConstInfosetAccumView{row->regret_sum, row->strategy_sum, action_count};
 }
 
 }  // namespace detail
@@ -451,7 +448,8 @@ void ParallelDCFRSolver<G>::merge_worker_state(
     detail::InfosetAccumTable& canonical,
     ParallelWorkerState worker_state) {
     for (const auto id : worker_state.accum.active_ids()) {
-        const auto local = worker_state.accum.view(id);
+        const auto action_count = registry_.meta_for(id).action_count;
+        const auto local = worker_state.accum.view(id, action_count);
         auto target = canonical.ensure(id, local.action_count);
         for (std::size_t i = 0; i < local.action_count; ++i) {
             target.regret_sum[i] += local.regret_sum[i];
@@ -466,7 +464,8 @@ typename ParallelDCFRSolver<G>::SharedStrategyMap ParallelDCFRSolver<G>::build_s
     auto out = std::make_shared<StrategyMap>();
     out->reserve(canonical.size());
     for (const auto id : canonical.active_ids()) {
-        const auto accum = canonical.view(id);
+        const auto action_count = registry_.meta_for(id).action_count;
+        const auto accum = canonical.view(id, action_count);
         out->emplace(id, detail::normalize_strategy(accum.regret_sum, accum.action_count));
     }
     return out;
@@ -498,7 +497,7 @@ double ParallelDCFRSolver<G>::cfr(
     const auto actions = state.legal_actions();
     const auto id = core::lookup_infoset_id(
         state, player, registry_, actions.size(), &locked_, &locked_by_id_);
-    auto accum = worker_state.accum.ensure(id, actions.size());
+    auto accum = worker_state.accum.ensure(id, registry_.meta_for(id).action_count);
 
     std::vector<Probability> local_strategy;
     if (const auto locked_it = locked_by_id_.find(id);
@@ -544,7 +543,8 @@ typename ParallelDCFRSolver<G>::StrategyMap ParallelDCFRSolver<G>::build_average
     StrategyMap out;
     out.reserve(infosets_.size());
     for (const auto id : infosets_.active_ids()) {
-        const auto accum = infosets_.view(id);
+        const auto action_count = registry_.meta_for(id).action_count;
+        const auto accum = infosets_.view(id, action_count);
         if (const auto locked_it = locked_by_id_.find(id);
             locked_it != locked_by_id_.end() && locked_it->second.size() == accum.action_count) {
             out.emplace(id, locked_it->second);

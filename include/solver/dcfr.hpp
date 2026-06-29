@@ -41,7 +41,6 @@ namespace detail {
 
 struct InfosetAccum {
     std::uint32_t offset = 0;
-    std::uint16_t action_count = 0;
     bool active = false;
 };
 
@@ -86,23 +85,20 @@ public:
         auto& row = rows_[id.value];
         if (!row.active) {
             row.offset = static_cast<std::uint32_t>(regret_arena_.size());
-            row.action_count = static_cast<std::uint16_t>(action_count);
             row.active = true;
             active_ids_.push_back(id);
             regret_arena_.resize(regret_arena_.size() + action_count, 0.0);
             strategy_arena_.resize(strategy_arena_.size() + action_count, 0.0);
-        } else if (row.action_count != action_count) {
-            throw std::logic_error("InfosetAccumTable encountered mismatched action_count");
         }
 
         return InfosetAccumView{
             regret_arena_.data() + row.offset,
             strategy_arena_.data() + row.offset,
-            row.action_count,
+            action_count,
         };
     }
 
-    [[nodiscard]] ConstInfosetAccumView view(InfosetId id) const {
+    [[nodiscard]] ConstInfosetAccumView view(InfosetId id, std::size_t action_count) const {
         if (id.value >= rows_.size() || !rows_[id.value].active) {
             return {};
         }
@@ -111,7 +107,7 @@ public:
         return ConstInfosetAccumView{
             regret_arena_.data() + row.offset,
             strategy_arena_.data() + row.offset,
-            row.action_count,
+            action_count,
         };
     }
 
@@ -372,7 +368,8 @@ template <class G>
 typename DCFRSolver<G>::StrategyMap DCFRSolver<G>::build_average_strategy() const {
     StrategyMap out;
     for (const auto id : infosets_.active_ids()) {
-        const auto accum = infosets_.view(id);
+        const auto action_count = registry_.meta_for(id).action_count;
+        const auto accum = infosets_.view(id, action_count);
         if (const auto locked_it = locked_by_id_.find(id);
             locked_it != locked_by_id_.end() && locked_it->second.size() == accum.action_count) {
             out.emplace(id, locked_it->second);
