@@ -403,21 +403,20 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         return out;
     }
 
-    struct PhaseContext {
+    struct WorkerPoolState {
         std::mutex mutex;
         std::condition_variable cv;
-        bool stop = false;
-        bool ready = false;
         std::size_t phase_id = 0;
         std::size_t completed = 0;
         std::size_t traversing_player = 0;
+        bool stop = false;
         std::unordered_map<InfosetKey, std::vector<Probability>> strategy;
         std::vector<BranchResult> results;
         std::exception_ptr error;
     };
 
-    PhaseContext phase;
-    phase.results.resize(frontier_plan.items.size());
+    WorkerPoolState pool;
+    pool.results.resize(frontier_plan.items.size());
     std::vector<std::size_t> merge_order(frontier_plan.items.size());
     for (std::size_t i = 0; i < merge_order.size(); ++i) {
         merge_order[i] = i;
@@ -426,16 +425,16 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     auto worker_fn = [&](std::size_t worker_index) {
         std::size_t seen_phase = 0;
         while (true) {
-            std::unique_lock<std::mutex> lock(phase.mutex);
-            phase.cv.wait(lock, [&] { return phase.stop || (phase.ready && phase.phase_id != seen_phase); });
-            if (phase.stop) {
+            std::unique_lock<std::mutex> lock(pool.mutex);
+            pool.cv.wait(lock, [&] { return pool.stop || pool.phase_id != seen_phase; });
+            if (pool.stop) {
                 return;
             }
 
-            const auto local_phase = phase.phase_id;
-            const auto local_player = phase.traversing_player;
-            const auto local_strategy = phase.strategy;
-            auto& result = phase.results[worker_index];
+            const auto local_phase = pool.phase_id;
+            const auto local_player = pool.traversing_player;
+            const auto local_strategy = pool.strategy;
+            auto& result = pool.results[worker_index];
             const auto item = frontier_plan.items[worker_index];
             lock.unlock();
 
@@ -454,17 +453,16 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             result.worker_state);
                 }
             } catch (...) {
-                std::lock_guard<std::mutex> guard(phase.mutex);
-                if (!phase.error) {
-                    phase.error = std::current_exception();
+                std::lock_guard<std::mutex> guard(pool.mutex);
+                if (!pool.error) {
+                    pool.error = std::current_exception();
                 }
             }
 
             lock.lock();
             seen_phase = local_phase;
-            if (++phase.completed == frontier_plan.items.size()) {
-                phase.ready = false;
-                phase.cv.notify_one();
+            if (++pool.completed == frontier_plan.items.size()) {
+                pool.cv.notify_all();
             }
         }
     };
@@ -478,41 +476,42 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
         for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
             {
-                std::lock_guard<std::mutex> lock(phase.mutex);
-                phase.traversing_player = traversing_player;
-                phase.strategy = build_strategy_snapshot(infosets_);
-                phase.completed = 0;
-                phase.error = nullptr;
-                phase.phase_id += 1;
-                phase.ready = true;
+                std::lock_guard<std::mutex> lock(pool.mutex);
+                pool.traversing_player = traversing_player;
+                pool.strategy = build_strategy_snapshot(infosets_);
+                pool.completed = 0;
+                pool.error = nullptr;
+                ++pool.phase_id;
             }
-            phase.cv.notify_all();
+            pool.cv.notify_all();
 
             {
-                std::unique_lock<std::mutex> lock(phase.mutex);
-                phase.cv.wait(lock, [&] { return !phase.ready || phase.error != nullptr; });
-                if (phase.error) {
-                    phase.stop = true;
-                    phase.cv.notify_all();
+                std::unique_lock<std::mutex> lock(pool.mutex);
+                pool.cv.wait(lock, [&] {
+                    return pool.completed == frontier_plan.items.size() || pool.error != nullptr;
+                });
+                if (pool.error) {
+                    pool.stop = true;
+                    pool.cv.notify_all();
                     lock.unlock();
                     for (auto& worker : workers) {
                         worker.join();
                     }
-                    std::rethrow_exception(phase.error);
+                    std::rethrow_exception(pool.error);
                 }
             }
 
             for (const auto worker_index : merge_order) {
-                merge_worker_state(infosets_, std::move(phase.results[worker_index].worker_state));
+                merge_worker_state(infosets_, std::move(pool.results[worker_index].worker_state));
             }
         }
     }
 
     {
-        std::lock_guard<std::mutex> lock(phase.mutex);
-        phase.stop = true;
+        std::lock_guard<std::mutex> lock(pool.mutex);
+        pool.stop = true;
     }
-    phase.cv.notify_all();
+    pool.cv.notify_all();
     for (auto& worker : workers) {
         worker.join();
     }
