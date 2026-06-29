@@ -14,7 +14,9 @@ HUNLFlatDCFR::HUNLFlatDCFR(
     HUNLFlatValueLayout layout)
     : graph_(std::move(graph)),
       infoset_table_(HUNLFlatInfosetTable::build(graph_, hand_count_per_player, layout)),
-      node_reach_(graph_.nodes.size(), 0.0),
+      player0_reach_(graph_.nodes.size(), 0.0),
+      player1_reach_(graph_.nodes.size(), 0.0),
+      chance_reach_(graph_.nodes.size(), 0.0),
       terminal_values_(graph_.nodes.size(), 0.0),
       backward_values_(graph_.nodes.size(), 0.0) {}
 
@@ -78,6 +80,18 @@ const HUNLFlatStageProfile& HUNLFlatDCFR::profile() const noexcept {
 
 std::uint32_t HUNLFlatDCFR::iterations() const noexcept {
     return iterations_;
+}
+
+const std::vector<double>& HUNLFlatDCFR::player0_reach() const noexcept {
+    return player0_reach_;
+}
+
+const std::vector<double>& HUNLFlatDCFR::player1_reach() const noexcept {
+    return player1_reach_;
+}
+
+const std::vector<double>& HUNLFlatDCFR::chance_reach() const noexcept {
+    return chance_reach_;
 }
 
 std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_average_strategy() const {
@@ -181,27 +195,58 @@ void HUNLFlatDCFR::compute_strategy_stage() {
 }
 
 void HUNLFlatDCFR::forward_reach_stage() {
-    std::fill(node_reach_.begin(), node_reach_.end(), 0.0);
-    if (!node_reach_.empty()) {
-        node_reach_[graph_.root] = 1.0;
+    std::fill(player0_reach_.begin(), player0_reach_.end(), 0.0);
+    std::fill(player1_reach_.begin(), player1_reach_.end(), 0.0);
+    std::fill(chance_reach_.begin(), chance_reach_.end(), 0.0);
+    if (!graph_.nodes.empty()) {
+        player0_reach_[graph_.root] = 1.0;
+        player1_reach_[graph_.root] = 1.0;
+        chance_reach_[graph_.root] = 1.0;
     }
+
     for (const auto node_idx : graph_.forward_order) {
-        const auto reach = node_reach_[node_idx];
         const auto& meta = graph_.node_meta[node_idx];
-        if (reach == 0.0 || meta.child_count == 0) {
+        const auto reach0 = player0_reach_[node_idx];
+        const auto reach1 = player1_reach_[node_idx];
+        const auto chance = chance_reach_[node_idx];
+        if ((reach0 == 0.0 && reach1 == 0.0) || chance == 0.0 || meta.child_count == 0) {
             continue;
         }
 
         if (meta.type == HUNLFlatNodeType::Chance) {
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
                 const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
-                node_reach_[outcome.child] += reach * outcome.probability;
+                player0_reach_[outcome.child] += reach0;
+                player1_reach_[outcome.child] += reach1;
+                chance_reach_[outcome.child] += chance * outcome.probability;
             }
-        } else {
-            const double split = 1.0 / static_cast<double>(meta.child_count);
-            for (std::size_t i = 0; i < meta.child_count; ++i) {
-                node_reach_[graph_.children[meta.child_begin + i]] += reach * split;
+            continue;
+        }
+
+        if (meta.type != HUNLFlatNodeType::Decision || !meta.has_infoset) {
+            continue;
+        }
+
+        const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
+        const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
+        const std::size_t representative_hand = 0;
+        for (std::size_t i = 0; i < meta.child_count; ++i) {
+            const auto child = graph_.children[meta.child_begin + i];
+            double action_prob = 1.0 / static_cast<double>(meta.child_count);
+            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+                action_prob = strategy[i * static_cast<std::size_t>(infoset_meta.hand_count) + representative_hand];
+            } else {
+                action_prob = strategy[representative_hand * static_cast<std::size_t>(infoset_meta.action_count) + i];
             }
+
+            if (meta.player == 0) {
+                player0_reach_[child] += reach0 * action_prob;
+                player1_reach_[child] += reach1;
+            } else {
+                player0_reach_[child] += reach0;
+                player1_reach_[child] += reach1 * action_prob;
+            }
+            chance_reach_[child] += chance;
         }
     }
 }

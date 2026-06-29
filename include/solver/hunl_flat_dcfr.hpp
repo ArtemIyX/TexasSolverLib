@@ -36,6 +36,9 @@ public:
     [[nodiscard]] HUNLFlatInfosetTable& infoset_table_mut() noexcept;
     [[nodiscard]] const HUNLFlatStageProfile& profile() const noexcept;
     [[nodiscard]] std::uint32_t iterations() const noexcept;
+    [[nodiscard]] const std::vector<double>& player0_reach() const noexcept;
+    [[nodiscard]] const std::vector<double>& player1_reach() const noexcept;
+    [[nodiscard]] const std::vector<double>& chance_reach() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
@@ -49,7 +52,9 @@ private:
 
     HUNLFlatSolveGraph graph_;
     HUNLFlatInfosetTable infoset_table_;
-    std::vector<double> node_reach_;
+    std::vector<double> player0_reach_;
+    std::vector<double> player1_reach_;
+    std::vector<double> chance_reach_;
     std::vector<double> terminal_values_;
     std::vector<double> backward_values_;
     HUNLFlatStageProfile profile_;

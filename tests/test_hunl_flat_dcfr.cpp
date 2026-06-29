@@ -79,3 +79,89 @@ TEST_CASE(hunl_flat_dcfr_exports_average_strategy_by_infoset_key) {
                       solver.infoset_table().meta()[infoset.id.value].hand_count);
     }
 }
+
+TEST_CASE(hunl_flat_dcfr_forward_reach_initializes_root_reaches) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    EXPECT_NEAR(solver.player0_reach()[graph.root], 1.0, 1e-12);
+    EXPECT_NEAR(solver.player1_reach()[graph.root], 1.0, 1e-12);
+    EXPECT_NEAR(solver.chance_reach()[graph.root], 1.0, 1e-12);
+}
+
+TEST_CASE(hunl_flat_dcfr_forward_reach_propagates_strategy_on_decision_nodes) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    const auto root_idx = graph.root;
+    const auto& root_meta = graph.node_meta[root_idx];
+    EXPECT_EQ(root_meta.type, core::HUNLFlatNodeType::Decision);
+    EXPECT_TRUE(root_meta.child_count >= 2);
+
+    auto& table = solver.infoset_table_mut();
+    const auto infoset_id = root_meta.infoset_id;
+    auto* regret = table.regret_mut(infoset_id);
+    for (std::size_t i = 0; i < table.row_value_count(infoset_id); ++i) {
+        regret[i] = 0.0;
+    }
+    const auto hand_count = table.meta()[infoset_id.value].hand_count;
+    regret[0] = 3.0;
+    regret[hand_count] = 1.0;
+
+    solver.run_iteration();
+
+    const auto child0 = graph.children[root_meta.child_begin];
+    const auto child1 = graph.children[root_meta.child_begin + 1];
+    if (root_meta.player == 0) {
+        EXPECT_TRUE(solver.player0_reach()[child0] > solver.player0_reach()[child1]);
+        EXPECT_NEAR(solver.player1_reach()[child0], 1.0, 1e-12);
+        EXPECT_NEAR(solver.player1_reach()[child1], 1.0, 1e-12);
+    } else {
+        EXPECT_TRUE(solver.player1_reach()[child0] > solver.player1_reach()[child1]);
+        EXPECT_NEAR(solver.player0_reach()[child0], 1.0, 1e-12);
+        EXPECT_NEAR(solver.player0_reach()[child1], 1.0, 1e-12);
+    }
+    EXPECT_NEAR(solver.chance_reach()[child0], 1.0, 1e-12);
+    EXPECT_NEAR(solver.chance_reach()[child1], 1.0, 1e-12);
+}
+
+TEST_CASE(hunl_flat_dcfr_forward_reach_weights_chance_nodes) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    bool checked_chance = false;
+    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        if (meta.type != core::HUNLFlatNodeType::Chance || meta.chance_count == 0) {
+            continue;
+        }
+
+        const auto& outcome = graph.chance_outcomes[meta.chance_begin];
+        const auto parent_chance = solver.chance_reach()[node_idx];
+        const auto child_chance = solver.chance_reach()[outcome.child];
+        if (parent_chance > 0.0) {
+            EXPECT_TRUE(child_chance > 0.0);
+            EXPECT_TRUE(child_chance <= parent_chance);
+            checked_chance = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(checked_chance);
+}

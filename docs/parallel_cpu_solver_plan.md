@@ -291,7 +291,7 @@ Output:
 
 - strategy generation as one bulk pass over infosets
 
-### Step 3.3. Implement forward reach propagation
+### + Step 3.3. Implement forward reach propagation
 
 Substeps:
 
