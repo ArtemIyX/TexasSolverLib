@@ -16,6 +16,22 @@ constexpr std::array<ActionId, 5> BET_ACTION_IDS = {
 constexpr std::array<ActionId, 5> RAISE_ACTION_IDS = {
     ACTION_RAISE_33, ACTION_RAISE_75, ACTION_RAISE_100, ACTION_RAISE_150, ACTION_RAISE_200};
 constexpr std::uint8_t OOP_PLAYER = 1;
+constexpr int HISTORY_CODE_FOLD = 1;
+constexpr int HISTORY_CODE_CHECK = 2;
+constexpr int HISTORY_CODE_CALL = 3;
+constexpr int HISTORY_CODE_ALL_IN = 4;
+constexpr int HISTORY_CODE_BET_BASE = 1'000'000;
+constexpr int HISTORY_CODE_RAISE_BASE = 2'000'000;
+
+std::string token_from_history_code(int code) {
+    if (code == HISTORY_CODE_FOLD) return "f";
+    if (code == HISTORY_CODE_CHECK) return "x";
+    if (code == HISTORY_CODE_CALL) return "c";
+    if (code == HISTORY_CODE_ALL_IN) return "A";
+    if (code >= HISTORY_CODE_RAISE_BASE) return "r" + std::to_string(code - HISTORY_CODE_RAISE_BASE);
+    if (code >= HISTORY_CODE_BET_BASE) return "b" + std::to_string(code - HISTORY_CODE_BET_BASE);
+    throw std::logic_error("invalid HUNL history code");
+}
 
 }
 
@@ -103,6 +119,46 @@ std::string sorted_card_string(const std::vector<std::uint8_t>& cards) {
     out.reserve(sorted.size() * 2);
     for (const auto card : sorted) {
         out += card_to_string(card);
+    }
+    return out;
+}
+
+std::size_t HUNLInfosetEncodingHash::operator()(const HUNLInfosetEncoding& encoding) const noexcept {
+    std::size_t seed = static_cast<std::size_t>(encoding.street);
+    auto mix = [&](std::size_t value) {
+        seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
+    };
+    mix(encoding.board_count);
+    mix(encoding.history_count);
+    for (const auto card : encoding.hole) mix(card);
+    for (std::size_t i = 0; i < encoding.board_count; ++i) mix(encoding.board[i]);
+    for (const auto len : encoding.street_lengths) mix(len);
+    for (std::size_t i = 0; i < encoding.history_count; ++i) mix(static_cast<std::size_t>(encoding.history_codes[i]));
+    return seed;
+}
+
+std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding) {
+    std::vector<std::uint8_t> hole_cards = {encoding.hole[0], encoding.hole[1]};
+    std::vector<std::uint8_t> board_cards(
+        encoding.board.begin(),
+        encoding.board.begin() + static_cast<std::ptrdiff_t>(encoding.board_count));
+
+    std::string out = sorted_card_string(hole_cards);
+    out += "|";
+    out += sorted_card_string(board_cards);
+    out += "|";
+    out += street_token(encoding.street);
+    out += "|";
+
+    std::size_t offset = 0;
+    for (std::size_t street_index = 0; street_index < encoding.street_lengths.size(); ++street_index) {
+        if (street_index > 0) {
+            out += "/";
+        }
+        for (std::size_t i = 0; i < encoding.street_lengths[street_index]; ++i) {
+            out += token_from_history_code(encoding.history_codes[offset + i]);
+        }
+        offset += encoding.street_lengths[street_index];
     }
     return out;
 }
@@ -380,7 +436,51 @@ HUNLState HUNLState::next_state(ActionId action) const {
 }
 
 std::string HUNLState::infoset_key(PlayerId player) const {
-    return infoset_key(player, nullptr);
+    return hunl_infoset_key(infoset_encoding(player));
+}
+
+HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const {
+    HUNLInfosetEncoding encoding;
+    encoding.street = street;
+    encoding.board_count = static_cast<std::uint8_t>(board.size());
+    for (std::size_t i = 0; i < board.size() && i < encoding.board.size(); ++i) {
+        encoding.board[i] = board[i];
+    }
+
+    const auto player_idx = static_cast<std::size_t>(player);
+    if (hole_cards.has_value()) {
+        encoding.hole = {(*hole_cards)[player_idx][0], (*hole_cards)[player_idx][1]};
+        if (encoding.hole[1] < encoding.hole[0]) {
+            std::swap(encoding.hole[0], encoding.hole[1]);
+        }
+    }
+
+    std::size_t offset = 0;
+    for (std::size_t street_index = 0; street_index < betting_history_codes.size() && street_index < encoding.street_lengths.size(); ++street_index) {
+        const auto& street_codes = betting_history_codes[street_index];
+        encoding.street_lengths[street_index] = static_cast<std::uint8_t>(street_codes.size());
+        for (const auto code : street_codes) {
+            if (offset < encoding.history_codes.size()) {
+                encoding.history_codes[offset++] = code;
+            }
+        }
+    }
+
+    const auto current_index = std::min<std::size_t>(betting_history_codes.size(), encoding.street_lengths.size() - 1);
+    encoding.street_lengths[current_index] = static_cast<std::uint8_t>(current_street_history_codes.size());
+    offset = 0;
+    for (std::size_t street_index = 0; street_index < betting_history_codes.size() && street_index < encoding.street_lengths.size(); ++street_index) {
+        for (const auto code : betting_history_codes[street_index]) {
+            encoding.history_codes[offset++] = code;
+        }
+    }
+    for (const auto code : current_street_history_codes) {
+        if (offset < encoding.history_codes.size()) {
+            encoding.history_codes[offset++] = code;
+        }
+    }
+    encoding.history_count = static_cast<std::uint8_t>(offset);
+    return encoding;
 }
 
 std::string HUNLState::infoset_key(PlayerId player, const AbstractionTables* abstraction) const {
@@ -457,12 +557,15 @@ HUNLState HUNLState::apply_player(ActionId action) const {
     auto street_num_raises_next = street_num_raises;
     auto to_call_next = to_call;
     std::string token;
+    int history_code = 0;
 
     if (action == ACTION_FOLD) {
         folded_next[player] = true;
         token = "f";
+        history_code = HISTORY_CODE_FOLD;
     } else if (action == ACTION_CHECK) {
         token = "x";
+        history_code = HISTORY_CODE_CHECK;
     } else if (action == ACTION_CALL) {
         const auto pay = std::min(to_call, stacks_next[player]);
         contributions_next[player] += pay;
@@ -472,6 +575,7 @@ HUNLState HUNLState::apply_player(ActionId action) const {
         }
         to_call_next = 0;
         token = "c";
+        history_code = HISTORY_CODE_CALL;
     } else if (action == ACTION_ALL_IN) {
         const auto pay = stacks_next[player];
         contributions_next[player] += pay;
@@ -482,6 +586,7 @@ HUNLState HUNLState::apply_player(ActionId action) const {
         street_aggressor_next = static_cast<PlayerId>(player);
         ++street_num_raises_next;
         token = "A";
+        history_code = HISTORY_CODE_ALL_IN;
     } else if (is_opening_bet(action)) {
         const auto amount = compute_bet_amount(static_cast<std::uint8_t>(action), ctx);
         contributions_next[player] += amount;
@@ -494,6 +599,7 @@ HUNLState HUNLState::apply_player(ActionId action) const {
         street_aggressor_next = static_cast<PlayerId>(player);
         ++street_num_raises_next;
         token = "b" + std::to_string(amount);
+        history_code = HISTORY_CODE_BET_BASE + amount;
     } else if (is_raise(action)) {
         const auto new_contrib = compute_raise_to(static_cast<std::uint8_t>(action), ctx);
         const auto pay = new_contrib - contributions_next[player];
@@ -507,6 +613,7 @@ HUNLState HUNLState::apply_player(ActionId action) const {
         street_aggressor_next = static_cast<PlayerId>(player);
         ++street_num_raises_next;
         token = "r" + std::to_string(new_contrib);
+        history_code = HISTORY_CODE_RAISE_BASE + new_contrib;
     } else {
         throw std::invalid_argument("Unknown HUNL action");
     }
@@ -516,6 +623,7 @@ HUNLState HUNLState::apply_player(ActionId action) const {
     new_state.stacks = stacks_next;
     new_state.street_history.push_back(action);
     new_state.current_street_tokens.push_back(token);
+    new_state.current_street_history_codes.push_back(history_code);
     new_state.street_aggressor = street_aggressor_next;
     new_state.street_num_raises = street_num_raises_next;
     new_state.to_call = to_call_next;
@@ -576,6 +684,8 @@ bool HUNLState::street_complete(ActionId action, const HUNLState& new_state) con
 HUNLState HUNLState::begin_street_transition(HUNLState state) const {
     state.betting_tokens.push_back(state.current_street_tokens);
     state.current_street_tokens.clear();
+    state.betting_history_codes.push_back(state.current_street_history_codes);
+    state.current_street_history_codes.clear();
     if (state.street == Street::River) {
         state.street = Street::Showdown;
         state.cur_player = -1;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/types.hpp"
+#include "games/hunl.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -19,6 +20,7 @@ struct InfosetMeta {
 class InfosetRegistry {
 public:
     InfosetId intern(const InfosetKey& key, std::size_t action_count);
+    InfosetId intern(const HUNLInfosetEncoding& encoding, std::size_t action_count);
     [[nodiscard]] std::optional<InfosetId> find(const InfosetKey& key) const;
     [[nodiscard]] const InfosetKey& key_for(InfosetId id) const;
     [[nodiscard]] const InfosetMeta& meta_for(InfosetId id) const;
@@ -29,6 +31,7 @@ public:
 
 private:
     std::unordered_map<InfosetKey, InfosetId> key_to_id_;
+    std::unordered_map<HUNLInfosetEncoding, InfosetId, HUNLInfosetEncodingHash> hunl_to_id_;
     std::vector<InfosetKey> id_to_key_;
     std::vector<InfosetMeta> meta_;
 };
