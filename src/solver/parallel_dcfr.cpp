@@ -471,6 +471,24 @@ typename ParallelDCFRSolver<G>::SharedStrategyMap ParallelDCFRSolver<G>::build_s
 }
 
 template <class G>
+std::pair<InfosetId, std::vector<Probability>> ParallelDCFRSolver<G>::resolve_infoset(
+    const G& state,
+    PlayerId player,
+    std::size_t action_count) {
+    std::lock_guard<std::mutex> lock(infoset_mutex_);
+    const auto id = core::lookup_infoset_id(
+        state, player, registry_, action_count, &locked_, &locked_by_id_);
+
+    std::vector<Probability> locked_strategy;
+    if (const auto* strategy = locked_by_id_.get(id);
+        strategy != nullptr && strategy->size() == action_count) {
+        locked_strategy = *strategy;
+    }
+
+    return {id, std::move(locked_strategy)};
+}
+
+template <class G>
 double ParallelDCFRSolver<G>::cfr(
     const G& state,
     PlayerId traversing_player,
@@ -494,14 +512,12 @@ double ParallelDCFRSolver<G>::cfr(
     }
 
     const auto actions = state.legal_actions();
-    const auto id = core::lookup_infoset_id(
-        state, player, registry_, actions.size(), &locked_, &locked_by_id_);
-    auto accum = worker_state.accum.ensure(id, registry_.meta_for(id).action_count);
+    const auto [id, locked_strategy] = resolve_infoset(state, player, actions.size());
+    auto accum = worker_state.accum.ensure(id, actions.size());
 
     std::vector<Probability> local_strategy;
-    if (const auto* locked_strategy = locked_by_id_.get(id);
-        locked_strategy != nullptr && locked_strategy->size() == actions.size()) {
-        local_strategy = *locked_strategy;
+    if (!locked_strategy.empty()) {
+        local_strategy = locked_strategy;
     } else if (const auto* snapshot_strategy = strategy.get(id);
                snapshot_strategy != nullptr && snapshot_strategy->size() == actions.size()) {
         local_strategy = *snapshot_strategy;
@@ -526,7 +542,10 @@ double ParallelDCFRSolver<G>::cfr(
         node_value += local_strategy[i] * action_values[i];
     }
 
-    if (player == traversing_player && locked_by_id_.get(id) == nullptr) {
+    if (player == traversing_player && locked_strategy.empty()) {
+        // Worker-local flat storage can grow while visiting child infosets,
+        // so refresh the row view before applying regret updates.
+        accum = worker_state.accum.ensure(id, actions.size());
         const PlayerId opponent = 1 - traversing_player;
         const double opponent_reach = chance_reach * reach_probs[static_cast<std::size_t>(opponent)];
         for (std::size_t i = 0; i < actions.size(); ++i) {

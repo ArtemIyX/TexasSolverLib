@@ -442,9 +442,11 @@ std::string HUNLState::infoset_key(PlayerId player) const {
 HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const {
     HUNLInfosetEncoding encoding;
     encoding.street = street;
-    encoding.board_count = static_cast<std::uint8_t>(board.size());
-    for (std::size_t i = 0; i < board.size() && i < encoding.board.size(); ++i) {
-        encoding.board[i] = board[i];
+    std::vector<std::uint8_t> sorted_board = board;
+    std::sort(sorted_board.begin(), sorted_board.end());
+    encoding.board_count = static_cast<std::uint8_t>(sorted_board.size());
+    for (std::size_t i = 0; i < sorted_board.size() && i < encoding.board.size(); ++i) {
+        encoding.board[i] = sorted_board[i];
     }
 
     const auto player_idx = static_cast<std::size_t>(player);
@@ -458,25 +460,27 @@ HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const {
     std::size_t offset = 0;
     for (std::size_t street_index = 0; street_index < betting_history_codes.size() && street_index < encoding.street_lengths.size(); ++street_index) {
         const auto& street_codes = betting_history_codes[street_index];
-        encoding.street_lengths[street_index] = static_cast<std::uint8_t>(street_codes.size());
+        const auto capped_size = std::min<std::size_t>(street_codes.size(), encoding.history_codes.size() - offset);
+        encoding.street_lengths[street_index] = static_cast<std::uint8_t>(capped_size);
         for (const auto code : street_codes) {
             if (offset < encoding.history_codes.size()) {
                 encoding.history_codes[offset++] = code;
+            } else {
+                break;
             }
         }
     }
 
-    const auto current_index = std::min<std::size_t>(betting_history_codes.size(), encoding.street_lengths.size() - 1);
-    encoding.street_lengths[current_index] = static_cast<std::uint8_t>(current_street_history_codes.size());
-    offset = 0;
-    for (std::size_t street_index = 0; street_index < betting_history_codes.size() && street_index < encoding.street_lengths.size(); ++street_index) {
-        for (const auto code : betting_history_codes[street_index]) {
-            encoding.history_codes[offset++] = code;
-        }
-    }
+    const auto current_index =
+        std::min<std::size_t>(betting_history_codes.size(), encoding.street_lengths.size() - 1);
+    const auto current_capped_size =
+        std::min<std::size_t>(current_street_history_codes.size(), encoding.history_codes.size() - offset);
+    encoding.street_lengths[current_index] = static_cast<std::uint8_t>(current_capped_size);
     for (const auto code : current_street_history_codes) {
         if (offset < encoding.history_codes.size()) {
             encoding.history_codes[offset++] = code;
+        } else {
+            break;
         }
     }
     encoding.history_count = static_cast<std::uint8_t>(offset);

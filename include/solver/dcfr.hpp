@@ -393,6 +393,9 @@ double DCFRSolver<G>::cfr(
     }
 
     if (player == traversing_player && locked_by_id_.get(id) == nullptr) {
+        // Child recursion may activate new infosets and grow the flat arenas,
+        // so reacquire the row view before writing through its pointers.
+        accum = infosets_.ensure(id, actions.size());
         const PlayerId opponent = 1 - traversing_player;
         const double opponent_reach = chance_reach * reach_probs[static_cast<std::size_t>(opponent)];
         for (std::size_t i = 0; i < actions.size(); ++i) {

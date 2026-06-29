@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -84,6 +85,10 @@ private:
         double chance_reach,
         const StrategyMap& strategy,
         ParallelWorkerState& worker_state);
+    std::pair<InfosetId, std::vector<Probability>> resolve_infoset(
+        const G& state,
+        PlayerId player,
+        std::size_t action_count);
     StrategyMap build_average_strategy() const;
     DCFRConfig config_;
     G root_;
@@ -93,6 +98,7 @@ private:
     InfosetRegistry registry_;
     detail::IndexedStrategyTable locked_by_id_;
     detail::InfosetAccumTable infosets_;
+    mutable std::mutex infoset_mutex_;
 };
 
 }  // namespace core
