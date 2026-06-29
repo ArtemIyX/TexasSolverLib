@@ -245,7 +245,7 @@ Output:
 
 - zero string work in the hot loop
 
-### Step 2.4. Remove per-worker hash tables
+### + Step 2.4. Remove per-worker hash tables
 
 Substeps:
 
@@ -258,12 +258,12 @@ Output:
 
 - no large worker-local accumulation maps
 
-## Phase 3. Turn CFR iteration into explicit pipeline stages
+## + Phase 3. Turn CFR iteration into explicit pipeline stages
 
 Purpose:
 Match the staged bulk-processing architecture suggested by the papers.
 
-### Step 3.1. Define explicit per-iteration stages
+### + Step 3.1. Define explicit per-iteration stages
 
 Minimum stage set:
 
@@ -278,7 +278,7 @@ Output:
 
 - a non-recursive iteration driver
 
-### Step 3.2. Implement strategy computation as a flat pass
+### + Step 3.2. Implement strategy computation as a flat pass
 
 Substeps:
 

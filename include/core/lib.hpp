@@ -3,6 +3,7 @@
 #include "util/abstraction.hpp"
 #include "util/api.hpp"
 #include "solver/dcfr.hpp"
+#include "solver/hunl_flat_dcfr.hpp"
 #include "solver/dcfr_vector.hpp"
 #include "solver/dcfr_vector_parallel.hpp"
 #include "solver/exploit.hpp"
