@@ -137,21 +137,29 @@ TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
     }
 }
 
-TEST_CASE(hunl_flat_worker_scratch_reset_clears_temporary_buffers) {
+TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     core::HUNLFlatWorkerScratch scratch;
-    scratch.terminal_values.assign(3, 1.0);
-    scratch.node_values.assign(4, 2.0);
-    scratch.action_values.assign(5, 3.0);
-    scratch.player0_reach.assign(6, 4.0);
-    scratch.player1_reach.assign(7, 5.0);
-    scratch.chance_reach.assign(8, 6.0);
+    scratch.ensure_capacity(6, 5);
 
-    scratch.reset();
+    scratch.terminal_values[0] = 1.0;
+    scratch.node_values[1] = 2.0;
+    scratch.action_values[2] = 3.0;
+    scratch.player0_reach[3] = 4.0;
+    scratch.player1_reach[4] = 5.0;
+    scratch.chance_reach[5] = 6.0;
 
-    EXPECT_TRUE(scratch.terminal_values.empty());
-    EXPECT_TRUE(scratch.node_values.empty());
-    EXPECT_TRUE(scratch.action_values.empty());
-    EXPECT_TRUE(scratch.player0_reach.empty());
-    EXPECT_TRUE(scratch.player1_reach.empty());
-    EXPECT_TRUE(scratch.chance_reach.empty());
+    scratch.reset_values();
+
+    EXPECT_EQ(scratch.terminal_values.size(), 6U);
+    EXPECT_EQ(scratch.node_values.size(), 6U);
+    EXPECT_EQ(scratch.action_values.size(), 5U);
+    EXPECT_EQ(scratch.player0_reach.size(), 6U);
+    EXPECT_EQ(scratch.player1_reach.size(), 6U);
+    EXPECT_EQ(scratch.chance_reach.size(), 6U);
+    EXPECT_EQ(scratch.terminal_values[0], 0.0);
+    EXPECT_EQ(scratch.node_values[1], 0.0);
+    EXPECT_EQ(scratch.action_values[2], 0.0);
+    EXPECT_EQ(scratch.player0_reach[3], 0.0);
+    EXPECT_EQ(scratch.player1_reach[4], 0.0);
+    EXPECT_EQ(scratch.chance_reach[5], 0.0);
 }

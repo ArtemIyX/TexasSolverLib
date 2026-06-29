@@ -395,7 +395,7 @@ Output:
 
 - no hot-path global lock
 
-### Step 4.5. Add scheduler diagnostics
+### + Step 4.5. Add scheduler diagnostics
 
 Substeps:
 
@@ -407,12 +407,12 @@ Output:
 
 - visibility into whether scaling is blocked by imbalance or memory bandwidth
 
-## Phase 5. Optimize the hottest buffers and loops
+## + Phase 5. Optimize the hottest buffers and loops
 
 Purpose:
 Convert architectural win into actual wall-clock speedup.
 
-### Step 5.1. Eliminate temporary vector churn
+### + Step 5.1. Eliminate temporary vector churn
 
 Substeps:
 

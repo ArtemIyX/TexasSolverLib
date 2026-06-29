@@ -44,7 +44,8 @@ struct HUNLFlatWorkerScratch {
     std::vector<double> player1_reach;
     std::vector<double> chance_reach;
 
-    void reset() noexcept;
+    void reset_values() noexcept;
+    void ensure_capacity(std::size_t node_count, std::size_t edge_count);
 };
 
 struct HUNLFlatParallelPlan {

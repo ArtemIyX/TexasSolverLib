@@ -25,13 +25,22 @@ std::vector<HUNLFlatRange> partition_range(std::uint32_t total_count, std::size_
 
 }  // namespace
 
-void HUNLFlatWorkerScratch::reset() noexcept {
-    terminal_values.clear();
-    node_values.clear();
-    action_values.clear();
-    player0_reach.clear();
-    player1_reach.clear();
-    chance_reach.clear();
+void HUNLFlatWorkerScratch::reset_values() noexcept {
+    std::fill(terminal_values.begin(), terminal_values.end(), 0.0);
+    std::fill(node_values.begin(), node_values.end(), 0.0);
+    std::fill(action_values.begin(), action_values.end(), 0.0);
+    std::fill(player0_reach.begin(), player0_reach.end(), 0.0);
+    std::fill(player1_reach.begin(), player1_reach.end(), 0.0);
+    std::fill(chance_reach.begin(), chance_reach.end(), 0.0);
+}
+
+void HUNLFlatWorkerScratch::ensure_capacity(std::size_t node_count, std::size_t edge_count) {
+    terminal_values.assign(node_count, 0.0);
+    node_values.assign(node_count, 0.0);
+    action_values.assign(edge_count, 0.0);
+    player0_reach.assign(node_count, 0.0);
+    player1_reach.assign(node_count, 0.0);
+    chance_reach.assign(node_count, 0.0);
 }
 
 HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph, std::size_t worker_count) {

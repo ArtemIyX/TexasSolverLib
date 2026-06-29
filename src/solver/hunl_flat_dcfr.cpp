@@ -124,9 +124,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
         throw std::invalid_argument("HUNLFlatDCFR beta and gamma must be non-negative");
     }
     for (auto& scratch : worker_scratch_) {
-        scratch.player0_reach.assign(graph_.nodes.size(), 0.0);
-        scratch.player1_reach.assign(graph_.nodes.size(), 0.0);
-        scratch.chance_reach.assign(graph_.nodes.size(), 0.0);
+        scratch.ensure_capacity(graph_.nodes.size(), graph_.children.size());
     }
     scheduler_diagnostics_.worker_profiles.assign(worker_count_, HUNLFlatStageProfile{});
     worker_pool_ = std::make_unique<WorkerPool>(worker_count_);
