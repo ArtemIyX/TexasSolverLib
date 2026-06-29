@@ -493,7 +493,7 @@ Output:
 
 - safe migration path
 
-### Step 6.3. Add backend comparison mode
+### + Step 6.3. Add backend comparison mode
 
 Substeps:
 
