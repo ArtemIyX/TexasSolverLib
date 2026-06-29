@@ -19,11 +19,6 @@ namespace core {
 
 namespace {
 
-struct BranchResult {
-    std::vector<double> branch_values;
-    ParallelWorkerState worker_state;
-};
-
 struct WorkBatch {
     std::size_t begin = 0;
     std::size_t end = 0;
@@ -461,7 +456,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         std::size_t traversing_player = 0;
         bool stop = false;
         std::unordered_map<InfosetKey, std::vector<Probability>> strategy;
-        std::vector<BranchResult> results;
+        std::vector<ParallelWorkerState> results;
         std::exception_ptr error;
     };
 
@@ -486,6 +481,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             const auto local_strategy = pool.strategy;
             lock.unlock();
 
+            bool published = false;
             try {
                 auto local_state = make_worker_state();
                 for (;;) {
@@ -505,7 +501,11 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             local_state);
                     }
                 }
-                pool.results[worker_index].worker_state = std::move(local_state);
+                {
+                    std::lock_guard<std::mutex> guard(pool.mutex);
+                    pool.results[worker_index] = std::move(local_state);
+                }
+                published = true;
             } catch (...) {
                 std::lock_guard<std::mutex> guard(pool.mutex);
                 if (!pool.error) {
@@ -515,7 +515,10 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
             lock.lock();
             seen_phase = local_phase;
-            if (++pool.completed == plan.worker_count) {
+            if (published && ++pool.completed == plan.worker_count) {
+                pool.cv.notify_all();
+            }
+            if (!published && pool.error) {
                 pool.cv.notify_all();
             }
         }
@@ -557,7 +560,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             }
 
             for (const auto worker_index : merge_order) {
-                merge_worker_state(infosets_, std::move(pool.results[worker_index].worker_state));
+                merge_worker_state(infosets_, std::move(pool.results[worker_index]));
             }
         }
     }
