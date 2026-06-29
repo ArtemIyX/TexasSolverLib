@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
@@ -21,6 +22,7 @@ struct BenchmarkConfig {
     std::vector<std::size_t> workers;
     std::size_t frontier_multiplier = 8;
     bool force_parallel = false;
+    bool profile = false;
 };
 
 void print_usage(const char* exe) {
@@ -31,7 +33,8 @@ void print_usage(const char* exe) {
               << "  <iterations>  positive integer\n"
               << "  <workers>     comma-separated list, e.g. 1,2,4,8\n"
               << "  [frontier_multiplier]  optional positive integer, default 8\n"
-              << "  [--force-parallel]  benchmark only; bypass sequential fallback\n";
+              << "  [--force-parallel]  benchmark only; bypass sequential fallback\n"
+              << "  [--profile]  print internal solver profiling details\n";
 }
 
 bool parse_uint32(std::string_view text, std::uint32_t& out) {
@@ -70,7 +73,7 @@ bool parse_worker_list(std::string_view text, std::vector<std::size_t>& workers)
 }
 
 std::optional<BenchmarkConfig> parse_args(int argc, char* argv[]) {
-    if (argc < 4 || argc > 6) {
+    if (argc < 4 || argc > 7) {
         return std::nullopt;
     }
 
@@ -87,6 +90,10 @@ std::optional<BenchmarkConfig> parse_args(int argc, char* argv[]) {
         const std::string_view arg = argv[i];
         if (arg == "--force-parallel") {
             cfg.force_parallel = true;
+            continue;
+        }
+        if (arg == "--profile") {
+            cfg.profile = true;
             continue;
         }
 
@@ -169,6 +176,49 @@ void run_benchmark_rows(const BenchmarkConfig& cfg, SolveFn&& solve) {
                   << std::setw(14) << traverse
                   << std::setw(14) << finalize
                   << post << "\n";
+
+        if (!cfg.profile) {
+            continue;
+        }
+
+        const core::SolveProfile* profile = nullptr;
+        if constexpr (std::is_same_v<std::decay_t<decltype(output)>, core::SolveOutput>) {
+            profile = &output.profile;
+        } else if constexpr (std::is_same_v<std::decay_t<decltype(output)>, core::HUNLSolveOutput>) {
+            profile = &output.profile;
+        }
+
+        if (profile == nullptr || !profile->enabled) {
+            continue;
+        }
+
+        std::cout << "  profile:"
+                  << " frontier=" << profile->frontier_seed_count
+                  << " batches=" << profile->batch_count
+                  << " frontier_build=" << format_duration(
+                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(profile->frontier_seconds)))
+                  << " batch_build=" << format_duration(
+                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(profile->batch_build_seconds)))
+                  << " snapshot=" << format_duration(
+                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(profile->snapshot_seconds)))
+                  << " merge=" << format_duration(
+                        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(profile->merge_seconds)))
+                  << "\n";
+        for (std::size_t i = 0; i < profile->workers.size(); ++i) {
+            const auto& worker = profile->workers[i];
+            std::cout << "  worker[" << i << "]"
+                      << " cfr=" << format_duration(
+                            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                std::chrono::duration<double>(worker.cfr_seconds)))
+                      << " batches=" << worker.batches_taken
+                      << " seeds=" << worker.seeds_processed
+                      << " infosets=" << worker.infoset_count
+                      << "\n";
+        }
     }
 }
 
@@ -182,6 +232,13 @@ int main(int argc, char* argv[]) {
     }
 
     const auto& cfg = *parsed;
+    if (cfg.profile) {
+#if defined(_MSC_VER)
+        _putenv_s("TEXASSOLVER_PROFILE", "1");
+#else
+        setenv("TEXASSOLVER_PROFILE", "1", 1);
+#endif
+    }
     const double alpha = 1.5;
     const double beta = 0.0;
     const double gamma = 2.0;

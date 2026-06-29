@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/hunl.hpp"
+#include "core/types.hpp"
 #include "solver/parallel_dcfr.hpp"
 
 #include <cstdint>
@@ -20,6 +21,7 @@ struct HUNLSolveOutput {
     double wrapper_postprocess_seconds = 0.0;
     std::uint32_t infoset_count = 0;
     bool used_parallel = false;
+    SolveProfile profile;
 };
 
 enum class HUNLSolveError {

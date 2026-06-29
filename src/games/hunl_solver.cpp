@@ -87,6 +87,7 @@ HUNLSolveOutput solve_hunl_postflop(
     out.used_parallel = solve_output.used_parallel;
     out.traversal_seconds = solve_output.traversal_seconds;
     out.solver_finalize_seconds = solve_output.finalize_seconds;
+    out.profile = solve_output.profile;
     out.infoset_count = static_cast<std::uint32_t>(out.average_strategy.size());
     const auto finish = std::chrono::steady_clock::now();
     out.wrapper_postprocess_seconds =

@@ -161,6 +161,29 @@ ParallelDCFRSolver<G>::ParallelDCFRSolver(
     }
 }
 
+bool profile_parallel_dcfr_enabled() {
+    char* raw_value = nullptr;
+#if defined(_MSC_VER)
+    std::size_t len = 0;
+    if (_dupenv_s(&raw_value, &len, "TEXASSOLVER_PROFILE") != 0) {
+        raw_value = nullptr;
+    }
+#else
+    raw_value = std::getenv("TEXASSOLVER_PROFILE");
+#endif
+    if (raw_value == nullptr) {
+        return false;
+    }
+    std::string value(raw_value);
+#if defined(_MSC_VER)
+    free(raw_value);
+#endif
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return !(value == "0" || value == "false" || value == "off");
+}
+
 template <class G>
 ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
     if (root_.is_terminal()) {
@@ -501,12 +524,17 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     const auto plan = build_plan();
     validate_plan(plan);
     infosets_.clear();
+    const bool profile_enabled = profile_parallel_dcfr_enabled();
 
     const auto root_player = root_.current_player();
     const auto tuned_frontier_multiplier =
         effective_frontier_multiplier(root_, plan.worker_count, frontier_multiplier_);
+    const auto frontier_start = std::chrono::steady_clock::now();
     const auto frontier = build_frontier(root_, frontier_seed_target(plan.worker_count, tuned_frontier_multiplier));
+    const auto frontier_finish = std::chrono::steady_clock::now();
+    const auto batch_build_start = std::chrono::steady_clock::now();
     const auto batches = make_work_batches(frontier, plan.worker_count, tuned_frontier_multiplier);
+    const auto batch_build_finish = std::chrono::steady_clock::now();
     if (frontier.empty()) {
         SolveOutput out;
         out.iterations = iterations;
@@ -515,9 +543,13 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
 
     if (plan.worker_count == 1) {
         const auto traversal_start = std::chrono::steady_clock::now();
+        double snapshot_seconds = 0.0;
+        double merge_seconds = 0.0;
         for (std::uint32_t iter = 0; iter < iterations; ++iter) {
             for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
+                const auto snapshot_start = std::chrono::steady_clock::now();
                 const auto strategy = build_strategy_snapshot(infosets_);
+                const auto snapshot_finish = std::chrono::steady_clock::now();
                 ParallelWorkerState worker_state = make_worker_state();
                 if (root_player < 0) {
                     for (const auto& outcome : root_.chance_outcomes()) {
@@ -540,7 +572,11 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             worker_state);
                     }
                 }
+                const auto merge_start = std::chrono::steady_clock::now();
                 merge_worker_state(infosets_, std::move(worker_state));
+                const auto merge_finish = std::chrono::steady_clock::now();
+                snapshot_seconds += std::chrono::duration<double>(snapshot_finish - snapshot_start).count();
+                merge_seconds += std::chrono::duration<double>(merge_finish - merge_start).count();
             }
         }
         const auto traversal_finish = std::chrono::steady_clock::now();
@@ -551,6 +587,13 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         out.iterations = iterations;
         out.used_parallel = false;
         out.traversal_seconds = std::chrono::duration<double>(traversal_finish - traversal_start).count();
+        out.profile.enabled = profile_enabled;
+        out.profile.frontier_seconds = std::chrono::duration<double>(frontier_finish - frontier_start).count();
+        out.profile.batch_build_seconds = std::chrono::duration<double>(batch_build_finish - batch_build_start).count();
+        out.profile.frontier_seed_count = frontier.size();
+        out.profile.batch_count = batches.size();
+        out.profile.snapshot_seconds = snapshot_seconds;
+        out.profile.merge_seconds = merge_seconds;
         out.game_value = detail::expected_value_player(root_, average_strategy, 0);
         const double br0 = detail::best_response_value(root_, average_strategy, 0);
         const double br1 = detail::best_response_value(root_, average_strategy, 1);
@@ -578,11 +621,13 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         bool stop = false;
         SharedStrategyMap strategy;
         std::vector<ParallelWorkerState> results;
+        std::vector<WorkerProfile> worker_profiles;
         std::exception_ptr error;
     };
 
     WorkerPoolState pool;
     pool.results.resize(plan.worker_count);
+    pool.worker_profiles.resize(plan.worker_count);
     std::vector<std::size_t> merge_order(plan.worker_count);
     for (std::size_t i = 0; i < merge_order.size(); ++i) {
         merge_order[i] = i;
@@ -605,14 +650,19 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             bool published = false;
             try {
                 auto local_state = make_worker_state();
+                const auto local_cfr_start = std::chrono::steady_clock::now();
+                std::uint64_t local_batches_taken = 0;
+                std::uint64_t local_seeds_processed = 0;
                 for (;;) {
                     const auto batch_index = pool.next_batch.fetch_add(1, std::memory_order_relaxed);
                     if (batch_index >= batches.size()) {
                         break;
                     }
+                    ++local_batches_taken;
                     const auto batch = batches[batch_index];
                     for (const auto seed_index : batch.seed_indices) {
                         const auto& seed = frontier[seed_index];
+                        ++local_seeds_processed;
                         cfr(
                             seed.state,
                             static_cast<PlayerId>(local_player),
@@ -622,7 +672,16 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                             local_state);
                     }
                 }
+                const auto local_cfr_finish = std::chrono::steady_clock::now();
                 pool.results[worker_index] = std::move(local_state);
+                if (profile_enabled) {
+                    auto& worker_profile = pool.worker_profiles[worker_index];
+                    worker_profile.cfr_seconds =
+                        std::chrono::duration<double>(local_cfr_finish - local_cfr_start).count();
+                    worker_profile.batches_taken = local_batches_taken;
+                    worker_profile.seeds_processed = local_seeds_processed;
+                    worker_profile.infoset_count = pool.results[worker_index].accum.size();
+                }
                 published = true;
             } catch (...) {
                 std::lock_guard<std::mutex> guard(pool.mutex);
@@ -650,8 +709,11 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     }
 
     const auto traversal_start = std::chrono::steady_clock::now();
+    double snapshot_seconds = 0.0;
+    double merge_seconds = 0.0;
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
         for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
+            const auto snapshot_start = std::chrono::steady_clock::now();
             {
                 std::lock_guard<std::mutex> lock(pool.mutex);
                 pool.traversing_player = traversing_player;
@@ -661,6 +723,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                 pool.error = nullptr;
                 ++pool.phase_id;
             }
+            const auto snapshot_finish = std::chrono::steady_clock::now();
+            snapshot_seconds += std::chrono::duration<double>(snapshot_finish - snapshot_start).count();
             pool.cv.notify_all();
 
             {
@@ -679,9 +743,12 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                 }
             }
 
+            const auto merge_start = std::chrono::steady_clock::now();
             for (const auto worker_index : merge_order) {
                 merge_worker_state(infosets_, std::move(pool.results[worker_index]));
             }
+            const auto merge_finish = std::chrono::steady_clock::now();
+            merge_seconds += std::chrono::duration<double>(merge_finish - merge_start).count();
         }
     }
     const auto traversal_finish = std::chrono::steady_clock::now();
@@ -701,6 +768,14 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     out.iterations = iterations;
     out.used_parallel = true;
     out.traversal_seconds = std::chrono::duration<double>(traversal_finish - traversal_start).count();
+    out.profile.enabled = profile_enabled;
+    out.profile.frontier_seconds = std::chrono::duration<double>(frontier_finish - frontier_start).count();
+    out.profile.batch_build_seconds = std::chrono::duration<double>(batch_build_finish - batch_build_start).count();
+    out.profile.frontier_seed_count = frontier.size();
+    out.profile.batch_count = batches.size();
+    out.profile.snapshot_seconds = snapshot_seconds;
+    out.profile.merge_seconds = merge_seconds;
+    out.profile.workers = pool.worker_profiles;
     out.game_value = detail::expected_value_player(root_, average_strategy, 0);
     const double br0 = detail::best_response_value(root_, average_strategy, 0);
     const double br1 = detail::best_response_value(root_, average_strategy, 1);

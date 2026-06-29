@@ -42,6 +42,24 @@ struct ChanceOutcome {
     Probability probability{};
 };
 
+struct WorkerProfile {
+    double cfr_seconds = 0.0;
+    std::uint64_t batches_taken = 0;
+    std::uint64_t seeds_processed = 0;
+    std::uint64_t infoset_count = 0;
+};
+
+struct SolveProfile {
+    bool enabled = false;
+    double snapshot_seconds = 0.0;
+    double merge_seconds = 0.0;
+    double frontier_seconds = 0.0;
+    double batch_build_seconds = 0.0;
+    std::uint64_t frontier_seed_count = 0;
+    std::uint64_t batch_count = 0;
+    std::vector<WorkerProfile> workers;
+};
+
 /**
  * @brief Summary returned by solver entrypoints.
  */
@@ -53,6 +71,7 @@ struct SolveOutput {
     double traversal_seconds = 0.0;
     double finalize_seconds = 0.0;
     bool used_parallel = false;
+    SolveProfile profile;
 };
 
 }  // namespace core
