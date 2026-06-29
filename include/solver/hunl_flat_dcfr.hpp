@@ -18,12 +18,27 @@
 namespace core {
 
 struct HUNLFlatStageProfile {
+    double discount_seconds = 0.0;
     double strategy_seconds = 0.0;
     double reach_seconds = 0.0;
     double terminal_seconds = 0.0;
     double backward_seconds = 0.0;
     double regret_seconds = 0.0;
     double average_strategy_seconds = 0.0;
+};
+
+enum class HUNLFlatStageKind : std::uint8_t {
+    Discount = 0,
+    Strategy = 1,
+    Reach = 2,
+    Terminal = 3,
+    Backward = 4,
+    Regret = 5,
+    AverageStrategy = 6,
+};
+
+struct HUNLFlatSchedulerDiagnostics {
+    std::vector<HUNLFlatStageProfile> worker_profiles;
 };
 
 class HUNLFlatDCFR {
@@ -59,6 +74,7 @@ public:
     [[nodiscard]] const std::vector<double>& node_values() const noexcept;
     [[nodiscard]] const std::vector<double>& action_values() const noexcept;
     [[nodiscard]] std::size_t worker_count() const noexcept;
+    [[nodiscard]] const HUNLFlatSchedulerDiagnostics& scheduler_diagnostics() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
@@ -88,7 +104,8 @@ private:
         bool stop_ = false;
     };
 
-    void run_stage_workers(const std::function<void(std::size_t)>& fn);
+    void run_stage_workers(HUNLFlatStageKind stage, const std::function<void(std::size_t)>& fn);
+    static void add_stage_seconds(HUNLFlatStageProfile& profile, HUNLFlatStageKind stage, double seconds);
     void apply_dcfr_discount_stage();
     void compute_strategy_stage();
     void forward_reach_stage();
@@ -110,6 +127,7 @@ private:
     HUNLFlatParallelPlan parallel_plan_;
     std::unique_ptr<WorkerPool> worker_pool_;
     std::vector<HUNLFlatWorkerScratch> worker_scratch_;
+    HUNLFlatSchedulerDiagnostics scheduler_diagnostics_;
     double alpha_ = 1.5;
     double beta_ = 0.0;
     double gamma_ = 2.0;

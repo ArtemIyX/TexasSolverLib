@@ -128,6 +128,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
         scratch.player1_reach.assign(graph_.nodes.size(), 0.0);
         scratch.chance_reach.assign(graph_.nodes.size(), 0.0);
     }
+    scheduler_diagnostics_.worker_profiles.assign(worker_count_, HUNLFlatStageProfile{});
     worker_pool_ = std::make_unique<WorkerPool>(worker_count_);
 }
 
@@ -137,20 +138,69 @@ std::size_t HUNLFlatDCFR::worker_count() const noexcept {
     return worker_count_;
 }
 
-void HUNLFlatDCFR::run_stage_workers(const std::function<void(std::size_t)>& fn) {
+const HUNLFlatSchedulerDiagnostics& HUNLFlatDCFR::scheduler_diagnostics() const noexcept {
+    return scheduler_diagnostics_;
+}
+
+void HUNLFlatDCFR::add_stage_seconds(
+    HUNLFlatStageProfile& profile,
+    HUNLFlatStageKind stage,
+    double seconds) {
+    switch (stage) {
+        case HUNLFlatStageKind::Discount:
+            profile.discount_seconds += seconds;
+            break;
+        case HUNLFlatStageKind::Strategy:
+            profile.strategy_seconds += seconds;
+            break;
+        case HUNLFlatStageKind::Reach:
+            profile.reach_seconds += seconds;
+            break;
+        case HUNLFlatStageKind::Terminal:
+            profile.terminal_seconds += seconds;
+            break;
+        case HUNLFlatStageKind::Backward:
+            profile.backward_seconds += seconds;
+            break;
+        case HUNLFlatStageKind::Regret:
+            profile.regret_seconds += seconds;
+            break;
+        case HUNLFlatStageKind::AverageStrategy:
+            profile.average_strategy_seconds += seconds;
+            break;
+    }
+}
+
+void HUNLFlatDCFR::run_stage_workers(HUNLFlatStageKind stage, const std::function<void(std::size_t)>& fn) {
     if (!worker_pool_ || worker_count_ <= 1) {
+        const auto start = std::chrono::steady_clock::now();
         fn(0);
+        const auto finish = std::chrono::steady_clock::now();
+        add_stage_seconds(
+            scheduler_diagnostics_.worker_profiles[0],
+            stage,
+            std::chrono::duration<double>(finish - start).count());
         return;
     }
-    worker_pool_->run_stage(fn);
+    worker_pool_->run_stage([&](std::size_t worker_index) {
+        const auto start = std::chrono::steady_clock::now();
+        fn(worker_index);
+        const auto finish = std::chrono::steady_clock::now();
+        add_stage_seconds(
+            scheduler_diagnostics_.worker_profiles[worker_index],
+            stage,
+            std::chrono::duration<double>(finish - start).count());
+    });
 }
 
 void HUNLFlatDCFR::run_iteration() {
     using clock = std::chrono::steady_clock;
 
+    const auto discount_start = clock::now();
     apply_dcfr_discount_stage();
+    const auto discount_end = clock::now();
 
-    const auto strategy_start = clock::now();
+    const auto strategy_start = discount_end;
     compute_strategy_stage();
     const auto strategy_end = clock::now();
 
@@ -174,6 +224,7 @@ void HUNLFlatDCFR::run_iteration() {
     average_strategy_stage();
     const auto average_end = clock::now();
 
+    profile_.discount_seconds += std::chrono::duration<double>(discount_end - discount_start).count();
     profile_.strategy_seconds += std::chrono::duration<double>(strategy_end - strategy_start).count();
     profile_.reach_seconds += std::chrono::duration<double>(reach_end - reach_start).count();
     profile_.terminal_seconds += std::chrono::duration<double>(terminal_end - terminal_start).count();
@@ -289,7 +340,7 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_averag
 void HUNLFlatDCFR::apply_dcfr_discount_stage() {
     const auto target_iter = iterations_ + 1U;
     auto& metas = infoset_table_.meta_mut();
-    run_stage_workers([&](std::size_t worker_index) {
+    run_stage_workers(HUNLFlatStageKind::Discount, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             auto& meta = metas[infoset_index];
@@ -316,7 +367,7 @@ void HUNLFlatDCFR::apply_dcfr_discount_stage() {
 
 void HUNLFlatDCFR::compute_strategy_stage() {
     const auto& metas = infoset_table_.meta();
-    run_stage_workers([&](std::size_t worker_index) {
+    run_stage_workers(HUNLFlatStageKind::Strategy, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
@@ -376,7 +427,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
     }
 
     for (std::size_t depth = 0; depth < graph_.depth_slices.size(); ++depth) {
-        run_stage_workers([&](std::size_t worker_index) {
+        run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
             auto& scratch = worker_scratch_[worker_index];
             std::fill(scratch.player0_reach.begin(), scratch.player0_reach.end(), 0.0);
             std::fill(scratch.player1_reach.begin(), scratch.player1_reach.end(), 0.0);
@@ -432,7 +483,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
             }
         });
 
-        run_stage_workers([&](std::size_t worker_index) {
+        run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
             const auto range = parallel_plan_.workers[worker_index].node_range;
             for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
                 double add0 = 0.0;
@@ -452,7 +503,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
 }
 
 void HUNLFlatDCFR::terminal_utility_stage() {
-    run_stage_workers([&](std::size_t worker_index) {
+    run_stage_workers(HUNLFlatStageKind::Terminal, [&](std::size_t worker_index) {
         if (worker_index != 0) {
             return;
         }
@@ -474,7 +525,7 @@ void HUNLFlatDCFR::backward_value_stage() {
     std::fill(action_values_.begin(), action_values_.end(), 0.0);
 
     for (std::size_t depth = graph_.depth_slices.size(); depth-- > 0;) {
-        run_stage_workers([&](std::size_t worker_index) {
+        run_stage_workers(HUNLFlatStageKind::Backward, [&](std::size_t worker_index) {
             const auto& worker = parallel_plan_.workers[worker_index];
             const auto range = worker.depth_node_ranges[depth];
             for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
@@ -529,7 +580,7 @@ void HUNLFlatDCFR::backward_value_stage() {
 
 void HUNLFlatDCFR::regret_update_stage() {
     const auto& metas = infoset_table_.meta();
-    run_stage_workers([&](std::size_t worker_index) {
+    run_stage_workers(HUNLFlatStageKind::Regret, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
@@ -565,7 +616,7 @@ void HUNLFlatDCFR::regret_update_stage() {
 
 void HUNLFlatDCFR::average_strategy_stage() {
     const auto& metas = infoset_table_.meta();
-    run_stage_workers([&](std::size_t worker_index) {
+    run_stage_workers(HUNLFlatStageKind::AverageStrategy, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
