@@ -55,3 +55,27 @@ TEST_CASE(hunl_flat_infoset_table_exposes_rw_rows_for_all_three_arenas) {
     EXPECT_EQ(table.strategy_sum(id)[count - 1], 2.5);
     EXPECT_EQ(table.current_strategy(id)[0], 0.75);
 }
+
+TEST_CASE(hunl_flat_infoset_table_value_index_matches_selected_layout) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const std::array<std::size_t, 2> hand_count_per_player = {2, 3};
+
+    const auto hand_action = core::HUNLFlatInfosetTable::build(
+        graph, hand_count_per_player, core::HUNLFlatValueLayout::InfosetHandAction);
+    const auto action_hand = core::HUNLFlatInfosetTable::build(
+        graph, hand_count_per_player, core::HUNLFlatValueLayout::InfosetActionHand);
+
+    const auto id = graph.infosets.front().id;
+    const auto& meta0 = hand_action.meta()[id.value];
+    EXPECT_EQ(hand_action.layout(), core::HUNLFlatValueLayout::InfosetHandAction);
+    EXPECT_EQ(action_hand.layout(), core::HUNLFlatValueLayout::InfosetActionHand);
+
+    EXPECT_EQ(hand_action.value_index(id, 0, 0), meta0.offset);
+    EXPECT_EQ(hand_action.value_index(id, 1, 0), meta0.offset + meta0.action_count);
+    EXPECT_EQ(hand_action.value_index(id, 1, 1), meta0.offset + meta0.action_count + 1U);
+
+    EXPECT_EQ(action_hand.value_index(id, 0, 0), meta0.offset);
+    EXPECT_EQ(action_hand.value_index(id, 1, 0), meta0.offset + 1U);
+    EXPECT_EQ(action_hand.value_index(id, 0, 1), meta0.offset + meta0.hand_count);
+}

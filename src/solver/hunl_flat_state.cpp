@@ -6,8 +6,10 @@ namespace core {
 
 HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     const HUNLFlatSolveGraph& graph,
-    const std::array<std::size_t, 2>& hand_count_per_player) {
+    const std::array<std::size_t, 2>& hand_count_per_player,
+    HUNLFlatValueLayout layout) {
     HUNLFlatInfosetTable table;
+    table.layout_ = layout;
     table.meta_.reserve(graph.infosets.size());
 
     std::uint32_t running_offset = 0;
@@ -45,6 +47,10 @@ std::size_t HUNLFlatInfosetTable::infoset_count() const noexcept {
     return meta_.size();
 }
 
+HUNLFlatValueLayout HUNLFlatInfosetTable::layout() const noexcept {
+    return layout_;
+}
+
 const double* HUNLFlatInfosetTable::regret(InfosetId id) const {
     return regret_sum_.data() + meta_for(id).offset;
 }
@@ -75,6 +81,21 @@ std::size_t HUNLFlatInfosetTable::row_value_count(InfosetId id) const {
 
 std::size_t HUNLFlatInfosetTable::total_value_count() const noexcept {
     return regret_sum_.size();
+}
+
+std::size_t HUNLFlatInfosetTable::value_index(InfosetId id, std::size_t hand_idx, std::size_t action_idx) const {
+    const auto& meta = meta_for(id);
+    if (hand_idx >= meta.hand_count) {
+        throw std::out_of_range("HUNLFlatInfosetTable hand_idx out of range");
+    }
+    if (action_idx >= meta.action_count) {
+        throw std::out_of_range("HUNLFlatInfosetTable action_idx out of range");
+    }
+
+    if (layout_ == HUNLFlatValueLayout::InfosetHandAction) {
+        return meta.offset + hand_idx * static_cast<std::size_t>(meta.action_count) + action_idx;
+    }
+    return meta.offset + action_idx * static_cast<std::size_t>(meta.hand_count) + hand_idx;
 }
 
 const HUNLFlatInfosetTableMeta& HUNLFlatInfosetTable::meta_for(InfosetId id) const {

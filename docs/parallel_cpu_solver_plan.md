@@ -206,7 +206,7 @@ Output:
 Purpose:
 Make the solve state cache-friendly and thread-friendly.
 
-### Step 2.1. Introduce flat infoset tables
+### + Step 2.1. Introduce flat infoset tables
 
 Substeps:
 
@@ -221,7 +221,7 @@ Output:
 
 - all regret and strategy data addressable by `(infoset_id, action_idx[, hand_idx])`
 
-### Step 2.2. Decide hand layout
+### + Step 2.2. Decide hand layout
 
 Substeps:
 
@@ -231,9 +231,7 @@ Substeps:
 - Benchmark both on a small prototype.
 - Pick the one with better CPU cache behavior and simpler vectorization.
 
-Output:
-
-- a documented canonical memory layout
+Selected: Use infoset-action-hand
 
 ### Step 2.3. Remove string-key dependence from the solve loop
 
