@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <limits>
 #include <memory>
@@ -513,6 +514,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     }
 
     if (plan.worker_count == 1) {
+        const auto traversal_start = std::chrono::steady_clock::now();
         for (std::uint32_t iter = 0; iter < iterations; ++iter) {
             for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
                 const auto strategy = build_strategy_snapshot(infosets_);
@@ -541,10 +543,14 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
                 merge_worker_state(infosets_, std::move(worker_state));
             }
         }
+        const auto traversal_finish = std::chrono::steady_clock::now();
 
+        const auto finalize_start = std::chrono::steady_clock::now();
         const auto average_strategy = build_average_strategy();
         SolveOutput out;
         out.iterations = iterations;
+        out.used_parallel = false;
+        out.traversal_seconds = std::chrono::duration<double>(traversal_finish - traversal_start).count();
         out.game_value = detail::expected_value_player(root_, average_strategy, 0);
         const double br0 = detail::best_response_value(root_, average_strategy, 0);
         const double br1 = detail::best_response_value(root_, average_strategy, 1);
@@ -557,6 +563,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             out.average_strategy.begin(),
             out.average_strategy.end(),
             [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+        out.finalize_seconds = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - finalize_start).count();
         return out;
     }
 
@@ -641,6 +649,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         workers.emplace_back(worker_fn, i);
     }
 
+    const auto traversal_start = std::chrono::steady_clock::now();
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
         for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
             {
@@ -675,6 +684,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
             }
         }
     }
+    const auto traversal_finish = std::chrono::steady_clock::now();
 
     {
         std::lock_guard<std::mutex> lock(pool.mutex);
@@ -685,9 +695,12 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         worker.join();
     }
 
+    const auto finalize_start = std::chrono::steady_clock::now();
     const auto average_strategy = build_average_strategy();
     SolveOutput out;
     out.iterations = iterations;
+    out.used_parallel = true;
+    out.traversal_seconds = std::chrono::duration<double>(traversal_finish - traversal_start).count();
     out.game_value = detail::expected_value_player(root_, average_strategy, 0);
     const double br0 = detail::best_response_value(root_, average_strategy, 0);
     const double br1 = detail::best_response_value(root_, average_strategy, 1);
@@ -700,6 +713,8 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         out.average_strategy.begin(),
         out.average_strategy.end(),
         [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    out.finalize_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - finalize_start).count();
     return out;
 }
 

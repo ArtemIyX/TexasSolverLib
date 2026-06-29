@@ -15,7 +15,11 @@ struct HUNLSolveOutput {
     double game_value = 0.0;
     std::uint32_t iterations = 0;
     double wallclock_seconds = 0.0;
+    double traversal_seconds = 0.0;
+    double solver_finalize_seconds = 0.0;
+    double wrapper_postprocess_seconds = 0.0;
     std::uint32_t infoset_count = 0;
+    bool used_parallel = false;
 };
 
 enum class HUNLSolveError {
@@ -32,7 +36,8 @@ HUNLSolveOutput solve_hunl_postflop(
     double beta,
     double gamma,
     std::size_t workers = 1,
-    std::size_t frontier_multiplier = 8);
+    std::size_t frontier_multiplier = 8,
+    bool force_parallel = false);
 
 void validate_config(const HUNLConfig& config);
 

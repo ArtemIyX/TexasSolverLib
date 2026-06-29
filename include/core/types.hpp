@@ -50,6 +50,9 @@ struct SolveOutput {
     Value exploitability = 0.0;
     Value game_value = 0.0;
     std::uint32_t iterations = 0;
+    double traversal_seconds = 0.0;
+    double finalize_seconds = 0.0;
+    bool used_parallel = false;
 };
 
 }  // namespace core

@@ -77,9 +77,10 @@ inline HUNLSolveOutput solve_hunl_postflop(
     double beta,
     double gamma,
     std::size_t workers = 1,
-    std::size_t frontier_multiplier = 8) {
+    std::size_t frontier_multiplier = 8,
+    bool force_parallel = false) {
     return ::core::solve_hunl_postflop(
-        config, iterations, alpha, beta, gamma, workers, frontier_multiplier);
+        config, iterations, alpha, beta, gamma, workers, frontier_multiplier, force_parallel);
 }
 
 inline PreflopSolveOutput solve_hunl_preflop(
