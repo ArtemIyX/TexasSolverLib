@@ -450,7 +450,8 @@ double ParallelDCFRSolver<G>::cfr(
     }
 
     const auto actions = state.legal_actions();
-    const auto id = lookup_infoset_id(state, player, actions.size());
+    const auto id = core::lookup_infoset_id(
+        state, player, registry_, actions.size(), &locked_, &locked_by_id_);
     auto& accum = worker_state.accum[id];
     if (accum.regret_sum.empty()) {
         accum.regret_sum.assign(actions.size(), 0.0);
@@ -494,17 +495,6 @@ double ParallelDCFRSolver<G>::cfr(
     }
 
     return node_value;
-}
-
-template <class G>
-InfosetId ParallelDCFRSolver<G>::lookup_infoset_id(const G& state, PlayerId player, std::size_t action_count) {
-    const auto key = state.infoset_key(player);
-    const auto id = registry_.intern(key, action_count);
-    if (const auto locked_it = locked_.find(key);
-        locked_it != locked_.end() && locked_it->second.size() == action_count) {
-        locked_by_id_.emplace(id, locked_it->second);
-    }
-    return id;
 }
 
 template <class G>

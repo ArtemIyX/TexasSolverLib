@@ -2,6 +2,7 @@
 
 #include "core/types.hpp"
 #include "core/game.hpp"
+#include "util/infoset_lookup.hpp"
 #include "util/infoset_registry.hpp"
 
 #include <algorithm>
@@ -190,7 +191,6 @@ private:
         PlayerId traversing_player,
         const std::array<double, 2>& reach_probs,
         double chance_reach);
-    InfosetId lookup_infoset_id(const G& state, PlayerId player, std::size_t action_count);
     void validate_config() const;
     StrategyMap build_average_strategy() const;
 
@@ -243,7 +243,8 @@ double DCFRSolver<G>::cfr(
     }
 
     const auto actions = state.legal_actions();
-    const auto id = lookup_infoset_id(state, player, actions.size());
+    const auto id = core::lookup_infoset_id(
+        state, player, registry_, actions.size(), &locked_, &locked_by_id_);
     auto& accum = infosets_[id];
     if (accum.regret_sum.empty()) {
         accum.regret_sum.assign(actions.size(), 0.0);
@@ -283,17 +284,6 @@ double DCFRSolver<G>::cfr(
     }
 
     return node_value;
-}
-
-template <class G>
-InfosetId DCFRSolver<G>::lookup_infoset_id(const G& state, PlayerId player, std::size_t action_count) {
-    const auto key = state.infoset_key(player);
-    const auto id = registry_.intern(key, action_count);
-    if (const auto locked_it = locked_.find(key);
-        locked_it != locked_.end() && locked_it->second.size() == action_count) {
-        locked_by_id_.emplace(id, locked_it->second);
-    }
-    return id;
 }
 
 template <class G>

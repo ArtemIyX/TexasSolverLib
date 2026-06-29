@@ -59,7 +59,6 @@ private:
         double chance_reach,
         const StrategyMap& strategy,
         ParallelWorkerState& worker_state);
-    InfosetId lookup_infoset_id(const G& state, PlayerId player, std::size_t action_count);
     StrategyMap build_average_strategy() const;
     DCFRConfig config_;
     G root_;
