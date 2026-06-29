@@ -19,8 +19,10 @@ SolveOutput solve_kuhn(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers) {
-    return detail::solve_generic<KuhnState>(iterations, alpha, beta, gamma, workers);
+    std::size_t workers,
+    std::size_t frontier_multiplier) {
+    return detail::solve_generic<KuhnState>(
+        iterations, alpha, beta, gamma, workers, {}, frontier_multiplier);
 }
 
 SolveOutput solve_leduc(
@@ -28,8 +30,10 @@ SolveOutput solve_leduc(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers) {
-    return detail::solve_generic<LeducState>(iterations, alpha, beta, gamma, workers);
+    std::size_t workers,
+    std::size_t frontier_multiplier) {
+    return detail::solve_generic<LeducState>(
+        iterations, alpha, beta, gamma, workers, {}, frontier_multiplier);
 }
 
 }  // namespace core

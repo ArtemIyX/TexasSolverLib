@@ -52,8 +52,9 @@ inline SolveOutput solve_kuhn(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers = 1) {
-    return ::core::solve_kuhn(iterations, alpha, beta, gamma, workers);
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8) {
+    return ::core::solve_kuhn(iterations, alpha, beta, gamma, workers, frontier_multiplier);
 }
 
 /**
@@ -64,8 +65,9 @@ inline SolveOutput solve_leduc(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers = 1) {
-    return ::core::solve_leduc(iterations, alpha, beta, gamma, workers);
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8) {
+    return ::core::solve_leduc(iterations, alpha, beta, gamma, workers, frontier_multiplier);
 }
 
 inline HUNLSolveOutput solve_hunl_postflop(
@@ -74,8 +76,10 @@ inline HUNLSolveOutput solve_hunl_postflop(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers = 1) {
-    return ::core::solve_hunl_postflop(config, iterations, alpha, beta, gamma, workers);
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8) {
+    return ::core::solve_hunl_postflop(
+        config, iterations, alpha, beta, gamma, workers, frontier_multiplier);
 }
 
 inline PreflopSolveOutput solve_hunl_preflop(

@@ -18,15 +18,17 @@ struct BenchmarkConfig {
     std::string game;
     std::uint32_t iterations = 0;
     std::vector<std::size_t> workers;
+    std::size_t frontier_multiplier = 8;
 };
 
 void print_usage(const char* exe) {
     std::cerr << "Usage:\n"
-              << "  " << exe << " <game> <iterations> <workers>\n\n"
+              << "  " << exe << " <game> <iterations> <workers> [frontier_multiplier]\n\n"
               << "Arguments:\n"
               << "  <game>        kuhn | leduc | hunl\n"
               << "  <iterations>  positive integer\n"
-              << "  <workers>     comma-separated list, e.g. 1,2,4,8\n";
+              << "  <workers>     comma-separated list, e.g. 1,2,4,8\n"
+              << "  [frontier_multiplier]  optional positive integer, default 8\n";
 }
 
 bool parse_uint32(std::string_view text, std::uint32_t& out) {
@@ -65,7 +67,7 @@ bool parse_worker_list(std::string_view text, std::vector<std::size_t>& workers)
 }
 
 std::optional<BenchmarkConfig> parse_args(int argc, char* argv[]) {
-    if (argc != 4) {
+    if (argc != 4 && argc != 5) {
         return std::nullopt;
     }
 
@@ -76,6 +78,13 @@ std::optional<BenchmarkConfig> parse_args(int argc, char* argv[]) {
     }
     if (!parse_worker_list(argv[3], cfg.workers)) {
         return std::nullopt;
+    }
+    if (argc == 5) {
+        std::uint32_t parsed_multiplier = 0;
+        if (!parse_uint32(argv[4], parsed_multiplier)) {
+            return std::nullopt;
+        }
+        cfg.frontier_multiplier = static_cast<std::size_t>(parsed_multiplier);
     }
     return cfg;
 }
@@ -131,14 +140,16 @@ int main(int argc, char* argv[]) {
 
     if (cfg.game == "kuhn") {
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return core::lib::solve_kuhn(cfg.iterations, alpha, beta, gamma, workers);
+            return core::lib::solve_kuhn(
+                cfg.iterations, alpha, beta, gamma, workers, cfg.frontier_multiplier);
         });
         return 0;
     }
 
     if (cfg.game == "leduc") {
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return core::lib::solve_leduc(cfg.iterations, alpha, beta, gamma, workers);
+            return core::lib::solve_leduc(
+                cfg.iterations, alpha, beta, gamma, workers, cfg.frontier_multiplier);
         });
         return 0;
     }
@@ -147,7 +158,13 @@ int main(int argc, char* argv[]) {
         const auto hunl_config = make_benchmark_hunl_config();
         run_benchmark_rows(cfg, [&](std::size_t workers) {
             return core::lib::solve_hunl_postflop(
-                hunl_config, cfg.iterations, alpha, beta, gamma, workers);
+                hunl_config,
+                cfg.iterations,
+                alpha,
+                beta,
+                gamma,
+                workers,
+                cfg.frontier_multiplier);
         });
         return 0;
     }

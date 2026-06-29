@@ -59,7 +59,8 @@ HUNLSolveOutput solve_hunl_postflop(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers) {
+    std::size_t workers,
+    std::size_t frontier_multiplier) {
     validate_config(config);
 
     const auto start = std::chrono::steady_clock::now();
@@ -68,7 +69,8 @@ HUNLSolveOutput solve_hunl_postflop(
 
     SolveOutput solve_output;
     if (workers > 1) {
-        ParallelDCFRSolver<HUNLState> solver(DCFRConfig{alpha, beta, gamma}, root, workers);
+        ParallelDCFRSolver<HUNLState> solver(
+            DCFRConfig{alpha, beta, gamma}, root, workers, frontier_multiplier);
         solve_output = solver.solve(iterations);
     } else {
         DCFRSolver<HUNLState> solver(DCFRConfig{alpha, beta, gamma}, root);

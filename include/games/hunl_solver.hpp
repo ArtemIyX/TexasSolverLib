@@ -31,7 +31,8 @@ HUNLSolveOutput solve_hunl_postflop(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers = 1);
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8);
 
 void validate_config(const HUNLConfig& config);
 

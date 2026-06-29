@@ -25,7 +25,8 @@ SolveOutput solve_kuhn(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers = 1);
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8);
 /**
  * @brief Solve Leduc poker with DCFR.
  */
@@ -34,7 +35,8 @@ SolveOutput solve_leduc(
     double alpha,
     double beta,
     double gamma,
-    std::size_t workers = 1);
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8);
 
 namespace detail {
 
@@ -241,12 +243,17 @@ SolveOutput solve_generic(
     double beta,
     double gamma,
     std::size_t workers,
-    std::unordered_map<InfosetKey, std::vector<Probability>> locked_strategies = {}) {
+    std::unordered_map<InfosetKey, std::vector<Probability>> locked_strategies = {},
+    std::size_t frontier_multiplier = 8) {
     validate_dcfr_parameters(alpha, beta, gamma);
 
     SolveOutput output;
     if (workers > 1) {
-        ParallelDCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial(), workers);
+        ParallelDCFRSolver<G> solver(
+            DCFRConfig{alpha, beta, gamma},
+            G::initial(),
+            workers,
+            frontier_multiplier);
         solver.set_locked_strategies(std::move(locked_strategies));
         output = solver.solve(iterations);
     } else {
