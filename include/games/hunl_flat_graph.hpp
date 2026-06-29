@@ -33,6 +33,7 @@ struct HUNLFlatNode {
     InfosetId infoset_id{};
     bool has_infoset = false;
     TerminalKind terminal_kind = TerminalKind::non_terminal();
+    std::array<double, 2> terminal_utility = {0.0, 0.0};
 };
 
 struct HUNLFlatNodeMeta {
@@ -49,6 +50,7 @@ struct HUNLFlatNodeMeta {
     InfosetId infoset_id{};
     bool has_infoset = false;
     TerminalKind terminal_kind = TerminalKind::non_terminal();
+    std::array<double, 2> terminal_utility = {0.0, 0.0};
 };
 
 struct HUNLFlatChanceOutcome {

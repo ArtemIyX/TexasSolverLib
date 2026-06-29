@@ -165,3 +165,33 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_weights_chance_nodes) {
 
     EXPECT_TRUE(checked_chance);
 }
+
+TEST_CASE(hunl_flat_dcfr_terminal_stage_uses_precomputed_leaf_utilities) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    bool saw_terminal = false;
+    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        if (meta.type != core::HUNLFlatNodeType::TerminalFold &&
+            meta.type != core::HUNLFlatNodeType::TerminalShowdown) {
+            continue;
+        }
+
+        saw_terminal = true;
+        if (meta.type == core::HUNLFlatNodeType::TerminalFold) {
+            EXPECT_TRUE(meta.terminal_kind.tag == core::TerminalKindTag::Fold);
+        } else {
+            EXPECT_TRUE(meta.terminal_kind.tag == core::TerminalKindTag::Showdown);
+        }
+        EXPECT_NEAR(meta.terminal_utility[0], solver.terminal_values()[node_idx], 1e-12);
+    }
+
+    EXPECT_TRUE(saw_terminal);
+}

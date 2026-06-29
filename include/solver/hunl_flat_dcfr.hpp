@@ -39,6 +39,7 @@ public:
     [[nodiscard]] const std::vector<double>& player0_reach() const noexcept;
     [[nodiscard]] const std::vector<double>& player1_reach() const noexcept;
     [[nodiscard]] const std::vector<double>& chance_reach() const noexcept;
+    [[nodiscard]] const std::vector<double>& terminal_values() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 

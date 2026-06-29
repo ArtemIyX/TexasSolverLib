@@ -304,7 +304,7 @@ Output:
 
 - no recursive reach computation
 
-### Step 3.4. Implement terminal evaluation stage
+### + Step 3.4. Implement terminal evaluation stage
 
 Substeps:
 

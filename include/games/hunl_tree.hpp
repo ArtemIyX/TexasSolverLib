@@ -32,6 +32,7 @@ struct TerminalKind {
 struct HUNLTreeNode {
     PlayerId player = -1;
     TerminalKind terminal_kind = TerminalKind::non_terminal();
+    std::array<double, 2> terminal_utility = {0.0, 0.0};
     std::array<int, 2> contrib = {0, 0};
     Street street = Street::Preflop;
     std::uint8_t num_actions = 0;

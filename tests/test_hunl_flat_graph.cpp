@@ -146,6 +146,8 @@ TEST_CASE(hunl_flat_graph_precomputes_compact_node_metadata) {
         EXPECT_EQ(meta.terminal_kind.winner, node.terminal_kind.winner);
         EXPECT_EQ(meta.terminal_kind.contribution_loss, node.terminal_kind.contribution_loss);
         EXPECT_EQ(meta.terminal_kind.board_complete, node.terminal_kind.board_complete);
+        EXPECT_NEAR(meta.terminal_utility[0], node.terminal_utility[0], 1e-12);
+        EXPECT_NEAR(meta.terminal_utility[1], node.terminal_utility[1], 1e-12);
 
         for (std::uint32_t i = 0; i < meta.child_count; ++i) {
             EXPECT_TRUE(meta.child_begin + i < graph.children.size());

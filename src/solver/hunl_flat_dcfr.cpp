@@ -94,6 +94,10 @@ const std::vector<double>& HUNLFlatDCFR::chance_reach() const noexcept {
     return chance_reach_;
 }
 
+const std::vector<double>& HUNLFlatDCFR::terminal_values() const noexcept {
+    return terminal_values_;
+}
+
 std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_average_strategy() const {
     std::unordered_map<std::string, std::vector<double>> out;
     out.reserve(graph_.infosets.size());
@@ -256,9 +260,9 @@ void HUNLFlatDCFR::terminal_utility_stage() {
     for (std::size_t node_idx = 0; node_idx < graph_.node_meta.size(); ++node_idx) {
         const auto& meta = graph_.node_meta[node_idx];
         if (meta.type == HUNLFlatNodeType::TerminalFold) {
-            terminal_values_[node_idx] = static_cast<double>(meta.terminal_kind.contribution_loss);
+            terminal_values_[node_idx] = meta.terminal_utility[0];
         } else if (meta.type == HUNLFlatNodeType::TerminalShowdown) {
-            terminal_values_[node_idx] = meta.terminal_kind.board_complete ? 1.0 : 0.5;
+            terminal_values_[node_idx] = meta.terminal_utility[0];
         }
     }
 }

@@ -87,6 +87,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         flat_node.street = node.street;
         flat_node.contributions = node.contrib;
         flat_node.terminal_kind = node.terminal_kind;
+        flat_node.terminal_utility = node.terminal_utility;
 
         if (flat_node.type == HUNLFlatNodeType::Chance) {
             if (node.chance_children.size() != node.chance_outcomes.size()) {
@@ -163,6 +164,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
             graph.nodes.back().infoset_id,
             graph.nodes.back().has_infoset,
             graph.nodes.back().terminal_kind,
+            graph.nodes.back().terminal_utility,
         });
     }
 
