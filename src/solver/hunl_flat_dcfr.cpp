@@ -397,18 +397,7 @@ void HUNLFlatDCFR::compute_strategy_stage() {
 
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
                 const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                const double positive_total =
-                    positive_regrets_and_total(regret + hand_offset, strategy + hand_offset, meta.action_count);
-                if (positive_total > 0.0) {
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        strategy[hand_offset + a] /= positive_total;
-                    }
-                } else {
-                    const double uniform = 1.0 / static_cast<double>(meta.action_count);
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        strategy[hand_offset + a] = uniform;
-                    }
-                }
+                compute_strategy_row(regret + hand_offset, strategy + hand_offset, meta.action_count);
             }
         }
     });
@@ -603,10 +592,12 @@ void HUNLFlatDCFR::regret_update_stage() {
 
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
                 const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                for (std::size_t a = 0; a < meta.action_count; ++a) {
-                    const auto edge_idx = node_meta.child_begin + a;
-                    regret[hand_offset + a] += cf_reach * (action_values_[edge_idx] - base_value);
-                }
+                update_regret_sum(
+                    regret + hand_offset,
+                    action_values_.data() + node_meta.child_begin,
+                    meta.action_count,
+                    base_value,
+                    cf_reach);
             }
         }
     });
@@ -624,9 +615,7 @@ void HUNLFlatDCFR::average_strategy_stage() {
             const double own_reach =
                 chance_reach_[node_idx] *
                 (meta.player == 0 ? player0_reach_[node_idx] : player1_reach_[node_idx]);
-            for (std::size_t i = 0; i < meta.value_count; ++i) {
-                strategy_sum[i] += own_reach * strategy[i];
-            }
+            update_strategy_sum(strategy_sum, strategy, meta.value_count, own_reach);
         }
     });
 }

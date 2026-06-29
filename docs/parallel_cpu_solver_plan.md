@@ -438,7 +438,7 @@ Output:
 
 - fewer cache line conflicts between threads
 
-### Step 5.3. Add SIMD-friendly inner loops
+### + Step 5.3. Add SIMD-friendly inner loops
 
 Substeps:
 
