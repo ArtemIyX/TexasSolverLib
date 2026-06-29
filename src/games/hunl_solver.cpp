@@ -157,6 +157,16 @@ HUNLSolveOutput solve_hunl_postflop(
             solve_output.average_strategy.begin(),
             solve_output.average_strategy.end(),
             [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+
+        std::unordered_map<InfosetKey, std::vector<Probability>> strategy;
+        strategy.reserve(solve_output.average_strategy.size());
+        for (const auto& [key, probs] : solve_output.average_strategy) {
+            strategy.emplace(key, probs);
+        }
+        const auto state = HUNLState::initial(shared);
+        const auto value = detail::expected_value(state, strategy);
+        solve_output.game_value = value[0];
+        solve_output.exploitability = detail::exploitability<HUNLState>(strategy);
     } else {
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto root = HUNLState::initial(shared);
