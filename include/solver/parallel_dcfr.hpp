@@ -33,7 +33,8 @@ public:
     explicit ParallelDCFRSolver(
         DCFRConfig config,
         G root = G::initial(),
-        std::size_t worker_count = 1);
+        std::size_t worker_count = 1,
+        std::size_t frontier_multiplier = 8);
 
     void set_locked_strategies(std::unordered_map<InfosetKey, std::vector<Probability>> locked);
     SolveOutput solve(std::uint32_t iterations);
@@ -60,6 +61,7 @@ private:
     DCFRConfig config_;
     G root_;
     std::size_t worker_count_ = 1;
+    std::size_t frontier_multiplier_ = 8;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
     std::unordered_map<InfosetKey, detail::InfosetAccum> infosets_;
 };

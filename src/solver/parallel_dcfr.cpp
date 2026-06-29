@@ -10,6 +10,7 @@
 #include <limits>
 #include <mutex>
 #include <thread>
+#include <condition_variable>
 #include <string>
 #include <utility>
 
@@ -20,6 +21,12 @@ namespace {
 struct BranchResult {
     std::vector<double> branch_values;
     ParallelWorkerState worker_state;
+};
+
+template <class G>
+struct FrontierSeed {
+    G state;
+    double chance_reach = 1.0;
 };
 
 std::size_t parse_worker_count(const char* raw) {
@@ -103,8 +110,15 @@ std::size_t parallel_dcfr_worker_count() {
 }
 
 template <class G>
-ParallelDCFRSolver<G>::ParallelDCFRSolver(DCFRConfig config, G root, std::size_t worker_count)
-    : config_(config), root_(std::move(root)), worker_count_(std::max<std::size_t>(1, worker_count)) {
+ParallelDCFRSolver<G>::ParallelDCFRSolver(
+    DCFRConfig config,
+    G root,
+    std::size_t worker_count,
+    std::size_t frontier_multiplier)
+    : config_(config),
+      root_(std::move(root)),
+      worker_count_(std::max<std::size_t>(1, worker_count)),
+      frontier_multiplier_(std::max<std::size_t>(1, frontier_multiplier)) {
     validate_alpha(config_.alpha);
     if (config_.beta < 0.0 || config_.gamma < 0.0) {
         throw std::invalid_argument("DCFR beta and gamma must be non-negative");
@@ -121,6 +135,61 @@ ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
         ? root_.chance_outcomes().size()
         : root_.legal_actions().size();
     return make_partition_plan(std::max<std::size_t>(1, branch_count), worker_count_);
+}
+
+template <class G>
+std::vector<FrontierSeed<G>> build_frontier(const G& root, std::size_t target_seeds) {
+    std::vector<FrontierSeed<G>> frontier;
+    frontier.push_back(FrontierSeed<G>{root, 1.0});
+
+    while (frontier.size() < target_seeds) {
+        std::size_t best_index = frontier.size();
+        std::size_t best_children = 0;
+
+        for (std::size_t i = 0; i < frontier.size(); ++i) {
+            const auto& state = frontier[i].state;
+            if (state.is_terminal()) {
+                continue;
+            }
+
+            std::size_t child_count = 0;
+            if (state.current_player() < 0) {
+                child_count = state.chance_outcomes().size();
+            } else {
+                child_count = state.legal_actions().size();
+            }
+
+            if (child_count > best_children) {
+                best_children = child_count;
+                best_index = i;
+            }
+        }
+
+        if (best_index == frontier.size() || best_children <= 1) {
+            break;
+        }
+
+        const auto seed = frontier[best_index];
+        frontier.erase(frontier.begin() + static_cast<std::ptrdiff_t>(best_index));
+        const auto& state = seed.state;
+        if (state.current_player() < 0) {
+            for (const auto& outcome : state.chance_outcomes()) {
+                frontier.push_back(FrontierSeed<G>{
+                    state.next_state(outcome.action),
+                    seed.chance_reach * outcome.probability});
+            }
+        } else {
+            for (const auto action : state.legal_actions()) {
+                frontier.push_back(FrontierSeed<G>{state.next_state(action), seed.chance_reach});
+            }
+        }
+    }
+
+    return frontier;
+}
+
+std::size_t frontier_seed_target(std::size_t worker_count, std::size_t frontier_multiplier) {
+    return std::max<std::size_t>(1, worker_count * frontier_multiplier);
 }
 
 template <class G>
@@ -278,40 +347,39 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     infosets_.clear();
 
     const auto root_player = root_.current_player();
-    const auto root_actions = root_player >= 0 ? root_.legal_actions() : std::vector<ActionId>{};
-    const auto root_outcomes = root_player < 0 ? root_.chance_outcomes() : std::vector<ChanceOutcome>{};
-    const bool has_root_actions = root_player >= 0 && !root_actions.empty();
+    const auto frontier = build_frontier(root_, frontier_seed_target(plan.worker_count, frontier_multiplier_));
+    const auto frontier_plan = make_partition_plan(frontier.size(), plan.worker_count);
+    if (frontier.empty()) {
+        SolveOutput out;
+        out.iterations = iterations;
+        return out;
+    }
 
     if (plan.worker_count == 1) {
         for (std::uint32_t iter = 0; iter < iterations; ++iter) {
             for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
                 const auto strategy = build_strategy_snapshot(infosets_);
+                ParallelWorkerState worker_state = make_worker_state();
                 if (root_player < 0) {
-                    ParallelWorkerState worker_state = make_worker_state();
-                    for (std::size_t i = 0; i < root_outcomes.size(); ++i) {
+                    for (const auto& outcome : root_.chance_outcomes()) {
                         cfr(
-                            root_.next_state(root_outcomes[i].action),
+                            root_.next_state(outcome.action),
                             static_cast<PlayerId>(traversing_player),
                             {1.0, 1.0},
-                            root_outcomes[i].probability,
+                            outcome.probability,
                             strategy,
                             worker_state);
                     }
-                    merge_worker_state(infosets_, std::move(worker_state));
-                    continue;
-                }
-
-                ParallelWorkerState worker_state = make_worker_state();
-                std::vector<double> action_values(root_actions.size(), 0.0);
-                for (std::size_t i = 0; i < root_actions.size(); ++i) {
-                    action_values[i] =
+                } else {
+                    for (const auto action : root_.legal_actions()) {
                         cfr(
-                            root_.next_state(root_actions[i]),
+                            root_.next_state(action),
                             static_cast<PlayerId>(traversing_player),
                             {1.0, 1.0},
                             1.0,
                             strategy,
                             worker_state);
+                    }
                 }
                 merge_worker_state(infosets_, std::move(worker_state));
             }
@@ -335,69 +403,114 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         return out;
     }
 
-    for (std::uint32_t iter = 0; iter < iterations; ++iter) {
-        for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
-            const auto strategy = build_strategy_snapshot(infosets_);
-            std::vector<BranchResult> results(plan.items.size());
-            std::mutex mutex;
-            std::exception_ptr worker_error;
+    struct PhaseContext {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool stop = false;
+        bool ready = false;
+        std::size_t phase_id = 0;
+        std::size_t completed = 0;
+        std::size_t traversing_player = 0;
+        std::unordered_map<InfosetKey, std::vector<Probability>> strategy;
+        std::vector<BranchResult> results;
+        std::exception_ptr error;
+    };
 
-            auto launch_worker = [&](std::size_t worker_index) {
-                return std::thread([&, worker_index] {
-                    try {
-                        auto& result = results[worker_index];
-                        result.worker_state = make_worker_state();
-                        const auto& item = plan.items[worker_index];
-                        result.branch_values.resize(item.node_end - item.node_begin, 0.0);
-                        if (root_player < 0) {
-                            for (std::size_t i = item.node_begin; i < item.node_end; ++i) {
-                                const auto& outcome = root_outcomes[i];
-                                result.branch_values[i - item.node_begin] =
-                                    outcome.probability *
-                                    cfr(
-                                        root_.next_state(outcome.action),
-                                        static_cast<PlayerId>(traversing_player),
-                                        {1.0, 1.0},
-                                        outcome.probability,
-                                        strategy,
-                                        result.worker_state);
-                            }
-                        } else if (has_root_actions) {
-                            for (std::size_t i = item.node_begin; i < item.node_end; ++i) {
-                                result.branch_values[i - item.node_begin] =
-                                    cfr(
-                                        root_.next_state(root_actions[i]),
-                                        static_cast<PlayerId>(traversing_player),
-                                        {1.0, 1.0},
-                                        1.0,
-                                        strategy,
-                                        result.worker_state);
-                            }
-                        }
-                    } catch (...) {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        worker_error = std::current_exception();
-                    }
-                });
-            };
+    PhaseContext phase;
+    phase.results.resize(frontier_plan.items.size());
 
-            std::vector<std::thread> workers;
-            workers.reserve(plan.items.size());
-            for (std::size_t i = 0; i < plan.items.size(); ++i) {
-                workers.emplace_back(launch_worker(i));
+    auto worker_fn = [&](std::size_t worker_index) {
+        std::size_t seen_phase = 0;
+        while (true) {
+            std::unique_lock<std::mutex> lock(phase.mutex);
+            phase.cv.wait(lock, [&] { return phase.stop || (phase.ready && phase.phase_id != seen_phase); });
+            if (phase.stop) {
+                return;
             }
 
-            for (auto& worker : workers) {
-                worker.join();
-            }
-            if (worker_error) {
-                std::rethrow_exception(worker_error);
+            const auto local_phase = phase.phase_id;
+            const auto local_player = phase.traversing_player;
+            const auto local_strategy = phase.strategy;
+            auto& result = phase.results[worker_index];
+            const auto item = frontier_plan.items[worker_index];
+            lock.unlock();
+
+            try {
+                result.worker_state = make_worker_state();
+                result.branch_values.resize(item.node_end - item.node_begin, 0.0);
+                for (std::size_t i = item.node_begin; i < item.node_end; ++i) {
+                    const auto& seed = frontier[i];
+                    result.branch_values[i - item.node_begin] =
+                        cfr(
+                            seed.state,
+                            static_cast<PlayerId>(local_player),
+                            {1.0, 1.0},
+                            seed.chance_reach,
+                            local_strategy,
+                            result.worker_state);
+                }
+            } catch (...) {
+                std::lock_guard<std::mutex> guard(phase.mutex);
+                if (!phase.error) {
+                    phase.error = std::current_exception();
+                }
             }
 
-            for (const auto& item : plan.items) {
-                merge_worker_state(infosets_, std::move(results[item.root_node].worker_state));
+            lock.lock();
+            seen_phase = local_phase;
+            if (++phase.completed == frontier_plan.items.size()) {
+                phase.ready = false;
+                phase.cv.notify_one();
             }
         }
+    };
+
+    std::vector<std::thread> workers;
+    workers.reserve(frontier_plan.items.size());
+    for (std::size_t i = 0; i < frontier_plan.items.size(); ++i) {
+        workers.emplace_back(worker_fn, i);
+    }
+
+    for (std::uint32_t iter = 0; iter < iterations; ++iter) {
+        for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
+            {
+                std::lock_guard<std::mutex> lock(phase.mutex);
+                phase.traversing_player = traversing_player;
+                phase.strategy = build_strategy_snapshot(infosets_);
+                phase.completed = 0;
+                phase.error = nullptr;
+                phase.phase_id += 1;
+                phase.ready = true;
+            }
+            phase.cv.notify_all();
+
+            {
+                std::unique_lock<std::mutex> lock(phase.mutex);
+                phase.cv.wait(lock, [&] { return !phase.ready || phase.error != nullptr; });
+                if (phase.error) {
+                    phase.stop = true;
+                    phase.cv.notify_all();
+                    lock.unlock();
+                    for (auto& worker : workers) {
+                        worker.join();
+                    }
+                    std::rethrow_exception(phase.error);
+                }
+            }
+
+            for (const auto& item : frontier_plan.items) {
+                merge_worker_state(infosets_, std::move(phase.results[item.root_node].worker_state));
+            }
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(phase.mutex);
+        phase.stop = true;
+    }
+    phase.cv.notify_all();
+    for (auto& worker : workers) {
+        worker.join();
     }
 
     const auto average_strategy = build_average_strategy();
