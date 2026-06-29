@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <atomic>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace core {
@@ -220,6 +221,42 @@ std::size_t frontier_seed_target(std::size_t worker_count, std::size_t frontier_
     return std::max<std::size_t>(1, worker_count * frontier_multiplier);
 }
 
+template <class G>
+std::size_t baseline_frontier_multiplier() {
+    if constexpr (std::is_same_v<G, KuhnState>) {
+        return 1;
+    } else if constexpr (std::is_same_v<G, LeducState>) {
+        return 4;
+    } else if constexpr (std::is_same_v<G, HUNLState>) {
+        return 12;
+    } else {
+        return 8;
+    }
+}
+
+template <class G>
+std::size_t effective_frontier_multiplier(
+    const G& root,
+    std::size_t worker_count,
+    std::size_t configured_multiplier) {
+    if (worker_count <= 1) {
+        return 1;
+    }
+
+    const std::size_t root_branch_count = std::max<std::size_t>(1, child_count(root));
+    std::size_t effective = std::max(configured_multiplier, baseline_frontier_multiplier<G>());
+
+    if (root_branch_count >= worker_count * 3) {
+        effective = std::min(effective, std::size_t{2});
+    } else if (root_branch_count >= worker_count * 2) {
+        effective = std::min(effective, std::size_t{3});
+    } else if (root_branch_count <= worker_count) {
+        effective = std::max(effective, baseline_frontier_multiplier<G>() + 2);
+    }
+
+    return std::clamp<std::size_t>(effective, 1, 16);
+}
+
 std::vector<WorkBatch> make_work_batches(
     std::size_t seed_count,
     std::size_t worker_count,
@@ -395,8 +432,10 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     infosets_.clear();
 
     const auto root_player = root_.current_player();
-    const auto frontier = build_frontier(root_, frontier_seed_target(plan.worker_count, frontier_multiplier_));
-    const auto batches = make_work_batches(frontier.size(), plan.worker_count, frontier_multiplier_);
+    const auto tuned_frontier_multiplier =
+        effective_frontier_multiplier(root_, plan.worker_count, frontier_multiplier_);
+    const auto frontier = build_frontier(root_, frontier_seed_target(plan.worker_count, tuned_frontier_multiplier));
+    const auto batches = make_work_batches(frontier.size(), plan.worker_count, tuned_frontier_multiplier);
     if (frontier.empty()) {
         SolveOutput out;
         out.iterations = iterations;
