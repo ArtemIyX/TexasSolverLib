@@ -533,25 +533,26 @@ void HUNLFlatDCFR::regret_update_stage() {
                 (meta.player == 0 ? player1_reach_[node_idx] : player0_reach_[node_idx]);
             const double base_value = node_values_[node_idx];
 
-            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        const auto row_idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                        const auto edge_idx = node_meta.child_begin + a;
-                        regret[row_idx] += cf_reach * (action_values_[edge_idx] - base_value);
-                    }
+                    const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
+                    update_regret_sum(
+                        regret + hand_offset,
+                        action_values_.data() + node_meta.child_begin,
+                        meta.action_count,
+                        base_value,
+                        cf_reach);
                 }
                 continue;
             }
 
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
                 const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                update_regret_sum(
-                    regret + hand_offset,
-                    action_values_.data() + node_meta.child_begin,
-                    meta.action_count,
-                    base_value,
-                    cf_reach);
+                for (std::size_t a = 0; a < meta.action_count; ++a) {
+                    const auto row_idx = a * static_cast<std::size_t>(meta.hand_count) + h;
+                    const auto edge_idx = node_meta.child_begin + a;
+                    regret[row_idx] += cf_reach * (action_values_[edge_idx] - base_value);
+                }
             }
         }
     });

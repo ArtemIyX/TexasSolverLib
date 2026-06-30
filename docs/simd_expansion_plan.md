@@ -166,12 +166,12 @@ Output:
 
 - one shared row-normalization path for solve-time and export-time use
 
-## Phase 2. Vectorize regret and strategy update buffers
+## + Phase 2. Vectorize regret and strategy update buffers
 
 Purpose:
 Turn the post-backprop updates into tight bulk array operations.
 
-### Step 2.1. Use SIMD update helpers for regret accumulation
+### + Step 2.1. Use SIMD update helpers for regret accumulation
 
 Substeps:
 
