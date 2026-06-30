@@ -151,14 +151,20 @@ std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding) {
     out += "|";
 
     std::size_t offset = 0;
+    bool wrote_segment = false;
     for (std::size_t street_index = 0; street_index < encoding.street_lengths.size(); ++street_index) {
-        if (street_index > 0) {
+        const auto segment_len = encoding.street_lengths[street_index];
+        if (segment_len == 0) {
+            continue;
+        }
+        if (wrote_segment) {
             out += "/";
         }
-        for (std::size_t i = 0; i < encoding.street_lengths[street_index]; ++i) {
+        for (std::size_t i = 0; i < segment_len; ++i) {
             out += token_from_history_code(encoding.history_codes[offset + i]);
         }
-        offset += encoding.street_lengths[street_index];
+        offset += segment_len;
+        wrote_segment = true;
     }
     return out;
 }

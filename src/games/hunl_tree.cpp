@@ -139,6 +139,10 @@ std::uint32_t HUNLTree::build_node(
         auto& node = nodes[my_idx];
         node.player = -2;
         node.terminal_kind = classify_terminal_kind(state);
+        const auto utility = state.utility();
+        if (utility.size() >= 2) {
+            node.terminal_utility = {utility[0], utility[1]};
+        }
         return my_idx;
     }
 

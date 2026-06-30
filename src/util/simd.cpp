@@ -148,6 +148,76 @@ inline void normalize_avx2(double* out, std::size_t len, double total) noexcept 
     }
 }
 
+inline void update_regret_sum_sse2(
+    double* regret_sum,
+    const double* action_values,
+    std::size_t len,
+    double node_value,
+    double opp_reach) noexcept {
+    const __m128d reach = _mm_set1_pd(opp_reach);
+    const __m128d node = _mm_set1_pd(node_value);
+    std::size_t i = 0;
+    for (; i + 1 < len; i += 2) {
+        const __m128d regret = _mm_loadu_pd(regret_sum + i);
+        const __m128d action = _mm_loadu_pd(action_values + i);
+        const __m128d delta = _mm_mul_pd(reach, _mm_sub_pd(action, node));
+        _mm_storeu_pd(regret_sum + i, _mm_add_pd(regret, delta));
+    }
+    for (; i < len; ++i) {
+        regret_sum[i] += opp_reach * (action_values[i] - node_value);
+    }
+}
+
+inline void update_regret_sum_avx2(
+    double* regret_sum,
+    const double* action_values,
+    std::size_t len,
+    double node_value,
+    double opp_reach) noexcept {
+    const __m256d reach = _mm256_set1_pd(opp_reach);
+    const __m256d node = _mm256_set1_pd(node_value);
+    std::size_t i = 0;
+    for (; i + 3 < len; i += 4) {
+        const __m256d regret = _mm256_loadu_pd(regret_sum + i);
+        const __m256d action = _mm256_loadu_pd(action_values + i);
+        const __m256d delta = _mm256_mul_pd(reach, _mm256_sub_pd(action, node));
+        _mm256_storeu_pd(regret_sum + i, _mm256_add_pd(regret, delta));
+    }
+    update_regret_sum_sse2(regret_sum + i, action_values + i, len - i, node_value, opp_reach);
+}
+
+inline void update_strategy_sum_sse2(
+    double* strategy_sum,
+    const double* strategy,
+    std::size_t len,
+    double own_reach) noexcept {
+    const __m128d reach = _mm_set1_pd(own_reach);
+    std::size_t i = 0;
+    for (; i + 1 < len; i += 2) {
+        const __m128d sum = _mm_loadu_pd(strategy_sum + i);
+        const __m128d strat = _mm_loadu_pd(strategy + i);
+        _mm_storeu_pd(strategy_sum + i, _mm_add_pd(sum, _mm_mul_pd(reach, strat)));
+    }
+    for (; i < len; ++i) {
+        strategy_sum[i] += own_reach * strategy[i];
+    }
+}
+
+inline void update_strategy_sum_avx2(
+    double* strategy_sum,
+    const double* strategy,
+    std::size_t len,
+    double own_reach) noexcept {
+    const __m256d reach = _mm256_set1_pd(own_reach);
+    std::size_t i = 0;
+    for (; i + 3 < len; i += 4) {
+        const __m256d sum = _mm256_loadu_pd(strategy_sum + i);
+        const __m256d strat = _mm256_loadu_pd(strategy + i);
+        _mm256_storeu_pd(strategy_sum + i, _mm256_add_pd(sum, _mm256_mul_pd(reach, strat)));
+    }
+    update_strategy_sum_sse2(strategy_sum + i, strategy + i, len - i, own_reach);
+}
+
 }
 #endif
 
@@ -308,7 +378,13 @@ void update_regret_sum(
     std::size_t len,
     double node_value,
     double opp_reach) noexcept {
+#if defined(__AVX2__)
+    update_regret_sum_avx2(regret_sum, action_values, len, node_value, opp_reach);
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    update_regret_sum_sse2(regret_sum, action_values, len, node_value, opp_reach);
+#else
     update_regret_sum_scalar(regret_sum, action_values, len, node_value, opp_reach);
+#endif
 }
 
 void update_strategy_sum(
@@ -316,7 +392,13 @@ void update_strategy_sum(
     const double* strategy,
     std::size_t len,
     double own_reach) noexcept {
+#if defined(__AVX2__)
+    update_strategy_sum_avx2(strategy_sum, strategy, len, own_reach);
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    update_strategy_sum_sse2(strategy_sum, strategy, len, own_reach);
+#else
     update_strategy_sum_scalar(strategy_sum, strategy, len, own_reach);
+#endif
 }
 
 void update_regret_sum_vector(

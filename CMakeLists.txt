@@ -5,6 +5,7 @@ project(TexasSolver VERSION 0.1.0 LANGUAGES CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CTest)
+find_package(Threads REQUIRED)
 
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" ON)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" ON)
@@ -39,6 +40,7 @@ target_sources(texas_core PRIVATE ${TEXASSOLVER_SOURCES})
 if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
     target_link_libraries(texas_core PRIVATE pheval)
 endif()
+target_link_libraries(texas_core PRIVATE Threads::Threads)
 
 target_include_directories(texas_core
     PUBLIC
@@ -115,6 +117,24 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     )
     target_link_libraries(texas_solver_benchmark PRIVATE texas_core)
     target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+    add_executable(texas_solver_flat_scheduler_benchmark
+        examples/benchmarks/flat_scheduler_main.cpp
+    )
+    target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas_core)
+    target_include_directories(texas_solver_flat_scheduler_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+    add_executable(texas_solver_hunl_backend_compare
+        examples/benchmarks/hunl_backend_compare_main.cpp
+    )
+    target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas_core)
+    target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+    add_executable(texas_solver_hunl_random_flat
+        examples/benchmarks/hunl_random_flat_main.cpp
+    )
+    target_link_libraries(texas_solver_hunl_random_flat PRIVATE texas_core)
+    target_include_directories(texas_solver_hunl_random_flat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
 
 if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)

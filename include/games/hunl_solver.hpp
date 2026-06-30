@@ -31,6 +31,14 @@ enum class HUNLSolveError {
     InvalidConfig = 3,
 };
 
+enum class HUNLBackendSelection {
+    Auto = 0,
+    Recursive = 1,
+    Flat = 2,
+};
+
+HUNLBackendSelection hunl_backend_selection_from_env();
+
 HUNLSolveOutput solve_hunl_postflop(
     const HUNLConfig& config,
     std::uint32_t iterations,
