@@ -425,6 +425,32 @@ void compute_strategy_row(const double* regrets, double* out, std::size_t len) n
     normalize(out, len, total);
 }
 
+void compute_strategy_row_small(const double* regrets, double* out, std::size_t len) noexcept {
+    if (len == 0) {
+        return;
+    }
+
+    switch (len) {
+        case 1:
+            out[0] = 1.0;
+            return;
+        case 2:
+        case 3:
+        case 4: {
+            double positive[4] = {0.0, 0.0, 0.0, 0.0};
+            const double total = positive_regrets_and_total(regrets, positive, len);
+            normalize(positive, len, total);
+            for (std::size_t i = 0; i < len; ++i) {
+                out[i] = positive[i];
+            }
+            return;
+        }
+        default:
+            compute_strategy_row(regrets, out, len);
+            return;
+    }
+}
+
 }  // namespace core
 
 

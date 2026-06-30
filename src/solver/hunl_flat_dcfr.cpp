@@ -372,25 +372,10 @@ void HUNLFlatDCFR::compute_strategy_stage() {
             auto* regret = infoset_table_.regret_mut(meta.id);
             auto* strategy = infoset_table_.current_strategy_mut(meta.id);
 
-            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                    double positive_total = 0.0;
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                        strategy[idx] = std::max(regret[idx], 0.0);
-                        positive_total += strategy[idx];
-                    }
-                    if (positive_total > 0.0) {
-                        for (std::size_t a = 0; a < meta.action_count; ++a) {
-                            const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                            strategy[idx] /= positive_total;
-                        }
-                    } else {
-                        const double uniform = 1.0 / static_cast<double>(meta.action_count);
-                        for (std::size_t a = 0; a < meta.action_count; ++a) {
-                            strategy[a * static_cast<std::size_t>(meta.hand_count) + h] = uniform;
-                        }
-                    }
+                    const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
+                    compute_strategy_row_small(regret + hand_offset, strategy + hand_offset, meta.action_count);
                 }
                 continue;
             }

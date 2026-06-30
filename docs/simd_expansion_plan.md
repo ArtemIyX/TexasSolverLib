@@ -97,12 +97,12 @@ Output:
 
 - one stable timing baseline before any SIMD expansion
 
-## Phase 1. Vectorize the strategy computation path
+## + Phase 1. Vectorize the strategy computation path
 
 Purpose:
 Reduce the cost of regret matching, because it runs once per infoset per iteration and touches contiguous rows.
 
-### Step 1.1. Replace scalar row scans with SIMD-backed row helpers where possible
+### + Step 1.1. Replace scalar row scans with SIMD-backed row helpers where possible
 
 Substeps:
 
@@ -124,7 +124,7 @@ Output:
 
 - fewer scalar loops in the strategy stage
 
-### Step 1.2. Add a SIMD-friendly row reduction helper for action-major layouts
+### + Step 1.2. Add a SIMD-friendly row reduction helper for action-major layouts
 
 Substeps:
 

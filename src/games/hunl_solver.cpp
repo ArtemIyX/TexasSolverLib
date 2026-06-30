@@ -162,7 +162,7 @@ HUNLSolveOutput solve_hunl_postflop(
         HUNLFlatDCFR solver(
             std::move(graph),
             hand_count_per_player,
-            HUNLFlatValueLayout::InfosetActionHand,
+            HUNLFlatValueLayout::InfosetHandAction,
             workers,
             alpha,
             beta,
