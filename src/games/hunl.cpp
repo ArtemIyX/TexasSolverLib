@@ -170,6 +170,28 @@ std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding) {
 }
 
 void HUNLConfig::validate() const {
+    for (std::size_t player = 0; player < player_ranges.size(); ++player) {
+        const auto& range_input = player_ranges[player];
+        if (!range_input.has_value()) {
+            continue;
+        }
+
+        for (const auto& weighted_hand : range_input->hand_weights) {
+            if (weighted_hand.weight < 0.0) {
+                throw std::invalid_argument("HUNLConfig.validate: hand range weights must be non-negative");
+            }
+            if (weighted_hand.hole[0] == weighted_hand.hole[1]) {
+                throw std::invalid_argument("HUNLConfig.validate: hand range entries must contain two distinct cards");
+            }
+        }
+
+        for (const auto& weighted_bucket : range_input->bucket_weights) {
+            if (weighted_bucket.weight < 0.0) {
+                throw std::invalid_argument("HUNLConfig.validate: bucket range weights must be non-negative");
+            }
+        }
+    }
+
     if (rake_rate != 0.0) {
         throw std::invalid_argument("HUNLConfig.validate: rake_rate must be 0.0");
     }

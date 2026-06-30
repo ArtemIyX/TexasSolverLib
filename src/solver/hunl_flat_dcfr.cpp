@@ -40,9 +40,11 @@ std::optional<HUNLFlatBucketMap> HUNLFlatDCFR::load_bucket_map_for_graph(
         }
         return std::nullopt;
     }
-    return HUNLFlatBucketMap::from_abstraction(
+    auto bucket_map = HUNLFlatBucketMap::from_abstraction(
         graph,
         load_abstraction(*graph.config->abstraction_path));
+    bucket_map.apply_range_inputs(graph, graph.config->player_ranges);
+    return bucket_map;
 }
 
 std::optional<HUNLBucketTerminalTable> HUNLFlatDCFR::build_terminal_table_for_graph(

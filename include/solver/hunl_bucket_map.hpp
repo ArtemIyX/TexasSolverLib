@@ -3,6 +3,7 @@
 #include "games/hunl_flat_graph.hpp"
 #include "util/abstraction.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -39,6 +40,9 @@ public:
     [[nodiscard]] const std::vector<double>* bucket_weights(InfosetId infoset_id) const;
 
     void set_bucket_weights(InfosetId infoset_id, std::vector<double> weights);
+    void apply_range_inputs(
+        const HUNLFlatSolveGraph& graph,
+        const std::array<std::optional<HUNLRangeInput>, 2>& player_ranges);
 
 private:
     static std::uint32_t bucket_count_for_street(const AbstractionTables& tables, Street street);

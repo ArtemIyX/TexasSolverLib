@@ -1,11 +1,217 @@
 #include "solver/hunl_flat_dcfr.hpp"
+#include "solver/hunl_bucket_map.hpp"
 #include "test_harness.hpp"
+#include "util/abstraction.hpp"
 
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
+
+namespace {
+
+constexpr std::uint8_t c(std::uint8_t rank, std::uint8_t suit) {
+    return core::card_to_int(rank, suit);
+}
+
+std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b) {
+    crc ^= b;
+    for (int i = 0; i < 8; ++i) {
+        crc = (crc & 1U) ? (0xEDB88320U ^ (crc >> 1U)) : (crc >> 1U);
+    }
+    return static_cast<std::uint16_t>(crc);
+}
+
+std::uint32_t crc32(const std::vector<std::uint8_t>& data) {
+    std::uint32_t crc = 0xFFFFFFFFU;
+    for (auto b : data) {
+        crc = crc32_byte(crc, b);
+    }
+    return ~crc;
+}
+
+void append_u16(std::vector<std::uint8_t>& out, std::uint16_t v) {
+    out.push_back(static_cast<std::uint8_t>(v & 0xFFU));
+    out.push_back(static_cast<std::uint8_t>((v >> 8U) & 0xFFU));
+}
+
+void append_u32(std::vector<std::uint8_t>& out, std::uint32_t v) {
+    out.push_back(static_cast<std::uint8_t>(v & 0xFFU));
+    out.push_back(static_cast<std::uint8_t>((v >> 8U) & 0xFFU));
+    out.push_back(static_cast<std::uint8_t>((v >> 16U) & 0xFFU));
+    out.push_back(static_cast<std::uint8_t>((v >> 24U) & 0xFFU));
+}
+
+std::vector<std::uint8_t> make_npy_u8(const std::vector<std::uint8_t>& data) {
+    std::vector<std::uint8_t> out;
+    const std::string header_dict =
+        "{'descr': '|u1', 'fortran_order': False, 'shape': (" + std::to_string(data.size()) + ",), }";
+    std::string header = header_dict;
+    while ((10 + header.size() + 1) % 16 != 0) {
+        header.push_back(' ');
+    }
+    header.push_back('\n');
+
+    out.insert(out.end(), {0x93, 'N', 'U', 'M', 'P', 'Y', 1, 0});
+    append_u16(out, static_cast<std::uint16_t>(header.size()));
+    out.insert(out.end(), header.begin(), header.end());
+    out.insert(out.end(), data.begin(), data.end());
+    return out;
+}
+
+std::vector<std::uint8_t> make_json_bytes(const std::string& json) {
+    return std::vector<std::uint8_t>(json.begin(), json.end());
+}
+
+struct ZipBuilder {
+    struct Entry {
+        std::string name;
+        std::vector<std::uint8_t> data;
+        std::uint32_t crc = 0;
+        std::uint32_t local_offset = 0;
+    };
+
+    std::vector<Entry> entries;
+
+    void add(const std::string& name, const std::vector<std::uint8_t>& data) {
+        entries.push_back(Entry{name, data, crc32(data), 0});
+    }
+
+    std::vector<std::uint8_t> finish() {
+        std::vector<std::uint8_t> out;
+        std::vector<std::uint8_t> central;
+        for (auto& entry : entries) {
+            entry.local_offset = static_cast<std::uint32_t>(out.size());
+            const auto name_len = static_cast<std::uint16_t>(entry.name.size());
+            append_u32(out, 0x04034b50U);
+            append_u16(out, 20);
+            append_u16(out, 0);
+            append_u16(out, 0);
+            append_u16(out, 0);
+            append_u16(out, 0);
+            append_u32(out, entry.crc);
+            append_u32(out, static_cast<std::uint32_t>(entry.data.size()));
+            append_u32(out, static_cast<std::uint32_t>(entry.data.size()));
+            append_u16(out, name_len);
+            append_u16(out, 0);
+            out.insert(out.end(), entry.name.begin(), entry.name.end());
+            out.insert(out.end(), entry.data.begin(), entry.data.end());
+
+            append_u32(central, 0x02014b50U);
+            append_u16(central, 20);
+            append_u16(central, 20);
+            append_u16(central, 0);
+            append_u16(central, 0);
+            append_u16(central, 0);
+            append_u16(central, 0);
+            append_u32(central, entry.crc);
+            append_u32(central, static_cast<std::uint32_t>(entry.data.size()));
+            append_u32(central, static_cast<std::uint32_t>(entry.data.size()));
+            append_u16(central, name_len);
+            append_u16(central, 0);
+            append_u16(central, 0);
+            append_u16(central, 0);
+            append_u16(central, 0);
+            append_u32(central, 0);
+            append_u32(central, entry.local_offset);
+            central.insert(central.end(), entry.name.begin(), entry.name.end());
+        }
+
+        const auto cd_offset = static_cast<std::uint32_t>(out.size());
+        out.insert(out.end(), central.begin(), central.end());
+        append_u32(out, 0x06054b50U);
+        append_u16(out, 0);
+        append_u16(out, 0);
+        append_u16(out, static_cast<std::uint16_t>(entries.size()));
+        append_u16(out, static_cast<std::uint16_t>(entries.size()));
+        append_u32(out, static_cast<std::uint32_t>(central.size()));
+        append_u32(out, cd_offset);
+        append_u16(out, 0);
+        return out;
+    }
+};
+
+std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::vector<std::uint8_t>& board) {
+    std::array<bool, 64> blocked = {};
+    for (const auto card : board) {
+        blocked[card] = true;
+    }
+
+    std::vector<std::uint8_t> live_cards;
+    for (std::uint8_t rank = 2; rank <= 14; ++rank) {
+        for (std::uint8_t suit = 0; suit < 4; ++suit) {
+            const auto card = core::card_to_int(rank, suit);
+            if (!blocked[card]) {
+                live_cards.push_back(card);
+            }
+        }
+    }
+
+    std::vector<std::array<std::uint8_t, 2>> hands;
+    for (std::size_t i = 0; i < live_cards.size(); ++i) {
+        for (std::size_t j = i + 1; j < live_cards.size(); ++j) {
+            hands.push_back({live_cards[i], live_cards[j]});
+        }
+    }
+    return hands;
+}
+
+std::filesystem::path make_tmp_path(const std::string& name) {
+    return std::filesystem::temp_directory_path() / name;
+}
+
+std::filesystem::path write_two_bucket_river_abstraction(const std::vector<std::uint8_t>& board) {
+    const auto tmp = make_tmp_path("texas_hunl_flat_dcfr_bucket_ranges.npz");
+    const auto board_key = core::canonicalize_board(board);
+
+    std::string river_hand_index = "{\"" + board_key + "\":{";
+    std::vector<std::uint8_t> river_assignments;
+    const auto live_hands = enumerate_live_hands(board);
+    river_assignments.reserve(live_hands.size());
+    for (std::size_t i = 0; i < live_hands.size(); ++i) {
+        const auto [canonical_board_key, hand_key] = core::canonicalize(board, live_hands[i]);
+        (void)canonical_board_key;
+        if (i > 0) {
+            river_hand_index += ",";
+        }
+        river_hand_index += "\"" + hand_key + "\":" + std::to_string(i);
+        river_assignments.push_back(static_cast<std::uint8_t>(i % 2));
+    }
+    river_hand_index += "}}";
+
+    const std::string board_index = "{\"" + board_key + "\":0}";
+    const std::string metadata =
+        "{\"bucket_counts\":[1,1,2],\"feature_bins\":1,\"schema_version\":1,\"seed\":7,\"version\":\"v1\"}";
+
+    ZipBuilder zip;
+    auto add_named = [&](const std::string& name, const std::vector<std::uint8_t>& raw) {
+        zip.add(name, make_npy_u8(raw));
+    };
+
+    add_named("flop_assignments.npy", {0});
+    add_named("turn_assignments.npy", {0});
+    add_named("river_assignments.npy", river_assignments);
+    add_named("flop_board_index.npy", make_json_bytes("{}"));
+    add_named("turn_board_index.npy", make_json_bytes("{}"));
+    add_named("river_board_index.npy", make_json_bytes(board_index));
+    add_named("flop_hand_index.npy", make_json_bytes("{}"));
+    add_named("turn_hand_index.npy", make_json_bytes("{}"));
+    add_named("river_hand_index.npy", make_json_bytes(river_hand_index));
+    add_named("metadata.npy", make_json_bytes(metadata));
+
+    const auto bytes = zip.finish();
+    std::ofstream out(tmp, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    return tmp;
+}
+
+}  // namespace
 
 TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
@@ -454,4 +660,87 @@ TEST_CASE(hunl_flat_dcfr_matches_across_worker_counts_on_small_tree) {
     EXPECT_TRUE(two_workers.profile().strategy_seconds >= 0.0);
     EXPECT_TRUE(single_worker.profile().backward_seconds >= 0.0);
     EXPECT_TRUE(two_workers.profile().backward_seconds >= 0.0);
+}
+
+TEST_CASE(hunl_flat_dcfr_rejects_negative_range_weights_in_config_validation) {
+    auto config = core::default_tiny_subgame();
+    core::HUNLRangeInput range;
+    range.hand_weights.push_back({{c(14, 1), c(13, 3)}, -0.5});
+    config.player_ranges[0] = range;
+
+    EXPECT_THROW(config.validate(), std::invalid_argument);
+}
+
+TEST_CASE(hunl_flat_bucket_map_applies_mixed_range_inputs_per_infoset_player) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+    const auto hole = (*config->initial_hole_cards)[0];
+
+    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+        graph,
+        core::load_abstraction(abstraction_path));
+
+    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    core::HUNLRangeInput mixed_range;
+    mixed_range.hand_weights.push_back({hole, 3.0});
+    mixed_range.bucket_weights.push_back({core::Street::River, 1U, 1.0});
+    player_ranges[0] = mixed_range;
+
+    bucket_map.apply_range_inputs(graph, player_ranges);
+
+    bool checked_player_zero_infoset = false;
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.player != 0 || infoset.street != core::Street::River) {
+            continue;
+        }
+        const auto mapped_bucket = bucket_map.lookup_bucket(infoset.id, hole);
+        const auto* weights = bucket_map.bucket_weights(infoset.id);
+        EXPECT_TRUE(weights != nullptr);
+        EXPECT_EQ(weights->size(), 2U);
+        const auto expected_bucket0 = mapped_bucket == 0 ? 0.75 : 0.25;
+        const auto expected_bucket1 = mapped_bucket == 1 ? 0.75 : 0.25;
+        EXPECT_NEAR((*weights)[0], expected_bucket0, 1e-12);
+        EXPECT_NEAR((*weights)[1], expected_bucket1, 1e-12);
+        checked_player_zero_infoset = true;
+        break;
+    }
+
+    EXPECT_TRUE(checked_player_zero_infoset);
+    std::filesystem::remove(abstraction_path);
+}
+
+TEST_CASE(hunl_flat_bucket_map_applies_direct_bucket_weights) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+
+    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+        graph,
+        core::load_abstraction(abstraction_path));
+
+    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    core::HUNLRangeInput bucket_only_range;
+    bucket_only_range.bucket_weights.push_back({core::Street::River, 0U, 2.0});
+    bucket_only_range.bucket_weights.push_back({core::Street::River, 1U, 6.0});
+    player_ranges[1] = bucket_only_range;
+
+    bucket_map.apply_range_inputs(graph, player_ranges);
+
+    bool checked_player_one_infoset = false;
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.player != 1 || infoset.street != core::Street::River) {
+            continue;
+        }
+        const auto* weights = bucket_map.bucket_weights(infoset.id);
+        EXPECT_TRUE(weights != nullptr);
+        EXPECT_EQ(weights->size(), 2U);
+        EXPECT_NEAR((*weights)[0], 0.25, 1e-12);
+        EXPECT_NEAR((*weights)[1], 0.75, 1e-12);
+        checked_player_one_infoset = true;
+        break;
+    }
+
+    EXPECT_TRUE(checked_player_one_infoset);
+    std::filesystem::remove(abstraction_path);
 }

@@ -31,6 +31,22 @@ enum class HUNLFlatSolveMode : std::uint8_t {
     Bucketed = 2,
 };
 
+struct HUNLWeightedHand {
+    std::array<std::uint8_t, 2> hole = {0, 0};
+    double weight = 0.0;
+};
+
+struct HUNLWeightedBucket {
+    Street street = Street::Preflop;
+    std::uint32_t bucket = 0;
+    double weight = 0.0;
+};
+
+struct HUNLRangeInput {
+    std::vector<HUNLWeightedHand> hand_weights;
+    std::vector<HUNLWeightedBucket> bucket_weights;
+};
+
 std::optional<Street> street_from_u8(std::uint8_t value);
 const char* street_token(Street street);
 std::uint8_t cards_to_deal(Street street);
@@ -116,6 +132,7 @@ struct HUNLConfig {
     std::optional<std::string> abstraction_path = std::nullopt;
     std::optional<std::string> abstraction_version = std::nullopt;
     HUNLFlatSolveMode flat_solve_mode = HUNLFlatSolveMode::Auto;
+    std::array<std::optional<HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
     bool use_pcs = false;
 
     void validate() const;

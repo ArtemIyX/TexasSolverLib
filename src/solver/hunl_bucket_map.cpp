@@ -65,6 +65,36 @@ std::vector<double> normalized_bucket_weights(const std::vector<std::uint32_t>& 
     return weights;
 }
 
+bool is_hand_live_on_board(
+    const std::vector<std::uint8_t>& board,
+    const std::array<std::uint8_t, 2>& hole) {
+    if (hole[0] == hole[1]) {
+        return false;
+    }
+    for (const auto card : board) {
+        if (card == hole[0] || card == hole[1]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<double> normalize_weights(std::vector<double> weights) {
+    double total = 0.0;
+    for (const auto weight : weights) {
+        if (weight < 0.0) {
+            throw std::invalid_argument("HUNLFlatBucketMap weights must be non-negative");
+        }
+        total += weight;
+    }
+    if (total > 0.0) {
+        for (auto& weight : weights) {
+            weight /= total;
+        }
+    }
+    return weights;
+}
+
 }  // namespace
 
 HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
@@ -164,21 +194,58 @@ void HUNLFlatBucketMap::set_bucket_weights(InfosetId infoset_id, std::vector<dou
     if (!weights.empty() && weights.size() != bucket_entry.bucket_count) {
         throw std::invalid_argument("HUNLFlatBucketMap weight count must match bucket_count");
     }
-    if (!weights.empty()) {
-        double total = 0.0;
-        for (const auto weight : weights) {
-            if (weight < 0.0) {
-                throw std::invalid_argument("HUNLFlatBucketMap weights must be non-negative");
-            }
-            total += weight;
-        }
-        if (total > 0.0) {
-            for (auto& weight : weights) {
-                weight /= total;
-            }
-        }
+    bucket_entry.bucket_weights = normalize_weights(std::move(weights));
+}
+
+void HUNLFlatBucketMap::apply_range_inputs(
+    const HUNLFlatSolveGraph& graph,
+    const std::array<std::optional<HUNLRangeInput>, 2>& player_ranges) {
+    if (entries_.size() != graph.infosets.size()) {
+        throw std::invalid_argument("HUNLFlatBucketMap graph/entry size mismatch");
     }
-    bucket_entry.bucket_weights = std::move(weights);
+
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.id.value >= entries_.size() || !entries_[infoset.id.value].has_value()) {
+            continue;
+        }
+        if (infoset.player < 0 || infoset.player > 1) {
+            continue;
+        }
+
+        const auto& range_input = player_ranges[static_cast<std::size_t>(infoset.player)];
+        if (!range_input.has_value()) {
+            continue;
+        }
+
+        auto weights = std::vector<double>(entry(infoset.id).bucket_count, 0.0);
+
+        for (const auto& weighted_bucket : range_input->bucket_weights) {
+            if (weighted_bucket.street != infoset.street) {
+                continue;
+            }
+            if (weighted_bucket.bucket >= weights.size()) {
+                throw std::invalid_argument("HUNLFlatBucketMap bucket range references invalid bucket");
+            }
+            weights[weighted_bucket.bucket] += weighted_bucket.weight;
+        }
+
+        for (const auto& weighted_hand : range_input->hand_weights) {
+            auto hole = weighted_hand.hole;
+            if (hole[1] < hole[0]) {
+                std::swap(hole[0], hole[1]);
+            }
+            if (!is_hand_live_on_board(infoset.board, hole)) {
+                continue;
+            }
+            const auto bucket = lookup_bucket(infoset.id, hole);
+            if (bucket < 0 || static_cast<std::size_t>(bucket) >= weights.size()) {
+                continue;
+            }
+            weights[static_cast<std::size_t>(bucket)] += weighted_hand.weight;
+        }
+
+        set_bucket_weights(infoset.id, std::move(weights));
+    }
 }
 
 std::uint32_t HUNLFlatBucketMap::bucket_count_for_street(const AbstractionTables& tables, Street street) {
