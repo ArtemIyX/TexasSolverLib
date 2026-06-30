@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace core {
@@ -20,39 +21,39 @@ enum class HUNLFlatNodeType : std::uint8_t {
 };
 
 struct HUNLFlatNode {
-    HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
-    PlayerId player = -1;
-    Street street = Street::Preflop;
-    std::vector<std::uint8_t> board;
-    std::array<int, 2> contributions = {0, 0};
     std::uint32_t child_begin = 0;
     std::uint32_t child_count = 0;
     std::uint32_t action_begin = 0;
     std::uint32_t chance_begin = 0;
     std::uint32_t chance_count = 0;
-    std::uint8_t action_count = 0;
     InfosetId infoset_id{};
-    bool has_infoset = false;
-    TerminalKind terminal_kind = TerminalKind::non_terminal();
+    std::array<int, 2> contributions = {0, 0};
     std::array<double, 2> terminal_utility = {0.0, 0.0};
+    std::vector<std::uint8_t> board;
+    TerminalKind terminal_kind = TerminalKind::non_terminal();
+    PlayerId player = -1;
+    HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
+    Street street = Street::Preflop;
+    std::uint8_t action_count = 0;
+    bool has_infoset = false;
 };
 
 struct HUNLFlatNodeMeta {
-    HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
-    PlayerId player = -1;
-    Street street = Street::Preflop;
-    std::vector<std::uint8_t> board;
-    std::array<int, 2> contributions = {0, 0};
     std::uint32_t child_begin = 0;
     std::uint32_t child_count = 0;
     std::uint32_t action_begin = 0;
     std::uint32_t chance_begin = 0;
     std::uint32_t chance_count = 0;
-    std::uint8_t action_count = 0;
     InfosetId infoset_id{};
-    bool has_infoset = false;
-    TerminalKind terminal_kind = TerminalKind::non_terminal();
+    std::array<int, 2> contributions = {0, 0};
     std::array<double, 2> terminal_utility = {0.0, 0.0};
+    std::vector<std::uint8_t> board;
+    TerminalKind terminal_kind = TerminalKind::non_terminal();
+    PlayerId player = -1;
+    HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
+    Street street = Street::Preflop;
+    std::uint8_t action_count = 0;
+    bool has_infoset = false;
 };
 
 struct HUNLFlatChanceOutcome {
@@ -65,11 +66,11 @@ struct HUNLFlatInfoset {
     InfosetId id{};
     std::uint32_t node_begin = 0;
     std::uint32_t node_count = 0;
-    std::uint8_t action_count = 0;
-    PlayerId player = -1;
-    Street street = Street::Preflop;
     std::vector<std::uint8_t> board;
     std::string key;
+    PlayerId player = -1;
+    Street street = Street::Preflop;
+    std::uint8_t action_count = 0;
 };
 
 struct HUNLFlatSlice {
@@ -81,6 +82,12 @@ struct HUNLFlatWorkerRange {
     std::uint32_t begin = 0;
     std::uint32_t end = 0;
 };
+
+static_assert(std::is_trivially_copyable_v<HUNLFlatChanceOutcome>,
+              "HUNLFlatChanceOutcome should stay trivially copyable");
+static_assert(std::is_trivially_copyable_v<HUNLFlatSlice>, "HUNLFlatSlice should stay trivially copyable");
+static_assert(std::is_trivially_copyable_v<HUNLFlatWorkerRange>,
+              "HUNLFlatWorkerRange should stay trivially copyable");
 
 struct HUNLFlatSolveGraph {
     std::vector<HUNLFlatNode> nodes;

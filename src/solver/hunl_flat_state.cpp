@@ -201,10 +201,10 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
             running_bucket_offset,
             static_cast<std::uint32_t>(bucket_count),
             static_cast<std::uint32_t>(bucket_count),
-            infoset.action_count,
+            0,
+            0,
             infoset.player,
-            0,
-            0,
+            infoset.action_count,
         });
         running_offset += value_count;
         running_bucket_offset += static_cast<std::uint32_t>(bucket_count);

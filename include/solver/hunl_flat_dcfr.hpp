@@ -20,7 +20,11 @@
 
 namespace core {
 
-struct HUNLFlatStageProfile {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4324)
+#endif
+struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatStageProfile {
     double discount_seconds = 0.0;
     double strategy_seconds = 0.0;
     double reach_seconds = 0.0;
@@ -29,6 +33,9 @@ struct HUNLFlatStageProfile {
     double regret_seconds = 0.0;
     double average_strategy_seconds = 0.0;
 };
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 enum class HUNLFlatStageKind : std::uint8_t {
     Discount = 0,
@@ -43,6 +50,9 @@ enum class HUNLFlatStageKind : std::uint8_t {
 struct HUNLFlatSchedulerDiagnostics {
     std::vector<HUNLFlatStageProfile> worker_profiles;
 };
+
+static_assert(alignof(HUNLFlatStageProfile) == HUNL_CACHELINE_BYTES,
+              "HUNLFlatStageProfile should be cache-line aligned");
 
 class HUNLFlatDCFR {
 public:

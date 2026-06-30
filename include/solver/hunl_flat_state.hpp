@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 #include <vector>
 
 namespace core {
@@ -30,10 +31,10 @@ struct HUNLFlatInfosetTableMeta {
     std::uint32_t bucket_offset = 0;
     std::uint32_t bucket_count = 0;
     std::uint32_t hand_count = 0;
-    std::uint8_t action_count = 0;
-    PlayerId player = -1;
     std::uint32_t last_discount_iter = 0;
     std::uint32_t reach_count = 0;
+    PlayerId player = -1;
+    std::uint8_t action_count = 0;
 };
 
 struct HUNLFlatRange {
@@ -49,6 +50,10 @@ struct HUNLFlatWorkerAssignment {
     HUNLFlatRange node_range;
     std::vector<HUNLFlatRange> depth_node_ranges;
 };
+
+static_assert(std::is_trivially_copyable_v<HUNLFlatRange>, "HUNLFlatRange should stay trivially copyable");
+static_assert(std::is_trivially_copyable_v<HUNLFlatInfosetTableMeta>,
+              "HUNLFlatInfosetTableMeta should stay trivially copyable");
 
 #if defined(_MSC_VER)
 #pragma warning(push)

@@ -173,21 +173,21 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
 
         graph.nodes.push_back(std::move(flat_node));
         graph.node_meta.push_back(HUNLFlatNodeMeta{
-            graph.nodes.back().type,
-            graph.nodes.back().player,
-            graph.nodes.back().street,
-            graph.nodes.back().board,
-            graph.nodes.back().contributions,
             graph.nodes.back().child_begin,
             graph.nodes.back().child_count,
             graph.nodes.back().action_begin,
             graph.nodes.back().chance_begin,
             graph.nodes.back().chance_count,
-            graph.nodes.back().action_count,
             graph.nodes.back().infoset_id,
-            graph.nodes.back().has_infoset,
-            graph.nodes.back().terminal_kind,
+            graph.nodes.back().contributions,
             graph.nodes.back().terminal_utility,
+            graph.nodes.back().board,
+            graph.nodes.back().terminal_kind,
+            graph.nodes.back().player,
+            graph.nodes.back().type,
+            graph.nodes.back().street,
+            graph.nodes.back().action_count,
+            graph.nodes.back().has_infoset,
         });
 
         if (graph.nodes.back().type == HUNLFlatNodeType::TerminalFold) {
