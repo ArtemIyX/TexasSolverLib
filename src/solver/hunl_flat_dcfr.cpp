@@ -648,26 +648,24 @@ void HUNLFlatDCFR::forward_reach_stage() {
 
 void HUNLFlatDCFR::terminal_utility_stage() {
     run_stage_workers(HUNLFlatStageKind::Terminal, [&](std::size_t worker_index) {
-        if (worker_index != 0) {
-            return;
-        }
-
-        std::fill(terminal_values_.begin(), terminal_values_.end(), 0.0);
-        for (std::size_t i = 0; i < graph_.fold_terminal_nodes.size(); ++i) {
-            terminal_values_[graph_.fold_terminal_nodes[i]] = graph_.fold_terminal_values[i];
-        }
-        for (std::size_t i = 0; i < graph_.showdown_terminal_nodes.size(); ++i) {
-            const auto node_idx = graph_.showdown_terminal_nodes[i];
-            if (terminal_table_ && terminal_table_->has_showdown_matrix(node_idx)) {
-                terminal_values_[node_idx] = terminal_table_->expected_showdown_value(node_idx);
-            } else {
-                terminal_values_[node_idx] = graph_.showdown_terminal_values[i];
+        const auto range = parallel_plan_.workers[worker_index].node_range;
+        for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
+            const auto& meta = graph_.node_meta[node_idx];
+            if (meta.type == HUNLFlatNodeType::TerminalFold) {
+                terminal_values_[node_idx] = graph_.nodes[node_idx].terminal_utility[0];
+                continue;
             }
-        }
-        for (std::uint32_t node_idx = 0; node_idx < graph_.nodes.size(); ++node_idx) {
-            if (graph_.node_meta[node_idx].type == HUNLFlatNodeType::DepthLimited) {
+            if (meta.type == HUNLFlatNodeType::TerminalShowdown) {
+                if (terminal_table_ && terminal_table_->has_showdown_matrix(node_idx)) {
+                    terminal_values_[node_idx] = terminal_table_->expected_showdown_value(node_idx);
+                } else {
+                    terminal_values_[node_idx] = graph_.nodes[node_idx].terminal_utility[0];
+                }
+                continue;
+            }
+            if (meta.type == HUNLFlatNodeType::DepthLimited) {
                 terminal_values_[node_idx] =
-                    heuristic_depth_limited_value_p0(graph_.node_meta[node_idx], *graph_.config);
+                    heuristic_depth_limited_value_p0(meta, *graph_.config);
             }
         }
     });
