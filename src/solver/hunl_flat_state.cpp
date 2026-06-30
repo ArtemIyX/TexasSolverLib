@@ -79,7 +79,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph
 
 HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     const HUNLFlatSolveGraph& graph,
-    const std::array<std::size_t, 2>& hand_count_per_player,
+    const std::array<std::size_t, 2>& bucket_count_per_player,
     HUNLFlatValueLayout layout) {
     HUNLFlatInfosetTable table;
     table.layout_ = layout;
@@ -91,17 +91,19 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
             throw std::logic_error("flat infoset table requires player-owned infosets");
         }
 
-        const auto hand_count = hand_count_per_player[static_cast<std::size_t>(infoset.player)];
+        const auto bucket_count = bucket_count_per_player[static_cast<std::size_t>(infoset.player)];
         const auto value_count =
-            static_cast<std::uint32_t>(hand_count * static_cast<std::size_t>(infoset.action_count));
+            static_cast<std::uint32_t>(bucket_count * static_cast<std::size_t>(infoset.action_count));
 
         table.meta_.push_back(HUNLFlatInfosetTableMeta{
             infoset.id,
             running_offset,
             value_count,
-            static_cast<std::uint32_t>(hand_count),
+            static_cast<std::uint32_t>(bucket_count),
+            static_cast<std::uint32_t>(bucket_count),
             infoset.action_count,
             infoset.player,
+            0,
             0,
         });
         running_offset += value_count;
@@ -163,8 +165,8 @@ std::size_t HUNLFlatInfosetTable::total_value_count() const noexcept {
 
 std::size_t HUNLFlatInfosetTable::value_index(InfosetId id, std::size_t hand_idx, std::size_t action_idx) const {
     const auto& meta = meta_for(id);
-    if (hand_idx >= meta.hand_count) {
-        throw std::out_of_range("HUNLFlatInfosetTable hand_idx out of range");
+    if (hand_idx >= meta.bucket_count) {
+        throw std::out_of_range("HUNLFlatInfosetTable bucket_idx out of range");
     }
     if (action_idx >= meta.action_count) {
         throw std::out_of_range("HUNLFlatInfosetTable action_idx out of range");
@@ -173,7 +175,7 @@ std::size_t HUNLFlatInfosetTable::value_index(InfosetId id, std::size_t hand_idx
     if (layout_ == HUNLFlatValueLayout::InfosetHandAction) {
         return meta.offset + hand_idx * static_cast<std::size_t>(meta.action_count) + action_idx;
     }
-    return meta.offset + action_idx * static_cast<std::size_t>(meta.hand_count) + hand_idx;
+    return meta.offset + action_idx * static_cast<std::size_t>(meta.bucket_count) + hand_idx;
 }
 
 HUNLFlatRange HUNLFlatInfosetTable::infoset_value_range(HUNLFlatRange infoset_range) const {

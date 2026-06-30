@@ -24,10 +24,12 @@ struct HUNLFlatInfosetTableMeta {
     InfosetId id{};
     std::uint32_t offset = 0;
     std::uint32_t value_count = 0;
+    std::uint32_t bucket_count = 0;
     std::uint32_t hand_count = 0;
     std::uint8_t action_count = 0;
     PlayerId player = -1;
     std::uint32_t last_discount_iter = 0;
+    std::uint32_t reach_count = 0;
 };
 
 struct HUNLFlatRange {
@@ -64,7 +66,7 @@ class HUNLFlatInfosetTable {
 public:
     static HUNLFlatInfosetTable build(
         const HUNLFlatSolveGraph& graph,
-        const std::array<std::size_t, 2>& hand_count_per_player,
+        const std::array<std::size_t, 2>& bucket_count_per_player,
         HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetHandAction);
 
     [[nodiscard]] const std::vector<HUNLFlatInfosetTableMeta>& meta() const noexcept;

@@ -154,14 +154,14 @@ HUNLSolveOutput solve_hunl_postflop(
     if (use_flat_backend) {
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto graph = HUNLFlatSolveGraph::build(shared);
-        std::array<std::size_t, 2> hand_count_per_player = {1326, 1326};
+        std::array<std::size_t, 2> bucket_count_per_player = {1326, 1326};
         if (config.initial_hole_cards.has_value()) {
-            hand_count_per_player = {1, 1};
+            bucket_count_per_player = {1, 1};
         }
 
         HUNLFlatDCFR solver(
             std::move(graph),
-            hand_count_per_player,
+            bucket_count_per_player,
             HUNLFlatValueLayout::InfosetHandAction,
             workers,
             alpha,

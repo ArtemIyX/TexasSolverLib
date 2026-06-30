@@ -45,7 +45,7 @@ class HUNLFlatDCFR {
 public:
     explicit HUNLFlatDCFR(
         HUNLFlatSolveGraph graph,
-        std::array<std::size_t, 2> hand_count_per_player,
+        std::array<std::size_t, 2> bucket_count_per_player,
         HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand,
         std::size_t workers = 1,
         double alpha = 1.5,

@@ -101,14 +101,14 @@ void HUNLFlatDCFR::WorkerPool::worker_loop(std::size_t worker_index) {
 
 HUNLFlatDCFR::HUNLFlatDCFR(
     HUNLFlatSolveGraph graph,
-    std::array<std::size_t, 2> hand_count_per_player,
+    std::array<std::size_t, 2> bucket_count_per_player,
     HUNLFlatValueLayout layout,
     std::size_t workers,
     double alpha,
     double beta,
     double gamma)
     : graph_(std::move(graph)),
-      infoset_table_(HUNLFlatInfosetTable::build(graph_, hand_count_per_player, layout)),
+      infoset_table_(HUNLFlatInfosetTable::build(graph_, bucket_count_per_player, layout)),
       player0_reach_(graph_.nodes.size(), 0.0),
       player1_reach_(graph_.nodes.size(), 0.0),
       chance_reach_(graph_.nodes.size(), 0.0),
