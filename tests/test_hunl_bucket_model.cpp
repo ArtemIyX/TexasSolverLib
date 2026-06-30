@@ -1,0 +1,151 @@
+#include "solver/hunl_bucket_map.hpp"
+#include "games/hunl_flat_graph.hpp"
+#include "games/hunl.hpp"
+#include "test_abstraction_fixture.hpp"
+#include "test_harness.hpp"
+
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <stdexcept>
+#include <vector>
+
+namespace {
+
+using test_support::c;
+
+std::shared_ptr<const core::HUNLConfig> river_config() {
+    return std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+}
+
+TEST_CASE(hunl_bucket_model_bucket_counts_match_artifact_metadata) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_counts.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+            return static_cast<std::uint8_t>(index % 5U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 5}, core::ABSTRACTION_SCHEMA_VERSION, "custom-river-5", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.street == core::Street::River) {
+            EXPECT_EQ(map.bucket_count(infoset.id), 5U);
+        }
+    }
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_model_every_valid_hand_maps_to_a_bucket) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_every_hand.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+            return static_cast<std::uint8_t>(index % 4U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 4}, core::ABSTRACTION_SCHEMA_VERSION, "river-4", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+    const auto live_hands = test_support::enumerate_live_hands(config->initial_board);
+    EXPECT_TRUE(!live_hands.empty());
+
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.street != core::Street::River) {
+            continue;
+        }
+        for (const auto& hole : live_hands) {
+            const auto bucket = map.lookup_bucket(infoset.id, hole);
+            EXPECT_TRUE(bucket >= 0);
+            EXPECT_TRUE(static_cast<std::uint32_t>(bucket) < map.bucket_count(infoset.id));
+        }
+    }
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_model_invalid_board_or_hand_combinations_fail_cleanly) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_invalid_combo.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t, const std::array<std::uint8_t, 2>&) { return static_cast<std::uint8_t>(0); });
+
+    const auto tables = core::load_abstraction(path);
+    const auto invalid_board = std::vector<std::uint8_t>{c(2, 0), c(3, 1), c(4, 2), c(5, 3), c(6, 0)};
+    const std::array<std::uint8_t, 2> other_hole = {c(8, 0), c(9, 1)};
+    const std::array<std::uint8_t, 2> invalid_hole = {config->initial_board[0], c(9, 1)};
+
+    EXPECT_THROW(core::lookup_bucket(tables, invalid_board, other_hole, core::Street::River), std::out_of_range);
+    EXPECT_THROW(core::lookup_bucket(tables, config->initial_board, invalid_hole, core::Street::River), std::out_of_range);
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_model_dense_bucket_ids_are_documented_by_runtime_map) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_dense_ids.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+            return static_cast<std::uint8_t>((index % 2U) == 0U ? 1U : 3U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 4}, core::ABSTRACTION_SCHEMA_VERSION, "sparse-assignment", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.street != core::Street::River) {
+            continue;
+        }
+        const auto& ids = map.dense_bucket_ids(infoset.id);
+        EXPECT_EQ(ids.size(), map.bucket_count(infoset.id));
+        for (std::size_t i = 0; i < ids.size(); ++i) {
+            EXPECT_EQ(ids[i], static_cast<std::uint32_t>(i));
+        }
+    }
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_model_custom_bucket_schema_round_trips_through_load_and_lookup) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_round_trip.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>& hole) {
+            return static_cast<std::uint8_t>((index + hole[0] + hole[1]) % 6U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 6}, core::ABSTRACTION_SCHEMA_VERSION, "river-6-schema", std::nullopt});
+
+    const auto tables = core::load_abstraction(path);
+    const auto live_hands = test_support::enumerate_live_hands(config->initial_board);
+    EXPECT_TRUE(!live_hands.empty());
+
+    EXPECT_EQ(tables.metadata.version, std::string("river-6-schema"));
+    EXPECT_EQ(tables.metadata.bucket_counts[2], 6U);
+    EXPECT_EQ(
+        core::lookup_bucket(tables, config->initial_board, live_hands[0], core::Street::River),
+        static_cast<std::int32_t>((live_hands[0][0] + live_hands[0][1]) % 6U));
+
+    std::filesystem::remove(path);
+}
+
+}  // namespace
