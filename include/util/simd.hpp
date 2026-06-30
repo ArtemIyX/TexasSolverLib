@@ -52,6 +52,9 @@ void update_strategy_sum(
     const double* strategy,
     std::size_t len,
     double own_reach) noexcept;
+void copy_values(double* out, const double* in, std::size_t len) noexcept;
+double reduce_action_values(const double* values, std::size_t len) noexcept;
+double reduce_weighted_action_values(const double* values, const double* weights, std::size_t len) noexcept;
 void update_regret_sum_vector(
     double* regret,
     const double* action_value,
@@ -59,7 +62,9 @@ void update_regret_sum_vector(
     std::size_t hand_count,
     std::size_t action_count) noexcept;
 void normalize(double* out, std::size_t len, double total) noexcept;
+void normalize_row(const double* values, double* out, std::size_t len) noexcept;
 void compute_strategy_row(const double* regrets, double* out, std::size_t len) noexcept;
+void compute_strategy_row_small(const double* regrets, double* out, std::size_t len) noexcept;
 
 }  // namespace core
 

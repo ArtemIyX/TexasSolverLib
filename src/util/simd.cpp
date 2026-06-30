@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 #if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
@@ -18,6 +19,40 @@ double nan_preserving_max(double a, double b) noexcept {
     }
     return a >= b ? a : b;
 }
+
+bool is_aligned_32(const void* ptr) noexcept {
+    return (reinterpret_cast<std::uintptr_t>(ptr) & 31U) == 0;
+}
+
+bool is_aligned_16(const void* ptr) noexcept {
+    return (reinterpret_cast<std::uintptr_t>(ptr) & 15U) == 0;
+}
+
+#if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+inline void store_row(double* out, const double* in, bool aligned) noexcept {
+#if defined(__AVX2__)
+    if (aligned) {
+        _mm256_store_pd(out, _mm256_load_pd(in));
+    } else {
+        _mm256_storeu_pd(out, _mm256_loadu_pd(in));
+    }
+#else
+    if (aligned) {
+        _mm_store_pd(out, _mm_load_pd(in));
+    } else {
+        _mm_storeu_pd(out, _mm_loadu_pd(in));
+    }
+#endif
+}
+
+inline double sum_row_chunk(const double* values, bool aligned) noexcept {
+#if defined(__AVX2__)
+    return aligned ? _mm256_cvtsd_f64(_mm256_castpd256_pd128(_mm256_load_pd(values))) : _mm256_cvtsd_f64(_mm256_castpd256_pd128(_mm256_loadu_pd(values)));
+#else
+    return aligned ? _mm_cvtsd_f64(_mm_load_pd(values)) : _mm_cvtsd_f64(_mm_loadu_pd(values));
+#endif
+}
+#endif
 
 #if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 namespace {
@@ -90,7 +125,9 @@ inline double positive_regrets_and_total_sse2(const double* regrets, double* out
     std::size_t i = 0;
     for (; i + 1 < len; i += 2) {
         const __m128d v = _mm_loadu_pd(regrets + i);
-        const __m128d p = _mm_max_pd(v, zero);
+        const __m128d nan_mask = _mm_cmpunord_pd(v, v);
+        const __m128d positive = _mm_max_pd(v, zero);
+        const __m128d p = _mm_or_pd(_mm_and_pd(nan_mask, v), _mm_andnot_pd(nan_mask, positive));
         _mm_storeu_pd(out_positive + i, p);
         alignas(16) double tmp[2];
         _mm_store_pd(tmp, p);
@@ -109,7 +146,10 @@ inline double positive_regrets_and_total_avx2(const double* regrets, double* out
     std::size_t i = 0;
     for (; i + 3 < len; i += 4) {
         const __m256d v = _mm256_loadu_pd(regrets + i);
-        const __m256d p = _mm256_max_pd(v, zero);
+        const __m256d nan_mask = _mm256_cmp_pd(v, v, _CMP_UNORD_Q);
+        const __m256d positive = _mm256_max_pd(v, zero);
+        const __m256d p =
+            _mm256_or_pd(_mm256_and_pd(nan_mask, v), _mm256_andnot_pd(nan_mask, positive));
         _mm256_storeu_pd(out_positive + i, p);
         alignas(32) double tmp[4];
         _mm256_store_pd(tmp, p);
@@ -392,6 +432,30 @@ void update_strategy_sum(
     const double* strategy,
     std::size_t len,
     double own_reach) noexcept {
+    switch (len) {
+        case 0:
+            return;
+        case 1:
+            strategy_sum[0] += own_reach * strategy[0];
+            return;
+        case 2:
+            strategy_sum[0] += own_reach * strategy[0];
+            strategy_sum[1] += own_reach * strategy[1];
+            return;
+        case 3:
+            strategy_sum[0] += own_reach * strategy[0];
+            strategy_sum[1] += own_reach * strategy[1];
+            strategy_sum[2] += own_reach * strategy[2];
+            return;
+        case 4:
+            strategy_sum[0] += own_reach * strategy[0];
+            strategy_sum[1] += own_reach * strategy[1];
+            strategy_sum[2] += own_reach * strategy[2];
+            strategy_sum[3] += own_reach * strategy[3];
+            return;
+        default:
+            break;
+    }
 #if defined(__AVX2__)
     update_strategy_sum_avx2(strategy_sum, strategy, len, own_reach);
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
@@ -399,6 +463,184 @@ void update_strategy_sum(
 #else
     update_strategy_sum_scalar(strategy_sum, strategy, len, own_reach);
 #endif
+}
+
+void copy_values(double* out, const double* in, std::size_t len) noexcept {
+    switch (len) {
+        case 0:
+            return;
+        case 1:
+            out[0] = in[0];
+            return;
+        case 2:
+            out[0] = in[0];
+            out[1] = in[1];
+            return;
+        case 3:
+            out[0] = in[0];
+            out[1] = in[1];
+            out[2] = in[2];
+            return;
+        case 4:
+            out[0] = in[0];
+            out[1] = in[1];
+            out[2] = in[2];
+            out[3] = in[3];
+            return;
+        default:
+            break;
+    }
+#if defined(__AVX2__)
+    std::size_t i = 0;
+    const bool aligned = is_aligned_32(out) && is_aligned_32(in);
+    for (; i + 3 < len; i += 4) {
+        if (aligned) {
+            _mm256_store_pd(out + i, _mm256_load_pd(in + i));
+        } else {
+            _mm256_storeu_pd(out + i, _mm256_loadu_pd(in + i));
+        }
+    }
+    for (; i < len; ++i) {
+        out[i] = in[i];
+    }
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    std::size_t i = 0;
+    const bool aligned = is_aligned_16(out) && is_aligned_16(in);
+    for (; i + 1 < len; i += 2) {
+        if (aligned) {
+            _mm_store_pd(out + i, _mm_load_pd(in + i));
+        } else {
+            _mm_storeu_pd(out + i, _mm_loadu_pd(in + i));
+        }
+    }
+    for (; i < len; ++i) {
+        out[i] = in[i];
+    }
+#else
+    for (std::size_t i = 0; i < len; ++i) {
+        out[i] = in[i];
+    }
+#endif
+}
+
+double reduce_action_values(const double* values, std::size_t len) noexcept {
+    if (len == 0) {
+        return 0.0;
+    }
+
+    switch (len) {
+        case 1:
+            return values[0];
+        case 2:
+            return values[0] + values[1];
+        case 3:
+            return values[0] + values[1] + values[2];
+        case 4:
+            return values[0] + values[1] + values[2] + values[3];
+        default:
+#if defined(__AVX2__)
+        {
+            std::size_t i = 0;
+            __m256d sum = _mm256_setzero_pd();
+            const bool aligned = is_aligned_32(values);
+            for (; i + 3 < len; i += 4) {
+                const __m256d chunk = aligned ? _mm256_load_pd(values + i) : _mm256_loadu_pd(values + i);
+                sum = _mm256_add_pd(sum, chunk);
+            }
+            alignas(32) double tmp[4];
+            _mm256_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+            for (; i < len; ++i) {
+                total += values[i];
+            }
+            return total;
+        }
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+        {
+            std::size_t i = 0;
+            __m128d sum = _mm_setzero_pd();
+            const bool aligned = is_aligned_16(values);
+            for (; i + 1 < len; i += 2) {
+                const __m128d chunk = aligned ? _mm_load_pd(values + i) : _mm_loadu_pd(values + i);
+                sum = _mm_add_pd(sum, chunk);
+            }
+            alignas(16) double tmp[2];
+            _mm_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1];
+            for (; i < len; ++i) {
+                total += values[i];
+            }
+            return total;
+        }
+#else
+        double total = 0.0;
+        for (std::size_t i = 0; i < len; ++i) {
+            total += values[i];
+        }
+        return total;
+#endif
+    }
+}
+
+double reduce_weighted_action_values(const double* values, const double* weights, std::size_t len) noexcept {
+    if (len == 0) {
+        return 0.0;
+    }
+
+    switch (len) {
+        case 1:
+            return values[0] * weights[0];
+        case 2:
+            return values[0] * weights[0] + values[1] * weights[1];
+        case 3:
+            return values[0] * weights[0] + values[1] * weights[1] + values[2] * weights[2];
+        case 4:
+            return values[0] * weights[0] + values[1] * weights[1] + values[2] * weights[2] + values[3] * weights[3];
+        default:
+#if defined(__AVX2__)
+        {
+            std::size_t i = 0;
+            __m256d sum = _mm256_setzero_pd();
+            const bool aligned = is_aligned_32(values) && is_aligned_32(weights);
+            for (; i + 3 < len; i += 4) {
+                const __m256d v = aligned ? _mm256_load_pd(values + i) : _mm256_loadu_pd(values + i);
+                const __m256d w = aligned ? _mm256_load_pd(weights + i) : _mm256_loadu_pd(weights + i);
+                sum = _mm256_add_pd(sum, _mm256_mul_pd(v, w));
+            }
+            alignas(32) double tmp[4];
+            _mm256_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+            for (; i < len; ++i) {
+                total += values[i] * weights[i];
+            }
+            return total;
+        }
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+        {
+            std::size_t i = 0;
+            __m128d sum = _mm_setzero_pd();
+            const bool aligned = is_aligned_16(values) && is_aligned_16(weights);
+            for (; i + 1 < len; i += 2) {
+                const __m128d v = aligned ? _mm_load_pd(values + i) : _mm_loadu_pd(values + i);
+                const __m128d w = aligned ? _mm_load_pd(weights + i) : _mm_loadu_pd(weights + i);
+                sum = _mm_add_pd(sum, _mm_mul_pd(v, w));
+            }
+            alignas(16) double tmp[2];
+            _mm_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1];
+            for (; i < len; ++i) {
+                total += values[i] * weights[i];
+            }
+            return total;
+        }
+#else
+        double total = 0.0;
+        for (std::size_t i = 0; i < len; ++i) {
+            total += values[i] * weights[i];
+        }
+        return total;
+#endif
+    }
 }
 
 void update_regret_sum_vector(
@@ -420,9 +662,64 @@ void normalize(double* out, std::size_t len, double total) noexcept {
 #endif
 }
 
+void normalize_row(const double* values, double* out, std::size_t len) noexcept {
+    switch (len) {
+        case 0:
+            return;
+        case 1:
+            out[0] = values[0] > 0.0 ? 1.0 : 1.0;
+            return;
+        case 2:
+        case 3:
+        case 4: {
+            double total = 0.0;
+            for (std::size_t i = 0; i < len; ++i) {
+                total += values[i];
+                out[i] = values[i];
+            }
+            normalize(out, len, total);
+            return;
+        }
+        default:
+            break;
+    }
+    double total = 0.0;
+    for (std::size_t i = 0; i < len; ++i) {
+        total += values[i];
+        out[i] = values[i];
+    }
+    normalize(out, len, total);
+}
+
 void compute_strategy_row(const double* regrets, double* out, std::size_t len) noexcept {
     double total = positive_regrets_and_total(regrets, out, len);
     normalize(out, len, total);
+}
+
+void compute_strategy_row_small(const double* regrets, double* out, std::size_t len) noexcept {
+    if (len == 0) {
+        return;
+    }
+
+    switch (len) {
+        case 1:
+            out[0] = 1.0;
+            return;
+        case 2:
+        case 3:
+        case 4: {
+            double positive[4] = {0.0, 0.0, 0.0, 0.0};
+            const double total = positive_regrets_and_total(regrets, positive, len);
+            normalize(positive, len, total);
+            for (std::size_t i = 0; i < len; ++i) {
+                out[i] = positive[i];
+            }
+            return;
+        }
+        default:
+            compute_strategy_row(regrets, out, len);
+            return;
+    }
 }
 
 }  // namespace core

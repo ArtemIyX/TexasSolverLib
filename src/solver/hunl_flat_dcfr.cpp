@@ -3,11 +3,13 @@
 #include "solver/dcfr.hpp"
 #include "util/simd.hpp"
 
+#include <array>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <exception>
 #include <stdexcept>
+#include <vector>
 
 namespace core {
 
@@ -293,39 +295,13 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_averag
 
         if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                double total = 0.0;
-                for (std::size_t a = 0; a < meta.action_count; ++a) {
-                    total += strategy_sum[a * static_cast<std::size_t>(meta.hand_count) + h];
-                }
-                if (total > 0.0) {
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                        average[idx] = strategy_sum[idx] / total;
-                    }
-                } else {
-                    const double uniform = 1.0 / static_cast<double>(meta.action_count);
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        average[a * static_cast<std::size_t>(meta.hand_count) + h] = uniform;
-                    }
-                }
+                const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
+                normalize_row(strategy_sum + hand_offset, average.data() + hand_offset, meta.action_count);
             }
         } else {
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
                 const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                double total = 0.0;
-                for (std::size_t a = 0; a < meta.action_count; ++a) {
-                    total += strategy_sum[hand_offset + a];
-                }
-                if (total > 0.0) {
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        average[hand_offset + a] = strategy_sum[hand_offset + a] / total;
-                    }
-                } else {
-                    const double uniform = 1.0 / static_cast<double>(meta.action_count);
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        average[hand_offset + a] = uniform;
-                    }
-                }
+                normalize_row(strategy_sum + hand_offset, average.data() + hand_offset, meta.action_count);
             }
         }
 
@@ -372,32 +348,32 @@ void HUNLFlatDCFR::compute_strategy_stage() {
             auto* regret = infoset_table_.regret_mut(meta.id);
             auto* strategy = infoset_table_.current_strategy_mut(meta.id);
 
-            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                    double positive_total = 0.0;
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                        strategy[idx] = std::max(regret[idx], 0.0);
-                        positive_total += strategy[idx];
-                    }
-                    if (positive_total > 0.0) {
-                        for (std::size_t a = 0; a < meta.action_count; ++a) {
-                            const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                            strategy[idx] /= positive_total;
-                        }
-                    } else {
-                        const double uniform = 1.0 / static_cast<double>(meta.action_count);
-                        for (std::size_t a = 0; a < meta.action_count; ++a) {
-                            strategy[a * static_cast<std::size_t>(meta.hand_count) + h] = uniform;
-                        }
-                    }
+                    const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
+                    compute_strategy_row_small(regret + hand_offset, strategy + hand_offset, meta.action_count);
                 }
                 continue;
             }
 
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                compute_strategy_row(regret + hand_offset, strategy + hand_offset, meta.action_count);
+                double positive_total = 0.0;
+                for (std::size_t a = 0; a < meta.action_count; ++a) {
+                    const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
+                    strategy[idx] = std::max(regret[idx], 0.0);
+                    positive_total += strategy[idx];
+                }
+                if (positive_total > 0.0) {
+                    for (std::size_t a = 0; a < meta.action_count; ++a) {
+                        const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
+                        strategy[idx] /= positive_total;
+                    }
+                } else {
+                    const double uniform = 1.0 / static_cast<double>(meta.action_count);
+                    for (std::size_t a = 0; a < meta.action_count; ++a) {
+                        strategy[a * static_cast<std::size_t>(meta.hand_count) + h] = uniform;
+                    }
+                }
             }
         }
     });
@@ -522,14 +498,15 @@ void HUNLFlatDCFR::backward_value_stage() {
                 }
 
                 if (meta.type == HUNLFlatNodeType::Chance) {
-                    double total = 0.0;
+                    std::vector<double> weights(meta.chance_count, 0.0);
+                    std::vector<double> row(meta.chance_count, 0.0);
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
                         const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
-                        const auto child_value = node_values_[outcome.child];
-                        action_values_[meta.child_begin + i] = child_value;
-                        total += outcome.probability * child_value;
+                        row[i] = node_values_[outcome.child];
+                        weights[i] = outcome.probability;
                     }
-                    node_values_[node_idx] = total;
+                    copy_values(action_values_.data() + meta.child_begin, row.data(), meta.chance_count);
+                    node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.chance_count);
                     continue;
                 }
 
@@ -540,11 +517,11 @@ void HUNLFlatDCFR::backward_value_stage() {
                 const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
                 const std::size_t representative_hand = 0;
-                double node_value = 0.0;
+                std::vector<double> row(meta.child_count, 0.0);
+                std::vector<double> weights(meta.child_count, 0.0);
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
-                    const auto child_value = node_values_[child];
-                    action_values_[meta.child_begin + i] = child_value;
+                    row[i] = node_values_[child];
 
                     double action_prob = 1.0 / static_cast<double>(meta.child_count);
                     if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
@@ -552,9 +529,10 @@ void HUNLFlatDCFR::backward_value_stage() {
                     } else {
                         action_prob = strategy[representative_hand * static_cast<std::size_t>(infoset_meta.action_count) + i];
                     }
-                    node_value += action_prob * child_value;
+                    weights[i] = action_prob;
                 }
-                node_values_[node_idx] = node_value;
+                copy_values(action_values_.data() + meta.child_begin, row.data(), meta.child_count);
+                node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.child_count);
             }
         });
     }
@@ -574,25 +552,25 @@ void HUNLFlatDCFR::regret_update_stage() {
                 (meta.player == 0 ? player1_reach_[node_idx] : player0_reach_[node_idx]);
             const double base_value = node_values_[node_idx];
 
-            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+            if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        const auto row_idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                        const auto edge_idx = node_meta.child_begin + a;
-                        regret[row_idx] += cf_reach * (action_values_[edge_idx] - base_value);
-                    }
+                    const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
+                    update_regret_sum(
+                        regret + hand_offset,
+                        action_values_.data() + node_meta.child_begin,
+                        meta.action_count,
+                        base_value,
+                        cf_reach);
                 }
                 continue;
             }
 
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                update_regret_sum(
-                    regret + hand_offset,
-                    action_values_.data() + node_meta.child_begin,
-                    meta.action_count,
-                    base_value,
-                    cf_reach);
+                for (std::size_t a = 0; a < meta.action_count; ++a) {
+                    const auto row_idx = a * static_cast<std::size_t>(meta.hand_count) + h;
+                    const auto edge_idx = node_meta.child_begin + a;
+                    regret[row_idx] += cf_reach * (action_values_[edge_idx] - base_value);
+                }
             }
         }
     });
