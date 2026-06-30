@@ -8,6 +8,58 @@ namespace core {
 
 namespace {
 
+double board_texture_score(const std::vector<std::uint8_t>& board) {
+    if (board.empty()) {
+        return 0.5;
+    }
+
+    std::array<std::uint8_t, 15> rank_counts = {};
+    std::array<std::uint8_t, 4> suit_counts = {};
+    for (const auto card : board) {
+        ++rank_counts[rank_of(card)];
+        ++suit_counts[suit_of(card)];
+    }
+
+    double score = 0.5;
+    for (std::uint8_t rank = 2; rank <= 14; ++rank) {
+        if (rank_counts[rank] >= 2) {
+            score += 0.05 * static_cast<double>(rank_counts[rank] - 1);
+        }
+        if (rank == 14) {
+            break;
+        }
+    }
+    for (const auto suit_count : suit_counts) {
+        if (suit_count >= 3) {
+            score += 0.03 * static_cast<double>(suit_count - 2);
+        }
+    }
+
+    if (board.size() >= 3) {
+        std::vector<std::uint8_t> ranks;
+        ranks.reserve(board.size());
+        for (const auto card : board) {
+            ranks.push_back(rank_of(card));
+        }
+        std::sort(ranks.begin(), ranks.end());
+        std::size_t run = 1;
+        std::size_t best_run = 1;
+        for (std::size_t i = 1; i < ranks.size(); ++i) {
+            if (ranks[i] == ranks[i - 1] || ranks[i] == static_cast<std::uint8_t>(ranks[i - 1] + 1)) {
+                ++run;
+                best_run = std::max(best_run, run);
+            } else {
+                run = 1;
+            }
+        }
+        if (best_run >= 3) {
+            score += 0.02 * static_cast<double>(best_run - 2);
+        }
+    }
+
+    return std::clamp(score, 0.0, 1.0);
+}
+
 std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands_for_board(const std::vector<std::uint8_t>& board) {
     std::array<bool, 64> blocked = {};
     for (const auto card : board) {
@@ -195,6 +247,39 @@ double HUNLBucketTerminalTable::expected_showdown_value(
         }
     }
     return value;
+}
+
+double heuristic_depth_limited_value_p0(const HUNLFlatNodeMeta& node, const HUNLConfig& config) {
+    const double bb = static_cast<double>(config.big_blind);
+    const double init_c0 = static_cast<double>(config.initial_contributions[0]);
+    const double init_c1 = static_cast<double>(config.initial_contributions[1]);
+    const double cs0 = static_cast<double>(node.contributions[0]) - init_c0;
+    const double cs1 = static_cast<double>(node.contributions[1]) - init_c1;
+    const double pot_total = static_cast<double>(config.initial_pot) + cs0 + cs1;
+    const double pot_share = pot_total * 0.5 / bb;
+    const double pressure = static_cast<double>(node.contributions[0] - node.contributions[1]) / bb;
+    const double texture = board_texture_score(node.board);
+
+    double street_bias = 0.0;
+    switch (node.street) {
+        case Street::Flop:
+            street_bias = 0.04;
+            break;
+        case Street::Turn:
+            street_bias = 0.08;
+            break;
+        case Street::River:
+            street_bias = 0.12;
+            break;
+        default:
+            street_bias = 0.0;
+            break;
+    }
+
+    const double board_term = (texture - 0.5) * pot_share * 0.25;
+    const double pressure_term = -0.05 * pressure;
+    const double street_term = street_bias * (texture - 0.5);
+    return pot_share + board_term + pressure_term + street_term;
 }
 
 }  // namespace core

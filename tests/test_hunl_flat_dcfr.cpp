@@ -480,6 +480,31 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_copies_terminal_values_into_node_values)
     EXPECT_TRUE(saw_terminal);
 }
 
+TEST_CASE(hunl_flat_dcfr_depth_limited_nodes_receive_deterministic_terminal_values) {
+    auto config = core::benchmark_turn_subgame();
+    config.depth_limit_plies = 1;
+    const auto graph = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    bool saw_depth_limited = false;
+    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        if (meta.type != core::HUNLFlatNodeType::DepthLimited) {
+            continue;
+        }
+        saw_depth_limited = true;
+        EXPECT_TRUE(std::isfinite(solver.terminal_values()[node_idx]));
+        EXPECT_NEAR(solver.node_values()[node_idx], solver.terminal_values()[node_idx], 1e-12);
+    }
+
+    EXPECT_TRUE(saw_depth_limited);
+}
+
 TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
     const auto graph = core::HUNLFlatSolveGraph::build(config);

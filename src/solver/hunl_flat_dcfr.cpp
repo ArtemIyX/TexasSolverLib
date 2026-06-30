@@ -664,6 +664,12 @@ void HUNLFlatDCFR::terminal_utility_stage() {
                 terminal_values_[node_idx] = graph_.showdown_terminal_values[i];
             }
         }
+        for (std::uint32_t node_idx = 0; node_idx < graph_.nodes.size(); ++node_idx) {
+            if (graph_.node_meta[node_idx].type == HUNLFlatNodeType::DepthLimited) {
+                terminal_values_[node_idx] =
+                    heuristic_depth_limited_value_p0(graph_.node_meta[node_idx], *graph_.config);
+            }
+        }
     });
 }
 
@@ -678,7 +684,9 @@ void HUNLFlatDCFR::backward_value_stage() {
             for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
                 const auto node_idx = graph_.depth_order[order_idx];
                 const auto& meta = graph_.node_meta[node_idx];
-                if (meta.type == HUNLFlatNodeType::TerminalFold || meta.type == HUNLFlatNodeType::TerminalShowdown) {
+                if (meta.type == HUNLFlatNodeType::TerminalFold ||
+                    meta.type == HUNLFlatNodeType::TerminalShowdown ||
+                    meta.type == HUNLFlatNodeType::DepthLimited) {
                     node_values_[node_idx] = terminal_values_[node_idx];
                     continue;
                 }

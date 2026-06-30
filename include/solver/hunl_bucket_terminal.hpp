@@ -38,4 +38,8 @@ private:
     std::unordered_map<std::uint32_t, HUNLBucketShowdownMatrix> showdown_matrices_;
 };
 
+double heuristic_depth_limited_value_p0(
+    const HUNLFlatNodeMeta& node,
+    const HUNLConfig& config);
+
 }  // namespace core
