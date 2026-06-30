@@ -122,4 +122,36 @@ TEST_CASE(hunl_solver_storage_small_bucket_counts_keep_stage_buffers_in_bounds) 
     }
 }
 
+TEST_CASE(hunl_solver_storage_infoset_table_uses_bucket_map_bucket_counts) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_solver_storage_bucket_map_counts.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+            return static_cast<std::uint8_t>(index % 3U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 3}, core::ABSTRACTION_SCHEMA_VERSION, "river-3", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+    const auto table = core::HUNLFlatInfosetTable::build(
+        graph,
+        {99, 99},
+        &map,
+        core::HUNLFlatValueLayout::InfosetHandAction);
+
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.street != core::Street::River) {
+            continue;
+        }
+        const auto& meta = table.meta()[infoset.id.value];
+        EXPECT_EQ(meta.bucket_count, 3U);
+        EXPECT_EQ(meta.value_count, 3U * static_cast<std::uint32_t>(infoset.action_count));
+    }
+
+    std::filesystem::remove(path);
+}
+
 }  // namespace

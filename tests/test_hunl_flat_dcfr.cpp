@@ -698,8 +698,8 @@ TEST_CASE(hunl_flat_bucket_map_applies_mixed_range_inputs_per_infoset_player) {
         const auto* weights = bucket_map.bucket_weights(infoset.id);
         EXPECT_TRUE(weights != nullptr);
         EXPECT_EQ(weights->size(), 2U);
-        const auto expected_bucket0 = mapped_bucket == 0 ? 0.75 : 0.25;
-        const auto expected_bucket1 = mapped_bucket == 1 ? 0.75 : 0.25;
+        const auto expected_bucket0 = mapped_bucket == 0 ? 0.75 : 0.0;
+        const auto expected_bucket1 = mapped_bucket == 1 ? 1.0 : 0.25;
         EXPECT_NEAR((*weights)[0], expected_bucket0, 1e-12);
         EXPECT_NEAR((*weights)[1], expected_bucket1, 1e-12);
         checked_player_zero_infoset = true;
@@ -742,5 +742,70 @@ TEST_CASE(hunl_flat_bucket_map_applies_direct_bucket_weights) {
     }
 
     EXPECT_TRUE(checked_player_one_infoset);
+    std::filesystem::remove(abstraction_path);
+}
+
+TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_non_matching_streets) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+
+    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+        graph,
+        core::load_abstraction(abstraction_path));
+
+    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    core::HUNLRangeInput turn_only_range;
+    turn_only_range.bucket_weights.push_back({core::Street::Turn, 0U, 5.0});
+    turn_only_range.bucket_weights.push_back({core::Street::Turn, 1U, 1.0});
+    player_ranges[0] = turn_only_range;
+
+    bucket_map.apply_range_inputs(graph, player_ranges);
+
+    bool checked_infoset = false;
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.player != 0 || infoset.street != core::Street::River) {
+            continue;
+        }
+        const auto* weights = bucket_map.bucket_weights(infoset.id);
+        EXPECT_TRUE(weights != nullptr);
+        EXPECT_NEAR((*weights)[0] + (*weights)[1], 0.0, 1e-12);
+        checked_infoset = true;
+        break;
+    }
+
+    EXPECT_TRUE(checked_infoset);
+    std::filesystem::remove(abstraction_path);
+}
+
+TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+
+    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+        graph,
+        core::load_abstraction(abstraction_path));
+
+    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    core::HUNLRangeInput blocked_hand_range;
+    blocked_hand_range.hand_weights.push_back({{config->initial_board[0], c(9, 1)}, 5.0});
+    player_ranges[0] = blocked_hand_range;
+
+    bucket_map.apply_range_inputs(graph, player_ranges);
+
+    bool checked_infoset = false;
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.player != 0 || infoset.street != core::Street::River) {
+            continue;
+        }
+        const auto* weights = bucket_map.bucket_weights(infoset.id);
+        EXPECT_TRUE(weights != nullptr);
+        EXPECT_NEAR((*weights)[0] + (*weights)[1], 0.0, 1e-12);
+        checked_infoset = true;
+        break;
+    }
+
+    EXPECT_TRUE(checked_infoset);
     std::filesystem::remove(abstraction_path);
 }

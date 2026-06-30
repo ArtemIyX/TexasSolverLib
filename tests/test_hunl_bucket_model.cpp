@@ -148,4 +148,93 @@ TEST_CASE(hunl_bucket_model_custom_bucket_schema_round_trips_through_load_and_lo
     std::filesystem::remove(path);
 }
 
+TEST_CASE(hunl_bucket_model_bucket_weights_default_to_normalized_hand_frequencies) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_default_weights.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+            return static_cast<std::uint8_t>(index % 2U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 2}, core::ABSTRACTION_SCHEMA_VERSION, "river-2", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.street != core::Street::River) {
+            continue;
+        }
+        const auto* weights = map.bucket_weights(infoset.id);
+        EXPECT_TRUE(weights != nullptr);
+        EXPECT_EQ(weights->size(), 2U);
+        EXPECT_NEAR((*weights)[0] + (*weights)[1], 1.0, 1e-12);
+        EXPECT_TRUE((*weights)[0] > 0.0);
+        EXPECT_TRUE((*weights)[1] > 0.0);
+    }
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_model_set_bucket_weights_normalizes_custom_weights) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_set_weights.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t, const std::array<std::uint8_t, 2>&) { return static_cast<std::uint8_t>(0); },
+        test_support::AbstractionFixtureOptions{{1, 1, 2}, core::ABSTRACTION_SCHEMA_VERSION, "river-2", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+
+    bool checked_infoset = false;
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.street != core::Street::River) {
+            continue;
+        }
+        map.set_bucket_weights(infoset.id, {2.0, 6.0});
+        const auto* weights = map.bucket_weights(infoset.id);
+        EXPECT_TRUE(weights != nullptr);
+        EXPECT_NEAR((*weights)[0], 0.25, 1e-12);
+        EXPECT_NEAR((*weights)[1], 0.75, 1e-12);
+        checked_infoset = true;
+        break;
+    }
+
+    EXPECT_TRUE(checked_infoset);
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_model_set_bucket_weights_rejects_wrong_size) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_model_bad_weight_size.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t, const std::array<std::uint8_t, 2>&) { return static_cast<std::uint8_t>(0); },
+        test_support::AbstractionFixtureOptions{{1, 1, 2}, core::ABSTRACTION_SCHEMA_VERSION, "river-2", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+    const std::vector<double> wrong_size_weights = {1.0};
+
+    bool checked_infoset = false;
+    for (const auto& infoset : graph.infosets) {
+        if (infoset.street != core::Street::River) {
+            continue;
+        }
+        EXPECT_THROW(map.set_bucket_weights(infoset.id, wrong_size_weights), std::invalid_argument);
+        checked_infoset = true;
+        break;
+    }
+
+    EXPECT_TRUE(checked_infoset);
+    std::filesystem::remove(path);
+}
+
 }  // namespace

@@ -121,7 +121,7 @@ HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
             entry.dense_bucket_ids.push_back(bucket);
         }
         for (const auto& hole : enumerate_live_hands(infoset.board)) {
-            const auto bucket = map.lookup_bucket(infoset.id, hole);
+            const auto bucket = core::lookup_bucket(map.tables_, entry.board, hole, entry.street);
             if (bucket < 0 || static_cast<std::size_t>(bucket) >= entry.bucket_hand_counts.size()) {
                 continue;
             }
