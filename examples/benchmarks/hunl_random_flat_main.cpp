@@ -1,6 +1,8 @@
 #include "games/hunl.hpp"
 #include "games/hunl_solver.hpp"
+#include "games/hunl_flat_graph.hpp"
 #include "core/lib.hpp"
+#include "solver/hunl_flat_dcfr.hpp"
 #include "solver/solver.hpp"
 
 #include <algorithm>
@@ -24,6 +26,8 @@ namespace {
 struct RandomConfig {
     std::size_t workers = 16;
     std::uint32_t iterations = 10;
+    std::uint32_t depth_limit_plies = 0;
+    std::size_t hand_buckets = 1326;
     core::Street street = core::Street::River;
     std::uint64_t seed = 0;
     bool debug = false;
@@ -88,6 +92,18 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
             }
             continue;
         }
+        if (arg == "--depth-limit" && i + 1 < argc) {
+            if (!parse_uint32(argv[++i], cfg.depth_limit_plies)) {
+                return std::nullopt;
+            }
+            continue;
+        }
+        if (arg == "--buckets" && i + 1 < argc) {
+            if (!parse_workers(argv[++i], cfg.hand_buckets)) {
+                return std::nullopt;
+            }
+            continue;
+        }
         if (arg == "--streets" && i + 1 < argc) {
             const auto street = street_from_text(argv[++i]);
             if (!street.has_value()) {
@@ -113,9 +129,9 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
 
 void print_usage(const char* exe) {
     std::cerr << "Usage:\n"
-              << "  " << exe << " [--workers N] [--iterations N] [--streets flop|turn|river] [--seed N] [--debug]\n\n"
+              << "  " << exe << " [--workers N] [--iterations N] [--depth-limit N] [--buckets N] [--streets flop|turn|river] [--seed N] [--debug]\n\n"
               << "Defaults:\n"
-              << "  workers=16 iterations=10 streets=river seed=0\n";
+              << "  workers=16 iterations=10 depth-limit=0 buckets=1326 streets=river seed=0\n";
 }
 
 std::string format_seconds(double seconds) {
@@ -268,6 +284,8 @@ int main(int argc, char* argv[]) {
     std::cout << "HUNL random flat benchmark\n";
     std::cout << "workers=" << cfg.workers
               << " iterations=" << cfg.iterations
+              << " depth_limit=" << cfg.depth_limit_plies
+              << " buckets=" << cfg.hand_buckets
               << " street=" << street_name(cfg.street)
               << " seed=" << cfg.seed
               << " backend=flat\n";
@@ -277,41 +295,51 @@ int main(int argc, char* argv[]) {
         std::cout << "debug: starting solve with flat backend forced via env\n";
     }
 
-    const auto output = core::lib::solve_hunl_postflop(
-        random_state.config,
-        cfg.iterations,
+    auto solve_config = random_state.config;
+    solve_config.depth_limit_plies = cfg.depth_limit_plies;
+    auto shared = std::make_shared<const core::HUNLConfig>(solve_config);
+    const auto graph = core::HUNLFlatSolveGraph::build(shared);
+    const std::array<std::size_t, 2> hand_buckets = {cfg.hand_buckets, cfg.hand_buckets};
+    core::HUNLFlatDCFR solver(
+        graph,
+        hand_buckets,
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        cfg.workers,
         1.5,
         0.0,
-        2.0,
-        cfg.workers,
-        8,
-        true);
+        2.0);
+    solver.run_iterations(cfg.iterations);
 
-    const auto strategy = to_strategy_map(output.average_strategy);
-    const auto value = core::detail::expected_value(core::HUNLState::initial(std::make_shared<const core::HUNLConfig>(random_state.config)), strategy);
+    const auto exported = solver.export_average_strategy();
+    StrategyMap strategy;
+    strategy.reserve(exported.size());
+    for (const auto& [key, probs] : exported) {
+        strategy.emplace(key, probs);
+    }
+    const auto value = core::detail::expected_value(core::HUNLState::initial(shared), strategy);
     const auto exploitability = core::detail::exploitability<core::HUNLState>(strategy);
 
     const auto finish = std::chrono::steady_clock::now();
     const auto wallclock = std::chrono::duration<double>(finish - start).count();
-    const auto per_iter = seconds_per_iteration(wallclock, output.iterations);
+    const auto per_iter = seconds_per_iteration(wallclock, solver.iterations());
 
     std::cout << "\nresults:\n";
-    std::cout << "  iterations=" << output.iterations << "\n";
+    std::cout << "  iterations=" << solver.iterations() << "\n";
     std::cout << "  wallclock=" << format_seconds(wallclock) << "\n";
     std::cout << "  per_iteration=" << format_seconds(per_iter) << "\n";
-    std::cout << "  exploitability=" << std::fixed << std::setprecision(9) << output.exploitability << "\n";
-    std::cout << "  game_value=" << std::fixed << std::setprecision(9) << output.game_value << "\n";
+    std::cout << "  exploitability=" << std::fixed << std::setprecision(9) << exploitability << "\n";
+    std::cout << "  game_value=" << std::fixed << std::setprecision(9) << value[0] << "\n";
     std::cout << "  computed_game_value=" << std::fixed << std::setprecision(9) << value[0] << "\n";
     std::cout << "  computed_exploitability=" << std::fixed << std::setprecision(9) << exploitability << "\n";
-    std::cout << "  infosets=" << output.infoset_count << "\n";
-    std::cout << "  used_parallel=" << (output.used_parallel ? "true" : "false") << "\n";
+    std::cout << "  infosets=" << strategy.size() << "\n";
+    std::cout << "  used_parallel=" << (solver.worker_count() > 1 ? "true" : "false") << "\n";
     std::cout << "  strategy_root:\n";
 
     const auto root_key = random_state.state.infoset_key(static_cast<std::uint8_t>(random_state.state.cur_player));
-    const auto it = std::find_if(output.average_strategy.begin(), output.average_strategy.end(), [&](const auto& item) {
+    const auto it = std::find_if(exported.begin(), exported.end(), [&](const auto& item) {
         return item.first == root_key;
     });
-    if (it != output.average_strategy.end()) {
+    if (it != exported.end()) {
         const auto actions = random_state.state.legal_actions();
         std::cout << "    key=" << root_key << "\n";
         for (std::size_t i = 0; i < actions.size() && i < it->second.size(); ++i) {
@@ -323,13 +351,13 @@ int main(int argc, char* argv[]) {
 
     if (cfg.debug) {
         std::cout << "\nprofile:\n";
-        std::cout << "  traversal_seconds=" << format_seconds(output.traversal_seconds) << "\n";
-        std::cout << "  solver_finalize_seconds=" << format_seconds(output.solver_finalize_seconds) << "\n";
-        std::cout << "  wrapper_postprocess_seconds=" << format_seconds(output.wrapper_postprocess_seconds) << "\n";
-        std::cout << "  frontier_seconds=" << format_seconds(output.profile.frontier_seconds) << "\n";
-        std::cout << "  batch_build_seconds=" << format_seconds(output.profile.batch_build_seconds) << "\n";
-        std::cout << "  snapshot_seconds=" << format_seconds(output.profile.snapshot_seconds) << "\n";
-        std::cout << "  merge_seconds=" << format_seconds(output.profile.merge_seconds) << "\n";
+        std::cout << "  discount_seconds=" << format_seconds(solver.profile().discount_seconds) << "\n";
+        std::cout << "  strategy_seconds=" << format_seconds(solver.profile().strategy_seconds) << "\n";
+        std::cout << "  reach_seconds=" << format_seconds(solver.profile().reach_seconds) << "\n";
+        std::cout << "  terminal_seconds=" << format_seconds(solver.profile().terminal_seconds) << "\n";
+        std::cout << "  backward_seconds=" << format_seconds(solver.profile().backward_seconds) << "\n";
+        std::cout << "  regret_seconds=" << format_seconds(solver.profile().regret_seconds) << "\n";
+        std::cout << "  average_strategy_seconds=" << format_seconds(solver.profile().average_strategy_seconds) << "\n";
     }
 
     return 0;
