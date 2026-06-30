@@ -31,6 +31,13 @@ enum class HUNLFlatSolveMode : std::uint8_t {
     Bucketed = 2,
 };
 
+enum class HUNLRangePolicy : std::uint8_t {
+    Unspecified = 0,
+    Uniform = 1,
+    UseInitialRanges = 2,
+    RequireExplicit = 3,
+};
+
 struct HUNLWeightedHand {
     std::array<std::uint8_t, 2> hole = {0, 0};
     double weight = 0.0;
@@ -132,11 +139,15 @@ struct HUNLConfig {
     std::optional<std::string> abstraction_path = std::nullopt;
     std::optional<std::string> abstraction_version = std::nullopt;
     HUNLFlatSolveMode flat_solve_mode = HUNLFlatSolveMode::Auto;
+    HUNLRangePolicy range_policy = HUNLRangePolicy::Unspecified;
+    std::array<std::optional<HUNLRangeInput>, 2> initial_ranges = {std::nullopt, std::nullopt};
     std::array<std::optional<HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
     bool use_pcs = false;
 
     void validate() const;
 };
+
+HUNLRangePolicy resolve_range_policy(const HUNLConfig& config);
 
 /**
  * @brief Runtime context for action enumeration.

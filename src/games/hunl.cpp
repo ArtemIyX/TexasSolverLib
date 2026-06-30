@@ -33,6 +33,70 @@ std::string token_from_history_code(int code) {
     throw std::logic_error("invalid HUNL history code");
 }
 
+std::size_t expected_board_size_for_street(Street street) {
+    switch (street) {
+        case Street::Preflop:
+            return 0;
+        case Street::Flop:
+            return 3;
+        case Street::Turn:
+            return 4;
+        case Street::River:
+        case Street::Showdown:
+            return 5;
+    }
+    throw std::logic_error("invalid Street in expected_board_size_for_street");
+}
+
+bool board_contains_card(const std::vector<std::uint8_t>& board, std::uint8_t card) {
+    return std::find(board.begin(), board.end(), card) != board.end();
+}
+
+void validate_range_input(
+    const HUNLRangeInput& range_input,
+    Street starting_street,
+    const std::vector<std::uint8_t>& initial_board,
+    bool bucketed_mode,
+    const char* field_name,
+    std::size_t player) {
+    for (const auto& weighted_hand : range_input.hand_weights) {
+        if (weighted_hand.weight < 0.0) {
+            throw std::invalid_argument(
+                std::string("HUNLConfig.validate: ") + field_name +
+                "[" + std::to_string(player) + "] hand weights must be non-negative");
+        }
+        if (weighted_hand.hole[0] == weighted_hand.hole[1]) {
+            throw std::invalid_argument(
+                std::string("HUNLConfig.validate: ") + field_name +
+                "[" + std::to_string(player) + "] hand entries must contain two distinct cards");
+        }
+        if (board_contains_card(initial_board, weighted_hand.hole[0]) ||
+            board_contains_card(initial_board, weighted_hand.hole[1])) {
+            throw std::invalid_argument(
+                std::string("HUNLConfig.validate: ") + field_name +
+                "[" + std::to_string(player) + "] contains hole cards blocked by initial_board");
+        }
+    }
+
+    for (const auto& weighted_bucket : range_input.bucket_weights) {
+        if (weighted_bucket.weight < 0.0) {
+            throw std::invalid_argument(
+                std::string("HUNLConfig.validate: ") + field_name +
+                "[" + std::to_string(player) + "] bucket weights must be non-negative");
+        }
+        if (weighted_bucket.street != starting_street) {
+            throw std::invalid_argument(
+                std::string("HUNLConfig.validate: ") + field_name +
+                "[" + std::to_string(player) + "] bucket street must match starting_street");
+        }
+        if (!bucketed_mode) {
+            throw std::invalid_argument(
+                std::string("HUNLConfig.validate: ") + field_name +
+                "[" + std::to_string(player) + "] bucket weights require bucketed flat solve mode");
+        }
+    }
+}
+
 }
 
 std::optional<Street> street_from_u8(std::uint8_t value) {
@@ -169,29 +233,19 @@ std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding) {
     return out;
 }
 
-void HUNLConfig::validate() const {
-    for (std::size_t player = 0; player < player_ranges.size(); ++player) {
-        const auto& range_input = player_ranges[player];
-        if (!range_input.has_value()) {
-            continue;
-        }
-
-        for (const auto& weighted_hand : range_input->hand_weights) {
-            if (weighted_hand.weight < 0.0) {
-                throw std::invalid_argument("HUNLConfig.validate: hand range weights must be non-negative");
-            }
-            if (weighted_hand.hole[0] == weighted_hand.hole[1]) {
-                throw std::invalid_argument("HUNLConfig.validate: hand range entries must contain two distinct cards");
-            }
-        }
-
-        for (const auto& weighted_bucket : range_input->bucket_weights) {
-            if (weighted_bucket.weight < 0.0) {
-                throw std::invalid_argument("HUNLConfig.validate: bucket range weights must be non-negative");
-            }
+HUNLRangePolicy resolve_range_policy(const HUNLConfig& config) {
+    if (config.range_policy != HUNLRangePolicy::Unspecified) {
+        return config.range_policy;
+    }
+    for (const auto& range_input : config.initial_ranges) {
+        if (range_input.has_value()) {
+            return HUNLRangePolicy::UseInitialRanges;
         }
     }
+    return HUNLRangePolicy::Uniform;
+}
 
+void HUNLConfig::validate() const {
     if (rake_rate != 0.0) {
         throw std::invalid_argument("HUNLConfig.validate: rake_rate must be 0.0");
     }
@@ -207,6 +261,45 @@ void HUNLConfig::validate() const {
     if (small_blind < 0 || ante < 0 || initial_pot < 0) {
         throw std::invalid_argument(
             "HUNLConfig.validate: small_blind, ante, initial_pot must be non-negative");
+    }
+
+    const auto expected_board_size = expected_board_size_for_street(starting_street);
+    if (initial_board.size() != expected_board_size) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: initial_board size does not match starting_street");
+    }
+    const bool bucketed_mode =
+        flat_solve_mode == HUNLFlatSolveMode::Bucketed ||
+        (flat_solve_mode == HUNLFlatSolveMode::Auto && abstraction_path.has_value());
+
+    const auto effective_range_policy = resolve_range_policy(*this);
+    if ((effective_range_policy == HUNLRangePolicy::UseInitialRanges ||
+         effective_range_policy == HUNLRangePolicy::RequireExplicit) &&
+        !initial_ranges[0].has_value() &&
+        !initial_ranges[1].has_value()) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: range_policy requires at least one initial_ranges entry");
+    }
+
+    for (std::size_t player = 0; player < initial_ranges.size(); ++player) {
+        if (initial_ranges[player].has_value()) {
+            validate_range_input(
+                *initial_ranges[player],
+                starting_street,
+                initial_board,
+                bucketed_mode,
+                "initial_ranges",
+                player);
+        }
+        if (player_ranges[player].has_value()) {
+            validate_range_input(
+                *player_ranges[player],
+                starting_street,
+                initial_board,
+                bucketed_mode,
+                "player_ranges",
+                player);
+        }
     }
 
     const auto c0 = initial_contributions[0];
