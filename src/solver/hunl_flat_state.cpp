@@ -23,6 +23,20 @@ std::vector<HUNLFlatRange> partition_range(std::uint32_t total_count, std::size_
     return ranges;
 }
 
+void validate_infoset_table_inputs(
+    const HUNLFlatSolveGraph& graph,
+    const std::array<std::size_t, 2>& bucket_count_per_player,
+    const HUNLFlatBucketMap* bucket_map) {
+    for (std::size_t player = 0; player < bucket_count_per_player.size(); ++player) {
+        if (bucket_count_per_player[player] == 0 && bucket_map == nullptr) {
+            throw std::invalid_argument("HUNLFlatInfosetTable bucket_count_per_player must be positive");
+        }
+    }
+    if (bucket_map != nullptr && graph.infosets.size() > 0 && bucket_map->empty()) {
+        throw std::invalid_argument("HUNLFlatInfosetTable bucket_map must not be empty when graph has infosets");
+    }
+}
+
 }  // namespace
 
 void HUNLFlatWorkerScratch::reset_values() noexcept {
@@ -152,6 +166,7 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     const std::array<std::size_t, 2>& bucket_count_per_player,
     const HUNLFlatBucketMap* bucket_map,
     HUNLFlatValueLayout layout) {
+    validate_infoset_table_inputs(graph, bucket_count_per_player, bucket_map);
     HUNLFlatInfosetTable table;
     table.layout_ = layout;
     table.meta_.reserve(graph.infosets.size());
@@ -167,8 +182,17 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
         if (bucket_map != nullptr) {
             bucket_count = bucket_map->bucket_count(infoset.id);
         }
+        if (bucket_count == 0) {
+            throw std::logic_error("HUNLFlatInfosetTable bucket_count must be positive");
+        }
+        if (infoset.action_count == 0) {
+            throw std::logic_error("HUNLFlatInfosetTable infoset action_count must be positive");
+        }
         const auto value_count =
             static_cast<std::uint32_t>(bucket_count * static_cast<std::size_t>(infoset.action_count));
+        if (value_count == 0) {
+            throw std::logic_error("HUNLFlatInfosetTable value_count must be positive");
+        }
 
         table.meta_.push_back(HUNLFlatInfosetTableMeta{
             infoset.id,

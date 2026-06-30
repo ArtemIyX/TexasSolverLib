@@ -95,6 +95,23 @@ std::vector<double> normalize_weights(std::vector<double> weights) {
     return weights;
 }
 
+void validate_bucket_lookup_context(
+    const std::vector<std::uint8_t>& board,
+    const std::array<std::uint8_t, 2>& hole,
+    Street street) {
+    if (street < Street::Flop || street > Street::River) {
+        throw std::invalid_argument("HUNLFlatBucketMap lookup requires Flop/Turn/River street");
+    }
+    const auto expected_board_size =
+        street == Street::Flop ? 3U : street == Street::Turn ? 4U : 5U;
+    if (board.size() != expected_board_size) {
+        throw std::invalid_argument("HUNLFlatBucketMap lookup board size does not match street");
+    }
+    if (!is_hand_live_on_board(board, hole)) {
+        throw std::invalid_argument("HUNLFlatBucketMap lookup hole cards must be distinct and unblocked");
+    }
+}
+
 }  // namespace
 
 HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
@@ -108,6 +125,9 @@ HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
         if (infoset.street < Street::Flop || infoset.street > Street::River) {
             continue;
         }
+        if (infoset.id.value >= map.entries_.size()) {
+            throw std::logic_error("HUNLFlatBucketMap infoset id out of bounds");
+        }
 
         HUNLFlatBucketEntry entry;
         entry.infoset_id = infoset.id;
@@ -115,12 +135,16 @@ HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
         entry.board = infoset.board;
         entry.canonical_board = canonicalize_board(infoset.board);
         entry.bucket_count = bucket_count_for_street(map.tables_, infoset.street);
+        if (entry.bucket_count == 0) {
+            throw std::logic_error("HUNLFlatBucketMap bucket_count must be positive for postflop infosets");
+        }
         entry.dense_bucket_ids.reserve(entry.bucket_count);
         entry.bucket_hand_counts.assign(entry.bucket_count, 0U);
         for (std::uint32_t bucket = 0; bucket < entry.bucket_count; ++bucket) {
             entry.dense_bucket_ids.push_back(bucket);
         }
         for (const auto& hole : enumerate_live_hands(infoset.board)) {
+            validate_bucket_lookup_context(entry.board, hole, entry.street);
             const auto bucket = core::lookup_bucket(map.tables_, entry.board, hole, entry.street);
             if (bucket < 0 || static_cast<std::size_t>(bucket) >= entry.bucket_hand_counts.size()) {
                 continue;
@@ -154,6 +178,7 @@ std::int32_t HUNLFlatBucketMap::lookup_bucket(
     InfosetId infoset_id,
     const std::array<std::uint8_t, 2>& hole) const {
     const auto& bucket_entry = entry(infoset_id);
+    validate_bucket_lookup_context(bucket_entry.board, hole, bucket_entry.street);
     return core::lookup_bucket(tables_, bucket_entry.board, hole, bucket_entry.street);
 }
 
@@ -215,6 +240,9 @@ void HUNLFlatBucketMap::apply_range_inputs(
         const auto& range_input = player_ranges[static_cast<std::size_t>(infoset.player)];
         if (!range_input.has_value()) {
             continue;
+        }
+        if (infoset.id.value >= entries_.size() || !entries_[infoset.id.value].has_value()) {
+            throw std::logic_error("HUNLFlatBucketMap missing postflop entry for ranged infoset");
         }
 
         auto weights = std::vector<double>(entry(infoset.id).bucket_count, 0.0);

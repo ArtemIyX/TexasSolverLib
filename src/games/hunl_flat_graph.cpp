@@ -57,6 +57,9 @@ std::vector<HUNLFlatWorkerRange> make_ranges_for_slice(std::uint32_t begin, std:
 }  // namespace
 
 HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
+    if (tree.root >= tree.nodes.size() && !tree.nodes.empty()) {
+        throw std::invalid_argument("HUNLFlatSolveGraph tree root out of bounds");
+    }
     HUNLFlatSolveGraph graph;
     graph.nodes.reserve(tree.nodes.size());
     graph.node_meta.reserve(tree.nodes.size());
@@ -83,6 +86,9 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
 
     for (std::uint32_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
         const auto& node = tree.nodes[node_idx];
+        if (node.street > Street::Showdown) {
+            throw std::logic_error("flat graph node street out of range");
+        }
         HUNLFlatNode flat_node;
         flat_node.type = classify_flat_node_type(node);
         flat_node.player = node.player;
@@ -116,6 +122,9 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
             }
             if (!node.infoset_key.has_value()) {
                 throw std::logic_error("decision node must have infoset_key");
+            }
+            if (node.legal_actions.empty()) {
+                throw std::logic_error("decision node must expose at least one legal action");
             }
 
             flat_node.child_begin = static_cast<std::uint32_t>(graph.children.size());
@@ -197,6 +206,9 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
     graph.infosets.reserve(infoset_keys.size());
     for (std::uint32_t infoset_index = 0; infoset_index < infoset_keys.size(); ++infoset_index) {
         const auto& node_list = infoset_node_lists[infoset_index];
+        if (node_list.empty()) {
+            throw std::logic_error("flat graph infoset must own at least one node");
+        }
         HUNLFlatInfoset infoset;
         infoset.id = InfosetId{infoset_index};
         infoset.node_begin = static_cast<std::uint32_t>(graph.infoset_nodes.size());

@@ -26,6 +26,32 @@ double bucket_row_weight(
     return bucket_map->bucket_weight(infoset_id, bucket_idx);
 }
 
+void validate_flat_solver_graph(const HUNLFlatSolveGraph& graph) {
+    if (graph.nodes.size() != graph.node_meta.size()) {
+        throw std::invalid_argument("HUNLFlatDCFR graph nodes/node_meta size mismatch");
+    }
+    if (graph.root >= graph.nodes.size() && !graph.nodes.empty()) {
+        throw std::invalid_argument("HUNLFlatDCFR graph root out of bounds");
+    }
+    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        if (meta.child_begin + meta.child_count > graph.children.size()) {
+            throw std::invalid_argument("HUNLFlatDCFR graph child range out of bounds");
+        }
+        if (meta.chance_begin + meta.chance_count > graph.chance_outcomes.size()) {
+            throw std::invalid_argument("HUNLFlatDCFR graph chance range out of bounds");
+        }
+        if (meta.type == HUNLFlatNodeType::Decision) {
+            if (!meta.has_infoset) {
+                throw std::invalid_argument("HUNLFlatDCFR decision node missing infoset");
+            }
+            if (meta.infoset_id.value >= graph.infosets.size()) {
+                throw std::invalid_argument("HUNLFlatDCFR decision node infoset id out of bounds");
+            }
+        }
+    }
+}
+
 }  // namespace
 
 std::optional<HUNLFlatBucketMap> HUNLFlatDCFR::load_bucket_map_for_graph(
@@ -193,6 +219,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
       alpha_(alpha),
       beta_(beta),
       gamma_(gamma) {
+    validate_flat_solver_graph(graph_);
     validate_alpha(alpha_);
     if (beta_ < 0.0 || gamma_ < 0.0) {
         throw std::invalid_argument("HUNLFlatDCFR beta and gamma must be non-negative");
@@ -274,6 +301,9 @@ void HUNLFlatDCFR::run_stage_workers(HUNLFlatStageKind stage, const std::functio
 
 void HUNLFlatDCFR::run_iteration() {
     using clock = std::chrono::steady_clock;
+    if (worker_scratch_.size() != worker_count_) {
+        throw std::logic_error("HUNLFlatDCFR worker scratch size must match worker_count");
+    }
 
     const auto discount_start = clock::now();
     apply_dcfr_discount_stage();
@@ -428,6 +458,9 @@ void HUNLFlatDCFR::compute_strategy_stage() {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
+            if (meta.value_count == 0 || meta.bucket_count == 0 || meta.action_count == 0) {
+                throw std::logic_error("HUNLFlatDCFR strategy stage requires non-empty infoset rows");
+            }
             auto* regret = infoset_table_.regret_mut(meta.id);
             auto* strategy = infoset_table_.current_strategy_mut(meta.id);
 
@@ -513,6 +546,9 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
                 const auto bucket_range = infoset_table_.infoset_bucket_range(meta.infoset_id);
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
+                if (bucket_range.end > scratch.bucket_reach.size()) {
+                    throw std::logic_error("HUNLFlatDCFR reach stage bucket range out of scratch bounds");
+                }
                 const auto acting_reach = meta.player == 0 ? reach0 : reach1;
                 if (acting_reach == 0.0) {
                     continue;
@@ -649,6 +685,9 @@ void HUNLFlatDCFR::backward_value_stage() {
                 const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
                 const std::size_t representative_bucket = 0;
+                if (infoset_meta.bucket_count == 0 || infoset_meta.action_count == 0) {
+                    throw std::logic_error("HUNLFlatDCFR backward stage requires non-empty bucket/action counts");
+                }
                 std::vector<double> row(meta.child_count, 0.0);
                 std::vector<double> weights(meta.child_count, 0.0);
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
@@ -678,6 +717,9 @@ void HUNLFlatDCFR::regret_update_stage() {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
+            if (meta.id.value >= graph_.infosets.size()) {
+                throw std::logic_error("HUNLFlatDCFR regret stage infoset id out of graph bounds");
+            }
             auto* regret = infoset_table_.regret_mut(meta.id);
             const auto node_idx = graph_.infoset_nodes[graph_.infosets[meta.id.value].node_begin];
             const auto& node_meta = graph_.node_meta[node_idx];
@@ -721,6 +763,9 @@ void HUNLFlatDCFR::average_strategy_stage() {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
+            if (meta.id.value >= graph_.infosets.size()) {
+                throw std::logic_error("HUNLFlatDCFR average strategy stage infoset id out of graph bounds");
+            }
             auto* strategy_sum = infoset_table_.strategy_sum_mut(meta.id);
             const auto* strategy = infoset_table_.current_strategy(meta.id);
             const auto node_idx = graph_.infoset_nodes[graph_.infosets[meta.id.value].node_begin];
