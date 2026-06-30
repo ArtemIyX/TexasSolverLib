@@ -55,6 +55,8 @@ void HUNLFlatWorkerScratch::ensure_capacity(
 }
 
 HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph, std::size_t worker_count) {
+    HUNLFlatInfosetTable empty_table;
+    (void)empty_table;
     HUNLFlatParallelPlan plan;
     const auto workers = std::max<std::size_t>(1, worker_count);
     const auto infoset_ranges = partition_range(static_cast<std::uint32_t>(graph.infosets.size()), workers);
@@ -65,8 +67,58 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph
         HUNLFlatWorkerAssignment assignment;
         assignment.worker_index = static_cast<std::uint32_t>(worker_index);
         assignment.infoset_range = infoset_ranges[worker_index];
+        assignment.bucket_range = {};
+        assignment.value_range = {};
         assignment.node_range = node_ranges[worker_index];
         assignment.depth_node_ranges.reserve(graph.depth_slices.size());
+
+        for (const auto& slice : graph.depth_slices) {
+            const auto count = slice.count;
+            const auto base = count / static_cast<std::uint32_t>(workers);
+            const auto remainder = count % static_cast<std::uint32_t>(workers);
+            const auto relative_begin =
+                static_cast<std::uint32_t>(worker_index) * base +
+                std::min<std::uint32_t>(static_cast<std::uint32_t>(worker_index), remainder);
+            const auto width = base + (worker_index < remainder ? 1U : 0U);
+            assignment.depth_node_ranges.push_back(HUNLFlatRange{
+                slice.begin + relative_begin,
+                slice.begin + relative_begin + width,
+            });
+        }
+
+        plan.workers.push_back(std::move(assignment));
+    }
+
+    return plan;
+}
+
+HUNLFlatParallelPlan HUNLFlatParallelPlan::build(
+    const HUNLFlatSolveGraph& graph,
+    const HUNLFlatInfosetTable& infoset_table,
+    std::size_t worker_count) {
+    HUNLFlatParallelPlan plan;
+    const auto workers = std::max<std::size_t>(1, worker_count);
+    const auto infoset_ranges = partition_range(static_cast<std::uint32_t>(graph.infosets.size()), workers);
+    const auto node_ranges = partition_range(static_cast<std::uint32_t>(graph.nodes.size()), workers);
+
+    plan.workers.reserve(workers);
+    for (std::size_t worker_index = 0; worker_index < workers; ++worker_index) {
+        HUNLFlatWorkerAssignment assignment;
+        assignment.worker_index = static_cast<std::uint32_t>(worker_index);
+        assignment.infoset_range = infoset_ranges[worker_index];
+        assignment.bucket_range = {};
+        assignment.value_range = {};
+        assignment.node_range = node_ranges[worker_index];
+        assignment.depth_node_ranges.reserve(graph.depth_slices.size());
+
+        if (assignment.infoset_range.begin < assignment.infoset_range.end) {
+            const auto bucket_begin =
+                infoset_table.infoset_bucket_range(graph.infosets[assignment.infoset_range.begin].id).begin;
+            const auto bucket_end =
+                infoset_table.infoset_bucket_range(graph.infosets[assignment.infoset_range.end - 1].id).end;
+            assignment.bucket_range = HUNLFlatRange{bucket_begin, bucket_end};
+            assignment.value_range = infoset_table.infoset_value_range(assignment.infoset_range);
+        }
 
         for (const auto& slice : graph.depth_slices) {
             const auto count = slice.count;

@@ -156,7 +156,10 @@ HUNLFlatDCFR::HUNLFlatDCFR(
       node_values_(graph_.nodes.size(), 0.0),
       action_values_(graph_.children.size(), 0.0),
       worker_count_(std::max<std::size_t>(1, workers)),
-      parallel_plan_(HUNLFlatParallelPlan::build(graph_, std::max<std::size_t>(1, workers))),
+      parallel_plan_(HUNLFlatParallelPlan::build(
+          graph_,
+          infoset_table_,
+          std::max<std::size_t>(1, workers))),
       worker_scratch_(std::max<std::size_t>(1, workers)),
       alpha_(alpha),
       beta_(beta),
@@ -545,17 +548,13 @@ void HUNLFlatDCFR::forward_reach_stage() {
         });
 
         run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
-            const auto range = parallel_plan_.workers[worker_index].infoset_range;
-            for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
-                const auto bucket_range =
-                    infoset_table_.infoset_bucket_range(graph_.infosets[infoset_index].id);
-                for (std::uint32_t bucket_offset = bucket_range.begin; bucket_offset < bucket_range.end; ++bucket_offset) {
-                    double add_bucket = 0.0;
-                    for (const auto& scratch : worker_scratch_) {
-                        add_bucket += scratch.bucket_reach[bucket_offset];
-                    }
-                    bucket_reach_[bucket_offset] += add_bucket;
+            const auto range = parallel_plan_.workers[worker_index].bucket_range;
+            for (std::uint32_t bucket_offset = range.begin; bucket_offset < range.end; ++bucket_offset) {
+                double add_bucket = 0.0;
+                for (const auto& scratch : worker_scratch_) {
+                    add_bucket += scratch.bucket_reach[bucket_offset];
                 }
+                bucket_reach_[bucket_offset] += add_bucket;
             }
         });
     }

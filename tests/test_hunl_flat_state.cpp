@@ -137,6 +137,37 @@ TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
     }
 }
 
+TEST_CASE(hunl_flat_parallel_plan_derives_contiguous_bucket_and_value_ranges_from_infosets) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const std::array<std::size_t, 2> bucket_count_per_player = {2, 3};
+    const auto table = core::HUNLFlatInfosetTable::build(graph, bucket_count_per_player);
+    const auto plan = core::HUNLFlatParallelPlan::build(graph, table, 4);
+
+    EXPECT_EQ(plan.workers.size(), 4U);
+
+    std::uint32_t bucket_cursor = 0;
+    std::uint32_t value_cursor = 0;
+    for (const auto& worker : plan.workers) {
+        EXPECT_TRUE(worker.bucket_range.begin <= worker.bucket_range.end);
+        EXPECT_TRUE(worker.value_range.begin <= worker.value_range.end);
+
+        if (worker.infoset_range.begin == worker.infoset_range.end) {
+            EXPECT_EQ(worker.bucket_range.begin, worker.bucket_range.end);
+            EXPECT_EQ(worker.value_range.begin, worker.value_range.end);
+            continue;
+        }
+
+        EXPECT_EQ(worker.bucket_range.begin, bucket_cursor);
+        EXPECT_EQ(worker.value_range.begin, value_cursor);
+        bucket_cursor = worker.bucket_range.end;
+        value_cursor = worker.value_range.end;
+    }
+
+    EXPECT_EQ(bucket_cursor, static_cast<std::uint32_t>(table.total_bucket_count()));
+    EXPECT_EQ(value_cursor, static_cast<std::uint32_t>(table.total_value_count()));
+}
+
 TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     core::HUNLFlatWorkerScratch scratch;
     scratch.ensure_capacity(6, 5);

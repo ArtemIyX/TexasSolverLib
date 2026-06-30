@@ -16,6 +16,8 @@ inline constexpr std::size_t HUNL_CACHELINE_BYTES = 64;
 template <class T>
 using HUNLAlignedVector = std::vector<T, AlignedAllocator<T, HUNL_CACHELINE_BYTES>>;
 
+class HUNLFlatInfosetTable;
+
 enum class HUNLFlatValueLayout : std::uint8_t {
     InfosetHandAction = 0,
     InfosetActionHand = 1,
@@ -42,6 +44,8 @@ struct HUNLFlatRange {
 struct HUNLFlatWorkerAssignment {
     std::uint32_t worker_index = 0;
     HUNLFlatRange infoset_range;
+    HUNLFlatRange bucket_range;
+    HUNLFlatRange value_range;
     HUNLFlatRange node_range;
     std::vector<HUNLFlatRange> depth_node_ranges;
 };
@@ -71,6 +75,10 @@ struct HUNLFlatParallelPlan {
     std::vector<HUNLFlatWorkerAssignment> workers;
 
     static HUNLFlatParallelPlan build(const HUNLFlatSolveGraph& graph, std::size_t worker_count);
+    static HUNLFlatParallelPlan build(
+        const HUNLFlatSolveGraph& graph,
+        const HUNLFlatInfosetTable& infoset_table,
+        std::size_t worker_count);
 };
 
 class HUNLFlatInfosetTable {
