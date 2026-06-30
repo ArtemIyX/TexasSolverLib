@@ -401,6 +401,30 @@ void update_strategy_sum(
     const double* strategy,
     std::size_t len,
     double own_reach) noexcept {
+    switch (len) {
+        case 0:
+            return;
+        case 1:
+            strategy_sum[0] += own_reach * strategy[0];
+            return;
+        case 2:
+            strategy_sum[0] += own_reach * strategy[0];
+            strategy_sum[1] += own_reach * strategy[1];
+            return;
+        case 3:
+            strategy_sum[0] += own_reach * strategy[0];
+            strategy_sum[1] += own_reach * strategy[1];
+            strategy_sum[2] += own_reach * strategy[2];
+            return;
+        case 4:
+            strategy_sum[0] += own_reach * strategy[0];
+            strategy_sum[1] += own_reach * strategy[1];
+            strategy_sum[2] += own_reach * strategy[2];
+            strategy_sum[3] += own_reach * strategy[3];
+            return;
+        default:
+            break;
+    }
 #if defined(__AVX2__)
     update_strategy_sum_avx2(strategy_sum, strategy, len, own_reach);
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
@@ -411,6 +435,30 @@ void update_strategy_sum(
 }
 
 void copy_values(double* out, const double* in, std::size_t len) noexcept {
+    switch (len) {
+        case 0:
+            return;
+        case 1:
+            out[0] = in[0];
+            return;
+        case 2:
+            out[0] = in[0];
+            out[1] = in[1];
+            return;
+        case 3:
+            out[0] = in[0];
+            out[1] = in[1];
+            out[2] = in[2];
+            return;
+        case 4:
+            out[0] = in[0];
+            out[1] = in[1];
+            out[2] = in[2];
+            out[3] = in[3];
+            return;
+        default:
+            break;
+    }
 #if defined(__AVX2__)
     std::size_t i = 0;
     const bool aligned = is_aligned_32(out) && is_aligned_32(in);
@@ -584,6 +632,26 @@ void normalize(double* out, std::size_t len, double total) noexcept {
 }
 
 void normalize_row(const double* values, double* out, std::size_t len) noexcept {
+    switch (len) {
+        case 0:
+            return;
+        case 1:
+            out[0] = values[0] > 0.0 ? 1.0 : 1.0;
+            return;
+        case 2:
+        case 3:
+        case 4: {
+            double total = 0.0;
+            for (std::size_t i = 0; i < len; ++i) {
+                total += values[i];
+                out[i] = values[i];
+            }
+            normalize(out, len, total);
+            return;
+        }
+        default:
+            break;
+    }
     double total = 0.0;
     for (std::size_t i = 0; i < len; ++i) {
         total += values[i];
