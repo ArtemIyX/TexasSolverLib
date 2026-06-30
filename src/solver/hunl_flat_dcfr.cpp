@@ -2,6 +2,7 @@
 
 #include "solver/dcfr.hpp"
 #include "util/abstraction.hpp"
+#include "util/profiling.hpp"
 #include "util/simd.hpp"
 
 #include <array>
@@ -108,6 +109,7 @@ std::optional<HUNLBucketTerminalTable> HUNLFlatDCFR::build_terminal_table_for_gr
 }
 
 HUNLFlatDCFR::WorkerPool::WorkerPool(std::size_t worker_count) {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.worker_pool_ctor");
     if (worker_count == 0) {
         throw std::invalid_argument("HUNLFlatDCFR worker_count must be at least 1");
     }
@@ -131,6 +133,7 @@ HUNLFlatDCFR::WorkerPool::~WorkerPool() {
 }
 
 void HUNLFlatDCFR::WorkerPool::run_stage(const std::function<void(std::size_t)>& fn) {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.worker_pool_run_stage");
     if (threads_.empty()) {
         return;
     }
@@ -157,6 +160,7 @@ std::size_t HUNLFlatDCFR::WorkerPool::worker_count() const noexcept {
 }
 
 void HUNLFlatDCFR::WorkerPool::worker_loop(std::size_t worker_index) {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.worker_loop");
     std::size_t seen_generation = 0;
     for (;;) {
         std::function<void(std::size_t)> stage_fn;
@@ -325,6 +329,7 @@ void HUNLFlatDCFR::run_stage_workers(HUNLFlatStageKind stage, const std::functio
 }
 
 void HUNLFlatDCFR::run_iteration() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.run_iteration");
     using clock = std::chrono::steady_clock;
     if (worker_scratch_.size() != worker_count_) {
         throw std::logic_error("HUNLFlatDCFR worker scratch size must match worker_count");
@@ -369,6 +374,7 @@ void HUNLFlatDCFR::run_iteration() {
 }
 
 void HUNLFlatDCFR::run_iterations(std::uint32_t iterations) {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.run_iterations");
     for (std::uint32_t i = 0; i < iterations; ++i) {
         run_iteration();
     }
@@ -450,6 +456,7 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_averag
 }
 
 void HUNLFlatDCFR::apply_dcfr_discount_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.discount_stage");
     const auto target_iter = iterations_ + 1U;
     auto& metas = infoset_table_.meta_mut();
     run_stage_workers(HUNLFlatStageKind::Discount, [&](std::size_t worker_index) {
@@ -478,6 +485,7 @@ void HUNLFlatDCFR::apply_dcfr_discount_stage() {
 }
 
 void HUNLFlatDCFR::compute_strategy_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.strategy_stage");
     const auto& metas = infoset_table_.meta();
     run_stage_workers(HUNLFlatStageKind::Strategy, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
@@ -524,6 +532,7 @@ void HUNLFlatDCFR::compute_strategy_stage() {
 }
 
 void HUNLFlatDCFR::forward_reach_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.reach_stage");
     std::fill(player0_reach_.begin(), player0_reach_.end(), 0.0);
     std::fill(player1_reach_.begin(), player1_reach_.end(), 0.0);
     std::fill(chance_reach_.begin(), chance_reach_.end(), 0.0);
@@ -647,6 +656,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
 }
 
 void HUNLFlatDCFR::terminal_utility_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.terminal_stage");
     run_stage_workers(HUNLFlatStageKind::Terminal, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].node_range;
         for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
@@ -672,6 +682,7 @@ void HUNLFlatDCFR::terminal_utility_stage() {
 }
 
 void HUNLFlatDCFR::backward_value_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.backward_stage");
     std::fill(node_values_.begin(), node_values_.end(), 0.0);
     std::fill(action_values_.begin(), action_values_.end(), 0.0);
 
@@ -749,6 +760,7 @@ void HUNLFlatDCFR::backward_value_stage() {
 }
 
 void HUNLFlatDCFR::regret_update_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.regret_stage");
     const auto& metas = infoset_table_.meta();
     run_stage_workers(HUNLFlatStageKind::Regret, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
@@ -807,6 +819,7 @@ void HUNLFlatDCFR::regret_update_stage() {
 }
 
 void HUNLFlatDCFR::average_strategy_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.average_stage");
     const auto& metas = infoset_table_.meta();
     run_stage_workers(HUNLFlatStageKind::AverageStrategy, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;

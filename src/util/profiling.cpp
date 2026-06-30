@@ -1,0 +1,256 @@
+#include "util/profiling.hpp"
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <mutex>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <vector>
+
+namespace core::profiling {
+namespace {
+
+using clock = std::chrono::steady_clock;
+
+struct ThreadBucket {
+    std::unordered_map<std::string, std::pair<std::uint64_t, std::uint64_t>> timings_ns;
+};
+
+std::mutex& mutex() {
+    static std::mutex m;
+    return m;
+}
+
+std::unordered_map<std::thread::id, ThreadBucket>& buckets() {
+    static std::unordered_map<std::thread::id, ThreadBucket> map;
+    return map;
+}
+
+std::string read_env_value(const char* name) {
+#if defined(_MSC_VER)
+    char* raw = nullptr;
+    std::size_t len = 0;
+    if (_dupenv_s(&raw, &len, name) != 0 || raw == nullptr) {
+        return {};
+    }
+    std::string value(raw);
+    free(raw);
+    return value;
+#else
+    const char* raw = std::getenv(name);
+    return raw != nullptr ? std::string(raw) : std::string{};
+#endif
+}
+
+bool& enabled_flag() {
+    static bool value = [] {
+        const auto raw = read_env_value("TEXASSOLVER_PROFILE");
+        if (raw.empty()) {
+            return false;
+        }
+        std::string s(raw);
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        return !(s == "0" || s == "false" || s == "off" || s.empty());
+    }();
+    static const bool registered = [] {
+        std::atexit(write_report);
+        return true;
+    }();
+    (void)registered;
+    return value;
+}
+
+std::filesystem::path report_dir() {
+    const auto raw = read_env_value("TEXASSOLVER_PROFILE_DIR");
+    if (!raw.empty()) {
+        return std::filesystem::path(raw);
+    }
+    return std::filesystem::path("artifacts") / "prof";
+}
+
+std::string timestamp_name() {
+    const auto now = std::chrono::system_clock::now();
+    const auto t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#if defined(_MSC_VER)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y%m%d_%H%M%S");
+    return oss.str();
+}
+
+double ns_to_ms(std::uint64_t ns) {
+    return static_cast<double>(ns) / 1'000'000.0;
+}
+
+bool starts_with(std::string_view value, std::string_view prefix) {
+    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+void print_group(
+    std::string_view title,
+    const std::vector<std::pair<std::string, std::pair<std::uint64_t, std::uint64_t>>>& totals,
+    std::string_view prefix) {
+    std::cout << "\n[TexasSolver profiler] " << title << "\n";
+    std::cout << std::left << std::setw(34) << "name"
+              << std::right << std::setw(14) << "total_ms"
+              << std::setw(12) << "calls"
+              << std::setw(14) << "avg_us"
+              << "\n";
+
+    std::size_t printed = 0;
+    for (const auto& [name, entry] : totals) {
+        if (!prefix.empty() && !starts_with(name, prefix)) {
+            continue;
+        }
+        const auto total_ms = ns_to_ms(entry.first);
+        const auto calls = entry.second;
+        const auto avg_us = calls > 0 ? static_cast<double>(entry.first) / static_cast<double>(calls) / 1000.0 : 0.0;
+        std::cout << std::left << std::setw(34) << name
+                  << std::right << std::setw(14) << std::fixed << std::setprecision(3) << total_ms
+                  << std::setw(12) << calls
+                  << std::setw(14) << std::fixed << std::setprecision(3) << avg_us
+                  << "\n";
+        ++printed;
+    }
+    if (printed == 0) {
+        std::cout << "(no timers)\n";
+    }
+}
+
+}  // namespace
+
+void write_report();
+void print_profiler_report();
+
+bool enabled() noexcept {
+    return enabled_flag();
+}
+
+void mark(std::string_view name, double seconds) noexcept {
+    if (!enabled_flag()) {
+        return;
+    }
+    const auto ns = static_cast<std::uint64_t>(seconds * 1'000'000'000.0);
+    std::lock_guard<std::mutex> lock(mutex());
+    auto& bucket = buckets()[std::this_thread::get_id()];
+    auto& entry = bucket.timings_ns[std::string(name)];
+    entry.first += ns;
+    entry.second += 1;
+}
+
+ScopedTimer::ScopedTimer(std::string_view name) noexcept : name_(name) {
+    if (enabled_flag()) {
+        start_ns_ = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now().time_since_epoch()).count());
+    }
+}
+
+ScopedTimer::~ScopedTimer() {
+    if (!enabled_flag() || start_ns_ == 0) {
+        return;
+    }
+    const auto end_ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now().time_since_epoch()).count());
+    const auto elapsed_ns = end_ns - start_ns_;
+    mark(name_, static_cast<double>(elapsed_ns) / 1'000'000'000.0);
+}
+
+void write_report() {
+    if (!enabled_flag()) {
+        return;
+    }
+    static bool written = false;
+    if (written) {
+        return;
+    }
+    written = true;
+
+    std::vector<std::pair<std::string, std::pair<std::uint64_t, std::uint64_t>>> totals;
+    {
+        std::lock_guard<std::mutex> lock(mutex());
+        std::unordered_map<std::string, std::pair<std::uint64_t, std::uint64_t>> merged;
+        for (const auto& [thread_id, bucket] : buckets()) {
+            for (const auto& [name, entry] : bucket.timings_ns) {
+                auto& total = merged[name];
+                total.first += entry.first;
+                total.second += entry.second;
+            }
+        }
+        totals.reserve(merged.size());
+        for (auto& [name, entry] : merged) {
+            totals.emplace_back(std::move(name), entry);
+        }
+    }
+
+    std::sort(totals.begin(), totals.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.second.first > rhs.second.first;
+    });
+
+    const auto dir = report_dir();
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    const auto path = dir / (timestamp_name() + ".prof");
+    std::ofstream out(path, std::ios::binary);
+    out << "TexasSolver profiling report\n";
+    out << "profile_enabled=1\n";
+    out << "thread_count=" << buckets().size() << "\n";
+    out << "name,total_ms,calls,avg_us\n";
+    for (const auto& [name, entry] : totals) {
+        const auto total_ms = ns_to_ms(entry.first);
+        const auto calls = entry.second;
+        const auto avg_us = calls > 0 ? static_cast<double>(entry.first) / static_cast<double>(calls) / 1000.0 : 0.0;
+        out << name << ',' << std::fixed << std::setprecision(3) << total_ms << ','
+            << calls << ',' << std::setprecision(3) << avg_us << '\n';
+    }
+
+    print_profiler_report();
+}
+
+void print_profiler_report() {
+    if (!enabled_flag()) {
+        return;
+    }
+
+    std::vector<std::pair<std::string, std::pair<std::uint64_t, std::uint64_t>>> totals;
+    {
+        std::lock_guard<std::mutex> lock(mutex());
+        std::unordered_map<std::string, std::pair<std::uint64_t, std::uint64_t>> merged;
+        for (const auto& [thread_id, bucket] : buckets()) {
+            (void)thread_id;
+            for (const auto& [name, entry] : bucket.timings_ns) {
+                auto& total = merged[name];
+                total.first += entry.first;
+                total.second += entry.second;
+            }
+        }
+        totals.reserve(merged.size());
+        for (auto& [name, entry] : merged) {
+            totals.emplace_back(std::move(name), entry);
+        }
+    }
+
+    std::sort(totals.begin(), totals.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.second.first > rhs.second.first;
+    });
+
+    print_group("solver layer", totals, "solver.");
+    print_group("worker thread", totals, "parallel.worker");
+    print_group("stage names", totals, "hunl_flat.");
+}
+
+}  // namespace core::profiling

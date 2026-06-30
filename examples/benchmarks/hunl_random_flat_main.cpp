@@ -4,6 +4,7 @@
 #include "core/lib.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/solver.hpp"
+#include "util/profiling.hpp"
 
 #include <algorithm>
 #include <array>
@@ -281,6 +282,22 @@ void set_flat_backend_env() {
 #endif
 }
 
+void set_profile_env(bool enabled) {
+#if defined(_MSC_VER)
+    _putenv_s("TEXASSOLVER_PROFILE", enabled ? "1" : "0");
+#else
+    setenv("TEXASSOLVER_PROFILE", enabled ? "1" : "0", 1);
+#endif
+}
+
+void set_profile_dir_env() {
+#if defined(_MSC_VER)
+    _putenv_s("TEXASSOLVER_PROFILE_DIR", "artifacts/prof");
+#else
+    setenv("TEXASSOLVER_PROFILE_DIR", "artifacts/prof", 1);
+#endif
+}
+
 TimedBenchmarkResult run_timed_flat_benchmark(
     const RandomState& random_state,
     std::uint32_t iterations,
@@ -354,6 +371,10 @@ int main(int argc, char* argv[]) {
 
     const auto cfg = *parsed;
     set_flat_backend_env();
+    set_profile_env(cfg.debug);
+    if (cfg.debug) {
+        set_profile_dir_env();
+    }
 
     const auto random_state = make_random_state(cfg);
     const auto start = std::chrono::steady_clock::now();
@@ -370,6 +391,8 @@ int main(int argc, char* argv[]) {
 
     if (cfg.debug) {
         std::cout << "debug: starting solve with flat backend forced via env\n";
+        std::cout << "debug: TEXASSOLVER_PROFILE=1\n";
+        std::cout << "debug: TEXASSOLVER_PROFILE_DIR=artifacts/prof\n";
     }
 
     auto solve_config = random_state.config;
@@ -427,6 +450,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  backward_seconds=" << format_seconds(timed.profile.backward_seconds) << "\n";
         std::cout << "  regret_seconds=" << format_seconds(timed.profile.regret_seconds) << "\n";
         std::cout << "  average_strategy_seconds=" << format_seconds(timed.profile.average_strategy_seconds) << "\n";
+        core::profiling::print_profiler_report();
     }
 
     return 0;

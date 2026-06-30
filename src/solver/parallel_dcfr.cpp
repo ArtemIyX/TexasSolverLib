@@ -1,4 +1,5 @@
 #include "solver/parallel_dcfr.hpp"
+#include "util/profiling.hpp"
 
 #include "games/hunl.hpp"
 #include "games/kuhn.hpp"
@@ -238,6 +239,7 @@ bool profile_parallel_dcfr_enabled() {
 
 template <class G>
 ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
+    TEXASSOLVER_PROFILE_SCOPE("parallel.build_plan");
     if (root_.is_terminal()) {
         return make_partition_plan(1, worker_count_);
     }
@@ -250,6 +252,7 @@ ParallelSolvePlan ParallelDCFRSolver<G>::build_plan() const {
 
 template <class G>
 std::vector<FrontierSeed<G>> build_frontier(const G& root, std::size_t target_seeds) {
+    TEXASSOLVER_PROFILE_SCOPE("parallel.build_frontier");
     std::vector<FrontierSeed<G>> frontier;
     if (root.is_terminal()) {
         frontier.push_back(FrontierSeed<G>{root, 1.0});
@@ -496,6 +499,7 @@ double ParallelDCFRSolver<G>::cfr(
     double chance_reach,
     const StrategyMap& strategy,
     ParallelWorkerState& worker_state) {
+    TEXASSOLVER_PROFILE_SCOPE("parallel.cfr");
     if (state.is_terminal()) {
         return state.utility().at(static_cast<std::size_t>(traversing_player));
     }
@@ -580,6 +584,7 @@ void ParallelDCFRSolver<G>::set_locked_strategies(
 
 template <class G>
 SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
+    TEXASSOLVER_PROFILE_SCOPE("parallel.solve");
     using SharedStrategyMap = typename ParallelDCFRSolver<G>::SharedStrategyMap;
 
     const auto plan = build_plan();

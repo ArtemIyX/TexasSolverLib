@@ -3,6 +3,7 @@
 #include "solver/exploit.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/solver.hpp"
+#include "util/profiling.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -154,6 +155,7 @@ HUNLSolveOutput solve_hunl_postflop(
     std::size_t workers,
     std::size_t frontier_multiplier,
     bool force_parallel) {
+    TEXASSOLVER_PROFILE_SCOPE("hunl.solve_hunl_postflop");
     validate_config(config);
 
     const auto start = std::chrono::steady_clock::now();
@@ -165,6 +167,7 @@ HUNLSolveOutput solve_hunl_postflop(
          should_use_flat_hunl_backend(config, workers, force_parallel));
 
     if (use_flat_backend) {
+        TEXASSOLVER_PROFILE_SCOPE("hunl.flat_backend");
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto graph = HUNLFlatSolveGraph::build(shared);
         const auto flat_solve_mode = resolve_flat_solve_mode(config);
@@ -216,6 +219,7 @@ HUNLSolveOutput solve_hunl_postflop(
         solve_output.profile.average_strategy_seconds = solver.profile().average_strategy_seconds;
         solve_output.profile.workers = to_worker_profiles(solver.scheduler_diagnostics().worker_profiles);
     } else {
+        TEXASSOLVER_PROFILE_SCOPE("hunl.legacy_backend");
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto root = HUNLState::initial(shared);
         const bool use_parallel =
@@ -233,6 +237,7 @@ HUNLSolveOutput solve_hunl_postflop(
         }
     }
 
+    TEXASSOLVER_PROFILE_SCOPE("hunl.postprocess");
     const auto postprocess_start = std::chrono::steady_clock::now();
     HUNLSolveOutput out;
     out.average_strategy = to_strategy_map(solve_output.average_strategy);
