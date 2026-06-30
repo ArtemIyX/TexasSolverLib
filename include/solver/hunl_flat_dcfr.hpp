@@ -72,6 +72,7 @@ public:
     [[nodiscard]] const HUNLAlignedVector<double>& player0_reach() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& player1_reach() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& chance_reach() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& bucket_reach() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& terminal_values() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& node_values() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& action_values() const noexcept;
@@ -124,6 +125,7 @@ private:
     HUNLAlignedVector<double> player0_reach_;
     HUNLAlignedVector<double> player1_reach_;
     HUNLAlignedVector<double> chance_reach_;
+    HUNLAlignedVector<double> bucket_reach_;
     HUNLAlignedVector<double> terminal_values_;
     HUNLAlignedVector<double> node_values_;
     HUNLAlignedVector<double> action_values_;

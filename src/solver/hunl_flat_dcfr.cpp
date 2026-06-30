@@ -141,6 +141,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
       player0_reach_(graph_.nodes.size(), 0.0),
       player1_reach_(graph_.nodes.size(), 0.0),
       chance_reach_(graph_.nodes.size(), 0.0),
+      bucket_reach_(infoset_table_.total_bucket_count(), 0.0),
       terminal_values_(graph_.nodes.size(), 0.0),
       node_values_(graph_.nodes.size(), 0.0),
       action_values_(graph_.children.size(), 0.0),
@@ -155,7 +156,10 @@ HUNLFlatDCFR::HUNLFlatDCFR(
         throw std::invalid_argument("HUNLFlatDCFR beta and gamma must be non-negative");
     }
     for (auto& scratch : worker_scratch_) {
-        scratch.ensure_capacity(graph_.nodes.size(), graph_.children.size());
+        scratch.ensure_capacity(
+            graph_.nodes.size(),
+            graph_.children.size(),
+            infoset_table_.total_bucket_count());
     }
     scheduler_diagnostics_.worker_profiles.assign(worker_count_, HUNLFlatStageProfile{});
     worker_pool_ = std::make_unique<WorkerPool>(worker_count_);
@@ -305,6 +309,10 @@ const HUNLAlignedVector<double>& HUNLFlatDCFR::chance_reach() const noexcept {
     return chance_reach_;
 }
 
+const HUNLAlignedVector<double>& HUNLFlatDCFR::bucket_reach() const noexcept {
+    return bucket_reach_;
+}
+
 const HUNLAlignedVector<double>& HUNLFlatDCFR::terminal_values() const noexcept {
     return terminal_values_;
 }
@@ -419,6 +427,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
     std::fill(player0_reach_.begin(), player0_reach_.end(), 0.0);
     std::fill(player1_reach_.begin(), player1_reach_.end(), 0.0);
     std::fill(chance_reach_.begin(), chance_reach_.end(), 0.0);
+    std::fill(bucket_reach_.begin(), bucket_reach_.end(), 0.0);
     if (!graph_.nodes.empty()) {
         player0_reach_[graph_.root] = 1.0;
         player1_reach_[graph_.root] = 1.0;
@@ -431,6 +440,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
             std::fill(scratch.player0_reach.begin(), scratch.player0_reach.end(), 0.0);
             std::fill(scratch.player1_reach.begin(), scratch.player1_reach.end(), 0.0);
             std::fill(scratch.chance_reach.begin(), scratch.chance_reach.end(), 0.0);
+            std::fill(scratch.bucket_reach.begin(), scratch.bucket_reach.end(), 0.0);
 
             const auto& worker = parallel_plan_.workers[worker_index];
             const auto range = worker.depth_node_ranges[depth];
@@ -459,25 +469,48 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 }
 
                 const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
+                const auto bucket_range = infoset_table_.infoset_bucket_range(meta.infoset_id);
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
-                const std::size_t representative_bucket = 0;
+                const auto acting_reach = meta.player == 0 ? reach0 : reach1;
+                if (acting_reach == 0.0) {
+                    continue;
+                }
+
+                if (bucket_map()) {
+                    for (std::size_t bucket = 0; bucket < infoset_meta.bucket_count; ++bucket) {
+                        scratch.bucket_reach[bucket_range.begin + bucket] +=
+                            acting_reach * bucket_row_weight(bucket_map(), meta.infoset_id, bucket);
+                    }
+                } else if (infoset_meta.bucket_count > 0) {
+                    scratch.bucket_reach[bucket_range.begin] += acting_reach;
+                }
+
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
-                    double action_prob = 1.0 / static_cast<double>(meta.child_count);
-                    if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
-                        action_prob = strategy[
-                            i * static_cast<std::size_t>(infoset_meta.bucket_count) + representative_bucket];
-                    } else {
-                        action_prob = strategy[
-                            representative_bucket * static_cast<std::size_t>(infoset_meta.action_count) + i];
+                    double bucketed_action_mass = 0.0;
+                    for (std::size_t bucket = 0; bucket < infoset_meta.bucket_count; ++bucket) {
+                        const auto mass = scratch.bucket_reach[bucket_range.begin + bucket];
+                        if (mass == 0.0) {
+                            continue;
+                        }
+
+                        double action_prob = 1.0 / static_cast<double>(meta.child_count);
+                        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+                            action_prob =
+                                strategy[i * static_cast<std::size_t>(infoset_meta.bucket_count) + bucket];
+                        } else {
+                            action_prob =
+                                strategy[bucket * static_cast<std::size_t>(infoset_meta.action_count) + i];
+                        }
+                        bucketed_action_mass += mass * action_prob;
                     }
 
                     if (meta.player == 0) {
-                        scratch.player0_reach[child] += reach0 * action_prob;
+                        scratch.player0_reach[child] += bucketed_action_mass;
                         scratch.player1_reach[child] += reach1;
                     } else {
                         scratch.player0_reach[child] += reach0;
-                        scratch.player1_reach[child] += reach1 * action_prob;
+                        scratch.player1_reach[child] += bucketed_action_mass;
                     }
                     scratch.chance_reach[child] += chance;
                 }
@@ -498,6 +531,21 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 player0_reach_[node_idx] += add0;
                 player1_reach_[node_idx] += add1;
                 chance_reach_[node_idx] += addc;
+            }
+        });
+
+        run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
+            const auto range = parallel_plan_.workers[worker_index].infoset_range;
+            for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
+                const auto bucket_range =
+                    infoset_table_.infoset_bucket_range(graph_.infosets[infoset_index].id);
+                for (std::uint32_t bucket_offset = bucket_range.begin; bucket_offset < bucket_range.end; ++bucket_offset) {
+                    double add_bucket = 0.0;
+                    for (const auto& scratch : worker_scratch_) {
+                        add_bucket += scratch.bucket_reach[bucket_offset];
+                    }
+                    bucket_reach_[bucket_offset] += add_bucket;
+                }
             }
         });
     }

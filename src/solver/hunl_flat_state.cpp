@@ -32,15 +32,26 @@ void HUNLFlatWorkerScratch::reset_values() noexcept {
     std::fill(player0_reach.begin(), player0_reach.end(), 0.0);
     std::fill(player1_reach.begin(), player1_reach.end(), 0.0);
     std::fill(chance_reach.begin(), chance_reach.end(), 0.0);
+    std::fill(bucket_reach.begin(), bucket_reach.end(), 0.0);
 }
 
-void HUNLFlatWorkerScratch::ensure_capacity(std::size_t node_count, std::size_t edge_count) {
+void HUNLFlatWorkerScratch::ensure_capacity(
+    std::size_t node_count,
+    std::size_t edge_count) {
+    ensure_capacity(node_count, edge_count, 0);
+}
+
+void HUNLFlatWorkerScratch::ensure_capacity(
+    std::size_t node_count,
+    std::size_t edge_count,
+    std::size_t total_bucket_count) {
     terminal_values.assign(node_count, 0.0);
     node_values.assign(node_count, 0.0);
     action_values.assign(edge_count, 0.0);
     player0_reach.assign(node_count, 0.0);
     player1_reach.assign(node_count, 0.0);
     chance_reach.assign(node_count, 0.0);
+    bucket_reach.assign(total_bucket_count, 0.0);
 }
 
 HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph, std::size_t worker_count) {
@@ -94,6 +105,7 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     table.meta_.reserve(graph.infosets.size());
 
     std::uint32_t running_offset = 0;
+    std::uint32_t running_bucket_offset = 0;
     for (const auto& infoset : graph.infosets) {
         if (infoset.player < 0 || infoset.player > 1) {
             throw std::logic_error("flat infoset table requires player-owned infosets");
@@ -110,6 +122,7 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
             infoset.id,
             running_offset,
             value_count,
+            running_bucket_offset,
             static_cast<std::uint32_t>(bucket_count),
             static_cast<std::uint32_t>(bucket_count),
             infoset.action_count,
@@ -118,6 +131,7 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
             0,
         });
         running_offset += value_count;
+        running_bucket_offset += static_cast<std::uint32_t>(bucket_count);
     }
 
     table.regret_sum_.assign(running_offset, 0.0);
@@ -174,6 +188,14 @@ std::size_t HUNLFlatInfosetTable::total_value_count() const noexcept {
     return regret_sum_.size();
 }
 
+std::size_t HUNLFlatInfosetTable::total_bucket_count() const noexcept {
+    if (meta_.empty()) {
+        return 0;
+    }
+    const auto& last = meta_.back();
+    return static_cast<std::size_t>(last.bucket_offset + last.bucket_count);
+}
+
 std::size_t HUNLFlatInfosetTable::value_index(InfosetId id, std::size_t hand_idx, std::size_t action_idx) const {
     const auto& meta = meta_for(id);
     if (hand_idx >= meta.bucket_count) {
@@ -200,6 +222,11 @@ HUNLFlatRange HUNLFlatInfosetTable::infoset_value_range(HUNLFlatRange infoset_ra
     const auto begin = meta_[infoset_range.begin].offset;
     const auto& last = meta_[infoset_range.end - 1];
     return HUNLFlatRange{begin, last.offset + last.value_count};
+}
+
+HUNLFlatRange HUNLFlatInfosetTable::infoset_bucket_range(InfosetId id) const {
+    const auto& meta = meta_for(id);
+    return HUNLFlatRange{meta.bucket_offset, meta.bucket_offset + meta.bucket_count};
 }
 
 const HUNLFlatInfosetTableMeta& HUNLFlatInfosetTable::meta_for(InfosetId id) const {

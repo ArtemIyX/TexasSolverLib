@@ -25,6 +25,7 @@ struct HUNLFlatInfosetTableMeta {
     InfosetId id{};
     std::uint32_t offset = 0;
     std::uint32_t value_count = 0;
+    std::uint32_t bucket_offset = 0;
     std::uint32_t bucket_count = 0;
     std::uint32_t hand_count = 0;
     std::uint8_t action_count = 0;
@@ -52,9 +53,11 @@ struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
     HUNLAlignedVector<double> player0_reach;
     HUNLAlignedVector<double> player1_reach;
     HUNLAlignedVector<double> chance_reach;
+    HUNLAlignedVector<double> bucket_reach;
 
     void reset_values() noexcept;
     void ensure_capacity(std::size_t node_count, std::size_t edge_count);
+    void ensure_capacity(std::size_t node_count, std::size_t edge_count, std::size_t total_bucket_count);
 };
 
 struct HUNLFlatParallelPlan {
@@ -90,7 +93,9 @@ public:
 
     [[nodiscard]] std::size_t row_value_count(InfosetId id) const;
     [[nodiscard]] std::size_t total_value_count() const noexcept;
+    [[nodiscard]] std::size_t total_bucket_count() const noexcept;
     [[nodiscard]] std::size_t value_index(InfosetId id, std::size_t bucket_idx, std::size_t action_idx) const;
+    [[nodiscard]] HUNLFlatRange infoset_bucket_range(InfosetId id) const;
     [[nodiscard]] HUNLFlatRange infoset_value_range(HUNLFlatRange infoset_range) const;
 
 private:
