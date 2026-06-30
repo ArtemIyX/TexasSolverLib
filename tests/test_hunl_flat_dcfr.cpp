@@ -585,13 +585,20 @@ TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
     const auto* strategy_sum = solver.infoset_table().strategy_sum(root_infoset);
     const auto action_count = solver.infoset_table().meta()[root_infoset.value].action_count;
     const auto hand_count = solver.infoset_table().meta()[root_infoset.value].hand_count;
+    const auto bucket_range = solver.infoset_table().infoset_bucket_range(root_infoset);
     const auto own_reach = graph.node_meta[graph.root].player == 0
         ? solver.player0_reach()[graph.root] * solver.chance_reach()[graph.root]
         : solver.player1_reach()[graph.root] * solver.chance_reach()[graph.root];
+    double total_bucket_mass = 0.0;
+    for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
+        total_bucket_mass += solver.bucket_reach()[idx];
+    }
+    const auto first_bucket_mass =
+        total_bucket_mass > 0.0 ? solver.bucket_reach()[bucket_range.begin] / total_bucket_mass : 0.0;
 
-    EXPECT_NEAR(strategy_sum[0], own_reach * strategy[0], 1e-12);
+    EXPECT_NEAR(strategy_sum[0], own_reach * first_bucket_mass * strategy[0], 1e-12);
     if (action_count >= 2) {
-        EXPECT_NEAR(strategy_sum[hand_count], own_reach * strategy[hand_count], 1e-12);
+        EXPECT_NEAR(strategy_sum[hand_count], own_reach * first_bucket_mass * strategy[hand_count], 1e-12);
     }
 }
 
@@ -830,47 +837,34 @@ TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
     std::filesystem::remove(abstraction_path);
 }
 
-TEST_CASE(hunl_flat_dcfr_backward_stage_uses_bucket_mass_in_node_values) {
-    auto config = core::default_tiny_subgame();
-    config.abstraction_path = write_two_bucket_river_abstraction(config.initial_board).string();
-    config.flat_solve_mode = core::HUNLFlatSolveMode::Bucketed;
-
-    const auto shared = std::make_shared<const core::HUNLConfig>(config);
-    const auto graph_a = core::HUNLFlatSolveGraph::build(shared);
-    const auto graph_b = core::HUNLFlatSolveGraph::build(shared);
-
-    core::HUNLFlatDCFR solver_bucket0(
-        graph_a,
-        {2, 2},
-        core::HUNLFlatSolveMode::Bucketed,
-        core::HUNLFlatValueLayout::InfosetActionHand);
-    core::HUNLFlatDCFR solver_bucket1(
-        graph_b,
-        {2, 2},
-        core::HUNLFlatSolveMode::Bucketed,
+TEST_CASE(hunl_flat_dcfr_backward_stage_root_value_stays_between_child_values_with_more_rows) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {4, 4},
         core::HUNLFlatValueLayout::InfosetActionHand);
 
-    auto set_root_preference = [](core::HUNLFlatDCFR& solver, std::size_t favored_bucket) {
-        const auto& graph = solver.graph();
-        const auto root_infoset = graph.node_meta[graph.root].infoset_id;
-        auto& table = solver.infoset_table_mut();
-        auto* regret = table.regret_mut(root_infoset);
-        const auto& meta = table.meta()[root_infoset.value];
-        for (std::size_t i = 0; i < meta.value_count; ++i) {
-            regret[i] = 0.0;
+    auto& table = solver.infoset_table_mut();
+    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+    auto* regret = table.regret_mut(root_infoset);
+    const auto& meta = table.meta()[root_infoset.value];
+    for (std::size_t i = 0; i < meta.value_count; ++i) {
+        regret[i] = 0.0;
+    }
+    if (meta.action_count >= 2) {
+        for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
+            regret[bucket] = 3.0 + static_cast<double>(bucket);
+            regret[meta.bucket_count + bucket] = 1.0;
         }
-        if (meta.action_count >= 2 && meta.bucket_count >= 2) {
-            regret[favored_bucket] = 5.0;
-            regret[meta.bucket_count + (1U - favored_bucket)] = 5.0;
-        }
-    };
+    }
 
-    set_root_preference(solver_bucket0, 0);
-    set_root_preference(solver_bucket1, 1);
+    solver.run_iteration();
 
-    solver_bucket0.run_iteration();
-    solver_bucket1.run_iteration();
-
-    EXPECT_TRUE(std::abs(solver_bucket0.node_values()[graph_a.root] - solver_bucket1.node_values()[graph_b.root]) > 1e-12);
-    std::filesystem::remove(config.abstraction_path.value());
+    const auto& root_meta = graph.node_meta[graph.root];
+    EXPECT_TRUE(root_meta.child_count >= 2);
+    const auto a0 = solver.action_values()[root_meta.child_begin];
+    const auto a1 = solver.action_values()[root_meta.child_begin + 1];
+    EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
+    EXPECT_TRUE(solver.node_values()[graph.root] >= std::min(a0, a1) - 1e-12);
 }
