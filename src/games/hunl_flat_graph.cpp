@@ -13,6 +13,9 @@ namespace core {
 namespace {
 
 HUNLFlatNodeType classify_flat_node_type(const HUNLTreeNode& node) {
+    if (node.depth_limited_leaf) {
+        return HUNLFlatNodeType::DepthLimited;
+    }
     switch (node.terminal_kind.tag) {
         case TerminalKindTag::Fold:
             return HUNLFlatNodeType::TerminalFold;
@@ -169,6 +172,10 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
                 graph.children.push_back(node.children[i]);
                 graph.actions.push_back(node.legal_actions[i]);
             }
+        } else if (flat_node.type == HUNLFlatNodeType::DepthLimited) {
+            if (!node.children.empty() || !node.chance_children.empty()) {
+                throw std::logic_error("depth-limited node must not have children");
+            }
         }
 
         graph.nodes.push_back(std::move(flat_node));
@@ -200,6 +207,9 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
             graph.terminal_node_values.push_back(graph.nodes.back().terminal_utility[0]);
             graph.showdown_terminal_nodes.push_back(node_idx);
             graph.showdown_terminal_values.push_back(graph.nodes.back().terminal_utility[0]);
+        } else if (graph.nodes.back().type == HUNLFlatNodeType::DepthLimited) {
+            graph.terminal_nodes.push_back(node_idx);
+            graph.terminal_node_values.push_back(graph.nodes.back().terminal_utility[0]);
         }
     }
 

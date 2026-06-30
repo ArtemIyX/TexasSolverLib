@@ -122,14 +122,16 @@ HUNLTree HUNLTree::build(std::shared_ptr<const HUNLConfig> cfg) {
     tree.config = cfg;
     std::unordered_map<MemoKey, std::uint32_t> memo;
     const auto state = HUNLState::initial(cfg);
-    tree.root = tree.build_node(state, memo, 0);
+    const auto depth_limit_plies = cfg ? cfg->depth_limit_plies : 0U;
+    tree.root = tree.build_node(state, memo, 0, depth_limit_plies);
     return tree;
 }
 
 std::uint32_t HUNLTree::build_node(
     const HUNLState& state,
     std::unordered_map<MemoKey, std::uint32_t>& memo,
-    std::uint32_t depth) {
+    std::uint32_t depth,
+    std::uint32_t depth_limit_plies) {
     const auto key = MemoKey::from_state(state);
     if (const auto it = memo.find(key); it != memo.end()) {
         return it->second;
@@ -151,12 +153,18 @@ std::uint32_t HUNLTree::build_node(
         return my_idx;
     }
 
+    if (depth_limit_plies != 0U && depth >= depth_limit_plies) {
+        auto& node = nodes[my_idx];
+        node.depth_limited_leaf = true;
+        return my_idx;
+    }
+
     if (state.cur_player == -1) {
         const auto outcomes = state.chance_outcomes();
         std::vector<std::uint32_t> chance_children;
         chance_children.reserve(outcomes.size());
         for (const auto& outcome : outcomes) {
-            const auto child_idx = build_node(state.apply(outcome.action), memo, depth + 1);
+            const auto child_idx = build_node(state.apply(outcome.action), memo, depth + 1, depth_limit_plies);
             auto& child = nodes[child_idx];
             if (!child.chance_action.has_value()) {
                 child.chance_action = static_cast<std::uint8_t>(outcome.action);
@@ -179,7 +187,7 @@ std::uint32_t HUNLTree::build_node(
     std::vector<std::uint32_t> children;
     children.reserve(actions.size());
     for (const auto action : actions) {
-        children.push_back(build_node(state.apply(action), memo, depth + 1));
+        children.push_back(build_node(state.apply(action), memo, depth + 1, depth_limit_plies));
     }
 
     auto& node = nodes[my_idx];

@@ -16,8 +16,9 @@ namespace core {
 enum class HUNLFlatNodeType : std::uint8_t {
     TerminalFold = 0,
     TerminalShowdown = 1,
-    Chance = 2,
-    Decision = 3,
+    DepthLimited = 2,
+    Chance = 3,
+    Decision = 4,
 };
 
 struct HUNLFlatNode {

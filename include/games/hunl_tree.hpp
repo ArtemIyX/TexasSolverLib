@@ -32,6 +32,7 @@ struct TerminalKind {
 struct HUNLTreeNode {
     PlayerId player = -1;
     TerminalKind terminal_kind = TerminalKind::non_terminal();
+    bool depth_limited_leaf = false;
     std::array<double, 2> terminal_utility = {0.0, 0.0};
     std::array<int, 2> contrib = {0, 0};
     Street street = Street::Preflop;
@@ -65,7 +66,8 @@ private:
     std::uint32_t build_node(
         const HUNLState& state,
         std::unordered_map<MemoKey, std::uint32_t>& memo,
-        std::uint32_t depth);
+        std::uint32_t depth,
+        std::uint32_t depth_limit_plies);
 };
 
 struct MemoKey {

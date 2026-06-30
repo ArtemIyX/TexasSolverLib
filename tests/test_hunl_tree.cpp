@@ -29,4 +29,25 @@ TEST_CASE(hunl_tree_node_count_is_bounded) {
     EXPECT_TRUE(tree.nodes.size() < 100000U);
 }
 
+TEST_CASE(hunl_tree_depth_limit_marks_cutoff_nodes_as_distinct_leaves) {
+    auto config = core::default_tiny_subgame();
+    config.depth_limit_plies = 1;
+    const auto tree = core::HUNLTree::build(std::make_shared<const core::HUNLConfig>(config));
+
+    bool depth_limited_seen = false;
+    bool terminal_seen = false;
+    for (const auto& node : tree.nodes) {
+        depth_limited_seen = depth_limited_seen || node.depth_limited_leaf;
+        terminal_seen = terminal_seen || node.terminal_kind.tag != core::TerminalKindTag::NonTerminal;
+        if (node.depth_limited_leaf) {
+            EXPECT_EQ(node.terminal_kind.tag, core::TerminalKindTag::NonTerminal);
+            EXPECT_TRUE(node.children.empty());
+            EXPECT_TRUE(node.chance_children.empty());
+        }
+    }
+
+    EXPECT_TRUE(depth_limited_seen);
+    EXPECT_TRUE(terminal_seen);
+}
+
 
