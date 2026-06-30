@@ -59,6 +59,7 @@ void update_regret_sum_vector(
     std::size_t hand_count,
     std::size_t action_count) noexcept;
 void normalize(double* out, std::size_t len, double total) noexcept;
+void normalize_row(const double* values, double* out, std::size_t len) noexcept;
 void compute_strategy_row(const double* regrets, double* out, std::size_t len) noexcept;
 void compute_strategy_row_small(const double* regrets, double* out, std::size_t len) noexcept;
 

@@ -420,6 +420,15 @@ void normalize(double* out, std::size_t len, double total) noexcept {
 #endif
 }
 
+void normalize_row(const double* values, double* out, std::size_t len) noexcept {
+    double total = 0.0;
+    for (std::size_t i = 0; i < len; ++i) {
+        total += values[i];
+        out[i] = values[i];
+    }
+    normalize(out, len, total);
+}
+
 void compute_strategy_row(const double* regrets, double* out, std::size_t len) noexcept {
     double total = positive_regrets_and_total(regrets, out, len);
     normalize(out, len, total);

@@ -293,39 +293,13 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_averag
 
         if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                double total = 0.0;
-                for (std::size_t a = 0; a < meta.action_count; ++a) {
-                    total += strategy_sum[a * static_cast<std::size_t>(meta.hand_count) + h];
-                }
-                if (total > 0.0) {
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                        average[idx] = strategy_sum[idx] / total;
-                    }
-                } else {
-                    const double uniform = 1.0 / static_cast<double>(meta.action_count);
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        average[a * static_cast<std::size_t>(meta.hand_count) + h] = uniform;
-                    }
-                }
+                const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
+                normalize_row(strategy_sum + hand_offset, average.data() + hand_offset, meta.action_count);
             }
         } else {
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
                 const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                double total = 0.0;
-                for (std::size_t a = 0; a < meta.action_count; ++a) {
-                    total += strategy_sum[hand_offset + a];
-                }
-                if (total > 0.0) {
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        average[hand_offset + a] = strategy_sum[hand_offset + a] / total;
-                    }
-                } else {
-                    const double uniform = 1.0 / static_cast<double>(meta.action_count);
-                    for (std::size_t a = 0; a < meta.action_count; ++a) {
-                        average[hand_offset + a] = uniform;
-                    }
-                }
+                normalize_row(strategy_sum + hand_offset, average.data() + hand_offset, meta.action_count);
             }
         }
 

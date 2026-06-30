@@ -151,7 +151,7 @@ Output:
 
 - a dedicated SIMD row routine for the flat infoset table
 
-### Step 1.3. Reuse the same row helper in average-strategy export
+### + Step 1.3. Reuse the same row helper in average-strategy export
 
 Substeps:
 
