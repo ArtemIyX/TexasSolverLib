@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -13,6 +14,13 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
+
+#if defined(_MSC_VER)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -224,7 +232,44 @@ void run_benchmark_rows(const BenchmarkConfig& cfg, SolveFn&& solve) {
 
 }  // namespace
 
+#if defined(_MSC_VER)
+std::string seh_code_to_string(unsigned int code) {
+    switch (code) {
+        case EXCEPTION_ACCESS_VIOLATION:
+            return "EXCEPTION_ACCESS_VIOLATION";
+        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:
+            return "EXCEPTION_ARRAY_BOUNDS_EXCEEDED";
+        case EXCEPTION_DATATYPE_MISALIGNMENT:
+            return "EXCEPTION_DATATYPE_MISALIGNMENT";
+        case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+            return "EXCEPTION_FLT_DIVIDE_BY_ZERO";
+        case EXCEPTION_ILLEGAL_INSTRUCTION:
+            return "EXCEPTION_ILLEGAL_INSTRUCTION";
+        case EXCEPTION_INT_DIVIDE_BY_ZERO:
+            return "EXCEPTION_INT_DIVIDE_BY_ZERO";
+        case EXCEPTION_STACK_OVERFLOW:
+            return "EXCEPTION_STACK_OVERFLOW";
+        default: {
+            std::ostringstream oss;
+            oss << "SEH_0x" << std::hex << std::uppercase << code;
+            return oss.str();
+        }
+    }
+}
+
+LONG WINAPI benchmark_exception_filter(EXCEPTION_POINTERS* info) {
+    const auto code = info != nullptr && info->ExceptionRecord != nullptr
+        ? static_cast<unsigned int>(info->ExceptionRecord->ExceptionCode)
+        : 0U;
+    std::cerr << "benchmark crashed with " << seh_code_to_string(code) << "\n";
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
+
 int main(int argc, char* argv[]) {
+#if defined(_MSC_VER)
+    SetUnhandledExceptionFilter(benchmark_exception_filter);
+#endif
     const auto parsed = parse_args(argc, argv);
     if (!parsed) {
         print_usage(argv[0]);

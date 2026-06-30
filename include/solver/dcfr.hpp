@@ -2,6 +2,8 @@
 
 #include "core/types.hpp"
 #include "core/game.hpp"
+#include "util/infoset_lookup.hpp"
+#include "util/infoset_registry.hpp"
 
 #include <algorithm>
 #include <array>
@@ -38,21 +40,134 @@ public:
 namespace detail {
 
 struct InfosetAccum {
-    std::vector<double> regret_sum;
-    std::vector<double> strategy_sum;
+    std::uint32_t offset = 0;
+    bool active = false;
 };
 
-inline std::vector<Probability> normalize_strategy(const std::vector<double>& regrets) {
-    std::vector<Probability> strategy(regrets.size(), 0.0);
+struct InfosetAccumView {
+    double* regret_sum = nullptr;
+    double* strategy_sum = nullptr;
+    std::size_t action_count = 0;
+};
+
+struct ConstInfosetAccumView {
+    const double* regret_sum = nullptr;
+    const double* strategy_sum = nullptr;
+    std::size_t action_count = 0;
+};
+
+class IndexedStrategyTable {
+public:
+    void clear() noexcept {
+        values_.clear();
+        present_.clear();
+        size_ = 0;
+    }
+
+    void set(InfosetId id, std::vector<Probability> strategy) {
+        const auto index = static_cast<std::size_t>(id.value);
+        if (index >= values_.size()) {
+            values_.resize(index + 1);
+            present_.resize(index + 1, false);
+        }
+        if (!present_[index]) {
+            ++size_;
+        }
+        values_[index] = std::move(strategy);
+        present_[index] = true;
+    }
+
+    [[nodiscard]] std::size_t size() const noexcept {
+        return size_;
+    }
+
+    [[nodiscard]] const std::vector<Probability>* get(InfosetId id) const noexcept {
+        const auto index = static_cast<std::size_t>(id.value);
+        if (index >= values_.size() || !present_[index]) {
+            return nullptr;
+        }
+        return &values_[index];
+    }
+
+private:
+    std::vector<std::vector<Probability>> values_;
+    std::vector<bool> present_;
+    std::size_t size_ = 0;
+};
+
+class InfosetAccumTable {
+public:
+    void clear() noexcept {
+        rows_.clear();
+        active_ids_.clear();
+        regret_arena_.clear();
+        strategy_arena_.clear();
+    }
+
+    [[nodiscard]] std::size_t size() const noexcept {
+        return active_ids_.size();
+    }
+
+    [[nodiscard]] bool empty() const noexcept {
+        return active_ids_.empty();
+    }
+
+    [[nodiscard]] const std::vector<InfosetId>& active_ids() const noexcept {
+        return active_ids_;
+    }
+
+    InfosetAccumView ensure(InfosetId id, std::size_t action_count) {
+        if (id.value >= rows_.size()) {
+            rows_.resize(static_cast<std::size_t>(id.value) + 1);
+        }
+
+        auto& row = rows_[id.value];
+        if (!row.active) {
+            row.offset = static_cast<std::uint32_t>(regret_arena_.size());
+            row.active = true;
+            active_ids_.push_back(id);
+            regret_arena_.resize(regret_arena_.size() + action_count, 0.0);
+            strategy_arena_.resize(strategy_arena_.size() + action_count, 0.0);
+        }
+
+        return InfosetAccumView{
+            regret_arena_.data() + row.offset,
+            strategy_arena_.data() + row.offset,
+            action_count,
+        };
+    }
+
+    [[nodiscard]] ConstInfosetAccumView view(InfosetId id, std::size_t action_count) const {
+        if (id.value >= rows_.size() || !rows_[id.value].active) {
+            return {};
+        }
+
+        const auto& row = rows_[id.value];
+        return ConstInfosetAccumView{
+            regret_arena_.data() + row.offset,
+            strategy_arena_.data() + row.offset,
+            action_count,
+        };
+    }
+
+private:
+    std::vector<InfosetAccum> rows_;
+    std::vector<InfosetId> active_ids_;
+    std::vector<double> regret_arena_;
+    std::vector<double> strategy_arena_;
+};
+
+inline std::vector<Probability> normalize_strategy(const double* regrets, std::size_t regret_count) {
+    std::vector<Probability> strategy(regret_count, 0.0);
     double positive_sum = 0.0;
-    for (const double regret : regrets) {
-        if (regret > 0.0) {
-            positive_sum += regret;
+    for (std::size_t i = 0; i < regret_count; ++i) {
+        if (regrets[i] > 0.0) {
+            positive_sum += regrets[i];
         }
     }
 
     if (positive_sum > 0.0) {
-        for (std::size_t i = 0; i < regrets.size(); ++i) {
+        for (std::size_t i = 0; i < regret_count; ++i) {
             strategy[i] = regrets[i] > 0.0 ? regrets[i] / positive_sum : 0.0;
         }
         return strategy;
@@ -65,21 +180,29 @@ inline std::vector<Probability> normalize_strategy(const std::vector<double>& re
     return strategy;
 }
 
-inline std::vector<Probability> normalize_or_uniform(const std::vector<double>& values) {
-    const double sum = std::accumulate(values.begin(), values.end(), 0.0);
+inline std::vector<Probability> normalize_strategy(const std::vector<double>& regrets) {
+    return normalize_strategy(regrets.data(), regrets.size());
+}
+
+inline std::vector<Probability> normalize_or_uniform(const double* values, std::size_t value_count) {
+    const double sum = std::accumulate(values, values + value_count, 0.0);
     if (sum > 0.0) {
-        std::vector<Probability> out(values.size(), 0.0);
-        for (std::size_t i = 0; i < values.size(); ++i) {
+        std::vector<Probability> out(value_count, 0.0);
+        for (std::size_t i = 0; i < value_count; ++i) {
             out[i] = values[i] / sum;
         }
         return out;
     }
 
-    if (values.empty()) {
+    if (value_count == 0) {
         return {};
     }
 
-    return std::vector<Probability>(values.size(), 1.0 / static_cast<double>(values.size()));
+    return std::vector<Probability>(value_count, 1.0 / static_cast<double>(value_count));
+}
+
+inline std::vector<Probability> normalize_or_uniform(const std::vector<double>& values) {
+    return normalize_or_uniform(values.data(), values.size());
 }
 
 template <class G>
@@ -182,7 +305,7 @@ public:
     SolveOutput solve(std::uint32_t iterations);
 
 private:
-    using StrategyMap = std::unordered_map<InfosetKey, std::vector<Probability>>;
+    using StrategyMap = detail::IndexedStrategyTable;
 
     double cfr(
         const G& state,
@@ -195,7 +318,9 @@ private:
     DCFRConfig config_;
     G root_;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
-    std::unordered_map<InfosetKey, detail::InfosetAccum> infosets_;
+    InfosetRegistry registry_;
+    detail::IndexedStrategyTable locked_by_id_;
+    detail::InfosetAccumTable infosets_;
 };
 
 template <class G>
@@ -239,19 +364,16 @@ double DCFRSolver<G>::cfr(
     }
 
     const auto actions = state.legal_actions();
-    const auto key = state.infoset_key(player);
-    auto& accum = infosets_[key];
-    if (accum.regret_sum.empty()) {
-        accum.regret_sum.assign(actions.size(), 0.0);
-        accum.strategy_sum.assign(actions.size(), 0.0);
-    }
+    const auto id = core::lookup_infoset_id(
+        state, player, registry_, actions.size(), &locked_, &locked_by_id_);
+    auto accum = infosets_.ensure(id, actions.size());
 
     std::vector<Probability> strategy;
-    if (const auto locked_it = locked_.find(key);
-        locked_it != locked_.end() && locked_it->second.size() == actions.size()) {
-        strategy = locked_it->second;
+    if (const auto* locked_strategy = locked_by_id_.get(id);
+        locked_strategy != nullptr && locked_strategy->size() == actions.size()) {
+        strategy = *locked_strategy;
     } else {
-        strategy = detail::normalize_strategy(accum.regret_sum);
+        strategy = detail::normalize_strategy(accum.regret_sum, accum.action_count);
     }
 
     if (player == traversing_player) {
@@ -270,7 +392,10 @@ double DCFRSolver<G>::cfr(
         node_value += strategy[i] * action_values[i];
     }
 
-    if (player == traversing_player && locked_.find(key) == locked_.end()) {
+    if (player == traversing_player && locked_by_id_.get(id) == nullptr) {
+        // Child recursion may activate new infosets and grow the flat arenas,
+        // so reacquire the row view before writing through its pointers.
+        accum = infosets_.ensure(id, actions.size());
         const PlayerId opponent = 1 - traversing_player;
         const double opponent_reach = chance_reach * reach_probs[static_cast<std::size_t>(opponent)];
         for (std::size_t i = 0; i < actions.size(); ++i) {
@@ -284,13 +409,15 @@ double DCFRSolver<G>::cfr(
 template <class G>
 typename DCFRSolver<G>::StrategyMap DCFRSolver<G>::build_average_strategy() const {
     StrategyMap out;
-    for (const auto& [key, accum] : infosets_) {
-        if (const auto locked_it = locked_.find(key);
-            locked_it != locked_.end() && locked_it->second.size() == accum.strategy_sum.size()) {
-            out.emplace(key, locked_it->second);
+    for (const auto id : infosets_.active_ids()) {
+        const auto action_count = registry_.meta_for(id).action_count;
+        const auto accum = infosets_.view(id, action_count);
+        if (const auto* locked_strategy = locked_by_id_.get(id);
+            locked_strategy != nullptr && locked_strategy->size() == accum.action_count) {
+            out.set(id, *locked_strategy);
             continue;
         }
-        out.emplace(key, detail::normalize_or_uniform(accum.strategy_sum));
+        out.set(id, detail::normalize_or_uniform(accum.strategy_sum, accum.action_count));
     }
     return out;
 }
@@ -298,6 +425,8 @@ typename DCFRSolver<G>::StrategyMap DCFRSolver<G>::build_average_strategy() cons
 template <class G>
 SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
     infosets_.clear();
+    registry_.clear();
+    locked_by_id_.clear();
     const auto traversal_start = std::chrono::steady_clock::now();
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
         cfr(root_, 0, {1.0, 1.0}, 1.0);
@@ -307,18 +436,25 @@ SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
 
     const auto finalize_start = std::chrono::steady_clock::now();
     const auto average_strategy = build_average_strategy();
+    std::unordered_map<InfosetKey, std::vector<Probability>> average_strategy_by_key;
+    average_strategy_by_key.reserve(infosets_.size());
+    for (const auto id : infosets_.active_ids()) {
+        if (const auto* strategy = average_strategy.get(id); strategy != nullptr) {
+            average_strategy_by_key.emplace(registry_.key_for(id), *strategy);
+        }
+    }
 
     SolveOutput out;
     out.iterations = iterations;
     out.used_parallel = false;
     out.traversal_seconds = std::chrono::duration<double>(traversal_finish - traversal_start).count();
-    out.game_value = detail::expected_value_player(root_, average_strategy, 0);
-    const double br0 = detail::best_response_value(root_, average_strategy, 0);
-    const double br1 = detail::best_response_value(root_, average_strategy, 1);
+    out.game_value = detail::expected_value_player(root_, average_strategy_by_key, 0);
+    const double br0 = detail::best_response_value(root_, average_strategy_by_key, 0);
+    const double br1 = detail::best_response_value(root_, average_strategy_by_key, 1);
     out.exploitability = br0 + br1;
     out.average_strategy.reserve(average_strategy.size());
-    for (const auto& [key, strategy] : average_strategy) {
-        out.average_strategy.emplace_back(key, strategy);
+    for (auto& [key, strategy] : average_strategy_by_key) {
+        out.average_strategy.emplace_back(std::move(key), std::move(strategy));
     }
     std::sort(
         out.average_strategy.begin(),

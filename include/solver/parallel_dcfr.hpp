@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/arena.hpp"
 #include "solver/dcfr.hpp"
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -24,8 +26,32 @@ struct ParallelSolvePlan {
     std::vector<ParallelWorkItem> items;
 };
 
+namespace detail {
+
+struct WorkerInfosetAccumRow {
+    InfosetId id{};
+    double* regret_sum = nullptr;
+    double* strategy_sum = nullptr;
+};
+
+class WorkerInfosetAccumTable {
+public:
+    void reset();
+    [[nodiscard]] std::size_t size() const noexcept;
+    [[nodiscard]] const std::vector<InfosetId>& active_ids() const noexcept;
+    InfosetAccumView ensure(InfosetId id, std::size_t action_count);
+    [[nodiscard]] ConstInfosetAccumView view(InfosetId id, std::size_t action_count) const;
+
+private:
+    Arena arena_;
+    std::vector<WorkerInfosetAccumRow*> rows_by_id_;
+    std::vector<InfosetId> active_ids_;
+};
+
+}  // namespace detail
+
 struct ParallelWorkerState {
-    std::unordered_map<InfosetKey, detail::InfosetAccum> accum;
+    detail::WorkerInfosetAccumTable accum;
 };
 
 template <class G>
@@ -41,31 +67,38 @@ public:
     SolveOutput solve(std::uint32_t iterations);
 
 private:
-    using StrategyMap = std::unordered_map<InfosetKey, std::vector<Probability>>;
+    using StrategyMap = detail::IndexedStrategyTable;
     using SharedStrategyMap = std::shared_ptr<const StrategyMap>;
 
     ParallelSolvePlan build_plan() const;
     static void validate_plan(const ParallelSolvePlan& plan);
-    ParallelWorkerState make_worker_state() const;
-    static void merge_worker_state(
-        std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical,
+    static void reset_worker_state(ParallelWorkerState& worker_state);
+    void merge_worker_state(
+        detail::InfosetAccumTable& canonical,
         ParallelWorkerState worker_state);
-    static SharedStrategyMap build_strategy_snapshot(
-        const std::unordered_map<InfosetKey, detail::InfosetAccum>& canonical);
+    SharedStrategyMap build_strategy_snapshot(
+        const detail::InfosetAccumTable& canonical);
     double cfr(
         const G& state,
         PlayerId traversing_player,
         const std::array<double, 2>& reach_probs,
         double chance_reach,
         const StrategyMap& strategy,
-        ParallelWorkerState& worker_state) const;
+        ParallelWorkerState& worker_state);
+    std::pair<InfosetId, std::vector<Probability>> resolve_infoset(
+        const G& state,
+        PlayerId player,
+        std::size_t action_count);
     StrategyMap build_average_strategy() const;
     DCFRConfig config_;
     G root_;
     std::size_t worker_count_ = 1;
     std::size_t frontier_multiplier_ = 8;
     std::unordered_map<InfosetKey, std::vector<Probability>> locked_;
-    std::unordered_map<InfosetKey, detail::InfosetAccum> infosets_;
+    InfosetRegistry registry_;
+    detail::IndexedStrategyTable locked_by_id_;
+    detail::InfosetAccumTable infosets_;
+    mutable std::mutex infoset_mutex_;
 };
 
 }  // namespace core

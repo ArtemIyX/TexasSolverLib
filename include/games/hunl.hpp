@@ -12,6 +12,7 @@
 namespace core {
 
 struct AbstractionTables;
+inline constexpr std::size_t HUNL_MAX_HISTORY_CODES = 48;
 
 /**
  * @brief Street in the Hold'em game tree.
@@ -54,6 +55,32 @@ std::uint8_t rank_of(std::uint8_t card);
 std::uint8_t suit_of(std::uint8_t card);
 std::string card_to_string(std::uint8_t card);
 std::string sorted_card_string(const std::vector<std::uint8_t>& cards);
+
+struct HUNLInfosetEncoding {
+    std::array<std::uint8_t, 2> hole = {0, 0};
+    std::array<std::uint8_t, 5> board = {0, 0, 0, 0, 0};
+    std::array<std::uint8_t, 4> street_lengths = {0, 0, 0, 0};
+    std::array<int, HUNL_MAX_HISTORY_CODES> history_codes = {};
+    std::uint8_t board_count = 0;
+    Street street = Street::Preflop;
+    std::uint8_t history_count = 0;
+
+    bool operator==(const HUNLInfosetEncoding& other) const noexcept {
+        return hole == other.hole &&
+               board == other.board &&
+               street_lengths == other.street_lengths &&
+               history_codes == other.history_codes &&
+               board_count == other.board_count &&
+               street == other.street &&
+               history_count == other.history_count;
+    }
+};
+
+struct HUNLInfosetEncodingHash {
+    std::size_t operator()(const HUNLInfosetEncoding& encoding) const noexcept;
+};
+
+std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding);
 
 /**
  * @brief Complete no-limit hold'em configuration.
@@ -132,6 +159,8 @@ struct HUNLState {
     std::shared_ptr<const HUNLConfig> config;
     std::vector<std::vector<std::string>> betting_tokens;
     std::vector<std::string> current_street_tokens;
+    std::vector<std::vector<int>> betting_history_codes;
+    std::vector<int> current_street_history_codes;
     std::uint8_t pending_board_deals = 0;
 
     static HUNLState initial();
@@ -146,6 +175,7 @@ struct HUNLState {
     std::vector<ActionId> legal_actions() const;
     HUNLState apply(ActionId action) const;
     HUNLState next_state(ActionId action) const;
+    HUNLInfosetEncoding infoset_encoding(PlayerId player) const;
     std::string infoset_key(PlayerId player) const;
     std::string infoset_key(PlayerId player, const AbstractionTables* abstraction) const;
     std::string format_history() const;
