@@ -335,6 +335,26 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_initializes_root_reaches) {
     EXPECT_NEAR(solver.chance_reach()[graph.root], 1.0, 1e-12);
 }
 
+TEST_CASE(hunl_flat_dcfr_forward_reach_distributes_mass_across_explicit_rows) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {4, 4},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+    const auto bucket_range = solver.infoset_table().infoset_bucket_range(root_infoset);
+    double total_bucket_mass = 0.0;
+    for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
+        EXPECT_TRUE(solver.bucket_reach()[idx] > 0.0);
+        total_bucket_mass += solver.bucket_reach()[idx];
+    }
+    EXPECT_NEAR(total_bucket_mass, 1.0, 1e-12);
+}
+
 TEST_CASE(hunl_flat_dcfr_forward_reach_propagates_strategy_on_decision_nodes) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
     const auto graph = core::HUNLFlatSolveGraph::build(config);
@@ -808,4 +828,49 @@ TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
 
     EXPECT_TRUE(checked_infoset);
     std::filesystem::remove(abstraction_path);
+}
+
+TEST_CASE(hunl_flat_dcfr_backward_stage_uses_bucket_mass_in_node_values) {
+    auto config = core::default_tiny_subgame();
+    config.abstraction_path = write_two_bucket_river_abstraction(config.initial_board).string();
+    config.flat_solve_mode = core::HUNLFlatSolveMode::Bucketed;
+
+    const auto shared = std::make_shared<const core::HUNLConfig>(config);
+    const auto graph_a = core::HUNLFlatSolveGraph::build(shared);
+    const auto graph_b = core::HUNLFlatSolveGraph::build(shared);
+
+    core::HUNLFlatDCFR solver_bucket0(
+        graph_a,
+        {2, 2},
+        core::HUNLFlatSolveMode::Bucketed,
+        core::HUNLFlatValueLayout::InfosetActionHand);
+    core::HUNLFlatDCFR solver_bucket1(
+        graph_b,
+        {2, 2},
+        core::HUNLFlatSolveMode::Bucketed,
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    auto set_root_preference = [](core::HUNLFlatDCFR& solver, std::size_t favored_bucket) {
+        const auto& graph = solver.graph();
+        const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+        auto& table = solver.infoset_table_mut();
+        auto* regret = table.regret_mut(root_infoset);
+        const auto& meta = table.meta()[root_infoset.value];
+        for (std::size_t i = 0; i < meta.value_count; ++i) {
+            regret[i] = 0.0;
+        }
+        if (meta.action_count >= 2 && meta.bucket_count >= 2) {
+            regret[favored_bucket] = 5.0;
+            regret[meta.bucket_count + (1U - favored_bucket)] = 5.0;
+        }
+    };
+
+    set_root_preference(solver_bucket0, 0);
+    set_root_preference(solver_bucket1, 1);
+
+    solver_bucket0.run_iteration();
+    solver_bucket1.run_iteration();
+
+    EXPECT_TRUE(std::abs(solver_bucket0.node_values()[graph_a.root] - solver_bucket1.node_values()[graph_b.root]) > 1e-12);
+    std::filesystem::remove(config.abstraction_path.value());
 }
