@@ -23,6 +23,7 @@ struct HUNLFlatNode {
     HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
     PlayerId player = -1;
     Street street = Street::Preflop;
+    std::vector<std::uint8_t> board;
     std::array<int, 2> contributions = {0, 0};
     std::uint32_t child_begin = 0;
     std::uint32_t child_count = 0;
@@ -40,6 +41,7 @@ struct HUNLFlatNodeMeta {
     HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
     PlayerId player = -1;
     Street street = Street::Preflop;
+    std::vector<std::uint8_t> board;
     std::array<int, 2> contributions = {0, 0};
     std::uint32_t child_begin = 0;
     std::uint32_t child_count = 0;

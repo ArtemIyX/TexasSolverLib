@@ -46,6 +46,10 @@ struct HUNLFlatWorkerAssignment {
     std::vector<HUNLFlatRange> depth_node_ranges;
 };
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4324)
+#endif
 struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
     HUNLAlignedVector<double> terminal_values;
     HUNLAlignedVector<double> node_values;
@@ -59,6 +63,9 @@ struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
     void ensure_capacity(std::size_t node_count, std::size_t edge_count);
     void ensure_capacity(std::size_t node_count, std::size_t edge_count, std::size_t total_bucket_count);
 };
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 struct HUNLFlatParallelPlan {
     std::vector<HUNLFlatWorkerAssignment> workers;

@@ -37,6 +37,15 @@ std::optional<HUNLFlatBucketMap> HUNLFlatDCFR::load_bucket_map_for_graph(const H
         load_abstraction(*graph.config->abstraction_path));
 }
 
+std::optional<HUNLBucketTerminalTable> HUNLFlatDCFR::build_terminal_table_for_graph(
+    const HUNLFlatSolveGraph& graph,
+    const std::optional<HUNLFlatBucketMap>& bucket_map) {
+    if (!bucket_map.has_value()) {
+        return std::nullopt;
+    }
+    return HUNLBucketTerminalTable::build(graph, *bucket_map);
+}
+
 HUNLFlatDCFR::WorkerPool::WorkerPool(std::size_t worker_count) {
     if (worker_count == 0) {
         throw std::invalid_argument("HUNLFlatDCFR worker_count must be at least 1");
@@ -133,6 +142,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
     double gamma)
     : graph_(std::move(graph)),
       bucket_map_(load_bucket_map_for_graph(graph_)),
+      terminal_table_(build_terminal_table_for_graph(graph_, bucket_map_)),
       infoset_table_(HUNLFlatInfosetTable::build(
           graph_,
           bucket_count_per_player,
@@ -558,8 +568,16 @@ void HUNLFlatDCFR::terminal_utility_stage() {
         }
 
         std::fill(terminal_values_.begin(), terminal_values_.end(), 0.0);
-        for (std::size_t i = 0; i < graph_.terminal_nodes.size(); ++i) {
-            terminal_values_[graph_.terminal_nodes[i]] = graph_.terminal_node_values[i];
+        for (std::size_t i = 0; i < graph_.fold_terminal_nodes.size(); ++i) {
+            terminal_values_[graph_.fold_terminal_nodes[i]] = graph_.fold_terminal_values[i];
+        }
+        for (std::size_t i = 0; i < graph_.showdown_terminal_nodes.size(); ++i) {
+            const auto node_idx = graph_.showdown_terminal_nodes[i];
+            if (terminal_table_ && terminal_table_->has_showdown_matrix(node_idx)) {
+                terminal_values_[node_idx] = terminal_table_->expected_showdown_value(node_idx);
+            } else {
+                terminal_values_[node_idx] = graph_.showdown_terminal_values[i];
+            }
         }
     });
 }

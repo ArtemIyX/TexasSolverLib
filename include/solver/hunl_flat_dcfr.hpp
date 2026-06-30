@@ -2,6 +2,7 @@
 
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_bucket_map.hpp"
+#include "solver/hunl_bucket_terminal.hpp"
 #include "solver/hunl_flat_state.hpp"
 
 #include <array>
@@ -118,9 +119,13 @@ private:
     void regret_update_stage();
     void average_strategy_stage();
     static std::optional<HUNLFlatBucketMap> load_bucket_map_for_graph(const HUNLFlatSolveGraph& graph);
+    static std::optional<HUNLBucketTerminalTable> build_terminal_table_for_graph(
+        const HUNLFlatSolveGraph& graph,
+        const std::optional<HUNLFlatBucketMap>& bucket_map);
 
     HUNLFlatSolveGraph graph_;
     std::optional<HUNLFlatBucketMap> bucket_map_;
+    std::optional<HUNLBucketTerminalTable> terminal_table_;
     HUNLFlatInfosetTable infoset_table_;
     HUNLAlignedVector<double> player0_reach_;
     HUNLAlignedVector<double> player1_reach_;

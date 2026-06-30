@@ -87,6 +87,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         flat_node.type = classify_flat_node_type(node);
         flat_node.player = node.player;
         flat_node.street = node.street;
+        flat_node.board = node.board;
         flat_node.contributions = node.contrib;
         flat_node.terminal_kind = node.terminal_kind;
         flat_node.terminal_utility = node.terminal_utility;
@@ -166,6 +167,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
             graph.nodes.back().type,
             graph.nodes.back().player,
             graph.nodes.back().street,
+            graph.nodes.back().board,
             graph.nodes.back().contributions,
             graph.nodes.back().child_begin,
             graph.nodes.back().child_count,
