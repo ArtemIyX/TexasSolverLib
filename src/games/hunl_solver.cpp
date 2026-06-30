@@ -1,7 +1,7 @@
 #include "games/hunl_solver.hpp"
 
-#include "solver/dcfr.hpp"
 #include "solver/exploit.hpp"
+#include "solver/solver.hpp"
 
 #include <chrono>
 #include <stdexcept>
@@ -58,25 +58,42 @@ HUNLSolveOutput solve_hunl_postflop(
     std::uint32_t iterations,
     double alpha,
     double beta,
-    double gamma) {
+    double gamma,
+    std::size_t workers,
+    std::size_t frontier_multiplier,
+    bool force_parallel) {
     validate_config(config);
 
     const auto start = std::chrono::steady_clock::now();
     auto shared = std::make_shared<const HUNLConfig>(config);
     const auto root = HUNLState::initial(shared);
 
-    DCFRSolver<HUNLState> solver(DCFRConfig{alpha, beta, gamma}, root);
-    const auto solve_output = solver.solve(iterations);
-    const auto finish = std::chrono::steady_clock::now();
-
+    SolveOutput solve_output;
+    if (force_parallel ||
+        detail::should_use_parallel_solver(workers, frontier_multiplier, detail::estimated_root_branch_count(root))) {
+        ParallelDCFRSolver<HUNLState> solver(
+            DCFRConfig{alpha, beta, gamma}, root, workers, frontier_multiplier);
+        solve_output = solver.solve(iterations);
+    } else {
+        DCFRSolver<HUNLState> solver(DCFRConfig{alpha, beta, gamma}, root);
+        solve_output = solver.solve(iterations);
+    }
+    const auto postprocess_start = std::chrono::steady_clock::now();
     HUNLSolveOutput out;
     out.average_strategy = to_strategy_map(solve_output.average_strategy);
     out.exploitability = solve_output.exploitability;
     out.game_value = solve_output.game_value;
     out.iterations = solve_output.iterations;
+    out.used_parallel = solve_output.used_parallel;
+    out.traversal_seconds = solve_output.traversal_seconds;
+    out.solver_finalize_seconds = solve_output.finalize_seconds;
+    out.profile = solve_output.profile;
+    out.infoset_count = static_cast<std::uint32_t>(out.average_strategy.size());
+    const auto finish = std::chrono::steady_clock::now();
+    out.wrapper_postprocess_seconds =
+        std::chrono::duration<double>(finish - postprocess_start).count();
     out.wallclock_seconds =
         std::chrono::duration<double>(finish - start).count();
-    out.infoset_count = static_cast<std::uint32_t>(out.average_strategy.size());
     return out;
 }
 

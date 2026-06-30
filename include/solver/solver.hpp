@@ -2,6 +2,7 @@
 
 #include "core/types.hpp"
 #include "solver/dcfr.hpp"
+#include "solver/parallel_dcfr.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,15 +20,52 @@ void validate_dcfr_parameters(double alpha, double beta, double gamma);
 /**
  * @brief Solve Kuhn poker with DCFR.
  */
-SolveOutput solve_kuhn(std::uint32_t iterations, double alpha, double beta, double gamma);
+SolveOutput solve_kuhn(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8);
 /**
  * @brief Solve Leduc poker with DCFR.
  */
-SolveOutput solve_leduc(std::uint32_t iterations, double alpha, double beta, double gamma);
+SolveOutput solve_leduc(
+    std::uint32_t iterations,
+    double alpha,
+    double beta,
+    double gamma,
+    std::size_t workers = 1,
+    std::size_t frontier_multiplier = 8);
 
 namespace detail {
 
 using StrategyMap = std::unordered_map<InfosetKey, std::vector<Probability>>;
+
+template <class G>
+inline std::size_t estimated_root_branch_count(const G& root) {
+    if (root.is_terminal()) {
+        return 1;
+    }
+
+    if (root.current_player() < 0) {
+        return std::max<std::size_t>(1, root.chance_outcomes().size());
+    }
+
+    return std::max<std::size_t>(1, root.legal_actions().size());
+}
+
+inline bool should_use_parallel_solver(
+    std::size_t workers,
+    std::size_t frontier_multiplier,
+    std::size_t estimated_branch_count) {
+    if (workers <= 1) {
+        return false;
+    }
+
+    const auto work_units = std::max<std::size_t>(1, workers * std::max<std::size_t>(1, frontier_multiplier));
+    return estimated_branch_count >= std::max<std::size_t>(2, work_units / 2);
+}
 
 template <class G>
 inline StrategyMap make_strategy_map(
@@ -229,12 +267,26 @@ SolveOutput solve_generic(
     double alpha,
     double beta,
     double gamma,
-    std::unordered_map<InfosetKey, std::vector<Probability>> locked_strategies = {}) {
+    std::size_t workers,
+    std::unordered_map<InfosetKey, std::vector<Probability>> locked_strategies = {},
+    std::size_t frontier_multiplier = 8) {
     validate_dcfr_parameters(alpha, beta, gamma);
 
-    DCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial());
-    solver.set_locked_strategies(std::move(locked_strategies));
-    SolveOutput output = solver.solve(iterations);
+    SolveOutput output;
+    const auto estimated_branch_count = estimated_root_branch_count(G::initial());
+    if (should_use_parallel_solver(workers, frontier_multiplier, estimated_branch_count)) {
+        ParallelDCFRSolver<G> solver(
+            DCFRConfig{alpha, beta, gamma},
+            G::initial(),
+            workers,
+            frontier_multiplier);
+        solver.set_locked_strategies(std::move(locked_strategies));
+        output = solver.solve(iterations);
+    } else {
+        DCFRSolver<G> solver(DCFRConfig{alpha, beta, gamma}, G::initial());
+        solver.set_locked_strategies(std::move(locked_strategies));
+        output = solver.solve(iterations);
+    }
 
     const auto strategy = make_strategy_map<G>(output.average_strategy);
     const auto value = expected_value(G::initial(), strategy);

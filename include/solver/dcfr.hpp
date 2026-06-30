@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <limits>
 #include <iostream>
 #include <numeric>
@@ -297,15 +298,20 @@ typename DCFRSolver<G>::StrategyMap DCFRSolver<G>::build_average_strategy() cons
 template <class G>
 SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
     infosets_.clear();
+    const auto traversal_start = std::chrono::steady_clock::now();
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
         cfr(root_, 0, {1.0, 1.0}, 1.0);
         cfr(root_, 1, {1.0, 1.0}, 1.0);
     }
+    const auto traversal_finish = std::chrono::steady_clock::now();
 
+    const auto finalize_start = std::chrono::steady_clock::now();
     const auto average_strategy = build_average_strategy();
 
     SolveOutput out;
     out.iterations = iterations;
+    out.used_parallel = false;
+    out.traversal_seconds = std::chrono::duration<double>(traversal_finish - traversal_start).count();
     out.game_value = detail::expected_value_player(root_, average_strategy, 0);
     const double br0 = detail::best_response_value(root_, average_strategy, 0);
     const double br1 = detail::best_response_value(root_, average_strategy, 1);
@@ -318,6 +324,8 @@ SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
         out.average_strategy.begin(),
         out.average_strategy.end(),
         [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    out.finalize_seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - finalize_start).count();
     return out;
 }
 
