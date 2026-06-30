@@ -116,8 +116,10 @@ private:
     void backward_value_stage();
     void regret_update_stage();
     void average_strategy_stage();
+    static std::optional<HUNLFlatBucketMap> load_bucket_map_for_graph(const HUNLFlatSolveGraph& graph);
 
     HUNLFlatSolveGraph graph_;
+    std::optional<HUNLFlatBucketMap> bucket_map_;
     HUNLFlatInfosetTable infoset_table_;
     HUNLAlignedVector<double> player0_reach_;
     HUNLAlignedVector<double> player1_reach_;
@@ -128,7 +130,6 @@ private:
     HUNLFlatStageProfile profile_;
     std::size_t worker_count_ = 1;
     HUNLFlatParallelPlan parallel_plan_;
-    std::optional<HUNLFlatBucketMap> bucket_map_;
     std::unique_ptr<WorkerPool> worker_pool_;
     std::vector<HUNLFlatWorkerScratch, AlignedAllocator<HUNLFlatWorkerScratch, HUNL_CACHELINE_BYTES>> worker_scratch_;
     HUNLFlatSchedulerDiagnostics scheduler_diagnostics_;

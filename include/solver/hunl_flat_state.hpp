@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/hunl_flat_graph.hpp"
+#include "solver/hunl_bucket_map.hpp"
 #include "util/aligned_allocator.hpp"
 
 #include <array>
@@ -67,6 +68,12 @@ public:
     static HUNLFlatInfosetTable build(
         const HUNLFlatSolveGraph& graph,
         const std::array<std::size_t, 2>& bucket_count_per_player,
+        HUNLFlatValueLayout layout);
+
+    static HUNLFlatInfosetTable build(
+        const HUNLFlatSolveGraph& graph,
+        const std::array<std::size_t, 2>& bucket_count_per_player,
+        const HUNLFlatBucketMap* bucket_map = nullptr,
         HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetHandAction);
 
     [[nodiscard]] const std::vector<HUNLFlatInfosetTableMeta>& meta() const noexcept;
@@ -83,7 +90,7 @@ public:
 
     [[nodiscard]] std::size_t row_value_count(InfosetId id) const;
     [[nodiscard]] std::size_t total_value_count() const noexcept;
-    [[nodiscard]] std::size_t value_index(InfosetId id, std::size_t hand_idx, std::size_t action_idx) const;
+    [[nodiscard]] std::size_t value_index(InfosetId id, std::size_t bucket_idx, std::size_t action_idx) const;
     [[nodiscard]] HUNLFlatRange infoset_value_range(HUNLFlatRange infoset_range) const;
 
 private:

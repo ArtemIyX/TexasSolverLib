@@ -81,6 +81,14 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     const HUNLFlatSolveGraph& graph,
     const std::array<std::size_t, 2>& bucket_count_per_player,
     HUNLFlatValueLayout layout) {
+    return build(graph, bucket_count_per_player, nullptr, layout);
+}
+
+HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
+    const HUNLFlatSolveGraph& graph,
+    const std::array<std::size_t, 2>& bucket_count_per_player,
+    const HUNLFlatBucketMap* bucket_map,
+    HUNLFlatValueLayout layout) {
     HUNLFlatInfosetTable table;
     table.layout_ = layout;
     table.meta_.reserve(graph.infosets.size());
@@ -91,7 +99,10 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
             throw std::logic_error("flat infoset table requires player-owned infosets");
         }
 
-        const auto bucket_count = bucket_count_per_player[static_cast<std::size_t>(infoset.player)];
+        std::size_t bucket_count = bucket_count_per_player[static_cast<std::size_t>(infoset.player)];
+        if (bucket_map != nullptr) {
+            bucket_count = bucket_map->bucket_count(infoset.id);
+        }
         const auto value_count =
             static_cast<std::uint32_t>(bucket_count * static_cast<std::size_t>(infoset.action_count));
 
