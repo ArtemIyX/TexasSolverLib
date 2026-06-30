@@ -29,6 +29,32 @@ bool is_aligned_16(const void* ptr) noexcept {
 }
 
 #if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+inline void store_row(double* out, const double* in, bool aligned) noexcept {
+#if defined(__AVX2__)
+    if (aligned) {
+        _mm256_store_pd(out, _mm256_load_pd(in));
+    } else {
+        _mm256_storeu_pd(out, _mm256_loadu_pd(in));
+    }
+#else
+    if (aligned) {
+        _mm_store_pd(out, _mm_load_pd(in));
+    } else {
+        _mm_storeu_pd(out, _mm_loadu_pd(in));
+    }
+#endif
+}
+
+inline double sum_row_chunk(const double* values, bool aligned) noexcept {
+#if defined(__AVX2__)
+    return aligned ? _mm256_cvtsd_f64(_mm256_castpd256_pd128(_mm256_load_pd(values))) : _mm256_cvtsd_f64(_mm256_castpd256_pd128(_mm256_loadu_pd(values)));
+#else
+    return aligned ? _mm_cvtsd_f64(_mm_load_pd(values)) : _mm_cvtsd_f64(_mm_loadu_pd(values));
+#endif
+}
+#endif
+
+#if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 namespace {
 
 inline void discount_regrets_sse2(double* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept {
