@@ -25,6 +25,12 @@ enum class Street : std::uint8_t {
     Showdown = 4,
 };
 
+enum class HUNLFlatSolveMode : std::uint8_t {
+    Auto = 0,
+    ExplicitHand = 1,
+    Bucketed = 2,
+};
+
 std::optional<Street> street_from_u8(std::uint8_t value);
 const char* street_token(Street street);
 std::uint8_t cards_to_deal(Street street);
@@ -109,6 +115,7 @@ struct HUNLConfig {
     int rake_cap = 0;
     std::optional<std::string> abstraction_path = std::nullopt;
     std::optional<std::string> abstraction_version = std::nullopt;
+    HUNLFlatSolveMode flat_solve_mode = HUNLFlatSolveMode::Auto;
     bool use_pcs = false;
 
     void validate() const;

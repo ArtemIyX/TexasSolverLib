@@ -57,6 +57,15 @@ bool should_use_flat_hunl_backend(
     return force_parallel || workers > 1 || config.starting_street == Street::Turn;
 }
 
+HUNLFlatSolveMode resolve_flat_solve_mode(const HUNLConfig& config) {
+    if (config.flat_solve_mode != HUNLFlatSolveMode::Auto) {
+        return config.flat_solve_mode;
+    }
+    return config.abstraction_path.has_value()
+        ? HUNLFlatSolveMode::Bucketed
+        : HUNLFlatSolveMode::ExplicitHand;
+}
+
 WorkerProfile to_worker_profile(const HUNLFlatStageProfile& flat_profile) {
     WorkerProfile profile;
     profile.cfr_seconds =
@@ -129,6 +138,10 @@ void validate_config(const HUNLConfig& config) {
     if (config.initial_board.size() != expected) {
         throw std::invalid_argument("initial_board length does not match starting_street");
     }
+    if (config.flat_solve_mode == HUNLFlatSolveMode::Bucketed &&
+        !config.abstraction_path.has_value()) {
+        throw std::invalid_argument("bucketed flat solve mode requires abstraction_path");
+    }
     config.validate();
 }
 
@@ -154,6 +167,7 @@ HUNLSolveOutput solve_hunl_postflop(
     if (use_flat_backend) {
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto graph = HUNLFlatSolveGraph::build(shared);
+        const auto flat_solve_mode = resolve_flat_solve_mode(config);
         std::array<std::size_t, 2> bucket_count_per_player = {1326, 1326};
         if (config.initial_hole_cards.has_value()) {
             bucket_count_per_player = {1, 1};
@@ -162,6 +176,7 @@ HUNLSolveOutput solve_hunl_postflop(
         HUNLFlatDCFR solver(
             std::move(graph),
             bucket_count_per_player,
+            flat_solve_mode,
             HUNLFlatValueLayout::InfosetHandAction,
             workers,
             alpha,

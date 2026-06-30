@@ -28,8 +28,16 @@ double bucket_row_weight(
 
 }  // namespace
 
-std::optional<HUNLFlatBucketMap> HUNLFlatDCFR::load_bucket_map_for_graph(const HUNLFlatSolveGraph& graph) {
+std::optional<HUNLFlatBucketMap> HUNLFlatDCFR::load_bucket_map_for_graph(
+    const HUNLFlatSolveGraph& graph,
+    HUNLFlatSolveMode solve_mode) {
+    if (solve_mode == HUNLFlatSolveMode::ExplicitHand) {
+        return std::nullopt;
+    }
     if (!graph.config || !graph.config->abstraction_path.has_value()) {
+        if (solve_mode == HUNLFlatSolveMode::Bucketed) {
+            throw std::invalid_argument("bucketed flat solve mode requires abstraction_path");
+        }
         return std::nullopt;
     }
     return HUNLFlatBucketMap::from_abstraction(
@@ -140,8 +148,27 @@ HUNLFlatDCFR::HUNLFlatDCFR(
     double alpha,
     double beta,
     double gamma)
+    : HUNLFlatDCFR(
+          std::move(graph),
+          bucket_count_per_player,
+          HUNLFlatSolveMode::Auto,
+          layout,
+          workers,
+          alpha,
+          beta,
+          gamma) {}
+
+HUNLFlatDCFR::HUNLFlatDCFR(
+    HUNLFlatSolveGraph graph,
+    std::array<std::size_t, 2> bucket_count_per_player,
+    HUNLFlatSolveMode solve_mode,
+    HUNLFlatValueLayout layout,
+    std::size_t workers,
+    double alpha,
+    double beta,
+    double gamma)
     : graph_(std::move(graph)),
-      bucket_map_(load_bucket_map_for_graph(graph_)),
+      bucket_map_(load_bucket_map_for_graph(graph_, solve_mode)),
       terminal_table_(build_terminal_table_for_graph(graph_, bucket_map_)),
       infoset_table_(HUNLFlatInfosetTable::build(
           graph_,

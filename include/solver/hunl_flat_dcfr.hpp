@@ -55,6 +55,16 @@ public:
         double beta = 0.0,
         double gamma = 2.0);
 
+    explicit HUNLFlatDCFR(
+        HUNLFlatSolveGraph graph,
+        std::array<std::size_t, 2> bucket_count_per_player,
+        HUNLFlatSolveMode solve_mode,
+        HUNLFlatValueLayout layout,
+        std::size_t workers = 1,
+        double alpha = 1.5,
+        double beta = 0.0,
+        double gamma = 2.0);
+
     ~HUNLFlatDCFR();
 
     HUNLFlatDCFR(const HUNLFlatDCFR&) = delete;
@@ -118,7 +128,9 @@ private:
     void backward_value_stage();
     void regret_update_stage();
     void average_strategy_stage();
-    static std::optional<HUNLFlatBucketMap> load_bucket_map_for_graph(const HUNLFlatSolveGraph& graph);
+    static std::optional<HUNLFlatBucketMap> load_bucket_map_for_graph(
+        const HUNLFlatSolveGraph& graph,
+        HUNLFlatSolveMode solve_mode);
     static std::optional<HUNLBucketTerminalTable> build_terminal_table_for_graph(
         const HUNLFlatSolveGraph& graph,
         const std::optional<HUNLFlatBucketMap>& bucket_map);

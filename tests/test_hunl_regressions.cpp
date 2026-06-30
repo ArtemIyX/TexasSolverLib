@@ -73,3 +73,38 @@ TEST_CASE(hunl_regression_flat_backend_populates_value_metrics) {
     EXPECT_TRUE(!output.average_strategy.empty());
 }
 
+TEST_CASE(hunl_regression_explicit_hand_flat_mode_runs_without_abstraction) {
+    auto config = core::default_tiny_subgame();
+    config.flat_solve_mode = core::HUNLFlatSolveMode::ExplicitHand;
+
+    const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
+    EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
+#if defined(_MSC_VER)
+    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
+#else
+    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
+#endif
+
+    const auto output = core::lib::solve_hunl_postflop(config, 2, 1.5, 0.0, 2.0, 1, 8, true);
+    EXPECT_TRUE(std::isfinite(output.game_value));
+    EXPECT_TRUE(std::isfinite(output.exploitability));
+}
+
+TEST_CASE(hunl_regression_bucketed_flat_mode_requires_abstraction) {
+    auto config = core::default_tiny_subgame();
+    config.flat_solve_mode = core::HUNLFlatSolveMode::Bucketed;
+    config.abstraction_path = std::nullopt;
+
+    const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
+    EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
+#if defined(_MSC_VER)
+    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
+#else
+    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
+#endif
+
+    EXPECT_THROW(
+        static_cast<void>(core::lib::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 1, 8, true)),
+        std::invalid_argument);
+}
+
