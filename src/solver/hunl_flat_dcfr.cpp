@@ -482,16 +482,15 @@ void HUNLFlatDCFR::backward_value_stage() {
                 }
 
                 if (meta.type == HUNLFlatNodeType::Chance) {
-                    double total = 0.0;
+                    std::array<double, 16> weights = {};
                     std::array<double, 16> row = {};
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
                         const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
-                        const auto child_value = node_values_[outcome.child];
-                        row[i] = child_value;
-                        total += outcome.probability * child_value;
+                        row[i] = node_values_[outcome.child];
+                        weights[i] = outcome.probability;
                     }
                     copy_values(action_values_.data() + meta.child_begin, row.data(), meta.chance_count);
-                    node_values_[node_idx] = total;
+                    node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.chance_count);
                     continue;
                 }
 
@@ -502,12 +501,11 @@ void HUNLFlatDCFR::backward_value_stage() {
                 const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
                 const std::size_t representative_hand = 0;
-                double node_value = 0.0;
                 std::array<double, 16> row = {};
+                std::array<double, 16> weights = {};
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
-                    const auto child_value = node_values_[child];
-                    row[i] = child_value;
+                    row[i] = node_values_[child];
 
                     double action_prob = 1.0 / static_cast<double>(meta.child_count);
                     if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
@@ -515,10 +513,10 @@ void HUNLFlatDCFR::backward_value_stage() {
                     } else {
                         action_prob = strategy[representative_hand * static_cast<std::size_t>(infoset_meta.action_count) + i];
                     }
-                    node_value += action_prob * child_value;
+                    weights[i] = action_prob;
                 }
                 copy_values(action_values_.data() + meta.child_begin, row.data(), meta.child_count);
-                node_values_[node_idx] = node_value;
+                node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.child_count);
             }
         });
     }

@@ -425,6 +425,120 @@ void copy_values(double* out, const double* in, std::size_t len) noexcept {
 #endif
 }
 
+double reduce_action_values(const double* values, std::size_t len) noexcept {
+    if (len == 0) {
+        return 0.0;
+    }
+
+    switch (len) {
+        case 1:
+            return values[0];
+        case 2:
+            return values[0] + values[1];
+        case 3:
+            return values[0] + values[1] + values[2];
+        case 4:
+            return values[0] + values[1] + values[2] + values[3];
+        default:
+#if defined(__AVX2__)
+        {
+            std::size_t i = 0;
+            __m256d sum = _mm256_setzero_pd();
+            for (; i + 3 < len; i += 4) {
+                sum = _mm256_add_pd(sum, _mm256_loadu_pd(values + i));
+            }
+            alignas(32) double tmp[4];
+            _mm256_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+            for (; i < len; ++i) {
+                total += values[i];
+            }
+            return total;
+        }
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+        {
+            std::size_t i = 0;
+            __m128d sum = _mm_setzero_pd();
+            for (; i + 1 < len; i += 2) {
+                sum = _mm_add_pd(sum, _mm_loadu_pd(values + i));
+            }
+            alignas(16) double tmp[2];
+            _mm_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1];
+            for (; i < len; ++i) {
+                total += values[i];
+            }
+            return total;
+        }
+#else
+        double total = 0.0;
+        for (std::size_t i = 0; i < len; ++i) {
+            total += values[i];
+        }
+        return total;
+#endif
+    }
+}
+
+double reduce_weighted_action_values(const double* values, const double* weights, std::size_t len) noexcept {
+    if (len == 0) {
+        return 0.0;
+    }
+
+    switch (len) {
+        case 1:
+            return values[0] * weights[0];
+        case 2:
+            return values[0] * weights[0] + values[1] * weights[1];
+        case 3:
+            return values[0] * weights[0] + values[1] * weights[1] + values[2] * weights[2];
+        case 4:
+            return values[0] * weights[0] + values[1] * weights[1] + values[2] * weights[2] + values[3] * weights[3];
+        default:
+#if defined(__AVX2__)
+        {
+            std::size_t i = 0;
+            __m256d sum = _mm256_setzero_pd();
+            for (; i + 3 < len; i += 4) {
+                const __m256d v = _mm256_loadu_pd(values + i);
+                const __m256d w = _mm256_loadu_pd(weights + i);
+                sum = _mm256_add_pd(sum, _mm256_mul_pd(v, w));
+            }
+            alignas(32) double tmp[4];
+            _mm256_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+            for (; i < len; ++i) {
+                total += values[i] * weights[i];
+            }
+            return total;
+        }
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+        {
+            std::size_t i = 0;
+            __m128d sum = _mm_setzero_pd();
+            for (; i + 1 < len; i += 2) {
+                const __m128d v = _mm_loadu_pd(values + i);
+                const __m128d w = _mm_loadu_pd(weights + i);
+                sum = _mm_add_pd(sum, _mm_mul_pd(v, w));
+            }
+            alignas(16) double tmp[2];
+            _mm_store_pd(tmp, sum);
+            double total = tmp[0] + tmp[1];
+            for (; i < len; ++i) {
+                total += values[i] * weights[i];
+            }
+            return total;
+        }
+#else
+        double total = 0.0;
+        for (std::size_t i = 0; i < len; ++i) {
+            total += values[i] * weights[i];
+        }
+        return total;
+#endif
+    }
+}
+
 void update_regret_sum_vector(
     double* regret,
     const double* action_value,

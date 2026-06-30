@@ -53,6 +53,8 @@ void update_strategy_sum(
     std::size_t len,
     double own_reach) noexcept;
 void copy_values(double* out, const double* in, std::size_t len) noexcept;
+double reduce_action_values(const double* values, std::size_t len) noexcept;
+double reduce_weighted_action_values(const double* values, const double* weights, std::size_t len) noexcept;
 void update_regret_sum_vector(
     double* regret,
     const double* action_value,
