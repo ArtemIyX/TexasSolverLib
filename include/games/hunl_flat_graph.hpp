@@ -65,6 +65,8 @@ struct HUNLFlatInfoset {
     std::uint32_t node_count = 0;
     std::uint8_t action_count = 0;
     PlayerId player = -1;
+    Street street = Street::Preflop;
+    std::vector<std::uint8_t> board;
     std::string key;
 };
 

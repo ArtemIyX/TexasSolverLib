@@ -46,11 +46,16 @@ TerminalKind TerminalKind::showdown(bool board_complete) {
     return kind;
 }
 
-HUNLTreeNode HUNLTreeNode::empty(PlayerId player, const std::array<int, 2>& contrib, Street street) {
+HUNLTreeNode HUNLTreeNode::empty(
+    PlayerId player,
+    const std::array<int, 2>& contrib,
+    Street street,
+    std::vector<std::uint8_t> board) {
     HUNLTreeNode node;
     node.player = player;
     node.contrib = contrib;
     node.street = street;
+    node.board = std::move(board);
     return node;
 }
 
@@ -131,7 +136,7 @@ std::uint32_t HUNLTree::build_node(
     }
 
     const auto my_idx = static_cast<std::uint32_t>(nodes.size());
-    nodes.push_back(HUNLTreeNode::empty(state.cur_player, state.contributions, state.street));
+    nodes.push_back(HUNLTreeNode::empty(state.cur_player, state.contributions, state.street, state.board));
     memo.emplace(key, my_idx);
     max_depth = std::max(max_depth, depth);
 

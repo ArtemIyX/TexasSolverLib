@@ -1,6 +1,7 @@
 #include "solver/hunl_flat_dcfr.hpp"
 
 #include "solver/dcfr.hpp"
+#include "util/abstraction.hpp"
 #include "util/simd.hpp"
 
 #include <array>
@@ -128,6 +129,11 @@ HUNLFlatDCFR::HUNLFlatDCFR(
     for (auto& scratch : worker_scratch_) {
         scratch.ensure_capacity(graph_.nodes.size(), graph_.children.size());
     }
+    if (graph_.config && graph_.config->abstraction_path.has_value()) {
+        bucket_map_.emplace(HUNLFlatBucketMap::from_abstraction(
+            graph_,
+            load_abstraction(*graph_.config->abstraction_path)));
+    }
     scheduler_diagnostics_.worker_profiles.assign(worker_count_, HUNLFlatStageProfile{});
     worker_pool_ = std::make_unique<WorkerPool>(worker_count_);
 }
@@ -140,6 +146,10 @@ std::size_t HUNLFlatDCFR::worker_count() const noexcept {
 
 const HUNLFlatSchedulerDiagnostics& HUNLFlatDCFR::scheduler_diagnostics() const noexcept {
     return scheduler_diagnostics_;
+}
+
+const HUNLFlatBucketMap* HUNLFlatDCFR::bucket_map() const noexcept {
+    return bucket_map_ ? &*bucket_map_ : nullptr;
 }
 
 void HUNLFlatDCFR::add_stage_seconds(

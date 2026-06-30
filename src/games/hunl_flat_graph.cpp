@@ -77,6 +77,8 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
     std::vector<std::vector<std::uint32_t>> infoset_node_lists;
     std::vector<std::uint8_t> infoset_action_counts;
     std::vector<PlayerId> infoset_players;
+    std::vector<Street> infoset_streets;
+    std::vector<std::vector<std::uint8_t>> infoset_boards;
     std::vector<std::string> infoset_keys;
 
     for (std::uint32_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
@@ -128,6 +130,8 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
                 infoset_node_lists.push_back({});
                 infoset_action_counts.push_back(flat_node.action_count);
                 infoset_players.push_back(flat_node.player);
+                infoset_streets.push_back(flat_node.street);
+                infoset_boards.push_back(node.board);
                 infoset_keys.push_back(*node.infoset_key);
                 flat_node.infoset_id = id;
             } else {
@@ -139,6 +143,14 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
                 const auto player = infoset_players[flat_node.infoset_id.value];
                 if (player != flat_node.player) {
                     throw std::logic_error("infoset nodes must agree on owning player");
+                }
+                const auto street = infoset_streets[flat_node.infoset_id.value];
+                if (street != flat_node.street) {
+                    throw std::logic_error("infoset nodes must agree on street");
+                }
+                const auto& board = infoset_boards[flat_node.infoset_id.value];
+                if (board != node.board) {
+                    throw std::logic_error("infoset nodes must agree on board");
                 }
             }
             infoset_node_lists[flat_node.infoset_id.value].push_back(node_idx);
@@ -189,6 +201,8 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         infoset.node_count = static_cast<std::uint32_t>(node_list.size());
         infoset.action_count = infoset_action_counts[infoset_index];
         infoset.player = infoset_players[infoset_index];
+        infoset.street = infoset_streets[infoset_index];
+        infoset.board = infoset_boards[infoset_index];
         infoset.key = infoset_keys[infoset_index];
         graph.infoset_nodes.insert(graph.infoset_nodes.end(), node_list.begin(), node_list.end());
         graph.infosets.push_back(std::move(infoset));

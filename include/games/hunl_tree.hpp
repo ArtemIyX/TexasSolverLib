@@ -35,6 +35,7 @@ struct HUNLTreeNode {
     std::array<double, 2> terminal_utility = {0.0, 0.0};
     std::array<int, 2> contrib = {0, 0};
     Street street = Street::Preflop;
+    std::vector<std::uint8_t> board;
     std::uint8_t num_actions = 0;
     std::vector<ActionId> legal_actions;
     std::vector<std::uint32_t> children;
@@ -44,7 +45,11 @@ struct HUNLTreeNode {
     std::vector<std::pair<std::uint8_t, double>> chance_outcomes;
     std::vector<std::uint32_t> chance_children;
 
-    static HUNLTreeNode empty(PlayerId player, const std::array<int, 2>& contrib, Street street);
+    static HUNLTreeNode empty(
+        PlayerId player,
+        const std::array<int, 2>& contrib,
+        Street street,
+        std::vector<std::uint8_t> board);
 };
 
 struct HUNLTree {

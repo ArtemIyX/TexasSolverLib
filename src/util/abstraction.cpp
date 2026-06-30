@@ -312,8 +312,35 @@ AbstractionMetadata parse_metadata(const std::vector<std::uint8_t>& raw) {
         if (end == std::string::npos) return {};
         return text.substr(start + 1, end - start - 1);
     };
+    auto find_num_list = [&](std::string_view key) -> std::vector<std::uint16_t> {
+        const auto pos = text.find(key);
+        if (pos == std::string::npos) return {};
+        auto start = text.find('[', pos);
+        if (start == std::string::npos) return {};
+        auto end = text.find(']', start);
+        if (end == std::string::npos) return {};
+
+        std::vector<std::uint16_t> values;
+        std::size_t i = start + 1;
+        while (i < end) {
+            while (i < end && !std::isdigit(static_cast<unsigned char>(text[i]))) {
+                ++i;
+            }
+            if (i >= end) {
+                break;
+            }
+            std::size_t j = i;
+            while (j < end && std::isdigit(static_cast<unsigned char>(text[j]))) {
+                ++j;
+            }
+            values.push_back(static_cast<std::uint16_t>(std::stoul(text.substr(i, j - i))));
+            i = j;
+        }
+        return values;
+    };
     meta.schema_version = static_cast<std::uint8_t>(find_num("schema_version"));
     meta.version = find_str("\"version\"");
+    meta.bucket_counts = find_num_list("bucket_counts");
     meta.feature_bins = static_cast<std::uint16_t>(find_num("feature_bins"));
     meta.seed = find_num("seed");
     return meta;
