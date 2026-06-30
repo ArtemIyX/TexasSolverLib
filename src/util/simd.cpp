@@ -125,7 +125,9 @@ inline double positive_regrets_and_total_sse2(const double* regrets, double* out
     std::size_t i = 0;
     for (; i + 1 < len; i += 2) {
         const __m128d v = _mm_loadu_pd(regrets + i);
-        const __m128d p = _mm_max_pd(v, zero);
+        const __m128d nan_mask = _mm_cmpunord_pd(v, v);
+        const __m128d positive = _mm_max_pd(v, zero);
+        const __m128d p = _mm_or_pd(_mm_and_pd(nan_mask, v), _mm_andnot_pd(nan_mask, positive));
         _mm_storeu_pd(out_positive + i, p);
         alignas(16) double tmp[2];
         _mm_store_pd(tmp, p);
@@ -144,7 +146,10 @@ inline double positive_regrets_and_total_avx2(const double* regrets, double* out
     std::size_t i = 0;
     for (; i + 3 < len; i += 4) {
         const __m256d v = _mm256_loadu_pd(regrets + i);
-        const __m256d p = _mm256_max_pd(v, zero);
+        const __m256d nan_mask = _mm256_cmp_pd(v, v, _CMP_UNORD_Q);
+        const __m256d positive = _mm256_max_pd(v, zero);
+        const __m256d p =
+            _mm256_or_pd(_mm256_and_pd(nan_mask, v), _mm256_andnot_pd(nan_mask, positive));
         _mm256_storeu_pd(out_positive + i, p);
         alignas(32) double tmp[4];
         _mm256_store_pd(tmp, p);

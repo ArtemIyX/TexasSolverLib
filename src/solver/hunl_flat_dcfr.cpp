@@ -9,6 +9,7 @@
 #include <cmath>
 #include <exception>
 #include <stdexcept>
+#include <vector>
 
 namespace core {
 
@@ -356,8 +357,23 @@ void HUNLFlatDCFR::compute_strategy_stage() {
             }
 
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
-                compute_strategy_row(regret + hand_offset, strategy + hand_offset, meta.action_count);
+                double positive_total = 0.0;
+                for (std::size_t a = 0; a < meta.action_count; ++a) {
+                    const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
+                    strategy[idx] = std::max(regret[idx], 0.0);
+                    positive_total += strategy[idx];
+                }
+                if (positive_total > 0.0) {
+                    for (std::size_t a = 0; a < meta.action_count; ++a) {
+                        const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
+                        strategy[idx] /= positive_total;
+                    }
+                } else {
+                    const double uniform = 1.0 / static_cast<double>(meta.action_count);
+                    for (std::size_t a = 0; a < meta.action_count; ++a) {
+                        strategy[a * static_cast<std::size_t>(meta.hand_count) + h] = uniform;
+                    }
+                }
             }
         }
     });
@@ -482,8 +498,8 @@ void HUNLFlatDCFR::backward_value_stage() {
                 }
 
                 if (meta.type == HUNLFlatNodeType::Chance) {
-                    std::array<double, 16> weights = {};
-                    std::array<double, 16> row = {};
+                    std::vector<double> weights(meta.chance_count, 0.0);
+                    std::vector<double> row(meta.chance_count, 0.0);
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
                         const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
                         row[i] = node_values_[outcome.child];
@@ -501,8 +517,8 @@ void HUNLFlatDCFR::backward_value_stage() {
                 const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
                 const std::size_t representative_hand = 0;
-                std::array<double, 16> row = {};
-                std::array<double, 16> weights = {};
+                std::vector<double> row(meta.child_count, 0.0);
+                std::vector<double> weights(meta.child_count, 0.0);
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
                     row[i] = node_values_[child];
@@ -550,7 +566,6 @@ void HUNLFlatDCFR::regret_update_stage() {
             }
 
             for (std::size_t h = 0; h < meta.hand_count; ++h) {
-                const auto hand_offset = h * static_cast<std::size_t>(meta.action_count);
                 for (std::size_t a = 0; a < meta.action_count; ++a) {
                     const auto row_idx = a * static_cast<std::size_t>(meta.hand_count) + h;
                     const auto edge_idx = node_meta.child_begin + a;

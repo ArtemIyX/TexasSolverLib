@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -70,6 +71,87 @@ TEST_CASE(simd_compute_strategy_row_matches_scalar) {
     core::compute_strategy_row_scalar(regrets.data(), via_scalar.data(), regrets.size());
 
     for (std::size_t i = 0; i < regrets.size(); ++i) {
+        EXPECT_TRUE(std::abs(via_dispatch[i] - via_scalar[i]) < TOL);
+    }
+}
+
+TEST_CASE(simd_copy_values_matches_scalar_and_handles_empty_rows) {
+    std::vector<double> empty;
+    std::vector<double> empty_out;
+    core::copy_values(empty_out.data(), empty.data(), empty.size());
+
+    const std::vector<double> values = {1.0, -2.5, 3.25, 4.75, -9.0};
+    std::vector<double> copied(values.size(), 0.0);
+    core::copy_values(copied.data(), values.data(), values.size());
+
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        EXPECT_TRUE(std::abs(copied[i] - values[i]) < TOL);
+    }
+}
+
+TEST_CASE(simd_row_normalization_matches_scalar_and_handles_zero_length) {
+    std::vector<double> empty_in;
+    std::vector<double> empty_out;
+    core::normalize_row(empty_in.data(), empty_out.data(), empty_in.size());
+
+    const std::vector<double> values = {2.0, 3.0, 5.0, 0.0};
+    std::vector<double> via_dispatch(values.size(), 0.0);
+    std::vector<double> via_scalar(values.size(), 0.0);
+    core::normalize_row(values.data(), via_dispatch.data(), values.size());
+    core::normalize_row(values.data(), via_scalar.data(), values.size());
+
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        EXPECT_TRUE(std::abs(via_dispatch[i] - via_scalar[i]) < TOL);
+    }
+}
+
+TEST_CASE(simd_row_reduction_helpers_match_scalar_and_cover_special_values) {
+    const std::vector<double> values = {1.5, -2.0, 4.0, std::numeric_limits<double>::infinity()};
+    const std::vector<double> weights = {0.25, 0.5, 0.75, 1.0};
+
+    EXPECT_TRUE(core::reduce_action_values(values.data(), 0) == 0.0);
+    EXPECT_TRUE(core::reduce_weighted_action_values(values.data(), weights.data(), 0) == 0.0);
+
+    EXPECT_TRUE(core::reduce_action_values(values.data(), 2) == values[0] + values[1]);
+    EXPECT_TRUE(core::reduce_weighted_action_values(values.data(), weights.data(), 2) ==
+                values[0] * weights[0] + values[1] * weights[1]);
+
+    const std::vector<double> regrets = {
+        -std::numeric_limits<double>::infinity(),
+        -3.0,
+        0.0,
+        std::numeric_limits<double>::quiet_NaN(),
+        5.0};
+    std::vector<double> positive(regrets.size(), 0.0);
+    const double total = core::positive_regrets_and_total(regrets.data(), positive.data(), regrets.size());
+
+    EXPECT_TRUE(std::isnan(positive[3]));
+    EXPECT_TRUE(std::isnan(total));
+}
+
+TEST_CASE(simd_update_strategy_sum_matches_scalar_and_handles_small_rows) {
+    std::vector<double> empty;
+    core::update_strategy_sum(empty.data(), empty.data(), 0, 1.0);
+
+    const std::vector<double> strategy = {0.1, 0.2, 0.3, 0.4};
+    std::vector<double> via_dispatch(strategy.size(), 1.0);
+    std::vector<double> via_scalar(strategy.size(), 1.0);
+    core::update_strategy_sum(via_dispatch.data(), strategy.data(), strategy.size(), 2.5);
+    core::update_strategy_sum_scalar(via_scalar.data(), strategy.data(), strategy.size(), 2.5);
+
+    for (std::size_t i = 0; i < strategy.size(); ++i) {
+        EXPECT_TRUE(std::abs(via_dispatch[i] - via_scalar[i]) < TOL);
+    }
+}
+
+TEST_CASE(simd_update_regret_sum_matches_scalar) {
+    const std::vector<double> action_values = {4.0, -1.0, 7.5, 0.25, 3.5};
+    std::vector<double> via_dispatch(action_values.size(), 0.0);
+    std::vector<double> via_scalar(action_values.size(), 0.0);
+    core::update_regret_sum(via_dispatch.data(), action_values.data(), action_values.size(), 1.75, 0.5);
+    core::update_regret_sum_scalar(via_scalar.data(), action_values.data(), action_values.size(), 1.75, 0.5);
+
+    for (std::size_t i = 0; i < action_values.size(); ++i) {
         EXPECT_TRUE(std::abs(via_dispatch[i] - via_scalar[i]) < TOL);
     }
 }

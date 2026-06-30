@@ -2,7 +2,10 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <algorithm>
+#include <cmath>
 #include <memory>
+#include <string>
 
 TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
@@ -327,12 +330,18 @@ TEST_CASE(hunl_flat_dcfr_regret_update_uses_action_minus_node_value) {
     const auto root_infoset = graph.node_meta[graph.root].infoset_id;
     auto* regret_before = table.regret_mut(root_infoset);
     const auto before0 = regret_before[0];
-    const auto before1 = regret_before[table.meta()[root_infoset.value].hand_count];
+    const auto action_count = table.meta()[root_infoset.value].action_count;
+    const auto hand_count = table.meta()[root_infoset.value].hand_count;
+    const auto before1 = action_count >= 2 ? regret_before[hand_count] : before0;
 
     solver.run_iteration();
 
     const auto* regret_after = table.regret(root_infoset);
-    EXPECT_TRUE(regret_after[0] != before0 || regret_after[table.meta()[root_infoset.value].hand_count] != before1);
+    if (action_count >= 2) {
+        EXPECT_TRUE(regret_after[0] != before0 || regret_after[hand_count] != before1);
+    } else {
+        EXPECT_TRUE(regret_after[0] != before0);
+    }
 }
 
 TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
@@ -348,13 +357,16 @@ TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
     const auto root_infoset = graph.node_meta[graph.root].infoset_id;
     const auto* strategy = solver.infoset_table().current_strategy(root_infoset);
     const auto* strategy_sum = solver.infoset_table().strategy_sum(root_infoset);
+    const auto action_count = solver.infoset_table().meta()[root_infoset.value].action_count;
     const auto hand_count = solver.infoset_table().meta()[root_infoset.value].hand_count;
     const auto own_reach = graph.node_meta[graph.root].player == 0
         ? solver.player0_reach()[graph.root] * solver.chance_reach()[graph.root]
         : solver.player1_reach()[graph.root] * solver.chance_reach()[graph.root];
 
     EXPECT_NEAR(strategy_sum[0], own_reach * strategy[0], 1e-12);
-    EXPECT_NEAR(strategy_sum[hand_count], own_reach * strategy[hand_count], 1e-12);
+    if (action_count >= 2) {
+        EXPECT_NEAR(strategy_sum[hand_count], own_reach * strategy[hand_count], 1e-12);
+    }
 }
 
 TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration) {
@@ -370,4 +382,76 @@ TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration) {
     for (const auto& meta : solver.infoset_table().meta()) {
         EXPECT_EQ(meta.last_discount_iter, 2U);
     }
+}
+
+TEST_CASE(hunl_flat_dcfr_produces_normalized_strategies_after_simd_passes) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        2);
+
+    solver.run_iterations(3);
+
+    EXPECT_EQ(solver.iterations(), 3U);
+    EXPECT_TRUE(solver.profile().discount_seconds >= 0.0);
+    EXPECT_TRUE(solver.profile().strategy_seconds >= 0.0);
+    EXPECT_TRUE(solver.profile().reach_seconds >= 0.0);
+    EXPECT_TRUE(solver.profile().terminal_seconds >= 0.0);
+    EXPECT_TRUE(solver.profile().backward_seconds >= 0.0);
+    EXPECT_TRUE(solver.profile().regret_seconds >= 0.0);
+    EXPECT_TRUE(solver.profile().average_strategy_seconds >= 0.0);
+
+    for (const auto& meta : solver.infoset_table().meta()) {
+        const auto* strategy = solver.infoset_table().current_strategy(meta.id);
+        for (std::size_t h = 0; h < meta.hand_count; ++h) {
+            double sum = 0.0;
+            for (std::size_t a = 0; a < meta.action_count; ++a) {
+                const auto idx = h * static_cast<std::size_t>(meta.action_count) + a;
+                EXPECT_TRUE(strategy[idx] >= 0.0 || std::isnan(strategy[idx]));
+                sum += strategy[idx];
+            }
+            EXPECT_NEAR(sum, 1.0, 1e-12);
+        }
+    }
+}
+
+TEST_CASE(hunl_flat_dcfr_matches_across_worker_counts_on_small_tree) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph_a = core::HUNLFlatSolveGraph::build(config);
+    const auto graph_b = core::HUNLFlatSolveGraph::build(config);
+
+    core::HUNLFlatDCFR single_worker(
+        graph_a,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        1);
+    core::HUNLFlatDCFR two_workers(
+        graph_b,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        2);
+
+    single_worker.run_iterations(2);
+    two_workers.run_iterations(2);
+
+    const auto exported_single = single_worker.export_average_strategy();
+    const auto exported_parallel = two_workers.export_average_strategy();
+
+    EXPECT_EQ(exported_single.size(), exported_parallel.size());
+    for (const auto& [key, strategy] : exported_single) {
+        const auto it = exported_parallel.find(key);
+        EXPECT_TRUE(it != exported_parallel.end());
+        EXPECT_EQ(strategy.size(), it->second.size());
+        for (std::size_t i = 0; i < strategy.size(); ++i) {
+            EXPECT_NEAR(strategy[i], it->second[i], 1e-12);
+        }
+    }
+
+    EXPECT_TRUE(single_worker.profile().strategy_seconds >= 0.0);
+    EXPECT_TRUE(two_workers.profile().strategy_seconds >= 0.0);
+    EXPECT_TRUE(single_worker.profile().backward_seconds >= 0.0);
+    EXPECT_TRUE(two_workers.profile().backward_seconds >= 0.0);
 }
