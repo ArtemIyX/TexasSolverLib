@@ -3,6 +3,7 @@
 #include "solver/dcfr.hpp"
 #include "util/simd.hpp"
 
+#include <array>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -482,12 +483,14 @@ void HUNLFlatDCFR::backward_value_stage() {
 
                 if (meta.type == HUNLFlatNodeType::Chance) {
                     double total = 0.0;
+                    std::array<double, 16> row = {};
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
                         const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
                         const auto child_value = node_values_[outcome.child];
-                        action_values_[meta.child_begin + i] = child_value;
+                        row[i] = child_value;
                         total += outcome.probability * child_value;
                     }
+                    copy_values(action_values_.data() + meta.child_begin, row.data(), meta.chance_count);
                     node_values_[node_idx] = total;
                     continue;
                 }
@@ -500,10 +503,11 @@ void HUNLFlatDCFR::backward_value_stage() {
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
                 const std::size_t representative_hand = 0;
                 double node_value = 0.0;
+                std::array<double, 16> row = {};
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
                     const auto child_value = node_values_[child];
-                    action_values_[meta.child_begin + i] = child_value;
+                    row[i] = child_value;
 
                     double action_prob = 1.0 / static_cast<double>(meta.child_count);
                     if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
@@ -513,6 +517,7 @@ void HUNLFlatDCFR::backward_value_stage() {
                     }
                     node_value += action_prob * child_value;
                 }
+                copy_values(action_values_.data() + meta.child_begin, row.data(), meta.child_count);
                 node_values_[node_idx] = node_value;
             }
         });

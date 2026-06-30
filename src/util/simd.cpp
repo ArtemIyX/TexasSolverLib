@@ -401,6 +401,30 @@ void update_strategy_sum(
 #endif
 }
 
+void copy_values(double* out, const double* in, std::size_t len) noexcept {
+#if defined(__AVX2__)
+    std::size_t i = 0;
+    for (; i + 3 < len; i += 4) {
+        _mm256_storeu_pd(out + i, _mm256_loadu_pd(in + i));
+    }
+    for (; i < len; ++i) {
+        out[i] = in[i];
+    }
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    std::size_t i = 0;
+    for (; i + 1 < len; i += 2) {
+        _mm_storeu_pd(out + i, _mm_loadu_pd(in + i));
+    }
+    for (; i < len; ++i) {
+        out[i] = in[i];
+    }
+#else
+    for (std::size_t i = 0; i < len; ++i) {
+        out[i] = in[i];
+    }
+#endif
+}
+
 void update_regret_sum_vector(
     double* regret,
     const double* action_value,
