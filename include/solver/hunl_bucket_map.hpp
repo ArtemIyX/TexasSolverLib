@@ -18,6 +18,7 @@ struct HUNLFlatBucketEntry {
     std::string canonical_board;
     std::uint32_t bucket_count = 0;
     std::vector<std::uint32_t> dense_bucket_ids;
+    std::vector<std::uint32_t> bucket_hand_counts;
     std::vector<double> bucket_weights;
 };
 
@@ -33,6 +34,8 @@ public:
     [[nodiscard]] std::int32_t lookup_bucket(InfosetId infoset_id, const std::array<std::uint8_t, 2>& hole) const;
     [[nodiscard]] std::uint32_t bucket_count(InfosetId infoset_id) const;
     [[nodiscard]] const std::vector<std::uint32_t>& dense_bucket_ids(InfosetId infoset_id) const;
+    [[nodiscard]] std::uint32_t bucket_hand_count(InfosetId infoset_id, std::size_t bucket_idx) const;
+    [[nodiscard]] double bucket_weight(InfosetId infoset_id, std::size_t bucket_idx) const;
     [[nodiscard]] const std::vector<double>* bucket_weights(InfosetId infoset_id) const;
 
     void set_bucket_weights(InfosetId infoset_id, std::vector<double> weights);
