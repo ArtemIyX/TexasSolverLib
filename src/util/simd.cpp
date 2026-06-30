@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 #if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
@@ -17,6 +18,14 @@ double nan_preserving_max(double a, double b) noexcept {
         return std::numeric_limits<double>::quiet_NaN();
     }
     return a >= b ? a : b;
+}
+
+bool is_aligned_32(const void* ptr) noexcept {
+    return (reinterpret_cast<std::uintptr_t>(ptr) & 31U) == 0;
+}
+
+bool is_aligned_16(const void* ptr) noexcept {
+    return (reinterpret_cast<std::uintptr_t>(ptr) & 15U) == 0;
 }
 
 #if defined(__AVX2__) || defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
@@ -404,16 +413,26 @@ void update_strategy_sum(
 void copy_values(double* out, const double* in, std::size_t len) noexcept {
 #if defined(__AVX2__)
     std::size_t i = 0;
+    const bool aligned = is_aligned_32(out) && is_aligned_32(in);
     for (; i + 3 < len; i += 4) {
-        _mm256_storeu_pd(out + i, _mm256_loadu_pd(in + i));
+        if (aligned) {
+            _mm256_store_pd(out + i, _mm256_load_pd(in + i));
+        } else {
+            _mm256_storeu_pd(out + i, _mm256_loadu_pd(in + i));
+        }
     }
     for (; i < len; ++i) {
         out[i] = in[i];
     }
 #elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
     std::size_t i = 0;
+    const bool aligned = is_aligned_16(out) && is_aligned_16(in);
     for (; i + 1 < len; i += 2) {
-        _mm_storeu_pd(out + i, _mm_loadu_pd(in + i));
+        if (aligned) {
+            _mm_store_pd(out + i, _mm_load_pd(in + i));
+        } else {
+            _mm_storeu_pd(out + i, _mm_loadu_pd(in + i));
+        }
     }
     for (; i < len; ++i) {
         out[i] = in[i];
@@ -444,8 +463,10 @@ double reduce_action_values(const double* values, std::size_t len) noexcept {
         {
             std::size_t i = 0;
             __m256d sum = _mm256_setzero_pd();
+            const bool aligned = is_aligned_32(values);
             for (; i + 3 < len; i += 4) {
-                sum = _mm256_add_pd(sum, _mm256_loadu_pd(values + i));
+                const __m256d chunk = aligned ? _mm256_load_pd(values + i) : _mm256_loadu_pd(values + i);
+                sum = _mm256_add_pd(sum, chunk);
             }
             alignas(32) double tmp[4];
             _mm256_store_pd(tmp, sum);
@@ -459,8 +480,10 @@ double reduce_action_values(const double* values, std::size_t len) noexcept {
         {
             std::size_t i = 0;
             __m128d sum = _mm_setzero_pd();
+            const bool aligned = is_aligned_16(values);
             for (; i + 1 < len; i += 2) {
-                sum = _mm_add_pd(sum, _mm_loadu_pd(values + i));
+                const __m128d chunk = aligned ? _mm_load_pd(values + i) : _mm_loadu_pd(values + i);
+                sum = _mm_add_pd(sum, chunk);
             }
             alignas(16) double tmp[2];
             _mm_store_pd(tmp, sum);
@@ -499,9 +522,10 @@ double reduce_weighted_action_values(const double* values, const double* weights
         {
             std::size_t i = 0;
             __m256d sum = _mm256_setzero_pd();
+            const bool aligned = is_aligned_32(values) && is_aligned_32(weights);
             for (; i + 3 < len; i += 4) {
-                const __m256d v = _mm256_loadu_pd(values + i);
-                const __m256d w = _mm256_loadu_pd(weights + i);
+                const __m256d v = aligned ? _mm256_load_pd(values + i) : _mm256_loadu_pd(values + i);
+                const __m256d w = aligned ? _mm256_load_pd(weights + i) : _mm256_loadu_pd(weights + i);
                 sum = _mm256_add_pd(sum, _mm256_mul_pd(v, w));
             }
             alignas(32) double tmp[4];
@@ -516,9 +540,10 @@ double reduce_weighted_action_values(const double* values, const double* weights
         {
             std::size_t i = 0;
             __m128d sum = _mm_setzero_pd();
+            const bool aligned = is_aligned_16(values) && is_aligned_16(weights);
             for (; i + 1 < len; i += 2) {
-                const __m128d v = _mm_loadu_pd(values + i);
-                const __m128d w = _mm_loadu_pd(weights + i);
+                const __m128d v = aligned ? _mm_load_pd(values + i) : _mm_loadu_pd(values + i);
+                const __m128d w = aligned ? _mm_load_pd(weights + i) : _mm_loadu_pd(weights + i);
                 sum = _mm_add_pd(sum, _mm_mul_pd(v, w));
             }
             alignas(16) double tmp[2];
