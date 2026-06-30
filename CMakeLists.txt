@@ -7,6 +7,23 @@ include(CMakePackageConfigHelpers)
 include(CTest)
 find_package(Threads REQUIRED)
 
+set(GPERFTOOLS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}")
+if (NOT VCPKG_TARGET_TRIPLET)
+    set(GPERFTOOLS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows")
+endif()
+
+find_path(GPERFTOOLS_INCLUDE_DIR
+    NAMES gperftools/profiler.h
+    PATHS "${GPERFTOOLS_ROOT}/include"
+    NO_DEFAULT_PATH
+)
+
+find_library(GPERFTOOLS_PROFILER_LIBRARY
+    NAMES tcmalloc_minimal profiler libprofiler
+    PATHS "${GPERFTOOLS_ROOT}/lib"
+    NO_DEFAULT_PATH
+)
+
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" ON)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" ON)
 option(TEXASSOLVER_USE_POKER_HAND_EVALUATOR "Build vendored PokerHandEvaluator" ON)
@@ -106,6 +123,14 @@ install(FILES
 )
 
 if (TEXASSOLVER_BUILD_EXAMPLES)
+    add_executable(texas_solver_gperftools_example
+        examples/gperftools_profile_demo.cpp
+    )
+    target_include_directories(texas_solver_gperftools_example PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_link_libraries(texas_solver_gperftools_example PRIVATE texas_core)
+
     add_executable(texas_solver_example
         examples/solve_kuhn.cpp
     )
