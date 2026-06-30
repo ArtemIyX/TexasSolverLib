@@ -138,6 +138,7 @@ struct HUNLConfig {
     int rake_cap = 0;
     std::optional<std::string> abstraction_path = std::nullopt;
     std::optional<std::string> abstraction_version = std::nullopt;
+    std::uint32_t depth_limit_plies = 0;
     HUNLFlatSolveMode flat_solve_mode = HUNLFlatSolveMode::Auto;
     HUNLRangePolicy range_policy = HUNLRangePolicy::Unspecified;
     std::array<std::optional<HUNLRangeInput>, 2> initial_ranges = {std::nullopt, std::nullopt};

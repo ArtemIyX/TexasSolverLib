@@ -83,9 +83,9 @@ The solver should accept a depth-limit parameter.
 
 Recommended behavior:
 
-- `0` means no depth limit
-- `0` solves until terminal nodes
-- any positive value `N` means stop after `N` plies or at the chosen depth definition used by the tree builder
+- `depth_limit_plies = 0` means no depth limit
+- `depth_limit_plies = 0` solves until terminal nodes
+- any positive value `N` means stop after `N` plies from the current node
 
 Important:
 
@@ -223,4 +223,3 @@ The main goal is to find a cutoff where accuracy loss is acceptable for the spee
 - multithreaded results match single-threaded results
 - speed improves on large trees
 - accuracy loss is measured and documented
-

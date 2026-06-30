@@ -246,6 +246,9 @@ HUNLRangePolicy resolve_range_policy(const HUNLConfig& config) {
 }
 
 void HUNLConfig::validate() const {
+    if (depth_limit_plies > 1'000'000U) {
+        throw std::invalid_argument("HUNLConfig.validate: depth_limit_plies is unreasonably large");
+    }
     if (rake_rate != 0.0) {
         throw std::invalid_argument("HUNLConfig.validate: rake_rate must be 0.0");
     }
