@@ -292,7 +292,7 @@ Acceptance:
 - no allocation inside `backward_value_stage()` in a sampled allocation profile
 - identical strategies across worker counts
 
-## 7. Phase 2: Precompute Normalized Bucket Reach Once Per Iteration
+## 7. + Phase 2: Precompute Normalized Bucket Reach Once Per Iteration
 
 Purpose: remove the largest visible algorithmic overhead in backward, regret, and average strategy stages.
 

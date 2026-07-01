@@ -355,6 +355,48 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_distributes_mass_across_explicit_rows) {
     EXPECT_NEAR(total_bucket_mass, 1.0, 1e-12);
 }
 
+TEST_CASE(hunl_flat_dcfr_precomputes_normalized_bucket_reach) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {4, 4},
+        core::HUNLFlatValueLayout::InfosetActionHand);
+
+    solver.run_iteration();
+
+    for (const auto& meta : solver.infoset_table().meta()) {
+        const auto bucket_range = solver.infoset_table().infoset_bucket_range(meta.id);
+        double normalized_sum = 0.0;
+        for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
+            const auto value = solver.normalized_bucket_reach()[idx];
+            EXPECT_TRUE(value >= 0.0);
+            normalized_sum += value;
+        }
+
+        const auto total = solver.infoset_bucket_totals()[meta.id.value];
+        if (total > 0.0) {
+            EXPECT_NEAR(normalized_sum, 1.0, 1e-12);
+            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
+                const auto idx = bucket_range.begin + static_cast<std::uint32_t>(bucket);
+                EXPECT_NEAR(
+                    solver.normalized_bucket_reach()[idx],
+                    solver.bucket_reach()[idx] / total,
+                    1e-12);
+            }
+        } else {
+            EXPECT_NEAR(normalized_sum, 1.0, 1e-12);
+            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
+                const auto idx = bucket_range.begin + static_cast<std::uint32_t>(bucket);
+                EXPECT_NEAR(
+                    solver.normalized_bucket_reach()[idx],
+                    1.0 / static_cast<double>(meta.bucket_count),
+                    1e-12);
+            }
+        }
+    }
+}
+
 TEST_CASE(hunl_flat_dcfr_forward_reach_propagates_strategy_on_decision_nodes) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
     const auto graph = core::HUNLFlatSolveGraph::build(config);
@@ -642,12 +684,7 @@ TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
     const auto own_reach = graph.node_meta[graph.root].player == 0
         ? solver.player0_reach()[graph.root] * solver.chance_reach()[graph.root]
         : solver.player1_reach()[graph.root] * solver.chance_reach()[graph.root];
-    double total_bucket_mass = 0.0;
-    for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
-        total_bucket_mass += solver.bucket_reach()[idx];
-    }
-    const auto first_bucket_mass =
-        total_bucket_mass > 0.0 ? solver.bucket_reach()[bucket_range.begin] / total_bucket_mass : 0.0;
+    const auto first_bucket_mass = solver.normalized_bucket_reach()[bucket_range.begin];
 
     EXPECT_NEAR(strategy_sum[0], own_reach * first_bucket_mass * strategy[0], 1e-12);
     if (action_count >= 2) {

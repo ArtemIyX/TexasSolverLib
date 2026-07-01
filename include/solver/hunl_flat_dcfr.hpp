@@ -94,6 +94,8 @@ public:
     [[nodiscard]] const HUNLAlignedVector<double>& player1_reach() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& chance_reach() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& bucket_reach() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& normalized_bucket_reach() const noexcept;
+    [[nodiscard]] const HUNLAlignedVector<double>& infoset_bucket_totals() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& terminal_values() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& node_values() const noexcept;
     [[nodiscard]] const HUNLAlignedVector<double>& action_values() const noexcept;
@@ -134,6 +136,7 @@ private:
     void apply_dcfr_discount_stage();
     void compute_strategy_stage();
     void forward_reach_stage();
+    void normalize_bucket_reach_stage();
     void terminal_utility_stage();
     void backward_value_stage();
     void regret_update_stage();
@@ -153,6 +156,8 @@ private:
     HUNLAlignedVector<double> player1_reach_;
     HUNLAlignedVector<double> chance_reach_;
     HUNLAlignedVector<double> bucket_reach_;
+    HUNLAlignedVector<double> normalized_bucket_reach_;
+    HUNLAlignedVector<double> infoset_bucket_totals_;
     HUNLAlignedVector<double> terminal_values_;
     HUNLAlignedVector<double> node_values_;
     HUNLAlignedVector<double> action_values_;
