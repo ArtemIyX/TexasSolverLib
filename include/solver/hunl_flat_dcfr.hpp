@@ -3,6 +3,7 @@
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_bucket_map.hpp"
 #include "solver/hunl_bucket_terminal.hpp"
+#include "solver/hunl_flat_pipeline.hpp"
 #include "solver/hunl_flat_state.hpp"
 
 #include <array>
@@ -101,6 +102,7 @@ public:
     [[nodiscard]] std::size_t worker_count() const noexcept;
     [[nodiscard]] const HUNLFlatSchedulerDiagnostics& scheduler_diagnostics() const noexcept;
     [[nodiscard]] const HUNLFlatBucketMap* bucket_map() const noexcept;
+    [[nodiscard]] const HUNLFlatPipelinePlan& pipeline_plan() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
@@ -190,6 +192,7 @@ private:
     HUNLFlatStageProfile profile_;
     std::size_t worker_count_ = 1;
     HUNLFlatParallelPlan parallel_plan_;
+    HUNLFlatPipelinePlan pipeline_plan_;
     std::unique_ptr<WorkerPool> worker_pool_;
     std::vector<HUNLFlatWorkerScratch, AlignedAllocator<HUNLFlatWorkerScratch, HUNL_CACHELINE_BYTES>> worker_scratch_;
     HUNLFlatSchedulerDiagnostics scheduler_diagnostics_;

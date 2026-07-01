@@ -273,6 +273,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
           graph_,
           infoset_table_,
           std::max<std::size_t>(1, workers))),
+      pipeline_plan_(HUNLFlatPipelinePlan::build(graph_, infoset_table_, parallel_plan_)),
       worker_scratch_(std::max<std::size_t>(1, workers)),
       alpha_(alpha),
       beta_(beta),
@@ -308,6 +309,10 @@ const HUNLFlatSchedulerDiagnostics& HUNLFlatDCFR::scheduler_diagnostics() const 
 
 const HUNLFlatBucketMap* HUNLFlatDCFR::bucket_map() const noexcept {
     return bucket_map_ ? &*bucket_map_ : nullptr;
+}
+
+const HUNLFlatPipelinePlan& HUNLFlatDCFR::pipeline_plan() const noexcept {
+    return pipeline_plan_;
 }
 
 void HUNLFlatDCFR::add_stage_seconds(
