@@ -307,6 +307,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     double beta,
     double gamma) {
     using clock = std::chrono::steady_clock;
+    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.setup");
 
     const auto setup_start = clock::now();
     auto shared = std::make_shared<const core::HUNLConfig>(random_state.config);
@@ -323,10 +324,12 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     const auto setup_end = clock::now();
 
     const auto solve_start = setup_end;
+    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.solve");
     solver.run_iterations(iterations);
     const auto solve_end = clock::now();
 
     const auto export_start = solve_end;
+    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.export");
     const auto exported = solver.export_average_strategy();
     StrategyMap strategy;
     strategy.reserve(exported.size());
@@ -336,10 +339,12 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     const auto export_end = clock::now();
 
     const auto ev_start = export_end;
+    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.expected_value");
     const auto expected_value = core::detail::expected_value(core::HUNLState::initial(shared), strategy);
     const auto ev_end = clock::now();
 
     const auto exploit_start = ev_end;
+    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.exploitability");
     const auto exploitability = core::detail::exploitability<core::HUNLState>(strategy);
     const auto exploit_end = clock::now();
 
@@ -363,95 +368,103 @@ TimedBenchmarkResult run_timed_flat_benchmark(
 }  // namespace
 
 int main(int argc, char* argv[]) {
-    const auto parsed = parse_args(argc, argv);
-    if (!parsed) {
-        print_usage(argv[0]);
+    try {
+        const auto parsed = parse_args(argc, argv);
+        if (!parsed) {
+            print_usage(argv[0]);
+            return 1;
+        }
+
+        const auto cfg = *parsed;
+        set_flat_backend_env();
+        set_profile_env(cfg.debug);
+        if (cfg.debug) {
+            set_profile_dir_env();
+        }
+
+        const auto random_state = make_random_state(cfg);
+        const auto start = std::chrono::steady_clock::now();
+
+        std::cout << "HUNL random flat benchmark\n";
+        std::cout << "workers=" << cfg.workers
+                  << " iterations=" << cfg.iterations
+                  << " depth_limit=" << cfg.depth_limit_plies
+                  << " buckets=" << cfg.hand_buckets
+                  << " street=" << street_name(cfg.street)
+                  << " seed=" << cfg.seed
+                  << " backend=flat\n";
+        print_state(random_state.config, random_state.state);
+
+        if (cfg.debug) {
+            std::cout << "debug: starting solve with flat backend forced via env\n";
+            std::cout << "debug: TEXASSOLVER_PROFILE=1\n";
+            std::cout << "debug: TEXASSOLVER_PROFILE_DIR=artifacts/prof\n";
+        }
+
+        auto solve_config = random_state.config;
+        solve_config.depth_limit_plies = cfg.depth_limit_plies;
+        auto timed = run_timed_flat_benchmark(
+            RandomState{std::move(solve_config), random_state.state},
+            cfg.iterations,
+            cfg.workers,
+            cfg.hand_buckets,
+            1.5,
+            0.0,
+            2.0);
+
+        const auto finish = std::chrono::steady_clock::now();
+        const auto wallclock = std::chrono::duration<double>(finish - start).count();
+        const auto per_iter = seconds_per_iteration(wallclock, timed.iterations);
+
+        std::cout << "\nresults:\n";
+        std::cout << "  iterations=" << timed.iterations << "\n";
+        std::cout << "  wallclock=" << format_seconds(wallclock) << "\n";
+        std::cout << "  per_iteration=" << format_seconds(per_iter) << "\n";
+        std::cout << "  setup_seconds=" << format_seconds(timed.setup_seconds) << "\n";
+        std::cout << "  solve_seconds=" << format_seconds(timed.solve_seconds) << "\n";
+        std::cout << "  export_seconds=" << format_seconds(timed.export_seconds) << "\n";
+        std::cout << "  expected_value_seconds=" << format_seconds(timed.ev_seconds) << "\n";
+        std::cout << "  exploitability_seconds=" << format_seconds(timed.exploit_seconds) << "\n";
+        std::cout << "  exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
+        std::cout << "  game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
+        std::cout << "  computed_game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
+        std::cout << "  computed_exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
+        std::cout << "  infosets=" << timed.strategy.size() << "\n";
+        std::cout << "  used_parallel=" << (timed.worker_count > 1 ? "true" : "false") << "\n";
+        std::cout << "  strategy_root:\n";
+
+        const auto root_key = random_state.state.infoset_key(static_cast<std::uint8_t>(random_state.state.cur_player));
+        const auto it = std::find_if(timed.exported_strategy.begin(), timed.exported_strategy.end(), [&](const auto& item) {
+            return item.first == root_key;
+        });
+        if (it != timed.exported_strategy.end()) {
+            const auto actions = random_state.state.legal_actions();
+            std::cout << "    key=" << root_key << "\n";
+            for (std::size_t i = 0; i < actions.size() && i < it->second.size(); ++i) {
+                std::cout << "    action[" << actions[i] << "]=" << std::fixed << std::setprecision(6) << it->second[i] << "\n";
+            }
+        } else {
+            std::cout << "    root strategy not found in output table\n";
+        }
+
+        if (cfg.debug) {
+            std::cout << "\nprofile:\n";
+            std::cout << "  discount_seconds=" << format_seconds(timed.profile.discount_seconds) << "\n";
+            std::cout << "  strategy_seconds=" << format_seconds(timed.profile.strategy_seconds) << "\n";
+            std::cout << "  reach_seconds=" << format_seconds(timed.profile.reach_seconds) << "\n";
+            std::cout << "  terminal_seconds=" << format_seconds(timed.profile.terminal_seconds) << "\n";
+            std::cout << "  backward_seconds=" << format_seconds(timed.profile.backward_seconds) << "\n";
+            std::cout << "  regret_seconds=" << format_seconds(timed.profile.regret_seconds) << "\n";
+            std::cout << "  average_strategy_seconds=" << format_seconds(timed.profile.average_strategy_seconds) << "\n";
+            core::profiling::print_profiler_report();
+        }
+
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "fatal error: " << e.what() << '\n';
+        return 1;
+    } catch (...) {
+        std::cerr << "fatal error: unknown exception\n";
         return 1;
     }
-
-    const auto cfg = *parsed;
-    set_flat_backend_env();
-    set_profile_env(cfg.debug);
-    if (cfg.debug) {
-        set_profile_dir_env();
-    }
-
-    const auto random_state = make_random_state(cfg);
-    const auto start = std::chrono::steady_clock::now();
-
-    std::cout << "HUNL random flat benchmark\n";
-    std::cout << "workers=" << cfg.workers
-              << " iterations=" << cfg.iterations
-              << " depth_limit=" << cfg.depth_limit_plies
-              << " buckets=" << cfg.hand_buckets
-              << " street=" << street_name(cfg.street)
-              << " seed=" << cfg.seed
-              << " backend=flat\n";
-    print_state(random_state.config, random_state.state);
-
-    if (cfg.debug) {
-        std::cout << "debug: starting solve with flat backend forced via env\n";
-        std::cout << "debug: TEXASSOLVER_PROFILE=1\n";
-        std::cout << "debug: TEXASSOLVER_PROFILE_DIR=artifacts/prof\n";
-    }
-
-    auto solve_config = random_state.config;
-    solve_config.depth_limit_plies = cfg.depth_limit_plies;
-    auto timed = run_timed_flat_benchmark(
-        RandomState{std::move(solve_config), random_state.state},
-        cfg.iterations,
-        cfg.workers,
-        cfg.hand_buckets,
-        1.5,
-        0.0,
-        2.0);
-
-    const auto finish = std::chrono::steady_clock::now();
-    const auto wallclock = std::chrono::duration<double>(finish - start).count();
-    const auto per_iter = seconds_per_iteration(wallclock, timed.iterations);
-
-    std::cout << "\nresults:\n";
-    std::cout << "  iterations=" << timed.iterations << "\n";
-    std::cout << "  wallclock=" << format_seconds(wallclock) << "\n";
-    std::cout << "  per_iteration=" << format_seconds(per_iter) << "\n";
-    std::cout << "  setup_seconds=" << format_seconds(timed.setup_seconds) << "\n";
-    std::cout << "  solve_seconds=" << format_seconds(timed.solve_seconds) << "\n";
-    std::cout << "  export_seconds=" << format_seconds(timed.export_seconds) << "\n";
-    std::cout << "  expected_value_seconds=" << format_seconds(timed.ev_seconds) << "\n";
-    std::cout << "  exploitability_seconds=" << format_seconds(timed.exploit_seconds) << "\n";
-    std::cout << "  exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
-    std::cout << "  game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
-    std::cout << "  computed_game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
-    std::cout << "  computed_exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
-    std::cout << "  infosets=" << timed.strategy.size() << "\n";
-    std::cout << "  used_parallel=" << (timed.worker_count > 1 ? "true" : "false") << "\n";
-    std::cout << "  strategy_root:\n";
-
-    const auto root_key = random_state.state.infoset_key(static_cast<std::uint8_t>(random_state.state.cur_player));
-    const auto it = std::find_if(timed.exported_strategy.begin(), timed.exported_strategy.end(), [&](const auto& item) {
-        return item.first == root_key;
-    });
-    if (it != timed.exported_strategy.end()) {
-        const auto actions = random_state.state.legal_actions();
-        std::cout << "    key=" << root_key << "\n";
-        for (std::size_t i = 0; i < actions.size() && i < it->second.size(); ++i) {
-            std::cout << "    action[" << actions[i] << "]=" << std::fixed << std::setprecision(6) << it->second[i] << "\n";
-        }
-    } else {
-        std::cout << "    root strategy not found in output table\n";
-    }
-
-    if (cfg.debug) {
-        std::cout << "\nprofile:\n";
-        std::cout << "  discount_seconds=" << format_seconds(timed.profile.discount_seconds) << "\n";
-        std::cout << "  strategy_seconds=" << format_seconds(timed.profile.strategy_seconds) << "\n";
-        std::cout << "  reach_seconds=" << format_seconds(timed.profile.reach_seconds) << "\n";
-        std::cout << "  terminal_seconds=" << format_seconds(timed.profile.terminal_seconds) << "\n";
-        std::cout << "  backward_seconds=" << format_seconds(timed.profile.backward_seconds) << "\n";
-        std::cout << "  regret_seconds=" << format_seconds(timed.profile.regret_seconds) << "\n";
-        std::cout << "  average_strategy_seconds=" << format_seconds(timed.profile.average_strategy_seconds) << "\n";
-        core::profiling::print_profiler_report();
-    }
-
-    return 0;
 }

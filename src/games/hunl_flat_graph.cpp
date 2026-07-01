@@ -35,6 +35,25 @@ std::size_t street_index(Street street) {
     return static_cast<std::size_t>(street);
 }
 
+std::string make_flat_infoset_key(const HUNLTreeNode& node) {
+    if (!node.infoset_key.has_value()) {
+        return {};
+    }
+
+    std::string key = *node.infoset_key;
+    key += "|board:";
+    key += sorted_card_string(node.board);
+    key += "|street:";
+    key += street_token(node.street);
+    return key;
+}
+
+std::vector<std::uint8_t> canonical_board(const std::vector<std::uint8_t>& board) {
+    std::vector<std::uint8_t> out = board;
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 std::vector<HUNLFlatWorkerRange> make_ranges_for_slice(std::uint32_t begin, std::uint32_t count) {
     std::vector<HUNLFlatWorkerRange> ranges;
     if (count == 0) {
@@ -136,16 +155,17 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
             flat_node.action_count = static_cast<std::uint8_t>(node.legal_actions.size());
             flat_node.has_infoset = true;
 
-            const auto key_it = infoset_ids_by_key.find(*node.infoset_key);
+            const auto flat_key = make_flat_infoset_key(node);
+            const auto key_it = infoset_ids_by_key.find(flat_key);
             if (key_it == infoset_ids_by_key.end()) {
                 const InfosetId id{static_cast<std::uint32_t>(infoset_keys.size())};
-                infoset_ids_by_key.emplace(*node.infoset_key, id);
+                infoset_ids_by_key.emplace(flat_key, id);
                 infoset_node_lists.push_back({});
                 infoset_action_counts.push_back(flat_node.action_count);
                 infoset_players.push_back(flat_node.player);
                 infoset_streets.push_back(flat_node.street);
-                infoset_boards.push_back(node.board);
-                infoset_keys.push_back(*node.infoset_key);
+                infoset_boards.push_back(canonical_board(node.board));
+                infoset_keys.push_back(std::move(flat_key));
                 flat_node.infoset_id = id;
             } else {
                 flat_node.infoset_id = key_it->second;
@@ -162,7 +182,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
                     throw std::logic_error("infoset nodes must agree on street");
                 }
                 const auto& board = infoset_boards[flat_node.infoset_id.value];
-                if (board != node.board) {
+                if (board != canonical_board(node.board)) {
                     throw std::logic_error("infoset nodes must agree on board");
                 }
             }

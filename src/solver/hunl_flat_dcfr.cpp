@@ -52,6 +52,10 @@ double normalized_bucket_mass(
     return prior_bucket_weight(bucket_map, infoset_meta, infoset_id, bucket_idx);
 }
 
+std::string worker_scope_name(const char* base, std::size_t worker_index) {
+    return std::string(base) + "[w" + std::to_string(worker_index) + "]";
+}
+
 void validate_flat_solver_graph(const HUNLFlatSolveGraph& graph) {
     if (graph.nodes.size() != graph.node_meta.size()) {
         throw std::invalid_argument("HUNLFlatDCFR graph nodes/node_meta size mismatch");
@@ -321,6 +325,7 @@ void HUNLFlatDCFR::run_stage_workers(HUNLFlatStageKind stage, const std::functio
         const auto start = std::chrono::steady_clock::now();
         fn(worker_index);
         const auto finish = std::chrono::steady_clock::now();
+        profiling::mark(worker_scope_name("hunl_flat.worker_stage", worker_index), std::chrono::duration<double>(finish - start).count());
         add_stage_seconds(
             scheduler_diagnostics_.worker_profiles[worker_index],
             stage,
@@ -461,6 +466,8 @@ void HUNLFlatDCFR::apply_dcfr_discount_stage() {
     auto& metas = infoset_table_.meta_mut();
     run_stage_workers(HUNLFlatStageKind::Discount, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
+        const auto worker_scope = worker_scope_name("hunl_flat.discount", worker_index);
+        const auto worker_start = std::chrono::steady_clock::now();
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             auto& meta = metas[infoset_index];
             if (meta.last_discount_iter >= target_iter) {
@@ -481,6 +488,7 @@ void HUNLFlatDCFR::apply_dcfr_discount_stage() {
             }
             meta.last_discount_iter = target_iter;
         }
+        profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
     });
 }
 
@@ -489,6 +497,8 @@ void HUNLFlatDCFR::compute_strategy_stage() {
     const auto& metas = infoset_table_.meta();
     run_stage_workers(HUNLFlatStageKind::Strategy, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
+        const auto worker_scope = worker_scope_name("hunl_flat.strategy", worker_index);
+        const auto worker_start = std::chrono::steady_clock::now();
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
             if (meta.value_count == 0 || meta.bucket_count == 0 || meta.action_count == 0) {
@@ -528,6 +538,7 @@ void HUNLFlatDCFR::compute_strategy_stage() {
                 }
             }
         }
+        profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
     });
 }
 
@@ -546,6 +557,8 @@ void HUNLFlatDCFR::forward_reach_stage() {
     for (std::size_t depth = 0; depth < graph_.depth_slices.size(); ++depth) {
         run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
             auto& scratch = worker_scratch_[worker_index];
+            const auto worker_scope = worker_scope_name("hunl_flat.reach.seed", worker_index);
+            const auto worker_start = std::chrono::steady_clock::now();
             std::fill(scratch.player0_reach.begin(), scratch.player0_reach.end(), 0.0);
             std::fill(scratch.player1_reach.begin(), scratch.player1_reach.end(), 0.0);
             std::fill(scratch.chance_reach.begin(), scratch.chance_reach.end(), 0.0);
@@ -623,10 +636,13 @@ void HUNLFlatDCFR::forward_reach_stage() {
                     scratch.chance_reach[child] += chance;
                 }
             }
+            profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
         });
 
         run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
             const auto range = parallel_plan_.workers[worker_index].node_range;
+            const auto worker_scope = worker_scope_name("hunl_flat.reach.reduce_nodes", worker_index);
+            const auto worker_start = std::chrono::steady_clock::now();
             for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
                 double add0 = 0.0;
                 double add1 = 0.0;
@@ -640,10 +656,13 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 player1_reach_[node_idx] += add1;
                 chance_reach_[node_idx] += addc;
             }
+            profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
         });
 
         run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
             const auto range = parallel_plan_.workers[worker_index].bucket_range;
+            const auto worker_scope = worker_scope_name("hunl_flat.reach.reduce_buckets", worker_index);
+            const auto worker_start = std::chrono::steady_clock::now();
             for (std::uint32_t bucket_offset = range.begin; bucket_offset < range.end; ++bucket_offset) {
                 double add_bucket = 0.0;
                 for (const auto& scratch : worker_scratch_) {
@@ -651,6 +670,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 }
                 bucket_reach_[bucket_offset] += add_bucket;
             }
+            profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
         });
     }
 }
@@ -659,6 +679,8 @@ void HUNLFlatDCFR::terminal_utility_stage() {
     TEXASSOLVER_PROFILE_SCOPE("hunl_flat.terminal_stage");
     run_stage_workers(HUNLFlatStageKind::Terminal, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].node_range;
+        const auto worker_scope = worker_scope_name("hunl_flat.terminal", worker_index);
+        const auto worker_start = std::chrono::steady_clock::now();
         for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
             const auto& meta = graph_.node_meta[node_idx];
             if (meta.type == HUNLFlatNodeType::TerminalFold) {
@@ -678,6 +700,7 @@ void HUNLFlatDCFR::terminal_utility_stage() {
                     heuristic_depth_limited_value_p0(meta, *graph_.config);
             }
         }
+        profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
     });
 }
 
@@ -690,6 +713,8 @@ void HUNLFlatDCFR::backward_value_stage() {
         run_stage_workers(HUNLFlatStageKind::Backward, [&](std::size_t worker_index) {
             const auto& worker = parallel_plan_.workers[worker_index];
             const auto range = worker.depth_node_ranges[depth];
+            const auto worker_scope = worker_scope_name("hunl_flat.backward", worker_index);
+            const auto worker_start = std::chrono::steady_clock::now();
             for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
                 const auto node_idx = graph_.depth_order[order_idx];
                 const auto& meta = graph_.node_meta[node_idx];
@@ -704,6 +729,8 @@ void HUNLFlatDCFR::backward_value_stage() {
                 }
 
                 if (meta.type == HUNLFlatNodeType::Chance) {
+                    const auto chance_scope = worker_scope_name("hunl_flat.backward.chance", worker_index);
+                    const auto chance_start = std::chrono::steady_clock::now();
                     std::vector<double> weights(meta.chance_count, 0.0);
                     std::vector<double> row(meta.chance_count, 0.0);
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
@@ -713,6 +740,7 @@ void HUNLFlatDCFR::backward_value_stage() {
                     }
                     copy_values(action_values_.data() + meta.child_begin, row.data(), meta.chance_count);
                     node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.chance_count);
+                    profiling::mark(chance_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - chance_start).count());
                     continue;
                 }
 
@@ -720,9 +748,14 @@ void HUNLFlatDCFR::backward_value_stage() {
                     continue;
                 }
 
+                const auto decision_scope = worker_scope_name("hunl_flat.backward.decision", worker_index);
+                const auto decision_start = std::chrono::steady_clock::now();
+                const auto lookup_scope = worker_scope_name("hunl_flat.backward.strategy_lookup", worker_index);
+                const auto lookup_start = std::chrono::steady_clock::now();
                 const auto& infoset_meta = infoset_table_.meta().at(meta.infoset_id.value);
                 const auto* strategy = infoset_table_.current_strategy(meta.infoset_id);
                 const auto bucket_range = infoset_table_.infoset_bucket_range(meta.infoset_id);
+                profiling::mark(lookup_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - lookup_start).count());
                 if (infoset_meta.bucket_count == 0 || infoset_meta.action_count == 0) {
                     throw std::logic_error("HUNLFlatDCFR backward stage requires non-empty bucket/action counts");
                 }
@@ -752,9 +785,14 @@ void HUNLFlatDCFR::backward_value_stage() {
                     }
                     weights[i] = action_prob;
                 }
+                const auto reduction_scope = worker_scope_name("hunl_flat.backward.row_reduction", worker_index);
+                const auto reduction_start = std::chrono::steady_clock::now();
                 copy_values(action_values_.data() + meta.child_begin, row.data(), meta.child_count);
                 node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.child_count);
+                profiling::mark(reduction_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - reduction_start).count());
+                profiling::mark(decision_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - decision_start).count());
             }
+            profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
         });
     }
 }
@@ -764,6 +802,8 @@ void HUNLFlatDCFR::regret_update_stage() {
     const auto& metas = infoset_table_.meta();
     run_stage_workers(HUNLFlatStageKind::Regret, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
+        const auto worker_scope = worker_scope_name("hunl_flat.regret", worker_index);
+        const auto worker_start = std::chrono::steady_clock::now();
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
             if (meta.id.value >= graph_.infosets.size()) {
@@ -815,6 +855,7 @@ void HUNLFlatDCFR::regret_update_stage() {
                 }
             }
         }
+        profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
     });
 }
 
@@ -823,6 +864,8 @@ void HUNLFlatDCFR::average_strategy_stage() {
     const auto& metas = infoset_table_.meta();
     run_stage_workers(HUNLFlatStageKind::AverageStrategy, [&](std::size_t worker_index) {
         const auto range = parallel_plan_.workers[worker_index].infoset_range;
+        const auto worker_scope = worker_scope_name("hunl_flat.average", worker_index);
+        const auto worker_start = std::chrono::steady_clock::now();
         for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
             const auto& meta = metas[infoset_index];
             if (meta.id.value >= graph_.infosets.size()) {
@@ -871,6 +914,7 @@ void HUNLFlatDCFR::average_strategy_stage() {
                 }
             }
         }
+        profiling::mark(worker_scope, std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
     });
 }
 

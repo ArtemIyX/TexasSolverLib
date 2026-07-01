@@ -12,6 +12,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <limits>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -113,10 +114,18 @@ void print_group(
               << "\n";
 
     std::size_t printed = 0;
+    std::uint64_t matched_total_ns = 0;
+    std::uint64_t matched_calls = 0;
+    std::uint64_t min_total_ns = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t max_total_ns = 0;
     for (const auto& [name, entry] : totals) {
         if (!prefix.empty() && !starts_with(name, prefix)) {
             continue;
         }
+        matched_total_ns += entry.first;
+        matched_calls += entry.second;
+        min_total_ns = std::min(min_total_ns, entry.first);
+        max_total_ns = std::max(max_total_ns, entry.first);
         const auto total_ms = ns_to_ms(entry.first);
         const auto calls = entry.second;
         const auto avg_us = calls > 0 ? static_cast<double>(entry.first) / static_cast<double>(calls) / 1000.0 : 0.0;
@@ -129,6 +138,22 @@ void print_group(
     }
     if (printed == 0) {
         std::cout << "(no timers)\n";
+    } else {
+        const auto total_ms = ns_to_ms(matched_total_ns);
+        const auto avg_ms = printed > 0 ? ns_to_ms(matched_total_ns / printed) : 0.0;
+        const auto min_ms = ns_to_ms(min_total_ns);
+        const auto max_ms = ns_to_ms(max_total_ns);
+        const auto avg_us = matched_calls > 0
+            ? static_cast<double>(matched_total_ns) / static_cast<double>(matched_calls) / 1000.0
+            : 0.0;
+        std::cout << std::left << std::setw(34) << "aggregate"
+                  << std::right << std::setw(14) << std::fixed << std::setprecision(3) << total_ms
+                  << std::setw(12) << matched_calls
+                  << std::setw(14) << std::fixed << std::setprecision(3) << avg_us
+                  << "  [avg_ms=" << std::fixed << std::setprecision(3) << avg_ms
+                  << ", min_ms=" << min_ms
+                  << ", max_ms=" << max_ms
+                  << "]\n";
     }
 }
 
@@ -249,8 +274,11 @@ void print_profiler_report() {
     });
 
     print_group("solver layer", totals, "solver.");
+    print_group("solver layer", totals, "hunl.solve");
     print_group("worker thread", totals, "parallel.worker");
+    print_group("worker thread", totals, "hunl_flat.worker");
     print_group("stage names", totals, "hunl_flat.");
+    print_group("backward detail", totals, "hunl_flat.backward.");
 }
 
 }  // namespace core::profiling
