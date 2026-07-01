@@ -591,13 +591,21 @@ void HUNLFlatDCFR::forward_reach_stage() {
         run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
             auto& scratch = worker_scratch_[worker_index];
             const auto worker_start = std::chrono::steady_clock::now();
-            std::fill(scratch.player0_reach.begin(), scratch.player0_reach.end(), 0.0);
-            std::fill(scratch.player1_reach.begin(), scratch.player1_reach.end(), 0.0);
-            std::fill(scratch.chance_reach.begin(), scratch.chance_reach.end(), 0.0);
-            std::fill(scratch.bucket_reach.begin(), scratch.bucket_reach.end(), 0.0);
 
             const auto& worker = parallel_plan_.workers[worker_index];
             const auto range = worker.depth_node_ranges[depth];
+            const auto mark_dirty_node = [&](std::uint32_t node_idx) {
+                if (scratch.player0_reach[node_idx] == 0.0 &&
+                    scratch.player1_reach[node_idx] == 0.0 &&
+                    scratch.chance_reach[node_idx] == 0.0) {
+                    scratch.dirty_nodes.push_back(node_idx);
+                }
+            };
+            const auto mark_dirty_bucket = [&](std::uint32_t bucket_idx) {
+                if (scratch.bucket_reach[bucket_idx] == 0.0) {
+                    scratch.dirty_buckets.push_back(bucket_idx);
+                }
+            };
             for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
                 const auto node_idx = graph_.depth_order[order_idx];
                 const auto& meta = graph_.node_meta[node_idx];
@@ -611,6 +619,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 if (meta.type == HUNLFlatNodeType::Chance) {
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
                         const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
+                        mark_dirty_node(outcome.child);
                         scratch.player0_reach[outcome.child] += reach0;
                         scratch.player1_reach[outcome.child] += reach1;
                         scratch.chance_reach[outcome.child] += chance * outcome.probability;
@@ -640,6 +649,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
                     const auto local_mass =
                         acting_reach * prior_bucket_weight(bucket_map(), infoset_meta, meta.infoset_id, bucket);
                     scratch.local_bucket_mass[bucket] = local_mass;
+                    mark_dirty_bucket(bucket_range.begin + static_cast<std::uint32_t>(bucket));
                     scratch.bucket_reach[bucket_range.begin + bucket] += local_mass;
                 }
 
@@ -663,6 +673,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
                         bucketed_action_mass += mass * action_prob;
                     }
 
+                    mark_dirty_node(child);
                     if (meta.player == 0) {
                         scratch.player0_reach[child] += bucketed_action_mass;
                         scratch.player1_reach[child] += reach1;
@@ -702,6 +713,15 @@ void HUNLFlatDCFR::forward_reach_stage() {
                     worker_index,
                     std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
             });
+
+            for (auto& scratch : worker_scratch_) {
+                for (const auto node_idx : scratch.dirty_nodes) {
+                    scratch.player0_reach[node_idx] = 0.0;
+                    scratch.player1_reach[node_idx] = 0.0;
+                    scratch.chance_reach[node_idx] = 0.0;
+                }
+                scratch.dirty_nodes.clear();
+            }
         }
 
         run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
@@ -719,6 +739,13 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 worker_index,
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
         });
+
+        for (auto& scratch : worker_scratch_) {
+            for (const auto bucket_idx : scratch.dirty_buckets) {
+                scratch.bucket_reach[bucket_idx] = 0.0;
+            }
+            scratch.dirty_buckets.clear();
+        }
     }
 }
 

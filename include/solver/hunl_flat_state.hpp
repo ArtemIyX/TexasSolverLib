@@ -71,6 +71,8 @@ struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
     HUNLAlignedVector<double> row_values;
     HUNLAlignedVector<double> row_weights;
     HUNLAlignedVector<double> local_bucket_mass;
+    std::vector<std::uint32_t> dirty_nodes;
+    std::vector<std::uint32_t> dirty_buckets;
 
     void reset_values() noexcept;
     void ensure_capacity(std::size_t node_count, std::size_t edge_count);
