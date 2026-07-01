@@ -161,6 +161,24 @@ HUNLFlatTerminalValueTable build_flat_terminal_value_table(const HUNLFlatSolveGr
     return out;
 }
 
+HUNLFlatTerminalValueTableP0 build_flat_terminal_value_table_p0_for_benchmark(const HUNLFlatSolveGraph& graph) {
+    if (!graph.config || !graph.config->initial_hole_cards.has_value()) {
+        throw std::invalid_argument(
+            "build_flat_terminal_value_table_p0_for_benchmark requires fixed initial_hole_cards");
+    }
+
+    HUNLFlatTerminalValueTableP0 out(graph.nodes.size(), 0.0);
+    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& meta = graph.node_meta[node_idx];
+        if (meta.type == HUNLFlatNodeType::TerminalFold ||
+            meta.type == HUNLFlatNodeType::TerminalShowdown ||
+            meta.type == HUNLFlatNodeType::DepthLimited) {
+            out[node_idx] = meta.terminal_utility[0];
+        }
+    }
+    return out;
+}
+
 std::array<double, 2> compute_flat_expected_value(
     const HUNLFlatSolveGraph& graph,
     const HUNLFlatAverageStrategyView& average_strategy,
@@ -228,6 +246,79 @@ std::array<double, 2> compute_flat_expected_value(
                     const auto prob = action < probs.size() ? probs[action] : 0.0;
                     value[0] += prob * child[0];
                     value[1] += prob * child[1];
+                }
+                node_values[node_idx] = value;
+                break;
+            }
+        }
+    }
+
+    return node_values[graph.root];
+}
+
+double compute_flat_expected_value_p0_benchmark(
+    const HUNLFlatSolveGraph& graph,
+    const HUNLFlatAverageStrategyView& average_strategy,
+    const HUNLFlatTerminalValueTableP0& terminal_values_p0) {
+    if (graph.nodes.empty()) {
+        return 0.0;
+    }
+    if (graph.root >= graph.nodes.size()) {
+        throw std::out_of_range("compute_flat_expected_value_p0_benchmark root out of bounds");
+    }
+    if (!graph.config || !graph.config->initial_hole_cards.has_value()) {
+        throw std::invalid_argument(
+            "compute_flat_expected_value_p0_benchmark requires fixed initial_hole_cards");
+    }
+    if (average_strategy.meta == nullptr) {
+        throw std::invalid_argument("compute_flat_expected_value_p0_benchmark strategy view requires meta");
+    }
+    if (average_strategy.rows_by_infoset.size() < graph.infosets.size()) {
+        throw std::invalid_argument("compute_flat_expected_value_p0_benchmark strategy rows_by_infoset too small");
+    }
+    if (average_strategy.meta->size() < graph.infosets.size()) {
+        throw std::invalid_argument("compute_flat_expected_value_p0_benchmark strategy meta too small");
+    }
+    if (terminal_values_p0.size() < graph.nodes.size()) {
+        throw std::invalid_argument("compute_flat_expected_value_p0_benchmark terminal cache too small");
+    }
+
+    std::vector<double> node_values(graph.nodes.size(), 0.0);
+    const auto& strategy_meta = *average_strategy.meta;
+    for (const auto node_idx : graph.reverse_order) {
+        const auto& meta = graph.node_meta.at(node_idx);
+        switch (meta.type) {
+            case HUNLFlatNodeType::TerminalFold:
+            case HUNLFlatNodeType::TerminalShowdown:
+            case HUNLFlatNodeType::DepthLimited:
+                node_values[node_idx] = terminal_values_p0[node_idx];
+                break;
+
+            case HUNLFlatNodeType::Chance: {
+                double value = 0.0;
+                for (std::size_t i = 0; i < meta.chance_count; ++i) {
+                    const auto& outcome = graph.chance_outcomes.at(meta.chance_begin + i);
+                    value += outcome.probability * node_values.at(outcome.child);
+                }
+                node_values[node_idx] = value;
+                break;
+            }
+
+            case HUNLFlatNodeType::Decision: {
+                if (!meta.has_infoset || meta.infoset_id.value >= graph.infosets.size()) {
+                    throw std::logic_error("compute_flat_expected_value_p0_benchmark decision node missing infoset");
+                }
+                const auto& infoset_meta = strategy_meta.at(meta.infoset_id.value);
+                const auto probs = averaged_action_probabilities(
+                    infoset_meta,
+                    average_strategy.layout,
+                    average_strategy.rows_by_infoset[meta.infoset_id.value]);
+
+                double value = 0.0;
+                for (std::size_t action = 0; action < meta.child_count; ++action) {
+                    const auto child_idx = graph.children.at(meta.child_begin + action);
+                    const auto prob = action < probs.size() ? probs[action] : 0.0;
+                    value += prob * node_values.at(child_idx);
                 }
                 node_values[node_idx] = value;
                 break;

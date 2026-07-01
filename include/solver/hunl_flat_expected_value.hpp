@@ -25,6 +25,7 @@ struct HUNLFlatAverageStrategyTable {
 };
 
 using HUNLFlatTerminalValueTable = std::vector<std::array<double, 2>>;
+using HUNLFlatTerminalValueTableP0 = std::vector<double>;
 
 [[nodiscard]] HUNLFlatAverageStrategyTable build_flat_average_strategy_table(
     const HUNLFlatSolveGraph& graph,
@@ -32,11 +33,18 @@ using HUNLFlatTerminalValueTable = std::vector<std::array<double, 2>>;
     HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetHandAction);
 
 [[nodiscard]] HUNLFlatTerminalValueTable build_flat_terminal_value_table(const HUNLFlatSolveGraph& graph);
+[[nodiscard]] HUNLFlatTerminalValueTableP0 build_flat_terminal_value_table_p0_for_benchmark(
+    const HUNLFlatSolveGraph& graph);
 
 std::array<double, 2> compute_flat_expected_value(
     const HUNLFlatSolveGraph& graph,
     const HUNLFlatAverageStrategyView& average_strategy,
     const HUNLFlatTerminalValueTable* terminal_values = nullptr);
+
+double compute_flat_expected_value_p0_benchmark(
+    const HUNLFlatSolveGraph& graph,
+    const HUNLFlatAverageStrategyView& average_strategy,
+    const HUNLFlatTerminalValueTableP0& terminal_values_p0);
 
 std::array<double, 2> compute_flat_expected_value(
     const HUNLFlatSolveGraph& graph,

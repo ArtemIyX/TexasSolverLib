@@ -185,3 +185,26 @@ TEST_CASE(hunl_flat_dcfr_exports_infoset_indexed_average_strategy_table) {
         EXPECT_TRUE(meta.value_count == meta.bucket_count * static_cast<std::uint32_t>(meta.action_count));
     }
 }
+
+TEST_CASE(hunl_flat_expected_value_benchmark_fast_path_matches_full_flat_value) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    std::unordered_map<std::string, std::vector<double>> flat_strategy;
+
+    for (const auto& infoset : graph.infosets) {
+        std::vector<double> probs(infoset.action_count, 0.0);
+        if (!probs.empty()) {
+            probs[0] = 1.0;
+        }
+        flat_strategy.emplace(infoset.key, probs);
+    }
+
+    const auto strategy_table = core::build_flat_average_strategy_table(graph, flat_strategy);
+    const auto terminal_values = core::build_flat_terminal_value_table(graph);
+    const auto terminal_values_p0 = core::build_flat_terminal_value_table_p0_for_benchmark(graph);
+    const auto full_value = core::compute_flat_expected_value(graph, strategy_table.view(), &terminal_values);
+    const auto fast_value =
+        core::compute_flat_expected_value_p0_benchmark(graph, strategy_table.view(), terminal_values_p0);
+
+    EXPECT_NEAR(fast_value, full_value[0], 1e-12);
+}

@@ -348,8 +348,12 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(export_end - export_start).count());
 
     const auto ev_start = export_end;
-    const auto terminal_values = core::build_flat_terminal_value_table(graph);
-    const auto expected_value = core::compute_flat_expected_value(graph, strategy_table.view(), &terminal_values);
+    const auto terminal_values_p0 = core::build_flat_terminal_value_table_p0_for_benchmark(graph);
+    const auto game_value = core::compute_flat_expected_value_p0_benchmark(
+        graph,
+        strategy_table.view(),
+        terminal_values_p0);
+    const std::array<double, 2> expected_value = {game_value, -game_value};
     const auto ev_end = clock::now();
     core::profiling::mark(
         "hunl.bench.expected_value",
