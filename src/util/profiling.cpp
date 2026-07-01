@@ -120,7 +120,8 @@ bool starts_with(std::string_view value, std::string_view prefix) {
 void print_group(
     std::string_view title,
     const std::vector<std::pair<std::string, std::pair<std::uint64_t, std::uint64_t>>>& totals,
-    std::string_view prefix) {
+    std::string_view prefix,
+    std::size_t max_rows = std::numeric_limits<std::size_t>::max()) {
     std::cout << "\n[TexasSolver profiler] " << title << "\n";
     std::cout << std::left << std::setw(34) << "name"
               << std::right << std::setw(14) << "total_ms"
@@ -133,6 +134,7 @@ void print_group(
     std::uint64_t matched_calls = 0;
     std::uint64_t min_total_ns = std::numeric_limits<std::uint64_t>::max();
     std::uint64_t max_total_ns = 0;
+    std::size_t shown = 0;
     for (const auto& [name, entry] : totals) {
         if (!prefix.empty() && !starts_with(name, prefix)) {
             continue;
@@ -141,6 +143,10 @@ void print_group(
         matched_calls += entry.second;
         min_total_ns = std::min(min_total_ns, entry.first);
         max_total_ns = std::max(max_total_ns, entry.first);
+        if (shown >= max_rows) {
+            ++printed;
+            continue;
+        }
         const auto total_ms = ns_to_ms(entry.first);
         const auto calls = entry.second;
         const auto avg_us = calls > 0 ? static_cast<double>(entry.first) / static_cast<double>(calls) / 1000.0 : 0.0;
@@ -150,6 +156,7 @@ void print_group(
                   << std::setw(14) << std::fixed << std::setprecision(3) << avg_us
                   << "\n";
         ++printed;
+        ++shown;
     }
     if (printed == 0) {
         std::cout << "(no timers)\n";
@@ -161,7 +168,7 @@ void print_group(
         const auto avg_us = matched_calls > 0
             ? static_cast<double>(matched_total_ns) / static_cast<double>(matched_calls) / 1000.0
             : 0.0;
-        std::cout << std::left << std::setw(34) << "aggregate"
+        std::cout << std::left << std::setw(34) << "accounted_total"
                   << std::right << std::setw(14) << std::fixed << std::setprecision(3) << total_ms
                   << std::setw(12) << matched_calls
                   << std::setw(14) << std::fixed << std::setprecision(3) << avg_us
@@ -292,12 +299,13 @@ void print_profiler_report() {
         return lhs.second.first > rhs.second.first;
     });
 
-    print_group("solver layer", totals, "solver.");
-    print_group("solver layer", totals, "hunl.solve");
-    print_group("worker thread", totals, "parallel.worker");
-    print_group("worker thread", totals, "hunl_flat.worker");
-    print_group("stage names", totals, "hunl_flat.");
-    print_group("backward detail", totals, "hunl_flat.backward.");
+    print_group("Top Hotspots", totals, "", 24);
+    print_group("Benchmark Wallclock", totals, "hunl.bench.");
+    print_group("Flat Solve Wallclock", totals, "hunl_flat.solve.");
+    print_group("Flat Stage Wallclock", totals, "hunl_flat.stage.");
+    print_group("Flat Reach Detail", totals, "hunl_flat.reach.");
+    print_group("Flat Backward Detail", totals, "hunl_flat.backward.");
+    print_group("Flat Worker Detail", totals, "hunl_flat.worker.");
 }
 
 }  // namespace core::profiling

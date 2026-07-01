@@ -307,7 +307,6 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     double beta,
     double gamma) {
     using clock = std::chrono::steady_clock;
-    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.setup");
 
     const auto setup_start = clock::now();
     auto shared = std::make_shared<const core::HUNLConfig>(random_state.config);
@@ -322,14 +321,18 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         beta,
         gamma);
     const auto setup_end = clock::now();
+    core::profiling::mark(
+        "hunl.bench.setup",
+        std::chrono::duration<double>(setup_end - setup_start).count());
 
     const auto solve_start = setup_end;
-    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.solve");
     solver.run_iterations(iterations);
     const auto solve_end = clock::now();
+    core::profiling::mark(
+        "hunl.bench.solve",
+        std::chrono::duration<double>(solve_end - solve_start).count());
 
     const auto export_start = solve_end;
-    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.export");
     const auto exported = solver.export_average_strategy();
     StrategyMap strategy;
     strategy.reserve(exported.size());
@@ -337,16 +340,26 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         strategy.emplace(key, probs);
     }
     const auto export_end = clock::now();
+    core::profiling::mark(
+        "hunl.bench.export",
+        std::chrono::duration<double>(export_end - export_start).count());
 
     const auto ev_start = export_end;
-    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.expected_value");
     const auto expected_value = core::detail::expected_value(core::HUNLState::initial(shared), strategy);
     const auto ev_end = clock::now();
+    core::profiling::mark(
+        "hunl.bench.expected_value",
+        std::chrono::duration<double>(ev_end - ev_start).count());
 
     const auto exploit_start = ev_end;
-    TEXASSOLVER_PROFILE_SCOPE("hunl.random_flat.exploitability");
     const auto exploitability = core::detail::exploitability<core::HUNLState>(strategy);
     const auto exploit_end = clock::now();
+    core::profiling::mark(
+        "hunl.bench.exploitability",
+        std::chrono::duration<double>(exploit_end - exploit_start).count());
+    core::profiling::mark(
+        "hunl.bench.total",
+        std::chrono::duration<double>(exploit_end - setup_start).count());
 
     TimedBenchmarkResult result{
         std::move(exported),

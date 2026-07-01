@@ -1,5 +1,6 @@
 #include "solver/hunl_flat_pipeline.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
+#include "util/profiling.hpp"
 
 #include <chrono>
 #include <stdexcept>
@@ -128,6 +129,7 @@ const HUNLFlatPipelinePlan& HUNLFlatPipeline::plan() const noexcept {
 
 void HUNLFlatPipeline::run_iteration(HUNLFlatDCFR& solver) const {
     using clock = std::chrono::steady_clock;
+    const auto iteration_start = clock::now();
 
     if (solver.worker_scratch_.size() != solver.worker_count_) {
         throw std::logic_error("HUNLFlatDCFR worker scratch size must match worker_count");
@@ -136,22 +138,37 @@ void HUNLFlatPipeline::run_iteration(HUNLFlatDCFR& solver) const {
     const auto discount_start = clock::now();
     solver.apply_dcfr_discount_stage();
     const auto discount_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.discount",
+        std::chrono::duration<double>(discount_end - discount_start).count());
 
     const auto forward_profile_start = discount_end;
     solver.compute_strategy_stage();
     const auto forward_profile_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.forward_profile",
+        std::chrono::duration<double>(forward_profile_end - forward_profile_start).count());
 
     const auto aggregate_reach_start = forward_profile_end;
     solver.forward_reach_stage();
     const auto aggregate_reach_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.aggregate_reach",
+        std::chrono::duration<double>(aggregate_reach_end - aggregate_reach_start).count());
 
     const auto opponent_reach_start = aggregate_reach_end;
     solver.normalize_bucket_reach_stage();
     const auto opponent_reach_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.opponent_reach",
+        std::chrono::duration<double>(opponent_reach_end - opponent_reach_start).count());
 
     const auto showdown_start = opponent_reach_end;
     solver.showdown_equity_stage();
     const auto showdown_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.showdown_equity",
+        std::chrono::duration<double>(showdown_end - showdown_start).count());
 
     const auto depth_limited_stage = plan_.stage(HUNLFlatPipelineStageId::DepthLimitedEval);
     const auto depth_limited_start = showdown_end;
@@ -159,18 +176,30 @@ void HUNLFlatPipeline::run_iteration(HUNLFlatDCFR& solver) const {
         solver.depth_limited_eval_stage();
     }
     const auto depth_limited_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.depth_limited_eval",
+        std::chrono::duration<double>(depth_limited_end - depth_limited_start).count());
 
     const auto backward_start = depth_limited_end;
     solver.backward_value_stage();
     const auto backward_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.backward_cfv",
+        std::chrono::duration<double>(backward_end - backward_start).count());
 
     const auto regret_start = backward_end;
     solver.regret_update_stage();
     const auto regret_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.regret_update",
+        std::chrono::duration<double>(regret_end - regret_start).count());
 
     const auto average_start = regret_end;
     solver.average_strategy_stage();
     const auto average_end = clock::now();
+    profiling::mark(
+        "hunl_flat.stage.average_strategy",
+        std::chrono::duration<double>(average_end - average_start).count());
 
     solver.profile_.discount_seconds += std::chrono::duration<double>(discount_end - discount_start).count();
     solver.profile_.strategy_seconds += std::chrono::duration<double>(forward_profile_end - forward_profile_start).count();
@@ -184,6 +213,9 @@ void HUNLFlatPipeline::run_iteration(HUNLFlatDCFR& solver) const {
     solver.profile_.regret_seconds += std::chrono::duration<double>(regret_end - regret_start).count();
     solver.profile_.average_strategy_seconds += std::chrono::duration<double>(average_end - average_start).count();
     ++solver.iterations_;
+    profiling::mark(
+        "hunl_flat.solve.iteration",
+        std::chrono::duration<double>(clock::now() - iteration_start).count());
 }
 
 }  // namespace core

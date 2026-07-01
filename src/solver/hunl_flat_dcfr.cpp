@@ -54,7 +54,7 @@ std::size_t max_bucket_width(const HUNLFlatInfosetTable& infoset_table) {
 }
 
 void mark_worker_scope(const char* base, std::size_t worker_index, double seconds) {
-    if (!profiling::enabled()) {
+    if (!profiling::detail_enabled()) {
         return;
     }
     profiling::mark(worker_scope_name(base, worker_index), seconds);
@@ -125,7 +125,6 @@ std::optional<HUNLBucketTerminalTable> HUNLFlatDCFR::build_terminal_table_for_gr
 
 HUNLFlatDCFR::WorkerPool::WorkerPool(HUNLFlatDCFR& owner, std::size_t worker_count)
     : owner_(owner) {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.worker_pool_ctor");
     if (worker_count == 0) {
         throw std::invalid_argument("HUNLFlatDCFR worker_count must be at least 1");
     }
@@ -152,7 +151,6 @@ void HUNLFlatDCFR::WorkerPool::run_stage(
     StageCommand command,
     HUNLFlatStageKind stage_kind,
     std::size_t depth) noexcept(false) {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.worker_pool_run_stage");
     if (threads_.empty()) {
         return;
     }
@@ -180,7 +178,6 @@ std::size_t HUNLFlatDCFR::WorkerPool::worker_count() const noexcept {
 }
 
 void HUNLFlatDCFR::WorkerPool::worker_loop(std::size_t worker_index) {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.worker_loop.lifetime");
     std::size_t seen_generation = 0;
     for (;;) {
         StageCommand command = StageCommand::Discount;
@@ -397,15 +394,17 @@ void HUNLFlatDCFR::execute_stage_command(StageCommand command, std::size_t worke
 }
 
 void HUNLFlatDCFR::run_iteration() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.pipeline_iteration");
     pipeline_.run_iteration(*this);
 }
 
 void HUNLFlatDCFR::run_iterations(std::uint32_t iterations) {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.run_iterations");
+    const auto start = std::chrono::steady_clock::now();
     for (std::uint32_t i = 0; i < iterations; ++i) {
         run_iteration();
     }
+    profiling::mark(
+        "hunl_flat.solve.total",
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
 }
 
 const HUNLFlatSolveGraph& HUNLFlatDCFR::graph() const noexcept {
@@ -492,7 +491,6 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_averag
 }
 
 void HUNLFlatDCFR::apply_dcfr_discount_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.discount_stage");
     run_stage_workers(HUNLFlatStageKind::Discount, StageCommand::Discount);
 }
 
@@ -528,7 +526,6 @@ void HUNLFlatDCFR::worker_discount_stage(std::size_t worker_index) {
 }
 
 void HUNLFlatDCFR::compute_strategy_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.strategy_stage");
     run_stage_workers(HUNLFlatStageKind::Strategy, StageCommand::Strategy);
 }
 
@@ -582,7 +579,6 @@ void HUNLFlatDCFR::worker_strategy_stage(std::size_t worker_index) {
 }
 
 void HUNLFlatDCFR::forward_reach_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.reach_stage");
     std::fill(player0_reach_.begin(), player0_reach_.end(), 0.0);
     std::fill(player1_reach_.begin(), player1_reach_.end(), 0.0);
     std::fill(chance_reach_.begin(), chance_reach_.end(), 0.0);
@@ -762,17 +758,14 @@ void HUNLFlatDCFR::worker_reach_reduce_buckets_depth(std::size_t worker_index) {
 }
 
 void HUNLFlatDCFR::showdown_equity_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.showdown_equity_stage");
     run_stage_workers(HUNLFlatStageKind::Terminal, StageCommand::ShowdownEquity);
 }
 
 void HUNLFlatDCFR::depth_limited_eval_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.depth_limited_eval_stage");
     run_stage_workers(HUNLFlatStageKind::Terminal, StageCommand::DepthLimitedEval);
 }
 
 void HUNLFlatDCFR::terminal_utility_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.terminal_stage");
     showdown_equity_stage();
     depth_limited_eval_stage();
 }
@@ -818,7 +811,6 @@ void HUNLFlatDCFR::worker_depth_limited_eval_stage(std::size_t worker_index) {
 }
 
 void HUNLFlatDCFR::normalize_bucket_reach_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.normalize_bucket_reach_stage");
     run_stage_workers(HUNLFlatStageKind::Reach, StageCommand::NormalizeBucketReach);
 }
 
@@ -856,7 +848,6 @@ void HUNLFlatDCFR::worker_normalize_bucket_reach_stage(std::size_t worker_index)
 }
 
 void HUNLFlatDCFR::backward_value_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.backward_stage");
     std::fill(node_values_.begin(), node_values_.end(), 0.0);
     std::fill(action_values_.begin(), action_values_.end(), 0.0);
 
@@ -957,7 +948,6 @@ void HUNLFlatDCFR::worker_backward_depth(std::size_t worker_index, std::size_t d
 }
 
 void HUNLFlatDCFR::regret_update_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.regret_stage");
     run_stage_workers(HUNLFlatStageKind::Regret, StageCommand::Regret);
 }
 
@@ -1013,7 +1003,6 @@ void HUNLFlatDCFR::worker_regret_stage(std::size_t worker_index) {
 }
 
 void HUNLFlatDCFR::average_strategy_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.average_stage");
     run_stage_workers(HUNLFlatStageKind::AverageStrategy, StageCommand::AverageStrategy);
 }
 
