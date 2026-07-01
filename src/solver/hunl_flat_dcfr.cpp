@@ -876,22 +876,23 @@ void HUNLFlatDCFR::backward_value_stage() {
                 }
                 auto* row = scratch.row_values.data();
                 auto* weights = scratch.row_weights.data();
+                const auto* normalized_bucket_reach = normalized_bucket_reach_.data() + bucket_range.begin;
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
                     row[i] = node_values_[child];
 
                     double action_prob = 0.0;
-                    for (std::size_t bucket = 0; bucket < infoset_meta.bucket_count; ++bucket) {
-                        const auto bucket_mass =
-                            normalized_bucket_reach_[bucket_range.begin + static_cast<std::uint32_t>(bucket)];
-                        if (bucket_mass == 0.0) {
-                            continue;
-                        }
-                        const double bucket_action_prob =
-                            infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand
-                                ? strategy[i * static_cast<std::size_t>(infoset_meta.bucket_count) + bucket]
-                                : strategy[bucket * static_cast<std::size_t>(infoset_meta.action_count) + i];
-                        action_prob += bucket_mass * bucket_action_prob;
+                    if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+                        action_prob = dot_product(
+                            normalized_bucket_reach,
+                            strategy + i * static_cast<std::size_t>(infoset_meta.bucket_count),
+                            infoset_meta.bucket_count);
+                    } else {
+                        action_prob = dot_product_strided(
+                            normalized_bucket_reach,
+                            strategy + i,
+                            infoset_meta.bucket_count,
+                            static_cast<std::size_t>(infoset_meta.action_count));
                     }
                     weights[i] = action_prob;
                 }

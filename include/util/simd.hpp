@@ -35,6 +35,12 @@ void update_regret_sum_vector_scalar(
     const double* node_value,
     std::size_t hand_count,
     std::size_t action_count) noexcept;
+double dot_product_scalar(const double* lhs, const double* rhs, std::size_t len) noexcept;
+double dot_product_strided_scalar(
+    const double* lhs,
+    const double* rhs,
+    std::size_t len,
+    std::size_t rhs_stride) noexcept;
 void normalize_scalar(double* out, std::size_t len, double total) noexcept;
 void compute_strategy_row_scalar(const double* regrets, double* out, std::size_t len) noexcept;
 
@@ -53,6 +59,12 @@ void update_strategy_sum(
     std::size_t len,
     double own_reach) noexcept;
 void copy_values(double* out, const double* in, std::size_t len) noexcept;
+double dot_product(const double* lhs, const double* rhs, std::size_t len) noexcept;
+double dot_product_strided(
+    const double* lhs,
+    const double* rhs,
+    std::size_t len,
+    std::size_t rhs_stride) noexcept;
 double reduce_action_values(const double* values, std::size_t len) noexcept;
 double reduce_weighted_action_values(const double* values, const double* weights, std::size_t len) noexcept;
 void update_regret_sum_vector(

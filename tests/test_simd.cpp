@@ -89,6 +89,35 @@ TEST_CASE(simd_copy_values_matches_scalar_and_handles_empty_rows) {
     }
 }
 
+TEST_CASE(simd_dot_product_matches_scalar_expectations) {
+    const std::vector<double> lhs = {0.25, -2.0, 4.5, 1.25, -3.0};
+    const std::vector<double> rhs = {8.0, 0.5, -1.0, 2.0, -4.0};
+
+    const auto via_dispatch = core::dot_product(lhs.data(), rhs.data(), lhs.size());
+    const auto via_scalar = core::dot_product_scalar(lhs.data(), rhs.data(), lhs.size());
+
+    EXPECT_NEAR(via_dispatch, via_scalar, TOL);
+    EXPECT_NEAR(via_dispatch, 11.0, TOL);
+    EXPECT_EQ(core::dot_product(lhs.data(), rhs.data(), 0), 0.0);
+}
+
+TEST_CASE(simd_dot_product_strided_matches_scalar_expectations) {
+    const std::vector<double> lhs = {0.5, 1.5, -2.0, 4.0};
+    const std::vector<double> rhs = {
+        2.0, 10.0,
+        -1.0, 11.0,
+        3.0, 12.0,
+        0.25, 13.0,
+    };
+
+    const auto via_dispatch = core::dot_product_strided(lhs.data(), rhs.data(), lhs.size(), 2);
+    const auto via_scalar = core::dot_product_strided_scalar(lhs.data(), rhs.data(), lhs.size(), 2);
+
+    EXPECT_NEAR(via_dispatch, via_scalar, TOL);
+    EXPECT_NEAR(via_dispatch, -5.5, TOL);
+    EXPECT_EQ(core::dot_product_strided(lhs.data(), rhs.data(), 0, 2), 0.0);
+}
+
 TEST_CASE(simd_row_normalization_matches_scalar_and_handles_zero_length) {
     std::vector<double> empty_in;
     std::vector<double> empty_out;

@@ -258,6 +258,37 @@ inline void update_strategy_sum_avx2(
     update_strategy_sum_sse2(strategy_sum + i, strategy + i, len - i, own_reach);
 }
 
+inline double dot_product_sse2(const double* lhs, const double* rhs, std::size_t len) noexcept {
+    std::size_t i = 0;
+    __m128d sum = _mm_setzero_pd();
+    for (; i + 1 < len; i += 2) {
+        const __m128d lv = _mm_loadu_pd(lhs + i);
+        const __m128d rv = _mm_loadu_pd(rhs + i);
+        sum = _mm_add_pd(sum, _mm_mul_pd(lv, rv));
+    }
+    alignas(16) double tmp[2];
+    _mm_store_pd(tmp, sum);
+    double total = tmp[0] + tmp[1];
+    for (; i < len; ++i) {
+        total += lhs[i] * rhs[i];
+    }
+    return total;
+}
+
+inline double dot_product_avx2(const double* lhs, const double* rhs, std::size_t len) noexcept {
+    std::size_t i = 0;
+    __m256d sum = _mm256_setzero_pd();
+    for (; i + 3 < len; i += 4) {
+        const __m256d lv = _mm256_loadu_pd(lhs + i);
+        const __m256d rv = _mm256_loadu_pd(rhs + i);
+        sum = _mm256_add_pd(sum, _mm256_mul_pd(lv, rv));
+    }
+    alignas(32) double tmp[4];
+    _mm256_store_pd(tmp, sum);
+    double total = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    return total + dot_product_sse2(lhs + i, rhs + i, len - i);
+}
+
 }
 #endif
 
@@ -348,6 +379,26 @@ void update_regret_sum_vector_scalar(
             regret[offset + a] += action_value[a * hand_count + h] - base;
         }
     }
+}
+
+double dot_product_scalar(const double* lhs, const double* rhs, std::size_t len) noexcept {
+    double total = 0.0;
+    for (std::size_t i = 0; i < len; ++i) {
+        total += lhs[i] * rhs[i];
+    }
+    return total;
+}
+
+double dot_product_strided_scalar(
+    const double* lhs,
+    const double* rhs,
+    std::size_t len,
+    std::size_t rhs_stride) noexcept {
+    double total = 0.0;
+    for (std::size_t i = 0; i < len; ++i) {
+        total += lhs[i] * rhs[i * rhs_stride];
+    }
+    return total;
 }
 
 void normalize_scalar(double* out, std::size_t len, double total) noexcept {
@@ -521,6 +572,38 @@ void copy_values(double* out, const double* in, std::size_t len) noexcept {
         out[i] = in[i];
     }
 #endif
+}
+
+double dot_product(const double* lhs, const double* rhs, std::size_t len) noexcept {
+    switch (len) {
+        case 0:
+            return 0.0;
+        case 1:
+            return lhs[0] * rhs[0];
+        case 2:
+            return lhs[0] * rhs[0] + lhs[1] * rhs[1];
+        case 3:
+            return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2];
+        case 4:
+            return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2] + lhs[3] * rhs[3];
+        default:
+            break;
+    }
+#if defined(__AVX2__)
+    return dot_product_avx2(lhs, rhs, len);
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    return dot_product_sse2(lhs, rhs, len);
+#else
+    return dot_product_scalar(lhs, rhs, len);
+#endif
+}
+
+double dot_product_strided(
+    const double* lhs,
+    const double* rhs,
+    std::size_t len,
+    std::size_t rhs_stride) noexcept {
+    return dot_product_strided_scalar(lhs, rhs, len, rhs_stride);
 }
 
 double reduce_action_values(const double* values, std::size_t len) noexcept {

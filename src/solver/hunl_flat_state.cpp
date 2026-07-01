@@ -89,15 +89,28 @@ std::vector<HUNLFlatRange> partition_depth_slice_by_cost(
         const auto range_begin = cursor;
         while (local_cursor < slice.count) {
             const auto nodes_left = slice.count - local_cursor;
-            if (nodes_left <= remaining_workers - 1 && cursor > range_begin) {
+            if (nodes_left == remaining_workers - 1 && cursor > range_begin) {
                 break;
             }
+
+            const auto next_cost = static_cast<std::uint64_t>(costs[local_cursor]);
+            if (assigned_cost > 0 && assigned_cost + next_cost > target_cost) {
+                const auto overshoot = assigned_cost + next_cost - target_cost;
+                const auto undershoot = target_cost - assigned_cost;
+                if (overshoot > undershoot) {
+                    break;
+                }
+            }
+
+            assigned_cost += next_cost;
+            ++local_cursor;
+            ++cursor;
+        }
+
+        if (cursor == range_begin && local_cursor < slice.count) {
             assigned_cost += costs[local_cursor];
             ++local_cursor;
             ++cursor;
-            if (assigned_cost >= target_cost) {
-                break;
-            }
         }
 
         ranges.push_back(HUNLFlatRange{range_begin, cursor});

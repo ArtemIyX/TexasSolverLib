@@ -1087,3 +1087,30 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_root_value_stays_between_child_values_wi
     EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
     EXPECT_TRUE(solver.node_values()[graph.root] >= std::min(a0, a1) - 1e-12);
 }
+
+TEST_CASE(hunl_flat_dcfr_backward_stage_action_hand_layout_matches_across_worker_counts) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
+    const auto graph_a = core::HUNLFlatSolveGraph::build(config);
+    const auto graph_b = core::HUNLFlatSolveGraph::build(config);
+
+    core::HUNLFlatDCFR single_worker(
+        graph_a,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1);
+    core::HUNLFlatDCFR two_workers(
+        graph_b,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        2);
+
+    single_worker.run_iteration();
+    two_workers.run_iteration();
+
+    for (std::size_t i = 0; i < single_worker.node_values().size(); ++i) {
+        EXPECT_NEAR(single_worker.node_values()[i], two_workers.node_values()[i], 1e-12);
+    }
+    for (std::size_t i = 0; i < single_worker.action_values().size(); ++i) {
+        EXPECT_NEAR(single_worker.action_values()[i], two_workers.action_values()[i], 1e-12);
+    }
+}
