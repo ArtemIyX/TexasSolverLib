@@ -3,6 +3,7 @@
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_bucket_map.hpp"
 #include "solver/hunl_bucket_terminal.hpp"
+#include "solver/hunl_flat_expected_value.hpp"
 #include "solver/hunl_flat_pipeline.hpp"
 #include "solver/hunl_flat_state.hpp"
 
@@ -105,6 +106,7 @@ public:
     [[nodiscard]] const HUNLFlatPipelinePlan& pipeline_plan() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
+    [[nodiscard]] HUNLFlatAverageStrategyTable export_average_strategy_table() const;
 
 private:
     friend class HUNLFlatPipeline;

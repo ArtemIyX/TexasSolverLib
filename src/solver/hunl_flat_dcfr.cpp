@@ -490,6 +490,50 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_averag
     return out;
 }
 
+HUNLFlatAverageStrategyTable HUNLFlatDCFR::export_average_strategy_table() const {
+    HUNLFlatAverageStrategyTable out;
+    out.layout = infoset_table_.layout();
+    out.meta = infoset_table_.meta();
+    out.values.assign(infoset_table_.total_value_count(), 0.0);
+
+    for (const auto& infoset : graph_.infosets) {
+        const auto& meta = out.meta.at(infoset.id.value);
+        const auto* strategy_sum = infoset_table_.strategy_sum(infoset.id);
+        auto* average = out.values.data() + meta.offset;
+
+        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
+                double total = 0.0;
+                for (std::size_t action = 0; action < meta.action_count; ++action) {
+                    total += strategy_sum[action * static_cast<std::size_t>(meta.bucket_count) + bucket];
+                }
+                if (total > 0.0) {
+                    for (std::size_t action = 0; action < meta.action_count; ++action) {
+                        average[action * static_cast<std::size_t>(meta.bucket_count) + bucket] =
+                            strategy_sum[action * static_cast<std::size_t>(meta.bucket_count) + bucket] / total;
+                    }
+                    continue;
+                }
+                const auto uniform = 1.0 / static_cast<double>(meta.action_count);
+                for (std::size_t action = 0; action < meta.action_count; ++action) {
+                    average[action * static_cast<std::size_t>(meta.bucket_count) + bucket] = uniform;
+                }
+            }
+            continue;
+        }
+
+        for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
+            const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
+            normalize_row(
+                strategy_sum + bucket_offset,
+                average + bucket_offset,
+                meta.action_count);
+        }
+    }
+
+    return out;
+}
+
 void HUNLFlatDCFR::apply_dcfr_discount_stage() {
     run_stage_workers(HUNLFlatStageKind::Discount, StageCommand::Discount);
 }

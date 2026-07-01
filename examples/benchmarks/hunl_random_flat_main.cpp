@@ -186,6 +186,7 @@ struct RandomState {
 };
 
 struct TimedBenchmarkResult {
+    core::HUNLFlatAverageStrategyTable strategy_table;
     std::unordered_map<std::string, std::vector<double>> exported_strategy;
     StrategyMap strategy;
     std::array<double, 2> expected_value = {0.0, 0.0};
@@ -334,6 +335,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(solve_end - solve_start).count());
 
     const auto export_start = solve_end;
+    const auto strategy_table = solver.export_average_strategy_table();
     const auto exported = solver.export_average_strategy();
     StrategyMap strategy;
     strategy.reserve(exported.size());
@@ -346,7 +348,8 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(export_end - export_start).count());
 
     const auto ev_start = export_end;
-    const auto expected_value = core::compute_flat_expected_value(graph, exported);
+    const auto terminal_values = core::build_flat_terminal_value_table(graph);
+    const auto expected_value = core::compute_flat_expected_value(graph, strategy_table.view(), &terminal_values);
     const auto ev_end = clock::now();
     core::profiling::mark(
         "hunl.bench.expected_value",
@@ -363,6 +366,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(exploit_end - setup_start).count());
 
     TimedBenchmarkResult result{
+        std::move(strategy_table),
         std::move(exported),
         std::move(strategy),
         expected_value,

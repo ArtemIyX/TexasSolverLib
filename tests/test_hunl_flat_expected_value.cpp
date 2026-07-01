@@ -1,6 +1,7 @@
 #include "games/hunl.hpp"
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl_tree.hpp"
+#include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_flat_expected_value.hpp"
 #include "solver/solver.hpp"
 #include "test_harness.hpp"
@@ -139,7 +140,9 @@ TEST_CASE(hunl_flat_expected_value_matches_generic_recursive_path_for_action_row
         generic_strategy.emplace(*node.infoset_key, std::move(probs));
     }
 
-    const auto flat_value = core::compute_flat_expected_value(graph, flat_strategy);
+    const auto strategy_table = core::build_flat_average_strategy_table(graph, flat_strategy);
+    const auto terminal_values = core::build_flat_terminal_value_table(graph);
+    const auto flat_value = core::compute_flat_expected_value(graph, strategy_table.view(), &terminal_values);
     const auto generic_value = core::detail::expected_value(core::HUNLState::initial(config), generic_strategy);
 
     EXPECT_NEAR(flat_value[0], generic_value[0], 1e-12);
@@ -151,8 +154,34 @@ TEST_CASE(hunl_flat_expected_value_averages_bucketed_export_rows_without_dynamic
     std::unordered_map<std::string, std::vector<double>> strategy;
     strategy.emplace("shared-infoset", std::vector<double>{1.0, 0.0, 0.0, 1.0});
 
-    const auto value = core::compute_flat_expected_value(graph, strategy);
+    const auto strategy_table = core::build_flat_average_strategy_table(graph, strategy);
+    const auto terminal_values = core::build_flat_terminal_value_table(graph);
+    const auto value = core::compute_flat_expected_value(graph, strategy_table.view(), &terminal_values);
 
     EXPECT_NEAR(value[0], 0.5, 1e-12);
     EXPECT_NEAR(value[1], -0.5, 1e-12);
+}
+
+TEST_CASE(hunl_flat_dcfr_exports_infoset_indexed_average_strategy_table) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetHandAction);
+
+    solver.run_iteration();
+    const auto table = solver.export_average_strategy_table();
+    const auto view = table.view();
+
+    EXPECT_TRUE(table.meta.size() == graph.infosets.size());
+    EXPECT_TRUE(view.rows_by_infoset.size() == graph.infosets.size());
+    EXPECT_TRUE(table.layout == core::HUNLFlatValueLayout::InfosetHandAction);
+
+    for (const auto& infoset : graph.infosets) {
+        const auto& meta = table.meta.at(infoset.id.value);
+        EXPECT_TRUE(view.rows_by_infoset[infoset.id.value] != nullptr);
+        EXPECT_TRUE(meta.action_count == infoset.action_count);
+        EXPECT_TRUE(meta.value_count == meta.bucket_count * static_cast<std::uint32_t>(meta.action_count));
+    }
 }

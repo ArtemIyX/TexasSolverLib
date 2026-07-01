@@ -208,7 +208,7 @@ and it can avoid:
 - repeated legal-action generation
 - repeated chance-outcome generation
 
-## Phase C: Add A Strategy Export/View That Avoids String Lookup
+## + Phase C: Add A Strategy Export/View That Avoids String Lookup
 
 Even a flat evaluator should not rely on:
 
