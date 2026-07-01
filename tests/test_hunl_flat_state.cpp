@@ -265,6 +265,60 @@ TEST_CASE(hunl_flat_parallel_plan_weights_depth_ranges_by_estimated_backward_cos
     EXPECT_TRUE(second_cost <= first_cost * 2U);
 }
 
+TEST_CASE(hunl_flat_parallel_plan_estimated_backward_cost_matches_node_types) {
+    const auto graph = make_cost_skew_graph();
+    const auto table = core::HUNLFlatInfosetTable::build(graph, {16, 16}, core::HUNLFlatValueLayout::InfosetActionHand);
+
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[0], table), 64U);
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[1], table), 64U);
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[2], table), 16U);
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[3], table), 16U);
+
+    core::HUNLFlatNodeMeta chance_meta;
+    chance_meta.type = core::HUNLFlatNodeType::Chance;
+    chance_meta.chance_count = 5;
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(chance_meta, table), 5U);
+
+    core::HUNLFlatNodeMeta fold_meta;
+    fold_meta.type = core::HUNLFlatNodeType::TerminalFold;
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(fold_meta, table), 1U);
+
+    core::HUNLFlatNodeMeta showdown_meta;
+    showdown_meta.type = core::HUNLFlatNodeType::TerminalShowdown;
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(showdown_meta, table), 1U);
+
+    core::HUNLFlatNodeMeta depth_limited_meta;
+    depth_limited_meta.type = core::HUNLFlatNodeType::DepthLimited;
+    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(depth_limited_meta, table), 1U);
+}
+
+TEST_CASE(hunl_flat_parallel_plan_depth_backward_costs_cover_full_depth_cost) {
+    const auto graph = make_cost_skew_graph();
+    const auto table = core::HUNLFlatInfosetTable::build(graph, {16, 16}, core::HUNLFlatValueLayout::InfosetActionHand);
+    const auto plan = core::HUNLFlatParallelPlan::build(graph, table, 3);
+
+    EXPECT_EQ(plan.workers.size(), 3U);
+    EXPECT_EQ(graph.depth_slices.size(), 1U);
+
+    std::uint64_t total_expected_cost = 0;
+    for (const auto node_idx : graph.depth_order) {
+        total_expected_cost += core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[node_idx], table);
+    }
+
+    std::uint64_t total_planned_cost = 0;
+    std::uint32_t cursor = graph.depth_slices[0].begin;
+    for (const auto& worker : plan.workers) {
+        const auto range = worker.depth_node_ranges[0];
+        EXPECT_EQ(range.begin, cursor);
+        EXPECT_TRUE(range.begin <= range.end);
+        total_planned_cost += worker.depth_backward_costs[0];
+        cursor = range.end;
+    }
+
+    EXPECT_EQ(cursor, graph.depth_slices[0].begin + graph.depth_slices[0].count);
+    EXPECT_EQ(total_planned_cost, total_expected_cost);
+}
+
 TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     core::HUNLFlatWorkerScratch scratch;
     scratch.ensure_capacity(6, 5, 4, 3, 2);
@@ -298,4 +352,28 @@ TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     EXPECT_EQ(scratch.player0_reach[3], 0.0);
     EXPECT_EQ(scratch.player1_reach[4], 0.0);
     EXPECT_EQ(scratch.chance_reach[5], 0.0);
+}
+
+TEST_CASE(hunl_flat_worker_scratch_ensure_capacity_sizes_row_buffers_and_resets_dirty_tracking) {
+    core::HUNLFlatWorkerScratch scratch;
+    scratch.ensure_capacity(2, 1, 3, 2, 2);
+    scratch.dirty_nodes.push_back(1);
+    scratch.dirty_buckets.push_back(2);
+    scratch.row_values[0] = 7.0;
+    scratch.row_weights[1] = 8.0;
+    scratch.local_bucket_mass[1] = 9.0;
+
+    scratch.ensure_capacity(5, 4, 6, 7, 8);
+
+    EXPECT_EQ(scratch.terminal_values.size(), 5U);
+    EXPECT_EQ(scratch.action_values.size(), 4U);
+    EXPECT_EQ(scratch.bucket_reach.size(), 6U);
+    EXPECT_EQ(scratch.row_values.size(), 7U);
+    EXPECT_EQ(scratch.row_weights.size(), 7U);
+    EXPECT_EQ(scratch.local_bucket_mass.size(), 8U);
+    EXPECT_TRUE(scratch.dirty_nodes.empty());
+    EXPECT_TRUE(scratch.dirty_buckets.empty());
+    EXPECT_EQ(scratch.row_values[0], 0.0);
+    EXPECT_EQ(scratch.row_weights[1], 0.0);
+    EXPECT_EQ(scratch.local_bucket_mass[1], 0.0);
 }

@@ -874,12 +874,12 @@ void HUNLFlatDCFR::backward_value_stage() {
                 if (infoset_meta.bucket_count == 0 || infoset_meta.action_count == 0) {
                     throw std::logic_error("HUNLFlatDCFR backward stage requires non-empty bucket/action counts");
                 }
-                auto* row = scratch.row_values.data();
-                auto* weights = scratch.row_weights.data();
                 const auto* normalized_bucket_reach = normalized_bucket_reach_.data() + bucket_range.begin;
+                double node_value = 0.0;
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
-                    row[i] = node_values_[child];
+                    const auto child_value = node_values_[child];
+                    action_values_[meta.child_begin + i] = child_value;
 
                     double action_prob = 0.0;
                     if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
@@ -894,11 +894,10 @@ void HUNLFlatDCFR::backward_value_stage() {
                             infoset_meta.bucket_count,
                             static_cast<std::size_t>(infoset_meta.action_count));
                     }
-                    weights[i] = action_prob;
+                    node_value += child_value * action_prob;
                 }
                 const auto reduction_start = std::chrono::steady_clock::now();
-                copy_values(action_values_.data() + meta.child_begin, row, meta.child_count);
-                node_values_[node_idx] = reduce_weighted_action_values(row, weights, meta.child_count);
+                node_values_[node_idx] = node_value;
                 mark_worker_detail_scope(
                     "hunl_flat.backward.row_reduction",
                     worker_index,

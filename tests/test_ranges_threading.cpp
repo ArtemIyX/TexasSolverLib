@@ -243,4 +243,36 @@ TEST_CASE(ranges_shared_infoset_same_depth_graph_repeated_runs_are_deterministic
     }
 }
 
+TEST_CASE(ranges_shared_infoset_same_depth_graph_matches_across_layouts_and_worker_counts) {
+    const auto graph_a = make_shared_infoset_same_depth_graph();
+    const auto graph_b = make_shared_infoset_same_depth_graph();
+    core::HUNLFlatDCFR hand_action(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetHandAction, 1);
+    core::HUNLFlatDCFR action_hand(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 3);
+
+    for (auto* solver : {&hand_action, &action_hand}) {
+        auto& table = solver->infoset_table_mut();
+        const auto infoset_id = solver->graph().infosets.front().id;
+        auto* regret = table.regret_mut(infoset_id);
+        const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+        for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
+            regret[table.value_index(infoset_id, bucket, 0)] = 6.0;
+            regret[table.value_index(infoset_id, bucket, 1)] = 0.0;
+        }
+    }
+
+    hand_action.run_iterations(2);
+    action_hand.run_iterations(2);
+
+    for (std::size_t i = 0; i < hand_action.player0_reach().size(); ++i) {
+        EXPECT_NEAR(hand_action.player0_reach()[i], action_hand.player0_reach()[i], 1e-12);
+        EXPECT_NEAR(hand_action.player1_reach()[i], action_hand.player1_reach()[i], 1e-12);
+        EXPECT_NEAR(hand_action.chance_reach()[i], action_hand.chance_reach()[i], 1e-12);
+        EXPECT_NEAR(hand_action.node_values()[i], action_hand.node_values()[i], 1e-12);
+    }
+    for (std::size_t i = 0; i < hand_action.bucket_reach().size(); ++i) {
+        EXPECT_NEAR(hand_action.bucket_reach()[i], action_hand.bucket_reach()[i], 1e-12);
+        EXPECT_NEAR(hand_action.normalized_bucket_reach()[i], action_hand.normalized_bucket_reach()[i], 1e-12);
+    }
+}
+
 }  // namespace

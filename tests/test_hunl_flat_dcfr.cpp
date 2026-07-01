@@ -314,6 +314,67 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
     return graph;
 }
 
+core::HUNLFlatSolveGraph make_unreachable_infoset_graph() {
+    core::HUNLFlatSolveGraph graph;
+    graph.root = 0;
+    graph.max_depth = 1;
+    graph.max_actions = 1;
+    graph.children = {1, 3};
+    graph.nodes.resize(4);
+    graph.node_meta.resize(4);
+    graph.infosets = {
+        core::HUNLFlatInfoset{core::InfosetId{0}, 0, 1, {}, "reachable", 0, core::Street::Flop, 1},
+        core::HUNLFlatInfoset{core::InfosetId{1}, 1, 1, {}, "unreachable", 0, core::Street::Flop, 1},
+    };
+    graph.infoset_nodes = {0, 2};
+    graph.depth_order = {0, 2, 1, 3};
+    graph.forward_order = graph.depth_order;
+    graph.reverse_order = {3, 1, 2, 0};
+    graph.street_order = graph.depth_order;
+    graph.depth_slices = {
+        core::HUNLFlatSlice{0, 2},
+        core::HUNLFlatSlice{2, 2},
+    };
+    graph.node_depths = {0, 1, 0, 1};
+    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
+        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.nodes.size())};
+
+    auto set_decision = [&](std::uint32_t node_idx, core::InfosetId infoset_id) {
+        graph.nodes[node_idx].child_begin = node_idx == 0 ? 0 : 1;
+        graph.nodes[node_idx].child_count = 1;
+        graph.nodes[node_idx].infoset_id = infoset_id;
+        graph.nodes[node_idx].player = 0;
+        graph.nodes[node_idx].type = core::HUNLFlatNodeType::Decision;
+        graph.nodes[node_idx].street = core::Street::Flop;
+        graph.nodes[node_idx].action_count = 1;
+        graph.nodes[node_idx].has_infoset = true;
+
+        graph.node_meta[node_idx].child_begin = graph.nodes[node_idx].child_begin;
+        graph.node_meta[node_idx].child_count = 1;
+        graph.node_meta[node_idx].infoset_id = infoset_id;
+        graph.node_meta[node_idx].player = 0;
+        graph.node_meta[node_idx].type = core::HUNLFlatNodeType::Decision;
+        graph.node_meta[node_idx].street = core::Street::Flop;
+        graph.node_meta[node_idx].action_count = 1;
+        graph.node_meta[node_idx].has_infoset = true;
+    };
+
+    auto set_terminal = [&](std::uint32_t node_idx, double value) {
+        graph.nodes[node_idx].type = core::HUNLFlatNodeType::TerminalFold;
+        graph.nodes[node_idx].terminal_utility = {value, -value};
+        graph.nodes[node_idx].terminal_kind = core::TerminalKind::fold(1, 1);
+        graph.node_meta[node_idx].type = core::HUNLFlatNodeType::TerminalFold;
+        graph.node_meta[node_idx].terminal_utility = {value, -value};
+        graph.node_meta[node_idx].terminal_kind = core::TerminalKind::fold(1, 1);
+    };
+
+    set_decision(0, core::InfosetId{0});
+    set_decision(2, core::InfosetId{1});
+    set_terminal(1, 1.0);
+    set_terminal(3, -2.0);
+    return graph;
+}
+
 }  // namespace
 
 TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration) {
@@ -497,6 +558,28 @@ TEST_CASE(hunl_flat_dcfr_precomputes_normalized_bucket_reach) {
                     1e-12);
             }
         }
+    }
+}
+
+TEST_CASE(hunl_flat_dcfr_zero_reach_infosets_fall_back_to_uniform_bucket_priors) {
+    const auto graph = make_unreachable_infoset_graph();
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 3},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1);
+
+    solver.run_iteration();
+
+    const auto unreachable_infoset = core::InfosetId{1};
+    const auto& infoset_meta = solver.infoset_table().meta()[unreachable_infoset.value];
+    const auto bucket_range = solver.infoset_table().infoset_bucket_range(unreachable_infoset);
+    EXPECT_NEAR(solver.infoset_bucket_totals()[unreachable_infoset.value], 0.0, 1e-12);
+    for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
+        EXPECT_NEAR(
+            solver.normalized_bucket_reach()[idx],
+            1.0 / static_cast<double>(infoset_meta.bucket_count),
+            1e-12);
     }
 }
 
@@ -735,6 +818,34 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children) {
     EXPECT_TRUE(checked_parent);
 }
 
+TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph) {
+    const auto graph = make_shared_infoset_same_depth_graph();
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1);
+
+    auto& table = solver.infoset_table_mut();
+    const auto infoset_id = graph.infosets.front().id;
+    auto* regret = table.regret_mut(infoset_id);
+    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
+        regret[bucket] = 4.0;
+        regret[bucket_count + bucket] = 0.0;
+    }
+
+    solver.run_iteration();
+
+    EXPECT_NEAR(solver.node_values()[1], 3.0, 1e-12);
+    EXPECT_NEAR(solver.node_values()[2], 2.0, 1e-12);
+    EXPECT_NEAR(solver.node_values()[graph.root], 2.5, 1e-12);
+    EXPECT_NEAR(solver.action_values()[2], 3.0, 1e-12);
+    EXPECT_NEAR(solver.action_values()[3], -1.0, 1e-12);
+    EXPECT_NEAR(solver.action_values()[4], 2.0, 1e-12);
+    EXPECT_NEAR(solver.action_values()[5], -2.0, 1e-12);
+}
+
 TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
     const auto graph = core::HUNLFlatSolveGraph::build(config);
@@ -819,6 +930,86 @@ TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
     if (action_count >= 2) {
         EXPECT_NEAR(strategy_sum[hand_count], own_reach * first_bucket_mass * strategy[hand_count], 1e-12);
     }
+}
+
+TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values) {
+    const auto graph = make_shared_infoset_same_depth_graph();
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1);
+
+    auto& table = solver.infoset_table_mut();
+    const auto infoset_id = graph.infosets.front().id;
+    auto* regret = table.regret_mut(infoset_id);
+    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
+        regret[bucket] = 4.0;
+        regret[bucket_count + bucket] = 0.0;
+    }
+
+    solver.run_iteration();
+
+    const auto* regret_after = solver.infoset_table().regret(infoset_id);
+    EXPECT_NEAR(regret_after[0], 2.0, 1e-12);
+    EXPECT_NEAR(regret_after[1], 2.0, 1e-12);
+    EXPECT_NEAR(regret_after[2], -1.0, 1e-12);
+    EXPECT_NEAR(regret_after[3], -1.0, 1e-12);
+}
+
+TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph_for_hand_action_layout) {
+    const auto graph = make_shared_infoset_same_depth_graph();
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        1);
+
+    auto& table = solver.infoset_table_mut();
+    const auto infoset_id = graph.infosets.front().id;
+    auto* regret = table.regret_mut(infoset_id);
+    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
+        regret[table.value_index(infoset_id, bucket, 0)] = 4.0;
+        regret[table.value_index(infoset_id, bucket, 1)] = 0.0;
+    }
+
+    solver.run_iteration();
+
+    EXPECT_NEAR(solver.node_values()[1], 3.0, 1e-12);
+    EXPECT_NEAR(solver.node_values()[2], 2.0, 1e-12);
+    EXPECT_NEAR(solver.node_values()[graph.root], 2.5, 1e-12);
+    EXPECT_NEAR(solver.action_values()[2], 3.0, 1e-12);
+    EXPECT_NEAR(solver.action_values()[3], -1.0, 1e-12);
+    EXPECT_NEAR(solver.action_values()[4], 2.0, 1e-12);
+    EXPECT_NEAR(solver.action_values()[5], -2.0, 1e-12);
+}
+
+TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values_for_hand_action_layout) {
+    const auto graph = make_shared_infoset_same_depth_graph();
+    core::HUNLFlatDCFR solver(
+        graph,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        1);
+
+    auto& table = solver.infoset_table_mut();
+    const auto infoset_id = graph.infosets.front().id;
+    auto* regret = table.regret_mut(infoset_id);
+    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
+        regret[table.value_index(infoset_id, bucket, 0)] = 4.0;
+        regret[table.value_index(infoset_id, bucket, 1)] = 0.0;
+    }
+
+    solver.run_iteration();
+
+    const auto* regret_after = solver.infoset_table().regret(infoset_id);
+    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 0, 0)], 2.0, 1e-12);
+    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 1, 0)], 2.0, 1e-12);
+    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 0, 1)], -1.0, 1e-12);
+    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 1, 1)], -1.0, 1e-12);
 }
 
 TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration) {
