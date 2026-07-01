@@ -7,6 +7,109 @@
 
 namespace {
 
+core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
+    core::HUNLFlatSolveGraph graph;
+    graph.root = 0;
+    graph.max_depth = 2;
+    graph.max_actions = 2;
+
+    graph.children = {1, 2, 3, 4, 5, 6};
+    graph.chance_outcomes = {
+        core::HUNLFlatChanceOutcome{0, 0.5, 1},
+        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+    };
+
+    const auto shared_infoset = core::InfosetId{0};
+    graph.infosets.push_back(core::HUNLFlatInfoset{
+        shared_infoset,
+        0,
+        2,
+        {},
+        "shared-depth-infoset",
+        0,
+        core::Street::Flop,
+        2,
+    });
+    graph.infoset_nodes = {1, 2};
+
+    auto make_terminal = [](double value) {
+        core::HUNLFlatNode node;
+        node.type = core::HUNLFlatNodeType::TerminalFold;
+        node.terminal_utility = {value, -value};
+        node.terminal_kind = core::TerminalKind::fold(1, 1);
+        return node;
+    };
+
+    auto make_terminal_meta = [](double value) {
+        core::HUNLFlatNodeMeta meta;
+        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        meta.terminal_utility = {value, -value};
+        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        return meta;
+    };
+
+    graph.nodes.resize(7);
+    graph.node_meta.resize(7);
+
+    graph.nodes[0].child_begin = 0;
+    graph.nodes[0].child_count = 2;
+    graph.nodes[0].chance_begin = 0;
+    graph.nodes[0].chance_count = 2;
+    graph.nodes[0].type = core::HUNLFlatNodeType::Chance;
+    graph.nodes[0].street = core::Street::Flop;
+    graph.node_meta[0].child_begin = 0;
+    graph.node_meta[0].child_count = 2;
+    graph.node_meta[0].chance_begin = 0;
+    graph.node_meta[0].chance_count = 2;
+    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = core::Street::Flop;
+
+    for (std::uint32_t node_idx : {1U, 2U}) {
+        auto& node = graph.nodes[node_idx];
+        node.child_begin = node_idx == 1 ? 2 : 4;
+        node.child_count = 2;
+        node.infoset_id = shared_infoset;
+        node.player = 0;
+        node.type = core::HUNLFlatNodeType::Decision;
+        node.street = core::Street::Flop;
+        node.action_count = 2;
+        node.has_infoset = true;
+
+        auto& meta = graph.node_meta[node_idx];
+        meta.child_begin = node.child_begin;
+        meta.child_count = node.child_count;
+        meta.infoset_id = shared_infoset;
+        meta.player = 0;
+        meta.type = core::HUNLFlatNodeType::Decision;
+        meta.street = core::Street::Flop;
+        meta.action_count = 2;
+        meta.has_infoset = true;
+    }
+
+    graph.nodes[3] = make_terminal(3.0);
+    graph.nodes[4] = make_terminal(-1.0);
+    graph.nodes[5] = make_terminal(2.0);
+    graph.nodes[6] = make_terminal(-2.0);
+    graph.node_meta[3] = make_terminal_meta(3.0);
+    graph.node_meta[4] = make_terminal_meta(-1.0);
+    graph.node_meta[5] = make_terminal_meta(2.0);
+    graph.node_meta[6] = make_terminal_meta(-2.0);
+
+    graph.depth_order = {0, 1, 2, 3, 4, 5, 6};
+    graph.depth_slices = {
+        core::HUNLFlatSlice{0, 1},
+        core::HUNLFlatSlice{1, 2},
+        core::HUNLFlatSlice{3, 4},
+    };
+    graph.node_depths = {0, 1, 1, 2, 2, 2, 2};
+    graph.forward_order = graph.depth_order;
+    graph.reverse_order = {6, 5, 4, 3, 2, 1, 0};
+    graph.street_order = graph.depth_order;
+    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
+        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.nodes.size())};
+    return graph;
+}
+
 TEST_CASE(ranges_single_thread_and_multi_thread_runs_match_within_tolerance) {
     const auto config = core::benchmark_turn_subgame();
     const auto single = core::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 1, 8, true);
@@ -67,6 +170,45 @@ TEST_CASE(ranges_repeated_runs_with_same_config_are_deterministic) {
     EXPECT_NEAR(first.game_value, second.game_value, 1e-12);
     EXPECT_NEAR(first.exploitability, second.exploitability, 1e-12);
     EXPECT_EQ(first.average_strategy.size(), second.average_strategy.size());
+}
+
+TEST_CASE(ranges_shared_infoset_same_depth_graph_matches_across_worker_counts) {
+    const auto graph_a = make_shared_infoset_same_depth_graph();
+    const auto graph_b = make_shared_infoset_same_depth_graph();
+    core::HUNLFlatDCFR single_worker(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    core::HUNLFlatDCFR two_workers(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+
+    for (auto* solver : {&single_worker, &two_workers}) {
+        auto& table = solver->infoset_table_mut();
+        const auto infoset_id = solver->graph().infosets.front().id;
+        auto* regret = table.regret_mut(infoset_id);
+        const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+        for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
+            regret[bucket] = 5.0;
+            regret[bucket_count + bucket] = 0.0;
+        }
+    }
+
+    single_worker.run_iteration();
+    two_workers.run_iteration();
+
+    for (std::size_t i = 0; i < single_worker.player0_reach().size(); ++i) {
+        EXPECT_NEAR(single_worker.player0_reach()[i], two_workers.player0_reach()[i], 1e-12);
+        EXPECT_NEAR(single_worker.player1_reach()[i], two_workers.player1_reach()[i], 1e-12);
+        EXPECT_NEAR(single_worker.chance_reach()[i], two_workers.chance_reach()[i], 1e-12);
+    }
+    for (std::size_t i = 0; i < single_worker.bucket_reach().size(); ++i) {
+        EXPECT_NEAR(single_worker.bucket_reach()[i], two_workers.bucket_reach()[i], 1e-12);
+        EXPECT_NEAR(single_worker.normalized_bucket_reach()[i], two_workers.normalized_bucket_reach()[i], 1e-12);
+    }
+
+    const auto infoset_id = single_worker.graph().infosets.front().id;
+    const auto* single_sum = single_worker.infoset_table().strategy_sum(infoset_id);
+    const auto* two_sum = two_workers.infoset_table().strategy_sum(infoset_id);
+    const auto row_count = single_worker.infoset_table().row_value_count(infoset_id);
+    for (std::size_t i = 0; i < row_count; ++i) {
+        EXPECT_NEAR(single_sum[i], two_sum[i], 1e-12);
+    }
 }
 
 }  // namespace

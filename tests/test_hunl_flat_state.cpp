@@ -170,7 +170,7 @@ TEST_CASE(hunl_flat_parallel_plan_derives_contiguous_bucket_and_value_ranges_fro
 
 TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     core::HUNLFlatWorkerScratch scratch;
-    scratch.ensure_capacity(6, 5);
+    scratch.ensure_capacity(6, 5, 4, 3, 2);
 
     scratch.terminal_values[0] = 1.0;
     scratch.node_values[1] = 2.0;
@@ -187,6 +187,10 @@ TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     EXPECT_EQ(scratch.player0_reach.size(), 6U);
     EXPECT_EQ(scratch.player1_reach.size(), 6U);
     EXPECT_EQ(scratch.chance_reach.size(), 6U);
+    EXPECT_EQ(scratch.bucket_reach.size(), 4U);
+    EXPECT_EQ(scratch.row_values.size(), 3U);
+    EXPECT_EQ(scratch.row_weights.size(), 3U);
+    EXPECT_EQ(scratch.local_bucket_mass.size(), 2U);
     EXPECT_EQ(scratch.terminal_values[0], 0.0);
     EXPECT_EQ(scratch.node_values[1], 0.0);
     EXPECT_EQ(scratch.action_values[2], 0.0);

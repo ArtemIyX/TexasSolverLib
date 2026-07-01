@@ -628,21 +628,26 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 if (bucket_range.end > scratch.bucket_reach.size()) {
                     throw std::logic_error("HUNLFlatDCFR reach stage bucket range out of scratch bounds");
                 }
+                if (infoset_meta.bucket_count > scratch.local_bucket_mass.size()) {
+                    throw std::logic_error("HUNLFlatDCFR reach stage local bucket mass out of scratch bounds");
+                }
                 const auto acting_reach = meta.player == 0 ? reach0 : reach1;
                 if (acting_reach == 0.0) {
                     continue;
                 }
 
                 for (std::size_t bucket = 0; bucket < infoset_meta.bucket_count; ++bucket) {
-                    scratch.bucket_reach[bucket_range.begin + bucket] +=
+                    const auto local_mass =
                         acting_reach * prior_bucket_weight(bucket_map(), infoset_meta, meta.infoset_id, bucket);
+                    scratch.local_bucket_mass[bucket] = local_mass;
+                    scratch.bucket_reach[bucket_range.begin + bucket] += local_mass;
                 }
 
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
                     double bucketed_action_mass = 0.0;
                     for (std::size_t bucket = 0; bucket < infoset_meta.bucket_count; ++bucket) {
-                        const auto mass = scratch.bucket_reach[bucket_range.begin + bucket];
+                        const auto mass = scratch.local_bucket_mass[bucket];
                         if (mass == 0.0) {
                             continue;
                         }
