@@ -37,6 +37,86 @@ void validate_infoset_table_inputs(
     }
 }
 
+std::vector<HUNLFlatRange> partition_depth_slice_by_cost(
+    const HUNLFlatSolveGraph& graph,
+    const HUNLFlatInfosetTable& infoset_table,
+    HUNLFlatSlice slice,
+    std::size_t worker_count,
+    std::vector<std::uint64_t>* out_costs = nullptr) {
+    const auto workers = std::max<std::size_t>(1, worker_count);
+    std::vector<HUNLFlatRange> ranges;
+    ranges.reserve(workers);
+    if (out_costs != nullptr) {
+        out_costs->clear();
+        out_costs->reserve(workers);
+    }
+
+    if (slice.count == 0) {
+        for (std::size_t worker = 0; worker < workers; ++worker) {
+            ranges.push_back(HUNLFlatRange{slice.begin, slice.begin});
+            if (out_costs != nullptr) {
+                out_costs->push_back(0);
+            }
+        }
+        return ranges;
+    }
+
+    std::vector<std::uint32_t> costs;
+    costs.reserve(slice.count);
+    std::uint64_t remaining_cost = 0;
+    for (std::uint32_t offset = 0; offset < slice.count; ++offset) {
+        const auto node_idx = graph.depth_order[slice.begin + offset];
+        const auto cost = HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[node_idx], infoset_table);
+        costs.push_back(cost);
+        remaining_cost += cost;
+    }
+
+    std::uint32_t cursor = slice.begin;
+    std::uint32_t local_cursor = 0;
+    for (std::size_t worker = 0; worker < workers; ++worker) {
+        const auto remaining_workers = workers - worker;
+        if (remaining_workers == 1) {
+            ranges.push_back(HUNLFlatRange{cursor, slice.begin + slice.count});
+            if (out_costs != nullptr) {
+                out_costs->push_back(remaining_cost);
+            }
+            break;
+        }
+
+        const auto target_cost =
+            static_cast<std::uint64_t>((remaining_cost + remaining_workers - 1) / remaining_workers);
+        std::uint64_t assigned_cost = 0;
+        const auto range_begin = cursor;
+        while (local_cursor < slice.count) {
+            const auto nodes_left = slice.count - local_cursor;
+            if (nodes_left <= remaining_workers - 1 && cursor > range_begin) {
+                break;
+            }
+            assigned_cost += costs[local_cursor];
+            ++local_cursor;
+            ++cursor;
+            if (assigned_cost >= target_cost) {
+                break;
+            }
+        }
+
+        ranges.push_back(HUNLFlatRange{range_begin, cursor});
+        if (out_costs != nullptr) {
+            out_costs->push_back(assigned_cost);
+        }
+        remaining_cost -= assigned_cost;
+    }
+
+    while (ranges.size() < workers) {
+        ranges.push_back(HUNLFlatRange{slice.begin + slice.count, slice.begin + slice.count});
+        if (out_costs != nullptr) {
+            out_costs->push_back(0);
+        }
+    }
+
+    return ranges;
+}
+
 }  // namespace
 
 void HUNLFlatWorkerScratch::reset_values() noexcept {
@@ -104,6 +184,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph
         assignment.node_range = node_ranges[worker_index];
         assignment.depth_node_ranges.reserve(graph.depth_slices.size());
         assignment.depth_reduce_ranges.reserve(graph.depth_slices.size());
+        assignment.depth_backward_costs.reserve(graph.depth_slices.size());
 
         for (const auto& slice : graph.depth_slices) {
             const auto count = slice.count;
@@ -117,6 +198,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph
                 slice.begin + relative_begin,
                 slice.begin + relative_begin + width,
             });
+            assignment.depth_backward_costs.push_back(0);
         }
 
         for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
@@ -163,6 +245,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(
         assignment.node_range = node_ranges[worker_index];
         assignment.depth_node_ranges.reserve(graph.depth_slices.size());
         assignment.depth_reduce_ranges.reserve(graph.depth_slices.size());
+        assignment.depth_backward_costs.reserve(graph.depth_slices.size());
 
         if (assignment.infoset_range.begin < assignment.infoset_range.end) {
             const auto bucket_begin =
@@ -173,18 +256,16 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(
             assignment.value_range = infoset_table.infoset_value_range(assignment.infoset_range);
         }
 
-        for (const auto& slice : graph.depth_slices) {
-            const auto count = slice.count;
-            const auto base = count / static_cast<std::uint32_t>(workers);
-            const auto remainder = count % static_cast<std::uint32_t>(workers);
-            const auto relative_begin =
-                static_cast<std::uint32_t>(worker_index) * base +
-                std::min<std::uint32_t>(static_cast<std::uint32_t>(worker_index), remainder);
-            const auto width = base + (worker_index < remainder ? 1U : 0U);
-            assignment.depth_node_ranges.push_back(HUNLFlatRange{
-                slice.begin + relative_begin,
-                slice.begin + relative_begin + width,
-            });
+        for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
+            std::vector<std::uint64_t> costs;
+            const auto ranges = partition_depth_slice_by_cost(
+                graph,
+                infoset_table,
+                graph.depth_slices[depth],
+                workers,
+                &costs);
+            assignment.depth_node_ranges.push_back(ranges[worker_index]);
+            assignment.depth_backward_costs.push_back(costs[worker_index]);
         }
 
         for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
@@ -210,6 +291,31 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(
     }
 
     return plan;
+}
+
+std::uint32_t HUNLFlatParallelPlan::estimated_backward_cost(
+    const HUNLFlatNodeMeta& meta,
+    const HUNLFlatInfosetTable& infoset_table) {
+    switch (meta.type) {
+        case HUNLFlatNodeType::TerminalFold:
+        case HUNLFlatNodeType::TerminalShowdown:
+        case HUNLFlatNodeType::DepthLimited:
+            return 1;
+        case HUNLFlatNodeType::Chance:
+            return std::max<std::uint32_t>(1, meta.chance_count);
+        case HUNLFlatNodeType::Decision:
+            if (!meta.has_infoset) {
+                return 1;
+            }
+            return std::max<std::uint32_t>(
+                1,
+                static_cast<std::uint32_t>(
+                    std::max<std::size_t>(
+                        1,
+                        static_cast<std::size_t>(meta.action_count) *
+                            infoset_table.meta().at(meta.infoset_id.value).bucket_count)));
+    }
+    return 1;
 }
 
 HUNLFlatInfosetTable HUNLFlatInfosetTable::build(

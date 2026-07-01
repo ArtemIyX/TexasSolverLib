@@ -217,6 +217,17 @@ void print_worker_diagnostics(const core::HUNLFlatSchedulerDiagnostics& diagnost
     }
 }
 
+void print_expected_backward_costs(const core::HUNLFlatParallelPlan& plan) {
+    std::cout << "  expected backward cost by worker/depth\n";
+    for (std::size_t worker = 0; worker < plan.workers.size(); ++worker) {
+        std::cout << "    worker[" << worker << "]";
+        for (std::size_t depth = 0; depth < plan.workers[worker].depth_backward_costs.size(); ++depth) {
+            std::cout << " d" << depth << "=" << plan.workers[worker].depth_backward_costs[depth];
+        }
+        std::cout << "\n";
+    }
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -238,6 +249,8 @@ int main(int argc, char* argv[]) {
               << " nodes=" << graph.nodes.size() << "\n";
 
     for (const auto workers : cfg.workers) {
+        const auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player, cfg.layout);
+        const auto plan = core::HUNLFlatParallelPlan::build(graph, table, workers);
         core::HUNLFlatDCFR solver(graph, hand_count_per_player, cfg.layout, workers);
         const auto start = std::chrono::steady_clock::now();
         solver.run_iterations(cfg.iterations);
@@ -245,6 +258,7 @@ int main(int argc, char* argv[]) {
 
         std::cout << "\nworkers=" << workers
                   << " total=" << format_seconds(std::chrono::duration<double>(finish - start).count()) << "\n";
+        print_expected_backward_costs(plan);
         print_stage_summary(solver.profile());
         print_worker_diagnostics(solver.scheduler_diagnostics(), cfg.iterations);
     }

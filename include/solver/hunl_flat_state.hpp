@@ -50,6 +50,7 @@ struct HUNLFlatWorkerAssignment {
     HUNLFlatRange node_range;
     std::vector<HUNLFlatRange> depth_node_ranges;
     std::vector<HUNLFlatRange> depth_reduce_ranges;
+    std::vector<std::uint64_t> depth_backward_costs;
 };
 
 static_assert(std::is_trivially_copyable_v<HUNLFlatRange>, "HUNLFlatRange should stay trivially copyable");
@@ -91,6 +92,9 @@ struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
 struct HUNLFlatParallelPlan {
     std::vector<HUNLFlatWorkerAssignment> workers;
 
+    static std::uint32_t estimated_backward_cost(
+        const HUNLFlatNodeMeta& meta,
+        const HUNLFlatInfosetTable& infoset_table);
     static HUNLFlatParallelPlan build(const HUNLFlatSolveGraph& graph, std::size_t worker_count);
     static HUNLFlatParallelPlan build(
         const HUNLFlatSolveGraph& graph,

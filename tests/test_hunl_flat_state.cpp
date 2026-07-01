@@ -4,6 +4,56 @@
 #include <array>
 #include <memory>
 
+namespace {
+
+core::HUNLFlatSolveGraph make_cost_skew_graph() {
+    core::HUNLFlatSolveGraph graph;
+    graph.root = 0;
+    graph.max_depth = 1;
+    graph.max_actions = 4;
+
+    graph.nodes.resize(4);
+    graph.node_meta.resize(4);
+    graph.infosets = {
+        core::HUNLFlatInfoset{core::InfosetId{0}, 0, 1, {}, "a", 0, core::Street::Flop, 4},
+        core::HUNLFlatInfoset{core::InfosetId{1}, 1, 1, {}, "b", 0, core::Street::Flop, 4},
+        core::HUNLFlatInfoset{core::InfosetId{2}, 2, 1, {}, "c", 0, core::Street::Flop, 1},
+        core::HUNLFlatInfoset{core::InfosetId{3}, 3, 1, {}, "d", 0, core::Street::Flop, 1},
+    };
+    graph.infoset_nodes = {0, 1, 2, 3};
+    graph.depth_order = {0, 1, 2, 3};
+    graph.forward_order = graph.depth_order;
+    graph.reverse_order = {3, 2, 1, 0};
+    graph.street_order = graph.depth_order;
+    graph.depth_slices = {core::HUNLFlatSlice{0, 4}};
+    graph.node_depths = {0, 0, 0, 0};
+    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] = core::HUNLFlatSlice{0, 4};
+
+    auto set_decision = [&](std::size_t node_idx, core::InfosetId infoset_id, std::uint8_t action_count) {
+        graph.nodes[node_idx].infoset_id = infoset_id;
+        graph.nodes[node_idx].type = core::HUNLFlatNodeType::Decision;
+        graph.nodes[node_idx].player = 0;
+        graph.nodes[node_idx].action_count = action_count;
+        graph.nodes[node_idx].has_infoset = true;
+        graph.nodes[node_idx].street = core::Street::Flop;
+
+        graph.node_meta[node_idx].infoset_id = infoset_id;
+        graph.node_meta[node_idx].type = core::HUNLFlatNodeType::Decision;
+        graph.node_meta[node_idx].player = 0;
+        graph.node_meta[node_idx].action_count = action_count;
+        graph.node_meta[node_idx].has_infoset = true;
+        graph.node_meta[node_idx].street = core::Street::Flop;
+    };
+
+    set_decision(0, core::InfosetId{0}, 4);
+    set_decision(1, core::InfosetId{1}, 4);
+    set_decision(2, core::InfosetId{2}, 1);
+    set_decision(3, core::InfosetId{3}, 1);
+    return graph;
+}
+
+}  // namespace
+
 TEST_CASE(hunl_flat_infoset_table_builds_contiguous_arenas_from_graph) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
     const auto graph = core::HUNLFlatSolveGraph::build(config);
@@ -188,6 +238,31 @@ TEST_CASE(hunl_flat_parallel_plan_derives_contiguous_bucket_and_value_ranges_fro
 
     EXPECT_EQ(bucket_cursor, static_cast<std::uint32_t>(table.total_bucket_count()));
     EXPECT_EQ(value_cursor, static_cast<std::uint32_t>(table.total_value_count()));
+}
+
+TEST_CASE(hunl_flat_parallel_plan_weights_depth_ranges_by_estimated_backward_cost) {
+    const auto graph = make_cost_skew_graph();
+    const auto table = core::HUNLFlatInfosetTable::build(graph, {16, 16}, core::HUNLFlatValueLayout::InfosetActionHand);
+    const auto plan = core::HUNLFlatParallelPlan::build(graph, table, 2);
+
+    EXPECT_EQ(plan.workers.size(), 2U);
+    EXPECT_EQ(plan.workers[0].depth_node_ranges.size(), 1U);
+    EXPECT_EQ(plan.workers[1].depth_node_ranges.size(), 1U);
+
+    const auto first = plan.workers[0].depth_node_ranges[0];
+    const auto second = plan.workers[1].depth_node_ranges[0];
+    EXPECT_EQ(first.begin, 0U);
+    EXPECT_EQ(second.end, 4U);
+    EXPECT_EQ(first.end, second.begin);
+
+    const auto first_cost = plan.workers[0].depth_backward_costs[0];
+    const auto second_cost = plan.workers[1].depth_backward_costs[0];
+    EXPECT_TRUE(first.end - first.begin < 3U);
+    EXPECT_TRUE(second.end - second.begin >= 2U);
+    EXPECT_TRUE(first_cost > 0U);
+    EXPECT_TRUE(second_cost > 0U);
+    EXPECT_TRUE(first_cost <= second_cost * 2U);
+    EXPECT_TRUE(second_cost <= first_cost * 2U);
 }
 
 TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
