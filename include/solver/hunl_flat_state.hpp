@@ -49,6 +49,7 @@ struct HUNLFlatWorkerAssignment {
     HUNLFlatRange value_range;
     HUNLFlatRange node_range;
     std::vector<HUNLFlatRange> depth_node_ranges;
+    std::vector<HUNLFlatRange> depth_reduce_ranges;
 };
 
 static_assert(std::is_trivially_copyable_v<HUNLFlatRange>, "HUNLFlatRange should stay trivially copyable");

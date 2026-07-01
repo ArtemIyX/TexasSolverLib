@@ -679,27 +679,30 @@ void HUNLFlatDCFR::forward_reach_stage() {
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
         });
 
-        run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
-            const auto range = parallel_plan_.workers[worker_index].node_range;
-            const auto worker_start = std::chrono::steady_clock::now();
-            for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
-                double add0 = 0.0;
-                double add1 = 0.0;
-                double addc = 0.0;
-                for (const auto& scratch : worker_scratch_) {
-                    add0 += scratch.player0_reach[node_idx];
-                    add1 += scratch.player1_reach[node_idx];
-                    addc += scratch.chance_reach[node_idx];
+        if (depth + 1 < graph_.depth_slices.size()) {
+            run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
+                const auto range = parallel_plan_.workers[worker_index].depth_reduce_ranges[depth];
+                const auto worker_start = std::chrono::steady_clock::now();
+                for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
+                    const auto node_idx = graph_.depth_order[order_idx];
+                    double add0 = 0.0;
+                    double add1 = 0.0;
+                    double addc = 0.0;
+                    for (const auto& scratch : worker_scratch_) {
+                        add0 += scratch.player0_reach[node_idx];
+                        add1 += scratch.player1_reach[node_idx];
+                        addc += scratch.chance_reach[node_idx];
+                    }
+                    player0_reach_[node_idx] += add0;
+                    player1_reach_[node_idx] += add1;
+                    chance_reach_[node_idx] += addc;
                 }
-                player0_reach_[node_idx] += add0;
-                player1_reach_[node_idx] += add1;
-                chance_reach_[node_idx] += addc;
-            }
-            mark_worker_scope(
-                "hunl_flat.reach.reduce_nodes",
-                worker_index,
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
-        });
+                mark_worker_scope(
+                    "hunl_flat.reach.reduce_nodes",
+                    worker_index,
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
+            });
+        }
 
         run_stage_workers(HUNLFlatStageKind::Reach, [&](std::size_t worker_index) {
             const auto range = parallel_plan_.workers[worker_index].bucket_range;

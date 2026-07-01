@@ -119,6 +119,7 @@ TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
         EXPECT_TRUE(worker.node_range.begin <= worker.node_range.end);
         node_cursor = worker.node_range.end;
         EXPECT_EQ(worker.depth_node_ranges.size(), graph.depth_slices.size());
+        EXPECT_EQ(worker.depth_reduce_ranges.size(), graph.depth_slices.size());
     }
     EXPECT_EQ(infoset_cursor, static_cast<std::uint32_t>(graph.infosets.size()));
     EXPECT_EQ(node_cursor, static_cast<std::uint32_t>(graph.nodes.size()));
@@ -128,6 +129,27 @@ TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
         std::uint32_t cursor = slice.begin;
         for (const auto& worker : plan.workers) {
             const auto range = worker.depth_node_ranges[depth];
+            EXPECT_EQ(range.begin, cursor);
+            EXPECT_TRUE(range.begin <= range.end);
+            EXPECT_TRUE(range.end <= slice.begin + slice.count);
+            cursor = range.end;
+        }
+        EXPECT_EQ(cursor, slice.begin + slice.count);
+    }
+
+    for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
+        if (depth + 1 >= graph.depth_slices.size()) {
+            for (const auto& worker : plan.workers) {
+                EXPECT_EQ(worker.depth_reduce_ranges[depth].begin, 0U);
+                EXPECT_EQ(worker.depth_reduce_ranges[depth].end, 0U);
+            }
+            continue;
+        }
+
+        const auto slice = graph.depth_slices[depth + 1];
+        std::uint32_t cursor = slice.begin;
+        for (const auto& worker : plan.workers) {
+            const auto range = worker.depth_reduce_ranges[depth];
             EXPECT_EQ(range.begin, cursor);
             EXPECT_TRUE(range.begin <= range.end);
             EXPECT_TRUE(range.end <= slice.begin + slice.count);

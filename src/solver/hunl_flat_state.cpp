@@ -97,6 +97,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph
         assignment.value_range = {};
         assignment.node_range = node_ranges[worker_index];
         assignment.depth_node_ranges.reserve(graph.depth_slices.size());
+        assignment.depth_reduce_ranges.reserve(graph.depth_slices.size());
 
         for (const auto& slice : graph.depth_slices) {
             const auto count = slice.count;
@@ -107,6 +108,25 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph
                 std::min<std::uint32_t>(static_cast<std::uint32_t>(worker_index), remainder);
             const auto width = base + (worker_index < remainder ? 1U : 0U);
             assignment.depth_node_ranges.push_back(HUNLFlatRange{
+                slice.begin + relative_begin,
+                slice.begin + relative_begin + width,
+            });
+        }
+
+        for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
+            if (depth + 1 >= graph.depth_slices.size()) {
+                assignment.depth_reduce_ranges.push_back({});
+                continue;
+            }
+            const auto& slice = graph.depth_slices[depth + 1];
+            const auto count = slice.count;
+            const auto base = count / static_cast<std::uint32_t>(workers);
+            const auto remainder = count % static_cast<std::uint32_t>(workers);
+            const auto relative_begin =
+                static_cast<std::uint32_t>(worker_index) * base +
+                std::min<std::uint32_t>(static_cast<std::uint32_t>(worker_index), remainder);
+            const auto width = base + (worker_index < remainder ? 1U : 0U);
+            assignment.depth_reduce_ranges.push_back(HUNLFlatRange{
                 slice.begin + relative_begin,
                 slice.begin + relative_begin + width,
             });
@@ -136,6 +156,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(
         assignment.value_range = {};
         assignment.node_range = node_ranges[worker_index];
         assignment.depth_node_ranges.reserve(graph.depth_slices.size());
+        assignment.depth_reduce_ranges.reserve(graph.depth_slices.size());
 
         if (assignment.infoset_range.begin < assignment.infoset_range.end) {
             const auto bucket_begin =
@@ -155,6 +176,25 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(
                 std::min<std::uint32_t>(static_cast<std::uint32_t>(worker_index), remainder);
             const auto width = base + (worker_index < remainder ? 1U : 0U);
             assignment.depth_node_ranges.push_back(HUNLFlatRange{
+                slice.begin + relative_begin,
+                slice.begin + relative_begin + width,
+            });
+        }
+
+        for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
+            if (depth + 1 >= graph.depth_slices.size()) {
+                assignment.depth_reduce_ranges.push_back({});
+                continue;
+            }
+            const auto& slice = graph.depth_slices[depth + 1];
+            const auto count = slice.count;
+            const auto base = count / static_cast<std::uint32_t>(workers);
+            const auto remainder = count % static_cast<std::uint32_t>(workers);
+            const auto relative_begin =
+                static_cast<std::uint32_t>(worker_index) * base +
+                std::min<std::uint32_t>(static_cast<std::uint32_t>(worker_index), remainder);
+            const auto width = base + (worker_index < remainder ? 1U : 0U);
+            assignment.depth_reduce_ranges.push_back(HUNLFlatRange{
                 slice.begin + relative_begin,
                 slice.begin + relative_begin + width,
             });
