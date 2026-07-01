@@ -932,17 +932,18 @@ void HUNLFlatDCFR::regret_update_stage() {
             const double cf_reach =
                 chance_reach_[node_idx] *
                 (meta.player == 0 ? player1_reach_[node_idx] : player0_reach_[node_idx]);
-            const double base_value = node_values_[node_idx];
             const auto bucket_range = infoset_table_.infoset_bucket_range(meta.id);
+            const auto* bucket_norm = normalized_bucket_reach_.data() + bucket_range.begin;
+            const auto* edge_values = action_values_.data() + node_meta.child_begin;
+            const double base_value = node_values_[node_idx];
 
             if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
                     const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
-                    const auto weighted_cf_reach =
-                        cf_reach * normalized_bucket_reach_[bucket_range.begin + static_cast<std::uint32_t>(bucket)];
+                    const auto weighted_cf_reach = cf_reach * bucket_norm[bucket];
                     update_regret_sum(
                         regret + bucket_offset,
-                        action_values_.data() + node_meta.child_begin,
+                        edge_values,
                         meta.action_count,
                         base_value,
                         weighted_cf_reach);
@@ -951,13 +952,14 @@ void HUNLFlatDCFR::regret_update_stage() {
             }
 
             for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                const auto weighted_cf_reach =
-                    cf_reach * normalized_bucket_reach_[bucket_range.begin + static_cast<std::uint32_t>(bucket)];
-                for (std::size_t a = 0; a < meta.action_count; ++a) {
-                    const auto row_idx = a * static_cast<std::size_t>(meta.bucket_count) + bucket;
-                    const auto edge_idx = node_meta.child_begin + a;
-                    regret[row_idx] += weighted_cf_reach * (action_values_[edge_idx] - base_value);
-                }
+                const auto weighted_cf_reach = cf_reach * bucket_norm[bucket];
+                update_regret_sum_strided(
+                    regret + bucket,
+                    edge_values,
+                    meta.action_count,
+                    meta.bucket_count,
+                    base_value,
+                    weighted_cf_reach);
             }
         }
         mark_worker_scope(
@@ -985,12 +987,12 @@ void HUNLFlatDCFR::average_strategy_stage() {
                 chance_reach_[node_idx] *
                 (meta.player == 0 ? player0_reach_[node_idx] : player1_reach_[node_idx]);
             const auto bucket_range = infoset_table_.infoset_bucket_range(meta.id);
+            const auto* bucket_norm = normalized_bucket_reach_.data() + bucket_range.begin;
 
             if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
                     const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
-                    const auto weighted_own_reach =
-                        own_reach * normalized_bucket_reach_[bucket_range.begin + static_cast<std::uint32_t>(bucket)];
+                    const auto weighted_own_reach = own_reach * bucket_norm[bucket];
                     update_strategy_sum(
                         strategy_sum + bucket_offset,
                         strategy + bucket_offset,
@@ -1001,12 +1003,13 @@ void HUNLFlatDCFR::average_strategy_stage() {
             }
 
             for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                const auto weighted_own_reach =
-                    own_reach * normalized_bucket_reach_[bucket_range.begin + static_cast<std::uint32_t>(bucket)];
-                for (std::size_t a = 0; a < meta.action_count; ++a) {
-                    const auto row_idx = a * static_cast<std::size_t>(meta.bucket_count) + bucket;
-                    strategy_sum[row_idx] += weighted_own_reach * strategy[row_idx];
-                }
+                const auto weighted_own_reach = own_reach * bucket_norm[bucket];
+                update_strategy_sum_strided(
+                    strategy_sum + bucket,
+                    strategy + bucket,
+                    meta.action_count,
+                    meta.bucket_count,
+                    weighted_own_reach);
             }
         }
         mark_worker_scope(

@@ -356,6 +356,18 @@ void update_regret_sum_scalar(
     }
 }
 
+void update_regret_sum_strided_scalar(
+    double* regret_sum,
+    const double* action_values,
+    std::size_t len,
+    std::size_t stride,
+    double node_value,
+    double opp_reach) noexcept {
+    for (std::size_t i = 0; i < len; ++i) {
+        regret_sum[i * stride] += opp_reach * (action_values[i] - node_value);
+    }
+}
+
 void update_strategy_sum_scalar(
     double* strategy_sum,
     const double* strategy,
@@ -363,6 +375,17 @@ void update_strategy_sum_scalar(
     double own_reach) noexcept {
     for (std::size_t i = 0; i < len; ++i) {
         strategy_sum[i] += own_reach * strategy[i];
+    }
+}
+
+void update_strategy_sum_strided_scalar(
+    double* strategy_sum,
+    const double* strategy,
+    std::size_t len,
+    std::size_t stride,
+    double own_reach) noexcept {
+    for (std::size_t i = 0; i < len; ++i) {
+        strategy_sum[i * stride] += own_reach * strategy[i * stride];
     }
 }
 
@@ -572,6 +595,36 @@ void copy_values(double* out, const double* in, std::size_t len) noexcept {
         out[i] = in[i];
     }
 #endif
+}
+
+void update_regret_sum_strided(
+    double* regret_sum,
+    const double* action_values,
+    std::size_t len,
+    std::size_t stride,
+    double node_value,
+    double opp_reach) noexcept {
+    update_regret_sum_strided_scalar(
+        regret_sum,
+        action_values,
+        len,
+        stride,
+        node_value,
+        opp_reach);
+}
+
+void update_strategy_sum_strided(
+    double* strategy_sum,
+    const double* strategy,
+    std::size_t len,
+    std::size_t stride,
+    double own_reach) noexcept {
+    update_strategy_sum_strided_scalar(
+        strategy_sum,
+        strategy,
+        len,
+        stride,
+        own_reach);
 }
 
 double dot_product(const double* lhs, const double* rhs, std::size_t len) noexcept {

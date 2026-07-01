@@ -24,10 +24,23 @@ void update_regret_sum_scalar(
     std::size_t len,
     double node_value,
     double opp_reach) noexcept;
+void update_regret_sum_strided_scalar(
+    double* regret_sum,
+    const double* action_values,
+    std::size_t len,
+    std::size_t stride,
+    double node_value,
+    double opp_reach) noexcept;
 void update_strategy_sum_scalar(
     double* strategy_sum,
     const double* strategy,
     std::size_t len,
+    double own_reach) noexcept;
+void update_strategy_sum_strided_scalar(
+    double* strategy_sum,
+    const double* strategy,
+    std::size_t len,
+    std::size_t stride,
     double own_reach) noexcept;
 void update_regret_sum_vector_scalar(
     double* regret,
@@ -53,10 +66,23 @@ void update_regret_sum(
     std::size_t len,
     double node_value,
     double opp_reach) noexcept;
+void update_regret_sum_strided(
+    double* regret_sum,
+    const double* action_values,
+    std::size_t len,
+    std::size_t stride,
+    double node_value,
+    double opp_reach) noexcept;
 void update_strategy_sum(
     double* strategy_sum,
     const double* strategy,
     std::size_t len,
+    double own_reach) noexcept;
+void update_strategy_sum_strided(
+    double* strategy_sum,
+    const double* strategy,
+    std::size_t len,
+    std::size_t stride,
     double own_reach) noexcept;
 void copy_values(double* out, const double* in, std::size_t len) noexcept;
 double dot_product(const double* lhs, const double* rhs, std::size_t len) noexcept;
