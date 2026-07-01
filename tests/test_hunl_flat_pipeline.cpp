@@ -1,3 +1,4 @@
+#include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_flat_pipeline.hpp"
 #include "test_harness.hpp"
 
@@ -82,4 +83,22 @@ TEST_CASE(hunl_flat_pipeline_plan_marks_depth_limited_stage_optional_from_graph_
     EXPECT_EQ(pipeline.buffers().depth_limited_node_count, depth_limited_count);
     EXPECT_EQ(pipeline.buffers().has_depth_limited_nodes, depth_limited_count > 0U);
     EXPECT_EQ(stage.optional, depth_limited_count == 0U);
+}
+
+TEST_CASE(hunl_flat_dcfr_exposes_built_pipeline_plan) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    core::HUNLFlatDCFR solver(
+        graph,
+        std::array<std::size_t, 2>{2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        3);
+
+    const auto& pipeline = solver.pipeline_plan();
+    EXPECT_EQ(pipeline.stages().size(), 7U);
+    EXPECT_EQ(pipeline.buffers().infoset_count, static_cast<std::uint32_t>(solver.graph().infosets.size()));
+    EXPECT_EQ(pipeline.buffers().node_count, static_cast<std::uint32_t>(solver.graph().nodes.size()));
+    EXPECT_EQ(
+        pipeline.stage(core::HUNLFlatPipelineStageId::BackwardCFV).worker_depth_ranges.size(),
+        solver.worker_count());
 }

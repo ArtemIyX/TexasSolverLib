@@ -1,6 +1,9 @@
 #include "solver/hunl_flat_pipeline.hpp"
+#include "solver/hunl_flat_dcfr.hpp"
 
+#include <chrono>
 #include <stdexcept>
+#include <utility>
 
 namespace core {
 
@@ -114,6 +117,73 @@ const HUNLFlatPipelineStagePlan& HUNLFlatPipelinePlan::stage(HUNLFlatPipelineSta
         }
     }
     throw std::out_of_range("HUNLFlatPipelinePlan stage id not found");
+}
+
+HUNLFlatPipeline::HUNLFlatPipeline(HUNLFlatPipelinePlan plan)
+    : plan_(std::move(plan)) {}
+
+const HUNLFlatPipelinePlan& HUNLFlatPipeline::plan() const noexcept {
+    return plan_;
+}
+
+void HUNLFlatPipeline::run_iteration(HUNLFlatDCFR& solver) const {
+    using clock = std::chrono::steady_clock;
+
+    if (solver.worker_scratch_.size() != solver.worker_count_) {
+        throw std::logic_error("HUNLFlatDCFR worker scratch size must match worker_count");
+    }
+
+    const auto discount_start = clock::now();
+    solver.apply_dcfr_discount_stage();
+    const auto discount_end = clock::now();
+
+    const auto forward_profile_start = discount_end;
+    solver.compute_strategy_stage();
+    const auto forward_profile_end = clock::now();
+
+    const auto aggregate_reach_start = forward_profile_end;
+    solver.forward_reach_stage();
+    const auto aggregate_reach_end = clock::now();
+
+    const auto opponent_reach_start = aggregate_reach_end;
+    solver.normalize_bucket_reach_stage();
+    const auto opponent_reach_end = clock::now();
+
+    const auto showdown_start = opponent_reach_end;
+    solver.showdown_equity_stage();
+    const auto showdown_end = clock::now();
+
+    const auto depth_limited_stage = plan_.stage(HUNLFlatPipelineStageId::DepthLimitedEval);
+    const auto depth_limited_start = showdown_end;
+    if (!depth_limited_stage.optional) {
+        solver.depth_limited_eval_stage();
+    }
+    const auto depth_limited_end = clock::now();
+
+    const auto backward_start = depth_limited_end;
+    solver.backward_value_stage();
+    const auto backward_end = clock::now();
+
+    const auto regret_start = backward_end;
+    solver.regret_update_stage();
+    const auto regret_end = clock::now();
+
+    const auto average_start = regret_end;
+    solver.average_strategy_stage();
+    const auto average_end = clock::now();
+
+    solver.profile_.discount_seconds += std::chrono::duration<double>(discount_end - discount_start).count();
+    solver.profile_.strategy_seconds += std::chrono::duration<double>(forward_profile_end - forward_profile_start).count();
+    solver.profile_.reach_seconds +=
+        std::chrono::duration<double>(aggregate_reach_end - aggregate_reach_start).count() +
+        std::chrono::duration<double>(opponent_reach_end - opponent_reach_start).count();
+    solver.profile_.terminal_seconds +=
+        std::chrono::duration<double>(showdown_end - showdown_start).count() +
+        std::chrono::duration<double>(depth_limited_end - depth_limited_start).count();
+    solver.profile_.backward_seconds += std::chrono::duration<double>(backward_end - backward_start).count();
+    solver.profile_.regret_seconds += std::chrono::duration<double>(regret_end - regret_start).count();
+    solver.profile_.average_strategy_seconds += std::chrono::duration<double>(average_end - average_start).count();
+    ++solver.iterations_;
 }
 
 }  // namespace core

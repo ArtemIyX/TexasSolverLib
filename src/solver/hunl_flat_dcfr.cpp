@@ -273,7 +273,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
           graph_,
           infoset_table_,
           std::max<std::size_t>(1, workers))),
-      pipeline_plan_(HUNLFlatPipelinePlan::build(graph_, infoset_table_, parallel_plan_)),
+      pipeline_(HUNLFlatPipeline(HUNLFlatPipelinePlan::build(graph_, infoset_table_, parallel_plan_))),
       worker_scratch_(std::max<std::size_t>(1, workers)),
       alpha_(alpha),
       beta_(beta),
@@ -312,7 +312,7 @@ const HUNLFlatBucketMap* HUNLFlatDCFR::bucket_map() const noexcept {
 }
 
 const HUNLFlatPipelinePlan& HUNLFlatDCFR::pipeline_plan() const noexcept {
-    return pipeline_plan_;
+    return pipeline_.plan();
 }
 
 void HUNLFlatDCFR::add_stage_seconds(
@@ -378,8 +378,11 @@ void HUNLFlatDCFR::execute_stage_command(StageCommand command, std::size_t worke
         case StageCommand::NormalizeBucketReach:
             worker_normalize_bucket_reach_stage(worker_index);
             return;
-        case StageCommand::Terminal:
-            worker_terminal_stage(worker_index);
+        case StageCommand::ShowdownEquity:
+            worker_showdown_equity_stage(worker_index);
+            return;
+        case StageCommand::DepthLimitedEval:
+            worker_depth_limited_eval_stage(worker_index);
             return;
         case StageCommand::BackwardDepth:
             worker_backward_depth(worker_index, depth);
@@ -394,49 +397,8 @@ void HUNLFlatDCFR::execute_stage_command(StageCommand command, std::size_t worke
 }
 
 void HUNLFlatDCFR::run_iteration() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.run_iteration");
-    using clock = std::chrono::steady_clock;
-    if (worker_scratch_.size() != worker_count_) {
-        throw std::logic_error("HUNLFlatDCFR worker scratch size must match worker_count");
-    }
-
-    const auto discount_start = clock::now();
-    apply_dcfr_discount_stage();
-    const auto discount_end = clock::now();
-
-    const auto strategy_start = discount_end;
-    compute_strategy_stage();
-    const auto strategy_end = clock::now();
-
-    const auto reach_start = strategy_end;
-    forward_reach_stage();
-    normalize_bucket_reach_stage();
-    const auto reach_end = clock::now();
-
-    const auto terminal_start = reach_end;
-    terminal_utility_stage();
-    const auto terminal_end = clock::now();
-
-    const auto backward_start = terminal_end;
-    backward_value_stage();
-    const auto backward_end = clock::now();
-
-    const auto regret_start = backward_end;
-    regret_update_stage();
-    const auto regret_end = clock::now();
-
-    const auto average_start = regret_end;
-    average_strategy_stage();
-    const auto average_end = clock::now();
-
-    profile_.discount_seconds += std::chrono::duration<double>(discount_end - discount_start).count();
-    profile_.strategy_seconds += std::chrono::duration<double>(strategy_end - strategy_start).count();
-    profile_.reach_seconds += std::chrono::duration<double>(reach_end - reach_start).count();
-    profile_.terminal_seconds += std::chrono::duration<double>(terminal_end - terminal_start).count();
-    profile_.backward_seconds += std::chrono::duration<double>(backward_end - backward_start).count();
-    profile_.regret_seconds += std::chrono::duration<double>(regret_end - regret_start).count();
-    profile_.average_strategy_seconds += std::chrono::duration<double>(average_end - average_start).count();
-    ++iterations_;
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.pipeline_iteration");
+    pipeline_.run_iteration(*this);
 }
 
 void HUNLFlatDCFR::run_iterations(std::uint32_t iterations) {
@@ -799,12 +761,23 @@ void HUNLFlatDCFR::worker_reach_reduce_buckets_depth(std::size_t worker_index) {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
 }
 
-void HUNLFlatDCFR::terminal_utility_stage() {
-    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.terminal_stage");
-    run_stage_workers(HUNLFlatStageKind::Terminal, StageCommand::Terminal);
+void HUNLFlatDCFR::showdown_equity_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.showdown_equity_stage");
+    run_stage_workers(HUNLFlatStageKind::Terminal, StageCommand::ShowdownEquity);
 }
 
-void HUNLFlatDCFR::worker_terminal_stage(std::size_t worker_index) {
+void HUNLFlatDCFR::depth_limited_eval_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.depth_limited_eval_stage");
+    run_stage_workers(HUNLFlatStageKind::Terminal, StageCommand::DepthLimitedEval);
+}
+
+void HUNLFlatDCFR::terminal_utility_stage() {
+    TEXASSOLVER_PROFILE_SCOPE("hunl_flat.terminal_stage");
+    showdown_equity_stage();
+    depth_limited_eval_stage();
+}
+
+void HUNLFlatDCFR::worker_showdown_equity_stage(std::size_t worker_index) {
     const auto range = parallel_plan_.workers[worker_index].node_range;
     const auto worker_start = std::chrono::steady_clock::now();
     for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
@@ -821,13 +794,25 @@ void HUNLFlatDCFR::worker_terminal_stage(std::size_t worker_index) {
             }
             continue;
         }
-        if (meta.type == HUNLFlatNodeType::DepthLimited) {
-            terminal_values_[node_idx] =
-                heuristic_depth_limited_value_p0(meta, *graph_.config);
-        }
     }
     mark_worker_scope(
-        "hunl_flat.terminal",
+        "hunl_flat.showdown_equity",
+        worker_index,
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
+}
+
+void HUNLFlatDCFR::worker_depth_limited_eval_stage(std::size_t worker_index) {
+    const auto range = parallel_plan_.workers[worker_index].node_range;
+    const auto worker_start = std::chrono::steady_clock::now();
+    for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
+        const auto& meta = graph_.node_meta[node_idx];
+        if (meta.type != HUNLFlatNodeType::DepthLimited) {
+            continue;
+        }
+        terminal_values_[node_idx] = heuristic_depth_limited_value_p0(meta, *graph_.config);
+    }
+    mark_worker_scope(
+        "hunl_flat.depth_limited_eval",
         worker_index,
         std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
 }

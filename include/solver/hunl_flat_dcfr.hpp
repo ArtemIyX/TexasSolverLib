@@ -107,6 +107,8 @@ public:
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
 private:
+    friend class HUNLFlatPipeline;
+
     enum class StageCommand : std::uint8_t {
         Discount = 0,
         Strategy = 1,
@@ -114,10 +116,11 @@ private:
         ReachReduceNodes = 3,
         ReachReduceBuckets = 4,
         NormalizeBucketReach = 5,
-        Terminal = 6,
-        BackwardDepth = 7,
-        Regret = 8,
-        AverageStrategy = 9,
+        ShowdownEquity = 6,
+        DepthLimitedEval = 7,
+        BackwardDepth = 8,
+        Regret = 9,
+        AverageStrategy = 10,
     };
 
     class WorkerPool {
@@ -157,7 +160,8 @@ private:
     void worker_reach_reduce_nodes_depth(std::size_t worker_index, std::size_t depth);
     void worker_reach_reduce_buckets_depth(std::size_t worker_index);
     void worker_normalize_bucket_reach_stage(std::size_t worker_index);
-    void worker_terminal_stage(std::size_t worker_index);
+    void worker_showdown_equity_stage(std::size_t worker_index);
+    void worker_depth_limited_eval_stage(std::size_t worker_index);
     void worker_backward_depth(std::size_t worker_index, std::size_t depth);
     void worker_regret_stage(std::size_t worker_index);
     void worker_average_strategy_stage(std::size_t worker_index);
@@ -165,6 +169,8 @@ private:
     void compute_strategy_stage();
     void forward_reach_stage();
     void normalize_bucket_reach_stage();
+    void showdown_equity_stage();
+    void depth_limited_eval_stage();
     void terminal_utility_stage();
     void backward_value_stage();
     void regret_update_stage();
@@ -192,7 +198,7 @@ private:
     HUNLFlatStageProfile profile_;
     std::size_t worker_count_ = 1;
     HUNLFlatParallelPlan parallel_plan_;
-    HUNLFlatPipelinePlan pipeline_plan_;
+    HUNLFlatPipeline pipeline_;
     std::unique_ptr<WorkerPool> worker_pool_;
     std::vector<HUNLFlatWorkerScratch, AlignedAllocator<HUNLFlatWorkerScratch, HUNL_CACHELINE_BYTES>> worker_scratch_;
     HUNLFlatSchedulerDiagnostics scheduler_diagnostics_;

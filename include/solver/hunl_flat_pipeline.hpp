@@ -7,6 +7,8 @@
 
 namespace core {
 
+class HUNLFlatDCFR;
+
 enum class HUNLFlatPipelineStageId : std::uint8_t {
     ForwardProfile = 0,
     AggregateReach = 1,
@@ -57,6 +59,17 @@ public:
 private:
     HUNLFlatPipelineBuffers buffers_;
     std::vector<HUNLFlatPipelineStagePlan> stages_;
+};
+
+class HUNLFlatPipeline {
+public:
+    explicit HUNLFlatPipeline(HUNLFlatPipelinePlan plan);
+
+    [[nodiscard]] const HUNLFlatPipelinePlan& plan() const noexcept;
+    void run_iteration(HUNLFlatDCFR& solver) const;
+
+private:
+    HUNLFlatPipelinePlan plan_;
 };
 
 }  // namespace core
