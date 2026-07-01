@@ -204,6 +204,18 @@ void mark(std::string_view name, double seconds) noexcept {
     entry.second += 1;
 }
 
+void mark_with_calls(std::string_view name, double seconds, std::uint64_t calls) noexcept {
+    if (!enabled_flag()) {
+        return;
+    }
+    const auto ns = static_cast<std::uint64_t>(seconds * 1'000'000'000.0);
+    std::lock_guard<std::mutex> lock(mutex());
+    auto& bucket = buckets()[std::this_thread::get_id()];
+    auto& entry = bucket.timings_ns[std::string(name)];
+    entry.first += ns;
+    entry.second += calls;
+}
+
 ScopedTimer::ScopedTimer(std::string_view name) noexcept : name_(name) {
     if (enabled_flag()) {
         start_ns_ = static_cast<std::uint64_t>(
@@ -303,6 +315,7 @@ void print_profiler_report() {
     print_group("Benchmark Wallclock", totals, "hunl.bench.");
     print_group("Flat Solve Wallclock", totals, "hunl_flat.solve.");
     print_group("Flat Stage Wallclock", totals, "hunl_flat.stage.");
+    print_group("Expected Value Detail", totals, "hunl.eval.expected_value.");
     print_group("Flat Reach Detail", totals, "hunl_flat.reach.");
     print_group("Flat Backward Detail", totals, "hunl_flat.backward.");
     print_group("Flat Worker Detail", totals, "hunl_flat.worker.");

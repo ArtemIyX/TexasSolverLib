@@ -8,6 +8,7 @@ namespace core::profiling {
 bool enabled() noexcept;
 bool detail_enabled() noexcept;
 void mark(std::string_view name, double seconds) noexcept;
+void mark_with_calls(std::string_view name, double seconds, std::uint64_t calls) noexcept;
 void print_profiler_report();
 
 class ScopedTimer {

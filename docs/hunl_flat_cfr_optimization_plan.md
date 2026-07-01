@@ -373,7 +373,7 @@ Tests to add:
 - Assert zero-reach infosets use prior bucket weights.
 - Keep worker-count comparison tests at `1e-12`.
 
-## 8. Phase 3: Correct And Slim Reach Propagation
+## 8. + Phase 3: Correct And Slim Reach Propagation
 
 Purpose: remove avoidable per-depth clears/reductions and separate local node mass from global bucket reach.
 
@@ -385,7 +385,7 @@ Files to edit:
 - `tests/test_hunl_flat_dcfr.cpp`
 - `tests/test_ranges_threading.cpp`
 
-### 3.1 Separate local node bucket mass
+### + 3.1 Separate local node bucket mass
 
 Why:
 
@@ -415,7 +415,7 @@ Tests:
 - If such a graph is hard to build, add a targeted synthetic flat graph test.
 - Compare single-worker and multi-worker reaches and strategy sums.
 
-### 3.2 Reduce only touched depth nodes
+### + 3.2 Reduce only touched depth nodes
 
 Why:
 
@@ -436,7 +436,7 @@ Expected effect:
 
 - Removes `O(depths * nodes)` reduction work.
 
-### 3.3 Avoid full scratch clears per depth
+### + 3.3 Avoid full scratch clears per depth
 
 Why:
 
@@ -466,7 +466,7 @@ Tests:
 - `ranges_repeated_runs_with_same_config_are_deterministic`
 - add stress with worker counts 1, 2, 3, 4 on the same graph.
 
-## 9. Phase 4: Weighted Per-Depth Scheduling
+## 9. + Phase 4: Weighted Per-Depth Scheduling
 
 Purpose: reduce the observed backward worker imbalance.
 
@@ -527,7 +527,7 @@ Expected effect:
 - Backward worker times should converge.
 - In the supplied profile, the target is to move worker 0/2 closer to worker 3 instead of leaving a 30 percent gap.
 
-## 10. Phase 5: Backward Decision Kernel Specialization
+## 10. + Phase 5: Backward Decision Kernel Specialization
 
 Purpose: make the hottest loop cache-friendly and layout-aware.
 
@@ -539,7 +539,7 @@ Files to edit:
 - `tests/test_simd.cpp`
 - `tests/test_hunl_flat_dcfr.cpp`
 
-### 5.1 Add dot-product helpers
+### + 5.1 Add dot-product helpers
 
 Why:
 
@@ -583,7 +583,7 @@ Tests:
 - Exact scalar expectations in `tests/test_simd.cpp`.
 - Existing strategy normalization tests for both layouts.
 
-### 5.2 Compute node value in one pass
+### + 5.2 Compute node value in one pass
 
 Current backward decision:
 
@@ -612,7 +612,7 @@ Tests:
 - `hunl_flat_dcfr_backward_stage_computes_root_value_from_children`
 - `hunl_flat_dcfr_regret_update_uses_action_minus_node_value`
 
-## 11. Phase 6: Regret And Average Strategy Kernel Cleanup
+## 11. + Phase 6: Regret And Average Strategy Kernel Cleanup
 
 Purpose: use precomputed normalized bucket reach and reduce duplicated layout branches.
 
@@ -640,7 +640,7 @@ Tests:
 - worker count matching tests
 - full `test_hunl_flat_dcfr`
 
-## 12. Phase 7: Worker Pool Stage Dispatch Refinement
+## 12. + Phase 7: Worker Pool Stage Dispatch Refinement
 
 Purpose: reduce stage launch overhead only after the hot kernels are fixed.
 
