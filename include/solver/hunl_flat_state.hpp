@@ -67,10 +67,19 @@ struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
     HUNLAlignedVector<double> player1_reach;
     HUNLAlignedVector<double> chance_reach;
     HUNLAlignedVector<double> bucket_reach;
+    HUNLAlignedVector<double> row_values;
+    HUNLAlignedVector<double> row_weights;
+    HUNLAlignedVector<double> local_bucket_mass;
 
     void reset_values() noexcept;
     void ensure_capacity(std::size_t node_count, std::size_t edge_count);
     void ensure_capacity(std::size_t node_count, std::size_t edge_count, std::size_t total_bucket_count);
+    void ensure_capacity(
+        std::size_t node_count,
+        std::size_t edge_count,
+        std::size_t total_bucket_count,
+        std::size_t max_child_count,
+        std::size_t max_bucket_count);
 };
 #if defined(_MSC_VER)
 #pragma warning(pop)

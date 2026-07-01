@@ -56,6 +56,24 @@ std::string worker_scope_name(const char* base, std::size_t worker_index) {
     return std::string(base) + "[w" + std::to_string(worker_index) + "]";
 }
 
+std::size_t max_backward_row_width(const HUNLFlatSolveGraph& graph) {
+    std::size_t max_width = 0;
+    for (const auto& meta : graph.node_meta) {
+        max_width = std::max<std::size_t>(
+            max_width,
+            std::max<std::size_t>(meta.child_count, meta.chance_count));
+    }
+    return max_width;
+}
+
+std::size_t max_bucket_width(const HUNLFlatInfosetTable& infoset_table) {
+    std::size_t max_width = 0;
+    for (const auto& meta : infoset_table.meta()) {
+        max_width = std::max<std::size_t>(max_width, meta.bucket_count);
+    }
+    return max_width;
+}
+
 void mark_worker_scope(const char* base, std::size_t worker_index, double seconds) {
     if (!profiling::enabled()) {
         return;
@@ -266,6 +284,8 @@ HUNLFlatDCFR::HUNLFlatDCFR(
       alpha_(alpha),
       beta_(beta),
       gamma_(gamma) {
+    const auto max_child_count = max_backward_row_width(graph_);
+    const auto max_bucket_count = max_bucket_width(infoset_table_);
     validate_flat_solver_graph(graph_);
     validate_alpha(alpha_);
     if (beta_ < 0.0 || gamma_ < 0.0) {
@@ -275,7 +295,9 @@ HUNLFlatDCFR::HUNLFlatDCFR(
         scratch.ensure_capacity(
             graph_.nodes.size(),
             graph_.children.size(),
-            infoset_table_.total_bucket_count());
+            infoset_table_.total_bucket_count(),
+            max_child_count,
+            max_bucket_count);
     }
     scheduler_diagnostics_.worker_profiles.assign(worker_count_, HUNLFlatStageProfile{});
     worker_pool_ = std::make_unique<WorkerPool>(worker_count_);
@@ -741,6 +763,7 @@ void HUNLFlatDCFR::backward_value_stage() {
     for (std::size_t depth = graph_.depth_slices.size(); depth-- > 0;) {
         run_stage_workers(HUNLFlatStageKind::Backward, [&](std::size_t worker_index) {
             const auto& worker = parallel_plan_.workers[worker_index];
+            auto& scratch = worker_scratch_[worker_index];
             const auto range = worker.depth_node_ranges[depth];
             const auto worker_start = std::chrono::steady_clock::now();
             for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
@@ -758,15 +781,15 @@ void HUNLFlatDCFR::backward_value_stage() {
 
                 if (meta.type == HUNLFlatNodeType::Chance) {
                     const auto chance_start = std::chrono::steady_clock::now();
-                    std::vector<double> weights(meta.chance_count, 0.0);
-                    std::vector<double> row(meta.chance_count, 0.0);
+                    auto* row = scratch.row_values.data();
+                    auto* weights = scratch.row_weights.data();
                     for (std::size_t i = 0; i < meta.chance_count; ++i) {
                         const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
                         row[i] = node_values_[outcome.child];
                         weights[i] = outcome.probability;
                     }
-                    copy_values(action_values_.data() + meta.child_begin, row.data(), meta.chance_count);
-                    node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.chance_count);
+                    copy_values(action_values_.data() + meta.child_begin, row, meta.chance_count);
+                    node_values_[node_idx] = reduce_weighted_action_values(row, weights, meta.chance_count);
                     mark_worker_detail_scope(
                         "hunl_flat.backward.chance",
                         worker_index,
@@ -790,8 +813,8 @@ void HUNLFlatDCFR::backward_value_stage() {
                 if (infoset_meta.bucket_count == 0 || infoset_meta.action_count == 0) {
                     throw std::logic_error("HUNLFlatDCFR backward stage requires non-empty bucket/action counts");
                 }
-                std::vector<double> row(meta.child_count, 0.0);
-                std::vector<double> weights(meta.child_count, 0.0);
+                auto* row = scratch.row_values.data();
+                auto* weights = scratch.row_weights.data();
                 for (std::size_t i = 0; i < meta.child_count; ++i) {
                     const auto child = graph_.children[meta.child_begin + i];
                     row[i] = node_values_[child];
@@ -817,8 +840,8 @@ void HUNLFlatDCFR::backward_value_stage() {
                     weights[i] = action_prob;
                 }
                 const auto reduction_start = std::chrono::steady_clock::now();
-                copy_values(action_values_.data() + meta.child_begin, row.data(), meta.child_count);
-                node_values_[node_idx] = reduce_weighted_action_values(row.data(), weights.data(), meta.child_count);
+                copy_values(action_values_.data() + meta.child_begin, row, meta.child_count);
+                node_values_[node_idx] = reduce_weighted_action_values(row, weights, meta.child_count);
                 mark_worker_detail_scope(
                     "hunl_flat.backward.row_reduction",
                     worker_index,

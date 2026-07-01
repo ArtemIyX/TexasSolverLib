@@ -218,7 +218,7 @@ build/Release/texas_solver_flat_scheduler_benchmark.exe 10 1,2,4,8,16 hand-actio
 
 On non-Windows generators, adapt executable paths accordingly.
 
-## 6. Phase 1: Fix Profiling Overhead And Hot-Loop Allocations
+## 6. + Phase 1: Fix Profiling Overhead And Hot-Loop Allocations
 
 Purpose: remove overhead that does not change solver math.
 
@@ -230,7 +230,7 @@ Files to edit:
 - `src/util/profiling.cpp`
 - `include/util/profiling.hpp`
 
-### 1.1 Gate detailed profiling
+### + 1.1 Gate detailed profiling
 
 Why:
 
@@ -256,7 +256,7 @@ Tests:
 - profile run with `TEXASSOLVER_PROFILE=1`
 - profile run with `TEXASSOLVER_PROFILE=1 TEXASSOLVER_PROFILE_DETAIL=1`
 
-### 1.2 Add per-worker row scratch
+### + 1.2 Add per-worker row scratch
 
 Why:
 

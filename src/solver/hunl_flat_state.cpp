@@ -52,13 +52,22 @@ void HUNLFlatWorkerScratch::reset_values() noexcept {
 void HUNLFlatWorkerScratch::ensure_capacity(
     std::size_t node_count,
     std::size_t edge_count) {
-    ensure_capacity(node_count, edge_count, 0);
+    ensure_capacity(node_count, edge_count, 0, 0, 0);
 }
 
 void HUNLFlatWorkerScratch::ensure_capacity(
     std::size_t node_count,
     std::size_t edge_count,
     std::size_t total_bucket_count) {
+    ensure_capacity(node_count, edge_count, total_bucket_count, 0, 0);
+}
+
+void HUNLFlatWorkerScratch::ensure_capacity(
+    std::size_t node_count,
+    std::size_t edge_count,
+    std::size_t total_bucket_count,
+    std::size_t max_child_count,
+    std::size_t max_bucket_count) {
     terminal_values.assign(node_count, 0.0);
     node_values.assign(node_count, 0.0);
     action_values.assign(edge_count, 0.0);
@@ -66,6 +75,9 @@ void HUNLFlatWorkerScratch::ensure_capacity(
     player1_reach.assign(node_count, 0.0);
     chance_reach.assign(node_count, 0.0);
     bucket_reach.assign(total_bucket_count, 0.0);
+    row_values.assign(max_child_count, 0.0);
+    row_weights.assign(max_child_count, 0.0);
+    local_bucket_mass.assign(max_bucket_count, 0.0);
 }
 
 HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph, std::size_t worker_count) {
