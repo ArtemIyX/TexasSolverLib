@@ -72,6 +72,21 @@ bool& enabled_flag() {
     return value;
 }
 
+bool& detail_enabled_flag() {
+    static bool value = [] {
+        const auto raw = read_env_value("TEXASSOLVER_PROFILE_DETAIL");
+        if (raw.empty()) {
+            return false;
+        }
+        std::string s(raw);
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        return !(s == "0" || s == "false" || s == "off" || s.empty());
+    }();
+    return value;
+}
+
 std::filesystem::path report_dir() {
     const auto raw = read_env_value("TEXASSOLVER_PROFILE_DIR");
     if (!raw.empty()) {
@@ -164,6 +179,10 @@ void print_profiler_report();
 
 bool enabled() noexcept {
     return enabled_flag();
+}
+
+bool detail_enabled() noexcept {
+    return enabled_flag() && detail_enabled_flag();
 }
 
 void mark(std::string_view name, double seconds) noexcept {

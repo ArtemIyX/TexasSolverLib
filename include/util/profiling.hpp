@@ -6,6 +6,7 @@
 namespace core::profiling {
 
 bool enabled() noexcept;
+bool detail_enabled() noexcept;
 void mark(std::string_view name, double seconds) noexcept;
 void print_profiler_report();
 
