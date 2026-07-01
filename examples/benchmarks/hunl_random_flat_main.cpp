@@ -3,6 +3,7 @@
 #include "games/hunl_flat_graph.hpp"
 #include "core/lib.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
+#include "solver/hunl_flat_expected_value.hpp"
 #include "solver/solver.hpp"
 #include "util/profiling.hpp"
 
@@ -345,7 +346,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(export_end - export_start).count());
 
     const auto ev_start = export_end;
-    const auto expected_value = core::detail::expected_value(core::HUNLState::initial(shared), strategy);
+    const auto expected_value = core::compute_flat_expected_value(graph, exported);
     const auto ev_end = clock::now();
     core::profiling::mark(
         "hunl.bench.expected_value",
@@ -446,7 +447,9 @@ int main(int argc, char* argv[]) {
         std::cout << "  used_parallel=" << (timed.worker_count > 1 ? "true" : "false") << "\n";
         std::cout << "  strategy_root:\n";
 
-        const auto root_key = random_state.state.infoset_key(static_cast<std::uint8_t>(random_state.state.cur_player));
+        const auto root_key = random_state.state.infoset_key(static_cast<std::uint8_t>(random_state.state.cur_player)) +
+            "|board:" + core::sorted_card_string(random_state.state.board) +
+            "|street:" + core::street_token(random_state.state.street);
         const auto it = std::find_if(timed.exported_strategy.begin(), timed.exported_strategy.end(), [&](const auto& item) {
             return item.first == root_key;
         });
