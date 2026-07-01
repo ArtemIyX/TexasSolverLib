@@ -10,7 +10,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -106,33 +105,60 @@ public:
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
 
 private:
+    enum class StageCommand : std::uint8_t {
+        Discount = 0,
+        Strategy = 1,
+        ReachSeed = 2,
+        ReachReduceNodes = 3,
+        ReachReduceBuckets = 4,
+        NormalizeBucketReach = 5,
+        Terminal = 6,
+        BackwardDepth = 7,
+        Regret = 8,
+        AverageStrategy = 9,
+    };
+
     class WorkerPool {
     public:
-        explicit WorkerPool(std::size_t worker_count);
+        WorkerPool(HUNLFlatDCFR& owner, std::size_t worker_count);
         ~WorkerPool();
 
         WorkerPool(const WorkerPool&) = delete;
         WorkerPool& operator=(const WorkerPool&) = delete;
 
-        void run_stage(const std::function<void(std::size_t)>& fn);
+        void run_stage(StageCommand command, HUNLFlatStageKind stage_kind, std::size_t depth) noexcept(false);
         [[nodiscard]] std::size_t worker_count() const noexcept;
 
     private:
         void worker_loop(std::size_t worker_index);
 
+        HUNLFlatDCFR& owner_;
         std::vector<std::thread> threads_;
         std::mutex mutex_;
         std::condition_variable cv_;
         std::condition_variable finished_cv_;
-        std::function<void(std::size_t)> stage_fn_;
+        StageCommand command_ = StageCommand::Discount;
+        HUNLFlatStageKind stage_kind_ = HUNLFlatStageKind::Discount;
+        std::size_t depth_ = 0;
         std::exception_ptr stage_error_;
         std::size_t generation_ = 0;
         std::size_t completed_workers_ = 0;
         bool stop_ = false;
     };
 
-    void run_stage_workers(HUNLFlatStageKind stage, const std::function<void(std::size_t)>& fn);
+    void run_stage_workers(HUNLFlatStageKind stage, StageCommand command, std::size_t depth = 0);
     static void add_stage_seconds(HUNLFlatStageProfile& profile, HUNLFlatStageKind stage, double seconds);
+    void execute_stage_command(StageCommand command, std::size_t worker_index, std::size_t depth);
+    void worker_discount_stage(std::size_t worker_index);
+    void worker_strategy_stage(std::size_t worker_index);
+    void worker_reach_seed_depth(std::size_t worker_index, std::size_t depth);
+    void worker_reach_reduce_nodes_depth(std::size_t worker_index, std::size_t depth);
+    void worker_reach_reduce_buckets_depth(std::size_t worker_index);
+    void worker_normalize_bucket_reach_stage(std::size_t worker_index);
+    void worker_terminal_stage(std::size_t worker_index);
+    void worker_backward_depth(std::size_t worker_index, std::size_t depth);
+    void worker_regret_stage(std::size_t worker_index);
+    void worker_average_strategy_stage(std::size_t worker_index);
     void apply_dcfr_discount_stage();
     void compute_strategy_stage();
     void forward_reach_stage();
