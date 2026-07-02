@@ -18,6 +18,13 @@ struct IsoClass {
     std::vector<std::pair<std::size_t, SuitPerm>> members;
 };
 
+struct PublicChanceClass {
+    std::size_t representative_outcome_idx = 0;
+    std::uint8_t representative_action = 0;
+    double probability = 0.0;
+    std::uint32_t multiplicity = 0;
+};
+
 struct CollapseMember {
     std::size_t child_idx = 0;
     std::array<std::vector<std::uint32_t>, 2> sigma;
@@ -47,6 +54,9 @@ std::vector<std::size_t> board_stabilizer(const std::vector<std::uint8_t>& prefi
 std::vector<IsoClass> group_chance_children(
     const std::vector<std::uint8_t>& prefix_board,
     const std::vector<std::uint8_t>& dealt_cards);
+std::vector<PublicChanceClass> canonicalize_public_chance_outcomes(
+    const std::vector<std::uint8_t>& prefix_board,
+    const std::vector<ChanceOutcome>& outcomes);
 std::vector<std::array<std::uint8_t, 2>> build_hole_index(
     const std::vector<std::array<std::uint8_t, 2>>& holes);
 std::optional<std::vector<std::uint32_t>> hand_index_permutation(

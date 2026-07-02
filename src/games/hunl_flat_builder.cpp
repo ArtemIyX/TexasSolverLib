@@ -1,5 +1,6 @@
 #include "games/hunl_flat_builder.hpp"
 #include "games/hunl_tree.hpp"
+#include "util/suit_iso.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -151,11 +152,13 @@ struct HUNLFlatBuildFrame {
     std::size_t next_child = 0;
     std::vector<ActionId> actions;
     std::vector<ChanceOutcome> chance_outcomes;
+    std::vector<PublicChanceClass> public_chance_classes;
     std::vector<std::uint32_t> child_indices;
     bool initialized = false;
     bool is_terminal = false;
     bool is_depth_limited = false;
     bool is_chance = false;
+    bool collapsed_public_chance = false;
 };
 
 }  // namespace
@@ -247,6 +250,27 @@ bool HUNLFlatBuilderMemoKey::operator==(const HUNLFlatBuilderMemoKey& other) con
            street_aggressor == other.street_aggressor;
 }
 
+HUNLFlatSolveMode resolve_flat_builder_solve_mode(const HUNLConfig& config) {
+    if (config.flat_solve_mode != HUNLFlatSolveMode::Auto) {
+        return config.flat_solve_mode;
+    }
+    return config.abstraction_path.has_value()
+        ? HUNLFlatSolveMode::Bucketed
+        : HUNLFlatSolveMode::ExplicitHand;
+}
+
+bool can_collapse_public_chance(
+    const HUNLState& state,
+    HUNLFlatSolveMode solve_mode) {
+    if (solve_mode == HUNLFlatSolveMode::ExplicitHand) {
+        return false;
+    }
+    if (state.cur_player != -1 || state.pending_board_deals != 1) {
+        return false;
+    }
+    return state.street == Street::Turn || state.street == Street::River;
+}
+
 HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> config) {
     HUNLFlatSolveGraph graph;
     graph.config = config;
@@ -262,6 +286,7 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
 
     const auto initial_state = HUNLState::initial(config);
     const auto depth_limit_plies = config ? config->depth_limit_plies : 0U;
+    const auto solve_mode = config ? resolve_flat_builder_solve_mode(*config) : HUNLFlatSolveMode::ExplicitHand;
 
     auto emplace_new_node = [&](const HUNLState& state, std::uint32_t depth) {
         const auto node_idx = static_cast<std::uint32_t>(graph.node_meta.size());
@@ -345,13 +370,21 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
                 auto& meta = graph.node_meta[frame.node_idx];
                 meta.type = HUNLFlatNodeType::Chance;
                 frame.chance_outcomes = frame.state.chance_outcomes();
-                frame.child_indices.reserve(frame.chance_outcomes.size());
+                if (can_collapse_public_chance(frame.state, solve_mode)) {
+                    frame.public_chance_classes =
+                        canonicalize_public_chance_outcomes(frame.state.board, frame.chance_outcomes);
+                    frame.collapsed_public_chance = frame.public_chance_classes.size() < frame.chance_outcomes.size();
+                }
+                const auto branch_count = frame.collapsed_public_chance
+                    ? frame.public_chance_classes.size()
+                    : frame.chance_outcomes.size();
+                frame.child_indices.reserve(branch_count);
                 meta.child_begin = static_cast<std::uint32_t>(graph.children.size());
-                meta.child_count = static_cast<std::uint32_t>(frame.chance_outcomes.size());
+                meta.child_count = static_cast<std::uint32_t>(branch_count);
                 meta.chance_begin = static_cast<std::uint32_t>(graph.chance_outcomes.size());
-                meta.chance_count = static_cast<std::uint32_t>(frame.chance_outcomes.size());
-                graph.children.resize(graph.children.size() + frame.chance_outcomes.size());
-                graph.chance_outcomes.resize(graph.chance_outcomes.size() + frame.chance_outcomes.size());
+                meta.chance_count = static_cast<std::uint32_t>(branch_count);
+                graph.children.resize(graph.children.size() + branch_count);
+                graph.chance_outcomes.resize(graph.chance_outcomes.size() + branch_count);
                 continue;
             }
 
@@ -408,19 +441,31 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
         }
 
         if (frame.is_chance) {
-            if (frame.next_child < frame.chance_outcomes.size()) {
+            const auto chance_branch_count = frame.collapsed_public_chance
+                ? frame.public_chance_classes.size()
+                : frame.chance_outcomes.size();
+            if (frame.next_child < chance_branch_count) {
                 const auto child_slot = frame.next_child;
-                const auto outcome = frame.chance_outcomes[child_slot];
+                const auto outcome = frame.collapsed_public_chance
+                    ? frame.chance_outcomes[frame.public_chance_classes[child_slot].representative_outcome_idx]
+                    : frame.chance_outcomes[child_slot];
                 ++frame.next_child;
                 const auto child_state = frame.state.apply(outcome.action);
                 const auto [child_idx, child_is_new] = find_or_create_node(child_state, frame.depth + 1);
                 frame.child_indices.push_back(child_idx);
                 auto& meta = graph.node_meta[frame.node_idx];
+                const auto probability = frame.collapsed_public_chance
+                    ? frame.public_chance_classes[child_slot].probability
+                    : outcome.probability;
+                const auto multiplicity = frame.collapsed_public_chance
+                    ? frame.public_chance_classes[child_slot].multiplicity
+                    : 1U;
                 graph.children[meta.child_begin + child_slot] = child_idx;
                 graph.chance_outcomes[meta.chance_begin + child_slot] = HUNLFlatChanceOutcome{
                     static_cast<std::uint8_t>(outcome.action),
-                    outcome.probability,
+                    probability,
                     child_idx,
+                    multiplicity,
                 };
                 if (child_is_new) {
                     stack.push_back(HUNLFlatBuildFrame{std::move(child_state), child_idx, frame.depth + 1});

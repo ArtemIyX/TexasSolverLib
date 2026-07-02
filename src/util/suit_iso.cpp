@@ -89,6 +89,33 @@ std::vector<IsoClass> group_chance_children(
     return classes;
 }
 
+std::vector<PublicChanceClass> canonicalize_public_chance_outcomes(
+    const std::vector<std::uint8_t>& prefix_board,
+    const std::vector<ChanceOutcome>& outcomes) {
+    std::vector<std::uint8_t> dealt_cards;
+    dealt_cards.reserve(outcomes.size());
+    for (const auto& outcome : outcomes) {
+        dealt_cards.push_back(static_cast<std::uint8_t>(outcome.action));
+    }
+
+    const auto iso_classes = group_chance_children(prefix_board, dealt_cards);
+    std::vector<PublicChanceClass> classes;
+    classes.reserve(iso_classes.size());
+    for (const auto& iso_class : iso_classes) {
+        PublicChanceClass collapsed;
+        collapsed.representative_outcome_idx = iso_class.representative_child_idx;
+        collapsed.representative_action =
+            static_cast<std::uint8_t>(outcomes[iso_class.representative_child_idx].action);
+        collapsed.multiplicity = static_cast<std::uint32_t>(iso_class.members.size());
+        for (const auto& [member_idx, rel_perm] : iso_class.members) {
+            (void)rel_perm;
+            collapsed.probability += outcomes[member_idx].probability;
+        }
+        classes.push_back(collapsed);
+    }
+    return classes;
+}
+
 std::vector<std::array<std::uint8_t, 2>> build_hole_index(
     const std::vector<std::array<std::uint8_t, 2>>& holes) {
     std::vector<std::array<std::uint8_t, 2>> out;

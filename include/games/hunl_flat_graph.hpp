@@ -52,6 +52,7 @@ struct HUNLFlatChanceOutcome {
     std::uint8_t action = 0;
     double probability = 0.0;
     std::uint32_t child = 0;
+    std::uint32_t multiplicity = 1;
 };
 
 struct HUNLFlatInfoset {

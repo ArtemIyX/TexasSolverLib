@@ -136,6 +136,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
                     node.chance_outcomes[i].first,
                     node.chance_outcomes[i].second,
                     node.chance_children[i],
+                    1U,
                 });
             }
         } else if (flat_node.type == HUNLFlatNodeType::Decision) {

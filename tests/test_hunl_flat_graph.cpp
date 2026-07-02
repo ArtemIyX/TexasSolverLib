@@ -358,3 +358,73 @@ TEST_CASE(hunl_flat_graph_direct_builder_matches_tree_builder_on_small_graphs) {
         EXPECT_EQ(lhs.has_infoset, rhs.has_infoset);
     }
 }
+
+TEST_CASE(hunl_flat_graph_collapses_bucketed_public_chance_but_preserves_exact_expansion) {
+    core::HUNLConfig explicit_cfg;
+    explicit_cfg.starting_stack = 1000;
+    explicit_cfg.starting_street = core::Street::Flop;
+    explicit_cfg.initial_board = {
+        core::card_to_int(14, 0), core::card_to_int(13, 0), core::card_to_int(7, 0)};
+    explicit_cfg.initial_pot = 2000;
+    explicit_cfg.initial_contributions = {1000, 1000};
+    explicit_cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(12, 1), core::card_to_int(11, 2)},
+        {core::card_to_int(10, 1), core::card_to_int(9, 2)},
+    }};
+    explicit_cfg.flat_solve_mode = core::HUNLFlatSolveMode::ExplicitHand;
+
+    auto bucketed_cfg = explicit_cfg;
+    bucketed_cfg.flat_solve_mode = core::HUNLFlatSolveMode::Auto;
+    bucketed_cfg.abstraction_path = "test-abstraction.bin";
+
+    const auto explicit_graph =
+        core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(explicit_cfg));
+    const auto bucketed_graph =
+        core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(bucketed_cfg));
+
+    const auto find_turn_public_chance = [](const core::HUNLFlatSolveGraph& graph) -> std::uint32_t {
+        for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+            const auto& meta = graph.node_meta[node_idx];
+            if (meta.type != core::HUNLFlatNodeType::Chance) {
+                continue;
+            }
+            if (meta.street != core::Street::Turn) {
+                continue;
+            }
+            if (meta.board.count != 3 || meta.chance_count <= 1) {
+                continue;
+            }
+            return node_idx;
+        }
+        return static_cast<std::uint32_t>(graph.node_meta.size());
+    };
+
+    const auto explicit_chance_idx = find_turn_public_chance(explicit_graph);
+    const auto bucketed_chance_idx = find_turn_public_chance(bucketed_graph);
+    EXPECT_TRUE(explicit_chance_idx < explicit_graph.node_meta.size());
+    EXPECT_TRUE(bucketed_chance_idx < bucketed_graph.node_meta.size());
+
+    const auto& explicit_chance = explicit_graph.node_meta[explicit_chance_idx];
+    const auto& bucketed_chance = bucketed_graph.node_meta[bucketed_chance_idx];
+    EXPECT_EQ(explicit_chance.type, core::HUNLFlatNodeType::Chance);
+    EXPECT_EQ(bucketed_chance.type, core::HUNLFlatNodeType::Chance);
+    EXPECT_EQ(explicit_chance.child_count, explicit_chance.chance_count);
+    EXPECT_TRUE(bucketed_chance.chance_count < explicit_chance.chance_count);
+    EXPECT_EQ(bucketed_chance.child_count, bucketed_chance.chance_count);
+
+    std::uint32_t multiplicity_sum = 0;
+    double probability_sum = 0.0;
+    for (std::size_t i = 0; i < bucketed_chance.chance_count; ++i) {
+        const auto& outcome = bucketed_graph.chance_outcomes[bucketed_chance.chance_begin + i];
+        multiplicity_sum += outcome.multiplicity;
+        probability_sum += outcome.probability;
+        EXPECT_TRUE(outcome.multiplicity >= 1U);
+    }
+    EXPECT_EQ(multiplicity_sum, explicit_chance.chance_count);
+    EXPECT_NEAR(probability_sum, 1.0, 1e-12);
+
+    for (std::size_t i = 0; i < explicit_chance.chance_count; ++i) {
+        const auto& outcome = explicit_graph.chance_outcomes[explicit_chance.chance_begin + i];
+        EXPECT_EQ(outcome.multiplicity, 1U);
+    }
+}
