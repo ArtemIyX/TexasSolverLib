@@ -82,6 +82,14 @@ std::size_t max_bucket_width(const HUNLFlatInfosetTable& infoset_table) {
     return max_width;
 }
 
+std::size_t max_depth_slice_width(const HUNLFlatSolveGraph& graph) {
+    std::size_t max_width = 0;
+    for (const auto& slice : graph.depth_slices) {
+        max_width = std::max<std::size_t>(max_width, slice.count);
+    }
+    return max_width;
+}
+
 void mark_worker_scope(const char* base, std::size_t worker_index, double seconds) {
     if (!profiling::detail_enabled()) {
         return;
@@ -306,6 +314,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
       gamma_(gamma) {
     const auto max_child_count = max_backward_row_width(graph_);
     const auto max_bucket_count = max_bucket_width(infoset_table_);
+    const auto max_depth_width = max_depth_slice_width(graph_);
     validate_flat_solver_graph(graph_);
     validate_alpha(alpha_);
     if (beta_ < 0.0 || gamma_ < 0.0) {
@@ -313,7 +322,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
     }
     for (auto& scratch : worker_scratch_) {
         scratch.ensure_capacity(
-            graph_.nodes.size(),
+            max_depth_width,
             graph_.children.size(),
             infoset_table_.total_bucket_count(),
             max_child_count,
@@ -676,18 +685,32 @@ void HUNLFlatDCFR::forward_reach_stage() {
     }
 
     for (std::size_t depth = 0; depth < graph_.depth_slices.size(); ++depth) {
+        if (depth + 1 < graph_.depth_slices.size()) {
+            const auto next_slice = graph_.depth_slices[depth + 1];
+            for (auto& scratch : worker_scratch_) {
+                scratch.next_depth_local_offsets.clear();
+                scratch.next_depth_local_offsets.reserve(next_slice.count);
+                for (std::uint32_t order_idx = next_slice.begin; order_idx < next_slice.begin + next_slice.count; ++order_idx) {
+                    scratch.next_depth_local_offsets.emplace(
+                        graph_.depth_order[order_idx],
+                        order_idx - next_slice.begin);
+                }
+            }
+        }
+
         run_stage_workers(HUNLFlatStageKind::Reach, StageCommand::ReachSeed, depth);
 
         if (depth + 1 < graph_.depth_slices.size()) {
             run_stage_workers(HUNLFlatStageKind::Reach, StageCommand::ReachReduceNodes, depth);
 
             for (auto& scratch : worker_scratch_) {
-                for (const auto node_idx : scratch.dirty_nodes) {
-                    scratch.player0_reach[node_idx] = 0.0;
-                    scratch.player1_reach[node_idx] = 0.0;
-                    scratch.chance_reach[node_idx] = 0.0;
+                for (const auto local_offset : scratch.dirty_nodes) {
+                    scratch.player0_reach[local_offset] = 0.0;
+                    scratch.player1_reach[local_offset] = 0.0;
+                    scratch.chance_reach[local_offset] = 0.0;
                 }
                 scratch.dirty_nodes.clear();
+                scratch.next_depth_local_offsets.clear();
             }
         }
 
@@ -708,11 +731,18 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
 
     const auto& worker = parallel_plan_.workers[worker_index];
     const auto range = worker.depth_node_ranges[depth];
-    const auto mark_dirty_node = [&](std::uint32_t node_idx) {
-        if (scratch.player0_reach[node_idx] == 0.0 &&
-            scratch.player1_reach[node_idx] == 0.0 &&
-            scratch.chance_reach[node_idx] == 0.0) {
-            scratch.dirty_nodes.push_back(node_idx);
+    const auto map_node_to_local_offset = [&](std::uint32_t node_idx) -> std::uint32_t {
+        const auto it = scratch.next_depth_local_offsets.find(node_idx);
+        if (it == scratch.next_depth_local_offsets.end()) {
+            throw std::logic_error("HUNLFlatDCFR reach stage child missing next-depth local offset");
+        }
+        return it->second;
+    };
+    const auto mark_dirty_node = [&](std::uint32_t local_offset) {
+        if (scratch.player0_reach[local_offset] == 0.0 &&
+            scratch.player1_reach[local_offset] == 0.0 &&
+            scratch.chance_reach[local_offset] == 0.0) {
+            scratch.dirty_nodes.push_back(local_offset);
         }
     };
     const auto mark_dirty_bucket = [&](std::uint32_t bucket_idx) {
@@ -733,10 +763,11 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
         if (meta.type == HUNLFlatNodeType::Chance) {
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
                 const auto& outcome = graph_.chance_outcomes[meta.chance_begin + i];
-                mark_dirty_node(outcome.child);
-                scratch.player0_reach[outcome.child] += reach0;
-                scratch.player1_reach[outcome.child] += reach1;
-                scratch.chance_reach[outcome.child] += chance * outcome.probability;
+                const auto local_offset = map_node_to_local_offset(outcome.child);
+                mark_dirty_node(local_offset);
+                scratch.player0_reach[local_offset] += reach0;
+                scratch.player1_reach[local_offset] += reach1;
+                scratch.chance_reach[local_offset] += chance * outcome.probability;
             }
             continue;
         }
@@ -769,6 +800,7 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
 
         for (std::size_t i = 0; i < meta.child_count; ++i) {
             const auto child = graph_.children[meta.child_begin + i];
+            const auto local_offset = map_node_to_local_offset(child);
             double bucketed_action_mass = 0.0;
             for (std::size_t bucket = 0; bucket < infoset_meta.bucket_count; ++bucket) {
                 const auto mass = scratch.local_bucket_mass[bucket];
@@ -787,15 +819,15 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
                 bucketed_action_mass += mass * action_prob;
             }
 
-            mark_dirty_node(child);
+            mark_dirty_node(local_offset);
             if (meta.player == 0) {
-                scratch.player0_reach[child] += bucketed_action_mass;
-                scratch.player1_reach[child] += reach1;
+                scratch.player0_reach[local_offset] += bucketed_action_mass;
+                scratch.player1_reach[local_offset] += reach1;
             } else {
-                scratch.player0_reach[child] += reach0;
-                scratch.player1_reach[child] += bucketed_action_mass;
+                scratch.player0_reach[local_offset] += reach0;
+                scratch.player1_reach[local_offset] += bucketed_action_mass;
             }
-            scratch.chance_reach[child] += chance;
+            scratch.chance_reach[local_offset] += chance;
         }
     }
     mark_worker_scope(
@@ -806,16 +838,18 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
 
 void HUNLFlatDCFR::worker_reach_reduce_nodes_depth(std::size_t worker_index, std::size_t depth) {
     const auto range = parallel_plan_.workers[worker_index].depth_reduce_ranges[depth];
+    const auto next_slice = graph_.depth_slices[depth + 1];
     const auto worker_start = std::chrono::steady_clock::now();
     for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
         const auto node_idx = graph_.depth_order[order_idx];
+        const auto local_offset = order_idx - next_slice.begin;
         double add0 = 0.0;
         double add1 = 0.0;
         double addc = 0.0;
         for (const auto& scratch : worker_scratch_) {
-            add0 += scratch.player0_reach[node_idx];
-            add1 += scratch.player1_reach[node_idx];
-            addc += scratch.chance_reach[node_idx];
+            add0 += scratch.player0_reach[local_offset];
+            add1 += scratch.player1_reach[local_offset];
+            addc += scratch.chance_reach[local_offset];
         }
         player0_reach_[node_idx] += add0;
         player1_reach_[node_idx] += add1;

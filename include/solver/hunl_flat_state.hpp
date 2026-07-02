@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 namespace core {
@@ -71,6 +72,7 @@ struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
     HUNLAlignedVector<double> local_bucket_mass;
     std::vector<std::uint32_t> dirty_nodes;
     std::vector<std::uint32_t> dirty_buckets;
+    std::unordered_map<std::uint32_t, std::uint32_t> next_depth_local_offsets;
 
     void reset_values() noexcept;
     void ensure_capacity(std::size_t node_count, std::size_t edge_count);

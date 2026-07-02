@@ -12,6 +12,14 @@ std::uint64_t vector_storage_bytes(const std::vector<T, Allocator>& values) {
     return static_cast<std::uint64_t>(values.capacity()) * sizeof(T);
 }
 
+std::size_t max_depth_slice_width(const HUNLFlatSolveGraph& graph) {
+    std::size_t max_width = 0;
+    for (const auto& slice : graph.depth_slices) {
+        max_width = std::max<std::size_t>(max_width, slice.count);
+    }
+    return max_width;
+}
+
 std::vector<HUNLFlatRange> partition_range(std::uint32_t total_count, std::size_t worker_count) {
     const auto workers = std::max<std::size_t>(1, worker_count);
     std::vector<HUNLFlatRange> ranges;
@@ -206,18 +214,19 @@ HUNLFlatMemoryEstimate estimate_memory(
     }
 
     if (options.include_worker_scratch) {
-        const auto node_count = static_cast<std::uint64_t>(graph.nodes.size());
+        const auto depth_width = static_cast<std::uint64_t>(max_depth_slice_width(graph));
         const auto bucket_count = static_cast<std::uint64_t>(infoset_table.total_bucket_count());
         const auto max_child_count = static_cast<std::uint64_t>(options.max_child_count);
         const auto max_bucket_count = static_cast<std::uint64_t>(options.max_bucket_count);
         std::uint64_t per_worker_bytes = 0;
         per_worker_bytes += sizeof(HUNLFlatWorkerScratch);
-        per_worker_bytes += node_count * sizeof(double) * 3ULL;
+        per_worker_bytes += depth_width * sizeof(double) * 3ULL;
         per_worker_bytes += bucket_count * sizeof(double);
         per_worker_bytes += max_child_count * sizeof(double) * 2ULL;
         per_worker_bytes += max_bucket_count * sizeof(double);
-        per_worker_bytes += node_count * sizeof(std::uint32_t);
+        per_worker_bytes += depth_width * sizeof(std::uint32_t);
         per_worker_bytes += bucket_count * sizeof(std::uint32_t);
+        per_worker_bytes += depth_width * sizeof(std::uint32_t) * 2ULL;
         estimate.worker_scratch_bytes += per_worker_bytes * static_cast<std::uint64_t>(workers);
     }
 
@@ -243,6 +252,7 @@ void HUNLFlatWorkerScratch::reset_values() noexcept {
     std::fill(bucket_reach.begin(), bucket_reach.end(), 0.0);
     dirty_nodes.clear();
     dirty_buckets.clear();
+    next_depth_local_offsets.clear();
 }
 
 void HUNLFlatWorkerScratch::ensure_capacity(
@@ -276,6 +286,8 @@ void HUNLFlatWorkerScratch::ensure_capacity(
     dirty_nodes.reserve(node_count);
     dirty_buckets.clear();
     dirty_buckets.reserve(total_bucket_count);
+    next_depth_local_offsets.clear();
+    next_depth_local_offsets.reserve(node_count);
 }
 
 HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph, std::size_t worker_count) {
