@@ -2,7 +2,7 @@
 
 ## Executive Answer
 
-Yes, MCCFR is possible for this solver, and it is the right direction for large flop trees where a full exact flat DCFR iteration is still around 18 seconds.
+MCCFR is possible for this solver, and it is the right direction for large flop trees where a full exact flat DCFR iteration is still around 18 seconds.
 
 Architectural decision: this should be a new solver module, not a small patch inside the current exact `HUNLFlatDCFR`. We are allowed to build it from scratch while reusing proven pieces from the old solver as references, tests, and shared utilities.
 
