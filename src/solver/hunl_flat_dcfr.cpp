@@ -42,8 +42,7 @@ std::uint64_t estimate_bucket_map_bytes(const HUNLFlatBucketMap& bucket_map) {
 }
 
 std::uint64_t estimate_terminal_table_bytes(const HUNLBucketTerminalTable& terminal_table) {
-    (void)terminal_table;
-    return sizeof(HUNLBucketTerminalTable);
+    return terminal_table.estimated_bytes();
 }
 
 double prior_bucket_weight(

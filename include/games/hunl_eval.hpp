@@ -32,6 +32,9 @@ struct Strength {
 };
 
 Strength evaluate_n(const std::vector<std::uint8_t>& cards);
+int compare_7(
+    const std::array<std::uint8_t, 7>& lhs,
+    const std::array<std::uint8_t, 7>& rhs) noexcept;
 
 }  // namespace core
 

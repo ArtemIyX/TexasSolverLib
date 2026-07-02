@@ -1,10 +1,12 @@
 #include "solver/hunl_bucket_map.hpp"
+#include "solver/hunl_bucket_terminal.hpp"
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl.hpp"
 #include "test_abstraction_fixture.hpp"
 #include "test_harness.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -234,6 +236,64 @@ TEST_CASE(hunl_bucket_model_set_bucket_weights_rejects_wrong_size) {
     }
 
     EXPECT_TRUE(checked_infoset);
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_terminal_cache_reuses_same_board_stats_across_nodes) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_terminal_cache_share.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+            return static_cast<std::uint8_t>(index % 3U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 3}, core::ABSTRACTION_SCHEMA_VERSION, "river-3", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+    const auto table = core::HUNLBucketTerminalTable::build(graph, map);
+
+    EXPECT_TRUE(graph.showdown_terminal_nodes.size() >= 2U);
+    const auto first = graph.showdown_terminal_nodes[0];
+    const auto second = graph.showdown_terminal_nodes[1];
+    EXPECT_TRUE(table.has_showdown_matrix(first));
+    EXPECT_TRUE(table.has_showdown_matrix(second));
+    EXPECT_TRUE(&table.showdown_matrix(first) == &table.showdown_matrix(second));
+    EXPECT_TRUE(table.estimated_bytes() > sizeof(core::HUNLBucketTerminalTable));
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(hunl_bucket_terminal_expected_showdown_value_is_finite_for_uniform_bucket_ranges) {
+    const auto config = river_config();
+    const auto path = test_support::write_abstraction_fixture(
+        "texas_bucket_terminal_uniform_eval.npz",
+        std::nullopt,
+        std::nullopt,
+        config->initial_board,
+        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+            return static_cast<std::uint8_t>(index % 2U);
+        },
+        test_support::AbstractionFixtureOptions{{1, 1, 2}, core::ABSTRACTION_SCHEMA_VERSION, "river-2", std::nullopt});
+
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
+    const auto table = core::HUNLBucketTerminalTable::build(graph, map);
+
+    bool checked = false;
+    for (const auto node_idx : graph.showdown_terminal_nodes) {
+        if (!table.has_showdown_matrix(node_idx)) {
+            continue;
+        }
+        const auto value = table.expected_showdown_value(node_idx);
+        EXPECT_TRUE(std::isfinite(value));
+        checked = true;
+        break;
+    }
+    EXPECT_TRUE(checked);
+
     std::filesystem::remove(path);
 }
 

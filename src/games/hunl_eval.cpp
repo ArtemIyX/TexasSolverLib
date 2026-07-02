@@ -246,6 +246,20 @@ Strength Strength::evaluate_7(const std::array<std::uint8_t, 7>& cards) {
     return evaluate_n(std::vector<std::uint8_t>(cards.begin(), cards.end()));
 }
 
+int compare_7(
+    const std::array<std::uint8_t, 7>& lhs,
+    const std::array<std::uint8_t, 7>& rhs) noexcept {
+    const auto lhs_strength = Strength::evaluate_7(lhs);
+    const auto rhs_strength = Strength::evaluate_7(rhs);
+    if (lhs_strength > rhs_strength) {
+        return 1;
+    }
+    if (rhs_strength > lhs_strength) {
+        return -1;
+    }
+    return 0;
+}
+
 }  // namespace core
 
 

@@ -13,6 +13,7 @@ struct HUNLFlatBuilderMemoKey {
     PlayerId cur_player = -1;
     std::array<int, 2> contributions = {0, 0};
     std::array<int, 2> stacks = {0, 0};
+    std::array<ActionId, HUNL_MAX_HISTORY_CODES> street_history = {};
     std::array<bool, 2> folded = {false, false};
     std::array<bool, 2> all_in = {false, false};
     std::array<std::uint8_t, 5> board = {0, 0, 0, 0, 0};
@@ -25,6 +26,7 @@ struct HUNLFlatBuilderMemoKey {
     Street street = Street::Preflop;
     std::uint8_t board_count = 0;
     std::uint8_t history_count = 0;
+    std::uint8_t street_history_count = 0;
     std::uint8_t pending_board_deals = 0;
     std::uint8_t street_num_raises = 0;
     bool has_hole_cards = false;

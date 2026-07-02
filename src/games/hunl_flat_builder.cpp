@@ -1,4 +1,5 @@
 #include "games/hunl_flat_builder.hpp"
+#include "games/hunl_tree.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -174,6 +175,14 @@ HUNLFlatBuilderMemoKey HUNLFlatBuilderMemoKey::from_state(const HUNLState& state
     key.to_call = state.to_call;
     key.street_aggressor = state.street_aggressor;
 
+    if (state.street_history.size() > key.street_history.size()) {
+        throw std::invalid_argument("HUNLFlatBuilderMemoKey::from_state street_history is too large");
+    }
+    key.street_history_count = static_cast<std::uint8_t>(state.street_history.size());
+    for (std::size_t i = 0; i < state.street_history.size(); ++i) {
+        key.street_history[i] = state.street_history[i];
+    }
+
     if (state.board.size() > key.board.size()) {
         throw std::invalid_argument("HUNLFlatBuilderMemoKey::from_state board is too large");
     }
@@ -220,6 +229,7 @@ bool HUNLFlatBuilderMemoKey::operator==(const HUNLFlatBuilderMemoKey& other) con
     return cur_player == other.cur_player &&
            contributions == other.contributions &&
            stacks == other.stacks &&
+           street_history == other.street_history &&
            folded == other.folded &&
            all_in == other.all_in &&
            board == other.board &&
@@ -229,6 +239,7 @@ bool HUNLFlatBuilderMemoKey::operator==(const HUNLFlatBuilderMemoKey& other) con
            street == other.street &&
            board_count == other.board_count &&
            history_count == other.history_count &&
+           street_history_count == other.street_history_count &&
            pending_board_deals == other.pending_board_deals &&
            street_num_raises == other.street_num_raises &&
            has_hole_cards == other.has_hole_cards &&
@@ -240,7 +251,7 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
     HUNLFlatSolveGraph graph;
     graph.config = config;
 
-    std::unordered_map<HUNLFlatBuilderMemoKey, std::uint32_t> memo;
+    std::unordered_map<MemoKey, std::uint32_t> memo;
     std::unordered_map<std::string, InfosetId> infoset_ids_by_key;
     std::vector<std::vector<std::uint32_t>> infoset_node_lists;
     std::vector<std::uint8_t> infoset_action_counts;
@@ -266,7 +277,7 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
 
     auto find_or_create_node =
         [&](const HUNLState& state, std::uint32_t depth) -> std::pair<std::uint32_t, bool> {
-        const auto key = HUNLFlatBuilderMemoKey::from_state(state);
+        const auto key = MemoKey::from_state(state);
         if (const auto it = memo.find(key); it != memo.end()) {
             return {it->second, false};
         }
@@ -335,6 +346,12 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
                 meta.type = HUNLFlatNodeType::Chance;
                 frame.chance_outcomes = frame.state.chance_outcomes();
                 frame.child_indices.reserve(frame.chance_outcomes.size());
+                meta.child_begin = static_cast<std::uint32_t>(graph.children.size());
+                meta.child_count = static_cast<std::uint32_t>(frame.chance_outcomes.size());
+                meta.chance_begin = static_cast<std::uint32_t>(graph.chance_outcomes.size());
+                meta.chance_count = static_cast<std::uint32_t>(frame.chance_outcomes.size());
+                graph.children.resize(graph.children.size() + frame.chance_outcomes.size());
+                graph.chance_outcomes.resize(graph.chance_outcomes.size() + frame.chance_outcomes.size());
                 continue;
             }
 
@@ -349,6 +366,11 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
             graph.max_actions = std::max(graph.max_actions, static_cast<std::uint8_t>(frame.actions.size()));
             meta.action_count = static_cast<std::uint8_t>(frame.actions.size());
             frame.child_indices.reserve(frame.actions.size());
+            meta.child_begin = static_cast<std::uint32_t>(graph.children.size());
+            meta.child_count = static_cast<std::uint32_t>(frame.actions.size());
+            meta.action_begin = static_cast<std::uint32_t>(graph.actions.size());
+            graph.children.resize(graph.children.size() + frame.actions.size());
+            graph.actions.resize(graph.actions.size() + frame.actions.size());
 
             const auto flat_key = make_flat_infoset_key(frame.state);
             const auto key_it = infoset_ids_by_key.find(flat_key);
@@ -387,53 +409,42 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
 
         if (frame.is_chance) {
             if (frame.next_child < frame.chance_outcomes.size()) {
-                const auto outcome = frame.chance_outcomes[frame.next_child];
+                const auto child_slot = frame.next_child;
+                const auto outcome = frame.chance_outcomes[child_slot];
                 ++frame.next_child;
                 const auto child_state = frame.state.apply(outcome.action);
                 const auto [child_idx, child_is_new] = find_or_create_node(child_state, frame.depth + 1);
                 frame.child_indices.push_back(child_idx);
+                auto& meta = graph.node_meta[frame.node_idx];
+                graph.children[meta.child_begin + child_slot] = child_idx;
+                graph.chance_outcomes[meta.chance_begin + child_slot] = HUNLFlatChanceOutcome{
+                    static_cast<std::uint8_t>(outcome.action),
+                    outcome.probability,
+                    child_idx,
+                };
                 if (child_is_new) {
                     stack.push_back(HUNLFlatBuildFrame{std::move(child_state), child_idx, frame.depth + 1});
                 }
                 continue;
-            }
-
-            auto& meta = graph.node_meta[frame.node_idx];
-            meta.child_begin = static_cast<std::uint32_t>(graph.children.size());
-            meta.child_count = static_cast<std::uint32_t>(frame.child_indices.size());
-            meta.chance_begin = static_cast<std::uint32_t>(graph.chance_outcomes.size());
-            meta.chance_count = static_cast<std::uint32_t>(frame.chance_outcomes.size());
-            for (std::size_t i = 0; i < frame.child_indices.size(); ++i) {
-                graph.children.push_back(frame.child_indices[i]);
-                graph.chance_outcomes.push_back(HUNLFlatChanceOutcome{
-                    static_cast<std::uint8_t>(frame.chance_outcomes[i].action),
-                    frame.chance_outcomes[i].probability,
-                    frame.child_indices[i],
-                });
             }
             stack.pop_back();
             continue;
         }
 
         if (frame.next_child < frame.actions.size()) {
-            const auto action = frame.actions[frame.next_child];
+            const auto child_slot = frame.next_child;
+            const auto action = frame.actions[child_slot];
             ++frame.next_child;
             const auto child_state = frame.state.apply(action);
             const auto [child_idx, child_is_new] = find_or_create_node(child_state, frame.depth + 1);
             frame.child_indices.push_back(child_idx);
+            auto& meta = graph.node_meta[frame.node_idx];
+            graph.children[meta.child_begin + child_slot] = child_idx;
+            graph.actions[meta.action_begin + child_slot] = action;
             if (child_is_new) {
                 stack.push_back(HUNLFlatBuildFrame{std::move(child_state), child_idx, frame.depth + 1});
             }
             continue;
-        }
-
-        auto& meta = graph.node_meta[frame.node_idx];
-        meta.child_begin = static_cast<std::uint32_t>(graph.children.size());
-        meta.child_count = static_cast<std::uint32_t>(frame.child_indices.size());
-        meta.action_begin = static_cast<std::uint32_t>(graph.actions.size());
-        for (std::size_t i = 0; i < frame.child_indices.size(); ++i) {
-            graph.children.push_back(frame.child_indices[i]);
-            graph.actions.push_back(frame.actions[i]);
         }
         stack.pop_back();
     }
@@ -473,6 +484,7 @@ std::size_t hash<core::HUNLFlatBuilderMemoKey>::operator()(
     core::detail::hash_combine(seed, key.cur_player);
     core::detail::hash_combine_range(seed, key.contributions);
     core::detail::hash_combine_range(seed, key.stacks);
+    core::detail::hash_combine_range(seed, key.street_history);
     core::detail::hash_combine_range(seed, key.folded);
     core::detail::hash_combine_range(seed, key.all_in);
     core::detail::hash_combine_range(seed, key.board);
@@ -484,6 +496,7 @@ std::size_t hash<core::HUNLFlatBuilderMemoKey>::operator()(
     core::detail::hash_combine(seed, static_cast<std::uint8_t>(key.street));
     core::detail::hash_combine(seed, key.board_count);
     core::detail::hash_combine(seed, key.history_count);
+    core::detail::hash_combine(seed, key.street_history_count);
     core::detail::hash_combine(seed, key.pending_board_deals);
     core::detail::hash_combine(seed, key.street_num_raises);
     core::detail::hash_combine(seed, key.has_hole_cards);
