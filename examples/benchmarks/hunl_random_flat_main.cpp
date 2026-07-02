@@ -34,6 +34,7 @@ struct RandomConfig {
     std::uint32_t depth_limit_plies = 0;
     std::size_t hand_buckets = 1326;
     core::Street street = core::Street::River;
+    core::HUNLFlatStoragePrecision precision = core::HUNLFlatStoragePrecision::Float64;
     std::uint64_t seed = 0;
     bool debug = false;
 };
@@ -81,6 +82,13 @@ std::optional<core::Street> street_from_text(std::string_view text) {
     return std::nullopt;
 }
 
+std::optional<core::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
+    if (text == "double" || text == "float64") return core::HUNLFlatStoragePrecision::Float64;
+    if (text == "float" || text == "float32") return core::HUNLFlatStoragePrecision::Float32;
+    if (text == "compressed16" || text == "fp16") return core::HUNLFlatStoragePrecision::Compressed16;
+    return std::nullopt;
+}
+
 std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
     RandomConfig cfg;
     for (int i = 1; i < argc; ++i) {
@@ -123,6 +131,14 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
             }
             continue;
         }
+        if (arg == "--precision" && i + 1 < argc) {
+            const auto precision = precision_from_text(argv[++i]);
+            if (!precision.has_value()) {
+                return std::nullopt;
+            }
+            cfg.precision = *precision;
+            continue;
+        }
         if (arg == "--debug") {
             cfg.debug = true;
             continue;
@@ -134,9 +150,9 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
 
 void print_usage(const char* exe) {
     std::cerr << "Usage:\n"
-              << "  " << exe << " [--workers N] [--iterations N] [--depth-limit N] [--buckets N] [--streets flop|turn|river] [--seed N] [--debug]\n\n"
+              << "  " << exe << " [--workers N] [--iterations N] [--depth-limit N] [--buckets N] [--streets flop|turn|river] [--precision double|float] [--seed N] [--debug]\n\n"
               << "Defaults:\n"
-              << "  workers=16 iterations=10 depth-limit=0 buckets=1326 streets=river seed=0\n";
+              << "  workers=16 iterations=10 depth-limit=0 buckets=1326 streets=river precision=double seed=0\n";
 }
 
 std::string format_seconds(double seconds) {
@@ -304,6 +320,18 @@ std::string format_bytes(std::uint64_t bytes) {
     return oss.str();
 }
 
+std::string precision_name(core::HUNLFlatStoragePrecision precision) {
+    switch (precision) {
+        case core::HUNLFlatStoragePrecision::Float64:
+            return "double";
+        case core::HUNLFlatStoragePrecision::Float32:
+            return "float";
+        case core::HUNLFlatStoragePrecision::Compressed16:
+            return "compressed16";
+    }
+    return "unknown";
+}
+
 std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
     std::size_t max_width = 0;
     for (const auto& meta : graph.node_meta) {
@@ -368,6 +396,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     std::uint32_t iterations,
     std::size_t workers,
     std::size_t hand_buckets,
+    core::HUNLFlatStoragePrecision precision,
     double alpha,
     double beta,
     double gamma) {
@@ -380,7 +409,8 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     const auto table = core::HUNLFlatInfosetTable::build(
         graph,
         buckets,
-        core::HUNLFlatValueLayout::InfosetHandAction);
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        precision);
     core::HUNLFlatMemoryEstimateOptions memory_options;
     memory_options.max_child_count = max_backward_row_width(graph);
     memory_options.max_bucket_count = max_bucket_width(table);
@@ -396,7 +426,8 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         workers,
         alpha,
         beta,
-        gamma);
+        gamma,
+        precision);
     const auto setup_end = clock::now();
     core::profiling::mark(
         "hunl.bench.setup",
@@ -488,6 +519,7 @@ int main(int argc, char* argv[]) {
                   << " depth_limit=" << cfg.depth_limit_plies
                   << " buckets=" << cfg.hand_buckets
                   << " street=" << street_name(cfg.street)
+                  << " precision=" << precision_name(cfg.precision)
                   << " seed=" << cfg.seed
                   << " backend=flat\n";
         print_state(random_state.config, random_state.state);
@@ -505,6 +537,7 @@ int main(int argc, char* argv[]) {
             cfg.iterations,
             cfg.workers,
             cfg.hand_buckets,
+            cfg.precision,
             1.5,
             0.0,
             2.0);

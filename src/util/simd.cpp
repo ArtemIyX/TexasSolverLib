@@ -456,6 +456,24 @@ void compute_strategy_row_scalar(const double* regrets, double* out, std::size_t
     }
 }
 
+void discount_regrets_f32_scalar(float* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept {
+    for (std::size_t i = 0; i < len; ++i) {
+        auto value = static_cast<double>(regrets[i]);
+        if (value > 0.0) {
+            value *= pos_scale;
+        } else if (value < 0.0) {
+            value *= neg_scale;
+        }
+        regrets[i] = static_cast<float>(value);
+    }
+}
+
+void discount_strategy_sum_f32_scalar(float* strategy, std::size_t len, double strat_scale) noexcept {
+    for (std::size_t i = 0; i < len; ++i) {
+        strategy[i] = static_cast<float>(static_cast<double>(strategy[i]) * strat_scale);
+    }
+}
+
 void discount_regrets(double* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept {
 #if defined(__AVX2__)
     discount_regrets_avx2(regrets, len, pos_scale, neg_scale);
@@ -856,6 +874,14 @@ void compute_strategy_row_small(const double* regrets, double* out, std::size_t 
             compute_strategy_row(regrets, out, len);
             return;
     }
+}
+
+void discount_regrets_f32(float* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept {
+    discount_regrets_f32_scalar(regrets, len, pos_scale, neg_scale);
+}
+
+void discount_strategy_sum_f32(float* strategy, std::size_t len, double strat_scale) noexcept {
+    discount_strategy_sum_f32_scalar(strategy, len, strat_scale);
 }
 
 }  // namespace core

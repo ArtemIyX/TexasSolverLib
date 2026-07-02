@@ -56,6 +56,8 @@ double dot_product_strided_scalar(
     std::size_t rhs_stride) noexcept;
 void normalize_scalar(double* out, std::size_t len, double total) noexcept;
 void compute_strategy_row_scalar(const double* regrets, double* out, std::size_t len) noexcept;
+void discount_regrets_f32_scalar(float* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept;
+void discount_strategy_sum_f32_scalar(float* strategy, std::size_t len, double strat_scale) noexcept;
 
 void discount_regrets(double* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept;
 void discount_strategy_sum(double* strategy, std::size_t len, double strat_scale) noexcept;
@@ -103,6 +105,8 @@ void normalize(double* out, std::size_t len, double total) noexcept;
 void normalize_row(const double* values, double* out, std::size_t len) noexcept;
 void compute_strategy_row(const double* regrets, double* out, std::size_t len) noexcept;
 void compute_strategy_row_small(const double* regrets, double* out, std::size_t len) noexcept;
+void discount_regrets_f32(float* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept;
+void discount_strategy_sum_f32(float* strategy, std::size_t len, double strat_scale) noexcept;
 
 }  // namespace core
 

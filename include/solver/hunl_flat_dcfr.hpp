@@ -64,7 +64,8 @@ public:
         std::size_t workers = 1,
         double alpha = 1.5,
         double beta = 0.0,
-        double gamma = 2.0);
+        double gamma = 2.0,
+        HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
 
     explicit HUNLFlatDCFR(
         HUNLFlatSolveGraph graph,
@@ -74,7 +75,8 @@ public:
         std::size_t workers = 1,
         double alpha = 1.5,
         double beta = 0.0,
-        double gamma = 2.0);
+        double gamma = 2.0,
+        HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
 
     ~HUNLFlatDCFR();
 
@@ -105,6 +107,7 @@ public:
     [[nodiscard]] const HUNLFlatBucketMap* bucket_map() const noexcept;
     [[nodiscard]] const HUNLFlatPipelinePlan& pipeline_plan() const noexcept;
     [[nodiscard]] HUNLFlatMemoryEstimate memory_estimate() const;
+    [[nodiscard]] HUNLFlatStoragePrecision storage_precision() const noexcept;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
     [[nodiscard]] HUNLFlatAverageStrategyTable export_average_strategy_table() const;
@@ -199,6 +202,7 @@ private:
     HUNLAlignedVector<double> node_values_;
     HUNLAlignedVector<double> action_values_;
     HUNLFlatStageProfile profile_;
+    HUNLFlatStoragePrecision precision_ = HUNLFlatStoragePrecision::Float64;
     std::size_t worker_count_ = 1;
     HUNLFlatParallelPlan parallel_plan_;
     HUNLFlatPipeline pipeline_;

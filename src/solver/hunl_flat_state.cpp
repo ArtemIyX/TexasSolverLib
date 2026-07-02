@@ -1,6 +1,9 @@
 #include "solver/hunl_flat_state.hpp"
 
+#include "util/simd.hpp"
+
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace core {
@@ -145,6 +148,65 @@ std::vector<HUNLFlatRange> partition_depth_slice_by_cost(
 
 }  // namespace
 
+template <class T>
+std::uint64_t HUNLFlatInfosetTable::storage_bytes(const HUNLAlignedVector<T>& values) noexcept {
+    return static_cast<std::uint64_t>(values.capacity()) * sizeof(T);
+}
+
+template <class T>
+double HUNLFlatInfosetTable::value_at(const HUNLAlignedVector<T>& values, std::size_t offset) noexcept {
+    return static_cast<double>(values[offset]);
+}
+
+template <class T>
+void HUNLFlatInfosetTable::set_value_at(HUNLAlignedVector<T>& values, std::size_t offset, double value) {
+    values[offset] = static_cast<T>(value);
+}
+
+template <class T>
+void HUNLFlatInfosetTable::copy_values_from_storage(
+    const HUNLAlignedVector<T>& values,
+    std::size_t offset,
+    double* out,
+    std::size_t count) {
+    for (std::size_t i = 0; i < count; ++i) {
+        out[i] = static_cast<double>(values[offset + i]);
+    }
+}
+
+template <class T>
+void HUNLFlatInfosetTable::write_values_to_storage(
+    HUNLAlignedVector<T>& values,
+    std::size_t offset,
+    const double* in,
+    std::size_t count) {
+    for (std::size_t i = 0; i < count; ++i) {
+        values[offset + i] = static_cast<T>(in[i]);
+    }
+}
+
+template <class T>
+void HUNLFlatInfosetTable::discount_storage(
+    HUNLAlignedVector<T>& regret_values,
+    HUNLAlignedVector<T>& strategy_values,
+    std::size_t offset,
+    std::size_t count,
+    double pos_scale,
+    double neg_scale,
+    double strat_scale) {
+    for (std::size_t i = 0; i < count; ++i) {
+        auto regret = static_cast<double>(regret_values[offset + i]);
+        if (regret > 0.0) {
+            regret *= pos_scale;
+        } else if (regret < 0.0) {
+            regret *= neg_scale;
+        }
+        regret_values[offset + i] = static_cast<T>(regret);
+        strategy_values[offset + i] =
+            static_cast<T>(static_cast<double>(strategy_values[offset + i]) * strat_scale);
+    }
+}
+
 std::uint64_t HUNLFlatMemoryEstimate::total_bytes() const noexcept {
     return graph_bytes +
         infoset_table_bytes +
@@ -192,8 +254,9 @@ HUNLFlatMemoryEstimate estimate_memory(
 
     estimate.infoset_table_bytes += sizeof(HUNLFlatInfosetTable);
     estimate.infoset_table_bytes += vector_storage_bytes(infoset_table.meta());
-    estimate.infoset_table_bytes +=
-        static_cast<std::uint64_t>(infoset_table.total_value_count()) * sizeof(double) * 3ULL;
+    estimate.infoset_table_bytes += infoset_table.regret_storage_bytes();
+    estimate.infoset_table_bytes += infoset_table.strategy_sum_storage_bytes();
+    estimate.infoset_table_bytes += infoset_table.current_strategy_storage_bytes();
 
     if (options.include_solver_buffers) {
         const auto node_count = static_cast<std::uint64_t>(graph.node_count());
@@ -438,19 +501,26 @@ std::uint32_t HUNLFlatParallelPlan::estimated_backward_cost(
 HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     const HUNLFlatSolveGraph& graph,
     const std::array<std::size_t, 2>& bucket_count_per_player,
-    HUNLFlatValueLayout layout) {
-    return build(graph, bucket_count_per_player, nullptr, layout);
+    HUNLFlatValueLayout layout,
+    HUNLFlatStoragePrecision precision) {
+    return build(graph, bucket_count_per_player, nullptr, layout, precision);
 }
 
 HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     const HUNLFlatSolveGraph& graph,
     const std::array<std::size_t, 2>& bucket_count_per_player,
     const HUNLFlatBucketMap* bucket_map,
-    HUNLFlatValueLayout layout) {
+    HUNLFlatValueLayout layout,
+    HUNLFlatStoragePrecision precision) {
     validate_infoset_table_inputs(graph, bucket_count_per_player, bucket_map);
     HUNLFlatInfosetTable table;
     table.layout_ = layout;
+    table.precision_ = precision;
     table.meta_.reserve(graph.infosets.size());
+
+    if (precision == HUNLFlatStoragePrecision::Compressed16) {
+        throw std::invalid_argument("HUNLFlatInfosetTable Compressed16 precision is not implemented yet");
+    }
 
     std::uint32_t running_offset = 0;
     std::uint32_t running_bucket_offset = 0;
@@ -491,9 +561,15 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
         running_bucket_offset += static_cast<std::uint32_t>(bucket_count);
     }
 
-    table.regret_sum_.assign(running_offset, 0.0);
-    table.strategy_sum_.assign(running_offset, 0.0);
-    table.current_strategy_.assign(running_offset, 0.0);
+    if (precision == HUNLFlatStoragePrecision::Float64) {
+        table.regret_sum_.assign(running_offset, 0.0);
+        table.strategy_sum_.assign(running_offset, 0.0);
+        table.current_strategy_.assign(running_offset, 0.0);
+    } else {
+        table.regret_sum_f32_.assign(running_offset, 0.0f);
+        table.strategy_sum_f32_.assign(running_offset, 0.0f);
+        table.current_strategy_f32_.assign(running_offset, 0.0f);
+    }
     return table;
 }
 
@@ -513,27 +589,49 @@ HUNLFlatValueLayout HUNLFlatInfosetTable::layout() const noexcept {
     return layout_;
 }
 
+HUNLFlatStoragePrecision HUNLFlatInfosetTable::precision() const noexcept {
+    return precision_;
+}
+
 const double* HUNLFlatInfosetTable::regret(InfosetId id) const {
+    if (precision_ != HUNLFlatStoragePrecision::Float64) {
+        throw std::logic_error("HUNLFlatInfosetTable::regret requires Float64 precision");
+    }
     return regret_sum_.data() + meta_for(id).offset;
 }
 
 double* HUNLFlatInfosetTable::regret_mut(InfosetId id) {
+    if (precision_ != HUNLFlatStoragePrecision::Float64) {
+        throw std::logic_error("HUNLFlatInfosetTable::regret_mut requires Float64 precision");
+    }
     return regret_sum_.data() + meta_for(id).offset;
 }
 
 const double* HUNLFlatInfosetTable::strategy_sum(InfosetId id) const {
+    if (precision_ != HUNLFlatStoragePrecision::Float64) {
+        throw std::logic_error("HUNLFlatInfosetTable::strategy_sum requires Float64 precision");
+    }
     return strategy_sum_.data() + meta_for(id).offset;
 }
 
 double* HUNLFlatInfosetTable::strategy_sum_mut(InfosetId id) {
+    if (precision_ != HUNLFlatStoragePrecision::Float64) {
+        throw std::logic_error("HUNLFlatInfosetTable::strategy_sum_mut requires Float64 precision");
+    }
     return strategy_sum_.data() + meta_for(id).offset;
 }
 
 const double* HUNLFlatInfosetTable::current_strategy(InfosetId id) const {
+    if (precision_ != HUNLFlatStoragePrecision::Float64) {
+        throw std::logic_error("HUNLFlatInfosetTable::current_strategy requires Float64 precision");
+    }
     return current_strategy_.data() + meta_for(id).offset;
 }
 
 double* HUNLFlatInfosetTable::current_strategy_mut(InfosetId id) {
+    if (precision_ != HUNLFlatStoragePrecision::Float64) {
+        throw std::logic_error("HUNLFlatInfosetTable::current_strategy_mut requires Float64 precision");
+    }
     return current_strategy_.data() + meta_for(id).offset;
 }
 
@@ -584,6 +682,171 @@ HUNLFlatRange HUNLFlatInfosetTable::infoset_value_range(HUNLFlatRange infoset_ra
 HUNLFlatRange HUNLFlatInfosetTable::infoset_bucket_range(InfosetId id) const {
     const auto& meta = meta_for(id);
     return HUNLFlatRange{meta.bucket_offset, meta.bucket_offset + meta.bucket_count};
+}
+
+std::uint64_t HUNLFlatInfosetTable::regret_storage_bytes() const noexcept {
+    return precision_ == HUNLFlatStoragePrecision::Float64
+        ? storage_bytes(regret_sum_)
+        : storage_bytes(regret_sum_f32_);
+}
+
+std::uint64_t HUNLFlatInfosetTable::strategy_sum_storage_bytes() const noexcept {
+    return precision_ == HUNLFlatStoragePrecision::Float64
+        ? storage_bytes(strategy_sum_)
+        : storage_bytes(strategy_sum_f32_);
+}
+
+std::uint64_t HUNLFlatInfosetTable::current_strategy_storage_bytes() const noexcept {
+    return precision_ == HUNLFlatStoragePrecision::Float64
+        ? storage_bytes(current_strategy_)
+        : storage_bytes(current_strategy_f32_);
+}
+
+double HUNLFlatInfosetTable::regret_value(InfosetId id, std::size_t offset) const {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    return precision_ == HUNLFlatStoragePrecision::Float64
+        ? value_at(regret_sum_, absolute_offset)
+        : value_at(regret_sum_f32_, absolute_offset);
+}
+
+double HUNLFlatInfosetTable::strategy_sum_value(InfosetId id, std::size_t offset) const {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    return precision_ == HUNLFlatStoragePrecision::Float64
+        ? value_at(strategy_sum_, absolute_offset)
+        : value_at(strategy_sum_f32_, absolute_offset);
+}
+
+double HUNLFlatInfosetTable::current_strategy_value(InfosetId id, std::size_t offset) const {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    return precision_ == HUNLFlatStoragePrecision::Float64
+        ? value_at(current_strategy_, absolute_offset)
+        : value_at(current_strategy_f32_, absolute_offset);
+}
+
+void HUNLFlatInfosetTable::set_regret_value(InfosetId id, std::size_t offset, double value) {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        set_value_at(regret_sum_, absolute_offset, value);
+    } else {
+        set_value_at(regret_sum_f32_, absolute_offset, value);
+    }
+}
+
+void HUNLFlatInfosetTable::set_strategy_sum_value(InfosetId id, std::size_t offset, double value) {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        set_value_at(strategy_sum_, absolute_offset, value);
+    } else {
+        set_value_at(strategy_sum_f32_, absolute_offset, value);
+    }
+}
+
+void HUNLFlatInfosetTable::set_current_strategy_value(InfosetId id, std::size_t offset, double value) {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        set_value_at(current_strategy_, absolute_offset, value);
+    } else {
+        set_value_at(current_strategy_f32_, absolute_offset, value);
+    }
+}
+
+void HUNLFlatInfosetTable::copy_regret_values(
+    InfosetId id,
+    std::size_t offset,
+    double* out,
+    std::size_t count) const {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        copy_values_from_storage(regret_sum_, absolute_offset, out, count);
+    } else {
+        copy_values_from_storage(regret_sum_f32_, absolute_offset, out, count);
+    }
+}
+
+void HUNLFlatInfosetTable::copy_strategy_sum_values(
+    InfosetId id,
+    std::size_t offset,
+    double* out,
+    std::size_t count) const {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        copy_values_from_storage(strategy_sum_, absolute_offset, out, count);
+    } else {
+        copy_values_from_storage(strategy_sum_f32_, absolute_offset, out, count);
+    }
+}
+
+void HUNLFlatInfosetTable::copy_current_strategy_values(
+    InfosetId id,
+    std::size_t offset,
+    double* out,
+    std::size_t count) const {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        copy_values_from_storage(current_strategy_, absolute_offset, out, count);
+    } else {
+        copy_values_from_storage(current_strategy_f32_, absolute_offset, out, count);
+    }
+}
+
+void HUNLFlatInfosetTable::write_regret_values(
+    InfosetId id,
+    std::size_t offset,
+    const double* values,
+    std::size_t count) {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        write_values_to_storage(regret_sum_, absolute_offset, values, count);
+    } else {
+        write_values_to_storage(regret_sum_f32_, absolute_offset, values, count);
+    }
+}
+
+void HUNLFlatInfosetTable::write_strategy_sum_values(
+    InfosetId id,
+    std::size_t offset,
+    const double* values,
+    std::size_t count) {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        write_values_to_storage(strategy_sum_, absolute_offset, values, count);
+    } else {
+        write_values_to_storage(strategy_sum_f32_, absolute_offset, values, count);
+    }
+}
+
+void HUNLFlatInfosetTable::write_current_strategy_values(
+    InfosetId id,
+    std::size_t offset,
+    const double* values,
+    std::size_t count) {
+    const auto absolute_offset = meta_for(id).offset + offset;
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        write_values_to_storage(current_strategy_, absolute_offset, values, count);
+    } else {
+        write_values_to_storage(current_strategy_f32_, absolute_offset, values, count);
+    }
+}
+
+void HUNLFlatInfosetTable::discount_values(
+    InfosetId id,
+    double pos_scale,
+    double neg_scale,
+    double strat_scale) {
+    const auto& meta = meta_for(id);
+    if (precision_ == HUNLFlatStoragePrecision::Float64) {
+        discount_regrets(regret_sum_.data() + meta.offset, meta.value_count, pos_scale, neg_scale);
+        discount_strategy_sum(strategy_sum_.data() + meta.offset, meta.value_count, strat_scale);
+    } else {
+        discount_storage(
+            regret_sum_f32_,
+            strategy_sum_f32_,
+            meta.offset,
+            meta.value_count,
+            pos_scale,
+            neg_scale,
+            strat_scale);
+    }
 }
 
 const HUNLFlatInfosetTableMeta& HUNLFlatInfosetTable::meta_for(InfosetId id) const {

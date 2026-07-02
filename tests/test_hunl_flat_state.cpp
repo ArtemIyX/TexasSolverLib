@@ -100,6 +100,29 @@ TEST_CASE(hunl_flat_infoset_table_exposes_rw_rows_for_all_three_arenas) {
     EXPECT_EQ(table.meta()[id.value].last_discount_iter, 0U);
 }
 
+TEST_CASE(hunl_flat_infoset_table_float32_precision_halves_dense_storage) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const std::array<std::size_t, 2> hand_count_per_player = {16, 16};
+
+    const auto table_f64 = core::HUNLFlatInfosetTable::build(
+        graph,
+        hand_count_per_player,
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        core::HUNLFlatStoragePrecision::Float64);
+    const auto table_f32 = core::HUNLFlatInfosetTable::build(
+        graph,
+        hand_count_per_player,
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        core::HUNLFlatStoragePrecision::Float32);
+
+    EXPECT_EQ(table_f64.precision(), core::HUNLFlatStoragePrecision::Float64);
+    EXPECT_EQ(table_f32.precision(), core::HUNLFlatStoragePrecision::Float32);
+    EXPECT_EQ(table_f32.regret_storage_bytes() * 2ULL, table_f64.regret_storage_bytes());
+    EXPECT_EQ(table_f32.strategy_sum_storage_bytes() * 2ULL, table_f64.strategy_sum_storage_bytes());
+    EXPECT_EQ(table_f32.current_strategy_storage_bytes() * 2ULL, table_f64.current_strategy_storage_bytes());
+}
+
 TEST_CASE(hunl_flat_infoset_table_value_index_matches_selected_layout) {
     const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
     const auto graph = core::HUNLFlatSolveGraph::build(config);

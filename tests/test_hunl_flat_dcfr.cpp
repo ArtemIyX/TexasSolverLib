@@ -892,6 +892,57 @@ TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
     }
 }
 
+TEST_CASE(hunl_flat_dcfr_float32_precision_tracks_double_on_small_game) {
+    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+    const auto graph_f64 = core::HUNLFlatSolveGraph::build(config);
+    const auto graph_f32 = core::HUNLFlatSolveGraph::build(config);
+
+    core::HUNLFlatDCFR solver_f64(
+        graph_f64,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        1.5,
+        0.0,
+        2.0,
+        core::HUNLFlatStoragePrecision::Float64);
+    core::HUNLFlatDCFR solver_f32(
+        graph_f32,
+        {2, 2},
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        1.5,
+        0.0,
+        2.0,
+        core::HUNLFlatStoragePrecision::Float32);
+
+    solver_f64.run_iterations(3);
+    solver_f32.run_iterations(3);
+
+    EXPECT_EQ(solver_f64.storage_precision(), core::HUNLFlatStoragePrecision::Float64);
+    EXPECT_EQ(solver_f32.storage_precision(), core::HUNLFlatStoragePrecision::Float32);
+    EXPECT_NEAR(solver_f64.node_values()[graph_f64.root], solver_f32.node_values()[graph_f32.root], 1e-5);
+    EXPECT_NEAR(solver_f64.terminal_values()[0], solver_f32.terminal_values()[0], 1e-9);
+
+    const auto root_infoset = graph_f64.node_meta[graph_f64.root].infoset_id;
+    const auto action_count = solver_f64.infoset_table().meta()[root_infoset.value].action_count;
+    const auto bucket_count = solver_f64.infoset_table().meta()[root_infoset.value].bucket_count;
+    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
+        double sum_f64 = 0.0;
+        double sum_f32 = 0.0;
+        for (std::size_t action = 0; action < action_count; ++action) {
+            const auto idx = action * bucket_count + bucket;
+            const auto p64 = solver_f64.infoset_table().current_strategy_value(root_infoset, idx);
+            const auto p32 = solver_f32.infoset_table().current_strategy_value(root_infoset, idx);
+            EXPECT_NEAR(p64, p32, 1e-5);
+            sum_f64 += p64;
+            sum_f32 += p32;
+        }
+        EXPECT_NEAR(sum_f64, 1.0, 1e-12);
+        EXPECT_NEAR(sum_f32, 1.0, 1e-5);
+    }
+}
+
 TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values) {
     const auto graph = make_shared_infoset_same_depth_graph();
     core::HUNLFlatDCFR solver(

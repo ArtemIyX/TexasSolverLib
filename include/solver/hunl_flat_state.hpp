@@ -25,6 +25,12 @@ enum class HUNLFlatValueLayout : std::uint8_t {
     InfosetActionHand = 1,
 };
 
+enum class HUNLFlatStoragePrecision : std::uint8_t {
+    Float64 = 0,
+    Float32 = 1,
+    Compressed16 = 2,
+};
+
 struct HUNLFlatInfosetTableMeta {
     InfosetId id{};
     std::uint32_t offset = 0;
@@ -132,18 +138,21 @@ public:
     static HUNLFlatInfosetTable build(
         const HUNLFlatSolveGraph& graph,
         const std::array<std::size_t, 2>& bucket_count_per_player,
-        HUNLFlatValueLayout layout);
+        HUNLFlatValueLayout layout,
+        HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
 
     static HUNLFlatInfosetTable build(
         const HUNLFlatSolveGraph& graph,
         const std::array<std::size_t, 2>& bucket_count_per_player,
         const HUNLFlatBucketMap* bucket_map = nullptr,
-        HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetHandAction);
+        HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetHandAction,
+        HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
 
     [[nodiscard]] const std::vector<HUNLFlatInfosetTableMeta>& meta() const noexcept;
     [[nodiscard]] std::vector<HUNLFlatInfosetTableMeta>& meta_mut() noexcept;
     [[nodiscard]] std::size_t infoset_count() const noexcept;
     [[nodiscard]] HUNLFlatValueLayout layout() const noexcept;
+    [[nodiscard]] HUNLFlatStoragePrecision precision() const noexcept;
 
     [[nodiscard]] const double* regret(InfosetId id) const;
     [[nodiscard]] double* regret_mut(InfosetId id);
@@ -158,16 +167,67 @@ public:
     [[nodiscard]] std::size_t value_index(InfosetId id, std::size_t bucket_idx, std::size_t action_idx) const;
     [[nodiscard]] HUNLFlatRange infoset_bucket_range(InfosetId id) const;
     [[nodiscard]] HUNLFlatRange infoset_value_range(HUNLFlatRange infoset_range) const;
+    [[nodiscard]] std::uint64_t regret_storage_bytes() const noexcept;
+    [[nodiscard]] std::uint64_t strategy_sum_storage_bytes() const noexcept;
+    [[nodiscard]] std::uint64_t current_strategy_storage_bytes() const noexcept;
+    [[nodiscard]] double regret_value(InfosetId id, std::size_t offset) const;
+    [[nodiscard]] double strategy_sum_value(InfosetId id, std::size_t offset) const;
+    [[nodiscard]] double current_strategy_value(InfosetId id, std::size_t offset) const;
+    void set_regret_value(InfosetId id, std::size_t offset, double value);
+    void set_strategy_sum_value(InfosetId id, std::size_t offset, double value);
+    void set_current_strategy_value(InfosetId id, std::size_t offset, double value);
+    void copy_regret_values(InfosetId id, std::size_t offset, double* out, std::size_t count) const;
+    void copy_strategy_sum_values(InfosetId id, std::size_t offset, double* out, std::size_t count) const;
+    void copy_current_strategy_values(InfosetId id, std::size_t offset, double* out, std::size_t count) const;
+    void write_regret_values(InfosetId id, std::size_t offset, const double* values, std::size_t count);
+    void write_strategy_sum_values(InfosetId id, std::size_t offset, const double* values, std::size_t count);
+    void write_current_strategy_values(InfosetId id, std::size_t offset, const double* values, std::size_t count);
+    void discount_values(
+        InfosetId id,
+        double pos_scale,
+        double neg_scale,
+        double strat_scale);
 
 private:
     const HUNLFlatInfosetTableMeta& meta_for(InfosetId id) const;
     HUNLFlatInfosetTableMeta& meta_for(InfosetId id);
+    template <class T>
+    [[nodiscard]] static std::uint64_t storage_bytes(const HUNLAlignedVector<T>& values) noexcept;
+    template <class T>
+    [[nodiscard]] static double value_at(const HUNLAlignedVector<T>& values, std::size_t offset) noexcept;
+    template <class T>
+    static void set_value_at(HUNLAlignedVector<T>& values, std::size_t offset, double value);
+    template <class T>
+    static void copy_values_from_storage(
+        const HUNLAlignedVector<T>& values,
+        std::size_t offset,
+        double* out,
+        std::size_t count);
+    template <class T>
+    static void write_values_to_storage(
+        HUNLAlignedVector<T>& values,
+        std::size_t offset,
+        const double* in,
+        std::size_t count);
+    template <class T>
+    static void discount_storage(
+        HUNLAlignedVector<T>& regret_values,
+        HUNLAlignedVector<T>& strategy_values,
+        std::size_t offset,
+        std::size_t count,
+        double pos_scale,
+        double neg_scale,
+        double strat_scale);
 
     HUNLFlatValueLayout layout_ = HUNLFlatValueLayout::InfosetHandAction;
+    HUNLFlatStoragePrecision precision_ = HUNLFlatStoragePrecision::Float64;
     std::vector<HUNLFlatInfosetTableMeta> meta_;
     HUNLAlignedVector<double> regret_sum_;
     HUNLAlignedVector<double> strategy_sum_;
     HUNLAlignedVector<double> current_strategy_;
+    HUNLAlignedVector<float> regret_sum_f32_;
+    HUNLAlignedVector<float> strategy_sum_f32_;
+    HUNLAlignedVector<float> current_strategy_f32_;
 };
 
 }  // namespace core
