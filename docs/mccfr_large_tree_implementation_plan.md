@@ -3178,6 +3178,237 @@ After this document lands, future updates should be rare and should only happen 
 
 Routine implementation details should go into code comments, tests, benchmark notes, or a changelog, not into this architecture plan.
 
+## Final Handoff Pack
+
+This is the section for a boss, lead engineer, or new programmer who needs to understand the task without reading the full history.
+
+### One-Page Boss Brief
+
+Problem:
+
+- The current full flat DCFR solver is too expensive for large flop solving.
+- A full flop solve taking about 18 seconds per exact iteration is not compatible with a 10-15 second real-time decision budget.
+- Memory pressure is the real blocker: exact full-tree solving wants dense graph/table/reach/value structures that can exceed a 64 GB desktop.
+
+Decision:
+
+- Build a new sampled/lazy sparse HUNL solver module from scratch.
+- Keep the existing exact `HUNLFlatDCFR` as a correctness oracle and benchmark baseline.
+- Use external-sampling MCCFR first, then add sparse/lazy storage, real-time deadline mode, SIMD, and advanced tuning.
+
+Why this can work:
+
+- Public poker AI systems use approximations: abstraction, depth limits, subgame re-solving, sparse actions, pruning, and value estimates.
+- The product only needs a strong current root decision, not a perfect full-game strategy.
+- A 9950X3D-class desktop has enough CPU and cache to run many sampled updates if memory layout is flat, sparse, and cache-aware.
+
+Success target:
+
+```text
+turn/river:        root strategy in <= 10 seconds
+flop conservative: root strategy in <= 15 seconds
+RAM:               warn at 48 GB, stay below 56 GB, reject unsafe configs before 60 GB
+threads:           scale meaningfully across 8-16 workers before SMT experiments
+export:            root strategy under 100 ms
+quality:           stable root mix, no obvious dominated actions, improves over baseline
+```
+
+Main risk:
+
+- A sampled solver that still builds dense full structures will fail.
+- A fast solver with wrong ranges/blockers will be useless.
+- A clean-looking C++ design with allocations/strings/pointer-heavy objects in hot loops will miss the deadline.
+
+### Architecture At A Glance
+
+```mermaid
+flowchart TD
+    A["Solve request: board, ranges, pot, actions, budget"] --> B["Config validation and memory preflight"]
+    B --> C["Root public state and lazy cache"]
+    C --> D["Worker batch scheduler"]
+    D --> E["Sampled MCCFR traversals"]
+    E --> F["Worker-local deltas"]
+    F --> G["Deterministic merge"]
+    G --> H["Sparse regret and average strategy rows"]
+    E --> I["Terminal / depth-limited leaf evaluator"]
+    H --> J["Root snapshot"]
+    J --> K["Root strategy export"]
+    H --> L["Optional checkpoint / training rows"]
+```
+
+Hot path:
+
+```text
+public state id -> infoset row id -> contiguous row pointers -> row kernel -> worker delta
+```
+
+Cold path:
+
+```text
+state key -> hash lookup -> lazy node/row allocation -> compact id
+```
+
+The cold path may use maps and richer objects. The hot path must use ids, arrays, spans/raw pointer views, and preallocated scratch.
+
+
+### Non-Goals
+
+This project should not attempt these in the first production version:
+
+- full exact no-limit hold'em solve;
+- full dense strategy export during a real-time decision;
+- unrestricted bet-size tree;
+- private bucket sampling before public/action sampling is validated;
+- GPU dependency for first production path;
+- neural value model dependency for first production path;
+- perfect exploitability measurement for large flop trees;
+- client automation, screen scraping, stealth integration, or anti-detection code.
+
+### Compliance And Usage Boundary
+
+This document describes solver technology for research, offline analysis, controlled benchmarking, training-data generation, and authorized environments.
+
+Do not add:
+
+- poker client control;
+- screen scraping;
+- automated clicking;
+- account/session logic;
+- stealth/evasion behavior;
+- bypassing detection;
+- instructions for violating site terms.
+
+The engineering interface should stay at the solver boundary:
+
+```text
+structured game state in -> strategy/diagnostics out
+```
+
+Keeping this boundary protects the codebase and keeps the technical task clean.
+
+### Risk Register
+
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Dense structures accidentally remain in sampled production | 64 GB target fails | preflight rejects dense graph/table in sampled mode |
+| Ranges/blockers wrong | strategy invalid | exact small-game tests, range projection tests, terminal validation |
+| Variance too high | unstable root strategy | external sampling, stratified chance, delayed averaging, stability metrics |
+| Merge dominates runtime | poor scaling | worker-local aggregation, sorted row deltas, larger batches |
+| Terminal cache grows too large | memory failure | hard cache byte cap, eviction, profile counters |
+| Too many actions | row/memory explosion | small presets, progressive widening, pruning |
+| Too many buckets | row/memory explosion | street-specific bucket presets, adaptive bucket plan |
+| Thread scheduling hurts 9950X3D | inconsistent performance | worker-count benchmarks, optional affinity experiments |
+| SIMD complexity causes bugs | wrong strategies | scalar reference kernels and tolerance tests |
+| Neural labels are low quality | bad future model | label quality filters and validation gates |
+| Code becomes unreadable from micro-optimization | maintenance slows | subsystem boundaries, scalar reference path, tests |
+
+### Milestone Gates
+
+Gate 1: scaffold compiles
+
+- new sampled files exist;
+- config validates;
+- profile object works;
+- scalar row-kernel tests pass.
+
+Gate 2: single-worker full-graph public chance
+
+- deterministic seed;
+- tiny game converges toward exact;
+- no sparse/lazy requirement yet.
+
+Gate 3: external sampling
+
+- opponent actions sampled;
+- traversing player branches actions;
+- no NaNs;
+- exact small baseline comparison exists.
+
+Gate 4: multithreaded batches
+
+- worker-local deltas;
+- deterministic merge;
+- 1-worker and N-worker validation tolerance documented;
+- merge profile visible.
+
+Gate 5: sparse storage
+
+- rows allocated on first visit;
+- no dense current strategy;
+- root export works without full materialization.
+
+Gate 6: lazy public-state expansion
+
+- sampled flop starts without full graph;
+- public-state cache grows with visits;
+- memory preflight reports all categories.
+
+Gate 7: deadline mode
+
+- `solve_for(10s)` and `solve_for(15s)`;
+- timeout returns last complete root snapshot;
+- root export under 100 ms.
+
+Gate 8: 64 GB guardrails
+
+- warn above 48 GB;
+- stop/fallback above 56 GB runtime;
+- reject above 60 GB estimated;
+- no paging in benchmarks.
+
+Gate 9: production tuning
+
+- profile-driven SIMD;
+- pruning/progressive widening toggles;
+- root stability improves under same budget.
+
+Gate 10: blueprint/training
+
+- checkpoints versioned;
+- training rows sharded;
+- label quality filters active;
+- warm-start improves early root stability.
+
+
+### Glossary
+
+- Action abstraction: small set of allowed bet/check/call/fold/raise sizes used to keep the tree finite.
+- AS: Average Strategy Sampling, sampling traversing-player actions based partly on average-strategy mass.
+- Bucket: abstraction group for private hands or hand-strength features.
+- CFV: counterfactual value, value conditioned on reaching an information set/public state.
+- CFR: Counterfactual Regret Minimization.
+- DCFR: discounted CFR variant.
+- External sampling: MCCFR variant that samples chance and opponent actions while expanding traversing-player actions.
+- Full graph: all public/action/chance nodes built upfront.
+- Hot loop: code executed per node/action/bucket/trajectory where allocations and strings are forbidden.
+- Infoset: information set representing what a player can distinguish.
+- Lazy expansion: build public states/nodes only when sampled traversal reaches them.
+- MCCFR: Monte Carlo CFR, sampled approximation to CFR.
+- Public chance: future board runouts.
+- RTA-style solving: strict-deadline current-state re-solving.
+- Sparse row: regret/average strategy row allocated only when visited.
+- Strategy sum: cumulative strategy used to export average strategy.
+- Warm start: initialize solve from previous sparse rows, blueprint, or value cache.
+
+### Final Mental Model
+
+The winning design is not one giant clever algorithm. It is the combination of many strict choices:
+
+```text
+sample fewer branches
+allocate fewer rows
+keep rows flat
+keep hot loops allocation-free
+use threads by trajectory batches
+merge deterministically
+respect ranges and blockers
+depth-limit intelligently
+export only what the decision needs
+measure everything
+```
+
+If a future implementation follows that model, the project has a realistic path to useful 10-15 second postflop decisions on a 64 GB 9950X3D-class desktop.
+
 ## Final Recommendation
 
 Implement MCCFR, but do it as a new sampled flat solver. Use the existing exact `HUNLFlatDCFR` as the correctness oracle and keep it unchanged.
