@@ -83,7 +83,6 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         throw std::invalid_argument("HUNLFlatSolveGraph tree root out of bounds");
     }
     HUNLFlatSolveGraph graph;
-    graph.nodes.reserve(tree.nodes.size());
     graph.node_meta.reserve(tree.nodes.size());
     graph.children.reserve(tree.nodes.size() * 2);
     graph.actions.reserve(tree.nodes.size() * 2);
@@ -111,11 +110,11 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         if (node.street > Street::Showdown) {
             throw std::logic_error("flat graph node street out of range");
         }
-        HUNLFlatNode flat_node;
+        HUNLFlatNodeMeta flat_node;
         flat_node.type = classify_flat_node_type(node);
         flat_node.player = node.player;
         flat_node.street = node.street;
-        flat_node.board = node.board;
+        flat_node.board = HUNLFlatSolveGraph::pack_board(node.board);
         flat_node.contributions = node.contrib;
         flat_node.terminal_kind = node.terminal_kind;
         flat_node.terminal_utility = node.terminal_utility;
@@ -198,42 +197,26 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
             }
         }
 
-        graph.nodes.push_back(std::move(flat_node));
-        graph.node_meta.push_back(HUNLFlatNodeMeta{
-            graph.nodes.back().child_begin,
-            graph.nodes.back().child_count,
-            graph.nodes.back().action_begin,
-            graph.nodes.back().chance_begin,
-            graph.nodes.back().chance_count,
-            graph.nodes.back().infoset_id,
-            graph.nodes.back().contributions,
-            graph.nodes.back().terminal_utility,
-            graph.nodes.back().board,
-            graph.nodes.back().terminal_kind,
-            graph.nodes.back().player,
-            graph.nodes.back().type,
-            graph.nodes.back().street,
-            graph.nodes.back().action_count,
-            graph.nodes.back().has_infoset,
-        });
+        graph.node_meta.push_back(flat_node);
 
-        if (graph.nodes.back().type == HUNLFlatNodeType::TerminalFold) {
+        if (flat_node.type == HUNLFlatNodeType::TerminalFold) {
             graph.terminal_nodes.push_back(node_idx);
-            graph.terminal_node_values.push_back(graph.nodes.back().terminal_utility[0]);
+            graph.terminal_node_values.push_back(flat_node.terminal_utility[0]);
             graph.fold_terminal_nodes.push_back(node_idx);
-            graph.fold_terminal_values.push_back(graph.nodes.back().terminal_utility[0]);
-        } else if (graph.nodes.back().type == HUNLFlatNodeType::TerminalShowdown) {
+            graph.fold_terminal_values.push_back(flat_node.terminal_utility[0]);
+        } else if (flat_node.type == HUNLFlatNodeType::TerminalShowdown) {
             graph.terminal_nodes.push_back(node_idx);
-            graph.terminal_node_values.push_back(graph.nodes.back().terminal_utility[0]);
+            graph.terminal_node_values.push_back(flat_node.terminal_utility[0]);
             graph.showdown_terminal_nodes.push_back(node_idx);
-            graph.showdown_terminal_values.push_back(graph.nodes.back().terminal_utility[0]);
-        } else if (graph.nodes.back().type == HUNLFlatNodeType::DepthLimited) {
+            graph.showdown_terminal_values.push_back(flat_node.terminal_utility[0]);
+        } else if (flat_node.type == HUNLFlatNodeType::DepthLimited) {
             graph.terminal_nodes.push_back(node_idx);
-            graph.terminal_node_values.push_back(graph.nodes.back().terminal_utility[0]);
+            graph.terminal_node_values.push_back(flat_node.terminal_utility[0]);
         }
     }
 
     graph.infosets.reserve(infoset_keys.size());
+    graph.infoset_debug_keys = infoset_keys;
     for (std::uint32_t infoset_index = 0; infoset_index < infoset_keys.size(); ++infoset_index) {
         const auto& node_list = infoset_node_lists[infoset_index];
         if (node_list.empty()) {
@@ -246,20 +229,20 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         infoset.action_count = infoset_action_counts[infoset_index];
         infoset.player = infoset_players[infoset_index];
         infoset.street = infoset_streets[infoset_index];
-        infoset.board = infoset_boards[infoset_index];
-        infoset.key = infoset_keys[infoset_index];
+        infoset.board = HUNLFlatSolveGraph::pack_board(infoset_boards[infoset_index]);
+        infoset.debug_key_index = infoset_index;
         graph.infoset_nodes.insert(graph.infoset_nodes.end(), node_list.begin(), node_list.end());
         graph.infosets.push_back(std::move(infoset));
     }
 
-    std::vector<std::uint32_t> indegree(graph.nodes.size(), 0);
-    std::vector<std::vector<std::uint32_t>> outgoing(graph.nodes.size());
+    std::vector<std::uint32_t> indegree(graph.node_meta.size(), 0);
+    std::vector<std::vector<std::uint32_t>> outgoing(graph.node_meta.size());
     for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& meta = graph.node_meta[node_idx];
         outgoing[node_idx].reserve(meta.child_count);
         for (std::uint32_t i = 0; i < meta.child_count; ++i) {
             const auto child = graph.children[meta.child_begin + i];
-            if (child >= graph.nodes.size()) {
+            if (child >= graph.node_meta.size()) {
                 throw std::logic_error("child index out of bounds in flat graph");
             }
             outgoing[node_idx].push_back(child);
@@ -274,8 +257,8 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         }
     }
 
-    graph.forward_order.reserve(graph.nodes.size());
-    graph.node_depths.assign(graph.nodes.size(), 0);
+    graph.forward_order.reserve(graph.node_meta.size());
+    graph.node_depths.assign(graph.node_meta.size(), 0);
     while (!ready.empty()) {
         const auto node_idx = ready.front();
         ready.pop_front();
@@ -289,7 +272,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
         }
     }
 
-    if (graph.forward_order.size() != graph.nodes.size()) {
+    if (graph.forward_order.size() != graph.node_meta.size()) {
         throw std::logic_error("flat graph must be acyclic");
     }
 
@@ -327,6 +310,54 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
 
 HUNLFlatSolveGraph HUNLFlatSolveGraph::build(std::shared_ptr<const HUNLConfig> config) {
     return build(HUNLTree::build(std::move(config)));
+}
+
+std::size_t HUNLFlatSolveGraph::node_count() const noexcept {
+    return node_meta.size();
+}
+
+std::vector<std::uint8_t> HUNLFlatSolveGraph::node_board(std::uint32_t node_idx) const {
+    if (node_idx >= node_meta.size()) {
+        throw std::out_of_range("flat graph node_board node_idx out of range");
+    }
+    return unpack_board(node_meta[node_idx].board);
+}
+
+std::vector<std::uint8_t> HUNLFlatSolveGraph::infoset_board(InfosetId infoset_id) const {
+    if (infoset_id.value >= infosets.size()) {
+        throw std::out_of_range("flat graph infoset_board infoset id out of range");
+    }
+    return unpack_board(infosets[infoset_id.value].board);
+}
+
+std::string_view HUNLFlatSolveGraph::infoset_key(InfosetId infoset_id) const noexcept {
+    if (infoset_id.value >= infosets.size()) {
+        return {};
+    }
+    return infoset_key(infosets[infoset_id.value]);
+}
+
+std::string_view HUNLFlatSolveGraph::infoset_key(const HUNLFlatInfoset& infoset) const noexcept {
+    if (infoset.debug_key_index >= infoset_debug_keys.size()) {
+        return {};
+    }
+    return infoset_debug_keys[infoset.debug_key_index];
+}
+
+HUNLFlatPackedBoard HUNLFlatSolveGraph::pack_board(const std::vector<std::uint8_t>& board) {
+    if (board.size() > 5) {
+        throw std::invalid_argument("flat graph pack_board supports up to 5 cards");
+    }
+    HUNLFlatPackedBoard packed;
+    packed.count = static_cast<std::uint8_t>(board.size());
+    for (std::size_t i = 0; i < board.size(); ++i) {
+        packed.cards[i] = board[i];
+    }
+    return packed;
+}
+
+std::vector<std::uint8_t> HUNLFlatSolveGraph::unpack_board(const HUNLFlatPackedBoard& board) {
+    return std::vector<std::uint8_t>(board.cards.begin(), board.cards.begin() + board.count);
 }
 
 }  // namespace core

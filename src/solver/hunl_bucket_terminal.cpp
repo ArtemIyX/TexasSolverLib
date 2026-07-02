@@ -161,7 +161,7 @@ HUNLBucketTerminalTable HUNLBucketTerminalTable::build(
         if (!graph.config) {
             continue;
         }
-        const auto& board = graph.nodes[node_idx].board;
+        const auto board = graph.node_board(node_idx);
         if (board.size() != 5) {
             continue;
         }
@@ -258,7 +258,7 @@ double heuristic_depth_limited_value_p0(const HUNLFlatNodeMeta& node, const HUNL
     const double pot_total = static_cast<double>(config.initial_pot) + cs0 + cs1;
     const double pot_share = pot_total * 0.5 / bb;
     const double pressure = static_cast<double>(node.contributions[0] - node.contributions[1]) / bb;
-    const double texture = board_texture_score(node.board);
+    const double texture = board_texture_score(HUNLFlatSolveGraph::unpack_board(node.board));
 
     double street_bias = 0.0;
     switch (node.street) {

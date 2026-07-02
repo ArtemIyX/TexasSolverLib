@@ -14,7 +14,7 @@ TEST_CASE(hunl_flat_graph_builds_from_tree_with_stable_indices) {
     EXPECT_EQ(graph.root, tree.root);
     EXPECT_EQ(graph.max_depth, tree.max_depth);
     EXPECT_EQ(graph.max_actions, tree.max_actions);
-    EXPECT_EQ(static_cast<std::size_t>(graph.nodes.size()), static_cast<std::size_t>(tree.nodes.size()));
+    EXPECT_EQ(static_cast<std::size_t>(graph.node_meta.size()), static_cast<std::size_t>(tree.nodes.size()));
     EXPECT_EQ(static_cast<std::size_t>(graph.node_meta.size()), static_cast<std::size_t>(tree.nodes.size()));
     EXPECT_TRUE(!graph.infosets.empty());
 }
@@ -30,7 +30,7 @@ TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
 
     for (std::size_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
         const auto& tree_node = tree.nodes[node_idx];
-        const auto& flat_node = graph.nodes[node_idx];
+        const auto& flat_node = graph.node_meta[node_idx];
 
         EXPECT_EQ(flat_node.player, tree_node.player);
         EXPECT_EQ(flat_node.street, tree_node.street);
@@ -84,8 +84,8 @@ TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
     std::unordered_map<std::string, std::uint32_t> expected_ids_by_key;
     std::uint32_t expected_next_id = 0;
 
-    for (std::uint32_t node_idx = 0; node_idx < graph.nodes.size(); ++node_idx) {
-        const auto& node = graph.nodes[node_idx];
+    for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& node = graph.node_meta[node_idx];
         if (node.type != core::HUNLFlatNodeType::Decision) {
             EXPECT_TRUE(!node.has_infoset);
             continue;
@@ -95,7 +95,7 @@ TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
         const auto& infoset = graph.infosets[node.infoset_id.value];
 
         const auto [it, inserted] =
-            expected_ids_by_key.emplace(infoset.key, node.infoset_id.value);
+            expected_ids_by_key.emplace(std::string(graph.infoset_key(infoset)), node.infoset_id.value);
         if (inserted) {
             EXPECT_EQ(node.infoset_id.value, expected_next_id);
             ++expected_next_id;
@@ -126,8 +126,8 @@ TEST_CASE(hunl_flat_graph_precomputes_compact_node_metadata) {
     const auto tree = core::HUNLTree::build(config);
     const auto graph = core::HUNLFlatSolveGraph::build(tree);
 
-    for (std::uint32_t node_idx = 0; node_idx < graph.nodes.size(); ++node_idx) {
-        const auto& node = graph.nodes[node_idx];
+    for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
+        const auto& node = graph.node_meta[node_idx];
         const auto& meta = graph.node_meta[node_idx];
 
         EXPECT_EQ(meta.type, node.type);
@@ -170,20 +170,20 @@ TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
     const auto tree = core::HUNLTree::build(config);
     const auto graph = core::HUNLFlatSolveGraph::build(tree);
 
-    EXPECT_EQ(graph.forward_order.size(), graph.nodes.size());
-    EXPECT_EQ(graph.reverse_order.size(), graph.nodes.size());
-    EXPECT_EQ(graph.node_depths.size(), graph.nodes.size());
-    EXPECT_EQ(graph.depth_order.size(), graph.nodes.size());
-    EXPECT_EQ(graph.street_order.size(), graph.nodes.size());
+    EXPECT_EQ(graph.forward_order.size(), graph.node_meta.size());
+    EXPECT_EQ(graph.reverse_order.size(), graph.node_meta.size());
+    EXPECT_EQ(graph.node_depths.size(), graph.node_meta.size());
+    EXPECT_EQ(graph.depth_order.size(), graph.node_meta.size());
+    EXPECT_EQ(graph.street_order.size(), graph.node_meta.size());
 
-    std::vector<std::uint32_t> forward_pos(graph.nodes.size(), 0);
+    std::vector<std::uint32_t> forward_pos(graph.node_meta.size(), 0);
     for (std::uint32_t i = 0; i < graph.forward_order.size(); ++i) {
         forward_pos[graph.forward_order[i]] = i;
     }
 
-    std::vector<bool> seen_forward(graph.nodes.size(), false);
+    std::vector<bool> seen_forward(graph.node_meta.size(), false);
     for (const auto node_idx : graph.forward_order) {
-        EXPECT_TRUE(node_idx < graph.nodes.size());
+        EXPECT_TRUE(node_idx < graph.node_meta.size());
         EXPECT_TRUE(!seen_forward[node_idx]);
         seen_forward[node_idx] = true;
     }
@@ -201,7 +201,7 @@ TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
     auto sorted_reverse = graph.reverse_order;
     std::sort(sorted_forward.begin(), sorted_forward.end());
     std::sort(sorted_reverse.begin(), sorted_reverse.end());
-    for (std::uint32_t i = 0; i < graph.nodes.size(); ++i) {
+    for (std::uint32_t i = 0; i < graph.node_meta.size(); ++i) {
         EXPECT_EQ(sorted_forward[i], i);
         EXPECT_EQ(sorted_reverse[i], i);
     }
@@ -227,7 +227,7 @@ TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
         EXPECT_EQ(ranged_total, slice.count);
         EXPECT_EQ(cursor, slice.begin + slice.count);
     }
-    EXPECT_EQ(depth_total, static_cast<std::uint32_t>(graph.nodes.size()));
+    EXPECT_EQ(depth_total, static_cast<std::uint32_t>(graph.node_meta.size()));
 
     std::uint32_t street_total = 0;
     for (std::size_t street = 0; street < graph.street_slices.size(); ++street) {
@@ -238,7 +238,7 @@ TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
             EXPECT_EQ(static_cast<std::size_t>(graph.node_meta[node_idx].street), street);
         }
     }
-    EXPECT_EQ(street_total, static_cast<std::uint32_t>(graph.nodes.size()));
+    EXPECT_EQ(street_total, static_cast<std::uint32_t>(graph.node_meta.size()));
 }
 
 TEST_CASE(hunl_flat_graph_precomputes_compact_terminal_tables) {

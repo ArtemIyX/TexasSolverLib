@@ -25,20 +25,13 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
         0,
         2,
         {},
-        "shared-depth-infoset",
+        0,
         0,
         core::Street::Flop,
         2,
     });
+    graph.infoset_debug_keys = {"shared-depth-infoset"};
     graph.infoset_nodes = {1, 2};
-
-    auto make_terminal = [](double value) {
-        core::HUNLFlatNode node;
-        node.type = core::HUNLFlatNodeType::TerminalFold;
-        node.terminal_utility = {value, -value};
-        node.terminal_kind = core::TerminalKind::fold(1, 1);
-        return node;
-    };
 
     auto make_terminal_meta = [](double value) {
         core::HUNLFlatNodeMeta meta;
@@ -48,15 +41,8 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
         return meta;
     };
 
-    graph.nodes.resize(7);
     graph.node_meta.resize(7);
 
-    graph.nodes[0].child_begin = 0;
-    graph.nodes[0].child_count = 2;
-    graph.nodes[0].chance_begin = 0;
-    graph.nodes[0].chance_count = 2;
-    graph.nodes[0].type = core::HUNLFlatNodeType::Chance;
-    graph.nodes[0].street = core::Street::Flop;
     graph.node_meta[0].child_begin = 0;
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].chance_begin = 0;
@@ -65,19 +51,9 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
     graph.node_meta[0].street = core::Street::Flop;
 
     for (std::uint32_t node_idx : {1U, 2U}) {
-        auto& node = graph.nodes[node_idx];
-        node.child_begin = node_idx == 1 ? 2 : 4;
-        node.child_count = 2;
-        node.infoset_id = shared_infoset;
-        node.player = 0;
-        node.type = core::HUNLFlatNodeType::Decision;
-        node.street = core::Street::Flop;
-        node.action_count = 2;
-        node.has_infoset = true;
-
         auto& meta = graph.node_meta[node_idx];
-        meta.child_begin = node.child_begin;
-        meta.child_count = node.child_count;
+        meta.child_begin = node_idx == 1 ? 2 : 4;
+        meta.child_count = 2;
         meta.infoset_id = shared_infoset;
         meta.player = 0;
         meta.type = core::HUNLFlatNodeType::Decision;
@@ -86,10 +62,6 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
         meta.has_infoset = true;
     }
 
-    graph.nodes[3] = make_terminal(3.0);
-    graph.nodes[4] = make_terminal(-1.0);
-    graph.nodes[5] = make_terminal(2.0);
-    graph.nodes[6] = make_terminal(-2.0);
     graph.node_meta[3] = make_terminal_meta(3.0);
     graph.node_meta[4] = make_terminal_meta(-1.0);
     graph.node_meta[5] = make_terminal_meta(2.0);
@@ -106,7 +78,7 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
     graph.reverse_order = {6, 5, 4, 3, 2, 1, 0};
     graph.street_order = graph.depth_order;
     graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.nodes.size())};
+        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 

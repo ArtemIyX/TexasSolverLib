@@ -316,7 +316,7 @@ int main(int argc, char* argv[]) {
               << " layout=" << layout_name(cfg.layout)
               << " iterations=" << cfg.iterations
               << " infosets=" << graph.infosets.size()
-              << " nodes=" << graph.nodes.size() << "\n";
+              << " nodes=" << graph.node_meta.size() << "\n";
 
     for (const auto workers : cfg.workers) {
         const auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player, cfg.layout);

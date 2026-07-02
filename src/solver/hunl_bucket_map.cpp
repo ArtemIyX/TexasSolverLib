@@ -132,8 +132,8 @@ HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
         HUNLFlatBucketEntry entry;
         entry.infoset_id = infoset.id;
         entry.street = infoset.street;
-        entry.board = infoset.board;
-        entry.canonical_board = canonicalize_board(infoset.board);
+        entry.board = graph.infoset_board(infoset.id);
+        entry.canonical_board = canonicalize_board(entry.board);
         entry.bucket_count = bucket_count_for_street(map.tables_, infoset.street);
         if (entry.bucket_count == 0) {
             throw std::logic_error("HUNLFlatBucketMap bucket_count must be positive for postflop infosets");
@@ -143,7 +143,7 @@ HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
         for (std::uint32_t bucket = 0; bucket < entry.bucket_count; ++bucket) {
             entry.dense_bucket_ids.push_back(bucket);
         }
-        for (const auto& hole : enumerate_live_hands(infoset.board)) {
+        for (const auto& hole : enumerate_live_hands(entry.board)) {
             validate_bucket_lookup_context(entry.board, hole, entry.street);
             const auto bucket = core::lookup_bucket(map.tables_, entry.board, hole, entry.street);
             if (bucket < 0 || static_cast<std::size_t>(bucket) >= entry.bucket_hand_counts.size()) {
@@ -246,6 +246,7 @@ void HUNLFlatBucketMap::apply_range_inputs(
         }
 
         auto weights = std::vector<double>(entry(infoset.id).bucket_count, 0.0);
+        const auto board = graph.infoset_board(infoset.id);
 
         for (const auto& weighted_bucket : range_input->bucket_weights) {
             if (weighted_bucket.street != infoset.street) {
@@ -262,7 +263,7 @@ void HUNLFlatBucketMap::apply_range_inputs(
             if (hole[1] < hole[0]) {
                 std::swap(hole[0], hole[1]);
             }
-            if (!is_hand_live_on_board(infoset.board, hole)) {
+            if (!is_hand_live_on_board(board, hole)) {
                 continue;
             }
             const auto bucket = lookup_bucket(infoset.id, hole);

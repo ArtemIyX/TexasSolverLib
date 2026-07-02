@@ -105,10 +105,7 @@ void mark_worker_detail_scope(const char* base, std::size_t worker_index, double
 }
 
 void validate_flat_solver_graph(const HUNLFlatSolveGraph& graph) {
-    if (graph.nodes.size() != graph.node_meta.size()) {
-        throw std::invalid_argument("HUNLFlatDCFR graph nodes/node_meta size mismatch");
-    }
-    if (graph.root >= graph.nodes.size() && !graph.nodes.empty()) {
+    if (graph.root >= graph.node_meta.size() && !graph.node_meta.empty()) {
         throw std::invalid_argument("HUNLFlatDCFR graph root out of bounds");
     }
     for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
@@ -293,14 +290,14 @@ HUNLFlatDCFR::HUNLFlatDCFR(
           bucket_count_per_player,
           bucket_map_ ? &*bucket_map_ : nullptr,
           layout)),
-      player0_reach_(graph_.nodes.size(), 0.0),
-      player1_reach_(graph_.nodes.size(), 0.0),
-      chance_reach_(graph_.nodes.size(), 0.0),
+      player0_reach_(graph_.node_count(), 0.0),
+      player1_reach_(graph_.node_count(), 0.0),
+      chance_reach_(graph_.node_count(), 0.0),
       bucket_reach_(infoset_table_.total_bucket_count(), 0.0),
       normalized_bucket_reach_(infoset_table_.total_bucket_count(), 0.0),
       infoset_bucket_totals_(graph_.infosets.size(), 0.0),
-      terminal_values_(graph_.nodes.size(), 0.0),
-      node_values_(graph_.nodes.size(), 0.0),
+      terminal_values_(graph_.node_count(), 0.0),
+      node_values_(graph_.node_count(), 0.0),
       action_values_(graph_.children.size(), 0.0),
       worker_count_(std::max<std::size_t>(1, workers)),
       parallel_plan_(HUNLFlatParallelPlan::build(
@@ -535,7 +532,7 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatDCFR::export_averag
             }
         }
 
-        out.emplace(infoset.key, std::move(average));
+        out.emplace(std::string(graph_.infoset_key(infoset)), std::move(average));
     }
 
     return out;
@@ -678,7 +675,7 @@ void HUNLFlatDCFR::forward_reach_stage() {
     std::fill(player1_reach_.begin(), player1_reach_.end(), 0.0);
     std::fill(chance_reach_.begin(), chance_reach_.end(), 0.0);
     std::fill(bucket_reach_.begin(), bucket_reach_.end(), 0.0);
-    if (!graph_.nodes.empty()) {
+    if (!graph_.node_meta.empty()) {
         player0_reach_[graph_.root] = 1.0;
         player1_reach_[graph_.root] = 1.0;
         chance_reach_[graph_.root] = 1.0;
@@ -896,14 +893,14 @@ void HUNLFlatDCFR::worker_showdown_equity_stage(std::size_t worker_index) {
     for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
         const auto& meta = graph_.node_meta[node_idx];
         if (meta.type == HUNLFlatNodeType::TerminalFold) {
-            terminal_values_[node_idx] = graph_.nodes[node_idx].terminal_utility[0];
+            terminal_values_[node_idx] = graph_.node_meta[node_idx].terminal_utility[0];
             continue;
         }
         if (meta.type == HUNLFlatNodeType::TerminalShowdown) {
             if (terminal_table_ && terminal_table_->has_showdown_matrix(node_idx)) {
                 terminal_values_[node_idx] = terminal_table_->expected_showdown_value(node_idx);
             } else {
-                terminal_values_[node_idx] = graph_.nodes[node_idx].terminal_utility[0];
+                terminal_values_[node_idx] = graph_.node_meta[node_idx].terminal_utility[0];
             }
             continue;
         }

@@ -88,7 +88,7 @@ HUNLFlatAverageStrategyTable build_flat_average_strategy_table(
 
     std::uint32_t running_offset = 0;
     for (const auto& infoset : graph.infosets) {
-        const auto it = average_strategy.find(infoset.key);
+        const auto it = average_strategy.find(std::string(graph.infoset_key(infoset)));
         const auto bucket_count = it != average_strategy.end() && infoset.action_count > 0
             ? static_cast<std::uint32_t>(it->second.size() / static_cast<std::size_t>(infoset.action_count))
             : 1U;
@@ -113,7 +113,7 @@ HUNLFlatAverageStrategyTable build_flat_average_strategy_table(
     for (const auto& infoset : graph.infosets) {
         const auto& meta = out.meta[infoset.id.value];
         auto* dst = out.values.data() + meta.offset;
-        const auto it = average_strategy.find(infoset.key);
+        const auto it = average_strategy.find(std::string(graph.infoset_key(infoset)));
         if (it == average_strategy.end()) {
             const auto fallback = fallback_probabilities(infoset.action_count);
             for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
@@ -149,7 +149,7 @@ HUNLFlatAverageStrategyTable build_flat_average_strategy_table(
 }
 
 HUNLFlatTerminalValueTable build_flat_terminal_value_table(const HUNLFlatSolveGraph& graph) {
-    HUNLFlatTerminalValueTable out(graph.nodes.size(), {0.0, 0.0});
+    HUNLFlatTerminalValueTable out(graph.node_count(), {0.0, 0.0});
     for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& meta = graph.node_meta[node_idx];
         if (meta.type == HUNLFlatNodeType::TerminalFold ||
@@ -167,7 +167,7 @@ HUNLFlatTerminalValueTableP0 build_flat_terminal_value_table_p0_for_benchmark(co
             "build_flat_terminal_value_table_p0_for_benchmark requires fixed initial_hole_cards");
     }
 
-    HUNLFlatTerminalValueTableP0 out(graph.nodes.size(), 0.0);
+    HUNLFlatTerminalValueTableP0 out(graph.node_count(), 0.0);
     for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& meta = graph.node_meta[node_idx];
         if (meta.type == HUNLFlatNodeType::TerminalFold ||
@@ -183,10 +183,10 @@ std::array<double, 2> compute_flat_expected_value(
     const HUNLFlatSolveGraph& graph,
     const HUNLFlatAverageStrategyView& average_strategy,
     const HUNLFlatTerminalValueTable* terminal_values) {
-    if (graph.nodes.empty()) {
+    if (graph.node_meta.empty()) {
         return {0.0, 0.0};
     }
-    if (graph.root >= graph.nodes.size()) {
+    if (graph.root >= graph.node_count()) {
         throw std::out_of_range("compute_flat_expected_value root out of bounds");
     }
     if (average_strategy.meta == nullptr) {
@@ -198,11 +198,11 @@ std::array<double, 2> compute_flat_expected_value(
     if (average_strategy.meta->size() < graph.infosets.size()) {
         throw std::invalid_argument("compute_flat_expected_value strategy meta too small");
     }
-    if (terminal_values != nullptr && terminal_values->size() < graph.nodes.size()) {
+    if (terminal_values != nullptr && terminal_values->size() < graph.node_count()) {
         throw std::invalid_argument("compute_flat_expected_value terminal cache too small");
     }
 
-    std::vector<std::array<double, 2>> node_values(graph.nodes.size(), {0.0, 0.0});
+    std::vector<std::array<double, 2>> node_values(graph.node_count(), {0.0, 0.0});
     const auto& strategy_meta = *average_strategy.meta;
 
     for (const auto node_idx : graph.reverse_order) {
@@ -260,10 +260,10 @@ double compute_flat_expected_value_p0_benchmark(
     const HUNLFlatSolveGraph& graph,
     const HUNLFlatAverageStrategyView& average_strategy,
     const HUNLFlatTerminalValueTableP0& terminal_values_p0) {
-    if (graph.nodes.empty()) {
+    if (graph.node_meta.empty()) {
         return 0.0;
     }
-    if (graph.root >= graph.nodes.size()) {
+    if (graph.root >= graph.node_count()) {
         throw std::out_of_range("compute_flat_expected_value_p0_benchmark root out of bounds");
     }
     if (!graph.config || !graph.config->initial_hole_cards.has_value()) {
@@ -279,11 +279,11 @@ double compute_flat_expected_value_p0_benchmark(
     if (average_strategy.meta->size() < graph.infosets.size()) {
         throw std::invalid_argument("compute_flat_expected_value_p0_benchmark strategy meta too small");
     }
-    if (terminal_values_p0.size() < graph.nodes.size()) {
+    if (terminal_values_p0.size() < graph.node_count()) {
         throw std::invalid_argument("compute_flat_expected_value_p0_benchmark terminal cache too small");
     }
 
-    std::vector<double> node_values(graph.nodes.size(), 0.0);
+    std::vector<double> node_values(graph.node_count(), 0.0);
     const auto& strategy_meta = *average_strategy.meta;
     for (const auto node_idx : graph.reverse_order) {
         const auto& meta = graph.node_meta.at(node_idx);

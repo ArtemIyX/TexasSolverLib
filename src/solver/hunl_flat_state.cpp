@@ -163,12 +163,12 @@ HUNLFlatMemoryEstimate estimate_memory(
     const auto workers = std::max<std::size_t>(1, worker_count);
 
     estimate.graph_bytes += sizeof(HUNLFlatSolveGraph);
-    estimate.graph_bytes += vector_storage_bytes(graph.nodes);
     estimate.graph_bytes += vector_storage_bytes(graph.node_meta);
     estimate.graph_bytes += vector_storage_bytes(graph.children);
     estimate.graph_bytes += vector_storage_bytes(graph.actions);
     estimate.graph_bytes += vector_storage_bytes(graph.chance_outcomes);
     estimate.graph_bytes += vector_storage_bytes(graph.infosets);
+    estimate.graph_bytes += vector_storage_bytes(graph.infoset_debug_keys);
     estimate.graph_bytes += vector_storage_bytes(graph.infoset_nodes);
     estimate.graph_bytes += vector_storage_bytes(graph.forward_order);
     estimate.graph_bytes += vector_storage_bytes(graph.reverse_order);
@@ -183,15 +183,8 @@ HUNLFlatMemoryEstimate estimate_memory(
     estimate.graph_bytes += vector_storage_bytes(graph.fold_terminal_values);
     estimate.graph_bytes += vector_storage_bytes(graph.showdown_terminal_nodes);
     estimate.graph_bytes += vector_storage_bytes(graph.showdown_terminal_values);
-    for (const auto& node : graph.nodes) {
-        estimate.graph_bytes += vector_storage_bytes(node.board);
-    }
-    for (const auto& meta : graph.node_meta) {
-        estimate.graph_bytes += vector_storage_bytes(meta.board);
-    }
-    for (const auto& infoset : graph.infosets) {
-        estimate.graph_bytes += vector_storage_bytes(infoset.board);
-        estimate.graph_bytes += static_cast<std::uint64_t>(infoset.key.capacity()) * sizeof(char);
+    for (const auto& key : graph.infoset_debug_keys) {
+        estimate.graph_bytes += static_cast<std::uint64_t>(key.capacity()) * sizeof(char);
     }
     for (const auto& ranges : graph.depth_worker_ranges) {
         estimate.graph_bytes += vector_storage_bytes(ranges);
@@ -203,7 +196,7 @@ HUNLFlatMemoryEstimate estimate_memory(
         static_cast<std::uint64_t>(infoset_table.total_value_count()) * sizeof(double) * 3ULL;
 
     if (options.include_solver_buffers) {
-        const auto node_count = static_cast<std::uint64_t>(graph.nodes.size());
+        const auto node_count = static_cast<std::uint64_t>(graph.node_count());
         const auto edge_count = static_cast<std::uint64_t>(graph.children.size());
         const auto bucket_count = static_cast<std::uint64_t>(infoset_table.total_bucket_count());
         const auto infoset_count = static_cast<std::uint64_t>(graph.infosets.size());
@@ -296,7 +289,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(const HUNLFlatSolveGraph& graph
     HUNLFlatParallelPlan plan;
     const auto workers = std::max<std::size_t>(1, worker_count);
     const auto infoset_ranges = partition_range(static_cast<std::uint32_t>(graph.infosets.size()), workers);
-    const auto node_ranges = partition_range(static_cast<std::uint32_t>(graph.nodes.size()), workers);
+    const auto node_ranges = partition_range(static_cast<std::uint32_t>(graph.node_count()), workers);
 
     plan.workers.reserve(workers);
     for (std::size_t worker_index = 0; worker_index < workers; ++worker_index) {
@@ -357,7 +350,7 @@ HUNLFlatParallelPlan HUNLFlatParallelPlan::build(
     HUNLFlatParallelPlan plan;
     const auto workers = std::max<std::size_t>(1, worker_count);
     const auto infoset_ranges = partition_range(static_cast<std::uint32_t>(graph.infosets.size()), workers);
-    const auto node_ranges = partition_range(static_cast<std::uint32_t>(graph.nodes.size()), workers);
+    const auto node_ranges = partition_range(static_cast<std::uint32_t>(graph.node_count()), workers);
 
     plan.workers.reserve(workers);
     for (std::size_t worker_index = 0; worker_index < workers; ++worker_index) {

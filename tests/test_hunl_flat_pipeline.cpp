@@ -25,7 +25,7 @@ TEST_CASE(hunl_flat_pipeline_plan_exposes_paper_aligned_stage_sequence) {
     EXPECT_EQ(pipeline.stages()[6].id, core::HUNLFlatPipelineStageId::RegretUpdate);
 
     EXPECT_EQ(pipeline.buffers().infoset_count, static_cast<std::uint32_t>(graph.infosets.size()));
-    EXPECT_EQ(pipeline.buffers().node_count, static_cast<std::uint32_t>(graph.nodes.size()));
+    EXPECT_EQ(pipeline.buffers().node_count, static_cast<std::uint32_t>(graph.node_meta.size()));
     EXPECT_EQ(pipeline.buffers().bucket_count, static_cast<std::uint32_t>(table.total_bucket_count()));
     EXPECT_EQ(pipeline.buffers().value_count, static_cast<std::uint32_t>(table.total_value_count()));
 }
@@ -57,7 +57,7 @@ TEST_CASE(hunl_flat_pipeline_plan_covers_worker_ranges_for_stage_domains) {
                 EXPECT_TRUE(range.begin <= range.end);
                 cursor = range.end;
             }
-            EXPECT_EQ(cursor, static_cast<std::uint32_t>(graph.nodes.size()));
+            EXPECT_EQ(cursor, static_cast<std::uint32_t>(graph.node_meta.size()));
         }
     }
 }
@@ -97,7 +97,7 @@ TEST_CASE(hunl_flat_dcfr_exposes_built_pipeline_plan) {
     const auto& pipeline = solver.pipeline_plan();
     EXPECT_EQ(pipeline.stages().size(), 7U);
     EXPECT_EQ(pipeline.buffers().infoset_count, static_cast<std::uint32_t>(solver.graph().infosets.size()));
-    EXPECT_EQ(pipeline.buffers().node_count, static_cast<std::uint32_t>(solver.graph().nodes.size()));
+    EXPECT_EQ(pipeline.buffers().node_count, static_cast<std::uint32_t>(solver.graph().node_meta.size()));
     EXPECT_EQ(
         pipeline.stage(core::HUNLFlatPipelineStageId::BackwardCFV).worker_depth_ranges.size(),
         solver.worker_count());

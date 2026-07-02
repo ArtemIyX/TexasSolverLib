@@ -12,14 +12,14 @@ core::HUNLFlatSolveGraph make_cost_skew_graph() {
     graph.max_depth = 1;
     graph.max_actions = 4;
 
-    graph.nodes.resize(4);
     graph.node_meta.resize(4);
     graph.infosets = {
-        core::HUNLFlatInfoset{core::InfosetId{0}, 0, 1, {}, "a", 0, core::Street::Flop, 4},
-        core::HUNLFlatInfoset{core::InfosetId{1}, 1, 1, {}, "b", 0, core::Street::Flop, 4},
-        core::HUNLFlatInfoset{core::InfosetId{2}, 2, 1, {}, "c", 0, core::Street::Flop, 1},
-        core::HUNLFlatInfoset{core::InfosetId{3}, 3, 1, {}, "d", 0, core::Street::Flop, 1},
+        core::HUNLFlatInfoset{core::InfosetId{0}, 0, 1, {}, 0, 0, core::Street::Flop, 4},
+        core::HUNLFlatInfoset{core::InfosetId{1}, 1, 1, {}, 1, 0, core::Street::Flop, 4},
+        core::HUNLFlatInfoset{core::InfosetId{2}, 2, 1, {}, 2, 0, core::Street::Flop, 1},
+        core::HUNLFlatInfoset{core::InfosetId{3}, 3, 1, {}, 3, 0, core::Street::Flop, 1},
     };
+    graph.infoset_debug_keys = {"a", "b", "c", "d"};
     graph.infoset_nodes = {0, 1, 2, 3};
     graph.depth_order = {0, 1, 2, 3};
     graph.forward_order = graph.depth_order;
@@ -30,13 +30,6 @@ core::HUNLFlatSolveGraph make_cost_skew_graph() {
     graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] = core::HUNLFlatSlice{0, 4};
 
     auto set_decision = [&](std::size_t node_idx, core::InfosetId infoset_id, std::uint8_t action_count) {
-        graph.nodes[node_idx].infoset_id = infoset_id;
-        graph.nodes[node_idx].type = core::HUNLFlatNodeType::Decision;
-        graph.nodes[node_idx].player = 0;
-        graph.nodes[node_idx].action_count = action_count;
-        graph.nodes[node_idx].has_infoset = true;
-        graph.nodes[node_idx].street = core::Street::Flop;
-
         graph.node_meta[node_idx].infoset_id = infoset_id;
         graph.node_meta[node_idx].type = core::HUNLFlatNodeType::Decision;
         graph.node_meta[node_idx].player = 0;
@@ -172,7 +165,7 @@ TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
         EXPECT_EQ(worker.depth_reduce_ranges.size(), graph.depth_slices.size());
     }
     EXPECT_EQ(infoset_cursor, static_cast<std::uint32_t>(graph.infosets.size()));
-    EXPECT_EQ(node_cursor, static_cast<std::uint32_t>(graph.nodes.size()));
+    EXPECT_EQ(node_cursor, static_cast<std::uint32_t>(graph.node_meta.size()));
 
     for (std::size_t depth = 0; depth < graph.depth_slices.size(); ++depth) {
         const auto slice = graph.depth_slices[depth];

@@ -79,7 +79,7 @@ HUNLFlatPipelinePlan HUNLFlatPipelinePlan::build(
     const HUNLFlatParallelPlan& parallel_plan) {
     HUNLFlatPipelinePlan plan;
     plan.buffers_.infoset_count = static_cast<std::uint32_t>(graph.infosets.size());
-    plan.buffers_.node_count = static_cast<std::uint32_t>(graph.nodes.size());
+    plan.buffers_.node_count = static_cast<std::uint32_t>(graph.node_count());
     plan.buffers_.bucket_count = static_cast<std::uint32_t>(infoset_table.total_bucket_count());
     plan.buffers_.value_count = static_cast<std::uint32_t>(infoset_table.total_value_count());
     plan.buffers_.terminal_node_count =

@@ -100,7 +100,7 @@ TEST_CASE(hunl_solver_storage_worker_partitioning_covers_all_infosets_and_nodes)
     }
 
     EXPECT_EQ(infoset_cursor, static_cast<std::uint32_t>(graph.infosets.size()));
-    EXPECT_EQ(node_cursor, static_cast<std::uint32_t>(graph.nodes.size()));
+    EXPECT_EQ(node_cursor, static_cast<std::uint32_t>(graph.node_meta.size()));
 }
 
 TEST_CASE(hunl_solver_storage_small_bucket_counts_keep_stage_buffers_in_bounds) {
@@ -111,12 +111,12 @@ TEST_CASE(hunl_solver_storage_small_bucket_counts_keep_stage_buffers_in_bounds) 
         {1, 1},
         core::HUNLFlatValueLayout::InfosetHandAction);
     core::HUNLFlatWorkerScratch scratch;
-    scratch.ensure_capacity(graph.nodes.size(), graph.children.size(), table.total_bucket_count());
+    scratch.ensure_capacity(graph.node_meta.size(), graph.children.size(), table.total_bucket_count());
 
     EXPECT_EQ(scratch.bucket_reach.size(), table.total_bucket_count());
-    EXPECT_EQ(scratch.player0_reach.size(), graph.nodes.size());
-    EXPECT_EQ(scratch.player1_reach.size(), graph.nodes.size());
-    EXPECT_EQ(scratch.chance_reach.size(), graph.nodes.size());
+    EXPECT_EQ(scratch.player0_reach.size(), graph.node_meta.size());
+    EXPECT_EQ(scratch.player1_reach.size(), graph.node_meta.size());
+    EXPECT_EQ(scratch.chance_reach.size(), graph.node_meta.size());
     if (!table.meta().empty()) {
         const auto bucket_range = table.infoset_bucket_range(table.meta().front().id);
         EXPECT_TRUE(bucket_range.end <= scratch.bucket_reach.size());
