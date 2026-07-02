@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
@@ -245,6 +246,21 @@ HUNLRangePolicy resolve_range_policy(const HUNLConfig& config) {
     return HUNLRangePolicy::Uniform;
 }
 
+std::size_t configured_bucket_count(const HUNLConfig& config, Street street) {
+    switch (street) {
+        case Street::Flop:
+            return config.bucket_counts_by_street[0] > 0 ? config.bucket_counts_by_street[0] : 1326U;
+        case Street::Turn:
+            return config.bucket_counts_by_street[1] > 0 ? config.bucket_counts_by_street[1] : 1326U;
+        case Street::River:
+        case Street::Showdown:
+            return config.bucket_counts_by_street[2] > 0 ? config.bucket_counts_by_street[2] : 1326U;
+        case Street::Preflop:
+            return 1326U;
+    }
+    throw std::logic_error("invalid Street in configured_bucket_count");
+}
+
 void HUNLConfig::validate() const {
     if (depth_limit_plies > 1'000'000U) {
         throw std::invalid_argument("HUNLConfig.validate: depth_limit_plies is unreasonably large");
@@ -452,6 +468,8 @@ ActionContext HUNLState::action_context() const {
     ctx.force_allin_threshold = cfg.force_allin_threshold;
     ctx.min_bet_bb = cfg.min_bet_bb;
     ctx.include_all_in = cfg.include_all_in;
+    ctx.auto_all_in_spr_threshold = cfg.auto_all_in_spr_threshold;
+    ctx.allow_oop_flop_lead = cfg.allow_oop_flop_lead;
     ctx.street_action_count = static_cast<std::uint32_t>(current_street_tokens.size());
     return ctx;
 }
@@ -882,6 +900,22 @@ bool is_oop_flop_first_action(const ActionContext& ctx) {
            ctx.street_aggressor < 0;
 }
 
+double stack_to_pot_ratio(const ActionContext& ctx) {
+    const auto effective_stack = std::min(ctx.stacks[0], ctx.stacks[1]);
+    if (ctx.pot <= 0) {
+        return effective_stack > 0 ? std::numeric_limits<double>::infinity() : 0.0;
+    }
+    return static_cast<double>(effective_stack) / static_cast<double>(ctx.pot);
+}
+
+bool should_include_all_in(const ActionContext& ctx) {
+    if (ctx.include_all_in) {
+        return true;
+    }
+    return ctx.auto_all_in_spr_threshold.has_value() &&
+           stack_to_pot_ratio(ctx) <= *ctx.auto_all_in_spr_threshold;
+}
+
 std::uint8_t raise_cap(const ActionContext& ctx) {
     return is_preflop(ctx) ? ctx.preflop_raise_cap : ctx.postflop_raise_cap;
 }
@@ -1018,7 +1052,7 @@ std::vector<ActionId> enumerate_legal_actions(const ActionContext& ctx) {
     }
 
     const auto cap_reached = ctx.street_num_raises >= raise_cap(ctx);
-    const auto flop_no_donk = !facing_bet && is_oop_flop_first_action(ctx);
+    const auto flop_no_donk = !ctx.allow_oop_flop_lead && !facing_bet && is_oop_flop_first_action(ctx);
     if (!cap_reached && !flop_no_donk) {
         if (facing_bet) {
             const auto raises = enumerate_raises(ctx);
@@ -1030,7 +1064,7 @@ std::vector<ActionId> enumerate_legal_actions(const ActionContext& ctx) {
     }
 
     const auto can_actually_raise = stack > ctx.to_call;
-    if (ctx.include_all_in && !cap_reached && !flop_no_donk && can_actually_raise) {
+    if (should_include_all_in(ctx) && !cap_reached && !flop_no_donk && can_actually_raise) {
         actions.push_back(ACTION_ALL_IN);
     }
     return actions;
@@ -1063,6 +1097,54 @@ HUNLConfig benchmark_turn_subgame() {
         {card_to_int(14, 1), card_to_int(13, 3)},
         {card_to_int(12, 2), card_to_int(12, 1)},
     }};
+    return cfg;
+}
+
+HUNLConfig rta_flop_conservative() {
+    HUNLConfig cfg;
+    cfg.starting_stack = 1000;
+    cfg.starting_street = Street::Flop;
+    cfg.initial_board = {
+        card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2)};
+    cfg.initial_pot = 1000;
+    cfg.initial_contributions = {500, 500};
+    cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {card_to_int(14, 1), card_to_int(13, 3)},
+        {card_to_int(12, 2), card_to_int(12, 1)},
+    }};
+    cfg.flop_bet_fractions = std::vector<double>{0.33, 0.75};
+    cfg.turn_bet_fractions = std::vector<double>{0.50, 1.00};
+    cfg.river_bet_fractions = std::vector<double>{0.75};
+    cfg.raise_size_xs = {3.0};
+    cfg.postflop_raise_cap = 1;
+    cfg.include_all_in = false;
+    cfg.auto_all_in_spr_threshold = 2.5;
+    cfg.allow_oop_flop_lead = false;
+    cfg.bucket_counts_by_street = {64, 48, 32};
+    return cfg;
+}
+
+HUNLConfig rta_flop_balanced() {
+    HUNLConfig cfg;
+    cfg.starting_stack = 1000;
+    cfg.starting_street = Street::Flop;
+    cfg.initial_board = {
+        card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2)};
+    cfg.initial_pot = 1000;
+    cfg.initial_contributions = {500, 500};
+    cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {card_to_int(14, 1), card_to_int(13, 3)},
+        {card_to_int(12, 2), card_to_int(12, 1)},
+    }};
+    cfg.flop_bet_fractions = std::vector<double>{0.33, 0.75, 1.25};
+    cfg.turn_bet_fractions = std::vector<double>{0.50, 1.00};
+    cfg.river_bet_fractions = std::vector<double>{0.50, 1.00};
+    cfg.raise_size_xs = {3.0};
+    cfg.postflop_raise_cap = 1;
+    cfg.include_all_in = false;
+    cfg.auto_all_in_spr_threshold = 2.5;
+    cfg.allow_oop_flop_lead = false;
+    cfg.bucket_counts_by_street = {96, 64, 48};
     return cfg;
 }
 

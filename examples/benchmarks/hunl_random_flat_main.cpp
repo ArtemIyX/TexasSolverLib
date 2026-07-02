@@ -29,6 +29,12 @@ constexpr std::uint64_t kMemoryWarningBytes = 48ULL * 1024ULL * 1024ULL * 1024UL
 constexpr std::uint64_t kMemoryFailBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
 
 struct RandomConfig {
+    enum class Preset : std::uint8_t {
+        None = 0,
+        RTAFlopConservative = 1,
+        RTAFlopBalanced = 2,
+    };
+
     std::size_t workers = 16;
     std::uint32_t iterations = 10;
     std::uint32_t depth_limit_plies = 0;
@@ -37,6 +43,11 @@ struct RandomConfig {
     core::HUNLFlatStoragePrecision precision = core::HUNLFlatStoragePrecision::Float64;
     std::uint64_t seed = 0;
     bool debug = false;
+    Preset preset = Preset::None;
+    bool workers_overridden = false;
+    bool buckets_overridden = false;
+    bool street_overridden = false;
+    bool precision_overridden = false;
 };
 
 bool parse_uint64(std::string_view text, std::uint64_t& out) {
@@ -89,6 +100,12 @@ std::optional<core::HUNLFlatStoragePrecision> precision_from_text(std::string_vi
     return std::nullopt;
 }
 
+std::optional<RandomConfig::Preset> preset_from_text(std::string_view text) {
+    if (text == "conservative") return RandomConfig::Preset::RTAFlopConservative;
+    if (text == "balanced") return RandomConfig::Preset::RTAFlopBalanced;
+    return std::nullopt;
+}
+
 std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
     RandomConfig cfg;
     for (int i = 1; i < argc; ++i) {
@@ -97,6 +114,7 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
             if (!parse_workers(argv[++i], cfg.workers)) {
                 return std::nullopt;
             }
+            cfg.workers_overridden = true;
             continue;
         }
         if (arg == "--iterations" && i + 1 < argc) {
@@ -115,6 +133,7 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
             if (!parse_workers(argv[++i], cfg.hand_buckets)) {
                 return std::nullopt;
             }
+            cfg.buckets_overridden = true;
             continue;
         }
         if (arg == "--streets" && i + 1 < argc) {
@@ -123,6 +142,7 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
                 return std::nullopt;
             }
             cfg.street = *street;
+            cfg.street_overridden = true;
             continue;
         }
         if (arg == "--seed" && i + 1 < argc) {
@@ -137,6 +157,15 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
                 return std::nullopt;
             }
             cfg.precision = *precision;
+            cfg.precision_overridden = true;
+            continue;
+        }
+        if (arg == "--preset" && i + 1 < argc) {
+            const auto preset = preset_from_text(argv[++i]);
+            if (!preset.has_value()) {
+                return std::nullopt;
+            }
+            cfg.preset = *preset;
             continue;
         }
         if (arg == "--debug") {
@@ -145,12 +174,31 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
         }
         return std::nullopt;
     }
+    if (cfg.preset != RandomConfig::Preset::None) {
+        const auto preset_config =
+            cfg.preset == RandomConfig::Preset::RTAFlopConservative
+            ? core::rta_flop_conservative()
+            : core::rta_flop_balanced();
+        if (!cfg.workers_overridden) {
+            cfg.workers = 8;
+        }
+        if (!cfg.street_overridden) {
+            cfg.street = core::Street::Flop;
+        }
+        if (!cfg.buckets_overridden) {
+            cfg.hand_buckets = core::configured_bucket_count(preset_config, cfg.street);
+        }
+        if (!cfg.precision_overridden) {
+            cfg.precision = core::HUNLFlatStoragePrecision::Float32;
+        }
+    }
     return cfg;
 }
 
 void print_usage(const char* exe) {
     std::cerr << "Usage:\n"
               << "  " << exe << " [--workers N] [--iterations N] [--depth-limit N] [--buckets N] [--streets flop|turn|river] [--precision double|float] [--seed N] [--debug]\n\n"
+              << "  " << exe << " [--preset conservative|balanced] [--workers N] [--iterations N] [--depth-limit N] [--buckets N] [--precision double|float] [--seed N] [--debug]\n\n"
               << "Defaults:\n"
               << "  workers=16 iterations=10 depth-limit=0 buckets=1326 streets=river precision=double seed=0\n";
 }
@@ -175,6 +223,17 @@ std::string street_name(core::Street street) {
         default: return "unknown";
     }
 }
+
+std::string preset_name(RandomConfig::Preset preset) {
+    switch (preset) {
+        case RandomConfig::Preset::None: return "none";
+        case RandomConfig::Preset::RTAFlopConservative: return "rta-flop-conservative";
+        case RandomConfig::Preset::RTAFlopBalanced: return "rta-flop-balanced";
+    }
+    return "unknown";
+}
+
+
 
 std::string cards_to_string(const std::array<std::uint8_t, 2>& cards) {
     return core::card_to_string(cards[0]) + core::card_to_string(cards[1]);
@@ -233,11 +292,16 @@ RandomState make_random_state(const RandomConfig& cfg) {
     }
     std::shuffle(deck.begin(), deck.end(), rng);
 
-    core::HUNLConfig config;
-    config.starting_stack = 1000;
+    core::HUNLConfig config =
+        cfg.preset == RandomConfig::Preset::RTAFlopConservative ? core::rta_flop_conservative() :
+        cfg.preset == RandomConfig::Preset::RTAFlopBalanced ? core::rta_flop_balanced() :
+        core::HUNLConfig{};
     config.starting_street = cfg.street;
-    config.initial_pot = 150;
-    config.initial_contributions = {50, 100};
+    if (cfg.preset == RandomConfig::Preset::None) {
+        config.starting_stack = 1000;
+        config.initial_pot = 150;
+        config.initial_contributions = {50, 100};
+    }
     config.initial_board.assign(deck.begin(), deck.begin() + static_cast<std::ptrdiff_t>(board_count));
 
     std::array<std::array<std::uint8_t, 2>, 2> hole = {{
@@ -518,6 +582,7 @@ int main(int argc, char* argv[]) {
                   << " iterations=" << cfg.iterations
                   << " depth_limit=" << cfg.depth_limit_plies
                   << " buckets=" << cfg.hand_buckets
+                  << " preset=" << preset_name(cfg.preset)
                   << " street=" << street_name(cfg.street)
                   << " precision=" << precision_name(cfg.precision)
                   << " seed=" << cfg.seed

@@ -22,9 +22,16 @@ constexpr std::uint64_t kMemoryWarningBytes = 48ULL * 1024ULL * 1024ULL * 1024UL
 constexpr std::uint64_t kMemoryFailBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
 
 struct BenchConfig {
+    enum class Preset : std::uint8_t {
+        None = 0,
+        RTAFlopConservative = 1,
+        RTAFlopBalanced = 2,
+    };
+
     std::uint32_t iterations = 100;
     std::vector<std::size_t> workers;
     core::HUNLFlatValueLayout layout = core::HUNLFlatValueLayout::InfosetActionHand;
+    Preset preset = Preset::None;
 };
 
 bool parse_uint32(std::string_view text, std::uint32_t& out) {
@@ -62,8 +69,14 @@ bool parse_worker_list(std::string_view text, std::vector<std::size_t>& workers)
     return !workers.empty();
 }
 
+std::optional<BenchConfig::Preset> preset_from_text(std::string_view text) {
+    if (text == "conservative") return BenchConfig::Preset::RTAFlopConservative;
+    if (text == "balanced") return BenchConfig::Preset::RTAFlopBalanced;
+    return std::nullopt;
+}
+
 std::optional<BenchConfig> parse_args(int argc, char* argv[]) {
-    if (argc < 3 || argc > 4) {
+    if (argc < 3 || argc > 5) {
         return std::nullopt;
     }
 
@@ -75,12 +88,14 @@ std::optional<BenchConfig> parse_args(int argc, char* argv[]) {
         return std::nullopt;
     }
 
-    if (argc == 4) {
-        const std::string_view arg = argv[3];
+    for (int i = 3; i < argc; ++i) {
+        const std::string_view arg = argv[i];
         if (arg == "hand-action") {
             cfg.layout = core::HUNLFlatValueLayout::InfosetHandAction;
         } else if (arg == "action-hand") {
             cfg.layout = core::HUNLFlatValueLayout::InfosetActionHand;
+        } else if (const auto preset = preset_from_text(arg); preset.has_value()) {
+            cfg.preset = *preset;
         } else {
             return std::nullopt;
         }
@@ -91,10 +106,10 @@ std::optional<BenchConfig> parse_args(int argc, char* argv[]) {
 
 void print_usage(const char* exe) {
     std::cerr << "Usage:\n"
-              << "  " << exe << " <iterations> <workers> [action-hand|hand-action]\n\n"
+              << "  " << exe << " <iterations> <workers> [action-hand|hand-action] [conservative|balanced]\n\n"
               << "Examples:\n"
               << "  " << exe << " 100 1,2,4\n"
-              << "  " << exe << " 200 4 action-hand\n";
+              << "  " << exe << " 200 4 action-hand conservative\n";
 }
 
 std::string format_seconds(double seconds) {
@@ -182,6 +197,18 @@ std::string layout_name(core::HUNLFlatValueLayout layout) {
             return "hand-action";
         case core::HUNLFlatValueLayout::InfosetActionHand:
             return "action-hand";
+    }
+    return "unknown";
+}
+
+std::string preset_name(BenchConfig::Preset preset) {
+    switch (preset) {
+        case BenchConfig::Preset::None:
+            return "none";
+        case BenchConfig::Preset::RTAFlopConservative:
+            return "rta-flop-conservative";
+        case BenchConfig::Preset::RTAFlopBalanced:
+            return "rta-flop-balanced";
     }
     return "unknown";
 }
@@ -308,12 +335,20 @@ int main(int argc, char* argv[]) {
     }
 
     const auto cfg = *parsed;
-    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
+    const auto base_config =
+        cfg.preset == BenchConfig::Preset::RTAFlopConservative ? core::rta_flop_conservative() :
+        cfg.preset == BenchConfig::Preset::RTAFlopBalanced ? core::rta_flop_balanced() :
+        core::benchmark_turn_subgame();
+    const auto config = std::make_shared<const core::HUNLConfig>(base_config);
     const auto graph = core::HUNLFlatSolveGraph::build(config);
-    const std::array<std::size_t, 2> hand_count_per_player = {1326, 1326};
+    const auto bucket_count = cfg.preset == BenchConfig::Preset::None
+        ? 1326U
+        : static_cast<std::uint32_t>(core::configured_bucket_count(*config, config->starting_street));
+    const std::array<std::size_t, 2> hand_count_per_player = {bucket_count, bucket_count};
 
     std::cout << "Flat HUNL scheduler benchmark"
               << " layout=" << layout_name(cfg.layout)
+              << " preset=" << preset_name(cfg.preset)
               << " iterations=" << cfg.iterations
               << " infosets=" << graph.infosets.size()
               << " nodes=" << graph.node_meta.size() << "\n";

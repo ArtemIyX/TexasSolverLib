@@ -169,7 +169,8 @@ HUNLSolveOutput solve_hunl_postflop(
         auto shared = std::make_shared<const HUNLConfig>(config);
         const auto graph = HUNLFlatSolveGraph::build(shared);
         const auto flat_solve_mode = resolve_flat_solve_mode(config);
-        std::array<std::size_t, 2> bucket_count_per_player = {1326, 1326};
+        const auto configured_buckets = configured_bucket_count(config, config.starting_street);
+        std::array<std::size_t, 2> bucket_count_per_player = {configured_buckets, configured_buckets};
         if (config.initial_hole_cards.has_value()) {
             bucket_count_per_player = {1, 1};
         }

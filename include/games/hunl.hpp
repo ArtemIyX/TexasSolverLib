@@ -132,10 +132,13 @@ struct HUNLConfig {
     std::optional<std::vector<double>> river_bet_fractions = std::nullopt;
     std::vector<double> raise_size_xs = {3.0};
     bool include_all_in = true;
+    std::optional<double> auto_all_in_spr_threshold = std::nullopt;
     int force_allin_threshold = 1;
     int min_bet_bb = 1;
+    bool allow_oop_flop_lead = false;
     double rake_rate = 0.0;
     int rake_cap = 0;
+    std::array<std::uint16_t, 3> bucket_counts_by_street = {0, 0, 0};
     std::optional<std::string> abstraction_path = std::nullopt;
     std::optional<std::string> abstraction_version = std::nullopt;
     std::uint32_t depth_limit_plies = 0;
@@ -149,6 +152,7 @@ struct HUNLConfig {
 };
 
 HUNLRangePolicy resolve_range_policy(const HUNLConfig& config);
+std::size_t configured_bucket_count(const HUNLConfig& config, Street street);
 
 /**
  * @brief Runtime context for action enumeration.
@@ -173,6 +177,8 @@ struct ActionContext {
     int force_allin_threshold = 1;
     int min_bet_bb = 1;
     bool include_all_in = true;
+    std::optional<double> auto_all_in_spr_threshold = std::nullopt;
+    bool allow_oop_flop_lead = false;
     std::uint32_t street_action_count = 0;
 };
 
@@ -229,6 +235,8 @@ bool is_preflop(const ActionContext& ctx);
 const std::vector<double>& bet_menu(const ActionContext& ctx);
 std::vector<double> raise_menu(const ActionContext& ctx);
 bool is_oop_flop_first_action(const ActionContext& ctx);
+double stack_to_pot_ratio(const ActionContext& ctx);
+bool should_include_all_in(const ActionContext& ctx);
 std::uint8_t raise_cap(const ActionContext& ctx);
 int min_bet(const ActionContext& ctx);
 int force_allin_chip_threshold(const ActionContext& ctx);
@@ -244,6 +252,8 @@ std::vector<ActionId> enumerate_raises(const ActionContext& ctx);
 std::vector<ActionId> enumerate_legal_actions(const ActionContext& ctx);
 HUNLConfig default_tiny_subgame();
 HUNLConfig benchmark_turn_subgame();
+HUNLConfig rta_flop_conservative();
+HUNLConfig rta_flop_balanced();
 
 }  // namespace core
 
