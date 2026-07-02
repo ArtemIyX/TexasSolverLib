@@ -288,6 +288,8 @@ Scalar leaf heuristics are acceptable for first compile/test, but not for final 
 - Do not start with pure outcome sampling.
 - Do not use AS before external-sampling correctness is locked down.
 - Do not overload `HUNLConfig::use_pcs`; it is too narrow and underspecified for MCCFR.
+- Do not spend the first implementation pass on SIMD while the solver is still graph-bound, allocation-bound, or map-lookup-bound.
+- Do not claim a 64 GB target is met until peak memory is measured during lazy build, solve, merge, terminal evaluation, and root export.
 
 ## Greenfield Module Decision
 
@@ -362,12 +364,19 @@ src/solver/hunl_sampled_terminal.cpp
 include/solver/hunl_sampled_export.hpp
 src/solver/hunl_sampled_export.cpp
 
+include/solver/hunl_sampled_simd.hpp
+src/solver/hunl_sampled_simd.cpp
+
+include/solver/hunl_sampled_profile.hpp
+src/solver/hunl_sampled_profile.cpp
+
 tests/test_hunl_sampled_solver.cpp
 tests/test_hunl_sampled_storage.cpp
 tests/test_hunl_sampled_traversal.cpp
 tests/test_hunl_sampled_scheduler.cpp
 tests/test_hunl_sampled_builder.cpp
 tests/test_hunl_sampled_terminal.cpp
+tests/test_hunl_sampled_simd.cpp
 ```
 
 `HUNLFlatMCCFR` can still be used as the class name if we want to emphasize relation to the flat solver. `HUNLSampledSolver` is better if we want to signal that this is a new era module, not only a variant of the old flat DCFR class.
@@ -392,6 +401,8 @@ But production internals should be new:
 - `HUNLSampledTerminalEvaluator`
 - `HUNLSampledMemoryEstimate`
 - `HUNLSampledStrategyExporter`
+- `HUNLSampledSimdKernels`
+- `HUNLSampledProfiler`
 
 Add:
 
@@ -695,6 +706,63 @@ Hard checks:
 - warn if sparse rows approach dense table size;
 - print rows allocated / possible rows when a validation full graph exists.
 
+### 10. SIMD Row Kernels
+
+Purpose:
+
+- accelerate the bucket/action row math after sampled architecture is working;
+- keep scalar and SIMD implementations testable against each other;
+- prevent intrinsics from leaking across traversal, storage, and terminal code.
+
+Suggested files:
+
+```text
+include/solver/hunl_sampled_simd.hpp
+src/solver/hunl_sampled_simd.cpp
+tests/test_hunl_sampled_simd.cpp
+```
+
+Responsibilities:
+
+- regret matching for action-major bucket rows;
+- average strategy accumulation;
+- regret delta application;
+- row copy/fill/add/dot kernels;
+- optional terminal bucket weighted sums;
+- runtime or compile-time dispatch.
+
+Rules:
+
+- scalar reference path is mandatory;
+- SIMD path must be optional;
+- SIMD tests must compare against scalar;
+- no solver correctness should depend on a specific CPU instruction set.
+
+### 11. Profiling And Telemetry
+
+Purpose:
+
+- make memory and performance regressions obvious;
+- make the 10-15 second target measurable;
+- let us choose algorithmic optimization based on real bottlenecks.
+
+Profiler should collect:
+
+- build/cache time;
+- traversal time;
+- terminal/leaf time;
+- merge time;
+- export time;
+- worker imbalance;
+- sparse row/value counts;
+- public-state cache count;
+- worker delta peak bytes;
+- terminal cache bytes;
+- peak resident memory;
+- root strategy stability.
+
+The profiler should be cheap enough to leave enabled in benchmark/RTA builds.
+
 ## 64 GB Memory Plan
 
 The sampled solver must be designed to fit under 64 GB with room for OS, allocator overhead, exports, and evaluator caches. Use 56 GB as the practical hard ceiling and 48 GB as a warning ceiling.
@@ -844,6 +912,493 @@ depth limit:              street boundary or action-depth cap
 terminal dense matrices:  off
 public isomorphism:       on
 ```
+
+## Implementation Contract For Future Programmers
+
+This section is the short contract a future implementer should treat as non-negotiable.
+
+The new sampled solver is successful only if all of these are true:
+
+- it can return a root decision from the current public state inside a strict wall-clock budget;
+- it does not require building the full flop graph in production sampled mode;
+- it does not require allocating dense full-tree regret, average strategy, reach, node value, or action value arrays;
+- it keeps every major allocation visible in memory preflight and live diagnostics;
+- it can run with multiple worker threads without floating-point atomics in the traversal hot path;
+- it supports ranges, buckets, and depth-limited leaves from the first production path;
+- it can export only the root strategy without materializing every sparse row;
+- it keeps exact `HUNLFlatDCFR` available as a small-game oracle and regression baseline.
+
+Definition of done for the first production RTA version:
+
+```text
+mode:                    external-sampling MCCFR
+state expansion:         lazy sampled public-state cache
+storage:                 sparse regret + sparse average strategy
+threading:               worker-local trajectories + fixed-order merge
+precision:               Float32 global values, double local scratch
+deadline mode:           solve_for(10-15s)
+root export:             no full dense export
+memory hard ceiling:     56 GB resident memory
+memory warning:          48 GB resident memory
+fallback behavior:       reduce batch/actions/buckets/depth or fail clearly
+```
+
+Pull request acceptance gates:
+
+- a sampled config that estimates above 60 GB must be rejected before allocation;
+- a sampled config that estimates above 48 GB must print an explicit warning;
+- deterministic mode must reproduce identical output for the same seed and worker count;
+- static scheduling mode should match 1-worker vs N-worker results within a documented tolerance;
+- sampled mode must report traversals/sec, nodes/sec, unique infosets, sparse values, merge time, terminal time, and peak memory;
+- timeout must return the latest complete root snapshot and leave global storage consistent;
+- benchmarks must include at least one 10-second and one 15-second wall-clock run.
+
+## SIMD And Data-Oriented Optimization
+
+SIMD is useful for this solver, but it is not the first fix. The first fix is algorithmic: lazy public-state expansion, sparse infoset rows, sampled traversal, and bounded exports. SIMD should be added after profiling shows the solver spends meaningful time in contiguous bucket/action row math.
+
+Expected SIMD payoff:
+
+- high payoff: regret matching over bucket rows, average strategy accumulation, regret delta application, terminal bucket equity loops, range projection over buckets;
+- medium payoff: delta merge, row zero/fill/copy, dot products for action values, board-blocked bucket masks;
+- low payoff: unordered map lookups, RNG, branch-heavy state expansion, legal action generation.
+
+Rule of thumb:
+
+```text
+if row math is < 30 percent of runtime:
+    fix architecture, caching, allocation, or batching first
+if row math is >= 30 percent of runtime:
+    add SIMD kernels for the hottest row operations
+```
+
+Preferred production row layout:
+
+```text
+row[action][bucket]
+index = action * bucket_count + bucket
+```
+
+This matches an action-major layout such as `InfosetActionHand`. It lets a vector lane operate across consecutive buckets for the same action:
+
+```text
+load action 0 buckets b..b+lane
+load action 1 buckets b..b+lane
+load action 2 buckets b..b+lane
+sum positive regrets per lane
+write strategy[action][b..b+lane]
+```
+
+This is usually better than bucket-major layout because action count is small and bucket count is 32-128. Vectorizing across buckets gives more work per instruction.
+
+Bucket counts should prefer SIMD-friendly values:
+
+```text
+good: 32, 48, 64, 96, 128
+avoid: arbitrary odd counts unless required by abstraction quality
+```
+
+Do not add large per-row padding unless measured. Align row starts and use scalar tail handling. Current proposed bucket counts are already multiples of 8 or 16, which fits AVX2/AVX-512 well.
+
+Add a small SIMD abstraction rather than scattering intrinsics everywhere:
+
+```text
+include/solver/hunl_sampled_simd.hpp
+src/solver/hunl_sampled_simd.cpp
+tests/test_hunl_sampled_simd.cpp
+```
+
+Core kernels:
+
+```cpp
+void regret_matching_action_major_f32(
+    const float* regret,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float* strategy);
+
+void accumulate_average_strategy_action_major_f32(
+    const float* strategy,
+    const float* reach_or_weight,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float scale,
+    float* strategy_sum);
+
+void add_regret_delta_action_major_f32(
+    const float* action_values,
+    const float* node_values,
+    const float* cf_reach,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float* regret);
+
+void saxpy_f32(std::uint32_t n, float alpha, const float* x, float* y);
+double dot_f32_f64_accum(std::uint32_t n, const float* x, const float* y);
+```
+
+Implementation order:
+
+1. Keep scalar reference kernels.
+2. Add tests that compare SIMD vs scalar bitwise or with tiny tolerance.
+3. Add compile-time detection for available instruction sets.
+4. Add runtime dispatch only if builds need to run on mixed CPUs.
+5. Profile each kernel independently before enabling it in the solver.
+
+Suggested instruction-set policy:
+
+- baseline: scalar portable C++;
+- first optimized target: AVX2 + FMA;
+- optional later target: AVX-512 if the deployment CPU supports it and downclocking does not erase the gain.
+
+Do not make AVX-512 required. Many consumer desktops either lack it or reduce frequency enough that AVX2 can be faster in wall-clock terms.
+
+SIMD details that matter:
+
+- use 64-byte alignment for large value arrays when practical;
+- keep row starts aligned, but avoid wasteful padding for every small row;
+- process bucket blocks in vector-width chunks and handle tails scalar;
+- use `restrict`-style assumptions where the compiler supports them;
+- avoid virtual calls inside row kernels;
+- avoid denormals by clamping tiny probabilities or enabling flush-to-zero if profiling shows denormal stalls;
+- keep local accumulation in `double` where value quality matters, but store global regret/average strategy in `float`;
+- avoid false sharing when multiple workers write scratch buffers by aligning worker scratch to cache lines.
+
+SIMD should also be used in terminal and leaf evaluation:
+
+- vectorize bucket equity lookup and weighted sums;
+- evaluate all buckets for one action in contiguous blocks;
+- batch leaf requests by public board or evaluator key;
+- keep terminal cache output in action-major bucket arrays when possible.
+
+Expected realistic outcome:
+
+```text
+row-kernel speedup:      2x-8x depending on CPU and bucket count
+whole-solver speedup:    limited by sampled traversal, cache misses, builder work, and merge cost
+```
+
+SIMD is a multiplier after the solver is sparse and cache-friendly. It is not a substitute for sampling and lazy allocation.
+
+## Algorithmic Optimization Menu
+
+These optimizations are more important than micro-optimizing instruction count. Add them in the order profiles justify them.
+
+### 1. External Sampling First
+
+External sampling is the baseline production estimator:
+
+- sample chance;
+- sample opponent actions;
+- branch all traversing-player actions;
+- update only visited traversing-player infosets;
+- update average strategy along visited paths.
+
+It gives a good balance between memory, variance, and implementation difficulty.
+
+### 2. Public Chance Scheduling
+
+Naive chance sampling can waste batches by revisiting the same runouts too often. Add chance scheduling after basic sampling works:
+
+- sample public chance by suit-isomorphic outcome classes;
+- stratify batches across turn/river classes;
+- avoid duplicate public runouts inside one worker minibatch when possible;
+- track runout coverage per solve;
+- bias exploration toward high-probability and high-impact runouts, with importance correction when needed.
+
+For RTA, stratified public chance sampling can improve stability faster than simply increasing traversal count.
+
+### 3. Prefix Batching
+
+Many trajectories share prefixes from the root. Group work to reuse cache:
+
+- group trajectories by first sampled chance outcome;
+- group by root action when traversing player branches;
+- process minibatches that share public board and legal action menu;
+- reuse row handles and terminal evaluator inputs within the group.
+
+This reduces repeated lazy-builder lookups, board decoding, bucket projection, and terminal cache misses.
+
+### 4. Root-Focused Resolving
+
+The RTA solve only needs the current decision to be strong. It should not spend equal effort everywhere.
+
+Do:
+
+- focus updates near the current root;
+- export root and immediate child strategy first;
+- spend more samples on high-reach branches;
+- reduce sample budget for lines that are unreachable under both current ranges;
+- use smaller/deeper abstraction only where the current decision can realistically go.
+
+Do not:
+
+- export the full strategy map during a timed decision;
+- spend time refining distant low-reach river branches if root action mix is still unstable.
+
+### 5. Action Abstraction And Progressive Widening
+
+Action count is a direct multiplier for traversing-player branches and row size.
+
+RTA preset should start small:
+
+```text
+flop:  check/call, fold, small bet/raise, large bet/raise, all-in only at low SPR
+turn:  check/call, fold, one or two sizes, all-in by SPR rule
+river: check/call, fold, value size, bluff size, all-in by SPR rule
+```
+
+Progressive widening:
+
+1. Start with a tiny safe action menu.
+2. Run early batches.
+3. Add extra sizes only if root EV/action regret suggests they matter.
+4. Keep fold/check/call legal safety actions.
+
+This is allowed because the goal is strong RTA play, not full dense-action GTO.
+
+### 6. Regret-Based And Value-Based Pruning
+
+Pruning can be a major speedup, but it must be conservative.
+
+Candidate pruning rules:
+
+- skip actions with very negative cumulative regret for a cooldown window;
+- prune actions dominated by simple value bounds;
+- prune raise sizes that are illegal, redundant, or nearly identical after abstraction rounding;
+- keep a minimum exploration probability for actions that can become relevant again;
+- periodically unprune to avoid permanent early-sample mistakes.
+
+RTA-safe rule:
+
+```text
+never prune all aggressive actions
+never prune fold/call/check safety actions
+never permanently prune from the first few batches
+```
+
+### 7. Lazy Discounting For Sparse DCFR
+
+If DCFR-style discounting is added, do it lazily:
+
+```text
+row stores last_discount_iter
+when row is visited:
+    apply all missed discount factors to that row
+    update last_discount_iter
+```
+
+Never run a global discount pass over all sparse rows every iteration. That would recreate an exact-solver style full sweep.
+
+### 8. Delayed Averaging And Linear Weighting
+
+Average strategy can be noisy early. Add configurable averaging:
+
+- no averaging for first `warmup_batches`;
+- linear CFR-style weight after warmup;
+- optional higher weight for later batches inside a 15-second solve;
+- root snapshot should report how many batches contributed to average strategy.
+
+This often improves RTA stability because early random samples do not dominate the exported strategy.
+
+### 9. Variance Reduction Baselines
+
+After correctness is stable, add baselines:
+
+- moving-average value baseline per public state;
+- baseline per infoset/action when memory allows;
+- terminal board equity baseline;
+- depth-limited leaf baseline from value table or future model.
+
+Baselines can reduce sample variance, but they add memory and complexity. They should be optional and capped.
+
+### 10. Importance Weight Control
+
+Correct MCCFR needs correct importance weights. For pure validation mode, do not clip or bias weights.
+
+For RTA exploitative mode, optional biased stabilization may be acceptable if it improves decisions:
+
+- cap extreme weights;
+- floor tiny sampling probabilities;
+- mix current strategy with exploration policy;
+- report that the mode is biased and not an unbiased MCCFR estimator.
+
+Keep unbiased validation mode available.
+
+### 11. Adaptive Bucket Resolution
+
+Bucket count should depend on street, pot, and time budget:
+
+- fewer buckets on flop, more where decisions are terminal/river-heavy;
+- fewer buckets in low-reach branches;
+- larger bucket count only near root or high-EV branches;
+- always keep a stable mapping for rows already allocated.
+
+Do not change bucket meaning inside a row after allocation. Adaptive abstraction must be encoded in the row shape/key.
+
+### 12. Private Bucket Sampling Later
+
+First production path should not sample private buckets. It should update all buckets inside a visited public infoset.
+
+If bucket row math remains too expensive after SIMD:
+
+- sample private buckets or bucket blocks;
+- importance-correct sampled bucket updates;
+- stratify by range mass so important buckets are seen often;
+- keep exact bucket-update mode for validation.
+
+This is a later optimization because mistakes here can silently break ranges and blockers.
+
+### 13. Sparse Row Compression
+
+For blueprint or long-running modes:
+
+- compress cold rows to `float16` or quantized format only after testing;
+- keep hot rows in `float32`;
+- optionally store strategy sum less frequently than regret in RTA mode;
+- checkpoint cold rows to disk in offline blueprint mode.
+
+Do not use lossy compression in first RTA production path.
+
+### 14. Merge Optimization
+
+Worker-local deltas are correct but can become expensive.
+
+Improve in stages:
+
+1. Store deltas unsorted in worker-local buffers.
+2. Sort by row id before merge.
+3. Combine duplicate row deltas inside the worker before global merge.
+4. Use row-local contiguous arrays for hot rows.
+5. Merge workers in deterministic order.
+6. Only add dynamic scheduling after deterministic static mode is tested.
+
+If merge exceeds 20 percent of wall-clock time, it is a first-class bottleneck.
+
+### 15. Warm Start And Blueprint Hooks
+
+Warm start is one of the best RTA accelerators:
+
+- initialize root strategy from a previous solve if the spot is close;
+- initialize sparse rows from a saved blueprint;
+- initialize leaf values from offline solved public states;
+- keep abstraction/version metadata so old rows are not mixed with incompatible configs.
+
+The solver should still be able to run cold from scratch for tests.
+
+## 64 GB Fit Checklist
+
+A future programmer should be able to answer these before running a big flop solve:
+
+- How many public states can be cached before the hard cap?
+- How many sparse values can be allocated before the hard cap?
+- How many bytes can each worker delta buffer use?
+- How large can terminal and leaf caches grow?
+- How much memory does root export allocate?
+- Does this config accidentally request dense validation storage?
+- What adaptive fallback triggers first?
+
+Use this approximate production budget:
+
+```text
+hard process target:        <= 56 GB
+warning threshold:          >= 48 GB
+reject threshold:           >= 60 GB estimated
+
+sampled public cache:       <= 12 GB
+sparse regret + average:    <= 24 GB
+terminal/leaf caches:       <= 8 GB
+all worker scratch/deltas:  <= 8 GB
+exports/diagnostics:        <= 4 GB
+remaining safety:           >= 4 GB
+```
+
+Example sparse table math:
+
+```text
+bucket_count = 64
+action_count = 4
+values_per_row = 256
+two Float32 arrays = 256 * 8 bytes = 2048 bytes per row before metadata
+
+5 million visited rows ~= 10.2 GB before metadata
+10 million visited rows ~= 20.5 GB before metadata
+```
+
+This is why row count and action count matter as much as bucket count.
+
+Memory fallback order for RTA:
+
+1. reduce worker minibatch/delta size;
+2. flush and merge deltas more often;
+3. cap terminal cache;
+4. reduce action menu;
+5. reduce bucket preset;
+6. increase depth limiting;
+7. reduce public-state cache or evict cold states;
+8. fail before allocation if the config is still unsafe.
+
+Do not let Windows start paging. If the process pages, the 10-15 second target is gone.
+
+## Profiling And Telemetry Requirements
+
+Do not optimize blind. Every timed solve should print a compact profile line.
+
+Minimum counters:
+
+```text
+time_total_ms
+time_build_ms
+time_traverse_ms
+time_merge_ms
+time_terminal_ms
+time_export_ms
+workers
+traversals
+traversals_per_sec
+nodes_visited
+nodes_per_sec
+unique_public_states
+unique_infosets
+sparse_rows
+sparse_values
+worker_delta_bytes_peak
+terminal_cache_bytes
+rss_peak_bytes
+root_strategy_delta
+root_entropy
+seed
+```
+
+Additional counters for tuning:
+
+- sampled chance nodes;
+- sampled opponent actions;
+- traversing-player branches expanded;
+- pruned actions;
+- AS action sample ratio;
+- leaf evaluations;
+- terminal cache hit rate;
+- public-state cache hit rate;
+- row lookup cache hit rate;
+- SIMD kernel time;
+- scalar fallback time;
+- merge duplicate row count;
+- worker imbalance percent.
+
+Use these thresholds:
+
+```text
+merge time > 20 percent:          improve delta aggregation or batch size
+terminal time > 25 percent:       improve board/equity cache or batch leaf eval
+builder/cache time > 15 percent:  group prefixes and cache legal actions
+export time > 100 ms:             root-only export is still too heavy
+worker imbalance > 20 percent:    use deterministic work queue or smaller chunks
+rss > 48 GB:                      warn and adapt
+rss > 56 GB:                      stop or fallback
+```
+
+Profile output should be machine-readable enough for CSV/JSON logs. RTA tuning will need many runs across boards, ranges, and seeds.
 
 ## RTA Quality Strategy
 
@@ -1229,9 +1784,44 @@ If we choose the new-era names, add these files instead of putting everything in
 - `hunl_sampled_scheduler`: worker creation, batch partitioning, deterministic merge.
 - `hunl_sampled_terminal`: fold/showdown/depth-limited sampled terminal values.
 - `hunl_sampled_export`: sparse and dense average-strategy export.
+- `hunl_sampled_simd`: scalar/SIMD row kernels for regret matching, accumulation, deltas, and terminal bucket sums.
+- `hunl_sampled_profile`: timing counters, memory counters, root stability metrics, and benchmark log formatting.
 - `hunl_sampled_solver`: top-level facade tying all pieces together.
 
 Keep the interfaces narrow. The top-level solver should own the subsystems; traversal should receive references/views, not global mutable state.
+
+Do not put SIMD directly into traversal first. Traversal should call row-kernel functions through a small interface so scalar validation, AVX2, and future AVX-512 paths stay interchangeable.
+
+### `include/solver/hunl_sampled_simd.hpp` and `src/solver/hunl_sampled_simd.cpp`
+
+Add:
+
+- scalar reference kernels;
+- optional AVX2/FMA kernels;
+- optional AVX-512 kernels later;
+- action-major row kernels;
+- terminal bucket weighted-sum kernels;
+- feature flags in profile output showing which kernel path was used.
+
+Tests:
+
+- compare scalar vs SIMD regret matching;
+- compare scalar vs SIMD average strategy accumulation;
+- compare scalar vs SIMD regret delta application;
+- test bucket counts 32, 48, 64, 96, and a non-multiple tail case;
+- verify no NaN/negative strategy probabilities.
+
+### `include/solver/hunl_sampled_profile.hpp` and `src/solver/hunl_sampled_profile.cpp`
+
+Add:
+
+- low-overhead timers;
+- counters for traversal/build/merge/terminal/export;
+- memory counters for cache, sparse table, deltas, terminal cache, and export;
+- root strategy snapshot deltas;
+- CSV/JSON-ish benchmark line formatter.
+
+The profile object should not allocate heavily during the hot loop.
 
 ### `src/solver/hunl_flat_mccfr.cpp`
 
@@ -1346,12 +1936,18 @@ Add sampled worker-count tests after the core solver is stable.
    - `src/solver/hunl_sampled_terminal.cpp`
    - `include/solver/hunl_sampled_export.hpp`
    - `src/solver/hunl_sampled_export.cpp`
+   - `include/solver/hunl_sampled_simd.hpp`
+   - `src/solver/hunl_sampled_simd.cpp`
+   - `include/solver/hunl_sampled_profile.hpp`
+   - `src/solver/hunl_sampled_profile.cpp`
 2. Add empty or minimal classes with compile-time tests.
 3. Register files in `CMakeLists.txt`.
 4. Add initial tests:
    - sampled config validates defaults;
    - sampled storage can allocate one row;
    - sampled scheduler partitions trajectory ids deterministically.
+   - sampled SIMD scalar reference kernels match simple hand-computed rows.
+   - sampled profile counters can be formatted without allocation-heavy hot-loop work.
 5. Keep `HUNLFlatDCFR` untouched.
 
 Acceptance:
@@ -1499,6 +2095,27 @@ Acceptance:
 - wall-clock-to-exploitability improves;
 - baseline memory stays bounded.
 
+### Phase 8A: Data Layout And SIMD Pass
+
+Do this after the sparse/lazy solver is working and profiling shows row math is a real bottleneck.
+
+1. Confirm production rows use action-major contiguous bucket layout.
+2. Add scalar reference row kernels in `hunl_sampled_simd`.
+3. Replace ad hoc row loops with calls to scalar kernels.
+4. Add tests for regret matching, average strategy accumulation, regret deltas, and terminal weighted sums.
+5. Add AVX2/FMA kernels.
+6. Add optional runtime dispatch or compile-time feature flags.
+7. Add profile counters for scalar vs SIMD kernel time.
+8. Benchmark with bucket counts 32, 48, 64, 96, and 128.
+
+Acceptance:
+
+- scalar and SIMD outputs match within tolerance;
+- SIMD path is optional and safe to disable;
+- row-kernel benchmark improves materially;
+- whole-solver benchmark improves enough to justify keeping the complexity;
+- no increase in peak memory except small alignment overhead.
+
 ### Phase 9: RTA Deadline Mode
 
 1. Add `run_until(deadline)` or `solve_for(std::chrono::milliseconds budget)`.
@@ -1568,6 +2185,42 @@ Acceptance:
 - blueprint save/load roundtrips exactly in validation mode;
 - warm-start improves first-second root strategy stability.
 
+### Phase 12: RTA Algorithmic Tuning
+
+Do this after the baseline RTA solver returns correct timed decisions.
+
+1. Add public chance scheduling:
+   - suit-isomorphic class stratification;
+   - runout coverage counters;
+   - duplicate-runout reduction inside minibatches.
+2. Add prefix batching:
+   - group by early chance outcome;
+   - group by root action where useful;
+   - reuse public-state, legal-action, and bucket-projection caches.
+3. Add conservative pruning:
+   - regret-based cooldown pruning;
+   - value-bound dominated-action pruning;
+   - safety rules for fold/check/call and at least one aggressive option.
+4. Add progressive action widening:
+   - start with tiny action menu;
+   - add sizes only when regret/EV says they matter.
+5. Add delayed averaging:
+   - skip early noisy batches;
+   - linearly weight later batches;
+   - expose average contribution count in diagnostics.
+6. Add warm starts:
+   - previous local solve;
+   - saved sparse rows;
+   - future blueprint rows;
+   - compatible leaf/value cache.
+
+Acceptance:
+
+- each optimization can be toggled independently;
+- unbiased validation mode remains available;
+- RTA mode improves root stability or EV proxy under the same 10-15 second budget;
+- memory caps still hold with all tuning enabled.
+
 ## Benchmark Plan
 
 Run exact and sampled against the same small config first:
@@ -1578,6 +2231,7 @@ ctest --test-dir build -C Release -R "pcs|hunl_flat_mccfr|hunl_flat_dcfr|ranges_
 build/Release/texas_solver_hunl_random_flat.exe --preset conservative --workers 1 --iterations 10 --sampling public-chance --sample-traversals 1024 --seed 7 --precision float
 build/Release/texas_solver_hunl_random_flat.exe --preset conservative --workers 8 --iterations 10 --sampling external --sample-traversals 8192 --seed 7 --precision float
 build/Release/texas_solver_hunl_random_flat.exe --preset conservative --workers 8 --sampling external --time-budget-ms 15000 --seed 7 --precision float
+build/Release/texas_solver_hunl_random_flat.exe --preset conservative --workers 8 --sampling external --time-budget-ms 15000 --seed 7 --precision float --profile-json sampled_profile.json
 ```
 
 Track:
@@ -1590,6 +2244,14 @@ Track:
 - memory peak/preflight;
 - merge seconds;
 - worker imbalance;
+- builder/cache seconds;
+- terminal/leaf seconds;
+- export seconds;
+- terminal cache hit rate;
+- public-state cache hit rate;
+- SIMD/scalar row-kernel seconds after SIMD phase lands;
+- root strategy delta over recent batches;
+- root entropy;
 - exploitability on toy and small HUNL only.
 
 For large flop, do not require exact exploitability at first. Use:
@@ -1612,6 +2274,7 @@ precision: Float32 table, double local arithmetic
 traversals_per_iteration: 8192 or 16384
 action sampling: off
 private bucket sampling: off
+SIMD: off or scalar reference kernels only
 ```
 
 First production target:
@@ -1624,6 +2287,7 @@ workers: static trajectory batches
 precision: Float32 table, double local arithmetic
 public chance: sampled with suit-isomorphic class probabilities
 action sampling: optional AS only after external mode is validated
+SIMD: scalar kernels first, AVX2 after row math is profiled hot
 ```
 
 ## Final Recommendation
