@@ -62,9 +62,6 @@ static_assert(std::is_trivially_copyable_v<HUNLFlatInfosetTableMeta>,
 #pragma warning(disable: 4324)
 #endif
 struct alignas(HUNL_CACHELINE_BYTES) HUNLFlatWorkerScratch {
-    HUNLAlignedVector<double> terminal_values;
-    HUNLAlignedVector<double> node_values;
-    HUNLAlignedVector<double> action_values;
     HUNLAlignedVector<double> player0_reach;
     HUNLAlignedVector<double> player1_reach;
     HUNLAlignedVector<double> chance_reach;

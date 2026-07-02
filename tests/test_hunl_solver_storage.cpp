@@ -114,8 +114,9 @@ TEST_CASE(hunl_solver_storage_small_bucket_counts_keep_stage_buffers_in_bounds) 
     scratch.ensure_capacity(graph.nodes.size(), graph.children.size(), table.total_bucket_count());
 
     EXPECT_EQ(scratch.bucket_reach.size(), table.total_bucket_count());
-    EXPECT_EQ(scratch.action_values.size(), graph.children.size());
-    EXPECT_EQ(scratch.node_values.size(), graph.nodes.size());
+    EXPECT_EQ(scratch.player0_reach.size(), graph.nodes.size());
+    EXPECT_EQ(scratch.player1_reach.size(), graph.nodes.size());
+    EXPECT_EQ(scratch.chance_reach.size(), graph.nodes.size());
     if (!table.meta().empty()) {
         const auto bucket_range = table.infoset_bucket_range(table.meta().front().id);
         EXPECT_TRUE(bucket_range.end <= scratch.bucket_reach.size());

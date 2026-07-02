@@ -323,20 +323,15 @@ TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     core::HUNLFlatWorkerScratch scratch;
     scratch.ensure_capacity(6, 5, 4, 3, 2);
 
-    scratch.terminal_values[0] = 1.0;
-    scratch.node_values[1] = 2.0;
-    scratch.action_values[2] = 3.0;
-    scratch.player0_reach[3] = 4.0;
-    scratch.player1_reach[4] = 5.0;
-    scratch.chance_reach[5] = 6.0;
+    scratch.player0_reach[3] = 1.0;
+    scratch.player1_reach[4] = 2.0;
+    scratch.chance_reach[5] = 3.0;
+    scratch.bucket_reach[1] = 4.0;
     scratch.dirty_nodes.push_back(3);
     scratch.dirty_buckets.push_back(1);
 
     scratch.reset_values();
 
-    EXPECT_EQ(scratch.terminal_values.size(), 6U);
-    EXPECT_EQ(scratch.node_values.size(), 6U);
-    EXPECT_EQ(scratch.action_values.size(), 5U);
     EXPECT_EQ(scratch.player0_reach.size(), 6U);
     EXPECT_EQ(scratch.player1_reach.size(), 6U);
     EXPECT_EQ(scratch.chance_reach.size(), 6U);
@@ -346,12 +341,10 @@ TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
     EXPECT_EQ(scratch.local_bucket_mass.size(), 2U);
     EXPECT_TRUE(scratch.dirty_nodes.empty());
     EXPECT_TRUE(scratch.dirty_buckets.empty());
-    EXPECT_EQ(scratch.terminal_values[0], 0.0);
-    EXPECT_EQ(scratch.node_values[1], 0.0);
-    EXPECT_EQ(scratch.action_values[2], 0.0);
     EXPECT_EQ(scratch.player0_reach[3], 0.0);
     EXPECT_EQ(scratch.player1_reach[4], 0.0);
     EXPECT_EQ(scratch.chance_reach[5], 0.0);
+    EXPECT_EQ(scratch.bucket_reach[1], 0.0);
 }
 
 TEST_CASE(hunl_flat_worker_scratch_ensure_capacity_sizes_row_buffers_and_resets_dirty_tracking) {
@@ -365,8 +358,9 @@ TEST_CASE(hunl_flat_worker_scratch_ensure_capacity_sizes_row_buffers_and_resets_
 
     scratch.ensure_capacity(5, 4, 6, 7, 8);
 
-    EXPECT_EQ(scratch.terminal_values.size(), 5U);
-    EXPECT_EQ(scratch.action_values.size(), 4U);
+    EXPECT_EQ(scratch.player0_reach.size(), 5U);
+    EXPECT_EQ(scratch.player1_reach.size(), 5U);
+    EXPECT_EQ(scratch.chance_reach.size(), 5U);
     EXPECT_EQ(scratch.bucket_reach.size(), 6U);
     EXPECT_EQ(scratch.row_values.size(), 7U);
     EXPECT_EQ(scratch.row_weights.size(), 7U);

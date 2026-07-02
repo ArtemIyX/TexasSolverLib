@@ -207,14 +207,12 @@ HUNLFlatMemoryEstimate estimate_memory(
 
     if (options.include_worker_scratch) {
         const auto node_count = static_cast<std::uint64_t>(graph.nodes.size());
-        const auto edge_count = static_cast<std::uint64_t>(graph.children.size());
         const auto bucket_count = static_cast<std::uint64_t>(infoset_table.total_bucket_count());
         const auto max_child_count = static_cast<std::uint64_t>(options.max_child_count);
         const auto max_bucket_count = static_cast<std::uint64_t>(options.max_bucket_count);
         std::uint64_t per_worker_bytes = 0;
         per_worker_bytes += sizeof(HUNLFlatWorkerScratch);
-        per_worker_bytes += node_count * sizeof(double) * 5ULL;
-        per_worker_bytes += edge_count * sizeof(double);
+        per_worker_bytes += node_count * sizeof(double) * 3ULL;
         per_worker_bytes += bucket_count * sizeof(double);
         per_worker_bytes += max_child_count * sizeof(double) * 2ULL;
         per_worker_bytes += max_bucket_count * sizeof(double);
@@ -239,9 +237,6 @@ HUNLFlatMemoryEstimate estimate_memory(
 }
 
 void HUNLFlatWorkerScratch::reset_values() noexcept {
-    std::fill(terminal_values.begin(), terminal_values.end(), 0.0);
-    std::fill(node_values.begin(), node_values.end(), 0.0);
-    std::fill(action_values.begin(), action_values.end(), 0.0);
     std::fill(player0_reach.begin(), player0_reach.end(), 0.0);
     std::fill(player1_reach.begin(), player1_reach.end(), 0.0);
     std::fill(chance_reach.begin(), chance_reach.end(), 0.0);
@@ -269,9 +264,7 @@ void HUNLFlatWorkerScratch::ensure_capacity(
     std::size_t total_bucket_count,
     std::size_t max_child_count,
     std::size_t max_bucket_count) {
-    terminal_values.assign(node_count, 0.0);
-    node_values.assign(node_count, 0.0);
-    action_values.assign(edge_count, 0.0);
+    (void)edge_count;
     player0_reach.assign(node_count, 0.0);
     player1_reach.assign(node_count, 0.0);
     chance_reach.assign(node_count, 0.0);
