@@ -18,6 +18,9 @@
 
 namespace {
 
+constexpr std::uint64_t kMemoryWarningBytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kMemoryFailBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
+
 struct BenchConfig {
     std::uint32_t iterations = 100;
     std::vector<std::size_t> workers;
@@ -104,6 +107,73 @@ std::string format_seconds(double seconds) {
         oss << std::fixed << std::setprecision(3) << seconds << " s";
     }
     return oss.str();
+}
+
+std::string format_bytes(std::uint64_t bytes) {
+    constexpr double kib = 1024.0;
+    constexpr double mib = kib * 1024.0;
+    constexpr double gib = mib * 1024.0;
+    std::ostringstream oss;
+    if (bytes >= static_cast<std::uint64_t>(gib)) {
+        oss << std::fixed << std::setprecision(2) << static_cast<double>(bytes) / gib << " GiB";
+    } else if (bytes >= static_cast<std::uint64_t>(mib)) {
+        oss << std::fixed << std::setprecision(2) << static_cast<double>(bytes) / mib << " MiB";
+    } else if (bytes >= static_cast<std::uint64_t>(kib)) {
+        oss << std::fixed << std::setprecision(2) << static_cast<double>(bytes) / kib << " KiB";
+    } else {
+        oss << bytes << " B";
+    }
+    return oss.str();
+}
+
+std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
+    std::size_t max_width = 0;
+    for (const auto& meta : graph.node_meta) {
+        max_width = std::max<std::size_t>(
+            max_width,
+            std::max<std::size_t>(meta.child_count, meta.chance_count));
+    }
+    return max_width;
+}
+
+std::size_t max_bucket_width(const core::HUNLFlatInfosetTable& table) {
+    std::size_t max_width = 0;
+    for (const auto& meta : table.meta()) {
+        max_width = std::max<std::size_t>(max_width, meta.bucket_count);
+    }
+    return max_width;
+}
+
+void print_memory_estimate(const core::HUNLFlatMemoryEstimate& estimate) {
+    std::cout << "  memory estimate\n";
+    std::cout << "    " << std::setw(18) << std::left << "graph"
+              << format_bytes(estimate.graph_bytes) << "\n";
+    std::cout << "    " << std::setw(18) << std::left << "infoset_table"
+              << format_bytes(estimate.infoset_table_bytes) << "\n";
+    std::cout << "    " << std::setw(18) << std::left << "solver_buffers"
+              << format_bytes(estimate.solver_buffers_bytes) << "\n";
+    std::cout << "    " << std::setw(18) << std::left << "worker_scratch"
+              << format_bytes(estimate.worker_scratch_bytes) << "\n";
+    std::cout << "    " << std::setw(18) << std::left << "parallel_plan"
+              << format_bytes(estimate.parallel_plan_bytes) << "\n";
+    std::cout << "    " << std::setw(18) << std::left << "auxiliary"
+              << format_bytes(estimate.auxiliary_bytes) << "\n";
+    std::cout << "    " << std::setw(18) << std::left << "total"
+              << format_bytes(estimate.total_bytes()) << "\n";
+}
+
+bool enforce_memory_guardrails(const core::HUNLFlatMemoryEstimate& estimate) {
+    if (estimate.total_bytes() > kMemoryFailBytes) {
+        std::cerr << "fatal: estimated memory " << format_bytes(estimate.total_bytes())
+                  << " exceeds hard limit of " << format_bytes(kMemoryFailBytes)
+                  << "; sampled mode is not implemented for this benchmark, aborting.\n";
+        return false;
+    }
+    if (estimate.total_bytes() > kMemoryWarningBytes) {
+        std::cerr << "warning: estimated memory " << format_bytes(estimate.total_bytes())
+                  << " exceeds warning threshold of " << format_bytes(kMemoryWarningBytes) << ".\n";
+    }
+    return true;
 }
 
 std::string layout_name(core::HUNLFlatValueLayout layout) {
@@ -251,13 +321,23 @@ int main(int argc, char* argv[]) {
     for (const auto workers : cfg.workers) {
         const auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player, cfg.layout);
         const auto plan = core::HUNLFlatParallelPlan::build(graph, table, workers);
+        core::HUNLFlatMemoryEstimateOptions memory_options;
+        memory_options.max_child_count = max_backward_row_width(graph);
+        memory_options.max_bucket_count = max_bucket_width(table);
+        const auto memory = core::estimate_memory(graph, table, workers, memory_options);
+
+        std::cout << "\nworkers=" << workers << "\n";
+        print_memory_estimate(memory);
+        if (!enforce_memory_guardrails(memory)) {
+            return 2;
+        }
+
         core::HUNLFlatDCFR solver(graph, hand_count_per_player, cfg.layout, workers);
         const auto start = std::chrono::steady_clock::now();
         solver.run_iterations(cfg.iterations);
         const auto finish = std::chrono::steady_clock::now();
 
-        std::cout << "\nworkers=" << workers
-                  << " total=" << format_seconds(std::chrono::duration<double>(finish - start).count()) << "\n";
+        std::cout << "  total=" << format_seconds(std::chrono::duration<double>(finish - start).count()) << "\n";
         print_expected_backward_costs(plan);
         print_stage_summary(solver.profile());
         print_worker_diagnostics(solver.scheduler_diagnostics(), cfg.iterations);

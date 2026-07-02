@@ -7,6 +7,11 @@ namespace core {
 
 namespace {
 
+template <class T, class Allocator>
+std::uint64_t vector_storage_bytes(const std::vector<T, Allocator>& values) {
+    return static_cast<std::uint64_t>(values.capacity()) * sizeof(T);
+}
+
 std::vector<HUNLFlatRange> partition_range(std::uint32_t total_count, std::size_t worker_count) {
     const auto workers = std::max<std::size_t>(1, worker_count);
     std::vector<HUNLFlatRange> ranges;
@@ -131,6 +136,107 @@ std::vector<HUNLFlatRange> partition_depth_slice_by_cost(
 }
 
 }  // namespace
+
+std::uint64_t HUNLFlatMemoryEstimate::total_bytes() const noexcept {
+    return graph_bytes +
+        infoset_table_bytes +
+        solver_buffers_bytes +
+        worker_scratch_bytes +
+        parallel_plan_bytes +
+        auxiliary_bytes;
+}
+
+HUNLFlatMemoryEstimate estimate_memory(
+    const HUNLFlatSolveGraph& graph,
+    const HUNLFlatInfosetTable& infoset_table,
+    std::size_t worker_count,
+    const HUNLFlatMemoryEstimateOptions& options) {
+    HUNLFlatMemoryEstimate estimate;
+    const auto workers = std::max<std::size_t>(1, worker_count);
+
+    estimate.graph_bytes += sizeof(HUNLFlatSolveGraph);
+    estimate.graph_bytes += vector_storage_bytes(graph.nodes);
+    estimate.graph_bytes += vector_storage_bytes(graph.node_meta);
+    estimate.graph_bytes += vector_storage_bytes(graph.children);
+    estimate.graph_bytes += vector_storage_bytes(graph.actions);
+    estimate.graph_bytes += vector_storage_bytes(graph.chance_outcomes);
+    estimate.graph_bytes += vector_storage_bytes(graph.infosets);
+    estimate.graph_bytes += vector_storage_bytes(graph.infoset_nodes);
+    estimate.graph_bytes += vector_storage_bytes(graph.forward_order);
+    estimate.graph_bytes += vector_storage_bytes(graph.reverse_order);
+    estimate.graph_bytes += vector_storage_bytes(graph.node_depths);
+    estimate.graph_bytes += vector_storage_bytes(graph.street_order);
+    estimate.graph_bytes += vector_storage_bytes(graph.depth_slices);
+    estimate.graph_bytes += vector_storage_bytes(graph.depth_order);
+    estimate.graph_bytes += vector_storage_bytes(graph.depth_worker_ranges);
+    estimate.graph_bytes += vector_storage_bytes(graph.terminal_nodes);
+    estimate.graph_bytes += vector_storage_bytes(graph.terminal_node_values);
+    estimate.graph_bytes += vector_storage_bytes(graph.fold_terminal_nodes);
+    estimate.graph_bytes += vector_storage_bytes(graph.fold_terminal_values);
+    estimate.graph_bytes += vector_storage_bytes(graph.showdown_terminal_nodes);
+    estimate.graph_bytes += vector_storage_bytes(graph.showdown_terminal_values);
+    for (const auto& node : graph.nodes) {
+        estimate.graph_bytes += vector_storage_bytes(node.board);
+    }
+    for (const auto& meta : graph.node_meta) {
+        estimate.graph_bytes += vector_storage_bytes(meta.board);
+    }
+    for (const auto& infoset : graph.infosets) {
+        estimate.graph_bytes += vector_storage_bytes(infoset.board);
+        estimate.graph_bytes += static_cast<std::uint64_t>(infoset.key.capacity()) * sizeof(char);
+    }
+    for (const auto& ranges : graph.depth_worker_ranges) {
+        estimate.graph_bytes += vector_storage_bytes(ranges);
+    }
+
+    estimate.infoset_table_bytes += sizeof(HUNLFlatInfosetTable);
+    estimate.infoset_table_bytes += vector_storage_bytes(infoset_table.meta());
+    estimate.infoset_table_bytes +=
+        static_cast<std::uint64_t>(infoset_table.total_value_count()) * sizeof(double) * 3ULL;
+
+    if (options.include_solver_buffers) {
+        const auto node_count = static_cast<std::uint64_t>(graph.nodes.size());
+        const auto edge_count = static_cast<std::uint64_t>(graph.children.size());
+        const auto bucket_count = static_cast<std::uint64_t>(infoset_table.total_bucket_count());
+        const auto infoset_count = static_cast<std::uint64_t>(graph.infosets.size());
+        estimate.solver_buffers_bytes += node_count * sizeof(double) * 5ULL;
+        estimate.solver_buffers_bytes += edge_count * sizeof(double);
+        estimate.solver_buffers_bytes += bucket_count * sizeof(double) * 2ULL;
+        estimate.solver_buffers_bytes += infoset_count * sizeof(double);
+    }
+
+    if (options.include_worker_scratch) {
+        const auto node_count = static_cast<std::uint64_t>(graph.nodes.size());
+        const auto edge_count = static_cast<std::uint64_t>(graph.children.size());
+        const auto bucket_count = static_cast<std::uint64_t>(infoset_table.total_bucket_count());
+        const auto max_child_count = static_cast<std::uint64_t>(options.max_child_count);
+        const auto max_bucket_count = static_cast<std::uint64_t>(options.max_bucket_count);
+        std::uint64_t per_worker_bytes = 0;
+        per_worker_bytes += sizeof(HUNLFlatWorkerScratch);
+        per_worker_bytes += node_count * sizeof(double) * 5ULL;
+        per_worker_bytes += edge_count * sizeof(double);
+        per_worker_bytes += bucket_count * sizeof(double);
+        per_worker_bytes += max_child_count * sizeof(double) * 2ULL;
+        per_worker_bytes += max_bucket_count * sizeof(double);
+        per_worker_bytes += node_count * sizeof(std::uint32_t);
+        per_worker_bytes += bucket_count * sizeof(std::uint32_t);
+        estimate.worker_scratch_bytes += per_worker_bytes * static_cast<std::uint64_t>(workers);
+    }
+
+    if (options.include_parallel_plan) {
+        const auto depth_count = static_cast<std::uint64_t>(graph.depth_slices.size());
+        estimate.parallel_plan_bytes += sizeof(HUNLFlatParallelPlan);
+        estimate.parallel_plan_bytes +=
+            static_cast<std::uint64_t>(workers) * sizeof(HUNLFlatWorkerAssignment);
+        estimate.parallel_plan_bytes +=
+            static_cast<std::uint64_t>(workers) * depth_count * sizeof(HUNLFlatRange) * 2ULL;
+        estimate.parallel_plan_bytes +=
+            static_cast<std::uint64_t>(workers) * depth_count * sizeof(std::uint64_t);
+    }
+
+    estimate.auxiliary_bytes += options.auxiliary_bytes;
+    return estimate;
+}
 
 void HUNLFlatWorkerScratch::reset_values() noexcept {
     std::fill(terminal_values.begin(), terminal_values.end(), 0.0);

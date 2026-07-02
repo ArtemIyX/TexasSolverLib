@@ -102,6 +102,32 @@ struct HUNLFlatParallelPlan {
         std::size_t worker_count);
 };
 
+struct HUNLFlatMemoryEstimate {
+    std::uint64_t graph_bytes = 0;
+    std::uint64_t infoset_table_bytes = 0;
+    std::uint64_t solver_buffers_bytes = 0;
+    std::uint64_t worker_scratch_bytes = 0;
+    std::uint64_t parallel_plan_bytes = 0;
+    std::uint64_t auxiliary_bytes = 0;
+
+    [[nodiscard]] std::uint64_t total_bytes() const noexcept;
+};
+
+struct HUNLFlatMemoryEstimateOptions {
+    bool include_solver_buffers = true;
+    bool include_worker_scratch = true;
+    bool include_parallel_plan = true;
+    std::size_t max_child_count = 0;
+    std::size_t max_bucket_count = 0;
+    std::uint64_t auxiliary_bytes = 0;
+};
+
+[[nodiscard]] HUNLFlatMemoryEstimate estimate_memory(
+    const HUNLFlatSolveGraph& graph,
+    const HUNLFlatInfosetTable& infoset_table,
+    std::size_t worker_count,
+    const HUNLFlatMemoryEstimateOptions& options = {});
+
 class HUNLFlatInfosetTable {
 public:
     static HUNLFlatInfosetTable build(

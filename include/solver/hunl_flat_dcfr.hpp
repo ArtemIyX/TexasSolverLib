@@ -104,6 +104,7 @@ public:
     [[nodiscard]] const HUNLFlatSchedulerDiagnostics& scheduler_diagnostics() const noexcept;
     [[nodiscard]] const HUNLFlatBucketMap* bucket_map() const noexcept;
     [[nodiscard]] const HUNLFlatPipelinePlan& pipeline_plan() const noexcept;
+    [[nodiscard]] HUNLFlatMemoryEstimate memory_estimate() const;
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
     [[nodiscard]] HUNLFlatAverageStrategyTable export_average_strategy_table() const;

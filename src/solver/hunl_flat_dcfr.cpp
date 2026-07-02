@@ -17,6 +17,35 @@ namespace core {
 
 namespace {
 
+template <class T, class Allocator>
+std::uint64_t vector_storage_bytes(const std::vector<T, Allocator>& values) {
+    return static_cast<std::uint64_t>(values.capacity()) * sizeof(T);
+}
+
+std::uint64_t estimate_bucket_map_bytes(const HUNLFlatBucketMap& bucket_map) {
+    std::uint64_t bytes = sizeof(HUNLFlatBucketMap);
+    for (std::uint32_t infoset_index = 0;; ++infoset_index) {
+        const auto id = InfosetId{infoset_index};
+        try {
+            const auto& entry = bucket_map.entry(id);
+            bytes += sizeof(HUNLFlatBucketEntry);
+            bytes += vector_storage_bytes(entry.board);
+            bytes += static_cast<std::uint64_t>(entry.canonical_board.capacity()) * sizeof(char);
+            bytes += vector_storage_bytes(entry.dense_bucket_ids);
+            bytes += vector_storage_bytes(entry.bucket_hand_counts);
+            bytes += vector_storage_bytes(entry.bucket_weights);
+        } catch (const std::out_of_range&) {
+            break;
+        }
+    }
+    return bytes;
+}
+
+std::uint64_t estimate_terminal_table_bytes(const HUNLBucketTerminalTable& terminal_table) {
+    (void)terminal_table;
+    return sizeof(HUNLBucketTerminalTable);
+}
+
 double prior_bucket_weight(
     const HUNLFlatBucketMap* bucket_map,
     const HUNLFlatInfosetTableMeta& infoset_meta,
@@ -310,6 +339,19 @@ const HUNLFlatBucketMap* HUNLFlatDCFR::bucket_map() const noexcept {
 
 const HUNLFlatPipelinePlan& HUNLFlatDCFR::pipeline_plan() const noexcept {
     return pipeline_.plan();
+}
+
+HUNLFlatMemoryEstimate HUNLFlatDCFR::memory_estimate() const {
+    HUNLFlatMemoryEstimateOptions options;
+    options.max_child_count = max_backward_row_width(graph_);
+    options.max_bucket_count = max_bucket_width(infoset_table_);
+    if (bucket_map_) {
+        options.auxiliary_bytes += estimate_bucket_map_bytes(*bucket_map_);
+    }
+    if (terminal_table_) {
+        options.auxiliary_bytes += estimate_terminal_table_bytes(*terminal_table_);
+    }
+    return estimate_memory(graph_, infoset_table_, worker_count_, options);
 }
 
 void HUNLFlatDCFR::add_stage_seconds(

@@ -25,6 +25,9 @@
 
 namespace {
 
+constexpr std::uint64_t kMemoryWarningBytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kMemoryFailBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
+
 struct RandomConfig {
     std::size_t workers = 16;
     std::uint32_t iterations = 10;
@@ -284,6 +287,66 @@ void set_flat_backend_env() {
 #endif
 }
 
+std::string format_bytes(std::uint64_t bytes) {
+    constexpr double kib = 1024.0;
+    constexpr double mib = kib * 1024.0;
+    constexpr double gib = mib * 1024.0;
+    std::ostringstream oss;
+    if (bytes >= static_cast<std::uint64_t>(gib)) {
+        oss << std::fixed << std::setprecision(2) << static_cast<double>(bytes) / gib << " GiB";
+    } else if (bytes >= static_cast<std::uint64_t>(mib)) {
+        oss << std::fixed << std::setprecision(2) << static_cast<double>(bytes) / mib << " MiB";
+    } else if (bytes >= static_cast<std::uint64_t>(kib)) {
+        oss << std::fixed << std::setprecision(2) << static_cast<double>(bytes) / kib << " KiB";
+    } else {
+        oss << bytes << " B";
+    }
+    return oss.str();
+}
+
+std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
+    std::size_t max_width = 0;
+    for (const auto& meta : graph.node_meta) {
+        max_width = std::max<std::size_t>(
+            max_width,
+            std::max<std::size_t>(meta.child_count, meta.chance_count));
+    }
+    return max_width;
+}
+
+std::size_t max_bucket_width(const core::HUNLFlatInfosetTable& table) {
+    std::size_t max_width = 0;
+    for (const auto& meta : table.meta()) {
+        max_width = std::max<std::size_t>(max_width, meta.bucket_count);
+    }
+    return max_width;
+}
+
+void print_memory_estimate(const core::HUNLFlatMemoryEstimate& estimate) {
+    std::cout << "memory_preflight:\n";
+    std::cout << "  graph=" << format_bytes(estimate.graph_bytes) << "\n";
+    std::cout << "  infoset_table=" << format_bytes(estimate.infoset_table_bytes) << "\n";
+    std::cout << "  solver_buffers=" << format_bytes(estimate.solver_buffers_bytes) << "\n";
+    std::cout << "  worker_scratch=" << format_bytes(estimate.worker_scratch_bytes) << "\n";
+    std::cout << "  parallel_plan=" << format_bytes(estimate.parallel_plan_bytes) << "\n";
+    std::cout << "  auxiliary=" << format_bytes(estimate.auxiliary_bytes) << "\n";
+    std::cout << "  total=" << format_bytes(estimate.total_bytes()) << "\n";
+}
+
+bool enforce_memory_guardrails(const core::HUNLFlatMemoryEstimate& estimate) {
+    if (estimate.total_bytes() > kMemoryFailBytes) {
+        std::cerr << "fatal: estimated memory " << format_bytes(estimate.total_bytes())
+                  << " exceeds hard limit of " << format_bytes(kMemoryFailBytes)
+                  << "; sampled mode is not implemented for this benchmark, aborting.\n";
+        return false;
+    }
+    if (estimate.total_bytes() > kMemoryWarningBytes) {
+        std::cerr << "warning: estimated memory " << format_bytes(estimate.total_bytes())
+                  << " exceeds warning threshold of " << format_bytes(kMemoryWarningBytes) << ".\n";
+    }
+    return true;
+}
+
 void set_profile_env(bool enabled) {
 #if defined(_MSC_VER)
     _putenv_s("TEXASSOLVER_PROFILE", enabled ? "1" : "0");
@@ -314,6 +377,18 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     auto shared = std::make_shared<const core::HUNLConfig>(random_state.config);
     const auto graph = core::HUNLFlatSolveGraph::build(shared);
     const std::array<std::size_t, 2> buckets = {hand_buckets, hand_buckets};
+    const auto table = core::HUNLFlatInfosetTable::build(
+        graph,
+        buckets,
+        core::HUNLFlatValueLayout::InfosetHandAction);
+    core::HUNLFlatMemoryEstimateOptions memory_options;
+    memory_options.max_child_count = max_backward_row_width(graph);
+    memory_options.max_bucket_count = max_bucket_width(table);
+    const auto memory = core::estimate_memory(graph, table, workers, memory_options);
+    print_memory_estimate(memory);
+    if (!enforce_memory_guardrails(memory)) {
+        throw std::runtime_error("estimated memory exceeds configured benchmark limit");
+    }
     core::HUNLFlatDCFR solver(
         graph,
         buckets,
