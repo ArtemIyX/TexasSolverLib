@@ -28,6 +28,14 @@ External:
 - Emergent Mind MCCFR overview, used as a secondary index of variants and risks: https://www.emergentmind.com/topics/monte-carlo-counterfactual-regret-minimization-cfr
 - Variance Reduction in Monte Carlo Counterfactual Regret Minimization, Schmid et al., 2018: https://arxiv.org/abs/1809.03057
 - Stochastic Regret Minimization in Extensive-Form Games, Farina/Kroer/Sandholm, 2020: https://arxiv.org/abs/2002.08493
+- DeepStack: Expert-Level Artificial Intelligence in No-Limit Poker, Moravcik et al., 2017: https://arxiv.org/abs/1701.01724
+- Depth-Limited Solving for Imperfect-Information Games, Brown/Sandholm/Amos, 2018: https://arxiv.org/abs/1805.08195
+- Value Functions for Depth-Limited Solving in Zero-Sum Imperfect-Information Games, Kovarik et al., 2019: https://arxiv.org/abs/1906.06412
+- DecisionHoldem: Safe Depth-Limited Solving With Diverse Opponents for Imperfect-Information Games, Zhou et al., 2022: https://arxiv.org/abs/2201.11580
+- Pluribus / Superhuman AI for multiplayer poker summary: https://en.wikipedia.org/wiki/Pluribus_(poker_bot)
+- Libratus summary and match details: https://en.wikipedia.org/wiki/Libratus
+- OpenSpiel open-source game/research framework: https://github.com/google-deepmind/open_spiel
+- PokerSkill public poker-AI repository and evaluation notes: https://github.com/lbn187/PokerSkill
 
 Project files:
 
@@ -143,6 +151,273 @@ This is a better fit for flop because:
 - worker-local sparse deltas avoid atomics and false sharing.
 
 The tradeoff is variance. One sampled iteration is not equivalent to one exact iteration. We should compare by wall-clock and nodes visited, not by raw iteration count.
+
+## Product Context And Real Problem
+
+The product is a high-performance HUNL postflop solving engine. It should be usable as:
+
+- an offline research solver;
+- a benchmark tool for comparing abstractions and algorithms;
+- a real-time local re-solving engine for current public states;
+- a data generator for future value networks and blueprint-style strategies.
+
+This document intentionally scopes the work to solver technology, offline evaluation, controlled benchmarks, and research. It should not include client automation, screen scraping, stealth botting, online-room integration, anti-detection logic, or instructions for violating poker-site rules. The engineering target is still real-time strength: given a current public state, ranges, stack/pot/action context, and legal action abstraction, return a strong root strategy inside a strict time budget.
+
+Real-time poker solving is hard because every decision is an imperfect-information subgame:
+
+- the solver does not know private cards exactly;
+- both players have ranges, not single hands;
+- actions reveal information and alter ranges;
+- bet sizing creates enormous branching;
+- turn/river runouts create a public-chance explosion;
+- exact GTO quality is far beyond a 10-15 second desktop budget;
+- a solver that pages memory or touches the full flop tree loses the decision window.
+
+The practical product is not "solve poker completely now." The product is:
+
+```text
+given one public poker state:
+  build a bounded abstract lookahead
+  preserve range and blocker correctness
+  sample the most useful future branches
+  update strategy as much as possible before deadline
+  return a stable root action mix with diagnostics
+```
+
+This is why memory and performance are product requirements, not implementation details. A theoretically beautiful solver that allocates 90 GB or spends 18 seconds per exact iteration is not usable for real-time decisions on a 64 GB desktop.
+
+## Real-Time Solver Lifecycle
+
+In a controlled/offline setting, an RTA-style poker solver is just a strict-deadline re-solver.
+
+Input:
+
+- current public board;
+- street;
+- pot and stack state;
+- action history;
+- legal actions or action-abstraction preset;
+- player to act;
+- estimated ranges for both players;
+- bucket abstraction;
+- time budget;
+- optional warm start.
+
+Processing:
+
+1. validate state and ranges;
+2. build or find root public state;
+3. project ranges through blockers;
+4. choose action abstraction;
+5. run sampled/depth-limited MCCFR batches until deadline;
+6. periodically snapshot root strategy;
+7. stop cleanly at budget;
+8. export root action probabilities and diagnostics.
+
+Output:
+
+- root action mix;
+- optional action values;
+- confidence/stability metrics;
+- memory and time profile;
+- fallback/timeout status;
+- optional training labels if running offline.
+
+The product loop is therefore:
+
+```text
+state in -> bounded solve -> root strategy out
+```
+
+It is not:
+
+```text
+state in -> full game-tree solve -> full strategy export
+```
+
+This distinction should guide every implementation choice.
+
+## Why Approximate Near-GTO Can Be Enough
+
+We do not need a mathematically exact Nash equilibrium to build a strong poker engine.
+
+Public evidence:
+
+- DeepStack defeated professional HUNL players with statistical significance while using continual re-solving, sparse action lookahead, depth limits, and learned counterfactual value estimates rather than a full exact game solve.
+- DeepStack used restricted actions and depth-limited lookahead; its paper reports sparse lookahead games around `10^7` decision points solved in under five seconds on a GTX 1080-class machine.
+- DeepStack trained value networks from solved random poker situations: 10 million random turn games and 1 million random flop games. This supports our plan to generate many solved subgames for future neural leaf/value training.
+- Libratus beat top HUNL professionals using blueprint solving, nested/endgame solving, and self-improvement; it was not simply a full exact solve of no-limit hold'em at decision time.
+- Pluribus beat elite players in multiplayer no-limit hold'em with a blueprint and real-time search, and its public summaries emphasize that it used practical approximations rather than exact Nash guarantees for multiplayer poker.
+- DecisionHoldem reports strong results using safe depth-limited subgame solving and explicit opponent range handling, including wins against Slumbot and OpenStack in its experiments.
+- The Real-Time Parallel CFR paper explicitly frames strength as the number of useful CFR iterations completed inside a few-second decision budget, with pruning, abstraction, depth limiting, and parallelism as core ingredients.
+
+Engineering conclusion:
+
+```text
+good abstraction + fast re-solving + stable ranges + enough samples
+can beat many weaker strategies
+without exact full-game Nash equilibrium
+```
+
+This does not mean approximation is free. Bad abstraction can be highly exploitable. The solver must track stability, avoid obviously dominated actions, preserve range/blocker semantics, and keep validation mode for small exact comparisons.
+
+For lower-stakes or weaker-player environments, the bar is even more practical:
+
+- avoid major strategic mistakes;
+- avoid obvious overfold/overbluff patterns;
+- select reasonable bet sizes;
+- preserve mixed strategies enough to avoid being predictable;
+- exploit population leaks only in explicit exploitative modes;
+- return a robust root action under time pressure.
+
+The strongest useful system is probably a hybrid:
+
+```text
+offline:
+  solve many subgames
+  train value/leaf networks
+  build warm-start blueprint rows
+
+online/current-state:
+  load/warm-start
+  run sampled depth-limited MCCFR
+  export root strategy before deadline
+```
+
+The user's idea of generating a very large number of solved or near-solved subgames for a neural network is aligned with DeepStack-style value training. The document should treat "1 billion games" as an aspirational data scale, not a single monolithic solve. The path is many small bounded subgames, deterministic metadata, compressed training rows, and strict quality filters.
+
+## Lessons From Public Poker AI And Open Repos
+
+Public systems and repositories show useful patterns:
+
+- OpenSpiel is a research framework with C++ core APIs and Python bindings. It is useful as a reference for clean game abstractions, CFR variants, tests, and reproducible experiments, but not as a drop-in high-performance HUNL RTA engine.
+- DeepStack shows the importance of continual re-solving, sparse lookahead actions, depth limits, and learned counterfactual values.
+- Libratus shows the strength of blueprint plus subgame/endgame solving and post-hoc improvement of weak lines.
+- Pluribus shows that imperfect but strong approximations can beat elite humans in complex poker settings, especially when combined with blueprint strategy and real-time search.
+- DecisionHoldem shows that safe depth-limited solving with opponent range modeling is a practical open research direction.
+- PokerSkill is not a solver architecture to copy for this project, but it is evidence that even structured action grounding and reasonable poker abstractions can produce much stronger decisions than naive play.
+
+What not to copy:
+
+- generic Python-first loops for the production hot path;
+- string-heavy state representations;
+- per-node object graphs;
+- broad framework abstractions inside inner traversal;
+- code that is easy to read but allocates on every action or node.
+
+What to copy conceptually:
+
+- tiny reproducible game tests;
+- explicit game/state/action APIs;
+- solver variants hidden behind stable interfaces;
+- benchmark scripts with reproducible seeds;
+- clear separation of game rules, abstraction, solving, evaluation, and export.
+
+## Core Hard Problems And Deep Rocks
+
+These are the places where the implementation can quietly fail even if the code compiles.
+
+### 1. State Explosion
+
+No-limit hold'em explodes in three dimensions:
+
+- public cards;
+- private hand/range combinations;
+- bet/action histories.
+
+The solver must attack all three:
+
+- public cards: sample chance and use suit isomorphism;
+- private hands: use buckets/ranges and only consider private sampling later;
+- actions: use tight action abstraction and progressive widening.
+
+### 2. Memory Explosion
+
+Memory fails before compute if we allocate:
+
+- full graph;
+- dense full infoset table;
+- dense current strategy;
+- dense reach arrays;
+- dense terminal matrices;
+- per-worker graph-sized scratch;
+- full strategy export.
+
+Every array must answer:
+
+```text
+is this needed for the current sampled batch?
+can it be sparse?
+can it be recomputed?
+can it be per-worker scratch instead of global?
+can it be root-only for RTA export?
+```
+
+### 3. Variance
+
+MCCFR is noisy. A fast bad estimate is not useful.
+
+Mitigations:
+
+- external sampling before outcome sampling;
+- enough trajectories per batch;
+- stratified public chance;
+- delayed averaging;
+- root stability counters;
+- seed A/B tests;
+- conservative exploration floors;
+- validation on small exact games.
+
+### 4. Range Correctness
+
+Ranges are the heart of poker solving. A fast solver with wrong blockers is garbage.
+
+Rules:
+
+- public board must zero impossible private combos;
+- action updates must preserve bucket/range semantics;
+- terminal equity must use valid blocked ranges;
+- depth-limited leaf values must receive the correct range summary;
+- any private bucket sampling must use importance correction.
+
+### 5. Abstraction Leakage
+
+Abstraction makes solving possible, but can create strategic holes.
+
+Guardrails:
+
+- keep safety actions;
+- do not over-merge strategically different bet sizes;
+- validate on small exact analogs;
+- test multiple action menus;
+- keep exploitative/population modes separate from unbiased validation mode.
+
+### 6. Real-Time Deadline Pressure
+
+Deadline behavior must be designed, not bolted on.
+
+Rules:
+
+- each batch has a bounded maximum time;
+- export root strategy is cheap;
+- timeout returns last complete snapshot;
+- no final full-table normalization;
+- no surprise allocation during the final second.
+
+### 7. CPU Cache And Memory Bandwidth
+
+The 64 GB RAM budget is not the performance budget. RAM is slow compared with cache. A solver that randomly walks tens of GB per second will bottleneck on memory bandwidth and cache misses.
+
+Design for locality:
+
+- flat arrays;
+- action-major contiguous rows;
+- compact ids;
+- sorted merges;
+- row handles cached inside traversal frames;
+- per-worker scratch reused;
+- no pointer-heavy object graph in hot traversal;
+- no strings/hash allocations in inner loops.
 
 ## RTA Goal And Success Definition
 
@@ -913,6 +1188,259 @@ terminal dense matrices:  off
 public isomorphism:       on
 ```
 
+## Target Hardware: Ryzen 9 9950X3D Class Desktop
+
+The practical target machine is a Ryzen 9 9950X3D-class desktop:
+
+```text
+cores/threads:        16 cores / 32 threads
+L3 cache:             about 128 MB total
+RAM target:           64 GB
+OS target:            Windows first
+build target:         C++ Release, AVX2-capable
+decision budget:      10-15 seconds
+```
+
+Important CPU reality:
+
+- The L3 cache is not the same as RAM. It is a small hot working-set accelerator.
+- 128 MB total L3 does not mean every worker can freely share 128 MB with uniform latency.
+- X3D desktop CPUs can have asymmetric CCD/cache topology. Benchmark and optionally pin worker groups instead of assuming all cores behave identically.
+- SMT threads can help when the solver stalls on memory, but can hurt if the hot loop is compute/SIMD bound. Benchmark physical cores first, then add SMT.
+- Windows scheduling can move threads between CCDs. Add an optional affinity/worker-placement benchmark mode later.
+
+9950X3D design goal:
+
+```text
+keep each worker's hot scratch tiny
+keep shared hot rows contiguous
+keep minibatch working set cache-resident when possible
+stream sparse rows predictably
+avoid random pointer chasing across tens of GB
+```
+
+Suggested first worker counts:
+
+```text
+validation:       1 worker
+first parallel:   4 workers
+cache-aware:      8 workers, one CCD-sized group
+full CPU:         16 workers
+SMT experiment:   24-32 workers only if benchmark improves
+```
+
+Do not assume "more threads = faster." For sampled MCCFR the common bottlenecks are:
+
+- random sparse row lookup;
+- terminal cache misses;
+- worker delta memory growth;
+- merge bandwidth;
+- allocator contention;
+- branch misprediction in traversal;
+- cache misses from pointer-heavy state objects.
+
+The solver should report speed by worker count and pick a default from data.
+
+## C++ Hot-Loop Engineering Rules
+
+The code should be clear and extensible, but the traversal and row-update hot paths must be data-oriented.
+
+Strict hot-loop bans:
+
+- no `std::string`;
+- no string formatting;
+- no heap allocation;
+- no `new` / `delete`;
+- no `std::shared_ptr`;
+- no `std::function`;
+- no virtual dispatch;
+- no logging;
+- no exceptions as control flow;
+- no `unordered_map` lookup inside per-action/per-bucket loops;
+- no growing `std::vector::push_back` unless capacity was reserved and the loop is not per-bucket/per-action critical.
+
+Allowed in hot loops:
+
+- raw pointers as non-owning views;
+- `std::span` if available and optimized well;
+- fixed-size stack arrays for small action counts;
+- preallocated worker scratch buffers;
+- index-based handles;
+- pointer arithmetic inside tested row kernels;
+- `std::array` for tiny fixed action menus;
+- `std::vector` only as an owning buffer allocated/reserved outside the hot loop.
+
+Ownership rule:
+
+```text
+own memory with RAII containers at subsystem boundaries
+pass raw pointer/span views into hot kernels
+never transfer ownership with raw pointers
+avoid shared ownership in solver internals
+```
+
+Good pattern:
+
+```cpp
+struct RowView {
+    float* regret = nullptr;
+    float* strategy_sum = nullptr;
+    std::uint32_t bucket_count = 0;
+    std::uint8_t action_count = 0;
+};
+
+void update_row(RowView row, WorkerScratch& scratch) {
+    float* strategy = scratch.strategy.data();
+    regret_matching_action_major_f32(
+        row.regret,
+        row.action_count,
+        row.bucket_count,
+        strategy);
+}
+```
+
+Bad pattern:
+
+```cpp
+std::string key = make_infoset_key(state);
+auto row = table[ key ];
+std::vector<float> strategy;
+for (...) {
+    strategy.push_back(...);
+    log_debug(...);
+}
+```
+
+The bad pattern is readable, but it destroys the 10-15 second target.
+
+### Flat Arrays And Handles
+
+Flat arrays are preferred because the CPU can prefetch contiguous memory and SIMD can operate on adjacent values.
+
+Prefer:
+
+```text
+std::vector<float> regrets;
+std::vector<float> strategy_sum;
+std::vector<RowMeta> rows;
+RowId row_id;
+offset = row_meta[row_id].regret_offset;
+```
+
+Avoid in production hot storage:
+
+```text
+std::vector<std::unique_ptr<Row>>
+std::unordered_map<std::string, Row>
+std::map<Key, Row>
+nested vectors per row
+per-node polymorphic objects
+```
+
+Use ids:
+
+- `PublicStateId`;
+- `InfosetId`;
+- `RowId`;
+- `ActionId`;
+- `BucketId`;
+- `TrajectoryId`.
+
+Ids should be integer types, compact, serializable, and validatable.
+
+### Allocation Strategy
+
+Production allocation should happen in controlled places:
+
+- solver construction;
+- root setup;
+- lazy public-state expansion;
+- sparse row first-visit allocation;
+- worker batch setup;
+- checkpoint/export outside the deadline-critical path.
+
+Use:
+
+- reserved vectors for global append-only arrays;
+- monotonic arenas for temporary public-state expansion if useful;
+- worker-local scratch with fixed maximum capacity;
+- delta buffers with hard byte caps;
+- explicit `clear_keep_capacity()` behavior;
+- allocation counters in profile.
+
+Do not use a general allocator in the inner traversal. If allocation shows up in a profile after warmup, treat it as a bug.
+
+
+### Padding And False Sharing
+
+False sharing can erase multithreaded gains.
+
+Use cache-line padding for:
+
+- per-worker profile counters;
+- per-worker RNG state;
+- per-worker delta buffer metadata;
+- frequently written stop/deadline flags;
+- any hot atomic counters if unavoidable.
+
+Avoid padding every row blindly. Padding sparse rows can waste gigabytes. Prefer aligned slab starts plus scalar tail handling.
+
+Rule:
+
+```text
+pad worker-owned hot metadata
+align large numeric arrays
+do not pad millions of small sparse rows unless benchmark proves it
+```
+
+### Branches And Legal Actions
+
+Branch-heavy action logic should be moved out of row loops.
+
+Do:
+
+- compute legal action menu once per public state;
+- store compact action descriptors;
+- precompute whether action is fold/call/check/bet/raise/all-in;
+- precompute contribution deltas;
+- keep terminal/fold checks outside bucket loops where possible.
+
+Do not parse action strings or recompute legal action lists inside traversal.
+
+### Hash Maps
+
+Hash maps are acceptable for cold lookup and lazy expansion. They are not acceptable inside per-bucket row math.
+
+Use a two-level model:
+
+```text
+cold path:
+  key -> id lookup in hash map
+
+hot path:
+  id -> array offset
+```
+
+Cache row handles in traversal frames once resolved. If the same trajectory revisits the same public prefix, it should not repeat expensive key construction.
+
+### Logging And Diagnostics
+
+Diagnostics are required, but must be decoupled from hot loops.
+
+Do:
+
+- increment numeric counters;
+- sample occasional debug events behind a compile-time or runtime flag;
+- format logs after a batch;
+- export detailed traces only in validation mode.
+
+Do not:
+
+- format strings per node;
+- write files per traversal;
+- log from worker inner loops;
+- store debug names in every node/row.
+
 ## Implementation Contract For Future Programmers
 
 This section is the short contract a future implementer should treat as non-negotiable.
@@ -1473,6 +2001,89 @@ Blueprint path:
 4. Train bucket/range-conditioned leaf values.
 5. Use blueprint/value model as warm start for RTA.
 6. Keep exact small games as regression tests.
+
+## Neural Training Data And Massive Self-Play Generation
+
+The long-term path can include generating very large numbers of solved or near-solved poker situations for training a value model, policy model, or blueprint warm-start system.
+
+Important framing:
+
+```text
+do not solve one impossible full game tree
+solve many bounded public subgames
+store compact labels and metadata
+train models to generalize across public states/ranges/pots
+use the model to accelerate future depth-limited RTA solving
+```
+
+DeepStack is the key precedent: it trained value networks from randomly generated poker situations whose targets were produced by solving restricted subgames. That is the right mental model for this project.
+
+Potential generated examples:
+
+- flop public state + ranges + pot/SPR + action context -> bucket counterfactual values;
+- turn public state + ranges + pot/SPR + action context -> bucket counterfactual values;
+- river public state + ranges + pot/SPR + action context -> terminal/near-terminal CFVs;
+- root public state + ranges + action abstraction -> average strategy;
+- public state + candidate actions -> action values and regret signs;
+- leaf state -> value-network target.
+
+Training row metadata must include:
+
+- game/rules version;
+- public board;
+- street;
+- pot size and stack size;
+- SPR bucket;
+- action history abstraction;
+- legal action abstraction;
+- bucket abstraction id;
+- range encoding version;
+- solver config;
+- sampling mode;
+- number of traversals/batches;
+- convergence/stability metrics;
+- seed;
+- label quality score.
+
+Do not train on unlabeled garbage. A bad fast solver can generate billions of bad examples. Data quality filters are required:
+
+- minimum batches/traversals;
+- root strategy stability threshold;
+- no NaNs/infs;
+- memory/cap status clean;
+- no timeout-corrupted solve;
+- terminal/leaf evaluator status clean;
+- small-game validation periodically passes;
+- duplicate/near-duplicate states downsampled.
+
+Storage design:
+
+- write append-only shards;
+- prefer binary columnar or compact chunked format for large runs;
+- compress cold shards;
+- store config metadata once per shard;
+- store numeric arrays as `float32` unless validation requires `float64`;
+- keep enough metadata to reproduce the exact label generation.
+
+Scale note:
+
+```text
+1 billion generated examples is a data pipeline project
+not a single solver run
+```
+
+At that scale, every byte matters. A 1 KB row is already about 1 TB for 1 billion rows before indexing and metadata. The training writer must support compact row formats, sharding, and filtering.
+
+Suggested roadmap:
+
+1. Generate 10k tiny validated examples.
+2. Generate 1M turn/river examples.
+3. Train a simple value model or table.
+4. Plug it into depth-limited leaves.
+5. Compare RTA quality and speed.
+6. Scale to 100M+ only after labels improve decisions.
+
+The model should accelerate solving, not replace validation. Keep the sampled solver as the ground-truth generator and exact small games as sanity checks.
 
 ## Real-Time CFR Notes For This Project
 
