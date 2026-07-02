@@ -1,4 +1,5 @@
 #include "games/hunl_flat_graph.hpp"
+#include "games/hunl_flat_builder.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -309,7 +310,7 @@ HUNLFlatSolveGraph HUNLFlatSolveGraph::build(const HUNLTree& tree) {
 }
 
 HUNLFlatSolveGraph HUNLFlatSolveGraph::build(std::shared_ptr<const HUNLConfig> config) {
-    return build(HUNLTree::build(std::move(config)));
+    return HUNLFlatBuilder::build(std::move(config));
 }
 
 std::size_t HUNLFlatSolveGraph::node_count() const noexcept {

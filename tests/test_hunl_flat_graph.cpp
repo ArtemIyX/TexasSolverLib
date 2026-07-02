@@ -259,3 +259,102 @@ TEST_CASE(hunl_flat_graph_precomputes_compact_terminal_tables) {
         EXPECT_NEAR(graph.terminal_node_values[i], meta.terminal_utility[0], 1e-12);
     }
 }
+
+TEST_CASE(hunl_flat_graph_direct_builder_matches_tree_builder_on_small_graphs) {
+    auto config_value = core::default_tiny_subgame();
+    config_value.depth_limit_plies = 3;
+    const auto config = std::make_shared<const core::HUNLConfig>(config_value);
+
+    const auto tree = core::HUNLTree::build(config);
+    const auto expected = core::HUNLFlatSolveGraph::build(tree);
+    const auto actual = core::HUNLFlatSolveGraph::build(config);
+
+    EXPECT_EQ(actual.root, expected.root);
+    EXPECT_EQ(actual.max_depth, expected.max_depth);
+    EXPECT_EQ(actual.max_actions, expected.max_actions);
+    EXPECT_EQ(actual.children, expected.children);
+    EXPECT_EQ(actual.actions, expected.actions);
+    EXPECT_EQ(actual.terminal_nodes, expected.terminal_nodes);
+    EXPECT_EQ(actual.terminal_node_values, expected.terminal_node_values);
+    EXPECT_EQ(actual.fold_terminal_nodes, expected.fold_terminal_nodes);
+    EXPECT_EQ(actual.fold_terminal_values, expected.fold_terminal_values);
+    EXPECT_EQ(actual.showdown_terminal_nodes, expected.showdown_terminal_nodes);
+    EXPECT_EQ(actual.showdown_terminal_values, expected.showdown_terminal_values);
+    EXPECT_EQ(actual.forward_order, expected.forward_order);
+    EXPECT_EQ(actual.reverse_order, expected.reverse_order);
+    EXPECT_EQ(actual.node_depths, expected.node_depths);
+    EXPECT_EQ(actual.depth_order, expected.depth_order);
+    EXPECT_EQ(actual.street_order, expected.street_order);
+    EXPECT_EQ(actual.infoset_debug_keys, expected.infoset_debug_keys);
+    EXPECT_EQ(actual.infoset_nodes, expected.infoset_nodes);
+    EXPECT_EQ(actual.chance_outcomes.size(), expected.chance_outcomes.size());
+    EXPECT_EQ(actual.infosets.size(), expected.infosets.size());
+    EXPECT_EQ(actual.node_meta.size(), expected.node_meta.size());
+
+    EXPECT_EQ(actual.depth_slices.size(), expected.depth_slices.size());
+    for (std::size_t i = 0; i < actual.depth_slices.size(); ++i) {
+        EXPECT_EQ(actual.depth_slices[i].begin, expected.depth_slices[i].begin);
+        EXPECT_EQ(actual.depth_slices[i].count, expected.depth_slices[i].count);
+    }
+
+    EXPECT_EQ(actual.depth_worker_ranges.size(), expected.depth_worker_ranges.size());
+    for (std::size_t depth = 0; depth < actual.depth_worker_ranges.size(); ++depth) {
+        EXPECT_EQ(actual.depth_worker_ranges[depth].size(), expected.depth_worker_ranges[depth].size());
+        for (std::size_t i = 0; i < actual.depth_worker_ranges[depth].size(); ++i) {
+            EXPECT_EQ(actual.depth_worker_ranges[depth][i].begin, expected.depth_worker_ranges[depth][i].begin);
+            EXPECT_EQ(actual.depth_worker_ranges[depth][i].end, expected.depth_worker_ranges[depth][i].end);
+        }
+    }
+
+    for (std::size_t i = 0; i < actual.street_slices.size(); ++i) {
+        EXPECT_EQ(actual.street_slices[i].begin, expected.street_slices[i].begin);
+        EXPECT_EQ(actual.street_slices[i].count, expected.street_slices[i].count);
+    }
+
+    for (std::size_t i = 0; i < actual.chance_outcomes.size(); ++i) {
+        const auto& lhs = actual.chance_outcomes[i];
+        const auto& rhs = expected.chance_outcomes[i];
+        EXPECT_EQ(lhs.action, rhs.action);
+        EXPECT_EQ(lhs.child, rhs.child);
+        EXPECT_NEAR(lhs.probability, rhs.probability, 1e-12);
+    }
+
+    for (std::size_t i = 0; i < actual.infosets.size(); ++i) {
+        const auto& lhs = actual.infosets[i];
+        const auto& rhs = expected.infosets[i];
+        EXPECT_EQ(lhs.id.value, rhs.id.value);
+        EXPECT_EQ(lhs.node_begin, rhs.node_begin);
+        EXPECT_EQ(lhs.node_count, rhs.node_count);
+        EXPECT_EQ(lhs.board.cards, rhs.board.cards);
+        EXPECT_EQ(lhs.board.count, rhs.board.count);
+        EXPECT_EQ(lhs.debug_key_index, rhs.debug_key_index);
+        EXPECT_EQ(lhs.player, rhs.player);
+        EXPECT_EQ(lhs.street, rhs.street);
+        EXPECT_EQ(lhs.action_count, rhs.action_count);
+    }
+
+    for (std::size_t i = 0; i < actual.node_meta.size(); ++i) {
+        const auto& lhs = actual.node_meta[i];
+        const auto& rhs = expected.node_meta[i];
+        EXPECT_EQ(lhs.child_begin, rhs.child_begin);
+        EXPECT_EQ(lhs.child_count, rhs.child_count);
+        EXPECT_EQ(lhs.action_begin, rhs.action_begin);
+        EXPECT_EQ(lhs.chance_begin, rhs.chance_begin);
+        EXPECT_EQ(lhs.chance_count, rhs.chance_count);
+        EXPECT_EQ(lhs.infoset_id.value, rhs.infoset_id.value);
+        EXPECT_EQ(lhs.contributions, rhs.contributions);
+        EXPECT_NEAR(lhs.terminal_utility[0], rhs.terminal_utility[0], 1e-12);
+        EXPECT_NEAR(lhs.terminal_utility[1], rhs.terminal_utility[1], 1e-12);
+        EXPECT_EQ(lhs.board.cards, rhs.board.cards);
+        EXPECT_EQ(lhs.board.count, rhs.board.count);
+        EXPECT_EQ(lhs.terminal_kind.tag, rhs.terminal_kind.tag);
+        EXPECT_EQ(lhs.terminal_kind.winner, rhs.terminal_kind.winner);
+        EXPECT_EQ(lhs.terminal_kind.contribution_loss, rhs.terminal_kind.contribution_loss);
+        EXPECT_EQ(lhs.terminal_kind.board_complete, rhs.terminal_kind.board_complete);
+        EXPECT_EQ(lhs.player, rhs.player);
+        EXPECT_EQ(lhs.type, rhs.type);
+        EXPECT_EQ(lhs.street, rhs.street);
+        EXPECT_EQ(lhs.action_count, rhs.action_count);
+        EXPECT_EQ(lhs.has_infoset, rhs.has_infoset);
+    }
+}
