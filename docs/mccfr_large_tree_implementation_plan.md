@@ -2290,6 +2290,283 @@ action sampling: optional AS only after external mode is validated
 SIMD: scalar kernels first, AVX2 after row math is profiled hot
 ```
 
+## Final Future-Proofing Sections
+
+These sections cover the remaining decisions future programmers usually need after reading an architecture plan. The goal is to avoid changing this document just because implementation moves from prototype to production.
+
+### Public API Contract
+
+The sampled solver should expose a small stable API. Internals can change, but these concepts should remain:
+
+```cpp
+class HUNLSampledSolver {
+public:
+    explicit HUNLSampledSolver(HUNLSampledSolverConfig config);
+
+    HUNLSampledSolveResult solve_for(
+        const HUNLSampledSolveRequest& request,
+        std::chrono::milliseconds budget);
+
+    HUNLSampledSolveResult run_batches(
+        const HUNLSampledSolveRequest& request,
+        std::uint32_t batches);
+
+    HUNLRootStrategy export_root_strategy() const;
+    HUNLSampledProfile profile() const;
+    HUNLSampledMemoryEstimate memory_estimate() const;
+};
+```
+
+Stable request fields:
+
+- public board and street;
+- pot, stacks, current bet, legal action context;
+- player to act;
+- ranges for both players;
+- action abstraction preset;
+- bucket abstraction preset;
+- depth-limit config;
+- optional warm-start/checkpoint path;
+- wall-clock budget.
+
+Stable result fields:
+
+- root action probabilities;
+- root action values if available;
+- chosen recommended action;
+- confidence/stability diagnostics;
+- batches/traversals completed;
+- memory peak;
+- timeout/fallback status;
+- profile counters.
+
+### Configuration Preset Matrix
+
+Production should use named presets instead of scattered flags.
+
+```text
+validation_small:
+  dense validation allowed
+  Float64 allowed
+  exact oracle comparison enabled
+  no deadline requirement
+
+rta_river_fast:
+  External MCCFR
+  river buckets 64
+  small action menu
+  5-10 second budget
+  strict root-only export
+
+rta_turn_fast:
+  External MCCFR
+  turn buckets 64, river buckets 48
+  depth limit allowed
+  10 second budget
+
+rta_flop_conservative:
+  External MCCFR
+  flop 64, turn 48, river 32
+  raise cap 1
+  depth limit mandatory
+  15 second budget
+
+rta_flop_balanced:
+  External MCCFR
+  flop 96, turn 64, river 48
+  only if memory preflight passes
+  15 second budget
+
+offline_blueprint:
+  no strict 15 second deadline
+  checkpointing enabled
+  broader public-state coverage
+  optional larger buckets/action menus
+```
+
+Every preset should print its resolved config at solve start. Benchmark logs should record preset name and full resolved values so results can be reproduced.
+
+### Checkpoint And Blueprint Format
+
+Future blueprint support should not require redesigning storage. Use versioned checkpoint metadata from the start.
+
+Checkpoint metadata:
+
+- file format version;
+- solver version/git commit when available;
+- abstraction version;
+- action abstraction id;
+- bucket abstraction id;
+- storage precision;
+- sampling mode;
+- depth-limit mode;
+- public-state id scheme;
+- infoset id scheme;
+- seed schedule;
+- completed batches/traversals;
+- row compression mode;
+- endian/architecture marker if binary.
+
+Checkpoint payload:
+
+- sparse infoset metadata;
+- regret rows;
+- average strategy rows;
+- optional baseline rows;
+- optional terminal/leaf cache;
+- optional root snapshots;
+- profile summary.
+
+Rules:
+
+- incompatible checkpoints must fail clearly;
+- loading a checkpoint must not silently change bucket/action meaning;
+- online RTA can load a warm start but must still be able to solve cold;
+- blueprint mode can use larger files and slower IO, RTA mode cannot block inside the hot decision loop.
+
+### Determinism And Reproducibility
+
+Determinism is required for debugging and benchmarking.
+
+Rules:
+
+- seed every trajectory by `(base_seed, solve_id, iteration_or_batch, traversing_player, trajectory_id)`;
+- do not rely on thread scheduling order for RNG;
+- merge in fixed order in deterministic mode;
+- log all config values and seed values;
+- log CPU feature path: scalar, AVX2, or AVX-512;
+- log compiler/build mode because floating-point behavior can differ;
+- keep a scalar deterministic validation path.
+
+Expected behavior:
+
+- same seed + same worker count + same deterministic mode should reproduce the same root strategy within strict tolerance;
+- different worker counts may have tiny floating differences unless merge is fully normalized by trajectory id;
+- fast RTA mode may trade strict determinism for throughput only behind an explicit flag.
+
+### Error Handling And Fallback Policy
+
+The solver should fail before damaging the decision window.
+
+Hard errors:
+
+- invalid ranges;
+- no legal actions;
+- impossible public board;
+- unsupported street/preset combination;
+- checkpoint abstraction mismatch;
+- estimated memory above reject threshold;
+- allocation failure;
+- NaN or infinite strategy/value.
+
+Fallbacks:
+
+- reduce batch size;
+- flush deltas earlier;
+- cap terminal cache;
+- switch off AS or expensive variance reduction;
+- reduce action menu;
+- reduce bucket preset;
+- increase depth limiting;
+- disable full dense export;
+- return last stable root snapshot if deadline expires.
+
+Do not silently return uniform strategy after an internal failure. If a fallback strategy is needed, result status must say so.
+
+### Testing Matrix
+
+Minimum tests before production use:
+
+```text
+unit:
+  RNG weighted sampling
+  sparse row allocation
+  regret matching
+  SIMD vs scalar kernels
+  deterministic scheduler partitioning
+  memory estimator caps
+
+integration:
+  tiny exact-vs-sampled convergence
+  single-worker external MCCFR
+  multi-worker deterministic merge
+  lazy public-state expansion
+  root-only export
+  timeout during batch
+  checkpoint save/load
+
+performance:
+  10s river preset
+  10s turn preset
+  15s conservative flop preset
+  memory cap rejection
+  terminal cache stress
+  merge stress
+
+quality:
+  seed stability
+  root EV proxy stability
+  dominated-action suppression
+  small-game exploitability
+```
+
+Tests should include both validation mode and production-like RTA mode. A fast sampled solver that only works in one benchmark board is not enough.
+
+### Deployment And Build Assumptions
+
+Target environment:
+
+- Windows desktop first;
+- 64 GB RAM target machine;
+- CPU multithreading required;
+- AVX2 expected for optimized builds but not required for correctness;
+- AVX-512 optional only;
+- Release build required for performance numbers;
+- debug builds are for correctness only.
+
+Build flags should expose:
+
+- scalar-only mode;
+- AVX2 mode;
+- optional AVX-512 mode;
+- deterministic mode;
+- profile mode;
+- assertions/sanitizers for development.
+
+Never quote RTA performance from debug builds.
+
+### Rollout Plan
+
+Implementation should roll out in gates:
+
+1. Build greenfield empty module.
+2. Pass scalar single-worker validation.
+3. Pass external MCCFR small-game convergence.
+4. Pass deterministic multithreaded merge.
+5. Pass sparse storage tests.
+6. Pass lazy public-state expansion.
+7. Pass root-only timed export.
+8. Pass 64 GB preflight and cap tests.
+9. Pass 10-second turn/river benchmark.
+10. Pass 15-second conservative flop benchmark.
+11. Add SIMD only after profiling.
+12. Add advanced RTA tuning one toggle at a time.
+
+Each gate should preserve exact solver behavior.
+
+### Documentation Ownership
+
+After this document lands, future updates should be rare and should only happen when one of these changes:
+
+- solver architecture changes away from sampled/lazy sparse MCCFR;
+- memory budget changes;
+- RTA deadline target changes;
+- checkpoint format changes incompatibly;
+- production preset definitions change;
+- validation shows a recommended algorithm is wrong for this codebase.
+
+Routine implementation details should go into code comments, tests, benchmark notes, or a changelog, not into this architecture plan.
+
 ## Final Recommendation
 
 Implement MCCFR, but do it as a new sampled flat solver. Use the existing exact `HUNLFlatDCFR` as the correctness oracle and keep it unchanged.
