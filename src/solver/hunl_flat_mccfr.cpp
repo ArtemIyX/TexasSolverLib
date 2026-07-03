@@ -12,8 +12,9 @@ namespace {
 
 void validate_mccfr_config(const HUNLFlatMCCFRConfig& config) {
     if (config.mode != HUNLFlatSamplingMode::PublicChance &&
-        config.mode != HUNLFlatSamplingMode::Exact) {
-        throw std::invalid_argument("HUNLFlatMCCFR prototype currently supports Exact and PublicChance modes only");
+        config.mode != HUNLFlatSamplingMode::Exact &&
+        config.mode != HUNLFlatSamplingMode::External) {
+        throw std::invalid_argument("HUNLFlatMCCFR prototype currently supports Exact, PublicChance, and External modes only");
     }
     if (config.traversals_per_iteration == 0) {
         throw std::invalid_argument("HUNLFlatMCCFR traversals_per_iteration must be positive");
@@ -47,6 +48,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
 void HUNLFlatMCCFR::run_iteration() {
     const auto target_iteration = iterations_ + 1U;
     const auto traversal_count = config_.traversals_per_iteration;
+    last_iteration_counters_ = {};
 
     const auto player_begin = 0;
     const auto player_end = config_.update_both_players ? 2 : 1;
@@ -61,10 +63,14 @@ void HUNLFlatMCCFR::run_iteration() {
             TraversalContext context;
             context.traversing_player = traversing_player;
             context.rng = &rng;
+            context.counters = &last_iteration_counters_;
             (void)traverse(graph_.root, context);
         }
     }
 
+    total_counters_.nodes_visited += last_iteration_counters_.nodes_visited;
+    total_counters_.sampled_opponent_actions += last_iteration_counters_.sampled_opponent_actions;
+    total_counters_.traversing_player_action_expansions += last_iteration_counters_.traversing_player_action_expansions;
     ++iterations_;
 }
 
@@ -95,6 +101,9 @@ const HUNLFlatMCCFRConfig& HUNLFlatMCCFR::config() const noexcept {
 }
 
 double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.counters != nullptr) {
+        ++context.counters->nodes_visited;
+    }
     const auto& meta = graph_.node_meta.at(node_idx);
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
@@ -103,6 +112,15 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             return meta.terminal_utility[context.traversing_player];
 
         case HUNLFlatNodeType::Chance: {
+            if (config_.mode == HUNLFlatSamplingMode::Exact) {
+                double value = 0.0;
+                for (std::size_t i = 0; i < meta.chance_count; ++i) {
+                    const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                    value += outcome.probability * traverse(outcome.child, context);
+                }
+                return value;
+            }
+
             const auto child = sample_chance_child(meta, *context.rng);
             return traverse(child, context);
         }
@@ -123,6 +141,38 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
 
     if (average_strategy.size() != action_count) {
         throw std::logic_error("HUNLFlatMCCFR action probability size mismatch");
+    }
+
+    if (meta.player == context.traversing_player && context.counters != nullptr) {
+        context.counters->traversing_player_action_expansions += static_cast<std::uint64_t>(action_count);
+    }
+
+    if (config_.mode == HUNLFlatSamplingMode::External &&
+        meta.player != context.traversing_player) {
+        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+            for (std::size_t action = 0; action < action_count; ++action) {
+                const auto probability = bucket_strategy_probability(meta.infoset_id, bucket, action);
+                const auto offset = infoset_table_.value_index(meta.infoset_id, bucket, action);
+                infoset_table_.set_strategy_sum_value(
+                    meta.infoset_id,
+                    offset,
+                    infoset_table_.strategy_sum_value(meta.infoset_id, offset) + probability);
+            }
+        }
+
+        const auto sampled = context.rng->sample_weighted(average_strategy);
+        if (context.counters != nullptr) {
+            ++context.counters->sampled_opponent_actions;
+        }
+
+        auto child_context = context;
+        if (meta.player == 0) {
+            child_context.p0 *= average_strategy[sampled.first];
+        } else {
+            child_context.p1 *= average_strategy[sampled.first];
+        }
+        const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(sampled.first));
+        return traverse(child_idx, child_context);
     }
 
     for (std::size_t action = 0; action < action_count; ++action) {
@@ -329,6 +379,14 @@ HUNLFlatAverageStrategyTable HUNLFlatMCCFR::export_average_strategy_table() cons
     }
 
     return out;
+}
+
+const HUNLFlatMCCFR::Counters& HUNLFlatMCCFR::last_iteration_counters() const noexcept {
+    return last_iteration_counters_;
+}
+
+const HUNLFlatMCCFR::Counters& HUNLFlatMCCFR::total_counters() const noexcept {
+    return total_counters_;
 }
 
 }  // namespace core

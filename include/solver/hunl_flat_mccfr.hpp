@@ -15,6 +15,12 @@ namespace core {
 
 class HUNLFlatMCCFR {
 public:
+    struct Counters {
+        std::uint64_t nodes_visited = 0;
+        std::uint64_t sampled_opponent_actions = 0;
+        std::uint64_t traversing_player_action_expansions = 0;
+    };
+
     explicit HUNLFlatMCCFR(
         HUNLFlatSolveGraph graph,
         std::array<std::size_t, 2> bucket_count_per_player,
@@ -34,6 +40,8 @@ public:
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
     [[nodiscard]] HUNLFlatAverageStrategyTable export_average_strategy_table() const;
+    [[nodiscard]] const Counters& last_iteration_counters() const noexcept;
+    [[nodiscard]] const Counters& total_counters() const noexcept;
 
 private:
     struct TraversalContext {
@@ -41,6 +49,7 @@ private:
         double p0 = 1.0;
         double p1 = 1.0;
         PcsRng* rng = nullptr;
+        Counters* counters = nullptr;
     };
 
     [[nodiscard]] double traverse(std::uint32_t node_idx, TraversalContext& context);
@@ -56,6 +65,8 @@ private:
     HUNLFlatInfosetTable infoset_table_;
     HUNLFlatMCCFRConfig config_;
     std::uint32_t iterations_ = 0;
+    Counters last_iteration_counters_;
+    Counters total_counters_;
 };
 
 }  // namespace core
