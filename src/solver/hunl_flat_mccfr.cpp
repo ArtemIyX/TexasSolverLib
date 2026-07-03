@@ -32,6 +32,11 @@ void validate_mccfr_config(const HUNLFlatMCCFRConfig& config) {
     if (config.dcfr_alpha < 0.0 || config.dcfr_beta < 0.0 || config.dcfr_gamma < 0.0) {
         throw std::invalid_argument("HUNLFlatMCCFR DCFR exponents must be non-negative");
     }
+    if (config.baseline_mode != HUNLFlatBaselineMode::None &&
+        config.baseline_mode != HUNLFlatBaselineMode::MovingAverage) {
+        throw std::invalid_argument(
+            "HUNLFlatMCCFR baseline_mode currently supports None and MovingAverage only");
+    }
 }
 
 std::vector<HUNLFlatInfosetTableMeta> build_infoset_meta(
@@ -81,7 +86,11 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       config_(config),
       infoset_meta_(build_infoset_meta(graph_, bucket_count_per_player, layout)),
       worker_count_(std::max<std::size_t>(1, workers)),
-      worker_scratch_(std::max<std::size_t>(1, workers)) {
+      worker_scratch_(std::max<std::size_t>(1, workers)),
+      infoset_action_baselines_(graph_.infosets.size()),
+      infoset_action_baseline_counts_(graph_.infosets.size()),
+      node_action_baselines_(graph_.node_meta.size()),
+      node_action_baseline_counts_(graph_.node_meta.size()) {
     validate_mccfr_config(config_);
     if (!config_.use_sparse_storage || config_.keep_dense_validation_backend) {
         infoset_table_ = HUNLFlatInfosetTable::build(graph_, bucket_count_per_player, layout, precision);
@@ -108,7 +117,13 @@ void HUNLFlatMCCFR::run_iteration() {
     total_counters_.as_actions_considered += last_iteration_counters_.as_actions_considered;
     total_counters_.as_actions_sampled += last_iteration_counters_.as_actions_sampled;
     total_counters_.as_forced_at_least_one_count += last_iteration_counters_.as_forced_at_least_one_count;
+    total_counters_.variance_samples += last_iteration_counters_.variance_samples;
+    total_counters_.raw_estimate_sum += last_iteration_counters_.raw_estimate_sum;
+    total_counters_.raw_estimate_sq_sum += last_iteration_counters_.raw_estimate_sq_sum;
+    total_counters_.corrected_estimate_sum += last_iteration_counters_.corrected_estimate_sum;
+    total_counters_.corrected_estimate_sq_sum += last_iteration_counters_.corrected_estimate_sq_sum;
     ++iterations_;
+    refresh_baseline_profile();
 }
 
 void HUNLFlatMCCFR::run_iterations(std::uint32_t iterations) {
@@ -185,6 +200,10 @@ void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
     average_strategy.clear();
     rows.clear();
     row_lookup.clear();
+    infoset_baseline_rows.clear();
+    infoset_baseline_lookup.clear();
+    node_baseline_rows.clear();
+    node_baseline_lookup.clear();
     counters = {};
 }
 
@@ -200,6 +219,106 @@ HUNLFlatMCCFR::WorkerDeltaRow& HUNLFlatMCCFR::WorkerScratch::ensure_row(
     row_lookup.emplace(id, index);
     rows.push_back(WorkerDeltaRow{id, std::vector<double>(value_count, 0.0), std::vector<double>(value_count, 0.0)});
     return rows.back();
+}
+
+HUNLFlatMCCFR::WorkerBaselineRow& HUNLFlatMCCFR::WorkerScratch::ensure_infoset_baseline_row(
+    InfosetId id,
+    std::size_t action_count) {
+    const auto it = infoset_baseline_lookup.find(id);
+    if (it != infoset_baseline_lookup.end()) {
+        return infoset_baseline_rows[it->second];
+    }
+
+    const auto index = infoset_baseline_rows.size();
+    infoset_baseline_lookup.emplace(id, index);
+    infoset_baseline_rows.push_back(
+        WorkerBaselineRow{static_cast<std::uint32_t>(id.value), std::vector<double>(action_count, 0.0), std::vector<std::uint32_t>(action_count, 0U)});
+    return infoset_baseline_rows.back();
+}
+
+HUNLFlatMCCFR::WorkerBaselineRow& HUNLFlatMCCFR::WorkerScratch::ensure_node_baseline_row(
+    std::uint32_t node_idx,
+    std::size_t action_count) {
+    const auto it = node_baseline_lookup.find(node_idx);
+    if (it != node_baseline_lookup.end()) {
+        return node_baseline_rows[it->second];
+    }
+
+    const auto index = node_baseline_rows.size();
+    node_baseline_lookup.emplace(node_idx, index);
+    node_baseline_rows.push_back(
+        WorkerBaselineRow{node_idx, std::vector<double>(action_count, 0.0), std::vector<std::uint32_t>(action_count, 0U)});
+    return node_baseline_rows.back();
+}
+
+bool HUNLFlatMCCFR::variance_reduction_enabled() const noexcept {
+    return config_.baseline_mode == HUNLFlatBaselineMode::MovingAverage;
+}
+
+double HUNLFlatMCCFR::infoset_action_baseline(InfosetId infoset_id, std::size_t action) const noexcept {
+    if (!variance_reduction_enabled() || infoset_id.value >= infoset_action_baselines_.size()) {
+        return 0.0;
+    }
+    const auto& row = infoset_action_baselines_[infoset_id.value];
+    return action < row.size() ? static_cast<double>(row[action]) : 0.0;
+}
+
+double HUNLFlatMCCFR::node_action_baseline(std::uint32_t node_idx, std::size_t action) const noexcept {
+    if (!variance_reduction_enabled() || node_idx >= node_action_baselines_.size()) {
+        return 0.0;
+    }
+    const auto& row = node_action_baselines_[node_idx];
+    return action < row.size() ? static_cast<double>(row[action]) : 0.0;
+}
+
+void HUNLFlatMCCFR::observe_infoset_action_baseline(
+    WorkerScratch& scratch,
+    InfosetId infoset_id,
+    std::size_t action_count,
+    std::size_t action,
+    double sample) {
+    if (!variance_reduction_enabled() || action >= action_count) {
+        return;
+    }
+    auto& row = scratch.ensure_infoset_baseline_row(infoset_id, action_count);
+    row.value_sum[action] += sample;
+    ++row.sample_count[action];
+}
+
+void HUNLFlatMCCFR::observe_node_action_baseline(
+    WorkerScratch& scratch,
+    std::uint32_t node_idx,
+    std::size_t action_count,
+    std::size_t action,
+    double sample) {
+    if (!variance_reduction_enabled() || action >= action_count) {
+        return;
+    }
+    auto& row = scratch.ensure_node_baseline_row(node_idx, action_count);
+    row.value_sum[action] += sample;
+    ++row.sample_count[action];
+}
+
+void HUNLFlatMCCFR::record_variance_sample(
+    Counters& counters,
+    double raw_estimate,
+    double corrected_estimate) noexcept {
+    ++counters.variance_samples;
+    counters.raw_estimate_sum += raw_estimate;
+    counters.raw_estimate_sq_sum += raw_estimate * raw_estimate;
+    counters.corrected_estimate_sum += corrected_estimate;
+    counters.corrected_estimate_sq_sum += corrected_estimate * corrected_estimate;
+}
+
+double HUNLFlatMCCFR::estimate_variance(
+    std::uint64_t sample_count,
+    double value_sum,
+    double value_sq_sum) noexcept {
+    if (sample_count == 0U) {
+        return 0.0;
+    }
+    const auto mean = value_sum / static_cast<double>(sample_count);
+    return std::max(0.0, value_sq_sum / static_cast<double>(sample_count) - mean * mean);
 }
 
 double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context) {
@@ -223,8 +342,25 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
                 return value;
             }
 
-            const auto child = sample_chance_child(meta, *context.rng);
-            return traverse(child, context);
+            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto sampled_value = traverse(sampled.child, context);
+            if (!variance_reduction_enabled()) {
+                return sampled_value;
+            }
+
+            double expected_baseline = 0.0;
+            for (std::size_t i = 0; i < meta.chance_count; ++i) {
+                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                expected_baseline += outcome.probability * node_action_baseline(node_idx, i);
+            }
+            const auto corrected_value =
+                sampled_value - node_action_baseline(node_idx, sampled_index) + expected_baseline;
+            observe_node_action_baseline(*context.scratch, node_idx, meta.chance_count, sampled_index, sampled_value);
+            if (context.counters != nullptr) {
+                record_variance_sample(*context.counters, sampled_value, corrected_value);
+            }
+            return corrected_value;
         }
 
         case HUNLFlatNodeType::Decision:
@@ -277,7 +413,27 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             child_context.p1 *= average_strategy[sampled.first];
         }
         const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(sampled.first));
-        return traverse(child_idx, child_context);
+        const auto sampled_value = traverse(child_idx, child_context);
+        if (!variance_reduction_enabled()) {
+            return sampled_value;
+        }
+
+        double expected_baseline = 0.0;
+        for (std::size_t action = 0; action < action_count; ++action) {
+            expected_baseline += average_strategy[action] * infoset_action_baseline(meta.infoset_id, action);
+        }
+        const auto corrected_value =
+            sampled_value - infoset_action_baseline(meta.infoset_id, sampled.first) + expected_baseline;
+        observe_infoset_action_baseline(
+            *context.scratch,
+            meta.infoset_id,
+            action_count,
+            sampled.first,
+            sampled_value);
+        if (context.counters != nullptr) {
+            record_variance_sample(*context.counters, sampled_value, corrected_value);
+        }
+        return corrected_value;
     }
 
     if (config_.mode == HUNLFlatSamplingMode::AverageStrategy &&
@@ -355,7 +511,24 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             }
             const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(action));
             const auto inclusion_probability = std::max(inclusion_probabilities[action], config_.as_epsilon);
-            action_values[action] = traverse(child_idx, child_context) / inclusion_probability;
+            const auto sampled_value = traverse(child_idx, child_context);
+            const auto raw_estimate = sampled_value / inclusion_probability;
+            if (!variance_reduction_enabled()) {
+                action_values[action] = raw_estimate;
+                continue;
+            }
+
+            const auto baseline = infoset_action_baseline(meta.infoset_id, action);
+            action_values[action] = baseline + (sampled_value - baseline) / inclusion_probability;
+            observe_infoset_action_baseline(
+                *context.scratch,
+                meta.infoset_id,
+                action_count,
+                action,
+                sampled_value);
+            if (context.counters != nullptr) {
+                record_variance_sample(*context.counters, raw_estimate, action_values[action]);
+            }
         }
 
         std::vector<double> node_values(row_meta.bucket_count, 0.0);
@@ -587,7 +760,7 @@ std::vector<double> HUNLFlatMCCFR::average_strategy_sampling_probabilities(Infos
     return rho;
 }
 
-std::uint32_t HUNLFlatMCCFR::sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const {
+std::size_t HUNLFlatMCCFR::sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const {
     double total = 0.0;
     for (std::size_t i = 0; i < meta.chance_count; ++i) {
         total += graph_.chance_outcomes.at(meta.chance_begin + i).probability;
@@ -600,12 +773,12 @@ std::uint32_t HUNLFlatMCCFR::sample_chance_child(const HUNLFlatNodeMeta& meta, P
     for (std::size_t i = 0; i < meta.chance_count; ++i) {
         const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
         if (draw < outcome.probability) {
-            return outcome.child;
+            return i;
         }
         draw -= outcome.probability;
     }
 
-    return graph_.chance_outcomes.at(meta.chance_begin + meta.chance_count - 1U).child;
+    return meta.chance_count - 1U;
 }
 
 void HUNLFlatMCCFR::discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration) {
@@ -728,7 +901,9 @@ void HUNLFlatMCCFR::run_player_batch(std::uint32_t target_iteration, PlayerId tr
     for (std::size_t worker_index = 0; worker_index < worker_count_; ++worker_index) {
         apply_discount_if_enabled(target_iteration, worker_scratch_[worker_index]);
         merge_worker_rows(worker_index);
+        merge_worker_baselines(worker_index);
     }
+    refresh_baseline_profile();
 }
 
 void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
@@ -774,6 +949,92 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     last_iteration_counters_.as_actions_considered += scratch.counters.as_actions_considered;
     last_iteration_counters_.as_actions_sampled += scratch.counters.as_actions_sampled;
     last_iteration_counters_.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
+    last_iteration_counters_.variance_samples += scratch.counters.variance_samples;
+    last_iteration_counters_.raw_estimate_sum += scratch.counters.raw_estimate_sum;
+    last_iteration_counters_.raw_estimate_sq_sum += scratch.counters.raw_estimate_sq_sum;
+    last_iteration_counters_.corrected_estimate_sum += scratch.counters.corrected_estimate_sum;
+    last_iteration_counters_.corrected_estimate_sq_sum += scratch.counters.corrected_estimate_sq_sum;
+}
+
+void HUNLFlatMCCFR::merge_worker_baselines(std::size_t worker_index) {
+    if (!variance_reduction_enabled()) {
+        return;
+    }
+
+    auto& scratch = worker_scratch_[worker_index];
+    std::sort(scratch.infoset_baseline_rows.begin(), scratch.infoset_baseline_rows.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.id < rhs.id;
+    });
+    std::sort(scratch.node_baseline_rows.begin(), scratch.node_baseline_rows.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.id < rhs.id;
+    });
+
+    for (const auto& row : scratch.infoset_baseline_rows) {
+        auto& values = infoset_action_baselines_[row.id];
+        auto& counts = infoset_action_baseline_counts_[row.id];
+        if (values.empty()) {
+            values.assign(row.value_sum.size(), 0.0f);
+            counts.assign(row.value_sum.size(), 0U);
+        }
+        for (std::size_t action = 0; action < row.value_sum.size(); ++action) {
+            const auto sample_count = row.sample_count[action];
+            if (sample_count == 0U) {
+                continue;
+            }
+            const auto total_count = counts[action] + sample_count;
+            const auto total_sum =
+                static_cast<double>(values[action]) * static_cast<double>(counts[action]) + row.value_sum[action];
+            values[action] = static_cast<float>(total_sum / static_cast<double>(total_count));
+            counts[action] = total_count;
+        }
+    }
+
+    for (const auto& row : scratch.node_baseline_rows) {
+        auto& values = node_action_baselines_[row.id];
+        auto& counts = node_action_baseline_counts_[row.id];
+        if (values.empty()) {
+            values.assign(row.value_sum.size(), 0.0f);
+            counts.assign(row.value_sum.size(), 0U);
+        }
+        for (std::size_t action = 0; action < row.value_sum.size(); ++action) {
+            const auto sample_count = row.sample_count[action];
+            if (sample_count == 0U) {
+                continue;
+            }
+            const auto total_count = counts[action] + sample_count;
+            const auto total_sum =
+                static_cast<double>(values[action]) * static_cast<double>(counts[action]) + row.value_sum[action];
+            values[action] = static_cast<float>(total_sum / static_cast<double>(total_count));
+            counts[action] = total_count;
+        }
+    }
+}
+
+void HUNLFlatMCCFR::refresh_baseline_profile() noexcept {
+    std::uint64_t infoset_rows = 0;
+    std::uint64_t node_rows = 0;
+    std::uint64_t bytes = 0;
+
+    for (std::size_t i = 0; i < infoset_action_baselines_.size(); ++i) {
+        if (infoset_action_baselines_[i].empty()) {
+            continue;
+        }
+        ++infoset_rows;
+        bytes += static_cast<std::uint64_t>(infoset_action_baselines_[i].capacity()) * sizeof(float);
+        bytes += static_cast<std::uint64_t>(infoset_action_baseline_counts_[i].capacity()) * sizeof(std::uint32_t);
+    }
+    for (std::size_t i = 0; i < node_action_baselines_.size(); ++i) {
+        if (node_action_baselines_[i].empty()) {
+            continue;
+        }
+        ++node_rows;
+        bytes += static_cast<std::uint64_t>(node_action_baselines_[i].capacity()) * sizeof(float);
+        bytes += static_cast<std::uint64_t>(node_action_baseline_counts_[i].capacity()) * sizeof(std::uint32_t);
+    }
+
+    profile_.baseline_infoset_rows = infoset_rows;
+    profile_.baseline_node_rows = node_rows;
+    profile_.baseline_bytes = bytes;
 }
 
 std::unordered_map<std::string, std::vector<double>> HUNLFlatMCCFR::export_average_strategy() const {
@@ -900,6 +1161,28 @@ double HUNLFlatMCCFR::average_strategy_sampling_ratio() const noexcept {
     }
     return static_cast<double>(total_counters_.as_actions_sampled) /
         static_cast<double>(total_counters_.as_actions_considered);
+}
+
+double HUNLFlatMCCFR::raw_estimator_variance() const noexcept {
+    return estimate_variance(
+        total_counters_.variance_samples,
+        total_counters_.raw_estimate_sum,
+        total_counters_.raw_estimate_sq_sum);
+}
+
+double HUNLFlatMCCFR::corrected_estimator_variance() const noexcept {
+    return estimate_variance(
+        total_counters_.variance_samples,
+        total_counters_.corrected_estimate_sum,
+        total_counters_.corrected_estimate_sq_sum);
+}
+
+HUNLFlatMCCFR::BaselineStats HUNLFlatMCCFR::baseline_stats() const noexcept {
+    return {
+        profile_.baseline_infoset_rows,
+        profile_.baseline_node_rows,
+        profile_.baseline_bytes,
+    };
 }
 
 }  // namespace core

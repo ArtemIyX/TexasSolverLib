@@ -18,6 +18,12 @@ namespace core {
 
 class HUNLFlatMCCFR {
 public:
+    struct BaselineStats {
+        std::uint64_t infoset_rows = 0;
+        std::uint64_t node_rows = 0;
+        std::uint64_t bytes = 0;
+    };
+
     struct WorkerProfile {
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
@@ -37,6 +43,9 @@ public:
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
         std::uint64_t traversals = 0;
+        std::uint64_t baseline_infoset_rows = 0;
+        std::uint64_t baseline_node_rows = 0;
+        std::uint64_t baseline_bytes = 0;
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
@@ -50,6 +59,11 @@ public:
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
+        std::uint64_t variance_samples = 0;
+        double raw_estimate_sum = 0.0;
+        double raw_estimate_sq_sum = 0.0;
+        double corrected_estimate_sum = 0.0;
+        double corrected_estimate_sq_sum = 0.0;
     };
 
     explicit HUNLFlatMCCFR(
@@ -78,6 +92,9 @@ public:
     [[nodiscard]] bool using_sparse_storage() const noexcept;
     [[nodiscard]] const HUNLSampledStorage& sparse_storage() const noexcept;
     [[nodiscard]] double average_strategy_sampling_ratio() const noexcept;
+    [[nodiscard]] double raw_estimator_variance() const noexcept;
+    [[nodiscard]] double corrected_estimator_variance() const noexcept;
+    [[nodiscard]] BaselineStats baseline_stats() const noexcept;
 
 private:
     struct WorkerDeltaRow {
@@ -86,15 +103,27 @@ private:
         std::vector<double> strategy_delta;
     };
 
+    struct WorkerBaselineRow {
+        std::uint32_t id = 0;
+        std::vector<double> value_sum;
+        std::vector<std::uint32_t> sample_count;
+    };
+
     struct WorkerScratch {
         std::vector<double> action_values;
         std::vector<double> average_strategy;
         std::vector<WorkerDeltaRow> rows;
         std::unordered_map<InfosetId, std::size_t> row_lookup;
+        std::vector<WorkerBaselineRow> infoset_baseline_rows;
+        std::unordered_map<InfosetId, std::size_t> infoset_baseline_lookup;
+        std::vector<WorkerBaselineRow> node_baseline_rows;
+        std::unordered_map<std::uint32_t, std::size_t> node_baseline_lookup;
         Counters counters;
 
         void clear_keep_capacity() noexcept;
         WorkerDeltaRow& ensure_row(InfosetId id, std::size_t value_count);
+        WorkerBaselineRow& ensure_infoset_baseline_row(InfosetId id, std::size_t action_count);
+        WorkerBaselineRow& ensure_node_baseline_row(std::uint32_t node_idx, std::size_t action_count);
     };
 
     struct TraversalContext {
@@ -116,7 +145,7 @@ private:
     [[nodiscard]] std::vector<double> average_action_probabilities(InfosetId infoset_id) const;
     [[nodiscard]] std::vector<double> average_strategy_sum_values(InfosetId infoset_id) const;
     [[nodiscard]] std::vector<double> average_strategy_sampling_probabilities(InfosetId infoset_id) const;
-    [[nodiscard]] std::uint32_t sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const;
+    [[nodiscard]] std::size_t sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const;
     void apply_discount_if_enabled(std::uint32_t target_iteration, WorkerScratch& scratch);
     void discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
     void discount_sparse_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
@@ -130,6 +159,28 @@ private:
         std::size_t action) const noexcept;
     [[nodiscard]] HUNLSampledRowView ensure_sparse_row(InfosetId infoset_id);
     [[nodiscard]] HUNLSampledConstRowView sparse_row_or_empty(InfosetId infoset_id) const noexcept;
+    [[nodiscard]] bool variance_reduction_enabled() const noexcept;
+    [[nodiscard]] double infoset_action_baseline(InfosetId infoset_id, std::size_t action) const noexcept;
+    [[nodiscard]] double node_action_baseline(std::uint32_t node_idx, std::size_t action) const noexcept;
+    void observe_infoset_action_baseline(
+        WorkerScratch& scratch,
+        InfosetId infoset_id,
+        std::size_t action_count,
+        std::size_t action,
+        double sample);
+    void observe_node_action_baseline(
+        WorkerScratch& scratch,
+        std::uint32_t node_idx,
+        std::size_t action_count,
+        std::size_t action,
+        double sample);
+    void merge_worker_baselines(std::size_t worker_index);
+    void refresh_baseline_profile() noexcept;
+    static void record_variance_sample(Counters& counters, double raw_estimate, double corrected_estimate) noexcept;
+    [[nodiscard]] static double estimate_variance(
+        std::uint64_t sample_count,
+        double value_sum,
+        double value_sq_sum) noexcept;
 
     HUNLFlatSolveGraph graph_;
     HUNLFlatInfosetTable infoset_table_;
@@ -143,6 +194,10 @@ private:
     Counters total_counters_;
     Profile profile_;
     std::vector<WorkerScratch> worker_scratch_;
+    std::vector<std::vector<float>> infoset_action_baselines_;
+    std::vector<std::vector<std::uint32_t>> infoset_action_baseline_counts_;
+    std::vector<std::vector<float>> node_action_baselines_;
+    std::vector<std::vector<std::uint32_t>> node_action_baseline_counts_;
 };
 
 }  // namespace core

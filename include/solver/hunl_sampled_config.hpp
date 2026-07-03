@@ -15,6 +15,13 @@ enum class HUNLFlatSamplingMode : std::uint8_t {
     AverageStrategy = 3,
 };
 
+enum class HUNLFlatBaselineMode : std::uint8_t {
+    None = 0,
+    MovingAverage = 1,
+    DepthLimitedValueTable = 2,
+    TerminalBoardCache = 3,
+};
+
 struct HUNLSampledSolverConfig {
     HUNLFlatSamplingMode mode = HUNLFlatSamplingMode::External;
     std::uint64_t seed = 1;
@@ -50,6 +57,7 @@ struct HUNLFlatMCCFRConfig {
     double dcfr_gamma = 2.0;
     bool use_sparse_storage = false;
     bool keep_dense_validation_backend = false;
+    HUNLFlatBaselineMode baseline_mode = HUNLFlatBaselineMode::None;
 };
 
 struct HUNLSampledConfigValidation {

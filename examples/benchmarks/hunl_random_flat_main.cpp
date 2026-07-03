@@ -442,6 +442,14 @@ std::string precision_name(core::HUNLFlatStoragePrecision precision) {
     return "unknown";
 }
 
+double sampled_counter_variance(std::uint64_t count, double sum, double sq_sum) {
+    if (count == 0U) {
+        return 0.0;
+    }
+    const auto mean = sum / static_cast<double>(count);
+    return std::max(0.0, sq_sum / static_cast<double>(count) - mean * mean);
+}
+
 std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
     std::size_t max_width = 0;
     for (const auto& meta : graph.node_meta) {
@@ -792,7 +800,20 @@ int main(int argc, char* argv[]) {
                 ? static_cast<double>(timed.sampled_counters.as_actions_sampled) /
                     static_cast<double>(timed.sampled_counters.as_actions_considered)
                 : 0.0;
+            const auto raw_variance = sampled_counter_variance(
+                timed.sampled_counters.variance_samples,
+                timed.sampled_counters.raw_estimate_sum,
+                timed.sampled_counters.raw_estimate_sq_sum);
+            const auto corrected_variance = sampled_counter_variance(
+                timed.sampled_counters.variance_samples,
+                timed.sampled_counters.corrected_estimate_sum,
+                timed.sampled_counters.corrected_estimate_sq_sum);
             std::cout << "  as_average_sample_ratio=" << std::fixed << std::setprecision(6) << as_ratio << "\n";
+            std::cout << "  baseline_infoset_rows=" << timed.sampled_profile.baseline_infoset_rows << "\n";
+            std::cout << "  baseline_node_rows=" << timed.sampled_profile.baseline_node_rows << "\n";
+            std::cout << "  baseline_bytes=" << format_bytes(timed.sampled_profile.baseline_bytes) << "\n";
+            std::cout << "  raw_estimator_variance=" << std::fixed << std::setprecision(9) << raw_variance << "\n";
+            std::cout << "  corrected_estimator_variance=" << std::fixed << std::setprecision(9) << corrected_variance << "\n";
         }
         std::cout << "  strategy_root:\n";
 
@@ -838,7 +859,20 @@ int main(int argc, char* argv[]) {
                     ? static_cast<double>(timed.sampled_counters.as_actions_sampled) /
                         static_cast<double>(timed.sampled_counters.as_actions_considered)
                     : 0.0;
+                const auto raw_variance = sampled_counter_variance(
+                    timed.sampled_counters.variance_samples,
+                    timed.sampled_counters.raw_estimate_sum,
+                    timed.sampled_counters.raw_estimate_sq_sum);
+                const auto corrected_variance = sampled_counter_variance(
+                    timed.sampled_counters.variance_samples,
+                    timed.sampled_counters.corrected_estimate_sum,
+                    timed.sampled_counters.corrected_estimate_sq_sum);
                 std::cout << "  as_average_sample_ratio=" << std::fixed << std::setprecision(6) << as_ratio << "\n";
+                std::cout << "  baseline_infoset_rows=" << timed.sampled_profile.baseline_infoset_rows << "\n";
+                std::cout << "  baseline_node_rows=" << timed.sampled_profile.baseline_node_rows << "\n";
+                std::cout << "  baseline_bytes=" << format_bytes(timed.sampled_profile.baseline_bytes) << "\n";
+                std::cout << "  raw_estimator_variance=" << std::fixed << std::setprecision(9) << raw_variance << "\n";
+                std::cout << "  corrected_estimator_variance=" << std::fixed << std::setprecision(9) << corrected_variance << "\n";
                 for (std::size_t worker = 0; worker < timed.sampled_profile.workers.size(); ++worker) {
                     const auto& profile = timed.sampled_profile.workers[worker];
                     std::cout << "  worker[" << worker << "]"

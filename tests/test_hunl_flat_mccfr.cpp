@@ -362,6 +362,14 @@ double root_value(const core::HUNLFlatMCCFR& solver) {
     return core::compute_flat_expected_value(solver.graph(), table.view(), &terminal_values)[0];
 }
 
+double variance_from_moments(std::uint64_t count, double sum, double sq_sum) {
+    if (count == 0U) {
+        return 0.0;
+    }
+    const auto mean = sum / static_cast<double>(count);
+    return std::max(0.0, sq_sum / static_cast<double>(count) - mean * mean);
+}
+
 }  // namespace
 
 TEST_CASE(hunl_flat_mccfr_same_seed_produces_identical_output) {
@@ -877,4 +885,72 @@ TEST_CASE(hunl_flat_mccfr_sampled_dcfr_matches_vanilla_direction_on_small_game) 
     EXPECT_TRUE(vanilla_it->second[0] > vanilla_it->second[1]);
     EXPECT_TRUE(dcfr_it->second[0] > dcfr_it->second[1]);
     EXPECT_TRUE(dcfr_solver.profile().discount_seconds <= dcfr_solver.profile().traverse_seconds + 1e-12);
+}
+
+TEST_CASE(hunl_flat_mccfr_variance_reduction_reduces_sampled_estimator_variance_on_public_chance_graph) {
+    const auto graph = make_public_chance_conflict_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 31337;
+    config.traversals_per_iteration = 32;
+    config.update_both_players = false;
+    config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_iterations(120);
+
+    const auto& counters = solver.total_counters();
+    const auto raw_variance =
+        variance_from_moments(counters.variance_samples, counters.raw_estimate_sum, counters.raw_estimate_sq_sum);
+    const auto corrected_variance = variance_from_moments(
+        counters.variance_samples,
+        counters.corrected_estimate_sum,
+        counters.corrected_estimate_sq_sum);
+
+    EXPECT_TRUE(counters.variance_samples > 0U);
+    EXPECT_TRUE(raw_variance > 0.0);
+    EXPECT_TRUE(corrected_variance < raw_variance);
+    EXPECT_NEAR(raw_variance, solver.raw_estimator_variance(), 1e-12);
+    EXPECT_NEAR(corrected_variance, solver.corrected_estimator_variance(), 1e-12);
+}
+
+TEST_CASE(hunl_flat_mccfr_variance_reduction_baselines_stay_sparse_and_deterministic) {
+    const auto first_graph = make_sparse_sampling_visibility_graph();
+    const auto second_graph = make_sparse_sampling_visibility_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 5150;
+    config.traversals_per_iteration = 1;
+    config.update_both_players = false;
+    config.use_sparse_storage = true;
+    config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+
+    core::HUNLFlatMCCFR first(first_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    core::HUNLFlatMCCFR second(second_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+
+    first.run_iterations(8);
+    second.run_iterations(8);
+
+    const auto first_baseline = first.baseline_stats();
+    const auto second_baseline = second.baseline_stats();
+    EXPECT_EQ(first_baseline.infoset_rows, 1U);
+    EXPECT_EQ(first_baseline.node_rows, 1U);
+    EXPECT_TRUE(first_baseline.bytes > 0U);
+    EXPECT_EQ(first_baseline.infoset_rows, second_baseline.infoset_rows);
+    EXPECT_EQ(first_baseline.node_rows, second_baseline.node_rows);
+    EXPECT_EQ(first_baseline.bytes, second_baseline.bytes);
+
+    const auto first_exported = first.export_average_strategy();
+    const auto second_exported = second.export_average_strategy();
+    EXPECT_EQ(first_exported.size(), second_exported.size());
+    for (const auto& [key, values] : first_exported) {
+        const auto it = second_exported.find(key);
+        EXPECT_TRUE(it != second_exported.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-12);
+        }
+    }
 }

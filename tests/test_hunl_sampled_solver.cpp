@@ -66,6 +66,7 @@ TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
     EXPECT_NEAR(config.dcfr_gamma, 2.0, TOL);
     EXPECT_TRUE(!config.use_sparse_storage);
     EXPECT_TRUE(!config.keep_dense_validation_backend);
+    EXPECT_EQ(config.baseline_mode, core::HUNLFlatBaselineMode::None);
 }
 
 TEST_CASE(hunl_sampled_storage_allocates_one_sparse_row) {
