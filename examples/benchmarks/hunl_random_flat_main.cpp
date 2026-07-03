@@ -310,6 +310,7 @@ struct TimedBenchmarkResult {
     core::HUNLFlatAverageStrategyTable strategy_table;
     std::unordered_map<std::string, std::vector<double>> exported_strategy;
     StrategyMap strategy;
+    core::HUNLFlatMCCFR::RootStrategySnapshot sampled_root_snapshot{};
     std::array<double, 2> expected_value = {0.0, 0.0};
     double exploitability = 0.0;
     std::uint32_t iterations = 0;
@@ -320,6 +321,7 @@ struct TimedBenchmarkResult {
     double ev_seconds = 0.0;
     double exploit_seconds = 0.0;
     bool sampled = false;
+    bool root_only_export = false;
     core::HUNLFlatStageProfile profile{};
     core::HUNLFlatMCCFR::Profile sampled_profile{};
     core::HUNLFlatMCCFR::Counters sampled_counters{};
@@ -597,6 +599,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::move(strategy_table),
         std::move(exported),
         std::move(strategy),
+        {},
         expected_value,
         exploitability,
         solver.iterations(),
@@ -606,6 +609,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(export_end - export_start).count(),
         std::chrono::duration<double>(ev_end - ev_start).count(),
         std::chrono::duration<double>(exploit_end - exploit_start).count(),
+        false,
         false,
         solver.profile(),
         {},
@@ -619,9 +623,6 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
     const RandomConfig& cfg) {
     using clock = std::chrono::steady_clock;
 
-    if (cfg.time_budget_ms != 0) {
-        throw std::runtime_error("sampled benchmark time-budget mode is not implemented yet");
-    }
     if (cfg.sample_traversals == 0) {
         throw std::runtime_error("sampled benchmark requires --sample-traversals > 0");
     }
@@ -659,6 +660,48 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
         cfg.precision);
     const auto setup_end = clock::now();
 
+    if (cfg.time_budget_ms != 0) {
+        const auto solve_start = setup_end;
+        const auto timed_result = solver.solve_for(std::chrono::milliseconds{cfg.time_budget_ms});
+        const auto solve_end = clock::now();
+
+        const auto export_start = solve_end;
+        const auto root_snapshot = timed_result.latest_snapshot;
+        std::unordered_map<std::string, std::vector<double>> exported;
+        std::vector<double> root_probabilities;
+        root_probabilities.reserve(root_snapshot.strategy.actions.size());
+        for (const auto& action : root_snapshot.strategy.actions) {
+            root_probabilities.push_back(action.probability);
+        }
+        exported.emplace(root_snapshot.infoset_key, root_probabilities);
+        StrategyMap strategy;
+        strategy.reserve(exported.size());
+        strategy.emplace(root_snapshot.infoset_key, root_probabilities);
+        const auto export_end = clock::now();
+
+        TimedBenchmarkResult result{
+            {},
+            std::move(exported),
+            std::move(strategy),
+            root_snapshot,
+            {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()},
+            std::numeric_limits<double>::quiet_NaN(),
+            timed_result.iterations_completed,
+            solver.worker_count(),
+            std::chrono::duration<double>(setup_end - setup_start).count(),
+            std::chrono::duration<double>(solve_end - solve_start).count(),
+            std::chrono::duration<double>(export_end - export_start).count(),
+            0.0,
+            0.0,
+            true,
+            true,
+            {},
+            solver.profile(),
+            solver.total_counters(),
+        };
+        return result;
+    }
+
     const auto solve_start = setup_end;
     solver.run_iterations(cfg.iterations);
     const auto solve_end = clock::now();
@@ -690,6 +733,7 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
         std::move(strategy_table),
         std::move(exported),
         std::move(strategy),
+        solver.export_root_snapshot(),
         expected_value,
         exploitability,
         solver.iterations(),
@@ -700,6 +744,7 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
         std::chrono::duration<double>(ev_end - ev_start).count(),
         std::chrono::duration<double>(exploit_end - exploit_start).count(),
         true,
+        false,
         {},
         solver.profile(),
         solver.total_counters(),
@@ -782,10 +827,17 @@ int main(int argc, char* argv[]) {
         std::cout << "  export_seconds=" << format_seconds(timed.export_seconds) << "\n";
         std::cout << "  expected_value_seconds=" << format_seconds(timed.ev_seconds) << "\n";
         std::cout << "  exploitability_seconds=" << format_seconds(timed.exploit_seconds) << "\n";
-        std::cout << "  exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
-        std::cout << "  game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
-        std::cout << "  computed_game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
-        std::cout << "  computed_exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
+        if (std::isfinite(timed.exploitability)) {
+            std::cout << "  exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
+            std::cout << "  game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
+            std::cout << "  computed_game_value=" << std::fixed << std::setprecision(9) << timed.expected_value[0] << "\n";
+            std::cout << "  computed_exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
+        } else {
+            std::cout << "  exploitability=n/a (root-only deadline export)\n";
+            std::cout << "  game_value=n/a (root-only deadline export)\n";
+            std::cout << "  computed_game_value=n/a (root-only deadline export)\n";
+            std::cout << "  computed_exploitability=n/a (root-only deadline export)\n";
+        }
         std::cout << "  infosets=" << timed.strategy.size() << "\n";
         std::cout << "  used_parallel=" << (timed.worker_count > 1 ? "true" : "false") << "\n";
         if (timed.sampled) {
@@ -816,6 +868,14 @@ int main(int argc, char* argv[]) {
                       << core::hunl_sampled_simd_backend_name(timed.sampled_profile.sampled_simd_backend) << "\n";
             std::cout << "  sampled_kernel_scalar_calls=" << timed.sampled_profile.sampled_kernel_scalar_calls << "\n";
             std::cout << "  sampled_kernel_simd_calls=" << timed.sampled_profile.sampled_kernel_simd_calls << "\n";
+            std::cout << "  root_action_entropy=" << std::fixed << std::setprecision(9)
+                      << timed.sampled_root_snapshot.action_entropy << "\n";
+            std::cout << "  root_action_probability_delta=" << std::fixed << std::setprecision(9)
+                      << timed.sampled_root_snapshot.action_probability_delta << "\n";
+            std::cout << "  batches_completed=" << timed.sampled_root_snapshot.batches_completed << "\n";
+            std::cout << "  unique_infosets_touched=" << timed.sampled_root_snapshot.unique_infosets_touched << "\n";
+            std::cout << "  memory_used=" << format_bytes(timed.sampled_root_snapshot.memory_used_bytes) << "\n";
+            std::cout << "  deadline_timed_out=" << (timed.sampled_root_snapshot.timed_out ? "true" : "false") << "\n";
             std::cout << "  raw_estimator_variance=" << std::fixed << std::setprecision(9) << raw_variance << "\n";
             std::cout << "  corrected_estimator_variance=" << std::fixed << std::setprecision(9) << corrected_variance << "\n";
         }
@@ -833,6 +893,13 @@ int main(int argc, char* argv[]) {
             for (std::size_t i = 0; i < actions.size() && i < it->second.size(); ++i) {
                 std::cout << "    action[" << actions[i] << "]=" << std::fixed << std::setprecision(6) << it->second[i] << "\n";
             }
+        } else if (timed.sampled && timed.root_only_export && !timed.sampled_root_snapshot.strategy.actions.empty()) {
+            const auto actions = random_state.state.legal_actions();
+            std::cout << "    key=" << timed.sampled_root_snapshot.infoset_key << "\n";
+            for (std::size_t i = 0; i < actions.size() && i < timed.sampled_root_snapshot.strategy.actions.size(); ++i) {
+                std::cout << "    action[" << actions[i] << "]=" << std::fixed << std::setprecision(6)
+                          << timed.sampled_root_snapshot.strategy.actions[i].probability << "\n";
+            }
         } else {
             std::cout << "    root strategy not found in output table\n";
         }
@@ -849,6 +916,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "  average_strategy_seconds=" << format_seconds(timed.profile.average_strategy_seconds) << "\n";
             } else {
                 std::cout << "  strategy_seconds=" << format_seconds(timed.sampled_profile.strategy_seconds) << "\n";
+                std::cout << "  snapshot_seconds=" << format_seconds(timed.sampled_profile.snapshot_seconds) << "\n";
                 std::cout << "  discount_seconds=" << format_seconds(timed.sampled_profile.discount_seconds) << "\n";
                 std::cout << "  traverse_seconds=" << format_seconds(timed.sampled_profile.traverse_seconds) << "\n";
                 std::cout << "  merge_seconds=" << format_seconds(timed.sampled_profile.merge_seconds) << "\n";

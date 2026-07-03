@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <vector>
 
@@ -953,4 +954,47 @@ TEST_CASE(hunl_flat_mccfr_variance_reduction_baselines_stay_sparse_and_determini
             EXPECT_NEAR(values[i], it->second[i], 1e-12);
         }
     }
+}
+
+TEST_CASE(hunl_flat_mccfr_exports_root_average_strategy_without_materializing_full_map) {
+    const auto graph = make_public_chance_conflict_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 77;
+    config.traversals_per_iteration = 16;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_iterations(12);
+
+    const auto root = solver.export_root_average_strategy();
+    EXPECT_EQ(root.actions.size(), 2U);
+    EXPECT_TRUE(root.actions[0].probability >= 0.0);
+    EXPECT_TRUE(root.actions[1].probability >= 0.0);
+    EXPECT_NEAR(root.actions[0].probability + root.actions[1].probability, 1.0, 1e-9);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_mode_returns_latest_clean_root_snapshot_on_immediate_timeout) {
+    const auto graph = make_public_chance_conflict_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 88;
+    config.traversals_per_iteration = 16;
+    config.batch_size = 4;
+    config.update_both_players = false;
+    config.use_sparse_storage = true;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    const auto result = solver.solve_for(std::chrono::milliseconds{0});
+
+    EXPECT_TRUE(result.timed_out);
+    EXPECT_TRUE(!result.snapshots.empty());
+    EXPECT_EQ(result.batches_completed, 0U);
+    EXPECT_EQ(result.latest_snapshot.strategy.actions.size(), 2U);
+    EXPECT_NEAR(result.latest_snapshot.strategy.actions[0].probability, 0.5, 1e-9);
+    EXPECT_NEAR(result.latest_snapshot.strategy.actions[1].probability, 0.5, 1e-9);
+    EXPECT_EQ(result.latest_snapshot.unique_infosets_touched, 0U);
+    EXPECT_EQ(solver.sparse_storage().row_count(), 0U);
 }

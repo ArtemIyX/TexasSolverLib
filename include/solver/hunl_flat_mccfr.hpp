@@ -3,14 +3,17 @@
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_flat_expected_value.hpp"
 #include "solver/hunl_sampled_config.hpp"
+#include "solver/hunl_sampled_export.hpp"
 #include "solver/hunl_sampled_simd.hpp"
 #include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_storage.hpp"
 #include "util/pcs.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -19,6 +22,28 @@ namespace core {
 
 class HUNLFlatMCCFR {
 public:
+    struct RootStrategySnapshot {
+        InfosetId infoset_id{};
+        std::string infoset_key;
+        HUNLSampledRootStrategy strategy;
+        double action_entropy = 0.0;
+        double action_probability_delta = 0.0;
+        std::uint64_t batches_completed = 0;
+        std::uint64_t sampled_nodes_visited = 0;
+        std::uint64_t unique_infosets_touched = 0;
+        std::uint64_t memory_used_bytes = 0;
+        bool timed_out = false;
+    };
+
+    struct DeadlineSolveResult {
+        RootStrategySnapshot latest_snapshot;
+        std::vector<RootStrategySnapshot> snapshots;
+        std::uint32_t iterations_completed = 0;
+        std::uint64_t batches_completed = 0;
+        double export_seconds = 0.0;
+        bool timed_out = false;
+    };
+
     struct BaselineStats {
         std::uint64_t infoset_rows = 0;
         std::uint64_t node_rows = 0;
@@ -39,6 +64,7 @@ public:
     };
 
     struct Profile {
+        double snapshot_seconds = 0.0;
         double discount_seconds = 0.0;
         double strategy_seconds = 0.0;
         double traverse_seconds = 0.0;
@@ -82,6 +108,12 @@ public:
 
     void run_iteration();
     void run_iterations(std::uint32_t iterations);
+    [[nodiscard]] DeadlineSolveResult run_until(
+        std::chrono::steady_clock::time_point deadline,
+        std::size_t snapshot_stride_batches = 1);
+    [[nodiscard]] DeadlineSolveResult solve_for(
+        std::chrono::milliseconds budget,
+        std::size_t snapshot_stride_batches = 1);
 
     [[nodiscard]] const HUNLFlatSolveGraph& graph() const noexcept;
     [[nodiscard]] const HUNLFlatInfosetTable& infoset_table() const noexcept;
@@ -91,6 +123,12 @@ public:
 
     [[nodiscard]] std::unordered_map<std::string, std::vector<double>> export_average_strategy() const;
     [[nodiscard]] HUNLFlatAverageStrategyTable export_average_strategy_table() const;
+    [[nodiscard]] HUNLSampledRootStrategy export_root_average_strategy(std::size_t bucket_index = 0) const;
+    [[nodiscard]] RootStrategySnapshot export_root_snapshot(
+        std::size_t bucket_index = 0,
+        double probability_delta = 0.0,
+        std::uint64_t batches_completed = 0,
+        bool timed_out = false) const;
     [[nodiscard]] const Counters& last_iteration_counters() const noexcept;
     [[nodiscard]] const Counters& total_counters() const noexcept;
     [[nodiscard]] const Profile& profile() const noexcept;
@@ -156,6 +194,11 @@ private:
     void discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
     void discount_sparse_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
     void run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player);
+    void run_player_subbatch(
+        std::uint32_t target_iteration,
+        PlayerId traversing_player,
+        std::uint64_t trajectory_begin,
+        std::uint32_t trajectory_count);
     void merge_worker_rows(std::size_t worker_index);
     void initialize_sparse_infoset_shapes(const std::array<std::size_t, 2>& bucket_count_per_player);
     [[nodiscard]] const HUNLFlatInfosetTableMeta& infoset_meta(InfosetId infoset_id) const noexcept;
@@ -187,7 +230,14 @@ private:
         std::uint64_t sample_count,
         double value_sum,
         double value_sq_sum) noexcept;
+    void accumulate_last_iteration_into_total() noexcept;
     void add_sampled_kernel_profile(double seconds, HUNLSampledSimdBackend backend) noexcept;
+    [[nodiscard]] std::uint64_t memory_used_bytes() const noexcept;
+    [[nodiscard]] InfosetId root_infoset_id() const noexcept;
+    [[nodiscard]] static double action_entropy(const HUNLSampledRootStrategy& strategy) noexcept;
+    [[nodiscard]] static double action_probability_delta(
+        const HUNLSampledRootStrategy& lhs,
+        const HUNLSampledRootStrategy& rhs) noexcept;
 
     HUNLFlatSolveGraph graph_;
     HUNLFlatInfosetTable infoset_table_;
@@ -201,6 +251,9 @@ private:
     Counters total_counters_;
     Profile profile_;
     std::vector<WorkerScratch> worker_scratch_;
+    std::vector<std::uint8_t> touched_infosets_;
+    std::uint64_t unique_infosets_touched_ = 0;
+    std::uint64_t graph_memory_bytes_ = 0;
     std::vector<std::vector<float>> infoset_action_baselines_;
     std::vector<std::vector<std::uint32_t>> infoset_action_baseline_counts_;
     std::vector<std::vector<float>> node_action_baselines_;
