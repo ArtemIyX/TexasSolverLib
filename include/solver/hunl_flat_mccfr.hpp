@@ -25,6 +25,9 @@ public:
         std::uint64_t nodes_visited = 0;
         std::uint64_t sampled_opponent_actions = 0;
         std::uint64_t traversing_player_action_expansions = 0;
+        std::uint64_t as_actions_considered = 0;
+        std::uint64_t as_actions_sampled = 0;
+        std::uint64_t as_forced_at_least_one_count = 0;
         std::uint64_t active_infosets = 0;
     };
 
@@ -33,6 +36,9 @@ public:
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
         std::uint64_t traversals = 0;
+        std::uint64_t as_actions_considered = 0;
+        std::uint64_t as_actions_sampled = 0;
+        std::uint64_t as_forced_at_least_one_count = 0;
         std::vector<WorkerProfile> workers;
     };
 
@@ -40,6 +46,9 @@ public:
         std::uint64_t nodes_visited = 0;
         std::uint64_t sampled_opponent_actions = 0;
         std::uint64_t traversing_player_action_expansions = 0;
+        std::uint64_t as_actions_considered = 0;
+        std::uint64_t as_actions_sampled = 0;
+        std::uint64_t as_forced_at_least_one_count = 0;
     };
 
     explicit HUNLFlatMCCFR(
@@ -67,6 +76,7 @@ public:
     [[nodiscard]] std::size_t worker_count() const noexcept;
     [[nodiscard]] bool using_sparse_storage() const noexcept;
     [[nodiscard]] const HUNLSampledStorage& sparse_storage() const noexcept;
+    [[nodiscard]] double average_strategy_sampling_ratio() const noexcept;
 
 private:
     struct WorkerDeltaRow {
@@ -103,6 +113,8 @@ private:
         double* out,
         std::size_t action_count) const;
     [[nodiscard]] std::vector<double> average_action_probabilities(InfosetId infoset_id) const;
+    [[nodiscard]] std::vector<double> average_strategy_sum_values(InfosetId infoset_id) const;
+    [[nodiscard]] std::vector<double> average_strategy_sampling_probabilities(InfosetId infoset_id) const;
     [[nodiscard]] std::uint32_t sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const;
     void run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player);
     void merge_worker_rows(std::size_t worker_index);

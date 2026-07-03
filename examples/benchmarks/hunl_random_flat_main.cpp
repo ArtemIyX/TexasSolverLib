@@ -785,6 +785,14 @@ int main(int argc, char* argv[]) {
             std::cout << "  sampled_nodes=" << timed.sampled_counters.nodes_visited << "\n";
             std::cout << "  sampled_merge_seconds=" << format_seconds(timed.sampled_profile.merge_seconds) << "\n";
             std::cout << "  sampled_traverse_seconds=" << format_seconds(timed.sampled_profile.traverse_seconds) << "\n";
+            std::cout << "  as_actions_considered=" << timed.sampled_counters.as_actions_considered << "\n";
+            std::cout << "  as_actions_sampled=" << timed.sampled_counters.as_actions_sampled << "\n";
+            const auto as_ratio =
+                timed.sampled_counters.as_actions_considered > 0
+                ? static_cast<double>(timed.sampled_counters.as_actions_sampled) /
+                    static_cast<double>(timed.sampled_counters.as_actions_considered)
+                : 0.0;
+            std::cout << "  as_average_sample_ratio=" << std::fixed << std::setprecision(6) << as_ratio << "\n";
         }
         std::cout << "  strategy_root:\n";
 
@@ -821,11 +829,23 @@ int main(int argc, char* argv[]) {
                 std::cout << "  sampled_nodes=" << timed.sampled_counters.nodes_visited << "\n";
                 std::cout << "  sampled_opponent_actions=" << timed.sampled_counters.sampled_opponent_actions << "\n";
                 std::cout << "  traversing_action_expansions=" << timed.sampled_counters.traversing_player_action_expansions << "\n";
+                std::cout << "  as_actions_considered=" << timed.sampled_counters.as_actions_considered << "\n";
+                std::cout << "  as_actions_sampled=" << timed.sampled_counters.as_actions_sampled << "\n";
+                std::cout << "  as_forced_at_least_one=" << timed.sampled_counters.as_forced_at_least_one_count << "\n";
+                const auto as_ratio =
+                    timed.sampled_counters.as_actions_considered > 0
+                    ? static_cast<double>(timed.sampled_counters.as_actions_sampled) /
+                        static_cast<double>(timed.sampled_counters.as_actions_considered)
+                    : 0.0;
+                std::cout << "  as_average_sample_ratio=" << std::fixed << std::setprecision(6) << as_ratio << "\n";
                 for (std::size_t worker = 0; worker < timed.sampled_profile.workers.size(); ++worker) {
                     const auto& profile = timed.sampled_profile.workers[worker];
                     std::cout << "  worker[" << worker << "]"
                               << " traversals=" << profile.traversals
                               << " nodes=" << profile.nodes_visited
+                              << " as_considered=" << profile.as_actions_considered
+                              << " as_sampled=" << profile.as_actions_sampled
+                              << " as_forced=" << profile.as_forced_at_least_one_count
                               << " active_infosets=" << profile.active_infosets
                               << " traverse=" << format_seconds(profile.traverse_seconds)
                               << " merge=" << format_seconds(profile.merge_seconds)

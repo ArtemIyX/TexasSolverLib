@@ -276,6 +276,86 @@ core::HUNLFlatSolveGraph make_sparse_sampling_visibility_graph() {
     return graph;
 }
 
+core::HUNLFlatSolveGraph make_wide_average_strategy_graph() {
+    core::HUNLFlatSolveGraph graph;
+    graph.root = 0;
+    graph.max_depth = 2;
+    graph.max_actions = 8;
+
+    graph.children = {
+        1, 2,
+        3, 4, 5, 6, 7, 8, 9, 10,
+        11, 12, 13, 14, 15, 16, 17, 18,
+    };
+    graph.chance_outcomes = {
+        core::HUNLFlatChanceOutcome{0, 0.5, 1},
+        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+    };
+
+    const auto shared_infoset = core::InfosetId{0};
+    graph.infosets.push_back(core::HUNLFlatInfoset{
+        shared_infoset,
+        0,
+        2,
+        {},
+        0,
+        0,
+        core::Street::Flop,
+        8,
+    });
+    graph.infoset_debug_keys = {"wide-player0"};
+    graph.infoset_nodes = {1, 2};
+
+    auto make_terminal_meta = [](double value) {
+        core::HUNLFlatNodeMeta meta;
+        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        meta.terminal_utility = {value, -value};
+        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        return meta;
+    };
+
+    graph.node_meta.resize(19);
+    graph.node_meta[0].child_begin = 0;
+    graph.node_meta[0].child_count = 2;
+    graph.node_meta[0].chance_begin = 0;
+    graph.node_meta[0].chance_count = 2;
+    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = core::Street::Flop;
+
+    for (std::uint32_t node_idx : {1U, 2U}) {
+        auto& meta = graph.node_meta[node_idx];
+        meta.child_begin = node_idx == 1 ? 2 : 10;
+        meta.child_count = 8;
+        meta.infoset_id = shared_infoset;
+        meta.player = 0;
+        meta.type = core::HUNLFlatNodeType::Decision;
+        meta.street = core::Street::Flop;
+        meta.action_count = 8;
+        meta.has_infoset = true;
+    }
+
+    const std::array<double, 8> first_branch = {5.0, 4.0, 3.0, 2.0, 1.0, 0.0, -1.0, -2.0};
+    const std::array<double, 8> second_branch = {4.0, 3.0, 2.0, 1.0, 0.0, -1.0, -2.0, -3.0};
+    for (std::size_t i = 0; i < first_branch.size(); ++i) {
+        graph.node_meta[3U + static_cast<std::uint32_t>(i)] = make_terminal_meta(first_branch[i]);
+        graph.node_meta[11U + static_cast<std::uint32_t>(i)] = make_terminal_meta(second_branch[i]);
+    }
+
+    graph.depth_order = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18};
+    graph.depth_slices = {
+        core::HUNLFlatSlice{0, 1},
+        core::HUNLFlatSlice{1, 2},
+        core::HUNLFlatSlice{3, 16},
+    };
+    graph.node_depths = {0, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
+    graph.forward_order = graph.depth_order;
+    graph.reverse_order = {18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
+    graph.street_order = graph.depth_order;
+    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
+        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    return graph;
+}
+
 double root_value(const core::HUNLFlatMCCFR& solver) {
     const auto table = solver.export_average_strategy_table();
     const auto terminal_values = core::build_flat_terminal_value_table(solver.graph());
@@ -643,4 +723,81 @@ TEST_CASE(hunl_flat_mccfr_sparse_mode_can_keep_dense_validation_backend) {
     core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     EXPECT_TRUE(solver.using_sparse_storage());
     EXPECT_EQ(solver.infoset_table().meta().size(), graph.infosets.size());
+}
+
+TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_converges_in_direction_of_best_action) {
+    const auto graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    config.seed = 505;
+    config.traversals_per_iteration = 64;
+    config.as_epsilon = 0.1;
+    config.as_tau = 1.0;
+    config.as_beta = 10.0;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_iterations(240);
+
+    const auto exported = solver.export_average_strategy();
+    const auto key = std::string(solver.graph().infoset_key(core::InfosetId{1}));
+    const auto it = exported.find(key);
+    EXPECT_TRUE(it != exported.end());
+    EXPECT_TRUE(it->second.size() >= 2U);
+    EXPECT_TRUE(it->second[0] > it->second[1]);
+    EXPECT_TRUE(solver.total_counters().as_actions_considered > 0U);
+    EXPECT_TRUE(solver.total_counters().as_actions_sampled > 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_reduces_action_expansions_on_wide_menu) {
+    const auto external_graph = make_wide_average_strategy_graph();
+    const auto average_graph = make_wide_average_strategy_graph();
+
+    core::HUNLFlatMCCFRConfig external_config;
+    external_config.mode = core::HUNLFlatSamplingMode::External;
+    external_config.seed = 808;
+    external_config.traversals_per_iteration = 64;
+
+    core::HUNLFlatMCCFRConfig average_config = external_config;
+    average_config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    average_config.as_epsilon = 0.1;
+    average_config.as_tau = 0.0;
+    average_config.as_beta = 0.1;
+
+    core::HUNLFlatMCCFR external_solver(external_graph, {1, 1}, external_config);
+    core::HUNLFlatMCCFR average_solver(average_graph, {1, 1}, average_config);
+
+    external_solver.run_iterations(40);
+    average_solver.run_iterations(40);
+
+    EXPECT_TRUE(
+        average_solver.total_counters().traversing_player_action_expansions <
+        external_solver.total_counters().traversing_player_action_expansions);
+    EXPECT_TRUE(average_solver.total_counters().as_actions_considered > 0U);
+    EXPECT_TRUE(
+        average_solver.total_counters().as_actions_sampled <
+        average_solver.total_counters().as_actions_considered);
+    EXPECT_TRUE(average_solver.average_strategy_sampling_ratio() > 0.0);
+    EXPECT_TRUE(average_solver.average_strategy_sampling_ratio() < 1.0);
+}
+
+TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_forces_at_least_one_action_when_needed) {
+    const auto graph = make_wide_average_strategy_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    config.seed = 909;
+    config.traversals_per_iteration = 32;
+    config.as_epsilon = 0.05;
+    config.as_tau = 0.0;
+    config.as_beta = 0.1;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_iterations(100);
+
+    EXPECT_TRUE(solver.total_counters().as_actions_considered > 0U);
+    EXPECT_TRUE(solver.total_counters().as_actions_sampled >= 32ULL * 100ULL);
+    EXPECT_TRUE(
+        solver.total_counters().as_forced_at_least_one_count <=
+        solver.total_counters().as_actions_considered);
 }
