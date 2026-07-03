@@ -54,6 +54,7 @@ add_library(texas_core STATIC)
 add_library(TexasSolver::texas_core ALIAS texas_core)
 
 target_sources(texas_core PRIVATE ${TEXASSOLVER_SOURCES})
+target_sources(texas_core PRIVATE ${TEXASSOLVER_PUBLIC_HEADERS})
 if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
     target_link_libraries(texas_core PRIVATE pheval)
 endif()
