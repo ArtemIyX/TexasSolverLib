@@ -25,6 +25,17 @@ TEST_CASE(hunl_sampled_config_defaults_validate) {
     EXPECT_TRUE(config.sparse_infosets);
 }
 
+TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
+    const core::HUNLFlatMCCFRConfig config;
+
+    EXPECT_EQ(config.mode, core::HUNLFlatSamplingMode::External);
+    EXPECT_EQ(config.seed, 1U);
+    EXPECT_EQ(config.traversals_per_iteration, 1024U);
+    EXPECT_EQ(config.batch_size, 64U);
+    EXPECT_TRUE(config.update_both_players);
+    EXPECT_TRUE(!config.use_discounting);
+}
+
 TEST_CASE(hunl_sampled_storage_allocates_one_sparse_row) {
     core::HUNLSampledStorage storage;
     const auto row = storage.ensure_row({

@@ -35,6 +35,18 @@ struct HUNLSampledSolverConfig {
     std::size_t workers = 1;
 };
 
+struct HUNLFlatMCCFRConfig {
+    HUNLFlatSamplingMode mode = HUNLFlatSamplingMode::External;
+    std::uint64_t seed = 1;
+    std::uint32_t traversals_per_iteration = 1024;
+    std::uint32_t batch_size = 64;
+    double as_epsilon = 0.05;
+    double as_tau = 1000.0;
+    double as_beta = 1e6;
+    bool update_both_players = true;
+    bool use_discounting = false;
+};
+
 struct HUNLSampledConfigValidation {
     bool ok = true;
     const char* message = "";

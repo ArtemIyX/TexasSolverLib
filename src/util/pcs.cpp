@@ -1,6 +1,7 @@
 #include "util/pcs.hpp"
 
 #include <cassert>
+#include <cmath>
 
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -47,6 +48,13 @@ double effective_beta(SamplingStrategy strategy, double requested_beta) {
     return requested_beta;
 }
 
+std::uint64_t PcsRng::mix_seed_word(std::uint64_t value) noexcept {
+    auto z = value + 0x9E3779B97F4A7C15ULL;
+    z = (z ^ (z >> 30U)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27U)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31U);
+}
+
 PcsRng::PcsRng(std::uint64_t seed) : state_(seed == 0 ? 0x9E3779B97F4A7C15ULL : seed) {}
 
 std::uint64_t PcsRng::next_u64() {
@@ -62,10 +70,59 @@ std::uint64_t PcsRng::gen_range(std::uint64_t n) {
     return mul_high_u64(next_u64(), n);
 }
 
-double PcsRng::next_f64_signed() {
+double PcsRng::next_unit_f64() {
     const auto bits = next_u64() >> 11U;
-    const auto unit = static_cast<double>(bits) / static_cast<double>(1ULL << 53U);
-    return 2.0 * unit - 1.0;
+    return static_cast<double>(bits) / static_cast<double>(1ULL << 53U);
+}
+
+double PcsRng::next_f64_signed() {
+    return 2.0 * next_unit_f64() - 1.0;
+}
+
+bool PcsRng::bernoulli(double probability) {
+    if (probability <= 0.0) {
+        return false;
+    }
+    if (probability >= 1.0) {
+        return true;
+    }
+    return next_unit_f64() < probability;
+}
+
+std::pair<std::size_t, double> PcsRng::sample_weighted(const double* weights, std::size_t count) {
+    assert(weights != nullptr);
+    assert(count > 0);
+
+    double total = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        assert(weights[i] >= 0.0);
+        total += weights[i];
+    }
+    assert(total > 0.0);
+
+    double draw = next_unit_f64() * total;
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto weight = weights[i];
+        if (weight <= 0.0) {
+            continue;
+        }
+        if (draw < weight) {
+            return {i, total / weight};
+        }
+        draw -= weight;
+    }
+
+    for (std::size_t i = count; i > 0; --i) {
+        if (weights[i - 1] > 0.0) {
+            return {i - 1, total / weights[i - 1]};
+        }
+    }
+
+    return {0, 0.0};
+}
+
+std::pair<std::size_t, double> PcsRng::sample_weighted(const std::vector<double>& weights) {
+    return sample_weighted(weights.data(), weights.size());
 }
 
 std::pair<std::size_t, double> sample_uniform_outcome(PcsRng& rng, std::size_t k_outcomes) {

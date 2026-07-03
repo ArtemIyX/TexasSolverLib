@@ -4,6 +4,7 @@
 #include "core/lib.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_flat_expected_value.hpp"
+#include "solver/hunl_sampled_config.hpp"
 #include "solver/solver.hpp"
 #include "util/profiling.hpp"
 
@@ -37,10 +38,13 @@ struct RandomConfig {
 
     std::size_t workers = 16;
     std::uint32_t iterations = 10;
+    std::uint32_t sample_traversals = 0;
+    std::uint32_t time_budget_ms = 0;
     std::uint32_t depth_limit_plies = 0;
     std::size_t hand_buckets = 1326;
     core::Street street = core::Street::River;
     core::HUNLFlatStoragePrecision precision = core::HUNLFlatStoragePrecision::Float64;
+    core::HUNLFlatSamplingMode sampling_mode = core::HUNLFlatSamplingMode::Exact;
     std::uint64_t seed = 0;
     bool debug = false;
     Preset preset = Preset::None;
@@ -106,6 +110,14 @@ std::optional<RandomConfig::Preset> preset_from_text(std::string_view text) {
     return std::nullopt;
 }
 
+std::optional<core::HUNLFlatSamplingMode> sampling_mode_from_text(std::string_view text) {
+    if (text == "exact") return core::HUNLFlatSamplingMode::Exact;
+    if (text == "public-chance") return core::HUNLFlatSamplingMode::PublicChance;
+    if (text == "external") return core::HUNLFlatSamplingMode::External;
+    if (text == "average-strategy") return core::HUNLFlatSamplingMode::AverageStrategy;
+    return std::nullopt;
+}
+
 std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
     RandomConfig cfg;
     for (int i = 1; i < argc; ++i) {
@@ -119,6 +131,18 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
         }
         if (arg == "--iterations" && i + 1 < argc) {
             if (!parse_uint32(argv[++i], cfg.iterations)) {
+                return std::nullopt;
+            }
+            continue;
+        }
+        if (arg == "--sample-traversals" && i + 1 < argc) {
+            if (!parse_uint32(argv[++i], cfg.sample_traversals)) {
+                return std::nullopt;
+            }
+            continue;
+        }
+        if (arg == "--time-budget-ms" && i + 1 < argc) {
+            if (!parse_uint32(argv[++i], cfg.time_budget_ms)) {
                 return std::nullopt;
             }
             continue;
@@ -160,6 +184,14 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
             cfg.precision_overridden = true;
             continue;
         }
+        if (arg == "--sampling" && i + 1 < argc) {
+            const auto sampling_mode = sampling_mode_from_text(argv[++i]);
+            if (!sampling_mode.has_value()) {
+                return std::nullopt;
+            }
+            cfg.sampling_mode = *sampling_mode;
+            continue;
+        }
         if (arg == "--preset" && i + 1 < argc) {
             const auto preset = preset_from_text(argv[++i]);
             if (!preset.has_value()) {
@@ -197,8 +229,8 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
 
 void print_usage(const char* exe) {
     std::cerr << "Usage:\n"
-              << "  " << exe << " [--workers N] [--iterations N] [--depth-limit N] [--buckets N] [--streets flop|turn|river] [--precision double|float] [--seed N] [--debug]\n\n"
-              << "  " << exe << " [--preset conservative|balanced] [--workers N] [--iterations N] [--depth-limit N] [--buckets N] [--precision double|float] [--seed N] [--debug]\n\n"
+              << "  " << exe << " [--workers N] [--iterations N] [--sample-traversals N] [--time-budget-ms N] [--sampling exact|public-chance|external|average-strategy] [--depth-limit N] [--buckets N] [--streets flop|turn|river] [--precision double|float] [--seed N] [--debug]\n\n"
+              << "  " << exe << " [--preset conservative|balanced] [--workers N] [--iterations N] [--sample-traversals N] [--time-budget-ms N] [--sampling exact|public-chance|external|average-strategy] [--depth-limit N] [--buckets N] [--precision double|float] [--seed N] [--debug]\n\n"
               << "Defaults:\n"
               << "  workers=16 iterations=10 depth-limit=0 buckets=1326 streets=river precision=double seed=0\n";
 }
@@ -229,6 +261,16 @@ std::string preset_name(RandomConfig::Preset preset) {
         case RandomConfig::Preset::None: return "none";
         case RandomConfig::Preset::RTAFlopConservative: return "rta-flop-conservative";
         case RandomConfig::Preset::RTAFlopBalanced: return "rta-flop-balanced";
+    }
+    return "unknown";
+}
+
+std::string sampling_mode_name(core::HUNLFlatSamplingMode mode) {
+    switch (mode) {
+        case core::HUNLFlatSamplingMode::Exact: return "exact";
+        case core::HUNLFlatSamplingMode::PublicChance: return "public-chance";
+        case core::HUNLFlatSamplingMode::External: return "external";
+        case core::HUNLFlatSamplingMode::AverageStrategy: return "average-strategy";
     }
     return "unknown";
 }
@@ -580,14 +622,24 @@ int main(int argc, char* argv[]) {
         std::cout << "HUNL random flat benchmark\n";
         std::cout << "workers=" << cfg.workers
                   << " iterations=" << cfg.iterations
+                  << " sample_traversals=" << cfg.sample_traversals
+                  << " time_budget_ms=" << cfg.time_budget_ms
                   << " depth_limit=" << cfg.depth_limit_plies
                   << " buckets=" << cfg.hand_buckets
                   << " preset=" << preset_name(cfg.preset)
+                  << " sampling=" << sampling_mode_name(cfg.sampling_mode)
                   << " street=" << street_name(cfg.street)
                   << " precision=" << precision_name(cfg.precision)
                   << " seed=" << cfg.seed
                   << " backend=flat\n";
         print_state(random_state.config, random_state.state);
+
+        if (cfg.sampling_mode != core::HUNLFlatSamplingMode::Exact ||
+            cfg.sample_traversals != 0 ||
+            cfg.time_budget_ms != 0) {
+            std::cerr << "fatal error: sampled benchmark flags are parsed but not implemented yet\n";
+            return 1;
+        }
 
         if (cfg.debug) {
             std::cout << "debug: starting solve with flat backend forced via env\n";

@@ -61,4 +61,48 @@ TEST_CASE(sample_uniform_outcome_negative_control_without_importance_weight) {
     EXPECT_TRUE(std::abs(est_weighted_mean - true_sum / static_cast<double>(values.size())) < 0.05);
 }
 
+TEST_CASE(pcs_rng_bernoulli_clamps_extreme_probabilities) {
+    core::PcsRng rng(11);
+    for (int i = 0; i < 32; ++i) {
+        EXPECT_TRUE(!rng.bernoulli(0.0));
+        EXPECT_TRUE(rng.bernoulli(1.0));
+    }
+}
+
+TEST_CASE(pcs_rng_weighted_sampling_is_deterministic_for_seed) {
+    core::PcsRng first(1234);
+    core::PcsRng second(1234);
+    constexpr std::array<double, 4> weights = {0.0, 1.0, 3.0, 6.0};
+
+    for (int i = 0; i < 128; ++i) {
+        const auto [first_idx, first_importance] = first.sample_weighted(weights.data(), weights.size());
+        const auto [second_idx, second_importance] = second.sample_weighted(weights.data(), weights.size());
+        EXPECT_EQ(first_idx, second_idx);
+        EXPECT_EQ(first_importance, second_importance);
+        EXPECT_TRUE(first_idx != 0U);
+        EXPECT_TRUE(first_importance > 0.0);
+    }
+}
+
+TEST_CASE(pcs_rng_weighted_sampling_tracks_expected_importance_weights) {
+    core::PcsRng rng(99);
+    constexpr std::array<double, 3> weights = {2.0, 3.0, 5.0};
+
+    for (int i = 0; i < 64; ++i) {
+        const auto [idx, importance] = rng.sample_weighted(weights.data(), weights.size());
+        EXPECT_TRUE(idx < weights.size());
+        EXPECT_NEAR(importance, 10.0 / weights[idx], 1e-12);
+    }
+}
+
+TEST_CASE(pcs_rng_seed_mixing_is_deterministic_and_order_sensitive) {
+    const auto a = core::PcsRng::mix_seed(7, 1U, 2U, 3U, 4U);
+    const auto b = core::PcsRng::mix_seed(7, 1U, 2U, 3U, 4U);
+    const auto c = core::PcsRng::mix_seed(7, 4U, 3U, 2U, 1U);
+
+    EXPECT_EQ(a, b);
+    EXPECT_TRUE(a != c);
+    EXPECT_TRUE(a != 0U);
+}
+
 

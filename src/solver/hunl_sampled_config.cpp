@@ -22,6 +22,10 @@ HUNLSampledConfigValidation validate_sampled_config(
     if (config.as_beta < 0.0) {
         return {false, "as_beta must be non-negative"};
     }
+    if (config.use_average_strategy_sampling &&
+        config.mode != HUNLFlatSamplingMode::AverageStrategy) {
+        return {false, "use_average_strategy_sampling requires AverageStrategy mode"};
+    }
     return {};
 }
 
