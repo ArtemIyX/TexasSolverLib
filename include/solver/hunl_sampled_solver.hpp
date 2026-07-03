@@ -9,11 +9,13 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 
 namespace core {
 
 struct HUNLSampledSolveRequest {
     std::uint8_t root_action_count = 0;
+    std::optional<HUNLState> root_state = std::nullopt;
 };
 
 struct HUNLSampledSolveResult {
@@ -24,12 +26,15 @@ struct HUNLSampledSolveResult {
 };
 
 struct HUNLSampledMemoryEstimate {
+    std::uint64_t graph_cache_bytes = 0;
+    std::uint64_t graph_nodes = 0;
+    std::uint64_t graph_edges = 0;
     std::uint64_t sparse_row_bytes = 0;
     std::uint64_t sparse_rows = 0;
     std::uint64_t sparse_values = 0;
 
     [[nodiscard]] std::uint64_t total_bytes() const noexcept {
-        return sparse_row_bytes;
+        return graph_cache_bytes + sparse_row_bytes;
     }
 };
 
@@ -47,6 +52,8 @@ public:
     [[nodiscard]] const HUNLSampledProfile& profile() const noexcept;
     [[nodiscard]] HUNLSampledMemoryEstimate memory_estimate() const noexcept;
     [[nodiscard]] const HUNLSampledSolverConfig& config() const noexcept;
+    [[nodiscard]] HUNLSampledBuilder& builder() noexcept;
+    [[nodiscard]] const HUNLSampledBuilder& builder() const noexcept;
     [[nodiscard]] HUNLSampledStorage& storage() noexcept;
     [[nodiscard]] const HUNLSampledStorage& storage() const noexcept;
 

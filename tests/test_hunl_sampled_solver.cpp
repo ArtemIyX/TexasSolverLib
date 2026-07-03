@@ -1,18 +1,44 @@
 #include "solver/hunl_sampled_config.hpp"
+#include "solver/hunl_sampled_builder.hpp"
+#include "solver/hunl_sampled_solver.hpp"
 #include "solver/hunl_sampled_profile.hpp"
 #include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_simd.hpp"
 #include "solver/hunl_sampled_storage.hpp"
 #include "solver/hunl_sampled_export.hpp"
+#include "solver/hunl_sampled_terminal.hpp"
+#include "solver/hunl_sampled_traversal.hpp"
 #include "test_harness.hpp"
 
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <memory>
 
 namespace {
 
 constexpr double TOL = 1e-6;
+
+core::HUNLState make_lazy_root_state() {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_street = core::Street::Flop;
+    config->initial_board = {
+        core::card_to_int(14, 0),
+        core::card_to_int(13, 1),
+        core::card_to_int(2, 2),
+    };
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(12, 0), core::card_to_int(11, 1)},
+        {core::card_to_int(10, 2), core::card_to_int(9, 3)},
+    }};
+    auto state = core::HUNLState::initial(config);
+    state.street = core::Street::Turn;
+    state.cur_player = -1;
+    state.pending_board_deals = 1;
+    state.current_street_tokens.clear();
+    state.current_street_history_codes.clear();
+    return state;
+}
 
 TEST_CASE(hunl_sampled_config_defaults_validate) {
     const core::HUNLSampledSolverConfig config;
@@ -86,6 +112,105 @@ TEST_CASE(hunl_sampled_storage_computes_current_strategy_on_demand_and_estimates
     EXPECT_EQ(estimate.sparse_rows, 1U);
     EXPECT_EQ(estimate.sparse_values, 4U);
     EXPECT_TRUE(estimate.total_bytes() >= storage.storage_bytes());
+}
+
+TEST_CASE(hunl_sampled_builder_starts_with_root_only_and_grows_lazily) {
+    core::HUNLSampledBuilder builder;
+    const auto root_state = make_lazy_root_state();
+    const auto root_id = builder.initialize(root_state);
+
+    EXPECT_EQ(root_id, 0U);
+    EXPECT_EQ(builder.node_count(), 1U);
+    EXPECT_EQ(builder.edge_count(), 0U);
+
+    const auto before = builder.memory_estimate();
+    builder.ensure_expanded(root_id);
+    const auto after = builder.memory_estimate();
+
+    EXPECT_TRUE(builder.node_count() > 1U);
+    EXPECT_TRUE(builder.edge_count() > 0U);
+    EXPECT_TRUE(after.total_bytes() >= before.total_bytes());
+    EXPECT_TRUE(builder.node(root_id).expanded);
+}
+
+TEST_CASE(hunl_sampled_builder_caches_nodes_by_public_state_key) {
+    core::HUNLSampledBuilder builder;
+    const auto root_state = make_lazy_root_state();
+    const auto root_id = builder.initialize(root_state);
+
+    builder.ensure_expanded(root_id);
+    const auto first_nodes = builder.node_count();
+    const auto first_edges = builder.edge_count();
+    builder.ensure_expanded(root_id);
+
+    EXPECT_EQ(builder.node_count(), first_nodes);
+    EXPECT_EQ(builder.edge_count(), first_edges);
+}
+
+TEST_CASE(hunl_sampled_builder_public_chance_isomorphism_collapses_turn_outcomes) {
+    core::HUNLSampledBuilder collapsed_builder({true});
+    core::HUNLSampledBuilder raw_builder({false});
+    const auto root_state = make_lazy_root_state();
+
+    const auto collapsed_root = collapsed_builder.initialize(root_state);
+    const auto raw_root = raw_builder.initialize(root_state);
+    const auto raw_outcomes = root_state.chance_outcomes().size();
+
+    collapsed_builder.ensure_expanded(collapsed_root);
+    raw_builder.ensure_expanded(raw_root);
+
+    EXPECT_TRUE(raw_outcomes > 0U);
+    EXPECT_EQ(raw_builder.node(raw_root).edge_count, raw_outcomes);
+    EXPECT_TRUE(collapsed_builder.node(collapsed_root).edge_count < raw_outcomes);
+    EXPECT_TRUE(collapsed_builder.node(collapsed_root).chance_isomorphic);
+}
+
+TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
+    core::HUNLSampledSolver solver;
+    core::HUNLSampledSolveRequest request;
+    request.root_state = make_lazy_root_state();
+
+    const auto empty_memory = solver.memory_estimate();
+    solver.run_batches(request, 1);
+    const auto initialized_memory = solver.memory_estimate();
+    solver.builder().ensure_expanded(solver.builder().root_id());
+    const auto expanded_memory = solver.memory_estimate();
+
+    EXPECT_EQ(empty_memory.graph_nodes, 0U);
+    EXPECT_EQ(initialized_memory.graph_nodes, 1U);
+    EXPECT_TRUE(expanded_memory.graph_nodes > initialized_memory.graph_nodes);
+    EXPECT_TRUE(expanded_memory.graph_cache_bytes >= initialized_memory.graph_cache_bytes);
+}
+
+TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {
+    core::HUNLSampledBuilder builder;
+    const auto root_id = builder.initialize(make_lazy_root_state());
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    request.trajectory_id = 0;
+    request.traversing_player = 0;
+    request.iteration = 1;
+
+    const auto result = traversal.run(request, scratch);
+
+    EXPECT_TRUE(result.nodes_visited >= 2U);
+    const auto& root = builder.node(root_id);
+    EXPECT_TRUE(root.expanded);
+    EXPECT_TRUE(root.edge_count > 1U);
+
+    std::size_t expanded_children = 0;
+    for (std::uint32_t edge_index = 0; edge_index < root.edge_count; ++edge_index) {
+        const auto& child = builder.node(builder.edge(root.edge_begin + edge_index).child);
+        if (child.expanded) {
+            ++expanded_children;
+        }
+    }
+    EXPECT_EQ(expanded_children, 1U);
 }
 
 TEST_CASE(hunl_sampled_exporter_normalizes_sparse_rows_for_both_layouts) {

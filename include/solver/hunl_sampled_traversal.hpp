@@ -32,7 +32,7 @@ struct HUNLSampledWorkerScratch {
 class HUNLSampledTraversal {
 public:
     HUNLSampledTraversal(
-        const HUNLSampledBuilder& builder,
+        HUNLSampledBuilder& builder,
         HUNLSampledStorage& storage,
         const HUNLSampledTerminalEvaluator& terminal_evaluator);
 
@@ -41,7 +41,7 @@ public:
         HUNLSampledWorkerScratch& scratch);
 
 private:
-    const HUNLSampledBuilder& builder_;
+    HUNLSampledBuilder& builder_;
     HUNLSampledStorage& storage_;
     const HUNLSampledTerminalEvaluator& terminal_evaluator_;
 };

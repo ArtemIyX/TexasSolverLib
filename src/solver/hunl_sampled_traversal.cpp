@@ -8,7 +8,7 @@ void HUNLSampledWorkerScratch::clear_keep_capacity() noexcept {
 }
 
 HUNLSampledTraversal::HUNLSampledTraversal(
-    const HUNLSampledBuilder& builder,
+    HUNLSampledBuilder& builder,
     HUNLSampledStorage& storage,
     const HUNLSampledTerminalEvaluator& terminal_evaluator)
     : builder_(builder), storage_(storage), terminal_evaluator_(terminal_evaluator) {
@@ -22,28 +22,44 @@ HUNLSampledTraversalResult HUNLSampledTraversal::run(
         return {};
     }
 
-    const auto& root = builder_.node(request.root_node_id);
     HUNLSampledTraversalResult result;
-    result.nodes_visited = 1;
+    auto node_id = request.root_node_id;
+    while (true) {
+        const auto& node = builder_.node(node_id);
+        ++result.nodes_visited;
 
-    const auto row = storage_.view(root.infoset_id);
-    if (!row.empty()) {
-        result.infosets_updated = 1;
+        if (node.type == HUNLFlatNodeType::Decision) {
+            const auto row = storage_.view(node.infoset_id);
+            if (!row.empty()) {
+                ++result.infosets_updated;
+            }
+        }
+
+        if (node.type == HUNLFlatNodeType::TerminalFold) {
+            HUNLSampledTerminalInput input;
+            input.contributions = node.contributions;
+            input.traversing_player = request.traversing_player;
+            result.value = terminal_evaluator_.evaluate_fold(input, node.player);
+            return result;
+        }
+        if (node.type == HUNLFlatNodeType::TerminalShowdown) {
+            HUNLSampledTerminalInput input;
+            input.contributions = node.contributions;
+            input.traversing_player = request.traversing_player;
+            result.value = terminal_evaluator_.evaluate_showdown(input, 0.0);
+            return result;
+        }
+
+        builder_.ensure_expanded(node_id);
+        const auto& expanded = builder_.node(node_id);
+        if (expanded.edge_count == 0) {
+            return result;
+        }
+
+        const auto selector = static_cast<std::uint32_t>(request.trajectory_id % expanded.edge_count);
+        const auto& edge = builder_.edge(expanded.edge_begin + selector);
+        node_id = edge.child;
     }
-
-    if (root.type == HUNLFlatNodeType::TerminalFold) {
-        HUNLSampledTerminalInput input;
-        input.contributions = root.contributions;
-        input.traversing_player = request.traversing_player;
-        result.value = terminal_evaluator_.evaluate_fold(input, root.player);
-    } else if (root.type == HUNLFlatNodeType::TerminalShowdown) {
-        HUNLSampledTerminalInput input;
-        input.contributions = root.contributions;
-        input.traversing_player = request.traversing_player;
-        result.value = terminal_evaluator_.evaluate_showdown(input, 0.0);
-    }
-
-    return result;
 }
 
 }  // namespace core
