@@ -95,6 +95,8 @@ public:
     [[nodiscard]] HUNLSampledConstRowView view(InfosetId id) const;
     [[nodiscard]] HUNLSampledRowView view_mut(InfosetId id);
     [[nodiscard]] const std::vector<HUNLSampledInfosetMeta>& meta() const noexcept;
+    [[nodiscard]] HUNLSampledInfosetMeta* meta_for_mut(InfosetId id) noexcept;
+    [[nodiscard]] const HUNLSampledInfosetMeta* meta_for(InfosetId id) const noexcept;
     [[nodiscard]] std::size_t row_count() const noexcept;
     [[nodiscard]] std::size_t total_value_count() const noexcept;
     [[nodiscard]] std::uint64_t storage_bytes() const noexcept;

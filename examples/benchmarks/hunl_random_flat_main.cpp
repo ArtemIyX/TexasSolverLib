@@ -824,6 +824,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "  average_strategy_seconds=" << format_seconds(timed.profile.average_strategy_seconds) << "\n";
             } else {
                 std::cout << "  strategy_seconds=" << format_seconds(timed.sampled_profile.strategy_seconds) << "\n";
+                std::cout << "  discount_seconds=" << format_seconds(timed.sampled_profile.discount_seconds) << "\n";
                 std::cout << "  traverse_seconds=" << format_seconds(timed.sampled_profile.traverse_seconds) << "\n";
                 std::cout << "  merge_seconds=" << format_seconds(timed.sampled_profile.merge_seconds) << "\n";
                 std::cout << "  sampled_nodes=" << timed.sampled_counters.nodes_visited << "\n";

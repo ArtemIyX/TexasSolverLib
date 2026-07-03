@@ -801,3 +801,80 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_forces_at_least_one_action_w
         solver.total_counters().as_forced_at_least_one_count <=
         solver.total_counters().as_actions_considered);
 }
+
+TEST_CASE(hunl_flat_mccfr_sampled_dcfr_keeps_small_external_game_stable) {
+    const auto graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 1001;
+    config.traversals_per_iteration = 32;
+    config.use_discounting = true;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_iterations(120);
+
+    const auto exported = solver.export_average_strategy();
+    const auto key = std::string(solver.graph().infoset_key(core::InfosetId{1}));
+    const auto it = exported.find(key);
+    EXPECT_TRUE(it != exported.end());
+    EXPECT_TRUE(it->second.size() >= 2U);
+    EXPECT_TRUE(std::isfinite(it->second[0]));
+    EXPECT_TRUE(std::isfinite(it->second[1]));
+    EXPECT_TRUE(it->second[0] > it->second[1]);
+    EXPECT_TRUE(solver.profile().discount_seconds >= 0.0);
+}
+
+TEST_CASE(hunl_flat_mccfr_sampled_dcfr_tracks_sparse_last_discount_iter_for_visited_rows_only) {
+    const auto graph = make_sparse_sampling_visibility_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 1;
+    config.traversals_per_iteration = 1;
+    config.update_both_players = false;
+    config.use_sparse_storage = true;
+    config.use_discounting = true;
+
+    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    solver.run_iteration();
+
+    EXPECT_EQ(solver.sparse_storage().row_count(), 1U);
+    const auto visited_id = solver.sparse_storage().has_row(core::InfosetId{0}) ? core::InfosetId{0} : core::InfosetId{1};
+    const auto unvisited_id = visited_id.value == 0 ? core::InfosetId{1} : core::InfosetId{0};
+    const auto* visited_meta = solver.sparse_storage().meta_for(visited_id);
+    const auto* unvisited_meta = solver.sparse_storage().meta_for(unvisited_id);
+    EXPECT_TRUE(visited_meta != nullptr);
+    EXPECT_EQ(visited_meta->last_discount_iter, 1U);
+    EXPECT_TRUE(unvisited_meta == nullptr);
+}
+
+TEST_CASE(hunl_flat_mccfr_sampled_dcfr_matches_vanilla_direction_on_small_game) {
+    const auto vanilla_graph = make_external_sampling_graph();
+    const auto dcfr_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig vanilla_config;
+    vanilla_config.mode = core::HUNLFlatSamplingMode::External;
+    vanilla_config.seed = 2002;
+    vanilla_config.traversals_per_iteration = 64;
+
+    core::HUNLFlatMCCFRConfig dcfr_config = vanilla_config;
+    dcfr_config.use_discounting = true;
+
+    core::HUNLFlatMCCFR vanilla_solver(vanilla_graph, {1, 1}, vanilla_config);
+    core::HUNLFlatMCCFR dcfr_solver(dcfr_graph, {1, 1}, dcfr_config);
+
+    vanilla_solver.run_iterations(180);
+    dcfr_solver.run_iterations(180);
+
+    const auto vanilla_exported = vanilla_solver.export_average_strategy();
+    const auto dcfr_exported = dcfr_solver.export_average_strategy();
+    const auto key = std::string(vanilla_solver.graph().infoset_key(core::InfosetId{1}));
+    const auto vanilla_it = vanilla_exported.find(key);
+    const auto dcfr_it = dcfr_exported.find(key);
+    EXPECT_TRUE(vanilla_it != vanilla_exported.end());
+    EXPECT_TRUE(dcfr_it != dcfr_exported.end());
+    EXPECT_TRUE(vanilla_it->second[0] > vanilla_it->second[1]);
+    EXPECT_TRUE(dcfr_it->second[0] > dcfr_it->second[1]);
+    EXPECT_TRUE(dcfr_solver.profile().discount_seconds <= dcfr_solver.profile().traverse_seconds + 1e-12);
+}

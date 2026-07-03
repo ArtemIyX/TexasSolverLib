@@ -45,6 +45,9 @@ struct HUNLFlatMCCFRConfig {
     double as_beta = 1e6;
     bool update_both_players = true;
     bool use_discounting = false;
+    double dcfr_alpha = 1.5;
+    double dcfr_beta = 0.0;
+    double dcfr_gamma = 2.0;
     bool use_sparse_storage = false;
     bool keep_dense_validation_backend = false;
 };

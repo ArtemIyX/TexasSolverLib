@@ -4,6 +4,7 @@
 #include "util/simd.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <stdexcept>
 #include <thread>
@@ -27,6 +28,9 @@ void validate_mccfr_config(const HUNLFlatMCCFRConfig& config) {
     }
     if (config.as_epsilon < 0.0 || config.as_epsilon > 1.0) {
         throw std::invalid_argument("HUNLFlatMCCFR as_epsilon must be in [0, 1]");
+    }
+    if (config.dcfr_alpha < 0.0 || config.dcfr_beta < 0.0 || config.dcfr_gamma < 0.0) {
+        throw std::invalid_argument("HUNLFlatMCCFR DCFR exponents must be non-negative");
     }
 }
 
@@ -604,6 +608,64 @@ std::uint32_t HUNLFlatMCCFR::sample_chance_child(const HUNLFlatNodeMeta& meta, P
     return graph_.chance_outcomes.at(meta.chance_begin + meta.chance_count - 1U).child;
 }
 
+void HUNLFlatMCCFR::discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration) {
+    auto& meta = infoset_table_.meta_mut().at(infoset_id.value);
+    if (meta.last_discount_iter >= target_iteration) {
+        return;
+    }
+
+    for (std::uint32_t tt = meta.last_discount_iter + 1U; tt <= target_iteration; ++tt) {
+        const auto t = static_cast<double>(tt);
+        const auto ta = std::pow(t, config_.dcfr_alpha);
+        const auto tb = std::pow(t, config_.dcfr_beta);
+        const auto pos_scale = ta / (ta + 1.0);
+        const auto neg_scale = tb / (tb + 1.0);
+        const auto strat_scale = std::pow(t / (t + 1.0), config_.dcfr_gamma);
+        infoset_table_.discount_values(infoset_id, pos_scale, neg_scale, strat_scale);
+    }
+    meta.last_discount_iter = target_iteration;
+}
+
+void HUNLFlatMCCFR::discount_sparse_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration) {
+    auto* meta = sparse_storage_.meta_for_mut(infoset_id);
+    if (meta == nullptr || meta->last_discount_iter >= target_iteration) {
+        return;
+    }
+
+    auto row = sparse_storage_.view_mut(infoset_id);
+    for (std::uint32_t tt = meta->last_discount_iter + 1U; tt <= target_iteration; ++tt) {
+        const auto t = static_cast<double>(tt);
+        const auto ta = std::pow(t, config_.dcfr_alpha);
+        const auto tb = std::pow(t, config_.dcfr_beta);
+        const auto pos_scale = ta / (ta + 1.0);
+        const auto neg_scale = tb / (tb + 1.0);
+        const auto strat_scale = std::pow(t / (t + 1.0), config_.dcfr_gamma);
+        for (std::size_t offset = 0; offset < row.value_count(); ++offset) {
+            const auto regret = static_cast<double>(row.regret[offset]);
+            row.regret[offset] = static_cast<float>(regret >= 0.0 ? regret * pos_scale : regret * neg_scale);
+            row.strategy_sum[offset] = static_cast<float>(static_cast<double>(row.strategy_sum[offset]) * strat_scale);
+        }
+    }
+    meta->last_discount_iter = target_iteration;
+}
+
+void HUNLFlatMCCFR::apply_discount_if_enabled(std::uint32_t target_iteration, WorkerScratch& scratch) {
+    if (!config_.use_discounting) {
+        return;
+    }
+
+    const auto discount_start = std::chrono::steady_clock::now();
+    for (const auto& row : scratch.rows) {
+        if (config_.use_sparse_storage) {
+            discount_sparse_infoset_row(row.id, target_iteration);
+        } else {
+            discount_dense_infoset_row(row.id, target_iteration);
+        }
+    }
+    profile_.discount_seconds +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - discount_start).count();
+}
+
 void HUNLFlatMCCFR::run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player) {
     compute_current_strategy_rows();
     const auto batches = HUNLSampledScheduler::partition_deterministic(
@@ -664,6 +726,7 @@ void HUNLFlatMCCFR::run_player_batch(std::uint32_t target_iteration, PlayerId tr
     }
 
     for (std::size_t worker_index = 0; worker_index < worker_count_; ++worker_index) {
+        apply_discount_if_enabled(target_iteration, worker_scratch_[worker_index]);
         merge_worker_rows(worker_index);
     }
 }

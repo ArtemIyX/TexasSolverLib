@@ -61,6 +61,9 @@ TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
     EXPECT_EQ(config.batch_size, 64U);
     EXPECT_TRUE(config.update_both_players);
     EXPECT_TRUE(!config.use_discounting);
+    EXPECT_NEAR(config.dcfr_alpha, 1.5, TOL);
+    EXPECT_NEAR(config.dcfr_beta, 0.0, TOL);
+    EXPECT_NEAR(config.dcfr_gamma, 2.0, TOL);
     EXPECT_TRUE(!config.use_sparse_storage);
     EXPECT_TRUE(!config.keep_dense_validation_backend);
 }

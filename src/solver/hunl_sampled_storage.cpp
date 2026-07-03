@@ -76,6 +76,16 @@ const std::vector<HUNLSampledInfosetMeta>& HUNLSampledStorage::meta() const noex
     return meta_;
 }
 
+HUNLSampledInfosetMeta* HUNLSampledStorage::meta_for_mut(InfosetId id) noexcept {
+    const auto index = row_index(id);
+    return index == meta_.size() ? nullptr : &meta_[index];
+}
+
+const HUNLSampledInfosetMeta* HUNLSampledStorage::meta_for(InfosetId id) const noexcept {
+    const auto index = row_index(id);
+    return index == meta_.size() ? nullptr : &meta_[index];
+}
+
 std::size_t HUNLSampledStorage::row_count() const noexcept {
     return meta_.size();
 }

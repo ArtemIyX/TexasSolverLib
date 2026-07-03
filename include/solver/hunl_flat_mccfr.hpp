@@ -32,6 +32,7 @@ public:
     };
 
     struct Profile {
+        double discount_seconds = 0.0;
         double strategy_seconds = 0.0;
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
@@ -116,6 +117,9 @@ private:
     [[nodiscard]] std::vector<double> average_strategy_sum_values(InfosetId infoset_id) const;
     [[nodiscard]] std::vector<double> average_strategy_sampling_probabilities(InfosetId infoset_id) const;
     [[nodiscard]] std::uint32_t sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const;
+    void apply_discount_if_enabled(std::uint32_t target_iteration, WorkerScratch& scratch);
+    void discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
+    void discount_sparse_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
     void run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player);
     void merge_worker_rows(std::size_t worker_index);
     void initialize_sparse_infoset_shapes(const std::array<std::size_t, 2>& bucket_count_per_player);
