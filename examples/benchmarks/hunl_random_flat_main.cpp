@@ -4,6 +4,7 @@
 #include "core/lib.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_flat_expected_value.hpp"
+#include "solver/hunl_flat_mccfr.hpp"
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/solver.hpp"
 #include "util/profiling.hpp"
@@ -318,7 +319,10 @@ struct TimedBenchmarkResult {
     double export_seconds = 0.0;
     double ev_seconds = 0.0;
     double exploit_seconds = 0.0;
+    bool sampled = false;
     core::HUNLFlatStageProfile profile{};
+    core::HUNLFlatMCCFR::Profile sampled_profile{};
+    core::HUNLFlatMCCFR::Counters sampled_counters{};
 };
 
 RandomState make_random_state(const RandomConfig& cfg) {
@@ -594,7 +598,103 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(export_end - export_start).count(),
         std::chrono::duration<double>(ev_end - ev_start).count(),
         std::chrono::duration<double>(exploit_end - exploit_start).count(),
+        false,
         solver.profile(),
+        {},
+        {},
+    };
+    return result;
+}
+
+TimedBenchmarkResult run_timed_sampled_flat_benchmark(
+    const RandomState& random_state,
+    const RandomConfig& cfg) {
+    using clock = std::chrono::steady_clock;
+
+    if (cfg.time_budget_ms != 0) {
+        throw std::runtime_error("sampled benchmark time-budget mode is not implemented yet");
+    }
+    if (cfg.sample_traversals == 0) {
+        throw std::runtime_error("sampled benchmark requires --sample-traversals > 0");
+    }
+
+    const auto setup_start = clock::now();
+    auto shared = std::make_shared<const core::HUNLConfig>(random_state.config);
+    const auto graph = core::HUNLFlatSolveGraph::build(shared);
+    const std::array<std::size_t, 2> buckets = {cfg.hand_buckets, cfg.hand_buckets};
+    const auto table = core::HUNLFlatInfosetTable::build(
+        graph,
+        buckets,
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        cfg.precision);
+    core::HUNLFlatMemoryEstimateOptions memory_options;
+    memory_options.max_child_count = max_backward_row_width(graph);
+    memory_options.max_bucket_count = max_bucket_width(table);
+    const auto memory = core::estimate_memory(graph, table, cfg.workers, memory_options);
+    print_memory_estimate(memory);
+    if (!enforce_memory_guardrails(memory)) {
+        throw std::runtime_error("estimated memory exceeds configured benchmark limit");
+    }
+
+    core::HUNLFlatMCCFRConfig sampled_config;
+    sampled_config.mode = cfg.sampling_mode;
+    sampled_config.seed = cfg.seed;
+    sampled_config.traversals_per_iteration = cfg.sample_traversals;
+    sampled_config.batch_size = std::max<std::uint32_t>(1U, cfg.sample_traversals / std::max<std::size_t>(1, cfg.workers));
+
+    core::HUNLFlatMCCFR solver(
+        graph,
+        buckets,
+        sampled_config,
+        core::HUNLFlatValueLayout::InfosetHandAction,
+        cfg.workers,
+        cfg.precision);
+    const auto setup_end = clock::now();
+
+    const auto solve_start = setup_end;
+    solver.run_iterations(cfg.iterations);
+    const auto solve_end = clock::now();
+
+    const auto export_start = solve_end;
+    const auto strategy_table = solver.export_average_strategy_table();
+    const auto exported = solver.export_average_strategy();
+    StrategyMap strategy;
+    strategy.reserve(exported.size());
+    for (const auto& [key, probs] : exported) {
+        strategy.emplace(key, probs);
+    }
+    const auto export_end = clock::now();
+
+    const auto ev_start = export_end;
+    const auto terminal_values_p0 = core::build_flat_terminal_value_table_p0_for_benchmark(graph);
+    const auto game_value = core::compute_flat_expected_value_p0_benchmark(
+        graph,
+        strategy_table.view(),
+        terminal_values_p0);
+    const std::array<double, 2> expected_value = {game_value, -game_value};
+    const auto ev_end = clock::now();
+
+    const auto exploit_start = ev_end;
+    const auto exploitability = core::detail::exploitability<core::HUNLState>(strategy);
+    const auto exploit_end = clock::now();
+
+    TimedBenchmarkResult result{
+        std::move(strategy_table),
+        std::move(exported),
+        std::move(strategy),
+        expected_value,
+        exploitability,
+        solver.iterations(),
+        solver.worker_count(),
+        std::chrono::duration<double>(setup_end - setup_start).count(),
+        std::chrono::duration<double>(solve_end - solve_start).count(),
+        std::chrono::duration<double>(export_end - export_start).count(),
+        std::chrono::duration<double>(ev_end - ev_start).count(),
+        std::chrono::duration<double>(exploit_end - exploit_start).count(),
+        true,
+        {},
+        solver.profile(),
+        solver.total_counters(),
     };
     return result;
 }
@@ -634,13 +734,6 @@ int main(int argc, char* argv[]) {
                   << " backend=flat\n";
         print_state(random_state.config, random_state.state);
 
-        if (cfg.sampling_mode != core::HUNLFlatSamplingMode::Exact ||
-            cfg.sample_traversals != 0 ||
-            cfg.time_budget_ms != 0) {
-            std::cerr << "fatal error: sampled benchmark flags are parsed but not implemented yet\n";
-            return 1;
-        }
-
         if (cfg.debug) {
             std::cout << "debug: starting solve with flat backend forced via env\n";
             std::cout << "debug: TEXASSOLVER_PROFILE=1\n";
@@ -649,15 +742,24 @@ int main(int argc, char* argv[]) {
 
         auto solve_config = random_state.config;
         solve_config.depth_limit_plies = cfg.depth_limit_plies;
-        auto timed = run_timed_flat_benchmark(
-            RandomState{std::move(solve_config), random_state.state},
-            cfg.iterations,
-            cfg.workers,
-            cfg.hand_buckets,
-            cfg.precision,
-            1.5,
-            0.0,
-            2.0);
+        TimedBenchmarkResult timed;
+        if (cfg.sampling_mode == core::HUNLFlatSamplingMode::Exact &&
+            cfg.sample_traversals == 0 &&
+            cfg.time_budget_ms == 0) {
+            timed = run_timed_flat_benchmark(
+                RandomState{std::move(solve_config), random_state.state},
+                cfg.iterations,
+                cfg.workers,
+                cfg.hand_buckets,
+                cfg.precision,
+                1.5,
+                0.0,
+                2.0);
+        } else {
+            timed = run_timed_sampled_flat_benchmark(
+                RandomState{std::move(solve_config), random_state.state},
+                cfg);
+        }
 
         const auto finish = std::chrono::steady_clock::now();
         const auto wallclock = std::chrono::duration<double>(finish - start).count();
@@ -678,6 +780,12 @@ int main(int argc, char* argv[]) {
         std::cout << "  computed_exploitability=" << std::fixed << std::setprecision(9) << timed.exploitability << "\n";
         std::cout << "  infosets=" << timed.strategy.size() << "\n";
         std::cout << "  used_parallel=" << (timed.worker_count > 1 ? "true" : "false") << "\n";
+        if (timed.sampled) {
+            std::cout << "  sampled_traversals=" << timed.sampled_profile.traversals << "\n";
+            std::cout << "  sampled_nodes=" << timed.sampled_counters.nodes_visited << "\n";
+            std::cout << "  sampled_merge_seconds=" << format_seconds(timed.sampled_profile.merge_seconds) << "\n";
+            std::cout << "  sampled_traverse_seconds=" << format_seconds(timed.sampled_profile.traverse_seconds) << "\n";
+        }
         std::cout << "  strategy_root:\n";
 
         const auto root_key = random_state.state.infoset_key(static_cast<std::uint8_t>(random_state.state.cur_player)) +
@@ -698,13 +806,32 @@ int main(int argc, char* argv[]) {
 
         if (cfg.debug) {
             std::cout << "\nprofile:\n";
-            std::cout << "  discount_seconds=" << format_seconds(timed.profile.discount_seconds) << "\n";
-            std::cout << "  strategy_seconds=" << format_seconds(timed.profile.strategy_seconds) << "\n";
-            std::cout << "  reach_seconds=" << format_seconds(timed.profile.reach_seconds) << "\n";
-            std::cout << "  terminal_seconds=" << format_seconds(timed.profile.terminal_seconds) << "\n";
-            std::cout << "  backward_seconds=" << format_seconds(timed.profile.backward_seconds) << "\n";
-            std::cout << "  regret_seconds=" << format_seconds(timed.profile.regret_seconds) << "\n";
-            std::cout << "  average_strategy_seconds=" << format_seconds(timed.profile.average_strategy_seconds) << "\n";
+            if (!timed.sampled) {
+                std::cout << "  discount_seconds=" << format_seconds(timed.profile.discount_seconds) << "\n";
+                std::cout << "  strategy_seconds=" << format_seconds(timed.profile.strategy_seconds) << "\n";
+                std::cout << "  reach_seconds=" << format_seconds(timed.profile.reach_seconds) << "\n";
+                std::cout << "  terminal_seconds=" << format_seconds(timed.profile.terminal_seconds) << "\n";
+                std::cout << "  backward_seconds=" << format_seconds(timed.profile.backward_seconds) << "\n";
+                std::cout << "  regret_seconds=" << format_seconds(timed.profile.regret_seconds) << "\n";
+                std::cout << "  average_strategy_seconds=" << format_seconds(timed.profile.average_strategy_seconds) << "\n";
+            } else {
+                std::cout << "  strategy_seconds=" << format_seconds(timed.sampled_profile.strategy_seconds) << "\n";
+                std::cout << "  traverse_seconds=" << format_seconds(timed.sampled_profile.traverse_seconds) << "\n";
+                std::cout << "  merge_seconds=" << format_seconds(timed.sampled_profile.merge_seconds) << "\n";
+                std::cout << "  sampled_nodes=" << timed.sampled_counters.nodes_visited << "\n";
+                std::cout << "  sampled_opponent_actions=" << timed.sampled_counters.sampled_opponent_actions << "\n";
+                std::cout << "  traversing_action_expansions=" << timed.sampled_counters.traversing_player_action_expansions << "\n";
+                for (std::size_t worker = 0; worker < timed.sampled_profile.workers.size(); ++worker) {
+                    const auto& profile = timed.sampled_profile.workers[worker];
+                    std::cout << "  worker[" << worker << "]"
+                              << " traversals=" << profile.traversals
+                              << " nodes=" << profile.nodes_visited
+                              << " active_infosets=" << profile.active_infosets
+                              << " traverse=" << format_seconds(profile.traverse_seconds)
+                              << " merge=" << format_seconds(profile.merge_seconds)
+                              << "\n";
+                }
+            }
             core::profiling::print_profiler_report();
         }
 
