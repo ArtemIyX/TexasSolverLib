@@ -193,6 +193,89 @@ core::HUNLFlatSolveGraph make_external_sampling_graph() {
     return graph;
 }
 
+core::HUNLFlatSolveGraph make_sparse_sampling_visibility_graph() {
+    core::HUNLFlatSolveGraph graph;
+    graph.root = 0;
+    graph.max_depth = 2;
+    graph.max_actions = 2;
+
+    graph.children = {3, 4, 3, 4};
+    graph.chance_outcomes = {
+        core::HUNLFlatChanceOutcome{0, 0.5, 1},
+        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+    };
+
+    const auto infoset_a = core::InfosetId{0};
+    const auto infoset_b = core::InfosetId{1};
+    graph.infosets.push_back(core::HUNLFlatInfoset{
+        infoset_a,
+        0,
+        1,
+        {},
+        0,
+        0,
+        core::Street::Flop,
+        2,
+    });
+    graph.infosets.push_back(core::HUNLFlatInfoset{
+        infoset_b,
+        1,
+        1,
+        {},
+        1,
+        0,
+        core::Street::Flop,
+        2,
+    });
+    graph.infoset_debug_keys = {"sparse-a", "sparse-b"};
+    graph.infoset_nodes = {1, 2};
+
+    auto make_terminal_meta = [](double value) {
+        core::HUNLFlatNodeMeta meta;
+        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        meta.terminal_utility = {value, -value};
+        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        return meta;
+    };
+
+    graph.node_meta.resize(5);
+    graph.node_meta[0].child_begin = 0;
+    graph.node_meta[0].child_count = 2;
+    graph.node_meta[0].chance_begin = 0;
+    graph.node_meta[0].chance_count = 2;
+    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = core::Street::Flop;
+
+    for (std::uint32_t node_idx : {1U, 2U}) {
+        auto& meta = graph.node_meta[node_idx];
+        meta.child_begin = node_idx == 1 ? 0 : 2;
+        meta.child_count = 2;
+        meta.infoset_id = node_idx == 1 ? infoset_a : infoset_b;
+        meta.player = 0;
+        meta.type = core::HUNLFlatNodeType::Decision;
+        meta.street = core::Street::Flop;
+        meta.action_count = 2;
+        meta.has_infoset = true;
+    }
+
+    graph.node_meta[3] = make_terminal_meta(2.0);
+    graph.node_meta[4] = make_terminal_meta(-1.0);
+
+    graph.depth_order = {0, 1, 2, 3, 4};
+    graph.depth_slices = {
+        core::HUNLFlatSlice{0, 1},
+        core::HUNLFlatSlice{1, 2},
+        core::HUNLFlatSlice{3, 2},
+    };
+    graph.node_depths = {0, 1, 1, 2, 2};
+    graph.forward_order = graph.depth_order;
+    graph.reverse_order = {4, 3, 2, 1, 0};
+    graph.street_order = graph.depth_order;
+    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
+        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    return graph;
+}
+
 double root_value(const core::HUNLFlatMCCFR& solver) {
     const auto table = solver.export_average_strategy_table();
     const auto terminal_values = core::build_flat_terminal_value_table(solver.graph());
@@ -480,4 +563,84 @@ TEST_CASE(hunl_flat_mccfr_default_layout_keeps_nonzero_offset_infoset_rows_norma
     EXPECT_TRUE(std::isfinite(it->second[3]));
     EXPECT_NEAR(it->second[0] + it->second[1], 1.0, 1e-9);
     EXPECT_NEAR(it->second[2] + it->second[3], 1.0, 1e-9);
+}
+
+TEST_CASE(hunl_flat_mccfr_sparse_storage_allocates_rows_on_first_visit_and_exports_uniform_unvisited_rows) {
+    const auto graph = make_sparse_sampling_visibility_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 1;
+    config.traversals_per_iteration = 1;
+    config.update_both_players = false;
+    config.use_sparse_storage = true;
+
+    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    EXPECT_TRUE(solver.using_sparse_storage());
+    EXPECT_EQ(solver.sparse_storage().row_count(), 0U);
+
+    solver.run_iteration();
+
+    EXPECT_EQ(solver.sparse_storage().row_count(), 1U);
+    EXPECT_TRUE(solver.sparse_storage().memory_estimate().sparse_rows == 1U);
+
+    const auto exported = solver.export_average_strategy();
+    const auto it_a = exported.find("sparse-a");
+    const auto it_b = exported.find("sparse-b");
+    EXPECT_TRUE(it_a != exported.end());
+    EXPECT_TRUE(it_b != exported.end());
+
+    const auto visited = solver.sparse_storage().has_row(core::InfosetId{0}) ? it_a : it_b;
+    const auto unvisited = solver.sparse_storage().has_row(core::InfosetId{0}) ? it_b : it_a;
+    EXPECT_TRUE(visited->second[0] + visited->second[1] > 0.0);
+    EXPECT_NEAR(unvisited->second[0], 0.5, 1e-9);
+    EXPECT_NEAR(unvisited->second[1], 0.5, 1e-9);
+    EXPECT_NEAR(unvisited->second[2], 0.5, 1e-9);
+    EXPECT_NEAR(unvisited->second[3], 0.5, 1e-9);
+}
+
+TEST_CASE(hunl_flat_mccfr_sparse_storage_seeded_runs_are_deterministic) {
+    const auto first_graph = make_external_sampling_graph();
+    const auto second_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 404;
+    config.traversals_per_iteration = 32;
+    config.use_sparse_storage = true;
+
+    core::HUNLFlatMCCFR first(first_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+    core::HUNLFlatMCCFR second(second_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+
+    first.run_iterations(30);
+    second.run_iterations(30);
+
+    EXPECT_EQ(first.sparse_storage().row_count(), second.sparse_storage().row_count());
+    const auto first_exported = first.export_average_strategy();
+    const auto second_exported = second.export_average_strategy();
+    EXPECT_EQ(first_exported.size(), second_exported.size());
+    for (const auto& [key, values] : first_exported) {
+        const auto it = second_exported.find(key);
+        EXPECT_TRUE(it != second_exported.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-12);
+        }
+    }
+}
+
+TEST_CASE(hunl_flat_mccfr_sparse_mode_can_keep_dense_validation_backend) {
+    const auto graph = make_public_chance_conflict_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 12;
+    config.traversals_per_iteration = 4;
+    config.update_both_players = false;
+    config.use_sparse_storage = true;
+    config.keep_dense_validation_backend = true;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    EXPECT_TRUE(solver.using_sparse_storage());
+    EXPECT_EQ(solver.infoset_table().meta().size(), graph.infosets.size());
 }

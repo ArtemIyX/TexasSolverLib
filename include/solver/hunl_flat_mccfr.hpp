@@ -4,6 +4,7 @@
 #include "solver/hunl_flat_expected_value.hpp"
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/hunl_sampled_scheduler.hpp"
+#include "solver/hunl_sampled_storage.hpp"
 #include "util/pcs.hpp"
 
 #include <array>
@@ -64,6 +65,8 @@ public:
     [[nodiscard]] const Counters& total_counters() const noexcept;
     [[nodiscard]] const Profile& profile() const noexcept;
     [[nodiscard]] std::size_t worker_count() const noexcept;
+    [[nodiscard]] bool using_sparse_storage() const noexcept;
+    [[nodiscard]] const HUNLSampledStorage& sparse_storage() const noexcept;
 
 private:
     struct WorkerDeltaRow {
@@ -94,18 +97,30 @@ private:
 
     [[nodiscard]] double traverse(std::uint32_t node_idx, TraversalContext& context);
     void compute_current_strategy_rows();
-    [[nodiscard]] double current_strategy_probability(
+    void fill_current_strategy_bucket(
         InfosetId infoset_id,
         std::size_t bucket,
-        std::size_t action) const;
+        double* out,
+        std::size_t action_count) const;
     [[nodiscard]] std::vector<double> average_action_probabilities(InfosetId infoset_id) const;
     [[nodiscard]] std::uint32_t sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const;
     void run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player);
     void merge_worker_rows(std::size_t worker_index);
+    void initialize_sparse_infoset_shapes(const std::array<std::size_t, 2>& bucket_count_per_player);
+    [[nodiscard]] const HUNLFlatInfosetTableMeta& infoset_meta(InfosetId infoset_id) const noexcept;
+    [[nodiscard]] std::size_t row_value_index(
+        const HUNLFlatInfosetTableMeta& meta,
+        std::size_t bucket,
+        std::size_t action) const noexcept;
+    [[nodiscard]] HUNLSampledRowView ensure_sparse_row(InfosetId infoset_id);
+    [[nodiscard]] HUNLSampledConstRowView sparse_row_or_empty(InfosetId infoset_id) const noexcept;
 
     HUNLFlatSolveGraph graph_;
     HUNLFlatInfosetTable infoset_table_;
+    HUNLSampledStorage sparse_storage_;
     HUNLFlatMCCFRConfig config_;
+    std::vector<HUNLFlatInfosetTableMeta> infoset_meta_;
+    std::vector<HUNLSampledInfosetShape> sparse_infoset_shapes_;
     std::size_t worker_count_ = 1;
     std::uint32_t iterations_ = 0;
     Counters last_iteration_counters_;

@@ -44,10 +44,11 @@ const HUNLSampledProfile& HUNLSampledSolver::profile() const noexcept {
 }
 
 HUNLSampledMemoryEstimate HUNLSampledSolver::memory_estimate() const noexcept {
+    const auto storage_memory = storage_.memory_estimate();
     return {
-        storage_.storage_bytes(),
-        static_cast<std::uint64_t>(storage_.row_count()),
-        static_cast<std::uint64_t>(storage_.total_value_count()),
+        storage_memory.total_bytes(),
+        storage_memory.sparse_rows,
+        storage_memory.sparse_values,
     };
 }
 

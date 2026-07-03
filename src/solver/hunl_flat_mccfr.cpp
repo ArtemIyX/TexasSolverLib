@@ -29,6 +29,38 @@ void validate_mccfr_config(const HUNLFlatMCCFRConfig& config) {
     }
 }
 
+std::vector<HUNLFlatInfosetTableMeta> build_infoset_meta(
+    const HUNLFlatSolveGraph& graph,
+    const std::array<std::size_t, 2>& bucket_count_per_player,
+    HUNLFlatValueLayout layout) {
+    std::vector<HUNLFlatInfosetTableMeta> meta;
+    meta.reserve(graph.infosets.size());
+
+    std::uint32_t value_offset = 0;
+    std::uint32_t bucket_offset = 0;
+    for (const auto& infoset : graph.infosets) {
+        HUNLFlatInfosetTableMeta row_meta;
+        row_meta.id = infoset.id;
+        row_meta.player = infoset.player;
+        row_meta.action_count = infoset.action_count;
+        row_meta.bucket_offset = bucket_offset;
+        row_meta.bucket_count =
+            infoset.player >= 0 && infoset.player < 2
+            ? static_cast<std::uint32_t>(bucket_count_per_player[infoset.player])
+            : 0U;
+        row_meta.hand_count = row_meta.bucket_count;
+        row_meta.reach_count = row_meta.bucket_count;
+        row_meta.offset = value_offset;
+        row_meta.value_count = row_meta.bucket_count * static_cast<std::uint32_t>(row_meta.action_count);
+        meta.push_back(row_meta);
+        value_offset += row_meta.value_count;
+        bucket_offset += row_meta.bucket_count;
+    }
+
+    (void)layout;
+    return meta;
+}
+
 }  // namespace
 
 HUNLFlatMCCFR::HUNLFlatMCCFR(
@@ -39,11 +71,17 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     std::size_t workers,
     HUNLFlatStoragePrecision precision)
     : graph_(std::move(graph)),
-      infoset_table_(HUNLFlatInfosetTable::build(graph_, bucket_count_per_player, layout, precision)),
+      infoset_table_(),
+      sparse_storage_(layout, HUNLFlatStoragePrecision::Float32),
       config_(config),
+      infoset_meta_(build_infoset_meta(graph_, bucket_count_per_player, layout)),
       worker_count_(std::max<std::size_t>(1, workers)),
       worker_scratch_(std::max<std::size_t>(1, workers)) {
     validate_mccfr_config(config_);
+    if (!config_.use_sparse_storage || config_.keep_dense_validation_backend) {
+        infoset_table_ = HUNLFlatInfosetTable::build(graph_, bucket_count_per_player, layout, precision);
+    }
+    initialize_sparse_infoset_shapes(bucket_count_per_player);
     profile_.workers.resize(worker_count_);
 }
 
@@ -89,6 +127,49 @@ std::uint32_t HUNLFlatMCCFR::iterations() const noexcept {
 
 const HUNLFlatMCCFRConfig& HUNLFlatMCCFR::config() const noexcept {
     return config_;
+}
+
+void HUNLFlatMCCFR::initialize_sparse_infoset_shapes(
+    const std::array<std::size_t, 2>& bucket_count_per_player) {
+    sparse_infoset_shapes_.assign(graph_.infosets.size(), {});
+    for (const auto& infoset : graph_.infosets) {
+        auto& shape = sparse_infoset_shapes_[infoset.id.value];
+        shape.id = infoset.id;
+        shape.player = infoset.player;
+        shape.street = infoset.street;
+        shape.bucket_count =
+            infoset.player >= 0 && infoset.player < 2
+            ? static_cast<std::uint32_t>(bucket_count_per_player[infoset.player])
+            : 0U;
+        shape.action_count = infoset.action_count;
+    }
+}
+
+const HUNLFlatInfosetTableMeta& HUNLFlatMCCFR::infoset_meta(InfosetId infoset_id) const noexcept {
+    return infoset_meta_[infoset_id.value];
+}
+
+std::size_t HUNLFlatMCCFR::row_value_index(
+    const HUNLFlatInfosetTableMeta& meta,
+    std::size_t bucket,
+    std::size_t action) const noexcept {
+    if (config_.use_sparse_storage) {
+        return HUNLSampledStorage::value_index(
+            sparse_storage_.layout(),
+            meta.bucket_count,
+            meta.action_count,
+            bucket,
+            action);
+    }
+    return infoset_table_.value_index(meta.id, bucket, action) - meta.offset;
+}
+
+HUNLSampledRowView HUNLFlatMCCFR::ensure_sparse_row(InfosetId infoset_id) {
+    return sparse_storage_.ensure_row(sparse_infoset_shapes_.at(infoset_id.value));
+}
+
+HUNLSampledConstRowView HUNLFlatMCCFR::sparse_row_or_empty(InfosetId infoset_id) const noexcept {
+    return sparse_storage_.view(infoset_id);
 }
 
 void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
@@ -146,7 +227,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
     }
 
-    const auto& row_meta = infoset_table_.meta().at(meta.infoset_id.value);
+    const auto& row_meta = infoset_meta(meta.infoset_id);
     const auto action_count = static_cast<std::size_t>(meta.action_count);
     std::vector<double> action_values(action_count, 0.0);
     const auto average_strategy = average_action_probabilities(meta.infoset_id);
@@ -163,10 +244,12 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         meta.player != context.traversing_player) {
         const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
         auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
+        std::vector<double> bucket_strategy(action_count, 0.0);
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
-                const auto probability = current_strategy_probability(meta.infoset_id, bucket, action);
-                const auto offset = infoset_table_.value_index(meta.infoset_id, bucket, action) - row_meta.offset;
+                const auto probability = bucket_strategy[action];
+                const auto offset = row_value_index(row_meta, bucket, action);
                 row.strategy_delta[offset] += own_reach * probability;
             }
         }
@@ -199,11 +282,13 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
+    std::vector<double> bucket_strategy(action_count, 0.0);
     for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
         double node_value = 0.0;
+        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
         for (std::size_t action = 0; action < action_count; ++action) {
-            const auto probability = current_strategy_probability(meta.infoset_id, bucket, action);
-            const auto offset = infoset_table_.value_index(meta.infoset_id, bucket, action) - row_meta.offset;
+            const auto probability = bucket_strategy[action];
+            const auto offset = row_value_index(row_meta, bucket, action);
             row.strategy_delta[offset] += own_reach * probability;
             node_value += probability * action_values[action];
         }
@@ -211,7 +296,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         if (meta.player == context.traversing_player) {
             const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
             for (std::size_t action = 0; action < action_count; ++action) {
-                const auto offset = infoset_table_.value_index(meta.infoset_id, bucket, action) - row_meta.offset;
+                const auto offset = row_value_index(row_meta, bucket, action);
                 row.regret_delta[offset] += opponent_reach * (action_values[action] - node_value);
             }
         }
@@ -225,11 +310,15 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
 }
 
 void HUNLFlatMCCFR::compute_current_strategy_rows() {
+    if (config_.use_sparse_storage) {
+        return;
+    }
+
     const auto strategy_start = std::chrono::steady_clock::now();
     std::vector<double> regrets;
     std::vector<double> strategy;
 
-    for (const auto& meta : infoset_table_.meta()) {
+    for (const auto& meta : infoset_meta_) {
         regrets.assign(meta.action_count, 0.0);
         strategy.assign(meta.action_count, 0.0);
         if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
@@ -262,31 +351,77 @@ void HUNLFlatMCCFR::compute_current_strategy_rows() {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - strategy_start).count();
 }
 
-double HUNLFlatMCCFR::current_strategy_probability(
+void HUNLFlatMCCFR::fill_current_strategy_bucket(
     InfosetId infoset_id,
     std::size_t bucket,
-    std::size_t action) const {
-    const auto& meta = infoset_table_.meta().at(infoset_id.value);
-    if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
-        return infoset_table_.current_strategy_value(
-            infoset_id,
-            bucket * static_cast<std::size_t>(meta.action_count) + action);
+    double* out,
+    std::size_t action_count) const {
+    const auto& meta = infoset_meta(infoset_id);
+    if (out == nullptr || action_count == 0) {
+        return;
     }
-    return infoset_table_.current_strategy_value(
-        infoset_id,
-        action * static_cast<std::size_t>(meta.bucket_count) + bucket);
+
+    if (!config_.use_sparse_storage) {
+        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
+            const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
+            for (std::size_t action = 0; action < action_count; ++action) {
+                out[action] = infoset_table_.current_strategy_value(infoset_id, bucket_offset + action);
+            }
+            return;
+        }
+        for (std::size_t action = 0; action < action_count; ++action) {
+            out[action] = infoset_table_.current_strategy_value(
+                infoset_id,
+                action * static_cast<std::size_t>(meta.bucket_count) + bucket);
+        }
+        return;
+    }
+
+    const auto row = sparse_row_or_empty(infoset_id);
+    if (row.empty() || bucket >= row.bucket_count) {
+        const auto uniform = 1.0 / static_cast<double>(action_count);
+        for (std::size_t action = 0; action < action_count; ++action) {
+            out[action] = uniform;
+        }
+        return;
+    }
+
+    double positive_total = 0.0;
+    for (std::size_t action = 0; action < action_count; ++action) {
+        const auto regret = row.regret[HUNLSampledStorage::value_index(
+            row.layout,
+            row.bucket_count,
+            row.action_count,
+            bucket,
+            action)];
+        out[action] = std::max(static_cast<double>(regret), 0.0);
+        positive_total += out[action];
+    }
+    if (positive_total > 0.0) {
+        for (std::size_t action = 0; action < action_count; ++action) {
+            out[action] /= positive_total;
+        }
+        return;
+    }
+
+    const auto uniform = 1.0 / static_cast<double>(action_count);
+    for (std::size_t action = 0; action < action_count; ++action) {
+        out[action] = uniform;
+    }
 }
 
 std::vector<double> HUNLFlatMCCFR::average_action_probabilities(InfosetId infoset_id) const {
-    const auto& meta = infoset_table_.meta().at(infoset_id.value);
+    const auto& meta = infoset_meta(infoset_id);
     std::vector<double> averaged(meta.action_count, 0.0);
     if (meta.bucket_count == 0) {
         return averaged;
     }
 
+    std::vector<double> bucket_strategy(meta.action_count, 0.0);
     for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
+        fill_current_strategy_bucket(infoset_id, bucket, bucket_strategy.data(), meta.action_count);
         for (std::size_t action = 0; action < meta.action_count; ++action) {
-            averaged[action] += current_strategy_probability(infoset_id, bucket, action);
+            averaged[action] += bucket_strategy[action];
         }
     }
     for (auto& probability : averaged) {
@@ -380,7 +515,18 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     });
 
     for (const auto& row : scratch.rows) {
-        const auto& meta = infoset_table_.meta().at(row.id.value);
+        const auto& meta = infoset_meta(row.id);
+        if (config_.use_sparse_storage) {
+            auto sparse_row = ensure_sparse_row(row.id);
+            for (std::size_t offset = 0; offset < meta.value_count; ++offset) {
+                sparse_row.regret[offset] =
+                    static_cast<float>(static_cast<double>(sparse_row.regret[offset]) + row.regret_delta[offset]);
+                sparse_row.strategy_sum[offset] = static_cast<float>(
+                    static_cast<double>(sparse_row.strategy_sum[offset]) + row.strategy_delta[offset]);
+            }
+            continue;
+        }
+
         for (std::size_t offset = 0; offset < meta.value_count; ++offset) {
             infoset_table_.set_regret_value(
                 row.id,
@@ -408,34 +554,41 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatMCCFR::export_avera
     out.reserve(graph_.infosets.size());
 
     for (const auto& infoset : graph_.infosets) {
-        const auto& meta = infoset_table_.meta().at(infoset.id.value);
+        const auto& meta = infoset_meta(infoset.id);
         std::vector<double> average(meta.value_count, 0.0);
+        const auto row = config_.use_sparse_storage ? sparse_row_or_empty(infoset.id) : HUNLSampledConstRowView{};
 
-        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
-            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
-                infoset_table_.copy_strategy_sum_values(
-                    infoset.id,
-                    bucket_offset,
-                    average.data() + bucket_offset,
-                    meta.action_count);
-                normalize(
-                    average.data() + bucket_offset,
-                    meta.action_count,
-                    reduce_action_values(average.data() + bucket_offset, meta.action_count));
-            }
-        } else {
-            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
-                for (std::size_t action = 0; action < meta.action_count; ++action) {
-                    average[bucket_offset + action] = infoset_table_.strategy_sum_value(
+        for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
+            const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
+            double total = 0.0;
+            for (std::size_t action = 0; action < meta.action_count; ++action) {
+                double value = 0.0;
+                if (config_.use_sparse_storage) {
+                    value = row.empty()
+                        ? 0.0
+                        : row.strategy_sum[row_value_index(meta, bucket, action)];
+                } else if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+                    value = infoset_table_.strategy_sum_value(
                         infoset.id,
                         action * static_cast<std::size_t>(meta.bucket_count) + bucket);
+                } else {
+                    value = infoset_table_.strategy_sum_value(infoset.id, bucket_offset + action);
                 }
+                average[bucket_offset + action] = value;
+                total += value;
+            }
+
+            if (total > 0.0) {
                 normalize(
                     average.data() + bucket_offset,
                     meta.action_count,
-                    reduce_action_values(average.data() + bucket_offset, meta.action_count));
+                    total);
+                continue;
+            }
+
+            const auto uniform = meta.action_count == 0 ? 0.0 : 1.0 / static_cast<double>(meta.action_count);
+            for (std::size_t action = 0; action < meta.action_count; ++action) {
+                average[bucket_offset + action] = uniform;
             }
         }
 
@@ -447,50 +600,43 @@ std::unordered_map<std::string, std::vector<double>> HUNLFlatMCCFR::export_avera
 
 HUNLFlatAverageStrategyTable HUNLFlatMCCFR::export_average_strategy_table() const {
     HUNLFlatAverageStrategyTable out;
-    out.layout = infoset_table_.layout();
-    out.meta = infoset_table_.meta();
-    out.values.assign(infoset_table_.total_value_count(), 0.0);
+    out.layout = config_.use_sparse_storage ? sparse_storage_.layout() : infoset_table_.layout();
+    out.meta = infoset_meta_;
+    const auto total_value_count = out.meta.empty()
+        ? 0U
+        : out.meta.back().offset + out.meta.back().value_count;
+    out.values.assign(total_value_count, 0.0);
 
     for (const auto& infoset : graph_.infosets) {
         const auto& meta = out.meta.at(infoset.id.value);
         auto* average = out.values.data() + meta.offset;
-
-        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
-            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                double total = 0.0;
-                for (std::size_t action = 0; action < meta.action_count; ++action) {
-                    total += infoset_table_.strategy_sum_value(
-                        infoset.id,
-                        action * static_cast<std::size_t>(meta.bucket_count) + bucket);
-                }
-                if (total > 0.0) {
-                    for (std::size_t action = 0; action < meta.action_count; ++action) {
-                        average[action * static_cast<std::size_t>(meta.bucket_count) + bucket] =
-                            infoset_table_.strategy_sum_value(
-                                infoset.id,
-                                action * static_cast<std::size_t>(meta.bucket_count) + bucket) / total;
-                    }
-                    continue;
-                }
-                const auto uniform = 1.0 / static_cast<double>(meta.action_count);
-                for (std::size_t action = 0; action < meta.action_count; ++action) {
-                    average[action * static_cast<std::size_t>(meta.bucket_count) + bucket] = uniform;
-                }
-            }
-            continue;
-        }
-
+        const auto row = config_.use_sparse_storage ? sparse_row_or_empty(infoset.id) : HUNLSampledConstRowView{};
         for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-            const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
-            infoset_table_.copy_strategy_sum_values(
-                infoset.id,
-                bucket_offset,
-                average + bucket_offset,
-                meta.action_count);
-            normalize(
-                average + bucket_offset,
-                meta.action_count,
-                reduce_action_values(average + bucket_offset, meta.action_count));
+            double total = 0.0;
+            for (std::size_t action = 0; action < meta.action_count; ++action) {
+                double value = 0.0;
+                if (config_.use_sparse_storage) {
+                    value = row.empty() ? 0.0 : row.strategy_sum[row_value_index(meta, bucket, action)];
+                } else {
+                    value = infoset_table_.strategy_sum_value(
+                        infoset.id,
+                        row_value_index(meta, bucket, action));
+                }
+                average[row_value_index(meta, bucket, action)] = value;
+                total += value;
+            }
+
+            if (total > 0.0) {
+                for (std::size_t action = 0; action < meta.action_count; ++action) {
+                    average[row_value_index(meta, bucket, action)] /= total;
+                }
+                continue;
+            }
+
+            const auto uniform = meta.action_count == 0 ? 0.0 : 1.0 / static_cast<double>(meta.action_count);
+            for (std::size_t action = 0; action < meta.action_count; ++action) {
+                average[row_value_index(meta, bucket, action)] = uniform;
+            }
         }
     }
 
@@ -511,6 +657,14 @@ const HUNLFlatMCCFR::Profile& HUNLFlatMCCFR::profile() const noexcept {
 
 std::size_t HUNLFlatMCCFR::worker_count() const noexcept {
     return worker_count_;
+}
+
+bool HUNLFlatMCCFR::using_sparse_storage() const noexcept {
+    return config_.use_sparse_storage;
+}
+
+const HUNLSampledStorage& HUNLFlatMCCFR::sparse_storage() const noexcept {
+    return sparse_storage_;
 }
 
 }  // namespace core

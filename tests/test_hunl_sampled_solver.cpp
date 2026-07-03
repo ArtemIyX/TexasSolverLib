@@ -3,6 +3,7 @@
 #include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_simd.hpp"
 #include "solver/hunl_sampled_storage.hpp"
+#include "solver/hunl_sampled_export.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -34,6 +35,8 @@ TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
     EXPECT_EQ(config.batch_size, 64U);
     EXPECT_TRUE(config.update_both_players);
     EXPECT_TRUE(!config.use_discounting);
+    EXPECT_TRUE(!config.use_sparse_storage);
+    EXPECT_TRUE(!config.keep_dense_validation_backend);
 }
 
 TEST_CASE(hunl_sampled_storage_allocates_one_sparse_row) {
@@ -53,6 +56,76 @@ TEST_CASE(hunl_sampled_storage_allocates_one_sparse_row) {
     EXPECT_EQ(row.action_count, 2U);
     EXPECT_EQ(row.regret[0], 0.0f);
     EXPECT_EQ(row.strategy_sum[5], 0.0f);
+}
+
+TEST_CASE(hunl_sampled_storage_computes_current_strategy_on_demand_and_estimates_memory) {
+    core::HUNLSampledStorage storage(core::HUNLFlatValueLayout::InfosetHandAction);
+    const auto row = storage.ensure_row({
+        core::InfosetId{3},
+        0,
+        core::Street::Flop,
+        2,
+        2,
+    });
+
+    row.regret[0] = 3.0f;
+    row.regret[1] = 1.0f;
+    row.regret[2] = -2.0f;
+    row.regret[3] = -4.0f;
+
+    std::array<float, 2> strategy = {0.0f, 0.0f};
+    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{3}), 0, strategy.data());
+    EXPECT_NEAR(strategy[0], 0.75, TOL);
+    EXPECT_NEAR(strategy[1], 0.25, TOL);
+
+    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{3}), 1, strategy.data());
+    EXPECT_NEAR(strategy[0], 0.5, TOL);
+    EXPECT_NEAR(strategy[1], 0.5, TOL);
+
+    const auto estimate = storage.memory_estimate();
+    EXPECT_EQ(estimate.sparse_rows, 1U);
+    EXPECT_EQ(estimate.sparse_values, 4U);
+    EXPECT_TRUE(estimate.total_bytes() >= storage.storage_bytes());
+}
+
+TEST_CASE(hunl_sampled_exporter_normalizes_sparse_rows_for_both_layouts) {
+    core::HUNLSampledStorage action_major(core::HUNLFlatValueLayout::InfosetActionHand);
+    auto action_row = action_major.ensure_row({
+        core::InfosetId{1},
+        0,
+        core::Street::Turn,
+        2,
+        2,
+    });
+    action_row.strategy_sum[0] = 3.0f;
+    action_row.strategy_sum[1] = 1.0f;
+    action_row.strategy_sum[2] = 1.0f;
+    action_row.strategy_sum[3] = 3.0f;
+
+    const auto action_exported =
+        core::HUNLSampledStrategyExporter::export_average_strategy(action_major.view(core::InfosetId{1}), 1);
+    EXPECT_EQ(action_exported.actions.size(), 2U);
+    EXPECT_NEAR(action_exported.actions[0].probability, 0.25, TOL);
+    EXPECT_NEAR(action_exported.actions[1].probability, 0.75, TOL);
+
+    core::HUNLSampledStorage bucket_major(core::HUNLFlatValueLayout::InfosetHandAction);
+    auto bucket_row = bucket_major.ensure_row({
+        core::InfosetId{2},
+        0,
+        core::Street::Turn,
+        2,
+        2,
+    });
+    bucket_row.strategy_sum[0] = 2.0f;
+    bucket_row.strategy_sum[1] = 6.0f;
+    bucket_row.strategy_sum[2] = 6.0f;
+    bucket_row.strategy_sum[3] = 2.0f;
+
+    const auto bucket_exported =
+        core::HUNLSampledStrategyExporter::export_average_strategy(bucket_major.view(core::InfosetId{2}), 0);
+    EXPECT_EQ(bucket_exported.actions.size(), 2U);
+    EXPECT_NEAR(bucket_exported.actions[0].probability, 0.25, TOL);
+    EXPECT_NEAR(bucket_exported.actions[1].probability, 0.75, TOL);
 }
 
 TEST_CASE(hunl_sampled_scheduler_partitions_trajectories_deterministically) {

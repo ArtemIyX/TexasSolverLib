@@ -1,5 +1,6 @@
 #include "solver/hunl_sampled_storage.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace core {
@@ -35,6 +36,10 @@ HUNLSampledRowView HUNLSampledStorage::ensure_row(const HUNLSampledInfosetShape&
     return view_mut(shape.id);
 }
 
+bool HUNLSampledStorage::has_row(InfosetId id) const noexcept {
+    return row_lookup_.find(id) != row_lookup_.end();
+}
+
 HUNLSampledConstRowView HUNLSampledStorage::view(InfosetId id) const {
     const auto index = row_index(id);
     if (index == meta_.size()) {
@@ -47,6 +52,7 @@ HUNLSampledConstRowView HUNLSampledStorage::view(InfosetId id) const {
         strategy_sum_.data() + meta.strategy_sum_offset,
         meta.bucket_count,
         meta.action_count,
+        layout_,
     };
 }
 
@@ -62,6 +68,7 @@ HUNLSampledRowView HUNLSampledStorage::view_mut(InfosetId id) {
         strategy_sum_.data() + meta.strategy_sum_offset,
         meta.bucket_count,
         meta.action_count,
+        layout_,
     };
 }
 
@@ -81,12 +88,82 @@ std::uint64_t HUNLSampledStorage::storage_bytes() const noexcept {
     return static_cast<std::uint64_t>(regret_.size() + strategy_sum_.size()) * sizeof(float);
 }
 
+HUNLSampledStorageMemoryEstimate HUNLSampledStorage::memory_estimate() const noexcept {
+    HUNLSampledStorageMemoryEstimate estimate;
+    estimate.meta_bytes =
+        static_cast<std::uint64_t>(meta_.capacity()) * sizeof(HUNLSampledInfosetMeta);
+    estimate.lookup_bytes =
+        static_cast<std::uint64_t>(row_lookup_.size()) *
+        static_cast<std::uint64_t>(sizeof(InfosetId) + sizeof(std::size_t) + sizeof(void*) * 2U);
+    estimate.regret_bytes = static_cast<std::uint64_t>(regret_.capacity()) * sizeof(float);
+    estimate.strategy_sum_bytes = static_cast<std::uint64_t>(strategy_sum_.capacity()) * sizeof(float);
+    estimate.sparse_rows = static_cast<std::uint64_t>(meta_.size());
+    estimate.sparse_values = static_cast<std::uint64_t>(regret_.size());
+    return estimate;
+}
+
 HUNLFlatValueLayout HUNLSampledStorage::layout() const noexcept {
     return layout_;
 }
 
 HUNLFlatStoragePrecision HUNLSampledStorage::precision() const noexcept {
     return precision_;
+}
+
+std::size_t HUNLSampledStorage::value_index(
+    HUNLFlatValueLayout layout,
+    std::uint32_t bucket_count,
+    std::uint8_t action_count,
+    std::size_t bucket,
+    std::size_t action) noexcept {
+    const auto action_count_size = static_cast<std::size_t>(action_count);
+    if (layout == HUNLFlatValueLayout::InfosetHandAction) {
+        return bucket * action_count_size + action;
+    }
+    return action * static_cast<std::size_t>(bucket_count) + bucket;
+}
+
+void HUNLSampledStorage::compute_current_strategy(
+    HUNLSampledConstRowView row,
+    std::size_t bucket,
+    float* out) noexcept {
+    if (out == nullptr || row.action_count == 0) {
+        return;
+    }
+
+    const auto action_count = static_cast<std::size_t>(row.action_count);
+    if (row.empty() || bucket >= row.bucket_count) {
+        const auto uniform = 1.0f / static_cast<float>(action_count);
+        std::fill(out, out + action_count, uniform);
+        return;
+    }
+
+    float positive_total = 0.0f;
+    for (std::size_t action = 0; action < action_count; ++action) {
+        const auto regret =
+            row.regret[value_index(row.layout, row.bucket_count, row.action_count, bucket, action)];
+        out[action] = std::max(regret, 0.0f);
+        positive_total += out[action];
+    }
+
+    if (positive_total > 0.0f) {
+        for (std::size_t action = 0; action < action_count; ++action) {
+            out[action] /= positive_total;
+        }
+        return;
+    }
+
+    const auto uniform = 1.0f / static_cast<float>(action_count);
+    std::fill(out, out + action_count, uniform);
+}
+
+std::uint64_t HUNLSampledStorage::estimate_row_storage_bytes(
+    const HUNLSampledInfosetShape& shape) noexcept {
+    const auto value_count =
+        static_cast<std::uint64_t>(shape.bucket_count) * static_cast<std::uint64_t>(shape.action_count);
+    return static_cast<std::uint64_t>(sizeof(HUNLSampledInfosetMeta)) +
+        static_cast<std::uint64_t>(sizeof(InfosetId) + sizeof(std::size_t) + sizeof(void*) * 2U) +
+        value_count * sizeof(float) * 2ULL;
 }
 
 void HUNLSampledStorage::clear_keep_capacity() noexcept {
