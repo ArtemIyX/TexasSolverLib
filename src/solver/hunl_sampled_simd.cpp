@@ -1,10 +1,177 @@
 #include "solver/hunl_sampled_simd.hpp"
 
 #include <algorithm>
+#include <atomic>
+
+#if defined(__AVX2__)
+#include <immintrin.h>
+#endif
 
 namespace core {
 
-void regret_matching_action_major_f32(
+namespace {
+
+std::atomic<bool> g_hunl_sampled_simd_enabled{true};
+
+bool use_sampled_avx2() noexcept {
+#if defined(__AVX2__)
+    return g_hunl_sampled_simd_enabled.load(std::memory_order_relaxed) &&
+        detect_simd_backend() == SimdBackend::Avx2;
+#else
+    return false;
+#endif
+}
+
+#if defined(__AVX2__)
+void accumulate_average_strategy_action_major_f32_avx2(
+    const float* strategy,
+    const float* reach_or_weight,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float scale,
+    float* strategy_sum) {
+    const auto scale_vec = _mm256_set1_ps(scale);
+    for (std::uint32_t action = 0; action < action_count; ++action) {
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
+        std::uint32_t bucket = 0;
+        for (; bucket + 7U < bucket_count; bucket += 8U) {
+            const auto strat = _mm256_loadu_ps(strategy + action_offset + bucket);
+            const auto reach = _mm256_loadu_ps(reach_or_weight + bucket);
+            const auto sum = _mm256_loadu_ps(strategy_sum + action_offset + bucket);
+            const auto delta = _mm256_mul_ps(_mm256_mul_ps(strat, reach), scale_vec);
+            _mm256_storeu_ps(strategy_sum + action_offset + bucket, _mm256_add_ps(sum, delta));
+        }
+        for (; bucket < bucket_count; ++bucket) {
+            strategy_sum[action_offset + bucket] +=
+                strategy[action_offset + bucket] * reach_or_weight[bucket] * scale;
+        }
+    }
+}
+
+void add_regret_delta_action_major_f32_avx2(
+    const float* action_values,
+    const float* node_values,
+    const float* cf_reach,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float* regret) {
+    for (std::uint32_t action = 0; action < action_count; ++action) {
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
+        std::uint32_t bucket = 0;
+        for (; bucket + 7U < bucket_count; bucket += 8U) {
+            const auto action_vec = _mm256_loadu_ps(action_values + action_offset + bucket);
+            const auto node_vec = _mm256_loadu_ps(node_values + bucket);
+            const auto reach_vec = _mm256_loadu_ps(cf_reach + bucket);
+            const auto regret_vec = _mm256_loadu_ps(regret + action_offset + bucket);
+            const auto delta = _mm256_mul_ps(_mm256_sub_ps(action_vec, node_vec), reach_vec);
+            _mm256_storeu_ps(regret + action_offset + bucket, _mm256_add_ps(regret_vec, delta));
+        }
+        for (; bucket < bucket_count; ++bucket) {
+            regret[action_offset + bucket] +=
+                (action_values[action_offset + bucket] - node_values[bucket]) * cf_reach[bucket];
+        }
+    }
+}
+
+void accumulate_average_strategy_action_major_f64_avx2(
+    const double* strategy,
+    const double* reach_or_weight,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double scale,
+    double* strategy_sum) {
+    const auto scale_vec = _mm256_set1_pd(scale);
+    for (std::uint32_t action = 0; action < action_count; ++action) {
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
+        std::uint32_t bucket = 0;
+        for (; bucket + 3U < bucket_count; bucket += 4U) {
+            const auto strat = _mm256_loadu_pd(strategy + action_offset + bucket);
+            const auto reach = _mm256_loadu_pd(reach_or_weight + bucket);
+            const auto sum = _mm256_loadu_pd(strategy_sum + action_offset + bucket);
+            const auto delta = _mm256_mul_pd(_mm256_mul_pd(strat, reach), scale_vec);
+            _mm256_storeu_pd(strategy_sum + action_offset + bucket, _mm256_add_pd(sum, delta));
+        }
+        for (; bucket < bucket_count; ++bucket) {
+            strategy_sum[action_offset + bucket] +=
+                strategy[action_offset + bucket] * reach_or_weight[bucket] * scale;
+        }
+    }
+}
+
+void add_regret_delta_action_major_f64_avx2(
+    const double* action_values,
+    const double* node_values,
+    const double* cf_reach,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double* regret) {
+    for (std::uint32_t action = 0; action < action_count; ++action) {
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
+        std::uint32_t bucket = 0;
+        for (; bucket + 3U < bucket_count; bucket += 4U) {
+            const auto action_vec = _mm256_loadu_pd(action_values + action_offset + bucket);
+            const auto node_vec = _mm256_loadu_pd(node_values + bucket);
+            const auto reach_vec = _mm256_loadu_pd(cf_reach + bucket);
+            const auto regret_vec = _mm256_loadu_pd(regret + action_offset + bucket);
+            const auto delta = _mm256_mul_pd(_mm256_sub_pd(action_vec, node_vec), reach_vec);
+            _mm256_storeu_pd(regret + action_offset + bucket, _mm256_add_pd(regret_vec, delta));
+        }
+        for (; bucket < bucket_count; ++bucket) {
+            regret[action_offset + bucket] +=
+                (action_values[action_offset + bucket] - node_values[bucket]) * cf_reach[bucket];
+        }
+    }
+}
+
+double weighted_sum_f32_f64_accum_avx2(
+    std::uint32_t n,
+    const float* values,
+    const float* weights) {
+    std::uint32_t i = 0;
+    __m256 sum = _mm256_setzero_ps();
+    for (; i + 7U < n; i += 8U) {
+        const auto vv = _mm256_loadu_ps(values + i);
+        const auto ww = _mm256_loadu_ps(weights + i);
+        sum = _mm256_add_ps(sum, _mm256_mul_ps(vv, ww));
+    }
+    alignas(32) float tmp[8];
+    _mm256_store_ps(tmp, sum);
+    double total = 0.0;
+    for (float value : tmp) {
+        total += static_cast<double>(value);
+    }
+    for (; i < n; ++i) {
+        total += static_cast<double>(values[i]) * static_cast<double>(weights[i]);
+    }
+    return total;
+}
+#endif
+
+}  // namespace
+
+void set_hunl_sampled_simd_enabled(bool enabled) noexcept {
+    g_hunl_sampled_simd_enabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool hunl_sampled_simd_enabled() noexcept {
+    return g_hunl_sampled_simd_enabled.load(std::memory_order_relaxed);
+}
+
+HUNLSampledSimdBackend hunl_sampled_simd_backend() noexcept {
+    return use_sampled_avx2() ? HUNLSampledSimdBackend::Avx2Fma : HUNLSampledSimdBackend::Scalar;
+}
+
+const char* hunl_sampled_simd_backend_name(HUNLSampledSimdBackend backend) noexcept {
+    switch (backend) {
+        case HUNLSampledSimdBackend::Scalar:
+            return "scalar";
+        case HUNLSampledSimdBackend::Avx2Fma:
+            return "avx2-fma";
+    }
+    return "unknown";
+}
+
+void regret_matching_action_major_f32_scalar(
     const float* regret,
     std::uint32_t action_count,
     std::uint32_t bucket_count,
@@ -16,7 +183,7 @@ void regret_matching_action_major_f32(
     for (std::uint32_t bucket = 0; bucket < bucket_count; ++bucket) {
         float positive_total = 0.0f;
         for (std::uint32_t action = 0; action < action_count; ++action) {
-            const auto index = action * bucket_count + bucket;
+            const auto index = static_cast<std::size_t>(action) * bucket_count + bucket;
             const auto positive = std::max(regret[index], 0.0f);
             strategy[index] = positive;
             positive_total += positive;
@@ -24,20 +191,69 @@ void regret_matching_action_major_f32(
 
         if (positive_total > 0.0f) {
             for (std::uint32_t action = 0; action < action_count; ++action) {
-                const auto index = action * bucket_count + bucket;
+                const auto index = static_cast<std::size_t>(action) * bucket_count + bucket;
                 strategy[index] /= positive_total;
             }
         } else {
             const auto uniform = 1.0f / static_cast<float>(action_count);
             for (std::uint32_t action = 0; action < action_count; ++action) {
-                const auto index = action * bucket_count + bucket;
+                const auto index = static_cast<std::size_t>(action) * bucket_count + bucket;
                 strategy[index] = uniform;
             }
         }
     }
 }
 
-void accumulate_average_strategy_action_major_f32(
+void regret_matching_action_major_f32(
+    const float* regret,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float* strategy) {
+    regret_matching_action_major_f32_scalar(regret, action_count, bucket_count, strategy);
+}
+
+void regret_matching_action_major_f64_scalar(
+    const double* regret,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double* strategy) {
+    if (regret == nullptr || strategy == nullptr || action_count == 0 || bucket_count == 0) {
+        return;
+    }
+
+    for (std::uint32_t bucket = 0; bucket < bucket_count; ++bucket) {
+        double positive_total = 0.0;
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto index = static_cast<std::size_t>(action) * bucket_count + bucket;
+            const auto positive = std::max(regret[index], 0.0);
+            strategy[index] = positive;
+            positive_total += positive;
+        }
+
+        if (positive_total > 0.0) {
+            for (std::uint32_t action = 0; action < action_count; ++action) {
+                const auto index = static_cast<std::size_t>(action) * bucket_count + bucket;
+                strategy[index] /= positive_total;
+            }
+        } else {
+            const auto uniform = 1.0 / static_cast<double>(action_count);
+            for (std::uint32_t action = 0; action < action_count; ++action) {
+                const auto index = static_cast<std::size_t>(action) * bucket_count + bucket;
+                strategy[index] = uniform;
+            }
+        }
+    }
+}
+
+void regret_matching_action_major_f64(
+    const double* regret,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double* strategy) {
+    regret_matching_action_major_f64_scalar(regret, action_count, bucket_count, strategy);
+}
+
+void accumulate_average_strategy_action_major_f32_scalar(
     const float* strategy,
     const float* reach_or_weight,
     std::uint32_t action_count,
@@ -49,7 +265,7 @@ void accumulate_average_strategy_action_major_f32(
     }
 
     for (std::uint32_t action = 0; action < action_count; ++action) {
-        const auto action_offset = action * bucket_count;
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
         for (std::uint32_t bucket = 0; bucket < bucket_count; ++bucket) {
             strategy_sum[action_offset + bucket] +=
                 strategy[action_offset + bucket] * reach_or_weight[bucket] * scale;
@@ -57,7 +273,83 @@ void accumulate_average_strategy_action_major_f32(
     }
 }
 
-void add_regret_delta_action_major_f32(
+void accumulate_average_strategy_action_major_f32(
+    const float* strategy,
+    const float* reach_or_weight,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float scale,
+    float* strategy_sum) {
+#if defined(__AVX2__)
+    if (use_sampled_avx2()) {
+        accumulate_average_strategy_action_major_f32_avx2(
+            strategy,
+            reach_or_weight,
+            action_count,
+            bucket_count,
+            scale,
+            strategy_sum);
+        return;
+    }
+#endif
+    accumulate_average_strategy_action_major_f32_scalar(
+        strategy,
+        reach_or_weight,
+        action_count,
+        bucket_count,
+        scale,
+        strategy_sum);
+}
+
+void accumulate_average_strategy_action_major_f64_scalar(
+    const double* strategy,
+    const double* reach_or_weight,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double scale,
+    double* strategy_sum) {
+    if (strategy == nullptr || reach_or_weight == nullptr || strategy_sum == nullptr) {
+        return;
+    }
+
+    for (std::uint32_t action = 0; action < action_count; ++action) {
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
+        for (std::uint32_t bucket = 0; bucket < bucket_count; ++bucket) {
+            strategy_sum[action_offset + bucket] +=
+                strategy[action_offset + bucket] * reach_or_weight[bucket] * scale;
+        }
+    }
+}
+
+void accumulate_average_strategy_action_major_f64(
+    const double* strategy,
+    const double* reach_or_weight,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double scale,
+    double* strategy_sum) {
+#if defined(__AVX2__)
+    if (use_sampled_avx2()) {
+        accumulate_average_strategy_action_major_f64_avx2(
+            strategy,
+            reach_or_weight,
+            action_count,
+            bucket_count,
+            scale,
+            strategy_sum);
+        return;
+    }
+#endif
+    accumulate_average_strategy_action_major_f64_scalar(
+        strategy,
+        reach_or_weight,
+        action_count,
+        bucket_count,
+        scale,
+        strategy_sum);
+}
+
+void add_regret_delta_action_major_f32_scalar(
     const float* action_values,
     const float* node_values,
     const float* cf_reach,
@@ -69,12 +361,88 @@ void add_regret_delta_action_major_f32(
     }
 
     for (std::uint32_t action = 0; action < action_count; ++action) {
-        const auto action_offset = action * bucket_count;
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
         for (std::uint32_t bucket = 0; bucket < bucket_count; ++bucket) {
             regret[action_offset + bucket] +=
                 (action_values[action_offset + bucket] - node_values[bucket]) * cf_reach[bucket];
         }
     }
+}
+
+void add_regret_delta_action_major_f32(
+    const float* action_values,
+    const float* node_values,
+    const float* cf_reach,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float* regret) {
+#if defined(__AVX2__)
+    if (use_sampled_avx2()) {
+        add_regret_delta_action_major_f32_avx2(
+            action_values,
+            node_values,
+            cf_reach,
+            action_count,
+            bucket_count,
+            regret);
+        return;
+    }
+#endif
+    add_regret_delta_action_major_f32_scalar(
+        action_values,
+        node_values,
+        cf_reach,
+        action_count,
+        bucket_count,
+        regret);
+}
+
+void add_regret_delta_action_major_f64_scalar(
+    const double* action_values,
+    const double* node_values,
+    const double* cf_reach,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double* regret) {
+    if (action_values == nullptr || node_values == nullptr || cf_reach == nullptr || regret == nullptr) {
+        return;
+    }
+
+    for (std::uint32_t action = 0; action < action_count; ++action) {
+        const auto action_offset = static_cast<std::size_t>(action) * bucket_count;
+        for (std::uint32_t bucket = 0; bucket < bucket_count; ++bucket) {
+            regret[action_offset + bucket] +=
+                (action_values[action_offset + bucket] - node_values[bucket]) * cf_reach[bucket];
+        }
+    }
+}
+
+void add_regret_delta_action_major_f64(
+    const double* action_values,
+    const double* node_values,
+    const double* cf_reach,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double* regret) {
+#if defined(__AVX2__)
+    if (use_sampled_avx2()) {
+        add_regret_delta_action_major_f64_avx2(
+            action_values,
+            node_values,
+            cf_reach,
+            action_count,
+            bucket_count,
+            regret);
+        return;
+    }
+#endif
+    add_regret_delta_action_major_f64_scalar(
+        action_values,
+        node_values,
+        cf_reach,
+        action_count,
+        bucket_count,
+        regret);
 }
 
 void saxpy_f32(std::uint32_t n, float alpha, const float* x, float* y) {
@@ -97,6 +465,18 @@ double dot_f32_f64_accum(std::uint32_t n, const float* x, const float* y) {
         total += static_cast<double>(x[i]) * static_cast<double>(y[i]);
     }
     return total;
+}
+
+double weighted_sum_f32_f64_accum(std::uint32_t n, const float* values, const float* weights) {
+    if (values == nullptr || weights == nullptr) {
+        return 0.0;
+    }
+#if defined(__AVX2__)
+    if (use_sampled_avx2()) {
+        return weighted_sum_f32_f64_accum_avx2(n, values, weights);
+    }
+#endif
+    return dot_f32_f64_accum(n, values, weights);
 }
 
 }  // namespace core

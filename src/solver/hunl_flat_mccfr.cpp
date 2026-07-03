@@ -97,6 +97,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     }
     initialize_sparse_infoset_shapes(bucket_count_per_player);
     profile_.workers.resize(worker_count_);
+    profile_.sampled_simd_backend = hunl_sampled_simd_backend();
 }
 
 void HUNLFlatMCCFR::run_iteration() {
@@ -319,6 +320,17 @@ double HUNLFlatMCCFR::estimate_variance(
     }
     const auto mean = value_sum / static_cast<double>(sample_count);
     return std::max(0.0, value_sq_sum / static_cast<double>(sample_count) - mean * mean);
+}
+
+void HUNLFlatMCCFR::add_sampled_kernel_profile(double seconds, HUNLSampledSimdBackend backend) noexcept {
+    profile_.sampled_simd_backend = hunl_sampled_simd_backend();
+    if (backend == HUNLSampledSimdBackend::Avx2Fma) {
+        profile_.sampled_kernel_simd_seconds += seconds;
+        ++profile_.sampled_kernel_simd_calls;
+        return;
+    }
+    profile_.sampled_kernel_scalar_seconds += seconds;
+    ++profile_.sampled_kernel_scalar_calls;
 }
 
 double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context) {
@@ -604,31 +616,35 @@ void HUNLFlatMCCFR::compute_current_strategy_rows() {
     std::vector<double> strategy;
 
     for (const auto& meta : infoset_meta_) {
-        regrets.assign(meta.action_count, 0.0);
-        strategy.assign(meta.action_count, 0.0);
-        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
-            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
-                for (std::size_t action = 0; action < meta.action_count; ++action) {
-                    regrets[action] = infoset_table_.regret_value(meta.id, bucket_offset + action);
-                }
-                compute_strategy_row(regrets.data(), strategy.data(), meta.action_count);
-                for (std::size_t action = 0; action < meta.action_count; ++action) {
-                    infoset_table_.set_current_strategy_value(meta.id, bucket_offset + action, strategy[action]);
-                }
-            }
+        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand) {
+            auto* regret = infoset_table_.regret_mut(meta.id);
+            auto* current_strategy = infoset_table_.current_strategy_mut(meta.id);
+            const auto kernel_start = std::chrono::steady_clock::now();
+            regret_matching_action_major_f64(
+                regret,
+                meta.action_count,
+                meta.bucket_count,
+                current_strategy);
+            add_sampled_kernel_profile(
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - kernel_start).count(),
+                hunl_sampled_simd_backend());
             continue;
         }
 
+        regrets.assign(meta.action_count, 0.0);
+        strategy.assign(meta.action_count, 0.0);
         for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
             for (std::size_t action = 0; action < meta.action_count; ++action) {
-                const auto row_offset = action * static_cast<std::size_t>(meta.bucket_count) + bucket;
-                regrets[action] = infoset_table_.regret_value(meta.id, row_offset);
+                regrets[action] = infoset_table_.regret_value(
+                    meta.id,
+                    bucket * static_cast<std::size_t>(meta.action_count) + action);
             }
             compute_strategy_row(regrets.data(), strategy.data(), meta.action_count);
             for (std::size_t action = 0; action < meta.action_count; ++action) {
-                const auto row_offset = action * static_cast<std::size_t>(meta.bucket_count) + bucket;
-                infoset_table_.set_current_strategy_value(meta.id, row_offset, strategy[action]);
+                infoset_table_.set_current_strategy_value(
+                    meta.id,
+                    bucket * static_cast<std::size_t>(meta.action_count) + action,
+                    strategy[action]);
             }
         }
     }

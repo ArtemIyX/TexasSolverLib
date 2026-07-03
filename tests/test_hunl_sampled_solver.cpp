@@ -323,6 +323,53 @@ TEST_CASE(hunl_sampled_simd_scalar_reference_kernels_match_hand_computed_rows) {
     EXPECT_NEAR(regret_delta[3], 2.0, TOL);
     EXPECT_NEAR(regret_delta[4], -1.0, TOL);
     EXPECT_NEAR(regret_delta[5], 2.0, TOL);
+
+    const auto weighted = core::weighted_sum_f32_f64_accum(
+        static_cast<std::uint32_t>(action_values.size()),
+        action_values.data(),
+        action_values.data());
+    EXPECT_NEAR(weighted, 91.0, TOL);
+}
+
+TEST_CASE(hunl_sampled_simd_double_kernels_and_runtime_disable_match_scalar_reference) {
+    const std::array<double, 6> regret = {1.0, -2.0, 3.0, 3.0, 2.0, -1.0};
+    std::array<double, 6> strategy_scalar = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::array<double, 6> strategy_dispatched = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    core::regret_matching_action_major_f64_scalar(regret.data(), 2, 3, strategy_scalar.data());
+
+    const auto was_enabled = core::hunl_sampled_simd_enabled();
+    core::set_hunl_sampled_simd_enabled(false);
+    core::regret_matching_action_major_f64(regret.data(), 2, 3, strategy_dispatched.data());
+    EXPECT_EQ(core::hunl_sampled_simd_backend(), core::HUNLSampledSimdBackend::Scalar);
+
+    for (std::size_t i = 0; i < strategy_scalar.size(); ++i) {
+        EXPECT_NEAR(strategy_scalar[i], strategy_dispatched[i], TOL);
+    }
+
+    const std::array<double, 6> action_values = {2.0, 5.0, 4.0, 6.0, 1.0, 3.0};
+    const std::array<double, 3> node_values = {4.0, 3.0, 2.0};
+    const std::array<double, 3> cf_reach = {1.0, 0.5, 2.0};
+    std::array<double, 6> regret_delta_scalar = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    std::array<double, 6> regret_delta_dispatched = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    core::add_regret_delta_action_major_f64_scalar(
+        action_values.data(),
+        node_values.data(),
+        cf_reach.data(),
+        2,
+        3,
+        regret_delta_scalar.data());
+    core::add_regret_delta_action_major_f64(
+        action_values.data(),
+        node_values.data(),
+        cf_reach.data(),
+        2,
+        3,
+        regret_delta_dispatched.data());
+    for (std::size_t i = 0; i < regret_delta_scalar.size(); ++i) {
+        EXPECT_NEAR(regret_delta_scalar[i], regret_delta_dispatched[i], TOL);
+    }
+
+    core::set_hunl_sampled_simd_enabled(was_enabled);
 }
 
 TEST_CASE(hunl_sampled_profile_formats_summary_into_caller_buffer) {

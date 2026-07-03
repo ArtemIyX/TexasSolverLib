@@ -633,7 +633,7 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
     const auto table = core::HUNLFlatInfosetTable::build(
         graph,
         buckets,
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        core::HUNLFlatValueLayout::InfosetActionHand,
         cfg.precision);
     core::HUNLFlatMemoryEstimateOptions memory_options;
     memory_options.max_child_count = max_backward_row_width(graph);
@@ -654,7 +654,7 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
         graph,
         buckets,
         sampled_config,
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        core::HUNLFlatValueLayout::InfosetActionHand,
         cfg.workers,
         cfg.precision);
     const auto setup_end = clock::now();
@@ -812,6 +812,10 @@ int main(int argc, char* argv[]) {
             std::cout << "  baseline_infoset_rows=" << timed.sampled_profile.baseline_infoset_rows << "\n";
             std::cout << "  baseline_node_rows=" << timed.sampled_profile.baseline_node_rows << "\n";
             std::cout << "  baseline_bytes=" << format_bytes(timed.sampled_profile.baseline_bytes) << "\n";
+            std::cout << "  sampled_simd_backend="
+                      << core::hunl_sampled_simd_backend_name(timed.sampled_profile.sampled_simd_backend) << "\n";
+            std::cout << "  sampled_kernel_scalar_calls=" << timed.sampled_profile.sampled_kernel_scalar_calls << "\n";
+            std::cout << "  sampled_kernel_simd_calls=" << timed.sampled_profile.sampled_kernel_simd_calls << "\n";
             std::cout << "  raw_estimator_variance=" << std::fixed << std::setprecision(9) << raw_variance << "\n";
             std::cout << "  corrected_estimator_variance=" << std::fixed << std::setprecision(9) << corrected_variance << "\n";
         }
@@ -871,6 +875,14 @@ int main(int argc, char* argv[]) {
                 std::cout << "  baseline_infoset_rows=" << timed.sampled_profile.baseline_infoset_rows << "\n";
                 std::cout << "  baseline_node_rows=" << timed.sampled_profile.baseline_node_rows << "\n";
                 std::cout << "  baseline_bytes=" << format_bytes(timed.sampled_profile.baseline_bytes) << "\n";
+                std::cout << "  sampled_simd_backend="
+                          << core::hunl_sampled_simd_backend_name(timed.sampled_profile.sampled_simd_backend) << "\n";
+                std::cout << "  sampled_kernel_scalar_calls=" << timed.sampled_profile.sampled_kernel_scalar_calls << "\n";
+                std::cout << "  sampled_kernel_scalar_seconds="
+                          << format_seconds(timed.sampled_profile.sampled_kernel_scalar_seconds) << "\n";
+                std::cout << "  sampled_kernel_simd_calls=" << timed.sampled_profile.sampled_kernel_simd_calls << "\n";
+                std::cout << "  sampled_kernel_simd_seconds="
+                          << format_seconds(timed.sampled_profile.sampled_kernel_simd_seconds) << "\n";
                 std::cout << "  raw_estimator_variance=" << std::fixed << std::setprecision(9) << raw_variance << "\n";
                 std::cout << "  corrected_estimator_variance=" << std::fixed << std::setprecision(9) << corrected_variance << "\n";
                 for (std::size_t worker = 0; worker < timed.sampled_profile.workers.size(); ++worker) {

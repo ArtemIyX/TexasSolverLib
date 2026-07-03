@@ -3,6 +3,7 @@
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_flat_expected_value.hpp"
 #include "solver/hunl_sampled_config.hpp"
+#include "solver/hunl_sampled_simd.hpp"
 #include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_storage.hpp"
 #include "util/pcs.hpp"
@@ -42,13 +43,18 @@ public:
         double strategy_seconds = 0.0;
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
+        double sampled_kernel_scalar_seconds = 0.0;
+        double sampled_kernel_simd_seconds = 0.0;
         std::uint64_t traversals = 0;
         std::uint64_t baseline_infoset_rows = 0;
         std::uint64_t baseline_node_rows = 0;
         std::uint64_t baseline_bytes = 0;
+        std::uint64_t sampled_kernel_scalar_calls = 0;
+        std::uint64_t sampled_kernel_simd_calls = 0;
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
+        HUNLSampledSimdBackend sampled_simd_backend = HUNLSampledSimdBackend::Scalar;
         std::vector<WorkerProfile> workers;
     };
 
@@ -181,6 +187,7 @@ private:
         std::uint64_t sample_count,
         double value_sum,
         double value_sq_sum) noexcept;
+    void add_sampled_kernel_profile(double seconds, HUNLSampledSimdBackend backend) noexcept;
 
     HUNLFlatSolveGraph graph_;
     HUNLFlatInfosetTable infoset_table_;
