@@ -129,6 +129,46 @@ TEST_CASE(hunl_sampled_config_rejects_inverted_memory_thresholds) {
     EXPECT_TRUE(!validation.ok);
 }
 
+TEST_CASE(hunl_sampled_config_rejects_average_strategy_flag_without_average_strategy_mode) {
+    core::HUNLSampledSolverConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.use_average_strategy_sampling = true;
+
+    const auto validation = core::validate_sampled_config(config);
+    EXPECT_TRUE(!validation.ok);
+}
+
+TEST_CASE(hunl_sampled_storage_missing_rows_export_uniform_and_clear_resets_counts) {
+    core::HUNLSampledStorage storage;
+
+    EXPECT_TRUE(!storage.has_row(core::InfosetId{99}));
+    EXPECT_TRUE(storage.view(core::InfosetId{99}).empty());
+    EXPECT_TRUE(storage.view_mut(core::InfosetId{99}).empty());
+    EXPECT_TRUE(storage.meta_for(core::InfosetId{99}) == nullptr);
+    EXPECT_TRUE(storage.meta_for_mut(core::InfosetId{99}) == nullptr);
+
+    std::array<float, 3> strategy = {0.0f, 0.0f, 0.0f};
+    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{99}), 0, strategy.data());
+    EXPECT_NEAR(strategy[0], 1.0 / 3.0, TOL);
+    EXPECT_NEAR(strategy[1], 1.0 / 3.0, TOL);
+    EXPECT_NEAR(strategy[2], 1.0 / 3.0, TOL);
+
+    storage.ensure_row({
+        core::InfosetId{5},
+        0,
+        core::Street::Flop,
+        2,
+        3,
+    });
+    EXPECT_EQ(storage.row_count(), 1U);
+    EXPECT_EQ(storage.total_value_count(), 6U);
+
+    storage.clear_keep_capacity();
+    EXPECT_EQ(storage.row_count(), 0U);
+    EXPECT_EQ(storage.total_value_count(), 0U);
+    EXPECT_TRUE(storage.view(core::InfosetId{5}).empty());
+}
+
 TEST_CASE(hunl_sampled_builder_starts_with_root_only_and_grows_lazily) {
     core::HUNLSampledBuilder builder;
     const auto root_state = make_lazy_root_state();
@@ -247,6 +287,41 @@ TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
     EXPECT_TRUE(preflight.estimate.total_bytes() <= preflight.effective_config.memory_fail_bytes);
 }
 
+TEST_CASE(hunl_sampled_solver_preflight_without_guardrails_stays_ok_under_tight_thresholds) {
+    core::HUNLSampledSolverConfig config;
+    config.enable_memory_guardrails = false;
+    config.memory_warning_bytes = 1U;
+    config.memory_fail_bytes = 2U;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 3;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Ok);
+    EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_fail_bytes);
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_rejects_when_adaptive_fallback_is_disabled) {
+    core::HUNLSampledSolverConfig config;
+    config.adaptive_memory_fallback = false;
+    config.bucket_count_hint = 2048;
+    config.workers = 8;
+    config.minibatch_size = 1024;
+    config.traversals_per_iteration = 8192;
+    config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
+    config.memory_fail_bytes = 16ULL * 1024ULL * 1024ULL;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 4;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_TRUE(!preflight.adjustments.reduced_minibatch);
+    EXPECT_TRUE(!preflight.adjustments.reduced_traversals);
+}
+
 TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories) {
     core::HUNLSampledSolver solver;
     core::HUNLSampledSolveRequest request;
@@ -258,6 +333,38 @@ TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories)
     EXPECT_TRUE(result.profile.export_bytes > 0U);
     EXPECT_TRUE(result.profile.total_memory_bytes >= result.profile.export_bytes);
     EXPECT_TRUE(!result.profile.memory_rejected);
+}
+
+TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without_work) {
+    core::HUNLSampledSolver solver;
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 3;
+
+    const auto result = solver.solve_for(request, std::chrono::milliseconds{0});
+    EXPECT_EQ(result.batches_completed, 0U);
+    EXPECT_TRUE(!result.timed_out);
+    EXPECT_EQ(result.root_strategy.actions.size(), 3U);
+    EXPECT_NEAR(result.root_strategy.actions[0].probability, 1.0 / 3.0, TOL);
+    EXPECT_NEAR(result.root_strategy.actions[1].probability, 1.0 / 3.0, TOL);
+    EXPECT_NEAR(result.root_strategy.actions[2].probability, 1.0 / 3.0, TOL);
+    EXPECT_EQ(result.profile.traversals, 0U);
+}
+
+TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
+    core::HUNLSampledSolverConfig config;
+    config.adaptive_memory_fallback = false;
+    config.bucket_count_hint = 4096;
+    config.workers = 8;
+    config.minibatch_size = 2048;
+    config.traversals_per_iteration = 8192;
+    config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
+    config.memory_fail_bytes = 16ULL * 1024ULL * 1024ULL;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 4;
+
+    EXPECT_THROW(solver.run_batches(request, 1), std::runtime_error);
 }
 
 TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {
@@ -331,6 +438,33 @@ TEST_CASE(hunl_sampled_exporter_normalizes_sparse_rows_for_both_layouts) {
     EXPECT_NEAR(bucket_exported.actions[1].probability, 0.75, TOL);
 }
 
+TEST_CASE(hunl_sampled_exporter_uniform_and_zero_sum_rows_stay_normalized) {
+    const auto uniform = core::HUNLSampledStrategyExporter::export_uniform(4);
+    EXPECT_EQ(uniform.actions.size(), 4U);
+    for (const auto& action : uniform.actions) {
+        EXPECT_NEAR(action.probability, 0.25, TOL);
+    }
+
+    core::HUNLSampledStorage storage(core::HUNLFlatValueLayout::InfosetActionHand);
+    storage.ensure_row({
+        core::InfosetId{7},
+        0,
+        core::Street::River,
+        2,
+        3,
+    });
+    const auto exported =
+        core::HUNLSampledStrategyExporter::export_average_strategy(storage.view(core::InfosetId{7}), 0);
+    EXPECT_EQ(exported.actions.size(), 3U);
+    EXPECT_NEAR(exported.actions[0].probability, 1.0 / 3.0, TOL);
+    EXPECT_NEAR(exported.actions[1].probability, 1.0 / 3.0, TOL);
+    EXPECT_NEAR(exported.actions[2].probability, 1.0 / 3.0, TOL);
+    EXPECT_TRUE(core::HUNLSampledStrategyExporter::export_average_strategy(
+                    storage.view(core::InfosetId{7}),
+                    9)
+                    .actions.empty());
+}
+
 TEST_CASE(hunl_sampled_scheduler_partitions_trajectories_deterministically) {
     const auto first = core::HUNLSampledScheduler::partition_deterministic(10, 3);
     const auto second = core::HUNLSampledScheduler::partition_deterministic(10, 3);
@@ -348,6 +482,15 @@ TEST_CASE(hunl_sampled_scheduler_partitions_trajectories_deterministically) {
         EXPECT_EQ(first[i].trajectories.begin, second[i].trajectories.begin);
         EXPECT_EQ(first[i].trajectories.end, second[i].trajectories.end);
     }
+}
+
+TEST_CASE(hunl_sampled_scheduler_handles_zero_trajectories_and_zero_workers) {
+    const auto batches = core::HUNLSampledScheduler::partition_deterministic(0, 0);
+
+    EXPECT_EQ(batches.size(), 1U);
+    EXPECT_EQ(batches[0].worker_index, 0U);
+    EXPECT_EQ(batches[0].trajectories.begin, 0U);
+    EXPECT_EQ(batches[0].trajectories.end, 0U);
 }
 
 TEST_CASE(hunl_sampled_simd_scalar_reference_kernels_match_hand_computed_rows) {

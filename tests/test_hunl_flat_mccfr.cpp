@@ -401,6 +401,40 @@ TEST_CASE(hunl_flat_mccfr_same_seed_produces_identical_output) {
     }
 }
 
+TEST_CASE(hunl_flat_mccfr_rejects_invalid_constructor_configs) {
+    {
+        core::HUNLFlatMCCFRConfig config;
+        config.traversals_per_iteration = 0;
+        EXPECT_THROW(
+            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            std::invalid_argument);
+    }
+
+    {
+        core::HUNLFlatMCCFRConfig config;
+        config.batch_size = 0;
+        EXPECT_THROW(
+            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            std::invalid_argument);
+    }
+
+    {
+        core::HUNLFlatMCCFRConfig config;
+        config.as_epsilon = 1.5;
+        EXPECT_THROW(
+            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            std::invalid_argument);
+    }
+
+    {
+        core::HUNLFlatMCCFRConfig config;
+        config.baseline_mode = core::HUNLFlatBaselineMode::DepthLimitedValueTable;
+        EXPECT_THROW(
+            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            std::invalid_argument);
+    }
+}
+
 TEST_CASE(hunl_flat_mccfr_public_chance_sampling_moves_toward_exact_value_with_more_samples) {
     const auto low_graph = make_public_chance_conflict_graph();
     const auto high_graph = make_public_chance_conflict_graph();
@@ -975,6 +1009,25 @@ TEST_CASE(hunl_flat_mccfr_exports_root_average_strategy_without_materializing_fu
     EXPECT_NEAR(root.actions[0].probability + root.actions[1].probability, 1.0, 1e-9);
 }
 
+TEST_CASE(hunl_flat_mccfr_sparse_root_export_is_uniform_before_any_samples) {
+    const auto graph = make_public_chance_conflict_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 101;
+    config.traversals_per_iteration = 8;
+    config.update_both_players = false;
+    config.use_sparse_storage = true;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    const auto root = solver.export_root_average_strategy();
+
+    EXPECT_EQ(root.actions.size(), 2U);
+    EXPECT_NEAR(root.actions[0].probability, 0.5, 1e-9);
+    EXPECT_NEAR(root.actions[1].probability, 0.5, 1e-9);
+    EXPECT_EQ(solver.sparse_storage().row_count(), 0U);
+}
+
 TEST_CASE(hunl_flat_mccfr_deadline_mode_returns_latest_clean_root_snapshot_on_immediate_timeout) {
     const auto graph = make_public_chance_conflict_graph();
 
@@ -997,4 +1050,27 @@ TEST_CASE(hunl_flat_mccfr_deadline_mode_returns_latest_clean_root_snapshot_on_im
     EXPECT_NEAR(result.latest_snapshot.strategy.actions[1].probability, 0.5, 1e-9);
     EXPECT_EQ(result.latest_snapshot.unique_infosets_touched, 0U);
     EXPECT_EQ(solver.sparse_storage().row_count(), 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_snapshot_reports_uniform_entropy_and_zero_delta_without_batches) {
+    const auto graph = make_public_chance_conflict_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 89;
+    config.traversals_per_iteration = 16;
+    config.batch_size = 4;
+    config.update_both_players = false;
+    config.use_sparse_storage = true;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    const auto result = solver.solve_for(std::chrono::milliseconds{-5});
+
+    EXPECT_TRUE(result.timed_out);
+    EXPECT_EQ(result.batches_completed, 0U);
+    EXPECT_EQ(result.latest_snapshot.batches_completed, 0U);
+    EXPECT_NEAR(result.latest_snapshot.action_entropy, std::log(2.0), 1e-9);
+    EXPECT_NEAR(result.latest_snapshot.action_probability_delta, 0.0, 1e-12);
+    EXPECT_TRUE(result.latest_snapshot.memory_used_bytes > 0U);
+    EXPECT_TRUE(result.latest_snapshot.timed_out);
 }
