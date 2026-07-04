@@ -50,6 +50,8 @@ TEST_CASE(hunl_sampled_config_defaults_validate) {
     EXPECT_EQ(config.layout, core::HUNLFlatValueLayout::InfosetActionHand);
     EXPECT_TRUE(config.lazy_public_expansion);
     EXPECT_TRUE(config.sparse_infosets);
+    EXPECT_TRUE(config.enable_memory_guardrails);
+    EXPECT_TRUE(config.memory_warning_bytes < config.memory_fail_bytes);
 }
 
 TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
@@ -118,6 +120,15 @@ TEST_CASE(hunl_sampled_storage_computes_current_strategy_on_demand_and_estimates
     EXPECT_TRUE(estimate.total_bytes() >= storage.storage_bytes());
 }
 
+TEST_CASE(hunl_sampled_config_rejects_inverted_memory_thresholds) {
+    core::HUNLSampledSolverConfig config;
+    config.memory_warning_bytes = 1024U;
+    config.memory_fail_bytes = 512U;
+
+    const auto validation = core::validate_sampled_config(config);
+    EXPECT_TRUE(!validation.ok);
+}
+
 TEST_CASE(hunl_sampled_builder_starts_with_root_only_and_grows_lazily) {
     core::HUNLSampledBuilder builder;
     const auto root_state = make_lazy_root_state();
@@ -180,10 +191,73 @@ TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
     solver.builder().ensure_expanded(solver.builder().root_id());
     const auto expanded_memory = solver.memory_estimate();
 
-    EXPECT_EQ(empty_memory.graph_nodes, 0U);
-    EXPECT_EQ(initialized_memory.graph_nodes, 1U);
-    EXPECT_TRUE(expanded_memory.graph_nodes > initialized_memory.graph_nodes);
-    EXPECT_TRUE(expanded_memory.graph_cache_bytes >= initialized_memory.graph_cache_bytes);
+    EXPECT_EQ(empty_memory.public_states_cached, 0U);
+    EXPECT_EQ(initialized_memory.public_states_cached, 1U);
+    EXPECT_TRUE(expanded_memory.public_states_cached > initialized_memory.public_states_cached);
+    EXPECT_TRUE(expanded_memory.public_state_cache_bytes >= initialized_memory.public_state_cache_bytes);
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_warns_above_warning_threshold) {
+    core::HUNLSampledSolverConfig config;
+    config.memory_warning_bytes = 1U;
+    config.memory_fail_bytes = 1024ULL * 1024ULL * 1024ULL;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 2;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Warning);
+    EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_warning_bytes);
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_rejects_unsafe_dense_nonlazy_production_mode) {
+    core::HUNLSampledSolverConfig config;
+    config.lazy_public_expansion = false;
+    config.sparse_infosets = false;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 2;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
+    core::HUNLSampledSolverConfig config;
+    config.use_average_strategy_sampling = true;
+    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    config.bucket_count_hint = 512;
+    config.workers = 4;
+    config.minibatch_size = 1024;
+    config.traversals_per_iteration = 4096;
+    config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
+    config.memory_fail_bytes = 20ULL * 1024ULL * 1024ULL;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 2;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_TRUE(preflight.status == core::HUNLSampledMemoryStatus::Ok ||
+                preflight.status == core::HUNLSampledMemoryStatus::Warning);
+    EXPECT_TRUE(preflight.adjustments.reduced_minibatch || preflight.adjustments.reduced_traversals);
+    EXPECT_TRUE(preflight.effective_config.minibatch_size <= config.minibatch_size);
+    EXPECT_TRUE(preflight.estimate.total_bytes() <= preflight.effective_config.memory_fail_bytes);
+}
+
+TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories) {
+    core::HUNLSampledSolver solver;
+    core::HUNLSampledSolveRequest request;
+    request.root_state = make_lazy_root_state();
+
+    const auto result = solver.run_batches(request, 1);
+    EXPECT_TRUE(result.profile.public_states_cached >= 1U);
+    EXPECT_TRUE(result.profile.worker_delta_bytes > 0U);
+    EXPECT_TRUE(result.profile.export_bytes > 0U);
+    EXPECT_TRUE(result.profile.total_memory_bytes >= result.profile.export_bytes);
+    EXPECT_TRUE(!result.profile.memory_rejected);
 }
 
 TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {
@@ -376,6 +450,7 @@ TEST_CASE(hunl_sampled_profile_formats_summary_into_caller_buffer) {
     core::HUNLSampledProfile profile;
     profile.record_traversal(128, 4096, 64);
     profile.record_sparse_storage(12, 768);
+    profile.record_memory_budget(8, 12, 768, 64, 128, 32, 1024, false, false);
     profile.add_traverse_seconds(0.25);
     profile.add_merge_seconds(0.05);
 
@@ -385,6 +460,7 @@ TEST_CASE(hunl_sampled_profile_formats_summary_into_caller_buffer) {
     EXPECT_TRUE(written > 0);
     EXPECT_TRUE(std::strstr(buffer.data(), "traversals=128") != nullptr);
     EXPECT_TRUE(std::strstr(buffer.data(), "sparse_rows=12") != nullptr);
+    EXPECT_TRUE(std::strstr(buffer.data(), "mem_total=1024") != nullptr);
     EXPECT_TRUE(std::strstr(buffer.data(), "t_merge=0.050000") != nullptr);
 }
 

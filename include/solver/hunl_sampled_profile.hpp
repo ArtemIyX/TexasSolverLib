@@ -15,6 +15,15 @@ struct HUNLSampledProfileSnapshot {
     std::uint64_t infosets_updated = 0;
     std::uint64_t sparse_rows = 0;
     std::uint64_t sparse_values = 0;
+    std::uint64_t public_states_cached = 0;
+    std::uint64_t infoset_rows_allocated = 0;
+    std::uint64_t sparse_values_allocated = 0;
+    std::uint64_t terminal_cache_bytes = 0;
+    std::uint64_t worker_delta_bytes = 0;
+    std::uint64_t export_bytes = 0;
+    std::uint64_t total_memory_bytes = 0;
+    bool memory_warning = false;
+    bool memory_rejected = false;
 };
 
 class HUNLSampledProfile {
@@ -25,6 +34,16 @@ public:
         std::uint64_t nodes_visited,
         std::uint64_t infosets_updated) noexcept;
     void record_sparse_storage(std::uint64_t sparse_rows, std::uint64_t sparse_values) noexcept;
+    void record_memory_budget(
+        std::uint64_t public_states_cached,
+        std::uint64_t infoset_rows_allocated,
+        std::uint64_t sparse_values_allocated,
+        std::uint64_t terminal_cache_bytes,
+        std::uint64_t worker_delta_bytes,
+        std::uint64_t export_bytes,
+        std::uint64_t total_memory_bytes,
+        bool warning,
+        bool rejected) noexcept;
     void add_traverse_seconds(double seconds) noexcept;
     void add_merge_seconds(double seconds) noexcept;
     void add_terminal_seconds(double seconds) noexcept;

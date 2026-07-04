@@ -311,6 +311,13 @@ struct TimedBenchmarkResult {
     std::unordered_map<std::string, std::vector<double>> exported_strategy;
     StrategyMap strategy;
     core::HUNLFlatMCCFR::RootStrategySnapshot sampled_root_snapshot{};
+    std::uint64_t sampled_public_states_cached = 0;
+    std::uint64_t sampled_infoset_rows_allocated = 0;
+    std::uint64_t sampled_sparse_values_allocated = 0;
+    std::uint64_t sampled_terminal_cache_bytes = 0;
+    std::uint64_t sampled_worker_delta_bytes = 0;
+    std::uint64_t sampled_export_bytes = 0;
+    std::uint64_t sampled_budget_total_bytes = 0;
     std::array<double, 2> expected_value = {0.0, 0.0};
     double exploitability = 0.0;
     std::uint32_t iterations = 0;
@@ -450,6 +457,15 @@ double sampled_counter_variance(std::uint64_t count, double sum, double sq_sum) 
     }
     const auto mean = sum / static_cast<double>(count);
     return std::max(0.0, sq_sum / static_cast<double>(count) - mean * mean);
+}
+
+std::uint64_t estimate_strategy_map_bytes(const std::unordered_map<std::string, std::vector<double>>& strategy) {
+    std::uint64_t bytes = 0;
+    for (const auto& [key, values] : strategy) {
+        bytes += static_cast<std::uint64_t>(key.size());
+        bytes += static_cast<std::uint64_t>(values.size()) * sizeof(double);
+    }
+    return bytes;
 }
 
 std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
@@ -600,6 +616,13 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::move(exported),
         std::move(strategy),
         {},
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         expected_value,
         exploitability,
         solver.iterations(),
@@ -684,6 +707,19 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
             std::move(exported),
             std::move(strategy),
             root_snapshot,
+            static_cast<std::uint64_t>(graph.node_count()),
+            solver.using_sparse_storage()
+                ? static_cast<std::uint64_t>(solver.sparse_storage().row_count())
+                : static_cast<std::uint64_t>(solver.infoset_table().meta().size()),
+            solver.using_sparse_storage()
+                ? static_cast<std::uint64_t>(solver.sparse_storage().total_value_count())
+                : static_cast<std::uint64_t>(solver.infoset_table().total_value_count()),
+            0,
+            static_cast<std::uint64_t>(cfg.workers) *
+                static_cast<std::uint64_t>(sampled_config.batch_size) * 4096ULL,
+            static_cast<std::uint64_t>(root_probabilities.size()) * sizeof(double) +
+                static_cast<std::uint64_t>(root_snapshot.infoset_key.size()),
+            0,
             {std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN()},
             std::numeric_limits<double>::quiet_NaN(),
             timed_result.iterations_completed,
@@ -699,6 +735,11 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
             solver.profile(),
             solver.total_counters(),
         };
+        result.sampled_budget_total_bytes =
+            result.sampled_terminal_cache_bytes +
+            result.sampled_worker_delta_bytes +
+            result.sampled_export_bytes +
+            result.sampled_root_snapshot.memory_used_bytes;
         return result;
     }
 
@@ -734,6 +775,18 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
         std::move(exported),
         std::move(strategy),
         solver.export_root_snapshot(),
+        static_cast<std::uint64_t>(graph.node_count()),
+        solver.using_sparse_storage()
+            ? static_cast<std::uint64_t>(solver.sparse_storage().row_count())
+            : static_cast<std::uint64_t>(solver.infoset_table().meta().size()),
+        solver.using_sparse_storage()
+            ? static_cast<std::uint64_t>(solver.sparse_storage().total_value_count())
+            : static_cast<std::uint64_t>(solver.infoset_table().total_value_count()),
+        0,
+        static_cast<std::uint64_t>(cfg.workers) *
+            static_cast<std::uint64_t>(sampled_config.batch_size) * 4096ULL,
+        estimate_strategy_map_bytes(exported),
+        0,
         expected_value,
         exploitability,
         solver.iterations(),
@@ -749,6 +802,11 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
         solver.profile(),
         solver.total_counters(),
     };
+    result.sampled_budget_total_bytes =
+        result.sampled_root_snapshot.memory_used_bytes +
+        result.sampled_terminal_cache_bytes +
+        result.sampled_worker_delta_bytes +
+        result.sampled_export_bytes;
     return result;
 }
 
@@ -876,6 +934,13 @@ int main(int argc, char* argv[]) {
             std::cout << "  unique_infosets_touched=" << timed.sampled_root_snapshot.unique_infosets_touched << "\n";
             std::cout << "  memory_used=" << format_bytes(timed.sampled_root_snapshot.memory_used_bytes) << "\n";
             std::cout << "  deadline_timed_out=" << (timed.sampled_root_snapshot.timed_out ? "true" : "false") << "\n";
+            std::cout << "  budget_public_states_cached=" << timed.sampled_public_states_cached << "\n";
+            std::cout << "  budget_infoset_rows_allocated=" << timed.sampled_infoset_rows_allocated << "\n";
+            std::cout << "  budget_sparse_values_allocated=" << timed.sampled_sparse_values_allocated << "\n";
+            std::cout << "  budget_terminal_cache_bytes=" << format_bytes(timed.sampled_terminal_cache_bytes) << "\n";
+            std::cout << "  budget_worker_delta_bytes=" << format_bytes(timed.sampled_worker_delta_bytes) << "\n";
+            std::cout << "  budget_export_bytes=" << format_bytes(timed.sampled_export_bytes) << "\n";
+            std::cout << "  budget_total_bytes=" << format_bytes(timed.sampled_budget_total_bytes) << "\n";
             std::cout << "  raw_estimator_variance=" << std::fixed << std::setprecision(9) << raw_variance << "\n";
             std::cout << "  corrected_estimator_variance=" << std::fixed << std::setprecision(9) << corrected_variance << "\n";
         }
@@ -951,6 +1016,13 @@ int main(int argc, char* argv[]) {
                 std::cout << "  sampled_kernel_simd_calls=" << timed.sampled_profile.sampled_kernel_simd_calls << "\n";
                 std::cout << "  sampled_kernel_simd_seconds="
                           << format_seconds(timed.sampled_profile.sampled_kernel_simd_seconds) << "\n";
+                std::cout << "  budget_public_states_cached=" << timed.sampled_public_states_cached << "\n";
+                std::cout << "  budget_infoset_rows_allocated=" << timed.sampled_infoset_rows_allocated << "\n";
+                std::cout << "  budget_sparse_values_allocated=" << timed.sampled_sparse_values_allocated << "\n";
+                std::cout << "  budget_terminal_cache_bytes=" << format_bytes(timed.sampled_terminal_cache_bytes) << "\n";
+                std::cout << "  budget_worker_delta_bytes=" << format_bytes(timed.sampled_worker_delta_bytes) << "\n";
+                std::cout << "  budget_export_bytes=" << format_bytes(timed.sampled_export_bytes) << "\n";
+                std::cout << "  budget_total_bytes=" << format_bytes(timed.sampled_budget_total_bytes) << "\n";
                 std::cout << "  raw_estimator_variance=" << std::fixed << std::setprecision(9) << raw_variance << "\n";
                 std::cout << "  corrected_estimator_variance=" << std::fixed << std::setprecision(9) << corrected_variance << "\n";
                 for (std::size_t worker = 0; worker < timed.sampled_profile.workers.size(); ++worker) {

@@ -13,6 +13,12 @@ HUNLSampledConfigValidation validate_sampled_config(
     if (config.workers == 0) {
         return {false, "workers must be positive"};
     }
+    if (config.memory_warning_bytes == 0 || config.memory_fail_bytes == 0) {
+        return {false, "memory guardrail thresholds must be positive"};
+    }
+    if (config.memory_warning_bytes > config.memory_fail_bytes) {
+        return {false, "memory warning threshold must be <= memory fail threshold"};
+    }
     if (config.as_epsilon < 0.0 || config.as_epsilon > 1.0) {
         return {false, "as_epsilon must be in [0, 1]"};
     }
