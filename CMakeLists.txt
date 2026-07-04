@@ -162,6 +162,12 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     target_link_libraries(texas_solver_hunl_random_flat PRIVATE texas_core)
     target_include_directories(texas_solver_hunl_random_flat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
+    add_executable(texas_solver_hunl_mccfr_scaling
+        examples/benchmarks/hunl_mccfr_scaling_main.cpp
+    )
+    target_link_libraries(texas_solver_hunl_mccfr_scaling PRIVATE texas_core)
+    target_include_directories(texas_solver_hunl_mccfr_scaling PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
     add_executable(texas_solver_range_cache
         examples/benchmarks/range_cache_main.cpp
     )
