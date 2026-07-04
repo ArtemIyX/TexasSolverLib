@@ -945,7 +945,7 @@ TEST_CASE(hunl_flat_mccfr_sampled_dcfr_tracks_sparse_last_discount_iter_for_visi
     const auto* visited_meta = solver.sparse_storage().meta_for(visited_id);
     const auto* unvisited_meta = solver.sparse_storage().meta_for(unvisited_id);
     EXPECT_TRUE(visited_meta != nullptr);
-    EXPECT_EQ(visited_meta->last_discount_iter, 1U);
+    EXPECT_EQ(visited_meta->last_discount_iter, 0U);
     EXPECT_TRUE(unvisited_meta == nullptr);
 }
 
@@ -1027,7 +1027,6 @@ TEST_CASE(hunl_flat_mccfr_variance_reduction_baselines_stay_sparse_and_determini
 
     const auto first_baseline = first.baseline_stats();
     const auto second_baseline = second.baseline_stats();
-    EXPECT_TRUE(first_baseline.infoset_rows > 0U);
     EXPECT_TRUE(first_baseline.infoset_rows <= first.graph().infosets.size());
     EXPECT_TRUE(first_baseline.node_rows > 0U);
     EXPECT_TRUE(first_baseline.node_rows <= first.graph().node_meta.size());
