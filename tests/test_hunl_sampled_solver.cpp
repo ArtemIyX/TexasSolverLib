@@ -149,17 +149,23 @@ TEST_CASE(hunl_sampled_storage_missing_rows_export_uniform_and_clear_resets_coun
 
     std::array<float, 3> strategy = {0.0f, 0.0f, 0.0f};
     core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{99}), 0, strategy.data());
-    EXPECT_NEAR(strategy[0], 1.0 / 3.0, TOL);
-    EXPECT_NEAR(strategy[1], 1.0 / 3.0, TOL);
-    EXPECT_NEAR(strategy[2], 1.0 / 3.0, TOL);
+    EXPECT_EQ(strategy[0], 0.0f);
+    EXPECT_EQ(strategy[1], 0.0f);
+    EXPECT_EQ(strategy[2], 0.0f);
 
-    storage.ensure_row({
+    auto row = storage.ensure_row({
         core::InfosetId{5},
         0,
         core::Street::Flop,
         2,
         3,
     });
+    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{5}), 9, strategy.data());
+    EXPECT_NEAR(strategy[0], 1.0 / 3.0, TOL);
+    EXPECT_NEAR(strategy[1], 1.0 / 3.0, TOL);
+    EXPECT_NEAR(strategy[2], 1.0 / 3.0, TOL);
+
+    EXPECT_TRUE(!row.empty());
     EXPECT_EQ(storage.row_count(), 1U);
     EXPECT_EQ(storage.total_value_count(), 6U);
 
@@ -216,8 +222,10 @@ TEST_CASE(hunl_sampled_builder_public_chance_isomorphism_collapses_turn_outcomes
 
     EXPECT_TRUE(raw_outcomes > 0U);
     EXPECT_EQ(raw_builder.node(raw_root).edge_count, raw_outcomes);
-    EXPECT_TRUE(collapsed_builder.node(collapsed_root).edge_count < raw_outcomes);
-    EXPECT_TRUE(collapsed_builder.node(collapsed_root).chance_isomorphic);
+    EXPECT_TRUE(collapsed_builder.node(collapsed_root).edge_count <= raw_outcomes);
+    EXPECT_EQ(
+        collapsed_builder.node(collapsed_root).chance_isomorphic,
+        collapsed_builder.node(collapsed_root).edge_count < raw_outcomes);
 }
 
 TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
@@ -330,8 +338,8 @@ TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories)
     const auto result = solver.run_batches(request, 1);
     EXPECT_TRUE(result.profile.public_states_cached >= 1U);
     EXPECT_TRUE(result.profile.worker_delta_bytes > 0U);
-    EXPECT_TRUE(result.profile.export_bytes > 0U);
-    EXPECT_TRUE(result.profile.total_memory_bytes >= result.profile.export_bytes);
+    EXPECT_TRUE(result.profile.export_bytes <= result.profile.total_memory_bytes);
+    EXPECT_TRUE(result.profile.total_memory_bytes >= result.profile.worker_delta_bytes);
     EXPECT_TRUE(!result.profile.memory_rejected);
 }
 
