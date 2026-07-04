@@ -2528,7 +2528,7 @@ Add sampled worker-count tests after the core solver is stable.
 
 ## Step-By-Step Plan
 
-### Phase -1: Greenfield Module Scaffold
+### + Phase -1: Greenfield Module Scaffold
 
 1. Add the new sampled solver files:
    - `include/solver/hunl_sampled_solver.hpp`
@@ -2568,7 +2568,7 @@ Acceptance:
 - exact solver tests still pass;
 - no solve path routes to sampled solver yet.
 
-### Phase 0: Sampling Configuration And RNG
+### + Phase 0: Sampling Configuration And RNG
 
 1. Add `HUNLFlatSamplingMode`.
 2. Add `HUNLFlatMCCFRConfig`.
@@ -2582,7 +2582,7 @@ Acceptance:
 - new RNG tests pass;
 - no exact solver behavior changes.
 
-### Phase 1: Full-Graph Public-Chance Sampling Prototype
+### + Phase 1: Full-Graph Public-Chance Sampling Prototype
 
 1. Add `HUNLFlatMCCFR` with single-worker execution.
 2. Reuse `HUNLFlatSolveGraph` and `HUNLFlatInfosetTable`.
@@ -2597,7 +2597,7 @@ Acceptance:
 - same seed gives identical output;
 - no memory-lazy requirement yet.
 
-### Phase 2: External-Sampling MCCFR
+### + Phase 2: External-Sampling MCCFR
 
 1. Add traversing-player walk.
 2. At opponent nodes, sample one action from current strategy.
@@ -2611,7 +2611,7 @@ Acceptance:
 - external sampling visits fewer nodes than public-chance sampling;
 - no NaNs in regret/strategy rows.
 
-### Phase 3: Multithreaded Sample Batches
+### + Phase 3: Multithreaded Sample Batches
 
 1. Add worker scratch and profiles.
 2. Split trajectory ids statically across workers.
@@ -2626,7 +2626,7 @@ Acceptance:
 - sampled solver scales with worker count on benchmark turn/flop presets;
 - merge time is visible and not dominant.
 
-### Phase 4: Sparse Infoset Storage
+### + Phase 4: Sparse Infoset Storage
 
 1. Add sparse sampled table with regret and strategy sum only.
 2. Allocate rows on first visit.
@@ -2640,7 +2640,8 @@ Acceptance:
 - export works for sparse rows;
 - repeated seeded runs are deterministic.
 
-### Phase 5: Lazy Public-State Expansion
+
+### + Phase 5: Lazy Public-State Expansion
 
 1. Add a sampled/lazy flat builder.
 2. Cache nodes by compact state key.
@@ -2654,7 +2655,7 @@ Acceptance:
 - graph/cache memory grows with samples, not full tree size;
 - exact flat builder remains unchanged for exact mode.
 
-### Phase 6: Average Strategy Sampling
+### + Phase 6: Average Strategy Sampling
 
 1. Add AS mode after external sampling is stable.
 2. Compute `rho(I, a)` from strategy sum:
@@ -2693,7 +2694,7 @@ Acceptance:
 - profile shows discounting is not a bottleneck;
 - config defaults remain conservative.
 
-### Phase 8: Variance Reduction
+### + Phase 8: Variance Reduction
 
 1. Add optional baseline values per node/infoset/action.
 2. Start with simple moving-average baselines.
@@ -2706,7 +2707,7 @@ Acceptance:
 - wall-clock-to-exploitability improves;
 - baseline memory stays bounded.
 
-### Phase 8A: Data Layout And SIMD Pass
+### + Phase 8A: Data Layout And SIMD Pass
 
 Do this after the sparse/lazy solver is working and profiling shows row math is a real bottleneck.
 
@@ -2727,7 +2728,7 @@ Acceptance:
 - whole-solver benchmark improves enough to justify keeping the complexity;
 - no increase in peak memory except small alignment overhead.
 
-### Phase 9: RTA Deadline Mode
+### + Phase 9: RTA Deadline Mode
 
 1. Add `run_until(deadline)` or `solve_for(std::chrono::milliseconds budget)`.
 2. Add `--time-budget-ms` to benchmarks.
@@ -2749,7 +2750,7 @@ Acceptance:
 - root export stays under 100 ms;
 - timeout never corrupts global sparse storage.
 
-### Phase 10: 64 GB Guardrails
+### + Phase 10: 64 GB Guardrails
 
 1. Add sampled memory preflight.
 2. Add live memory counters:
