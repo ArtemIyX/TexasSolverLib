@@ -123,6 +123,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       infoset_meta_(build_infoset_meta(graph_, bucket_count_per_player, layout)),
       worker_count_(std::max<std::size_t>(1, workers)),
       worker_scratch_(std::max<std::size_t>(1, workers)),
+      current_worker_batches_(std::max<std::size_t>(1, workers)),
       touched_infosets_(graph_.infosets.size(), 0U),
       graph_memory_bytes_(graph_storage_bytes(graph_)),
       infoset_action_baselines_(graph_.infosets.size()),
@@ -136,6 +137,11 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     initialize_sparse_infoset_shapes(bucket_count_per_player);
     profile_.workers.resize(worker_count_);
     profile_.sampled_simd_backend = hunl_sampled_simd_backend();
+    initialize_worker_threads();
+}
+
+HUNLFlatMCCFR::~HUNLFlatMCCFR() {
+    shutdown_worker_threads();
 }
 
 void HUNLFlatMCCFR::run_iteration() {
@@ -993,47 +999,28 @@ void HUNLFlatMCCFR::run_player_subbatch(
         worker_count_);
     const auto traverse_start = std::chrono::steady_clock::now();
 
-    std::vector<std::thread> threads;
-    threads.reserve(worker_count_ > 1 ? worker_count_ - 1 : 0);
-
-    auto worker_fn = [&](std::size_t worker_index) {
-        auto& scratch = worker_scratch_[worker_index];
-        scratch.clear_keep_capacity();
-        const auto range = batches[worker_index].trajectories;
-        const auto worker_start = std::chrono::steady_clock::now();
-        for (std::uint64_t trajectory_id = range.begin; trajectory_id < range.end; ++trajectory_id) {
-            const auto seed = PcsRng::mix_seed(
-                config_.seed,
-                target_iteration,
-                static_cast<std::uint32_t>(traversing_player),
-                trajectory_begin + trajectory_id);
-            PcsRng rng(seed);
-            TraversalContext context;
-            context.traversing_player = traversing_player;
-            context.rng = &rng;
-            context.counters = &scratch.counters;
-            context.scratch = &scratch;
-            (void)traverse(graph_.root, context);
+    if (worker_count_ > 1) {
+        {
+            std::lock_guard<std::mutex> lock(worker_mutex_);
+            current_target_iteration_ = target_iteration;
+            current_traversing_player_ = traversing_player;
+            current_trajectory_begin_ = trajectory_begin;
+            worker_completed_count_ = 0;
+            for (std::size_t worker_index = 0; worker_index < worker_count_; ++worker_index) {
+                current_worker_batches_[worker_index] = batches[worker_index];
+            }
+            ++worker_generation_;
         }
-        auto& worker_profile = profile_.workers[worker_index];
-        worker_profile.traverse_seconds +=
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count();
-        worker_profile.traversals += range.size();
-        worker_profile.nodes_visited += scratch.counters.nodes_visited;
-        worker_profile.sampled_opponent_actions += scratch.counters.sampled_opponent_actions;
-        worker_profile.traversing_player_action_expansions += scratch.counters.traversing_player_action_expansions;
-        worker_profile.as_actions_considered += scratch.counters.as_actions_considered;
-        worker_profile.as_actions_sampled += scratch.counters.as_actions_sampled;
-        worker_profile.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
-        worker_profile.active_infosets += scratch.rows.size();
-    };
-
-    for (std::size_t worker_index = 1; worker_index < worker_count_; ++worker_index) {
-        threads.emplace_back(worker_fn, worker_index);
+        worker_cv_.notify_all();
     }
-    worker_fn(0);
-    for (auto& thread : threads) {
-        thread.join();
+
+    execute_worker_batch(0, target_iteration, traversing_player, trajectory_begin, batches[0].trajectories);
+
+    if (worker_count_ > 1) {
+        std::unique_lock<std::mutex> lock(worker_mutex_);
+        worker_done_cv_.wait(lock, [&]() {
+            return worker_completed_count_ == worker_count_ - 1;
+        });
     }
 
     profile_.traverse_seconds +=
@@ -1051,6 +1038,108 @@ void HUNLFlatMCCFR::run_player_subbatch(
         merge_worker_baselines(worker_index);
     }
     refresh_baseline_profile();
+}
+
+void HUNLFlatMCCFR::initialize_worker_threads() {
+    if (worker_count_ <= 1) {
+        return;
+    }
+
+    try {
+        worker_threads_.reserve(worker_count_ - 1);
+        for (std::size_t worker_index = 1; worker_index < worker_count_; ++worker_index) {
+            worker_threads_.emplace_back(&HUNLFlatMCCFR::worker_loop, this, worker_index);
+        }
+    } catch (...) {
+        shutdown_worker_threads();
+        throw;
+    }
+}
+
+void HUNLFlatMCCFR::shutdown_worker_threads() noexcept {
+    {
+        std::lock_guard<std::mutex> lock(worker_mutex_);
+        worker_shutdown_ = true;
+    }
+    worker_cv_.notify_all();
+    for (auto& thread : worker_threads_) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+    worker_threads_.clear();
+}
+
+void HUNLFlatMCCFR::worker_loop(std::size_t worker_index) {
+    std::uint64_t observed_generation = 0;
+    for (;;) {
+        std::uint32_t target_iteration = 0;
+        PlayerId traversing_player = 0;
+        std::uint64_t trajectory_begin = 0;
+        HUNLSampledTrajectoryRange range;
+
+        {
+            std::unique_lock<std::mutex> lock(worker_mutex_);
+            worker_cv_.wait(lock, [&]() {
+                return worker_shutdown_ || worker_generation_ != observed_generation;
+            });
+            if (worker_shutdown_) {
+                return;
+            }
+
+            observed_generation = worker_generation_;
+            target_iteration = current_target_iteration_;
+            traversing_player = current_traversing_player_;
+            trajectory_begin = current_trajectory_begin_;
+            range = current_worker_batches_[worker_index].trajectories;
+        }
+
+        execute_worker_batch(worker_index, target_iteration, traversing_player, trajectory_begin, range);
+
+        {
+            std::lock_guard<std::mutex> lock(worker_mutex_);
+            ++worker_completed_count_;
+            if (worker_completed_count_ == worker_count_ - 1) {
+                worker_done_cv_.notify_one();
+            }
+        }
+    }
+}
+
+void HUNLFlatMCCFR::execute_worker_batch(
+    std::size_t worker_index,
+    std::uint32_t target_iteration,
+    PlayerId traversing_player,
+    std::uint64_t trajectory_begin,
+    HUNLSampledTrajectoryRange range) {
+    auto& scratch = worker_scratch_[worker_index];
+    scratch.clear_keep_capacity();
+    const auto worker_start = std::chrono::steady_clock::now();
+    for (std::uint64_t trajectory_id = range.begin; trajectory_id < range.end; ++trajectory_id) {
+        const auto seed = PcsRng::mix_seed(
+            config_.seed,
+            target_iteration,
+            static_cast<std::uint32_t>(traversing_player),
+            trajectory_begin + trajectory_id);
+        PcsRng rng(seed);
+        TraversalContext context;
+        context.traversing_player = traversing_player;
+        context.rng = &rng;
+        context.counters = &scratch.counters;
+        context.scratch = &scratch;
+        (void)traverse(graph_.root, context);
+    }
+    auto& worker_profile = profile_.workers[worker_index];
+    worker_profile.traverse_seconds +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count();
+    worker_profile.traversals += range.size();
+    worker_profile.nodes_visited += scratch.counters.nodes_visited;
+    worker_profile.sampled_opponent_actions += scratch.counters.sampled_opponent_actions;
+    worker_profile.traversing_player_action_expansions += scratch.counters.traversing_player_action_expansions;
+    worker_profile.as_actions_considered += scratch.counters.as_actions_considered;
+    worker_profile.as_actions_sampled += scratch.counters.as_actions_sampled;
+    worker_profile.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
+    worker_profile.active_infosets += scratch.rows.size();
 }
 
 void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {

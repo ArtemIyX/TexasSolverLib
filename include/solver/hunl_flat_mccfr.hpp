@@ -11,8 +11,10 @@
 
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -105,6 +107,7 @@ public:
         HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand,
         std::size_t workers = 1,
         HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float64);
+    ~HUNLFlatMCCFR();
 
     void run_iteration();
     void run_iterations(std::uint32_t iterations);
@@ -199,6 +202,15 @@ private:
         PlayerId traversing_player,
         std::uint64_t trajectory_begin,
         std::uint32_t trajectory_count);
+    void initialize_worker_threads();
+    void shutdown_worker_threads() noexcept;
+    void worker_loop(std::size_t worker_index);
+    void execute_worker_batch(
+        std::size_t worker_index,
+        std::uint32_t target_iteration,
+        PlayerId traversing_player,
+        std::uint64_t trajectory_begin,
+        HUNLSampledTrajectoryRange range);
     void merge_worker_rows(std::size_t worker_index);
     void initialize_sparse_infoset_shapes(const std::array<std::size_t, 2>& bucket_count_per_player);
     [[nodiscard]] const HUNLFlatInfosetTableMeta& infoset_meta(InfosetId infoset_id) const noexcept;
@@ -251,6 +263,17 @@ private:
     Counters total_counters_;
     Profile profile_;
     std::vector<WorkerScratch> worker_scratch_;
+    std::vector<std::thread> worker_threads_;
+    std::vector<HUNLSampledWorkerBatch> current_worker_batches_;
+    std::mutex worker_mutex_;
+    std::condition_variable worker_cv_;
+    std::condition_variable worker_done_cv_;
+    std::uint32_t current_target_iteration_ = 0;
+    PlayerId current_traversing_player_ = 0;
+    std::uint64_t current_trajectory_begin_ = 0;
+    std::uint64_t worker_generation_ = 0;
+    std::size_t worker_completed_count_ = 0;
+    bool worker_shutdown_ = false;
     std::vector<std::uint8_t> touched_infosets_;
     std::uint64_t unique_infosets_touched_ = 0;
     std::uint64_t graph_memory_bytes_ = 0;
