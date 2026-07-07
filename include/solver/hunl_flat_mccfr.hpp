@@ -192,6 +192,7 @@ private:
 
     [[nodiscard]] double traverse(std::uint32_t node_idx, TraversalContext& context);
     void compute_current_strategy_rows();
+    void rebuild_average_policy_cache();
     void fill_current_strategy_bucket(
         InfosetId infoset_id,
         std::size_t bucket,
@@ -276,6 +277,7 @@ private:
     HUNLFlatMCCFRConfig config_;
     std::vector<HUNLFlatInfosetTableMeta> infoset_meta_;
     std::vector<HUNLSampledInfosetShape> sparse_infoset_shapes_;
+    std::vector<std::vector<double>> average_policy_cache_;
     std::size_t worker_count_ = 1;
     std::uint32_t iterations_ = 0;
     Counters last_iteration_counters_;

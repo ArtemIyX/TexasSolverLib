@@ -147,6 +147,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       sparse_storage_(layout, HUNLFlatStoragePrecision::Float32),
       config_(config),
       infoset_meta_(build_infoset_meta(graph_, bucket_count_per_player, layout)),
+      average_policy_cache_(graph_.infosets.size()),
       worker_count_(std::max<std::size_t>(1, workers)),
       worker_scratch_(std::max<std::size_t>(1, workers)),
       current_worker_batches_(std::max<std::size_t>(1, workers)),
@@ -161,6 +162,9 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
         infoset_table_ = HUNLFlatInfosetTable::build(graph_, bucket_count_per_player, layout, precision);
     }
     initialize_sparse_infoset_shapes(bucket_count_per_player);
+    for (const auto& meta : infoset_meta_) {
+        average_policy_cache_[meta.id.value].assign(meta.action_count, 0.0);
+    }
     profile_.workers.resize(worker_count_);
     profile_.sampled_simd_backend = hunl_sampled_simd_backend();
     const auto max_bucket_count = std::max(bucket_count_per_player[0], bucket_count_per_player[1]);
@@ -556,13 +560,8 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
     const auto& row_meta = infoset_meta(meta.infoset_id);
     const auto action_count = static_cast<std::size_t>(meta.action_count);
     auto& action_values = context.scratch->action_values;
-    auto& average_strategy = context.scratch->average_strategy;
     auto& bucket_strategy = context.scratch->bucket_strategy;
-    fill_average_action_probabilities(
-        meta.infoset_id,
-        average_strategy.data(),
-        action_count,
-        bucket_strategy.data());
+    const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
 
     if (meta.player == context.traversing_player &&
         context.counters != nullptr &&
@@ -831,6 +830,17 @@ void HUNLFlatMCCFR::compute_current_strategy_rows() {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - strategy_start).count();
 }
 
+void HUNLFlatMCCFR::rebuild_average_policy_cache() {
+    for (const auto& meta : infoset_meta_) {
+        auto& averaged = average_policy_cache_[meta.id.value];
+        fill_average_action_probabilities(
+            meta.id,
+            averaged.data(),
+            meta.action_count,
+            worker_scratch_[0].bucket_strategy.data());
+    }
+}
+
 void HUNLFlatMCCFR::fill_current_strategy_bucket(
     InfosetId infoset_id,
     std::size_t bucket,
@@ -1053,6 +1063,7 @@ void HUNLFlatMCCFR::apply_discount_if_enabled(std::uint32_t target_iteration, Wo
 
 void HUNLFlatMCCFR::run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player) {
     compute_current_strategy_rows();
+    rebuild_average_policy_cache();
     for (std::uint64_t trajectory_begin = 0;
          trajectory_begin < config_.traversals_per_iteration;
          trajectory_begin += config_.batch_size) {

@@ -24,6 +24,7 @@ struct BenchmarkConfig {
     std::uint32_t iterations = 200;
     std::uint32_t traversals_per_iteration = 2048;
     std::uint32_t batch_size = 64;
+    std::vector<std::uint32_t> batch_sizes;
     std::uint64_t seed = 1;
     std::vector<std::size_t> workers = {1, 2, 4, 8, 16};
     core::HUNLFlatSamplingMode mode = core::HUNLFlatSamplingMode::External;
@@ -37,6 +38,7 @@ struct BenchmarkConfig {
 struct BenchmarkResult {
     std::string graph_name;
     std::uint32_t node_count = 0;
+    std::uint32_t batch_size = 0;
     std::size_t workers = 1;
     double total_seconds = 0.0;
     double seconds_per_iteration = 0.0;
@@ -55,6 +57,11 @@ struct GraphPresetSpec {
     std::uint32_t chance_outcomes = 0;
     std::uint32_t opponent_actions = 0;
     std::uint32_t reply_actions = 0;
+};
+
+struct BatchSweepRun {
+    std::uint32_t batch_size = 0;
+    std::vector<BenchmarkResult> results;
 };
 
 bool parse_positive_u32(std::string_view text, std::uint32_t& out) {
@@ -142,6 +149,35 @@ std::string sampling_mode_name(core::HUNLFlatSamplingMode mode) {
     return "unknown";
 }
 
+bool parse_batch_sizes_csv(std::string_view text, std::vector<std::uint32_t>& out) {
+    std::vector<std::uint32_t> parsed;
+    std::size_t begin = 0;
+    while (begin <= text.size()) {
+        const auto end = text.find(',', begin);
+        const auto token = text.substr(begin, end == std::string_view::npos ? text.size() - begin : end - begin);
+        if (token.empty()) {
+            return false;
+        }
+        std::uint32_t value = 0;
+        if (!parse_positive_u32(token, value)) {
+            return false;
+        }
+        parsed.push_back(value);
+        if (end == std::string_view::npos) {
+            break;
+        }
+        begin = end + 1;
+    }
+
+    if (parsed.empty()) {
+        return false;
+    }
+    std::sort(parsed.begin(), parsed.end());
+    parsed.erase(std::unique(parsed.begin(), parsed.end()), parsed.end());
+    out = std::move(parsed);
+    return true;
+}
+
 std::optional<GraphPresetSpec> parse_preset(std::string_view text) {
     if (text == "tiny") {
         return GraphPresetSpec{"synthetic-easy-flop", 4, 2, 4, 4};
@@ -157,10 +193,12 @@ void print_usage(const char* exe) {
         << "Usage:\n"
         << "  " << exe
         << " [--preset tiny|scaling] [--iterations N] [--traversals N] [--batch-size N] [--seed N]\n"
+        << "      [--batch-sweep] [--batch-sizes 64,128,256,512,1024]\n"
         << "      [--workers 1,2,4,8,16] [--mode exact|public-chance|external|average-strategy]\n"
         << "      [--sparse] [--discounting] [--single-player]\n\n"
         << "Defaults:\n"
         << "  preset=tiny iterations=200 traversals=2048 batch-size=64 seed=1\n"
+        << "  batch-sweep uses 64,128,256,512,1024\n"
         << "  workers=1,2,4,8,16 mode=external update-both-players=true\n";
 }
 
@@ -199,6 +237,16 @@ std::optional<BenchmarkConfig> parse_args(int argc, char* argv[]) {
         }
         if (arg == "--batch-size" && i + 1 < argc) {
             if (!parse_positive_u32(argv[++i], config.batch_size)) {
+                return std::nullopt;
+            }
+            continue;
+        }
+        if (arg == "--batch-sweep") {
+            config.batch_sizes = {64, 128, 256, 512, 1024};
+            continue;
+        }
+        if (arg == "--batch-sizes" && i + 1 < argc) {
+            if (!parse_batch_sizes_csv(argv[++i], config.batch_sizes)) {
                 return std::nullopt;
             }
             continue;
@@ -452,6 +500,7 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
     BenchmarkResult result;
     result.graph_name = preset->name;
     result.node_count = static_cast<std::uint32_t>(solver.graph().node_meta.size());
+    result.batch_size = config.batch_size;
     result.workers = workers;
     result.total_seconds = elapsed;
     result.seconds_per_iteration = elapsed / static_cast<double>(config.iterations);
@@ -543,6 +592,110 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
     }
 }
 
+void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<BatchSweepRun>& runs) {
+    const auto graph_name =
+        runs.empty() || runs.front().results.empty() ? std::string("unknown") : runs.front().results.front().graph_name;
+    const auto node_count =
+        runs.empty() || runs.front().results.empty() ? 0U : runs.front().results.front().node_count;
+
+    std::cout << "MCCFR batch-size sweep\n";
+    std::cout << "  preset=" << config.preset
+              << " graph=" << graph_name
+              << " nodes=" << node_count
+              << " mode=" << sampling_mode_name(config.mode)
+              << " iterations=" << config.iterations
+              << " traversals=" << config.traversals_per_iteration
+              << " seed=" << config.seed
+              << " update-both-players=" << (config.update_both_players ? "true" : "false")
+              << " sparse=" << (config.use_sparse_storage ? "true" : "false")
+              << " discounting=" << (config.use_discounting ? "true" : "false")
+              << "\n\n";
+    std::cout << "  note=scaling-study sweep compares coordination amortization across batch sizes; "
+              << "RTA root-snapshot tuning may prefer a different value"
+              << "\n\n";
+
+    std::cout << std::left
+              << std::setw(12) << "batch"
+              << std::setw(10) << "workers"
+              << std::setw(14) << "total_ms"
+              << std::setw(14) << "iter_ms"
+              << std::setw(14) << "iters/s"
+              << std::setw(12) << "speedup"
+              << std::setw(12) << "eff"
+              << std::setw(16) << "merge_ms"
+              << std::setw(16) << "traverse_ms"
+              << std::setw(16) << "ev_p0"
+              << '\n';
+
+    for (const auto& run : runs) {
+        const auto baseline_seconds = run.results.empty() ? 0.0 : run.results.front().total_seconds;
+        for (const auto& result : run.results) {
+            const auto speedup =
+                baseline_seconds > 0.0 ? baseline_seconds / result.total_seconds : 0.0;
+            const auto efficiency =
+                result.workers > 0 ? speedup / static_cast<double>(result.workers) : 0.0;
+            std::cout << std::left
+                      << std::setw(12) << run.batch_size
+                      << std::setw(10) << result.workers
+                      << std::setw(14) << std::fixed << std::setprecision(3) << (result.total_seconds * 1000.0)
+                      << std::setw(14) << std::fixed << std::setprecision(3) << (result.seconds_per_iteration * 1000.0)
+                      << std::setw(14) << std::fixed << std::setprecision(2) << result.iterations_per_second
+                      << std::setw(12) << std::fixed << std::setprecision(2) << speedup
+                      << std::setw(12) << std::fixed << std::setprecision(2) << efficiency
+                      << std::setw(16) << std::fixed << std::setprecision(3) << (result.merge_seconds * 1000.0)
+                      << std::setw(16) << std::fixed << std::setprecision(3) << (result.traverse_seconds * 1000.0)
+                      << std::setw(16) << std::fixed << std::setprecision(4) << result.expected_value_p0
+                      << '\n';
+        }
+    }
+
+    const auto target_workers = config.workers.empty() ? std::size_t{1} : config.workers.back();
+    const BatchSweepRun* best_run = nullptr;
+    const BenchmarkResult* best_result = nullptr;
+    for (const auto& run : runs) {
+        for (const auto& result : run.results) {
+            if (result.workers != target_workers) {
+                continue;
+            }
+            if (best_result == nullptr || result.total_seconds < best_result->total_seconds) {
+                best_run = &run;
+                best_result = &result;
+            }
+        }
+    }
+
+    if (best_run != nullptr && best_result != nullptr) {
+        std::cout << "\nRecommended scaling-study batch size: " << best_run->batch_size
+                  << " (best total_ms at workers=" << target_workers << ")\n";
+    }
+
+    std::cout << "\nCSV\n";
+    std::cout << "batch_size,workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,merge_ms,traverse_ms,ev_p0,nodes_visited,sampled_opponent_actions,traversing_action_expansions\n";
+    for (const auto& run : runs) {
+        const auto baseline_seconds = run.results.empty() ? 0.0 : run.results.front().total_seconds;
+        for (const auto& result : run.results) {
+            const auto speedup =
+                baseline_seconds > 0.0 ? baseline_seconds / result.total_seconds : 0.0;
+            const auto efficiency =
+                result.workers > 0 ? speedup / static_cast<double>(result.workers) : 0.0;
+            std::cout << run.batch_size << ','
+                      << result.workers << ','
+                      << std::fixed << std::setprecision(3) << (result.total_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(3) << (result.seconds_per_iteration * 1000.0) << ','
+                      << std::fixed << std::setprecision(6) << result.iterations_per_second << ','
+                      << std::fixed << std::setprecision(6) << speedup << ','
+                      << std::fixed << std::setprecision(6) << efficiency << ','
+                      << std::fixed << std::setprecision(3) << (result.merge_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(3) << (result.traverse_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(6) << result.expected_value_p0 << ','
+                      << result.total_nodes_visited << ','
+                      << result.sampled_opponent_actions << ','
+                      << result.traversing_action_expansions
+                      << '\n';
+        }
+    }
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -550,6 +703,25 @@ int main(int argc, char* argv[]) {
     if (!config.has_value()) {
         print_usage(argv[0]);
         return EXIT_FAILURE;
+    }
+
+    if (!config->batch_sizes.empty()) {
+        std::vector<BatchSweepRun> runs;
+        runs.reserve(config->batch_sizes.size());
+        for (const auto batch_size : config->batch_sizes) {
+            BenchmarkConfig run_config = *config;
+            run_config.batch_size = batch_size;
+
+            BatchSweepRun run;
+            run.batch_size = batch_size;
+            run.results.reserve(run_config.workers.size());
+            for (const auto workers : run_config.workers) {
+                run.results.push_back(run_benchmark_for_workers(run_config, workers));
+            }
+            runs.push_back(std::move(run));
+        }
+        print_batch_sweep_results(*config, runs);
+        return EXIT_SUCCESS;
     }
 
     std::vector<BenchmarkResult> results;
