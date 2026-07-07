@@ -15,6 +15,17 @@ workers total_ms iter_ms iters/s speedup eff merge_ms traverse_ms ev_p0 nodes
 16      122.291  61.146  16.35   0.30    0.02 3.379    117.795     14.4547 61576
 ```
 
+```text
+ note=scaling preset = throughput study
+
+workers total_ms      iter_ms       iters/s       speedup     eff         merge_ms        traverse_ms     ev_p0           nodes           
+1       8199.185      81.992        12.20         1.00        1.00        11.306          8150.355        19.4978         15566022        
+2       9734.583      97.346        10.27         0.84        0.42        37.398          9642.964        19.4978         15566022        
+4       11161.859     111.619       8.96          0.73        0.18        59.186          11044.938       19.4978         15566022        
+8       13305.126     133.051       7.52          0.62        0.08        96.296          13146.961       19.4978         15566022        
+16      23290.151     232.902       4.29          0.35        0.02        186.097         23033.564       19.4978         15566022        
+```
+
 This is not a contradiction of MCCFR as an algorithm. It is evidence that the current implementation is dominated by orchestration overhead:
 
 1. thread creation and join cost;
