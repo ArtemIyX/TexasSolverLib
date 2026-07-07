@@ -282,7 +282,10 @@ private:
         double* out,
         std::size_t action_count,
         double* strategy_sum_scratch) const;
-    [[nodiscard]] std::size_t sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const;
+    [[nodiscard]] std::size_t sample_chance_child(
+        std::uint32_t node_idx,
+        const HUNLFlatNodeMeta& meta,
+        PcsRng& rng) const;
     void apply_discount_if_enabled(std::uint32_t target_iteration, WorkerScratch& scratch);
     void discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
     void discount_sparse_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
@@ -327,6 +330,7 @@ private:
         double sample);
     void merge_worker_baselines(std::size_t worker_index);
     void refresh_baseline_profile() noexcept;
+    void initialize_chance_sampling_metadata();
     static void record_variance_sample(Counters& counters, double raw_estimate, double corrected_estimate) noexcept;
     [[nodiscard]] static double estimate_variance(
         std::uint64_t sample_count,
@@ -348,6 +352,7 @@ private:
     std::vector<HUNLFlatInfosetTableMeta> infoset_meta_;
     std::vector<HUNLSampledInfosetShape> sparse_infoset_shapes_;
     std::vector<std::vector<double>> average_policy_cache_;
+    std::vector<double> chance_total_probability_;
     std::size_t worker_count_ = 1;
     std::uint32_t iterations_ = 0;
     Counters last_iteration_counters_;

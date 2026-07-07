@@ -203,6 +203,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       config_(config),
       infoset_meta_(build_infoset_meta(graph_, bucket_count_per_player, layout)),
       average_policy_cache_(graph_.infosets.size()),
+      chance_total_probability_(graph_.node_meta.size(), 0.0),
       worker_count_(std::max<std::size_t>(1, workers)),
       worker_scratch_(std::max<std::size_t>(1, workers)),
       current_worker_batches_(std::max<std::size_t>(1, workers)),
@@ -220,6 +221,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     for (const auto& meta : infoset_meta_) {
         average_policy_cache_[meta.id.value].assign(meta.action_count, 0.0);
     }
+    initialize_chance_sampling_metadata();
     profile_.workers.resize(worker_count_);
     profile_.sampled_simd_backend = hunl_sampled_simd_backend();
     const auto max_bucket_count = std::max(bucket_count_per_player[0], bucket_count_per_player[1]);
@@ -422,6 +424,23 @@ void HUNLFlatMCCFR::WorkerScratch::prepare_delta_rows(
         row.id = meta.id;
         row.regret_delta.assign(meta.value_count, 0.0);
         row.strategy_delta.assign(meta.value_count, 0.0);
+    }
+}
+
+void HUNLFlatMCCFR::initialize_chance_sampling_metadata() {
+    chance_total_probability_.assign(graph_.node_meta.size(), 0.0);
+    for (std::size_t node_idx = 0; node_idx < graph_.node_meta.size(); ++node_idx) {
+        const auto& meta = graph_.node_meta[node_idx];
+        if (meta.type != HUNLFlatNodeType::Chance || meta.chance_count == 0U) {
+            continue;
+        }
+
+        double total_probability = 0.0;
+        const auto* outcomes = graph_.chance_outcomes.data() + meta.chance_begin;
+        for (std::size_t i = 0; i < meta.chance_count; ++i) {
+            total_probability += outcomes[i].probability;
+        }
+        chance_total_probability_[node_idx] = total_probability;
     }
 }
 
@@ -636,7 +655,7 @@ double HUNLFlatMCCFR::traverse_public_chance(std::uint32_t node_idx, TraversalCo
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
-            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
             const auto sampled_value = traverse_public_chance(sampled.child, context);
             if (context.scratch != nullptr) {
@@ -678,7 +697,7 @@ double HUNLFlatMCCFR::traverse_public_chance_vr(std::uint32_t node_idx, Traversa
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
-            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
             const auto sampled_value = traverse_public_chance_vr(sampled.child, context);
 
@@ -732,7 +751,7 @@ double HUNLFlatMCCFR::traverse_external(std::uint32_t node_idx, TraversalContext
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
-            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
             const auto sampled_value = traverse_external(sampled.child, context);
             if (context.scratch != nullptr) {
@@ -774,7 +793,7 @@ double HUNLFlatMCCFR::traverse_external_vr(std::uint32_t node_idx, TraversalCont
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
-            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
             const auto sampled_value = traverse_external_vr(sampled.child, context);
 
@@ -828,7 +847,7 @@ double HUNLFlatMCCFR::traverse_average_strategy(std::uint32_t node_idx, Traversa
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
-            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
             const auto sampled_value = traverse_average_strategy(sampled.child, context);
             if (context.scratch != nullptr) {
@@ -866,7 +885,7 @@ double HUNLFlatMCCFR::traverse_average_strategy_vr(std::uint32_t node_idx, Trave
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
-            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
             const auto sampled_value = traverse_average_strategy_vr(sampled.child, context);
 
@@ -1479,18 +1498,19 @@ void HUNLFlatMCCFR::fill_average_strategy_sampling_probabilities(
     }
 }
 
-std::size_t HUNLFlatMCCFR::sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const {
-    double total = 0.0;
-    for (std::size_t i = 0; i < meta.chance_count; ++i) {
-        total += graph_.chance_outcomes.at(meta.chance_begin + i).probability;
-    }
+std::size_t HUNLFlatMCCFR::sample_chance_child(
+    std::uint32_t node_idx,
+    const HUNLFlatNodeMeta& meta,
+    PcsRng& rng) const {
+    const auto total = chance_total_probability_[node_idx];
     if (total <= 0.0) {
         throw std::logic_error("HUNLFlatMCCFR chance node must have positive probability mass");
     }
 
+    const auto* outcomes = graph_.chance_outcomes.data() + meta.chance_begin;
     double draw = rng.next_unit_f64() * total;
     for (std::size_t i = 0; i < meta.chance_count; ++i) {
-        const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+        const auto& outcome = outcomes[i];
         if (draw < outcome.probability) {
             return i;
         }
