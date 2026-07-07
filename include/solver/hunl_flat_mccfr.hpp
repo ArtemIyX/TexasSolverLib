@@ -56,10 +56,20 @@ public:
         double trajectory_seconds = 0.0;
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
+        double chance_seconds = 0.0;
+        double opponent_sampled_seconds = 0.0;
+        double traversing_player_seconds = 0.0;
+        double average_strategy_seconds = 0.0;
+        double row_writeback_seconds = 0.0;
         std::uint64_t traversals = 0;
         std::uint64_t nodes_visited = 0;
+        std::uint64_t chance_nodes_visited = 0;
+        std::uint64_t decision_nodes_visited = 0;
         std::uint64_t sampled_opponent_actions = 0;
+        std::uint64_t opponent_sampled_decisions = 0;
         std::uint64_t traversing_player_action_expansions = 0;
+        std::uint64_t traversing_player_full_expansion_decisions = 0;
+        std::uint64_t decision_actions_touched = 0;
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
@@ -76,6 +86,11 @@ public:
         double trajectory_seconds = 0.0;
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
+        double chance_seconds = 0.0;
+        double opponent_sampled_seconds = 0.0;
+        double traversing_player_seconds = 0.0;
+        double average_strategy_seconds = 0.0;
+        double row_writeback_seconds = 0.0;
         double sampled_kernel_scalar_seconds = 0.0;
         double sampled_kernel_simd_seconds = 0.0;
         std::uint64_t traversals = 0;
@@ -83,6 +98,11 @@ public:
         std::uint64_t strategy_snapshot_rebuilds = 0;
         std::uint64_t worker_batch_executions = 0;
         std::uint64_t active_infoset_samples = 0;
+        std::uint64_t chance_nodes_visited = 0;
+        std::uint64_t decision_nodes_visited = 0;
+        std::uint64_t opponent_sampled_decisions = 0;
+        std::uint64_t traversing_player_full_expansion_decisions = 0;
+        std::uint64_t decision_actions_touched = 0;
         std::uint64_t baseline_infoset_rows = 0;
         std::uint64_t baseline_node_rows = 0;
         std::uint64_t baseline_bytes = 0;
@@ -97,8 +117,13 @@ public:
 
     struct Counters {
         std::uint64_t nodes_visited = 0;
+        std::uint64_t chance_nodes_visited = 0;
+        std::uint64_t decision_nodes_visited = 0;
         std::uint64_t sampled_opponent_actions = 0;
+        std::uint64_t opponent_sampled_decisions = 0;
         std::uint64_t traversing_player_action_expansions = 0;
+        std::uint64_t traversing_player_full_expansion_decisions = 0;
+        std::uint64_t decision_actions_touched = 0;
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
@@ -166,6 +191,14 @@ private:
     };
 
     struct WorkerScratch {
+        struct TraversalAudit {
+            double chance_seconds = 0.0;
+            double opponent_sampled_seconds = 0.0;
+            double traversing_player_seconds = 0.0;
+            double average_strategy_seconds = 0.0;
+            double row_writeback_seconds = 0.0;
+        };
+
         std::vector<double> action_values;
         std::vector<double> average_strategy;
         std::vector<double> bucket_strategy;
@@ -181,6 +214,7 @@ private:
         std::vector<WorkerBaselineRow> node_baseline_rows;
         std::unordered_map<std::uint32_t, std::size_t> node_baseline_lookup;
         Counters counters;
+        TraversalAudit audit;
         double last_trajectory_seconds = 0.0;
 
         void prepare(std::size_t max_actions, std::size_t max_bucket_count);

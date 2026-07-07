@@ -134,6 +134,10 @@ std::pair<std::size_t, double> sample_weighted_prefix(
     return {count - 1U, fallback_weight / total};
 }
 
+double elapsed_seconds_since(std::chrono::steady_clock::time_point start) noexcept {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+}
+
 }  // namespace
 
 HUNLFlatMCCFR::HUNLFlatMCCFR(
@@ -384,6 +388,7 @@ void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
     node_baseline_rows.clear();
     node_baseline_lookup.clear();
     counters = {};
+    audit = {};
     last_trajectory_seconds = 0.0;
 }
 
@@ -521,11 +526,18 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             return meta.terminal_utility[context.traversing_player];
 
         case HUNLFlatNodeType::Chance: {
+            if (context.counters != nullptr) {
+                ++context.counters->chance_nodes_visited;
+            }
+            const auto chance_start = std::chrono::steady_clock::now();
             if (config_.mode == HUNLFlatSamplingMode::Exact) {
                 double value = 0.0;
                 for (std::size_t i = 0; i < meta.chance_count; ++i) {
                     const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
                     value += outcome.probability * traverse(outcome.child, context);
+                }
+                if (context.scratch != nullptr) {
+                    context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
                 }
                 return value;
             }
@@ -534,6 +546,9 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
             const auto sampled_value = traverse(sampled.child, context);
             if (!variance_reduction_enabled()) {
+                if (context.scratch != nullptr) {
+                    context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
+                }
                 return sampled_value;
             }
 
@@ -547,6 +562,9 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             observe_node_action_baseline(*context.scratch, node_idx, meta.chance_count, sampled_index, sampled_value);
             if (context.counters != nullptr) {
                 record_variance_sample(*context.counters, sampled_value, corrected_value);
+            }
+            if (context.scratch != nullptr) {
+                context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
             }
             return corrected_value;
         }
@@ -564,6 +582,9 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
     auto& action_values = context.scratch->action_values;
     auto& bucket_strategy = context.scratch->bucket_strategy;
     const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+    if (context.counters != nullptr) {
+        ++context.counters->decision_nodes_visited;
+    }
 
     if (meta.player == context.traversing_player &&
         context.counters != nullptr &&
@@ -574,8 +595,14 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
     if ((config_.mode == HUNLFlatSamplingMode::External ||
          config_.mode == HUNLFlatSamplingMode::AverageStrategy) &&
         meta.player != context.traversing_player) {
+        const auto opponent_start = std::chrono::steady_clock::now();
+        if (context.counters != nullptr) {
+            ++context.counters->opponent_sampled_decisions;
+            context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+        }
         const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
         auto& row = context.scratch->ensure_row(meta.infoset_id);
+        const auto row_writeback_start = std::chrono::steady_clock::now();
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -584,6 +611,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
                 row.strategy_delta[offset] += own_reach * probability;
             }
         }
+        context.scratch->audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
 
         const auto sampled = sample_weighted_prefix(average_strategy.data(), action_count, *context.rng);
         if (context.counters != nullptr) {
@@ -599,6 +627,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(sampled.first));
         const auto sampled_value = traverse(child_idx, child_context);
         if (!variance_reduction_enabled()) {
+            context.scratch->audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
             return sampled_value;
         }
 
@@ -617,13 +646,20 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         if (context.counters != nullptr) {
             record_variance_sample(*context.counters, sampled_value, corrected_value);
         }
+        context.scratch->audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
         return corrected_value;
     }
 
     if (config_.mode == HUNLFlatSamplingMode::AverageStrategy &&
         meta.player == context.traversing_player) {
+        const auto as_start = std::chrono::steady_clock::now();
+        if (context.counters != nullptr) {
+            context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+        }
         const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
         auto& row = context.scratch->ensure_row(meta.infoset_id);
+        auto row_writeback_seconds = 0.0;
+        auto row_writeback_start = std::chrono::steady_clock::now();
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -631,6 +667,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
                 row.strategy_delta[offset] += own_reach * bucket_strategy[action];
             }
         }
+        row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
 
         auto& inclusion_probabilities = context.scratch->inclusion_probabilities;
         auto& sampled_actions = context.scratch->sampled_actions;
@@ -733,20 +770,31 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         }
 
         const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
+        row_writeback_start = std::chrono::steady_clock::now();
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             for (std::size_t action = 0; action < action_count; ++action) {
                 const auto offset = row_value_index(row_meta, bucket, action);
                 row.regret_delta[offset] += opponent_reach * (action_values[action] - node_values[bucket]);
             }
         }
+        row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
+        context.scratch->audit.row_writeback_seconds += row_writeback_seconds;
 
         double return_value = 0.0;
         for (std::size_t action = 0; action < action_count; ++action) {
             return_value += average_strategy[action] * action_values[action];
         }
+        context.scratch->audit.average_strategy_seconds += elapsed_seconds_since(as_start);
         return return_value;
     }
 
+    const auto traversing_start = std::chrono::steady_clock::now();
+    if (context.counters != nullptr) {
+        context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+    }
+    if (meta.player == context.traversing_player && context.counters != nullptr) {
+        ++context.counters->traversing_player_full_expansion_decisions;
+    }
     for (std::size_t action = 0; action < action_count; ++action) {
         auto child_context = context;
         if (meta.player == 0) {
@@ -760,6 +808,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id);
+    auto row_writeback_start = std::chrono::steady_clock::now();
     for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
         double node_value = 0.0;
         fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
@@ -778,10 +827,14 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             }
         }
     }
+    context.scratch->audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
 
     double return_value = 0.0;
     for (std::size_t action = 0; action < action_count; ++action) {
         return_value += average_strategy[action] * action_values[action];
+    }
+    if (meta.player == context.traversing_player) {
+        context.scratch->audit.traversing_player_seconds += elapsed_seconds_since(traversing_start);
     }
     return return_value;
 }
@@ -1137,6 +1190,17 @@ void HUNLFlatMCCFR::run_player_subbatch(
         std::chrono::duration<double>(std::chrono::steady_clock::now() - traverse_start).count();
     profile_.traversals += trajectory_count;
     for (const auto& scratch : worker_scratch_) {
+        profile_.chance_seconds += scratch.audit.chance_seconds;
+        profile_.opponent_sampled_seconds += scratch.audit.opponent_sampled_seconds;
+        profile_.traversing_player_seconds += scratch.audit.traversing_player_seconds;
+        profile_.average_strategy_seconds += scratch.audit.average_strategy_seconds;
+        profile_.row_writeback_seconds += scratch.audit.row_writeback_seconds;
+        profile_.chance_nodes_visited += scratch.counters.chance_nodes_visited;
+        profile_.decision_nodes_visited += scratch.counters.decision_nodes_visited;
+        profile_.opponent_sampled_decisions += scratch.counters.opponent_sampled_decisions;
+        profile_.traversing_player_full_expansion_decisions +=
+            scratch.counters.traversing_player_full_expansion_decisions;
+        profile_.decision_actions_touched += scratch.counters.decision_actions_touched;
         profile_.as_actions_considered += scratch.counters.as_actions_considered;
         profile_.as_actions_sampled += scratch.counters.as_actions_sampled;
         profile_.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
@@ -1253,10 +1317,21 @@ void HUNLFlatMCCFR::execute_worker_batch(
         std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count();
     worker_profile.trajectory_seconds += trajectory_seconds;
     worker_profile.traverse_seconds += trajectory_seconds;
+    worker_profile.chance_seconds += scratch.audit.chance_seconds;
+    worker_profile.opponent_sampled_seconds += scratch.audit.opponent_sampled_seconds;
+    worker_profile.traversing_player_seconds += scratch.audit.traversing_player_seconds;
+    worker_profile.average_strategy_seconds += scratch.audit.average_strategy_seconds;
+    worker_profile.row_writeback_seconds += scratch.audit.row_writeback_seconds;
     worker_profile.traversals += range.size();
     worker_profile.nodes_visited += scratch.counters.nodes_visited;
+    worker_profile.chance_nodes_visited += scratch.counters.chance_nodes_visited;
+    worker_profile.decision_nodes_visited += scratch.counters.decision_nodes_visited;
     worker_profile.sampled_opponent_actions += scratch.counters.sampled_opponent_actions;
+    worker_profile.opponent_sampled_decisions += scratch.counters.opponent_sampled_decisions;
     worker_profile.traversing_player_action_expansions += scratch.counters.traversing_player_action_expansions;
+    worker_profile.traversing_player_full_expansion_decisions +=
+        scratch.counters.traversing_player_full_expansion_decisions;
+    worker_profile.decision_actions_touched += scratch.counters.decision_actions_touched;
     worker_profile.as_actions_considered += scratch.counters.as_actions_considered;
     worker_profile.as_actions_sampled += scratch.counters.as_actions_sampled;
     worker_profile.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
@@ -1307,9 +1382,15 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     profile_.merge_seconds += merge_seconds;
     profile_.workers[worker_index].merge_seconds += merge_seconds;
     last_iteration_counters_.nodes_visited += scratch.counters.nodes_visited;
+    last_iteration_counters_.chance_nodes_visited += scratch.counters.chance_nodes_visited;
+    last_iteration_counters_.decision_nodes_visited += scratch.counters.decision_nodes_visited;
     last_iteration_counters_.sampled_opponent_actions += scratch.counters.sampled_opponent_actions;
+    last_iteration_counters_.opponent_sampled_decisions += scratch.counters.opponent_sampled_decisions;
     last_iteration_counters_.traversing_player_action_expansions +=
         scratch.counters.traversing_player_action_expansions;
+    last_iteration_counters_.traversing_player_full_expansion_decisions +=
+        scratch.counters.traversing_player_full_expansion_decisions;
+    last_iteration_counters_.decision_actions_touched += scratch.counters.decision_actions_touched;
     last_iteration_counters_.as_actions_considered += scratch.counters.as_actions_considered;
     last_iteration_counters_.as_actions_sampled += scratch.counters.as_actions_sampled;
     last_iteration_counters_.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
@@ -1322,8 +1403,14 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
 
 void HUNLFlatMCCFR::accumulate_last_iteration_into_total() noexcept {
     total_counters_.nodes_visited += last_iteration_counters_.nodes_visited;
+    total_counters_.chance_nodes_visited += last_iteration_counters_.chance_nodes_visited;
+    total_counters_.decision_nodes_visited += last_iteration_counters_.decision_nodes_visited;
     total_counters_.sampled_opponent_actions += last_iteration_counters_.sampled_opponent_actions;
+    total_counters_.opponent_sampled_decisions += last_iteration_counters_.opponent_sampled_decisions;
     total_counters_.traversing_player_action_expansions += last_iteration_counters_.traversing_player_action_expansions;
+    total_counters_.traversing_player_full_expansion_decisions +=
+        last_iteration_counters_.traversing_player_full_expansion_decisions;
+    total_counters_.decision_actions_touched += last_iteration_counters_.decision_actions_touched;
     total_counters_.as_actions_considered += last_iteration_counters_.as_actions_considered;
     total_counters_.as_actions_sampled += last_iteration_counters_.as_actions_sampled;
     total_counters_.as_forced_at_least_one_count += last_iteration_counters_.as_forced_at_least_one_count;

@@ -50,11 +50,22 @@ struct BenchmarkResult {
     double trajectory_seconds = 0.0;
     double traverse_seconds = 0.0;
     double merge_seconds = 0.0;
+    double chance_seconds = 0.0;
+    double opponent_sampled_seconds = 0.0;
+    double traversing_player_seconds = 0.0;
+    double average_strategy_seconds = 0.0;
+    double row_writeback_seconds = 0.0;
     double average_active_infosets_per_worker = 0.0;
     double average_nodes_per_trajectory = 0.0;
+    double average_actions_touched_per_decision = 0.0;
     std::uint64_t total_nodes_visited = 0;
+    std::uint64_t chance_nodes_visited = 0;
+    std::uint64_t decision_nodes_visited = 0;
     std::uint64_t sampled_opponent_actions = 0;
+    std::uint64_t opponent_sampled_decisions = 0;
     std::uint64_t traversing_action_expansions = 0;
+    std::uint64_t traversing_player_full_expansion_decisions = 0;
+    std::uint64_t decision_actions_touched = 0;
     std::uint64_t worker_wakeups = 0;
     std::uint64_t strategy_snapshot_rebuilds = 0;
 };
@@ -520,9 +531,20 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
     result.trajectory_seconds = solver.profile().trajectory_seconds;
     result.traverse_seconds = solver.profile().traverse_seconds;
     result.merge_seconds = solver.profile().merge_seconds;
+    result.chance_seconds = solver.profile().chance_seconds;
+    result.opponent_sampled_seconds = solver.profile().opponent_sampled_seconds;
+    result.traversing_player_seconds = solver.profile().traversing_player_seconds;
+    result.average_strategy_seconds = solver.profile().average_strategy_seconds;
+    result.row_writeback_seconds = solver.profile().row_writeback_seconds;
     result.total_nodes_visited = solver.total_counters().nodes_visited;
+    result.chance_nodes_visited = solver.total_counters().chance_nodes_visited;
+    result.decision_nodes_visited = solver.total_counters().decision_nodes_visited;
     result.sampled_opponent_actions = solver.total_counters().sampled_opponent_actions;
+    result.opponent_sampled_decisions = solver.total_counters().opponent_sampled_decisions;
     result.traversing_action_expansions = solver.total_counters().traversing_player_action_expansions;
+    result.traversing_player_full_expansion_decisions =
+        solver.total_counters().traversing_player_full_expansion_decisions;
+    result.decision_actions_touched = solver.total_counters().decision_actions_touched;
     result.worker_wakeups = solver.profile().worker_wakeups;
     result.strategy_snapshot_rebuilds = solver.profile().strategy_snapshot_rebuilds;
     result.average_active_infosets_per_worker =
@@ -535,6 +557,11 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
         ? 0.0
         : static_cast<double>(solver.total_counters().nodes_visited) /
             static_cast<double>(solver.profile().traversals);
+    result.average_actions_touched_per_decision =
+        solver.total_counters().decision_nodes_visited == 0U
+        ? 0.0
+        : static_cast<double>(solver.total_counters().decision_actions_touched) /
+            static_cast<double>(solver.total_counters().decision_nodes_visited);
     return result;
 }
 
@@ -559,6 +586,10 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
                       ? "tiny preset = sanity and determinism"
                       : "scaling preset = throughput study")
               << "\n\n";
+    std::cout << "  audit="
+              << "chance_ms/oppt_ms/full_ms/as_ms split trajectory work by branch; "
+              << "roww_ms isolates infoset delta writeback; avg_act/dec is decision_actions_touched / decision_nodes"
+              << "\n\n";
 
     std::cout << std::left
               << std::setw(8) << "workers"
@@ -572,11 +603,17 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
               << std::setw(14) << "traj_ms"
               << std::setw(16) << "merge_ms"
               << std::setw(16) << "traverse_ms"
+              << std::setw(12) << "chance_ms"
+              << std::setw(12) << "oppt_ms"
+              << std::setw(12) << "full_ms"
+              << std::setw(12) << "as_ms"
+              << std::setw(12) << "roww_ms"
               << std::setw(16) << "ev_p0"
               << std::setw(12) << "wakeups"
               << std::setw(12) << "snapshots"
               << std::setw(14) << "avg_rows"
               << std::setw(14) << "avg_nodes"
+              << std::setw(14) << "avg_act/dec"
               << '\n';
 
     const auto baseline_seconds = results.empty() ? 0.0 : results.front().total_seconds;
@@ -598,16 +635,22 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
                   << std::setw(14) << std::fixed << std::setprecision(3) << (result.trajectory_seconds * 1000.0)
                   << std::setw(16) << std::fixed << std::setprecision(3) << (result.merge_seconds * 1000.0)
                   << std::setw(16) << std::fixed << std::setprecision(3) << (result.traverse_seconds * 1000.0)
+                  << std::setw(12) << std::fixed << std::setprecision(3) << (result.chance_seconds * 1000.0)
+                  << std::setw(12) << std::fixed << std::setprecision(3) << (result.opponent_sampled_seconds * 1000.0)
+                  << std::setw(12) << std::fixed << std::setprecision(3) << (result.traversing_player_seconds * 1000.0)
+                  << std::setw(12) << std::fixed << std::setprecision(3) << (result.average_strategy_seconds * 1000.0)
+                  << std::setw(12) << std::fixed << std::setprecision(3) << (result.row_writeback_seconds * 1000.0)
                   << std::setw(16) << std::fixed << std::setprecision(4) << result.expected_value_p0
                   << std::setw(12) << result.worker_wakeups
                   << std::setw(12) << result.strategy_snapshot_rebuilds
                   << std::setw(14) << std::fixed << std::setprecision(2) << result.average_active_infosets_per_worker
                   << std::setw(14) << std::fixed << std::setprecision(2) << result.average_nodes_per_trajectory
+                  << std::setw(14) << std::fixed << std::setprecision(2) << result.average_actions_touched_per_decision
                   << '\n';
     }
 
     std::cout << "\nCSV\n";
-    std::cout << "workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,nodes_visited,sampled_opponent_actions,traversing_action_expansions\n";
+    std::cout << "workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,chance_ms,opponent_sampled_ms,traversing_player_ms,average_strategy_ms,row_writeback_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,avg_actions_touched_per_decision,nodes_visited,chance_nodes_visited,decision_nodes_visited,sampled_opponent_actions,opponent_sampled_decisions,traversing_action_expansions,traversing_player_full_expansion_decisions,decision_actions_touched\n";
     for (const auto& result : results) {
         const auto speedup =
             baseline_seconds > 0.0 ? baseline_seconds / result.total_seconds : 0.0;
@@ -625,14 +668,25 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
                   << std::fixed << std::setprecision(3) << (result.trajectory_seconds * 1000.0) << ','
                   << std::fixed << std::setprecision(3) << (result.merge_seconds * 1000.0) << ','
                   << std::fixed << std::setprecision(3) << (result.traverse_seconds * 1000.0) << ','
+                  << std::fixed << std::setprecision(3) << (result.chance_seconds * 1000.0) << ','
+                  << std::fixed << std::setprecision(3) << (result.opponent_sampled_seconds * 1000.0) << ','
+                  << std::fixed << std::setprecision(3) << (result.traversing_player_seconds * 1000.0) << ','
+                  << std::fixed << std::setprecision(3) << (result.average_strategy_seconds * 1000.0) << ','
+                  << std::fixed << std::setprecision(3) << (result.row_writeback_seconds * 1000.0) << ','
                   << std::fixed << std::setprecision(6) << result.expected_value_p0 << ','
                   << result.worker_wakeups << ','
                   << result.strategy_snapshot_rebuilds << ','
                   << std::fixed << std::setprecision(6) << result.average_active_infosets_per_worker << ','
                   << std::fixed << std::setprecision(6) << result.average_nodes_per_trajectory << ','
+                  << std::fixed << std::setprecision(6) << result.average_actions_touched_per_decision << ','
                   << result.total_nodes_visited << ','
+                  << result.chance_nodes_visited << ','
+                  << result.decision_nodes_visited << ','
                   << result.sampled_opponent_actions << ','
-                  << result.traversing_action_expansions
+                  << result.opponent_sampled_decisions << ','
+                  << result.traversing_action_expansions << ','
+                  << result.traversing_player_full_expansion_decisions << ','
+                  << result.decision_actions_touched
                   << '\n';
     }
 }
@@ -658,6 +712,10 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
     std::cout << "  note=scaling-study sweep compares coordination amortization across batch sizes; "
               << "RTA root-snapshot tuning may prefer a different value"
               << "\n\n";
+    std::cout << "  audit="
+              << "chance_ms/oppt_ms/full_ms/as_ms split trajectory work by branch; "
+              << "roww_ms isolates infoset delta writeback; avg_act/dec is decision_actions_touched / decision_nodes"
+              << "\n\n";
 
     std::cout << std::left
               << std::setw(12) << "batch"
@@ -672,9 +730,15 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
               << std::setw(14) << "traj_ms"
               << std::setw(16) << "merge_ms"
               << std::setw(16) << "traverse_ms"
+              << std::setw(12) << "chance_ms"
+              << std::setw(12) << "oppt_ms"
+              << std::setw(12) << "full_ms"
+              << std::setw(12) << "as_ms"
+              << std::setw(12) << "roww_ms"
               << std::setw(16) << "ev_p0"
               << std::setw(14) << "avg_rows"
               << std::setw(14) << "avg_nodes"
+              << std::setw(14) << "avg_act/dec"
               << '\n';
 
     for (const auto& run : runs) {
@@ -698,9 +762,15 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
                       << std::setw(14) << std::fixed << std::setprecision(3) << (result.trajectory_seconds * 1000.0)
                       << std::setw(16) << std::fixed << std::setprecision(3) << (result.merge_seconds * 1000.0)
                       << std::setw(16) << std::fixed << std::setprecision(3) << (result.traverse_seconds * 1000.0)
+                      << std::setw(12) << std::fixed << std::setprecision(3) << (result.chance_seconds * 1000.0)
+                      << std::setw(12) << std::fixed << std::setprecision(3) << (result.opponent_sampled_seconds * 1000.0)
+                      << std::setw(12) << std::fixed << std::setprecision(3) << (result.traversing_player_seconds * 1000.0)
+                      << std::setw(12) << std::fixed << std::setprecision(3) << (result.average_strategy_seconds * 1000.0)
+                      << std::setw(12) << std::fixed << std::setprecision(3) << (result.row_writeback_seconds * 1000.0)
                       << std::setw(16) << std::fixed << std::setprecision(4) << result.expected_value_p0
                       << std::setw(14) << std::fixed << std::setprecision(2) << result.average_active_infosets_per_worker
                       << std::setw(14) << std::fixed << std::setprecision(2) << result.average_nodes_per_trajectory
+                      << std::setw(14) << std::fixed << std::setprecision(2) << result.average_actions_touched_per_decision
                       << '\n';
         }
     }
@@ -726,7 +796,7 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
     }
 
     std::cout << "\nCSV\n";
-    std::cout << "batch_size,workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,nodes_visited,sampled_opponent_actions,traversing_action_expansions\n";
+    std::cout << "batch_size,workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,chance_ms,opponent_sampled_ms,traversing_player_ms,average_strategy_ms,row_writeback_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,avg_actions_touched_per_decision,nodes_visited,chance_nodes_visited,decision_nodes_visited,sampled_opponent_actions,opponent_sampled_decisions,traversing_action_expansions,traversing_player_full_expansion_decisions,decision_actions_touched\n";
     for (const auto& run : runs) {
         const auto baseline_seconds = run.results.empty() ? 0.0 : run.results.front().total_seconds;
         for (const auto& result : run.results) {
@@ -747,14 +817,25 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
                       << std::fixed << std::setprecision(3) << (result.trajectory_seconds * 1000.0) << ','
                       << std::fixed << std::setprecision(3) << (result.merge_seconds * 1000.0) << ','
                       << std::fixed << std::setprecision(3) << (result.traverse_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(3) << (result.chance_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(3) << (result.opponent_sampled_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(3) << (result.traversing_player_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(3) << (result.average_strategy_seconds * 1000.0) << ','
+                      << std::fixed << std::setprecision(3) << (result.row_writeback_seconds * 1000.0) << ','
                       << std::fixed << std::setprecision(6) << result.expected_value_p0 << ','
                       << result.worker_wakeups << ','
                       << result.strategy_snapshot_rebuilds << ','
                       << std::fixed << std::setprecision(6) << result.average_active_infosets_per_worker << ','
                       << std::fixed << std::setprecision(6) << result.average_nodes_per_trajectory << ','
+                      << std::fixed << std::setprecision(6) << result.average_actions_touched_per_decision << ','
                       << result.total_nodes_visited << ','
+                      << result.chance_nodes_visited << ','
+                      << result.decision_nodes_visited << ','
                       << result.sampled_opponent_actions << ','
-                      << result.traversing_action_expansions
+                      << result.opponent_sampled_decisions << ','
+                      << result.traversing_action_expansions << ','
+                      << result.traversing_player_full_expansion_decisions << ','
+                      << result.decision_actions_touched
                       << '\n';
         }
     }
