@@ -240,6 +240,19 @@ private:
         TraverseImpl traverse_impl = nullptr;
     };
 
+    struct TraversalNodeMeta {
+        std::uint32_t child_begin = 0;
+        std::uint32_t chance_begin = 0;
+        InfosetId infoset_id{};
+        std::array<double, 2> terminal_utility = {0.0, 0.0};
+        std::uint32_t infoset_meta_index = 0;
+        PlayerId player = -1;
+        HUNLFlatNodeType type = HUNLFlatNodeType::Decision;
+        std::uint8_t action_count = 0;
+        std::uint32_t chance_count = 0;
+        bool has_infoset = false;
+    };
+
     [[nodiscard]] double traverse(std::uint32_t node_idx, TraversalContext& context);
     [[nodiscard]] double traverse_exact(std::uint32_t node_idx, TraversalContext& context);
     [[nodiscard]] double traverse_public_chance(std::uint32_t node_idx, TraversalContext& context);
@@ -249,15 +262,15 @@ private:
     [[nodiscard]] double traverse_average_strategy(std::uint32_t node_idx, TraversalContext& context);
     [[nodiscard]] double traverse_average_strategy_vr(std::uint32_t node_idx, TraversalContext& context);
     [[nodiscard]] double traverse_full_expansion_decision(
-        const HUNLFlatNodeMeta& meta,
+        const TraversalNodeMeta& meta,
         TraversalContext& context,
         bool count_traversing_full_expansion);
     [[nodiscard]] double traverse_opponent_sampled_decision(
-        const HUNLFlatNodeMeta& meta,
+        const TraversalNodeMeta& meta,
         TraversalContext& context,
         bool use_variance_reduction);
     [[nodiscard]] double traverse_average_strategy_decision(
-        const HUNLFlatNodeMeta& meta,
+        const TraversalNodeMeta& meta,
         TraversalContext& context,
         bool use_variance_reduction);
     [[nodiscard]] bool can_use_dense_action_major_fast_path() const noexcept;
@@ -284,7 +297,7 @@ private:
         double* strategy_sum_scratch) const;
     [[nodiscard]] std::size_t sample_chance_child(
         std::uint32_t node_idx,
-        const HUNLFlatNodeMeta& meta,
+        const TraversalNodeMeta& meta,
         PcsRng& rng) const;
     void apply_discount_if_enabled(std::uint32_t target_iteration, WorkerScratch& scratch);
     void discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
@@ -331,6 +344,7 @@ private:
     void merge_worker_baselines(std::size_t worker_index);
     void refresh_baseline_profile() noexcept;
     void initialize_chance_sampling_metadata();
+    void initialize_traversal_node_metadata();
     static void record_variance_sample(Counters& counters, double raw_estimate, double corrected_estimate) noexcept;
     [[nodiscard]] static double estimate_variance(
         std::uint64_t sample_count,
@@ -352,6 +366,7 @@ private:
     std::vector<HUNLFlatInfosetTableMeta> infoset_meta_;
     std::vector<HUNLSampledInfosetShape> sparse_infoset_shapes_;
     std::vector<std::vector<double>> average_policy_cache_;
+    std::vector<TraversalNodeMeta> traversal_node_meta_;
     std::vector<double> chance_total_probability_;
     std::size_t worker_count_ = 1;
     std::uint32_t iterations_ = 0;

@@ -203,6 +203,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       config_(config),
       infoset_meta_(build_infoset_meta(graph_, bucket_count_per_player, layout)),
       average_policy_cache_(graph_.infosets.size()),
+      traversal_node_meta_(graph_.node_meta.size()),
       chance_total_probability_(graph_.node_meta.size(), 0.0),
       worker_count_(std::max<std::size_t>(1, workers)),
       worker_scratch_(std::max<std::size_t>(1, workers)),
@@ -221,6 +222,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     for (const auto& meta : infoset_meta_) {
         average_policy_cache_[meta.id.value].assign(meta.action_count, 0.0);
     }
+    initialize_traversal_node_metadata();
     initialize_chance_sampling_metadata();
     profile_.workers.resize(worker_count_);
     profile_.sampled_simd_backend = hunl_sampled_simd_backend();
@@ -427,6 +429,24 @@ void HUNLFlatMCCFR::WorkerScratch::prepare_delta_rows(
     }
 }
 
+void HUNLFlatMCCFR::initialize_traversal_node_metadata() {
+    traversal_node_meta_.assign(graph_.node_meta.size(), {});
+    for (std::size_t node_idx = 0; node_idx < graph_.node_meta.size(); ++node_idx) {
+        const auto& source = graph_.node_meta[node_idx];
+        auto& meta = traversal_node_meta_[node_idx];
+        meta.child_begin = source.child_begin;
+        meta.chance_begin = source.chance_begin;
+        meta.infoset_id = source.infoset_id;
+        meta.terminal_utility = source.terminal_utility;
+        meta.infoset_meta_index = source.infoset_id.value;
+        meta.player = source.player;
+        meta.type = source.type;
+        meta.action_count = source.action_count;
+        meta.chance_count = source.chance_count;
+        meta.has_infoset = source.has_infoset;
+    }
+}
+
 void HUNLFlatMCCFR::initialize_chance_sampling_metadata() {
     chance_total_probability_.assign(graph_.node_meta.size(), 0.0);
     for (std::size_t node_idx = 0; node_idx < graph_.node_meta.size(); ++node_idx) {
@@ -600,7 +620,7 @@ double HUNLFlatMCCFR::traverse_exact(std::uint32_t node_idx, TraversalContext& c
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
-    const auto& meta = graph_.node_meta.at(node_idx);
+    const auto& meta = traversal_node_meta_[node_idx];
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
         case HUNLFlatNodeType::TerminalShowdown:
@@ -611,9 +631,10 @@ double HUNLFlatMCCFR::traverse_exact(std::uint32_t node_idx, TraversalContext& c
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
+            const auto* outcomes = graph_.chance_outcomes.data() + meta.chance_begin;
             double value = 0.0;
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
-                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                const auto& outcome = outcomes[i];
                 value += outcome.probability * traverse_exact(outcome.child, context);
             }
             if (context.scratch != nullptr) {
@@ -644,7 +665,7 @@ double HUNLFlatMCCFR::traverse_public_chance(std::uint32_t node_idx, TraversalCo
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
-    const auto& meta = graph_.node_meta.at(node_idx);
+    const auto& meta = traversal_node_meta_[node_idx];
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
         case HUNLFlatNodeType::TerminalShowdown:
@@ -656,7 +677,7 @@ double HUNLFlatMCCFR::traverse_public_chance(std::uint32_t node_idx, TraversalCo
             }
             const auto chance_start = std::chrono::steady_clock::now();
             const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
-            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto& sampled = graph_.chance_outcomes[meta.chance_begin + sampled_index];
             const auto sampled_value = traverse_public_chance(sampled.child, context);
             if (context.scratch != nullptr) {
                 context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
@@ -686,7 +707,7 @@ double HUNLFlatMCCFR::traverse_public_chance_vr(std::uint32_t node_idx, Traversa
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
-    const auto& meta = graph_.node_meta.at(node_idx);
+    const auto& meta = traversal_node_meta_[node_idx];
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
         case HUNLFlatNodeType::TerminalShowdown:
@@ -698,12 +719,13 @@ double HUNLFlatMCCFR::traverse_public_chance_vr(std::uint32_t node_idx, Traversa
             }
             const auto chance_start = std::chrono::steady_clock::now();
             const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
-            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto& sampled = graph_.chance_outcomes[meta.chance_begin + sampled_index];
             const auto sampled_value = traverse_public_chance_vr(sampled.child, context);
 
             double expected_baseline = 0.0;
+            const auto* outcomes = graph_.chance_outcomes.data() + meta.chance_begin;
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
-                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                const auto& outcome = outcomes[i];
                 expected_baseline += outcome.probability * node_action_baseline(node_idx, i);
             }
             const auto corrected_value =
@@ -740,7 +762,7 @@ double HUNLFlatMCCFR::traverse_external(std::uint32_t node_idx, TraversalContext
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
-    const auto& meta = graph_.node_meta.at(node_idx);
+    const auto& meta = traversal_node_meta_[node_idx];
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
         case HUNLFlatNodeType::TerminalShowdown:
@@ -752,7 +774,7 @@ double HUNLFlatMCCFR::traverse_external(std::uint32_t node_idx, TraversalContext
             }
             const auto chance_start = std::chrono::steady_clock::now();
             const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
-            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto& sampled = graph_.chance_outcomes[meta.chance_begin + sampled_index];
             const auto sampled_value = traverse_external(sampled.child, context);
             if (context.scratch != nullptr) {
                 context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
@@ -782,7 +804,7 @@ double HUNLFlatMCCFR::traverse_external_vr(std::uint32_t node_idx, TraversalCont
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
-    const auto& meta = graph_.node_meta.at(node_idx);
+    const auto& meta = traversal_node_meta_[node_idx];
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
         case HUNLFlatNodeType::TerminalShowdown:
@@ -794,12 +816,13 @@ double HUNLFlatMCCFR::traverse_external_vr(std::uint32_t node_idx, TraversalCont
             }
             const auto chance_start = std::chrono::steady_clock::now();
             const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
-            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto& sampled = graph_.chance_outcomes[meta.chance_begin + sampled_index];
             const auto sampled_value = traverse_external_vr(sampled.child, context);
 
             double expected_baseline = 0.0;
+            const auto* outcomes = graph_.chance_outcomes.data() + meta.chance_begin;
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
-                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                const auto& outcome = outcomes[i];
                 expected_baseline += outcome.probability * node_action_baseline(node_idx, i);
             }
             const auto corrected_value =
@@ -836,7 +859,7 @@ double HUNLFlatMCCFR::traverse_average_strategy(std::uint32_t node_idx, Traversa
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
-    const auto& meta = graph_.node_meta.at(node_idx);
+    const auto& meta = traversal_node_meta_[node_idx];
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
         case HUNLFlatNodeType::TerminalShowdown:
@@ -848,7 +871,7 @@ double HUNLFlatMCCFR::traverse_average_strategy(std::uint32_t node_idx, Traversa
             }
             const auto chance_start = std::chrono::steady_clock::now();
             const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
-            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto& sampled = graph_.chance_outcomes[meta.chance_begin + sampled_index];
             const auto sampled_value = traverse_average_strategy(sampled.child, context);
             if (context.scratch != nullptr) {
                 context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
@@ -874,7 +897,7 @@ double HUNLFlatMCCFR::traverse_average_strategy_vr(std::uint32_t node_idx, Trave
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
-    const auto& meta = graph_.node_meta.at(node_idx);
+    const auto& meta = traversal_node_meta_[node_idx];
     switch (meta.type) {
         case HUNLFlatNodeType::TerminalFold:
         case HUNLFlatNodeType::TerminalShowdown:
@@ -886,12 +909,13 @@ double HUNLFlatMCCFR::traverse_average_strategy_vr(std::uint32_t node_idx, Trave
             }
             const auto chance_start = std::chrono::steady_clock::now();
             const auto sampled_index = sample_chance_child(node_idx, meta, *context.rng);
-            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto& sampled = graph_.chance_outcomes[meta.chance_begin + sampled_index];
             const auto sampled_value = traverse_average_strategy_vr(sampled.child, context);
 
             double expected_baseline = 0.0;
+            const auto* outcomes = graph_.chance_outcomes.data() + meta.chance_begin;
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
-                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                const auto& outcome = outcomes[i];
                 expected_baseline += outcome.probability * node_action_baseline(node_idx, i);
             }
             const auto corrected_value =
@@ -921,14 +945,15 @@ double HUNLFlatMCCFR::traverse_average_strategy_vr(std::uint32_t node_idx, Trave
 }
 
 double HUNLFlatMCCFR::traverse_full_expansion_decision(
-    const HUNLFlatNodeMeta& meta,
+    const TraversalNodeMeta& meta,
     TraversalContext& context,
     bool count_traversing_full_expansion) {
-    const auto& row_meta = infoset_meta(meta.infoset_id);
+    const auto& row_meta = infoset_meta_[meta.infoset_meta_index];
     const auto action_count = static_cast<std::size_t>(meta.action_count);
     auto& action_values = context.scratch->action_values;
     auto& bucket_strategy = context.scratch->bucket_strategy;
     const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+    const auto* children = graph_.children.data() + meta.child_begin;
 
     const auto traversing_start = std::chrono::steady_clock::now();
     if (context.counters != nullptr) {
@@ -945,8 +970,7 @@ double HUNLFlatMCCFR::traverse_full_expansion_decision(
         } else {
             child_context.p1 *= average_strategy[action];
         }
-        const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(action));
-        action_values[action] = (this->*context.traverse_impl)(child_idx, child_context);
+        action_values[action] = (this->*context.traverse_impl)(children[action], child_context);
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
@@ -1013,11 +1037,11 @@ double HUNLFlatMCCFR::traverse_full_expansion_decision(
 }
 
 double HUNLFlatMCCFR::traverse_opponent_sampled_decision(
-    const HUNLFlatNodeMeta& meta,
+    const TraversalNodeMeta& meta,
     TraversalContext& context,
     bool use_variance_reduction) {
     const auto opponent_start = std::chrono::steady_clock::now();
-    const auto& row_meta = infoset_meta(meta.infoset_id);
+    const auto& row_meta = infoset_meta_[meta.infoset_meta_index];
     const auto action_count = static_cast<std::size_t>(meta.action_count);
     auto& bucket_strategy = context.scratch->bucket_strategy;
     const auto& average_strategy_row = average_policy_cache_[meta.infoset_id.value];
@@ -1076,7 +1100,8 @@ double HUNLFlatMCCFR::traverse_opponent_sampled_decision(
     } else {
         child_context.p1 *= average_strategy[sampled.first];
     }
-    const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(sampled.first));
+    const auto* children = graph_.children.data() + meta.child_begin;
+    const auto child_idx = children[sampled.first];
     const auto sampled_value = (this->*context.traverse_impl)(child_idx, child_context);
     if (!use_variance_reduction) {
         context.scratch->audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
@@ -1103,17 +1128,18 @@ double HUNLFlatMCCFR::traverse_opponent_sampled_decision(
 }
 
 double HUNLFlatMCCFR::traverse_average_strategy_decision(
-    const HUNLFlatNodeMeta& meta,
+    const TraversalNodeMeta& meta,
     TraversalContext& context,
     bool use_variance_reduction) {
     const auto as_start = std::chrono::steady_clock::now();
-    const auto& row_meta = infoset_meta(meta.infoset_id);
+    const auto& row_meta = infoset_meta_[meta.infoset_meta_index];
     const auto action_count = static_cast<std::size_t>(meta.action_count);
     auto& action_values = context.scratch->action_values;
     auto& bucket_strategy = context.scratch->bucket_strategy;
     auto& inclusion_probabilities = context.scratch->inclusion_probabilities;
     auto& sampled_actions = context.scratch->sampled_actions;
     const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+    const auto* children = graph_.children.data() + meta.child_begin;
 
     if (context.counters != nullptr) {
         context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
@@ -1215,9 +1241,8 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
         } else {
             child_context.p1 *= average_strategy[action];
         }
-        const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(action));
         const auto inclusion_probability = std::max(inclusion_probabilities[action], config_.as_epsilon);
-        const auto sampled_value = (this->*context.traverse_impl)(child_idx, child_context);
+        const auto sampled_value = (this->*context.traverse_impl)(children[action], child_context);
         const auto raw_estimate = sampled_value / inclusion_probability;
         if (!use_variance_reduction) {
             action_values[action] = raw_estimate;
@@ -1500,7 +1525,7 @@ void HUNLFlatMCCFR::fill_average_strategy_sampling_probabilities(
 
 std::size_t HUNLFlatMCCFR::sample_chance_child(
     std::uint32_t node_idx,
-    const HUNLFlatNodeMeta& meta,
+    const TraversalNodeMeta& meta,
     PcsRng& rng) const {
     const auto total = chance_total_probability_[node_idx];
     if (total <= 0.0) {
