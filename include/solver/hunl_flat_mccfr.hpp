@@ -67,6 +67,7 @@ public:
         std::uint64_t decision_nodes_visited = 0;
         std::uint64_t sampled_opponent_actions = 0;
         std::uint64_t opponent_sampled_decisions = 0;
+        std::uint64_t opponent_strategy_values_written = 0;
         std::uint64_t traversing_player_action_expansions = 0;
         std::uint64_t traversing_player_full_expansion_decisions = 0;
         std::uint64_t decision_actions_touched = 0;
@@ -101,6 +102,7 @@ public:
         std::uint64_t chance_nodes_visited = 0;
         std::uint64_t decision_nodes_visited = 0;
         std::uint64_t opponent_sampled_decisions = 0;
+        std::uint64_t opponent_strategy_values_written = 0;
         std::uint64_t traversing_player_full_expansion_decisions = 0;
         std::uint64_t decision_actions_touched = 0;
         std::uint64_t baseline_infoset_rows = 0;
@@ -121,6 +123,7 @@ public:
         std::uint64_t decision_nodes_visited = 0;
         std::uint64_t sampled_opponent_actions = 0;
         std::uint64_t opponent_sampled_decisions = 0;
+        std::uint64_t opponent_strategy_values_written = 0;
         std::uint64_t traversing_player_action_expansions = 0;
         std::uint64_t traversing_player_full_expansion_decisions = 0;
         std::uint64_t decision_actions_touched = 0;

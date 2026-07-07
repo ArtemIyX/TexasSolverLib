@@ -156,6 +156,38 @@ struct DenseTraversalRowView {
     }
 };
 
+DenseTraversalRowView build_dense_traversal_row_view(
+    const HUNLFlatInfosetTable& infoset_table,
+    InfosetId infoset_id,
+    std::size_t bucket_count,
+    std::size_t action_count,
+    double* regret_delta,
+    double* strategy_delta) noexcept {
+    DenseTraversalRowView row;
+    row.current_strategy = infoset_table.current_strategy(infoset_id);
+    row.regret = infoset_table.regret(infoset_id);
+    row.strategy_sum = infoset_table.strategy_sum(infoset_id);
+    row.regret_delta = regret_delta;
+    row.strategy_delta = strategy_delta;
+    row.bucket_count = bucket_count;
+    row.action_count = action_count;
+    row.action_stride = bucket_count;
+    return row;
+}
+
+void fill_current_strategy_bucket_dense(
+    const DenseTraversalRowView& row,
+    std::size_t bucket,
+    double* out) noexcept {
+    if (out == nullptr || row.current_strategy == nullptr || bucket >= row.bucket_count) {
+        return;
+    }
+    const auto* bucket_base = row.current_strategy + bucket;
+    for (std::size_t action = 0; action < row.action_count; ++action) {
+        out[action] = bucket_base[action * row.action_stride];
+    }
+}
+
 }  // namespace
 
 HUNLFlatMCCFR::HUNLFlatMCCFR(
@@ -902,14 +934,13 @@ double HUNLFlatMCCFR::traverse_full_expansion_decision(
     auto& row = context.scratch->ensure_row(meta.infoset_id);
     DenseTraversalRowView dense_row{};
     if (can_use_dense_action_major_fast_path()) {
-        dense_row.current_strategy = infoset_table_.current_strategy(meta.infoset_id);
-        dense_row.regret = infoset_table_.regret(meta.infoset_id);
-        dense_row.strategy_sum = infoset_table_.strategy_sum(meta.infoset_id);
-        dense_row.regret_delta = row.regret_delta.data();
-        dense_row.strategy_delta = row.strategy_delta.data();
-        dense_row.bucket_count = row_meta.bucket_count;
-        dense_row.action_count = action_count;
-        dense_row.action_stride = row_meta.bucket_count;
+        dense_row = build_dense_traversal_row_view(
+            infoset_table_,
+            meta.infoset_id,
+            row_meta.bucket_count,
+            action_count,
+            row.regret_delta.data(),
+            row.strategy_delta.data());
     }
     const auto row_writeback_start = std::chrono::steady_clock::now();
     if (dense_row.valid()) {
@@ -970,32 +1001,37 @@ double HUNLFlatMCCFR::traverse_opponent_sampled_decision(
     const auto& row_meta = infoset_meta(meta.infoset_id);
     const auto action_count = static_cast<std::size_t>(meta.action_count);
     auto& bucket_strategy = context.scratch->bucket_strategy;
-    const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+    const auto& average_strategy_row = average_policy_cache_[meta.infoset_id.value];
+    const auto* average_strategy = average_strategy_row.data();
+    const auto bucket_count = static_cast<std::size_t>(row_meta.bucket_count);
 
     if (context.counters != nullptr) {
         ++context.counters->opponent_sampled_decisions;
         context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+        context.counters->opponent_strategy_values_written +=
+            static_cast<std::uint64_t>(bucket_count) * static_cast<std::uint64_t>(action_count);
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id);
     DenseTraversalRowView dense_row{};
     if (can_use_dense_action_major_fast_path()) {
-        dense_row.current_strategy = infoset_table_.current_strategy(meta.infoset_id);
-        dense_row.regret = infoset_table_.regret(meta.infoset_id);
-        dense_row.strategy_sum = infoset_table_.strategy_sum(meta.infoset_id);
-        dense_row.regret_delta = row.regret_delta.data();
-        dense_row.strategy_delta = row.strategy_delta.data();
-        dense_row.bucket_count = row_meta.bucket_count;
-        dense_row.action_count = action_count;
-        dense_row.action_stride = row_meta.bucket_count;
+        dense_row = build_dense_traversal_row_view(
+            infoset_table_,
+            meta.infoset_id,
+            row_meta.bucket_count,
+            action_count,
+            row.regret_delta.data(),
+            row.strategy_delta.data());
     }
     const auto row_writeback_start = std::chrono::steady_clock::now();
     if (dense_row.valid()) {
-        for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
-            for (std::size_t action = 0; action < dense_row.action_count; ++action) {
-                const auto offset = action * dense_row.action_stride + bucket;
-                dense_row.strategy_delta[offset] += own_reach * dense_row.current_strategy[offset];
+        for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+            const auto action_offset = action * dense_row.action_stride;
+            const auto* current_strategy_action = dense_row.current_strategy + action_offset;
+            auto* strategy_delta_action = dense_row.strategy_delta + action_offset;
+            for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+                strategy_delta_action[bucket] += own_reach * current_strategy_action[bucket];
             }
         }
     } else {
@@ -1010,7 +1046,7 @@ double HUNLFlatMCCFR::traverse_opponent_sampled_decision(
     }
     context.scratch->audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
 
-    const auto sampled = sample_weighted_prefix(average_strategy.data(), action_count, *context.rng);
+    const auto sampled = sample_weighted_prefix(average_strategy, action_count, *context.rng);
     if (context.counters != nullptr) {
         ++context.counters->sampled_opponent_actions;
     }
@@ -1068,14 +1104,13 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
     auto& row = context.scratch->ensure_row(meta.infoset_id);
     DenseTraversalRowView dense_row{};
     if (can_use_dense_action_major_fast_path()) {
-        dense_row.current_strategy = infoset_table_.current_strategy(meta.infoset_id);
-        dense_row.regret = infoset_table_.regret(meta.infoset_id);
-        dense_row.strategy_sum = infoset_table_.strategy_sum(meta.infoset_id);
-        dense_row.regret_delta = row.regret_delta.data();
-        dense_row.strategy_delta = row.strategy_delta.data();
-        dense_row.bucket_count = row_meta.bucket_count;
-        dense_row.action_count = action_count;
-        dense_row.action_stride = row_meta.bucket_count;
+        dense_row = build_dense_traversal_row_view(
+            infoset_table_,
+            meta.infoset_id,
+            row_meta.bucket_count,
+            action_count,
+            row.regret_delta.data(),
+            row.strategy_delta.data());
     }
     auto row_writeback_seconds = 0.0;
     auto row_writeback_start = std::chrono::steady_clock::now();
@@ -1302,6 +1337,18 @@ void HUNLFlatMCCFR::fill_current_strategy_bucket(
     }
 
     if (!config_.use_sparse_storage) {
+        if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand &&
+            infoset_table_.precision() == HUNLFlatStoragePrecision::Float64) {
+            const auto dense_row = build_dense_traversal_row_view(
+                infoset_table_,
+                infoset_id,
+                meta.bucket_count,
+                action_count,
+                nullptr,
+                nullptr);
+            fill_current_strategy_bucket_dense(dense_row, bucket, out);
+            return;
+        }
         if (infoset_table_.layout() == HUNLFlatValueLayout::InfosetHandAction) {
             const auto bucket_offset = bucket * static_cast<std::size_t>(meta.action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -1590,6 +1637,7 @@ void HUNLFlatMCCFR::run_player_subbatch(
         profile_.chance_nodes_visited += scratch.counters.chance_nodes_visited;
         profile_.decision_nodes_visited += scratch.counters.decision_nodes_visited;
         profile_.opponent_sampled_decisions += scratch.counters.opponent_sampled_decisions;
+        profile_.opponent_strategy_values_written += scratch.counters.opponent_strategy_values_written;
         profile_.traversing_player_full_expansion_decisions +=
             scratch.counters.traversing_player_full_expansion_decisions;
         profile_.decision_actions_touched += scratch.counters.decision_actions_touched;
@@ -1742,6 +1790,7 @@ void HUNLFlatMCCFR::execute_worker_batch(
     worker_profile.decision_nodes_visited += scratch.counters.decision_nodes_visited;
     worker_profile.sampled_opponent_actions += scratch.counters.sampled_opponent_actions;
     worker_profile.opponent_sampled_decisions += scratch.counters.opponent_sampled_decisions;
+    worker_profile.opponent_strategy_values_written += scratch.counters.opponent_strategy_values_written;
     worker_profile.traversing_player_action_expansions += scratch.counters.traversing_player_action_expansions;
     worker_profile.traversing_player_full_expansion_decisions +=
         scratch.counters.traversing_player_full_expansion_decisions;
@@ -1800,6 +1849,7 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     last_iteration_counters_.decision_nodes_visited += scratch.counters.decision_nodes_visited;
     last_iteration_counters_.sampled_opponent_actions += scratch.counters.sampled_opponent_actions;
     last_iteration_counters_.opponent_sampled_decisions += scratch.counters.opponent_sampled_decisions;
+    last_iteration_counters_.opponent_strategy_values_written += scratch.counters.opponent_strategy_values_written;
     last_iteration_counters_.traversing_player_action_expansions +=
         scratch.counters.traversing_player_action_expansions;
     last_iteration_counters_.traversing_player_full_expansion_decisions +=
@@ -1821,6 +1871,7 @@ void HUNLFlatMCCFR::accumulate_last_iteration_into_total() noexcept {
     total_counters_.decision_nodes_visited += last_iteration_counters_.decision_nodes_visited;
     total_counters_.sampled_opponent_actions += last_iteration_counters_.sampled_opponent_actions;
     total_counters_.opponent_sampled_decisions += last_iteration_counters_.opponent_sampled_decisions;
+    total_counters_.opponent_strategy_values_written += last_iteration_counters_.opponent_strategy_values_written;
     total_counters_.traversing_player_action_expansions += last_iteration_counters_.traversing_player_action_expansions;
     total_counters_.traversing_player_full_expansion_decisions +=
         last_iteration_counters_.traversing_player_full_expansion_decisions;

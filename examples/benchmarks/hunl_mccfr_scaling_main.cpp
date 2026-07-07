@@ -58,11 +58,13 @@ struct BenchmarkResult {
     double average_active_infosets_per_worker = 0.0;
     double average_nodes_per_trajectory = 0.0;
     double average_actions_touched_per_decision = 0.0;
+    double average_opponent_values_written_per_decision = 0.0;
     std::uint64_t total_nodes_visited = 0;
     std::uint64_t chance_nodes_visited = 0;
     std::uint64_t decision_nodes_visited = 0;
     std::uint64_t sampled_opponent_actions = 0;
     std::uint64_t opponent_sampled_decisions = 0;
+    std::uint64_t opponent_strategy_values_written = 0;
     std::uint64_t traversing_action_expansions = 0;
     std::uint64_t traversing_player_full_expansion_decisions = 0;
     std::uint64_t decision_actions_touched = 0;
@@ -541,6 +543,7 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
     result.decision_nodes_visited = solver.total_counters().decision_nodes_visited;
     result.sampled_opponent_actions = solver.total_counters().sampled_opponent_actions;
     result.opponent_sampled_decisions = solver.total_counters().opponent_sampled_decisions;
+    result.opponent_strategy_values_written = solver.total_counters().opponent_strategy_values_written;
     result.traversing_action_expansions = solver.total_counters().traversing_player_action_expansions;
     result.traversing_player_full_expansion_decisions =
         solver.total_counters().traversing_player_full_expansion_decisions;
@@ -562,6 +565,11 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
         ? 0.0
         : static_cast<double>(solver.total_counters().decision_actions_touched) /
             static_cast<double>(solver.total_counters().decision_nodes_visited);
+    result.average_opponent_values_written_per_decision =
+        solver.total_counters().opponent_sampled_decisions == 0U
+        ? 0.0
+        : static_cast<double>(solver.total_counters().opponent_strategy_values_written) /
+            static_cast<double>(solver.total_counters().opponent_sampled_decisions);
     return result;
 }
 
@@ -588,7 +596,8 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
               << "\n\n";
     std::cout << "  audit="
               << "chance_ms/oppt_ms/full_ms/as_ms split trajectory work by branch; "
-              << "roww_ms isolates infoset delta writeback; avg_act/dec is decision_actions_touched / decision_nodes"
+              << "roww_ms isolates infoset delta writeback; avg_act/dec is decision_actions_touched / decision_nodes; "
+              << "oppt_vals/dec is opponent_strategy_values_written / opponent_sampled_decisions"
               << "\n\n";
 
     std::cout << std::left
@@ -614,6 +623,7 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
               << std::setw(14) << "avg_rows"
               << std::setw(14) << "avg_nodes"
               << std::setw(14) << "avg_act/dec"
+              << std::setw(16) << "oppt_vals/dec"
               << '\n';
 
     const auto baseline_seconds = results.empty() ? 0.0 : results.front().total_seconds;
@@ -646,11 +656,12 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
                   << std::setw(14) << std::fixed << std::setprecision(2) << result.average_active_infosets_per_worker
                   << std::setw(14) << std::fixed << std::setprecision(2) << result.average_nodes_per_trajectory
                   << std::setw(14) << std::fixed << std::setprecision(2) << result.average_actions_touched_per_decision
+                  << std::setw(16) << std::fixed << std::setprecision(2) << result.average_opponent_values_written_per_decision
                   << '\n';
     }
 
     std::cout << "\nCSV\n";
-    std::cout << "workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,chance_ms,opponent_sampled_ms,traversing_player_ms,average_strategy_ms,row_writeback_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,avg_actions_touched_per_decision,nodes_visited,chance_nodes_visited,decision_nodes_visited,sampled_opponent_actions,opponent_sampled_decisions,traversing_action_expansions,traversing_player_full_expansion_decisions,decision_actions_touched\n";
+    std::cout << "workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,chance_ms,opponent_sampled_ms,traversing_player_ms,average_strategy_ms,row_writeback_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,avg_actions_touched_per_decision,avg_opponent_values_written_per_decision,nodes_visited,chance_nodes_visited,decision_nodes_visited,sampled_opponent_actions,opponent_sampled_decisions,opponent_strategy_values_written,traversing_action_expansions,traversing_player_full_expansion_decisions,decision_actions_touched\n";
     for (const auto& result : results) {
         const auto speedup =
             baseline_seconds > 0.0 ? baseline_seconds / result.total_seconds : 0.0;
@@ -679,11 +690,13 @@ void print_results(const BenchmarkConfig& config, const std::vector<BenchmarkRes
                   << std::fixed << std::setprecision(6) << result.average_active_infosets_per_worker << ','
                   << std::fixed << std::setprecision(6) << result.average_nodes_per_trajectory << ','
                   << std::fixed << std::setprecision(6) << result.average_actions_touched_per_decision << ','
+                  << std::fixed << std::setprecision(6) << result.average_opponent_values_written_per_decision << ','
                   << result.total_nodes_visited << ','
                   << result.chance_nodes_visited << ','
                   << result.decision_nodes_visited << ','
                   << result.sampled_opponent_actions << ','
                   << result.opponent_sampled_decisions << ','
+                  << result.opponent_strategy_values_written << ','
                   << result.traversing_action_expansions << ','
                   << result.traversing_player_full_expansion_decisions << ','
                   << result.decision_actions_touched
@@ -714,7 +727,8 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
               << "\n\n";
     std::cout << "  audit="
               << "chance_ms/oppt_ms/full_ms/as_ms split trajectory work by branch; "
-              << "roww_ms isolates infoset delta writeback; avg_act/dec is decision_actions_touched / decision_nodes"
+              << "roww_ms isolates infoset delta writeback; avg_act/dec is decision_actions_touched / decision_nodes; "
+              << "oppt_vals/dec is opponent_strategy_values_written / opponent_sampled_decisions"
               << "\n\n";
 
     std::cout << std::left
@@ -739,6 +753,7 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
               << std::setw(14) << "avg_rows"
               << std::setw(14) << "avg_nodes"
               << std::setw(14) << "avg_act/dec"
+              << std::setw(16) << "oppt_vals/dec"
               << '\n';
 
     for (const auto& run : runs) {
@@ -771,6 +786,7 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
                       << std::setw(14) << std::fixed << std::setprecision(2) << result.average_active_infosets_per_worker
                       << std::setw(14) << std::fixed << std::setprecision(2) << result.average_nodes_per_trajectory
                       << std::setw(14) << std::fixed << std::setprecision(2) << result.average_actions_touched_per_decision
+                      << std::setw(16) << std::fixed << std::setprecision(2) << result.average_opponent_values_written_per_decision
                       << '\n';
         }
     }
@@ -796,7 +812,7 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
     }
 
     std::cout << "\nCSV\n";
-    std::cout << "batch_size,workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,chance_ms,opponent_sampled_ms,traversing_player_ms,average_strategy_ms,row_writeback_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,avg_actions_touched_per_decision,nodes_visited,chance_nodes_visited,decision_nodes_visited,sampled_opponent_actions,opponent_sampled_decisions,traversing_action_expansions,traversing_player_full_expansion_decisions,decision_actions_touched\n";
+    std::cout << "batch_size,workers,total_ms,iter_ms,iters_per_second,speedup,efficiency,setup_ms,dispatch_ms,trajectory_ms,merge_ms,traverse_ms,chance_ms,opponent_sampled_ms,traversing_player_ms,average_strategy_ms,row_writeback_ms,ev_p0,wakeups,strategy_snapshot_rebuilds,avg_active_infosets_per_worker,avg_nodes_per_trajectory,avg_actions_touched_per_decision,avg_opponent_values_written_per_decision,nodes_visited,chance_nodes_visited,decision_nodes_visited,sampled_opponent_actions,opponent_sampled_decisions,opponent_strategy_values_written,traversing_action_expansions,traversing_player_full_expansion_decisions,decision_actions_touched\n";
     for (const auto& run : runs) {
         const auto baseline_seconds = run.results.empty() ? 0.0 : run.results.front().total_seconds;
         for (const auto& result : run.results) {
@@ -828,11 +844,13 @@ void print_batch_sweep_results(const BenchmarkConfig& config, const std::vector<
                       << std::fixed << std::setprecision(6) << result.average_active_infosets_per_worker << ','
                       << std::fixed << std::setprecision(6) << result.average_nodes_per_trajectory << ','
                       << std::fixed << std::setprecision(6) << result.average_actions_touched_per_decision << ','
+                      << std::fixed << std::setprecision(6) << result.average_opponent_values_written_per_decision << ','
                       << result.total_nodes_visited << ','
                       << result.chance_nodes_visited << ','
                       << result.decision_nodes_visited << ','
                       << result.sampled_opponent_actions << ','
                       << result.opponent_sampled_decisions << ','
+                      << result.opponent_strategy_values_written << ','
                       << result.traversing_action_expansions << ','
                       << result.traversing_player_full_expansion_decisions << ','
                       << result.decision_actions_touched
