@@ -257,6 +257,7 @@ private:
         const HUNLFlatNodeMeta& meta,
         TraversalContext& context,
         bool use_variance_reduction);
+    [[nodiscard]] bool can_use_dense_action_major_fast_path() const noexcept;
     void compute_current_strategy_rows();
     void rebuild_average_policy_cache();
     void fill_current_strategy_bucket(

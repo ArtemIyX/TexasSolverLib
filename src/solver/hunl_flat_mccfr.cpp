@@ -138,6 +138,24 @@ double elapsed_seconds_since(std::chrono::steady_clock::time_point start) noexce
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 }
 
+struct DenseTraversalRowView {
+    const double* current_strategy = nullptr;
+    const double* regret = nullptr;
+    const double* strategy_sum = nullptr;
+    double* regret_delta = nullptr;
+    double* strategy_delta = nullptr;
+    std::size_t bucket_count = 0;
+    std::size_t action_count = 0;
+    std::size_t action_stride = 0;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return current_strategy != nullptr &&
+            regret_delta != nullptr &&
+            strategy_delta != nullptr &&
+            action_stride == bucket_count;
+    }
+};
+
 }  // namespace
 
 HUNLFlatMCCFR::HUNLFlatMCCFR(
@@ -521,6 +539,12 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
     return (this->*context.traverse_impl)(node_idx, context);
 }
 
+bool HUNLFlatMCCFR::can_use_dense_action_major_fast_path() const noexcept {
+    return !config_.use_sparse_storage &&
+        infoset_table_.layout() == HUNLFlatValueLayout::InfosetActionHand &&
+        infoset_table_.precision() == HUNLFlatStoragePrecision::Float64;
+}
+
 double HUNLFlatMCCFR::traverse_exact(std::uint32_t node_idx, TraversalContext& context) {
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
@@ -876,22 +900,53 @@ double HUNLFlatMCCFR::traverse_full_expansion_decision(
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id);
+    DenseTraversalRowView dense_row{};
+    if (can_use_dense_action_major_fast_path()) {
+        dense_row.current_strategy = infoset_table_.current_strategy(meta.infoset_id);
+        dense_row.regret = infoset_table_.regret(meta.infoset_id);
+        dense_row.strategy_sum = infoset_table_.strategy_sum(meta.infoset_id);
+        dense_row.regret_delta = row.regret_delta.data();
+        dense_row.strategy_delta = row.strategy_delta.data();
+        dense_row.bucket_count = row_meta.bucket_count;
+        dense_row.action_count = action_count;
+        dense_row.action_stride = row_meta.bucket_count;
+    }
     const auto row_writeback_start = std::chrono::steady_clock::now();
-    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-        double node_value = 0.0;
-        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
-        for (std::size_t action = 0; action < action_count; ++action) {
-            const auto probability = bucket_strategy[action];
-            const auto offset = row_value_index(row_meta, bucket, action);
-            row.strategy_delta[offset] += own_reach * probability;
-            node_value += probability * action_values[action];
-        }
+    if (dense_row.valid()) {
+        for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+            double node_value = 0.0;
+            for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                const auto offset = action * dense_row.action_stride + bucket;
+                const auto probability = dense_row.current_strategy[offset];
+                dense_row.strategy_delta[offset] += own_reach * probability;
+                node_value += probability * action_values[action];
+            }
 
-        if (meta.player == context.traversing_player) {
-            const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
+            if (meta.player == context.traversing_player) {
+                const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
+                for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                    const auto offset = action * dense_row.action_stride + bucket;
+                    dense_row.regret_delta[offset] += opponent_reach * (action_values[action] - node_value);
+                }
+            }
+        }
+    } else {
+        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+            double node_value = 0.0;
+            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
+                const auto probability = bucket_strategy[action];
                 const auto offset = row_value_index(row_meta, bucket, action);
-                row.regret_delta[offset] += opponent_reach * (action_values[action] - node_value);
+                row.strategy_delta[offset] += own_reach * probability;
+                node_value += probability * action_values[action];
+            }
+
+            if (meta.player == context.traversing_player) {
+                const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
+                for (std::size_t action = 0; action < action_count; ++action) {
+                    const auto offset = row_value_index(row_meta, bucket, action);
+                    row.regret_delta[offset] += opponent_reach * (action_values[action] - node_value);
+                }
             }
         }
     }
@@ -924,13 +979,33 @@ double HUNLFlatMCCFR::traverse_opponent_sampled_decision(
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id);
+    DenseTraversalRowView dense_row{};
+    if (can_use_dense_action_major_fast_path()) {
+        dense_row.current_strategy = infoset_table_.current_strategy(meta.infoset_id);
+        dense_row.regret = infoset_table_.regret(meta.infoset_id);
+        dense_row.strategy_sum = infoset_table_.strategy_sum(meta.infoset_id);
+        dense_row.regret_delta = row.regret_delta.data();
+        dense_row.strategy_delta = row.strategy_delta.data();
+        dense_row.bucket_count = row_meta.bucket_count;
+        dense_row.action_count = action_count;
+        dense_row.action_stride = row_meta.bucket_count;
+    }
     const auto row_writeback_start = std::chrono::steady_clock::now();
-    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
-        for (std::size_t action = 0; action < action_count; ++action) {
-            const auto probability = bucket_strategy[action];
-            const auto offset = row_value_index(row_meta, bucket, action);
-            row.strategy_delta[offset] += own_reach * probability;
+    if (dense_row.valid()) {
+        for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+            for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                const auto offset = action * dense_row.action_stride + bucket;
+                dense_row.strategy_delta[offset] += own_reach * dense_row.current_strategy[offset];
+            }
+        }
+    } else {
+        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
+            for (std::size_t action = 0; action < action_count; ++action) {
+                const auto probability = bucket_strategy[action];
+                const auto offset = row_value_index(row_meta, bucket, action);
+                row.strategy_delta[offset] += own_reach * probability;
+            }
         }
     }
     context.scratch->audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
@@ -991,13 +1066,33 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id);
+    DenseTraversalRowView dense_row{};
+    if (can_use_dense_action_major_fast_path()) {
+        dense_row.current_strategy = infoset_table_.current_strategy(meta.infoset_id);
+        dense_row.regret = infoset_table_.regret(meta.infoset_id);
+        dense_row.strategy_sum = infoset_table_.strategy_sum(meta.infoset_id);
+        dense_row.regret_delta = row.regret_delta.data();
+        dense_row.strategy_delta = row.strategy_delta.data();
+        dense_row.bucket_count = row_meta.bucket_count;
+        dense_row.action_count = action_count;
+        dense_row.action_stride = row_meta.bucket_count;
+    }
     auto row_writeback_seconds = 0.0;
     auto row_writeback_start = std::chrono::steady_clock::now();
-    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
-        for (std::size_t action = 0; action < action_count; ++action) {
-            const auto offset = row_value_index(row_meta, bucket, action);
-            row.strategy_delta[offset] += own_reach * bucket_strategy[action];
+    if (dense_row.valid()) {
+        for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+            for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                const auto offset = action * dense_row.action_stride + bucket;
+                dense_row.strategy_delta[offset] += own_reach * dense_row.current_strategy[offset];
+            }
+        }
+    } else {
+        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
+            for (std::size_t action = 0; action < action_count; ++action) {
+                const auto offset = row_value_index(row_meta, bucket, action);
+                row.strategy_delta[offset] += own_reach * bucket_strategy[action];
+            }
         }
     }
     row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
@@ -1090,19 +1185,39 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
 
     auto& node_values = context.scratch->node_values;
     std::fill(node_values.begin(), node_values.begin() + row_meta.bucket_count, 0.0);
-    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
-        for (std::size_t action = 0; action < action_count; ++action) {
-            node_values[bucket] += bucket_strategy[action] * action_values[action];
+    if (dense_row.valid()) {
+        for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+            double node_value = 0.0;
+            for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                const auto offset = action * dense_row.action_stride + bucket;
+                node_value += dense_row.current_strategy[offset] * action_values[action];
+            }
+            node_values[bucket] = node_value;
+        }
+    } else {
+        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
+            for (std::size_t action = 0; action < action_count; ++action) {
+                node_values[bucket] += bucket_strategy[action] * action_values[action];
+            }
         }
     }
 
     const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
     row_writeback_start = std::chrono::steady_clock::now();
-    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-        for (std::size_t action = 0; action < action_count; ++action) {
-            const auto offset = row_value_index(row_meta, bucket, action);
-            row.regret_delta[offset] += opponent_reach * (action_values[action] - node_values[bucket]);
+    if (dense_row.valid()) {
+        for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+            for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                const auto offset = action * dense_row.action_stride + bucket;
+                dense_row.regret_delta[offset] += opponent_reach * (action_values[action] - node_values[bucket]);
+            }
+        }
+    } else {
+        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+            for (std::size_t action = 0; action < action_count; ++action) {
+                const auto offset = row_value_index(row_meta, bucket, action);
+                row.regret_delta[offset] += opponent_reach * (action_values[action] - node_values[bucket]);
+            }
         }
     }
     row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
