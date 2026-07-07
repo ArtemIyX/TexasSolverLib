@@ -164,8 +164,9 @@ private:
         std::vector<double> inclusion_probabilities;
         std::vector<double> strategy_sum_values;
         std::vector<std::uint8_t> sampled_actions;
-        std::vector<WorkerDeltaRow> rows;
-        std::unordered_map<InfosetId, std::size_t> row_lookup;
+        std::vector<WorkerDeltaRow> delta_rows;
+        std::vector<InfosetId> dirty_row_ids;
+        std::vector<std::uint8_t> row_active;
         std::vector<WorkerBaselineRow> infoset_baseline_rows;
         std::unordered_map<InfosetId, std::size_t> infoset_baseline_lookup;
         std::vector<WorkerBaselineRow> node_baseline_rows;
@@ -173,8 +174,9 @@ private:
         Counters counters;
 
         void prepare(std::size_t max_actions, std::size_t max_bucket_count);
+        void prepare_delta_rows(const std::vector<HUNLFlatInfosetTableMeta>& infoset_meta);
         void clear_keep_capacity() noexcept;
-        WorkerDeltaRow& ensure_row(InfosetId id, std::size_t value_count);
+        WorkerDeltaRow& ensure_row(InfosetId id);
         WorkerBaselineRow& ensure_infoset_baseline_row(InfosetId id, std::size_t action_count);
         WorkerBaselineRow& ensure_node_baseline_row(std::uint32_t node_idx, std::size_t action_count);
     };

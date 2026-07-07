@@ -166,6 +166,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     const auto max_bucket_count = std::max(bucket_count_per_player[0], bucket_count_per_player[1]);
     for (auto& scratch : worker_scratch_) {
         scratch.prepare(graph_.max_actions, max_bucket_count);
+        scratch.prepare_delta_rows(infoset_meta_);
     }
     initialize_worker_threads();
 }
@@ -351,9 +352,28 @@ void HUNLFlatMCCFR::WorkerScratch::prepare(std::size_t max_actions, std::size_t 
     node_values.resize(max_bucket_count, 0.0);
 }
 
+void HUNLFlatMCCFR::WorkerScratch::prepare_delta_rows(
+    const std::vector<HUNLFlatInfosetTableMeta>& infoset_meta) {
+    delta_rows.resize(infoset_meta.size());
+    row_active.assign(infoset_meta.size(), 0U);
+    dirty_row_ids.clear();
+    dirty_row_ids.reserve(infoset_meta.size());
+    for (const auto& meta : infoset_meta) {
+        auto& row = delta_rows[meta.id.value];
+        row.id = meta.id;
+        row.regret_delta.assign(meta.value_count, 0.0);
+        row.strategy_delta.assign(meta.value_count, 0.0);
+    }
+}
+
 void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
-    rows.clear();
-    row_lookup.clear();
+    for (const auto infoset_id : dirty_row_ids) {
+        auto& row = delta_rows[infoset_id.value];
+        std::fill(row.regret_delta.begin(), row.regret_delta.end(), 0.0);
+        std::fill(row.strategy_delta.begin(), row.strategy_delta.end(), 0.0);
+        row_active[infoset_id.value] = 0U;
+    }
+    dirty_row_ids.clear();
     infoset_baseline_rows.clear();
     infoset_baseline_lookup.clear();
     node_baseline_rows.clear();
@@ -361,18 +381,15 @@ void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
     counters = {};
 }
 
-HUNLFlatMCCFR::WorkerDeltaRow& HUNLFlatMCCFR::WorkerScratch::ensure_row(
-    InfosetId id,
-    std::size_t value_count) {
-    const auto it = row_lookup.find(id);
-    if (it != row_lookup.end()) {
-        return rows[it->second];
+HUNLFlatMCCFR::WorkerDeltaRow& HUNLFlatMCCFR::WorkerScratch::ensure_row(InfosetId id) {
+    if (id.value >= delta_rows.size()) {
+        throw std::out_of_range("HUNLFlatMCCFR worker delta row id out of range");
     }
-
-    const auto index = rows.size();
-    row_lookup.emplace(id, index);
-    rows.push_back(WorkerDeltaRow{id, std::vector<double>(value_count, 0.0), std::vector<double>(value_count, 0.0)});
-    return rows.back();
+    if (row_active[id.value] == 0U) {
+        row_active[id.value] = 1U;
+        dirty_row_ids.push_back(id);
+    }
+    return delta_rows[id.value];
 }
 
 HUNLFlatMCCFR::WorkerBaselineRow& HUNLFlatMCCFR::WorkerScratch::ensure_infoset_baseline_row(
@@ -557,7 +574,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
          config_.mode == HUNLFlatSamplingMode::AverageStrategy) &&
         meta.player != context.traversing_player) {
         const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-        auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
+        auto& row = context.scratch->ensure_row(meta.infoset_id);
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -605,7 +622,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
     if (config_.mode == HUNLFlatSamplingMode::AverageStrategy &&
         meta.player == context.traversing_player) {
         const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-        auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
+        auto& row = context.scratch->ensure_row(meta.infoset_id);
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -741,7 +758,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-    auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
+    auto& row = context.scratch->ensure_row(meta.infoset_id);
     for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
         double node_value = 0.0;
         fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
@@ -1023,11 +1040,11 @@ void HUNLFlatMCCFR::apply_discount_if_enabled(std::uint32_t target_iteration, Wo
     }
 
     const auto discount_start = std::chrono::steady_clock::now();
-    for (const auto& row : scratch.rows) {
+    for (const auto infoset_id : scratch.dirty_row_ids) {
         if (config_.use_sparse_storage) {
-            discount_sparse_infoset_row(row.id, target_iteration);
+            discount_sparse_infoset_row(infoset_id, target_iteration);
         } else {
-            discount_dense_infoset_row(row.id, target_iteration);
+            discount_dense_infoset_row(infoset_id, target_iteration);
         }
     }
     profile_.discount_seconds +=
@@ -1203,24 +1220,25 @@ void HUNLFlatMCCFR::execute_worker_batch(
     worker_profile.as_actions_considered += scratch.counters.as_actions_considered;
     worker_profile.as_actions_sampled += scratch.counters.as_actions_sampled;
     worker_profile.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
-    worker_profile.active_infosets += scratch.rows.size();
+    worker_profile.active_infosets += scratch.dirty_row_ids.size();
 }
 
 void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     auto merge_start = std::chrono::steady_clock::now();
     auto& scratch = worker_scratch_[worker_index];
-    std::sort(scratch.rows.begin(), scratch.rows.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.id.value < rhs.id.value;
+    std::sort(scratch.dirty_row_ids.begin(), scratch.dirty_row_ids.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.value < rhs.value;
     });
 
-    for (const auto& row : scratch.rows) {
-        if (row.id.value < touched_infosets_.size() && touched_infosets_[row.id.value] == 0U) {
-            touched_infosets_[row.id.value] = 1U;
+    for (const auto infoset_id : scratch.dirty_row_ids) {
+        const auto& row = scratch.delta_rows[infoset_id.value];
+        if (infoset_id.value < touched_infosets_.size() && touched_infosets_[infoset_id.value] == 0U) {
+            touched_infosets_[infoset_id.value] = 1U;
             ++unique_infosets_touched_;
         }
-        const auto& meta = infoset_meta(row.id);
+        const auto& meta = infoset_meta(infoset_id);
         if (config_.use_sparse_storage) {
-            auto sparse_row = ensure_sparse_row(row.id);
+            auto sparse_row = ensure_sparse_row(infoset_id);
             for (std::size_t offset = 0; offset < meta.value_count; ++offset) {
                 sparse_row.regret[offset] =
                     static_cast<float>(static_cast<double>(sparse_row.regret[offset]) + row.regret_delta[offset]);
@@ -1232,13 +1250,13 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
 
         for (std::size_t offset = 0; offset < meta.value_count; ++offset) {
             infoset_table_.set_regret_value(
-                row.id,
+                infoset_id,
                 offset,
-                infoset_table_.regret_value(row.id, offset) + row.regret_delta[offset]);
+                infoset_table_.regret_value(infoset_id, offset) + row.regret_delta[offset]);
             infoset_table_.set_strategy_sum_value(
-                row.id,
+                infoset_id,
                 offset,
-                infoset_table_.strategy_sum_value(row.id, offset) + row.strategy_delta[offset]);
+                infoset_table_.strategy_sum_value(infoset_id, offset) + row.strategy_delta[offset]);
         }
     }
 
