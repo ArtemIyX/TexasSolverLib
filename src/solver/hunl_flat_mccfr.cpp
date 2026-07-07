@@ -515,6 +515,13 @@ void HUNLFlatMCCFR::add_sampled_kernel_profile(double seconds, HUNLSampledSimdBa
 }
 
 double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.traverse_impl == nullptr) {
+        throw std::logic_error("HUNLFlatMCCFR traversal kernel is not set");
+    }
+    return (this->*context.traverse_impl)(node_idx, context);
+}
+
+double HUNLFlatMCCFR::traverse_exact(std::uint32_t node_idx, TraversalContext& context) {
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
@@ -524,33 +531,100 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         case HUNLFlatNodeType::TerminalShowdown:
         case HUNLFlatNodeType::DepthLimited:
             return meta.terminal_utility[context.traversing_player];
-
         case HUNLFlatNodeType::Chance: {
             if (context.counters != nullptr) {
                 ++context.counters->chance_nodes_visited;
             }
             const auto chance_start = std::chrono::steady_clock::now();
-            if (config_.mode == HUNLFlatSamplingMode::Exact) {
-                double value = 0.0;
-                for (std::size_t i = 0; i < meta.chance_count; ++i) {
-                    const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
-                    value += outcome.probability * traverse(outcome.child, context);
-                }
-                if (context.scratch != nullptr) {
-                    context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
-                }
-                return value;
+            double value = 0.0;
+            for (std::size_t i = 0; i < meta.chance_count; ++i) {
+                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                value += outcome.probability * traverse_exact(outcome.child, context);
             }
+            if (context.scratch != nullptr) {
+                context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
+            }
+            return value;
+        }
+        case HUNLFlatNodeType::Decision:
+            if (!meta.has_infoset) {
+                throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+            }
+            if (context.counters != nullptr) {
+                ++context.counters->decision_nodes_visited;
+                if (meta.player == context.traversing_player) {
+                    context.counters->traversing_player_action_expansions +=
+                        static_cast<std::uint64_t>(meta.action_count);
+                }
+            }
+            return traverse_full_expansion_decision(
+                meta,
+                context,
+                meta.player == context.traversing_player);
+    }
+    throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
 
+double HUNLFlatMCCFR::traverse_public_chance(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.counters != nullptr) {
+        ++context.counters->nodes_visited;
+    }
+    const auto& meta = graph_.node_meta.at(node_idx);
+    switch (meta.type) {
+        case HUNLFlatNodeType::TerminalFold:
+        case HUNLFlatNodeType::TerminalShowdown:
+        case HUNLFlatNodeType::DepthLimited:
+            return meta.terminal_utility[context.traversing_player];
+        case HUNLFlatNodeType::Chance: {
+            if (context.counters != nullptr) {
+                ++context.counters->chance_nodes_visited;
+            }
+            const auto chance_start = std::chrono::steady_clock::now();
             const auto sampled_index = sample_chance_child(meta, *context.rng);
             const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
-            const auto sampled_value = traverse(sampled.child, context);
-            if (!variance_reduction_enabled()) {
-                if (context.scratch != nullptr) {
-                    context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
-                }
-                return sampled_value;
+            const auto sampled_value = traverse_public_chance(sampled.child, context);
+            if (context.scratch != nullptr) {
+                context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
             }
+            return sampled_value;
+        }
+        case HUNLFlatNodeType::Decision:
+            if (!meta.has_infoset) {
+                throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+            }
+            if (context.counters != nullptr) {
+                ++context.counters->decision_nodes_visited;
+                if (meta.player == context.traversing_player) {
+                    context.counters->traversing_player_action_expansions +=
+                        static_cast<std::uint64_t>(meta.action_count);
+                }
+            }
+            return traverse_full_expansion_decision(
+                meta,
+                context,
+                meta.player == context.traversing_player);
+    }
+    throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
+
+double HUNLFlatMCCFR::traverse_public_chance_vr(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.counters != nullptr) {
+        ++context.counters->nodes_visited;
+    }
+    const auto& meta = graph_.node_meta.at(node_idx);
+    switch (meta.type) {
+        case HUNLFlatNodeType::TerminalFold:
+        case HUNLFlatNodeType::TerminalShowdown:
+        case HUNLFlatNodeType::DepthLimited:
+            return meta.terminal_utility[context.traversing_player];
+        case HUNLFlatNodeType::Chance: {
+            if (context.counters != nullptr) {
+                ++context.counters->chance_nodes_visited;
+            }
+            const auto chance_start = std::chrono::steady_clock::now();
+            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto sampled_value = traverse_public_chance_vr(sampled.child, context);
 
             double expected_baseline = 0.0;
             for (std::size_t i = 0; i < meta.chance_count; ++i) {
@@ -568,233 +642,227 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             }
             return corrected_value;
         }
-
         case HUNLFlatNodeType::Decision:
-            break;
+            if (!meta.has_infoset) {
+                throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+            }
+            if (context.counters != nullptr) {
+                ++context.counters->decision_nodes_visited;
+                if (meta.player == context.traversing_player) {
+                    context.counters->traversing_player_action_expansions +=
+                        static_cast<std::uint64_t>(meta.action_count);
+                }
+            }
+            return traverse_full_expansion_decision(
+                meta,
+                context,
+                meta.player == context.traversing_player);
     }
+    throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
 
-    if (!meta.has_infoset) {
-        throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+double HUNLFlatMCCFR::traverse_external(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.counters != nullptr) {
+        ++context.counters->nodes_visited;
     }
+    const auto& meta = graph_.node_meta.at(node_idx);
+    switch (meta.type) {
+        case HUNLFlatNodeType::TerminalFold:
+        case HUNLFlatNodeType::TerminalShowdown:
+        case HUNLFlatNodeType::DepthLimited:
+            return meta.terminal_utility[context.traversing_player];
+        case HUNLFlatNodeType::Chance: {
+            if (context.counters != nullptr) {
+                ++context.counters->chance_nodes_visited;
+            }
+            const auto chance_start = std::chrono::steady_clock::now();
+            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto sampled_value = traverse_external(sampled.child, context);
+            if (context.scratch != nullptr) {
+                context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
+            }
+            return sampled_value;
+        }
+        case HUNLFlatNodeType::Decision:
+            if (!meta.has_infoset) {
+                throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+            }
+            if (context.counters != nullptr) {
+                ++context.counters->decision_nodes_visited;
+                if (meta.player == context.traversing_player) {
+                    context.counters->traversing_player_action_expansions +=
+                        static_cast<std::uint64_t>(meta.action_count);
+                }
+            }
+            if (meta.player != context.traversing_player) {
+                return traverse_opponent_sampled_decision(meta, context, false);
+            }
+            return traverse_full_expansion_decision(meta, context, true);
+    }
+    throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
 
+double HUNLFlatMCCFR::traverse_external_vr(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.counters != nullptr) {
+        ++context.counters->nodes_visited;
+    }
+    const auto& meta = graph_.node_meta.at(node_idx);
+    switch (meta.type) {
+        case HUNLFlatNodeType::TerminalFold:
+        case HUNLFlatNodeType::TerminalShowdown:
+        case HUNLFlatNodeType::DepthLimited:
+            return meta.terminal_utility[context.traversing_player];
+        case HUNLFlatNodeType::Chance: {
+            if (context.counters != nullptr) {
+                ++context.counters->chance_nodes_visited;
+            }
+            const auto chance_start = std::chrono::steady_clock::now();
+            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto sampled_value = traverse_external_vr(sampled.child, context);
+
+            double expected_baseline = 0.0;
+            for (std::size_t i = 0; i < meta.chance_count; ++i) {
+                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                expected_baseline += outcome.probability * node_action_baseline(node_idx, i);
+            }
+            const auto corrected_value =
+                sampled_value - node_action_baseline(node_idx, sampled_index) + expected_baseline;
+            observe_node_action_baseline(*context.scratch, node_idx, meta.chance_count, sampled_index, sampled_value);
+            if (context.counters != nullptr) {
+                record_variance_sample(*context.counters, sampled_value, corrected_value);
+            }
+            if (context.scratch != nullptr) {
+                context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
+            }
+            return corrected_value;
+        }
+        case HUNLFlatNodeType::Decision:
+            if (!meta.has_infoset) {
+                throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+            }
+            if (context.counters != nullptr) {
+                ++context.counters->decision_nodes_visited;
+                if (meta.player == context.traversing_player) {
+                    context.counters->traversing_player_action_expansions +=
+                        static_cast<std::uint64_t>(meta.action_count);
+                }
+            }
+            if (meta.player != context.traversing_player) {
+                return traverse_opponent_sampled_decision(meta, context, true);
+            }
+            return traverse_full_expansion_decision(meta, context, true);
+    }
+    throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
+
+double HUNLFlatMCCFR::traverse_average_strategy(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.counters != nullptr) {
+        ++context.counters->nodes_visited;
+    }
+    const auto& meta = graph_.node_meta.at(node_idx);
+    switch (meta.type) {
+        case HUNLFlatNodeType::TerminalFold:
+        case HUNLFlatNodeType::TerminalShowdown:
+        case HUNLFlatNodeType::DepthLimited:
+            return meta.terminal_utility[context.traversing_player];
+        case HUNLFlatNodeType::Chance: {
+            if (context.counters != nullptr) {
+                ++context.counters->chance_nodes_visited;
+            }
+            const auto chance_start = std::chrono::steady_clock::now();
+            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto sampled_value = traverse_average_strategy(sampled.child, context);
+            if (context.scratch != nullptr) {
+                context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
+            }
+            return sampled_value;
+        }
+        case HUNLFlatNodeType::Decision:
+            if (!meta.has_infoset) {
+                throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+            }
+            if (context.counters != nullptr) {
+                ++context.counters->decision_nodes_visited;
+            }
+            if (meta.player != context.traversing_player) {
+                return traverse_opponent_sampled_decision(meta, context, false);
+            }
+            return traverse_average_strategy_decision(meta, context, false);
+    }
+    throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
+
+double HUNLFlatMCCFR::traverse_average_strategy_vr(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.counters != nullptr) {
+        ++context.counters->nodes_visited;
+    }
+    const auto& meta = graph_.node_meta.at(node_idx);
+    switch (meta.type) {
+        case HUNLFlatNodeType::TerminalFold:
+        case HUNLFlatNodeType::TerminalShowdown:
+        case HUNLFlatNodeType::DepthLimited:
+            return meta.terminal_utility[context.traversing_player];
+        case HUNLFlatNodeType::Chance: {
+            if (context.counters != nullptr) {
+                ++context.counters->chance_nodes_visited;
+            }
+            const auto chance_start = std::chrono::steady_clock::now();
+            const auto sampled_index = sample_chance_child(meta, *context.rng);
+            const auto& sampled = graph_.chance_outcomes.at(meta.chance_begin + sampled_index);
+            const auto sampled_value = traverse_average_strategy_vr(sampled.child, context);
+
+            double expected_baseline = 0.0;
+            for (std::size_t i = 0; i < meta.chance_count; ++i) {
+                const auto& outcome = graph_.chance_outcomes.at(meta.chance_begin + i);
+                expected_baseline += outcome.probability * node_action_baseline(node_idx, i);
+            }
+            const auto corrected_value =
+                sampled_value - node_action_baseline(node_idx, sampled_index) + expected_baseline;
+            observe_node_action_baseline(*context.scratch, node_idx, meta.chance_count, sampled_index, sampled_value);
+            if (context.counters != nullptr) {
+                record_variance_sample(*context.counters, sampled_value, corrected_value);
+            }
+            if (context.scratch != nullptr) {
+                context.scratch->audit.chance_seconds += elapsed_seconds_since(chance_start);
+            }
+            return corrected_value;
+        }
+        case HUNLFlatNodeType::Decision:
+            if (!meta.has_infoset) {
+                throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+            }
+            if (context.counters != nullptr) {
+                ++context.counters->decision_nodes_visited;
+            }
+            if (meta.player != context.traversing_player) {
+                return traverse_opponent_sampled_decision(meta, context, true);
+            }
+            return traverse_average_strategy_decision(meta, context, true);
+    }
+    throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
+
+double HUNLFlatMCCFR::traverse_full_expansion_decision(
+    const HUNLFlatNodeMeta& meta,
+    TraversalContext& context,
+    bool count_traversing_full_expansion) {
     const auto& row_meta = infoset_meta(meta.infoset_id);
     const auto action_count = static_cast<std::size_t>(meta.action_count);
     auto& action_values = context.scratch->action_values;
     auto& bucket_strategy = context.scratch->bucket_strategy;
     const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
-    if (context.counters != nullptr) {
-        ++context.counters->decision_nodes_visited;
-    }
-
-    if (meta.player == context.traversing_player &&
-        context.counters != nullptr &&
-        config_.mode != HUNLFlatSamplingMode::AverageStrategy) {
-        context.counters->traversing_player_action_expansions += static_cast<std::uint64_t>(action_count);
-    }
-
-    if ((config_.mode == HUNLFlatSamplingMode::External ||
-         config_.mode == HUNLFlatSamplingMode::AverageStrategy) &&
-        meta.player != context.traversing_player) {
-        const auto opponent_start = std::chrono::steady_clock::now();
-        if (context.counters != nullptr) {
-            ++context.counters->opponent_sampled_decisions;
-            context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
-        }
-        const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-        auto& row = context.scratch->ensure_row(meta.infoset_id);
-        const auto row_writeback_start = std::chrono::steady_clock::now();
-        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
-            for (std::size_t action = 0; action < action_count; ++action) {
-                const auto probability = bucket_strategy[action];
-                const auto offset = row_value_index(row_meta, bucket, action);
-                row.strategy_delta[offset] += own_reach * probability;
-            }
-        }
-        context.scratch->audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
-
-        const auto sampled = sample_weighted_prefix(average_strategy.data(), action_count, *context.rng);
-        if (context.counters != nullptr) {
-            ++context.counters->sampled_opponent_actions;
-        }
-
-        auto child_context = context;
-        if (meta.player == 0) {
-            child_context.p0 *= average_strategy[sampled.first];
-        } else {
-            child_context.p1 *= average_strategy[sampled.first];
-        }
-        const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(sampled.first));
-        const auto sampled_value = traverse(child_idx, child_context);
-        if (!variance_reduction_enabled()) {
-            context.scratch->audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
-            return sampled_value;
-        }
-
-        double expected_baseline = 0.0;
-        for (std::size_t action = 0; action < action_count; ++action) {
-            expected_baseline += average_strategy[action] * infoset_action_baseline(meta.infoset_id, action);
-        }
-        const auto corrected_value =
-            sampled_value - infoset_action_baseline(meta.infoset_id, sampled.first) + expected_baseline;
-        observe_infoset_action_baseline(
-            *context.scratch,
-            meta.infoset_id,
-            action_count,
-            sampled.first,
-            sampled_value);
-        if (context.counters != nullptr) {
-            record_variance_sample(*context.counters, sampled_value, corrected_value);
-        }
-        context.scratch->audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
-        return corrected_value;
-    }
-
-    if (config_.mode == HUNLFlatSamplingMode::AverageStrategy &&
-        meta.player == context.traversing_player) {
-        const auto as_start = std::chrono::steady_clock::now();
-        if (context.counters != nullptr) {
-            context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
-        }
-        const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-        auto& row = context.scratch->ensure_row(meta.infoset_id);
-        auto row_writeback_seconds = 0.0;
-        auto row_writeback_start = std::chrono::steady_clock::now();
-        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
-            for (std::size_t action = 0; action < action_count; ++action) {
-                const auto offset = row_value_index(row_meta, bucket, action);
-                row.strategy_delta[offset] += own_reach * bucket_strategy[action];
-            }
-        }
-        row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
-
-        auto& inclusion_probabilities = context.scratch->inclusion_probabilities;
-        auto& sampled_actions = context.scratch->sampled_actions;
-        fill_average_strategy_sampling_probabilities(
-            meta.infoset_id,
-            inclusion_probabilities.data(),
-            action_count,
-            context.scratch->strategy_sum_values.data());
-        std::size_t sampled_count = 0;
-        if (context.counters != nullptr) {
-            context.counters->as_actions_considered += static_cast<std::uint64_t>(action_count);
-        }
-
-        double rho_sum = 0.0;
-        for (std::size_t action = 0; action < action_count; ++action) {
-            const auto rho = inclusion_probabilities[action];
-            rho_sum += rho;
-            sampled_actions[action] = 0U;
-            if (context.rng->bernoulli(rho)) {
-                sampled_actions[action] = 1U;
-                ++sampled_count;
-            }
-        }
-
-        const auto none_selected_probability = [&]() {
-            double probability = 1.0;
-            for (std::size_t action = 0; action < action_count; ++action) {
-                probability *= (1.0 - inclusion_probabilities[action]);
-            }
-            return probability;
-        }();
-
-        if (sampled_count == 0 && action_count > 0) {
-            const auto forced = rho_sum > 0.0
-                ? sample_weighted_prefix(inclusion_probabilities.data(), action_count, *context.rng).first
-                : std::size_t{0};
-            sampled_actions[forced] = 1U;
-            sampled_count = 1;
-            if (context.counters != nullptr) {
-                ++context.counters->as_forced_at_least_one_count;
-            }
-        }
-
-        for (std::size_t action = 0; action < action_count; ++action) {
-            if (sampled_actions[action] && rho_sum > 0.0) {
-                inclusion_probabilities[action] =
-                    std::min(
-                        1.0,
-                        inclusion_probabilities[action] +
-                            none_selected_probability * (inclusion_probabilities[action] / rho_sum));
-            }
-        }
-
-        if (context.counters != nullptr) {
-            context.counters->as_actions_sampled += static_cast<std::uint64_t>(sampled_count);
-            context.counters->traversing_player_action_expansions += static_cast<std::uint64_t>(sampled_count);
-        }
-
-        for (std::size_t action = 0; action < action_count; ++action) {
-            if (!sampled_actions[action]) {
-                action_values[action] = 0.0;
-                continue;
-            }
-
-            auto child_context = context;
-            if (meta.player == 0) {
-                child_context.p0 *= average_strategy[action];
-            } else {
-                child_context.p1 *= average_strategy[action];
-            }
-            const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(action));
-            const auto inclusion_probability = std::max(inclusion_probabilities[action], config_.as_epsilon);
-            const auto sampled_value = traverse(child_idx, child_context);
-            const auto raw_estimate = sampled_value / inclusion_probability;
-            if (!variance_reduction_enabled()) {
-                action_values[action] = raw_estimate;
-                continue;
-            }
-
-            const auto baseline = infoset_action_baseline(meta.infoset_id, action);
-            action_values[action] = baseline + (sampled_value - baseline) / inclusion_probability;
-            observe_infoset_action_baseline(
-                *context.scratch,
-                meta.infoset_id,
-                action_count,
-                action,
-                sampled_value);
-            if (context.counters != nullptr) {
-                record_variance_sample(*context.counters, raw_estimate, action_values[action]);
-            }
-        }
-
-        auto& node_values = context.scratch->node_values;
-        std::fill(node_values.begin(), node_values.begin() + row_meta.bucket_count, 0.0);
-        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-            fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
-            for (std::size_t action = 0; action < action_count; ++action) {
-                node_values[bucket] += bucket_strategy[action] * action_values[action];
-            }
-        }
-
-        const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
-        row_writeback_start = std::chrono::steady_clock::now();
-        for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
-            for (std::size_t action = 0; action < action_count; ++action) {
-                const auto offset = row_value_index(row_meta, bucket, action);
-                row.regret_delta[offset] += opponent_reach * (action_values[action] - node_values[bucket]);
-            }
-        }
-        row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
-        context.scratch->audit.row_writeback_seconds += row_writeback_seconds;
-
-        double return_value = 0.0;
-        for (std::size_t action = 0; action < action_count; ++action) {
-            return_value += average_strategy[action] * action_values[action];
-        }
-        context.scratch->audit.average_strategy_seconds += elapsed_seconds_since(as_start);
-        return return_value;
-    }
 
     const auto traversing_start = std::chrono::steady_clock::now();
     if (context.counters != nullptr) {
         context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+        if (count_traversing_full_expansion) {
+            ++context.counters->traversing_player_full_expansion_decisions;
+        }
     }
-    if (meta.player == context.traversing_player && context.counters != nullptr) {
-        ++context.counters->traversing_player_full_expansion_decisions;
-    }
+
     for (std::size_t action = 0; action < action_count; ++action) {
         auto child_context = context;
         if (meta.player == 0) {
@@ -803,12 +871,12 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             child_context.p1 *= average_strategy[action];
         }
         const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(action));
-        action_values[action] = traverse(child_idx, child_context);
+        action_values[action] = (this->*context.traverse_impl)(child_idx, child_context);
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id);
-    auto row_writeback_start = std::chrono::steady_clock::now();
+    const auto row_writeback_start = std::chrono::steady_clock::now();
     for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
         double node_value = 0.0;
         fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
@@ -836,6 +904,215 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
     if (meta.player == context.traversing_player) {
         context.scratch->audit.traversing_player_seconds += elapsed_seconds_since(traversing_start);
     }
+    return return_value;
+}
+
+double HUNLFlatMCCFR::traverse_opponent_sampled_decision(
+    const HUNLFlatNodeMeta& meta,
+    TraversalContext& context,
+    bool use_variance_reduction) {
+    const auto opponent_start = std::chrono::steady_clock::now();
+    const auto& row_meta = infoset_meta(meta.infoset_id);
+    const auto action_count = static_cast<std::size_t>(meta.action_count);
+    auto& bucket_strategy = context.scratch->bucket_strategy;
+    const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+
+    if (context.counters != nullptr) {
+        ++context.counters->opponent_sampled_decisions;
+        context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+    }
+
+    const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
+    auto& row = context.scratch->ensure_row(meta.infoset_id);
+    const auto row_writeback_start = std::chrono::steady_clock::now();
+    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
+        for (std::size_t action = 0; action < action_count; ++action) {
+            const auto probability = bucket_strategy[action];
+            const auto offset = row_value_index(row_meta, bucket, action);
+            row.strategy_delta[offset] += own_reach * probability;
+        }
+    }
+    context.scratch->audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
+
+    const auto sampled = sample_weighted_prefix(average_strategy.data(), action_count, *context.rng);
+    if (context.counters != nullptr) {
+        ++context.counters->sampled_opponent_actions;
+    }
+
+    auto child_context = context;
+    if (meta.player == 0) {
+        child_context.p0 *= average_strategy[sampled.first];
+    } else {
+        child_context.p1 *= average_strategy[sampled.first];
+    }
+    const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(sampled.first));
+    const auto sampled_value = (this->*context.traverse_impl)(child_idx, child_context);
+    if (!use_variance_reduction) {
+        context.scratch->audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
+        return sampled_value;
+    }
+
+    double expected_baseline = 0.0;
+    for (std::size_t action = 0; action < action_count; ++action) {
+        expected_baseline += average_strategy[action] * infoset_action_baseline(meta.infoset_id, action);
+    }
+    const auto corrected_value =
+        sampled_value - infoset_action_baseline(meta.infoset_id, sampled.first) + expected_baseline;
+    observe_infoset_action_baseline(
+        *context.scratch,
+        meta.infoset_id,
+        action_count,
+        sampled.first,
+        sampled_value);
+    if (context.counters != nullptr) {
+        record_variance_sample(*context.counters, sampled_value, corrected_value);
+    }
+    context.scratch->audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
+    return corrected_value;
+}
+
+double HUNLFlatMCCFR::traverse_average_strategy_decision(
+    const HUNLFlatNodeMeta& meta,
+    TraversalContext& context,
+    bool use_variance_reduction) {
+    const auto as_start = std::chrono::steady_clock::now();
+    const auto& row_meta = infoset_meta(meta.infoset_id);
+    const auto action_count = static_cast<std::size_t>(meta.action_count);
+    auto& action_values = context.scratch->action_values;
+    auto& bucket_strategy = context.scratch->bucket_strategy;
+    auto& inclusion_probabilities = context.scratch->inclusion_probabilities;
+    auto& sampled_actions = context.scratch->sampled_actions;
+    const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+
+    if (context.counters != nullptr) {
+        context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+    }
+
+    const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
+    auto& row = context.scratch->ensure_row(meta.infoset_id);
+    auto row_writeback_seconds = 0.0;
+    auto row_writeback_start = std::chrono::steady_clock::now();
+    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
+        for (std::size_t action = 0; action < action_count; ++action) {
+            const auto offset = row_value_index(row_meta, bucket, action);
+            row.strategy_delta[offset] += own_reach * bucket_strategy[action];
+        }
+    }
+    row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
+
+    fill_average_strategy_sampling_probabilities(
+        meta.infoset_id,
+        inclusion_probabilities.data(),
+        action_count,
+        context.scratch->strategy_sum_values.data());
+    std::size_t sampled_count = 0;
+    if (context.counters != nullptr) {
+        context.counters->as_actions_considered += static_cast<std::uint64_t>(action_count);
+    }
+
+    double rho_sum = 0.0;
+    for (std::size_t action = 0; action < action_count; ++action) {
+        const auto rho = inclusion_probabilities[action];
+        rho_sum += rho;
+        sampled_actions[action] = 0U;
+        if (context.rng->bernoulli(rho)) {
+            sampled_actions[action] = 1U;
+            ++sampled_count;
+        }
+    }
+
+    double none_selected_probability = 1.0;
+    for (std::size_t action = 0; action < action_count; ++action) {
+        none_selected_probability *= (1.0 - inclusion_probabilities[action]);
+    }
+
+    if (sampled_count == 0 && action_count > 0) {
+        const auto forced = rho_sum > 0.0
+            ? sample_weighted_prefix(inclusion_probabilities.data(), action_count, *context.rng).first
+            : std::size_t{0};
+        sampled_actions[forced] = 1U;
+        sampled_count = 1;
+        if (context.counters != nullptr) {
+            ++context.counters->as_forced_at_least_one_count;
+        }
+    }
+
+    for (std::size_t action = 0; action < action_count; ++action) {
+        if (sampled_actions[action] && rho_sum > 0.0) {
+            inclusion_probabilities[action] =
+                std::min(
+                    1.0,
+                    inclusion_probabilities[action] +
+                        none_selected_probability * (inclusion_probabilities[action] / rho_sum));
+        }
+    }
+
+    if (context.counters != nullptr) {
+        context.counters->as_actions_sampled += static_cast<std::uint64_t>(sampled_count);
+        context.counters->traversing_player_action_expansions += static_cast<std::uint64_t>(sampled_count);
+    }
+
+    for (std::size_t action = 0; action < action_count; ++action) {
+        if (!sampled_actions[action]) {
+            action_values[action] = 0.0;
+            continue;
+        }
+
+        auto child_context = context;
+        if (meta.player == 0) {
+            child_context.p0 *= average_strategy[action];
+        } else {
+            child_context.p1 *= average_strategy[action];
+        }
+        const auto child_idx = graph_.children.at(meta.child_begin + static_cast<std::uint32_t>(action));
+        const auto inclusion_probability = std::max(inclusion_probabilities[action], config_.as_epsilon);
+        const auto sampled_value = (this->*context.traverse_impl)(child_idx, child_context);
+        const auto raw_estimate = sampled_value / inclusion_probability;
+        if (!use_variance_reduction) {
+            action_values[action] = raw_estimate;
+            continue;
+        }
+
+        const auto baseline = infoset_action_baseline(meta.infoset_id, action);
+        action_values[action] = baseline + (sampled_value - baseline) / inclusion_probability;
+        observe_infoset_action_baseline(
+            *context.scratch,
+            meta.infoset_id,
+            action_count,
+            action,
+            sampled_value);
+        if (context.counters != nullptr) {
+            record_variance_sample(*context.counters, raw_estimate, action_values[action]);
+        }
+    }
+
+    auto& node_values = context.scratch->node_values;
+    std::fill(node_values.begin(), node_values.begin() + row_meta.bucket_count, 0.0);
+    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+        fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
+        for (std::size_t action = 0; action < action_count; ++action) {
+            node_values[bucket] += bucket_strategy[action] * action_values[action];
+        }
+    }
+
+    const auto opponent_reach = context.traversing_player == 0 ? context.p1 : context.p0;
+    row_writeback_start = std::chrono::steady_clock::now();
+    for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
+        for (std::size_t action = 0; action < action_count; ++action) {
+            const auto offset = row_value_index(row_meta, bucket, action);
+            row.regret_delta[offset] += opponent_reach * (action_values[action] - node_values[bucket]);
+        }
+    }
+    row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
+    context.scratch->audit.row_writeback_seconds += row_writeback_seconds;
+
+    double return_value = 0.0;
+    for (std::size_t action = 0; action < action_count; ++action) {
+        return_value += average_strategy[action] * action_values[action];
+    }
+    context.scratch->audit.average_strategy_seconds += elapsed_seconds_since(as_start);
     return return_value;
 }
 
@@ -1297,6 +1574,27 @@ void HUNLFlatMCCFR::execute_worker_batch(
     HUNLSampledTrajectoryRange range) {
     auto& scratch = worker_scratch_[worker_index];
     scratch.clear_keep_capacity();
+    TraversalContext::TraverseImpl traverse_impl = &HUNLFlatMCCFR::traverse_exact;
+    switch (config_.mode) {
+        case HUNLFlatSamplingMode::Exact:
+            traverse_impl = &HUNLFlatMCCFR::traverse_exact;
+            break;
+        case HUNLFlatSamplingMode::PublicChance:
+            traverse_impl = variance_reduction_enabled()
+                ? &HUNLFlatMCCFR::traverse_public_chance_vr
+                : &HUNLFlatMCCFR::traverse_public_chance;
+            break;
+        case HUNLFlatSamplingMode::External:
+            traverse_impl = variance_reduction_enabled()
+                ? &HUNLFlatMCCFR::traverse_external_vr
+                : &HUNLFlatMCCFR::traverse_external;
+            break;
+        case HUNLFlatSamplingMode::AverageStrategy:
+            traverse_impl = variance_reduction_enabled()
+                ? &HUNLFlatMCCFR::traverse_average_strategy_vr
+                : &HUNLFlatMCCFR::traverse_average_strategy;
+            break;
+    }
     const auto worker_start = std::chrono::steady_clock::now();
     for (std::uint64_t trajectory_id = range.begin; trajectory_id < range.end; ++trajectory_id) {
         const auto seed = PcsRng::mix_seed(
@@ -1310,6 +1608,7 @@ void HUNLFlatMCCFR::execute_worker_batch(
         context.rng = &rng;
         context.counters = &scratch.counters;
         context.scratch = &scratch;
+        context.traverse_impl = traverse_impl;
         (void)traverse(graph_.root, context);
     }
     auto& worker_profile = profile_.workers[worker_index];

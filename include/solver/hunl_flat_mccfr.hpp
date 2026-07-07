@@ -226,15 +226,37 @@ private:
     };
 
     struct TraversalContext {
+        using TraverseImpl = double (HUNLFlatMCCFR::*)(std::uint32_t node_idx, TraversalContext& context);
+
         PlayerId traversing_player = 0;
         double p0 = 1.0;
         double p1 = 1.0;
         PcsRng* rng = nullptr;
         Counters* counters = nullptr;
         WorkerScratch* scratch = nullptr;
+        TraverseImpl traverse_impl = nullptr;
     };
 
     [[nodiscard]] double traverse(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_exact(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_public_chance(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_public_chance_vr(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_external(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_external_vr(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_average_strategy(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_average_strategy_vr(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_full_expansion_decision(
+        const HUNLFlatNodeMeta& meta,
+        TraversalContext& context,
+        bool count_traversing_full_expansion);
+    [[nodiscard]] double traverse_opponent_sampled_decision(
+        const HUNLFlatNodeMeta& meta,
+        TraversalContext& context,
+        bool use_variance_reduction);
+    [[nodiscard]] double traverse_average_strategy_decision(
+        const HUNLFlatNodeMeta& meta,
+        TraversalContext& context,
+        bool use_variance_reduction);
     void compute_current_strategy_rows();
     void rebuild_average_policy_cache();
     void fill_current_strategy_bucket(
