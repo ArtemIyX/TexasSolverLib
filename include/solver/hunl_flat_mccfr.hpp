@@ -265,7 +265,23 @@ private:
         const TraversalNodeMeta& meta,
         TraversalContext& context,
         bool count_traversing_full_expansion);
+    [[nodiscard]] double traverse_full_expansion_decision_dense_validation(
+        const TraversalNodeMeta& meta,
+        TraversalContext& context,
+        bool count_traversing_full_expansion);
+    [[nodiscard]] double traverse_full_expansion_decision_generic(
+        const TraversalNodeMeta& meta,
+        TraversalContext& context,
+        bool count_traversing_full_expansion);
     [[nodiscard]] double traverse_opponent_sampled_decision(
+        const TraversalNodeMeta& meta,
+        TraversalContext& context,
+        bool use_variance_reduction);
+    [[nodiscard]] double traverse_opponent_sampled_decision_dense_validation(
+        const TraversalNodeMeta& meta,
+        TraversalContext& context,
+        bool use_variance_reduction);
+    [[nodiscard]] double traverse_opponent_sampled_decision_generic(
         const TraversalNodeMeta& meta,
         TraversalContext& context,
         bool use_variance_reduction);
@@ -273,7 +289,7 @@ private:
         const TraversalNodeMeta& meta,
         TraversalContext& context,
         bool use_variance_reduction);
-    [[nodiscard]] bool can_use_dense_action_major_fast_path() const noexcept;
+    [[nodiscard]] bool can_use_dense_validation_infoset_action_hand_fast_path() const noexcept;
     void compute_current_strategy_rows();
     void rebuild_average_policy_cache();
     void fill_current_strategy_bucket(
