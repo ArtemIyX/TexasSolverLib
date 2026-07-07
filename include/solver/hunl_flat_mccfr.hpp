@@ -159,6 +159,11 @@ private:
     struct WorkerScratch {
         std::vector<double> action_values;
         std::vector<double> average_strategy;
+        std::vector<double> bucket_strategy;
+        std::vector<double> node_values;
+        std::vector<double> inclusion_probabilities;
+        std::vector<double> strategy_sum_values;
+        std::vector<std::uint8_t> sampled_actions;
         std::vector<WorkerDeltaRow> rows;
         std::unordered_map<InfosetId, std::size_t> row_lookup;
         std::vector<WorkerBaselineRow> infoset_baseline_rows;
@@ -167,6 +172,7 @@ private:
         std::unordered_map<std::uint32_t, std::size_t> node_baseline_lookup;
         Counters counters;
 
+        void prepare(std::size_t max_actions, std::size_t max_bucket_count);
         void clear_keep_capacity() noexcept;
         WorkerDeltaRow& ensure_row(InfosetId id, std::size_t value_count);
         WorkerBaselineRow& ensure_infoset_baseline_row(InfosetId id, std::size_t action_count);
@@ -189,9 +195,20 @@ private:
         std::size_t bucket,
         double* out,
         std::size_t action_count) const;
-    [[nodiscard]] std::vector<double> average_action_probabilities(InfosetId infoset_id) const;
-    [[nodiscard]] std::vector<double> average_strategy_sum_values(InfosetId infoset_id) const;
-    [[nodiscard]] std::vector<double> average_strategy_sampling_probabilities(InfosetId infoset_id) const;
+    void fill_average_action_probabilities(
+        InfosetId infoset_id,
+        double* out,
+        std::size_t action_count,
+        double* bucket_scratch) const;
+    void fill_average_strategy_sum_values(
+        InfosetId infoset_id,
+        double* out,
+        std::size_t action_count) const;
+    void fill_average_strategy_sampling_probabilities(
+        InfosetId infoset_id,
+        double* out,
+        std::size_t action_count,
+        double* strategy_sum_scratch) const;
     [[nodiscard]] std::size_t sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const;
     void apply_discount_if_enabled(std::uint32_t target_iteration, WorkerScratch& scratch);
     void discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);

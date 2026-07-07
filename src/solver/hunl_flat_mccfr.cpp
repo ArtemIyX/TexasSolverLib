@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace core {
 
@@ -107,6 +108,31 @@ std::vector<HUNLFlatInfosetTableMeta> build_infoset_meta(
     return meta;
 }
 
+std::pair<std::size_t, double> sample_weighted_prefix(
+    const double* weights,
+    std::size_t count,
+    PcsRng& rng) {
+    double total = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        total += std::max(0.0, weights[i]);
+    }
+    if (total <= 0.0) {
+        return {0U, count == 0 ? 0.0 : 1.0 / static_cast<double>(count)};
+    }
+
+    double draw = rng.next_unit_f64() * total;
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto weight = std::max(0.0, weights[i]);
+        if (draw < weight) {
+            return {i, weight / total};
+        }
+        draw -= weight;
+    }
+
+    const auto fallback_weight = std::max(0.0, weights[count - 1U]);
+    return {count - 1U, fallback_weight / total};
+}
+
 }  // namespace
 
 HUNLFlatMCCFR::HUNLFlatMCCFR(
@@ -137,6 +163,10 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     initialize_sparse_infoset_shapes(bucket_count_per_player);
     profile_.workers.resize(worker_count_);
     profile_.sampled_simd_backend = hunl_sampled_simd_backend();
+    const auto max_bucket_count = std::max(bucket_count_per_player[0], bucket_count_per_player[1]);
+    for (auto& scratch : worker_scratch_) {
+        scratch.prepare(graph_.max_actions, max_bucket_count);
+    }
     initialize_worker_threads();
 }
 
@@ -311,9 +341,17 @@ HUNLSampledConstRowView HUNLFlatMCCFR::sparse_row_or_empty(InfosetId infoset_id)
     return sparse_storage_.view(infoset_id);
 }
 
+void HUNLFlatMCCFR::WorkerScratch::prepare(std::size_t max_actions, std::size_t max_bucket_count) {
+    action_values.resize(max_actions, 0.0);
+    average_strategy.resize(max_actions, 0.0);
+    bucket_strategy.resize(max_actions, 0.0);
+    inclusion_probabilities.resize(max_actions, 0.0);
+    strategy_sum_values.resize(max_actions, 0.0);
+    sampled_actions.resize(max_actions, 0U);
+    node_values.resize(max_bucket_count, 0.0);
+}
+
 void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
-    action_values.clear();
-    average_strategy.clear();
     rows.clear();
     row_lookup.clear();
     infoset_baseline_rows.clear();
@@ -500,12 +538,14 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
 
     const auto& row_meta = infoset_meta(meta.infoset_id);
     const auto action_count = static_cast<std::size_t>(meta.action_count);
-    std::vector<double> action_values(action_count, 0.0);
-    const auto average_strategy = average_action_probabilities(meta.infoset_id);
-
-    if (average_strategy.size() != action_count) {
-        throw std::logic_error("HUNLFlatMCCFR action probability size mismatch");
-    }
+    auto& action_values = context.scratch->action_values;
+    auto& average_strategy = context.scratch->average_strategy;
+    auto& bucket_strategy = context.scratch->bucket_strategy;
+    fill_average_action_probabilities(
+        meta.infoset_id,
+        average_strategy.data(),
+        action_count,
+        bucket_strategy.data());
 
     if (meta.player == context.traversing_player &&
         context.counters != nullptr &&
@@ -518,7 +558,6 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         meta.player != context.traversing_player) {
         const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
         auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
-        std::vector<double> bucket_strategy(action_count, 0.0);
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -528,7 +567,7 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             }
         }
 
-        const auto sampled = context.rng->sample_weighted(average_strategy);
+        const auto sampled = sample_weighted_prefix(average_strategy.data(), action_count, *context.rng);
         if (context.counters != nullptr) {
             ++context.counters->sampled_opponent_actions;
         }
@@ -567,7 +606,6 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         meta.player == context.traversing_player) {
         const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
         auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
-        std::vector<double> bucket_strategy(action_count, 0.0);
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -576,9 +614,13 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             }
         }
 
-        const auto rho = average_strategy_sampling_probabilities(meta.infoset_id);
-        std::vector<double> inclusion_probabilities = rho;
-        std::vector<bool> sampled_actions(action_count, false);
+        auto& inclusion_probabilities = context.scratch->inclusion_probabilities;
+        auto& sampled_actions = context.scratch->sampled_actions;
+        fill_average_strategy_sampling_probabilities(
+            meta.infoset_id,
+            inclusion_probabilities.data(),
+            action_count,
+            context.scratch->strategy_sum_values.data());
         std::size_t sampled_count = 0;
         if (context.counters != nullptr) {
             context.counters->as_actions_considered += static_cast<std::uint64_t>(action_count);
@@ -586,26 +628,28 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
 
         double rho_sum = 0.0;
         for (std::size_t action = 0; action < action_count; ++action) {
-            rho_sum += rho[action];
-            if (context.rng->bernoulli(rho[action])) {
-                sampled_actions[action] = true;
+            const auto rho = inclusion_probabilities[action];
+            rho_sum += rho;
+            sampled_actions[action] = 0U;
+            if (context.rng->bernoulli(rho)) {
+                sampled_actions[action] = 1U;
                 ++sampled_count;
             }
         }
 
         const auto none_selected_probability = [&]() {
             double probability = 1.0;
-            for (const auto sample_probability : rho) {
-                probability *= (1.0 - sample_probability);
+            for (std::size_t action = 0; action < action_count; ++action) {
+                probability *= (1.0 - inclusion_probabilities[action]);
             }
             return probability;
         }();
 
         if (sampled_count == 0 && action_count > 0) {
             const auto forced = rho_sum > 0.0
-                ? context.rng->sample_weighted(rho).first
+                ? sample_weighted_prefix(inclusion_probabilities.data(), action_count, *context.rng).first
                 : std::size_t{0};
-            sampled_actions[forced] = true;
+            sampled_actions[forced] = 1U;
             sampled_count = 1;
             if (context.counters != nullptr) {
                 ++context.counters->as_forced_at_least_one_count;
@@ -615,7 +659,10 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
         for (std::size_t action = 0; action < action_count; ++action) {
             if (sampled_actions[action] && rho_sum > 0.0) {
                 inclusion_probabilities[action] =
-                    std::min(1.0, rho[action] + none_selected_probability * (rho[action] / rho_sum));
+                    std::min(
+                        1.0,
+                        inclusion_probabilities[action] +
+                            none_selected_probability * (inclusion_probabilities[action] / rho_sum));
             }
         }
 
@@ -658,7 +705,8 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
             }
         }
 
-        std::vector<double> node_values(row_meta.bucket_count, 0.0);
+        auto& node_values = context.scratch->node_values;
+        std::fill(node_values.begin(), node_values.begin() + row_meta.bucket_count, 0.0);
         for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
             fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
             for (std::size_t action = 0; action < action_count; ++action) {
@@ -694,7 +742,6 @@ double HUNLFlatMCCFR::traverse(std::uint32_t node_idx, TraversalContext& context
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
     auto& row = context.scratch->ensure_row(meta.infoset_id, row_meta.value_count);
-    std::vector<double> bucket_strategy(action_count, 0.0);
     for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
         double node_value = 0.0;
         fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
@@ -826,31 +873,42 @@ void HUNLFlatMCCFR::fill_current_strategy_bucket(
     }
 }
 
-std::vector<double> HUNLFlatMCCFR::average_action_probabilities(InfosetId infoset_id) const {
+void HUNLFlatMCCFR::fill_average_action_probabilities(
+    InfosetId infoset_id,
+    double* out,
+    std::size_t action_count,
+    double* bucket_scratch) const {
     const auto& meta = infoset_meta(infoset_id);
-    std::vector<double> averaged(meta.action_count, 0.0);
+    if (out == nullptr) {
+        return;
+    }
+    std::fill(out, out + action_count, 0.0);
     if (meta.bucket_count == 0) {
-        return averaged;
+        return;
     }
 
-    std::vector<double> bucket_strategy(meta.action_count, 0.0);
     for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-        fill_current_strategy_bucket(infoset_id, bucket, bucket_strategy.data(), meta.action_count);
+        fill_current_strategy_bucket(infoset_id, bucket, bucket_scratch, meta.action_count);
         for (std::size_t action = 0; action < meta.action_count; ++action) {
-            averaged[action] += bucket_strategy[action];
+            out[action] += bucket_scratch[action];
         }
     }
-    for (auto& probability : averaged) {
-        probability /= static_cast<double>(meta.bucket_count);
+    for (std::size_t action = 0; action < meta.action_count; ++action) {
+        out[action] /= static_cast<double>(meta.bucket_count);
     }
-    return averaged;
 }
 
-std::vector<double> HUNLFlatMCCFR::average_strategy_sum_values(InfosetId infoset_id) const {
+void HUNLFlatMCCFR::fill_average_strategy_sum_values(
+    InfosetId infoset_id,
+    double* out,
+    std::size_t action_count) const {
     const auto& meta = infoset_meta(infoset_id);
-    std::vector<double> averaged(meta.action_count, 0.0);
+    if (out == nullptr) {
+        return;
+    }
+    std::fill(out, out + action_count, 0.0);
     if (meta.bucket_count == 0) {
-        return averaged;
+        return;
     }
 
     const auto row = config_.use_sparse_storage ? sparse_row_or_empty(infoset_id) : HUNLSampledConstRowView{};
@@ -862,33 +920,39 @@ std::vector<double> HUNLFlatMCCFR::average_strategy_sum_values(InfosetId infoset
             } else {
                 value = infoset_table_.strategy_sum_value(infoset_id, row_value_index(meta, bucket, action));
             }
-            averaged[action] += value;
+            out[action] += value;
         }
     }
-    for (auto& value : averaged) {
-        value /= static_cast<double>(meta.bucket_count);
+    for (std::size_t action = 0; action < meta.action_count; ++action) {
+        out[action] /= static_cast<double>(meta.bucket_count);
     }
-    return averaged;
 }
 
-std::vector<double> HUNLFlatMCCFR::average_strategy_sampling_probabilities(InfosetId infoset_id) const {
-    const auto strategy_sum = average_strategy_sum_values(infoset_id);
-    std::vector<double> rho(strategy_sum.size(), 1.0);
+void HUNLFlatMCCFR::fill_average_strategy_sampling_probabilities(
+    InfosetId infoset_id,
+    double* out,
+    std::size_t action_count,
+    double* strategy_sum_scratch) const {
+    if (out == nullptr || strategy_sum_scratch == nullptr) {
+        return;
+    }
+    fill_average_strategy_sum_values(infoset_id, strategy_sum_scratch, action_count);
     double row_strategy_sum = 0.0;
-    for (const auto value : strategy_sum) {
+    for (std::size_t action = 0; action < action_count; ++action) {
+        const auto value = strategy_sum_scratch[action];
         row_strategy_sum += std::max(value, 0.0);
     }
 
     const auto denominator = config_.as_beta + row_strategy_sum;
-    for (std::size_t action = 0; action < strategy_sum.size(); ++action) {
+    for (std::size_t action = 0; action < action_count; ++action) {
         double probability = 1.0;
         if (denominator > 0.0) {
-            probability = (config_.as_beta + config_.as_tau * std::max(strategy_sum[action], 0.0)) / denominator;
+            probability = (config_.as_beta + config_.as_tau * std::max(strategy_sum_scratch[action], 0.0)) /
+                denominator;
         }
         probability = std::max(config_.as_epsilon, probability);
-        rho[action] = std::min(1.0, probability);
+        out[action] = std::min(1.0, probability);
     }
-    return rho;
 }
 
 std::size_t HUNLFlatMCCFR::sample_chance_child(const HUNLFlatNodeMeta& meta, PcsRng& rng) const {
@@ -971,6 +1035,7 @@ void HUNLFlatMCCFR::apply_discount_if_enabled(std::uint32_t target_iteration, Wo
 }
 
 void HUNLFlatMCCFR::run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player) {
+    compute_current_strategy_rows();
     for (std::uint64_t trajectory_begin = 0;
          trajectory_begin < config_.traversals_per_iteration;
          trajectory_begin += config_.batch_size) {
@@ -993,7 +1058,6 @@ void HUNLFlatMCCFR::run_player_subbatch(
         return;
     }
 
-    compute_current_strategy_rows();
     const auto batches = HUNLSampledScheduler::partition_deterministic(
         trajectory_count,
         worker_count_);
