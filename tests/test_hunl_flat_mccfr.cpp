@@ -1,5 +1,6 @@
 #include "solver/hunl_flat_expected_value.hpp"
 #include "solver/hunl_flat_mccfr.hpp"
+#include "solver/hunl_sampled_scheduler.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -702,6 +703,73 @@ TEST_CASE(hunl_flat_mccfr_multiworker_same_seed_is_deterministic) {
     }
 }
 
+TEST_CASE(hunl_sampled_scheduler_partition_deterministic_covers_each_trajectory_exactly_once) {
+    {
+        const auto batches = core::HUNLSampledScheduler::partition_deterministic(10, 3);
+        EXPECT_EQ(batches.size(), 3U);
+        EXPECT_EQ(batches[0].worker_index, 0U);
+        EXPECT_EQ(batches[1].worker_index, 1U);
+        EXPECT_EQ(batches[2].worker_index, 2U);
+        EXPECT_EQ(batches[0].trajectories.begin, 0U);
+        EXPECT_EQ(batches[0].trajectories.end, 4U);
+        EXPECT_EQ(batches[1].trajectories.begin, 4U);
+        EXPECT_EQ(batches[1].trajectories.end, 7U);
+        EXPECT_EQ(batches[2].trajectories.begin, 7U);
+        EXPECT_EQ(batches[2].trajectories.end, 10U);
+    }
+
+    {
+        const auto batches = core::HUNLSampledScheduler::partition_deterministic(2, 5);
+        EXPECT_EQ(batches.size(), 5U);
+        std::uint64_t covered = 0;
+        for (std::size_t worker_index = 0; worker_index < batches.size(); ++worker_index) {
+            const auto& batch = batches[worker_index];
+            EXPECT_EQ(batch.worker_index, worker_index);
+            EXPECT_EQ(batch.trajectories.begin, covered);
+            EXPECT_TRUE(batch.trajectories.end >= batch.trajectories.begin);
+            covered = batch.trajectories.end;
+        }
+        EXPECT_EQ(covered, 2U);
+    }
+
+    {
+        const auto batches = core::HUNLSampledScheduler::partition_deterministic(9, 0);
+        EXPECT_EQ(batches.size(), 1U);
+        EXPECT_EQ(batches[0].worker_index, 0U);
+        EXPECT_EQ(batches[0].trajectories.begin, 0U);
+        EXPECT_EQ(batches[0].trajectories.end, 9U);
+    }
+}
+
+TEST_CASE(hunl_flat_mccfr_same_seed_matches_across_worker_counts) {
+    const auto single_graph = make_external_sampling_graph();
+    const auto multi_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 321;
+    config.traversals_per_iteration = 30;
+    config.batch_size = 8;
+
+    core::HUNLFlatMCCFR single(single_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    core::HUNLFlatMCCFR multi(multi_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+
+    single.run_iterations(18);
+    multi.run_iterations(18);
+
+    const auto single_exported = single.export_average_strategy();
+    const auto multi_exported = multi.export_average_strategy();
+    EXPECT_EQ(single_exported.size(), multi_exported.size());
+    for (const auto& [key, values] : single_exported) {
+        const auto it = multi_exported.find(key);
+        EXPECT_TRUE(it != multi_exported.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-12);
+        }
+    }
+}
+
 TEST_CASE(hunl_flat_mccfr_profile_accumulates_across_iterations_and_players) {
     const auto graph = make_external_sampling_graph();
 
@@ -719,6 +787,43 @@ TEST_CASE(hunl_flat_mccfr_profile_accumulates_across_iterations_and_players) {
     EXPECT_TRUE(solver.profile().strategy_seconds >= 0.0);
     EXPECT_TRUE(solver.profile().traverse_seconds >= 0.0);
     EXPECT_TRUE(solver.profile().merge_seconds >= 0.0);
+}
+
+TEST_CASE(hunl_flat_mccfr_profile_tracks_player_batch_rebuilds_and_worker_dispatch_structure) {
+    const auto graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 919;
+    config.traversals_per_iteration = 10;
+    config.batch_size = 4;
+    config.update_both_players = true;
+
+    constexpr std::uint32_t iterations = 5;
+    constexpr std::size_t workers = 3;
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
+    solver.run_iterations(iterations);
+
+    const auto player_batches =
+        static_cast<std::uint64_t>(iterations) * (config.update_both_players ? 2ULL : 1ULL);
+    const auto subbatches_per_player_batch =
+        (static_cast<std::uint64_t>(config.traversals_per_iteration) +
+         static_cast<std::uint64_t>(config.batch_size) - 1ULL) /
+        static_cast<std::uint64_t>(config.batch_size);
+    const auto total_subbatches = player_batches * subbatches_per_player_batch;
+    const auto expected_worker_executions = total_subbatches * static_cast<std::uint64_t>(workers);
+
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, player_batches);
+    EXPECT_EQ(solver.profile().worker_batch_executions, expected_worker_executions);
+    EXPECT_EQ(solver.profile().worker_wakeups, expected_worker_executions);
+    EXPECT_EQ(solver.profile().workers.size(), workers);
+    EXPECT_TRUE(solver.profile().active_infoset_samples >= total_subbatches);
+
+    std::uint64_t summed_batch_executions = 0;
+    for (const auto& worker : solver.profile().workers) {
+        summed_batch_executions += worker.batch_executions;
+    }
+    EXPECT_EQ(summed_batch_executions, expected_worker_executions);
 }
 
 TEST_CASE(hunl_flat_mccfr_default_layout_keeps_nonzero_offset_infoset_rows_normalized) {

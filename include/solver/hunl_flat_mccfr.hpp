@@ -53,6 +53,7 @@ public:
     };
 
     struct WorkerProfile {
+        double trajectory_seconds = 0.0;
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
         std::uint64_t traversals = 0;
@@ -63,17 +64,25 @@ public:
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
         std::uint64_t active_infosets = 0;
+        std::uint64_t batch_executions = 0;
     };
 
     struct Profile {
         double snapshot_seconds = 0.0;
         double discount_seconds = 0.0;
         double strategy_seconds = 0.0;
+        double average_policy_seconds = 0.0;
+        double dispatch_seconds = 0.0;
+        double trajectory_seconds = 0.0;
         double traverse_seconds = 0.0;
         double merge_seconds = 0.0;
         double sampled_kernel_scalar_seconds = 0.0;
         double sampled_kernel_simd_seconds = 0.0;
         std::uint64_t traversals = 0;
+        std::uint64_t worker_wakeups = 0;
+        std::uint64_t strategy_snapshot_rebuilds = 0;
+        std::uint64_t worker_batch_executions = 0;
+        std::uint64_t active_infoset_samples = 0;
         std::uint64_t baseline_infoset_rows = 0;
         std::uint64_t baseline_node_rows = 0;
         std::uint64_t baseline_bytes = 0;
@@ -172,6 +181,7 @@ private:
         std::vector<WorkerBaselineRow> node_baseline_rows;
         std::unordered_map<std::uint32_t, std::size_t> node_baseline_lookup;
         Counters counters;
+        double last_trajectory_seconds = 0.0;
 
         void prepare(std::size_t max_actions, std::size_t max_bucket_count);
         void prepare_delta_rows(const std::vector<HUNLFlatInfosetTableMeta>& infoset_meta);

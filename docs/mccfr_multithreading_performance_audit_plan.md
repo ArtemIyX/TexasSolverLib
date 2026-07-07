@@ -26,6 +26,64 @@ workers total_ms      iter_ms       iters/s       speedup     eff         merge_
 16      23290.151     232.902       4.29          0.35        0.02        186.097         23033.564       19.4978         15566022        
 ```
 
+```text
+batch       workers   total_ms      iter_ms       iters/s       speedup     eff         merge_ms        traverse_ms     ev_p0           
+64          1         418.349       2.092         478.07        1.00        1.00        5.527           396.770         14.4810         
+64          2         309.754       1.549         645.67        1.35        0.68        13.455          274.281         14.4810         
+64          4         304.120       1.521         657.63        1.38        0.34        26.883          250.555         14.4810         
+64          8         353.492       1.767         565.78        1.18        0.15        53.519          266.615         14.4810         
+64          16        664.866       3.324         300.81        0.63        0.04        116.733         499.130         14.4810         
+128         1         409.969       2.050         487.84        1.00        1.00        2.809           398.707         14.4810         
+128         2         270.724       1.354         738.76        1.51        0.76        7.234           251.027         14.4810         
+128         4         220.464       1.102         907.18        1.86        0.46        14.902          189.266         14.4810         
+128         8         274.656       1.373         728.18        1.49        0.19        31.104          220.788         14.4810         
+128         16        333.913       1.670         598.96        1.23        0.08        60.510          247.497         14.4810         
+256         1         420.967       2.105         475.10        1.00        1.00        2.013           412.527         14.4810         
+256         2         390.176       1.951         512.59        1.08        0.54        5.371           374.865         14.4810         
+256         4         242.708       1.214         824.04        1.73        0.43        9.399           222.416         14.4810         
+256         8         185.921       0.930         1075.73       2.26        0.28        15.672          158.789         14.4810         
+256         16        208.942       1.045         957.20        2.01        0.13        32.321          161.830         14.4810         
+512         1         418.056       2.090         478.40        1.00        1.00        1.225           412.595         14.4810         
+512         2         361.345       1.807         553.49        1.16        0.58        2.943           352.314         14.4810         
+512         4         213.885       1.069         935.08        1.95        0.49        4.872           202.314         14.4810         
+512         8         138.107       0.691         1448.16       3.03        0.38        7.954           123.516         14.4810         
+512         16        132.133       0.661         1513.63       3.16        0.20        16.394          107.584         14.4810         
+1024        1         415.413       2.077         481.45        1.00        1.00        0.842           411.320         14.4810         
+1024        2         348.019       1.740         574.68        1.19        0.60        1.512           342.973         14.4810         
+1024        4         195.548       0.978         1022.77       2.12        0.53        2.610           189.054         14.4810         
+1024        8         115.613       0.578         1729.90       3.59        0.45        4.042           107.749         14.4810         
+1024        16        90.578        0.453         2208.04       4.59        0.29        8.274           77.470          14.4810  
+```
+
+```text
+batch       workers   total_ms      iter_ms       iters/s       speedup     eff         setup_ms      dispatch_ms   traj_ms       merge_ms        traverse_ms     ev_p0           avg_rows      avg_nodes     
+64          1         421.981       2.110         473.95        1.00        1.00        0.271         6.638         391.437       5.508           398.849         14.4810         2.50          7.50          
+64          2         334.919       1.675         597.16        1.26        0.63        0.754         6.115         401.599       14.273          292.326         14.4810         2.50          7.50          
+64          4         322.305       1.612         620.53        1.31        0.33        0.714         3.991         416.071       26.432          264.279         14.4810         2.50          7.50          
+64          8         420.706       2.104         475.39        1.00        0.13        0.856         10.753        489.408       58.205          322.467         14.4810         2.50          7.50          
+64          16        681.955       3.410         293.27        0.62        0.04        0.946         22.853        701.950       118.452         511.915         14.4810         2.50          7.50          
+128         1         410.973       2.055         486.65        1.00        1.00        0.279         3.393         395.071       2.809           398.867         14.4810         2.50          7.50          
+128         2         295.630       1.478         676.52        1.39        0.70        0.705         0.920         403.361       7.623           271.602         14.4810         2.50          7.50          
+128         4         273.192       1.366         732.08        1.50        0.38        0.879         0.190         562.740       16.762          235.225         14.4810         2.50          7.50          
+128         8         274.499       1.372         728.60        1.50        0.19        0.863         0.230         694.558       27.743          223.549         14.4810         2.50          7.50          
+128         16        374.229       1.871         534.43        1.10        0.07        1.037         0.254         727.415       66.370          275.449         14.4810         2.50          7.50          
+256         1         422.540       2.113         473.33        1.00        1.00        0.512         2.178         411.644       1.800           414.034         14.4810         2.50          7.50          
+256         2         387.687       1.938         515.88        1.09        0.54        0.699         0.016         667.699       5.023           371.465         14.4810         2.50          7.50          
+256         4         240.254       1.201         832.45        1.76        0.44        0.751         0.003         672.560       8.994           220.083         14.4810         2.50          7.50          
+256         8         182.734       0.914         1094.49       2.31        0.29        0.707         0.012         689.143       14.426          156.882         14.4810         2.50          7.50          
+256         16        211.350       1.057         946.30        2.00        0.12        0.816         0.050         514.834       33.377          163.100         14.4810         2.50          7.50          
+512         1         397.423       1.987         503.24        1.00        1.00        0.282         0.864         392.959       0.726           393.924         14.4810         2.50          7.50          
+512         2         227.559       1.138         878.89        1.75        0.87        0.673         0.000         397.096       2.150           219.783         14.4810         2.50          7.50          
+512         4         137.010       0.685         1459.75       2.90        0.73        0.689         0.000         399.900       3.763           127.139         14.4810         2.50          7.50          
+512         8         97.568        0.488         2049.86       4.07        0.51        0.551         0.021         409.335       6.580           85.832          14.4810         2.50          7.50          
+512         16        125.004       0.625         1599.95       3.18        0.20        0.740         0.000         522.052       17.159          100.021         14.4810         2.50          7.50          
+1024        1         445.751       2.229         448.68        1.00        1.00        0.797         1.027         439.658       0.854           440.756         14.4810         2.50          7.50          
+1024        2         344.560       1.723         580.45        1.29        0.65        0.823         0.000         646.956       1.512           338.563         14.4810         2.50          7.50          
+1024        4         190.857       0.954         1047.91       2.34        0.58        0.665         0.000         663.289       2.340           184.593         14.4810         2.50          7.50          
+1024        8         114.424       0.572         1747.89       3.90        0.49        0.730         0.000         685.039       3.927           106.174         14.4810         2.50          7.50          
+1024        16        88.515        0.443         2259.51       5.04        0.31        0.658         0.000         688.154       7.768           76.173          14.4810         2.50          7.50       
+```
+
 This is not a contradiction of MCCFR as an algorithm. It is evidence that the current implementation is dominated by orchestration overhead:
 
 1. thread creation and join cost;
@@ -202,7 +260,7 @@ This plan does not try to:
 
 ## Phased Remediation Plan
 
-## Phase 1: Add Better Benchmark Modes Before Optimizing
+## + Phase 1: Add Better Benchmark Modes Before Optimizing
 
 ### Goal
 
@@ -234,7 +292,7 @@ If the benchmark stays too tiny, improvements may be hidden or misread.
 - same seed still gives stable expected value output;
 - benchmark remains optional example-only code.
 
-## Phase 2: Replace Per-Subbatch Thread Creation With Persistent Workers
+## + Phase 2: Replace Per-Subbatch Thread Creation With Persistent Workers
 
 ### Goal
 
@@ -268,7 +326,7 @@ This is the single clearest reason `16` workers are slower than `1`.
 - fixed-seed 1-worker vs N-worker determinism tests still pass;
 - scaling benchmark shows a clear improvement relative to the current version.
 
-## Phase 3: Move Strategy Snapshot Computation Out Of The Inner Subbatch Loop
+## + Phase 3: Move Strategy Snapshot Computation Out Of The Inner Subbatch Loop
 
 ### Goal
 
@@ -300,7 +358,7 @@ That is why tests for deterministic output and small-game convergence must stay 
 - output remains deterministic under fixed seed;
 - existing MCCFR tests still pass.
 
-## Phase 4: Remove Heap Allocation From Traversal Hot Paths
+## + Phase 4: Remove Heap Allocation From Traversal Hot Paths
 
 ### Goal
 
@@ -335,7 +393,7 @@ This is not just about raw speed. It also reduces allocator contention between w
 - output remains unchanged under fixed seed;
 - benchmark runtime improves for both 1-worker and N-worker runs.
 
-## Phase 5: Make Worker Delta Storage Truly Preallocated
+## + Phase 5: Make Worker Delta Storage Truly Preallocated
 
 ### Goal
 
@@ -364,7 +422,7 @@ The current worker-local model is deterministic, but still container-heavy.
 - merge still runs in fixed worker index order;
 - benchmark merge cost and total cost improve.
 
-## Phase 6: Cache Average Action Probabilities Per Batch Wave
+## + Phase 6: Cache Average Action Probabilities Per Batch Wave
 
 ### Goal
 
@@ -396,7 +454,7 @@ These are not interchangeable.
 - output remains unchanged under fixed seed;
 - profile shows reduced traversal cost.
 
-## Phase 7: Revisit Batch Size And Work Granularity
+## + Phase 7: Revisit Batch Size And Work Granularity
 
 ### Goal
 
@@ -428,7 +486,7 @@ That is acceptable. We can keep different defaults by use case later if necessar
 - benchmark documentation includes a recommended scaling-study batch size;
 - scaling benchmark is no longer obviously overhead-bound by too-tiny subbatches.
 
-## Phase 8: Extend Profiling So Bottlenecks Are Visible
+## + Phase 8: Extend Profiling So Bottlenecks Are Visible
 
 ### Goal
 

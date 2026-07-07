@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <chrono>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -383,6 +384,7 @@ void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
     node_baseline_rows.clear();
     node_baseline_lookup.clear();
     counters = {};
+    last_trajectory_seconds = 0.0;
 }
 
 HUNLFlatMCCFR::WorkerDeltaRow& HUNLFlatMCCFR::WorkerScratch::ensure_row(InfosetId id) {
@@ -831,6 +833,7 @@ void HUNLFlatMCCFR::compute_current_strategy_rows() {
 }
 
 void HUNLFlatMCCFR::rebuild_average_policy_cache() {
+    const auto cache_start = std::chrono::steady_clock::now();
     for (const auto& meta : infoset_meta_) {
         auto& averaged = average_policy_cache_[meta.id.value];
         fill_average_action_probabilities(
@@ -839,6 +842,8 @@ void HUNLFlatMCCFR::rebuild_average_policy_cache() {
             meta.action_count,
             worker_scratch_[0].bucket_strategy.data());
     }
+    profile_.average_policy_seconds +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - cache_start).count();
 }
 
 void HUNLFlatMCCFR::fill_current_strategy_bucket(
@@ -1064,6 +1069,7 @@ void HUNLFlatMCCFR::apply_discount_if_enabled(std::uint32_t target_iteration, Wo
 void HUNLFlatMCCFR::run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player) {
     compute_current_strategy_rows();
     rebuild_average_policy_cache();
+    ++profile_.strategy_snapshot_rebuilds;
     for (std::uint64_t trajectory_begin = 0;
          trajectory_begin < config_.traversals_per_iteration;
          trajectory_begin += config_.batch_size) {
@@ -1090,6 +1096,7 @@ void HUNLFlatMCCFR::run_player_subbatch(
         trajectory_count,
         worker_count_);
     const auto traverse_start = std::chrono::steady_clock::now();
+    const auto dispatch_start = std::chrono::steady_clock::now();
 
     if (worker_count_ > 1) {
         {
@@ -1105,6 +1112,7 @@ void HUNLFlatMCCFR::run_player_subbatch(
         }
         worker_cv_.notify_all();
     }
+    profile_.worker_wakeups += worker_count_;
 
     execute_worker_batch(0, target_iteration, traversing_player, trajectory_begin, batches[0].trajectories);
 
@@ -1114,6 +1122,16 @@ void HUNLFlatMCCFR::run_player_subbatch(
             return worker_completed_count_ == worker_count_ - 1;
         });
     }
+    double subbatch_trajectory_seconds = 0.0;
+    for (const auto& scratch : worker_scratch_) {
+        subbatch_trajectory_seconds += scratch.last_trajectory_seconds;
+    }
+    profile_.trajectory_seconds += subbatch_trajectory_seconds;
+    profile_.dispatch_seconds +=
+        std::max(
+            0.0,
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - dispatch_start).count() -
+                subbatch_trajectory_seconds);
 
     profile_.traverse_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - traverse_start).count();
@@ -1123,6 +1141,15 @@ void HUNLFlatMCCFR::run_player_subbatch(
         profile_.as_actions_sampled += scratch.counters.as_actions_sampled;
         profile_.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
     }
+    profile_.active_infoset_samples +=
+        std::accumulate(
+            worker_scratch_.begin(),
+            worker_scratch_.end(),
+            std::uint64_t{0},
+            [](std::uint64_t sum, const WorkerScratch& scratch) {
+                return sum + static_cast<std::uint64_t>(scratch.dirty_row_ids.size());
+            });
+    profile_.worker_batch_executions += worker_count_;
 
     for (std::size_t worker_index = 0; worker_index < worker_count_; ++worker_index) {
         apply_discount_if_enabled(target_iteration, worker_scratch_[worker_index]);
@@ -1222,8 +1249,10 @@ void HUNLFlatMCCFR::execute_worker_batch(
         (void)traverse(graph_.root, context);
     }
     auto& worker_profile = profile_.workers[worker_index];
-    worker_profile.traverse_seconds +=
+    const auto trajectory_seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count();
+    worker_profile.trajectory_seconds += trajectory_seconds;
+    worker_profile.traverse_seconds += trajectory_seconds;
     worker_profile.traversals += range.size();
     worker_profile.nodes_visited += scratch.counters.nodes_visited;
     worker_profile.sampled_opponent_actions += scratch.counters.sampled_opponent_actions;
@@ -1232,6 +1261,8 @@ void HUNLFlatMCCFR::execute_worker_batch(
     worker_profile.as_actions_sampled += scratch.counters.as_actions_sampled;
     worker_profile.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
     worker_profile.active_infosets += scratch.dirty_row_ids.size();
+    ++worker_profile.batch_executions;
+    scratch.last_trajectory_seconds = trajectory_seconds;
 }
 
 void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
