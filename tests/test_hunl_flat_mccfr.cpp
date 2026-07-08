@@ -703,6 +703,55 @@ TEST_CASE(hunl_flat_mccfr_multiworker_same_seed_is_deterministic) {
     }
 }
 
+TEST_CASE(hunl_flat_mccfr_iterative_external_dense_path_matches_recursive_dense_path) {
+    const auto recursive_graph = make_external_sampling_graph();
+    const auto iterative_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig recursive_config;
+    recursive_config.mode = core::HUNLFlatSamplingMode::External;
+    recursive_config.seed = 1234;
+    recursive_config.traversals_per_iteration = 64;
+    recursive_config.batch_size = 16;
+
+    core::HUNLFlatMCCFRConfig iterative_config = recursive_config;
+    iterative_config.use_iterative_external_dense_traversal = true;
+
+    core::HUNLFlatMCCFR recursive_solver(
+        recursive_graph,
+        {2, 2},
+        recursive_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+    core::HUNLFlatMCCFR iterative_solver(
+        iterative_graph,
+        {2, 2},
+        iterative_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+
+    recursive_solver.run_iterations(30);
+    iterative_solver.run_iterations(30);
+
+    const auto recursive_exported = recursive_solver.export_average_strategy();
+    const auto iterative_exported = iterative_solver.export_average_strategy();
+    EXPECT_EQ(recursive_exported.size(), iterative_exported.size());
+    for (const auto& [key, values] : recursive_exported) {
+        const auto it = iterative_exported.find(key);
+        EXPECT_TRUE(it != iterative_exported.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-12);
+        }
+    }
+
+    EXPECT_EQ(recursive_solver.total_counters().nodes_visited, iterative_solver.total_counters().nodes_visited);
+    EXPECT_EQ(
+        recursive_solver.total_counters().sampled_opponent_actions,
+        iterative_solver.total_counters().sampled_opponent_actions);
+}
+
 TEST_CASE(hunl_sampled_scheduler_partition_deterministic_covers_each_trajectory_exactly_once) {
     {
         const auto batches = core::HUNLSampledScheduler::partition_deterministic(10, 3);

@@ -228,7 +228,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     profile_.sampled_simd_backend = hunl_sampled_simd_backend();
     const auto max_bucket_count = std::max(bucket_count_per_player[0], bucket_count_per_player[1]);
     for (auto& scratch : worker_scratch_) {
-        scratch.prepare(graph_.max_actions, max_bucket_count);
+        scratch.prepare(graph_.max_actions, max_bucket_count, graph_.max_depth + 1U);
         scratch.prepare_delta_rows(infoset_meta_);
     }
     initialize_worker_threads();
@@ -405,7 +405,10 @@ HUNLSampledConstRowView HUNLFlatMCCFR::sparse_row_or_empty(InfosetId infoset_id)
     return sparse_storage_.view(infoset_id);
 }
 
-void HUNLFlatMCCFR::WorkerScratch::prepare(std::size_t max_actions, std::size_t max_bucket_count) {
+void HUNLFlatMCCFR::WorkerScratch::prepare(
+    std::size_t max_actions,
+    std::size_t max_bucket_count,
+    std::size_t max_depth) {
     action_values.resize(max_actions, 0.0);
     average_strategy.resize(max_actions, 0.0);
     bucket_strategy.resize(max_actions, 0.0);
@@ -413,6 +416,8 @@ void HUNLFlatMCCFR::WorkerScratch::prepare(std::size_t max_actions, std::size_t 
     strategy_sum_values.resize(max_actions, 0.0);
     sampled_actions.resize(max_actions, 0U);
     node_values.resize(max_bucket_count, 0.0);
+    external_frames.resize(max_depth);
+    external_frame_action_values.resize(max_depth * max_actions, 0.0);
 }
 
 void HUNLFlatMCCFR::WorkerScratch::prepare_delta_rows(
@@ -616,6 +621,13 @@ bool HUNLFlatMCCFR::can_use_dense_validation_infoset_action_hand_fast_path() con
         infoset_table_.precision() == HUNLFlatStoragePrecision::Float64;
 }
 
+bool HUNLFlatMCCFR::can_use_iterative_external_dense_traversal() const noexcept {
+    return config_.use_iterative_external_dense_traversal &&
+        config_.mode == HUNLFlatSamplingMode::External &&
+        !variance_reduction_enabled() &&
+        can_use_dense_validation_infoset_action_hand_fast_path();
+}
+
 double HUNLFlatMCCFR::traverse_exact(std::uint32_t node_idx, TraversalContext& context) {
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
@@ -759,6 +771,9 @@ double HUNLFlatMCCFR::traverse_public_chance_vr(std::uint32_t node_idx, Traversa
 }
 
 double HUNLFlatMCCFR::traverse_external(std::uint32_t node_idx, TraversalContext& context) {
+    if (can_use_iterative_external_dense_traversal()) {
+        return traverse_external_dense_iterative(node_idx, context);
+    }
     if (context.counters != nullptr) {
         ++context.counters->nodes_visited;
     }
@@ -804,6 +819,254 @@ double HUNLFlatMCCFR::traverse_external(std::uint32_t node_idx, TraversalContext
             return traverse_full_expansion_decision_generic(meta, context, true);
     }
     throw std::logic_error("HUNLFlatMCCFR unknown node type");
+}
+
+double HUNLFlatMCCFR::traverse_external_dense_iterative(std::uint32_t node_idx, TraversalContext& context) {
+    if (context.scratch == nullptr || context.rng == nullptr) {
+        throw std::logic_error("HUNLFlatMCCFR iterative traversal requires scratch and rng");
+    }
+
+    auto& scratch = *context.scratch;
+    const auto max_actions = static_cast<std::size_t>(graph_.max_actions);
+    if (max_actions == 0U) {
+        throw std::logic_error("HUNLFlatMCCFR iterative traversal requires positive max_actions");
+    }
+
+    std::size_t stack_size = 0;
+    double last_value = 0.0;
+    scratch.external_frames[stack_size++] = ExternalTraversalFrame{
+        node_idx,
+        0U,
+        0U,
+        ExternalTraversalFrame::Stage::Enter,
+        context.p0,
+        context.p1,
+        0.0,
+    };
+
+    while (stack_size > 0U) {
+        auto& frame = scratch.external_frames[stack_size - 1U];
+        const auto& meta = traversal_node_meta_[frame.node_idx];
+
+        switch (frame.stage) {
+            case ExternalTraversalFrame::Stage::Enter: {
+                if (context.counters != nullptr) {
+                    ++context.counters->nodes_visited;
+                }
+
+                switch (meta.type) {
+                    case HUNLFlatNodeType::TerminalFold:
+                    case HUNLFlatNodeType::TerminalShowdown:
+                    case HUNLFlatNodeType::DepthLimited:
+                        last_value = meta.terminal_utility[context.traversing_player];
+                        --stack_size;
+                        continue;
+
+                    case HUNLFlatNodeType::Chance: {
+                        if (context.counters != nullptr) {
+                            ++context.counters->chance_nodes_visited;
+                        }
+                        const auto chance_start = std::chrono::steady_clock::now();
+                        const auto sampled_index = sample_chance_child(frame.node_idx, meta, *context.rng);
+                        frame.sampled_index = static_cast<std::uint32_t>(sampled_index);
+                        frame.stage = ExternalTraversalFrame::Stage::ResumeAfterChanceChild;
+                        const auto& sampled = graph_.chance_outcomes[meta.chance_begin + sampled_index];
+                        scratch.audit.chance_seconds += elapsed_seconds_since(chance_start);
+                        scratch.external_frames[stack_size++] = ExternalTraversalFrame{
+                            sampled.child,
+                            0U,
+                            0U,
+                            ExternalTraversalFrame::Stage::Enter,
+                            frame.p0,
+                            frame.p1,
+                            0.0,
+                        };
+                        continue;
+                    }
+
+                    case HUNLFlatNodeType::Decision: {
+                        if (!meta.has_infoset) {
+                            throw std::logic_error("HUNLFlatMCCFR decision node missing infoset");
+                        }
+                        if (context.counters != nullptr) {
+                            ++context.counters->decision_nodes_visited;
+                            if (meta.player == context.traversing_player) {
+                                context.counters->traversing_player_action_expansions +=
+                                    static_cast<std::uint64_t>(meta.action_count);
+                            }
+                        }
+
+                        if (meta.player != context.traversing_player) {
+                            const auto opponent_start = std::chrono::steady_clock::now();
+                            const auto& row_meta = infoset_meta_[meta.infoset_meta_index];
+                            const auto action_count = static_cast<std::size_t>(meta.action_count);
+                            const auto& average_strategy_row = average_policy_cache_[meta.infoset_id.value];
+                            const auto* average_strategy = average_strategy_row.data();
+                            const auto bucket_count = static_cast<std::size_t>(row_meta.bucket_count);
+
+                            if (context.counters != nullptr) {
+                                ++context.counters->opponent_sampled_decisions;
+                                context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+                                context.counters->opponent_strategy_values_written +=
+                                    static_cast<std::uint64_t>(bucket_count) * static_cast<std::uint64_t>(action_count);
+                            }
+
+                            const auto own_reach = meta.player == 0 ? frame.p0 : frame.p1;
+                            auto& row = scratch.ensure_row(meta.infoset_id);
+                            const auto dense_row = build_dense_traversal_row_view(
+                                infoset_table_,
+                                meta.infoset_id,
+                                row_meta.bucket_count,
+                                action_count,
+                                row.regret_delta.data(),
+                                row.strategy_delta.data());
+                            const auto row_writeback_start = std::chrono::steady_clock::now();
+                            for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                                const auto action_offset = action * dense_row.action_stride;
+                                const auto* current_strategy_action = dense_row.current_strategy + action_offset;
+                                auto* strategy_delta_action = dense_row.strategy_delta + action_offset;
+                                for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+                                    strategy_delta_action[bucket] += own_reach * current_strategy_action[bucket];
+                                }
+                            }
+                            scratch.audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
+
+                            const auto sampled = sample_weighted_prefix(average_strategy, action_count, *context.rng);
+                            if (context.counters != nullptr) {
+                                ++context.counters->sampled_opponent_actions;
+                            }
+
+                            frame.stage = ExternalTraversalFrame::Stage::ResumeAfterOpponentChild;
+                            const auto* children = graph_.children.data() + meta.child_begin;
+                            double child_p0 = frame.p0;
+                            double child_p1 = frame.p1;
+                            if (meta.player == 0) {
+                                child_p0 *= average_strategy[sampled.first];
+                            } else {
+                                child_p1 *= average_strategy[sampled.first];
+                            }
+                            scratch.audit.opponent_sampled_seconds += elapsed_seconds_since(opponent_start);
+                            scratch.external_frames[stack_size++] = ExternalTraversalFrame{
+                                children[sampled.first],
+                                0U,
+                                0U,
+                                ExternalTraversalFrame::Stage::Enter,
+                                child_p0,
+                                child_p1,
+                                0.0,
+                            };
+                            continue;
+                        }
+
+                        const auto action_count = static_cast<std::size_t>(meta.action_count);
+                        if (context.counters != nullptr) {
+                            ++context.counters->traversing_player_full_expansion_decisions;
+                            context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
+                        }
+                        frame.child_index = 0U;
+                        frame.return_value = 0.0;
+                        frame.stage = ExternalTraversalFrame::Stage::ResumeAfterTraversingChild;
+                        const auto* children = graph_.children.data() + meta.child_begin;
+                        const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+                        double child_p0 = frame.p0;
+                        double child_p1 = frame.p1;
+                        if (meta.player == 0) {
+                            child_p0 *= average_strategy[0];
+                        } else {
+                            child_p1 *= average_strategy[0];
+                        }
+                        scratch.external_frames[stack_size++] = ExternalTraversalFrame{
+                            children[0],
+                            0U,
+                            0U,
+                            ExternalTraversalFrame::Stage::Enter,
+                            child_p0,
+                            child_p1,
+                            0.0,
+                        };
+                        continue;
+                    }
+                }
+                break;
+            }
+
+            case ExternalTraversalFrame::Stage::ResumeAfterChanceChild:
+            case ExternalTraversalFrame::Stage::ResumeAfterOpponentChild:
+                --stack_size;
+                continue;
+
+            case ExternalTraversalFrame::Stage::ResumeAfterTraversingChild: {
+                const auto action_count = static_cast<std::size_t>(meta.action_count);
+                auto* frame_action_values =
+                    scratch.external_frame_action_values.data() + (stack_size - 1U) * max_actions;
+                frame_action_values[frame.child_index] = last_value;
+                ++frame.child_index;
+
+                if (frame.child_index < action_count) {
+                    const auto* children = graph_.children.data() + meta.child_begin;
+                    const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+                    double child_p0 = frame.p0;
+                    double child_p1 = frame.p1;
+                    if (meta.player == 0) {
+                        child_p0 *= average_strategy[frame.child_index];
+                    } else {
+                        child_p1 *= average_strategy[frame.child_index];
+                    }
+                    scratch.external_frames[stack_size++] = ExternalTraversalFrame{
+                        children[frame.child_index],
+                        0U,
+                        0U,
+                        ExternalTraversalFrame::Stage::Enter,
+                        child_p0,
+                        child_p1,
+                        0.0,
+                    };
+                    continue;
+                }
+
+                const auto traversing_start = std::chrono::steady_clock::now();
+                const auto& row_meta = infoset_meta_[meta.infoset_meta_index];
+                const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
+                const auto own_reach = meta.player == 0 ? frame.p0 : frame.p1;
+                auto& row = scratch.ensure_row(meta.infoset_id);
+                const auto dense_row = build_dense_traversal_row_view(
+                    infoset_table_,
+                    meta.infoset_id,
+                    row_meta.bucket_count,
+                    action_count,
+                    row.regret_delta.data(),
+                    row.strategy_delta.data());
+                const auto row_writeback_start = std::chrono::steady_clock::now();
+                for (std::size_t bucket = 0; bucket < dense_row.bucket_count; ++bucket) {
+                    double node_value = 0.0;
+                    for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                        const auto offset = action * dense_row.action_stride + bucket;
+                        const auto probability = dense_row.current_strategy[offset];
+                        dense_row.strategy_delta[offset] += own_reach * probability;
+                        node_value += probability * frame_action_values[action];
+                    }
+
+                    const auto opponent_reach = context.traversing_player == 0 ? frame.p1 : frame.p0;
+                    for (std::size_t action = 0; action < dense_row.action_count; ++action) {
+                        const auto offset = action * dense_row.action_stride + bucket;
+                        dense_row.regret_delta[offset] += opponent_reach * (frame_action_values[action] - node_value);
+                    }
+                }
+                scratch.audit.row_writeback_seconds += elapsed_seconds_since(row_writeback_start);
+
+                double return_value = 0.0;
+                for (std::size_t action = 0; action < action_count; ++action) {
+                    return_value += average_strategy[action] * frame_action_values[action];
+                }
+                scratch.audit.traversing_player_seconds += elapsed_seconds_since(traversing_start);
+                last_value = return_value;
+                --stack_size;
+                continue;
+            }
+        }
+    }
+
+    return last_value;
 }
 
 double HUNLFlatMCCFR::traverse_external_vr(std::uint32_t node_idx, TraversalContext& context) {

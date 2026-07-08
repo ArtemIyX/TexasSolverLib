@@ -193,6 +193,23 @@ private:
         std::vector<std::uint32_t> sample_count;
     };
 
+    struct ExternalTraversalFrame {
+        enum class Stage : std::uint8_t {
+            Enter = 0,
+            ResumeAfterChanceChild = 1,
+            ResumeAfterOpponentChild = 2,
+            ResumeAfterTraversingChild = 3,
+        };
+
+        std::uint32_t node_idx = 0;
+        std::uint32_t child_index = 0;
+        std::uint32_t sampled_index = 0;
+        Stage stage = Stage::Enter;
+        double p0 = 1.0;
+        double p1 = 1.0;
+        double return_value = 0.0;
+    };
+
     struct WorkerScratch {
         struct TraversalAudit {
             double chance_seconds = 0.0;
@@ -216,11 +233,13 @@ private:
         std::unordered_map<InfosetId, std::size_t> infoset_baseline_lookup;
         std::vector<WorkerBaselineRow> node_baseline_rows;
         std::unordered_map<std::uint32_t, std::size_t> node_baseline_lookup;
+        std::vector<ExternalTraversalFrame> external_frames;
+        std::vector<double> external_frame_action_values;
         Counters counters;
         TraversalAudit audit;
         double last_trajectory_seconds = 0.0;
 
-        void prepare(std::size_t max_actions, std::size_t max_bucket_count);
+        void prepare(std::size_t max_actions, std::size_t max_bucket_count, std::size_t max_depth);
         void prepare_delta_rows(const std::vector<HUNLFlatInfosetTableMeta>& infoset_meta);
         void clear_keep_capacity() noexcept;
         WorkerDeltaRow& ensure_row(InfosetId id);
@@ -261,6 +280,7 @@ private:
     [[nodiscard]] double traverse_external_vr(std::uint32_t node_idx, TraversalContext& context);
     [[nodiscard]] double traverse_average_strategy(std::uint32_t node_idx, TraversalContext& context);
     [[nodiscard]] double traverse_average_strategy_vr(std::uint32_t node_idx, TraversalContext& context);
+    [[nodiscard]] double traverse_external_dense_iterative(std::uint32_t node_idx, TraversalContext& context);
     [[nodiscard]] double traverse_full_expansion_decision(
         const TraversalNodeMeta& meta,
         TraversalContext& context,
@@ -290,6 +310,7 @@ private:
         TraversalContext& context,
         bool use_variance_reduction);
     [[nodiscard]] bool can_use_dense_validation_infoset_action_hand_fast_path() const noexcept;
+    [[nodiscard]] bool can_use_iterative_external_dense_traversal() const noexcept;
     void compute_current_strategy_rows();
     void rebuild_average_policy_cache();
     void fill_current_strategy_bucket(

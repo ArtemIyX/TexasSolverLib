@@ -64,6 +64,7 @@ struct HUNLFlatMCCFRConfig {
     bool use_sparse_storage = false;
     bool keep_dense_validation_backend = false;
     HUNLFlatBaselineMode baseline_mode = HUNLFlatBaselineMode::None;
+    bool use_iterative_external_dense_traversal = false;
 };
 
 struct HUNLSampledConfigValidation {
