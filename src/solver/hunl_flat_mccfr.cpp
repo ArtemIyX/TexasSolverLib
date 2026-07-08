@@ -2280,9 +2280,11 @@ void HUNLFlatMCCFR::execute_worker_batch(
 void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     auto merge_start = std::chrono::steady_clock::now();
     auto& scratch = worker_scratch_[worker_index];
-    std::sort(scratch.dirty_row_ids.begin(), scratch.dirty_row_ids.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.value < rhs.value;
-    });
+    if (scratch.dirty_row_ids.size() > 1U) {
+        std::sort(scratch.dirty_row_ids.begin(), scratch.dirty_row_ids.end(), [](const auto& lhs, const auto& rhs) {
+            return lhs.value < rhs.value;
+        });
+    }
 
     for (const auto infoset_id : scratch.dirty_row_ids) {
         const auto& row = scratch.delta_rows[infoset_id.value];
@@ -2298,6 +2300,16 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
                     static_cast<float>(static_cast<double>(sparse_row.regret[offset]) + row.regret_delta[offset]);
                 sparse_row.strategy_sum[offset] = static_cast<float>(
                     static_cast<double>(sparse_row.strategy_sum[offset]) + row.strategy_delta[offset]);
+            }
+            continue;
+        }
+
+        if (infoset_table_.precision() == HUNLFlatStoragePrecision::Float64) {
+            auto* regret = infoset_table_.regret_mut(infoset_id);
+            auto* strategy_sum = infoset_table_.strategy_sum_mut(infoset_id);
+            for (std::size_t offset = 0; offset < meta.value_count; ++offset) {
+                regret[offset] += row.regret_delta[offset];
+                strategy_sum[offset] += row.strategy_delta[offset];
             }
             continue;
         }
