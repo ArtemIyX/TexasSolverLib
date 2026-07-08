@@ -279,7 +279,7 @@ All traversal optimization should follow these rules:
 
 ## Phased Optimization Plan
 
-## Phase 1: Add A Traversal-Specific Audit Layer
+## + Phase 1: Add A Traversal-Specific Audit Layer
 
 ### Goal
 
@@ -318,7 +318,26 @@ We already know `traj_ms` dominates, but we still want to distinguish:
 - profiling overhead is not large enough to materially distort scaling runs;
 - no solver semantics change.
 
-## Phase 2: Specialize Traversal By Mode Instead Of Re-Branching Every Node
+### Reading The New Audit Output
+
+When Phase 1 lands, read the benchmark columns like this:
+
+- `chance_ms`: total time spent inside sampled or exact chance-node handling.
+- `oppt_ms`: total time spent in opponent sampled-decision handling.
+- `full_ms`: total time spent in fully expanded non-AS decision handling.
+- `as_ms`: total time spent in Average Strategy Sampling traversing-player decisions.
+- `roww_ms`: time spent writing infoset deltas inside traversal branches. This is a subset signal, not a full partition of `traj_ms`.
+- `avg_act/dec`: `decision_actions_touched / decision_nodes_visited`. Use it as a workload-shape indicator when comparing presets or action menus.
+
+Interpretation rules:
+
+- if `chance_ms` is small, chance preprocessing can wait;
+- if `oppt_ms` is large, opponent-node row update and sampling cleanup should move up;
+- if `full_ms` is large, dense traversing-player row access and regret writeback are likely the next target;
+- if `as_ms` is disproportionately large, AS should be tuned separately instead of polluting the generic path;
+- if `roww_ms` is a large share of branch time, row-view and contiguous-pointer work should pay off early.
+
+## + Phase 2: Specialize Traversal By Mode Instead Of Re-Branching Every Node
 
 ### Goal
 
@@ -357,7 +376,7 @@ Many of those conditions are stable during an entire batch.
 - fixed-seed results remain unchanged;
 - `traj_ms` improves or at minimum does not regress on 1-worker runs.
 
-## Phase 3: Replace Repeated Helper-Based Row Access With Precomputed Row Views
+## + Phase 3: Replace Repeated Helper-Based Row Access With Precomputed Row Views
 
 ### Goal
 
@@ -402,7 +421,7 @@ That is too much repeated work for inner loops.
 - deterministic tests still pass;
 - `traj_ms` improves measurably.
 
-## Phase 4: Inline Or Specialize `fill_current_strategy_bucket()` For Dense Fast Path
+## + Phase 4: Inline Or Specialize `fill_current_strategy_bucket()` For Dense Fast Path
 
 ### Goal
 
@@ -438,7 +457,7 @@ Reduce repeated strategy-row materialization overhead.
 - sparse mode remains correct;
 - 1-worker and N-worker `traj_ms` improve.
 
-## Phase 5: Reduce Opponent-Sampled Node Writeback Cost
+## + Phase 5: Reduce Opponent-Sampled Node Writeback Cost
 
 ### Goal
 
@@ -477,7 +496,7 @@ External sampling spends a lot of time in opponent nodes. Even though only one a
 - output remains unchanged under fixed seed;
 - external-sampling benchmark shows lower `traj_ms`.
 
-## Phase 6: Precompute Chance Sampling Tables For Static Graphs
+## + Phase 6: Precompute Chance Sampling Tables For Static Graphs
 
 ### Goal
 
@@ -509,7 +528,7 @@ This is not guaranteed to be the biggest win, but it is a clean targeted cleanup
 - fixed-seed chance selection semantics remain unchanged;
 - profile shows no regression and ideally some chance-side improvement.
 
-## Phase 7: Add Node-Local Traversal Metadata Cache
+## + Phase 7: Add Node-Local Traversal Metadata Cache
 
 ### Goal
 
@@ -544,7 +563,7 @@ The graph is static for the life of the solver. Reinterpreting node metadata on 
 - `.at()` calls are removed from hot traversal loops;
 - deterministic behavior remains intact.
 
-## Phase 8: Separate Dense Validation Fast Path From Sparse Production Path More Explicitly
+## + Phase 8: Separate Dense Validation Fast Path From Sparse Production Path More Explicitly
 
 ### Goal
 
@@ -576,7 +595,16 @@ Trying to make one generic loop optimal for all combinations usually leaves all 
 - sparse tests still pass;
 - benchmark throughput improves.
 
-## Phase 9: Audit Whether Recursive Traversal Should Become An Explicit Frame Stack
+Implementation note:
+
+- validation-path specialization is intentional for the current throughput benchmark:
+  - dense table;
+  - `InfosetActionHand` layout;
+  - external sampling;
+- this does not replace later sparse-production optimization work;
+- sparse mode and alternate layouts should remain correct, but they do not need to share the exact same deepest inner loops as the dense validation backend.
+
+## + Phase 9: Audit Whether Recursive Traversal Should Become An Explicit Frame Stack
 
 ### Goal
 
@@ -607,7 +635,7 @@ This is the highest-risk structural optimization. It should happen only if small
 - if adopted, deterministic outputs remain unchanged;
 - code remains maintainable enough for future sparse/lazy production work.
 
-## Phase 10: Optimize Average Strategy Sampling As A Separate Cost Center
+## + Phase 10: Optimize Average Strategy Sampling As A Separate Cost Center
 
 ### Goal
 
