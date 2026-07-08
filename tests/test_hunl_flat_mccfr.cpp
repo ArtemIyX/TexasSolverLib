@@ -999,6 +999,7 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_converges_in_direction_of_be
     EXPECT_TRUE(it != exported.end());
     EXPECT_TRUE(it->second.size() >= 2U);
     EXPECT_TRUE(it->second[0] > it->second[1]);
+    EXPECT_TRUE(solver.total_counters().as_decision_nodes > 0U);
     EXPECT_TRUE(solver.total_counters().as_actions_considered > 0U);
     EXPECT_TRUE(solver.total_counters().as_actions_sampled > 0U);
 }

@@ -203,6 +203,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       config_(config),
       infoset_meta_(build_infoset_meta(graph_, bucket_count_per_player, layout)),
       average_policy_cache_(graph_.infosets.size()),
+      average_strategy_sampling_cache_(graph_.infosets.size()),
       traversal_node_meta_(graph_.node_meta.size()),
       chance_total_probability_(graph_.node_meta.size(), 0.0),
       worker_count_(std::max<std::size_t>(1, workers)),
@@ -221,6 +222,7 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     initialize_sparse_infoset_shapes(bucket_count_per_player);
     for (const auto& meta : infoset_meta_) {
         average_policy_cache_[meta.id.value].assign(meta.action_count, 0.0);
+        average_strategy_sampling_cache_[meta.id.value].assign(meta.action_count, 1.0);
     }
     initialize_traversal_node_metadata();
     initialize_chance_sampling_metadata();
@@ -411,6 +413,7 @@ void HUNLFlatMCCFR::WorkerScratch::prepare(
     std::size_t max_depth) {
     action_values.resize(max_actions, 0.0);
     average_strategy.resize(max_actions, 0.0);
+    sampled_action_indices.resize(max_actions, 0U);
     bucket_strategy.resize(max_actions, 0.0);
     inclusion_probabilities.resize(max_actions, 0.0);
     strategy_sum_values.resize(max_actions, 0.0);
@@ -1531,10 +1534,12 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
     auto& bucket_strategy = context.scratch->bucket_strategy;
     auto& inclusion_probabilities = context.scratch->inclusion_probabilities;
     auto& sampled_actions = context.scratch->sampled_actions;
+    auto& sampled_action_indices = context.scratch->sampled_action_indices;
     const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
     const auto* children = graph_.children.data() + meta.child_begin;
 
     if (context.counters != nullptr) {
+        ++context.counters->as_decision_nodes;
         context.counters->decision_actions_touched += static_cast<std::uint64_t>(action_count);
     }
 
@@ -1584,11 +1589,12 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
     for (std::size_t action = 0; action < action_count; ++action) {
         const auto rho = inclusion_probabilities[action];
         rho_sum += rho;
-        sampled_actions[action] = 0U;
-        if (context.rng->bernoulli(rho)) {
-            sampled_actions[action] = 1U;
-            ++sampled_count;
+        const auto selected = context.rng->bernoulli(rho);
+        sampled_actions[action] = selected ? 1U : 0U;
+        if (!selected) {
+            continue;
         }
+        sampled_action_indices[sampled_count++] = action;
     }
 
     double none_selected_probability = 1.0;
@@ -1601,14 +1607,16 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
             ? sample_weighted_prefix(inclusion_probabilities.data(), action_count, *context.rng).first
             : std::size_t{0};
         sampled_actions[forced] = 1U;
+        sampled_action_indices[0] = forced;
         sampled_count = 1;
         if (context.counters != nullptr) {
             ++context.counters->as_forced_at_least_one_count;
         }
     }
 
-    for (std::size_t action = 0; action < action_count; ++action) {
-        if (sampled_actions[action] && rho_sum > 0.0) {
+    if (rho_sum > 0.0) {
+        for (std::size_t sampled_idx = 0; sampled_idx < sampled_count; ++sampled_idx) {
+            const auto action = sampled_action_indices[sampled_idx];
             inclusion_probabilities[action] =
                 std::min(
                     1.0,
@@ -1622,12 +1630,9 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
         context.counters->traversing_player_action_expansions += static_cast<std::uint64_t>(sampled_count);
     }
 
-    for (std::size_t action = 0; action < action_count; ++action) {
-        if (!sampled_actions[action]) {
-            action_values[action] = 0.0;
-            continue;
-        }
-
+    std::fill(action_values.begin(), action_values.begin() + action_count, 0.0);
+    for (std::size_t sampled_idx = 0; sampled_idx < sampled_count; ++sampled_idx) {
+        const auto action = sampled_action_indices[sampled_idx];
         auto child_context = context;
         if (meta.player == 0) {
             child_context.p0 *= average_strategy[action];
@@ -1758,6 +1763,28 @@ void HUNLFlatMCCFR::rebuild_average_policy_cache() {
             averaged.data(),
             meta.action_count,
             worker_scratch_[0].bucket_strategy.data());
+
+        auto& as_probabilities = average_strategy_sampling_cache_[meta.id.value];
+        fill_average_strategy_sum_values(
+            meta.id,
+            worker_scratch_[0].strategy_sum_values.data(),
+            meta.action_count);
+        double row_strategy_sum = 0.0;
+        for (std::size_t action = 0; action < meta.action_count; ++action) {
+            const auto value = worker_scratch_[0].strategy_sum_values[action];
+            row_strategy_sum += std::max(value, 0.0);
+        }
+        const auto denominator = config_.as_beta + row_strategy_sum;
+        for (std::size_t action = 0; action < meta.action_count; ++action) {
+            double probability = 1.0;
+            if (denominator > 0.0) {
+                probability = (config_.as_beta +
+                    config_.as_tau * std::max(worker_scratch_[0].strategy_sum_values[action], 0.0)) /
+                    denominator;
+            }
+            probability = std::max(config_.as_epsilon, probability);
+            as_probabilities[action] = std::min(1.0, probability);
+        }
     }
     profile_.average_policy_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - cache_start).count();
@@ -1896,6 +1923,13 @@ void HUNLFlatMCCFR::fill_average_strategy_sampling_probabilities(
     double* strategy_sum_scratch) const {
     if (out == nullptr || strategy_sum_scratch == nullptr) {
         return;
+    }
+    if (infoset_id.value < average_strategy_sampling_cache_.size()) {
+        const auto& cached = average_strategy_sampling_cache_[infoset_id.value];
+        if (cached.size() == action_count) {
+            std::copy(cached.begin(), cached.end(), out);
+            return;
+        }
     }
     fill_average_strategy_sum_values(infoset_id, strategy_sum_scratch, action_count);
     double row_strategy_sum = 0.0;
@@ -2082,6 +2116,7 @@ void HUNLFlatMCCFR::run_player_subbatch(
         profile_.as_actions_considered += scratch.counters.as_actions_considered;
         profile_.as_actions_sampled += scratch.counters.as_actions_sampled;
         profile_.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
+        profile_.as_decision_nodes += scratch.counters.as_decision_nodes;
     }
     profile_.active_infoset_samples +=
         std::accumulate(
@@ -2236,6 +2271,7 @@ void HUNLFlatMCCFR::execute_worker_batch(
     worker_profile.as_actions_considered += scratch.counters.as_actions_considered;
     worker_profile.as_actions_sampled += scratch.counters.as_actions_sampled;
     worker_profile.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
+    worker_profile.as_decision_nodes += scratch.counters.as_decision_nodes;
     worker_profile.active_infosets += scratch.dirty_row_ids.size();
     ++worker_profile.batch_executions;
     scratch.last_trajectory_seconds = trajectory_seconds;
@@ -2296,6 +2332,7 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     last_iteration_counters_.as_actions_considered += scratch.counters.as_actions_considered;
     last_iteration_counters_.as_actions_sampled += scratch.counters.as_actions_sampled;
     last_iteration_counters_.as_forced_at_least_one_count += scratch.counters.as_forced_at_least_one_count;
+    last_iteration_counters_.as_decision_nodes += scratch.counters.as_decision_nodes;
     last_iteration_counters_.variance_samples += scratch.counters.variance_samples;
     last_iteration_counters_.raw_estimate_sum += scratch.counters.raw_estimate_sum;
     last_iteration_counters_.raw_estimate_sq_sum += scratch.counters.raw_estimate_sq_sum;
@@ -2317,6 +2354,7 @@ void HUNLFlatMCCFR::accumulate_last_iteration_into_total() noexcept {
     total_counters_.as_actions_considered += last_iteration_counters_.as_actions_considered;
     total_counters_.as_actions_sampled += last_iteration_counters_.as_actions_sampled;
     total_counters_.as_forced_at_least_one_count += last_iteration_counters_.as_forced_at_least_one_count;
+    total_counters_.as_decision_nodes += last_iteration_counters_.as_decision_nodes;
     total_counters_.variance_samples += last_iteration_counters_.variance_samples;
     total_counters_.raw_estimate_sum += last_iteration_counters_.raw_estimate_sum;
     total_counters_.raw_estimate_sq_sum += last_iteration_counters_.raw_estimate_sq_sum;

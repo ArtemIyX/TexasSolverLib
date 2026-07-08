@@ -74,6 +74,7 @@ public:
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
+        std::uint64_t as_decision_nodes = 0;
         std::uint64_t active_infosets = 0;
         std::uint64_t batch_executions = 0;
     };
@@ -113,6 +114,7 @@ public:
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
+        std::uint64_t as_decision_nodes = 0;
         HUNLSampledSimdBackend sampled_simd_backend = HUNLSampledSimdBackend::Scalar;
         std::vector<WorkerProfile> workers;
     };
@@ -130,6 +132,7 @@ public:
         std::uint64_t as_actions_considered = 0;
         std::uint64_t as_actions_sampled = 0;
         std::uint64_t as_forced_at_least_one_count = 0;
+        std::uint64_t as_decision_nodes = 0;
         std::uint64_t variance_samples = 0;
         double raw_estimate_sum = 0.0;
         double raw_estimate_sq_sum = 0.0;
@@ -221,6 +224,7 @@ private:
 
         std::vector<double> action_values;
         std::vector<double> average_strategy;
+        std::vector<std::size_t> sampled_action_indices;
         std::vector<double> bucket_strategy;
         std::vector<double> node_values;
         std::vector<double> inclusion_probabilities;
@@ -403,6 +407,7 @@ private:
     std::vector<HUNLFlatInfosetTableMeta> infoset_meta_;
     std::vector<HUNLSampledInfosetShape> sparse_infoset_shapes_;
     std::vector<std::vector<double>> average_policy_cache_;
+    std::vector<std::vector<double>> average_strategy_sampling_cache_;
     std::vector<TraversalNodeMeta> traversal_node_meta_;
     std::vector<double> chance_total_probability_;
     std::size_t worker_count_ = 1;
