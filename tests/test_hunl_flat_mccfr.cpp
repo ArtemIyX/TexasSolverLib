@@ -703,6 +703,53 @@ TEST_CASE(hunl_flat_mccfr_multiworker_same_seed_is_deterministic) {
     }
 }
 
+TEST_CASE(hunl_flat_mccfr_external_profile_tracks_branch_split_and_worker_aggregates) {
+    const auto graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 141;
+    config.traversals_per_iteration = 24;
+    config.batch_size = 6;
+
+    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 3);
+    solver.run_iterations(12);
+
+    const auto& profile = solver.profile();
+    const auto& counters = solver.total_counters();
+    EXPECT_TRUE(profile.chance_seconds >= 0.0);
+    EXPECT_TRUE(profile.opponent_sampled_seconds >= 0.0);
+    EXPECT_TRUE(profile.traversing_player_seconds >= 0.0);
+    EXPECT_TRUE(profile.row_writeback_seconds >= 0.0);
+    EXPECT_TRUE(profile.average_strategy_seconds >= 0.0);
+    EXPECT_TRUE(counters.chance_nodes_visited > 0U);
+    EXPECT_TRUE(counters.opponent_sampled_decisions > 0U);
+    EXPECT_TRUE(counters.traversing_player_full_expansion_decisions > 0U);
+    EXPECT_EQ(counters.as_decision_nodes, 0U);
+
+    std::uint64_t worker_chance_nodes = 0;
+    std::uint64_t worker_decision_nodes = 0;
+    std::uint64_t worker_opponent_decisions = 0;
+    std::uint64_t worker_full_expansion_decisions = 0;
+    std::uint64_t worker_actions_touched = 0;
+    std::uint64_t worker_as_decision_nodes = 0;
+    for (const auto& worker : profile.workers) {
+        worker_chance_nodes += worker.chance_nodes_visited;
+        worker_decision_nodes += worker.decision_nodes_visited;
+        worker_opponent_decisions += worker.opponent_sampled_decisions;
+        worker_full_expansion_decisions += worker.traversing_player_full_expansion_decisions;
+        worker_actions_touched += worker.decision_actions_touched;
+        worker_as_decision_nodes += worker.as_decision_nodes;
+    }
+
+    EXPECT_EQ(worker_chance_nodes, profile.chance_nodes_visited);
+    EXPECT_EQ(worker_decision_nodes, profile.decision_nodes_visited);
+    EXPECT_EQ(worker_opponent_decisions, profile.opponent_sampled_decisions);
+    EXPECT_EQ(worker_full_expansion_decisions, profile.traversing_player_full_expansion_decisions);
+    EXPECT_EQ(worker_actions_touched, profile.decision_actions_touched);
+    EXPECT_EQ(worker_as_decision_nodes, profile.as_decision_nodes);
+}
+
 TEST_CASE(hunl_flat_mccfr_iterative_external_dense_path_matches_recursive_dense_path) {
     const auto recursive_graph = make_external_sampling_graph();
     const auto iterative_graph = make_external_sampling_graph();
@@ -750,6 +797,96 @@ TEST_CASE(hunl_flat_mccfr_iterative_external_dense_path_matches_recursive_dense_
     EXPECT_EQ(
         recursive_solver.total_counters().sampled_opponent_actions,
         iterative_solver.total_counters().sampled_opponent_actions);
+}
+
+TEST_CASE(hunl_flat_mccfr_iterative_external_flag_is_ignored_when_variance_reduction_is_enabled) {
+    const auto recursive_graph = make_external_sampling_graph();
+    const auto guarded_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig recursive_config;
+    recursive_config.mode = core::HUNLFlatSamplingMode::External;
+    recursive_config.seed = 12345;
+    recursive_config.traversals_per_iteration = 32;
+    recursive_config.batch_size = 8;
+    recursive_config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+
+    core::HUNLFlatMCCFRConfig guarded_config = recursive_config;
+    guarded_config.use_iterative_external_dense_traversal = true;
+
+    core::HUNLFlatMCCFR recursive_solver(
+        recursive_graph,
+        {1, 1},
+        recursive_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+    core::HUNLFlatMCCFR guarded_solver(
+        guarded_graph,
+        {1, 1},
+        guarded_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+
+    recursive_solver.run_iterations(20);
+    guarded_solver.run_iterations(20);
+
+    const auto recursive_exported = recursive_solver.export_average_strategy();
+    const auto guarded_exported = guarded_solver.export_average_strategy();
+    EXPECT_EQ(recursive_exported.size(), guarded_exported.size());
+    for (const auto& [key, values] : recursive_exported) {
+        const auto it = guarded_exported.find(key);
+        EXPECT_TRUE(it != guarded_exported.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-12);
+        }
+    }
+}
+
+TEST_CASE(hunl_flat_mccfr_iterative_external_flag_is_ignored_in_sparse_mode) {
+    const auto recursive_graph = make_external_sampling_graph();
+    const auto guarded_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig recursive_config;
+    recursive_config.mode = core::HUNLFlatSamplingMode::External;
+    recursive_config.seed = 2222;
+    recursive_config.traversals_per_iteration = 24;
+    recursive_config.use_sparse_storage = true;
+    recursive_config.keep_dense_validation_backend = true;
+
+    core::HUNLFlatMCCFRConfig guarded_config = recursive_config;
+    guarded_config.use_iterative_external_dense_traversal = true;
+
+    core::HUNLFlatMCCFR recursive_solver(
+        recursive_graph,
+        {2, 2},
+        recursive_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+    core::HUNLFlatMCCFR guarded_solver(
+        guarded_graph,
+        {2, 2},
+        guarded_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+
+    recursive_solver.run_iterations(18);
+    guarded_solver.run_iterations(18);
+
+    const auto recursive_exported = recursive_solver.export_average_strategy();
+    const auto guarded_exported = guarded_solver.export_average_strategy();
+    EXPECT_EQ(recursive_exported.size(), guarded_exported.size());
+    for (const auto& [key, values] : recursive_exported) {
+        const auto it = guarded_exported.find(key);
+        EXPECT_TRUE(it != guarded_exported.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-12);
+        }
+    }
 }
 
 TEST_CASE(hunl_sampled_scheduler_partition_deterministic_covers_each_trajectory_exactly_once) {
@@ -979,6 +1116,52 @@ TEST_CASE(hunl_flat_mccfr_sparse_mode_can_keep_dense_validation_backend) {
     EXPECT_EQ(solver.infoset_table().meta().size(), graph.infosets.size());
 }
 
+TEST_CASE(hunl_flat_mccfr_sparse_external_with_dense_validation_backend_matches_pure_dense_output) {
+    const auto dense_graph = make_external_sampling_graph();
+    const auto sparse_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig dense_config;
+    dense_config.mode = core::HUNLFlatSamplingMode::External;
+    dense_config.seed = 313;
+    dense_config.traversals_per_iteration = 32;
+
+    core::HUNLFlatMCCFRConfig sparse_config = dense_config;
+    sparse_config.use_sparse_storage = true;
+    sparse_config.keep_dense_validation_backend = true;
+
+    core::HUNLFlatMCCFR dense_solver(
+        dense_graph,
+        {2, 2},
+        dense_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+    core::HUNLFlatMCCFR sparse_solver(
+        sparse_graph,
+        {2, 2},
+        sparse_config,
+        core::HUNLFlatValueLayout::InfosetActionHand,
+        1,
+        core::HUNLFlatStoragePrecision::Float64);
+
+    dense_solver.run_iterations(25);
+    sparse_solver.run_iterations(25);
+
+    EXPECT_TRUE(sparse_solver.using_sparse_storage());
+    EXPECT_TRUE(sparse_solver.sparse_storage().row_count() > 0U);
+    const auto dense_exported = dense_solver.export_average_strategy();
+    const auto sparse_exported = sparse_solver.export_average_strategy();
+    EXPECT_EQ(dense_exported.size(), sparse_exported.size());
+    for (const auto& [key, values] : dense_exported) {
+        const auto it = sparse_exported.find(key);
+        EXPECT_TRUE(it != sparse_exported.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-5);
+        }
+    }
+}
+
 TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_converges_in_direction_of_best_action) {
     const auto graph = make_external_sampling_graph();
 
@@ -1002,6 +1185,46 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_converges_in_direction_of_be
     EXPECT_TRUE(solver.total_counters().as_decision_nodes > 0U);
     EXPECT_TRUE(solver.total_counters().as_actions_considered > 0U);
     EXPECT_TRUE(solver.total_counters().as_actions_sampled > 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_average_strategy_profile_tracks_as_branch_and_worker_aggregates) {
+    const auto graph = make_wide_average_strategy_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    config.seed = 606;
+    config.traversals_per_iteration = 48;
+    config.batch_size = 12;
+    config.as_epsilon = 0.1;
+    config.as_tau = 0.0;
+    config.as_beta = 0.1;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+    solver.run_iterations(30);
+
+    const auto& profile = solver.profile();
+    const auto& counters = solver.total_counters();
+    EXPECT_TRUE(profile.average_strategy_seconds >= 0.0);
+    EXPECT_TRUE(profile.row_writeback_seconds >= 0.0);
+    EXPECT_TRUE(counters.as_decision_nodes > 0U);
+    EXPECT_TRUE(counters.as_actions_considered >= counters.as_actions_sampled);
+    EXPECT_TRUE(counters.as_actions_sampled >= counters.as_decision_nodes);
+
+    std::uint64_t worker_as_decisions = 0;
+    std::uint64_t worker_as_considered = 0;
+    std::uint64_t worker_as_sampled = 0;
+    std::uint64_t worker_forced = 0;
+    for (const auto& worker : profile.workers) {
+        worker_as_decisions += worker.as_decision_nodes;
+        worker_as_considered += worker.as_actions_considered;
+        worker_as_sampled += worker.as_actions_sampled;
+        worker_forced += worker.as_forced_at_least_one_count;
+    }
+
+    EXPECT_EQ(worker_as_decisions, profile.as_decision_nodes);
+    EXPECT_EQ(worker_as_considered, profile.as_actions_considered);
+    EXPECT_EQ(worker_as_sampled, profile.as_actions_sampled);
+    EXPECT_EQ(worker_forced, profile.as_forced_at_least_one_count);
 }
 
 TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_reduces_action_expansions_on_wide_menu) {
@@ -1034,6 +1257,52 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_reduces_action_expansions_on
         average_solver.total_counters().as_actions_considered);
     EXPECT_TRUE(average_solver.average_strategy_sampling_ratio() > 0.0);
     EXPECT_TRUE(average_solver.average_strategy_sampling_ratio() < 1.0);
+}
+
+TEST_CASE(hunl_flat_mccfr_public_chance_profile_does_not_record_opponent_or_as_specific_counters) {
+    const auto graph = make_public_chance_conflict_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    config.seed = 515;
+    config.traversals_per_iteration = 16;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    solver.run_iterations(20);
+
+    EXPECT_TRUE(solver.total_counters().chance_nodes_visited > 0U);
+    EXPECT_EQ(solver.total_counters().opponent_sampled_decisions, 0U);
+    EXPECT_EQ(solver.total_counters().sampled_opponent_actions, 0U);
+    EXPECT_EQ(solver.total_counters().as_decision_nodes, 0U);
+    EXPECT_EQ(solver.profile().opponent_sampled_decisions, 0U);
+    EXPECT_EQ(solver.profile().as_decision_nodes, 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_merge_profile_aggregates_worker_breakdown_exactly) {
+    const auto graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 8080;
+    config.traversals_per_iteration = 20;
+    config.batch_size = 5;
+
+    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+    solver.run_iterations(10);
+
+    double worker_merge_seconds = 0.0;
+    std::uint64_t worker_active_infosets = 0;
+    std::uint64_t worker_batch_executions = 0;
+    for (const auto& worker : solver.profile().workers) {
+        worker_merge_seconds += worker.merge_seconds;
+        worker_active_infosets += worker.active_infosets;
+        worker_batch_executions += worker.batch_executions;
+    }
+
+    EXPECT_NEAR(worker_merge_seconds, solver.profile().merge_seconds, 1e-12);
+    EXPECT_EQ(worker_active_infosets, solver.profile().active_infoset_samples);
+    EXPECT_EQ(worker_batch_executions, solver.profile().worker_batch_executions);
 }
 
 TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_forces_at_least_one_action_when_needed) {
