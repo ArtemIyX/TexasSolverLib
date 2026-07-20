@@ -13,6 +13,9 @@ struct HUNLSampledTerminalInput {
 
 class HUNLSampledTerminalEvaluator {
 public:
+    [[nodiscard]] double evaluate_terminal(
+        const HUNLSampledTerminalInput& input,
+        const std::array<double, 2>& terminal_utility) const noexcept;
     [[nodiscard]] double evaluate_fold(
         const HUNLSampledTerminalInput& input,
         PlayerId folding_player) const noexcept;

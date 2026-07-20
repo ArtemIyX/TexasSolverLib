@@ -25,7 +25,7 @@ Severity meanings:
 
 ### P0-1: `HUNLSampledSolver` reports completed work without performing any solve
 
-Status: **API-level guard fixed on 2026-07-20; real solving remains blocked by P0-2.**
+Status: **API-level guard fixed on 2026-07-20; real solving remains guarded until the new traversal is integrated into scheduler/batch execution.**
 
 Original evidence:
 
@@ -57,14 +57,16 @@ The original behavioral tests for regret changes, budget-dependent batch counts,
 
 ### P0-2: sampled traversal is not MCCFR and returns zero for every showdown
 
-Evidence:
+Status: **scalar external-sampling reference traversal implemented on 2026-07-20.**
+
+Original evidence:
 
 - `src/solver/hunl_sampled_traversal.cpp:30-35` only checks whether a row exists and increments `infosets_updated`; it does not update the row.
 - `src/solver/hunl_sampled_traversal.cpp:49` passes the constant `0.0` to the showdown evaluator even though sampled nodes already contain `terminal_utility`.
 - `src/solver/hunl_sampled_traversal.cpp:59` chooses `trajectory_id % edge_count` at every depth.
 - The traversal never uses edge probability, current strategy, counterfactual reach, sampling reach, `request.iteration`, the configured seed, or the SIMD regret kernels.
 
-Consequences:
+Original consequences:
 
 - All showdown trajectories have value zero.
 - A trajectory selects the same ordinal edge at every node where that ordinal exists, creating a strongly correlated and biased path distribution.
@@ -73,17 +75,19 @@ Consequences:
 - Traverser actions are not enumerated for external-sampling counterfactual values.
 - `infosets_updated` means “row was present,” not “an update was made.”
 
-Recommended fix:
+Implemented fix:
 
-Implement a scalar reference external-sampling traversal before optimizing it. Its inputs need explicit private-hand/bucket state, deterministic per-trajectory RNG, traverser identity, sampling probability, opponent reach, and worker-local delta storage. At a traverser node, enumerate every action; at opponent and public-chance nodes, sample from the correct distribution and carry importance weights where required. Terminal evaluation must use fold/showdown utilities for the sampled private state or the depth-limited value function.
+The traversal now accepts a deterministic base seed, trajectory ID, iteration, traverser, and explicit bucket selection. It maintains player, public-chance, and sampling reaches; enumerates all actions at traverser nodes; samples opponent strategy and chance edges from their actual probabilities with independent RNG draws; records regret and average-strategy changes in worker scratch; and merges those deltas in insertion order only after the traversal completes. Fold, showdown, and depth-limited nodes return their stored per-player terminal utility rather than a constant placeholder.
 
-Regression tests:
+Regression tests added:
 
-- Compare sampled mean values against exact enumeration on a tiny river tree.
-- Verify empirical chance frequencies against edge probabilities with a fixed reproducible seed set.
-- Verify that trajectory IDs do not force a constant edge ordinal down the entire path.
-- Verify nonzero and correctly signed showdown values for win, loss, and tie.
-- Compare one external-sampling regret update to a hand-computed toy game.
+- A two-action river node checks the exact node value, regrets, and average-strategy update against hand calculations.
+- Opponent sampling with a 75/25 regret-matched strategy checks empirical action frequencies and mean value.
+- A nonuniform collapsed public-chance node checks empirical edge frequencies against stored probabilities.
+- A multi-node trajectory checks that successive choices are independent RNG draws rather than repeated trajectory-ID modulo selection.
+- Win, loss, and board-tie terminals check the stored utility from both player perspectives.
+
+Remaining integration work belongs to P0-1: scheduler batches must invoke this traversal with stable per-trajectory IDs, keep separate scratch per worker, merge workers in fixed order, and derive solve profiles from completed traversals before positive solve requests can be enabled.
 
 ### P0-3: adaptive memory fallback can loop forever while increasing the estimate
 

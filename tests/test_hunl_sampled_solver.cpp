@@ -40,6 +40,78 @@ core::HUNLState make_lazy_root_state() {
     return state;
 }
 
+core::HUNLState make_sampled_facing_bet_state() {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_stack = 1000;
+    config->big_blind = 100;
+    config->starting_street = core::Street::River;
+    config->initial_board = {
+        core::card_to_int(2, 0),
+        core::card_to_int(3, 1),
+        core::card_to_int(4, 2),
+        core::card_to_int(8, 3),
+        core::card_to_int(9, 0),
+    };
+    config->initial_pot = 200;
+    config->initial_contributions = {100, 100};
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(14, 1), core::card_to_int(14, 2)},
+        {core::card_to_int(13, 1), core::card_to_int(13, 2)},
+    }};
+    config->river_bet_fractions = std::vector<double>{1.0};
+    config->postflop_raise_cap = 1;
+    config->include_all_in = false;
+
+    const auto root = core::HUNLState::initial(config);
+    return root.apply(core::ACTION_BET_33);
+}
+
+core::HUNLState make_suit_symmetric_chance_state() {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_street = core::Street::Flop;
+    config->initial_board = {
+        core::card_to_int(14, 0),
+        core::card_to_int(14, 1),
+        core::card_to_int(14, 2),
+    };
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(13, 0), core::card_to_int(13, 1)},
+        {core::card_to_int(12, 0), core::card_to_int(12, 1)},
+    }};
+    auto state = core::HUNLState::initial(config);
+    state.street = core::Street::Turn;
+    state.cur_player = -1;
+    state.pending_board_deals = 1;
+    return state;
+}
+
+core::HUNLState make_sampled_tie_showdown_state() {
+    auto config = std::make_shared<core::HUNLConfig>();
+    config->starting_stack = 1000;
+    config->big_blind = 100;
+    config->starting_street = core::Street::River;
+    config->initial_board = {
+        core::card_to_int(10, 0),
+        core::card_to_int(11, 0),
+        core::card_to_int(12, 0),
+        core::card_to_int(13, 0),
+        core::card_to_int(14, 0),
+    };
+    config->initial_pot = 200;
+    config->initial_contributions = {100, 100};
+    config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
+        {core::card_to_int(2, 1), core::card_to_int(3, 1)},
+        {core::card_to_int(4, 2), core::card_to_int(5, 2)},
+    }};
+    config->include_all_in = false;
+    config->bet_size_fractions.clear();
+    config->river_bet_fractions = std::vector<double>{};
+
+    return core::HUNLState::initial(config)
+        .apply(core::ACTION_CHECK)
+        .apply(core::ACTION_CHECK);
+}
+
 TEST_CASE(hunl_sampled_config_defaults_validate) {
     const core::HUNLSampledSolverConfig config;
     const auto validation = core::validate_sampled_config(config);
@@ -453,6 +525,199 @@ TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {
         }
     }
     EXPECT_EQ(expanded_children, 1U);
+}
+
+TEST_CASE(hunl_sampled_external_traversal_matches_hand_computed_river_update) {
+    const auto root_state = make_sampled_facing_bet_state();
+    core::HUNLSampledBuilder builder({false});
+    const auto root_id = builder.initialize(root_state);
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    request.traversing_player = 0;
+    request.seed = 17;
+    request.trajectory_id = 3;
+    request.iteration = 1;
+
+    const auto result = traversal.run(request, scratch);
+    const auto root_infoset = builder.node(root_id).infoset_id;
+    const auto row = storage.view(root_infoset);
+
+    EXPECT_NEAR(root_state.apply(core::ACTION_FOLD).utility()[0], 0.0, TOL);
+    EXPECT_NEAR(root_state.apply(core::ACTION_CALL).utility()[0], 4.0, TOL);
+    EXPECT_NEAR(result.value, 2.0, TOL);
+    EXPECT_EQ(result.infosets_updated, 1U);
+    EXPECT_EQ(result.opponent_nodes_sampled, 0U);
+    EXPECT_EQ(row.action_count, 2U);
+    EXPECT_NEAR(row.regret[0], -2.0, TOL);
+    EXPECT_NEAR(row.regret[1], 2.0, TOL);
+    EXPECT_NEAR(row.strategy_sum[0], 0.5, TOL);
+    EXPECT_NEAR(row.strategy_sum[1], 0.5, TOL);
+}
+
+TEST_CASE(hunl_sampled_external_traversal_samples_opponent_strategy_probabilities) {
+    const auto root_state = make_sampled_facing_bet_state();
+    core::HUNLSampledBuilder builder({false});
+    const auto root_id = builder.initialize(root_state);
+    builder.ensure_expanded(root_id);
+
+    core::HUNLSampledStorage storage;
+    const auto root_node = builder.node(root_id);
+    auto row = storage.ensure_row({
+        root_node.infoset_id,
+        root_node.player,
+        root_node.street,
+        1,
+        static_cast<std::uint8_t>(root_node.edge_count),
+    });
+    row.regret[0] = 3.0f;
+    row.regret[1] = 1.0f;
+
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    request.traversing_player = 1;
+    request.seed = 991;
+    request.iteration = 5;
+
+    constexpr std::uint64_t trajectories = 4000;
+    std::array<std::uint64_t, 2> selected = {0, 0};
+    double value_sum = 0.0;
+    for (std::uint64_t trajectory = 0; trajectory < trajectories; ++trajectory) {
+        request.trajectory_id = trajectory;
+        const auto result = traversal.run(request, scratch);
+        EXPECT_EQ(result.opponent_nodes_sampled, 1U);
+        EXPECT_EQ(result.sampled_edge_slot_count, 1U);
+        const auto action = result.sampled_edge_slots[0];
+        EXPECT_TRUE(action < selected.size());
+        ++selected[action];
+        value_sum += result.value;
+    }
+
+    const auto fold_frequency = static_cast<double>(selected[0]) / static_cast<double>(trajectories);
+    const auto call_frequency = static_cast<double>(selected[1]) / static_cast<double>(trajectories);
+    EXPECT_NEAR(fold_frequency, 0.75, 0.04);
+    EXPECT_NEAR(call_frequency, 0.25, 0.04);
+    EXPECT_NEAR(value_sum / static_cast<double>(trajectories), 1.0, 0.16);
+}
+
+TEST_CASE(hunl_sampled_external_traversal_samples_chance_edges_by_probability) {
+    core::HUNLSampledBuilder builder({true});
+    const auto root_id = builder.initialize(make_suit_symmetric_chance_state());
+    builder.ensure_expanded(root_id);
+    const auto root = builder.node(root_id);
+    EXPECT_TRUE(root.edge_count > 1U);
+    EXPECT_TRUE(root.chance_isomorphic);
+
+    bool probabilities_are_nonuniform = false;
+    const auto first_probability = builder.edge(root.edge_begin).probability;
+    for (std::size_t edge_slot = 1; edge_slot < root.edge_count; ++edge_slot) {
+        if (std::abs(builder.edge(root.edge_begin + edge_slot).probability - first_probability) > 1e-12) {
+            probabilities_are_nonuniform = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(probabilities_are_nonuniform);
+
+    for (std::size_t edge_slot = 0; edge_slot < root.edge_count; ++edge_slot) {
+        auto& child = builder.node_mut(builder.edge(root.edge_begin + edge_slot).child);
+        child.type = core::HUNLFlatNodeType::TerminalShowdown;
+        child.terminal_utility = {1.0, -1.0};
+    }
+
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    request.traversing_player = 0;
+    request.seed = 1234567;
+    request.iteration = 9;
+
+    constexpr std::uint64_t trajectories = 6000;
+    std::vector<std::uint64_t> selected(root.edge_count, 0U);
+    for (std::uint64_t trajectory = 0; trajectory < trajectories; ++trajectory) {
+        request.trajectory_id = trajectory;
+        const auto result = traversal.run(request, scratch);
+        EXPECT_EQ(result.chance_nodes_sampled, 1U);
+        EXPECT_EQ(result.sampled_edge_slot_count, 1U);
+        EXPECT_TRUE(result.sampled_edge_slots[0] < selected.size());
+        ++selected[result.sampled_edge_slots[0]];
+        EXPECT_NEAR(result.value, 1.0, TOL);
+    }
+
+    for (std::size_t edge_slot = 0; edge_slot < root.edge_count; ++edge_slot) {
+        const auto observed = static_cast<double>(selected[edge_slot]) / static_cast<double>(trajectories);
+        const auto expected = builder.edge(root.edge_begin + edge_slot).probability;
+        EXPECT_NEAR(observed, expected, 0.015);
+    }
+}
+
+TEST_CASE(hunl_sampled_external_traversal_uses_independent_draws_down_the_path) {
+    core::HUNLSampledBuilder builder({false});
+    const auto root_id = builder.initialize(make_lazy_root_state());
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    request.traversing_player = 0;
+    request.seed = 44;
+    request.iteration = 2;
+
+    bool found_different_slots = false;
+    for (std::uint64_t trajectory = 0; trajectory < 7; ++trajectory) {
+        request.trajectory_id = trajectory;
+        const auto result = traversal.run(request, scratch);
+        EXPECT_TRUE(result.sampled_edge_slot_count >= 2U);
+        if (result.sampled_edge_slots[0] != result.sampled_edge_slots[1]) {
+            found_different_slots = true;
+        }
+    }
+    EXPECT_TRUE(found_different_slots);
+}
+
+TEST_CASE(hunl_sampled_terminal_values_preserve_win_loss_and_tie_perspectives) {
+    const auto win_state = make_sampled_facing_bet_state().apply(core::ACTION_CALL);
+    core::HUNLSampledBuilder win_builder({false});
+    const auto win_root = win_builder.initialize(win_state);
+    core::HUNLSampledStorage win_storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal win_traversal(win_builder, win_storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = win_root;
+
+    request.traversing_player = 0;
+    const auto winner = win_traversal.run(request, scratch);
+    request.traversing_player = 1;
+    const auto loser = win_traversal.run(request, scratch);
+    EXPECT_NEAR(winner.value, win_state.utility()[0], TOL);
+    EXPECT_NEAR(loser.value, win_state.utility()[1], TOL);
+    EXPECT_TRUE(winner.value > 0.0);
+    EXPECT_TRUE(loser.value < 0.0);
+
+    const auto tie_state = make_sampled_tie_showdown_state();
+    core::HUNLSampledBuilder tie_builder({false});
+    const auto tie_root = tie_builder.initialize(tie_state);
+    core::HUNLSampledStorage tie_storage;
+    core::HUNLSampledTraversal tie_traversal(tie_builder, tie_storage, terminal_evaluator);
+    request.root_node_id = tie_root;
+    request.traversing_player = 0;
+    const auto tie0 = tie_traversal.run(request, scratch);
+    request.traversing_player = 1;
+    const auto tie1 = tie_traversal.run(request, scratch);
+    EXPECT_NEAR(tie0.value, tie_state.utility()[0], TOL);
+    EXPECT_NEAR(tie1.value, tie_state.utility()[1], TOL);
+    EXPECT_NEAR(tie0.value, tie1.value, TOL);
 }
 
 TEST_CASE(hunl_sampled_exporter_normalizes_sparse_rows_for_both_layouts) {

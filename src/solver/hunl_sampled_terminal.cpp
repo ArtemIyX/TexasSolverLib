@@ -2,6 +2,15 @@
 
 namespace core {
 
+double HUNLSampledTerminalEvaluator::evaluate_terminal(
+    const HUNLSampledTerminalInput& input,
+    const std::array<double, 2>& terminal_utility) const noexcept {
+    if (input.traversing_player < 0 || input.traversing_player > 1) {
+        return 0.0;
+    }
+    return terminal_utility[static_cast<std::size_t>(input.traversing_player)];
+}
+
 double HUNLSampledTerminalEvaluator::evaluate_fold(
     const HUNLSampledTerminalInput& input,
     PlayerId folding_player) const noexcept {
