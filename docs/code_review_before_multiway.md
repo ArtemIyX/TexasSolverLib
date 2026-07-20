@@ -91,7 +91,9 @@ Remaining integration work belongs to P0-1: scheduler batches must invoke this t
 
 ### P0-3: adaptive memory fallback can loop forever while increasing the estimate
 
-Evidence:
+Status: **fixed on 2026-07-20.**
+
+Original evidence:
 
 - `src/solver/hunl_sampled_solver.cpp:229-241` loops while the estimate exceeds the hard limit and a configuration field changes.
 - After other fallback levers are exhausted, `src/solver/hunl_sampled_solver.cpp:280` increments `depth_limit_plies_hint` on every iteration.
@@ -99,14 +101,28 @@ Evidence:
 
 The last fallback therefore increases estimated memory. Because the hint changes on every iteration, the “no progress” comparison never breaks the loop. A configuration still above the hard limit after minibatch, traversal, average-strategy, and bucket reductions can hang forever inside `preflight()`.
 
-Recommended fix:
+Implemented fix:
+
+- `depth_limit_plies_hint` now means the maximum plies cached/evaluated below a public state; zero is root-only. The fallback reduces it toward zero, reducing terminal-cache memory.
+- Preflight evaluates each fallback candidate before committing it. It records and keeps a candidate only when `new_estimate < old_estimate`; otherwise it stops and rejects if the hard limit remains exceeded.
+- Successful adaptive steps are capped at 128.
+- Public-state, sparse-row, terminal-cache, worker-delta, export, and total estimates use saturating arithmetic. Overflow becomes `uint64_t` maximum and is rejected by a finite hard limit.
+
+Original recommended fix:
 
 - Define the depth field unambiguously. If it means maximum plies searched, reducing it should reduce memory. If it means “cut off this many plies earlier,” rename it and make the estimator monotonic in the correct direction.
 - Require every fallback step to produce `new_estimate < old_estimate`; otherwise stop and reject.
 - Add a small fixed maximum number of fallback steps.
 - Use saturating/checked arithmetic in all estimate products and sums so overflow becomes rejection, not a small estimate.
 
-Regression tests:
+Regression tests added:
+
+- An impossible fixed-cache configuration rejects after all memory-reducing fallbacks are exhausted, rather than entering no-op fallbacks.
+- Every recorded adaptive step is asserted to strictly decrease the estimate.
+- A depth-hint-only configuration verifies that reducing the hint reduces memory until the limit fits.
+- Maximum workers, bucket hints, cache sizes, depth hints, and action counts produce a saturated estimate and safe rejection.
+
+Original regression recommendations:
 
 - Construct a limit that remains impossible after all valid reductions and assert that preflight returns `Rejected` promptly.
 - Assert that every recorded adaptive step strictly decreases the estimate.

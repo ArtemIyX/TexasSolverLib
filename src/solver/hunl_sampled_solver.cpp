@@ -1,6 +1,7 @@
 #include "solver/hunl_sampled_solver.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
@@ -12,6 +13,28 @@ constexpr std::uint64_t kDefaultTerminalCachePerStateBytes = 128ULL;
 constexpr std::uint64_t kWorkerDeltaBytesPerTraversal = 4096ULL;
 constexpr std::uint64_t kBuilderCacheNodeFloor = 1ULL;
 
+constexpr std::uint64_t kSaturatedMemoryEstimate = std::numeric_limits<std::uint64_t>::max();
+
+std::uint64_t saturating_add(std::uint64_t left, std::uint64_t right) noexcept {
+    return left > kSaturatedMemoryEstimate - right ? kSaturatedMemoryEstimate : left + right;
+}
+
+std::uint64_t saturating_multiply(std::uint64_t left, std::uint64_t right) noexcept {
+    if (left == 0 || right == 0) {
+        return 0;
+    }
+    return left > kSaturatedMemoryEstimate / right ? kSaturatedMemoryEstimate : left * right;
+}
+
+std::uint64_t saturating_size(std::size_t value) noexcept {
+    if constexpr (sizeof(std::size_t) > sizeof(std::uint64_t)) {
+        if (value > static_cast<std::size_t>(kSaturatedMemoryEstimate)) {
+            return kSaturatedMemoryEstimate;
+        }
+    }
+    return static_cast<std::uint64_t>(value);
+}
+
 std::uint8_t infer_root_action_count(const HUNLSampledSolveRequest& request) noexcept {
     return request.root_state.has_value()
         ? static_cast<std::uint8_t>(request.root_state->legal_actions().size())
@@ -20,7 +43,7 @@ std::uint8_t infer_root_action_count(const HUNLSampledSolveRequest& request) noe
 
 std::uint64_t infer_bucket_count(const HUNLSampledSolveRequest& request, const HUNLSampledSolverConfig& config) noexcept {
     if (config.bucket_count_hint > 0) {
-        return static_cast<std::uint64_t>(config.bucket_count_hint);
+        return saturating_size(config.bucket_count_hint);
     }
     if (request.root_state.has_value() && request.root_state->hole_cards.has_value()) {
         return 1326ULL;
@@ -89,7 +112,10 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
 
     config_ = preflight_result.effective_config;
     if (request.root_state.has_value()) {
-        builder_.initialize(*request.root_state);
+        const auto initialized_root_id = builder_.initialize(*request.root_state);
+        if (initialized_root_id != builder_.root_id()) {
+            throw std::runtime_error("sampled solver initialized an inconsistent root node");
+        }
         if (config_.max_cached_public_states > 0 &&
             builder_.node_count() > static_cast<std::size_t>(config_.max_cached_public_states)) {
             throw std::runtime_error("sampled solver exceeded max_cached_public_states during initialization");
@@ -138,14 +164,13 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::memory_estimate() const noexcept {
     estimate.sparse_values_allocated = storage_memory.sparse_values;
     estimate.terminal_cache_bytes = 0;
     estimate.worker_delta_bytes = estimate_worker_delta_bytes({}, config_);
-    estimate.export_bytes = static_cast<std::uint64_t>(root_strategy_.actions.capacity()) *
-        sizeof(HUNLSampledActionProbability);
-    estimate.total_bytes_live =
-        estimate.public_state_cache_bytes +
-        estimate.infoset_row_bytes +
-        estimate.terminal_cache_bytes +
-        estimate.worker_delta_bytes +
-        estimate.export_bytes;
+    estimate.export_bytes = saturating_multiply(
+        saturating_size(root_strategy_.actions.capacity()), sizeof(HUNLSampledActionProbability));
+    estimate.total_bytes_live = saturating_add(
+        saturating_add(estimate.public_state_cache_bytes, estimate.infoset_row_bytes),
+        saturating_add(
+            saturating_add(estimate.terminal_cache_bytes, estimate.worker_delta_bytes),
+            estimate.export_bytes));
     return estimate;
 }
 
@@ -183,32 +208,36 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::estimate_memory_for(
         ? static_cast<std::uint64_t>(config.max_cached_public_states)
         : std::max<std::uint64_t>(
             kBuilderCacheNodeFloor,
-            static_cast<std::uint64_t>(config.minibatch_size) *
-                static_cast<std::uint64_t>(config.workers));
+            saturating_multiply(static_cast<std::uint64_t>(config.minibatch_size),
+                                saturating_size(config.workers)));
     estimate.public_states_cached = public_states;
-    estimate.public_state_edges = public_states * std::max<std::uint64_t>(1U, infer_root_action_count(request));
-    estimate.public_state_cache_bytes = public_states * kDefaultPublicStateBytes;
+    estimate.public_state_edges = saturating_multiply(
+        public_states, std::max<std::uint64_t>(1U, infer_root_action_count(request)));
+    estimate.public_state_cache_bytes = saturating_multiply(public_states, kDefaultPublicStateBytes);
 
     const auto bucket_count = infer_bucket_count(request, config);
     const auto action_count = std::max<std::uint64_t>(1U, infer_root_action_count(request));
     const auto infoset_rows = std::max<std::uint64_t>(
         1ULL,
-        static_cast<std::uint64_t>(config.minibatch_size) *
-            static_cast<std::uint64_t>(config.workers));
+            saturating_multiply(static_cast<std::uint64_t>(config.minibatch_size),
+                                saturating_size(config.workers)));
     estimate.infoset_rows_allocated = infoset_rows;
-    estimate.sparse_values_allocated = infoset_rows * bucket_count * action_count;
-    estimate.infoset_row_bytes =
-        infoset_rows * (sizeof(HUNLSampledInfosetMeta) + sizeof(InfosetId) + sizeof(std::size_t) + sizeof(void*) * 2ULL) +
-        estimate.sparse_values_allocated * sizeof(float) * 2ULL;
+    estimate.sparse_values_allocated = saturating_multiply(
+        saturating_multiply(infoset_rows, bucket_count), action_count);
+    const auto meta_bytes = saturating_add(
+        saturating_add(sizeof(HUNLSampledInfosetMeta), sizeof(InfosetId)),
+        saturating_add(sizeof(std::size_t), saturating_multiply(sizeof(void*), 2ULL)));
+    estimate.infoset_row_bytes = saturating_add(
+        saturating_multiply(infoset_rows, meta_bytes),
+        saturating_multiply(estimate.sparse_values_allocated, sizeof(float) * 2ULL));
     estimate.terminal_cache_bytes = estimate_terminal_cache_bytes(request, config);
     estimate.worker_delta_bytes = estimate_worker_delta_bytes(request, config);
     estimate.export_bytes = estimate_export_bytes(request);
-    estimate.total_bytes_live =
-        estimate.public_state_cache_bytes +
-        estimate.infoset_row_bytes +
-        estimate.terminal_cache_bytes +
-        estimate.worker_delta_bytes +
-        estimate.export_bytes;
+    estimate.total_bytes_live = saturating_add(
+        saturating_add(estimate.public_state_cache_bytes, estimate.infoset_row_bytes),
+        saturating_add(
+            saturating_add(estimate.terminal_cache_bytes, estimate.worker_delta_bytes),
+            estimate.export_bytes));
     return estimate;
 }
 
@@ -234,16 +263,31 @@ HUNLSampledMemoryPreflight HUNLSampledSolver::build_preflight_result(
     result.estimate = estimate_memory_for(request, result.effective_config);
     while (config.adaptive_memory_fallback &&
            result.estimate.total_bytes() > result.effective_config.memory_fail_bytes) {
-        const auto before = result.effective_config;
-        apply_adaptive_fallback(result.effective_config, result.adjustments);
-        if (result.effective_config.traversals_per_iteration == before.traversals_per_iteration &&
-            result.effective_config.minibatch_size == before.minibatch_size &&
-            result.effective_config.use_average_strategy_sampling == before.use_average_strategy_sampling &&
-            result.effective_config.bucket_count_hint == before.bucket_count_hint &&
-            result.effective_config.depth_limit_plies_hint == before.depth_limit_plies_hint) {
+        if (result.adjustments.recorded_step_count == HUNLSampledAdaptiveAdjustments::kMaxRecordedSteps) {
             break;
         }
-        result.estimate = estimate_memory_for(request, result.effective_config);
+        const auto before = result.effective_config;
+        auto candidate = before;
+        auto candidate_adjustments = result.adjustments;
+        apply_adaptive_fallback(candidate, candidate_adjustments);
+        if (candidate.traversals_per_iteration == before.traversals_per_iteration &&
+            candidate.minibatch_size == before.minibatch_size &&
+            candidate.use_average_strategy_sampling == before.use_average_strategy_sampling &&
+            candidate.bucket_count_hint == before.bucket_count_hint &&
+            candidate.depth_limit_plies_hint == before.depth_limit_plies_hint) {
+            break;
+        }
+        const auto old_estimate = result.estimate.total_bytes();
+        const auto new_estimate = estimate_memory_for(request, candidate);
+        if (new_estimate.total_bytes() >= old_estimate) {
+            break;
+        }
+        result.effective_config = candidate;
+        result.adjustments = candidate_adjustments;
+        const auto step = result.adjustments.recorded_step_count++;
+        result.adjustments.estimate_before[step] = old_estimate;
+        result.adjustments.estimate_after[step] = new_estimate.total_bytes();
+        result.estimate = new_estimate;
     }
 
     if (result.estimate.total_bytes() > result.effective_config.memory_fail_bytes) {
@@ -283,34 +327,42 @@ void HUNLSampledSolver::apply_adaptive_fallback(
         adjustments.reduced_bucket_hint = true;
         return;
     }
-    ++config.depth_limit_plies_hint;
-    adjustments.increased_depth_limit_hint = true;
+    if (config.depth_limit_plies_hint > 0U) {
+        --config.depth_limit_plies_hint;
+        adjustments.reduced_depth_limit_hint = true;
+    }
 }
 
 std::uint64_t HUNLSampledSolver::estimate_worker_delta_bytes(
     const HUNLSampledSolveRequest& request,
     const HUNLSampledSolverConfig& config) noexcept {
     const auto action_count = std::max<std::uint64_t>(1U, infer_root_action_count(request));
-    const auto worker_factor =
-        static_cast<std::uint64_t>(std::max<std::size_t>(1U, config.workers)) *
-        static_cast<std::uint64_t>(std::max<std::uint32_t>(1U, config.minibatch_size));
-    return worker_factor * (kWorkerDeltaBytesPerTraversal + action_count * sizeof(double) * 8ULL);
+    const auto worker_factor = saturating_multiply(
+        saturating_size(std::max<std::size_t>(1U, config.workers)),
+        static_cast<std::uint64_t>(std::max<std::uint32_t>(1U, config.minibatch_size)));
+    return saturating_multiply(
+        worker_factor,
+        saturating_add(kWorkerDeltaBytesPerTraversal,
+                       saturating_multiply(action_count, sizeof(double) * 8ULL)));
 }
 
 std::uint64_t HUNLSampledSolver::estimate_export_bytes(const HUNLSampledSolveRequest& request) noexcept {
-    return static_cast<std::uint64_t>(std::max<std::uint8_t>(1U, infer_root_action_count(request))) *
-        sizeof(HUNLSampledActionProbability);
+    return saturating_multiply(
+        static_cast<std::uint64_t>(std::max<std::uint8_t>(1U, infer_root_action_count(request))),
+        sizeof(HUNLSampledActionProbability));
 }
 
 std::uint64_t HUNLSampledSolver::estimate_terminal_cache_bytes(
     const HUNLSampledSolveRequest& request,
     const HUNLSampledSolverConfig& config) noexcept {
-    const auto depth_factor = 1ULL + static_cast<std::uint64_t>(config.depth_limit_plies_hint);
+    const auto depth_factor = saturating_add(1ULL, static_cast<std::uint64_t>(config.depth_limit_plies_hint));
     const auto public_states = config.max_cached_public_states > 0
         ? static_cast<std::uint64_t>(config.max_cached_public_states)
         : std::max<std::uint64_t>(1ULL, static_cast<std::uint64_t>(config.minibatch_size));
     const auto action_factor = std::max<std::uint64_t>(1U, infer_root_action_count(request));
-    return public_states * action_factor * depth_factor * kDefaultTerminalCachePerStateBytes;
+    return saturating_multiply(
+        saturating_multiply(saturating_multiply(public_states, action_factor), depth_factor),
+        kDefaultTerminalCachePerStateBytes);
 }
 
 }  // namespace core

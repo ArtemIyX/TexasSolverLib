@@ -8,6 +8,7 @@
 #include "solver/hunl_sampled_terminal.hpp"
 
 #include <chrono>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -55,11 +56,16 @@ enum class HUNLSampledMemoryStatus : std::uint8_t {
 };
 
 struct HUNLSampledAdaptiveAdjustments {
+    static constexpr std::size_t kMaxRecordedSteps = 128;
+
     bool reduced_minibatch = false;
     bool reduced_traversals = false;
     bool disabled_average_strategy_sampling = false;
     bool reduced_bucket_hint = false;
-    bool increased_depth_limit_hint = false;
+    bool reduced_depth_limit_hint = false;
+    std::array<std::uint64_t, kMaxRecordedSteps> estimate_before{};
+    std::array<std::uint64_t, kMaxRecordedSteps> estimate_after{};
+    std::size_t recorded_step_count = 0;
 };
 
 struct HUNLSampledMemoryPreflight {

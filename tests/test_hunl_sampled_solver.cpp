@@ -13,6 +13,7 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 
 namespace {
@@ -306,12 +307,13 @@ TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
     request.root_state = make_lazy_root_state();
 
     const auto empty_memory = solver.memory_estimate();
-    solver.run_batches(request, 0);
+    const auto initialization = solver.run_batches(request, 0);
     const auto initialized_memory = solver.memory_estimate();
     solver.builder().ensure_expanded(solver.builder().root_id());
     const auto expanded_memory = solver.memory_estimate();
 
     EXPECT_EQ(empty_memory.public_states_cached, 0U);
+    EXPECT_EQ(initialization.batches_completed, 0U);
     EXPECT_EQ(initialized_memory.public_states_cached, 1U);
     EXPECT_TRUE(expanded_memory.public_states_cached > initialized_memory.public_states_cached);
     EXPECT_TRUE(expanded_memory.public_state_cache_bytes >= initialized_memory.public_state_cache_bytes);
@@ -415,6 +417,83 @@ TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories)
     EXPECT_TRUE(!result.profile.memory_rejected);
     EXPECT_EQ(result.batches_completed, 0U);
     EXPECT_EQ(result.profile.traversals, 0U);
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_rejects_impossible_config_without_unbounded_fallback) {
+    core::HUNLSampledSolverConfig config;
+    config.max_cached_public_states = std::numeric_limits<std::uint32_t>::max();
+    config.memory_warning_bytes = 1U;
+    config.memory_fail_bytes = 1024U;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 2;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_TRUE(preflight.adjustments.reduced_minibatch);
+    EXPECT_EQ(preflight.effective_config.minibatch_size, 1U);
+    EXPECT_EQ(preflight.effective_config.traversals_per_iteration, config.traversals_per_iteration);
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_records_strictly_decreasing_adaptive_estimates) {
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1024;
+    config.traversals_per_iteration = 4096;
+    config.bucket_count_hint = 4096;
+    config.depth_limit_plies_hint = 8;
+    config.memory_warning_bytes = 1U;
+    config.memory_fail_bytes = 2ULL * 1024ULL * 1024ULL;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 4;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_TRUE(preflight.adjustments.recorded_step_count > 0U);
+    EXPECT_TRUE(preflight.adjustments.recorded_step_count <=
+                core::HUNLSampledAdaptiveAdjustments::kMaxRecordedSteps);
+    for (std::size_t step = 0; step < preflight.adjustments.recorded_step_count; ++step) {
+        EXPECT_TRUE(preflight.adjustments.estimate_after[step] <
+                    preflight.adjustments.estimate_before[step]);
+    }
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_reduces_depth_limit_hint_when_it_lowers_memory) {
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    config.traversals_per_iteration = 1;
+    config.bucket_count_hint = 32;
+    config.depth_limit_plies_hint = 8;
+    config.memory_warning_bytes = 1U;
+    config.memory_fail_bytes = 8U * 1024U;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 4;
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_TRUE(preflight.adjustments.reduced_depth_limit_hint);
+    EXPECT_TRUE(preflight.effective_config.depth_limit_plies_hint < config.depth_limit_plies_hint);
+    EXPECT_TRUE(preflight.estimate.total_bytes() <= config.memory_fail_bytes);
+}
+
+TEST_CASE(hunl_sampled_solver_preflight_saturates_overflowing_memory_estimates) {
+    core::HUNLSampledSolverConfig config;
+    config.max_cached_public_states = std::numeric_limits<std::uint32_t>::max();
+    config.workers = std::numeric_limits<std::size_t>::max();
+    config.minibatch_size = std::numeric_limits<std::uint32_t>::max();
+    config.bucket_count_hint = std::numeric_limits<std::size_t>::max();
+    config.depth_limit_plies_hint = std::numeric_limits<std::uint32_t>::max();
+    config.memory_fail_bytes = std::numeric_limits<std::uint64_t>::max() - 1U;
+
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = std::numeric_limits<std::uint8_t>::max();
+
+    const auto preflight = solver.preflight(request);
+    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_EQ(preflight.estimate.total_bytes(), std::numeric_limits<std::uint64_t>::max());
 }
 
 TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without_work) {
