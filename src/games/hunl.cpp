@@ -53,6 +53,22 @@ bool board_contains_card(const std::vector<std::uint8_t>& board, std::uint8_t ca
     return std::find(board.begin(), board.end(), card) != board.end();
 }
 
+void validate_hole_cards_against_board(
+    const std::array<std::array<std::uint8_t, 2>, 2>& holes,
+    const std::vector<std::uint8_t>& board,
+    const char* context) {
+    const std::array<std::uint8_t, 4> all_hole_cards = {
+        holes[0][0], holes[0][1], holes[1][0], holes[1][1]};
+    if (!are_valid_and_distinct_cards(all_hole_cards.data(), all_hole_cards.size())) {
+        throw std::invalid_argument(std::string(context) + " hole cards must be valid and distinct");
+    }
+    for (const auto card : all_hole_cards) {
+        if (board_contains_card(board, card)) {
+            throw std::invalid_argument(std::string(context) + " hole cards must not overlap initial_board");
+        }
+    }
+}
+
 void validate_range_input(
     const HUNLRangeInput& range_input,
     Street starting_street,
@@ -60,16 +76,17 @@ void validate_range_input(
     bool bucketed_mode,
     const char* field_name,
     std::size_t player) {
+    double total_weight = 0.0;
     for (const auto& weighted_hand : range_input.hand_weights) {
-        if (weighted_hand.weight < 0.0) {
+        if (!std::isfinite(weighted_hand.weight) || weighted_hand.weight < 0.0) {
             throw std::invalid_argument(
                 std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] hand weights must be non-negative");
+                "[" + std::to_string(player) + "] hand weights must be finite and non-negative");
         }
-        if (weighted_hand.hole[0] == weighted_hand.hole[1]) {
+        if (!are_valid_and_distinct_cards(weighted_hand.hole.data(), weighted_hand.hole.size())) {
             throw std::invalid_argument(
                 std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] hand entries must contain two distinct cards");
+                "[" + std::to_string(player) + "] hand entries must contain two valid distinct cards");
         }
         if (board_contains_card(initial_board, weighted_hand.hole[0]) ||
             board_contains_card(initial_board, weighted_hand.hole[1])) {
@@ -77,13 +94,17 @@ void validate_range_input(
                 std::string("HUNLConfig.validate: ") + field_name +
                 "[" + std::to_string(player) + "] contains hole cards blocked by initial_board");
         }
+        total_weight += weighted_hand.weight;
+        if (!std::isfinite(total_weight)) {
+            throw std::invalid_argument("HUNLConfig.validate: range weight total must be finite");
+        }
     }
 
     for (const auto& weighted_bucket : range_input.bucket_weights) {
-        if (weighted_bucket.weight < 0.0) {
+        if (!std::isfinite(weighted_bucket.weight) || weighted_bucket.weight < 0.0) {
             throw std::invalid_argument(
                 std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] bucket weights must be non-negative");
+                "[" + std::to_string(player) + "] bucket weights must be finite and non-negative");
         }
         if (weighted_bucket.street != starting_street) {
             throw std::invalid_argument(
@@ -95,6 +116,16 @@ void validate_range_input(
                 std::string("HUNLConfig.validate: ") + field_name +
                 "[" + std::to_string(player) + "] bucket weights require bucketed flat solve mode");
         }
+        total_weight += weighted_bucket.weight;
+        if (!std::isfinite(total_weight)) {
+            throw std::invalid_argument("HUNLConfig.validate: range weight total must be finite");
+        }
+    }
+    if (range_input.hand_weights.empty() && range_input.bucket_weights.empty()) {
+        throw std::invalid_argument("HUNLConfig.validate: range input must not be empty");
+    }
+    if (total_weight <= 0.0) {
+        throw std::invalid_argument("HUNLConfig.validate: range input must have positive total weight");
     }
 }
 
@@ -159,6 +190,26 @@ std::uint8_t rank_of(std::uint8_t card) {
 
 std::uint8_t suit_of(std::uint8_t card) {
     return static_cast<std::uint8_t>(card & 3U);
+}
+
+bool is_valid_card(std::uint8_t card) noexcept {
+    const auto rank = rank_of(card);
+    return rank >= 2U && rank <= 14U;
+}
+
+bool are_valid_and_distinct_cards(const std::uint8_t* cards, std::size_t count) noexcept {
+    if (cards == nullptr && count != 0U) {
+        return false;
+    }
+    std::array<bool, 64> seen = {};
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto card = cards[i];
+        if (!is_valid_card(card) || seen[card]) {
+            return false;
+        }
+        seen[card] = true;
+    }
+    return true;
 }
 
 std::string card_to_string(std::uint8_t card) {
@@ -286,6 +337,15 @@ void HUNLConfig::validate() const {
     if (initial_board.size() != expected_board_size) {
         throw std::invalid_argument(
             "HUNLConfig.validate: initial_board size does not match starting_street");
+    }
+    if (!are_valid_and_distinct_cards(initial_board.data(), initial_board.size())) {
+        throw std::invalid_argument("HUNLConfig.validate: initial_board cards must be valid and distinct");
+    }
+    if (initial_hole_cards.has_value()) {
+        validate_hole_cards_against_board(
+            *initial_hole_cards,
+            initial_board,
+            "HUNLConfig.validate:");
     }
     const bool bucketed_mode =
         flat_solve_mode == HUNLFlatSolveMode::Bucketed ||
@@ -431,6 +491,10 @@ HUNLState HUNLState::initial_preflop(std::shared_ptr<const HUNLConfig> cfg) {
 
 HUNLState HUNLState::clone_with_hole_cards(
     const std::array<std::array<std::uint8_t, 2>, 2>& hole) const {
+    if (!are_valid_and_distinct_cards(board.data(), board.size())) {
+        throw std::invalid_argument("HUNLState::clone_with_hole_cards board cards must be valid and distinct");
+    }
+    validate_hole_cards_against_board(hole, board, "HUNLState::clone_with_hole_cards");
     PlayerId next_cur = 1;
     if (street == Street::Preflop || contributions[0] < contributions[1]) {
         next_cur = 0;
@@ -531,6 +595,14 @@ std::vector<ChanceOutcome> HUNLState::chance_outcomes() const {
     if (cur_player != -1 || is_terminal() || !hole_cards.has_value()) {
         return {};
     }
+
+    if (!are_valid_and_distinct_cards(board.data(), board.size())) {
+        throw std::invalid_argument("HUNLState::chance_outcomes board cards must be valid and distinct");
+    }
+    validate_hole_cards_against_board(
+        *hole_cards,
+        board,
+        "HUNLState::chance_outcomes");
 
     std::array<bool, 64> held = {};
     for (const auto c : {(*hole_cards)[0][0], (*hole_cards)[0][1], (*hole_cards)[1][0], (*hole_cards)[1][1]}) {

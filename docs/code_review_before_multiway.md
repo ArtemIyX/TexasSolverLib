@@ -130,7 +130,9 @@ Original regression recommendations:
 
 ### P0-4: card inputs are not validated and can index fixed arrays out of bounds
 
-Evidence:
+Status: **fixed on 2026-07-20.**
+
+Original evidence:
 
 - `HUNLConfig::validate` checks board length at `src/games/hunl.cpp:286-289`, but does not check card encoding, duplicate board cards, duplicate/overlapping fixed hole cards, or hole/board overlap.
 - Range validation at `src/games/hunl.cpp:63-96` checks same-card holes and board blocking, but does not validate that a card encodes rank 2-14 and suit 0-3.
@@ -139,11 +141,22 @@ Evidence:
 
 Because cards are `uint8_t`, a value such as 255 passes configuration validation and produces an out-of-bounds write. Validly encoded duplicates instead produce impossible decks, incorrect chance denominators, and potentially duplicate cards at showdown.
 
-Recommended fix:
+Implemented fix:
+
+- Added shared allocation-free `is_valid_card` and `are_valid_and_distinct_cards` routines. Valid cards are exactly rank 2 through ace with a suit in the encoded low two bits.
+- `HUNLConfig::validate` now rejects invalid or duplicate board cards, invalid or overlapping fixed private cards, and any board/private-card collision before state construction.
+- Initial and player range inputs now reject invalid or duplicate hole cards, board-blocked hands, empty ranges, NaN, infinity, negative values, overflowing totals, and zero total mass.
+- Combo enumeration, dead-card masks, sampled chance enumeration, private-card cloning, and bucket-map board/hand lookup validate card sets before indexing fixed 64-card arrays.
+
+Original recommended fix:
 
 Create one shared, allocation-free validation routine for a card, board, fixed private cards, and dead-card union. Call it at every public configuration/range boundary. Reject invalid rank/suit, duplicates, private-card overlap, and board overlap before constructing a state. Also validate finite range weights.
 
-Regression tests:
+Regression tests added:
+
+- A dedicated `test_hunl_card_validation` target covers low/high invalid encodings, duplicate boards, every fixed-hole collision class, range card validity, finite/non-negative/positive range mass, combo and dead-card utility boundaries, mutable-state chance safety, and cloned-hole validation.
+
+Original regression recommendations:
 
 - Reject card values below the encoding for rank 2 and above the encoding for ace/suit 3.
 - Reject every duplicate combination across board and both players’ holes.

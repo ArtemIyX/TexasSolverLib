@@ -70,6 +70,9 @@ ComboIndex ComboIndex::from_board(const std::vector<std::uint8_t>& board_cards) 
 }
 
 ComboIndex enumerate_combos(const std::vector<std::uint8_t>& board) {
+    if (!are_valid_and_distinct_cards(board.data(), board.size())) {
+        throw std::invalid_argument("enumerate_combos requires valid distinct board cards");
+    }
     std::array<bool, 64> blocked = {};
     for (const auto card : board) {
         blocked[card] = true;
@@ -109,6 +112,9 @@ RangeMask card_mask(const ComboIndex& combos, std::uint8_t card) {
 }
 
 RangeMask dead_card_mask(const ComboIndex& combos, const std::vector<std::uint8_t>& dead_cards) {
+    if (!are_valid_and_distinct_cards(dead_cards.data(), dead_cards.size())) {
+        throw std::invalid_argument("dead_card_mask requires valid distinct dead cards");
+    }
     RangeMask mask;
     mask.kind = RangeVector::Kind::Combo;
     mask.enabled.reserve(combos.hands.size());

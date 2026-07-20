@@ -3,6 +3,7 @@
 #include "core/types.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -82,6 +83,8 @@ constexpr std::uint8_t card_to_int(std::uint8_t rank, std::uint8_t suit) {
 
 std::uint8_t rank_of(std::uint8_t card);
 std::uint8_t suit_of(std::uint8_t card);
+[[nodiscard]] bool is_valid_card(std::uint8_t card) noexcept;
+[[nodiscard]] bool are_valid_and_distinct_cards(const std::uint8_t* cards, std::size_t count) noexcept;
 std::string card_to_string(std::uint8_t card);
 std::string sorted_card_string(const std::vector<std::uint8_t>& cards);
 

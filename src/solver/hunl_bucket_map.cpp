@@ -1,5 +1,6 @@
 #include "solver/hunl_bucket_map.hpp"
 
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -21,6 +22,9 @@ std::size_t street_bucket_index(Street street) {
 }
 
 std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::vector<std::uint8_t>& board) {
+    if (!are_valid_and_distinct_cards(board.data(), board.size())) {
+        throw std::invalid_argument("HUNLFlatBucketMap requires valid distinct board cards");
+    }
     std::array<bool, 64> blocked = {};
     for (const auto card : board) {
         blocked[card] = true;
@@ -68,7 +72,7 @@ std::vector<double> normalized_bucket_weights(const std::vector<std::uint32_t>& 
 bool is_hand_live_on_board(
     const std::vector<std::uint8_t>& board,
     const std::array<std::uint8_t, 2>& hole) {
-    if (hole[0] == hole[1]) {
+    if (!are_valid_and_distinct_cards(hole.data(), hole.size())) {
         return false;
     }
     for (const auto card : board) {
@@ -82,10 +86,13 @@ bool is_hand_live_on_board(
 std::vector<double> normalize_weights(std::vector<double> weights) {
     double total = 0.0;
     for (const auto weight : weights) {
-        if (weight < 0.0) {
-            throw std::invalid_argument("HUNLFlatBucketMap weights must be non-negative");
+        if (!std::isfinite(weight) || weight < 0.0) {
+            throw std::invalid_argument("HUNLFlatBucketMap weights must be finite and non-negative");
         }
         total += weight;
+        if (!std::isfinite(total)) {
+            throw std::invalid_argument("HUNLFlatBucketMap weight total must be finite");
+        }
     }
     if (total > 0.0) {
         for (auto& weight : weights) {
@@ -106,6 +113,9 @@ void validate_bucket_lookup_context(
         street == Street::Flop ? 3U : street == Street::Turn ? 4U : 5U;
     if (board.size() != expected_board_size) {
         throw std::invalid_argument("HUNLFlatBucketMap lookup board size does not match street");
+    }
+    if (!are_valid_and_distinct_cards(board.data(), board.size())) {
+        throw std::invalid_argument("HUNLFlatBucketMap lookup board cards must be valid and distinct");
     }
     if (!is_hand_live_on_board(board, hole)) {
         throw std::invalid_argument("HUNLFlatBucketMap lookup hole cards must be distinct and unblocked");
@@ -249,6 +259,9 @@ void HUNLFlatBucketMap::apply_range_inputs(
         const auto board = graph.infoset_board(infoset.id);
 
         for (const auto& weighted_bucket : range_input->bucket_weights) {
+            if (!std::isfinite(weighted_bucket.weight) || weighted_bucket.weight < 0.0) {
+                throw std::invalid_argument("HUNLFlatBucketMap bucket range weights must be finite and non-negative");
+            }
             if (weighted_bucket.street != infoset.street) {
                 continue;
             }
@@ -259,6 +272,12 @@ void HUNLFlatBucketMap::apply_range_inputs(
         }
 
         for (const auto& weighted_hand : range_input->hand_weights) {
+            if (!std::isfinite(weighted_hand.weight) || weighted_hand.weight < 0.0) {
+                throw std::invalid_argument("HUNLFlatBucketMap hand range weights must be finite and non-negative");
+            }
+            if (!are_valid_and_distinct_cards(weighted_hand.hole.data(), weighted_hand.hole.size())) {
+                throw std::invalid_argument("HUNLFlatBucketMap hand ranges require valid distinct hole cards");
+            }
             auto hole = weighted_hand.hole;
             if (hole[1] < hole[0]) {
                 std::swap(hole[0], hole[1]);
