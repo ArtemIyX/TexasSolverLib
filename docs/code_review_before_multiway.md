@@ -25,30 +25,35 @@ Severity meanings:
 
 ### P0-1: `HUNLSampledSolver` reports completed work without performing any solve
 
-Evidence:
+Status: **API-level guard fixed on 2026-07-20; real solving remains blocked by P0-2.**
 
-- `src/solver/hunl_sampled_solver.cpp:52-56` converts every positive time budget into exactly one batch; it never measures elapsed time.
-- `src/solver/hunl_sampled_solver.cpp:100-103` records the requested traversal count in the profile without executing traversals.
-- `src/solver/hunl_sampled_solver.cpp:105` always exports a uniform root strategy.
-- `src/solver/hunl_sampled_solver.cpp:110-111` reports the requested batches as completed and always sets `timed_out = false`.
+Original evidence:
+
+- The implementation converted every positive time budget into exactly one batch without measuring elapsed time.
+- It recorded the requested traversal count without executing traversals.
+- It always exported a uniform root strategy while reporting the requested batches as completed and `timed_out = false`.
 
 Why this is dangerous:
 
 A caller can request a 10-15 second solve, receive `batches_completed > 0`, a nonzero `profile.traversals`, and a normalized strategy, and reasonably treat it as solver output. The result is actually uniform regardless of state, seed, iterations, storage contents, or time budget. This is a silent correctness failure, which is more dangerous than an explicit “not implemented” error.
 
-Recommended fix:
+Implemented guard:
 
-1. Until the engine is implemented, make positive-budget and positive-batch calls fail explicitly with a dedicated `not_ready` status or exception. Keep zero-budget uniform export only if the API documents it as an initialization query.
-2. Implement a real batch loop that partitions trajectory IDs, invokes traversal, merges worker-local deltas in fixed order, applies discounting, and exports the root row.
-3. Derive profile counters only from completed work.
-4. In `solve_for`, check `steady_clock` between bounded minibatches and set `timed_out` from the actual stop condition.
+`HUNLSampledSolverNotReady` is now thrown for every positive-budget or positive-batch request before solver state or profile data is changed. Non-positive budgets and zero batches are explicitly initialization-only: they may initialize the root and export its uniform unsolved strategy, but return zero batches and zero traversals.
 
-Regression tests:
+Remaining implementation work after P0-2:
 
-- A one-batch solve must change at least one regret or strategy-sum entry in a tiny nontrivial game.
-- Different positive budgets must permit different completed batch counts; zero budget must perform none.
-- Reported traversal count must equal the number of actual traversal invocations.
-- A deliberately slow fake traversal must cause `timed_out = true`.
+1. Implement a real batch loop that partitions trajectory IDs, invokes traversal, merges worker-local deltas in fixed order, applies discounting, and exports the root row.
+2. Derive profile counters only from completed work.
+3. In `solve_for`, check `steady_clock` between bounded minibatches and set `timed_out` from the actual stop condition.
+
+Guard regression tests added:
+
+- Positive batch requests throw `HUNLSampledSolverNotReady` and preserve existing builder, profile, and exported-strategy state.
+- Short and 15-second positive budgets both fail explicitly without reporting traversals or exporting a strategy.
+- Zero-budget and zero-batch initialization report zero completed work and zero traversals.
+
+The original behavioral tests for regret changes, budget-dependent batch counts, actual traversal counters, and timeouts remain required when P0-2 is implemented.
 
 ### P0-2: sampled traversal is not MCCFR and returns zero for every showdown
 

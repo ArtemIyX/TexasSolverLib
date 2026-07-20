@@ -234,7 +234,7 @@ TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
     request.root_state = make_lazy_root_state();
 
     const auto empty_memory = solver.memory_estimate();
-    solver.run_batches(request, 1);
+    solver.run_batches(request, 0);
     const auto initialized_memory = solver.memory_estimate();
     solver.builder().ensure_expanded(solver.builder().root_id());
     const auto expanded_memory = solver.memory_estimate();
@@ -335,12 +335,14 @@ TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories)
     core::HUNLSampledSolveRequest request;
     request.root_state = make_lazy_root_state();
 
-    const auto result = solver.run_batches(request, 1);
+    const auto result = solver.run_batches(request, 0);
     EXPECT_TRUE(result.profile.public_states_cached >= 1U);
     EXPECT_TRUE(result.profile.worker_delta_bytes > 0U);
     EXPECT_TRUE(result.profile.export_bytes <= result.profile.total_memory_bytes);
     EXPECT_TRUE(result.profile.total_memory_bytes >= result.profile.worker_delta_bytes);
     EXPECT_TRUE(!result.profile.memory_rejected);
+    EXPECT_EQ(result.batches_completed, 0U);
+    EXPECT_EQ(result.profile.traversals, 0U);
 }
 
 TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without_work) {
@@ -358,6 +360,53 @@ TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without
     EXPECT_EQ(result.profile.traversals, 0U);
 }
 
+TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_work) {
+    core::HUNLSampledSolver solver;
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 3;
+    const auto root_id = solver.builder().initialize(make_lazy_root_state());
+
+    const auto initialized = solver.run_batches(request, 0);
+    const auto nodes_before = solver.builder().node_count();
+    const auto profile_before = solver.profile().snapshot();
+    const auto strategy_before = solver.export_root_strategy();
+
+    EXPECT_THROW(solver.run_batches(request, 1), core::HUNLSampledSolverNotReady);
+
+    EXPECT_EQ(root_id, 0U);
+    EXPECT_EQ(initialized.batches_completed, 0U);
+    EXPECT_EQ(strategy_before.actions.size(), 3U);
+    EXPECT_EQ(solver.builder().node_count(), nodes_before);
+    EXPECT_EQ(solver.profile().snapshot().traversals, profile_before.traversals);
+    EXPECT_EQ(solver.profile().snapshot().nodes_visited, profile_before.nodes_visited);
+    EXPECT_EQ(solver.profile().snapshot().infosets_updated, profile_before.infosets_updated);
+    EXPECT_EQ(solver.export_root_strategy().actions.size(), strategy_before.actions.size());
+    for (std::size_t action = 0; action < strategy_before.actions.size(); ++action) {
+        EXPECT_EQ(
+            solver.export_root_strategy().actions[action].action_index,
+            strategy_before.actions[action].action_index);
+        EXPECT_NEAR(
+            solver.export_root_strategy().actions[action].probability,
+            strategy_before.actions[action].probability,
+            TOL);
+    }
+}
+
+TEST_CASE(hunl_sampled_solver_positive_time_budgets_fail_explicitly) {
+    core::HUNLSampledSolver solver;
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = 3;
+
+    EXPECT_THROW(
+        solver.solve_for(request, std::chrono::milliseconds{1}),
+        core::HUNLSampledSolverNotReady);
+    EXPECT_THROW(
+        solver.solve_for(request, std::chrono::milliseconds{15'000}),
+        core::HUNLSampledSolverNotReady);
+    EXPECT_EQ(solver.profile().snapshot().traversals, 0U);
+    EXPECT_EQ(solver.export_root_strategy().actions.size(), 0U);
+}
+
 TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
     core::HUNLSampledSolverConfig config;
     config.adaptive_memory_fallback = false;
@@ -372,7 +421,7 @@ TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
     core::HUNLSampledSolveRequest request;
     request.root_action_count = 4;
 
-    EXPECT_THROW(solver.run_batches(request, 1), std::runtime_error);
+    EXPECT_THROW(solver.run_batches(request, 0), std::runtime_error);
 }
 
 TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {

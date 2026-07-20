@@ -42,6 +42,11 @@ const char* message_for_status(HUNLSampledMemoryStatus status) noexcept {
 
 }  // namespace
 
+HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
+    : std::logic_error(
+          "HUNLSampledSolver cannot run positive-work requests until sampled MCCFR is implemented") {
+}
+
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
     : config_(config),
       builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism}),
@@ -52,13 +57,19 @@ HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
 HUNLSampledSolveResult HUNLSampledSolver::solve_for(
     const HUNLSampledSolveRequest& request,
     std::chrono::milliseconds budget) {
-    const auto batches = budget.count() > 0 ? 1U : 0U;
-    return run_batches(request, batches);
+    if (budget.count() > 0) {
+        throw HUNLSampledSolverNotReady{};
+    }
+    return run_batches(request, 0);
 }
 
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     const HUNLSampledSolveRequest& request,
     std::uint32_t batches) {
+    if (batches > 0) {
+        throw HUNLSampledSolverNotReady{};
+    }
+
     profile_.reset();
 
     auto preflight_result = preflight(request);
@@ -97,17 +108,12 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
         live_memory.total_bytes(),
         preflight_result.status == HUNLSampledMemoryStatus::Warning,
         false);
-    profile_.record_traversal(
-        static_cast<std::uint64_t>(batches) * config_.traversals_per_iteration,
-        0,
-        0);
-
     root_strategy_ = HUNLSampledStrategyExporter::export_uniform(infer_root_action_count(request));
 
     HUNLSampledSolveResult result;
     result.root_strategy = root_strategy_;
     result.profile = profile_.snapshot();
-    result.batches_completed = batches;
+    result.batches_completed = 0;
     result.timed_out = false;
     return result;
 }

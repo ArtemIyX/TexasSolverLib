@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 
 namespace core {
 
@@ -23,6 +24,11 @@ struct HUNLSampledSolveResult {
     HUNLSampledProfileSnapshot profile;
     std::uint32_t batches_completed = 0;
     bool timed_out = false;
+};
+
+class HUNLSampledSolverNotReady final : public std::logic_error {
+public:
+    HUNLSampledSolverNotReady();
 };
 
 struct HUNLSampledMemoryEstimate {
@@ -68,9 +74,12 @@ class HUNLSampledSolver {
 public:
     explicit HUNLSampledSolver(HUNLSampledSolverConfig config = {});
 
+    // Non-positive budgets initialize/export the unsolved uniform root only.
+    // Positive solve requests throw until sampled MCCFR updates are implemented.
     [[nodiscard]] HUNLSampledSolveResult solve_for(
         const HUNLSampledSolveRequest& request,
         std::chrono::milliseconds budget);
+    // A zero batch count has the same initialization-only behavior as a zero budget.
     [[nodiscard]] HUNLSampledSolveResult run_batches(
         const HUNLSampledSolveRequest& request,
         std::uint32_t batches);
