@@ -324,6 +324,10 @@ The current utility and sampled terminal interfaces store exactly two contributi
 
 ### Blocker C: solver math is two-player zero/constant-sum CFR
 
+Status: **fixed on 2026-07-21 by defining and implementing the separate `MultiwayCFR` math contract.**
+
+The multiway contract is deterministic external-sampling MCCFR with fixed-order trajectory-delta merges, and its target metric is **NashConv**: the sum of non-negative unilateral best-response improvements across all seats. `include/solver/multiway_cfr.hpp` and `src/solver/multiway_cfr.cpp` support two through six players, calculate counterfactual reach as chance reach times the product of every non-traversing seat's reach, and use only the traverser's own reach for average-strategy accumulation. They intentionally do not claim two-player zero-sum convergence guarantees: in multi-player/general-sum poker, NashConv is a diagnostic estimate, and deterministic external-sampling MCCFR integration must report it without claiming an exact Nash solution. The exact heads-up DCFR solver remains unchanged; wiring this math into a multiway traversal awaits private-state/range work in Blocker D.
+
 The exact flat solver stores `player0_reach_` and `player1_reach_`, uses two-element bucket counts, and derives counterfactual reach from “the other player.” Multi-player CFR needs a product of all opponents’ reaches for each traverser and has weaker convergence guarantees in general-sum settings. Exploitability is also no longer the simple heads-up best-response sum. The project must define the target metric (for example NashConv) and acceptable algorithmic guarantees before implementation.
 
 ### Blocker D: private-state and abstraction interfaces are pairwise

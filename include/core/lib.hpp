@@ -6,6 +6,7 @@
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_bucket_map.hpp"
 #include "solver/hunl_bucket_terminal.hpp"
+#include "solver/multiway_cfr.hpp"
 #include "solver/dcfr_vector.hpp"
 #include "solver/dcfr_vector_parallel.hpp"
 #include "solver/exploit.hpp"
@@ -42,12 +43,17 @@ using ::core::HUNLConfig;
 using ::core::HUNLSolveOutput;
 using ::core::InfosetKey;
 using ::core::MultiwayAction;
+using ::core::MultiwayCFRAlgorithm;
+using ::core::MultiwayCFRConfig;
+using ::core::MultiwayCFRUpdate;
 using ::core::MultiwayGameConfig;
+using ::core::MultiwayNashConv;
 using ::core::MultiwayPotLayout;
 using ::core::MultiwaySidePot;
 using ::core::MultiwayState;
 using ::core::MultiwayTerminalInput;
 using ::core::MultiwayTerminalResult;
+using ::core::MultiwayQualityMetric;
 using ::core::PlayerId;
 using ::core::PreflopRvrOutput;
 using ::core::PreflopSolveOutput;
