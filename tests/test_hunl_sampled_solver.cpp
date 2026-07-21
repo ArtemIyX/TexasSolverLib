@@ -121,6 +121,7 @@ TEST_CASE(hunl_sampled_config_defaults_validate) {
     EXPECT_EQ(config.mode, core::HUNLFlatSamplingMode::External);
     EXPECT_EQ(config.precision, core::HUNLFlatStoragePrecision::Float32);
     EXPECT_EQ(config.layout, core::HUNLFlatValueLayout::InfosetActionHand);
+    EXPECT_TRUE(!config.use_public_chance_isomorphism);
     EXPECT_TRUE(config.lazy_public_expansion);
     EXPECT_TRUE(config.sparse_infosets);
     EXPECT_TRUE(config.enable_memory_guardrails);
@@ -314,24 +315,23 @@ TEST_CASE(hunl_sampled_builder_caches_nodes_by_public_state_key) {
     EXPECT_EQ(builder.edge_count(), first_edges);
 }
 
-TEST_CASE(hunl_sampled_builder_public_chance_isomorphism_collapses_turn_outcomes) {
-    core::HUNLSampledBuilder collapsed_builder({true});
+TEST_CASE(hunl_sampled_builder_public_chance_isomorphism_is_disabled_for_private_state_safety) {
+    core::HUNLSampledBuilder requested_builder({true});
     core::HUNLSampledBuilder raw_builder({false});
     const auto root_state = make_lazy_root_state();
 
-    const auto collapsed_root = collapsed_builder.initialize(root_state);
+    const auto requested_root = requested_builder.initialize(root_state);
     const auto raw_root = raw_builder.initialize(root_state);
     const auto raw_outcomes = root_state.chance_outcomes().size();
 
-    collapsed_builder.ensure_expanded(collapsed_root);
+    requested_builder.ensure_expanded(requested_root);
     raw_builder.ensure_expanded(raw_root);
 
     EXPECT_TRUE(raw_outcomes > 0U);
     EXPECT_EQ(raw_builder.node(raw_root).edge_count, raw_outcomes);
-    EXPECT_TRUE(collapsed_builder.node(collapsed_root).edge_count <= raw_outcomes);
-    EXPECT_EQ(
-        collapsed_builder.node(collapsed_root).chance_isomorphic,
-        collapsed_builder.node(collapsed_root).edge_count < raw_outcomes);
+    EXPECT_EQ(requested_builder.node(requested_root).edge_count, raw_outcomes);
+    EXPECT_TRUE(!requested_builder.node(requested_root).chance_isomorphic);
+    EXPECT_EQ(requested_builder.node(requested_root).edge_count, raw_builder.node(raw_root).edge_count);
 }
 
 TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
@@ -725,17 +725,19 @@ TEST_CASE(hunl_sampled_external_traversal_samples_chance_edges_by_probability) {
     builder.ensure_expanded(root_id);
     const auto root = builder.node(root_id);
     EXPECT_TRUE(root.edge_count > 1U);
-    EXPECT_TRUE(root.chance_isomorphic);
+    // Public-board symmetry is intentionally disabled until private-state
+    // suit remapping is implemented; all chance outcomes remain explicit.
+    EXPECT_TRUE(!root.chance_isomorphic);
 
-    bool probabilities_are_nonuniform = false;
+    bool probabilities_are_uniform = true;
     const auto first_probability = builder.edge(root.edge_begin).probability;
     for (std::size_t edge_slot = 1; edge_slot < root.edge_count; ++edge_slot) {
         if (std::abs(builder.edge(root.edge_begin + edge_slot).probability - first_probability) > 1e-12) {
-            probabilities_are_nonuniform = true;
+            probabilities_are_uniform = false;
             break;
         }
     }
-    EXPECT_TRUE(probabilities_are_nonuniform);
+    EXPECT_TRUE(probabilities_are_uniform);
 
     for (std::size_t edge_slot = 0; edge_slot < root.edge_count; ++edge_slot) {
         auto& child = builder.node_mut(builder.edge(root.edge_begin + edge_slot).child);

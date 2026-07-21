@@ -1,7 +1,5 @@
 #include "solver/hunl_sampled_builder.hpp"
 
-#include "util/suit_iso.hpp"
-
 #include <algorithm>
 #include <stdexcept>
 
@@ -92,33 +90,21 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
 
     if (current_snapshot.type == HUNLFlatNodeType::Chance) {
         const auto outcomes = state.chance_outcomes();
-        if (config_.use_public_chance_isomorphism) {
-            const auto collapsed = canonicalize_public_chance_outcomes(state.board, outcomes);
-            edges_.reserve(edges_.size() + collapsed.size());
-            for (const auto& chance_class : collapsed) {
-                const auto child = find_or_create(state.apply(chance_class.representative_action));
-                edges_.push_back(HUNLSampledEdge{
-                    chance_class.representative_action,
-                    child,
-                    chance_class.probability,
-                    chance_class.multiplicity,
-                });
-            }
-            edge_count = static_cast<std::uint16_t>(collapsed.size());
-            chance_isomorphic = !collapsed.empty() && collapsed.size() < outcomes.size();
-        } else {
-            edges_.reserve(edges_.size() + outcomes.size());
-            for (const auto& outcome : outcomes) {
-                const auto child = find_or_create(state.apply(outcome.action));
-                edges_.push_back(HUNLSampledEdge{
-                    outcome.action,
-                    child,
-                    outcome.probability,
-                    1U,
-                });
-            }
-            edge_count = static_cast<std::uint16_t>(outcomes.size());
+        // Public-board suit symmetry alone is insufficient: fixed holes and
+        // asymmetric ranges can change blockers, buckets, and reach. Until the
+        // relative suit permutation is carried through private state, always
+        // retain the complete chance expansion, even if the legacy flag is set.
+        edges_.reserve(edges_.size() + outcomes.size());
+        for (const auto& outcome : outcomes) {
+            const auto child = find_or_create(state.apply(outcome.action));
+            edges_.push_back(HUNLSampledEdge{
+                outcome.action,
+                child,
+                outcome.probability,
+                1U,
+            });
         }
+        edge_count = static_cast<std::uint16_t>(outcomes.size());
         auto& updated = nodes_.at(node_id);
         updated.edge_begin = edge_begin;
         updated.edge_count = edge_count;

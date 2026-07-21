@@ -14,7 +14,9 @@
 namespace core {
 
 struct HUNLSampledBuilderConfig {
-    bool use_public_chance_isomorphism = true;
+    // Kept for forward compatibility; public chance collapse is disabled until
+    // private-state suit remapping is implemented.
+    bool use_public_chance_isomorphism = false;
 };
 
 struct HUNLSampledStateKey {

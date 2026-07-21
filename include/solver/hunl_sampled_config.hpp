@@ -37,7 +37,8 @@ struct HUNLSampledSolverConfig {
     bool lazy_public_expansion = true;
     bool sparse_infosets = true;
     bool deterministic_merge = true;
-    bool use_public_chance_isomorphism = true;
+    // Disabled until private-hand/range suit remapping proves closure and equal reach.
+    bool use_public_chance_isomorphism = false;
     bool use_average_strategy_sampling = false;
     bool enable_memory_guardrails = true;
     bool adaptive_memory_fallback = true;

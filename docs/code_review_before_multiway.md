@@ -231,7 +231,9 @@ The last two items remain future requirements if additional precision modes are 
 
 ### P1-3: sampled public-chance isomorphism ignores private-range symmetry
 
-Evidence:
+Status: **fixed on 2026-07-21 by disabling sampled public-chance collapse until private-state remapping exists.**
+
+Original evidence:
 
 - Sampled isomorphism is enabled by default (`include/solver/hunl_sampled_config.hpp:39`).
 - `src/solver/hunl_sampled_builder.cpp:95-109` collapses outcomes using only `state.board` and the public outcomes.
@@ -240,15 +242,16 @@ Evidence:
 
 Public cards that are isomorphic relative to the board need not be equivalent relative to an asymmetric private range or fixed hole cards. Collapsing them and retaining only one representative can therefore change blockers, hand strength, bucket assignment, and value.
 
-Recommended fix:
+Implemented fix:
 
-Disable sampled chance collapse by default until private-state remapping is implemented. A valid collapse must carry the relative suit permutation, prove closure and equal weights for every active player range, and remap sampled private hands/buckets and downstream rows. If any proof fails, expand the outcomes explicitly.
+Sampled public-chance isomorphism is now disabled by default. The builder always expands every public chance outcome, even when the legacy request flag is explicitly set, because it cannot yet prove private-hand/range closure or remap the relative suit permutation through blockers, buckets, and downstream rows. The `chance_isomorphic` marker remains false for these complete expansions.
 
 Regression tests:
 
-- With an asymmetric suit-specific range, collapsed and uncollapsed exact values must match; until remapping exists, assert that collapse is disabled.
-- With symmetric ranges, compare representative-plus-permutation evaluation to full enumeration.
-- Include fixed-hole blocker cases where two board-isomorphic cards are not private-state-equivalent.
+- The default sampled configuration has public-chance isomorphism disabled.
+- A builder with the legacy flag set still expands all outcomes and reports no isomorphic collapse.
+- Fixed-hole chance states are covered by the no-collapse regression, preventing public-board symmetry from bypassing private-state blockers.
+- Symmetric-range representative/permutation equivalence remains a future requirement once remapping is implemented.
 
 ### P2-1: sampled memo keys silently truncate long betting histories
 
