@@ -204,7 +204,9 @@ The original value/equity equivalence tests remain future requirements for the a
 
 ### P1-2: sampled storage advertises precision modes that it does not implement
 
-Evidence:
+Status: **fixed on 2026-07-21 by rejecting unsupported sampled precisions.**
+
+Original evidence:
 
 - The constructor stores any requested `HUNLFlatStoragePrecision` (`src/solver/hunl_sampled_storage.cpp:7-11`), and sampled config validation does not reject `Float64` or `Compressed16`.
 - Both backing arrays are always `std::vector<float>` (`include/solver/hunl_sampled_storage.hpp:127-128`).
@@ -213,15 +215,19 @@ Evidence:
 
 A caller requesting Float64 still receives Float32 behavior while `precision()` reports Float64. If true Float64 arrays are later introduced without fixing preflight, the guardrail will underestimate row memory by roughly two times. `Compressed16` is equally misleading.
 
-Recommended fix:
+Implemented fix:
 
-Either reject every precision except Float32 until implemented, or use precision-specific storage variants and typed kernels/views. The estimator must use the selected element size and include alignment/capacity overhead consistently.
+Sampled configuration validation now accepts only `Float32`, which matches the `std::vector<float>` backing arrays and `float*` row views. `HUNLSampledStorage` independently rejects `Float64` and `Compressed16`, so direct construction cannot advertise an unsupported representation. `HUNLSampledSolver` validates the configuration before constructing storage. The existing memory estimates therefore remain consistent with the only supported element type.
 
 Regression tests:
 
-- Unsupported precision requests must fail during config validation.
+- `Float64` requests fail during sampled config validation and solver construction.
+- `Compressed16` requests fail during sampled config validation and solver construction.
+- Direct sampled storage construction rejects both unsupported precisions.
 - When Float64 is implemented, a value distinguishable from its Float32 rounding must round-trip.
 - Estimated row bytes must match actual capacity bytes for each supported precision.
+
+The last two items remain future requirements if additional precision modes are implemented.
 
 ### P1-3: sampled public-chance isomorphism ignores private-range symmetry
 

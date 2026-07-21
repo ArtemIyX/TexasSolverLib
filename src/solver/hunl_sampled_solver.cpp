@@ -63,6 +63,11 @@ const char* message_for_status(HUNLSampledMemoryStatus status) noexcept {
     return "sampled memory preflight unknown";
 }
 
+HUNLSampledStorage make_sampled_storage(const HUNLSampledSolverConfig& config) {
+    validate_sampled_config_or_throw(config);
+    return HUNLSampledStorage(config.layout, config.precision);
+}
+
 }  // namespace
 
 HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
@@ -73,7 +78,7 @@ HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
     : config_(config),
       builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism}),
-      storage_(config.layout, config.precision) {
+      storage_(make_sampled_storage(config)) {
     validate_sampled_config_or_throw(config_);
 }
 

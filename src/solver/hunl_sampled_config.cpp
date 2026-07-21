@@ -4,6 +4,9 @@ namespace core {
 
 HUNLSampledConfigValidation validate_sampled_config(
     const HUNLSampledSolverConfig& config) noexcept {
+    if (config.precision != HUNLFlatStoragePrecision::Float32) {
+        return {false, "sampled storage currently supports Float32 precision only"};
+    }
     if (config.traversals_per_iteration == 0) {
         return {false, "traversals_per_iteration must be positive"};
     }

@@ -127,6 +127,39 @@ TEST_CASE(hunl_sampled_config_defaults_validate) {
     EXPECT_TRUE(config.memory_warning_bytes < config.memory_fail_bytes);
 }
 
+TEST_CASE(hunl_sampled_config_rejects_unimplemented_float64_precision) {
+    auto config = core::HUNLSampledSolverConfig{};
+    config.precision = core::HUNLFlatStoragePrecision::Float64;
+
+    const auto validation = core::validate_sampled_config(config);
+    EXPECT_TRUE(!validation.ok);
+    EXPECT_THROW(core::validate_sampled_config_or_throw(config), std::invalid_argument);
+    EXPECT_THROW(core::HUNLSampledSolver(config), std::invalid_argument);
+}
+
+TEST_CASE(hunl_sampled_config_rejects_unimplemented_compressed16_precision) {
+    auto config = core::HUNLSampledSolverConfig{};
+    config.precision = core::HUNLFlatStoragePrecision::Compressed16;
+
+    const auto validation = core::validate_sampled_config(config);
+    EXPECT_TRUE(!validation.ok);
+    EXPECT_THROW(core::validate_sampled_config_or_throw(config), std::invalid_argument);
+    EXPECT_THROW(core::HUNLSampledSolver(config), std::invalid_argument);
+}
+
+TEST_CASE(hunl_sampled_storage_rejects_precision_that_views_cannot_represent) {
+    EXPECT_THROW(
+        core::HUNLSampledStorage(
+            core::HUNLFlatValueLayout::InfosetActionHand,
+            core::HUNLFlatStoragePrecision::Float64),
+        std::invalid_argument);
+    EXPECT_THROW(
+        core::HUNLSampledStorage(
+            core::HUNLFlatValueLayout::InfosetActionHand,
+            core::HUNLFlatStoragePrecision::Compressed16),
+        std::invalid_argument);
+}
+
 TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
     const core::HUNLFlatMCCFRConfig config;
 

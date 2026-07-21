@@ -9,6 +9,9 @@ HUNLSampledStorage::HUNLSampledStorage(
     HUNLFlatValueLayout layout,
     HUNLFlatStoragePrecision precision)
     : layout_(layout), precision_(precision) {
+    if (precision != HUNLFlatStoragePrecision::Float32) {
+        throw std::invalid_argument("HUNLSampledStorage currently supports Float32 precision only");
+    }
 }
 
 HUNLSampledRowView HUNLSampledStorage::ensure_row(const HUNLSampledInfosetShape& shape) {
