@@ -316,6 +316,10 @@ Examples include `std::array<..., 2>` for holes, stacks, contributions, folds, a
 
 ### Blocker B: terminal utilities and pots have no side-pot model
 
+Status: **fixed on 2026-07-21 by adding the separate `MultiwayTerminal` pot-layout and settlement layer.**
+
+`include/games/multiway_terminal.hpp` and `src/games/multiway_terminal.cpp` construct ordered contribution layers, return uncalled one-contributor layers as refunds, retain eligible non-folded seats per pot, and settle each pot into per-seat payouts and net utilities. The public layout builder lets a terminal evaluator consume precomputed pot/eligibility data; ties split deterministically with odd chips assigned by ascending seat ID. The existing heads-up terminal utility remains unchanged. Private-card evaluation and multi-player traversal integration remain separate work under Blockers C-D.
+
 The current utility and sampled terminal interfaces store exactly two contributions and identify one folding player. Multiway all-ins require ordered side pots, eligibility sets, multiple winners/ties per pot, uncalled-bet refunds, and one utility per seat. Terminal evaluation should consume a precomputed pot/eligibility structure rather than infer everything in a hot loop.
 
 ### Blocker C: solver math is two-player zero/constant-sum CFR

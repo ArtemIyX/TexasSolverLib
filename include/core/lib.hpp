@@ -11,6 +11,8 @@
 #include "solver/exploit.hpp"
 #include "games/hunl.hpp"
 #include "games/hunl_eval.hpp"
+#include "games/multiway_state.hpp"
+#include "games/multiway_terminal.hpp"
 #include "games/hunl_solver.hpp"
 #include "games/hunl_tree.hpp"
 #include "games/kuhn.hpp"
@@ -39,6 +41,13 @@ using ::core::ExploitOutput;
 using ::core::HUNLConfig;
 using ::core::HUNLSolveOutput;
 using ::core::InfosetKey;
+using ::core::MultiwayAction;
+using ::core::MultiwayGameConfig;
+using ::core::MultiwayPotLayout;
+using ::core::MultiwaySidePot;
+using ::core::MultiwayState;
+using ::core::MultiwayTerminalInput;
+using ::core::MultiwayTerminalResult;
 using ::core::PlayerId;
 using ::core::PreflopRvrOutput;
 using ::core::PreflopSolveOutput;
