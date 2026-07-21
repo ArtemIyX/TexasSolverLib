@@ -308,6 +308,10 @@ These are not accidental heads-up bugs; they show why 3-6 player support needs a
 
 ### Blocker A: game state and action progression are intrinsically two-player
 
+Status: **fixed on 2026-07-21 by adding the separate `MultiwayState` betting-progression layer.**
+
+`include/games/multiway_state.hpp` and `src/games/multiway_state.cpp` use seat-indexed vectors for two through six seats, maintain an active-player ring and per-street pending responders, track the current bet and last full-raise size, implement short-all-in reopening rules, and distinguish a completed betting round from a folded/all-in hand. The existing `HUNLState` and exact heads-up solver remain unchanged as the heads-up correctness oracle. Pot construction, side pots, private-card sampling, terminal utilities, and multi-player solver math remain deliberately outside this layer and are covered by Blockers B-D.
+
 Examples include `std::array<..., 2>` for holes, stacks, contributions, folds, and all-ins in `include/games/hunl.hpp`; opponent selection with `1U - player` in `src/games/hunl.cpp:730,743,757,787`; and terminal detection as “either player folded” at `src/games/hunl.cpp:477-478`. Multiway poker needs an active-player ring, per-street pending responders, last full raise size, reopening rules, and termination when one player remains or all non-folded players have matched/all-in.
 
 ### Blocker B: terminal utilities and pots have no side-pot model
