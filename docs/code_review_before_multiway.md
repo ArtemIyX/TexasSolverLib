@@ -332,6 +332,10 @@ The exact flat solver stores `player0_reach_` and `player1_reach_`, uses two-ele
 
 ### Blocker D: private-state and abstraction interfaces are pairwise
 
+Status: **fixed on 2026-07-21 by adding the separate `MultiwayPrivate` range, joint-sampling, and showdown layer.**
+
+`include/games/multiway_private.hpp` and `src/games/multiway_private.cpp` accept weighted ranges for two through six seats, reject invalid/board-blocked cards and invalid weights, and produce deterministic blocker-correct joint private samples through rejection sampling from the product distribution conditioned on all cards being distinct. This avoids materializing the Cartesian product. The showdown adapter evaluates each seat's seven-card hand and passes the resulting strengths, contributions, and folded seats to the multiway terminal/pot layer. Full production abstraction, lazy traversal, sparse storage, and timed multiway MCCFR integration remain subsequent implementation work; no multiway solver API yet reports an unsolved strategy as solved.
+
 Hole pairs, range arrays, suit permutations, showdown matrices, and exported infosets are all specialized to two players. A multiway blueprint needs blocker-correct joint sampling without materializing the full Cartesian product, per-seat ranges, and terminal evaluation that samples or factors compatible private hands across all surviving seats.
 
 ## Recommended repair order
