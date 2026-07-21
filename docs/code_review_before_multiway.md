@@ -255,7 +255,9 @@ Regression tests:
 
 ### P2-1: sampled memo keys silently truncate long betting histories
 
-Evidence:
+Status: **fixed on 2026-07-21 by rejecting sampled history overflow.**
+
+Original evidence:
 
 - Sampled keys have a fixed 48-code buffer (`include/solver/hunl_sampled_builder.hpp:21`, from `HUNL_MAX_HISTORY_CODES`).
 - `src/solver/hunl_sampled_builder.cpp:230-249` caps each copied segment to remaining space and silently discards the suffix.
@@ -264,14 +266,18 @@ Evidence:
 
 Two distinct states sharing the first 48 codes can become the same sampled node. This can merge different action histories, infosets, stacks, or future semantics. Contributions and stacks reduce some collision cases, but do not make the history suffix redundant, especially after street transitions or when future multiway action order is added.
 
-Recommended fix:
+Implemented fix:
 
-Reject overflow during the current implementation, matching the exact builder. For production sparse solving, use a collision-safe compact history identity: for example an interned immutable history node ID plus street metadata, or a sufficiently wide encoded key with full equality verification. Do not rely on a hash alone.
+Sampled key construction now rejects histories that exceed the fixed 48-code buffer, contain more street segments than the key can represent, or try to append current-street history after all four street slots are occupied. Segment and current-street copies are bounds-checked before writing, and `make_key` is no longer `noexcept`, so overflow becomes a deterministic `std::invalid_argument` instead of silently discarding a suffix. Equality and hashing continue to cover the complete represented key. A future production sparse solver may replace this bounded representation with an interned immutable history ID.
 
 Regression tests:
 
-- Construct two legal/high-cap states that share the first 48 codes and differ afterward; they must not memoize to the same node.
-- Verify that overflow is explicit and deterministic until an unbounded representation is implemented.
+- Overlong histories differing after the first 48 codes are rejected deterministically and cannot alias.
+- Excess street segments are rejected rather than ignored.
+- Overflow in each individual segment and cumulative overflow across segments are rejected.
+- Exact-capacity histories, including split street/current layouts, remain valid.
+- Distinct suffixes within capacity produce distinct keys.
+- Builder initialization propagates the explicit overflow error.
 
 ### P2-2: sparse row reuse and offsets lack shape/size invariants
 

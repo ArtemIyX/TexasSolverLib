@@ -198,7 +198,7 @@ void HUNLSampledBuilder::clear() noexcept {
     edges_.clear();
 }
 
-HUNLSampledStateKey HUNLSampledBuilder::make_key(const HUNLState& state) noexcept {
+HUNLSampledStateKey HUNLSampledBuilder::make_key(const HUNLState& state) {
     HUNLSampledStateKey key;
     key.board = HUNLFlatSolveGraph::pack_board(state.board);
     key.contributions = state.contributions;
@@ -212,24 +212,40 @@ HUNLSampledStateKey HUNLSampledBuilder::make_key(const HUNLState& state) noexcep
     key.folded = state.folded;
     key.all_in = state.all_in;
 
+    if (state.betting_history_codes.size() > key.street_lengths.size()) {
+        throw std::invalid_argument(
+            "HUNLSampledBuilder::make_key betting history has too many streets");
+    }
+    if (!state.current_street_history_codes.empty() &&
+        state.betting_history_codes.size() >= key.street_lengths.size()) {
+        throw std::invalid_argument(
+            "HUNLSampledBuilder::make_key cannot encode current history after four street segments");
+    }
+
     std::size_t offset = 0;
     for (std::size_t street_index = 0;
-         street_index < state.betting_history_codes.size() && street_index < key.street_lengths.size();
+         street_index < state.betting_history_codes.size();
          ++street_index) {
         const auto& codes = state.betting_history_codes[street_index];
-        const auto capped_size = std::min<std::size_t>(codes.size(), key.history_codes.size() - offset);
-        key.street_lengths[street_index] = static_cast<std::uint8_t>(capped_size);
-        for (std::size_t i = 0; i < capped_size; ++i) {
+        if (codes.size() > key.history_codes.size() - offset) {
+            throw std::invalid_argument(
+                "HUNLSampledBuilder::make_key exceeded history capacity");
+        }
+        key.street_lengths[street_index] = static_cast<std::uint8_t>(codes.size());
+        for (std::size_t i = 0; i < codes.size(); ++i) {
             key.history_codes[offset++] = codes[i];
         }
     }
 
     const auto current_street_index =
         std::min<std::size_t>(state.betting_history_codes.size(), key.street_lengths.size() - 1U);
-    const auto current_capped_size =
-        std::min<std::size_t>(state.current_street_history_codes.size(), key.history_codes.size() - offset);
-    key.street_lengths[current_street_index] = static_cast<std::uint8_t>(current_capped_size);
-    for (std::size_t i = 0; i < current_capped_size; ++i) {
+    if (state.current_street_history_codes.size() > key.history_codes.size() - offset) {
+        throw std::invalid_argument(
+            "HUNLSampledBuilder::make_key exceeded history capacity");
+    }
+    key.street_lengths[current_street_index] =
+        static_cast<std::uint8_t>(state.current_street_history_codes.size());
+    for (std::size_t i = 0; i < state.current_street_history_codes.size(); ++i) {
         key.history_codes[offset++] = state.current_street_history_codes[i];
     }
     key.history_count = static_cast<std::uint8_t>(offset);

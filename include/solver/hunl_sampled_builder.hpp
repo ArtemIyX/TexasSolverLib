@@ -114,7 +114,7 @@ public:
     [[nodiscard]] const HUNLSampledBuilderConfig& config() const noexcept;
     void clear() noexcept;
 
-    [[nodiscard]] static HUNLSampledStateKey make_key(const HUNLState& state) noexcept;
+    [[nodiscard]] static HUNLSampledStateKey make_key(const HUNLState& state);
 
 private:
     [[nodiscard]] std::uint32_t find_or_create(const HUNLState& state);

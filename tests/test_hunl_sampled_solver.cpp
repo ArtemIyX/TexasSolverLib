@@ -334,6 +334,109 @@ TEST_CASE(hunl_sampled_builder_public_chance_isomorphism_is_disabled_for_private
     EXPECT_EQ(requested_builder.node(requested_root).edge_count, raw_builder.node(raw_root).edge_count);
 }
 
+TEST_CASE(hunl_sampled_builder_rejects_history_overflow_instead_of_truncating_keys) {
+    auto first = make_lazy_root_state();
+    auto second = first;
+    first.betting_history_codes.clear();
+    second.betting_history_codes.clear();
+    first.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES + 1U, 7);
+    second.current_street_history_codes = first.current_street_history_codes;
+    second.current_street_history_codes.back() = 8;
+
+    EXPECT_THROW(core::HUNLSampledBuilder::make_key(first), std::invalid_argument);
+    EXPECT_THROW(core::HUNLSampledBuilder::make_key(second), std::invalid_argument);
+
+    core::HUNLSampledBuilder builder;
+    EXPECT_THROW(builder.initialize(first), std::invalid_argument);
+    EXPECT_THROW(builder.initialize(second), std::invalid_argument);
+}
+
+TEST_CASE(hunl_sampled_builder_accepts_history_at_exact_key_capacity) {
+    auto state = make_lazy_root_state();
+    state.betting_history_codes.clear();
+    state.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES, 7);
+
+    const auto key = core::HUNLSampledBuilder::make_key(state);
+    EXPECT_EQ(key.history_count, core::HUNL_MAX_HISTORY_CODES);
+    EXPECT_EQ(key.street_lengths[0], core::HUNL_MAX_HISTORY_CODES);
+}
+
+TEST_CASE(hunl_sampled_builder_accepts_exact_capacity_split_across_streets) {
+    auto state = make_lazy_root_state();
+    state.betting_history_codes = {{1, 2, 3}, {4, 5}, {6}};
+    state.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES - 6U, 9);
+
+    const auto key = core::HUNLSampledBuilder::make_key(state);
+    EXPECT_EQ(key.history_count, core::HUNL_MAX_HISTORY_CODES);
+    EXPECT_EQ(key.street_lengths[0], 3U);
+    EXPECT_EQ(key.street_lengths[1], 2U);
+    EXPECT_EQ(key.street_lengths[2], 1U);
+    EXPECT_EQ(key.street_lengths[3], core::HUNL_MAX_HISTORY_CODES - 6U);
+}
+
+TEST_CASE(hunl_sampled_builder_rejects_cumulative_overflow_across_street_segments) {
+    auto state = make_lazy_root_state();
+    state.betting_history_codes = {
+        std::vector<int>(16, 1),
+        std::vector<int>(16, 2),
+        std::vector<int>(16, 3),
+        std::vector<int>(1, 4),
+    };
+    state.current_street_history_codes.clear();
+
+    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+}
+
+TEST_CASE(hunl_sampled_builder_rejects_current_street_overflow_after_prior_history) {
+    auto state = make_lazy_root_state();
+    state.betting_history_codes = {{1, 2, 3}, {4, 5}, {6}};
+    state.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES - 5U, 9);
+
+    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+}
+
+TEST_CASE(hunl_sampled_builder_rejects_each_single_segment_overflow) {
+    for (std::size_t street = 0; street < 4; ++street) {
+        auto state = make_lazy_root_state();
+        state.betting_history_codes.clear();
+        state.betting_history_codes.resize(street + 1U);
+        state.betting_history_codes[street].assign(core::HUNL_MAX_HISTORY_CODES + 1U, 1);
+        state.current_street_history_codes.clear();
+
+        EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+    }
+}
+
+TEST_CASE(hunl_sampled_builder_rejects_current_history_when_all_street_slots_are_used) {
+    auto state = make_lazy_root_state();
+    state.betting_history_codes.resize(4);
+    state.current_street_history_codes = {1};
+
+    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+}
+
+TEST_CASE(hunl_sampled_builder_distinguishes_different_in_capacity_history_suffixes) {
+    auto first = make_lazy_root_state();
+    auto second = first;
+    first.betting_history_codes.clear();
+    second.betting_history_codes.clear();
+    first.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES, 7);
+    second.current_street_history_codes = first.current_street_history_codes;
+    second.current_street_history_codes.back() = 8;
+
+    const auto first_key = core::HUNLSampledBuilder::make_key(first);
+    const auto second_key = core::HUNLSampledBuilder::make_key(second);
+    EXPECT_TRUE(!(first_key == second_key));
+
+}
+
+TEST_CASE(hunl_sampled_builder_rejects_excess_street_segments_in_keys) {
+    auto state = make_lazy_root_state();
+    state.betting_history_codes.resize(5);
+
+    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+}
+
 TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
     core::HUNLSampledSolver solver;
     core::HUNLSampledSolveRequest request;
