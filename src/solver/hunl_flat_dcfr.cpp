@@ -126,11 +126,29 @@ void validate_flat_solver_graph(const HUNLFlatSolveGraph& graph) {
     }
 }
 
+void reject_unimplemented_range_solving(const HUNLFlatSolveGraph& graph) {
+    if (!graph.config) {
+        return;
+    }
+    const auto range_policy = resolve_range_policy(*graph.config);
+    if (graph.config->initial_ranges[0].has_value() ||
+        graph.config->initial_ranges[1].has_value() ||
+        graph.config->player_ranges[0].has_value() ||
+        graph.config->player_ranges[1].has_value() ||
+        range_policy == HUNLRangePolicy::UseInitialRanges ||
+        range_policy == HUNLRangePolicy::RequireExplicit) {
+        throw std::invalid_argument(
+            "HUNLFlatDCFR does not implement range/bucket solving; "
+            "range inputs cannot be projected into fixed-hand bucket priors");
+    }
+}
+
 }  // namespace
 
 std::optional<HUNLFlatBucketMap> HUNLFlatDCFR::load_bucket_map_for_graph(
     const HUNLFlatSolveGraph& graph,
     HUNLFlatSolveMode solve_mode) {
+    reject_unimplemented_range_solving(graph);
     if (solve_mode == HUNLFlatSolveMode::ExplicitHand) {
         return std::nullopt;
     }
@@ -143,7 +161,6 @@ std::optional<HUNLFlatBucketMap> HUNLFlatDCFR::load_bucket_map_for_graph(
     auto bucket_map = HUNLFlatBucketMap::from_abstraction(
         graph,
         load_abstraction(*graph.config->abstraction_path));
-    bucket_map.apply_range_inputs(graph, graph.config->player_ranges);
     return bucket_map;
 }
 

@@ -352,12 +352,25 @@ void HUNLConfig::validate() const {
         (flat_solve_mode == HUNLFlatSolveMode::Auto && abstraction_path.has_value());
 
     const auto effective_range_policy = resolve_range_policy(*this);
-    if ((effective_range_policy == HUNLRangePolicy::UseInitialRanges ||
-         effective_range_policy == HUNLRangePolicy::RequireExplicit) &&
-        !initial_ranges[0].has_value() &&
-        !initial_ranges[1].has_value()) {
+    const bool range_contract =
+        effective_range_policy == HUNLRangePolicy::UseInitialRanges ||
+        effective_range_policy == HUNLRangePolicy::RequireExplicit;
+    if (range_contract &&
+        (!initial_ranges[0].has_value() || !initial_ranges[1].has_value())) {
         throw std::invalid_argument(
-            "HUNLConfig.validate: range_policy requires at least one initial_ranges entry");
+            "HUNLConfig.validate: range_policy requires initial_ranges for both players");
+    }
+    if (range_contract && initial_hole_cards.has_value()) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: range solve contract must not include initial_hole_cards");
+    }
+    if (!range_contract && (initial_ranges[0].has_value() || initial_ranges[1].has_value())) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: initial_ranges require UseInitialRanges or RequireExplicit policy");
+    }
+    if (player_ranges[0].has_value() || player_ranges[1].has_value()) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: player_ranges is retired; use initial_ranges for range solving");
     }
 
     for (std::size_t player = 0; player < initial_ranges.size(); ++player) {
@@ -368,15 +381,6 @@ void HUNLConfig::validate() const {
                 initial_board,
                 bucketed_mode,
                 "initial_ranges",
-                player);
-        }
-        if (player_ranges[player].has_value()) {
-            validate_range_input(
-                *player_ranges[player],
-                starting_street,
-                initial_board,
-                bucketed_mode,
-                "player_ranges",
                 player);
         }
     }

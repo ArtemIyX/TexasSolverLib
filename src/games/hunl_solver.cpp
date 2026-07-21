@@ -58,6 +58,13 @@ bool should_use_flat_hunl_backend(
     return force_parallel || workers > 1 || config.starting_street == Street::Turn;
 }
 
+bool has_range_inputs(const HUNLConfig& config) {
+    return config.initial_ranges[0].has_value() ||
+           config.initial_ranges[1].has_value() ||
+           config.player_ranges[0].has_value() ||
+           config.player_ranges[1].has_value();
+}
+
 HUNLFlatSolveMode resolve_flat_solve_mode(const HUNLConfig& config) {
     if (config.flat_solve_mode != HUNLFlatSolveMode::Auto) {
         return config.flat_solve_mode;
@@ -128,6 +135,15 @@ void validate_config(const HUNLConfig& config) {
     if (config.starting_street == Street::Preflop) {
         throw std::invalid_argument("solve_hunl_postflop requires starting_street >= Flop");
     }
+    config.validate();
+    const auto range_policy = resolve_range_policy(config);
+    if (has_range_inputs(config) ||
+        range_policy == HUNLRangePolicy::UseInitialRanges ||
+        range_policy == HUNLRangePolicy::RequireExplicit) {
+        throw std::invalid_argument(
+            "solve_hunl_postflop does not implement range/bucket solving; "
+            "use an explicit-hand configuration without range fields");
+    }
     if (!config.initial_hole_cards.has_value()) {
         throw std::invalid_argument(
             "solve_hunl_postflop requires initial_hole_cards = Some([[c0,c1],[c2,c3]])");
@@ -143,7 +159,6 @@ void validate_config(const HUNLConfig& config) {
         !config.abstraction_path.has_value()) {
         throw std::invalid_argument("bucketed flat solve mode requires abstraction_path");
     }
-    config.validate();
 }
 
 HUNLSolveOutput solve_hunl_postflop(

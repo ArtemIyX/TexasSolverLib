@@ -146,8 +146,13 @@ struct HUNLConfig {
     std::optional<std::string> abstraction_version = std::nullopt;
     std::uint32_t depth_limit_plies = 0;
     HUNLFlatSolveMode flat_solve_mode = HUNLFlatSolveMode::Auto;
+    // Range/bucket solving is a separate solve contract from explicit-hand solving.
+    // The current postflop solver rejects this contract until its joint-combo reach
+    // and terminal-value pipeline is implemented.
     HUNLRangePolicy range_policy = HUNLRangePolicy::Unspecified;
     std::array<std::optional<HUNLRangeInput>, 2> initial_ranges = {std::nullopt, std::nullopt};
+    // Legacy bucket-prior input. It is deliberately rejected by postflop solving;
+    // use initial_ranges for the future range/bucket solve contract.
     std::array<std::optional<HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
     bool use_pcs = false;
 

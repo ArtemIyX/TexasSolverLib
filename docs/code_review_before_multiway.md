@@ -165,32 +165,42 @@ Original regression recommendations:
 
 ### P1-1: `initial_ranges` are accepted but never affect the solver
 
-Evidence:
+Status: **fixed on 2026-07-21 by making the unsupported range contract fail closed.**
+
+Original evidence:
 
 - `initial_ranges` appear in implementation code only in `resolve_range_policy` and validation (`src/games/hunl.cpp:237-319`).
 - The actual bucket-map setup applies only `graph.config->player_ranges` at `src/solver/hunl_flat_dcfr.cpp:143-147`.
 - `solve_hunl_postflop` requires fixed `initial_hole_cards` at `src/games/hunl_solver.cpp:130-134`.
-- `tests/test_ranges_solver_integration.cpp` only checks that output remains finite after setting an `initial_ranges` entry. It never checks that changing the range changes reach, value, or strategy.
+- The previous integration test only checked that output remained finite after setting an `initial_ranges` entry. It never checked that changing the range changed reach, value, or strategy.
 
 Impact:
 
 The API implies that a caller can supply initial public-state ranges, but those ranges are dead configuration. A blueprint or subgame resolver can silently solve the fixed two hands from `initial_hole_cards` while ignoring the supplied distributions. Exploitability and game value are then computed for the fixed-hand state as well.
 
-Recommended fix:
+Implemented contract:
 
-Define two separate solve contracts:
+The current exact postflop implementations support only the explicit-hand contract. Range/bucket solving is not yet implemented, so range-bearing requests are rejected before graph construction or solver work:
 
-1. **Explicit-hand validation solve:** fixed private cards, one hand per player, no range fields accepted.
-2. **Range/bucket solve:** public board plus a required range for every active player, no fixed opponent cards required.
+1. Explicit-hand solving requires fixed private cards and accepts no range fields.
+2. `RequireExplicit` and `UseInitialRanges` require an entry for both heads-up players and reject fixed private cards in the same configuration.
+3. `player_ranges` is retired and rejected rather than being silently projected into bucket priors.
+4. Recursive and flat entry points reject the range contract before solving; direct flat construction has the same guard.
 
-Convert `initial_ranges` into root combo/bucket reach exactly once, apply board blockers jointly, normalize with an explicit zero-mass policy, and propagate them through chance and action transitions. Remove or clearly redefine the overlapping `player_ranges` field.
+The future range/bucket implementation still needs to convert `initial_ranges` into joint, blocker-aware root combo/bucket reach, normalize it under an explicit zero-mass policy, and propagate it through chance and action transitions. Until that pipeline exists, rejecting the request prevents a fixed-hand solve from being mislabeled as a range solve.
 
 Regression tests:
 
-- Two disjoint root ranges with different equities must produce different root values.
-- A single-combo range must match the equivalent explicit-hand solve.
-- `RequireExplicit` must require every active player’s range, not merely at least one entry as currently checked at `src/games/hunl.cpp:294-300`.
-- Recursive and flat backends must either honor the same range contract or explicitly reject it.
+- Explicit-hand configurations validate and enter the solver contract normally.
+- Partial `RequireExplicit` and `UseInitialRanges` configurations are rejected.
+- `RequireExplicit` now requires every active heads-up player’s range.
+- Range policies and fixed private cards are mutually exclusive.
+- `Uniform` rejects supplied `initial_ranges`, and the retired `player_ranges` field is rejected.
+- Recursive and flat public entry points reject range requests before solving.
+- Direct flat-backend construction rejects legacy bucket-prior input.
+- Range validation covers invalid cards, blockers, duplicate cards, non-finite/negative weights, empty ranges, and zero mass.
+
+The original value/equity equivalence tests remain future requirements for the actual range solver: they cannot be asserted while the supported behavior is explicit rejection.
 
 ### P1-2: sampled storage advertises precision modes that it does not implement
 

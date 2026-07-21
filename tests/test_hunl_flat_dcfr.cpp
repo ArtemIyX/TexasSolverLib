@@ -1112,9 +1112,14 @@ TEST_CASE(hunl_flat_dcfr_matches_across_worker_counts_on_small_tree) {
 
 TEST_CASE(hunl_flat_dcfr_rejects_negative_range_weights_in_config_validation) {
     auto config = core::default_tiny_subgame();
+    config.initial_hole_cards = std::nullopt;
+    config.range_policy = core::HUNLRangePolicy::RequireExplicit;
     core::HUNLRangeInput range;
     range.hand_weights.push_back({{c(14, 1), c(13, 3)}, -0.5});
-    config.player_ranges[0] = range;
+    config.initial_ranges[0] = range;
+    core::HUNLRangeInput opponent_range;
+    opponent_range.hand_weights.push_back({{c(12, 1), c(11, 3)}, 1.0});
+    config.initial_ranges[1] = opponent_range;
 
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
