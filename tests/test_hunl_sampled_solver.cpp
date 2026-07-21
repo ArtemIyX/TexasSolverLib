@@ -197,6 +197,60 @@ TEST_CASE(hunl_sampled_storage_allocates_one_sparse_row) {
     EXPECT_EQ(row.strategy_sum[5], 0.0f);
 }
 
+TEST_CASE(hunl_sampled_storage_reusing_id_with_identical_shape_is_allowed) {
+    core::HUNLSampledStorage storage;
+    const core::HUNLSampledInfosetShape shape{core::InfosetId{17}, 1, core::Street::River, 4, 3};
+    const auto first = storage.ensure_row(shape);
+    first.regret[0] = 2.0f;
+    const auto second = storage.ensure_row(shape);
+
+    EXPECT_EQ(storage.row_count(), 1U);
+    EXPECT_EQ(storage.total_value_count(), 12U);
+    EXPECT_EQ(second.regret[0], 2.0f);
+}
+
+TEST_CASE(hunl_sampled_storage_reusing_id_with_different_shape_fails_for_each_dimension) {
+    const core::HUNLSampledInfosetShape base{core::InfosetId{18}, 0, core::Street::Turn, 2, 2};
+    const std::array<core::HUNLSampledInfosetShape, 4> mismatches = {{
+        {base.id, 1, base.street, base.bucket_count, base.action_count},
+        {base.id, base.player, core::Street::River, base.bucket_count, base.action_count},
+        {base.id, base.player, base.street, 3, base.action_count},
+        {base.id, base.player, base.street, base.bucket_count, 3},
+    }};
+
+    for (const auto& mismatch : mismatches) {
+        core::HUNLSampledStorage storage;
+        storage.ensure_row(base);
+        EXPECT_THROW(storage.ensure_row(mismatch), std::invalid_argument);
+        EXPECT_EQ(storage.row_count(), 1U);
+        EXPECT_EQ(storage.total_value_count(), 4U);
+    }
+}
+
+TEST_CASE(hunl_sampled_storage_requires_reacquiring_views_after_row_growth) {
+    core::HUNLSampledStorage storage;
+    const auto first = storage.ensure_row({core::InfosetId{19}, 0, core::Street::Turn, 1, 2});
+    first.regret[0] = 4.0f;
+    storage.ensure_row({core::InfosetId{20}, 1, core::Street::River, 2, 1});
+
+    const auto reacquired = storage.view_mut(core::InfosetId{19});
+    EXPECT_EQ(reacquired.value_count(), 2U);
+    EXPECT_EQ(reacquired.regret[0], 4.0f);
+}
+
+TEST_CASE(hunl_sampled_storage_value_count_uses_checked_size_t_arithmetic) {
+    core::HUNLSampledInfosetMeta meta;
+    meta.bucket_count = 3;
+    meta.action_count = 7;
+    EXPECT_EQ(meta.value_count(), static_cast<std::size_t>(21));
+
+    if constexpr (sizeof(std::size_t) <= sizeof(std::uint32_t)) {
+        meta.bucket_count = std::numeric_limits<std::uint32_t>::max();
+        meta.action_count = std::numeric_limits<std::uint8_t>::max();
+        EXPECT_EQ(meta.value_count(), std::numeric_limits<std::size_t>::max());
+    }
+}
+
 TEST_CASE(hunl_sampled_storage_computes_current_strategy_on_demand_and_estimates_memory) {
     core::HUNLSampledStorage storage(core::HUNLFlatValueLayout::InfosetHandAction);
     const auto row = storage.ensure_row({

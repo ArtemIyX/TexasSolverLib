@@ -1,6 +1,7 @@
 #include "solver/hunl_sampled_storage.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
@@ -17,6 +18,13 @@ HUNLSampledStorage::HUNLSampledStorage(
 HUNLSampledRowView HUNLSampledStorage::ensure_row(const HUNLSampledInfosetShape& shape) {
     const auto it = row_lookup_.find(shape.id);
     if (it != row_lookup_.end()) {
+        const auto& existing = meta_.at(it->second);
+        if (existing.player != shape.player ||
+            existing.street != shape.street ||
+            existing.bucket_count != shape.bucket_count ||
+            existing.action_count != shape.action_count) {
+            throw std::invalid_argument("HUNLSampledStorage row shape mismatch for reused InfosetId");
+        }
         return view_mut(shape.id);
     }
 
@@ -26,10 +34,19 @@ HUNLSampledRowView HUNLSampledStorage::ensure_row(const HUNLSampledInfosetShape&
     meta.street = shape.street;
     meta.bucket_count = shape.bucket_count;
     meta.action_count = shape.action_count;
-    meta.regret_offset = static_cast<std::uint32_t>(regret_.size());
-    meta.strategy_sum_offset = static_cast<std::uint32_t>(strategy_sum_.size());
+    const auto value_count = meta.value_count();
+    if (value_count > regret_.max_size() || value_count > strategy_sum_.max_size() ||
+        regret_.size() > regret_.max_size() - value_count ||
+        strategy_sum_.size() > strategy_sum_.max_size() - value_count) {
+        throw std::length_error("HUNLSampledStorage row allocation exceeds vector capacity");
+    }
+    if (regret_.size() > std::numeric_limits<std::size_t>::max() - value_count ||
+        strategy_sum_.size() > std::numeric_limits<std::size_t>::max() - value_count) {
+        throw std::length_error("HUNLSampledStorage row offset overflow");
+    }
+    meta.regret_offset = regret_.size();
+    meta.strategy_sum_offset = strategy_sum_.size();
 
-    const auto value_count = static_cast<std::size_t>(meta.value_count());
     regret_.resize(regret_.size() + value_count, 0.0f);
     strategy_sum_.resize(strategy_sum_.size() + value_count, 0.0f);
 

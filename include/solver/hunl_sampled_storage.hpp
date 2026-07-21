@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -26,12 +27,17 @@ struct HUNLSampledInfosetMeta {
     Street street = Street::Preflop;
     std::uint32_t bucket_count = 0;
     std::uint8_t action_count = 0;
-    std::uint32_t regret_offset = 0;
-    std::uint32_t strategy_sum_offset = 0;
+    std::size_t regret_offset = 0;
+    std::size_t strategy_sum_offset = 0;
     std::uint32_t last_discount_iter = 0;
 
-    [[nodiscard]] std::uint32_t value_count() const noexcept {
-        return bucket_count * static_cast<std::uint32_t>(action_count);
+    [[nodiscard]] std::size_t value_count() const noexcept {
+        const auto actions = static_cast<std::size_t>(action_count);
+        if (actions != 0 &&
+            static_cast<std::size_t>(bucket_count) > std::numeric_limits<std::size_t>::max() / actions) {
+            return std::numeric_limits<std::size_t>::max();
+        }
+        return static_cast<std::size_t>(bucket_count) * actions;
     }
 };
 
@@ -90,6 +96,8 @@ public:
         HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand,
         HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float32);
 
+    // Returned raw-pointer views remain valid until the next operation that
+    // grows storage; reacquire the view after adding a new row.
     HUNLSampledRowView ensure_row(const HUNLSampledInfosetShape& shape);
     [[nodiscard]] bool has_row(InfosetId id) const noexcept;
     [[nodiscard]] HUNLSampledConstRowView view(InfosetId id) const;

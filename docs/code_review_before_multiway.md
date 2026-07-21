@@ -281,7 +281,9 @@ Regression tests:
 
 ### P2-2: sparse row reuse and offsets lack shape/size invariants
 
-Evidence:
+Status: **fixed on 2026-07-21 with shape validation and checked `size_t` row arithmetic.**
+
+Original evidence:
 
 - `HUNLSampledStorage::ensure_row` returns an existing row solely by `InfosetId` at `src/solver/hunl_sampled_storage.cpp:14-18`; it does not verify player, street, bucket count, or action count.
 - Offsets and `value_count()` are 32-bit (`include/solver/hunl_sampled_storage.hpp:25-35`).
@@ -289,18 +291,16 @@ Evidence:
 
 If an infoset ID is accidentally reused with a different abstraction or action menu, the caller receives a row with the old shape and may index it using the new shape. Large sparse stores can also wrap offsets beyond 2^32 float values (16 GiB per array), which is reachable below the repository’s 64 GB machine limit.
 
-Recommended fix:
+Implemented fix:
 
-- On reuse, compare the complete shape and fail immediately on mismatch.
-- Use `size_t` or checked 64-bit offsets and value counts.
-- Check multiplication/addition before allocation and include the attempted allocation in memory preflight.
-- Return stable row handles/offsets rather than raw pointers that become invalid after vector growth.
+`ensure_row` now compares player, street, bucket count, and action count whenever an `InfosetId` is reused, throwing immediately on mismatch. Row offsets use `size_t`; value-count multiplication is checked and allocation additions are validated before vector growth. The sampled storage memory estimate continues to account for vector capacity, while solver-level preflight remains responsible for rejecting unsafe total allocations. Row views are explicitly documented as invalidated by storage growth; callers must reacquire them after adding rows.
 
 Regression tests:
 
-- Reusing an ID with a different player/street/action/bucket shape must throw.
-- Boundary tests must reject multiplication and offset overflow.
-- A retained row handle must remain valid by contract, or the API must make invalidation explicit and tests must enforce correct reacquisition.
+- Reusing an ID with a different player, street, bucket, or action shape throws.
+- Checked `size_t` value-count arithmetic has boundary coverage, including narrow-host overflow behavior.
+- Exact row reuse preserves values, and reacquisition after row growth preserves the row contents.
+- View invalidation after growth is explicit in the API contract and covered by reacquisition tests.
 
 ## Multiway-specific architecture blockers
 
