@@ -312,6 +312,8 @@ Use scaled/log-domain reach bookkeeping or a bounded importance-weight policy wi
 
 ### P2-5: compiled private sampling still has no deterministic feasibility gate
 
+Status: **fixed on 2026-07-22.** Compilation now removes zero-mass combos and performs bounded deterministic compatibility search before workers begin. Worker code can use `try_sample_into()` to receive a non-throwing rejection-budget result; the existing throwing method remains only as an API-boundary wrapper.
+
 Evidence:
 
 - `MultiwayCompiledPrivateRanges` compiles canonical cumulative per-seat tables, but `sample_into()` still uses whole-deal rejection up to `max_rejection_attempts` and throws from the sampling path at `src/games/multiway_private.cpp:116-134`.

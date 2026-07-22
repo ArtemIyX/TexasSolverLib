@@ -40,6 +40,11 @@ class MultiwayCompiledPrivateRanges {
 public:
     explicit MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config);
 
+    // Allocation-free worker path. False means the configured bounded
+    // rejection budget was exhausted; callers can discard the trajectory.
+    [[nodiscard]] bool try_sample_into(
+        std::uint64_t seed,
+        MultiwayPrivateWorkerScratch& scratch) const noexcept;
     void sample_into(std::uint64_t seed, MultiwayPrivateWorkerScratch& scratch) const;
     [[nodiscard]] std::size_t seat_count() const noexcept;
 

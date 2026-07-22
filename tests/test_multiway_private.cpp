@@ -145,6 +145,20 @@ TEST_CASE(multiway_showdown_splits_a_board_tie_deterministically) {
     EXPECT_EQ(result.payouts[2], 101);
 }
 
+TEST_CASE(multiway_compiled_private_ranges_reject_impossible_deals_before_worker_sampling) {
+    auto config = ranges();
+    config.ranges[0] = {hand(14, 0, 13, 0)};
+    config.ranges[1] = {hand(14, 0, 13, 0)};
+    EXPECT_THROW(core::MultiwayCompiledPrivateRanges(config), std::invalid_argument);
+}
+
+TEST_CASE(multiway_compiled_private_ranges_offer_nonthrowing_worker_sampling) {
+    core::MultiwayCompiledPrivateRanges compiled(ranges());
+    core::MultiwayPrivateWorkerScratch scratch;
+    EXPECT_TRUE(compiled.try_sample_into(99, scratch));
+    EXPECT_EQ(scratch.seat_count, 3U);
+}
+
 TEST_CASE(multiway_showdown_preserves_explicit_odd_chip_order) {
     core::MultiwayShowdownInput input;
     input.board = {c(14, 0), c(13, 0), c(12, 1), c(11, 2), c(2, 0)};

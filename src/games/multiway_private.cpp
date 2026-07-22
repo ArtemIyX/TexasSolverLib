@@ -25,6 +25,29 @@ std::size_t sample_cumulative(const std::vector<double>& cumulative, PcsRng& rng
     return static_cast<std::size_t>(std::lower_bound(cumulative.begin(), cumulative.end(), draw) - cumulative.begin());
 }
 
+constexpr std::uint64_t kMaxFeasibilityNodes = 1'000'000U;
+
+bool find_compatible_deal(
+    const std::vector<std::vector<MultiwayWeightedHole>>& ranges,
+    const std::array<std::size_t, 6>& order,
+    std::size_t depth,
+    std::array<bool, 64>& used,
+    std::uint64_t& visited) {
+    if (++visited > kMaxFeasibilityNodes) {
+        throw std::runtime_error("multiway private range feasibility search exceeded its bounded budget");
+    }
+    if (depth == ranges.size()) return true;
+    const auto seat = order[depth];
+    for (const auto& entry : ranges[seat]) {
+        if (entry.weight <= 0.0 || overlaps(entry.hole, used)) continue;
+        mark(entry.hole, used);
+        if (find_compatible_deal(ranges, order, depth + 1U, used, visited)) return true;
+        used[entry.hole[0]] = false;
+        used[entry.hole[1]] = false;
+    }
+    return false;
+}
+
 }  // namespace
 
 void MultiwayPrivateConfig::validate() const {
@@ -96,6 +119,7 @@ MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPriva
             return lhs.hole < rhs.hole;
         });
         for (const auto& entry : entries) {
+            if (entry.weight == 0.0) continue;
             if (!ranges_[seat].empty() && ranges_[seat].back().hole == entry.hole) {
                 ranges_[seat].back().weight += entry.weight;
             } else {
@@ -108,12 +132,28 @@ MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPriva
             total += entry.weight;
             cumulative_weights_[seat].push_back(total);
         }
+        if (ranges_[seat].empty()) {
+            throw std::invalid_argument("multiway compiled private range has no positive-mass hand");
+        }
+    }
+
+    std::array<std::size_t, 6> order = {};
+    for (std::size_t seat = 0; seat < ranges_.size(); ++seat) order[seat] = seat;
+    std::sort(order.begin(), order.begin() + ranges_.size(),
+              [this](std::size_t lhs, std::size_t rhs) {
+                  return ranges_[lhs].size() < ranges_[rhs].size();
+              });
+    std::array<bool, 64> used = {};
+    for (const auto card : board_) used[card] = true;
+    std::uint64_t visited = 0;
+    if (!find_compatible_deal(ranges_, order, 0, used, visited)) {
+        throw std::invalid_argument("multiway private ranges have no compatible joint deal");
     }
 }
 
-void MultiwayCompiledPrivateRanges::sample_into(
+bool MultiwayCompiledPrivateRanges::try_sample_into(
     std::uint64_t seed,
-    MultiwayPrivateWorkerScratch& scratch) const {
+    MultiwayPrivateWorkerScratch& scratch) const noexcept {
     PcsRng rng(seed);
     for (std::uint32_t attempt = 1; attempt <= max_rejection_attempts_; ++attempt) {
         scratch.used.fill(false);
@@ -128,9 +168,16 @@ void MultiwayCompiledPrivateRanges::sample_into(
         if (compatible) {
             scratch.seat_count = static_cast<std::uint8_t>(ranges_.size());
             scratch.attempts = attempt;
-            return;
+            return true;
         }
     }
+    return false;
+}
+
+void MultiwayCompiledPrivateRanges::sample_into(
+    std::uint64_t seed,
+    MultiwayPrivateWorkerScratch& scratch) const {
+    if (try_sample_into(seed, scratch)) return;
     throw std::runtime_error("unable to sample compatible compiled multiway private hands within rejection limit");
 }
 
