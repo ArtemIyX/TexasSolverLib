@@ -230,9 +230,23 @@ void MultiwayState::select_next_player() {
 }
 
 void MultiwayState::refresh_round_completion() {
-    if (live_player_count() <= 1U || actionable_player_count() <= 1U) {
+    if (live_player_count() <= 1U) {
         current_player_ = -1;
         return;
+    }
+    if (actionable_player_count() <= 1U) {
+        bool lone_actionable_player_faces_bet = false;
+        for (std::size_t seat = 0; seat < pending_.size(); ++seat) {
+            if (pending_[seat] && is_actionable(static_cast<PlayerId>(seat)) &&
+                street_contributions_[seat] < current_bet_) {
+                lone_actionable_player_faces_bet = true;
+                break;
+            }
+        }
+        if (!lone_actionable_player_faces_bet) {
+            current_player_ = -1;
+            return;
+        }
     }
     bool has_pending = false;
     for (std::size_t seat = 0; seat < pending_.size(); ++seat) {
