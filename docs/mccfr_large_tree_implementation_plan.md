@@ -23,9 +23,9 @@ training data, and structured online sub-solve results only.
 | --- | --- | --- |
 | Recursive DCFR / `HUNLFlatDCFR` | small-game oracle | Correctness comparison and tiny-tree tests; not the production large-tree engine. |
 | `HUNLFlatMCCFR` | full-graph prototype/oracle | MCCFR semantics and deterministic baseline only; never production RTA until it no longer needs a full graph or graph-sized worker scratch. |
-| Sampled builder/storage/traversal | experimental heads-up engine | Single-thread validation only until snapshot traversal, bounded deltas, deterministic merge, and runtime memory admission are complete. |
-| Multiway state, terminal, private, CFR | standalone validated helpers | May not be exposed as a multiway solve API until connected through the production traversal/storage contract. |
-| Value-network leaf integration | unimplemented contract | No backend may invent heuristic or zero cutoff values in production. |
+| Sampled builder/storage/traversal | experimental heads-up engine | Runtime public-state admission and worker-local delta/ordered coordinator merge exist; single-thread validation only until immutable snapshots and coordinator-owned expansion/row admission are complete. |
+| Multiway state, terminal, private, CFR | standalone validated helpers | Betting snapshots/reopening, bound pot settlement, compiled private ranges, and explicit CFR contracts exist; no integrated multiway solve API yet. |
+| Value-network leaf integration | contract only | Public depth-limited solves fail closed until every backend consumes the same evaluator. |
 
 ## Production architecture
 
@@ -90,3 +90,16 @@ tests must show:
 - action descriptors match the legal root edge menu;
 - multiway toy games match exhaustively enumerated expectations.
 
+## Implementation status (2026-07-22)
+
+Implemented foundations: blocker-aware joint HUNL range normalization; typed
+root actions; fail-closed public depth limits plus a leaf-evaluation contract;
+runtime sampled cache admission; worker-local deltas with ordered coordinator
+merge; multiway betting snapshots, validated pots/odd-chip order, compiled
+private ranges, external-sampling row math, and estimator diagnostics.
+
+Still blocking production: public range solving must carry joint private reach
+through traversal; leaf requests must be evaluated by every backend; sampled
+workers need immutable snapshots and coordinator-only expansion/row admission;
+and the multiway helpers must be connected into an integrated traversal,
+storage, export, and policy-evaluation pipeline.
