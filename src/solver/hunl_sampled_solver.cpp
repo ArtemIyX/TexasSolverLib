@@ -248,13 +248,17 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
             if (!worker_batches.empty()) execute_worker(0);
             for (auto& thread : threads) thread.join();
             if (worker_error != nullptr) std::rethrow_exception(worker_error);
+            HUNLSampledWorkerScratch ordered_deltas;
+            ordered_deltas.reserve_deltas(static_cast<std::size_t>(config_.minibatch_size) * kWorkerDeltaEntriesPerTraversal);
             for (std::size_t worker = 0; worker < worker_batches.size(); ++worker) {
-                merge_hunl_sampled_worker_deltas(storage_, worker_scratch[worker]);
+                ordered_deltas.deltas.insert(
+                    ordered_deltas.deltas.end(), worker_scratch[worker].deltas.begin(), worker_scratch[worker].deltas.end());
                 profile_.record_traversal(
                     worker_batches[worker].trajectories.size(),
                     worker_results[worker].nodes_visited,
                     worker_results[worker].infosets_updated);
             }
+            merge_hunl_sampled_worker_deltas(storage_, ordered_deltas);
         }
         const auto& root = builder_.node(root_id);
         if (root.type == HUNLFlatNodeType::Decision) {

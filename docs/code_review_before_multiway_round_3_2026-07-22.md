@@ -333,6 +333,10 @@ Regression gate:
 
 ### P1-4: sampled fixed-order merge is not reproducible across worker counts
 
+Status: Implemented 2026-07-22. Deltas carry global trajectory ordinals and
+each batch is reduced once in infoset/cell/trajectory order, independently of
+worker partitioning.
+
 Evidence:
 
 - Worker aggregate deltas retain no trajectory ID or insertion sequence in

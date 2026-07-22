@@ -97,6 +97,7 @@ std::pair<std::size_t, double> sample_strategy_action(
 
 void append_delta(
     HUNLSampledWorkerScratch& scratch,
+    std::uint64_t trajectory_id,
     InfosetId infoset_id,
     std::uint32_t bucket,
     std::size_t action,
@@ -106,6 +107,7 @@ void append_delta(
         throw std::runtime_error("HUNLSampledWorkerScratch delta capacity exhausted");
     }
     scratch.deltas.push_back(HUNLSampledValueDelta{
+        trajectory_id,
         infoset_id,
         bucket,
         static_cast<std::uint8_t>(action),
@@ -160,6 +162,7 @@ double traverse_external(
             terminal_evaluator,
             request,
             scratch,
+            request.trajectory_id,
             rng,
             builder.edge(sampled_edge_id(expanded, edge_slot)).child,
             reach,
@@ -337,7 +340,8 @@ void merge_hunl_sampled_worker_deltas(
     std::sort(scratch.deltas.begin(), scratch.deltas.end(), [](const auto& lhs, const auto& rhs) {
         if (lhs.infoset_id.value != rhs.infoset_id.value) return lhs.infoset_id.value < rhs.infoset_id.value;
         if (lhs.bucket != rhs.bucket) return lhs.bucket < rhs.bucket;
-        return lhs.action < rhs.action;
+        if (lhs.action != rhs.action) return lhs.action < rhs.action;
+        return lhs.trajectory_id < rhs.trajectory_id;
     });
     merge_deltas(storage, scratch);
 }

@@ -43,6 +43,7 @@ struct HUNLSampledTraversalResult {
 };
 
 struct HUNLSampledValueDelta {
+    std::uint64_t trajectory_id = 0;
     InfosetId infoset_id{};
     std::uint32_t bucket = 0;
     std::uint8_t action = 0;
