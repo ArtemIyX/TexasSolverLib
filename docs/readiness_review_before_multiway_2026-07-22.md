@@ -41,9 +41,11 @@ Severity definitions:
 
 ## P0 findings
 
-### P0-1: deadline MCCFR never refreshes the strategy caches used by traversal
+### P0-1: deadline MCCFR did not refresh the strategy caches used by traversal
 
-Evidence:
+Status: **implemented on 2026-07-22; regression suite added, but not executed in this change.**
+
+Original evidence before the 2026-07-22 fix:
 
 - The constructor initializes `average_policy_cache_` rows to zero in `src/solver/hunl_flat_mccfr.cpp:224-227`.
 - `compute_current_strategy_rows()` and `rebuild_average_policy_cache()` are called only by `run_player_batch()` at `src/solver/hunl_flat_mccfr.cpp:2034-2035`.
@@ -53,22 +55,27 @@ Evidence:
 - When a probability row has zero total, `sample_weighted_prefix()` selects action zero at `src/solver/hunl_flat_mccfr.cpp:108-116`.
 - Existing deadline tests at `tests/test_hunl_flat_mccfr.cpp:1513-1553` cover only zero or negative budgets and therefore execute no batch.
 
-Impact:
+Original impact:
 
 A positive-budget `solve_for()`/`run_until()` request can count batches, touch rows, and export a normalized root strategy without running the policy that the current regrets imply. Opponent nodes are initially sampled as action zero, and their reach is multiplied by a cached probability of zero. Deeper regret updates can therefore disappear even though profiling reports traversal work. Root strategy sums can still change, which makes the result look more credible than a uniform placeholder.
 
-Required fix:
+Implemented fix:
 
-1. Give normal and deadline modes one shared "begin traverser batch" path that rebuilds current strategies and the aggregate action policy before dispatch.
-2. Define the snapshot schedule explicitly: frozen policy per player batch or per minibatch. Use the same schedule in iteration and deadline modes.
-3. Do not duplicate this orchestration in `run_until`; make deadline checks interrupt the normal batch state machine.
-4. Add an internal invariant that every dispatched batch references a non-stale strategy generation.
+- `run_iteration()`, `run_iterations()`, `run_batches()`, and `run_until()` now use one resumable subbatch state machine.
+- `begin_player_batch()` rebuilds the current-strategy rows and aggregate action-policy cache exactly once before dispatching that player's first subbatch. The snapshot is frozen for that player batch and retained across deadline interruption/resumption.
+- `run_until()` performs deadline checks only between subbatches; it no longer hand-rolls dispatch orchestration or bypasses cache setup.
+- The state machine retains target iteration, traversing player, and trajectory cursor. A partial call resumes the next uncommitted subbatch rather than replaying the preceding work.
+- A strategy-snapshot generation invariant rejects a dispatch that has no prepared snapshot or refers to a different generation.
 
-Regression gate:
+Regression coverage added:
 
-- On a deterministic tiny graph, completing the same player batches through `run_iterations()` and a batch-bounded deadline driver must produce the same regrets, strategy sums, and root export.
-- A graph whose correct update requires reaching a non-zero-index opponent action must change the deeper infoset under deadline mode.
-- `profile.strategy_snapshot_rebuilds` must reflect every policy generation used by deadline solving.
+- 24 deterministic normal-versus-work-bounded cases cover Exact, PublicChance, and External modes; dense and sparse storage; one and three workers; and one- or two-player update schedules. They compare completed iterations, traversal counters, snapshot rebuild counts, exported average strategies, and root exports.
+- Targeted cases cover zero work, one rebuild per player batch, rebuilds for both traversing players, deep regret updates through a non-zero opponent action, partial-batch resume without a duplicate rebuild, resumption through `run_iteration()`, and starting a fresh snapshot only after an iteration completes.
+- A positive `solve_for()` case exercises the public deadline API and asserts that it dispatches at least one cache-backed batch.
+
+Remaining verification:
+
+- Build and run the new tests before treating this item as fully verified. No build or test command was run while making this documentation update.
 
 ### P0-2: full-graph MCCFR sparse mode allocates dense graph-sized deltas per worker and hides them from memory reporting
 
@@ -461,7 +468,7 @@ Restore or replace the plan and make it authoritative. Record module maturity ex
 
 ## Recommended repair order
 
-1. Fix P0-1 and add a deterministic positive-work deadline regression before trusting any timed MCCFR result.
+1. Run and verify the P0-1 regression suite; retain `HUNLFlatMCCFR` as a small-game oracle while the remaining P0 memory work is unresolved.
 2. Redesign worker deltas and complete memory accounting/preflight; keep full-graph MCCFR explicitly oracle-only.
 3. Define the structured range/blueprint root request and the batched leaf-evaluator contract.
 4. Make cutoff semantics identical across backends, or reject unsupported backend/configuration combinations.
@@ -474,7 +481,7 @@ Restore or replace the plan and make it authoritative. Record module maturity ex
 
 The project is ready to start the production multiway traversal only when all of these are true:
 
-- Positive timed heads-up solving follows the same policy-update schedule as batch solving.
+- Positive timed heads-up solving follows the same policy-update schedule as batch solving. **Implemented for `HUNLFlatMCCFR`; pending build/test verification.**
 - No production mode builds the full flop graph or allocates graph-sized scratch per worker.
 - Preflight plus runtime checks conservatively bound every large retained allocation below the configured hard limit.
 - A structured public-state-plus-ranges request changes blocker-aware root reach and strategy correctly.
