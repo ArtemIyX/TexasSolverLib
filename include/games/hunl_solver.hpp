@@ -3,6 +3,7 @@
 #include "games/hunl.hpp"
 #include "core/types.hpp"
 #include "solver/parallel_dcfr.hpp"
+#include "solver/hunl_leaf_evaluator.hpp"
 
 #include <cstdint>
 #include <unordered_map>

@@ -159,6 +159,10 @@ void validate_config(const HUNLConfig& config) {
         !config.abstraction_path.has_value()) {
         throw std::invalid_argument("bucketed flat solve mode requires abstraction_path");
     }
+    if (config.depth_limit_plies != 0U) {
+        throw std::invalid_argument(
+            "solve_hunl_postflop rejects depth_limit_plies until a shared HUNL leaf evaluator is configured");
+    }
 }
 
 HUNLSolveOutput solve_hunl_postflop(

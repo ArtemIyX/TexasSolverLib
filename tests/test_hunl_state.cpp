@@ -139,6 +139,12 @@ TEST_CASE(hunl_flat_backend_populates_value_and_exploitability) {
     EXPECT_TRUE(!output.average_strategy.empty());
 }
 
+TEST_CASE(hunl_public_postflop_solver_fails_closed_for_depth_limit_without_shared_leaf_evaluator) {
+    auto config = core::default_tiny_subgame();
+    config.depth_limit_plies = 1;
+    EXPECT_THROW(core::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0), std::invalid_argument);
+}
+
 TEST_CASE(hunl_postflop_raise_cap_blocks_further_raises) {
     const auto state = flop_state(100000, 200);
     const auto capped = state.apply(core::ACTION_CHECK)
