@@ -253,7 +253,16 @@ HUNLSolveOutput solve_hunl_postflop(
     const auto postprocess_start = std::chrono::steady_clock::now();
     HUNLSolveOutput out;
     out.average_strategy = to_strategy_map(solve_output.average_strategy);
-    out.exploitability = solve_output.exploitability;
+    std::unordered_map<InfosetKey, std::vector<Probability>> normalized_strategy;
+    normalized_strategy.reserve(out.average_strategy.size());
+    for (const auto& [key, probabilities] : out.average_strategy) {
+        normalized_strategy.emplace(key, probabilities);
+    }
+    // Compute the named metric once at the wrapper boundary so recursive and
+    // flat backends cannot report different scaling or constant-sum offsets.
+    out.exploitability = detail::exploitability<HUNLState>(normalized_strategy);
+    out.total_nash_conv = out.exploitability * 2.0;
+    out.quality_metric = HUNLQualityMetric::PerPlayerExploitability;
     out.game_value = solve_output.game_value;
     out.iterations = solve_output.iterations;
     out.used_parallel = solve_output.used_parallel;

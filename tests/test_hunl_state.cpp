@@ -134,6 +134,8 @@ TEST_CASE(hunl_flat_backend_populates_value_and_exploitability) {
     EXPECT_TRUE(std::isfinite(output.exploitability));
     EXPECT_TRUE(output.game_value != 0.0);
     EXPECT_TRUE(output.exploitability != 0.0);
+    EXPECT_EQ(output.quality_metric, core::HUNLQualityMetric::PerPlayerExploitability);
+    EXPECT_NEAR(output.total_nash_conv, output.exploitability * 2.0, 1e-12);
     EXPECT_TRUE(!output.average_strategy.empty());
 }
 

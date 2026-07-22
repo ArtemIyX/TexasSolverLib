@@ -10,9 +10,15 @@
 
 namespace core {
 
+enum class HUNLQualityMetric : std::uint8_t {
+    PerPlayerExploitability,
+};
+
 struct HUNLSolveOutput {
     std::unordered_map<std::string, std::vector<double>> average_strategy;
     double exploitability = 0.0;
+    double total_nash_conv = 0.0;
+    HUNLQualityMetric quality_metric = HUNLQualityMetric::PerPlayerExploitability;
     double game_value = 0.0;
     std::uint32_t iterations = 0;
     double wallclock_seconds = 0.0;

@@ -42,6 +42,7 @@ using ::core::Class169RvrOutput;
 using ::core::ExploitOutput;
 using ::core::HUNLConfig;
 using ::core::HUNLSolveOutput;
+using ::core::HUNLQualityMetric;
 using ::core::InfosetKey;
 using ::core::MultiwayAction;
 using ::core::MultiwayBettingSnapshot;
