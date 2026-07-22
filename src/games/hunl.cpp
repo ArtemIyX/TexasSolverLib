@@ -442,10 +442,6 @@ void HUNLConfig::validate() const {
     if (c0 < 0 || c1 < 0) {
         throw std::invalid_argument("HUNLConfig.validate: initial_contributions must be non-negative");
     }
-    if (c0 > starting_stack || c1 > starting_stack) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: initial_contributions must not exceed starting_stack");
-    }
     const auto contribution_sum = c0 + c1;
     if (contribution_sum != 0 && contribution_sum != initial_pot) {
         throw std::invalid_argument(

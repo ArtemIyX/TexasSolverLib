@@ -101,6 +101,8 @@ Minimum regression cases:
 
 ### P0-3: the structured heads-up root cannot represent an arbitrary live subgame
 
+Status: **fixed fail-closed on 2026-07-22.** Balanced low-SPR postflop roots are now valid even when historical contributions exceed chips behind. Structured roots with unequal contributions are rejected before solving because the legacy scalar-stack state would otherwise invent the bettor's remaining chips. A complete heads-up betting snapshot remains the required design before enabling arbitrary online roots.
+
 Evidence:
 
 - `HUNLStructuredRootRequest` embeds `HUNLConfig` rather than a complete betting snapshot at `include/games/hunl_solver.hpp:19-28`.

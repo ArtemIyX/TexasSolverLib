@@ -127,6 +127,19 @@ TEST_CASE(ranges_structured_root_sampled_positive_work_is_fail_closed) {
         core::HUNLSampledStructuredRangeNotReady);
 }
 
+TEST_CASE(ranges_structured_root_allows_low_spr_balanced_pots_but_rejects_facing_bets) {
+    core::HUNLStructuredRootRequest request;
+    request.config = range_contract_config();
+    request.config.starting_stack = 100;
+    request.config.initial_pot = 1000;
+    request.config.initial_contributions = {500, 500};
+    request.blueprint_version = "blueprint-v1";
+    request.validate();
+
+    request.config.initial_contributions = {400, 600};
+    EXPECT_THROW(request.validate(), std::invalid_argument);
+}
+
 TEST_CASE(ranges_sampled_request_rejects_ambiguous_fixed_and_range_roots) {
     core::HUNLStructuredRootRequest root;
     root.config = range_contract_config();
