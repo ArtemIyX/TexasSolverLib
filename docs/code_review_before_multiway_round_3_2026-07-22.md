@@ -371,6 +371,10 @@ then test it across worker counts and batch partitions.
 
 ### P1-5: an exception on MCCFR worker zero bypasses the coordinator wait/cleanup path
 
+Status: Implemented 2026-07-22. The coordinator captures its own worker-zero
+failure, waits for all dispatched workers, clears uncommitted scratch, then
+rethrows transactionally.
+
 Evidence:
 
 - `HUNLFlatMCCFR::run_player_subbatch()` dispatches background workers, then

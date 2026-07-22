@@ -2109,16 +2109,28 @@ void HUNLFlatMCCFR::run_player_subbatch(
     }
     profile_.worker_wakeups += worker_count_;
 
-    execute_worker_batch(0, target_iteration, traversing_player, trajectory_begin, batches[0].trajectories);
+    std::exception_ptr coordinator_exception;
+    try {
+        execute_worker_batch(0, target_iteration, traversing_player, trajectory_begin, batches[0].trajectories);
+    } catch (...) {
+        coordinator_exception = std::current_exception();
+    }
 
     if (worker_count_ > 1) {
         std::unique_lock<std::mutex> lock(worker_mutex_);
         worker_done_cv_.wait(lock, [&]() {
             return worker_completed_count_ == worker_count_ - 1;
         });
-        if (worker_exception_ != nullptr) {
-            std::rethrow_exception(worker_exception_);
-        }
+    }
+    if (coordinator_exception != nullptr) {
+        // All dispatched workers have quiesced, so their unmerged deltas can
+        // be discarded transactionally before the coordinator failure escapes.
+        for (auto& scratch : worker_scratch_) scratch.clear_keep_capacity();
+        std::rethrow_exception(coordinator_exception);
+    }
+    if (worker_exception_ != nullptr) {
+        for (auto& scratch : worker_scratch_) scratch.clear_keep_capacity();
+        std::rethrow_exception(worker_exception_);
     }
     double subbatch_trajectory_seconds = 0.0;
     for (const auto& scratch : worker_scratch_) {
