@@ -521,6 +521,71 @@ DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_ex
 
 #undef DEADLINE_BATCH_EQUIVALENCE_CASE
 
+void expect_mccfr_memory_report(
+    core::HUNLFlatSamplingMode mode,
+    bool sparse,
+    std::size_t workers,
+    std::uint32_t batch_size,
+    core::HUNLFlatBaselineMode baseline) {
+    auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = mode;
+    config.traversals_per_iteration = 8;
+    config.batch_size = batch_size;
+    config.use_sparse_storage = sparse;
+    config.baseline_mode = baseline;
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
+    const auto usage = solver.memory_usage();
+    const auto snapshot = solver.export_root_snapshot();
+    EXPECT_EQ(snapshot.memory_used_bytes, usage.total_bytes());
+    EXPECT_TRUE(usage.graph_bytes > 0U);
+    EXPECT_TRUE(usage.infoset_metadata_bytes > 0U);
+    EXPECT_TRUE(usage.policy_cache_bytes > 0U);
+    EXPECT_TRUE(usage.traversal_metadata_bytes > 0U);
+    EXPECT_TRUE(usage.worker_scratch_bytes > 0U);
+    EXPECT_TRUE(usage.total_bytes() >= usage.graph_bytes + usage.worker_scratch_bytes);
+    if (sparse) {
+        EXPECT_EQ(solver.sparse_storage().row_count(), 0U);
+    } else {
+        EXPECT_TRUE(usage.central_storage_bytes > 0U);
+    }
+}
+
+#define MCCFR_MEMORY_CASE(name, mode_value, sparse_value, workers_value, batch_value, baseline_value) \
+    TEST_CASE(name) { expect_mccfr_memory_report(mode_value, sparse_value, workers_value, batch_value, baseline_value); }
+#define MCCFR_MEMORY_FAMILY(prefix, mode_value) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b1_none, mode_value, false, 1U, 1U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b1_none, mode_value, false, 2U, 1U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b1_none, mode_value, false, 4U, 1U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b8_none, mode_value, false, 1U, 8U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b8_none, mode_value, false, 2U, 8U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b8_none, mode_value, false, 4U, 8U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b1_none, mode_value, true, 1U, 1U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b1_none, mode_value, true, 2U, 1U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b1_none, mode_value, true, 4U, 1U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b8_none, mode_value, true, 1U, 8U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b8_none, mode_value, true, 2U, 8U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b8_none, mode_value, true, 4U, 8U, core::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b1_baseline, mode_value, false, 1U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b1_baseline, mode_value, false, 2U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b1_baseline, mode_value, false, 4U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b8_baseline, mode_value, false, 1U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b8_baseline, mode_value, false, 2U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b8_baseline, mode_value, false, 4U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b1_baseline, mode_value, true, 1U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b1_baseline, mode_value, true, 2U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b1_baseline, mode_value, true, 4U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b8_baseline, mode_value, true, 1U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b8_baseline, mode_value, true, 2U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b8_baseline, mode_value, true, 4U, 8U, core::HUNLFlatBaselineMode::MovingAverage)
+
+MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_exact, core::HUNLFlatSamplingMode::Exact)
+MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_public_chance, core::HUNLFlatSamplingMode::PublicChance)
+MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_external, core::HUNLFlatSamplingMode::External)
+
+#undef MCCFR_MEMORY_FAMILY
+#undef MCCFR_MEMORY_CASE
+
 TEST_CASE(hunl_flat_mccfr_same_seed_produces_identical_output) {
     const auto graph_a = make_public_chance_conflict_graph();
     const auto graph_b = make_public_chance_conflict_graph();

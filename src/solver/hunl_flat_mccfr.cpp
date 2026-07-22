@@ -2682,18 +2682,53 @@ HUNLFlatMCCFR::BaselineStats HUNLFlatMCCFR::baseline_stats() const noexcept {
 }
 
 std::uint64_t HUNLFlatMCCFR::memory_used_bytes() const noexcept {
-    std::uint64_t bytes = graph_memory_bytes_;
-    bytes += profile_.baseline_bytes;
+    return memory_usage().total_bytes();
+}
+
+HUNLFlatMCCFR::MemoryUsage HUNLFlatMCCFR::memory_usage() const noexcept {
+    MemoryUsage usage;
+    usage.graph_bytes = graph_memory_bytes_;
+    usage.infoset_metadata_bytes = vector_storage_bytes(infoset_meta_) + vector_storage_bytes(sparse_infoset_shapes_);
     if (config_.use_sparse_storage) {
-        bytes += sparse_storage_.memory_estimate().total_bytes();
+        usage.central_storage_bytes += sparse_storage_.memory_estimate().total_bytes();
     }
     if (!config_.use_sparse_storage || config_.keep_dense_validation_backend) {
-        bytes += static_cast<std::uint64_t>(infoset_table_.meta().capacity()) * sizeof(HUNLFlatInfosetTableMeta);
-        bytes += infoset_table_.regret_storage_bytes();
-        bytes += infoset_table_.strategy_sum_storage_bytes();
-        bytes += infoset_table_.current_strategy_storage_bytes();
+        usage.central_storage_bytes += static_cast<std::uint64_t>(infoset_table_.meta().capacity()) * sizeof(HUNLFlatInfosetTableMeta);
+        usage.central_storage_bytes += infoset_table_.regret_storage_bytes();
+        usage.central_storage_bytes += infoset_table_.strategy_sum_storage_bytes();
+        usage.central_storage_bytes += infoset_table_.current_strategy_storage_bytes();
     }
-    return bytes;
+    for (const auto& row : average_policy_cache_) {
+        usage.policy_cache_bytes += vector_storage_bytes(row);
+    }
+    for (const auto& row : average_strategy_sampling_cache_) {
+        usage.policy_cache_bytes += vector_storage_bytes(row);
+    }
+    usage.traversal_metadata_bytes += vector_storage_bytes(traversal_node_meta_);
+    usage.traversal_metadata_bytes += vector_storage_bytes(chance_total_probability_);
+    usage.traversal_metadata_bytes += vector_storage_bytes(touched_infosets_);
+    usage.traversal_metadata_bytes += vector_storage_bytes(current_worker_batches_);
+    for (const auto& scratch : worker_scratch_) {
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.action_values);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.average_strategy);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.sampled_action_indices);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.bucket_strategy);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.node_values);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.inclusion_probabilities);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.strategy_sum_values);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.sampled_actions);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.delta_rows);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.dirty_row_ids);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.row_active);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.external_frames);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.external_frame_action_values);
+        for (const auto& row : scratch.delta_rows) {
+            usage.worker_scratch_bytes += vector_storage_bytes(row.regret_delta);
+            usage.worker_scratch_bytes += vector_storage_bytes(row.strategy_delta);
+        }
+    }
+    usage.baseline_bytes = profile_.baseline_bytes;
+    return usage;
 }
 
 InfosetId HUNLFlatMCCFR::root_infoset_id() const noexcept {

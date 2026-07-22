@@ -52,6 +52,21 @@ public:
         std::uint64_t bytes = 0;
     };
 
+    struct MemoryUsage {
+        std::uint64_t graph_bytes = 0;
+        std::uint64_t infoset_metadata_bytes = 0;
+        std::uint64_t central_storage_bytes = 0;
+        std::uint64_t policy_cache_bytes = 0;
+        std::uint64_t traversal_metadata_bytes = 0;
+        std::uint64_t worker_scratch_bytes = 0;
+        std::uint64_t baseline_bytes = 0;
+
+        [[nodiscard]] std::uint64_t total_bytes() const noexcept {
+            return graph_bytes + infoset_metadata_bytes + central_storage_bytes +
+                policy_cache_bytes + traversal_metadata_bytes + worker_scratch_bytes + baseline_bytes;
+        }
+    };
+
     struct WorkerProfile {
         double trajectory_seconds = 0.0;
         double traverse_seconds = 0.0;
@@ -185,6 +200,7 @@ public:
     [[nodiscard]] double raw_estimator_variance() const noexcept;
     [[nodiscard]] double corrected_estimator_variance() const noexcept;
     [[nodiscard]] BaselineStats baseline_stats() const noexcept;
+    [[nodiscard]] MemoryUsage memory_usage() const noexcept;
 
 private:
     struct WorkerDeltaRow {

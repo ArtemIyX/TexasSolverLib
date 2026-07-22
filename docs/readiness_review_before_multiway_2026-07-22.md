@@ -79,6 +79,8 @@ Remaining verification:
 
 ### P0-2: full-graph MCCFR sparse mode allocates dense graph-sized deltas per worker and hides them from memory reporting
 
+Status: **memory reporting instrumentation and 72 constructor/snapshot regression cases added on 2026-07-22; the dense per-worker delta allocation remains unresolved.**
+
 Evidence:
 
 - Every worker calls `prepare_delta_rows(infoset_meta_)` in the constructor at `src/solver/hunl_flat_mccfr.cpp:233-239`.
@@ -100,6 +102,18 @@ Required fix:
 3. Include all retained capacity in memory accounting, especially worker scratch and policy/baseline caches.
 4. Perform checked preflight before graph-sized and per-worker allocations; reject configurations that cannot remain below the hard limit.
 5. Treat `HUNLFlatMCCFR` as a small-game oracle only. The production solver must not require a full `HUNLFlatSolveGraph`.
+
+Implemented coverage and reporting:
+
+- `HUNLFlatMCCFR::memory_usage()` now reports graph, infoset metadata, central storage, policy caches, traversal metadata, worker scratch, and baseline components. `RootStrategySnapshot::memory_used_bytes` uses this expanded component total.
+- 72 deterministic tests cover Exact, PublicChance, and External modes; dense and sparse central storage; one, two, and four workers; one- and eight-trajectory subbatches; and no-baseline or moving-average-baseline configurations.
+- Each case checks that snapshot memory equals the component total and that graph, metadata, policy cache, traversal metadata, and worker scratch are all represented. Sparse cases also assert that construction alone does not create central sparse rows.
+
+Remaining P0 work:
+
+- Replace `WorkerScratch::prepare_delta_rows()`'s complete-graph `double` delta allocation with a bounded active-row arena or sorted sparse delta stream. The new reporting makes this multiplier visible but does not remove it.
+- Account for the remaining retained capacities, including worker baseline rows/lookups, thread containers, and hash-table bucket/node overhead, before treating the report as a conservative resident-memory bound.
+- Run the new regression suite before treating the reporting coverage as verified; no build or test command was run for this update.
 
 Regression gate:
 
