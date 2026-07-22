@@ -175,6 +175,12 @@ TEST_CASE(multiway_snapshot_rejects_inconsistent_raise_or_turn_metadata) {
     snapshot = three_handed().snapshot();
     snapshot.current_bet = 100;
     EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
+    snapshot = three_handed().snapshot();
+    snapshot.current_player = -1;
+    EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
+    snapshot = three_handed().snapshot();
+    snapshot.may_raise[0] = false;
+    EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
 }
 
 TEST_CASE(multiway_fold_terminates_when_one_player_remains) {
@@ -197,9 +203,40 @@ TEST_CASE(multiway_all_in_players_are_skipped_and_matched_players_complete_round
                            .apply(core::MultiwayAction::Bet, 100)
                            .apply(core::MultiwayAction::Call)
                            .apply(core::MultiwayAction::Call);
-    EXPECT_TRUE(state.is_betting_round_complete());
+    EXPECT_TRUE(state.is_hand_over());
+    EXPECT_TRUE(state.requires_board_runout());
+    EXPECT_TRUE(!state.is_betting_round_complete());
     EXPECT_EQ(state.current_player(), -1);
     EXPECT_TRUE(state.all_in()[1]);
+}
+
+TEST_CASE(multiway_covering_stack_has_no_betting_actions_after_all_in_calls) {
+    core::MultiwayGameConfig config;
+    config.starting_stacks = {100, 100, 1000};
+    config.initial_contributions = {0, 0, 0};
+    config.initial_street_contributions = {0, 0, 0};
+    config.first_player = 0;
+    const auto state = core::MultiwayState::initial(config)
+                           .apply(core::MultiwayAction::AllIn)
+                           .apply(core::MultiwayAction::Call)
+                           .apply(core::MultiwayAction::Call);
+    EXPECT_TRUE(state.is_hand_over());
+    EXPECT_TRUE(state.requires_board_runout());
+    EXPECT_TRUE(state.legal_actions().empty());
+    EXPECT_THROW(state.begin_next_street(core::Street::Turn, 0), std::logic_error);
+}
+
+TEST_CASE(multiway_all_in_has_one_canonical_transition) {
+    core::MultiwayGameConfig config;
+    config.starting_stacks = {1000, 150, 1000};
+    config.initial_contributions = {0, 0, 0};
+    config.initial_street_contributions = {0, 0, 0};
+    config.first_player = 0;
+    const auto facing_bet = core::MultiwayState::initial(config)
+                                .apply(core::MultiwayAction::Bet, 100);
+    EXPECT_TRUE(!has(facing_bet.legal_actions(), core::MultiwayAction::Raise));
+    EXPECT_TRUE(has(facing_bet.legal_actions(), core::MultiwayAction::AllIn));
+    EXPECT_THROW(facing_bet.apply(core::MultiwayAction::Raise, 150), std::invalid_argument);
 }
 
 TEST_CASE(multiway_every_remaining_player_all_in_ends_the_hand) {

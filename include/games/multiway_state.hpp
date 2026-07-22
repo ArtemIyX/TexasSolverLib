@@ -74,6 +74,9 @@ public:
 
     bool is_hand_over() const noexcept;
     bool is_terminal() const noexcept { return is_hand_over(); }
+    // Betting is closed but a caller that models public cards must still run
+    // the board out before showdown settlement.
+    bool requires_board_runout() const noexcept;
     bool is_betting_round_complete() const noexcept;
     bool requires_street_transition() const noexcept;
     std::vector<MultiwayAction> legal_actions() const;
@@ -102,6 +105,7 @@ private:
 
     bool is_actionable(PlayerId player) const noexcept;
     std::size_t live_player_count() const noexcept;
+    std::size_t actionable_player_count() const noexcept;
     PlayerId next_pending_after(PlayerId player) const noexcept;
     void select_next_player();
     void refresh_round_completion();

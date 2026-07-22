@@ -178,6 +178,8 @@ Reduce the public config to implemented behavior and reject every unsupported va
 
 ### P1-3: betting continues when one covering stack is the only player able to act
 
+Status: **fixed on 2026-07-22.** A completed round with at most one actionable live seat is betting-terminal and exposes `requires_board_runout()` when public cards still need to be dealt. It cannot advance to a fresh street that would give the covering seat unanswerable actions.
+
 Evidence:
 
 - `MultiwayState::is_hand_over()` stops for one live player or when every live player is all-in, but not when betting has completed and only one live player has chips at `src/games/multiway_state.cpp:156-167`.
@@ -197,6 +199,8 @@ Represent "betting closed; board runout still pending" separately from showdown/
 
 ### P1-4: `Bet`/`Raise` and `AllIn` can encode the same physical action
 
+Status: **fixed on 2026-07-22.** Non-all-in bet/raise targets must now leave chips behind; an all-in target is accepted only through `MultiwayAction::AllIn`. The legal menu suppresses Bet/Raise when no non-all-in full raise exists.
+
 Evidence:
 
 - Whenever a seat may raise and has more than the call amount, `legal_actions()` appends both `Bet`/`Raise` and `AllIn` at `src/games/multiway_state.cpp:228-241`.
@@ -215,6 +219,8 @@ Required fix:
 Make non-all-in bet/raise targets strictly below the all-in target when `AllIn` is a separate semantic action, canonicalize child actions by physical target, and reject duplicate targets in action-menu construction.
 
 ### P1-5: snapshot validation accepts stuck and semantically inconsistent betting rounds
+
+Status: **fixed on 2026-07-22.** Snapshot validation now requires a current player whenever actionable pending work exists, requires every live seat facing a wager to remain pending, and verifies raise rights against the recorded action/reopen metadata.
 
 Evidence:
 
