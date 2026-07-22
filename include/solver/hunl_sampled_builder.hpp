@@ -17,6 +17,7 @@ struct HUNLSampledBuilderConfig {
     // Kept for forward compatibility; public chance collapse is disabled until
     // private-state suit remapping is implemented.
     bool use_public_chance_isomorphism = false;
+    std::size_t max_cached_public_states = 0;
 };
 
 struct HUNLSampledStateKey {
@@ -112,6 +113,7 @@ public:
     [[nodiscard]] std::size_t infoset_count() const noexcept;
     [[nodiscard]] HUNLSampledBuilderMemoryEstimate memory_estimate() const noexcept;
     [[nodiscard]] const HUNLSampledBuilderConfig& config() const noexcept;
+    void set_max_cached_public_states(std::size_t maximum) noexcept;
     void clear() noexcept;
 
     [[nodiscard]] static HUNLSampledStateKey make_key(const HUNLState& state);

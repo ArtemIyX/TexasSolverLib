@@ -188,6 +188,10 @@ const HUNLSampledBuilderConfig& HUNLSampledBuilder::config() const noexcept {
     return config_;
 }
 
+void HUNLSampledBuilder::set_max_cached_public_states(std::size_t maximum) noexcept {
+    config_.max_cached_public_states = maximum;
+}
+
 void HUNLSampledBuilder::clear() noexcept {
     root_id_ = 0;
     node_lookup_.clear();
@@ -257,6 +261,9 @@ std::uint32_t HUNLSampledBuilder::find_or_create(const HUNLState& state) {
     const auto it = node_lookup_.find(key);
     if (it != node_lookup_.end()) {
         return it->second;
+    }
+    if (config_.max_cached_public_states > 0U && nodes_.size() >= config_.max_cached_public_states) {
+        throw std::runtime_error("sampled public-state cache admission limit reached");
     }
 
     const auto node_id = static_cast<std::uint32_t>(nodes_.size());

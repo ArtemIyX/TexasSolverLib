@@ -69,6 +69,16 @@ HUNLSampledStorage make_sampled_storage(const HUNLSampledSolverConfig& config) {
     return HUNLSampledStorage(config.layout, config.precision);
 }
 
+std::size_t effective_public_state_cap(const HUNLSampledSolverConfig& config) noexcept {
+    if (config.max_cached_public_states > 0U) return config.max_cached_public_states;
+    const auto workers = std::max<std::size_t>(1U, config.workers);
+    const auto minibatch = static_cast<std::size_t>(config.minibatch_size);
+    if (minibatch != 0U && workers > std::numeric_limits<std::size_t>::max() / minibatch) {
+        return std::numeric_limits<std::size_t>::max();
+    }
+    return std::max<std::size_t>(1U, minibatch * workers);
+}
+
 }  // namespace
 
 HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
@@ -78,7 +88,7 @@ HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
 
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
     : config_(config),
-      builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism}),
+      builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism, effective_public_state_cap(config)}),
       storage_(make_sampled_storage(config)) {
     validate_sampled_config_or_throw(config_);
 }
@@ -123,13 +133,13 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     }
 
     config_ = preflight_result.effective_config;
+    builder_.set_max_cached_public_states(effective_public_state_cap(config_));
     if (request.root_state.has_value()) {
         const auto initialized_root_id = builder_.initialize(*request.root_state);
         if (initialized_root_id != builder_.root_id()) {
             throw std::runtime_error("sampled solver initialized an inconsistent root node");
         }
-        if (config_.max_cached_public_states > 0 &&
-            builder_.node_count() > static_cast<std::size_t>(config_.max_cached_public_states)) {
+        if (builder_.node_count() > effective_public_state_cap(config_)) {
             throw std::runtime_error("sampled solver exceeded max_cached_public_states during initialization");
         }
     }
@@ -255,12 +265,7 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::estimate_memory_for(
     const HUNLSampledSolverConfig& config) const noexcept {
     HUNLSampledMemoryEstimate estimate;
 
-    const auto public_states = config.max_cached_public_states > 0
-        ? static_cast<std::uint64_t>(config.max_cached_public_states)
-        : std::max<std::uint64_t>(
-            kBuilderCacheNodeFloor,
-            saturating_multiply(static_cast<std::uint64_t>(config.minibatch_size),
-                                saturating_size(config.workers)));
+    const auto public_states = static_cast<std::uint64_t>(effective_public_state_cap(config));
     estimate.public_states_cached = public_states;
     estimate.public_state_edges = saturating_multiply(
         public_states, std::max<std::uint64_t>(1U, infer_root_action_count(request)));

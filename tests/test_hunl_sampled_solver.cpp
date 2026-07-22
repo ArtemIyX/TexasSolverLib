@@ -765,6 +765,13 @@ TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
     EXPECT_THROW(solver.run_batches(request, 0), std::runtime_error);
 }
 
+TEST_CASE(hunl_sampled_builder_enforces_public_state_admission_limit_during_expansion) {
+    core::HUNLSampledBuilder builder({false, 1});
+    const auto root = builder.initialize(make_lazy_root_state());
+    EXPECT_THROW(builder.ensure_expanded(root), std::runtime_error);
+    EXPECT_EQ(builder.node_count(), 1U);
+}
+
 void expect_sampled_positive_work_request_is_fail_closed(
     core::HUNLFlatSamplingMode mode,
     std::uint8_t action_count,
