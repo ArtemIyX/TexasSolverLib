@@ -2093,6 +2093,7 @@ void HUNLFlatMCCFR::run_player_subbatch(
             current_traversing_player_ = traversing_player;
             current_trajectory_begin_ = trajectory_begin;
             worker_completed_count_ = 0;
+            worker_exception_ = nullptr;
             for (std::size_t worker_index = 0; worker_index < worker_count_; ++worker_index) {
                 current_worker_batches_[worker_index] = batches[worker_index];
             }
@@ -2109,6 +2110,9 @@ void HUNLFlatMCCFR::run_player_subbatch(
         worker_done_cv_.wait(lock, [&]() {
             return worker_completed_count_ == worker_count_ - 1;
         });
+        if (worker_exception_ != nullptr) {
+            std::rethrow_exception(worker_exception_);
+        }
     }
     double subbatch_trajectory_seconds = 0.0;
     for (const auto& scratch : worker_scratch_) {
@@ -2214,7 +2218,17 @@ void HUNLFlatMCCFR::worker_loop(std::size_t worker_index) {
             range = current_worker_batches_[worker_index].trajectories;
         }
 
-        execute_worker_batch(worker_index, target_iteration, traversing_player, trajectory_begin, range);
+        try {
+            execute_worker_batch(worker_index, target_iteration, traversing_player, trajectory_begin, range);
+        } catch (...) {
+            std::lock_guard<std::mutex> lock(worker_mutex_);
+            if (worker_exception_ == nullptr) {
+                worker_exception_ = std::current_exception();
+            }
+            ++worker_completed_count_;
+            worker_done_cv_.notify_one();
+            continue;
+        }
 
         {
             std::lock_guard<std::mutex> lock(worker_mutex_);

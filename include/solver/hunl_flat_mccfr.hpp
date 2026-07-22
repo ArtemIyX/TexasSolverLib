@@ -12,6 +12,7 @@
 #include <array>
 #include <chrono>
 #include <condition_variable>
+#include <exception>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -454,6 +455,7 @@ private:
     std::uint64_t worker_generation_ = 0;
     std::size_t worker_completed_count_ = 0;
     bool worker_shutdown_ = false;
+    std::exception_ptr worker_exception_;
     std::vector<std::uint8_t> touched_infosets_;
     std::uint64_t unique_infosets_touched_ = 0;
     std::uint64_t graph_memory_bytes_ = 0;
