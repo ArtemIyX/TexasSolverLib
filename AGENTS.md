@@ -10,9 +10,6 @@ Main CMake target:
 
 - `TexasSolver::texas_core`
 
-The current strategic direction is documented in:
-
-- `docs/mccfr_large_tree_implementation_plan.md`
 
 Read that document before making major HUNL solver changes.
 
