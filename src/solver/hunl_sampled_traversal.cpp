@@ -130,6 +130,10 @@ double traverse_external(
     if (node.type == HUNLFlatNodeType::TerminalFold ||
         node.type == HUNLFlatNodeType::TerminalShowdown ||
         node.type == HUNLFlatNodeType::DepthLimited) {
+        if (request.private_hole.has_value()) {
+            const auto private_state = builder.state(node_id).clone_with_hole_cards(*request.private_hole);
+            return private_state.utility()[static_cast<std::size_t>(request.traversing_player)];
+        }
         HUNLSampledTerminalInput input;
         input.contributions = node.contributions;
         input.traversing_player = request.traversing_player;

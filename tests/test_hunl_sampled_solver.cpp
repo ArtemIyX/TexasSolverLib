@@ -921,6 +921,26 @@ TEST_CASE(hunl_sampled_external_traversal_matches_hand_computed_river_update) {
     EXPECT_NEAR(row.strategy_sum[1], 0.5, TOL);
 }
 
+TEST_CASE(hunl_sampled_terminal_uses_trajectory_private_holes_not_builder_cached_deal) {
+    const auto root_state = make_sampled_facing_bet_state();
+    core::HUNLSampledBuilder builder({false});
+    const auto root_id = builder.initialize(root_state);
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    request.traversing_player = 0;
+    core::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
+    const auto fixed = traversal.run_unmerged(request, scratch).value;
+    auto swapped = *root_state.hole_cards;
+    std::swap(swapped[0], swapped[1]);
+    request.private_hole = swapped;
+    const auto sampled = traversal.run_unmerged(request, scratch).value;
+    EXPECT_TRUE(std::abs(fixed - sampled) > 1e-12);
+}
+
 TEST_CASE(hunl_sampled_unmerged_traversal_keeps_central_rows_unchanged_until_coordinator_merge) {
     const auto root_state = make_sampled_facing_bet_state();
     core::HUNLSampledBuilder builder({false});

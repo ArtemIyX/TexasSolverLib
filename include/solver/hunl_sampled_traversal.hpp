@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -21,6 +22,7 @@ struct HUNLSampledTraversalRequest {
     std::uint32_t bucket = 0;
     std::uint32_t bucket_count = 1;
     std::size_t delta_capacity_hint = 4096;
+    std::optional<std::array<std::array<std::uint8_t, 2>, 2>> private_hole = std::nullopt;
 };
 
 struct HUNLSampledTraversalResult {
