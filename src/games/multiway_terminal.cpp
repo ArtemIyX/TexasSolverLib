@@ -12,6 +12,9 @@ void MultiwayTerminalInput::validate() const {
     if (count < 2U || count > 6U || folded.size() != count || strengths.size() != count) {
         throw std::invalid_argument("MultiwayTerminalInput requires equal two-through-six seat vectors");
     }
+    if (odd_chip_first_seat < 0 || static_cast<std::size_t>(odd_chip_first_seat) >= count) {
+        throw std::invalid_argument("MultiwayTerminalInput odd-chip seat is out of range");
+    }
     if (std::none_of(folded.begin(), folded.end(), [](bool value) { return !value; })) {
         throw std::invalid_argument("MultiwayTerminalInput requires a non-folded player");
     }
@@ -82,6 +85,19 @@ MultiwayTerminalResult settle_multiway_terminal(
     if (layout.refunds.size() != input.contributions.size()) {
         throw std::invalid_argument("multiway pot layout does not match terminal input");
     }
+    const auto expected = build_multiway_pot_layout(input.contributions, input.folded);
+    if (layout.refunds != expected.refunds || layout.pots.size() != expected.pots.size()) {
+        throw std::invalid_argument("multiway pot layout does not match contribution and fold signature");
+    }
+    for (std::size_t pot_index = 0; pot_index < layout.pots.size(); ++pot_index) {
+        const auto& actual = layout.pots[pot_index];
+        const auto& expected_pot = expected.pots[pot_index];
+        if (actual.amount != expected_pot.amount ||
+            actual.contribution_cap != expected_pot.contribution_cap ||
+            actual.eligible_players != expected_pot.eligible_players) {
+            throw std::invalid_argument("multiway pot layout does not match contribution and fold signature");
+        }
+    }
     std::int64_t layout_total = 0;
     for (std::size_t seat = 0; seat < layout.refunds.size(); ++seat) {
         if (layout.refunds[seat] < 0) throw std::invalid_argument("multiway pot layout has a negative refund");
@@ -121,6 +137,14 @@ MultiwayTerminalResult settle_multiway_terminal(
         }
         const auto share = pot.amount / static_cast<int>(winners.size());
         auto remainder = pot.amount % static_cast<int>(winners.size());
+        std::sort(winners.begin(), winners.end(), [&input, count](PlayerId lhs, PlayerId rhs) {
+            const auto seat_count = static_cast<PlayerId>(count);
+            const auto lhs_order = static_cast<std::size_t>(
+                (lhs - input.odd_chip_first_seat + seat_count) % seat_count);
+            const auto rhs_order = static_cast<std::size_t>(
+                (rhs - input.odd_chip_first_seat + seat_count) % seat_count);
+            return lhs_order < rhs_order;
+        });
         for (const auto winner : winners) {
             result.payouts[static_cast<std::size_t>(winner)] += share;
             if (remainder > 0) {

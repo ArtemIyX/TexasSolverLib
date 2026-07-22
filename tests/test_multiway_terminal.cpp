@@ -105,10 +105,12 @@ TEST_CASE(multiway_terminal_tied_main_pot_splits_evenly) {
     EXPECT_EQ(sum(result.payouts), 600);
 }
 
-TEST_CASE(multiway_terminal_tied_odd_chip_uses_lowest_seat_id) {
-    const auto result = core::settle_multiway_terminal(input({101, 101, 101}, {false, false, false}, {7, 7, 1}));
-    EXPECT_EQ(result.payouts[0], 152);
-    EXPECT_EQ(result.payouts[1], 151);
+TEST_CASE(multiway_terminal_tied_odd_chip_uses_explicit_positional_order) {
+    auto terminal_input = input({101, 101, 101}, {false, false, false}, {7, 7, 1});
+    terminal_input.odd_chip_first_seat = 1;
+    const auto result = core::settle_multiway_terminal(terminal_input);
+    EXPECT_EQ(result.payouts[0], 151);
+    EXPECT_EQ(result.payouts[1], 152);
     EXPECT_EQ(result.payouts[2], 0);
 }
 
@@ -165,4 +167,18 @@ TEST_CASE(multiway_terminal_rejects_nonconserving_precomputed_layout) {
     layout.refunds = {0, 0};
     layout.pots.push_back({100, 100, {0, 1}});
     EXPECT_THROW(core::settle_multiway_terminal(terminal_input, layout), std::invalid_argument);
+}
+
+TEST_CASE(multiway_terminal_rejects_conserving_but_semantically_wrong_precomputed_layout) {
+    const auto terminal_input = input({100, 100, 100}, {false, false, false}, {9, 1, 1});
+    core::MultiwayPotLayout layout;
+    layout.refunds = {0, 0, 0};
+    layout.pots.push_back({300, 100, {1, 2}});
+    EXPECT_THROW(core::settle_multiway_terminal(terminal_input, layout), std::invalid_argument);
+}
+
+TEST_CASE(multiway_terminal_rejects_invalid_odd_chip_order) {
+    auto terminal_input = input({100, 100}, {false, false}, {1, 2});
+    terminal_input.odd_chip_first_seat = 2;
+    EXPECT_THROW(core::settle_multiway_terminal(terminal_input), std::invalid_argument);
 }
