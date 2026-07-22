@@ -26,7 +26,7 @@ struct HUNLSampledSolverConfig {
     std::uint64_t seed = 1;
     std::uint32_t minibatch_size = 64;
     std::uint32_t max_cached_public_states = 0;
-    std::size_t bucket_count_hint = 0;
+    std::uint32_t bucket_count_hint = 0;
     // Maximum plies cached/evaluated below a public state; zero is root-only.
     std::uint32_t depth_limit_plies_hint = 0;
     HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float32;

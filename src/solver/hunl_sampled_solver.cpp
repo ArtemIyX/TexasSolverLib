@@ -53,7 +53,7 @@ std::uint64_t infer_bucket_count(const HUNLSampledSolveRequest& request, const H
         return saturating_size(config.bucket_count_hint);
     }
     if (request.root_state.has_value() && request.root_state->hole_cards.has_value()) {
-        return 1326ULL;
+        return 1ULL;
     }
     return 128ULL;
 }
@@ -459,7 +459,7 @@ void HUNLSampledSolver::apply_adaptive_fallback(
         return;
     }
     if (config.bucket_count_hint > 32U) {
-        config.bucket_count_hint = std::max<std::size_t>(32U, config.bucket_count_hint / 2U);
+        config.bucket_count_hint = std::max<std::uint32_t>(32U, config.bucket_count_hint / 2U);
         adjustments.reduced_bucket_hint = true;
         return;
     }

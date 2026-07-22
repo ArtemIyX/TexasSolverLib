@@ -411,6 +411,9 @@ retry or explicit permanently-failed-session check.
 
 ### P2-1: explicit-hand sampled solving allocates 1,326 buckets while updating only bucket zero
 
+Status: Implemented 2026-07-22. Explicit fixed-deal solving now uses its single
+private bucket; range domains remain an explicit future contract.
+
 Evidence:
 
 - `infer_bucket_count()` returns 1,326 whenever a root state has fixed hole
@@ -433,6 +436,9 @@ derive their actual compiled combo/bucket domain explicitly rather than infer
 it from the presence of hole cards.
 
 ### P2-2: sampled bucket-count configuration is narrowed without validation
+
+Status: Implemented 2026-07-22. The public sampled bucket hint now uses the
+same `uint32_t` domain as infoset rows, eliminating a lossy execution cast.
 
 Evidence:
 
