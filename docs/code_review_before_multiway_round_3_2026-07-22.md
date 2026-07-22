@@ -461,6 +461,10 @@ Use one checked bucket-count type throughout and reject before any narrowing.
 
 ### P2-3: sampled NashConv diagnostics still lack per-seat uncertainty
 
+Status: Implemented 2026-07-22. Quality diagnostics now carry per-seat sample
+counts, standard errors, and confidence intervals; sampled production results
+also require a policy identity.
+
 Evidence:
 
 - `MultiwayQualityDiagnostics` stores one aggregate `standard_error` at

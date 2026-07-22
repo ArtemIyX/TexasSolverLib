@@ -52,6 +52,22 @@ void validate_quality_diagnostics(const MultiwayQualityDiagnostics& diagnostics)
     if (diagnostics.method == MultiwayMetricMethod::SampledEstimate && diagnostics.sample_count == 0U) {
         throw std::invalid_argument("sampled NashConv requires a non-zero sample count");
     }
+    if (diagnostics.method == MultiwayMetricMethod::SampledEstimate && diagnostics.policy_version.empty()) {
+        throw std::invalid_argument("sampled NashConv requires a policy version");
+    }
+    if (diagnostics.per_seat_sample_counts.size() != diagnostics.per_seat_standard_errors.size() ||
+        diagnostics.per_seat_sample_counts.size() != diagnostics.per_seat_confidence_intervals.size()) {
+        throw std::invalid_argument("per-seat NashConv diagnostics must have matching sizes");
+    }
+    for (std::size_t seat = 0; seat < diagnostics.per_seat_sample_counts.size(); ++seat) {
+        if (diagnostics.method == MultiwayMetricMethod::SampledEstimate && diagnostics.per_seat_sample_counts[seat] == 0U) {
+            throw std::invalid_argument("sampled per-seat NashConv requires a non-zero sample count");
+        }
+        if (!std::isfinite(diagnostics.per_seat_standard_errors[seat]) || diagnostics.per_seat_standard_errors[seat] < 0.0 ||
+            !std::isfinite(diagnostics.per_seat_confidence_intervals[seat]) || diagnostics.per_seat_confidence_intervals[seat] < 0.0) {
+            throw std::invalid_argument("per-seat NashConv uncertainty must be finite and non-negative");
+        }
+    }
     if (diagnostics.method != MultiwayMetricMethod::ExactEnumeration &&
         diagnostics.method != MultiwayMetricMethod::SampledEstimate) {
         throw std::invalid_argument("NashConv has an unsupported metric method");
@@ -215,6 +231,10 @@ MultiwayNashConv compute_multiway_nash_conv(
         throw std::invalid_argument("NashConv requires equal two-through-six seat value vectors");
     }
     validate_quality_diagnostics(diagnostics);
+    if (!diagnostics.per_seat_sample_counts.empty() &&
+        diagnostics.per_seat_sample_counts.size() != profile_values.size()) {
+        throw std::invalid_argument("per-seat NashConv diagnostics must match the seat count");
+    }
     MultiwayNashConv result;
     result.profile_values = profile_values;
     result.best_response_values = best_response_values;

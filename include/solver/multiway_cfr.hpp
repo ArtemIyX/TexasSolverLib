@@ -69,6 +69,9 @@ struct MultiwayQualityDiagnostics {
     std::uint64_t sample_count = 0;
     std::uint64_t seed = 0;
     double standard_error = 0.0;
+    std::vector<std::uint64_t> per_seat_sample_counts;
+    std::vector<double> per_seat_standard_errors;
+    std::vector<double> per_seat_confidence_intervals;
     std::string policy_version;
     std::string model_version;
 };
