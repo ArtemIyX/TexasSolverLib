@@ -121,13 +121,8 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
     if (budget.count() <= 0) {
         return run_batches(request, 0);
     }
-    if (!request.root_state.has_value() && !request.structured_root.has_value()) {
-        throw HUNLSampledSolverNotReady{};
-    }
-    (void)budget;
-    auto result = run_batches(request, 1);
-    result.timed_out = true;
-    return result;
+    (void)request;
+    throw HUNLSampledSolverNotReady{};
 }
 
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(
@@ -152,7 +147,12 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
         throw HUNLSampledSolverNotReady{};
     }
 
+    // run_batches starts an independent solve. A future resumable API must
+    // retain a validated session identity and a monotonic work cursor.
+    builder_.clear();
+    storage_.clear_keep_capacity();
     profile_.reset();
+    root_strategy_ = {};
 
     auto preflight_result = preflight(effective_request);
     if (preflight_result.status == HUNLSampledMemoryStatus::Rejected) {
@@ -204,7 +204,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
             trajectory_requests.reserve(config_.minibatch_size);
             for (std::uint32_t trajectory = 0; trajectory < config_.minibatch_size; ++trajectory) {
                 trajectory_requests.push_back({
-                    static_cast<PlayerId>(trajectory & 1U), config_.seed,
+                    static_cast<PlayerId>((static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory) & 1U), config_.seed,
                     static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory,
                     batch + 1U, root_id, 0U, bucket_count, 4096U});
                 if (!joint_deals.empty()) {
@@ -281,6 +281,19 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
             HUNLSampledStrategyExporter::attach_action_descriptors(root_strategy_, actions, targets);
         }
     }
+
+    const auto final_memory = memory_estimate();
+    profile_.record_sparse_storage(storage_.row_count(), storage_.total_value_count());
+    profile_.record_memory_budget(
+        final_memory.public_states_cached,
+        final_memory.infoset_rows_allocated,
+        final_memory.sparse_values_allocated,
+        final_memory.terminal_cache_bytes,
+        final_memory.worker_delta_bytes,
+        final_memory.export_bytes,
+        final_memory.total_bytes(),
+        preflight_result.status == HUNLSampledMemoryStatus::Warning,
+        false);
 
     HUNLSampledSolveResult result;
     result.root_strategy = root_strategy_;
@@ -394,13 +407,6 @@ HUNLSampledMemoryPreflight HUNLSampledSolver::build_preflight_result(
         return result;
     }
 
-    if (!config.lazy_public_expansion && !config.sparse_infosets) {
-        result.status = HUNLSampledMemoryStatus::Rejected;
-        result.estimate = estimate_memory_for(request, config);
-        result.message = "sampled solver refuses non-lazy plus non-sparse production mode";
-        return result;
-    }
-
     result.estimate = estimate_memory_for(request, result.effective_config);
     while (config.adaptive_memory_fallback &&
            result.estimate.total_bytes() > result.effective_config.memory_fail_bytes) {
@@ -411,9 +417,7 @@ HUNLSampledMemoryPreflight HUNLSampledSolver::build_preflight_result(
         auto candidate = before;
         auto candidate_adjustments = result.adjustments;
         apply_adaptive_fallback(candidate, candidate_adjustments);
-        if (candidate.traversals_per_iteration == before.traversals_per_iteration &&
-            candidate.minibatch_size == before.minibatch_size &&
-            candidate.use_average_strategy_sampling == before.use_average_strategy_sampling &&
+        if (candidate.minibatch_size == before.minibatch_size &&
             candidate.bucket_count_hint == before.bucket_count_hint &&
             candidate.depth_limit_plies_hint == before.depth_limit_plies_hint) {
             break;
@@ -448,19 +452,6 @@ void HUNLSampledSolver::apply_adaptive_fallback(
     if (config.minibatch_size > 1U) {
         config.minibatch_size = std::max<std::uint32_t>(1U, config.minibatch_size / 2U);
         adjustments.reduced_minibatch = true;
-        return;
-    }
-    if (config.traversals_per_iteration > 1U) {
-        config.traversals_per_iteration = std::max<std::uint32_t>(1U, config.traversals_per_iteration / 2U);
-        adjustments.reduced_traversals = true;
-        return;
-    }
-    if (config.use_average_strategy_sampling) {
-        config.use_average_strategy_sampling = false;
-        if (config.mode == HUNLFlatSamplingMode::AverageStrategy) {
-            config.mode = HUNLFlatSamplingMode::External;
-        }
-        adjustments.disabled_average_strategy_sampling = true;
         return;
     }
     if (config.bucket_count_hint > 32U) {

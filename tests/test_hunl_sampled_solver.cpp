@@ -118,12 +118,9 @@ TEST_CASE(hunl_sampled_config_defaults_validate) {
     const auto validation = core::validate_sampled_config(config);
 
     EXPECT_TRUE(validation.ok);
-    EXPECT_EQ(config.mode, core::HUNLFlatSamplingMode::External);
     EXPECT_EQ(config.precision, core::HUNLFlatStoragePrecision::Float32);
     EXPECT_EQ(config.layout, core::HUNLFlatValueLayout::InfosetActionHand);
     EXPECT_TRUE(!config.use_public_chance_isomorphism);
-    EXPECT_TRUE(config.lazy_public_expansion);
-    EXPECT_TRUE(config.sparse_infosets);
     EXPECT_TRUE(config.enable_memory_guardrails);
     EXPECT_TRUE(config.memory_warning_bytes < config.memory_fail_bytes);
 }
@@ -285,15 +282,6 @@ TEST_CASE(hunl_sampled_config_rejects_inverted_memory_thresholds) {
     core::HUNLSampledSolverConfig config;
     config.memory_warning_bytes = 1024U;
     config.memory_fail_bytes = 512U;
-
-    const auto validation = core::validate_sampled_config(config);
-    EXPECT_TRUE(!validation.ok);
-}
-
-TEST_CASE(hunl_sampled_config_rejects_average_strategy_flag_without_average_strategy_mode) {
-    core::HUNLSampledSolverConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
-    config.use_average_strategy_sampling = true;
 
     const auto validation = core::validate_sampled_config(config);
     EXPECT_TRUE(!validation.ok);
@@ -523,27 +511,11 @@ TEST_CASE(hunl_sampled_solver_preflight_warns_above_warning_threshold) {
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_warning_bytes);
 }
 
-TEST_CASE(hunl_sampled_solver_preflight_rejects_unsafe_dense_nonlazy_production_mode) {
-    core::HUNLSampledSolverConfig config;
-    config.lazy_public_expansion = false;
-    config.sparse_infosets = false;
-
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
-    request.root_action_count = 2;
-
-    const auto preflight = solver.preflight(request);
-    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
-}
-
 TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
     core::HUNLSampledSolverConfig config;
-    config.use_average_strategy_sampling = true;
-    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
     config.bucket_count_hint = 512;
     config.workers = 4;
     config.minibatch_size = 1024;
-    config.traversals_per_iteration = 4096;
     config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
     config.memory_fail_bytes = 20ULL * 1024ULL * 1024ULL;
 
@@ -554,7 +526,7 @@ TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
     const auto preflight = solver.preflight(request);
     EXPECT_TRUE(preflight.status == core::HUNLSampledMemoryStatus::Ok ||
                 preflight.status == core::HUNLSampledMemoryStatus::Warning);
-    EXPECT_TRUE(preflight.adjustments.reduced_minibatch || preflight.adjustments.reduced_traversals);
+    EXPECT_TRUE(preflight.adjustments.reduced_minibatch);
     EXPECT_TRUE(preflight.effective_config.minibatch_size <= config.minibatch_size);
     EXPECT_TRUE(preflight.estimate.total_bytes() <= preflight.effective_config.memory_fail_bytes);
 }
@@ -580,7 +552,6 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_when_adaptive_fallback_is_disabl
     config.bucket_count_hint = 2048;
     config.workers = 8;
     config.minibatch_size = 1024;
-    config.traversals_per_iteration = 8192;
     config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
     config.memory_fail_bytes = 16ULL * 1024ULL * 1024ULL;
 
@@ -591,7 +562,6 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_when_adaptive_fallback_is_disabl
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
     EXPECT_TRUE(!preflight.adjustments.reduced_minibatch);
-    EXPECT_TRUE(!preflight.adjustments.reduced_traversals);
 }
 
 TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories) {
@@ -623,13 +593,11 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_impossible_config_without_unboun
     EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
     EXPECT_TRUE(preflight.adjustments.reduced_minibatch);
     EXPECT_EQ(preflight.effective_config.minibatch_size, 1U);
-    EXPECT_EQ(preflight.effective_config.traversals_per_iteration, config.traversals_per_iteration);
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_records_strictly_decreasing_adaptive_estimates) {
     core::HUNLSampledSolverConfig config;
     config.minibatch_size = 1024;
-    config.traversals_per_iteration = 4096;
     config.bucket_count_hint = 4096;
     config.depth_limit_plies_hint = 8;
     config.memory_warning_bytes = 1U;
@@ -652,7 +620,6 @@ TEST_CASE(hunl_sampled_solver_preflight_records_strictly_decreasing_adaptive_est
 TEST_CASE(hunl_sampled_solver_preflight_reduces_depth_limit_hint_when_it_lowers_memory) {
     core::HUNLSampledSolverConfig config;
     config.minibatch_size = 1;
-    config.traversals_per_iteration = 1;
     config.bucket_count_hint = 32;
     config.depth_limit_plies_hint = 8;
     config.memory_warning_bytes = 1U;
@@ -754,7 +721,6 @@ TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
     config.bucket_count_hint = 4096;
     config.workers = 8;
     config.minibatch_size = 2048;
-    config.traversals_per_iteration = 8192;
     config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
     config.memory_fail_bytes = 16ULL * 1024ULL * 1024ULL;
 
@@ -786,6 +752,32 @@ TEST_CASE(hunl_sampled_solver_runs_prepared_positive_work_with_deterministic_wor
     }
 }
 
+TEST_CASE(hunl_sampled_solver_fresh_run_clears_previous_rows_and_profile) {
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    config.max_cached_public_states = 128;
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest first;
+    first.root_state = make_sampled_facing_bet_state();
+    const auto worked = solver.run_batches(first, 1);
+    EXPECT_TRUE(worked.profile.traversals > 0U);
+    EXPECT_TRUE(solver.storage().row_count() > 0U);
+
+    core::HUNLSampledSolveRequest second;
+    second.root_state = make_lazy_root_state();
+    const auto reset = solver.run_batches(second, 0);
+    EXPECT_EQ(reset.profile.traversals, 0U);
+    EXPECT_EQ(solver.storage().row_count(), 0U);
+    EXPECT_EQ(solver.profile().snapshot().sparse_rows, 0U);
+}
+
+TEST_CASE(hunl_sampled_solver_rejects_positive_timed_fixed_hand_requests) {
+    core::HUNLSampledSolver solver;
+    core::HUNLSampledSolveRequest request;
+    request.root_state = make_sampled_facing_bet_state();
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
+}
+
 TEST_CASE(hunl_sampled_builder_enforces_public_state_admission_limit_during_expansion) {
     core::HUNLSampledBuilder builder({false, 1});
     const auto root = builder.initialize(make_lazy_root_state());
@@ -793,10 +785,8 @@ TEST_CASE(hunl_sampled_builder_enforces_public_state_admission_limit_during_expa
     EXPECT_EQ(builder.node_count(), 1U);
 }
 
-void expect_sampled_positive_work_completes_bounded_batch(
-    core::HUNLFlatSamplingMode mode) {
+void expect_sampled_positive_work_completes_bounded_batch() {
     core::HUNLSampledSolverConfig config;
-    config.mode = mode;
     config.seed = 0xC0FFEEU;
     // This is a behavioral regression test, not a throughput benchmark.
     // One deterministic trajectory exercises both run_batches and solve_for.
@@ -807,43 +797,29 @@ void expect_sampled_positive_work_completes_bounded_batch(
     request.root_state = make_sampled_facing_bet_state();
 
     const auto initialized = solver.run_batches(request, 0);
-    const auto profile_before = solver.profile().snapshot();
-    const auto strategy_before = solver.export_root_strategy();
     const auto memory_before = solver.memory_estimate();
     const auto nodes_before = solver.builder().node_count();
     const auto rows_before = solver.storage().row_count();
 
     EXPECT_EQ(initialized.batches_completed, 0U);
     const auto batch_result = solver.run_batches(request, 1);
-    const auto timed_result = solver.solve_for(request, std::chrono::milliseconds{1});
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
 
     const auto profile_after = solver.profile().snapshot();
     const auto memory_after = solver.memory_estimate();
     const auto strategy_after = solver.export_root_strategy();
     EXPECT_EQ(batch_result.batches_completed, 1U);
-    EXPECT_EQ(timed_result.batches_completed, 1U);
-    EXPECT_TRUE(timed_result.timed_out);
-    EXPECT_TRUE(profile_after.traversals >= profile_before.traversals + config.minibatch_size);
+    EXPECT_EQ(profile_after.traversals, config.minibatch_size);
     EXPECT_TRUE(solver.builder().node_count() >= nodes_before);
     EXPECT_TRUE(solver.storage().row_count() >= rows_before);
     EXPECT_TRUE(memory_after.total_bytes() >= memory_before.total_bytes());
     EXPECT_TRUE(!strategy_after.actions.empty());
-}
-
-TEST_CASE(hunl_sampled_positive_work_completes_bounded_exact_batch) {
-    expect_sampled_positive_work_completes_bounded_batch(core::HUNLFlatSamplingMode::Exact);
-}
-
-TEST_CASE(hunl_sampled_positive_work_completes_bounded_public_chance_batch) {
-    expect_sampled_positive_work_completes_bounded_batch(core::HUNLFlatSamplingMode::PublicChance);
+    EXPECT_EQ(profile_after.sparse_rows, solver.storage().row_count());
+    EXPECT_EQ(profile_after.sparse_values, solver.storage().total_value_count());
 }
 
 TEST_CASE(hunl_sampled_positive_work_completes_bounded_external_batch) {
-    expect_sampled_positive_work_completes_bounded_batch(core::HUNLFlatSamplingMode::External);
-}
-
-TEST_CASE(hunl_sampled_positive_work_completes_bounded_average_strategy_batch) {
-    expect_sampled_positive_work_completes_bounded_batch(core::HUNLFlatSamplingMode::AverageStrategy);
+    expect_sampled_positive_work_completes_bounded_batch();
 }
 
 TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {

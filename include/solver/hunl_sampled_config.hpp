@@ -23,10 +23,7 @@ enum class HUNLFlatBaselineMode : std::uint8_t {
 };
 
 struct HUNLSampledSolverConfig {
-    HUNLFlatSamplingMode mode = HUNLFlatSamplingMode::External;
     std::uint64_t seed = 1;
-    std::uint32_t iterations = 0;
-    std::uint32_t traversals_per_iteration = 8192;
     std::uint32_t minibatch_size = 64;
     std::uint32_t max_cached_public_states = 0;
     std::size_t bucket_count_hint = 0;
@@ -34,17 +31,10 @@ struct HUNLSampledSolverConfig {
     std::uint32_t depth_limit_plies_hint = 0;
     HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float32;
     HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand;
-    bool lazy_public_expansion = true;
-    bool sparse_infosets = true;
-    bool deterministic_merge = true;
     // Disabled until private-hand/range suit remapping proves closure and equal reach.
     bool use_public_chance_isomorphism = false;
-    bool use_average_strategy_sampling = false;
     bool enable_memory_guardrails = true;
     bool adaptive_memory_fallback = true;
-    double as_epsilon = 0.05;
-    double as_tau = 1000.0;
-    double as_beta = 1e6;
     std::size_t workers = 1;
     std::uint64_t memory_warning_bytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
     std::uint64_t memory_fail_bytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;

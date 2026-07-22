@@ -72,6 +72,8 @@ Minimum regression cases:
 
 ### P0-2: sampled solver reuse retains old rows while resetting graph IDs and random-work cursors
 
+Status: **fixed as an explicit fresh-run contract on 2026-07-22.** `run_batches()` now clears the builder, sparse storage, profile, and root export before each request. It therefore cannot silently continue or contaminate a prior solve. A resumable-session API remains future work and must introduce an explicit root identity plus monotonic cursor rather than changing this contract implicitly.
+
 Evidence:
 
 - `HUNLSampledBuilder::initialize()` calls `clear()` and recreates the root at `src/solver/hunl_sampled_builder.cpp:72-75`; `clear()` resets node and infoset lookup state at `src/solver/hunl_sampled_builder.cpp:195-203`.
@@ -117,6 +119,8 @@ Replace the scalar postflop root fields with a validated heads-up betting snapsh
 
 ### P0-4: `solve_for()` does not implement a timed solve
 
+Status: **fixed fail-closed on 2026-07-22.** Positive time budgets now throw `HUNLSampledSolverNotReady`; only non-positive initialization/export requests remain available. This removes the one-batch pseudo-timeout behavior until a resumable deadline state machine exists.
+
 Evidence:
 
 - A positive budget is explicitly discarded at `src/solver/hunl_sampled_solver.cpp:122`.
@@ -135,6 +139,8 @@ Use a resumable minibatch state machine with `steady_clock` checks at bounded co
 
 ### P1-1: the sampled traverser schedule can permanently starve a player
 
+Status: **fixed for bounded batch calls on 2026-07-22.** Traverser selection now derives from the batch-global trajectory ID, so odd minibatches alternate their extra traverser across batches. A future resumable session must continue the same global sequence.
+
 Evidence:
 
 - The traversing player is `trajectory & 1U`, using the trajectory's index inside the current minibatch at `src/solver/hunl_sampled_solver.cpp:197-200`.
@@ -150,6 +156,8 @@ Required fix:
 Make traverser selection part of the persistent global work cursor, or run an explicit balanced player-update schedule. Profile and export per-seat traversal/update counts and require both seats before calling an iteration complete.
 
 ### P1-2: sampled configuration advertises modes and controls that execution ignores
+
+Status: **fixed by removing unsupported sampled-solver controls on 2026-07-22.** The sampled config now exposes only the implemented external-sampling, lazy/sparse, deterministic behavior. The richer sampling-mode controls remain solely on the full-graph oracle config.
 
 Evidence:
 
@@ -224,6 +232,8 @@ Define and validate cross-field invariants, not only vector dimensions. Require 
 ## P2 findings
 
 ### P2-1: sampled solve profiles report pre-work storage and memory as if they were final
+
+Status: **fixed on 2026-07-22.** The solver refreshes sparse storage and memory categories after merge/export, so the returned profile reflects final retained state rather than initialization-only state.
 
 Evidence:
 

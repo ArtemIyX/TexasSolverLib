@@ -68,8 +68,6 @@ struct HUNLSampledAdaptiveAdjustments {
     static constexpr std::size_t kMaxRecordedSteps = 128;
 
     bool reduced_minibatch = false;
-    bool reduced_traversals = false;
-    bool disabled_average_strategy_sampling = false;
     bool reduced_bucket_hint = false;
     bool reduced_depth_limit_hint = false;
     std::array<std::uint64_t, kMaxRecordedSteps> estimate_before{};
