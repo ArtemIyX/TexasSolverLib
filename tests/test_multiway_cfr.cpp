@@ -121,6 +121,25 @@ TEST_CASE(multiway_external_sampling_update_rejects_zero_or_ambiguous_sampling_c
     EXPECT_THROW(core::make_multiway_external_sampling_cfr_update(request), std::invalid_argument);
 }
 
+TEST_CASE(multiway_external_sampling_update_rejects_nonfinite_importance_weights_transactionally) {
+    core::MultiwayExternalSamplingRequest request;
+    request.player_reaches = {1.0, 1.0};
+    request.traverser = 0;
+    request.sampling_reach = std::numeric_limits<double>::denorm_min();
+    request.strategy = {0.5, 0.5};
+    request.sampled_action_values = {1.0, 0.0};
+    EXPECT_THROW(core::make_multiway_external_sampling_cfr_update(request), std::overflow_error);
+
+    core::MultiwayCFRUpdate update;
+    update.regret_deltas = {std::numeric_limits<double>::infinity()};
+    update.strategy_deltas = {0.0};
+    std::vector<double> regrets = {1.0};
+    std::vector<double> strategy = {2.0};
+    EXPECT_THROW(core::apply_multiway_cfr_update(regrets, strategy, update), std::overflow_error);
+    EXPECT_NEAR(regrets[0], 1.0, 1e-12);
+    EXPECT_NEAR(strategy[0], 2.0, 1e-12);
+}
+
 TEST_CASE(multiway_cfr_update_applies_to_matching_row_shapes) {
     const auto update = core::make_multiway_cfr_update(
         {1.0, 0.5, 0.5}, 0, 1.0, {0.5, 0.5}, {3.0, 1.0});
@@ -145,11 +164,17 @@ TEST_CASE(multiway_cfr_update_rejects_invalid_strategy_and_row_shapes) {
 }
 
 TEST_CASE(multiway_nash_conv_sums_unilateral_improvements) {
-    const auto result = core::compute_multiway_nash_conv({10.0, -3.0, 2.0}, {12.5, -1.0, 1.0});
+    const auto result = core::compute_multiway_nash_conv({10.0, -3.0, 2.0}, {12.5, -1.0, 3.0});
     EXPECT_NEAR(result.unilateral_improvements[0], 2.5, 1e-12);
     EXPECT_NEAR(result.unilateral_improvements[1], 2.0, 1e-12);
-    EXPECT_NEAR(result.unilateral_improvements[2], -1.0, 1e-12);
-    EXPECT_NEAR(result.value, 3.5, 1e-12);
+    EXPECT_NEAR(result.unilateral_improvements[2], 1.0, 1e-12);
+    EXPECT_NEAR(result.value, 5.5, 1e-12);
+}
+
+TEST_CASE(multiway_exact_nash_conv_rejects_a_worse_than_profile_best_response) {
+    EXPECT_THROW(
+        core::compute_multiway_nash_conv({1.0, 2.0}, {0.5, 2.0}),
+        std::invalid_argument);
 }
 
 TEST_CASE(multiway_nash_conv_preserves_estimator_metadata_and_negative_noise) {

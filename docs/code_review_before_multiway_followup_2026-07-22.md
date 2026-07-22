@@ -276,6 +276,8 @@ Carry the odd-chip policy/order through `MultiwayShowdownInput`, or use fraction
 
 ### P2-3: exact NashConv accepts mathematically impossible negative improvements
 
+Status: **fixed on 2026-07-22.** Exact-enumeration diagnostics now reject a best-response value materially below the profile value. Sampled estimates retain signed improvements because sampling error remains observable diagnostic information.
+
 Evidence:
 
 - Diagnostics default to `ExactEnumeration` at `include/solver/multiway_cfr.hpp:65-74`.
@@ -291,6 +293,8 @@ Required fix:
 Reject negative exact improvements outside a tight numerical tolerance. Preserve signed noise only for `SampledEstimate`, and report its uncertainty per seat as well as for the aggregate.
 
 ### P2-4: external-sampling importance ratios can become non-finite without rejection
+
+Status: **fixed on 2026-07-22.** External-sampling updates reject non-finite importance weights/deltas, and row application preflights every resulting value before mutating the row. This makes a failed update transactional at the row level.
 
 Evidence:
 

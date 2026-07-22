@@ -10,6 +10,8 @@ namespace core {
 
 namespace {
 
+constexpr double kExactNashConvTolerance = 1e-12;
+
 void validate_probability(Probability value, const char* name) {
     if (!std::isfinite(value) || value < 0.0 || value > 1.0) {
         throw std::invalid_argument(std::string(name) + " must be finite and in [0, 1]");
@@ -162,6 +164,9 @@ MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
     const auto importance_weight = update.counterfactual_reach / request.sampling_reach;
     update.average_strategy_weight =
         request.chance_reach * request.traverser_reach / request.sampling_reach;
+    if (!std::isfinite(importance_weight) || !std::isfinite(update.average_strategy_weight)) {
+        throw std::overflow_error("external-sampling importance weight is non-finite");
+    }
     update.regret_deltas.resize(request.strategy.size());
     update.strategy_deltas.resize(request.strategy.size());
     for (std::size_t action = 0; action < request.strategy.size(); ++action) {
@@ -171,6 +176,10 @@ MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
         update.regret_deltas[action] = importance_weight *
             (request.sampled_action_values[action] - update.node_value);
         update.strategy_deltas[action] = update.average_strategy_weight * request.strategy[action];
+        if (!std::isfinite(update.regret_deltas[action]) ||
+            !std::isfinite(update.strategy_deltas[action])) {
+            throw std::overflow_error("external-sampling update contains a non-finite delta");
+        }
     }
     return update;
 }
@@ -183,6 +192,14 @@ void apply_multiway_cfr_update(
         strategy_sum.size() != update.strategy_deltas.size() ||
         regret_sum.size() != strategy_sum.size()) {
         throw std::invalid_argument("multiway CFR row shape does not match update");
+    }
+    for (std::size_t action = 0; action < regret_sum.size(); ++action) {
+        if (!std::isfinite(regret_sum[action]) || !std::isfinite(strategy_sum[action]) ||
+            !std::isfinite(update.regret_deltas[action]) || !std::isfinite(update.strategy_deltas[action]) ||
+            !std::isfinite(regret_sum[action] + update.regret_deltas[action]) ||
+            !std::isfinite(strategy_sum[action] + update.strategy_deltas[action])) {
+            throw std::overflow_error("multiway CFR update would produce a non-finite row");
+        }
     }
     for (std::size_t action = 0; action < regret_sum.size(); ++action) {
         regret_sum[action] += update.regret_deltas[action];
@@ -208,6 +225,10 @@ MultiwayNashConv compute_multiway_nash_conv(
             throw std::invalid_argument("NashConv values must be finite");
         }
         result.unilateral_improvements[player] = best_response_values[player] - profile_values[player];
+        if (diagnostics.method == MultiwayMetricMethod::ExactEnumeration &&
+            result.unilateral_improvements[player] < -kExactNashConvTolerance) {
+            throw std::invalid_argument("exact NashConv best response is below profile value");
+        }
         result.value += result.unilateral_improvements[player];
     }
     result.diagnostics = diagnostics;
