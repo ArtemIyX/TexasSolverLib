@@ -168,6 +168,24 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
             root_strategy_ = HUNLSampledStrategyExporter::export_average_strategy(storage_.view(root.infoset_id));
         }
     }
+    if (request.root_state.has_value()) {
+        const auto& root = builder_.node(builder_.root_id());
+        if (root.type == HUNLFlatNodeType::Decision && root.edge_count == root_strategy_.actions.size()) {
+            std::vector<ActionId> actions;
+            std::vector<int> targets;
+            actions.reserve(root.edge_count);
+            targets.reserve(root.edge_count);
+            for (std::size_t edge_slot = 0; edge_slot < root.edge_count; ++edge_slot) {
+                const auto& edge = builder_.edge(root.edge_begin + static_cast<std::uint32_t>(edge_slot));
+                actions.push_back(edge.action);
+                const auto& child = builder_.node(edge.child);
+                targets.push_back(root.player >= 0
+                    ? child.contributions[static_cast<std::size_t>(root.player)]
+                    : 0);
+            }
+            HUNLSampledStrategyExporter::attach_action_descriptors(root_strategy_, actions, targets);
+        }
+    }
 
     HUNLSampledSolveResult result;
     result.root_strategy = root_strategy_;

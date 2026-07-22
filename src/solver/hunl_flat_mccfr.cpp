@@ -2570,21 +2570,39 @@ HUNLSampledRootStrategy HUNLFlatMCCFR::export_root_average_strategy(std::size_t 
     }
 
     const auto& root_meta = graph_.node_meta[graph_.root];
+    std::vector<ActionId> root_actions;
+    std::vector<int> root_targets;
+    root_actions.reserve(root_meta.action_count);
+    root_targets.reserve(root_meta.action_count);
+    for (std::size_t action = 0; action < root_meta.action_count; ++action) {
+        const auto action_index = root_meta.action_begin + action;
+        root_actions.push_back(action_index < graph_.actions.size()
+            ? graph_.actions[action_index]
+            : static_cast<ActionId>(action));
+        const auto child = graph_.children[root_meta.child_begin + action];
+        root_targets.push_back(root_meta.player >= 0
+            ? graph_.node_meta[child].contributions[static_cast<std::size_t>(root_meta.player)]
+            : 0);
+    }
+    const auto decorate = [&root_actions, &root_targets](HUNLSampledRootStrategy strategy) {
+        HUNLSampledStrategyExporter::attach_action_descriptors(strategy, root_actions, root_targets);
+        return strategy;
+    };
     if (!root_meta.has_infoset) {
-        return HUNLSampledStrategyExporter::export_uniform(root_meta.action_count);
+        return decorate(HUNLSampledStrategyExporter::export_uniform(root_meta.action_count));
     }
 
     const auto infoset_id = root_meta.infoset_id;
     if (config_.use_sparse_storage) {
         const auto row = sparse_row_or_empty(infoset_id);
-        return row.empty()
+        return decorate(row.empty()
             ? HUNLSampledStrategyExporter::export_uniform(root_meta.action_count)
-            : HUNLSampledStrategyExporter::export_average_strategy(row, bucket_index);
+            : HUNLSampledStrategyExporter::export_average_strategy(row, bucket_index));
     }
 
     const auto& meta = infoset_meta(infoset_id);
     if (bucket_index >= meta.bucket_count) {
-        return HUNLSampledStrategyExporter::export_uniform(meta.action_count);
+        return decorate(HUNLSampledStrategyExporter::export_uniform(meta.action_count));
     }
     HUNLSampledRootStrategy strategy;
     strategy.actions.reserve(meta.action_count);
@@ -2599,10 +2617,13 @@ HUNLSampledRootStrategy HUNLFlatMCCFR::export_root_average_strategy(std::size_t 
     for (std::size_t action = 0; action < meta.action_count; ++action) {
         strategy.actions.push_back({
             static_cast<std::uint32_t>(action),
+            ACTION_FOLD,
+            0,
+            0,
             total > 0.0 ? values[action] / total : uniform,
         });
     }
-    return strategy;
+    return decorate(std::move(strategy));
 }
 
 HUNLFlatMCCFR::RootStrategySnapshot HUNLFlatMCCFR::export_root_snapshot(

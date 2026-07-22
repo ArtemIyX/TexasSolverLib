@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/hunl_sampled_storage.hpp"
+#include "games/hunl.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +11,9 @@ namespace core {
 
 struct HUNLSampledActionProbability {
     std::uint32_t action_index = 0;
+    ActionId action_id = ACTION_FOLD;
+    int target_contribution = 0;
+    std::uint64_t action_menu_id = 0;
     double probability = 0.0;
 };
 
@@ -23,6 +27,10 @@ public:
     [[nodiscard]] static HUNLSampledRootStrategy export_average_strategy(
         HUNLSampledConstRowView row,
         std::size_t bucket_index = 0);
+    static void attach_action_descriptors(
+        HUNLSampledRootStrategy& strategy,
+        const std::vector<ActionId>& actions,
+        const std::vector<int>& target_contributions);
 };
 
 }  // namespace core

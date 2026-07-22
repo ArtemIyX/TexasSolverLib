@@ -379,6 +379,7 @@ core::HUNLFlatSolveGraph make_root_decision_graph() {
     graph.max_actions = 2;
 
     graph.children = {1, 2};
+    graph.actions = {core::ACTION_CHECK, core::ACTION_BET_75};
 
     const auto root_infoset = core::InfosetId{0};
     graph.infosets.push_back(core::HUNLFlatInfoset{
@@ -414,6 +415,7 @@ core::HUNLFlatSolveGraph make_root_decision_graph() {
 
     graph.node_meta[1] = make_terminal_meta(1.0);
     graph.node_meta[2] = make_terminal_meta(-1.0);
+    graph.node_meta[2].contributions[0] = 75;
 
     graph.depth_order = {0, 1, 2};
     graph.depth_slices = {
@@ -1706,6 +1708,21 @@ TEST_CASE(hunl_flat_mccfr_deadline_snapshot_reports_uniform_entropy_and_zero_del
     EXPECT_NEAR(result.latest_snapshot.action_entropy, 0.0, 1e-12);
     EXPECT_NEAR(result.latest_snapshot.action_probability_delta, 0.0, 1e-12);
     EXPECT_TRUE(result.latest_snapshot.memory_used_bytes > 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_root_export_contains_stable_action_descriptors) {
+    const auto graph = make_root_decision_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.use_sparse_storage = true;
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    const auto root = solver.export_root_average_strategy();
+    EXPECT_EQ(root.actions.size(), 2U);
+    EXPECT_EQ(root.actions[0].action_id, core::ACTION_CHECK);
+    EXPECT_EQ(root.actions[0].target_contribution, 0);
+    EXPECT_EQ(root.actions[1].action_id, core::ACTION_BET_75);
+    EXPECT_EQ(root.actions[1].target_contribution, 75);
+    EXPECT_TRUE(root.actions[0].action_menu_id != 0U);
+    EXPECT_EQ(root.actions[0].action_menu_id, root.actions[1].action_menu_id);
 }
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_zero_budget_does_not_create_a_strategy_snapshot) {
