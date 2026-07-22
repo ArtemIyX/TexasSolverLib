@@ -54,6 +54,8 @@ using ::core::MultiwayGameConfig;
 using ::core::MultiwayMetricMethod;
 using ::core::MultiwayNashConv;
 using ::core::MultiwayJointPrivateSample;
+using ::core::MultiwayCompiledPrivateRanges;
+using ::core::MultiwayPrivateWorkerScratch;
 using ::core::MultiwayPotLayout;
 using ::core::MultiwayPrivateConfig;
 using ::core::MultiwaySidePot;

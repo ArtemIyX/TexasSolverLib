@@ -3,6 +3,7 @@
 #include "util/pcs.hpp"
 
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -17,6 +18,11 @@ bool overlaps(const std::array<std::uint8_t, 2>& hole, const std::array<bool, 64
 void mark(const std::array<std::uint8_t, 2>& hole, std::array<bool, 64>& used) {
     used[hole[0]] = true;
     used[hole[1]] = true;
+}
+
+std::size_t sample_cumulative(const std::vector<double>& cumulative, PcsRng& rng) {
+    const auto draw = rng.next_unit_f64() * cumulative.back();
+    return static_cast<std::size_t>(std::lower_bound(cumulative.begin(), cumulative.end(), draw) - cumulative.begin());
 }
 
 }  // namespace
@@ -75,6 +81,60 @@ MultiwayJointPrivateSample sample_multiway_private_hands(
     }
     throw std::runtime_error("unable to sample compatible multiway private hands within rejection limit");
 }
+
+MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config)
+    : board_(config.board), max_rejection_attempts_(config.max_rejection_attempts) {
+    config.validate();
+    ranges_.resize(config.ranges.size());
+    cumulative_weights_.resize(config.ranges.size());
+    for (std::size_t seat = 0; seat < config.ranges.size(); ++seat) {
+        auto entries = config.ranges[seat];
+        for (auto& entry : entries) {
+            if (entry.hole[1] < entry.hole[0]) std::swap(entry.hole[0], entry.hole[1]);
+        }
+        std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
+            return lhs.hole < rhs.hole;
+        });
+        for (const auto& entry : entries) {
+            if (!ranges_[seat].empty() && ranges_[seat].back().hole == entry.hole) {
+                ranges_[seat].back().weight += entry.weight;
+            } else {
+                ranges_[seat].push_back(entry);
+            }
+        }
+        double total = 0.0;
+        cumulative_weights_[seat].reserve(ranges_[seat].size());
+        for (const auto& entry : ranges_[seat]) {
+            total += entry.weight;
+            cumulative_weights_[seat].push_back(total);
+        }
+    }
+}
+
+void MultiwayCompiledPrivateRanges::sample_into(
+    std::uint64_t seed,
+    MultiwayPrivateWorkerScratch& scratch) const {
+    PcsRng rng(seed);
+    for (std::uint32_t attempt = 1; attempt <= max_rejection_attempts_; ++attempt) {
+        scratch.used.fill(false);
+        for (const auto card : board_) scratch.used[card] = true;
+        bool compatible = true;
+        for (std::size_t seat = 0; seat < ranges_.size(); ++seat) {
+            const auto& hole = ranges_[seat][sample_cumulative(cumulative_weights_[seat], rng)].hole;
+            if (overlaps(hole, scratch.used)) { compatible = false; break; }
+            scratch.holes[seat] = hole;
+            mark(hole, scratch.used);
+        }
+        if (compatible) {
+            scratch.seat_count = static_cast<std::uint8_t>(ranges_.size());
+            scratch.attempts = attempt;
+            return;
+        }
+    }
+    throw std::runtime_error("unable to sample compatible compiled multiway private hands within rejection limit");
+}
+
+std::size_t MultiwayCompiledPrivateRanges::seat_count() const noexcept { return ranges_.size(); }
 
 void MultiwayShowdownInput::validate() const {
     const auto count = holes.size();

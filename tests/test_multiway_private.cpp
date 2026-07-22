@@ -78,6 +78,20 @@ TEST_CASE(multiway_private_joint_sampling_is_seed_deterministic) {
     EXPECT_EQ(first.attempts, second.attempts);
 }
 
+TEST_CASE(multiway_compiled_private_ranges_canonicalize_duplicates_and_sample_into_worker_scratch) {
+    auto config = ranges();
+    config.ranges[0].push_back(hand(13, 0, 14, 0, 2.0));
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    core::MultiwayPrivateWorkerScratch first;
+    core::MultiwayPrivateWorkerScratch second;
+    compiled.sample_into(99, first);
+    compiled.sample_into(99, second);
+    EXPECT_EQ(compiled.seat_count(), 3U);
+    EXPECT_EQ(first.seat_count, 3U);
+    EXPECT_EQ(first.holes, second.holes);
+    EXPECT_EQ(first.attempts, second.attempts);
+}
+
 TEST_CASE(multiway_private_joint_sampling_never_returns_a_board_card) {
     const auto config = ranges();
     const auto sample = core::sample_multiway_private_hands(config, 71);

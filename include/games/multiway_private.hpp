@@ -26,6 +26,30 @@ struct MultiwayJointPrivateSample {
     std::uint32_t attempts = 0;
 };
 
+struct MultiwayPrivateWorkerScratch {
+    std::array<std::array<std::uint8_t, 2>, 6> holes = {};
+    std::array<bool, 64> used = {};
+    std::uint8_t seat_count = 0;
+    std::uint32_t attempts = 0;
+};
+
+// Immutable, canonicalized range tables for traversal workers.  Reversed and
+// duplicate hole-card entries are merged at compile time; cumulative weights
+// make each draw allocation-free.
+class MultiwayCompiledPrivateRanges {
+public:
+    explicit MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config);
+
+    void sample_into(std::uint64_t seed, MultiwayPrivateWorkerScratch& scratch) const;
+    [[nodiscard]] std::size_t seat_count() const noexcept;
+
+private:
+    std::vector<std::uint8_t> board_;
+    std::vector<std::vector<MultiwayWeightedHole>> ranges_;
+    std::vector<std::vector<double>> cumulative_weights_;
+    std::uint32_t max_rejection_attempts_ = 0;
+};
+
 // Samples independent per-seat ranges and rejects colliding deals. Accepted
 // samples therefore follow the product range distribution conditioned on all
 // cards being distinct, without materializing a Cartesian product.
