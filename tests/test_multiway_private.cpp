@@ -162,7 +162,7 @@ TEST_CASE(multiway_compiled_private_ranges_offer_nonthrowing_worker_sampling) {
 TEST_CASE(multiway_showdown_preserves_explicit_odd_chip_order) {
     core::MultiwayShowdownInput input;
     input.board = {c(14, 0), c(13, 0), c(12, 1), c(11, 2), c(2, 0)};
-    input.holes = {{c(10, 0), c(3, 1)}, {c(10, 1), c(4, 1)}, {c(9, 0), c(8, 0)}};
+    input.holes = {{c(10, 0), c(3, 1)}, {c(10, 1), c(4, 1)}, {c(9, 3), c(8, 3)}};
     input.contributions = {101, 101, 101};
     input.folded = {false, false, false};
     input.odd_chip_first_seat = 1;

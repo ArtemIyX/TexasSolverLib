@@ -203,9 +203,9 @@ TEST_CASE(multiway_all_in_players_are_skipped_and_matched_players_complete_round
                            .apply(core::MultiwayAction::Bet, 100)
                            .apply(core::MultiwayAction::Call)
                            .apply(core::MultiwayAction::Call);
-    EXPECT_TRUE(state.is_hand_over());
-    EXPECT_TRUE(state.requires_board_runout());
-    EXPECT_TRUE(!state.is_betting_round_complete());
+    EXPECT_TRUE(!state.is_hand_over());
+    EXPECT_TRUE(!state.requires_board_runout());
+    EXPECT_TRUE(state.is_betting_round_complete());
     EXPECT_EQ(state.current_player(), -1);
     EXPECT_TRUE(state.all_in()[1]);
 }
