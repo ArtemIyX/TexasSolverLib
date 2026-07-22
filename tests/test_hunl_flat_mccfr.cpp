@@ -429,7 +429,97 @@ core::HUNLFlatSolveGraph make_root_decision_graph() {
     return graph;
 }
 
+void expect_matching_deadline_batch_state(
+    core::HUNLFlatSamplingMode mode,
+    bool use_sparse_storage,
+    std::size_t workers,
+    bool update_both_players) {
+    auto normal_graph = make_external_sampling_graph();
+    auto batch_graph = make_external_sampling_graph();
+
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = mode;
+    config.seed = 0x5EEDU;
+    config.traversals_per_iteration = 8;
+    config.batch_size = 2;
+    config.update_both_players = update_both_players;
+    config.use_sparse_storage = use_sparse_storage;
+
+    core::HUNLFlatMCCFR normal(normal_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
+    core::HUNLFlatMCCFR batch_limited(batch_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
+
+    constexpr std::uint32_t iteration_count = 3;
+    const auto player_batches_per_iteration = update_both_players ? 2ULL : 1ULL;
+    const auto subbatches_per_player_batch =
+        static_cast<std::uint64_t>(config.traversals_per_iteration / config.batch_size);
+    const auto expected_batches =
+        static_cast<std::uint64_t>(iteration_count) * player_batches_per_iteration * subbatches_per_player_batch;
+
+    normal.run_iterations(iteration_count);
+    EXPECT_EQ(batch_limited.run_batches(expected_batches), expected_batches);
+
+    EXPECT_EQ(normal.iterations(), iteration_count);
+    EXPECT_EQ(batch_limited.iterations(), iteration_count);
+    EXPECT_EQ(normal.profile().strategy_snapshot_rebuilds, iteration_count * player_batches_per_iteration);
+    EXPECT_EQ(batch_limited.profile().strategy_snapshot_rebuilds, iteration_count * player_batches_per_iteration);
+    EXPECT_EQ(normal.profile().traversals, batch_limited.profile().traversals);
+    EXPECT_EQ(normal.total_counters().nodes_visited, batch_limited.total_counters().nodes_visited);
+
+    const auto normal_export = normal.export_average_strategy();
+    const auto batch_export = batch_limited.export_average_strategy();
+    EXPECT_EQ(normal_export.size(), batch_export.size());
+    for (const auto& [key, values] : normal_export) {
+        const auto it = batch_export.find(key);
+        EXPECT_TRUE(it != batch_export.end());
+        EXPECT_EQ(values.size(), it->second.size());
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            EXPECT_NEAR(values[i], it->second[i], 1e-12);
+        }
+    }
+
+    const auto normal_root = normal.export_root_average_strategy();
+    const auto batch_root = batch_limited.export_root_average_strategy();
+    EXPECT_EQ(normal_root.actions.size(), batch_root.actions.size());
+    for (std::size_t i = 0; i < normal_root.actions.size(); ++i) {
+        EXPECT_EQ(normal_root.actions[i].action_index, batch_root.actions[i].action_index);
+        EXPECT_NEAR(normal_root.actions[i].probability, batch_root.actions[i].probability, 1e-12);
+    }
+}
+
 }  // namespace
+
+#define DEADLINE_BATCH_EQUIVALENCE_CASE(name, mode_value, sparse_value, workers_value, both_players_value) \
+    TEST_CASE(name) {                                                                         \
+        expect_matching_deadline_batch_state(                                                \
+            mode_value, sparse_value, workers_value, both_players_value);                    \
+    }
+
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_one_worker_one_player, core::HUNLFlatSamplingMode::Exact, false, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_one_worker_both_players, core::HUNLFlatSamplingMode::Exact, false, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_three_workers_one_player, core::HUNLFlatSamplingMode::Exact, false, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_three_workers_both_players, core::HUNLFlatSamplingMode::Exact, false, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_one_worker_one_player, core::HUNLFlatSamplingMode::Exact, true, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_one_worker_both_players, core::HUNLFlatSamplingMode::Exact, true, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_three_workers_one_player, core::HUNLFlatSamplingMode::Exact, true, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_three_workers_both_players, core::HUNLFlatSamplingMode::Exact, true, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_one_worker_one_player, core::HUNLFlatSamplingMode::PublicChance, false, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_one_worker_both_players, core::HUNLFlatSamplingMode::PublicChance, false, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_three_workers_one_player, core::HUNLFlatSamplingMode::PublicChance, false, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_three_workers_both_players, core::HUNLFlatSamplingMode::PublicChance, false, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_one_worker_one_player, core::HUNLFlatSamplingMode::PublicChance, true, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_one_worker_both_players, core::HUNLFlatSamplingMode::PublicChance, true, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_three_workers_one_player, core::HUNLFlatSamplingMode::PublicChance, true, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_three_workers_both_players, core::HUNLFlatSamplingMode::PublicChance, true, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_one_worker_one_player, core::HUNLFlatSamplingMode::External, false, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_one_worker_both_players, core::HUNLFlatSamplingMode::External, false, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_three_workers_one_player, core::HUNLFlatSamplingMode::External, false, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_three_workers_both_players, core::HUNLFlatSamplingMode::External, false, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_one_worker_one_player, core::HUNLFlatSamplingMode::External, true, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_one_worker_both_players, core::HUNLFlatSamplingMode::External, true, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_three_workers_one_player, core::HUNLFlatSamplingMode::External, true, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_three_workers_both_players, core::HUNLFlatSamplingMode::External, true, 3U, true)
+
+#undef DEADLINE_BATCH_EQUIVALENCE_CASE
 
 TEST_CASE(hunl_flat_mccfr_same_seed_produces_identical_output) {
     const auto graph_a = make_public_chance_conflict_graph();
@@ -1551,4 +1641,137 @@ TEST_CASE(hunl_flat_mccfr_deadline_snapshot_reports_uniform_entropy_and_zero_del
     EXPECT_NEAR(result.latest_snapshot.action_entropy, 0.0, 1e-12);
     EXPECT_NEAR(result.latest_snapshot.action_probability_delta, 0.0, 1e-12);
     EXPECT_TRUE(result.latest_snapshot.memory_used_bytes > 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_zero_budget_does_not_create_a_strategy_snapshot) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.traversals_per_iteration = 8;
+    config.batch_size = 2;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    EXPECT_EQ(solver.run_batches(0), 0U);
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 0U);
+    EXPECT_EQ(solver.profile().traversals, 0U);
+    EXPECT_EQ(solver.iterations(), 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_rebuilds_once_for_all_subbatches_of_one_player) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.traversals_per_iteration = 8;
+    config.batch_size = 2;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_batches(4);
+
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 1U);
+    EXPECT_EQ(solver.profile().traversals, 8U);
+    EXPECT_EQ(solver.iterations(), 1U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_rebuilds_once_per_traversing_player) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.traversals_per_iteration = 8;
+    config.batch_size = 2;
+    config.update_both_players = true;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_batches(8);
+
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 2U);
+    EXPECT_EQ(solver.profile().traversals, 16U);
+    EXPECT_EQ(solver.iterations(), 1U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_reaches_deep_regret_through_nonzero_opponent_action) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 17;
+    config.traversals_per_iteration = 32;
+    config.batch_size = 32;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_batches(1);
+
+    const auto& deep_meta = solver.infoset_table().meta()[1];
+    const auto first_regret = solver.infoset_table().regret_value(deep_meta.id, 0U);
+    const auto second_regret = solver.infoset_table().regret_value(deep_meta.id, 1U);
+    EXPECT_TRUE(std::abs(first_regret) > 1e-12 || std::abs(second_regret) > 1e-12);
+    EXPECT_TRUE(solver.total_counters().opponent_sampled_decisions > 0U ||
+                solver.last_iteration_counters().opponent_sampled_decisions > 0U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_resumes_remaining_subbatches_without_rebuilding_snapshot) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.traversals_per_iteration = 8;
+    config.batch_size = 2;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_batches(1);
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 1U);
+    solver.run_batches(3);
+
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 1U);
+    EXPECT_EQ(solver.iterations(), 1U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_then_normal_iteration_preserves_current_player_snapshot) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.traversals_per_iteration = 8;
+    config.batch_size = 2;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_batches(1);
+    solver.run_iteration();
+
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 1U);
+    EXPECT_EQ(solver.iterations(), 1U);
+}
+
+TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_starts_a_new_snapshot_after_a_completed_iteration) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.traversals_per_iteration = 8;
+    config.batch_size = 2;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    solver.run_batches(4);
+    solver.run_batches(1);
+
+    EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 2U);
+    EXPECT_EQ(solver.iterations(), 1U);
+}
+
+TEST_CASE(hunl_flat_mccfr_positive_deadline_uses_the_shared_snapshot_state_machine) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.seed = 99;
+    config.traversals_per_iteration = 1;
+    config.batch_size = 1;
+    config.update_both_players = false;
+
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    const auto result = solver.solve_for(std::chrono::milliseconds{25});
+
+    EXPECT_TRUE(result.batches_completed >= 1U);
+    EXPECT_TRUE(result.latest_snapshot.batches_completed >= 1U);
+    EXPECT_TRUE(solver.profile().strategy_snapshot_rebuilds >= 1U);
+    EXPECT_TRUE(solver.profile().opponent_sampled_decisions > 0U);
 }

@@ -151,6 +151,9 @@ public:
 
     void run_iteration();
     void run_iterations(std::uint32_t iterations);
+    // Runs complete trajectory subbatches using the same resumable state machine as run_until().
+    // Primarily useful when a caller needs deterministic work-based budgeting.
+    std::uint64_t run_batches(std::uint64_t batch_count);
     [[nodiscard]] DeadlineSolveResult run_until(
         std::chrono::steady_clock::time_point deadline,
         std::size_t snapshot_stride_batches = 1);
@@ -343,7 +346,8 @@ private:
     void apply_discount_if_enabled(std::uint32_t target_iteration, WorkerScratch& scratch);
     void discount_dense_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
     void discount_sparse_infoset_row(InfosetId infoset_id, std::uint32_t target_iteration);
-    void run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player);
+    void begin_player_batch(std::uint32_t target_iteration, PlayerId traversing_player);
+    [[nodiscard]] bool run_next_player_subbatch();
     void run_player_subbatch(
         std::uint32_t target_iteration,
         PlayerId traversing_player,
@@ -412,6 +416,13 @@ private:
     std::vector<double> chance_total_probability_;
     std::size_t worker_count_ = 1;
     std::uint32_t iterations_ = 0;
+    bool iteration_in_progress_ = false;
+    std::uint32_t in_progress_target_iteration_ = 0;
+    PlayerId in_progress_player_ = 0;
+    std::uint64_t in_progress_trajectory_begin_ = 0;
+    bool player_batch_snapshot_ready_ = false;
+    std::uint64_t strategy_snapshot_generation_ = 0;
+    std::uint64_t dispatched_strategy_snapshot_generation_ = 0;
     Counters last_iteration_counters_;
     Counters total_counters_;
     Profile profile_;

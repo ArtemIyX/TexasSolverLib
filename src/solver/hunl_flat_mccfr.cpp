@@ -241,26 +241,23 @@ HUNLFlatMCCFR::~HUNLFlatMCCFR() {
 }
 
 void HUNLFlatMCCFR::run_iteration() {
-    const auto target_iteration = iterations_ + 1U;
-    last_iteration_counters_ = {};
-    if (profile_.workers.size() != worker_count_) {
-        profile_.workers.resize(worker_count_);
+    while (!run_next_player_subbatch()) {
     }
-
-    run_player_batch(target_iteration, 0);
-    if (config_.update_both_players) {
-        run_player_batch(target_iteration, 1);
-    }
-
-    accumulate_last_iteration_into_total();
-    ++iterations_;
-    refresh_baseline_profile();
 }
 
 void HUNLFlatMCCFR::run_iterations(std::uint32_t iterations) {
     for (std::uint32_t i = 0; i < iterations; ++i) {
         run_iteration();
     }
+}
+
+std::uint64_t HUNLFlatMCCFR::run_batches(std::uint64_t batch_count) {
+    std::uint64_t completed = 0;
+    while (completed < batch_count) {
+        run_next_player_subbatch();
+        ++completed;
+    }
+    return completed;
 }
 
 HUNLFlatMCCFR::DeadlineSolveResult HUNLFlatMCCFR::run_until(
@@ -272,52 +269,23 @@ HUNLFlatMCCFR::DeadlineSolveResult HUNLFlatMCCFR::run_until(
     bool started_any_batch = false;
 
     while (std::chrono::steady_clock::now() < deadline) {
-        const auto target_iteration = iterations_ + 1U;
-        last_iteration_counters_ = {};
-        bool completed_iteration = true;
+        run_next_player_subbatch();
+        started_any_batch = true;
+        ++result.batches_completed;
 
-        const auto player_count = config_.update_both_players ? 2U : 1U;
-        for (std::uint32_t player_idx = 0; player_idx < player_count; ++player_idx) {
-            const auto traversing_player = static_cast<PlayerId>(player_idx);
-            for (std::uint64_t trajectory_begin = 0;
-                 trajectory_begin < config_.traversals_per_iteration;
-                 trajectory_begin += config_.batch_size) {
-                if (std::chrono::steady_clock::now() >= deadline) {
-                    completed_iteration = false;
-                    break;
-                }
-
-                const auto remaining =
-                    config_.traversals_per_iteration - static_cast<std::uint32_t>(trajectory_begin);
-                const auto trajectory_count = std::min(config_.batch_size, remaining);
-                run_player_subbatch(target_iteration, traversing_player, trajectory_begin, trajectory_count);
-                started_any_batch = true;
-                ++result.batches_completed;
-
-                if ((result.batches_completed % stride) == 0U) {
-                    const auto current_root = export_root_average_strategy();
-                    const auto delta = action_probability_delta(previous_root, current_root);
-                    auto snapshot = export_root_snapshot(0, delta, result.batches_completed, false);
-                    snapshot.sampled_nodes_visited =
-                        total_counters_.nodes_visited + last_iteration_counters_.nodes_visited;
-                    previous_root = current_root;
-                    result.latest_snapshot = snapshot;
-                    result.snapshots.push_back(snapshot);
-                }
-            }
-            if (!completed_iteration) {
-                break;
-            }
-        }
-
-        accumulate_last_iteration_into_total();
-        if (completed_iteration) {
-            ++iterations_;
-        } else {
-            result.timed_out = true;
-            break;
+        if ((result.batches_completed % stride) == 0U) {
+            const auto current_root = export_root_average_strategy();
+            const auto delta = action_probability_delta(previous_root, current_root);
+            auto snapshot = export_root_snapshot(0, delta, result.batches_completed, false);
+            snapshot.sampled_nodes_visited =
+                total_counters_.nodes_visited + last_iteration_counters_.nodes_visited;
+            previous_root = current_root;
+            result.latest_snapshot = snapshot;
+            result.snapshots.push_back(snapshot);
         }
     }
+
+    result.timed_out = std::chrono::steady_clock::now() >= deadline;
 
     if (!started_any_batch || result.snapshots.empty()) {
         const auto current_root = export_root_average_strategy();
@@ -2030,21 +1998,62 @@ void HUNLFlatMCCFR::apply_discount_if_enabled(std::uint32_t target_iteration, Wo
         std::chrono::duration<double>(std::chrono::steady_clock::now() - discount_start).count();
 }
 
-void HUNLFlatMCCFR::run_player_batch(std::uint32_t target_iteration, PlayerId traversing_player) {
+void HUNLFlatMCCFR::begin_player_batch(std::uint32_t target_iteration, PlayerId traversing_player) {
+    (void)target_iteration;
+    (void)traversing_player;
     compute_current_strategy_rows();
     rebuild_average_policy_cache();
     ++profile_.strategy_snapshot_rebuilds;
-    for (std::uint64_t trajectory_begin = 0;
-         trajectory_begin < config_.traversals_per_iteration;
-         trajectory_begin += config_.batch_size) {
-        const auto remaining =
-            config_.traversals_per_iteration - static_cast<std::uint32_t>(trajectory_begin);
-        run_player_subbatch(
-            target_iteration,
-            traversing_player,
-            trajectory_begin,
-            std::min(config_.batch_size, remaining));
+    ++strategy_snapshot_generation_;
+    dispatched_strategy_snapshot_generation_ = 0;
+    player_batch_snapshot_ready_ = true;
+}
+
+bool HUNLFlatMCCFR::run_next_player_subbatch() {
+    if (!iteration_in_progress_) {
+        iteration_in_progress_ = true;
+        in_progress_target_iteration_ = iterations_ + 1U;
+        in_progress_player_ = 0;
+        in_progress_trajectory_begin_ = 0;
+        player_batch_snapshot_ready_ = false;
+        last_iteration_counters_ = {};
+        if (profile_.workers.size() != worker_count_) {
+            profile_.workers.resize(worker_count_);
+        }
     }
+
+    if (!player_batch_snapshot_ready_) {
+        begin_player_batch(in_progress_target_iteration_, in_progress_player_);
+    }
+
+    const auto remaining = config_.traversals_per_iteration -
+        static_cast<std::uint32_t>(in_progress_trajectory_begin_);
+    const auto trajectory_count = std::min(config_.batch_size, remaining);
+    run_player_subbatch(
+        in_progress_target_iteration_,
+        in_progress_player_,
+        in_progress_trajectory_begin_,
+        trajectory_count);
+    in_progress_trajectory_begin_ += trajectory_count;
+
+    if (in_progress_trajectory_begin_ < config_.traversals_per_iteration) {
+        return false;
+    }
+
+    const auto player_count = config_.update_both_players ? 2U : 1U;
+    if (static_cast<std::uint32_t>(in_progress_player_) + 1U < player_count) {
+        in_progress_player_ = static_cast<PlayerId>(static_cast<std::uint32_t>(in_progress_player_) + 1U);
+        in_progress_trajectory_begin_ = 0;
+        player_batch_snapshot_ready_ = false;
+        return false;
+    }
+
+    accumulate_last_iteration_into_total();
+    ++iterations_;
+    refresh_baseline_profile();
+    iteration_in_progress_ = false;
+    player_batch_snapshot_ready_ = false;
+    return true;
 }
 
 void HUNLFlatMCCFR::run_player_subbatch(
@@ -2055,6 +2064,12 @@ void HUNLFlatMCCFR::run_player_subbatch(
     if (trajectory_count == 0U) {
         return;
     }
+    if (!player_batch_snapshot_ready_ ||
+        (dispatched_strategy_snapshot_generation_ != 0U &&
+         dispatched_strategy_snapshot_generation_ != strategy_snapshot_generation_)) {
+        throw std::logic_error("MCCFR subbatch dispatched without a fresh strategy snapshot");
+    }
+    dispatched_strategy_snapshot_generation_ = strategy_snapshot_generation_;
 
     const auto batches = HUNLSampledScheduler::partition_deterministic(
         trajectory_count,
