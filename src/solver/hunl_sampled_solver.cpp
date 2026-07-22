@@ -1,11 +1,14 @@
 #include "solver/hunl_sampled_solver.hpp"
 #include "solver/hunl_sampled_traversal.hpp"
+#include "util/pcs.hpp"
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 namespace core {
 
@@ -81,6 +84,17 @@ std::size_t effective_public_state_cap(const HUNLSampledSolverConfig& config) no
     return std::max<std::size_t>(1U, minibatch * workers);
 }
 
+std::size_t sample_joint_deal(const std::vector<HUNLJointRangeDeal>& deals, std::uint64_t seed) {
+    PcsRng rng(seed);
+    const auto draw = rng.next_unit_f64();
+    double cumulative = 0.0;
+    for (std::size_t index = 0; index < deals.size(); ++index) {
+        cumulative += deals[index].weight;
+        if (draw < cumulative) return index;
+    }
+    return deals.size() - 1U;
+}
+
 }  // namespace
 
 HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
@@ -101,7 +115,7 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
     if (budget.count() <= 0) {
         return run_batches(request, 0);
     }
-    if (!request.root_state.has_value()) {
+    if (!request.root_state.has_value() && !request.structured_root.has_value()) {
         throw HUNLSampledSolverNotReady{};
     }
     (void)budget;
@@ -113,13 +127,24 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     const HUNLSampledSolveRequest& request,
     std::uint32_t batches) {
-    if (batches > 0 && !request.root_state.has_value()) {
+    if (request.root_state.has_value() && request.structured_root.has_value()) {
+        throw std::invalid_argument(
+            "sampled solve request must choose either an explicit root or a structured range root");
+    }
+    HUNLSampledSolveRequest effective_request = request;
+    std::vector<HUNLJointRangeDeal> joint_deals;
+    if (request.structured_root.has_value()) {
+        joint_deals = request.structured_root->normalized_joint_range();
+        auto config = std::make_shared<const HUNLConfig>(request.structured_root->config);
+        effective_request.root_state = HUNLState::initial(config).clone_with_hole_cards(joint_deals.front().hole);
+    }
+    if (batches > 0 && !effective_request.root_state.has_value()) {
         throw HUNLSampledSolverNotReady{};
     }
 
     profile_.reset();
 
-    auto preflight_result = preflight(request);
+    auto preflight_result = preflight(effective_request);
     if (preflight_result.status == HUNLSampledMemoryStatus::Rejected) {
         profile_.record_memory_budget(
             preflight_result.estimate.public_states_cached,
@@ -136,8 +161,8 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
 
     config_ = preflight_result.effective_config;
     builder_.set_max_cached_public_states(effective_public_state_cap(config_));
-    if (request.root_state.has_value()) {
-        const auto initialized_root_id = builder_.initialize(*request.root_state);
+    if (effective_request.root_state.has_value()) {
+        const auto initialized_root_id = builder_.initialize(*effective_request.root_state);
         if (initialized_root_id != builder_.root_id()) {
             throw std::runtime_error("sampled solver initialized an inconsistent root node");
         }
@@ -158,12 +183,12 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
         live_memory.total_bytes(),
         preflight_result.status == HUNLSampledMemoryStatus::Warning,
         false);
-    root_strategy_ = HUNLSampledStrategyExporter::export_uniform(infer_root_action_count(request));
+    root_strategy_ = HUNLSampledStrategyExporter::export_uniform(infer_root_action_count(effective_request));
 
     if (batches > 0) {
         HUNLSampledTraversal traversal(builder_, storage_, terminal_evaluator_);
         const auto root_id = builder_.root_id();
-        const auto bucket_count = static_cast<std::uint32_t>(std::max<std::uint64_t>(1U, infer_bucket_count(request, config_)));
+        const auto bucket_count = static_cast<std::uint32_t>(std::max<std::uint64_t>(1U, infer_bucket_count(effective_request, config_)));
         for (std::uint32_t batch = 0; batch < batches; ++batch) {
             std::vector<HUNLSampledTraversalRequest> trajectory_requests;
             trajectory_requests.reserve(config_.minibatch_size);
@@ -172,6 +197,11 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
                     static_cast<PlayerId>(trajectory & 1U), config_.seed,
                     static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory,
                     batch + 1U, root_id, 0U, bucket_count, 4096U});
+                if (!joint_deals.empty()) {
+                    trajectory_requests.back().private_hole = joint_deals[sample_joint_deal(
+                        joint_deals,
+                        PcsRng::mix_seed(config_.seed, batch, trajectory, 0x52414E4745ULL))].hole;
+                }
                 prepare_hunl_sampled_trajectory(
                     builder_, storage_, terminal_evaluator_, trajectory_requests.back());
             }
@@ -223,7 +253,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
             root_strategy_ = HUNLSampledStrategyExporter::export_average_strategy(storage_.view(root.infoset_id));
         }
     }
-    if (request.root_state.has_value()) {
+    if (effective_request.root_state.has_value()) {
         const auto& root = builder_.node(builder_.root_id());
         if (root.type == HUNLFlatNodeType::Decision && root.edge_count == root_strategy_.actions.size()) {
             std::vector<ActionId> actions;

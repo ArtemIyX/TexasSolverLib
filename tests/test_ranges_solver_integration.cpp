@@ -1,6 +1,7 @@
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl_solver.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
+#include "solver/hunl_sampled_solver.hpp"
 #include "test_harness.hpp"
 
 #include <memory>
@@ -107,6 +108,45 @@ TEST_CASE(ranges_structured_root_request_validates_versions_units_and_joint_reac
     EXPECT_NEAR(request.normalized_joint_range().front().weight, 1.0, 1e-12);
     request.blueprint_version.clear();
     EXPECT_THROW(request.validate(), std::invalid_argument);
+}
+
+TEST_CASE(ranges_structured_root_drives_sampled_public_solver_trajectories) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    config.workers = 1;
+    config.max_cached_public_states = 1024;
+    config.seed = 0xB10EULL;
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.structured_root = root;
+
+    const auto result = solver.run_batches(request, 1);
+    EXPECT_EQ(result.batches_completed, 1U);
+    EXPECT_EQ(result.profile.traversals, 1U);
+    EXPECT_TRUE(!result.root_strategy.actions.empty());
+    for (const auto& action : result.root_strategy.actions) {
+        EXPECT_TRUE(action.action_id >= core::ACTION_FOLD);
+        EXPECT_TRUE(action.action_id <= core::ACTION_ALL_IN);
+    }
+}
+
+TEST_CASE(ranges_sampled_request_rejects_ambiguous_fixed_and_range_roots) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+
+    core::HUNLSampledSolveRequest request;
+    request.root_state = core::HUNLState::initial(
+        std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame()));
+    request.structured_root = root;
+
+    core::HUNLSampledSolver solver;
+    EXPECT_THROW(solver.run_batches(request, 0), std::invalid_argument);
 }
 
 TEST_CASE(ranges_uniform_policy_rejects_initial_ranges) {

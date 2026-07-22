@@ -1,5 +1,6 @@
 #pragma once
 
+#include "games/hunl_solver.hpp"
 #include "solver/hunl_sampled_builder.hpp"
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/hunl_sampled_export.hpp"
@@ -18,6 +19,7 @@ namespace core {
 struct HUNLSampledSolveRequest {
     std::uint8_t root_action_count = 0;
     std::optional<HUNLState> root_state = std::nullopt;
+    std::optional<HUNLStructuredRootRequest> structured_root = std::nullopt;
 };
 
 struct HUNLSampledSolveResult {
@@ -81,7 +83,8 @@ public:
     explicit HUNLSampledSolver(HUNLSampledSolverConfig config = {});
 
     // Non-positive budgets initialize/export the unsolved uniform root only.
-    // Positive work requires a structured root state.
+    // Positive work requires either an explicit-hand oracle root or the
+    // blocker-normalized structured range/blueprint root contract.
     [[nodiscard]] HUNLSampledSolveResult solve_for(
         const HUNLSampledSolveRequest& request,
         std::chrono::milliseconds budget);
