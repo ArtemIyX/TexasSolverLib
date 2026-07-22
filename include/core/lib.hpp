@@ -44,6 +44,7 @@ using ::core::HUNLConfig;
 using ::core::HUNLSolveOutput;
 using ::core::InfosetKey;
 using ::core::MultiwayAction;
+using ::core::MultiwayBettingSnapshot;
 using ::core::MultiwayCFRAlgorithm;
 using ::core::MultiwayCFRConfig;
 using ::core::MultiwayCFRUpdate;

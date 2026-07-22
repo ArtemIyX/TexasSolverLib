@@ -137,6 +137,46 @@ TEST_CASE(multiway_short_all_in_leaves_unacted_seat_eligible_to_raise) {
     EXPECT_TRUE(has(state.legal_actions(), core::MultiwayAction::Raise));
 }
 
+TEST_CASE(multiway_cumulative_short_all_ins_reopen_a_prior_caller_at_the_full_raise_threshold) {
+    core::MultiwayGameConfig config;
+    config.starting_stacks = {1000, 1000, 150, 200};
+    config.initial_contributions = {0, 0, 0, 0};
+    config.initial_street_contributions = {0, 0, 0, 0};
+    config.first_player = 0;
+    const auto state = core::MultiwayState::initial(config)
+                           .apply(core::MultiwayAction::Bet, 100)
+                           .apply(core::MultiwayAction::Call)
+                           .apply(core::MultiwayAction::AllIn)
+                           .apply(core::MultiwayAction::AllIn);
+    EXPECT_EQ(state.current_player(), 0);
+    EXPECT_EQ(state.current_bet(), 200);
+    EXPECT_TRUE(state.may_raise()[0]);
+    EXPECT_TRUE(has(state.legal_actions(), core::MultiwayAction::Raise));
+}
+
+TEST_CASE(multiway_snapshot_round_trips_an_arbitrary_live_subgame_root) {
+    const auto live = three_handed()
+                          .apply(core::MultiwayAction::Bet, 100)
+                          .apply(core::MultiwayAction::Call);
+    const auto restored = core::MultiwayState::from_snapshot(live.snapshot());
+    EXPECT_EQ(restored.current_player(), live.current_player());
+    EXPECT_EQ(restored.current_bet(), live.current_bet());
+    EXPECT_EQ(restored.last_full_raise_size(), live.last_full_raise_size());
+    EXPECT_EQ(restored.stacks(), live.stacks());
+    EXPECT_EQ(restored.may_raise(), live.may_raise());
+    EXPECT_EQ(restored.legal_actions(), live.legal_actions());
+}
+
+TEST_CASE(multiway_snapshot_rejects_inconsistent_raise_or_turn_metadata) {
+    auto snapshot = three_handed().snapshot();
+    snapshot.current_player = 1;
+    snapshot.pending[1] = false;
+    EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
+    snapshot = three_handed().snapshot();
+    snapshot.current_bet = 100;
+    EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
+}
+
 TEST_CASE(multiway_fold_terminates_when_one_player_remains) {
     const auto state = three_handed().apply(core::MultiwayAction::Bet, 100)
                                      .apply(core::MultiwayAction::Fold)

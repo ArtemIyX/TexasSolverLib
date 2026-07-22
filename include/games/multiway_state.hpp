@@ -31,9 +31,34 @@ struct MultiwayGameConfig {
     void validate() const;
 };
 
+// Complete betting-round state required to begin a bounded live subgame
+// without replaying hidden action history.  The caller supplies canonical
+// action/abstraction metadata separately for infoset lookup.
+struct MultiwayBettingSnapshot {
+    std::vector<int> stacks;
+    std::vector<int> contributions;
+    std::vector<int> street_contributions;
+    std::vector<bool> folded;
+    std::vector<bool> all_in;
+    std::vector<bool> may_raise;
+    std::vector<bool> pending;
+    std::vector<bool> has_acted;
+    std::vector<int> bet_faced_when_acted;
+    PlayerId current_player = -1;
+    PlayerId last_aggressor = -1;
+    int current_bet = 0;
+    int last_full_raise_size = 0;
+    int big_blind = 0;
+    Street street = Street::Flop;
+
+    void validate() const;
+};
+
 class MultiwayState {
 public:
     static MultiwayState initial(const MultiwayGameConfig& config);
+    static MultiwayState from_snapshot(const MultiwayBettingSnapshot& snapshot);
+    [[nodiscard]] MultiwayBettingSnapshot snapshot() const;
 
     const std::vector<int>& stacks() const noexcept { return stacks_; }
     const std::vector<int>& contributions() const noexcept { return contributions_; }
@@ -66,6 +91,8 @@ private:
     std::vector<bool> all_in_;
     std::vector<bool> may_raise_;
     std::vector<bool> pending_;
+    std::vector<bool> has_acted_;
+    std::vector<int> bet_faced_when_acted_;
     PlayerId current_player_ = -1;
     PlayerId last_aggressor_ = -1;
     int current_bet_ = 0;
@@ -79,6 +106,7 @@ private:
     void select_next_player();
     void refresh_round_completion();
     void reset_pending_after_full_raise(PlayerId aggressor);
+    void refresh_raise_rights_after_short_raise(PlayerId aggressor);
 };
 
 }  // namespace core

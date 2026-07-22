@@ -39,6 +39,40 @@ void MultiwayGameConfig::validate() const {
     }
 }
 
+void MultiwayBettingSnapshot::validate() const {
+    const auto count = stacks.size();
+    if (count < 2U || count > 6U || contributions.size() != count ||
+        street_contributions.size() != count || folded.size() != count ||
+        all_in.size() != count || may_raise.size() != count || pending.size() != count ||
+        has_acted.size() != count || bet_faced_when_acted.size() != count) {
+        throw std::invalid_argument("MultiwayBettingSnapshot requires equal two-through-six seat vectors");
+    }
+    if (big_blind <= 0 || last_full_raise_size <= 0 || current_bet < 0 || !valid_street(street) ||
+        current_player < -1 || current_player >= static_cast<PlayerId>(count) ||
+        last_aggressor < -1 || last_aggressor >= static_cast<PlayerId>(count)) {
+        throw std::invalid_argument("MultiwayBettingSnapshot has invalid round metadata");
+    }
+    int max_street_contribution = 0;
+    for (std::size_t seat = 0; seat < count; ++seat) {
+        if (stacks[seat] < 0 || contributions[seat] < 0 || street_contributions[seat] < 0 ||
+            street_contributions[seat] > contributions[seat] ||
+            bet_faced_when_acted[seat] < 0 || bet_faced_when_acted[seat] > current_bet ||
+            all_in[seat] != (stacks[seat] == 0) ||
+            ((folded[seat] || all_in[seat]) && (may_raise[seat] || pending[seat]))) {
+            throw std::invalid_argument("MultiwayBettingSnapshot has inconsistent seat state");
+        }
+        max_street_contribution = std::max(max_street_contribution, street_contributions[seat]);
+    }
+    if (max_street_contribution != current_bet) {
+        throw std::invalid_argument("MultiwayBettingSnapshot current bet does not match street contributions");
+    }
+    if (current_player >= 0 &&
+        (folded[static_cast<std::size_t>(current_player)] || all_in[static_cast<std::size_t>(current_player)] ||
+         !pending[static_cast<std::size_t>(current_player)])) {
+        throw std::invalid_argument("MultiwayBettingSnapshot current player is not actionable and pending");
+    }
+}
+
 MultiwayState MultiwayState::initial(const MultiwayGameConfig& config) {
     config.validate();
     MultiwayState state;
@@ -53,6 +87,8 @@ MultiwayState MultiwayState::initial(const MultiwayGameConfig& config) {
     state.all_in_.resize(config.starting_stacks.size());
     state.may_raise_.resize(config.starting_stacks.size());
     state.pending_.resize(config.starting_stacks.size());
+    state.has_acted_.assign(config.starting_stacks.size(), false);
+    state.bet_faced_when_acted_.assign(config.starting_stacks.size(), 0);
     for (std::size_t seat = 0; seat < config.starting_stacks.size(); ++seat) {
         state.stacks_[seat] = config.starting_stacks[seat] - config.initial_contributions[seat];
         state.all_in_[seat] = state.stacks_[seat] == 0;
@@ -64,6 +100,48 @@ MultiwayState MultiwayState::initial(const MultiwayGameConfig& config) {
     state.current_player_ = state.next_pending_after(config.first_player - 1);
     state.refresh_round_completion();
     return state;
+}
+
+MultiwayState MultiwayState::from_snapshot(const MultiwayBettingSnapshot& snapshot) {
+    snapshot.validate();
+    MultiwayState state;
+    state.stacks_ = snapshot.stacks;
+    state.contributions_ = snapshot.contributions;
+    state.street_contributions_ = snapshot.street_contributions;
+    state.folded_ = snapshot.folded;
+    state.all_in_ = snapshot.all_in;
+    state.may_raise_ = snapshot.may_raise;
+    state.pending_ = snapshot.pending;
+    state.has_acted_ = snapshot.has_acted;
+    state.bet_faced_when_acted_ = snapshot.bet_faced_when_acted;
+    state.current_player_ = snapshot.current_player;
+    state.last_aggressor_ = snapshot.last_aggressor;
+    state.current_bet_ = snapshot.current_bet;
+    state.last_full_raise_size_ = snapshot.last_full_raise_size;
+    state.big_blind_ = snapshot.big_blind;
+    state.street_ = snapshot.street;
+    state.refresh_round_completion();
+    return state;
+}
+
+MultiwayBettingSnapshot MultiwayState::snapshot() const {
+    MultiwayBettingSnapshot value;
+    value.stacks = stacks_;
+    value.contributions = contributions_;
+    value.street_contributions = street_contributions_;
+    value.folded = folded_;
+    value.all_in = all_in_;
+    value.may_raise = may_raise_;
+    value.pending = pending_;
+    value.has_acted = has_acted_;
+    value.bet_faced_when_acted = bet_faced_when_acted_;
+    value.current_player = current_player_;
+    value.last_aggressor = last_aggressor_;
+    value.current_bet = current_bet_;
+    value.last_full_raise_size = last_full_raise_size_;
+    value.big_blind = big_blind_;
+    value.street = street_;
+    return value;
 }
 
 bool MultiwayState::is_actionable(PlayerId player) const noexcept {
@@ -137,6 +215,16 @@ void MultiwayState::reset_pending_after_full_raise(PlayerId aggressor) {
     }
 }
 
+void MultiwayState::refresh_raise_rights_after_short_raise(PlayerId aggressor) {
+    for (std::size_t seat = 0; seat < pending_.size(); ++seat) {
+        const auto player = static_cast<PlayerId>(seat);
+        if (player == aggressor || !is_actionable(player)) continue;
+        if (street_contributions_[seat] < current_bet_) pending_[seat] = true;
+        may_raise_[seat] = !has_acted_[seat] ||
+            current_bet_ - bet_faced_when_acted_[seat] >= last_full_raise_size_;
+    }
+}
+
 std::vector<MultiwayAction> MultiwayState::legal_actions() const {
     if (current_player_ < 0) return {};
     const auto seat = static_cast<std::size_t>(current_player_);
@@ -177,15 +265,21 @@ MultiwayState MultiwayState::apply(MultiwayAction action, int target_street_cont
             next.folded_[seat] = true;
             next.pending_[seat] = false;
             next.may_raise_[seat] = false;
+            next.has_acted_[seat] = true;
+            next.bet_faced_when_acted_[seat] = next.current_bet_;
             break;
         case MultiwayAction::Check:
             next.pending_[seat] = false;
             next.may_raise_[seat] = false;
+            next.has_acted_[seat] = true;
+            next.bet_faced_when_acted_[seat] = next.current_bet_;
             break;
         case MultiwayAction::Call:
             pay(std::min(to_call, next.stacks_[seat]));
             next.pending_[seat] = false;
             next.may_raise_[seat] = false;
+            next.has_acted_[seat] = true;
+            next.bet_faced_when_acted_[seat] = next.current_bet_;
             break;
         case MultiwayAction::Bet:
         case MultiwayAction::Raise: {
@@ -201,18 +295,15 @@ MultiwayState MultiwayState::apply(MultiwayAction action, int target_street_cont
             }
             next.current_bet_ = target_street_contribution;
             next.last_aggressor_ = current_player_;
+            next.has_acted_[seat] = true;
+            next.bet_faced_when_acted_[seat] = next.current_bet_;
             if (full_raise) {
                 next.last_full_raise_size_ = raise_size;
                 next.reset_pending_after_full_raise(current_player_);
             } else {
                 next.pending_[seat] = false;
                 next.may_raise_[seat] = false;
-                for (std::size_t other = 0; other < next.pending_.size(); ++other) {
-                    if (next.is_actionable(static_cast<PlayerId>(other)) &&
-                        next.street_contributions_[other] < next.current_bet_) {
-                        next.pending_[other] = true;
-                    }
-                }
+                next.refresh_raise_rights_after_short_raise(current_player_);
             }
             break;
         }
@@ -222,21 +313,22 @@ MultiwayState MultiwayState::apply(MultiwayAction action, int target_street_cont
             if (target <= next.current_bet_) {
                 next.pending_[seat] = false;
                 next.may_raise_[seat] = false;
+                next.has_acted_[seat] = true;
+                next.bet_faced_when_acted_[seat] = next.current_bet_;
                 break;
             }
             const auto raise_size = target - next.current_bet_;
             next.current_bet_ = target;
             next.last_aggressor_ = current_player_;
+            next.has_acted_[seat] = true;
+            next.bet_faced_when_acted_[seat] = next.current_bet_;
             if (raise_size >= next.last_full_raise_size_) {
                 next.last_full_raise_size_ = raise_size;
                 next.reset_pending_after_full_raise(current_player_);
             } else {
                 next.pending_[seat] = false;
                 next.may_raise_[seat] = false;
-                for (std::size_t other = 0; other < next.pending_.size(); ++other) {
-                    if (next.is_actionable(static_cast<PlayerId>(other)) &&
-                        next.street_contributions_[other] < next.current_bet_) next.pending_[other] = true;
-                }
+                next.refresh_raise_rights_after_short_raise(current_player_);
             }
             break;
         }
@@ -263,6 +355,8 @@ MultiwayState MultiwayState::begin_next_street(Street next_street, PlayerId firs
     for (std::size_t seat = 0; seat < stacks_.size(); ++seat) {
         next.pending_[seat] = next.is_actionable(static_cast<PlayerId>(seat));
         next.may_raise_[seat] = next.pending_[seat];
+        next.has_acted_[seat] = false;
+        next.bet_faced_when_acted_[seat] = 0;
     }
     next.current_player_ = next.next_pending_after(first_player - 1);
     next.refresh_round_completion();
