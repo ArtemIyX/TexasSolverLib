@@ -258,6 +258,8 @@ Record peak and final retained capacity after coordinator preparation, worker al
 
 ### P2-2: the showdown convenience API drops the configured odd-chip order
 
+Status: **fixed on 2026-07-22.** `MultiwayShowdownInput` now carries `odd_chip_first_seat`, validates it, and passes it into terminal settlement. Real-hand showdown tests cover a two-way tied odd pot with nonzero positional order.
+
 Evidence:
 
 - `MultiwayTerminalInput` has explicit `odd_chip_first_seat` at `include/games/multiway_terminal.hpp:10-19`.

@@ -145,6 +145,22 @@ TEST_CASE(multiway_showdown_splits_a_board_tie_deterministically) {
     EXPECT_EQ(result.payouts[2], 101);
 }
 
+TEST_CASE(multiway_showdown_preserves_explicit_odd_chip_order) {
+    core::MultiwayShowdownInput input;
+    input.board = {c(14, 0), c(13, 0), c(12, 1), c(11, 2), c(2, 0)};
+    input.holes = {{c(10, 0), c(3, 1)}, {c(10, 1), c(4, 1)}, {c(9, 0), c(8, 0)}};
+    input.contributions = {101, 101, 101};
+    input.folded = {false, false, false};
+    input.odd_chip_first_seat = 1;
+    const auto result = core::evaluate_multiway_showdown(input);
+    EXPECT_EQ(result.payouts[0], 151);
+    EXPECT_EQ(result.payouts[1], 152);
+    EXPECT_EQ(result.payouts[2], 0);
+
+    input.odd_chip_first_seat = 3;
+    EXPECT_THROW(input.validate(), std::invalid_argument);
+}
+
 TEST_CASE(multiway_showdown_rejects_duplicate_cards_and_non_river_board) {
     core::MultiwayShowdownInput input;
     input.board = {c(2, 0), c(3, 1), c(4, 2), c(9, 3)};

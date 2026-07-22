@@ -139,6 +139,7 @@ std::size_t MultiwayCompiledPrivateRanges::seat_count() const noexcept { return 
 void MultiwayShowdownInput::validate() const {
     const auto count = holes.size();
     if (count < 2U || count > 6U || board.size() != 5U || contributions.size() != count || folded.size() != count ||
+        odd_chip_first_seat < 0 || static_cast<std::size_t>(odd_chip_first_seat) >= count ||
         !are_valid_and_distinct_cards(board.data(), board.size())) {
         throw std::invalid_argument("MultiwayShowdownInput has invalid dimensions or board");
     }
@@ -157,6 +158,7 @@ MultiwayTerminalResult evaluate_multiway_showdown(const MultiwayShowdownInput& i
     MultiwayTerminalInput terminal;
     terminal.contributions = input.contributions;
     terminal.folded = input.folded;
+    terminal.odd_chip_first_seat = input.odd_chip_first_seat;
     terminal.strengths.resize(input.holes.size());
     for (std::size_t seat = 0; seat < input.holes.size(); ++seat) {
         std::array<std::uint8_t, 7> cards = {};

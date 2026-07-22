@@ -62,6 +62,7 @@ struct MultiwayShowdownInput {
     std::vector<std::array<std::uint8_t, 2>> holes;
     std::vector<int> contributions;
     std::vector<bool> folded;
+    PlayerId odd_chip_first_seat = 0;
 
     void validate() const;
 };
