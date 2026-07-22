@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 
 namespace core {
 
@@ -83,7 +85,7 @@ std::size_t effective_public_state_cap(const HUNLSampledSolverConfig& config) no
 
 HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
     : std::logic_error(
-          "HUNLSampledSolver cannot run positive-work requests until sampled MCCFR is implemented") {
+          "HUNLSampledSolver positive work requires a structured root state") {
 }
 
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
@@ -99,7 +101,7 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
     if (budget.count() <= 0) {
         return run_batches(request, 0);
     }
-    if (!request.root_state.has_value() || config_.workers != 1U) {
+    if (!request.root_state.has_value()) {
         throw HUNLSampledSolverNotReady{};
     }
     (void)budget;
@@ -111,7 +113,7 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     const HUNLSampledSolveRequest& request,
     std::uint32_t batches) {
-    if (batches > 0 && (!request.root_state.has_value() || config_.workers != 1U)) {
+    if (batches > 0 && !request.root_state.has_value()) {
         throw HUNLSampledSolverNotReady{};
     }
 
@@ -160,20 +162,60 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
 
     if (batches > 0) {
         HUNLSampledTraversal traversal(builder_, storage_, terminal_evaluator_);
-        HUNLSampledWorkerScratch scratch;
-        scratch.reserve_deltas(4096);
         const auto root_id = builder_.root_id();
         const auto bucket_count = static_cast<std::uint32_t>(std::max<std::uint64_t>(1U, infer_bucket_count(request, config_)));
         for (std::uint32_t batch = 0; batch < batches; ++batch) {
+            std::vector<HUNLSampledTraversalRequest> trajectory_requests;
+            trajectory_requests.reserve(config_.minibatch_size);
             for (std::uint32_t trajectory = 0; trajectory < config_.minibatch_size; ++trajectory) {
-                const HUNLSampledTraversalRequest traversal_request{
+                trajectory_requests.push_back({
                     static_cast<PlayerId>(trajectory & 1U), config_.seed,
                     static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory,
-                    batch + 1U, root_id, 0U, bucket_count, 4096U};
-                prepare_hunl_sampled_trajectory(builder_, storage_, terminal_evaluator_, traversal_request);
-                const auto result = traversal.run_unmerged(traversal_request, scratch);
-                merge_hunl_sampled_worker_deltas(storage_, scratch);
-                profile_.record_traversal(1U, result.nodes_visited, result.infosets_updated);
+                    batch + 1U, root_id, 0U, bucket_count, 4096U});
+                prepare_hunl_sampled_trajectory(
+                    builder_, storage_, terminal_evaluator_, trajectory_requests.back());
+            }
+            const auto worker_count = std::min<std::size_t>(config_.workers, trajectory_requests.size());
+            const auto worker_batches = HUNLSampledScheduler::partition_deterministic(
+                trajectory_requests.size(), std::max<std::size_t>(1U, worker_count));
+            std::vector<HUNLSampledWorkerScratch> worker_scratch(worker_batches.size());
+            std::vector<HUNLSampledTraversalResult> worker_results(worker_batches.size());
+            std::vector<std::thread> threads;
+            std::exception_ptr worker_error;
+            std::mutex worker_error_mutex;
+            threads.reserve(worker_batches.size() > 0U ? worker_batches.size() - 1U : 0U);
+            const auto execute_worker = [&](std::size_t worker_index) {
+                try {
+                    auto& aggregate = worker_scratch[worker_index];
+                    const auto range = worker_batches[worker_index].trajectories;
+                    aggregate.reserve_deltas(static_cast<std::size_t>(range.size()) * 4096U);
+                    HUNLSampledWorkerScratch trajectory_scratch;
+                    trajectory_scratch.reserve_deltas(4096U);
+                    for (std::uint64_t id = range.begin; id < range.end; ++id) {
+                        const auto result = traversal.run_unmerged(
+                            trajectory_requests[static_cast<std::size_t>(id)], trajectory_scratch);
+                        aggregate.deltas.insert(
+                            aggregate.deltas.end(), trajectory_scratch.deltas.begin(), trajectory_scratch.deltas.end());
+                        worker_results[worker_index].nodes_visited += result.nodes_visited;
+                        worker_results[worker_index].infosets_updated += result.infosets_updated;
+                    }
+                } catch (...) {
+                    std::lock_guard<std::mutex> lock(worker_error_mutex);
+                    if (worker_error == nullptr) worker_error = std::current_exception();
+                }
+            };
+            for (std::size_t worker = 1; worker < worker_batches.size(); ++worker) {
+                threads.emplace_back(execute_worker, worker);
+            }
+            if (!worker_batches.empty()) execute_worker(0);
+            for (auto& thread : threads) thread.join();
+            if (worker_error != nullptr) std::rethrow_exception(worker_error);
+            for (std::size_t worker = 0; worker < worker_batches.size(); ++worker) {
+                merge_hunl_sampled_worker_deltas(storage_, worker_scratch[worker]);
+                profile_.record_traversal(
+                    worker_batches[worker].trajectories.size(),
+                    worker_results[worker].nodes_visited,
+                    worker_results[worker].infosets_updated);
             }
         }
         const auto& root = builder_.node(root_id);

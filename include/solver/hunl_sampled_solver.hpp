@@ -81,7 +81,7 @@ public:
     explicit HUNLSampledSolver(HUNLSampledSolverConfig config = {});
 
     // Non-positive budgets initialize/export the unsolved uniform root only.
-    // Positive solve requests throw until sampled MCCFR updates are implemented.
+    // Positive work requires a structured root state.
     [[nodiscard]] HUNLSampledSolveResult solve_for(
         const HUNLSampledSolveRequest& request,
         std::chrono::milliseconds budget);

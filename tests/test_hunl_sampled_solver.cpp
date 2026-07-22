@@ -765,6 +765,27 @@ TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
     EXPECT_THROW(solver.run_batches(request, 0), std::runtime_error);
 }
 
+TEST_CASE(hunl_sampled_solver_runs_prepared_positive_work_with_deterministic_worker_batches) {
+    core::HUNLSampledSolverConfig config;
+    config.workers = 2;
+    config.minibatch_size = 2;
+    config.max_cached_public_states = 1024;
+    config.seed = 77;
+    core::HUNLSampledSolver first(config);
+    core::HUNLSampledSolver second(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_state = make_lazy_root_state();
+    const auto first_result = first.run_batches(request, 1);
+    const auto second_result = second.run_batches(request, 1);
+    EXPECT_EQ(first_result.batches_completed, 1U);
+    EXPECT_EQ(first_result.profile.traversals, 2U);
+    EXPECT_EQ(first_result.root_strategy.actions.size(), second_result.root_strategy.actions.size());
+    for (std::size_t action = 0; action < first_result.root_strategy.actions.size(); ++action) {
+        EXPECT_NEAR(first_result.root_strategy.actions[action].probability,
+                    second_result.root_strategy.actions[action].probability, TOL);
+    }
+}
+
 TEST_CASE(hunl_sampled_builder_enforces_public_state_admission_limit_during_expansion) {
     core::HUNLSampledBuilder builder({false, 1});
     const auto root = builder.initialize(make_lazy_root_state());

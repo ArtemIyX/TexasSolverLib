@@ -72,7 +72,7 @@ public:
     // have completed in deterministic order.
     [[nodiscard]] HUNLSampledTraversalResult run_unmerged(
         const HUNLSampledTraversalRequest& request,
-        HUNLSampledWorkerScratch& scratch);
+        HUNLSampledWorkerScratch& scratch) const;
 
 private:
     HUNLSampledBuilder& builder_;

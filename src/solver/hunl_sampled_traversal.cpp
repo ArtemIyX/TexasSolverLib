@@ -293,7 +293,7 @@ HUNLSampledTraversalResult HUNLSampledTraversal::run(
 
 HUNLSampledTraversalResult HUNLSampledTraversal::run_unmerged(
     const HUNLSampledTraversalRequest& request,
-    HUNLSampledWorkerScratch& scratch) {
+    HUNLSampledWorkerScratch& scratch) const {
     scratch.clear_keep_capacity();
     if (builder_.node_count() == 0 || request.root_node_id >= builder_.node_count()) {
         return {};
