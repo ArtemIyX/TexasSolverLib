@@ -19,6 +19,9 @@ enum class HUNLQualityMetric : std::uint8_t {
 struct HUNLStructuredRootRequest {
     HUNLConfig config;
     HUNLLeafValueUnits value_units = HUNLLeafValueUnits::Chips;
+    // Provenance for the externally selected blueprint. The sampled solver
+    // starts unseeded (uniform regret matching); it never silently treats a
+    // version string as a prior strategy or leaf value table.
     std::string blueprint_version;
     std::string model_version;
 
