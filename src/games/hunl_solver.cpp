@@ -182,7 +182,7 @@ void HUNLStructuredRootRequest::validate() const {
         throw std::invalid_argument(
             "HUNLStructuredRootRequest rejects unequal contributions until a full live betting snapshot is available");
     }
-    (void)normalize_hunl_joint_range(config);
+    validate_hunl_joint_range_feasibility(config);
 }
 
 std::vector<HUNLJointRangeDeal> HUNLStructuredRootRequest::normalized_joint_range() const {

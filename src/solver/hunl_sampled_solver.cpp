@@ -141,11 +141,10 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
         throw HUNLSampledStructuredRangeNotReady{};
     }
     HUNLSampledSolveRequest effective_request = request;
-    std::vector<HUNLJointRangeDeal> joint_deals;
     if (request.structured_root.has_value()) {
-        joint_deals = request.structured_root->normalized_joint_range();
+        request.structured_root->validate();
         auto config = std::make_shared<const HUNLConfig>(request.structured_root->config);
-        effective_request.root_state = HUNLState::initial(config).clone_with_hole_cards(joint_deals.front().hole);
+        effective_request.root_state = HUNLState::initial(config);
     }
     if (batches > 0 && !effective_request.root_state.has_value()) {
         throw HUNLSampledSolverNotReady{};
@@ -211,11 +210,6 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
                     static_cast<PlayerId>((static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory) & 1U), config_.seed,
                     static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory,
                     batch + 1U, root_id, 0U, bucket_count, 4096U});
-                if (!joint_deals.empty()) {
-                    trajectory_requests.back().private_hole = joint_deals[sample_joint_deal(
-                        joint_deals,
-                        PcsRng::mix_seed(config_.seed, batch, trajectory, 0x52414E4745ULL))].hole;
-                }
                 prepare_hunl_sampled_trajectory(
                     builder_, storage_, terminal_evaluator_, trajectory_requests.back());
             }

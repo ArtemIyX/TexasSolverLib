@@ -67,6 +67,8 @@ struct HUNLJointRangeDeal {
 // additional private-state tables.
 std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(
     const HUNLConfig& config);
+// Performs bounded canonical range validation without constructing joint deals.
+void validate_hunl_joint_range_feasibility(const HUNLConfig& config);
 
 std::optional<Street> street_from_u8(std::uint8_t value);
 const char* street_token(Street street);

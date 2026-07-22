@@ -140,6 +140,11 @@ Regression gate:
 
 ### P0-2: structured-range validation materializes an unbounded Cartesian product before preflight
 
+Status: Implemented 2026-07-22. Structured validation now performs bounded
+canonical marginal checks without constructing joint deals; normalized deals
+canonicalize duplicate hands first, and the unsupported sampled path never
+materializes them.
+
 Evidence:
 
 - `normalize_hunl_joint_range()` reserves and constructs
