@@ -111,7 +111,7 @@ TEST_CASE(ranges_structured_root_request_validates_versions_units_and_joint_reac
     EXPECT_THROW(request.validate(), std::invalid_argument);
 }
 
-TEST_CASE(ranges_structured_root_drives_sampled_public_solver_trajectories) {
+TEST_CASE(ranges_structured_root_sampled_positive_work_is_fail_closed) {
     core::HUNLStructuredRootRequest root;
     root.config = range_contract_config();
     root.blueprint_version = "blueprint-v1";
@@ -122,14 +122,9 @@ TEST_CASE(ranges_structured_root_drives_sampled_public_solver_trajectories) {
     config.workers = 1;
     config.max_cached_public_states = 1024;
     config.seed = 0xB10EULL;
-    const auto result = core::lib::solve_hunl_postflop_sampled(root, config, 1);
-    EXPECT_EQ(result.batches_completed, 1U);
-    EXPECT_EQ(result.profile.traversals, 1U);
-    EXPECT_TRUE(!result.root_strategy.actions.empty());
-    for (const auto& action : result.root_strategy.actions) {
-        EXPECT_TRUE(action.action_id >= core::ACTION_FOLD);
-        EXPECT_TRUE(action.action_id <= core::ACTION_ALL_IN);
-    }
+    EXPECT_THROW(
+        core::lib::solve_hunl_postflop_sampled(root, config, 1),
+        core::HUNLSampledStructuredRangeNotReady);
 }
 
 TEST_CASE(ranges_sampled_request_rejects_ambiguous_fixed_and_range_roots) {

@@ -36,6 +36,8 @@ No build, test, benchmark, install, or solver command was run, as required by `A
 
 ### P0-1: structured range solving aliases every private deal and uses the wrong public-card distribution
 
+Status: **fixed fail-closed on 2026-07-22.** Positive structured-range requests now validate then throw `HUNLSampledStructuredRangeNotReady` before builder/storage initialization or traversal. This prevents the prior first-deal/bucket-zero path from returning a policy. Full range solving remains blocked until the private-state-aware traversal and exports described below are implemented.
+
 Evidence:
 
 - `HUNLSampledSolver::run_batches()` materializes the normalized joint range but initializes the builder with `joint_deals.front().hole` at `src/solver/hunl_sampled_solver.cpp:136-140`.

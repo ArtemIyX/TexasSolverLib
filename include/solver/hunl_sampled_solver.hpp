@@ -34,6 +34,13 @@ public:
     HUNLSampledSolverNotReady();
 };
 
+// Structured ranges require private-state-aware chance, bucket, and infoset
+// propagation.  They remain validation-only until that traversal exists.
+class HUNLSampledStructuredRangeNotReady final : public std::logic_error {
+public:
+    HUNLSampledStructuredRangeNotReady();
+};
+
 struct HUNLSampledMemoryEstimate {
     std::uint64_t public_state_cache_bytes = 0;
     std::uint64_t public_states_cached = 0;

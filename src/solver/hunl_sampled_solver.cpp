@@ -103,6 +103,11 @@ HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
           "HUNLSampledSolver positive work requires a structured root state") {
 }
 
+HUNLSampledStructuredRangeNotReady::HUNLSampledStructuredRangeNotReady()
+    : std::logic_error(
+          "structured range sampled solving is disabled until private-state-aware traversal is available") {
+}
+
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
     : config_(config),
       builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism, effective_public_state_cap(config)}),
@@ -131,6 +136,10 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     if (request.root_state.has_value() && request.structured_root.has_value()) {
         throw std::invalid_argument(
             "sampled solve request must choose either an explicit root or a structured range root");
+    }
+    if (batches > 0U && request.structured_root.has_value()) {
+        request.structured_root->validate();
+        throw HUNLSampledStructuredRangeNotReady{};
     }
     HUNLSampledSolveRequest effective_request = request;
     std::vector<HUNLJointRangeDeal> joint_deals;
