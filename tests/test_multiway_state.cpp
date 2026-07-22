@@ -220,10 +220,10 @@ TEST_CASE(multiway_covering_stack_has_no_betting_actions_after_all_in_calls) {
                            .apply(core::MultiwayAction::AllIn)
                            .apply(core::MultiwayAction::Call)
                            .apply(core::MultiwayAction::Call);
-    EXPECT_TRUE(state.is_hand_over());
+    EXPECT_TRUE(!state.is_terminal());
     EXPECT_TRUE(state.requires_board_runout());
     EXPECT_TRUE(state.legal_actions().empty());
-    EXPECT_THROW(state.begin_next_street(core::Street::Turn, 0), std::logic_error);
+    EXPECT_EQ(state.next_node_kind(), core::MultiwayNextNodeKind::BoardRunout);
 }
 
 TEST_CASE(multiway_all_in_has_one_canonical_transition) {

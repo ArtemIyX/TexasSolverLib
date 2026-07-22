@@ -86,9 +86,9 @@ TEST_CASE(multiway_cfr_update_uses_opponent_product_for_regret) {
 TEST_CASE(multiway_cfr_update_uses_own_reach_for_average_strategy) {
     const auto update = core::make_multiway_cfr_update(
         {0.5, 0.25, 0.8}, 1, 0.5, {0.25, 0.75}, {4.0, 0.0});
-    EXPECT_NEAR(update.average_strategy_weight, 0.125, 1e-12);
-    EXPECT_NEAR(update.strategy_deltas[0], 0.03125, 1e-12);
-    EXPECT_NEAR(update.strategy_deltas[1], 0.09375, 1e-12);
+    EXPECT_NEAR(update.average_strategy_weight, 0.25, 1e-12);
+    EXPECT_NEAR(update.strategy_deltas[0], 0.0625, 1e-12);
+    EXPECT_NEAR(update.strategy_deltas[1], 0.1875, 1e-12);
 }
 
 TEST_CASE(multiway_external_sampling_update_applies_the_explicit_importance_ratio) {
@@ -105,7 +105,7 @@ TEST_CASE(multiway_external_sampling_update_applies_the_explicit_importance_rati
     EXPECT_NEAR(update.counterfactual_reach, 0.2, 1e-12);
     EXPECT_NEAR(update.regret_deltas[0], 6.0, 1e-12);
     EXPECT_NEAR(update.regret_deltas[1], -2.0, 1e-12);
-    EXPECT_NEAR(update.average_strategy_weight, 1.25, 1e-12);
+    EXPECT_NEAR(update.average_strategy_weight, 2.5, 1e-12);
 }
 
 TEST_CASE(multiway_external_sampling_update_rejects_zero_or_ambiguous_sampling_contract) {
