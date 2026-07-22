@@ -239,7 +239,7 @@ TEST_CASE(multiway_all_in_has_one_canonical_transition) {
     EXPECT_THROW(facing_bet.apply(core::MultiwayAction::Raise, 150), std::invalid_argument);
 }
 
-TEST_CASE(multiway_every_remaining_player_all_in_ends_the_hand) {
+TEST_CASE(multiway_every_remaining_player_all_in_requires_board_runout) {
     core::MultiwayGameConfig config;
     config.starting_stacks = {100, 100, 100};
     config.initial_contributions = {0, 0, 0};
@@ -249,7 +249,10 @@ TEST_CASE(multiway_every_remaining_player_all_in_ends_the_hand) {
                            .apply(core::MultiwayAction::AllIn)
                            .apply(core::MultiwayAction::Call)
                            .apply(core::MultiwayAction::Call);
-    EXPECT_TRUE(state.is_hand_over());
+    EXPECT_TRUE(!state.is_hand_over());
+    EXPECT_TRUE(!state.is_terminal());
+    EXPECT_TRUE(state.requires_board_runout());
+    EXPECT_EQ(state.next_node_kind(), core::MultiwayNextNodeKind::BoardRunout);
     EXPECT_EQ(state.current_player(), -1);
     EXPECT_TRUE(state.all_in()[0]);
     EXPECT_TRUE(state.all_in()[1]);
