@@ -119,7 +119,7 @@ MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
 
     MultiwayCFRUpdate update;
     update.counterfactual_reach = multiway_counterfactual_reach(player_reaches, traverser, chance_reach);
-    update.average_strategy_weight = chance_reach * player_reaches[static_cast<std::size_t>(traverser)];
+    update.average_strategy_weight = player_reaches[static_cast<std::size_t>(traverser)];
     update.regret_deltas.resize(strategy.size());
     update.strategy_deltas.resize(strategy.size());
     for (std::size_t action = 0; action < strategy.size(); ++action) {
@@ -162,8 +162,7 @@ MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
     update.counterfactual_reach = multiway_counterfactual_reach(
         request.player_reaches, request.traverser, request.chance_reach);
     const auto importance_weight = update.counterfactual_reach / request.sampling_reach;
-    update.average_strategy_weight =
-        request.chance_reach * request.traverser_reach / request.sampling_reach;
+    update.average_strategy_weight = request.traverser_reach / request.sampling_reach;
     if (!std::isfinite(importance_weight) || !std::isfinite(update.average_strategy_weight)) {
         throw std::overflow_error("external-sampling importance weight is non-finite");
     }

@@ -91,7 +91,7 @@ double multiway_counterfactual_reach(
 std::vector<Probability> multiway_regret_matching(const std::vector<double>& regrets);
 
 // Produces the full-tree CFR update for one traverser's infoset. The strategy
-// sum uses the traverser's own reach and chance reach; regret uses all other
+// sum uses only the traverser's own reach; regret uses all other
 // seats' reach and chance reach.
 MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
     const std::vector<Probability>& player_reaches,

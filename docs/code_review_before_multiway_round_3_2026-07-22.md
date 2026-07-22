@@ -198,6 +198,9 @@ Regression gate:
 
 ### P1-1: multiway CFR average-strategy weights incorrectly include chance reach
 
+Status: Implemented 2026-07-22. Average-strategy updates now use the acting
+seat's reach only (or that reach divided by sampling reach for MCCFR).
+
 Evidence:
 
 - Full-tree updates set `average_strategy_weight` to
