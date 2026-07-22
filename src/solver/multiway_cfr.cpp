@@ -24,13 +24,46 @@ void validate_reaches(const std::vector<Probability>& reaches, PlayerId traverse
     for (const auto reach : reaches) validate_probability(reach, "player reach");
 }
 
+void validate_strategy_and_values(
+    const std::vector<Probability>& strategy,
+    const std::vector<Value>& action_values) {
+    if (strategy.empty() || strategy.size() != action_values.size()) {
+        throw std::invalid_argument("strategy and action values must have the same non-zero size");
+    }
+    double strategy_total = 0.0;
+    for (const auto probability : strategy) {
+        validate_probability(probability, "strategy probability");
+        strategy_total += probability;
+    }
+    if (std::fabs(strategy_total - 1.0) > 1e-12) {
+        throw std::invalid_argument("strategy probabilities must sum to one");
+    }
+    for (const auto value : action_values) {
+        if (!std::isfinite(value)) throw std::invalid_argument("action values must be finite");
+    }
+}
+
+void validate_quality_diagnostics(const MultiwayQualityDiagnostics& diagnostics) {
+    if (!std::isfinite(diagnostics.standard_error) || diagnostics.standard_error < 0.0) {
+        throw std::invalid_argument("NashConv standard error must be finite and non-negative");
+    }
+    if (diagnostics.method == MultiwayMetricMethod::SampledEstimate && diagnostics.sample_count == 0U) {
+        throw std::invalid_argument("sampled NashConv requires a non-zero sample count");
+    }
+    if (diagnostics.method != MultiwayMetricMethod::ExactEnumeration &&
+        diagnostics.method != MultiwayMetricMethod::SampledEstimate) {
+        throw std::invalid_argument("NashConv has an unsupported metric method");
+    }
+}
+
 }  // namespace
 
 void MultiwayCFRConfig::validate() const {
     if (player_count < 2U || player_count > 6U) {
         throw std::invalid_argument("MultiwayCFRConfig supports two through six players");
     }
-    if (algorithm != MultiwayCFRAlgorithm::ExternalSamplingMCCFR) {
+    if (algorithm != MultiwayCFRAlgorithm::FullTreeCFR &&
+        algorithm != MultiwayCFRAlgorithm::ExternalSamplingMCCFR) {
         throw std::invalid_argument("MultiwayCFRConfig has an unsupported algorithm");
     }
     if (!deterministic_trajectory_merges) {
@@ -72,7 +105,7 @@ std::vector<Probability> multiway_regret_matching(const std::vector<double>& reg
     return strategy;
 }
 
-MultiwayCFRUpdate make_multiway_cfr_update(
+MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
     const std::vector<Probability>& player_reaches,
     PlayerId traverser,
     Probability chance_reach,
@@ -80,20 +113,7 @@ MultiwayCFRUpdate make_multiway_cfr_update(
     const std::vector<Value>& action_values) {
     validate_reaches(player_reaches, traverser);
     validate_probability(chance_reach, "chance reach");
-    if (strategy.empty() || strategy.size() != action_values.size()) {
-        throw std::invalid_argument("strategy and action values must have the same non-zero size");
-    }
-    double strategy_total = 0.0;
-    for (const auto probability : strategy) {
-        validate_probability(probability, "strategy probability");
-        strategy_total += probability;
-    }
-    if (std::fabs(strategy_total - 1.0) > 1e-12) {
-        throw std::invalid_argument("strategy probabilities must sum to one");
-    }
-    for (const auto value : action_values) {
-        if (!std::isfinite(value)) throw std::invalid_argument("action values must be finite");
-    }
+    validate_strategy_and_values(strategy, action_values);
 
     MultiwayCFRUpdate update;
     update.counterfactual_reach = multiway_counterfactual_reach(player_reaches, traverser, chance_reach);
@@ -107,6 +127,50 @@ MultiwayCFRUpdate make_multiway_cfr_update(
         update.regret_deltas[action] =
             update.counterfactual_reach * (action_values[action] - update.node_value);
         update.strategy_deltas[action] = update.average_strategy_weight * strategy[action];
+    }
+    return update;
+}
+
+MultiwayCFRUpdate make_multiway_cfr_update(
+    const std::vector<Probability>& player_reaches,
+    PlayerId traverser,
+    Probability chance_reach,
+    const std::vector<Probability>& strategy,
+    const std::vector<Value>& action_values) {
+    return make_multiway_full_tree_cfr_update(
+        player_reaches, traverser, chance_reach, strategy, action_values);
+}
+
+MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
+    const MultiwayExternalSamplingRequest& request) {
+    validate_reaches(request.player_reaches, request.traverser);
+    validate_probability(request.chance_reach, "chance reach");
+    validate_probability(request.sampling_reach, "sampling reach");
+    validate_probability(request.traverser_reach, "traverser reach");
+    if (request.sampling_reach == 0.0) {
+        throw std::invalid_argument("external-sampling update requires non-zero sampling reach");
+    }
+    if (std::fabs(request.traverser_reach -
+                  request.player_reaches[static_cast<std::size_t>(request.traverser)]) > 1e-12) {
+        throw std::invalid_argument("external-sampling traverser reach must match player reaches");
+    }
+    validate_strategy_and_values(request.strategy, request.sampled_action_values);
+
+    MultiwayCFRUpdate update;
+    update.counterfactual_reach = multiway_counterfactual_reach(
+        request.player_reaches, request.traverser, request.chance_reach);
+    const auto importance_weight = update.counterfactual_reach / request.sampling_reach;
+    update.average_strategy_weight =
+        request.chance_reach * request.traverser_reach / request.sampling_reach;
+    update.regret_deltas.resize(request.strategy.size());
+    update.strategy_deltas.resize(request.strategy.size());
+    for (std::size_t action = 0; action < request.strategy.size(); ++action) {
+        update.node_value += request.strategy[action] * request.sampled_action_values[action];
+    }
+    for (std::size_t action = 0; action < request.strategy.size(); ++action) {
+        update.regret_deltas[action] = importance_weight *
+            (request.sampled_action_values[action] - update.node_value);
+        update.strategy_deltas[action] = update.average_strategy_weight * request.strategy[action];
     }
     return update;
 }
@@ -128,11 +192,13 @@ void apply_multiway_cfr_update(
 
 MultiwayNashConv compute_multiway_nash_conv(
     const std::vector<Value>& profile_values,
-    const std::vector<Value>& best_response_values) {
+    const std::vector<Value>& best_response_values,
+    const MultiwayQualityDiagnostics& diagnostics) {
     if (profile_values.size() < 2U || profile_values.size() > 6U ||
         best_response_values.size() != profile_values.size()) {
         throw std::invalid_argument("NashConv requires equal two-through-six seat value vectors");
     }
+    validate_quality_diagnostics(diagnostics);
     MultiwayNashConv result;
     result.profile_values = profile_values;
     result.best_response_values = best_response_values;
@@ -141,10 +207,10 @@ MultiwayNashConv compute_multiway_nash_conv(
         if (!std::isfinite(profile_values[player]) || !std::isfinite(best_response_values[player])) {
             throw std::invalid_argument("NashConv values must be finite");
         }
-        result.unilateral_improvements[player] =
-            std::max<Value>(0.0, best_response_values[player] - profile_values[player]);
+        result.unilateral_improvements[player] = best_response_values[player] - profile_values[player];
         result.value += result.unilateral_improvements[player];
     }
+    result.diagnostics = diagnostics;
     return result;
 }
 

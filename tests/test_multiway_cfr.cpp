@@ -34,6 +34,14 @@ TEST_CASE(multiway_cfr_config_rejects_unknown_algorithm_and_metric) {
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
+TEST_CASE(multiway_cfr_config_accepts_named_full_tree_and_external_sampling_modes) {
+    core::MultiwayCFRConfig config;
+    config.algorithm = core::MultiwayCFRAlgorithm::FullTreeCFR;
+    config.validate();
+    config.algorithm = core::MultiwayCFRAlgorithm::ExternalSamplingMCCFR;
+    config.validate();
+}
+
 TEST_CASE(multiway_cfr_counterfactual_reach_multiplies_every_opponent) {
     const auto reach = core::multiway_counterfactual_reach({0.2, 0.3, 0.4, 0.5}, 2, 0.25);
     EXPECT_NEAR(reach, 0.2 * 0.3 * 0.5 * 0.25, 1e-12);
@@ -83,6 +91,36 @@ TEST_CASE(multiway_cfr_update_uses_own_reach_for_average_strategy) {
     EXPECT_NEAR(update.strategy_deltas[1], 0.09375, 1e-12);
 }
 
+TEST_CASE(multiway_external_sampling_update_applies_the_explicit_importance_ratio) {
+    core::MultiwayExternalSamplingRequest request;
+    request.player_reaches = {0.5, 0.25, 0.8};
+    request.traverser = 1;
+    request.chance_reach = 0.5;
+    request.sampling_reach = 0.1;
+    request.traverser_reach = 0.25;
+    request.strategy = {0.25, 0.75};
+    request.sampled_action_values = {4.0, 0.0};
+    const auto update = core::make_multiway_external_sampling_cfr_update(request);
+    EXPECT_NEAR(update.node_value, 1.0, 1e-12);
+    EXPECT_NEAR(update.counterfactual_reach, 0.2, 1e-12);
+    EXPECT_NEAR(update.regret_deltas[0], 6.0, 1e-12);
+    EXPECT_NEAR(update.regret_deltas[1], -2.0, 1e-12);
+    EXPECT_NEAR(update.average_strategy_weight, 1.25, 1e-12);
+}
+
+TEST_CASE(multiway_external_sampling_update_rejects_zero_or_ambiguous_sampling_contract) {
+    core::MultiwayExternalSamplingRequest request;
+    request.player_reaches = {1.0, 1.0};
+    request.traverser = 0;
+    request.strategy = {0.5, 0.5};
+    request.sampled_action_values = {1.0, 0.0};
+    request.sampling_reach = 0.0;
+    EXPECT_THROW(core::make_multiway_external_sampling_cfr_update(request), std::invalid_argument);
+    request.sampling_reach = 1.0;
+    request.traverser_reach = 0.5;
+    EXPECT_THROW(core::make_multiway_external_sampling_cfr_update(request), std::invalid_argument);
+}
+
 TEST_CASE(multiway_cfr_update_applies_to_matching_row_shapes) {
     const auto update = core::make_multiway_cfr_update(
         {1.0, 0.5, 0.5}, 0, 1.0, {0.5, 0.5}, {3.0, 1.0});
@@ -110,8 +148,33 @@ TEST_CASE(multiway_nash_conv_sums_unilateral_improvements) {
     const auto result = core::compute_multiway_nash_conv({10.0, -3.0, 2.0}, {12.5, -1.0, 1.0});
     EXPECT_NEAR(result.unilateral_improvements[0], 2.5, 1e-12);
     EXPECT_NEAR(result.unilateral_improvements[1], 2.0, 1e-12);
-    EXPECT_NEAR(result.unilateral_improvements[2], 0.0, 1e-12);
-    EXPECT_NEAR(result.value, 4.5, 1e-12);
+    EXPECT_NEAR(result.unilateral_improvements[2], -1.0, 1e-12);
+    EXPECT_NEAR(result.value, 3.5, 1e-12);
+}
+
+TEST_CASE(multiway_nash_conv_preserves_estimator_metadata_and_negative_noise) {
+    core::MultiwayQualityDiagnostics diagnostics;
+    diagnostics.method = core::MultiwayMetricMethod::SampledEstimate;
+    diagnostics.units = core::MultiwayValueUnits::BigBlinds;
+    diagnostics.sample_count = 400;
+    diagnostics.seed = 99;
+    diagnostics.standard_error = 0.125;
+    diagnostics.policy_version = "blueprint-v1";
+    diagnostics.model_version = "value-v2";
+    const auto result = core::compute_multiway_nash_conv({3.0, 4.0}, {2.5, 5.0}, diagnostics);
+    EXPECT_NEAR(result.unilateral_improvements[0], -0.5, 1e-12);
+    EXPECT_NEAR(result.value, 0.5, 1e-12);
+    EXPECT_EQ(result.diagnostics.sample_count, 400U);
+    EXPECT_EQ(result.diagnostics.seed, 99U);
+}
+
+TEST_CASE(multiway_nash_conv_rejects_sampled_metric_without_confidence_contract) {
+    core::MultiwayQualityDiagnostics diagnostics;
+    diagnostics.method = core::MultiwayMetricMethod::SampledEstimate;
+    EXPECT_THROW(core::compute_multiway_nash_conv({1.0, 2.0}, {1.0, 2.0}, diagnostics), std::invalid_argument);
+    diagnostics.sample_count = 1;
+    diagnostics.standard_error = -1.0;
+    EXPECT_THROW(core::compute_multiway_nash_conv({1.0, 2.0}, {1.0, 2.0}, diagnostics), std::invalid_argument);
 }
 
 TEST_CASE(multiway_nash_conv_is_zero_for_a_no_improvement_profile) {
