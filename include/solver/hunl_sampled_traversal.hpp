@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <stdexcept>
 #include <vector>
 
 namespace core {
@@ -79,8 +80,23 @@ private:
     const HUNLSampledTerminalEvaluator& terminal_evaluator_;
 };
 
+class HUNLSampledTraversalPreparationRequired final : public std::runtime_error {
+public:
+    explicit HUNLSampledTraversalPreparationRequired(std::uint32_t node_id)
+        : std::runtime_error("sampled traversal requires coordinator preparation"), node_id_(node_id) {}
+    [[nodiscard]] std::uint32_t node_id() const noexcept { return node_id_; }
+private:
+    std::uint32_t node_id_ = 0;
+};
+
 void merge_hunl_sampled_worker_deltas(
     HUNLSampledStorage& storage,
     HUNLSampledWorkerScratch& scratch);
+
+void prepare_hunl_sampled_trajectory(
+    HUNLSampledBuilder& builder,
+    HUNLSampledStorage& storage,
+    const HUNLSampledTerminalEvaluator& terminal_evaluator,
+    const HUNLSampledTraversalRequest& request);
 
 }  // namespace core

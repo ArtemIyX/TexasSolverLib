@@ -115,8 +115,8 @@ void append_delta(
 }
 
 double traverse_external(
-    HUNLSampledBuilder& builder,
-    HUNLSampledStorage& storage,
+    const HUNLSampledBuilder& builder,
+    const HUNLSampledStorage& storage,
     const HUNLSampledTerminalEvaluator& terminal_evaluator,
     const HUNLSampledTraversalRequest& request,
     HUNLSampledWorkerScratch& scratch,
@@ -136,8 +136,10 @@ double traverse_external(
         return terminal_evaluator.evaluate_terminal(input, node.terminal_utility);
     }
 
-    builder.ensure_expanded(node_id);
-    const auto expanded = builder.node(node_id);
+    if (!node.expanded) {
+        throw HUNLSampledTraversalPreparationRequired(node_id);
+    }
+    const auto expanded = node;
     if (expanded.edge_count == 0) {
         throw std::logic_error("sampled non-terminal node has no edges");
     }
@@ -168,13 +170,9 @@ double traverse_external(
         throw std::logic_error("sampled decision node exceeds scalar action capacity");
     }
 
-    storage.ensure_row(HUNLSampledInfosetShape{
-        expanded.infoset_id,
-        expanded.player,
-        expanded.street,
-        request.bucket_count,
-        static_cast<std::uint8_t>(action_count),
-    });
+    if (!storage.has_row(expanded.infoset_id)) {
+        throw HUNLSampledTraversalPreparationRequired(node_id);
+    }
     const auto row = storage.view(expanded.infoset_id);
     std::array<float, kMaxDecisionActions> strategy = {};
     HUNLSampledStorage::compute_current_strategy(row, request.bucket, strategy.data());
@@ -287,6 +285,7 @@ HUNLSampledTraversal::HUNLSampledTraversal(
 HUNLSampledTraversalResult HUNLSampledTraversal::run(
     const HUNLSampledTraversalRequest& request,
     HUNLSampledWorkerScratch& scratch) {
+    prepare_hunl_sampled_trajectory(builder_, storage_, terminal_evaluator_, request);
     const auto result = run_unmerged(request, scratch);
     merge_deltas(storage_, scratch);
     return result;
@@ -337,6 +336,40 @@ void merge_hunl_sampled_worker_deltas(
         return lhs.action < rhs.action;
     });
     merge_deltas(storage, scratch);
+}
+
+void prepare_hunl_sampled_trajectory(
+    HUNLSampledBuilder& builder,
+    HUNLSampledStorage& storage,
+    const HUNLSampledTerminalEvaluator& terminal_evaluator,
+    const HUNLSampledTraversalRequest& request) {
+    HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    HUNLSampledWorkerScratch scratch;
+    scratch.reserve_deltas(request.delta_capacity_hint);
+    for (std::size_t attempts = 0; attempts < 1'000'000U; ++attempts) {
+        try {
+            (void)traversal.run_unmerged(request, scratch);
+            return;
+        } catch (const HUNLSampledTraversalPreparationRequired& needed) {
+            const auto& node = builder.node(needed.node_id());
+            if (!node.expanded) {
+                builder.ensure_expanded(needed.node_id());
+                continue;
+            }
+            if (node.type == HUNLFlatNodeType::Decision && !storage.has_row(node.infoset_id)) {
+                storage.ensure_row({
+                    node.infoset_id,
+                    node.player,
+                    node.street,
+                    request.bucket_count,
+                    static_cast<std::uint8_t>(node.edge_count),
+                });
+                continue;
+            }
+            throw;
+        }
+    }
+    throw std::runtime_error("sampled traversal coordinator preparation exceeded limit");
 }
 
 }  // namespace core

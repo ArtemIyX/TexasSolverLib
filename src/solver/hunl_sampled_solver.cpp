@@ -166,10 +166,12 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
         const auto bucket_count = static_cast<std::uint32_t>(std::max<std::uint64_t>(1U, infer_bucket_count(request, config_)));
         for (std::uint32_t batch = 0; batch < batches; ++batch) {
             for (std::uint32_t trajectory = 0; trajectory < config_.minibatch_size; ++trajectory) {
-                const auto result = traversal.run_unmerged({
+                const HUNLSampledTraversalRequest traversal_request{
                     static_cast<PlayerId>(trajectory & 1U), config_.seed,
                     static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory,
-                    batch + 1U, root_id, 0U, bucket_count, 4096U}, scratch);
+                    batch + 1U, root_id, 0U, bucket_count, 4096U};
+                prepare_hunl_sampled_trajectory(builder_, storage_, terminal_evaluator_, traversal_request);
+                const auto result = traversal.run_unmerged(traversal_request, scratch);
                 merge_hunl_sampled_worker_deltas(storage_, scratch);
                 profile_.record_traversal(1U, result.nodes_visited, result.infosets_updated);
             }

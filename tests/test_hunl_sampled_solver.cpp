@@ -911,12 +911,27 @@ TEST_CASE(hunl_sampled_unmerged_traversal_keeps_central_rows_unchanged_until_coo
     core::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.traversing_player = 0;
+    core::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
     (void)traversal.run_unmerged(request, scratch);
     const auto row = storage.view(builder.node(root_id).infoset_id);
     EXPECT_NEAR(row.regret[0], 0.0, TOL);
     EXPECT_TRUE(!scratch.deltas.empty());
     core::merge_hunl_sampled_worker_deltas(storage, scratch);
     EXPECT_TRUE(std::abs(storage.view(builder.node(root_id).infoset_id).regret[0]) > 0.0f);
+}
+
+TEST_CASE(hunl_sampled_unmerged_traversal_requires_coordinator_preparation) {
+    core::HUNLSampledBuilder builder({false});
+    const auto root_id = builder.initialize(make_sampled_facing_bet_state());
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    EXPECT_THROW(traversal.run_unmerged(request, scratch), core::HUNLSampledTraversalPreparationRequired);
+    core::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
+    EXPECT_TRUE(traversal.run_unmerged(request, scratch).nodes_visited > 0U);
 }
 
 TEST_CASE(hunl_sampled_coordinator_merge_orders_worker_deltas_deterministically) {
