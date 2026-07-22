@@ -45,6 +45,7 @@ using ::core::HUNLLeafEvaluationRequest;
 using ::core::HUNLLeafEvaluationResult;
 using ::core::HUNLLeafValueUnits;
 using ::core::HUNLSolveOutput;
+using ::core::HUNLStructuredRootRequest;
 using ::core::HUNLQualityMetric;
 using ::core::InfosetKey;
 using ::core::MultiwayAction;

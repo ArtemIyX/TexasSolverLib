@@ -6,6 +6,7 @@
 #include "solver/hunl_leaf_evaluator.hpp"
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -13,6 +14,16 @@ namespace core {
 
 enum class HUNLQualityMetric : std::uint8_t {
     PerPlayerExploitability,
+};
+
+struct HUNLStructuredRootRequest {
+    HUNLConfig config;
+    HUNLLeafValueUnits value_units = HUNLLeafValueUnits::Chips;
+    std::string blueprint_version;
+    std::string model_version;
+
+    [[nodiscard]] std::vector<HUNLJointRangeDeal> normalized_joint_range() const;
+    void validate() const;
 };
 
 struct HUNLSolveOutput {
@@ -57,6 +68,7 @@ HUNLSolveOutput solve_hunl_postflop(
     bool force_parallel = false);
 
 void validate_config(const HUNLConfig& config);
+void validate_structured_root_request(const HUNLStructuredRootRequest& request);
 
 }  // namespace core
 

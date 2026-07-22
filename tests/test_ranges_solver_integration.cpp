@@ -97,6 +97,18 @@ TEST_CASE(ranges_joint_normalization_rejects_fully_blocked_cross_ranges) {
     EXPECT_THROW(core::normalize_hunl_joint_range(config), std::invalid_argument);
 }
 
+TEST_CASE(ranges_structured_root_request_validates_versions_units_and_joint_reach) {
+    core::HUNLStructuredRootRequest request;
+    request.config = range_contract_config();
+    request.blueprint_version = "blueprint-v1";
+    request.model_version = "value-v1";
+    request.value_units = core::HUNLLeafValueUnits::BigBlinds;
+    request.validate();
+    EXPECT_NEAR(request.normalized_joint_range().front().weight, 1.0, 1e-12);
+    request.blueprint_version.clear();
+    EXPECT_THROW(request.validate(), std::invalid_argument);
+}
+
 TEST_CASE(ranges_uniform_policy_rejects_initial_ranges) {
     auto config = core::default_tiny_subgame();
     config.initial_ranges[0] = single_hand_range(core::card_to_int(2, 0), core::card_to_int(3, 1));

@@ -165,6 +165,27 @@ void validate_config(const HUNLConfig& config) {
     }
 }
 
+void HUNLStructuredRootRequest::validate() const {
+    config.validate();
+    const auto policy = resolve_range_policy(config);
+    if (policy != HUNLRangePolicy::UseInitialRanges && policy != HUNLRangePolicy::RequireExplicit) {
+        throw std::invalid_argument("HUNLStructuredRootRequest requires explicit initial ranges");
+    }
+    if (blueprint_version.empty()) {
+        throw std::invalid_argument("HUNLStructuredRootRequest requires a blueprint version");
+    }
+    (void)normalize_hunl_joint_range(config);
+}
+
+std::vector<HUNLJointRangeDeal> HUNLStructuredRootRequest::normalized_joint_range() const {
+    validate();
+    return normalize_hunl_joint_range(config);
+}
+
+void validate_structured_root_request(const HUNLStructuredRootRequest& request) {
+    request.validate();
+}
+
 HUNLSolveOutput solve_hunl_postflop(
     const HUNLConfig& config,
     std::uint32_t iterations,
