@@ -81,6 +81,6 @@ private:
 
 void merge_hunl_sampled_worker_deltas(
     HUNLSampledStorage& storage,
-    const HUNLSampledWorkerScratch& scratch);
+    HUNLSampledWorkerScratch& scratch);
 
 }  // namespace core

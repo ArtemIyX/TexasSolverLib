@@ -330,7 +330,12 @@ HUNLSampledTraversalResult HUNLSampledTraversal::run_unmerged(
 
 void merge_hunl_sampled_worker_deltas(
     HUNLSampledStorage& storage,
-    const HUNLSampledWorkerScratch& scratch) {
+    HUNLSampledWorkerScratch& scratch) {
+    std::sort(scratch.deltas.begin(), scratch.deltas.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.infoset_id.value != rhs.infoset_id.value) return lhs.infoset_id.value < rhs.infoset_id.value;
+        if (lhs.bucket != rhs.bucket) return lhs.bucket < rhs.bucket;
+        return lhs.action < rhs.action;
+    });
     merge_deltas(storage, scratch);
 }
 

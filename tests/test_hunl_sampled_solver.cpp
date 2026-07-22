@@ -919,6 +919,21 @@ TEST_CASE(hunl_sampled_unmerged_traversal_keeps_central_rows_unchanged_until_coo
     EXPECT_TRUE(std::abs(storage.view(builder.node(root_id).infoset_id).regret[0]) > 0.0f);
 }
 
+TEST_CASE(hunl_sampled_coordinator_merge_orders_worker_deltas_deterministically) {
+    core::HUNLSampledStorage storage;
+    storage.ensure_row({core::InfosetId{0}, 0, core::Street::River, 1, 2});
+    core::HUNLSampledWorkerScratch scratch;
+    scratch.deltas = {
+        {core::InfosetId{0}, 0, 1, 2.0, 3.0},
+        {core::InfosetId{0}, 0, 0, 1.0, 4.0},
+    };
+    core::merge_hunl_sampled_worker_deltas(storage, scratch);
+    EXPECT_EQ(scratch.deltas[0].action, 0U);
+    const auto row = storage.view(core::InfosetId{0});
+    EXPECT_NEAR(row.regret[0], 1.0, TOL);
+    EXPECT_NEAR(row.regret[1], 2.0, TOL);
+}
+
 TEST_CASE(hunl_sampled_external_traversal_samples_opponent_strategy_probabilities) {
     const auto root_state = make_sampled_facing_bet_state();
     core::HUNLSampledBuilder builder({false});
