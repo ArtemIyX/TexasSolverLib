@@ -13,6 +13,7 @@
 namespace core {
 
 struct AbstractionTables;
+struct HUNLConfig;
 inline constexpr std::size_t HUNL_MAX_HISTORY_CODES = 48;
 
 /**

@@ -1,4 +1,5 @@
 #include "solver/hunl_sampled_solver.hpp"
+#include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_traversal.hpp"
 #include "util/pcs.hpp"
 
