@@ -617,7 +617,7 @@ TEST_CASE(hunl_sampled_solver_preflight_records_strictly_decreasing_adaptive_est
     }
 }
 
-TEST_CASE(hunl_sampled_solver_preflight_reduces_depth_limit_hint_when_it_lowers_memory) {
+TEST_CASE(hunl_sampled_solver_preflight_rejects_when_worker_arena_exceeds_hard_limit) {
     core::HUNLSampledSolverConfig config;
     config.minibatch_size = 1;
     config.bucket_count_hint = 32;
@@ -632,7 +632,8 @@ TEST_CASE(hunl_sampled_solver_preflight_reduces_depth_limit_hint_when_it_lowers_
     const auto preflight = solver.preflight(request);
     EXPECT_TRUE(preflight.adjustments.reduced_depth_limit_hint);
     EXPECT_TRUE(preflight.effective_config.depth_limit_plies_hint < config.depth_limit_plies_hint);
-    EXPECT_TRUE(preflight.estimate.total_bytes() <= config.memory_fail_bytes);
+    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_fail_bytes);
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_saturates_overflowing_memory_estimates) {
