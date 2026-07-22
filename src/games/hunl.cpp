@@ -297,6 +297,38 @@ HUNLRangePolicy resolve_range_policy(const HUNLConfig& config) {
     return HUNLRangePolicy::Uniform;
 }
 
+std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(const HUNLConfig& config) {
+    config.validate();
+    const auto policy = resolve_range_policy(config);
+    if (policy != HUNLRangePolicy::UseInitialRanges && policy != HUNLRangePolicy::RequireExplicit) {
+        throw std::invalid_argument("normalize_hunl_joint_range requires explicit initial ranges");
+    }
+    const auto& first = config.initial_ranges[0]->hand_weights;
+    const auto& second = config.initial_ranges[1]->hand_weights;
+    if (first.empty() || second.empty()) {
+        throw std::invalid_argument("normalize_hunl_joint_range requires hand-weight ranges for both players");
+    }
+    std::vector<HUNLJointRangeDeal> deals;
+    deals.reserve(first.size() * second.size());
+    double total = 0.0;
+    for (const auto& hero : first) {
+        for (const auto& villain : second) {
+            const std::array<std::uint8_t, 4> cards = {
+                hero.hole[0], hero.hole[1], villain.hole[0], villain.hole[1]};
+            if (!are_valid_and_distinct_cards(cards.data(), cards.size())) continue;
+            const auto weight = hero.weight * villain.weight;
+            if (weight <= 0.0) continue;
+            deals.push_back({{hero.hole, villain.hole}, weight});
+            total += weight;
+        }
+    }
+    if (!std::isfinite(total) || total <= 0.0) {
+        throw std::invalid_argument("initial ranges have no blocker-compatible joint private deal");
+    }
+    for (auto& deal : deals) deal.weight /= total;
+    return deals;
+}
+
 std::size_t configured_bucket_count(const HUNLConfig& config, Street street) {
     switch (street) {
         case Street::Flop:

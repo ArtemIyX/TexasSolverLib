@@ -69,6 +69,34 @@ TEST_CASE(ranges_range_contract_rejects_fixed_private_cards) {
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
+TEST_CASE(ranges_joint_normalization_conditions_on_cross_player_blockers) {
+    auto config = range_contract_config();
+    const auto ace_spades = core::card_to_int(14, 3);
+    config.initial_ranges[0]->hand_weights.push_back(
+        {{{ace_spades, core::card_to_int(2, 0)}}, 3.0});
+    config.initial_ranges[1]->hand_weights.push_back(
+        {{{ace_spades, core::card_to_int(3, 0)}}, 9.0});
+    const auto deals = core::normalize_hunl_joint_range(config);
+    double total = 0.0;
+    for (const auto& deal : deals) {
+        total += deal.weight;
+        EXPECT_TRUE(core::are_valid_and_distinct_cards(deal.hole[0].data(), 2));
+        const std::array<std::uint8_t, 4> all = {
+            deal.hole[0][0], deal.hole[0][1], deal.hole[1][0], deal.hole[1][1]};
+        EXPECT_TRUE(core::are_valid_and_distinct_cards(all.data(), all.size()));
+    }
+    EXPECT_NEAR(total, 1.0, 1e-12);
+}
+
+TEST_CASE(ranges_joint_normalization_rejects_fully_blocked_cross_ranges) {
+    auto config = range_contract_config();
+    const auto first = core::card_to_int(11, 0);
+    const auto second = core::card_to_int(10, 0);
+    config.initial_ranges[0] = single_hand_range(first, second);
+    config.initial_ranges[1] = single_hand_range(second, first);
+    EXPECT_THROW(core::normalize_hunl_joint_range(config), std::invalid_argument);
+}
+
 TEST_CASE(ranges_uniform_policy_rejects_initial_ranges) {
     auto config = core::default_tiny_subgame();
     config.initial_ranges[0] = single_hand_range(core::card_to_int(2, 0), core::card_to_int(3, 1));

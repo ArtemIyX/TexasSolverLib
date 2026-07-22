@@ -55,6 +55,18 @@ struct HUNLRangeInput {
     std::vector<HUNLWeightedBucket> bucket_weights;
 };
 
+struct HUNLJointRangeDeal {
+    std::array<std::array<std::uint8_t, 2>, 2> hole = {};
+    double weight = 0.0;
+};
+
+// Joint root reach after board and cross-player blocker conditioning.  This
+// is intentionally explicit rather than a Cartesian product hidden inside a
+// solver backend; sampled traversal may consume it without materializing any
+// additional private-state tables.
+std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(
+    const HUNLConfig& config);
+
 std::optional<Street> street_from_u8(std::uint8_t value);
 const char* street_token(Street street);
 std::uint8_t cards_to_deal(Street street);
