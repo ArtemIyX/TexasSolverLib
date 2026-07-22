@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
@@ -522,8 +523,8 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
         throw std::invalid_argument("HUNLFlatInfosetTable Compressed16 precision is not implemented yet");
     }
 
-    std::uint32_t running_offset = 0;
-    std::uint32_t running_bucket_offset = 0;
+    std::size_t running_offset = 0;
+    std::size_t running_bucket_offset = 0;
     for (const auto& infoset : graph.infosets) {
         if (infoset.player < 0 || infoset.player > 1) {
             throw std::logic_error("flat infoset table requires player-owned infosets");
@@ -539,8 +540,11 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
         if (infoset.action_count == 0) {
             throw std::logic_error("HUNLFlatInfosetTable infoset action_count must be positive");
         }
-        const auto value_count =
-            static_cast<std::uint32_t>(bucket_count * static_cast<std::size_t>(infoset.action_count));
+        if (bucket_count > std::numeric_limits<std::size_t>::max() /
+            static_cast<std::size_t>(infoset.action_count)) {
+            throw std::length_error("HUNLFlatInfosetTable value count overflow");
+        }
+        const auto value_count = bucket_count * static_cast<std::size_t>(infoset.action_count);
         if (value_count == 0) {
             throw std::logic_error("HUNLFlatInfosetTable value_count must be positive");
         }
@@ -550,15 +554,19 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
             running_offset,
             value_count,
             running_bucket_offset,
-            static_cast<std::uint32_t>(bucket_count),
-            static_cast<std::uint32_t>(bucket_count),
+            bucket_count,
+            bucket_count,
             0,
             0,
             infoset.player,
             infoset.action_count,
         });
+        if (running_offset > std::numeric_limits<std::size_t>::max() - value_count ||
+            running_bucket_offset > std::numeric_limits<std::size_t>::max() - bucket_count) {
+            throw std::length_error("HUNLFlatInfosetTable offset overflow");
+        }
         running_offset += value_count;
-        running_bucket_offset += static_cast<std::uint32_t>(bucket_count);
+        running_bucket_offset += bucket_count;
     }
 
     if (precision == HUNLFlatStoragePrecision::Float64) {

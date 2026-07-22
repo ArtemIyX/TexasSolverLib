@@ -33,20 +33,20 @@ enum class HUNLFlatStoragePrecision : std::uint8_t {
 
 struct HUNLFlatInfosetTableMeta {
     InfosetId id{};
-    std::uint32_t offset = 0;
-    std::uint32_t value_count = 0;
-    std::uint32_t bucket_offset = 0;
-    std::uint32_t bucket_count = 0;
-    std::uint32_t hand_count = 0;
+    std::size_t offset = 0;
+    std::size_t value_count = 0;
+    std::size_t bucket_offset = 0;
+    std::size_t bucket_count = 0;
+    std::size_t hand_count = 0;
     std::uint32_t last_discount_iter = 0;
-    std::uint32_t reach_count = 0;
+    std::size_t reach_count = 0;
     PlayerId player = -1;
     std::uint8_t action_count = 0;
 };
 
 struct HUNLFlatRange {
-    std::uint32_t begin = 0;
-    std::uint32_t end = 0;
+    std::size_t begin = 0;
+    std::size_t end = 0;
 };
 
 struct HUNLFlatWorkerAssignment {

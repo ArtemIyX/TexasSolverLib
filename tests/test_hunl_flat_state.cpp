@@ -2,6 +2,7 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <limits>
 #include <memory>
 
 namespace {
@@ -74,6 +75,16 @@ TEST_CASE(hunl_flat_infoset_table_builds_contiguous_arenas_from_graph) {
     }
 
     EXPECT_EQ(table.total_value_count(), expected_total);
+}
+
+TEST_CASE(hunl_flat_infoset_table_rejects_value_offset_overflow_before_allocation) {
+    core::HUNLFlatSolveGraph graph;
+    graph.infosets.push_back(core::HUNLFlatInfoset{
+        core::InfosetId{0}, 0, 1, {}, 0, 0, core::Street::Flop, 255});
+    const auto overflowing_buckets = std::numeric_limits<std::size_t>::max() / 255U + 1U;
+    EXPECT_THROW(
+        core::HUNLFlatInfosetTable::build(graph, {overflowing_buckets, std::size_t{1}}),
+        std::length_error);
 }
 
 TEST_CASE(hunl_flat_infoset_table_exposes_rw_rows_for_all_three_arenas) {

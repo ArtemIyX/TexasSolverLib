@@ -11,6 +11,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <limits>
 
 namespace core {
 
@@ -84,8 +85,8 @@ std::vector<HUNLFlatInfosetTableMeta> build_infoset_meta(
     std::vector<HUNLFlatInfosetTableMeta> meta;
     meta.reserve(graph.infosets.size());
 
-    std::uint32_t value_offset = 0;
-    std::uint32_t bucket_offset = 0;
+    std::size_t value_offset = 0;
+    std::size_t bucket_offset = 0;
     for (const auto& infoset : graph.infosets) {
         HUNLFlatInfosetTableMeta row_meta;
         row_meta.id = infoset.id;
@@ -94,12 +95,20 @@ std::vector<HUNLFlatInfosetTableMeta> build_infoset_meta(
         row_meta.bucket_offset = bucket_offset;
         row_meta.bucket_count =
             infoset.player >= 0 && infoset.player < 2
-            ? static_cast<std::uint32_t>(bucket_count_per_player[infoset.player])
+            ? bucket_count_per_player[infoset.player]
             : 0U;
         row_meta.hand_count = row_meta.bucket_count;
         row_meta.reach_count = row_meta.bucket_count;
         row_meta.offset = value_offset;
-        row_meta.value_count = row_meta.bucket_count * static_cast<std::uint32_t>(row_meta.action_count);
+        if (row_meta.bucket_count != 0U &&
+            row_meta.bucket_count > std::numeric_limits<std::size_t>::max() / row_meta.action_count) {
+            throw std::length_error("HUNLFlatMCCFR infoset value count overflow");
+        }
+        row_meta.value_count = row_meta.bucket_count * static_cast<std::size_t>(row_meta.action_count);
+        if (value_offset > std::numeric_limits<std::size_t>::max() - row_meta.value_count ||
+            bucket_offset > std::numeric_limits<std::size_t>::max() - row_meta.bucket_count) {
+            throw std::length_error("HUNLFlatMCCFR infoset offset overflow");
+        }
         meta.push_back(row_meta);
         value_offset += row_meta.value_count;
         bucket_offset += row_meta.bucket_count;
