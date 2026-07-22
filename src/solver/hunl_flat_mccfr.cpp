@@ -269,7 +269,7 @@ void HUNLFlatMCCFR::run_iterations(std::uint32_t iterations) {
 std::uint64_t HUNLFlatMCCFR::run_batches(std::uint64_t batch_count) {
     std::uint64_t completed = 0;
     while (completed < batch_count) {
-        run_next_player_subbatch();
+        (void)run_next_player_subbatch();
         ++completed;
     }
     return completed;
@@ -284,7 +284,7 @@ HUNLFlatMCCFR::DeadlineSolveResult HUNLFlatMCCFR::run_until(
     bool started_any_batch = false;
 
     while (std::chrono::steady_clock::now() < deadline) {
-        run_next_player_subbatch();
+        (void)run_next_player_subbatch();
         started_any_batch = true;
         ++result.batches_completed;
 

@@ -162,7 +162,6 @@ double traverse_external(
             terminal_evaluator,
             request,
             scratch,
-            request.trajectory_id,
             rng,
             builder.edge(sampled_edge_id(expanded, edge_slot)).child,
             reach,
@@ -196,6 +195,7 @@ double traverse_external(
         for (std::size_t candidate = 0; candidate < action_count; ++candidate) {
             append_delta(
                 scratch,
+                request.trajectory_id,
                 expanded.infoset_id,
                 request.bucket,
                 candidate,
@@ -243,6 +243,7 @@ double traverse_external(
     for (std::size_t action = 0; action < action_count; ++action) {
         append_delta(
             scratch,
+            request.trajectory_id,
             expanded.infoset_id,
             request.bucket,
             action,
