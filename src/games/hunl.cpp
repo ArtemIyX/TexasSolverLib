@@ -306,7 +306,7 @@ std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(const HUNLConfig& con
     constexpr std::size_t kEncodedCardDomain = 64U;
     std::array<double, kEncodedCardDomain * kEncodedCardDomain> first_weights = {};
     std::array<double, kEncodedCardDomain * kEncodedCardDomain> second_weights = {};
-    const auto canonical_index = [](const std::array<std::uint8_t, 2>& hole) {
+    const auto canonical_index = [kEncodedCardDomain](const std::array<std::uint8_t, 2>& hole) {
         const auto low = std::min(hole[0], hole[1]);
         const auto high = std::max(hole[0], hole[1]);
         return static_cast<std::size_t>(low) * kEncodedCardDomain + high;
