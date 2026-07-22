@@ -412,9 +412,7 @@ std::uint64_t HUNLSampledSolver::estimate_terminal_cache_bytes(
     const HUNLSampledSolveRequest& request,
     const HUNLSampledSolverConfig& config) noexcept {
     const auto depth_factor = saturating_add(1ULL, static_cast<std::uint64_t>(config.depth_limit_plies_hint));
-    const auto public_states = config.max_cached_public_states > 0
-        ? static_cast<std::uint64_t>(config.max_cached_public_states)
-        : std::max<std::uint64_t>(1ULL, static_cast<std::uint64_t>(config.minibatch_size));
+    const auto public_states = static_cast<std::uint64_t>(effective_public_state_cap(config));
     const auto action_factor = std::max<std::uint64_t>(1U, infer_root_action_count(request));
     return saturating_multiply(
         saturating_multiply(saturating_multiply(public_states, action_factor), depth_factor),
