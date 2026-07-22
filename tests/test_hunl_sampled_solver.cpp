@@ -789,7 +789,7 @@ void expect_sampled_positive_work_completes_bounded_batch() {
     core::HUNLSampledSolverConfig config;
     config.seed = 0xC0FFEEU;
     // This is a behavioral regression test, not a throughput benchmark.
-    // One deterministic trajectory exercises both run_batches and solve_for.
+    // One deterministic trajectory exercises run_batches; timed solving must fail closed.
     config.minibatch_size = 1;
     config.max_cached_public_states = 128;
     core::HUNLSampledSolver solver(config);

@@ -2,19 +2,17 @@
 
 Date: 2026-07-22
 
-Reviewed revision: `6a48334`
+Initial review revision: `6a48334`
+
+Remediation commits: `265ee6d` through `beeed34` (2026-07-22)
 
 ## Executive verdict
 
-The repository is **not yet ready to begin an integrated production multiway solver**. The previous fixes improved the standalone multiway helpers and the sampled heads-up scaffolding, but this follow-up found new correctness defects in the newly exposed structured-range path and in multiway betting progression.
+All findings in this review have been fixed or intentionally made fail-closed. The repository is now safe to begin the next **isolated integration phase** for multiway solving; it is not yet a production-ready multiway solver.
 
-The highest-risk issue is that a structured range solve builds its public graph and infoset identities from the first joint private deal, sends every sampled deal through bucket zero, and substitutes the sampled cards only at terminal evaluation. This cannot learn blocker- or hand-dependent strategy. On flop and turn roots it also samples future boards using the first deal's blockers, so a trajectory can select a public card held by its own sampled private deal.
+The unsafe structured-range path and positive timed sampled-solve entry point now reject requests rather than returning a misleading policy. Reused sampled solvers have an explicit fresh-run contract. The multiway state, private-range, settlement, and CFR helper defects identified below have regression coverage.
 
-The second major issue is solver-session state. Every `run_batches()` call rebuilds public-state IDs from zero but retains the old regret/strategy storage and restarts iteration and trajectory IDs. Reusing a solver can therefore replay identical trajectories or attach an old row to a different infoset with the same numeric ID.
-
-There are also concrete multiway state-machine defects: a covering stack receives meaningless betting actions after all opponents are all-in, all-in raises can be represented twice, and snapshots can validate while remaining stuck or granting inconsistent action rights.
-
-Positive multiway implementation should wait until the P0 and P1 findings below are fixed or the affected public APIs fail closed.
+The remaining work is functional capability rather than a known silent-correctness defect: private-state-aware range traversal/export, a complete live heads-up snapshot, a resumable timed sampled-solver session, and an integrated multiway traversal/storage/export/evaluation pipeline.
 
 ## Scope and method
 
@@ -327,15 +325,13 @@ Required fix:
 
 Perform joint feasibility and acceptance preflight during compilation. Prefer sequential conditional sampling with precomputed compatibility mass, or return a non-throwing status that the coordinator handles before committing a batch.
 
-## Missing regression gates exposed by this review
+## Regression gates added by this remediation
 
-Before integrated multiway traversal begins, add tests for:
+The following cases are now covered by focused regression tests:
 
-- structured range policies separated by private combo/bucket;
-- blocker-conditioned turn/river chance distributions;
-- fresh-session isolation and exact continuation cursor equivalence;
-- balanced per-seat traversal and regret-update counts for minibatches 1, 3, and 5;
-- rejection of unsupported sampled modes/config fields;
+- rejection of positive structured-range sampled requests before they can alias private state;
+- fresh sampled-run isolation, final profile accounting, and balanced batch-global traverser selection;
+- rejection of positive timed sampled solves and removal of unsupported sampled controls;
 - one covering stack after all opponents are all-in, with chance-only runout;
 - no duplicate physical targets across bet, raise, and all-in actions;
 - snapshot rejection for `current_player == -1` with pending work and for inconsistent raise rights;
@@ -344,16 +340,16 @@ Before integrated multiway traversal begins, add tests for:
 - transactional rejection of non-finite importance-weighted deltas;
 - deterministic rejection or successful sampling of very low-acceptance joint ranges.
 
+The still-future structured private-state and resumable-session designs require their own statistical and cursor-equivalence tests when implemented; they cannot be meaningfully tested while their public APIs fail closed.
+
 ## Recommended repair order
 
-1. Fail closed the current positive structured-range sampled path, or implement correct per-private-state chance, bucket, and infoset propagation.
-2. Introduce explicit sampled solve sessions with root identity and a resumable global work cursor.
+1. Implement private-state-aware structured range traversal, blocker-conditioned public chance, and an explicit per-combo/per-bucket root export contract.
+2. Add an explicit sampled solve session with root identity, a monotonic work cursor, and real deadline/cancellation accounting; only then re-enable positive timed solving.
 3. Replace the heads-up structured root's scalar stack/config representation with a complete validated live-state snapshot.
-4. Make the timed API real and restrict sampled configuration to implemented semantics.
-5. Correct the four multiway betting-state defects and strengthen snapshot invariants.
-6. Lock these contracts down with exhaustive two- and three-player toy games before connecting multiway traversal/storage.
-7. Then integrate multiway private sampling, chance, side pots, CFR deltas, deterministic scheduling, typed per-seat export, and quality evaluation.
+4. Lock the multiway state/private/CFR helper contracts down with exhaustive two- and three-player toy-game tests before connecting traversal and storage.
+5. Integrate multiway private sampling, chance, side pots, CFR deltas, deterministic scheduling, typed per-seat export, and quality evaluation.
 
 ## Go/no-go conclusion
 
-**No-go for integrated production multiway solving at revision `6a48334`.** The standalone components remain useful reference helpers, but the current structured-range solver can solve the wrong private/public probability model, solver reuse is not state-safe, and the multiway betting layer admits incorrect trees. These are implementation blockers, not merely missing optimizations or diagnostics.
+**Go for the next isolated multiway integration phase; no-go for production multiway solving.** The defects found at `6a48334` no longer have a silent public path: completed helper functionality is regression-covered, and incomplete structured-range/timed-solve capabilities fail closed. Production readiness still depends on implementing the explicit remaining interfaces listed above, then validating the integrated solver against small exhaustive oracles.
