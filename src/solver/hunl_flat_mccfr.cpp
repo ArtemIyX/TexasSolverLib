@@ -225,6 +225,12 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       node_action_baselines_(graph_.node_meta.size()),
       node_action_baseline_counts_(graph_.node_meta.size()) {
     validate_mccfr_config(config_);
+    if (std::any_of(graph_.node_meta.begin(), graph_.node_meta.end(), [](const auto& node) {
+            return node.type == HUNLFlatNodeType::DepthLimited;
+        })) {
+        throw std::invalid_argument(
+            "HUNLFlatMCCFR rejects depth-limited graphs until a shared leaf evaluator is configured");
+    }
     if (!config_.use_sparse_storage || config_.keep_dense_validation_backend) {
         infoset_table_ = HUNLFlatInfosetTable::build(graph_, bucket_count_per_player, layout, precision);
     }

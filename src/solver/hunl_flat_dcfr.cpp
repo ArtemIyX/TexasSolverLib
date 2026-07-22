@@ -123,6 +123,10 @@ void validate_flat_solver_graph(const HUNLFlatSolveGraph& graph) {
                 throw std::invalid_argument("HUNLFlatDCFR decision node infoset id out of bounds");
             }
         }
+        if (meta.type == HUNLFlatNodeType::DepthLimited) {
+            throw std::invalid_argument(
+                "HUNLFlatDCFR rejects depth-limited graphs until a shared leaf evaluator is configured");
+        }
     }
 }
 

@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -1734,6 +1735,13 @@ TEST_CASE(hunl_flat_mccfr_worker_exception_is_rethrown_by_coordinator) {
     config.test_throw_worker_index = 1;
     core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2);
     EXPECT_THROW(solver.run_batches(1), std::runtime_error);
+}
+
+TEST_CASE(hunl_flat_mccfr_rejects_depth_limited_graphs_without_shared_leaf_evaluator) {
+    auto config = core::benchmark_turn_subgame();
+    config.depth_limit_plies = 1;
+    const auto graph = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
+    EXPECT_THROW(core::HUNLFlatMCCFR(graph, {1, 1}), std::invalid_argument);
 }
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_zero_budget_does_not_create_a_strategy_snapshot) {

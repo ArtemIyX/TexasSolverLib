@@ -694,57 +694,25 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_copies_terminal_values_into_node_values)
     EXPECT_TRUE(saw_terminal);
 }
 
-TEST_CASE(hunl_flat_dcfr_depth_limited_nodes_receive_deterministic_terminal_values) {
+TEST_CASE(hunl_flat_dcfr_rejects_depth_limited_graphs_without_shared_leaf_evaluator) {
     auto config = core::benchmark_turn_subgame();
     config.depth_limit_plies = 1;
     const auto graph = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
-    core::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
-
-    solver.run_iteration();
-
-    bool saw_depth_limited = false;
-    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
-        const auto& meta = graph.node_meta[node_idx];
-        if (meta.type != core::HUNLFlatNodeType::DepthLimited) {
-            continue;
-        }
-        saw_depth_limited = true;
-        EXPECT_TRUE(std::isfinite(solver.terminal_values()[node_idx]));
-        EXPECT_NEAR(solver.node_values()[node_idx], solver.terminal_values()[node_idx], 1e-12);
-    }
-
-    EXPECT_TRUE(saw_depth_limited);
+    EXPECT_THROW(
+        core::HUNLFlatDCFR(graph, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand),
+        std::invalid_argument);
 }
 
-TEST_CASE(hunl_flat_dcfr_depth_limited_terminal_stage_is_worker_count_independent) {
+TEST_CASE(hunl_flat_dcfr_depth_limited_rejection_is_worker_count_independent) {
     auto config = core::benchmark_turn_subgame();
     config.depth_limit_plies = 1;
     const auto graph_a = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
     const auto graph_b = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
 
-    core::HUNLFlatDCFR single_worker(
-        graph_a,
-        {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
-        1);
-    core::HUNLFlatDCFR multi_worker(
-        graph_b,
-        {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
-        2);
-
-    single_worker.run_iteration();
-    multi_worker.run_iteration();
-
-    for (std::size_t i = 0; i < graph_a.node_meta.size(); ++i) {
-        if (graph_a.node_meta[i].type == core::HUNLFlatNodeType::DepthLimited) {
-            EXPECT_NEAR(single_worker.terminal_values()[i], multi_worker.terminal_values()[i], 1e-12);
-            EXPECT_NEAR(single_worker.node_values()[i], multi_worker.node_values()[i], 1e-12);
-        }
-    }
+    EXPECT_THROW(core::HUNLFlatDCFR(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 1),
+                 std::invalid_argument);
+    EXPECT_THROW(core::HUNLFlatDCFR(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 2),
+                 std::invalid_argument);
 }
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children) {
