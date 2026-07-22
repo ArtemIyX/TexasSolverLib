@@ -18,6 +18,14 @@ enum class MultiwayAction : std::uint8_t {
     AllIn,
 };
 
+enum class MultiwayNextNodeKind : std::uint8_t {
+    BettingDecision,
+    StreetTransition,
+    BoardRunout,
+    FoldTerminal,
+    ShowdownTerminal,
+};
+
 struct MultiwayGameConfig {
     // Each entry is the seat's total stack before initial_contributions.
     // This module supports 2 through 6 seats.
@@ -73,9 +81,9 @@ public:
     Street street() const noexcept { return street_; }
 
     bool is_hand_over() const noexcept;
-    bool is_terminal() const noexcept { return is_hand_over(); }
-    // Betting is closed but a caller that models public cards must still run
-    // the board out before showdown settlement.
+    bool is_terminal() const noexcept;
+    [[nodiscard]] MultiwayNextNodeKind next_node_kind() const noexcept;
+    // Betting is closed but public cards must still run out before showdown.
     bool requires_board_runout() const noexcept;
     bool is_betting_round_complete() const noexcept;
     bool requires_street_transition() const noexcept;

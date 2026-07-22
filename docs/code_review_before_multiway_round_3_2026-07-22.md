@@ -240,6 +240,10 @@ Required fix:
 
 ### P1-2: multiway terminal/runout state is contradictory and arbitrary one-covering-stack roots still expose actions
 
+Status: Implemented 2026-07-22. State progression is now exposed through one
+`MultiwayNextNodeKind`; incomplete all-in runouts are chance-only rather than
+terminal, and initialization closes one-actionable-seat betting roots.
+
 Evidence:
 
 - `MultiwayState::is_terminal()` is an alias for `is_hand_over()` at

@@ -181,20 +181,32 @@ std::size_t MultiwayState::actionable_player_count() const noexcept {
 }
 
 bool MultiwayState::is_hand_over() const noexcept {
-    if (live_player_count() <= 1U) {
-        return true;
+    return live_player_count() <= 1U ||
+           (street_ == Street::River && current_player_ < 0);
+}
+
+bool MultiwayState::is_terminal() const noexcept {
+    const auto kind = next_node_kind();
+    return kind == MultiwayNextNodeKind::FoldTerminal ||
+           kind == MultiwayNextNodeKind::ShowdownTerminal;
+}
+
+MultiwayNextNodeKind MultiwayState::next_node_kind() const noexcept {
+    if (live_player_count() <= 1U) return MultiwayNextNodeKind::FoldTerminal;
+    if (current_player_ >= 0) return MultiwayNextNodeKind::BettingDecision;
+    if (actionable_player_count() <= 1U && street_ != Street::River) {
+        return MultiwayNextNodeKind::BoardRunout;
     }
-    if (current_player_ < 0 && actionable_player_count() <= 1U) return true;
-    return street_ == Street::River && current_player_ < 0;
+    if (street_ == Street::River) return MultiwayNextNodeKind::ShowdownTerminal;
+    return MultiwayNextNodeKind::StreetTransition;
 }
 
 bool MultiwayState::requires_board_runout() const noexcept {
-    return current_player_ < 0 && live_player_count() > 1U &&
-           actionable_player_count() <= 1U && street_ != Street::River;
+    return next_node_kind() == MultiwayNextNodeKind::BoardRunout;
 }
 
 bool MultiwayState::is_betting_round_complete() const noexcept {
-    return current_player_ < 0 && !is_hand_over();
+    return next_node_kind() == MultiwayNextNodeKind::StreetTransition;
 }
 
 bool MultiwayState::requires_street_transition() const noexcept {
@@ -218,7 +230,7 @@ void MultiwayState::select_next_player() {
 }
 
 void MultiwayState::refresh_round_completion() {
-    if (live_player_count() <= 1U || is_hand_over()) {
+    if (live_player_count() <= 1U || actionable_player_count() <= 1U) {
         current_player_ = -1;
         return;
     }
