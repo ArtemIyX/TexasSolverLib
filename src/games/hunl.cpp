@@ -299,12 +299,17 @@ HUNLRangePolicy resolve_range_policy(const HUNLConfig& config) {
 
 std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(const HUNLConfig& config) {
     validate_hunl_joint_range_feasibility(config);
-    std::array<double, 52U * 52U> first_weights = {};
-    std::array<double, 52U * 52U> second_weights = {};
+    // Card values are rank/suit encodings (2s == 8 through Ah == 59), not
+    // zero-based deck indices. Keep the fixed table in that encoded domain.
+    constexpr std::uint8_t kFirstEncodedCard = 8U;
+    constexpr std::uint8_t kPastLastEncodedCard = 60U;
+    constexpr std::size_t kEncodedCardDomain = 64U;
+    std::array<double, kEncodedCardDomain * kEncodedCardDomain> first_weights = {};
+    std::array<double, kEncodedCardDomain * kEncodedCardDomain> second_weights = {};
     const auto canonical_index = [](const std::array<std::uint8_t, 2>& hole) {
         const auto low = std::min(hole[0], hole[1]);
         const auto high = std::max(hole[0], hole[1]);
-        return static_cast<std::size_t>(low) * 52U + high;
+        return static_cast<std::size_t>(low) * kEncodedCardDomain + high;
     };
     for (const auto& hand : config.initial_ranges[0]->hand_weights) {
         if (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0) {
@@ -319,13 +324,13 @@ std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(const HUNLConfig& con
     std::vector<HUNLJointRangeDeal> deals;
     deals.reserve(1326U * 1326U);
     double total = 0.0;
-    for (std::uint8_t hero_low = 0; hero_low < 52U; ++hero_low) {
-        for (std::uint8_t hero_high = static_cast<std::uint8_t>(hero_low + 1U); hero_high < 52U; ++hero_high) {
+    for (std::uint8_t hero_low = kFirstEncodedCard; hero_low < kPastLastEncodedCard; ++hero_low) {
+        for (std::uint8_t hero_high = static_cast<std::uint8_t>(hero_low + 1U); hero_high < kPastLastEncodedCard; ++hero_high) {
             const std::array<std::uint8_t, 2> hero = {hero_low, hero_high};
             const auto hero_weight = first_weights[canonical_index(hero)];
             if (hero_weight <= 0.0) continue;
-            for (std::uint8_t villain_low = 0; villain_low < 52U; ++villain_low) {
-                for (std::uint8_t villain_high = static_cast<std::uint8_t>(villain_low + 1U); villain_high < 52U; ++villain_high) {
+            for (std::uint8_t villain_low = kFirstEncodedCard; villain_low < kPastLastEncodedCard; ++villain_low) {
+                for (std::uint8_t villain_high = static_cast<std::uint8_t>(villain_low + 1U); villain_high < kPastLastEncodedCard; ++villain_high) {
                     const std::array<std::uint8_t, 2> villain = {villain_low, villain_high};
                     const auto villain_weight = second_weights[canonical_index(villain)];
                     if (villain_weight <= 0.0) continue;
