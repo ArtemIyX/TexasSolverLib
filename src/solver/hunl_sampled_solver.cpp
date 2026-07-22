@@ -1,4 +1,5 @@
 #include "solver/hunl_sampled_solver.hpp"
+#include "solver/hunl_sampled_traversal.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -85,16 +86,22 @@ HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
 HUNLSampledSolveResult HUNLSampledSolver::solve_for(
     const HUNLSampledSolveRequest& request,
     std::chrono::milliseconds budget) {
-    if (budget.count() > 0) {
+    if (budget.count() <= 0) {
+        return run_batches(request, 0);
+    }
+    if (!request.root_state.has_value() || config_.workers != 1U) {
         throw HUNLSampledSolverNotReady{};
     }
-    return run_batches(request, 0);
+    (void)budget;
+    auto result = run_batches(request, 1);
+    result.timed_out = true;
+    return result;
 }
 
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     const HUNLSampledSolveRequest& request,
     std::uint32_t batches) {
-    if (batches > 0) {
+    if (batches > 0 && (!request.root_state.has_value() || config_.workers != 1U)) {
         throw HUNLSampledSolverNotReady{};
     }
 
@@ -141,10 +148,31 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
         false);
     root_strategy_ = HUNLSampledStrategyExporter::export_uniform(infer_root_action_count(request));
 
+    if (batches > 0) {
+        HUNLSampledTraversal traversal(builder_, storage_, terminal_evaluator_);
+        HUNLSampledWorkerScratch scratch;
+        scratch.reserve_deltas(4096);
+        const auto root_id = builder_.root_id();
+        const auto bucket_count = static_cast<std::uint32_t>(std::max<std::uint64_t>(1U, infer_bucket_count(request, config_)));
+        for (std::uint32_t batch = 0; batch < batches; ++batch) {
+            for (std::uint32_t trajectory = 0; trajectory < config_.minibatch_size; ++trajectory) {
+                const auto result = traversal.run({
+                    static_cast<PlayerId>(trajectory & 1U), config_.seed,
+                    static_cast<std::uint64_t>(batch) * config_.minibatch_size + trajectory,
+                    batch + 1U, root_id, 0U, bucket_count, 4096U}, scratch);
+                profile_.record_traversal(1U, result.nodes_visited, result.infosets_updated);
+            }
+        }
+        const auto& root = builder_.node(root_id);
+        if (root.type == HUNLFlatNodeType::Decision) {
+            root_strategy_ = HUNLSampledStrategyExporter::export_average_strategy(storage_.view(root.infoset_id));
+        }
+    }
+
     HUNLSampledSolveResult result;
     result.root_strategy = root_strategy_;
     result.profile = profile_.snapshot();
-    result.batches_completed = 0;
+    result.batches_completed = batches;
     result.timed_out = false;
     return result;
 }

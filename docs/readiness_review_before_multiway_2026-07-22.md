@@ -123,6 +123,18 @@ Regression gate:
 
 ### P0-3: the intended positive-work lazy/sparse solver is still unavailable
 
+Status: **single-worker scalar positive-work path implemented on 2026-07-22; multithreaded production integration remains blocked by P1-1.**
+
+Implemented change:
+
+- Positive `run_batches()` requests with a structured root state now execute deterministic scalar sampled traversals, update sparse storage, record traversal diagnostics, and export the root average strategy when the root is a decision node.
+- Positive `solve_for()` performs one bounded batch and returns a timed-out partial result. Requests without a structured root state, or with more than one worker, remain fail-closed until the concurrency-safe batch/merge design is complete.
+- The test suite now includes 64 mode/action-count/batch-budget cases covering positive work, sparse-state growth, profile updates, root export, and the remaining fail-closed boundaries.
+
+Remaining work:
+
+- Replace the single-worker bridge with scheduler-driven worker-local traversal deltas, deterministic merge, actual deadline minibatch scheduling, and runtime cache/memory enforcement before calling this production-ready.
+
 Evidence:
 
 - `HUNLSampledSolver::solve_for()` throws `HUNLSampledSolverNotReady` for every positive budget at `src/solver/hunl_sampled_solver.cpp:85-91`.

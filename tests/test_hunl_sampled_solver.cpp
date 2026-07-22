@@ -765,6 +765,71 @@ TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
     EXPECT_THROW(solver.run_batches(request, 0), std::runtime_error);
 }
 
+void expect_sampled_positive_work_request_is_fail_closed(
+    core::HUNLFlatSamplingMode mode,
+    std::uint8_t action_count,
+    std::uint32_t batch_count,
+    std::chrono::milliseconds budget) {
+    core::HUNLSampledSolverConfig config;
+    config.mode = mode;
+    config.seed = 0xC0FFEEU;
+    core::HUNLSampledSolver solver(config);
+    core::HUNLSampledSolveRequest request;
+    request.root_action_count = action_count;
+    request.root_state = make_sampled_facing_bet_state();
+
+    const auto initialized = solver.run_batches(request, 0);
+    const auto profile_before = solver.profile().snapshot();
+    const auto strategy_before = solver.export_root_strategy();
+    const auto memory_before = solver.memory_estimate();
+    const auto nodes_before = solver.builder().node_count();
+    const auto rows_before = solver.storage().row_count();
+
+    EXPECT_EQ(initialized.batches_completed, 0U);
+    const auto batch_result = solver.run_batches(request, batch_count);
+    const auto timed_result = solver.solve_for(request, budget);
+
+    const auto profile_after = solver.profile().snapshot();
+    const auto memory_after = solver.memory_estimate();
+    const auto strategy_after = solver.export_root_strategy();
+    EXPECT_EQ(batch_result.batches_completed, batch_count);
+    EXPECT_EQ(timed_result.batches_completed, 1U);
+    EXPECT_TRUE(timed_result.timed_out);
+    EXPECT_TRUE(profile_after.traversals >= profile_before.traversals + config.minibatch_size);
+    EXPECT_TRUE(solver.builder().node_count() >= nodes_before);
+    EXPECT_TRUE(solver.storage().row_count() >= rows_before);
+    EXPECT_TRUE(memory_after.total_bytes() >= memory_before.total_bytes());
+    EXPECT_TRUE(!strategy_after.actions.empty());
+}
+
+#define SAMPLED_FAIL_CLOSED_CASE(name, mode_value, action_count_value, batch_count_value, budget_value) \
+    TEST_CASE(name) { expect_sampled_positive_work_request_is_fail_closed(mode_value, action_count_value, batch_count_value, budget_value); }
+#define SAMPLED_FAIL_CLOSED_FAMILY(prefix, mode_value) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a1_b1_t1, mode_value, 1U, 1U, std::chrono::milliseconds{1}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a1_b2_t2, mode_value, 1U, 2U, std::chrono::milliseconds{2}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a1_b64_t100, mode_value, 1U, 64U, std::chrono::milliseconds{100}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a1_bmax_t15000, mode_value, 1U, std::numeric_limits<std::uint32_t>::max(), std::chrono::milliseconds{15'000}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a2_b1_t1, mode_value, 2U, 1U, std::chrono::milliseconds{1}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a2_b2_t2, mode_value, 2U, 2U, std::chrono::milliseconds{2}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a2_b64_t100, mode_value, 2U, 64U, std::chrono::milliseconds{100}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a2_bmax_t15000, mode_value, 2U, std::numeric_limits<std::uint32_t>::max(), std::chrono::milliseconds{15'000}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a3_b1_t1, mode_value, 3U, 1U, std::chrono::milliseconds{1}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a3_b2_t2, mode_value, 3U, 2U, std::chrono::milliseconds{2}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a3_b64_t100, mode_value, 3U, 64U, std::chrono::milliseconds{100}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a3_bmax_t15000, mode_value, 3U, std::numeric_limits<std::uint32_t>::max(), std::chrono::milliseconds{15'000}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a8_b1_t1, mode_value, 8U, 1U, std::chrono::milliseconds{1}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a8_b2_t2, mode_value, 8U, 2U, std::chrono::milliseconds{2}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a8_b64_t100, mode_value, 8U, 64U, std::chrono::milliseconds{100}) \
+    SAMPLED_FAIL_CLOSED_CASE(prefix##_a8_bmax_t15000, mode_value, 8U, std::numeric_limits<std::uint32_t>::max(), std::chrono::milliseconds{15'000})
+
+SAMPLED_FAIL_CLOSED_FAMILY(hunl_sampled_fail_closed_exact, core::HUNLFlatSamplingMode::Exact)
+SAMPLED_FAIL_CLOSED_FAMILY(hunl_sampled_fail_closed_public_chance, core::HUNLFlatSamplingMode::PublicChance)
+SAMPLED_FAIL_CLOSED_FAMILY(hunl_sampled_fail_closed_external, core::HUNLFlatSamplingMode::External)
+SAMPLED_FAIL_CLOSED_FAMILY(hunl_sampled_fail_closed_average_strategy, core::HUNLFlatSamplingMode::AverageStrategy)
+
+#undef SAMPLED_FAIL_CLOSED_FAMILY
+#undef SAMPLED_FAIL_CLOSED_CASE
+
 TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {
     core::HUNLSampledBuilder builder;
     const auto root_id = builder.initialize(make_lazy_root_state());
