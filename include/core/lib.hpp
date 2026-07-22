@@ -6,6 +6,7 @@
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_bucket_map.hpp"
 #include "solver/hunl_bucket_terminal.hpp"
+#include "solver/hunl_sampled_solver.hpp"
 #include "solver/multiway_cfr.hpp"
 #include "solver/dcfr_vector.hpp"
 #include "solver/dcfr_vector_parallel.hpp"
@@ -45,6 +46,8 @@ using ::core::HUNLLeafEvaluationRequest;
 using ::core::HUNLLeafEvaluationResult;
 using ::core::HUNLLeafValueUnits;
 using ::core::HUNLSolveOutput;
+using ::core::HUNLSampledSolveResult;
+using ::core::HUNLSampledSolverConfig;
 using ::core::HUNLStructuredRootRequest;
 using ::core::HUNLQualityMetric;
 using ::core::InfosetKey;
@@ -78,6 +81,20 @@ using ::core::Probability;
 using ::core::SolveOutput;
 using ::core::Value;
 using ::core::VectorSolveOutput;
+
+// Production-facing range/blueprint entry point. The fixed-hand
+// solve_hunl_postflop overload remains the exact small-game oracle; it does
+// not accept range roots.
+inline HUNLSampledSolveResult solve_hunl_postflop_sampled(
+    const HUNLStructuredRootRequest& root,
+    HUNLSampledSolverConfig config = {},
+    std::uint32_t batches = 1) {
+    root.validate();
+    HUNLSampledSolver solver(config);
+    HUNLSampledSolveRequest request;
+    request.structured_root = root;
+    return solver.run_batches(request, batches);
+}
 
 /**
  * @brief Solve Kuhn poker through the library facade.

@@ -1,5 +1,6 @@
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl_solver.hpp"
+#include "core/lib.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_sampled_solver.hpp"
 #include "test_harness.hpp"
@@ -121,11 +122,7 @@ TEST_CASE(ranges_structured_root_drives_sampled_public_solver_trajectories) {
     config.workers = 1;
     config.max_cached_public_states = 1024;
     config.seed = 0xB10EULL;
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
-    request.structured_root = root;
-
-    const auto result = solver.run_batches(request, 1);
+    const auto result = core::lib::solve_hunl_postflop_sampled(root, config, 1);
     EXPECT_EQ(result.batches_completed, 1U);
     EXPECT_EQ(result.profile.traversals, 1U);
     EXPECT_TRUE(!result.root_strategy.actions.empty());
