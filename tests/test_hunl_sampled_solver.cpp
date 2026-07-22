@@ -900,6 +900,25 @@ TEST_CASE(hunl_sampled_external_traversal_matches_hand_computed_river_update) {
     EXPECT_NEAR(row.strategy_sum[1], 0.5, TOL);
 }
 
+TEST_CASE(hunl_sampled_unmerged_traversal_keeps_central_rows_unchanged_until_coordinator_merge) {
+    const auto root_state = make_sampled_facing_bet_state();
+    core::HUNLSampledBuilder builder({false});
+    const auto root_id = builder.initialize(root_state);
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledTerminalEvaluator terminal_evaluator;
+    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    core::HUNLSampledWorkerScratch scratch;
+    core::HUNLSampledTraversalRequest request;
+    request.root_node_id = root_id;
+    request.traversing_player = 0;
+    (void)traversal.run_unmerged(request, scratch);
+    const auto row = storage.view(builder.node(root_id).infoset_id);
+    EXPECT_NEAR(row.regret[0], 0.0, TOL);
+    EXPECT_TRUE(!scratch.deltas.empty());
+    core::merge_hunl_sampled_worker_deltas(storage, scratch);
+    EXPECT_TRUE(std::abs(storage.view(builder.node(root_id).infoset_id).regret[0]) > 0.0f);
+}
+
 TEST_CASE(hunl_sampled_external_traversal_samples_opponent_strategy_probabilities) {
     const auto root_state = make_sampled_facing_bet_state();
     core::HUNLSampledBuilder builder({false});

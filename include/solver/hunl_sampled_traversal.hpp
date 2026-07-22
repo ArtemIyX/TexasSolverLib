@@ -66,11 +66,21 @@ public:
     [[nodiscard]] HUNLSampledTraversalResult run(
         const HUNLSampledTraversalRequest& request,
         HUNLSampledWorkerScratch& scratch);
+    // Worker-safe delta phase. The caller must prepare any mutable graph/row
+    // state before dispatch and merge through the coordinator after workers
+    // have completed in deterministic order.
+    [[nodiscard]] HUNLSampledTraversalResult run_unmerged(
+        const HUNLSampledTraversalRequest& request,
+        HUNLSampledWorkerScratch& scratch);
 
 private:
     HUNLSampledBuilder& builder_;
     HUNLSampledStorage& storage_;
     const HUNLSampledTerminalEvaluator& terminal_evaluator_;
 };
+
+void merge_hunl_sampled_worker_deltas(
+    HUNLSampledStorage& storage,
+    const HUNLSampledWorkerScratch& scratch);
 
 }  // namespace core

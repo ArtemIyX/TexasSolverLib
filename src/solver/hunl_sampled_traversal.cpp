@@ -287,6 +287,14 @@ HUNLSampledTraversal::HUNLSampledTraversal(
 HUNLSampledTraversalResult HUNLSampledTraversal::run(
     const HUNLSampledTraversalRequest& request,
     HUNLSampledWorkerScratch& scratch) {
+    const auto result = run_unmerged(request, scratch);
+    merge_deltas(storage_, scratch);
+    return result;
+}
+
+HUNLSampledTraversalResult HUNLSampledTraversal::run_unmerged(
+    const HUNLSampledTraversalRequest& request,
+    HUNLSampledWorkerScratch& scratch) {
     scratch.clear_keep_capacity();
     if (builder_.node_count() == 0 || request.root_node_id >= builder_.node_count()) {
         return {};
@@ -317,8 +325,13 @@ HUNLSampledTraversalResult HUNLSampledTraversal::run(
         request.root_node_id,
         TraversalReach{},
         result);
-    merge_deltas(storage_, scratch);
     return result;
+}
+
+void merge_hunl_sampled_worker_deltas(
+    HUNLSampledStorage& storage,
+    const HUNLSampledWorkerScratch& scratch) {
+    merge_deltas(storage, scratch);
 }
 
 }  // namespace core
