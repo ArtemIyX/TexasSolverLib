@@ -17,7 +17,7 @@ namespace {
 
 constexpr std::uint64_t kDefaultPublicStateBytes = 512ULL;
 constexpr std::uint64_t kDefaultTerminalCachePerStateBytes = 128ULL;
-constexpr std::uint64_t kWorkerDeltaBytesPerTraversal = 4096ULL;
+constexpr std::size_t kWorkerDeltaEntriesPerTraversal = 4096U;
 constexpr std::uint64_t kBuilderCacheNodeFloor = 1ULL;
 
 constexpr std::uint64_t kSaturatedMemoryEstimate = std::numeric_limits<std::uint64_t>::max();
@@ -101,6 +101,10 @@ std::size_t sample_joint_deal(const std::vector<HUNLJointRangeDeal>& deals, std:
 HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
     : std::logic_error(
           "HUNLSampledSolver positive work requires a structured root state") {
+}
+
+std::uint64_t delta_entries_bytes(std::uint64_t entries) noexcept {
+    return saturating_multiply(entries, sizeof(HUNLSampledValueDelta));
 }
 
 HUNLSampledStructuredRangeNotReady::HUNLSampledStructuredRangeNotReady()
@@ -228,9 +232,9 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
                 try {
                     auto& aggregate = worker_scratch[worker_index];
                     const auto range = worker_batches[worker_index].trajectories;
-                    aggregate.reserve_deltas(static_cast<std::size_t>(range.size()) * 4096U);
+                    aggregate.reserve_deltas(static_cast<std::size_t>(range.size()) * kWorkerDeltaEntriesPerTraversal);
                     HUNLSampledWorkerScratch trajectory_scratch;
-                    trajectory_scratch.reserve_deltas(4096U);
+                    trajectory_scratch.reserve_deltas(kWorkerDeltaEntriesPerTraversal);
                     for (std::uint64_t id = range.begin; id < range.end; ++id) {
                         const auto result = traversal.run_unmerged(
                             trajectory_requests[static_cast<std::size_t>(id)], trajectory_scratch);
@@ -387,6 +391,9 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::estimate_memory_for(
     estimate.terminal_cache_bytes = estimate_terminal_cache_bytes(request, config);
     estimate.worker_delta_bytes = estimate_worker_delta_bytes(request, config);
     estimate.export_bytes = estimate_export_bytes(request);
+    const auto retained = memory_estimate();
+    estimate.public_state_cache_bytes = std::max(estimate.public_state_cache_bytes, retained.public_state_cache_bytes);
+    estimate.infoset_row_bytes = std::max(estimate.infoset_row_bytes, retained.infoset_row_bytes);
     estimate.total_bytes_live = saturating_add(
         saturating_add(estimate.public_state_cache_bytes, estimate.infoset_row_bytes),
         saturating_add(
@@ -468,14 +475,15 @@ void HUNLSampledSolver::apply_adaptive_fallback(
 std::uint64_t HUNLSampledSolver::estimate_worker_delta_bytes(
     const HUNLSampledSolveRequest& request,
     const HUNLSampledSolverConfig& config) noexcept {
-    const auto action_count = std::max<std::uint64_t>(1U, infer_root_action_count(request));
-    const auto worker_factor = saturating_multiply(
-        saturating_size(std::max<std::size_t>(1U, config.workers)),
-        static_cast<std::uint64_t>(std::max<std::uint32_t>(1U, config.minibatch_size)));
-    return saturating_multiply(
-        worker_factor,
-        saturating_add(kWorkerDeltaBytesPerTraversal,
-                       saturating_multiply(action_count, sizeof(double) * 8ULL)));
+    const auto trajectories = std::max<std::uint64_t>(1U, static_cast<std::uint64_t>(config.minibatch_size));
+    const auto workers = std::min(
+        std::max<std::uint64_t>(1U, saturating_size(config.workers)), trajectories);
+    const auto largest_partition = (trajectories + workers - 1U) / workers;
+    const auto aggregate_entries = saturating_multiply(largest_partition, kWorkerDeltaEntriesPerTraversal);
+    const auto per_worker = saturating_add(
+        delta_entries_bytes(aggregate_entries + kWorkerDeltaEntriesPerTraversal),
+        saturating_add(sizeof(HUNLSampledWorkerScratch) * 2ULL, sizeof(std::thread)));
+    return saturating_multiply(workers, per_worker);
 }
 
 std::uint64_t HUNLSampledSolver::estimate_export_bytes(const HUNLSampledSolveRequest& request) noexcept {

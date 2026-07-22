@@ -65,6 +65,10 @@ with `AGENTS.md`. Findings are based on source inspection. Severity meanings:
 
 ### P0-1: sampled worker-delta memory is undercounted and the hard limit is not enforced against live capacity
 
+Status: Implemented 2026-07-22. Worker arenas are now specified in delta
+entries and converted with `sizeof(HUNLSampledValueDelta)`; preflight also
+accounts for retained builder/storage capacity from a reused solver.
+
 Evidence:
 
 - `kWorkerDeltaBytesPerTraversal` is set to `4096` at
