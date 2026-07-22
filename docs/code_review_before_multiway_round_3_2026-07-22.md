@@ -293,6 +293,10 @@ Regression gate:
 
 ### P1-3: zero-work sampled exports label every root action as fold
 
+Status: Implemented 2026-07-22. Root descriptors are now built from the legal
+root menu for both zero-work and expanded exports, so no valid action is used
+as a placeholder.
+
 Evidence:
 
 - A zero-batch request initializes the root but does not expand it; newly
