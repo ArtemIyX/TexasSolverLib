@@ -43,12 +43,14 @@ struct HUNLSampledTraversalResult {
 };
 
 struct HUNLSampledValueDelta {
-    std::uint64_t trajectory_id = 0;
     InfosetId infoset_id{};
     std::uint32_t bucket = 0;
     std::uint8_t action = 0;
     double regret = 0.0;
     double strategy_sum = 0.0;
+    // Kept last so existing aggregate initializers for the value cell remain
+    // source-compatible; omitted ordinals deterministically mean zero.
+    std::uint64_t trajectory_id = 0;
 };
 
 struct HUNLSampledWorkerScratch {

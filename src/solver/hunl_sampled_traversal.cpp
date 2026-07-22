@@ -107,12 +107,12 @@ void append_delta(
         throw std::runtime_error("HUNLSampledWorkerScratch delta capacity exhausted");
     }
     scratch.deltas.push_back(HUNLSampledValueDelta{
-        trajectory_id,
         infoset_id,
         bucket,
         static_cast<std::uint8_t>(action),
         regret,
         strategy_sum,
+        trajectory_id,
     });
 }
 
