@@ -67,6 +67,10 @@ struct HUNLFlatMCCFRConfig {
     bool keep_dense_validation_backend = false;
     HUNLFlatBaselineMode baseline_mode = HUNLFlatBaselineMode::None;
     bool use_iterative_external_dense_traversal = false;
+    // Regression-only fault injection. A non-negative worker index throws at
+    // the start of that worker's batch so thread exception propagation can be
+    // tested without corrupting a game graph.
+    std::int32_t test_throw_worker_index = -1;
 };
 
 struct HUNLSampledConfigValidation {

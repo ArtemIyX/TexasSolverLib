@@ -2246,6 +2246,9 @@ void HUNLFlatMCCFR::execute_worker_batch(
     PlayerId traversing_player,
     std::uint64_t trajectory_begin,
     HUNLSampledTrajectoryRange range) {
+    if (config_.test_throw_worker_index == static_cast<std::int32_t>(worker_index)) {
+        throw std::runtime_error("injected MCCFR worker batch failure");
+    }
     auto& scratch = worker_scratch_[worker_index];
     scratch.clear_keep_capacity();
     TraversalContext::TraverseImpl traverse_impl = &HUNLFlatMCCFR::traverse_exact;

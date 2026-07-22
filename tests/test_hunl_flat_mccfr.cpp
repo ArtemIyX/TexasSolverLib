@@ -1725,6 +1725,17 @@ TEST_CASE(hunl_flat_mccfr_root_export_contains_stable_action_descriptors) {
     EXPECT_EQ(root.actions[0].action_menu_id, root.actions[1].action_menu_id);
 }
 
+TEST_CASE(hunl_flat_mccfr_worker_exception_is_rethrown_by_coordinator) {
+    const auto graph = make_external_sampling_graph();
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = core::HUNLFlatSamplingMode::External;
+    config.traversals_per_iteration = 2;
+    config.batch_size = 1;
+    config.test_throw_worker_index = 1;
+    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+    EXPECT_THROW(solver.run_batches(1), std::runtime_error);
+}
+
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_zero_budget_does_not_create_a_strategy_snapshot) {
     const auto graph = make_external_sampling_graph();
     core::HUNLFlatMCCFRConfig config;
