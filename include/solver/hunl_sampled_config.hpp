@@ -39,6 +39,8 @@ struct HUNLSampledSolverConfig {
     std::size_t workers = 1;
     std::uint64_t memory_warning_bytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
     std::uint64_t memory_fail_bytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
+    // Regression-only worker failure injection for transactional session tests.
+    std::int32_t test_throw_worker_index = -1;
 };
 
 struct HUNLFlatMCCFRConfig {

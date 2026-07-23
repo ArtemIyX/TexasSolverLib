@@ -137,6 +137,22 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     const HUNLSampledSolveRequest& request,
     std::uint32_t batches) {
+    // Build an independent session and publish it only after every phase has
+    // completed. A rejected preflight, preparation failure, or worker failure
+    // therefore leaves this solver's last clean root export intact.
+    HUNLSampledSolver staged(config_);
+    const auto result = staged.run_batches_impl(request, batches);
+    config_ = std::move(staged.config_);
+    builder_ = std::move(staged.builder_);
+    storage_ = std::move(staged.storage_);
+    profile_ = std::move(staged.profile_);
+    root_strategy_ = std::move(staged.root_strategy_);
+    return result;
+}
+
+HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
+    const HUNLSampledSolveRequest& request,
+    std::uint32_t batches) {
     if (request.root_state.has_value() && request.structured_root.has_value()) {
         throw std::invalid_argument(
             "sampled solve request must choose either an explicit root or a structured range root");
@@ -229,6 +245,9 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
             threads.reserve(worker_batches.size() > 0U ? worker_batches.size() - 1U : 0U);
             const auto execute_worker = [&](std::size_t worker_index) {
                 try {
+                    if (config_.test_throw_worker_index == static_cast<std::int32_t>(worker_index)) {
+                        throw std::runtime_error("sampled solver regression worker failure");
+                    }
                     auto& aggregate = worker_scratch[worker_index];
                     const auto range = worker_batches[worker_index].trajectories;
                     aggregate.reserve_deltas(static_cast<std::size_t>(range.size()) * kWorkerDeltaEntriesPerTraversal);

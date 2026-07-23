@@ -397,6 +397,12 @@ Regression gate:
 
 ### P1-7: a failed fresh solve destroys the last clean sampled result
 
+Status: **Fixed in the follow-up commit.** Each replacement solve now builds
+in an independent staged solver and publishes state only after successful
+completion. Preflight, preparation, and worker exceptions therefore preserve
+the prior builder/storage/profile/root snapshot; the worker-failure regression
+checks 20 minibatch sizes against a preceding clean root export.
+
 Evidence:
 
 - `run_batches()` clears builder, storage, profile, and root export before

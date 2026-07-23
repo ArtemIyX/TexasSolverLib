@@ -120,6 +120,9 @@ private:
     [[nodiscard]] HUNLSampledMemoryPreflight build_preflight_result(
         const HUNLSampledSolveRequest& request,
         const HUNLSampledSolverConfig& config) const noexcept;
+    [[nodiscard]] HUNLSampledSolveResult run_batches_impl(
+        const HUNLSampledSolveRequest& request,
+        std::uint32_t batches);
     static void apply_adaptive_fallback(
         HUNLSampledSolverConfig& config,
         HUNLSampledAdaptiveAdjustments& adjustments) noexcept;

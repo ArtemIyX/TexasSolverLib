@@ -800,6 +800,31 @@ TEST_CASE(hunl_sampled_solver_rejects_positive_timed_fixed_hand_requests) {
     EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledTimedSolveNotReady);
 }
 
+TEST_CASE(hunl_sampled_solver_keeps_last_clean_snapshot_after_worker_failure) {
+    for (std::uint32_t minibatch : {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U,
+                                    11U, 12U, 13U, 14U, 15U, 16U, 17U, 18U, 19U, 20U}) {
+        core::HUNLSampledSolverConfig config;
+        config.minibatch_size = minibatch;
+        config.workers = 1;
+        config.test_throw_worker_index = 0;
+        core::HUNLSampledSolver solver(config);
+        core::HUNLSampledSolveRequest request;
+        request.root_state = make_sampled_facing_bet_state();
+        const auto clean = solver.run_batches(request, 0);
+        const auto strategy_before = solver.export_root_strategy();
+        const auto profile_before = solver.profile().snapshot();
+        EXPECT_THROW(solver.run_batches(request, 1), std::runtime_error);
+        EXPECT_EQ(solver.export_root_strategy().actions.size(), strategy_before.actions.size());
+        EXPECT_EQ(solver.profile().snapshot().traversals, profile_before.traversals);
+        for (std::size_t action = 0; action < strategy_before.actions.size(); ++action) {
+            EXPECT_EQ(solver.export_root_strategy().actions[action].action_id, strategy_before.actions[action].action_id);
+            EXPECT_NEAR(solver.export_root_strategy().actions[action].probability,
+                        strategy_before.actions[action].probability, TOL);
+        }
+        EXPECT_EQ(clean.batches_completed, 0U);
+    }
+}
+
 TEST_CASE(hunl_sampled_solver_reports_distinct_missing_root_and_timed_contracts) {
     for (std::uint32_t batches = 1; batches <= 20; ++batches) {
         core::HUNLSampledSolver solver;
