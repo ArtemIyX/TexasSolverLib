@@ -1,11 +1,55 @@
 #include "solver/hunl_sampled_builder.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
 
 namespace {
+
+constexpr std::uint64_t kContainerGrowthSafetyFactor = 2U;
+
+std::uint64_t saturating_add(std::uint64_t lhs, std::uint64_t rhs) noexcept {
+    return lhs > std::numeric_limits<std::uint64_t>::max() - rhs
+        ? std::numeric_limits<std::uint64_t>::max()
+        : lhs + rhs;
+}
+
+std::uint64_t saturating_multiply(std::uint64_t lhs, std::uint64_t rhs) noexcept {
+    if (lhs == 0U || rhs == 0U) return 0U;
+    return lhs > std::numeric_limits<std::uint64_t>::max() / rhs
+        ? std::numeric_limits<std::uint64_t>::max()
+        : lhs * rhs;
+}
+
+template <class T>
+std::uint64_t vector_growth_peak_bytes(
+    const std::vector<T>& values,
+    std::size_t required_size) noexcept {
+    if (required_size <= values.capacity()) return 0U;
+    return saturating_multiply(
+        saturating_multiply(static_cast<std::uint64_t>(required_size), sizeof(T)),
+        kContainerGrowthSafetyFactor);
+}
+
+template <class Map>
+std::uint64_t map_growth_peak_bytes(const Map& values, std::size_t required_size) noexcept {
+    const auto entry_bytes = saturating_multiply(
+        static_cast<std::uint64_t>(sizeof(typename Map::value_type) + sizeof(void*) * 2U),
+        kContainerGrowthSafetyFactor);
+    std::uint64_t bucket_bytes = 0U;
+    const auto threshold = static_cast<double>(values.bucket_count()) * values.max_load_factor();
+    if (static_cast<double>(required_size) > threshold) {
+        const auto required_buckets = static_cast<std::uint64_t>(std::ceil(
+            static_cast<double>(required_size) / values.max_load_factor()));
+        bucket_bytes = saturating_multiply(
+            saturating_multiply(required_buckets, sizeof(void*)),
+            kContainerGrowthSafetyFactor);
+    }
+    return saturating_add(entry_bytes, bucket_bytes);
+}
 
 template <class T>
 void hash_combine(std::size_t& seed, const T& value) noexcept {
@@ -90,12 +134,14 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
 
     if (current_snapshot.type == HUNLFlatNodeType::Chance) {
         const auto outcomes = state.chance_outcomes();
-        admit_growth(static_cast<std::uint64_t>(outcomes.size()) * sizeof(HUNLSampledEdge));
+        if (outcomes.size() > edges_.max_size() - edges_.size()) {
+            throw std::length_error("sampled chance edge capacity overflow");
+        }
+        reserve_edge_capacity(edges_.size() + outcomes.size());
         // Public-board suit symmetry alone is insufficient: fixed holes and
         // asymmetric ranges can change blockers, buckets, and reach. Until the
         // relative suit permutation is carried through private state, always
         // retain the complete chance expansion, even if the legacy flag is set.
-        edges_.reserve(edges_.size() + outcomes.size());
         for (const auto& outcome : outcomes) {
             const auto child = find_or_create(state.apply(outcome.action));
             edges_.push_back(HUNLSampledEdge{
@@ -115,8 +161,10 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
     }
 
     const auto actions = state.legal_actions();
-    admit_growth(static_cast<std::uint64_t>(actions.size()) * sizeof(HUNLSampledEdge));
-    edges_.reserve(edges_.size() + actions.size());
+    if (actions.size() > edges_.max_size() - edges_.size()) {
+        throw std::length_error("sampled decision edge capacity overflow");
+    }
+    reserve_edge_capacity(edges_.size() + actions.size());
     for (const auto action : actions) {
         const auto child = find_or_create(state.apply(action));
         edges_.push_back(HUNLSampledEdge{
@@ -179,6 +227,9 @@ HUNLSampledBuilderMemoryEstimate HUNLSampledBuilder::memory_estimate() const noe
         static_cast<std::uint64_t>(sizeof(std::string) + sizeof(InfosetId) + sizeof(void*) * 2U) +
         static_cast<std::uint64_t>(infoset_lookup_.bucket_count()) * sizeof(void*) +
         static_cast<std::uint64_t>(string_vector_bytes(infoset_keys_));
+    for (const auto& entry : infoset_lookup_) {
+        estimate.infoset_bytes += static_cast<std::uint64_t>(entry.first.capacity());
+    }
     estimate.state_cache_bytes = static_cast<std::uint64_t>(states_.capacity()) * sizeof(HUNLState);
     for (const auto& state : states_) {
         estimate.state_cache_bytes += estimate_state_bytes(state);
@@ -205,6 +256,23 @@ void HUNLSampledBuilder::admit_growth(std::uint64_t bytes) const {
     const auto current = memory_estimate().total_bytes();
     if (current > config_.memory_limit_bytes || bytes > config_.memory_limit_bytes - current) {
         throw std::runtime_error("sampled public-state growth would exceed the configured memory limit");
+    }
+}
+
+void HUNLSampledBuilder::reserve_edge_capacity(std::size_t required_size) {
+    if (required_size <= edges_.capacity()) return;
+    if (config_.memory_limit_bytes != 0U) {
+        const auto peak = saturating_add(
+            memory_estimate().total_bytes(),
+            vector_growth_peak_bytes(edges_, required_size));
+        if (peak > config_.memory_limit_bytes) {
+            throw std::runtime_error("sampled public-state edge growth would exceed the configured memory limit");
+        }
+    }
+    edges_.reserve(required_size);
+    if (config_.memory_limit_bytes != 0U &&
+        memory_estimate().total_bytes() > config_.memory_limit_bytes) {
+        throw std::runtime_error("sampled public-state edge capacity exceeded the configured memory limit");
     }
 }
 
@@ -281,8 +349,32 @@ std::uint32_t HUNLSampledBuilder::find_or_create(const HUNLState& state) {
     if (config_.max_cached_public_states > 0U && nodes_.size() >= config_.max_cached_public_states) {
         throw std::runtime_error("sampled public-state cache admission limit reached");
     }
-    admit_growth(static_cast<std::uint64_t>(sizeof(HUNLSampledNode) + sizeof(HUNLState)) +
-                 estimate_state_bytes(state));
+    if (nodes_.size() >= static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) ||
+        nodes_.size() == nodes_.max_size() || states_.size() == states_.max_size()) {
+        throw std::length_error("sampled public-state node id or capacity exhausted");
+    }
+    const auto required_nodes = nodes_.size() + 1U;
+    const auto required_states = states_.size() + 1U;
+    const auto required_lookup = node_lookup_.size() + 1U;
+    if (config_.memory_limit_bytes != 0U) {
+        auto peak = memory_estimate().total_bytes();
+        peak = saturating_add(peak, vector_growth_peak_bytes(nodes_, required_nodes));
+        peak = saturating_add(peak, vector_growth_peak_bytes(states_, required_states));
+        peak = saturating_add(peak, map_growth_peak_bytes(node_lookup_, required_lookup));
+        peak = saturating_add(
+            peak,
+            saturating_multiply(estimate_state_bytes(state), kContainerGrowthSafetyFactor));
+        if (peak > config_.memory_limit_bytes) {
+            throw std::runtime_error("sampled public-state growth would exceed the configured memory limit");
+        }
+    }
+    nodes_.reserve(required_nodes);
+    states_.reserve(required_states);
+    node_lookup_.reserve(required_lookup);
+    if (config_.memory_limit_bytes != 0U &&
+        memory_estimate().total_bytes() > config_.memory_limit_bytes) {
+        throw std::runtime_error("sampled public-state retained capacity exceeded the configured memory limit");
+    }
 
     const auto node_id = static_cast<std::uint32_t>(nodes_.size());
     HUNLSampledNode node;
@@ -292,6 +384,7 @@ std::uint32_t HUNLSampledBuilder::find_or_create(const HUNLState& state) {
     node.player = state.cur_player;
     node.street = state.street;
 
+    bool created_infoset = false;
     if (state.is_terminal()) {
         const auto utility = state.utility();
         node.terminal_utility = {
@@ -306,26 +399,87 @@ std::uint32_t HUNLSampledBuilder::find_or_create(const HUNLState& state) {
         node.type = HUNLFlatNodeType::Chance;
     } else {
         node.type = HUNLFlatNodeType::Decision;
-        node.infoset_id = find_or_create_infoset_id(state);
+        const auto infoset = find_or_create_infoset_id(state);
+        node.infoset_id = infoset.first;
+        created_infoset = infoset.second;
     }
 
-    nodes_.push_back(node);
-    states_.push_back(state);
-    node_lookup_.emplace(key, node_id);
+    try {
+        HUNLState state_copy = state;
+        nodes_.push_back(node);
+        states_.push_back(std::move(state_copy));
+        const auto inserted = node_lookup_.emplace(key, node_id);
+        if (!inserted.second) {
+            throw std::logic_error("sampled public-state duplicate node insertion");
+        }
+        if (config_.memory_limit_bytes != 0U &&
+            memory_estimate().total_bytes() > config_.memory_limit_bytes) {
+            throw std::runtime_error("sampled public-state node exceeded the configured retained-memory limit");
+        }
+    } catch (...) {
+        if (nodes_.size() > node_id) nodes_.resize(node_id);
+        if (states_.size() > node_id) states_.resize(node_id);
+        node_lookup_.erase(key);
+        if (created_infoset && !infoset_keys_.empty() &&
+            node.infoset_id.value + 1U == infoset_keys_.size()) {
+            infoset_lookup_.erase(infoset_keys_.back());
+            infoset_keys_.pop_back();
+        }
+        throw;
+    }
     return node_id;
 }
 
-InfosetId HUNLSampledBuilder::find_or_create_infoset_id(const HUNLState& state) {
+std::pair<InfosetId, bool> HUNLSampledBuilder::find_or_create_infoset_id(const HUNLState& state) {
     const auto key = state.infoset_key(static_cast<std::uint8_t>(state.cur_player));
     const auto it = infoset_lookup_.find(key);
     if (it != infoset_lookup_.end()) {
-        return it->second;
+        return {it->second, false};
+    }
+
+    if (infoset_keys_.size() >= static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) ||
+        infoset_keys_.size() == infoset_keys_.max_size()) {
+        throw std::length_error("sampled infoset id or capacity exhausted");
+    }
+    const auto required_keys = infoset_keys_.size() + 1U;
+    const auto required_lookup = infoset_lookup_.size() + 1U;
+    if (config_.memory_limit_bytes != 0U) {
+        auto peak = memory_estimate().total_bytes();
+        peak = saturating_add(peak, vector_growth_peak_bytes(infoset_keys_, required_keys));
+        peak = saturating_add(peak, map_growth_peak_bytes(infoset_lookup_, required_lookup));
+        peak = saturating_add(
+            peak,
+            saturating_multiply(
+                static_cast<std::uint64_t>(key.capacity()),
+                kContainerGrowthSafetyFactor * 2U));
+        if (peak > config_.memory_limit_bytes) {
+            throw std::runtime_error("sampled infoset growth would exceed the configured memory limit");
+        }
+    }
+    infoset_keys_.reserve(required_keys);
+    infoset_lookup_.reserve(required_lookup);
+    if (config_.memory_limit_bytes != 0U &&
+        memory_estimate().total_bytes() > config_.memory_limit_bytes) {
+        throw std::runtime_error("sampled infoset retained capacity exceeded the configured memory limit");
     }
 
     const auto id = InfosetId{static_cast<std::uint32_t>(infoset_keys_.size())};
-    infoset_keys_.push_back(key);
-    infoset_lookup_.emplace(infoset_keys_.back(), id);
-    return id;
+    try {
+        infoset_keys_.push_back(key);
+        const auto inserted = infoset_lookup_.emplace(infoset_keys_.back(), id);
+        if (!inserted.second) {
+            throw std::logic_error("sampled infoset duplicate insertion");
+        }
+        if (config_.memory_limit_bytes != 0U &&
+            memory_estimate().total_bytes() > config_.memory_limit_bytes) {
+            throw std::runtime_error("sampled infoset exceeded the configured retained-memory limit");
+        }
+    } catch (...) {
+        if (infoset_keys_.size() > id.value) infoset_keys_.resize(id.value);
+        infoset_lookup_.erase(key);
+        throw;
+    }
+    return {id, true};
 }
 
 std::uint64_t HUNLSampledBuilder::estimate_state_bytes(const HUNLState& state) noexcept {

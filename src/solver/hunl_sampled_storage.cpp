@@ -1,10 +1,57 @@
 #include "solver/hunl_sampled_storage.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 
 namespace core {
+
+namespace {
+
+constexpr std::uint64_t kContainerGrowthSafetyFactor = 2U;
+
+std::uint64_t saturating_add(std::uint64_t lhs, std::uint64_t rhs) noexcept {
+    return lhs > std::numeric_limits<std::uint64_t>::max() - rhs
+        ? std::numeric_limits<std::uint64_t>::max()
+        : lhs + rhs;
+}
+
+std::uint64_t saturating_multiply(std::uint64_t lhs, std::uint64_t rhs) noexcept {
+    if (lhs == 0U || rhs == 0U) return 0U;
+    return lhs > std::numeric_limits<std::uint64_t>::max() / rhs
+        ? std::numeric_limits<std::uint64_t>::max()
+        : lhs * rhs;
+}
+
+template <class T>
+std::uint64_t vector_growth_peak_bytes(
+    const std::vector<T>& values,
+    std::size_t required_size) noexcept {
+    if (required_size <= values.capacity()) return 0U;
+    return saturating_multiply(
+        saturating_multiply(static_cast<std::uint64_t>(required_size), sizeof(T)),
+        kContainerGrowthSafetyFactor);
+}
+
+template <class Map>
+std::uint64_t map_growth_peak_bytes(const Map& values, std::size_t required_size) noexcept {
+    const auto entry_bytes = saturating_multiply(
+        static_cast<std::uint64_t>(sizeof(typename Map::value_type) + sizeof(void*) * 2U),
+        kContainerGrowthSafetyFactor);
+    std::uint64_t bucket_bytes = 0U;
+    const auto threshold = static_cast<double>(values.bucket_count()) * values.max_load_factor();
+    if (static_cast<double>(required_size) > threshold) {
+        const auto required_buckets = static_cast<std::uint64_t>(std::ceil(
+            static_cast<double>(required_size) / values.max_load_factor()));
+        bucket_bytes = saturating_multiply(
+            saturating_multiply(required_buckets, sizeof(void*)),
+            kContainerGrowthSafetyFactor);
+    }
+    return saturating_add(entry_bytes, bucket_bytes);
+}
+
+}  // namespace
 
 HUNLSampledStorage::HUNLSampledStorage(
     HUNLFlatValueLayout layout,
@@ -44,22 +91,59 @@ HUNLSampledRowView HUNLSampledStorage::ensure_row(const HUNLSampledInfosetShape&
         strategy_sum_.size() > std::numeric_limits<std::size_t>::max() - value_count) {
         throw std::length_error("HUNLSampledStorage row offset overflow");
     }
+    const auto required_regret_size = regret_.size() + value_count;
+    const auto required_strategy_size = strategy_sum_.size() + value_count;
+    const auto required_meta_size = meta_.size() + 1U;
+    const auto required_lookup_size = row_lookup_.size() + 1U;
     if (memory_limit_bytes_ != 0U) {
         const auto current = memory_estimate().total_bytes();
-        const auto added = estimate_row_storage_bytes(shape);
-        if (current > memory_limit_bytes_ || added > memory_limit_bytes_ - current) {
+        auto peak = current;
+        peak = saturating_add(peak, vector_growth_peak_bytes(regret_, required_regret_size));
+        peak = saturating_add(peak, vector_growth_peak_bytes(strategy_sum_, required_strategy_size));
+        peak = saturating_add(peak, vector_growth_peak_bytes(meta_, required_meta_size));
+        peak = saturating_add(peak, map_growth_peak_bytes(row_lookup_, required_lookup_size));
+        peak = saturating_add(peak, estimate_row_storage_bytes(shape));
+        if (peak > memory_limit_bytes_) {
             throw std::runtime_error("sampled infoset row admission would exceed the configured memory limit");
         }
     }
     meta.regret_offset = regret_.size();
     meta.strategy_sum_offset = strategy_sum_.size();
 
-    regret_.resize(regret_.size() + value_count, 0.0f);
-    strategy_sum_.resize(strategy_sum_.size() + value_count, 0.0f);
+    // Capacity growth is completed before logical mutation. If a later
+    // reserve fails, the row remains absent and every existing row is intact.
+    regret_.reserve(required_regret_size);
+    strategy_sum_.reserve(required_strategy_size);
+    meta_.reserve(required_meta_size);
+    row_lookup_.reserve(required_lookup_size);
+    if (memory_limit_bytes_ != 0U &&
+        memory_estimate().total_bytes() > memory_limit_bytes_) {
+        throw std::runtime_error("sampled infoset retained capacity exceeded the configured memory limit");
+    }
 
+    const auto old_regret_size = regret_.size();
+    const auto old_strategy_size = strategy_sum_.size();
+    const auto old_meta_size = meta_.size();
     const auto row_index_value = meta_.size();
-    meta_.push_back(meta);
-    row_lookup_.emplace(shape.id, row_index_value);
+    try {
+        regret_.resize(required_regret_size, 0.0f);
+        strategy_sum_.resize(required_strategy_size, 0.0f);
+        meta_.push_back(meta);
+        const auto inserted = row_lookup_.emplace(shape.id, row_index_value);
+        if (!inserted.second) {
+            throw std::logic_error("HUNLSampledStorage duplicate row insertion");
+        }
+        if (memory_limit_bytes_ != 0U &&
+            memory_estimate().total_bytes() > memory_limit_bytes_) {
+            throw std::runtime_error("sampled infoset row exceeded the configured retained-memory limit");
+        }
+    } catch (...) {
+        regret_.resize(old_regret_size);
+        strategy_sum_.resize(old_strategy_size);
+        meta_.resize(old_meta_size);
+        row_lookup_.erase(shape.id);
+        throw;
+    }
     return view_mut(shape.id);
 }
 

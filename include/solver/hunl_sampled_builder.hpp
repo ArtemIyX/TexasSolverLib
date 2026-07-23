@@ -7,8 +7,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
+#include <limits>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace core {
@@ -93,7 +96,15 @@ struct HUNLSampledBuilderMemoryEstimate {
     std::uint64_t edges = 0;
 
     [[nodiscard]] std::uint64_t total_bytes() const noexcept {
-        return nodes_bytes + edges_bytes + state_cache_bytes + lookup_bytes + infoset_bytes;
+        std::uint64_t total = 0;
+        for (const auto value : {
+                 nodes_bytes, edges_bytes, state_cache_bytes, lookup_bytes, infoset_bytes}) {
+            if (value > std::numeric_limits<std::uint64_t>::max() - total) {
+                return std::numeric_limits<std::uint64_t>::max();
+            }
+            total += value;
+        }
+        return total;
     }
 };
 
@@ -122,9 +133,10 @@ public:
 
 private:
     [[nodiscard]] std::uint32_t find_or_create(const HUNLState& state);
-    [[nodiscard]] InfosetId find_or_create_infoset_id(const HUNLState& state);
+    [[nodiscard]] std::pair<InfosetId, bool> find_or_create_infoset_id(const HUNLState& state);
     [[nodiscard]] static std::uint64_t estimate_state_bytes(const HUNLState& state) noexcept;
     void admit_growth(std::uint64_t bytes) const;
+    void reserve_edge_capacity(std::size_t required_size);
 
     HUNLSampledBuilderConfig config_;
     std::uint32_t root_id_ = 0;

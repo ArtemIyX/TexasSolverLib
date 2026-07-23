@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <type_traits>
 #include <unordered_map>
@@ -86,7 +87,14 @@ struct HUNLSampledStorageMemoryEstimate {
     std::uint64_t sparse_values = 0;
 
     [[nodiscard]] std::uint64_t total_bytes() const noexcept {
-        return meta_bytes + lookup_bytes + regret_bytes + strategy_sum_bytes;
+        std::uint64_t total = 0;
+        for (const auto value : {meta_bytes, lookup_bytes, regret_bytes, strategy_sum_bytes}) {
+            if (value > std::numeric_limits<std::uint64_t>::max() - total) {
+                return std::numeric_limits<std::uint64_t>::max();
+            }
+            total += value;
+        }
+        return total;
     }
 };
 

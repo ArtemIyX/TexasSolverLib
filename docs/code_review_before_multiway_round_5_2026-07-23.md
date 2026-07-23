@@ -40,7 +40,15 @@ Severity meanings:
 
 ### P0-1: sampled memory admission charges logical growth, not allocation peaks
 
-Status: **Open.**
+Status: **Fixed in the P0 remediation commit; tests added but not executed.**
+
+The sampled builder and sparse storage now project vector-capacity
+replacement, map-entry/rehash, dynamic state/string, and logical row costs
+before allocation with a conservative growth factor. They reserve admitted
+capacity before logical mutation, verify retained capacity after allocation,
+saturate aggregate byte totals, and roll back partially inserted rows,
+nodes, and infosets. Edge arenas receive the same old-plus-new peak admission.
+Sixty new boundary scenarios supplement the prior 40 row/node limit cases.
 
 Evidence:
 

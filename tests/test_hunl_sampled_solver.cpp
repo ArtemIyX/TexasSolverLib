@@ -547,6 +547,44 @@ TEST_CASE(hunl_sampled_storage_rejects_row_growth_before_the_memory_limit) {
     }
 }
 
+TEST_CASE(hunl_sampled_storage_admits_capacity_peaks_before_twenty_row_growth_shapes) {
+    for (std::uint8_t actions = 1; actions <= 20; ++actions) {
+        core::HUNLSampledStorage storage;
+        auto first = storage.ensure_row({
+            core::InfosetId{0}, 0, core::Street::Flop, 3, actions});
+        first.regret[0] = static_cast<float>(actions);
+        const auto retained = storage.memory_estimate().total_bytes();
+        storage.set_memory_limit_bytes(retained);
+
+        EXPECT_THROW(
+            storage.ensure_row({
+                core::InfosetId{1}, 1, core::Street::Turn, 3, actions}),
+            std::runtime_error);
+        EXPECT_EQ(storage.row_count(), 1U);
+        EXPECT_EQ(storage.total_value_count(), static_cast<std::size_t>(actions) * 3U);
+        EXPECT_NEAR(storage.view(core::InfosetId{0}).regret[0], actions, TOL);
+        EXPECT_TRUE(!storage.has_row(core::InfosetId{1}));
+    }
+}
+
+TEST_CASE(hunl_sampled_storage_rejects_twenty_logical_only_row_budgets_transactionally) {
+    for (std::uint8_t actions = 1; actions <= 20; ++actions) {
+        core::HUNLSampledStorage storage;
+        storage.ensure_row({
+            core::InfosetId{0}, 0, core::Street::Flop, 2, actions});
+        const auto retained = storage.memory_estimate().total_bytes();
+        const core::HUNLSampledInfosetShape second{
+            core::InfosetId{1}, 1, core::Street::River, 2, actions};
+        storage.set_memory_limit_bytes(
+            retained + core::HUNLSampledStorage::estimate_row_storage_bytes(second));
+
+        EXPECT_THROW(storage.ensure_row(second), std::runtime_error);
+        EXPECT_EQ(storage.row_count(), 1U);
+        EXPECT_TRUE(storage.has_row(core::InfosetId{0}));
+        EXPECT_TRUE(!storage.has_row(core::InfosetId{1}));
+    }
+}
+
 TEST_CASE(hunl_sampled_builder_rejects_node_growth_before_the_memory_limit) {
     for (std::uint64_t limit = 1; limit <= 20; ++limit) {
         core::HUNLSampledBuilder builder;
@@ -843,6 +881,20 @@ TEST_CASE(hunl_sampled_solver_keeps_last_clean_snapshot_after_worker_failure) {
                         strategy_before.actions[action].probability, TOL);
         }
         EXPECT_EQ(clean.batches_completed, 0U);
+    }
+}
+
+TEST_CASE(hunl_sampled_builder_admits_twenty_edge_capacity_peaks_before_expansion) {
+    for (std::uint64_t slack = 0; slack < 20; ++slack) {
+        core::HUNLSampledBuilder builder;
+        const auto root = builder.initialize(make_sampled_facing_bet_state());
+        const auto retained = builder.memory_estimate().total_bytes();
+        builder.set_memory_limit_bytes(retained + slack);
+
+        EXPECT_THROW(builder.ensure_expanded(root), std::runtime_error);
+        EXPECT_EQ(builder.node_count(), 1U);
+        EXPECT_EQ(builder.edge_count(), 0U);
+        EXPECT_TRUE(!builder.node(root).expanded);
     }
 }
 
