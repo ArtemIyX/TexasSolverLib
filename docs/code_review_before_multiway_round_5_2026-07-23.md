@@ -441,8 +441,7 @@ boards, strings, and transactional-output cases.
 
 ### P1-10: `ChartRangeSource` maps poker labels by implementation hash
 
-Status: **Fixed in the chart-source fail-closed remediation commit; tests added
-but not executed.**
+Status: **Fixed in `c57e5f6`; tests added but not executed.**
 
 The implementation-defined hash mapping has been removed. `load()` now always
 fails with a directed error until an explicit label-to-combo/bucket mapping is
@@ -478,7 +477,15 @@ source rejects the unsupported contract without returning a range.
 
 ### P2-1: sampled sparse storage admits invalid row shapes
 
-Status: **Open.**
+Status: **Fixed in the sampled-row-contract remediation commit; tests added but
+not executed.**
+
+Storage construction now accepts only the two supported layouts and Float32.
+Every row is validated before lookup or allocation: player 0/1, a decision
+street, one to 14 actions, and one to one million buckets. Sampled config
+validation enforces the same layout/bucket ceiling. Twenty invalid layouts,
+more than 20 malformed shapes, and 20 valid player/street/size combinations
+are covered.
 
 Evidence:
 

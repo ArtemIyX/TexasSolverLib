@@ -158,6 +158,91 @@ TEST_CASE(hunl_sampled_storage_rejects_precision_that_views_cannot_represent) {
         std::invalid_argument);
 }
 
+TEST_CASE(hunl_sampled_storage_rejects_twenty_invalid_layout_values) {
+    for (std::uint8_t raw = 2U; raw < 22U; ++raw) {
+        const auto layout = static_cast<core::HUNLFlatValueLayout>(raw);
+        EXPECT_THROW(
+            core::HUNLSampledStorage(
+                layout,
+                core::HUNLFlatStoragePrecision::Float32),
+            std::invalid_argument);
+
+        core::HUNLSampledSolverConfig config;
+        config.layout = layout;
+        EXPECT_TRUE(!core::validate_sampled_config(config).ok);
+    }
+}
+
+TEST_CASE(hunl_sampled_storage_rejects_more_than_twenty_invalid_row_shapes) {
+    const core::HUNLSampledInfosetShape base{
+        core::InfosetId{71}, 0, core::Street::Flop, 2, 2};
+    std::vector<core::HUNLSampledInfosetShape> invalid;
+    for (int player = -10; player < 0; ++player) {
+        auto shape = base;
+        shape.player = player;
+        invalid.push_back(shape);
+    }
+    for (int player = 2; player < 12; ++player) {
+        auto shape = base;
+        shape.player = player;
+        invalid.push_back(shape);
+    }
+    for (std::uint8_t raw = 4U; raw < 9U; ++raw) {
+        auto shape = base;
+        shape.street = static_cast<core::Street>(raw);
+        invalid.push_back(shape);
+    }
+    {
+        auto shape = base;
+        shape.bucket_count = 0U;
+        invalid.push_back(shape);
+    }
+    {
+        auto shape = base;
+        shape.bucket_count = core::HUNL_SAMPLED_MAX_BUCKET_COUNT + 1U;
+        invalid.push_back(shape);
+    }
+    {
+        auto shape = base;
+        shape.action_count = 0U;
+        invalid.push_back(shape);
+    }
+    for (std::uint16_t actions =
+             static_cast<std::uint16_t>(core::HUNL_SAMPLED_MAX_ACTION_COUNT) + 1U;
+         actions <= static_cast<std::uint16_t>(
+             core::HUNL_SAMPLED_MAX_ACTION_COUNT) + 5U;
+         ++actions) {
+        auto shape = base;
+        shape.action_count = static_cast<std::uint8_t>(actions);
+        invalid.push_back(shape);
+    }
+
+    EXPECT_TRUE(invalid.size() > 20U);
+    for (const auto& shape : invalid) {
+        core::HUNLSampledStorage storage;
+        EXPECT_THROW(storage.ensure_row(shape), std::invalid_argument);
+        EXPECT_EQ(storage.row_count(), 0U);
+        EXPECT_EQ(storage.total_value_count(), 0U);
+    }
+}
+
+TEST_CASE(hunl_sampled_storage_accepts_twenty_valid_boundary_combinations) {
+    core::HUNLSampledStorage storage;
+    for (std::uint32_t index = 0; index < 20U; ++index) {
+        const auto street = static_cast<core::Street>(index % 4U);
+        const auto row = storage.ensure_row({
+            core::InfosetId{100U + index},
+            static_cast<core::PlayerId>(index % 2U),
+            street,
+            1U + index,
+            static_cast<std::uint8_t>(
+                1U + index % core::HUNL_SAMPLED_MAX_ACTION_COUNT),
+        });
+        EXPECT_TRUE(!row.empty());
+    }
+    EXPECT_EQ(storage.row_count(), 20U);
+}
+
 TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
     const core::HUNLFlatMCCFRConfig config;
 
@@ -537,7 +622,9 @@ TEST_CASE(hunl_sampled_fixed_deals_ignore_global_bucket_hints) {
 }
 
 TEST_CASE(hunl_sampled_storage_rejects_row_growth_before_the_memory_limit) {
-    for (std::uint8_t actions = 1; actions <= 20; ++actions) {
+    for (std::uint8_t actions = 1;
+         actions <= core::HUNL_SAMPLED_MAX_ACTION_COUNT;
+         ++actions) {
         core::HUNLSampledStorage storage;
         storage.set_memory_limit_bytes(1U);
         EXPECT_THROW(storage.ensure_row({core::InfosetId{actions}, 0, core::Street::Flop, 1, actions}),
@@ -548,33 +635,41 @@ TEST_CASE(hunl_sampled_storage_rejects_row_growth_before_the_memory_limit) {
 }
 
 TEST_CASE(hunl_sampled_storage_admits_capacity_peaks_before_twenty_row_growth_shapes) {
-    for (std::uint8_t actions = 1; actions <= 20; ++actions) {
+    for (std::uint32_t scenario = 1; scenario <= 20; ++scenario) {
+        const auto actions = static_cast<std::uint8_t>(
+            1U + (scenario - 1U) % core::HUNL_SAMPLED_MAX_ACTION_COUNT);
+        const auto buckets = scenario;
         core::HUNLSampledStorage storage;
         auto first = storage.ensure_row({
-            core::InfosetId{0}, 0, core::Street::Flop, 3, actions});
+            core::InfosetId{0}, 0, core::Street::Flop, buckets, actions});
         first.regret[0] = static_cast<float>(actions);
         const auto retained = storage.memory_estimate().total_bytes();
         storage.set_memory_limit_bytes(retained);
 
         EXPECT_THROW(
             storage.ensure_row({
-                core::InfosetId{1}, 1, core::Street::Turn, 3, actions}),
+                core::InfosetId{1}, 1, core::Street::Turn, buckets, actions}),
             std::runtime_error);
         EXPECT_EQ(storage.row_count(), 1U);
-        EXPECT_EQ(storage.total_value_count(), static_cast<std::size_t>(actions) * 3U);
+        EXPECT_EQ(
+            storage.total_value_count(),
+            static_cast<std::size_t>(actions) * buckets);
         EXPECT_NEAR(storage.view(core::InfosetId{0}).regret[0], actions, TOL);
         EXPECT_TRUE(!storage.has_row(core::InfosetId{1}));
     }
 }
 
 TEST_CASE(hunl_sampled_storage_rejects_twenty_logical_only_row_budgets_transactionally) {
-    for (std::uint8_t actions = 1; actions <= 20; ++actions) {
+    for (std::uint32_t scenario = 1; scenario <= 20; ++scenario) {
+        const auto actions = static_cast<std::uint8_t>(
+            1U + (scenario - 1U) % core::HUNL_SAMPLED_MAX_ACTION_COUNT);
+        const auto buckets = scenario;
         core::HUNLSampledStorage storage;
         storage.ensure_row({
-            core::InfosetId{0}, 0, core::Street::Flop, 2, actions});
+            core::InfosetId{0}, 0, core::Street::Flop, buckets, actions});
         const auto retained = storage.memory_estimate().total_bytes();
         const core::HUNLSampledInfosetShape second{
-            core::InfosetId{1}, 1, core::Street::River, 2, actions};
+            core::InfosetId{1}, 1, core::Street::River, buckets, actions};
         storage.set_memory_limit_bytes(
             retained + core::HUNLSampledStorage::estimate_row_storage_bytes(second));
 
@@ -721,7 +816,7 @@ TEST_CASE(hunl_sampled_solver_preflight_saturates_overflowing_memory_estimates) 
     config.max_cached_public_states = std::numeric_limits<std::uint32_t>::max();
     config.workers = std::numeric_limits<std::size_t>::max();
     config.minibatch_size = std::numeric_limits<std::uint32_t>::max();
-    config.bucket_count_hint = std::numeric_limits<std::size_t>::max();
+    config.bucket_count_hint = core::HUNL_SAMPLED_MAX_BUCKET_COUNT;
     config.depth_limit_plies_hint = 0;
     config.memory_fail_bytes = std::numeric_limits<std::uint64_t>::max() - 1U;
 

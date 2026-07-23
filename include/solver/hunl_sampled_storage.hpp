@@ -14,6 +14,10 @@
 
 namespace core {
 
+inline constexpr std::uint32_t HUNL_SAMPLED_MAX_BUCKET_COUNT = 1'000'000U;
+inline constexpr std::uint8_t HUNL_SAMPLED_MAX_ACTION_COUNT =
+    static_cast<std::uint8_t>(ACTION_ALL_IN + 1U);
+
 struct HUNLSampledInfosetShape {
     InfosetId id{};
     PlayerId player = -1;

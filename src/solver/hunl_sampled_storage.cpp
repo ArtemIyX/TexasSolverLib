@@ -24,6 +24,30 @@ std::uint64_t saturating_multiply(std::uint64_t lhs, std::uint64_t rhs) noexcept
         : lhs * rhs;
 }
 
+bool valid_sampled_layout(HUNLFlatValueLayout layout) noexcept {
+    return layout == HUNLFlatValueLayout::InfosetHandAction ||
+           layout == HUNLFlatValueLayout::InfosetActionHand;
+}
+
+bool valid_infoset_street(Street street) noexcept {
+    return street == Street::Preflop ||
+           street == Street::Flop ||
+           street == Street::Turn ||
+           street == Street::River;
+}
+
+void validate_row_shape(const HUNLSampledInfosetShape& shape) {
+    if (shape.player < 0 ||
+        shape.player > 1 ||
+        !valid_infoset_street(shape.street) ||
+        shape.bucket_count == 0U ||
+        shape.bucket_count > HUNL_SAMPLED_MAX_BUCKET_COUNT ||
+        shape.action_count == 0U ||
+        shape.action_count > HUNL_SAMPLED_MAX_ACTION_COUNT) {
+        throw std::invalid_argument("HUNLSampledStorage received an invalid row shape");
+    }
+}
+
 template <class T>
 std::uint64_t vector_growth_peak_bytes(
     const std::vector<T>& values,
@@ -57,12 +81,16 @@ HUNLSampledStorage::HUNLSampledStorage(
     HUNLFlatValueLayout layout,
     HUNLFlatStoragePrecision precision)
     : layout_(layout), precision_(precision) {
+    if (!valid_sampled_layout(layout)) {
+        throw std::invalid_argument("HUNLSampledStorage received an invalid value layout");
+    }
     if (precision != HUNLFlatStoragePrecision::Float32) {
         throw std::invalid_argument("HUNLSampledStorage currently supports Float32 precision only");
     }
 }
 
 HUNLSampledRowView HUNLSampledStorage::ensure_row(const HUNLSampledInfosetShape& shape) {
+    validate_row_shape(shape);
     const auto it = row_lookup_.find(shape.id);
     if (it != row_lookup_.end()) {
         const auto& existing = meta_.at(it->second);

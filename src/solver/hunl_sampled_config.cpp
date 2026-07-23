@@ -1,9 +1,14 @@
 #include "solver/hunl_sampled_config.hpp"
+#include "solver/hunl_sampled_storage.hpp"
 
 namespace core {
 
 HUNLSampledConfigValidation validate_sampled_config(
     const HUNLSampledSolverConfig& config) noexcept {
+    if (config.layout != HUNLFlatValueLayout::InfosetHandAction &&
+        config.layout != HUNLFlatValueLayout::InfosetActionHand) {
+        return {false, "sampled storage layout is invalid"};
+    }
     if (config.precision != HUNLFlatStoragePrecision::Float32) {
         return {false, "sampled storage currently supports Float32 precision only"};
     }
@@ -12,6 +17,9 @@ HUNLSampledConfigValidation validate_sampled_config(
     }
     if (config.workers == 0) {
         return {false, "workers must be positive"};
+    }
+    if (config.bucket_count_hint > HUNL_SAMPLED_MAX_BUCKET_COUNT) {
+        return {false, "bucket_count_hint exceeds the sampled row limit"};
     }
     if (config.depth_limit_plies_hint != 0U) {
         return {false, "sampled depth_limit_plies_hint requires an unavailable typed leaf evaluator"};
