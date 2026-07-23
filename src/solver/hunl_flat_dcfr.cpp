@@ -804,8 +804,11 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
         }
     };
     const auto mark_dirty_bucket = [&](std::size_t bucket_idx) {
+        if (bucket_idx > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::overflow_error("HUNLFlatDCFR bucket scratch index exceeds uint32_t");
+        }
         if (scratch.bucket_reach[bucket_idx] == 0.0) {
-            scratch.dirty_buckets.push_back(bucket_idx);
+            scratch.dirty_buckets.push_back(static_cast<std::uint32_t>(bucket_idx));
         }
     };
     for (std::size_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
@@ -959,8 +962,12 @@ void HUNLFlatDCFR::worker_showdown_equity_stage(std::size_t worker_index) {
             continue;
         }
         if (meta.type == HUNLFlatNodeType::TerminalShowdown) {
-            if (terminal_table_ && terminal_table_->has_showdown_matrix(node_idx)) {
-                terminal_values_[node_idx] = terminal_table_->expected_showdown_value(node_idx);
+            if (node_idx > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::overflow_error("HUNLFlatDCFR terminal node index exceeds uint32_t");
+            }
+            const auto terminal_node_idx = static_cast<std::uint32_t>(node_idx);
+            if (terminal_table_ && terminal_table_->has_showdown_matrix(terminal_node_idx)) {
+                terminal_values_[node_idx] = terminal_table_->expected_showdown_value(terminal_node_idx);
             } else {
                 terminal_values_[node_idx] = graph_.node_meta[node_idx].terminal_utility[0];
             }
