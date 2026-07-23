@@ -119,7 +119,7 @@ HUNLSampledStructuredRangeNotReady::HUNLSampledStructuredRangeNotReady()
 
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
     : config_(config),
-      builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism, effective_public_state_cap(config)}),
+      builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism, effective_public_state_cap(config), 0U}),
       storage_(make_sampled_storage(config)) {
     validate_sampled_config_or_throw(config_);
 }
@@ -195,6 +195,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
 
     config_ = preflight_result.effective_config;
     builder_.set_max_cached_public_states(effective_public_state_cap(config_));
+    builder_.set_memory_limit_bytes(config_.enable_memory_guardrails ? config_.memory_fail_bytes : 0U);
     storage_.set_memory_limit_bytes(config_.enable_memory_guardrails ? config_.memory_fail_bytes : 0U);
     if (effective_request.root_state.has_value()) {
         const auto initialized_root_id = builder_.initialize(*effective_request.root_state);

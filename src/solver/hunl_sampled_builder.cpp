@@ -90,6 +90,7 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
 
     if (current_snapshot.type == HUNLFlatNodeType::Chance) {
         const auto outcomes = state.chance_outcomes();
+        admit_growth(static_cast<std::uint64_t>(outcomes.size()) * sizeof(HUNLSampledEdge));
         // Public-board suit symmetry alone is insufficient: fixed holes and
         // asymmetric ranges can change blockers, buckets, and reach. Until the
         // relative suit permutation is carried through private state, always
@@ -114,6 +115,7 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
     }
 
     const auto actions = state.legal_actions();
+    admit_growth(static_cast<std::uint64_t>(actions.size()) * sizeof(HUNLSampledEdge));
     edges_.reserve(edges_.size() + actions.size());
     for (const auto action : actions) {
         const auto child = find_or_create(state.apply(action));
@@ -194,6 +196,18 @@ void HUNLSampledBuilder::set_max_cached_public_states(std::size_t maximum) noexc
     config_.max_cached_public_states = maximum;
 }
 
+void HUNLSampledBuilder::set_memory_limit_bytes(std::uint64_t limit) noexcept {
+    config_.memory_limit_bytes = limit;
+}
+
+void HUNLSampledBuilder::admit_growth(std::uint64_t bytes) const {
+    if (config_.memory_limit_bytes == 0U) return;
+    const auto current = memory_estimate().total_bytes();
+    if (current > config_.memory_limit_bytes || bytes > config_.memory_limit_bytes - current) {
+        throw std::runtime_error("sampled public-state growth would exceed the configured memory limit");
+    }
+}
+
 void HUNLSampledBuilder::clear() noexcept {
     root_id_ = 0;
     node_lookup_.clear();
@@ -267,6 +281,8 @@ std::uint32_t HUNLSampledBuilder::find_or_create(const HUNLState& state) {
     if (config_.max_cached_public_states > 0U && nodes_.size() >= config_.max_cached_public_states) {
         throw std::runtime_error("sampled public-state cache admission limit reached");
     }
+    admit_growth(static_cast<std::uint64_t>(sizeof(HUNLSampledNode) + sizeof(HUNLState)) +
+                 estimate_state_bytes(state));
 
     const auto node_id = static_cast<std::uint32_t>(nodes_.size());
     HUNLSampledNode node;

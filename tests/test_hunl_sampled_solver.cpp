@@ -547,6 +547,16 @@ TEST_CASE(hunl_sampled_storage_rejects_row_growth_before_the_memory_limit) {
     }
 }
 
+TEST_CASE(hunl_sampled_builder_rejects_node_growth_before_the_memory_limit) {
+    for (std::uint64_t limit = 1; limit <= 20; ++limit) {
+        core::HUNLSampledBuilder builder;
+        builder.set_memory_limit_bytes(limit);
+        EXPECT_THROW(builder.initialize(make_sampled_facing_bet_state()), std::runtime_error);
+        EXPECT_EQ(builder.node_count(), 0U);
+        EXPECT_EQ(builder.edge_count(), 0U);
+    }
+}
+
 TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
     core::HUNLSampledSolverConfig config;
     config.bucket_count_hint = 512;

@@ -18,6 +18,7 @@ struct HUNLSampledBuilderConfig {
     // private-state suit remapping is implemented.
     bool use_public_chance_isomorphism = false;
     std::size_t max_cached_public_states = 0;
+    std::uint64_t memory_limit_bytes = 0;
 };
 
 struct HUNLSampledStateKey {
@@ -114,6 +115,7 @@ public:
     [[nodiscard]] HUNLSampledBuilderMemoryEstimate memory_estimate() const noexcept;
     [[nodiscard]] const HUNLSampledBuilderConfig& config() const noexcept;
     void set_max_cached_public_states(std::size_t maximum) noexcept;
+    void set_memory_limit_bytes(std::uint64_t limit) noexcept;
     void clear() noexcept;
 
     [[nodiscard]] static HUNLSampledStateKey make_key(const HUNLState& state);
@@ -122,6 +124,7 @@ private:
     [[nodiscard]] std::uint32_t find_or_create(const HUNLState& state);
     [[nodiscard]] InfosetId find_or_create_infoset_id(const HUNLState& state);
     [[nodiscard]] static std::uint64_t estimate_state_bytes(const HUNLState& state) noexcept;
+    void admit_growth(std::uint64_t bytes) const;
 
     HUNLSampledBuilderConfig config_;
     std::uint32_t root_id_ = 0;
