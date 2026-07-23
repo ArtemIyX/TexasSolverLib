@@ -26,6 +26,18 @@ No build, test, benchmark, install, or solver command was run. The review was
 performed by reading the governing documentation, current source, tests,
 prior reviews, and remediation history.
 
+## Remediation outcome
+
+All 17 findings from this review now have dedicated remediation commits:
+one P0, ten P1, four P2, and two P3. Every finding has at least 20 explicit
+regression scenarios or static contract assertions, and the final pattern,
+status, commit-sequence, diff, and working-tree audits are clean.
+
+This closes the defects substantiated by this static review. It does not
+declare integrated multiway solving production-ready: the newly added tests
+were deliberately not built or executed, and multiway traversal/value
+semantics still require their own implementation and validation phase.
+
 Severity meanings:
 
 - **P0**: defeats an advertised hard resource boundary.
@@ -620,8 +632,7 @@ Regression plan: at least 20 zero/small trajectory and oversized-worker cases.
 
 ### P3-2: the installed CMake package does not discover its thread dependency
 
-Status: **Fixed in the installed-package dependency remediation commit; tests
-added but not executed.**
+Status: **Fixed in `4fb2428`; tests added but not executed.**
 
 The installed config now loads `CMakeFindDependencyMacro`, discovers Threads
 before importing `TexasSolverTargets.cmake`, and checks required components.
@@ -641,7 +652,7 @@ Regression plan:
 Add a static package-contract test with at least 20 required ordering/token
 checks; no configure/install command is run in this task.
 
-## Repair order
+## Completed repair order
 
 1. Close P0 memory admission and verify all coordinator growth is
    transactional by inspection.
@@ -652,6 +663,6 @@ checks; no configure/install command is run in this task.
 5. Close storage/numerical/iteration findings.
 6. Close scheduler and package robustness findings.
 
-For every finding, this report will be updated with the fixing commit,
+Every finding above records its fixing commit or paired remediation commit,
 implementation summary, regression scenario count, and the explicit note that
 tests were added but not executed.
