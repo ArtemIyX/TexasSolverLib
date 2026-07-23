@@ -87,7 +87,8 @@ private:
 };
 
 /**
- * @brief In-memory chart source.
+ * @brief Reserved chart source that fails closed until labels have an explicit
+ * combo or bucket mapping.
  */
 class ChartRangeSource final : public IRangeSource {
 public:

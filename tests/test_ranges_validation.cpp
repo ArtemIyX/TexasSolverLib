@@ -1,11 +1,13 @@
 #include "games/hunl.hpp"
 #include "ranges/propagation.hpp"
 #include "ranges/range.hpp"
+#include "ranges/source.hpp"
 #include "test_harness.hpp"
 
 #include <array>
 #include <cmath>
 #include <limits>
+#include <string>
 #include <vector>
 
 namespace {
@@ -129,6 +131,41 @@ TEST_CASE(ranges_identical_inputs_produce_identical_normalized_ranges) {
     for (std::size_t i = 0; i < lhs.weights.size(); ++i) {
         EXPECT_NEAR(lhs.weights[i], rhs.weights[i], 1e-12);
     }
+}
+
+TEST_CASE(ranges_chart_source_fails_closed_for_twenty_unmapped_labels) {
+    const std::vector<std::string> labels = {
+        "AA", "KK", "QQ", "JJ", "TT",
+        "AKs", "AQs", "AJs", "ATs", "KQs",
+        "AKo", "AQo", "AJo", "KQo", "76s",
+        "54s", "A5s", "22", "random", "",
+    };
+    for (std::size_t index = 0; index < labels.size(); ++index) {
+        const auto weight = index % 4U == 0U
+            ? 1.0
+            : (index % 4U == 1U
+                ? -1.0
+                : (index % 4U == 2U
+                    ? std::numeric_limits<double>::infinity()
+                    : std::numeric_limits<double>::quiet_NaN()));
+        const core::ChartRangeSource source(
+            {{labels[index], weight}},
+            1326,
+            core::RangeVector::Kind::Combo);
+        EXPECT_THROW(source.load(), std::logic_error);
+    }
+}
+
+TEST_CASE(ranges_chart_source_fails_closed_for_empty_and_duplicate_charts) {
+    const core::ChartRangeSource empty(
+        {}, 1326, core::RangeVector::Kind::Combo);
+    EXPECT_THROW(empty.load(), std::logic_error);
+
+    const core::ChartRangeSource duplicate(
+        {{"AA", 0.5}, {"AA", 0.5}},
+        1326,
+        core::RangeVector::Kind::Combo);
+    EXPECT_THROW(duplicate.load(), std::logic_error);
 }
 
 }  // namespace

@@ -57,25 +57,9 @@ ChartRangeSource::ChartRangeSource(
     : entries_(std::move(entries)), value_count_(value_count), kind_(kind) {}
 
 CanonicalRange ChartRangeSource::load() const {
-    RangeVector range;
-    range.kind = kind_;
-    range.weights.assign(value_count_, 0.0);
-
-    for (const auto& [label, weight] : entries_) {
-        (void)label;
-        if (!range.weights.empty()) {
-            const auto idx = static_cast<std::size_t>(
-                std::hash<std::string>{}(label) % range.weights.size());
-            range.weights[idx] += weight;
-        }
-    }
-
-    range.normalize();
-    CanonicalRange out;
-    out.range = std::move(range);
-    out.mask = make_full_mask(out.range.size(), out.range.kind);
-    out.source_kind = RangeSourceKind::PreflopChart;
-    return out;
+    throw std::logic_error(
+        "ChartRangeSource requires an explicit label-to-combo or "
+        "label-to-bucket mapping; use indexed canonical values or a range file");
 }
 
 CanonicalRange make_uniform_canonical_range(

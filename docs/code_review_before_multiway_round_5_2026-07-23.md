@@ -401,8 +401,7 @@ cases.
 
 ### P1-9: binary range/cache decoders trust unbounded lengths and partially mutate output
 
-Status: **Fixed in the bounded-decoder remediation commit; tests added but not
-executed.**
+Status: **Fixed in `29e4b76`; tests added but not executed.**
 
 Range files cap value counts, validate kind/probability/mask domains, and
 publish only a fully decoded temporary. Cache files cap strings at 1 MiB and
@@ -442,7 +441,14 @@ boards, strings, and transactional-output cases.
 
 ### P1-10: `ChartRangeSource` maps poker labels by implementation hash
 
-Status: **Open.**
+Status: **Fixed in the chart-source fail-closed remediation commit; tests added
+but not executed.**
+
+The implementation-defined hash mapping has been removed. `load()` now always
+fails with a directed error until an explicit label-to-combo/bucket mapping is
+part of the API; callers can use indexed canonical values or range files.
+Twenty representative labels with positive, negative, infinite, and NaN
+weights plus empty and duplicate charts are covered.
 
 Evidence:
 
