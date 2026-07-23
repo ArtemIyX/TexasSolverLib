@@ -77,6 +77,11 @@ void MultiwayBettingSnapshot::validate() const {
                 throw std::invalid_argument("MultiwayBettingSnapshot omits a player facing a wager");
             }
             if (pending[seat]) {
+                if (has_acted[seat] &&
+                    street_contributions[seat] == current_bet) {
+                    throw std::invalid_argument(
+                        "MultiwayBettingSnapshot repeats a fully matched acted player");
+                }
                 ++actionable_pending;
                 const auto expected_raise_right = !has_acted[seat] ||
                     current_bet - bet_faced_when_acted[seat] >= last_full_raise_size;

@@ -131,8 +131,7 @@ small testable attempt-range helper.
 
 ### P1-2: sampled merge results depend on worker count
 
-Status: **Fixed in the k-way merge remediation commit; tests added but not
-executed.**
+Status: **Fixed in `2c0dd9e`; tests added but not executed.**
 
 The coordinator now sorts each worker-local stream, performs a k-way merge in
 cell and global trajectory order, validates the entire batch, and narrows each
@@ -171,7 +170,14 @@ bit-identical central rows for one through many worker streams.
 
 ### P1-3: snapshots can give an already-acted, fully matched seat another turn
 
-Status: **Open.**
+Status: **Fixed in the snapshot-admission remediation commit; tests added but
+not executed.**
+
+Snapshot validation now rejects an actionable pending seat when that seat has
+already acted and its street contribution equals the current bet. Twenty
+two-through-six-player invalid roots cover different offending seats, and 20
+matching valid roots prove that acted players below the current bet remain
+admissible and retain their turn.
 
 Evidence:
 

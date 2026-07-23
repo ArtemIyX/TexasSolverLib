@@ -248,6 +248,69 @@ TEST_CASE(multiway_snapshot_rejects_every_omitted_unacted_responder) {
     }
 }
 
+TEST_CASE(multiway_snapshot_rejects_twenty_fully_matched_acted_pending_seats) {
+    for (std::size_t seats = 2; seats <= 6; ++seats) {
+        for (std::size_t variant = 0; variant < 4; ++variant) {
+            const auto offender = variant % seats;
+            auto snapshot = three_handed().snapshot();
+            snapshot.stacks.assign(seats, 1000);
+            snapshot.contributions.assign(seats, 100);
+            snapshot.street_contributions.assign(seats, 100);
+            snapshot.folded.assign(seats, false);
+            snapshot.all_in.assign(seats, false);
+            snapshot.may_raise.assign(seats, false);
+            snapshot.pending.assign(seats, false);
+            snapshot.has_acted.assign(seats, true);
+            snapshot.bet_faced_when_acted.assign(seats, 100);
+            snapshot.current_bet = 100;
+            snapshot.last_full_raise_size = 100;
+            snapshot.current_player = static_cast<core::PlayerId>(offender);
+            snapshot.pending[offender] = true;
+
+            EXPECT_THROW(
+                core::MultiwayState::from_snapshot(snapshot),
+                std::invalid_argument);
+        }
+    }
+}
+
+TEST_CASE(multiway_snapshot_accepts_twenty_acted_pending_seats_below_the_current_bet) {
+    for (std::size_t seats = 2; seats <= 6; ++seats) {
+        for (int faced : {0, 25, 50, 75}) {
+            const std::size_t responder = 0;
+            const std::size_t aggressor = 1;
+            auto snapshot = three_handed().snapshot();
+            snapshot.stacks.assign(seats, 1000);
+            snapshot.contributions.assign(seats, 0);
+            snapshot.street_contributions.assign(seats, 0);
+            snapshot.folded.assign(seats, false);
+            snapshot.all_in.assign(seats, false);
+            snapshot.may_raise.assign(seats, true);
+            snapshot.pending.assign(seats, true);
+            snapshot.has_acted.assign(seats, false);
+            snapshot.bet_faced_when_acted.assign(seats, 0);
+            snapshot.contributions[responder] = faced;
+            snapshot.street_contributions[responder] = faced;
+            snapshot.has_acted[responder] = true;
+            snapshot.bet_faced_when_acted[responder] = 0;
+            snapshot.contributions[aggressor] = 100;
+            snapshot.street_contributions[aggressor] = 100;
+            snapshot.has_acted[aggressor] = true;
+            snapshot.pending[aggressor] = false;
+            snapshot.may_raise[aggressor] = false;
+            snapshot.bet_faced_when_acted[aggressor] = 100;
+            snapshot.current_bet = 100;
+            snapshot.last_full_raise_size = 100;
+            snapshot.current_player = static_cast<core::PlayerId>(responder);
+            snapshot.last_aggressor = static_cast<core::PlayerId>(aggressor);
+
+            const auto restored = core::MultiwayState::from_snapshot(snapshot);
+            EXPECT_EQ(restored.current_player(), 0);
+            EXPECT_TRUE(restored.street_contributions()[responder] < restored.current_bet());
+        }
+    }
+}
+
 TEST_CASE(multiway_snapshot_rejects_chip_totals_outside_the_int_domain) {
     for (const int contribution : {std::numeric_limits<int>::max() - 19,
                                    std::numeric_limits<int>::max() - 1,
