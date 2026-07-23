@@ -674,7 +674,7 @@ void HUNLFlatDCFR::worker_strategy_stage(std::size_t worker_index) {
     const auto& metas = infoset_table_.meta();
     const auto range = parallel_plan_.workers[worker_index].infoset_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
+    for (std::size_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
         const auto& meta = metas[infoset_index];
         if (meta.value_count == 0 || meta.bucket_count == 0 || meta.action_count == 0) {
             throw std::logic_error("HUNLFlatDCFR strategy stage requires non-empty infoset rows");
@@ -803,12 +803,12 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
             scratch.dirty_nodes.push_back(local_offset);
         }
     };
-    const auto mark_dirty_bucket = [&](std::uint32_t bucket_idx) {
+    const auto mark_dirty_bucket = [&](std::size_t bucket_idx) {
         if (scratch.bucket_reach[bucket_idx] == 0.0) {
             scratch.dirty_buckets.push_back(bucket_idx);
         }
     };
-    for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
+    for (std::size_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
         const auto node_idx = graph_.depth_order[order_idx];
         const auto& meta = graph_.node_meta[node_idx];
         const auto reach0 = player0_reach_[node_idx];
@@ -851,7 +851,7 @@ void HUNLFlatDCFR::worker_reach_seed_depth(std::size_t worker_index, std::size_t
             const auto local_mass =
                 acting_reach * prior_bucket_weight(bucket_map(), infoset_meta, meta.infoset_id, bucket);
             scratch.local_bucket_mass[bucket] = local_mass;
-            mark_dirty_bucket(bucket_range.begin + static_cast<std::uint32_t>(bucket));
+            mark_dirty_bucket(bucket_range.begin + bucket);
             scratch.bucket_reach[bucket_range.begin + bucket] += local_mass;
         }
 
@@ -899,7 +899,7 @@ void HUNLFlatDCFR::worker_reach_reduce_nodes_depth(std::size_t worker_index, std
     const auto range = parallel_plan_.workers[worker_index].depth_reduce_ranges[depth];
     const auto next_slice = graph_.depth_slices[depth + 1];
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
+    for (std::size_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
         const auto node_idx = graph_.depth_order[order_idx];
         const auto local_offset = order_idx - next_slice.begin;
         double add0 = 0.0;
@@ -923,7 +923,7 @@ void HUNLFlatDCFR::worker_reach_reduce_nodes_depth(std::size_t worker_index, std
 void HUNLFlatDCFR::worker_reach_reduce_buckets_depth(std::size_t worker_index) {
     const auto range = parallel_plan_.workers[worker_index].bucket_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t bucket_offset = range.begin; bucket_offset < range.end; ++bucket_offset) {
+    for (std::size_t bucket_offset = range.begin; bucket_offset < range.end; ++bucket_offset) {
         double add_bucket = 0.0;
         for (const auto& scratch : worker_scratch_) {
             add_bucket += scratch.bucket_reach[bucket_offset];
@@ -952,7 +952,7 @@ void HUNLFlatDCFR::terminal_utility_stage() {
 void HUNLFlatDCFR::worker_showdown_equity_stage(std::size_t worker_index) {
     const auto range = parallel_plan_.workers[worker_index].node_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
+    for (std::size_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
         const auto& meta = graph_.node_meta[node_idx];
         if (meta.type == HUNLFlatNodeType::TerminalFold) {
             terminal_values_[node_idx] = graph_.node_meta[node_idx].terminal_utility[0];
@@ -976,7 +976,7 @@ void HUNLFlatDCFR::worker_showdown_equity_stage(std::size_t worker_index) {
 void HUNLFlatDCFR::worker_depth_limited_eval_stage(std::size_t worker_index) {
     const auto range = parallel_plan_.workers[worker_index].node_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
+    for (std::size_t node_idx = range.begin; node_idx < range.end; ++node_idx) {
         const auto& meta = graph_.node_meta[node_idx];
         if (meta.type != HUNLFlatNodeType::DepthLimited) {
             continue;
@@ -997,11 +997,11 @@ void HUNLFlatDCFR::worker_normalize_bucket_reach_stage(std::size_t worker_index)
     const auto& metas = infoset_table_.meta();
     const auto range = parallel_plan_.workers[worker_index].infoset_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
+    for (std::size_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
         const auto& meta = metas[infoset_index];
         const auto bucket_range = infoset_table_.infoset_bucket_range(meta.id);
         double total = 0.0;
-        for (std::uint32_t bucket_offset = bucket_range.begin; bucket_offset < bucket_range.end; ++bucket_offset) {
+        for (std::size_t bucket_offset = bucket_range.begin; bucket_offset < bucket_range.end; ++bucket_offset) {
             total += bucket_reach_[bucket_offset];
         }
         infoset_bucket_totals_[meta.id.value] = total;
@@ -1040,7 +1040,7 @@ void HUNLFlatDCFR::worker_backward_depth(std::size_t worker_index, std::size_t d
     auto& scratch = worker_scratch_[worker_index];
     const auto range = worker.depth_node_ranges[depth];
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
+    for (std::size_t order_idx = range.begin; order_idx < range.end; ++order_idx) {
         const auto node_idx = graph_.depth_order[order_idx];
         const auto& meta = graph_.node_meta[node_idx];
         if (meta.type == HUNLFlatNodeType::TerminalFold ||
@@ -1138,7 +1138,7 @@ void HUNLFlatDCFR::worker_regret_stage(std::size_t worker_index) {
     const auto& metas = infoset_table_.meta();
     const auto range = parallel_plan_.workers[worker_index].infoset_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
+    for (std::size_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
         const auto& meta = metas[infoset_index];
         if (meta.id.value >= graph_.infosets.size()) {
             throw std::logic_error("HUNLFlatDCFR regret stage infoset id out of graph bounds");
@@ -1204,7 +1204,7 @@ void HUNLFlatDCFR::worker_average_strategy_stage(std::size_t worker_index) {
     const auto& metas = infoset_table_.meta();
     const auto range = parallel_plan_.workers[worker_index].infoset_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
+    for (std::size_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
         const auto& meta = metas[infoset_index];
         if (meta.id.value >= graph_.infosets.size()) {
             throw std::logic_error("HUNLFlatDCFR average strategy stage infoset id out of graph bounds");
