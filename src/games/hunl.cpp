@@ -21,8 +21,6 @@ constexpr int HISTORY_CODE_FOLD = 1;
 constexpr int HISTORY_CODE_CHECK = 2;
 constexpr int HISTORY_CODE_CALL = 3;
 constexpr int HISTORY_CODE_ALL_IN = 4;
-constexpr int HISTORY_CODE_BET_BASE = 1'000'000;
-constexpr int HISTORY_CODE_RAISE_BASE = 2'000'000;
 constexpr std::uint8_t MAX_HISTORY_SAFE_RAISES_PER_STREET = 10;
 
 std::string token_from_history_code(int code) {
@@ -30,8 +28,12 @@ std::string token_from_history_code(int code) {
     if (code == HISTORY_CODE_CHECK) return "x";
     if (code == HISTORY_CODE_CALL) return "c";
     if (code == HISTORY_CODE_ALL_IN) return "A";
-    if (code >= HISTORY_CODE_RAISE_BASE) return "r" + std::to_string(code - HISTORY_CODE_RAISE_BASE);
-    if (code >= HISTORY_CODE_BET_BASE) return "b" + std::to_string(code - HISTORY_CODE_BET_BASE);
+    if (code < 0 && code != std::numeric_limits<int>::min()) {
+        return "b" + std::to_string(-static_cast<std::int64_t>(code));
+    }
+    if (code > HISTORY_CODE_ALL_IN) {
+        return "r" + std::to_string(code - HISTORY_CODE_ALL_IN);
+    }
     throw std::logic_error("invalid HUNL history code");
 }
 
@@ -295,6 +297,52 @@ std::string sorted_card_string(const std::vector<std::uint8_t>& cards) {
     return out;
 }
 
+void validate_hunl_infoset_encoding(const HUNLInfosetEncoding& encoding) {
+    if (!valid_config_street(encoding.street) ||
+        encoding.board_count > encoding.board.size() ||
+        encoding.history_count > encoding.history_codes.size()) {
+        throw std::invalid_argument("invalid HUNL infoset encoding dimensions");
+    }
+    if (!are_valid_and_distinct_cards(encoding.hole.data(), encoding.hole.size()) ||
+        !are_valid_and_distinct_cards(encoding.board.data(), encoding.board_count)) {
+        throw std::invalid_argument("invalid HUNL infoset encoding cards");
+    }
+    for (const auto hole_card : encoding.hole) {
+        for (std::size_t board_index = 0; board_index < encoding.board_count; ++board_index) {
+            if (hole_card == encoding.board[board_index]) {
+                throw std::invalid_argument("HUNL infoset hole card overlaps the board");
+            }
+        }
+    }
+    for (std::size_t board_index = encoding.board_count;
+         board_index < encoding.board.size();
+         ++board_index) {
+        if (encoding.board[board_index] != 0U) {
+            throw std::invalid_argument("HUNL infoset encoding has non-canonical unused board data");
+        }
+    }
+    std::size_t segment_total = 0;
+    for (const auto length : encoding.street_lengths) {
+        segment_total += length;
+    }
+    if (segment_total != encoding.history_count) {
+        throw std::invalid_argument("HUNL infoset street lengths do not match history count");
+    }
+    for (std::size_t index = 0; index < encoding.history_count; ++index) {
+        const auto code = encoding.history_codes[index];
+        if (code == 0 || code == std::numeric_limits<int>::min()) {
+            throw std::invalid_argument("HUNL infoset encoding has an invalid history code");
+        }
+    }
+    for (std::size_t index = encoding.history_count;
+         index < encoding.history_codes.size();
+         ++index) {
+        if (encoding.history_codes[index] != 0) {
+            throw std::invalid_argument("HUNL infoset encoding has non-canonical unused history data");
+        }
+    }
+}
+
 std::size_t HUNLInfosetEncodingHash::operator()(const HUNLInfosetEncoding& encoding) const noexcept {
     std::size_t seed = static_cast<std::size_t>(encoding.street);
     auto mix = [&](std::size_t value) {
@@ -303,13 +351,20 @@ std::size_t HUNLInfosetEncodingHash::operator()(const HUNLInfosetEncoding& encod
     mix(encoding.board_count);
     mix(encoding.history_count);
     for (const auto card : encoding.hole) mix(card);
-    for (std::size_t i = 0; i < encoding.board_count; ++i) mix(encoding.board[i]);
+    const auto board_count = std::min<std::size_t>(
+        encoding.board_count, encoding.board.size());
+    for (std::size_t i = 0; i < board_count; ++i) mix(encoding.board[i]);
     for (const auto len : encoding.street_lengths) mix(len);
-    for (std::size_t i = 0; i < encoding.history_count; ++i) mix(static_cast<std::size_t>(encoding.history_codes[i]));
+    const auto history_count = std::min<std::size_t>(
+        encoding.history_count, encoding.history_codes.size());
+    for (std::size_t i = 0; i < history_count; ++i) {
+        mix(static_cast<std::size_t>(encoding.history_codes[i]));
+    }
     return seed;
 }
 
 std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding) {
+    validate_hunl_infoset_encoding(encoding);
     std::vector<std::uint8_t> hole_cards = {encoding.hole[0], encoding.hole[1]};
     std::vector<std::uint8_t> board_cards(
         encoding.board.begin(),
@@ -516,7 +571,10 @@ void HUNLConfig::validate() const {
         ? static_cast<std::int64_t>(starting_stack) * 2
         : static_cast<std::int64_t>(initial_pot) +
             static_cast<std::int64_t>(starting_stack) * 2;
-    if (maximum_pot <= 0 || maximum_pot > std::numeric_limits<int>::max()) {
+    if (maximum_pot <= 0 ||
+        maximum_pot >
+            static_cast<std::int64_t>(std::numeric_limits<int>::max()) -
+                HISTORY_CODE_ALL_IN) {
         throw std::invalid_argument(
             "HUNLConfig.validate: maximum pot exceeds the supported chip domain");
     }
@@ -886,6 +944,27 @@ std::string HUNLState::infoset_key(PlayerId player) const {
 }
 
 HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const {
+    if (player < 0 || player > 1 || !hole_cards.has_value()) {
+        throw std::invalid_argument(
+            "HUNLState::infoset_encoding requires player 0 or 1 and private cards");
+    }
+    if (board.size() > HUNLInfosetEncoding{}.board.size() ||
+        betting_history_codes.size() > HUNLInfosetEncoding{}.street_lengths.size()) {
+        throw std::invalid_argument("HUNL state exceeds infoset encoding capacity");
+    }
+    std::size_t total_history_codes = current_street_history_codes.size();
+    for (const auto& completed : betting_history_codes) {
+        if (completed.size() > HUNL_MAX_HISTORY_CODES -
+                std::min(total_history_codes, HUNL_MAX_HISTORY_CODES)) {
+            throw std::invalid_argument("HUNL state exceeds infoset history capacity");
+        }
+        total_history_codes += completed.size();
+    }
+    if (total_history_codes > HUNL_MAX_HISTORY_CODES ||
+        (!current_street_history_codes.empty() &&
+         betting_history_codes.size() >= HUNLInfosetEncoding{}.street_lengths.size())) {
+        throw std::invalid_argument("HUNL state exceeds infoset history capacity");
+    }
     HUNLInfosetEncoding encoding;
     encoding.street = street;
     std::vector<std::uint8_t> sorted_board = board;
@@ -896,44 +975,40 @@ HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const {
     }
 
     const auto player_idx = static_cast<std::size_t>(player);
-    if (hole_cards.has_value()) {
-        encoding.hole = {(*hole_cards)[player_idx][0], (*hole_cards)[player_idx][1]};
-        if (encoding.hole[1] < encoding.hole[0]) {
-            std::swap(encoding.hole[0], encoding.hole[1]);
-        }
+    encoding.hole = {(*hole_cards)[player_idx][0], (*hole_cards)[player_idx][1]};
+    if (encoding.hole[1] < encoding.hole[0]) {
+        std::swap(encoding.hole[0], encoding.hole[1]);
     }
 
     std::size_t offset = 0;
-    for (std::size_t street_index = 0; street_index < betting_history_codes.size() && street_index < encoding.street_lengths.size(); ++street_index) {
+    for (std::size_t street_index = 0;
+         street_index < betting_history_codes.size();
+         ++street_index) {
         const auto& street_codes = betting_history_codes[street_index];
-        const auto capped_size = std::min<std::size_t>(street_codes.size(), encoding.history_codes.size() - offset);
-        encoding.street_lengths[street_index] = static_cast<std::uint8_t>(capped_size);
+        encoding.street_lengths[street_index] =
+            static_cast<std::uint8_t>(street_codes.size());
         for (const auto code : street_codes) {
-            if (offset < encoding.history_codes.size()) {
-                encoding.history_codes[offset++] = code;
-            } else {
-                break;
-            }
+            encoding.history_codes[offset++] = code;
         }
     }
 
-    const auto current_index =
-        std::min<std::size_t>(betting_history_codes.size(), encoding.street_lengths.size() - 1);
-    const auto current_capped_size =
-        std::min<std::size_t>(current_street_history_codes.size(), encoding.history_codes.size() - offset);
-    encoding.street_lengths[current_index] = static_cast<std::uint8_t>(current_capped_size);
-    for (const auto code : current_street_history_codes) {
-        if (offset < encoding.history_codes.size()) {
+    if (!current_street_history_codes.empty()) {
+        const auto current_index = betting_history_codes.size();
+        encoding.street_lengths[current_index] =
+            static_cast<std::uint8_t>(current_street_history_codes.size());
+        for (const auto code : current_street_history_codes) {
             encoding.history_codes[offset++] = code;
-        } else {
-            break;
         }
     }
     encoding.history_count = static_cast<std::uint8_t>(offset);
+    validate_hunl_infoset_encoding(encoding);
     return encoding;
 }
 
 std::string HUNLState::infoset_key(PlayerId player, const AbstractionTables* abstraction) const {
+    if (player < 0 || player > 1) {
+        throw std::invalid_argument("HUNLState::infoset_key requires player 0 or 1");
+    }
     const auto player_idx = static_cast<std::size_t>(player);
     if (abstraction && street >= Street::Flop && hole_cards.has_value()) {
         const auto bucket = lookup_bucket(*abstraction, board, (*hole_cards)[player_idx], street);
@@ -1049,7 +1124,7 @@ HUNLState HUNLState::apply_player(ActionId action) const {
         street_aggressor_next = static_cast<PlayerId>(player);
         ++street_num_raises_next;
         token = "b" + std::to_string(amount);
-        history_code = HISTORY_CODE_BET_BASE + amount;
+        history_code = -amount;
     } else if (is_raise(action)) {
         const auto new_contrib = compute_raise_to(static_cast<std::uint8_t>(action), ctx);
         const auto pay = new_contrib - contributions_next[player];
@@ -1063,7 +1138,7 @@ HUNLState HUNLState::apply_player(ActionId action) const {
         street_aggressor_next = static_cast<PlayerId>(player);
         ++street_num_raises_next;
         token = "r" + std::to_string(new_contrib);
-        history_code = HISTORY_CODE_RAISE_BASE + new_contrib;
+        history_code = new_contrib + HISTORY_CODE_ALL_IN;
     } else {
         throw std::invalid_argument("Unknown HUNL action");
     }

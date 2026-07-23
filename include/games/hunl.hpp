@@ -127,6 +127,7 @@ struct HUNLInfosetEncodingHash {
     std::size_t operator()(const HUNLInfosetEncoding& encoding) const noexcept;
 };
 
+void validate_hunl_infoset_encoding(const HUNLInfosetEncoding& encoding);
 std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding);
 
 /**

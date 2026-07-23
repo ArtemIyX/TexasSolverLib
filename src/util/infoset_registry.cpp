@@ -29,6 +29,7 @@ InfosetId InfosetRegistry::intern(const HUNLInfosetEncoding& encoding, std::size
     if (action_count == 0) {
         throw std::invalid_argument("InfosetRegistry::intern requires action_count > 0");
     }
+    validate_hunl_infoset_encoding(encoding);
 
     if (const auto it = hunl_to_id_.find(encoding); it != hunl_to_id_.end()) {
         const auto& meta = meta_.at(it->second.value);

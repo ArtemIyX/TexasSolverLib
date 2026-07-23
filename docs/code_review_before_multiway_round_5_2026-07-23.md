@@ -243,8 +243,8 @@ cards, and non-chance nodes.
 
 ### P1-5: HUNL configuration permits unsafe chip and action-menu arithmetic
 
-Status: **Fixed in the checked-HUNL-config remediation commit; tests added but
-not executed.**
+Status: **Fixed in `3ff1a86`, with the collision-free history-code bound
+completed in the infoset remediation commit; tests added but not executed.**
 
 Configuration validation now checks enum domains, forced-bet and maximum-pot
 arithmetic in 64 bits, forced bets against stack, bet/force thresholds,
@@ -285,7 +285,18 @@ values.
 
 ### P1-6: HUNL infoset encoding can index out of bounds or alias long histories
 
-Status: **Open.**
+Status: **Fixed in the infoset-encoding remediation commit; tests added but not
+executed.**
+
+One canonical validator now checks cards, blockers, enum/dimension bounds,
+street-length totals, history codes, and zeroed unused storage. Registry
+insertion validates before hashing; the hash itself clamps public counts and
+remains non-throwing. State encoding requires player 0/1 with private cards,
+rejects more than four segments or 48 codes, and no longer truncates.
+Opening bets use negative amount codes while raises use positive amount-plus-4
+codes, removing the old one-million-chip category collision. Twenty invalid
+players, 25 malformed encodings, exact/overflow history capacity, and a
+1.2-million-chip bet are covered.
 
 Evidence:
 
