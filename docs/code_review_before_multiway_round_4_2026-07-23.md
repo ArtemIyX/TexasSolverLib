@@ -69,12 +69,12 @@ Severity meanings:
 
 ### P0-1: sampled memory preflight still undercounts live delta arenas and cannot enforce row-growth bytes
 
-Status: **Partially fixed in the follow-up commit.** Preflight now models the
-simultaneous coordinator delta arena, projects rows from the full admitted
-public-state cap with a conservative 16-action shape, and includes retained
-unordered-map buckets. Storage rejects a row before it can cross its configured
-byte limit; 20 action shapes cover the admission boundary. Builder/edge byte
-admission and coordinator-copy removal remain outstanding.
+Status: **Partially fixed in the follow-up commits.** Preflight projects rows
+from the full admitted public-state cap with a conservative 16-action shape,
+includes retained unordered-map buckets, and storage rejects a row before it
+can cross its configured byte limit. Worker streams now merge in deterministic
+worker order without the former full-minibatch coordinator copy; 20 action
+shapes cover row admission. Builder/edge byte admission remains outstanding.
 
 Evidence:
 

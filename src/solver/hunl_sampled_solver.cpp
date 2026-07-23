@@ -277,17 +277,16 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             profile_.add_traverse_seconds(std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - traverse_started).count());
             const auto merge_started = std::chrono::steady_clock::now();
-            HUNLSampledWorkerScratch ordered_deltas;
-            ordered_deltas.reserve_deltas(static_cast<std::size_t>(config_.minibatch_size) * kWorkerDeltaEntriesPerTraversal);
             for (std::size_t worker = 0; worker < worker_batches.size(); ++worker) {
-                ordered_deltas.deltas.insert(
-                    ordered_deltas.deltas.end(), worker_scratch[worker].deltas.begin(), worker_scratch[worker].deltas.end());
                 profile_.record_traversal(
                     worker_batches[worker].trajectories.size(),
                     worker_results[worker].nodes_visited,
                     worker_results[worker].infosets_updated);
+                // Each worker owns a deterministic contiguous trajectory range.
+                // Merging those sorted streams in worker order avoids a second
+                // full-minibatch coordinator arena.
+                merge_hunl_sampled_worker_deltas(storage_, worker_scratch[worker]);
             }
-            merge_hunl_sampled_worker_deltas(storage_, ordered_deltas);
             profile_.add_merge_seconds(std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - merge_started).count());
         }
@@ -509,12 +508,7 @@ std::uint64_t HUNLSampledSolver::estimate_worker_delta_bytes(
         delta_entries_bytes(aggregate_entries + kWorkerDeltaEntriesPerTraversal),
         saturating_add(sizeof(HUNLSampledWorkerScratch) * 2ULL, sizeof(std::thread)));
     const auto worker_arenas = saturating_multiply(workers, per_worker);
-    // The coordinator's ordered arena coexists with every worker aggregate
-    // during the current deterministic copy-and-sort merge.
-    const auto coordinator_arena = saturating_add(
-        delta_entries_bytes(saturating_multiply(trajectories, kWorkerDeltaEntriesPerTraversal)),
-        sizeof(HUNLSampledWorkerScratch));
-    return saturating_add(worker_arenas, coordinator_arena);
+    return worker_arenas;
 }
 
 std::uint64_t HUNLSampledSolver::estimate_export_bytes(const HUNLSampledSolveRequest& request) noexcept {
