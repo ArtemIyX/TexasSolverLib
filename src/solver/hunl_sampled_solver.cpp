@@ -218,6 +218,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
         live_memory.total_bytes(),
         preflight_result.status == HUNLSampledMemoryStatus::Warning,
         false);
+    profile_.record_observed_memory(live_memory.total_bytes(), live_memory.total_bytes());
     root_strategy_ = HUNLSampledStrategyExporter::export_uniform(infer_root_action_count(effective_request));
 
     if (batches > 0) {
@@ -237,6 +238,9 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
                     builder_, storage_, terminal_evaluator_, trajectory_requests.back());
             }
             const auto worker_count = std::min<std::size_t>(config_.workers, trajectory_requests.size());
+            const auto batch_peak = saturating_add(
+                memory_estimate().total_bytes(), estimate_worker_delta_bytes(effective_request, config_));
+            profile_.record_observed_memory(memory_estimate().total_bytes(), batch_peak);
             const auto worker_batches = HUNLSampledScheduler::partition_deterministic(
                 trajectory_requests.size(), std::max<std::size_t>(1U, worker_count));
             std::vector<HUNLSampledWorkerScratch> worker_scratch(worker_batches.size());
@@ -328,6 +332,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
         final_memory.total_bytes(),
         preflight_result.status == HUNLSampledMemoryStatus::Warning,
         false);
+    profile_.record_observed_memory(final_memory.total_bytes(), final_memory.total_bytes());
 
     HUNLSampledSolveResult result;
     result.root_strategy = root_strategy_;

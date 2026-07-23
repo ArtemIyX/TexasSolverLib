@@ -1412,6 +1412,9 @@ TEST_CASE(hunl_sampled_profile_formats_summary_into_caller_buffer) {
     profile.record_memory_budget(8, 12, 768, 64, 128, 32, 1024, false, false);
     profile.add_traverse_seconds(0.25);
     profile.add_merge_seconds(0.05);
+    for (std::uint64_t peak = 1; peak <= 20; ++peak) {
+        profile.record_observed_memory(peak, peak * 2U);
+    }
 
     std::array<char, 256> buffer = {};
     const auto written = profile.format_summary(buffer.data(), buffer.size());
@@ -1421,6 +1424,8 @@ TEST_CASE(hunl_sampled_profile_formats_summary_into_caller_buffer) {
     EXPECT_TRUE(std::strstr(buffer.data(), "sparse_rows=12") != nullptr);
     EXPECT_TRUE(std::strstr(buffer.data(), "mem_total=1024") != nullptr);
     EXPECT_TRUE(std::strstr(buffer.data(), "t_merge=0.050000") != nullptr);
+    EXPECT_EQ(profile.snapshot().observed_retained_bytes, 20U);
+    EXPECT_EQ(profile.snapshot().observed_peak_bytes, 40U);
 }
 
 }  // namespace

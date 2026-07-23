@@ -518,6 +518,11 @@ Regression gate:
 
 ### P2-3: sampled runtime profiles do not measure runtime and mix live with hypothetical memory
 
+Status: **Fixed in the follow-up commits.** Coordinator traversal, merge, and
+export phases record measured durations. Profiles now distinguish observed
+retained bytes from the maximum observed worker-arena peak, while `total_memory_bytes`
+remains the retained live figure rather than hypothetical scratch.
+
 Status: **Partially fixed in the follow-up commit.** Runtime traversal, merge,
 and root-export phases now record measured coordinator durations, and retained
 live memory no longer includes destroyed worker scratch. Peak and per-worker

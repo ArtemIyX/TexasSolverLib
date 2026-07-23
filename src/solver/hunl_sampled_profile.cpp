@@ -1,6 +1,7 @@
 #include "solver/hunl_sampled_profile.hpp"
 
 #include <cstdio>
+#include <algorithm>
 
 namespace core {
 
@@ -43,6 +44,12 @@ void HUNLSampledProfile::record_memory_budget(
     snapshot_.total_memory_bytes = total_memory_bytes;
     snapshot_.memory_warning = warning;
     snapshot_.memory_rejected = rejected;
+}
+
+void HUNLSampledProfile::record_observed_memory(
+    std::uint64_t retained_bytes, std::uint64_t peak_bytes) noexcept {
+    snapshot_.observed_retained_bytes = retained_bytes;
+    snapshot_.observed_peak_bytes = std::max(snapshot_.observed_peak_bytes, peak_bytes);
 }
 
 void HUNLSampledProfile::add_traverse_seconds(double seconds) noexcept {

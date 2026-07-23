@@ -22,6 +22,8 @@ struct HUNLSampledProfileSnapshot {
     std::uint64_t worker_delta_bytes = 0;
     std::uint64_t export_bytes = 0;
     std::uint64_t total_memory_bytes = 0;
+    std::uint64_t observed_retained_bytes = 0;
+    std::uint64_t observed_peak_bytes = 0;
     bool memory_warning = false;
     bool memory_rejected = false;
 };
@@ -44,6 +46,7 @@ public:
         std::uint64_t total_memory_bytes,
         bool warning,
         bool rejected) noexcept;
+    void record_observed_memory(std::uint64_t retained_bytes, std::uint64_t peak_bytes) noexcept;
     void add_traverse_seconds(double seconds) noexcept;
     void add_merge_seconds(double seconds) noexcept;
     void add_terminal_seconds(double seconds) noexcept;
