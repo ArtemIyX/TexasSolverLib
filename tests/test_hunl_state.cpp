@@ -97,7 +97,7 @@ TEST_CASE(hunl_facing_bet_has_fold_and_call_only_here) {
 }
 
 TEST_CASE(hunl_fold_and_showdown_utilities_match_reference) {
-    const auto folded = river_state().apply(core::ACTION_CHECK).apply(core::ACTION_FOLD);
+    const auto folded = river_state().apply(core::ACTION_BET_100).apply(core::ACTION_FOLD);
     EXPECT_TRUE(folded.is_terminal());
     EXPECT_NEAR(folded.utility()[0], 0.0, 1e-9);
     EXPECT_NEAR(folded.utility()[1], 10.0, 1e-9);
@@ -107,6 +107,51 @@ TEST_CASE(hunl_fold_and_showdown_utilities_match_reference) {
     EXPECT_EQ(showdown.street, core::Street::Showdown);
     EXPECT_NEAR(showdown.utility()[0], 10.0, 1e-9);
     EXPECT_NEAR(showdown.utility()[1], 0.0, 1e-9);
+}
+
+TEST_CASE(hunl_apply_rejects_twenty_unknown_player_action_identifiers) {
+    const auto state = river_state();
+    for (int action = -10; action < 0; ++action) {
+        EXPECT_THROW(state.apply(action), std::invalid_argument);
+    }
+    for (int action = 100; action < 110; ++action) {
+        EXPECT_THROW(state.apply(action), std::invalid_argument);
+    }
+}
+
+TEST_CASE(hunl_apply_rejects_semantically_illegal_known_player_actions) {
+    const auto root = river_state();
+    EXPECT_THROW(root.apply(core::ACTION_FOLD), std::invalid_argument);
+    EXPECT_THROW(root.apply(core::ACTION_CALL), std::invalid_argument);
+    EXPECT_THROW(root.apply(core::ACTION_RAISE_33), std::invalid_argument);
+
+    const auto facing_bet = root.apply(core::ACTION_BET_100);
+    EXPECT_THROW(facing_bet.apply(core::ACTION_CHECK), std::invalid_argument);
+    EXPECT_THROW(facing_bet.apply(core::ACTION_BET_33), std::invalid_argument);
+
+    const auto terminal = root.apply(core::ACTION_CHECK).apply(core::ACTION_CHECK);
+    EXPECT_THROW(terminal.apply(core::ACTION_CHECK), std::invalid_argument);
+}
+
+TEST_CASE(hunl_apply_rejects_twenty_invalid_or_blocked_chance_actions) {
+    const auto chance = flop_state(1000, 200)
+                            .apply(core::ACTION_CHECK)
+                            .apply(core::ACTION_CHECK);
+    EXPECT_EQ(chance.cur_player, -1);
+    const std::array<int, 20> invalid = {
+        -1, 0, 1, 2, 3, 4, 5, 6, 7,
+        core::card_to_int(14, 0),
+        core::card_to_int(7, 3),
+        core::card_to_int(2, 2),
+        core::card_to_int(14, 1),
+        core::card_to_int(13, 3),
+        core::card_to_int(12, 2),
+        core::card_to_int(12, 1),
+        60, 61, 62, 63,
+    };
+    for (const auto action : invalid) {
+        EXPECT_THROW(chance.apply(action), std::invalid_argument);
+    }
 }
 
 TEST_CASE(hunl_infoset_key_preserves_cards_and_history) {

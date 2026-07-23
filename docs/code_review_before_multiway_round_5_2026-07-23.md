@@ -170,8 +170,7 @@ bit-identical central rows for one through many worker streams.
 
 ### P1-3: snapshots can give an already-acted, fully matched seat another turn
 
-Status: **Fixed in the snapshot-admission remediation commit; tests added but
-not executed.**
+Status: **Fixed in `3457262`; tests added but not executed.**
 
 Snapshot validation now rejects an actionable pending seat when that seat has
 already acted and its street contribution equals the current bet. Twenty
@@ -206,7 +205,15 @@ raise snapshot variants.
 
 ### P1-4: `HUNLState::apply()` accepts illegal player and chance transitions
 
-Status: **Open.**
+Status: **Fixed in the HUNL-transition remediation commit; tests added but not
+executed.**
+
+`apply()` now rejects terminal-state actions, requires player actions to occur
+in the current legal menu, and requires chance actions to match a current
+enumerated outcome before narrowing the card identifier. Forty unknown,
+invalid, or blocked action/card cases supplement semantic checks for
+check/call/fold/bet/raise/terminal misuse. The old fold-utility regression now
+uses a legal bet-fold sequence.
 
 Evidence:
 

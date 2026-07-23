@@ -731,7 +731,29 @@ std::vector<ActionId> HUNLState::legal_actions() const {
 }
 
 HUNLState HUNLState::apply(ActionId action) const {
-    return cur_player == -1 ? apply_chance(static_cast<std::uint8_t>(action)) : apply_player(action);
+    if (is_terminal()) {
+        throw std::invalid_argument("cannot apply an action to a terminal HUNL state");
+    }
+    if (cur_player == -1) {
+        if (action < 0 || action > std::numeric_limits<std::uint8_t>::max() ||
+            pending_board_deals == 0 || !hole_cards.has_value()) {
+            throw std::invalid_argument("illegal HUNL chance action");
+        }
+        const auto card = static_cast<std::uint8_t>(action);
+        const auto& holes = *hole_cards;
+        if (!is_valid_card(card) || board_contains_card(board, card) ||
+            card == holes[0][0] || card == holes[0][1] ||
+            card == holes[1][0] || card == holes[1][1]) {
+            throw std::invalid_argument("illegal HUNL chance action");
+        }
+        return apply_chance(card);
+    }
+
+    const auto actions = legal_actions();
+    if (std::find(actions.begin(), actions.end(), action) == actions.end()) {
+        throw std::invalid_argument("illegal HUNL player action");
+    }
+    return apply_player(action);
 }
 
 HUNLState HUNLState::next_state(ActionId action) const {
