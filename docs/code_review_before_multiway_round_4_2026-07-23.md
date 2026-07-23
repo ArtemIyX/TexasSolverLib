@@ -464,6 +464,13 @@ Regression gate:
 
 ### P2-2: sampled traversal can silently lose or poison updates at numerical extremes
 
+Status: **Fixed in the follow-up commit.** Coordinator merging now
+prevalidates finite double deltas, finite grouped sums, and float-range row
+results before changing any central row. Twenty extreme-value cases prove a
+rejection leaves every row cell unchanged. Traversal now fail-closes on
+underflowed/non-finite sampling or counterfactual reaches instead of silently
+emitting zero-weight updates.
+
 Evidence:
 
 - Strategy and importance weights divide by accumulated sampling reach without

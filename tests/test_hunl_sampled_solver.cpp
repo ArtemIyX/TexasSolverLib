@@ -990,6 +990,31 @@ TEST_CASE(hunl_sampled_coordinator_merge_orders_worker_deltas_deterministically)
     EXPECT_NEAR(row.regret[1], 2.0, TOL);
 }
 
+TEST_CASE(hunl_sampled_merge_rejects_bad_deltas_without_mutating_any_row) {
+    const std::array<double, 20> invalid = {
+        std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::max(),
+        -std::numeric_limits<double>::max(), 1e100, -1e100, 1e90, -1e90, 1e80,
+        -1e80, 1e70, -1e70, 1e60, -1e60, 1e50, -1e50, 1e45, -1e45, 1e40,
+        -1e40, 1e39, -1e39, 4e38};
+    for (const double value : invalid) {
+        core::HUNLSampledStorage storage;
+        auto row = storage.ensure_row({core::InfosetId{0}, 0, core::Street::River, 1, 2});
+        row.regret[0] = 1.0f;
+        row.strategy_sum[0] = 2.0f;
+        core::HUNLSampledWorkerScratch scratch;
+        scratch.deltas = {
+            {core::InfosetId{0}, 0, 0, value, 0.0},
+            {core::InfosetId{0}, 0, 1, 1.0, 1.0},
+        };
+        EXPECT_THROW(core::merge_hunl_sampled_worker_deltas(storage, scratch), std::overflow_error);
+        const auto unchanged = storage.view(core::InfosetId{0});
+        EXPECT_NEAR(unchanged.regret[0], 1.0, TOL);
+        EXPECT_NEAR(unchanged.strategy_sum[0], 2.0, TOL);
+        EXPECT_NEAR(unchanged.regret[1], 0.0, TOL);
+    }
+}
+
 TEST_CASE(hunl_sampled_external_traversal_samples_opponent_strategy_probabilities) {
     const auto root_state = make_sampled_facing_bet_state();
     core::HUNLSampledBuilder builder({false});

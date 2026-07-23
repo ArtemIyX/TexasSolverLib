@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
@@ -103,6 +104,9 @@ void append_delta(
     std::size_t action,
     double regret,
     double strategy_sum) {
+    if (!std::isfinite(regret) || !std::isfinite(strategy_sum)) {
+        throw std::overflow_error("sampled traversal produced a non-finite delta");
+    }
     if (scratch.deltas.size() >= scratch.deltas.capacity()) {
         throw std::runtime_error("HUNLSampledWorkerScratch delta capacity exhausted");
     }
@@ -184,9 +188,14 @@ double traverse_external(
     HUNLSampledStorage::compute_current_strategy(row, request.bucket, strategy.data());
 
     const auto acting_player = static_cast<std::size_t>(expanded.player);
-    const auto strategy_weight = reach.sampling > 0.0
-        ? reach.player[acting_player] / reach.sampling
-        : 0.0;
+    if (!std::isfinite(reach.sampling) || reach.sampling <= 0.0 ||
+        !std::isfinite(reach.player[acting_player])) {
+        throw std::underflow_error("sampled traversal sampling reach underflowed or became non-finite");
+    }
+    const auto strategy_weight = reach.player[acting_player] / reach.sampling;
+    if (!std::isfinite(strategy_weight)) {
+        throw std::overflow_error("sampled traversal strategy importance weight is non-finite");
+    }
 
     if (expanded.player != request.traversing_player) {
         const auto [action, probability] = sample_strategy_action(strategy, action_count, rng);
@@ -237,9 +246,13 @@ double traverse_external(
 
     const auto opponent = 1U - acting_player;
     const auto counterfactual_reach = reach.chance * reach.player[opponent];
-    const auto importance_weight = reach.sampling > 0.0
-        ? counterfactual_reach / reach.sampling
-        : 0.0;
+    if (!std::isfinite(counterfactual_reach) || counterfactual_reach <= 0.0) {
+        throw std::underflow_error("sampled traversal counterfactual reach underflowed or became non-finite");
+    }
+    const auto importance_weight = counterfactual_reach / reach.sampling;
+    if (!std::isfinite(importance_weight)) {
+        throw std::overflow_error("sampled traversal regret importance weight is non-finite");
+    }
     for (std::size_t action = 0; action < action_count; ++action) {
         append_delta(
             scratch,
@@ -255,19 +268,61 @@ double traverse_external(
 }
 
 void merge_deltas(HUNLSampledStorage& storage, const HUNLSampledWorkerScratch& scratch) {
-    for (const auto& delta : scratch.deltas) {
-        const auto row = storage.view_mut(delta.infoset_id);
-        if (row.empty() || delta.bucket >= row.bucket_count || delta.action >= row.action_count) {
+    // Validate every central-row mutation before changing a single value. The
+    // input is ordered, so equal row cells are checked as one deterministic sum.
+    for (std::size_t begin = 0; begin < scratch.deltas.size();) {
+        const auto& first = scratch.deltas[begin];
+        std::size_t end = begin;
+        double regret_delta = 0.0;
+        double strategy_delta = 0.0;
+        while (end < scratch.deltas.size() &&
+               scratch.deltas[end].infoset_id.value == first.infoset_id.value &&
+               scratch.deltas[end].bucket == first.bucket &&
+               scratch.deltas[end].action == first.action) {
+            const auto& delta = scratch.deltas[end];
+            if (!std::isfinite(delta.regret) || !std::isfinite(delta.strategy_sum) ||
+                !std::isfinite(regret_delta + delta.regret) ||
+                !std::isfinite(strategy_delta + delta.strategy_sum)) {
+                throw std::overflow_error("sampled merge contains a non-finite delta");
+            }
+            regret_delta += delta.regret;
+            strategy_delta += delta.strategy_sum;
+            ++end;
+        }
+        const auto row = storage.view(first.infoset_id);
+        if (row.empty() || first.bucket >= row.bucket_count || first.action >= row.action_count) {
             throw std::logic_error("sampled traversal delta does not match its infoset row");
         }
         const auto offset = HUNLSampledStorage::value_index(
-            row.layout,
-            row.bucket_count,
-            row.action_count,
-            delta.bucket,
-            delta.action);
-        row.regret[offset] += static_cast<float>(delta.regret);
-        row.strategy_sum[offset] += static_cast<float>(delta.strategy_sum);
+            row.layout, row.bucket_count, row.action_count, first.bucket, first.action);
+        const auto next_regret = static_cast<double>(row.regret[offset]) + regret_delta;
+        const auto next_strategy = static_cast<double>(row.strategy_sum[offset]) + strategy_delta;
+        if (!std::isfinite(next_regret) || !std::isfinite(next_strategy) ||
+            std::fabs(next_regret) > std::numeric_limits<float>::max() ||
+            std::fabs(next_strategy) > std::numeric_limits<float>::max()) {
+            throw std::overflow_error("sampled merge would produce a non-finite float row");
+        }
+        begin = end;
+    }
+    for (std::size_t begin = 0; begin < scratch.deltas.size();) {
+        const auto& first = scratch.deltas[begin];
+        std::size_t end = begin;
+        double regret_delta = 0.0;
+        double strategy_delta = 0.0;
+        while (end < scratch.deltas.size() &&
+               scratch.deltas[end].infoset_id.value == first.infoset_id.value &&
+               scratch.deltas[end].bucket == first.bucket &&
+               scratch.deltas[end].action == first.action) {
+            regret_delta += scratch.deltas[end].regret;
+            strategy_delta += scratch.deltas[end].strategy_sum;
+            ++end;
+        }
+        const auto row = storage.view_mut(first.infoset_id);
+        const auto offset = HUNLSampledStorage::value_index(
+            row.layout, row.bucket_count, row.action_count, first.bucket, first.action);
+        row.regret[offset] = static_cast<float>(static_cast<double>(row.regret[offset]) + regret_delta);
+        row.strategy_sum[offset] = static_cast<float>(static_cast<double>(row.strategy_sum[offset]) + strategy_delta);
+        begin = end;
     }
 }
 
