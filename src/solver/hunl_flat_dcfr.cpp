@@ -643,7 +643,7 @@ void HUNLFlatDCFR::worker_discount_stage(std::size_t worker_index) {
     auto& metas = infoset_table_.meta_mut();
     const auto range = parallel_plan_.workers[worker_index].infoset_range;
     const auto worker_start = std::chrono::steady_clock::now();
-    for (std::uint32_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
+    for (std::size_t infoset_index = range.begin; infoset_index < range.end; ++infoset_index) {
         auto& meta = metas[infoset_index];
         if (meta.last_discount_iter >= target_iter) {
             continue;

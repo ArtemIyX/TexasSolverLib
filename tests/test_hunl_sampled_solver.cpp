@@ -1037,7 +1037,7 @@ TEST_CASE(hunl_sampled_coordinator_merge_orders_worker_deltas_deterministically)
 }
 
 TEST_CASE(hunl_sampled_merge_rejects_bad_deltas_without_mutating_any_row) {
-    const std::array<double, 20> invalid = {
+    const std::array<double, 24> invalid = {
         std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(),
         std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::max(),
         -std::numeric_limits<double>::max(), 1e100, -1e100, 1e90, -1e90, 1e80,

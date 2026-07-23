@@ -517,7 +517,7 @@ void HUNLSampledSolver::apply_adaptive_fallback(
 }
 
 std::uint64_t HUNLSampledSolver::estimate_worker_delta_bytes(
-    const HUNLSampledSolveRequest& request,
+    const HUNLSampledSolveRequest&,
     const HUNLSampledSolverConfig& config) noexcept {
     const auto trajectories = std::max<std::uint64_t>(1U, static_cast<std::uint64_t>(config.minibatch_size));
     const auto workers = std::min(
