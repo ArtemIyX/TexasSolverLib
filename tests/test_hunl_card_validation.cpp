@@ -52,6 +52,82 @@ TEST_CASE(hunl_config_rejects_invalid_and_duplicate_board_cards) {
     EXPECT_THROW(duplicate.validate(), std::invalid_argument);
 }
 
+TEST_CASE(hunl_config_rejects_more_than_twenty_unsafe_numeric_and_menu_contracts) {
+    std::vector<core::HUNLConfig> invalid;
+    const auto add = [&invalid](auto mutate) {
+        auto config = valid_config();
+        mutate(config);
+        invalid.push_back(std::move(config));
+    };
+
+    add([](auto& c) { c.starting_street = static_cast<core::Street>(99); });
+    add([](auto& c) { c.flat_solve_mode = static_cast<core::HUNLFlatSolveMode>(99); });
+    add([](auto& c) { c.range_policy = static_cast<core::HUNLRangePolicy>(99); });
+    add([](auto& c) { c.small_blind = c.big_blind + 1; });
+    add([](auto& c) { c.big_blind = std::numeric_limits<int>::max(); c.ante = 1; });
+    add([](auto& c) { c.big_blind = c.starting_stack + 1; });
+    add([](auto& c) { c.starting_stack = std::numeric_limits<int>::max(); });
+    add([](auto& c) { c.initial_contributions = {std::numeric_limits<int>::max(), 1}; });
+    add([](auto& c) { c.min_bet_bb = 0; });
+    add([](auto& c) { c.min_bet_bb = -1; });
+    add([](auto& c) { c.force_allin_threshold = -1; });
+    add([](auto& c) { c.min_bet_bb = std::numeric_limits<int>::max(); });
+    add([](auto& c) { c.force_allin_threshold = std::numeric_limits<int>::max(); });
+    add([](auto& c) { c.bet_size_fractions = {std::numeric_limits<double>::quiet_NaN()}; });
+    add([](auto& c) { c.bet_size_fractions = {std::numeric_limits<double>::infinity()}; });
+    add([](auto& c) { c.bet_size_fractions = {-0.01}; });
+    add([](auto& c) { c.bet_size_fractions = {1e300}; });
+    add([](auto& c) { c.flop_bet_fractions = std::vector<double>(6, 0.5); });
+    add([](auto& c) { c.turn_bet_fractions = std::vector<double>{
+        std::numeric_limits<double>::quiet_NaN()}; });
+    add([](auto& c) { c.river_bet_fractions = std::vector<double>{-1.0}; });
+    add([](auto& c) { c.raise_size_xs = {std::numeric_limits<double>::quiet_NaN()}; });
+    add([](auto& c) { c.raise_size_xs = {-1.0}; });
+    add([](auto& c) { c.raise_size_xs = {1e300}; });
+    add([](auto& c) { c.raise_size_xs = std::vector<double>(6, 3.0); });
+    add([](auto& c) { c.auto_all_in_spr_threshold =
+        std::numeric_limits<double>::quiet_NaN(); });
+    add([](auto& c) { c.auto_all_in_spr_threshold =
+        std::numeric_limits<double>::infinity(); });
+    add([](auto& c) { c.auto_all_in_spr_threshold = -1.0; });
+    add([](auto& c) { c.preflop_raise_cap = 11; });
+    add([](auto& c) { c.postflop_raise_cap = 11; });
+
+    EXPECT_TRUE(invalid.size() > 20U);
+    for (const auto& config : invalid) {
+        EXPECT_THROW(config.validate(), std::invalid_argument);
+    }
+}
+
+TEST_CASE(hunl_config_accepts_twenty_representable_nonnegative_bet_fractions) {
+    for (int step = 0; step < 20; ++step) {
+        auto config = valid_config();
+        config.bet_size_fractions = {static_cast<double>(step) / 10.0};
+        config.validate();
+    }
+}
+
+TEST_CASE(hunl_public_action_math_rejects_nonfinite_and_overflowing_inputs) {
+    for (const double value : {
+             -1.0,
+             std::numeric_limits<double>::quiet_NaN(),
+             std::numeric_limits<double>::infinity(),
+             -std::numeric_limits<double>::infinity(),
+             static_cast<double>(std::numeric_limits<int>::max()) + 1.0}) {
+        EXPECT_THROW(core::python_round_positive(value), std::invalid_argument);
+    }
+
+    core::ActionContext context;
+    context.pot = std::numeric_limits<int>::max();
+    context.big_blind = 100;
+    context.min_bet_bb = 1;
+    for (int step = 1; step <= 20; ++step) {
+        EXPECT_THROW(
+            core::bet_amount_for_fraction(context, static_cast<double>(step) + 1.0),
+            std::invalid_argument);
+    }
+}
+
 TEST_CASE(hunl_config_rejects_every_fixed_hole_card_collision) {
     auto duplicate_within_player = valid_config();
     (*duplicate_within_player.initial_hole_cards)[0][1] =

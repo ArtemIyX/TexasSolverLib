@@ -205,8 +205,7 @@ raise snapshot variants.
 
 ### P1-4: `HUNLState::apply()` accepts illegal player and chance transitions
 
-Status: **Fixed in the HUNL-transition remediation commit; tests added but not
-executed.**
+Status: **Fixed in `7aa36d4`; tests added but not executed.**
 
 `apply()` now rejects terminal-state actions, requires player actions to occur
 in the current legal menu, and requires chance actions to match a current
@@ -244,7 +243,16 @@ cards, and non-chance nodes.
 
 ### P1-5: HUNL configuration permits unsafe chip and action-menu arithmetic
 
-Status: **Open.**
+Status: **Fixed in the checked-HUNL-config remediation commit; tests added but
+not executed.**
+
+Configuration validation now checks enum domains, forced-bet and maximum-pot
+arithmetic in 64 bits, forced bets against stack, bet/force thresholds,
+history-safe raise caps, menu widths, every sizing value, and automatic
+all-in thresholds. Public action math now rejects non-finite or
+unrepresentable rounding inputs and uses checked chip addition/multiplication.
+Twenty-nine invalid configuration variants, 20 valid sizing boundaries, and
+20 public overflow cases were added.
 
 Evidence:
 

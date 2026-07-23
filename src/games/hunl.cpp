@@ -23,6 +23,7 @@ constexpr int HISTORY_CODE_CALL = 3;
 constexpr int HISTORY_CODE_ALL_IN = 4;
 constexpr int HISTORY_CODE_BET_BASE = 1'000'000;
 constexpr int HISTORY_CODE_RAISE_BASE = 2'000'000;
+constexpr std::uint8_t MAX_HISTORY_SAFE_RAISES_PER_STREET = 10;
 
 std::string token_from_history_code(int code) {
     if (code == HISTORY_CODE_FOLD) return "f";
@@ -51,6 +52,61 @@ std::size_t expected_board_size_for_street(Street street) {
 
 bool board_contains_card(const std::vector<std::uint8_t>& board, std::uint8_t card) {
     return std::find(board.begin(), board.end(), card) != board.end();
+}
+
+bool valid_config_street(Street street) noexcept {
+    return street == Street::Preflop || street == Street::Flop ||
+           street == Street::Turn || street == Street::River ||
+           street == Street::Showdown;
+}
+
+bool valid_flat_solve_mode(HUNLFlatSolveMode mode) noexcept {
+    return mode == HUNLFlatSolveMode::Auto ||
+           mode == HUNLFlatSolveMode::ExplicitHand ||
+           mode == HUNLFlatSolveMode::Bucketed;
+}
+
+bool valid_range_policy(HUNLRangePolicy policy) noexcept {
+    return policy == HUNLRangePolicy::Unspecified ||
+           policy == HUNLRangePolicy::Uniform ||
+           policy == HUNLRangePolicy::UseInitialRanges ||
+           policy == HUNLRangePolicy::RequireExplicit;
+}
+
+int checked_nonnegative_add(int lhs, int rhs, const char* context) {
+    if (lhs < 0 || rhs < 0 ||
+        static_cast<std::int64_t>(lhs) + rhs > std::numeric_limits<int>::max()) {
+        throw std::overflow_error(context);
+    }
+    return lhs + rhs;
+}
+
+int checked_nonnegative_multiply(int lhs, int rhs, const char* context) {
+    if (lhs < 0 || rhs < 0 ||
+        static_cast<std::int64_t>(lhs) * rhs > std::numeric_limits<int>::max()) {
+        throw std::overflow_error(context);
+    }
+    return lhs * rhs;
+}
+
+void validate_sizing_menu(
+    const std::vector<double>& values,
+    std::int64_t maximum_pot,
+    const char* field_name) {
+    if (values.size() > BET_ACTION_IDS.size()) {
+        throw std::invalid_argument(
+            std::string("HUNLConfig.validate: ") + field_name +
+            " exceeds the supported action menu");
+    }
+    for (const auto value : values) {
+        if (!std::isfinite(value) || value < 0.0 ||
+            value * static_cast<double>(maximum_pot) >
+                static_cast<double>(std::numeric_limits<int>::max())) {
+            throw std::invalid_argument(
+                std::string("HUNLConfig.validate: ") + field_name +
+                " must contain finite non-negative representable values");
+        }
+    }
 }
 
 void validate_hole_cards_against_board(
@@ -421,6 +477,66 @@ void HUNLConfig::validate() const {
         throw std::invalid_argument(
             "HUNLConfig.validate: small_blind, ante, initial_pot must be non-negative");
     }
+    if (!valid_config_street(starting_street) ||
+        !valid_flat_solve_mode(flat_solve_mode) ||
+        !valid_range_policy(range_policy)) {
+        throw std::invalid_argument("HUNLConfig.validate: invalid enum value");
+    }
+    if (small_blind > big_blind) {
+        throw std::invalid_argument("HUNLConfig.validate: small_blind must be <= big_blind");
+    }
+    if (initial_contributions[0] < 0 || initial_contributions[1] < 0) {
+        throw std::invalid_argument("HUNLConfig.validate: initial_contributions must be non-negative");
+    }
+    const auto blind_sb_wide =
+        static_cast<std::int64_t>(small_blind) + ante;
+    const auto blind_bb_wide =
+        static_cast<std::int64_t>(big_blind) + ante;
+    if (blind_sb_wide > std::numeric_limits<int>::max() ||
+        blind_bb_wide > std::numeric_limits<int>::max() ||
+        blind_sb_wide + blind_bb_wide > std::numeric_limits<int>::max() ||
+        blind_sb_wide > starting_stack || blind_bb_wide > starting_stack) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: forced bets exceed the supported stack or chip domain");
+    }
+    if (min_bet_bb <= 0 || force_allin_threshold < 0 ||
+        static_cast<std::int64_t>(min_bet_bb) * big_blind >
+            std::numeric_limits<int>::max() ||
+        static_cast<std::int64_t>(force_allin_threshold) * big_blind >
+            std::numeric_limits<int>::max()) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: bet thresholds exceed the supported chip domain");
+    }
+    if (preflop_raise_cap > MAX_HISTORY_SAFE_RAISES_PER_STREET ||
+        postflop_raise_cap > MAX_HISTORY_SAFE_RAISES_PER_STREET) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: raise caps exceed infoset history capacity");
+    }
+    const auto maximum_pot = starting_street == Street::Preflop
+        ? static_cast<std::int64_t>(starting_stack) * 2
+        : static_cast<std::int64_t>(initial_pot) +
+            static_cast<std::int64_t>(starting_stack) * 2;
+    if (maximum_pot <= 0 || maximum_pot > std::numeric_limits<int>::max()) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: maximum pot exceeds the supported chip domain");
+    }
+    validate_sizing_menu(bet_size_fractions, maximum_pot, "bet_size_fractions");
+    if (flop_bet_fractions.has_value()) {
+        validate_sizing_menu(*flop_bet_fractions, maximum_pot, "flop_bet_fractions");
+    }
+    if (turn_bet_fractions.has_value()) {
+        validate_sizing_menu(*turn_bet_fractions, maximum_pot, "turn_bet_fractions");
+    }
+    if (river_bet_fractions.has_value()) {
+        validate_sizing_menu(*river_bet_fractions, maximum_pot, "river_bet_fractions");
+    }
+    validate_sizing_menu(raise_size_xs, maximum_pot, "raise_size_xs");
+    if (auto_all_in_spr_threshold.has_value() &&
+        (!std::isfinite(*auto_all_in_spr_threshold) ||
+         *auto_all_in_spr_threshold < 0.0)) {
+        throw std::invalid_argument(
+            "HUNLConfig.validate: auto_all_in_spr_threshold must be finite and non-negative");
+    }
 
     const auto expected_board_size = expected_board_size_for_street(starting_street);
     if (initial_board.size() != expected_board_size) {
@@ -481,8 +597,8 @@ void HUNLConfig::validate() const {
             return;
         }
 
-        const auto blind_sb = small_blind + ante;
-        const auto blind_bb = big_blind + ante;
+        const auto blind_sb = static_cast<int>(blind_sb_wide);
+        const auto blind_bb = static_cast<int>(blind_bb_wide);
         const auto expected_pot = blind_sb + blind_bb;
         if (c0 == blind_sb && c1 == blind_bb && initial_pot == expected_pot) {
             return;
@@ -496,10 +612,7 @@ void HUNLConfig::validate() const {
         throw std::invalid_argument(
             "HUNLConfig.validate: initial_board must be non-empty when starting_street > Preflop");
     }
-    if (c0 < 0 || c1 < 0) {
-        throw std::invalid_argument("HUNLConfig.validate: initial_contributions must be non-negative");
-    }
-    const auto contribution_sum = c0 + c1;
+    const auto contribution_sum = static_cast<std::int64_t>(c0) + c1;
     if (contribution_sum != 0 && contribution_sum != initial_pot) {
         throw std::invalid_argument(
             "HUNLConfig.validate: initial_contributions must sum to initial_pot or both be zero");
@@ -557,8 +670,10 @@ HUNLState HUNLState::initial() {
 }
 
 HUNLState HUNLState::initial_preflop(std::shared_ptr<const HUNLConfig> cfg) {
-    const auto blind_sb = cfg->small_blind + cfg->ante;
-    const auto blind_bb = cfg->big_blind + cfg->ante;
+    const auto blind_sb = checked_nonnegative_add(
+        cfg->small_blind, cfg->ante, "HUNL small blind plus ante overflow");
+    const auto blind_bb = checked_nonnegative_add(
+        cfg->big_blind, cfg->ante, "HUNL big blind plus ante overflow");
     const auto sb_contrib = std::max(blind_sb, cfg->initial_contributions[0]);
     const auto bb_contrib = std::max(blind_bb, cfg->initial_contributions[1]);
 
@@ -599,8 +714,14 @@ ActionContext HUNLState::action_context() const {
         throw std::logic_error("HUNLState.action_context requires config");
     }
     const auto& cfg = *config;
-    const auto pot = contributions[0] + contributions[1] + cfg.initial_pot -
-                     cfg.initial_contributions[0] - cfg.initial_contributions[1];
+    const auto pot_wide =
+        static_cast<std::int64_t>(contributions[0]) + contributions[1] +
+        cfg.initial_pot - cfg.initial_contributions[0] -
+        cfg.initial_contributions[1];
+    if (pot_wide < 0 || pot_wide > std::numeric_limits<int>::max()) {
+        throw std::overflow_error("HUNL action-context pot exceeds the supported chip domain");
+    }
+    const auto pot = static_cast<int>(pot_wide);
     ActionContext ctx;
     ctx.pot = pot;
     ctx.to_call = to_call;
@@ -1104,11 +1225,15 @@ std::uint8_t raise_cap(const ActionContext& ctx) {
 }
 
 int min_bet(const ActionContext& ctx) {
-    return ctx.min_bet_bb * ctx.big_blind;
+    return checked_nonnegative_multiply(
+        ctx.min_bet_bb, ctx.big_blind, "HUNL minimum bet overflow");
 }
 
 int force_allin_chip_threshold(const ActionContext& ctx) {
-    return ctx.force_allin_threshold * ctx.big_blind;
+    return checked_nonnegative_multiply(
+        ctx.force_allin_threshold,
+        ctx.big_blind,
+        "HUNL forced all-in threshold overflow");
 }
 
 int stack_remaining(const ActionContext& ctx) {
@@ -1120,8 +1245,10 @@ int min_raise_increment(const ActionContext& ctx) {
 }
 
 int python_round_positive(double value) {
-    if (value < 0.0) {
-        throw std::invalid_argument("python_round_positive expects non-negative input");
+    if (!std::isfinite(value) || value < 0.0 ||
+        value > static_cast<double>(std::numeric_limits<int>::max())) {
+        throw std::invalid_argument(
+            "python_round_positive expects finite non-negative representable input");
     }
     const auto floor_value = std::floor(value);
     const auto fraction = value - floor_value;
@@ -1136,14 +1263,25 @@ int python_round_positive(double value) {
 }
 
 int bet_amount_for_fraction(const ActionContext& ctx, double fraction) {
-    return std::max(python_round_positive(static_cast<double>(ctx.pot) * fraction), min_bet(ctx));
+    if (!std::isfinite(fraction) || fraction < 0.0) {
+        throw std::invalid_argument("HUNL bet fraction must be finite and non-negative");
+    }
+    return std::max(
+        python_round_positive(static_cast<double>(ctx.pot) * fraction),
+        min_bet(ctx));
 }
 
 int raise_to_for_multiplier(const ActionContext& ctx, double multiplier) {
+    if (!std::isfinite(multiplier) || multiplier < 0.0) {
+        throw std::invalid_argument("HUNL raise multiplier must be finite and non-negative");
+    }
     const auto aggressor_idx = static_cast<std::size_t>(std::max(ctx.street_aggressor, 0));
     const auto aggressor_contrib = ctx.contributions[aggressor_idx];
     const auto raise_to = python_round_positive(static_cast<double>(aggressor_contrib) * multiplier);
-    const auto min_raise_to = aggressor_contrib + min_raise_increment(ctx);
+    const auto min_raise_to = checked_nonnegative_add(
+        aggressor_contrib,
+        min_raise_increment(ctx),
+        "HUNL minimum raise target overflow");
     return std::max(raise_to, min_raise_to);
 }
 
@@ -1163,7 +1301,8 @@ int compute_bet_amount(std::uint8_t action_id, const ActionContext& ctx) {
 int compute_raise_to(std::uint8_t action_id, const ActionContext& ctx) {
     const auto cur_contrib = ctx.contributions[ctx.cur_player];
     const auto stack = stack_remaining(ctx);
-    const auto max_raise_to = cur_contrib + stack;
+    const auto max_raise_to = checked_nonnegative_add(
+        cur_contrib, stack, "HUNL maximum raise target overflow");
     if (action_id == ACTION_ALL_IN) {
         return max_raise_to;
     }
@@ -1199,7 +1338,8 @@ std::vector<ActionId> enumerate_bets(const ActionContext& ctx) {
 std::vector<ActionId> enumerate_raises(const ActionContext& ctx) {
     const auto cur_contrib = ctx.contributions[ctx.cur_player];
     const auto stack = stack_remaining(ctx);
-    const auto max_raise_to = cur_contrib + stack;
+    const auto max_raise_to = checked_nonnegative_add(
+        cur_contrib, stack, "HUNL maximum raise target overflow");
     const auto force_threshold = force_allin_chip_threshold(ctx);
     std::vector<int> seen_raise_tos;
     std::vector<ActionId> actions;
