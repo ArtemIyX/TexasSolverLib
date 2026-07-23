@@ -1088,6 +1088,47 @@ TEST_CASE(hunl_sampled_coordinator_merge_orders_worker_deltas_deterministically)
     EXPECT_NEAR(row.regret[1], 2.0, TOL);
 }
 
+TEST_CASE(hunl_sampled_kway_merge_is_bit_identical_across_twenty_worker_partitions) {
+    const auto merged_row = [](std::size_t worker_count) {
+        core::HUNLSampledStorage storage;
+        storage.ensure_row({
+            core::InfosetId{0}, 0, core::Street::River, 2, 2});
+        std::vector<core::HUNLSampledWorkerScratch> streams(worker_count);
+        const auto batches = core::HUNLSampledScheduler::partition_deterministic(
+            240U, worker_count);
+        for (std::size_t worker = 0; worker < batches.size(); ++worker) {
+            for (std::uint64_t trajectory = batches[worker].trajectories.begin;
+                 trajectory < batches[worker].trajectories.end;
+                 ++trajectory) {
+                const std::array<double, 3> cancellation = {
+                    100'000'000.0, 1.0, -100'000'000.0};
+                const auto value = cancellation[trajectory % cancellation.size()];
+                streams[worker].deltas.push_back({
+                    core::InfosetId{0},
+                    static_cast<std::uint32_t>(trajectory & 1U),
+                    static_cast<std::uint8_t>((trajectory >> 1U) & 1U),
+                    value,
+                    value * 0.5,
+                    trajectory,
+                });
+            }
+        }
+        core::merge_hunl_sampled_worker_streams(storage, streams);
+        const auto row = storage.view(core::InfosetId{0});
+        std::array<float, 8> values = {};
+        for (std::size_t index = 0; index < 4; ++index) {
+            values[index] = row.regret[index];
+            values[index + 4U] = row.strategy_sum[index];
+        }
+        return values;
+    };
+
+    const auto baseline = merged_row(1U);
+    for (std::size_t workers = 1; workers <= 20; ++workers) {
+        EXPECT_EQ(merged_row(workers), baseline);
+    }
+}
+
 TEST_CASE(hunl_sampled_merge_rejects_bad_deltas_without_mutating_any_row) {
     const std::array<double, 24> invalid = {
         std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(),

@@ -267,63 +267,147 @@ double traverse_external(
     return node_value;
 }
 
-void merge_deltas(HUNLSampledStorage& storage, const HUNLSampledWorkerScratch& scratch) {
-    // Validate every central-row mutation before changing a single value. The
-    // input is ordered, so equal row cells are checked as one deterministic sum.
-    for (std::size_t begin = 0; begin < scratch.deltas.size();) {
-        const auto& first = scratch.deltas[begin];
-        std::size_t end = begin;
+bool delta_cell_less(
+    const HUNLSampledValueDelta& lhs,
+    const HUNLSampledValueDelta& rhs) noexcept {
+    if (lhs.infoset_id.value != rhs.infoset_id.value) {
+        return lhs.infoset_id.value < rhs.infoset_id.value;
+    }
+    if (lhs.bucket != rhs.bucket) return lhs.bucket < rhs.bucket;
+    return lhs.action < rhs.action;
+}
+
+bool same_delta_cell(
+    const HUNLSampledValueDelta& lhs,
+    const HUNLSampledValueDelta& rhs) noexcept {
+    return lhs.infoset_id.value == rhs.infoset_id.value &&
+           lhs.bucket == rhs.bucket &&
+           lhs.action == rhs.action;
+}
+
+bool delta_order_less(
+    const HUNLSampledValueDelta& lhs,
+    const HUNLSampledValueDelta& rhs) noexcept {
+    if (delta_cell_less(lhs, rhs)) return true;
+    if (delta_cell_less(rhs, lhs)) return false;
+    return lhs.trajectory_id < rhs.trajectory_id;
+}
+
+template <class Visitor>
+void visit_merged_delta_cells(
+    HUNLSampledWorkerScratch* streams,
+    std::size_t stream_count,
+    Visitor&& visitor) {
+    for (std::size_t stream = 0; stream < stream_count; ++stream) {
+        streams[stream].merge_cursor = 0;
+    }
+
+    while (true) {
+        const HUNLSampledValueDelta* cell = nullptr;
+        for (std::size_t stream = 0; stream < stream_count; ++stream) {
+            const auto cursor = streams[stream].merge_cursor;
+            if (cursor >= streams[stream].deltas.size()) continue;
+            const auto& candidate = streams[stream].deltas[cursor];
+            if (cell == nullptr || delta_cell_less(candidate, *cell)) {
+                cell = &candidate;
+            }
+        }
+        if (cell == nullptr) return;
+        const auto cell_key = *cell;
+
         double regret_delta = 0.0;
         double strategy_delta = 0.0;
-        while (end < scratch.deltas.size() &&
-               scratch.deltas[end].infoset_id.value == first.infoset_id.value &&
-               scratch.deltas[end].bucket == first.bucket &&
-               scratch.deltas[end].action == first.action) {
-            const auto& delta = scratch.deltas[end];
-            if (!std::isfinite(delta.regret) || !std::isfinite(delta.strategy_sum) ||
-                !std::isfinite(regret_delta + delta.regret) ||
-                !std::isfinite(strategy_delta + delta.strategy_sum)) {
+        while (true) {
+            std::size_t selected_stream = stream_count;
+            const HUNLSampledValueDelta* selected = nullptr;
+            for (std::size_t stream = 0; stream < stream_count; ++stream) {
+                const auto cursor = streams[stream].merge_cursor;
+                if (cursor >= streams[stream].deltas.size()) continue;
+                const auto& candidate = streams[stream].deltas[cursor];
+                if (!same_delta_cell(candidate, cell_key)) continue;
+                if (selected == nullptr || delta_order_less(candidate, *selected) ||
+                    (!delta_order_less(*selected, candidate) && stream < selected_stream)) {
+                    selected = &candidate;
+                    selected_stream = stream;
+                }
+            }
+            if (selected == nullptr) break;
+            if (!std::isfinite(selected->regret) ||
+                !std::isfinite(selected->strategy_sum) ||
+                !std::isfinite(regret_delta + selected->regret) ||
+                !std::isfinite(strategy_delta + selected->strategy_sum)) {
                 throw std::overflow_error("sampled merge contains a non-finite delta");
             }
-            regret_delta += delta.regret;
-            strategy_delta += delta.strategy_sum;
-            ++end;
+            regret_delta += selected->regret;
+            strategy_delta += selected->strategy_sum;
+            ++streams[selected_stream].merge_cursor;
         }
-        const auto row = storage.view(first.infoset_id);
-        if (row.empty() || first.bucket >= row.bucket_count || first.action >= row.action_count) {
-            throw std::logic_error("sampled traversal delta does not match its infoset row");
-        }
-        const auto offset = HUNLSampledStorage::value_index(
-            row.layout, row.bucket_count, row.action_count, first.bucket, first.action);
-        const auto next_regret = static_cast<double>(row.regret[offset]) + regret_delta;
-        const auto next_strategy = static_cast<double>(row.strategy_sum[offset]) + strategy_delta;
-        if (!std::isfinite(next_regret) || !std::isfinite(next_strategy) ||
-            std::fabs(next_regret) > std::numeric_limits<float>::max() ||
-            std::fabs(next_strategy) > std::numeric_limits<float>::max()) {
-            throw std::overflow_error("sampled merge would produce a non-finite float row");
-        }
-        begin = end;
+        visitor(cell_key, regret_delta, strategy_delta);
     }
-    for (std::size_t begin = 0; begin < scratch.deltas.size();) {
-        const auto& first = scratch.deltas[begin];
-        std::size_t end = begin;
-        double regret_delta = 0.0;
-        double strategy_delta = 0.0;
-        while (end < scratch.deltas.size() &&
-               scratch.deltas[end].infoset_id.value == first.infoset_id.value &&
-               scratch.deltas[end].bucket == first.bucket &&
-               scratch.deltas[end].action == first.action) {
-            regret_delta += scratch.deltas[end].regret;
-            strategy_delta += scratch.deltas[end].strategy_sum;
-            ++end;
-        }
-        const auto row = storage.view_mut(first.infoset_id);
-        const auto offset = HUNLSampledStorage::value_index(
-            row.layout, row.bucket_count, row.action_count, first.bucket, first.action);
-        row.regret[offset] = static_cast<float>(static_cast<double>(row.regret[offset]) + regret_delta);
-        row.strategy_sum[offset] = static_cast<float>(static_cast<double>(row.strategy_sum[offset]) + strategy_delta);
-        begin = end;
+}
+
+void merge_delta_streams(
+    HUNLSampledStorage& storage,
+    HUNLSampledWorkerScratch* streams,
+    std::size_t stream_count) {
+    for (std::size_t stream = 0; stream < stream_count; ++stream) {
+        std::sort(
+            streams[stream].deltas.begin(),
+            streams[stream].deltas.end(),
+            delta_order_less);
     }
+
+    // Validate the complete batch before changing the first central value.
+    visit_merged_delta_cells(
+        streams,
+        stream_count,
+        [&storage](
+            const HUNLSampledValueDelta& cell,
+            double regret_delta,
+            double strategy_delta) {
+            const auto row = storage.view(cell.infoset_id);
+            if (row.empty() || cell.bucket >= row.bucket_count ||
+                cell.action >= row.action_count) {
+                throw std::logic_error(
+                    "sampled traversal delta does not match its infoset row");
+            }
+            const auto offset = HUNLSampledStorage::value_index(
+                row.layout,
+                row.bucket_count,
+                row.action_count,
+                cell.bucket,
+                cell.action);
+            const auto next_regret =
+                static_cast<double>(row.regret[offset]) + regret_delta;
+            const auto next_strategy =
+                static_cast<double>(row.strategy_sum[offset]) + strategy_delta;
+            if (!std::isfinite(next_regret) || !std::isfinite(next_strategy) ||
+                std::fabs(next_regret) > std::numeric_limits<float>::max() ||
+                std::fabs(next_strategy) > std::numeric_limits<float>::max()) {
+                throw std::overflow_error(
+                    "sampled merge would produce a non-finite float row");
+            }
+        });
+
+    visit_merged_delta_cells(
+        streams,
+        stream_count,
+        [&storage](
+            const HUNLSampledValueDelta& cell,
+            double regret_delta,
+            double strategy_delta) {
+            const auto row = storage.view_mut(cell.infoset_id);
+            const auto offset = HUNLSampledStorage::value_index(
+                row.layout,
+                row.bucket_count,
+                row.action_count,
+                cell.bucket,
+                cell.action);
+            row.regret[offset] = static_cast<float>(
+                static_cast<double>(row.regret[offset]) + regret_delta);
+            row.strategy_sum[offset] = static_cast<float>(
+                static_cast<double>(row.strategy_sum[offset]) + strategy_delta);
+        });
 }
 
 }  // namespace
@@ -332,6 +416,7 @@ void HUNLSampledWorkerScratch::clear_keep_capacity() noexcept {
     action_values.clear();
     strategy.clear();
     deltas.clear();
+    merge_cursor = 0;
 }
 
 void HUNLSampledWorkerScratch::reserve_deltas(std::size_t count) {
@@ -350,7 +435,7 @@ HUNLSampledTraversalResult HUNLSampledTraversal::run(
     HUNLSampledWorkerScratch& scratch) {
     prepare_hunl_sampled_trajectory(builder_, storage_, terminal_evaluator_, request);
     const auto result = run_unmerged(request, scratch);
-    merge_deltas(storage_, scratch);
+    merge_delta_streams(storage_, &scratch, 1U);
     return result;
 }
 
@@ -393,13 +478,13 @@ HUNLSampledTraversalResult HUNLSampledTraversal::run_unmerged(
 void merge_hunl_sampled_worker_deltas(
     HUNLSampledStorage& storage,
     HUNLSampledWorkerScratch& scratch) {
-    std::sort(scratch.deltas.begin(), scratch.deltas.end(), [](const auto& lhs, const auto& rhs) {
-        if (lhs.infoset_id.value != rhs.infoset_id.value) return lhs.infoset_id.value < rhs.infoset_id.value;
-        if (lhs.bucket != rhs.bucket) return lhs.bucket < rhs.bucket;
-        if (lhs.action != rhs.action) return lhs.action < rhs.action;
-        return lhs.trajectory_id < rhs.trajectory_id;
-    });
-    merge_deltas(storage, scratch);
+    merge_delta_streams(storage, &scratch, 1U);
+}
+
+void merge_hunl_sampled_worker_streams(
+    HUNLSampledStorage& storage,
+    std::vector<HUNLSampledWorkerScratch>& streams) {
+    merge_delta_streams(storage, streams.data(), streams.size());
 }
 
 void prepare_hunl_sampled_trajectory(

@@ -301,11 +301,11 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
                     worker_batches[worker].trajectories.size(),
                     worker_results[worker].nodes_visited,
                     worker_results[worker].infosets_updated);
-                // Each worker owns a deterministic contiguous trajectory range.
-                // Merging those sorted streams in worker order avoids a second
-                // full-minibatch coordinator arena.
-                merge_hunl_sampled_worker_deltas(storage_, worker_scratch[worker]);
             }
+            // K-way cell/trajectory ordering avoids a second full-minibatch
+            // coordinator arena and narrows each central float exactly once,
+            // independently of worker partitioning.
+            merge_hunl_sampled_worker_streams(storage_, worker_scratch);
             profile_.add_merge_seconds(std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - merge_started).count());
         }

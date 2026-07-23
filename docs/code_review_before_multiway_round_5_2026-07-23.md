@@ -94,8 +94,7 @@ admission, one-byte rejection, and rollback after rejected growth.
 
 ### P1-1: private rejection loops are still unbounded at `UINT32_MAX`
 
-Status: **Fixed in the bounded-sampler remediation commit; tests added but not
-executed.**
+Status: **Fixed in `3da2d09`; tests added but not executed.**
 
 Both samplers now use one inline 64-bit attempt cursor that publishes a
 representable one-based `uint32_t` attempt and stops before incrementing past
@@ -132,7 +131,15 @@ small testable attempt-range helper.
 
 ### P1-2: sampled merge results depend on worker count
 
-Status: **Open.**
+Status: **Fixed in the k-way merge remediation commit; tests added but not
+executed.**
+
+The coordinator now sorts each worker-local stream, performs a k-way merge in
+cell and global trajectory order, validates the entire batch, and narrows each
+central float exactly once. The merge uses one cursor stored in each existing
+worker scratch and does not allocate a full coordinator delta copy. Twenty
+adversarial cancellation partitions require bit-identical regret and strategy
+rows for one through 20 workers.
 
 Evidence:
 

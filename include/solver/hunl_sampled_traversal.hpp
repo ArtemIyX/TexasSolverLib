@@ -57,6 +57,7 @@ struct HUNLSampledWorkerScratch {
     std::vector<double> action_values;
     std::vector<double> strategy;
     std::vector<HUNLSampledValueDelta> deltas;
+    std::size_t merge_cursor = 0;
 
     void clear_keep_capacity() noexcept;
     void reserve_deltas(std::size_t count);
@@ -97,6 +98,9 @@ private:
 void merge_hunl_sampled_worker_deltas(
     HUNLSampledStorage& storage,
     HUNLSampledWorkerScratch& scratch);
+void merge_hunl_sampled_worker_streams(
+    HUNLSampledStorage& storage,
+    std::vector<HUNLSampledWorkerScratch>& streams);
 
 void prepare_hunl_sampled_trajectory(
     HUNLSampledBuilder& builder,
