@@ -54,6 +54,7 @@ void MultiwayBettingSnapshot::validate() const {
     }
     int max_street_contribution = 0;
     std::size_t actionable_pending = 0;
+    std::size_t actionable_seats = 0;
     for (std::size_t seat = 0; seat < count; ++seat) {
         if (stacks[seat] < 0 || contributions[seat] < 0 || street_contributions[seat] < 0 ||
             street_contributions[seat] > contributions[seat] ||
@@ -63,6 +64,7 @@ void MultiwayBettingSnapshot::validate() const {
             throw std::invalid_argument("MultiwayBettingSnapshot has inconsistent seat state");
         }
         if (!folded[seat] && !all_in[seat]) {
+            ++actionable_seats;
             if (street_contributions[seat] < current_bet && !pending[seat]) {
                 throw std::invalid_argument("MultiwayBettingSnapshot omits a player facing a wager");
             }
@@ -81,6 +83,13 @@ void MultiwayBettingSnapshot::validate() const {
     }
     if (max_street_contribution != current_bet) {
         throw std::invalid_argument("MultiwayBettingSnapshot current bet does not match street contributions");
+    }
+    if (actionable_seats > 1U) {
+        for (std::size_t seat = 0; seat < count; ++seat) {
+            if (!folded[seat] && !all_in[seat] && !has_acted[seat] && !pending[seat]) {
+                throw std::invalid_argument("MultiwayBettingSnapshot omits an unacted responder");
+            }
+        }
     }
     if (current_player >= 0 &&
         (folded[static_cast<std::size_t>(current_player)] || all_in[static_cast<std::size_t>(current_player)] ||

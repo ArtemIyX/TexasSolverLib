@@ -226,6 +226,28 @@ TEST_CASE(multiway_covering_stack_has_no_betting_actions_after_all_in_calls) {
     EXPECT_EQ(state.next_node_kind(), core::MultiwayNextNodeKind::BoardRunout);
 }
 
+TEST_CASE(multiway_snapshot_rejects_every_omitted_unacted_responder) {
+    for (const std::size_t seats : {std::size_t{2}, std::size_t{3}, std::size_t{4},
+                                    std::size_t{5}, std::size_t{6}}) {
+        for (std::size_t missing = 0; missing < seats; ++missing) {
+            auto snapshot = three_handed().snapshot();
+            snapshot.stacks.assign(seats, 1000);
+            snapshot.contributions.assign(seats, 0);
+            snapshot.street_contributions.assign(seats, 0);
+            snapshot.folded.assign(seats, false);
+            snapshot.all_in.assign(seats, false);
+            snapshot.may_raise.assign(seats, true);
+            snapshot.pending.assign(seats, true);
+            snapshot.has_acted.assign(seats, false);
+            snapshot.bet_faced_when_acted.assign(seats, 0);
+            snapshot.current_player = 0;
+            snapshot.pending[missing] = false;
+            snapshot.may_raise[missing] = false;
+            EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
+        }
+    }
+}
+
 TEST_CASE(multiway_lone_final_responder_can_only_fold_or_call) {
     for (const int covering_stack : {101, 102, 103, 104, 105, 110, 120, 125, 150, 175,
                                      200, 250, 300, 400, 500, 750, 1000, 1500, 2500, 5000}) {

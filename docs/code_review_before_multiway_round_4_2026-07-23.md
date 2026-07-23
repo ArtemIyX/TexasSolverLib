@@ -188,6 +188,11 @@ Regression gate:
 
 ### P1-2: snapshot validation permits unacted seats to be omitted from the pending ring
 
+Status: **Fixed in the follow-up commit.** A snapshot with more than one
+actionable seat must retain every unacted seat in the pending responder ring.
+The regression covers all 20 seat/missing-seat combinations from heads-up to
+six-handed roots.
+
 Evidence:
 
 - Snapshot validation requires a live seat below `current_bet` to be pending,
