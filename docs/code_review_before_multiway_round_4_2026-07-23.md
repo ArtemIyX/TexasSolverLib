@@ -264,6 +264,12 @@ Regression gate:
 
 ### P1-4: the bounded private rejection loop is infinite at `UINT32_MAX`
 
+Status: **Fixed in the follow-up commit.** Both samplers now use a zero-based
+`attempt_index < limit` loop, so `UINT32_MAX` remains a finite public budget.
+The regression suite validates the full public limit with 20 deterministic
+successful seeds; the loop form itself proves the final increment is never
+evaluated.
+
 Evidence:
 
 - `max_rejection_attempts` is a public `uint32_t` and validation only requires

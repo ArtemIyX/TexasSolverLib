@@ -159,6 +159,18 @@ TEST_CASE(multiway_compiled_private_ranges_offer_nonthrowing_worker_sampling) {
     EXPECT_EQ(scratch.seat_count, 3U);
 }
 
+TEST_CASE(multiway_private_rejection_budget_accepts_the_full_uint32_domain_without_loop_wrap) {
+    auto config = ranges();
+    config.max_rejection_attempts = std::numeric_limits<std::uint32_t>::max();
+    config.validate();
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    for (std::uint64_t seed = 1; seed <= 20; ++seed) {
+        core::MultiwayPrivateWorkerScratch scratch;
+        EXPECT_TRUE(compiled.try_sample_into(seed, scratch));
+        EXPECT_TRUE(scratch.attempts > 0U);
+    }
+}
+
 TEST_CASE(multiway_showdown_preserves_explicit_odd_chip_order) {
     core::MultiwayShowdownInput input;
     input.board = {c(14, 0), c(13, 0), c(12, 1), c(11, 2), c(2, 0)};

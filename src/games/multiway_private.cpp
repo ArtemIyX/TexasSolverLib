@@ -83,7 +83,8 @@ MultiwayJointPrivateSample sample_multiway_private_hands(
         weights[seat].reserve(config.ranges[seat].size());
         for (const auto& entry : config.ranges[seat]) weights[seat].push_back(entry.weight);
     }
-    for (std::uint32_t attempt = 1; attempt <= config.max_rejection_attempts; ++attempt) {
+    for (std::uint32_t attempt_index = 0; attempt_index < config.max_rejection_attempts; ++attempt_index) {
+        const auto attempt = attempt_index + 1U;
         std::array<bool, 64> used = {};
         for (const auto card : config.board) used[card] = true;
         MultiwayJointPrivateSample sample;
@@ -155,7 +156,8 @@ bool MultiwayCompiledPrivateRanges::try_sample_into(
     std::uint64_t seed,
     MultiwayPrivateWorkerScratch& scratch) const noexcept {
     PcsRng rng(seed);
-    for (std::uint32_t attempt = 1; attempt <= max_rejection_attempts_; ++attempt) {
+    for (std::uint32_t attempt_index = 0; attempt_index < max_rejection_attempts_; ++attempt_index) {
+        const auto attempt = attempt_index + 1U;
         scratch.used.fill(false);
         for (const auto card : board_) scratch.used[card] = true;
         bool compatible = true;
