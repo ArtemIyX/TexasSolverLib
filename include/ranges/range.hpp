@@ -12,6 +12,8 @@
 
 namespace core {
 
+inline constexpr std::uint64_t MAX_SERIALIZED_RANGE_VALUES = 1'000'000ULL;
+
 /**
  * @brief Dense probability vector over private-hand combos or abstraction buckets.
  *

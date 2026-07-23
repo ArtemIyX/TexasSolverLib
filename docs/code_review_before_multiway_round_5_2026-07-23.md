@@ -364,8 +364,7 @@ wrong-shape, and normal posterior cases.
 
 ### P1-8: range-cache compatibility omits strategy-defining configuration
 
-Status: **Fixed in the cache-contract remediation commit; tests added but not
-executed.**
+Status: **Fixed in `44858de`; tests added but not executed.**
 
 Cache version 2 carries a deterministic fingerprint of the complete HUNL solve
 contract: action menus/caps, all-in policy, rake, bucket/depth/mode/range
@@ -402,7 +401,17 @@ cases.
 
 ### P1-9: binary range/cache decoders trust unbounded lengths and partially mutate output
 
-Status: **Open.**
+Status: **Fixed in the bounded-decoder remediation commit; tests added but not
+executed.**
+
+Range files cap value counts, validate kind/probability/mask domains, and
+publish only a fully decoded temporary. Cache files cap strings at 1 MiB and
+boards at five cards, require canonical public metadata and normalized aligned
+range/mask payloads, validate diagnostics, reject trailing bytes, and likewise
+publish transactionally. Optional-string presence bytes must be exactly zero
+or one. Twenty range truncations, 20 invalid probabilities, 20 invalid mask
+bytes, explicit oversized/enum cases, 20 cache truncations, and trailing-data
+rollback are covered.
 
 Evidence:
 

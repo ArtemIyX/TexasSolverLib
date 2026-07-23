@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <fstream>
 #include <istream>
+#include <new>
 #include <ostream>
 #include <stdexcept>
+#include <utility>
 
 namespace core {
 
@@ -187,16 +189,29 @@ bool deserialize(std::istream& in, RangeVector& range) {
         !read_pod(in, header.value_count)) {
         return false;
     }
-    if (header.version != 1) {
+    if (header.version != 1 ||
+        (header.kind != RangeVector::Kind::Combo &&
+         header.kind != RangeVector::Kind::Bucket) ||
+        header.value_count > MAX_SERIALIZED_RANGE_VALUES) {
         return false;
     }
-    range.kind = header.kind;
-    range.weights.resize(static_cast<std::size_t>(header.value_count));
-    for (std::size_t i = 0; i < range.weights.size(); ++i) {
-        if (!read_pod(in, range.weights[i])) {
+    RangeVector decoded;
+    decoded.kind = header.kind;
+    try {
+        decoded.weights.resize(static_cast<std::size_t>(header.value_count));
+    } catch (const std::bad_alloc&) {
+        return false;
+    } catch (const std::length_error&) {
+        return false;
+    }
+    for (auto& weight : decoded.weights) {
+        if (!read_pod(in, weight) ||
+            !std::isfinite(weight) ||
+            weight < 0.0) {
             return false;
         }
     }
+    range = std::move(decoded);
     return true;
 }
 
@@ -225,20 +240,41 @@ bool deserialize(std::istream& in, RangeMask& mask) {
         !read_pod(in, header.value_count)) {
         return false;
     }
-    if (header.version != 1) {
+    if (header.version != 1 ||
+        (header.kind != RangeVector::Kind::Combo &&
+         header.kind != RangeVector::Kind::Bucket) ||
+        header.value_count > MAX_SERIALIZED_RANGE_VALUES) {
         return false;
     }
-    mask.kind = header.kind;
-    mask.enabled.resize(static_cast<std::size_t>(header.value_count));
-    for (std::size_t i = 0; i < mask.enabled.size(); ++i) {
-        if (!read_pod(in, mask.enabled[i])) {
+    RangeMask decoded;
+    decoded.kind = header.kind;
+    try {
+        decoded.enabled.resize(static_cast<std::size_t>(header.value_count));
+    } catch (const std::bad_alloc&) {
+        return false;
+    } catch (const std::length_error&) {
+        return false;
+    }
+    for (auto& enabled : decoded.enabled) {
+        if (!read_pod(in, enabled) || enabled > 1U) {
             return false;
         }
     }
+    mask = std::move(decoded);
     return true;
 }
 
 bool save_range_file(const std::filesystem::path& path, const RangeVector& range) {
+    if ((range.kind != RangeVector::Kind::Combo &&
+         range.kind != RangeVector::Kind::Bucket) ||
+        range.weights.size() > MAX_SERIALIZED_RANGE_VALUES) {
+        return false;
+    }
+    for (const auto weight : range.weights) {
+        if (!std::isfinite(weight) || weight < 0.0) {
+            return false;
+        }
+    }
     std::ofstream out(path, std::ios::binary);
     if (!out) {
         return false;
@@ -252,7 +288,13 @@ bool load_range_file(const std::filesystem::path& path, RangeVector& range) {
     if (!in) {
         return false;
     }
-    return deserialize(in, range);
+    RangeVector decoded;
+    if (!deserialize(in, decoded) ||
+        in.peek() != std::char_traits<char>::eof()) {
+        return false;
+    }
+    range = std::move(decoded);
+    return true;
 }
 
 }  // namespace core

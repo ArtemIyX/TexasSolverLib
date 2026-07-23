@@ -1,13 +1,16 @@
 #include "ranges/cache.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <new>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 
@@ -17,6 +20,8 @@ namespace {
 
 constexpr std::array<char, 8> RANGE_CACHE_MAGIC{{'T', 'S', 'R', 'C', 'A', 'C', 'H', 'E'}};
 constexpr std::uint8_t RANGE_CACHE_VERSION = 2;
+constexpr std::uint64_t MAX_CACHE_STRING_BYTES = 1'048'576ULL;
+constexpr std::uint64_t MAX_CACHE_BOARD_CARDS = 5ULL;
 
 class ContractFingerprint {
 public:
@@ -201,11 +206,25 @@ bool read_string(std::istream& in, std::string& value) {
     if (!read_pod(in, size)) {
         return false;
     }
-    if (size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+    if (size > MAX_CACHE_STRING_BYTES ||
+        size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
         return false;
     }
-    value.resize(static_cast<std::size_t>(size));
-    return static_cast<bool>(in.read(value.data(), static_cast<std::streamsize>(value.size())));
+    std::string decoded;
+    try {
+        decoded.resize(static_cast<std::size_t>(size));
+    } catch (const std::bad_alloc&) {
+        return false;
+    } catch (const std::length_error&) {
+        return false;
+    }
+    if (!in.read(
+            decoded.data(),
+            static_cast<std::streamsize>(decoded.size()))) {
+        return false;
+    }
+    value = std::move(decoded);
+    return true;
 }
 
 void write_optional_string(std::ostream& out, const std::optional<std::string>& value) {
@@ -221,9 +240,12 @@ bool read_optional_string(std::istream& in, std::optional<std::string>& value) {
     if (!read_pod(in, present)) {
         return false;
     }
-    if (present == 0) {
+    if (present == 0U) {
         value = std::nullopt;
         return true;
+    }
+    if (present != 1U) {
+        return false;
     }
     std::string decoded;
     if (!read_string(in, decoded)) {
@@ -238,6 +260,59 @@ std::string board_token(const std::vector<std::uint8_t>& board) {
         return "preflop";
     }
     return sorted_card_string(board);
+}
+
+bool valid_range_kind(RangeVector::Kind kind) noexcept {
+    return kind == RangeVector::Kind::Combo ||
+           kind == RangeVector::Kind::Bucket;
+}
+
+bool valid_cache_key_metadata(const RangeCacheKey& key) {
+    if (key.player > 1U || !valid_range_kind(key.range_kind)) {
+        return false;
+    }
+    try {
+        HUNLConfig config;
+        config.starting_stack = key.starting_stack;
+        config.small_blind = key.small_blind;
+        config.big_blind = key.big_blind;
+        config.ante = key.ante;
+        config.starting_street = key.street;
+        config.initial_board = key.board;
+        config.initial_pot = key.initial_pot;
+        config.initial_contributions = key.initial_contributions;
+        config.abstraction_path = key.abstraction_path;
+        config.abstraction_version = key.abstraction_version;
+        config.validate();
+    } catch (const std::exception&) {
+        return false;
+    }
+    return true;
+}
+
+bool valid_cache_range(const RangeCacheEntry& entry) noexcept {
+    const auto& range = entry.range.range;
+    const auto& mask = entry.range.mask;
+    if (!valid_range_kind(range.kind) ||
+        range.kind != entry.key.range_kind ||
+        mask.kind != range.kind ||
+        range.weights.empty() ||
+        range.weights.size() != mask.enabled.size()) {
+        return false;
+    }
+    double total = 0.0;
+    for (std::size_t index = 0; index < range.weights.size(); ++index) {
+        const auto weight = range.weights[index];
+        if (!std::isfinite(weight) ||
+            weight < 0.0 ||
+            mask.enabled[index] > 1U ||
+            (mask.enabled[index] == 0U && weight != 0.0)) {
+            return false;
+        }
+        total += weight;
+    }
+    return std::isfinite(total) &&
+           std::abs(total - 1.0) <= 1e-9;
 }
 
 }  // namespace
@@ -297,6 +372,18 @@ std::string range_cache_basename(const RangeCacheKey& key) {
 }
 
 bool save_range_cache_entry(const std::filesystem::path& path, const RangeCacheEntry& entry) {
+    if (entry.key.board.size() > MAX_CACHE_BOARD_CARDS ||
+        (entry.key.abstraction_path.has_value() &&
+         entry.key.abstraction_path->size() > MAX_CACHE_STRING_BYTES) ||
+        (entry.key.abstraction_version.has_value() &&
+         entry.key.abstraction_version->size() > MAX_CACHE_STRING_BYTES) ||
+        entry.label.size() > MAX_CACHE_STRING_BYTES ||
+        !valid_cache_key_metadata(entry.key) ||
+        !std::isfinite(entry.exploitability) ||
+        entry.exploitability < 0.0 ||
+        !valid_cache_range(entry)) {
+        return false;
+    }
     std::ofstream out(path, std::ios::binary);
     if (!out) {
         return false;
@@ -345,47 +432,55 @@ bool load_range_cache_entry(const std::filesystem::path& path, RangeCacheEntry& 
         return false;
     }
 
-    if (!read_pod(in, entry.key.player) ||
-        !read_pod(in, entry.key.street) ||
-        !read_pod(in, entry.key.starting_stack) ||
-        !read_pod(in, entry.key.small_blind) ||
-        !read_pod(in, entry.key.big_blind) ||
-        !read_pod(in, entry.key.ante) ||
-        !read_pod(in, entry.key.initial_pot) ||
-        !read_pod(in, entry.key.initial_contributions[0]) ||
-        !read_pod(in, entry.key.initial_contributions[1]) ||
-        !read_pod(in, entry.key.range_kind) ||
-        !read_pod(in, entry.key.solve_contract_fingerprint) ||
-        !read_optional_string(in, entry.key.abstraction_path) ||
-        !read_optional_string(in, entry.key.abstraction_version)) {
+    RangeCacheEntry decoded;
+    if (!read_pod(in, decoded.key.player) ||
+        !read_pod(in, decoded.key.street) ||
+        !read_pod(in, decoded.key.starting_stack) ||
+        !read_pod(in, decoded.key.small_blind) ||
+        !read_pod(in, decoded.key.big_blind) ||
+        !read_pod(in, decoded.key.ante) ||
+        !read_pod(in, decoded.key.initial_pot) ||
+        !read_pod(in, decoded.key.initial_contributions[0]) ||
+        !read_pod(in, decoded.key.initial_contributions[1]) ||
+        !read_pod(in, decoded.key.range_kind) ||
+        !read_pod(in, decoded.key.solve_contract_fingerprint) ||
+        !read_optional_string(in, decoded.key.abstraction_path) ||
+        !read_optional_string(in, decoded.key.abstraction_version)) {
         return false;
     }
 
     std::uint64_t board_size = 0;
     if (!read_pod(in, board_size) ||
+        board_size > MAX_CACHE_BOARD_CARDS ||
         board_size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
         return false;
     }
-    entry.key.board.resize(static_cast<std::size_t>(board_size));
-    for (auto& card : entry.key.board) {
+    decoded.key.board.resize(static_cast<std::size_t>(board_size));
+    for (auto& card : decoded.key.board) {
         if (!read_pod(in, card)) {
             return false;
         }
     }
 
-    if (!read_pod(in, entry.iterations) ||
-        !read_pod(in, entry.exploitability) ||
-        !read_string(in, entry.label) ||
-        !deserialize(in, entry.range.range) ||
-        !deserialize(in, entry.range.mask)) {
+    if (!read_pod(in, decoded.iterations) ||
+        !read_pod(in, decoded.exploitability) ||
+        !read_string(in, decoded.label) ||
+        !deserialize(in, decoded.range.range) ||
+        !deserialize(in, decoded.range.mask) ||
+        !valid_cache_key_metadata(decoded.key) ||
+        !std::isfinite(decoded.exploitability) ||
+        decoded.exploitability < 0.0 ||
+        !valid_cache_range(decoded) ||
+        in.peek() != std::char_traits<char>::eof()) {
         return false;
     }
-    entry.range.source_kind = RangeSourceKind::CachedFile;
-    entry.range.context.source_path = path;
-    entry.range.context.street = entry.key.street;
-    if (!entry.label.empty()) {
-        entry.range.context.label = entry.label;
+    decoded.range.source_kind = RangeSourceKind::CachedFile;
+    decoded.range.context.source_path = path;
+    decoded.range.context.street = decoded.key.street;
+    if (!decoded.label.empty()) {
+        decoded.range.context.label = decoded.label;
     }
+    entry = std::move(decoded);
     return true;
 }
 

@@ -4,7 +4,13 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <limits>
+#include <sstream>
+#include <string>
 #include <vector>
 
 namespace {
@@ -45,6 +51,103 @@ TEST_CASE(ranges_cached_entries_reload_exactly) {
     for (std::size_t i = 0; i < entry.range.range.weights.size(); ++i) {
         EXPECT_NEAR(entry.range.range.weights[i], loaded.range.range.weights[i], 1e-12);
     }
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(ranges_binary_decoder_rejects_twenty_truncations_transactionally) {
+    core::RangeVector encoded;
+    encoded.weights = {0.1, 0.2, 0.3, 0.4};
+    std::ostringstream out(std::ios::binary);
+    core::serialize(out, encoded);
+    const auto bytes = out.str();
+
+    for (std::size_t removed = 1; removed <= 20; ++removed) {
+        std::istringstream in(
+            bytes.substr(0, bytes.size() - removed),
+            std::ios::binary);
+        core::RangeVector target;
+        target.kind = core::RangeVector::Kind::Bucket;
+        target.weights = {7.0, 8.0};
+        EXPECT_TRUE(!core::deserialize(in, target));
+        EXPECT_EQ(target.kind, core::RangeVector::Kind::Bucket);
+        EXPECT_EQ(target.weights, std::vector<double>({7.0, 8.0}));
+    }
+}
+
+TEST_CASE(ranges_binary_decoder_rejects_twenty_invalid_probabilities_transactionally) {
+    for (std::size_t index = 0; index < 20; ++index) {
+        core::RangeVector encoded;
+        encoded.weights.assign(20, 0.05);
+        encoded.weights[index] = index % 3U == 0U
+            ? -0.1
+            : (index % 3U == 1U
+                ? std::numeric_limits<double>::infinity()
+                : std::numeric_limits<double>::quiet_NaN());
+        std::ostringstream out(std::ios::binary);
+        core::serialize(out, encoded);
+        std::istringstream in(out.str(), std::ios::binary);
+
+        core::RangeVector target;
+        target.weights = {1.0};
+        EXPECT_TRUE(!core::deserialize(in, target));
+        EXPECT_EQ(target.weights, std::vector<double>({1.0}));
+    }
+}
+
+TEST_CASE(ranges_binary_mask_decoder_rejects_twenty_non_boolean_values) {
+    for (std::size_t index = 0; index < 20; ++index) {
+        core::RangeMask encoded;
+        encoded.enabled.assign(20, 1U);
+        encoded.enabled[index] = static_cast<std::uint8_t>(2U + index);
+        std::ostringstream out(std::ios::binary);
+        core::serialize(out, encoded);
+        std::istringstream in(out.str(), std::ios::binary);
+
+        core::RangeMask target;
+        target.kind = core::RangeVector::Kind::Bucket;
+        target.enabled = {0U};
+        EXPECT_TRUE(!core::deserialize(in, target));
+        EXPECT_EQ(target.kind, core::RangeVector::Kind::Bucket);
+        EXPECT_EQ(target.enabled, std::vector<std::uint8_t>({0U}));
+    }
+}
+
+TEST_CASE(ranges_binary_decoder_rejects_unbounded_count_and_invalid_kind) {
+    core::RangeVector encoded;
+    encoded.weights = {1.0};
+    std::ostringstream out(std::ios::binary);
+    core::serialize(out, encoded);
+
+    auto oversized = out.str();
+    const std::uint64_t count = core::MAX_SERIALIZED_RANGE_VALUES + 1U;
+    std::memcpy(oversized.data() + 10, &count, sizeof(count));
+    std::istringstream oversized_in(oversized, std::ios::binary);
+    core::RangeVector target;
+    target.weights = {1.0};
+    EXPECT_TRUE(!core::deserialize(oversized_in, target));
+
+    auto invalid_kind = out.str();
+    invalid_kind[9] = static_cast<char>(255);
+    std::istringstream invalid_kind_in(invalid_kind, std::ios::binary);
+    EXPECT_TRUE(!core::deserialize(invalid_kind_in, target));
+    EXPECT_EQ(target.weights, std::vector<double>({1.0}));
+}
+
+TEST_CASE(ranges_file_decoder_rejects_trailing_payload_transactionally) {
+    core::RangeVector encoded;
+    encoded.weights = {0.25, 0.75};
+    const auto path =
+        std::filesystem::temp_directory_path() /
+        "texas_range_trailing_payload.tsrng";
+    EXPECT_TRUE(core::save_range_file(path, encoded));
+    std::ofstream append(path, std::ios::binary | std::ios::app);
+    append.put('\x7f');
+    append.close();
+
+    core::RangeVector target;
+    target.weights = {1.0};
+    EXPECT_TRUE(!core::load_range_file(path, target));
+    EXPECT_EQ(target.weights, std::vector<double>({1.0}));
     std::filesystem::remove(path);
 }
 
@@ -156,6 +259,70 @@ TEST_CASE(ranges_cache_rejects_more_than_twenty_solve_contract_mutations) {
                 .solve_contract_fingerprint !=
             key.solve_contract_fingerprint);
     }
+}
+
+TEST_CASE(ranges_cache_decoder_rejects_twenty_truncations_transactionally) {
+    const auto config = core::default_tiny_subgame();
+    core::RangeCacheEntry entry;
+    entry.key = core::make_range_cache_key(
+        config, 0, core::RangeVector::Kind::Combo);
+    entry.range = core::make_uniform_canonical_range(
+        20, core::RangeVector::Kind::Combo);
+    entry.iterations = 42;
+    entry.exploitability = 0.25;
+    entry.label = "bounded-cache";
+
+    const auto valid_path =
+        std::filesystem::temp_directory_path() /
+        "texas_range_cache_bounded_valid.tsrcache";
+    EXPECT_TRUE(core::save_range_cache_entry(valid_path, entry));
+    std::ifstream source(valid_path, std::ios::binary);
+    const std::string bytes{
+        std::istreambuf_iterator<char>(source),
+        std::istreambuf_iterator<char>()};
+
+    for (std::size_t removed = 1; removed <= 20; ++removed) {
+        const auto path =
+            std::filesystem::temp_directory_path() /
+            ("texas_range_cache_truncated_" +
+             std::to_string(removed) + ".tsrcache");
+        std::ofstream truncated(path, std::ios::binary);
+        truncated.write(
+            bytes.data(),
+            static_cast<std::streamsize>(bytes.size() - removed));
+        truncated.close();
+
+        core::RangeCacheEntry target;
+        target.iterations = 999;
+        target.label = "unchanged";
+        EXPECT_TRUE(!core::load_range_cache_entry(path, target));
+        EXPECT_EQ(target.iterations, 999U);
+        EXPECT_EQ(target.label, std::string("unchanged"));
+        std::filesystem::remove(path);
+    }
+    std::filesystem::remove(valid_path);
+}
+
+TEST_CASE(ranges_cache_decoder_rejects_trailing_payload_transactionally) {
+    const auto config = core::default_tiny_subgame();
+    core::RangeCacheEntry entry;
+    entry.key = core::make_range_cache_key(
+        config, 0, core::RangeVector::Kind::Combo);
+    entry.range = core::make_uniform_canonical_range(
+        4, core::RangeVector::Kind::Combo);
+    const auto path =
+        std::filesystem::temp_directory_path() /
+        "texas_range_cache_trailing_payload.tsrcache";
+    EXPECT_TRUE(core::save_range_cache_entry(path, entry));
+    std::ofstream append(path, std::ios::binary | std::ios::app);
+    append.put('\x7f');
+    append.close();
+
+    core::RangeCacheEntry target;
+    target.label = "unchanged";
+    EXPECT_TRUE(!core::load_range_cache_entry(path, target));
+    EXPECT_EQ(target.label, std::string("unchanged"));
+    std::filesystem::remove(path);
 }
 
 }  // namespace
