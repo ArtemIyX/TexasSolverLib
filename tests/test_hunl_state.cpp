@@ -88,7 +88,7 @@ TEST_CASE(hunl_river_root_actions_match_rust_test) {
 }
 
 TEST_CASE(hunl_facing_bet_has_fold_and_call_only_here) {
-    const auto after_bet = river_state().apply(core::ACTION_BET_100);
+    const auto after_bet = river_state().apply(core::ACTION_ALL_IN);
     const auto actions = after_bet.legal_actions();
     EXPECT_TRUE(std::find(actions.begin(), actions.end(), core::ACTION_FOLD) != actions.end());
     EXPECT_TRUE(std::find(actions.begin(), actions.end(), core::ACTION_CALL) != actions.end());
@@ -97,7 +97,8 @@ TEST_CASE(hunl_facing_bet_has_fold_and_call_only_here) {
 }
 
 TEST_CASE(hunl_fold_and_showdown_utilities_match_reference) {
-    const auto folded = river_state().apply(core::ACTION_BET_100).apply(core::ACTION_FOLD);
+    const auto folded =
+        river_state().apply(core::ACTION_ALL_IN).apply(core::ACTION_FOLD);
     EXPECT_TRUE(folded.is_terminal());
     EXPECT_NEAR(folded.utility()[0], 0.0, 1e-9);
     EXPECT_NEAR(folded.utility()[1], 10.0, 1e-9);
@@ -125,7 +126,7 @@ TEST_CASE(hunl_apply_rejects_semantically_illegal_known_player_actions) {
     EXPECT_THROW(root.apply(core::ACTION_CALL), std::invalid_argument);
     EXPECT_THROW(root.apply(core::ACTION_RAISE_33), std::invalid_argument);
 
-    const auto facing_bet = root.apply(core::ACTION_BET_100);
+    const auto facing_bet = root.apply(core::ACTION_ALL_IN);
     EXPECT_THROW(facing_bet.apply(core::ACTION_CHECK), std::invalid_argument);
     EXPECT_THROW(facing_bet.apply(core::ACTION_BET_33), std::invalid_argument);
 
@@ -159,8 +160,11 @@ TEST_CASE(hunl_infoset_key_preserves_cards_and_history) {
     EXPECT_EQ(state.infoset_key(0), std::string("KcAh|2d5s7cKhAs|r|"));
     EXPECT_EQ(state.infoset_key(1), std::string("QhQd|2d5s7cKhAs|r|"));
 
-    const auto after_bet = state.apply(core::ACTION_CHECK).apply(core::ACTION_BET_100);
-    EXPECT_EQ(after_bet.infoset_key(1), std::string("QhQd|2d5s7cKhAs|r|xb1000"));
+    const auto after_bet =
+        state.apply(core::ACTION_CHECK).apply(core::ACTION_BET_75);
+    EXPECT_EQ(
+        after_bet.infoset_key(1),
+        std::string("QhQd|2d5s7cKhAs|r|xb750"));
 }
 
 TEST_CASE(hunl_infoset_encoding_rejects_twenty_invalid_player_ids) {

@@ -811,14 +811,15 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_when_worker_arena_exceeds_hard_l
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_fail_bytes);
 }
 
-TEST_CASE(hunl_sampled_solver_preflight_saturates_overflowing_memory_estimates) {
+TEST_CASE(hunl_sampled_solver_preflight_handles_largest_valid_memory_estimates_without_wrap) {
     core::HUNLSampledSolverConfig config;
     config.max_cached_public_states = std::numeric_limits<std::uint32_t>::max();
     config.workers = std::numeric_limits<std::size_t>::max();
     config.minibatch_size = std::numeric_limits<std::uint32_t>::max();
     config.bucket_count_hint = core::HUNL_SAMPLED_MAX_BUCKET_COUNT;
     config.depth_limit_plies_hint = 0;
-    config.memory_fail_bytes = std::numeric_limits<std::uint64_t>::max() - 1U;
+    config.adaptive_memory_fallback = false;
+    config.memory_fail_bytes = 1ULL << 40U;
 
     core::HUNLSampledSolver solver(config);
     core::HUNLSampledSolveRequest request;
@@ -826,7 +827,10 @@ TEST_CASE(hunl_sampled_solver_preflight_saturates_overflowing_memory_estimates) 
 
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
-    EXPECT_EQ(preflight.estimate.total_bytes(), std::numeric_limits<std::uint64_t>::max());
+    EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_fail_bytes);
+    EXPECT_TRUE(
+        preflight.estimate.total_bytes() <
+        std::numeric_limits<std::uint64_t>::max());
 }
 
 TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without_work) {

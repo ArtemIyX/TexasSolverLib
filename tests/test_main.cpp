@@ -3,9 +3,16 @@
 #include <exception>
 #include <iostream>
 
-int main() {
+int main(int argc, char** argv) {
     int failed = 0;
+    std::size_t executed = 0;
     for (const auto& test_case : test::registry()) {
+        if (argc > 1 &&
+            test_case.name.find(argv[1]) == std::string::npos) {
+            continue;
+        }
+        ++executed;
+        std::cout << "[RUN] " << test_case.name << std::endl;
         try {
             test_case.fn();
             std::cout << "[PASS] " << test_case.name << '\n';
@@ -23,7 +30,7 @@ int main() {
         return 1;
     }
 
-    std::cout << "All tests passed (" << test::registry().size() << ")\n";
+    std::cout << "All tests passed (" << executed << ")\n";
     return 0;
 }
 

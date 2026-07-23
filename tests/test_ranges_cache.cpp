@@ -280,6 +280,7 @@ TEST_CASE(ranges_cache_decoder_rejects_twenty_truncations_transactionally) {
     const std::string bytes{
         std::istreambuf_iterator<char>(source),
         std::istreambuf_iterator<char>()};
+    source.close();
 
     for (std::size_t removed = 1; removed <= 20; ++removed) {
         const auto path =

@@ -2118,7 +2118,13 @@ void HUNLFlatMCCFR::run_player_subbatch(
             worker_completed_count_ = 0;
             worker_exception_ = nullptr;
             for (std::size_t worker_index = 0; worker_index < worker_count_; ++worker_index) {
-                current_worker_batches_[worker_index] = batches[worker_index];
+                current_worker_batches_[worker_index] =
+                    worker_index < batches.size()
+                    ? batches[worker_index]
+                    : HUNLSampledWorkerBatch{
+                        worker_index,
+                        {trajectory_count, trajectory_count},
+                    };
             }
             ++worker_generation_;
         }
