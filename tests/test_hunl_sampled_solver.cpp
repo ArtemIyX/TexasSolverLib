@@ -729,10 +729,10 @@ TEST_CASE(hunl_sampled_solver_positive_time_budgets_fail_explicitly) {
 
     EXPECT_THROW(
         solver.solve_for(request, std::chrono::milliseconds{1}),
-        core::HUNLSampledSolverNotReady);
+        core::HUNLSampledTimedSolveNotReady);
     EXPECT_THROW(
         solver.solve_for(request, std::chrono::milliseconds{15'000}),
-        core::HUNLSampledSolverNotReady);
+        core::HUNLSampledTimedSolveNotReady);
     EXPECT_EQ(solver.profile().snapshot().traversals, 0U);
     EXPECT_EQ(solver.export_root_strategy().actions.size(), 0U);
 }
@@ -797,7 +797,21 @@ TEST_CASE(hunl_sampled_solver_rejects_positive_timed_fixed_hand_requests) {
     core::HUNLSampledSolver solver;
     core::HUNLSampledSolveRequest request;
     request.root_state = make_sampled_facing_bet_state();
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledTimedSolveNotReady);
+}
+
+TEST_CASE(hunl_sampled_solver_reports_distinct_missing_root_and_timed_contracts) {
+    for (std::uint32_t batches = 1; batches <= 20; ++batches) {
+        core::HUNLSampledSolver solver;
+        core::HUNLSampledSolveRequest request;
+        EXPECT_THROW(solver.run_batches(request, batches), core::HUNLSampledSolverNotReady);
+        try {
+            (void)solver.solve_for(request, std::chrono::milliseconds{1});
+            EXPECT_TRUE(false);
+        } catch (const core::HUNLSampledTimedSolveNotReady& error) {
+            EXPECT_TRUE(std::strstr(error.what(), "timed") != nullptr);
+        }
+    }
 }
 
 TEST_CASE(hunl_sampled_builder_enforces_public_state_admission_limit_during_expansion) {
@@ -825,7 +839,7 @@ void expect_sampled_positive_work_completes_bounded_batch() {
 
     EXPECT_EQ(initialized.batches_completed, 0U);
     const auto batch_result = solver.run_batches(request, 1);
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledTimedSolveNotReady);
 
     const auto profile_after = solver.profile().snapshot();
     const auto memory_after = solver.memory_estimate();

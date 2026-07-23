@@ -34,6 +34,11 @@ public:
     HUNLSampledSolverNotReady();
 };
 
+class HUNLSampledTimedSolveNotReady final : public std::logic_error {
+public:
+    HUNLSampledTimedSolveNotReady();
+};
+
 // Structured ranges require private-state-aware chance, bucket, and infoset
 // propagation.  They remain validation-only until that traversal exists.
 class HUNLSampledStructuredRangeNotReady final : public std::logic_error {
@@ -87,13 +92,13 @@ class HUNLSampledSolver {
 public:
     explicit HUNLSampledSolver(HUNLSampledSolverConfig config = {});
 
-    // Non-positive budgets initialize/export the unsolved uniform root only.
-    // Positive work requires either an explicit-hand oracle root or the
-    // blocker-normalized structured range/blueprint root contract.
+    // Timed sampled solving is unavailable and fails closed for positive
+    // budgets. Non-positive budgets initialize/export an unsolved uniform root.
     [[nodiscard]] HUNLSampledSolveResult solve_for(
         const HUNLSampledSolveRequest& request,
         std::chrono::milliseconds budget);
-    // A zero batch count has the same initialization-only behavior as a zero budget.
+    // Positive batches support explicit fixed-private-card oracle roots only.
+    // Structured-range batches remain deliberately unavailable.
     [[nodiscard]] HUNLSampledSolveResult run_batches(
         const HUNLSampledSolveRequest& request,
         std::uint32_t batches);

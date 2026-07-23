@@ -100,7 +100,12 @@ std::size_t sample_joint_deal(const std::vector<HUNLJointRangeDeal>& deals, std:
 
 HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
     : std::logic_error(
-          "HUNLSampledSolver positive work requires a structured root state") {
+          "positive sampled batches require an explicit fixed-private-card root state") {
+}
+
+HUNLSampledTimedSolveNotReady::HUNLSampledTimedSolveNotReady()
+    : std::logic_error(
+          "positive timed sampled solving is unavailable until deadline-aware traversal is implemented") {
 }
 
 std::uint64_t delta_entries_bytes(std::uint64_t entries) noexcept {
@@ -126,7 +131,7 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
         return run_batches(request, 0);
     }
     (void)request;
-    throw HUNLSampledSolverNotReady{};
+    throw HUNLSampledTimedSolveNotReady{};
 }
 
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(

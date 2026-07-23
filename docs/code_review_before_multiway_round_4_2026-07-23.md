@@ -552,6 +552,12 @@ interval.
 
 ### P3-1: sampled-solver public comments and error text contradict current behavior
 
+Status: **Fixed in the follow-up commit.** The public API now distinguishes
+explicit-root positive batches, unavailable structured ranges, and unavailable
+positive timed solves. Dedicated timed-solve errors replace the misleading
+missing-root remediation; 20 batch-count regressions verify the two contracts
+remain distinct.
+
 Evidence:
 
 - The solver header says positive work accepts the blocker-normalized
