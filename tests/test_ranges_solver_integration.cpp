@@ -111,6 +111,23 @@ TEST_CASE(ranges_structured_root_request_validates_versions_units_and_joint_reac
     EXPECT_THROW(request.validate(), std::invalid_argument);
 }
 
+TEST_CASE(ranges_structured_root_validation_rejects_blocked_and_accepts_compatible_deals) {
+    for (std::uint8_t rank = 2; rank <= 14; ++rank) {
+        core::HUNLStructuredRootRequest request;
+        request.config = range_contract_config();
+        request.blueprint_version = "blueprint-v1";
+        request.model_version = "value-v1";
+        const auto first = core::card_to_int(rank, 0);
+        const auto second = core::card_to_int(rank == 14 ? 2 : rank + 1, 1);
+        request.config.initial_ranges[0] = single_hand_range(first, second);
+        request.config.initial_ranges[1] = single_hand_range(second, first);
+        EXPECT_THROW(request.validate(), std::invalid_argument);
+        request.config.initial_ranges[1] = single_hand_range(
+            core::card_to_int(2, 2), core::card_to_int(3, 3));
+        request.validate();
+    }
+}
+
 TEST_CASE(ranges_structured_root_sampled_positive_work_is_fail_closed) {
     core::HUNLStructuredRootRequest root;
     root.config = range_contract_config();

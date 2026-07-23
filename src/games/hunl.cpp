@@ -372,6 +372,18 @@ void validate_hunl_joint_range_feasibility(const HUNLConfig& config) {
     if (!first_valid || !second_valid) {
         throw std::invalid_argument("initial ranges have no positive canonical private hands");
     }
+    for (const auto& hero : first) {
+        if (!is_valid_card(hero.hole[0]) || !is_valid_card(hero.hole[1]) || hero.hole[0] == hero.hole[1] ||
+            hero.weight <= 0.0) continue;
+        for (const auto& villain : second) {
+            if (!is_valid_card(villain.hole[0]) || !is_valid_card(villain.hole[1]) || villain.hole[0] == villain.hole[1] ||
+                villain.weight <= 0.0) continue;
+            const std::array<std::uint8_t, 4> cards = {
+                hero.hole[0], hero.hole[1], villain.hole[0], villain.hole[1]};
+            if (are_valid_and_distinct_cards(cards.data(), cards.size())) return;
+        }
+    }
+    throw std::invalid_argument("initial ranges have no blocker-compatible joint private deal");
 }
 
 std::size_t configured_bucket_count(const HUNLConfig& config, Street street) {

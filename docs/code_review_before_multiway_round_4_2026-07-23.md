@@ -315,6 +315,11 @@ Regression gate:
 
 ### P1-5: structured-root validation does not establish joint private-range feasibility
 
+Status: **Fixed in the follow-up commit.** Structured-root validation now
+performs a non-materializing compatibility search over positive canonical
+hands and rejects roots with no distinct-card joint deal. Regression coverage
+exercises 26 blocked/compatible validation cases.
+
 Evidence:
 
 - `HUNLStructuredRootRequest::validate()` delegates range feasibility to
