@@ -171,6 +171,38 @@ TEST_CASE(multiway_private_rejection_budget_accepts_the_full_uint32_domain_witho
     }
 }
 
+TEST_CASE(multiway_private_attempt_cursor_covers_the_last_twenty_uint32_attempts_once) {
+    const auto maximum = std::numeric_limits<std::uint32_t>::max();
+    std::uint64_t cursor = static_cast<std::uint64_t>(maximum) - 20U;
+    for (std::uint32_t offset = 1; offset <= 20; ++offset) {
+        std::uint32_t attempt = 0;
+        EXPECT_TRUE(core::detail::next_multiway_rejection_attempt(
+            cursor, maximum, attempt));
+        EXPECT_EQ(attempt, maximum - 20U + offset);
+    }
+    std::uint32_t exhausted_attempt = 99;
+    EXPECT_TRUE(!core::detail::next_multiway_rejection_attempt(
+        cursor, maximum, exhausted_attempt));
+    EXPECT_EQ(exhausted_attempt, 99U);
+    EXPECT_EQ(cursor, static_cast<std::uint64_t>(maximum));
+}
+
+TEST_CASE(multiway_private_attempt_cursor_exhausts_twenty_small_budgets_exactly) {
+    for (std::uint32_t limit = 1; limit <= 20; ++limit) {
+        std::uint64_t cursor = 0;
+        for (std::uint32_t expected = 1; expected <= limit; ++expected) {
+            std::uint32_t attempt = 0;
+            EXPECT_TRUE(core::detail::next_multiway_rejection_attempt(
+                cursor, limit, attempt));
+            EXPECT_EQ(attempt, expected);
+        }
+        std::uint32_t exhausted_attempt = 0;
+        EXPECT_TRUE(!core::detail::next_multiway_rejection_attempt(
+            cursor, limit, exhausted_attempt));
+        EXPECT_EQ(cursor, static_cast<std::uint64_t>(limit));
+    }
+}
+
 TEST_CASE(multiway_private_failed_try_sample_clears_reused_worker_scratch) {
     auto config = ranges();
     config.max_rejection_attempts = 1;

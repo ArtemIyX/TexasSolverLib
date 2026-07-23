@@ -40,7 +40,7 @@ Severity meanings:
 
 ### P0-1: sampled memory admission charges logical growth, not allocation peaks
 
-Status: **Fixed in the P0 remediation commit; tests added but not executed.**
+Status: **Fixed in `f6cbc8a`; tests added but not executed.**
 
 The sampled builder and sparse storage now project vector-capacity
 replacement, map-entry/rehash, dynamic state/string, and logical row costs
@@ -94,7 +94,14 @@ admission, one-byte rejection, and rollback after rejected growth.
 
 ### P1-1: private rejection loops are still unbounded at `UINT32_MAX`
 
-Status: **Open.**
+Status: **Fixed in the bounded-sampler remediation commit; tests added but not
+executed.**
+
+Both samplers now use one inline 64-bit attempt cursor that publishes a
+representable one-based `uint32_t` attempt and stops before incrementing past
+the configured domain. Forty new cursor-boundary scenarios cover budgets
+1–20 and each of the final 20 values ending at `UINT32_MAX`; the existing 20
+maximum-budget sampling seeds remain.
 
 Evidence:
 
