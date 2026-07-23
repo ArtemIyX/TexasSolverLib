@@ -45,7 +45,7 @@ void validate_strategy_and_values(
     }
 }
 
-void validate_quality_diagnostics(const MultiwayQualityDiagnostics& diagnostics) {
+void validate_quality_diagnostics(const MultiwayQualityDiagnostics& diagnostics, std::size_t seat_count) {
     if (!std::isfinite(diagnostics.standard_error) || diagnostics.standard_error < 0.0) {
         throw std::invalid_argument("NashConv standard error must be finite and non-negative");
     }
@@ -55,9 +55,18 @@ void validate_quality_diagnostics(const MultiwayQualityDiagnostics& diagnostics)
     if (diagnostics.method == MultiwayMetricMethod::SampledEstimate && diagnostics.policy_version.empty()) {
         throw std::invalid_argument("sampled NashConv requires a policy version");
     }
+    if (diagnostics.method == MultiwayMetricMethod::SampledEstimate &&
+        (!std::isfinite(diagnostics.confidence_level) || diagnostics.confidence_level <= 0.0 ||
+         diagnostics.confidence_level >= 1.0 || diagnostics.confidence_interval_definition.empty())) {
+        throw std::invalid_argument("sampled NashConv requires a finite confidence level and interval definition");
+    }
     if (diagnostics.per_seat_sample_counts.size() != diagnostics.per_seat_standard_errors.size() ||
         diagnostics.per_seat_sample_counts.size() != diagnostics.per_seat_confidence_intervals.size()) {
         throw std::invalid_argument("per-seat NashConv diagnostics must have matching sizes");
+    }
+    if (diagnostics.method == MultiwayMetricMethod::SampledEstimate &&
+        diagnostics.per_seat_sample_counts.size() != seat_count) {
+        throw std::invalid_argument("sampled NashConv requires per-seat uncertainty for every seat");
     }
     for (std::size_t seat = 0; seat < diagnostics.per_seat_sample_counts.size(); ++seat) {
         if (diagnostics.method == MultiwayMetricMethod::SampledEstimate && diagnostics.per_seat_sample_counts[seat] == 0U) {
@@ -230,7 +239,7 @@ MultiwayNashConv compute_multiway_nash_conv(
         best_response_values.size() != profile_values.size()) {
         throw std::invalid_argument("NashConv requires equal two-through-six seat value vectors");
     }
-    validate_quality_diagnostics(diagnostics);
+    validate_quality_diagnostics(diagnostics, profile_values.size());
     if (!diagnostics.per_seat_sample_counts.empty() &&
         diagnostics.per_seat_sample_counts.size() != profile_values.size()) {
         throw std::invalid_argument("per-seat NashConv diagnostics must match the seat count");

@@ -525,6 +525,11 @@ categories.
 
 ### P2-4: sampled NashConv diagnostics still allow missing per-seat uncertainty
 
+Status: **Fixed in the follow-up commit.** Sampled NashConv now requires
+per-seat sample counts, errors, and interval widths for every seat, plus an
+explicit finite confidence level and interval definition. The regression
+rejects all 20 incomplete seat/report combinations for two through six seats.
+
 Evidence:
 
 - Per-seat sample counts, standard errors, and confidence intervals are

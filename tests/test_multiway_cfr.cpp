@@ -184,6 +184,11 @@ TEST_CASE(multiway_nash_conv_preserves_estimator_metadata_and_negative_noise) {
     diagnostics.sample_count = 400;
     diagnostics.seed = 99;
     diagnostics.standard_error = 0.125;
+    diagnostics.per_seat_sample_counts = {200, 200};
+    diagnostics.per_seat_standard_errors = {0.1, 0.1};
+    diagnostics.per_seat_confidence_intervals = {0.2, 0.2};
+    diagnostics.confidence_level = 0.95;
+    diagnostics.confidence_interval_definition = "normal-approximation two-sided half-width";
     diagnostics.policy_version = "blueprint-v1";
     diagnostics.model_version = "value-v2";
     const auto result = core::compute_multiway_nash_conv({3.0, 4.0}, {2.5, 5.0}, diagnostics);
@@ -200,6 +205,24 @@ TEST_CASE(multiway_nash_conv_rejects_sampled_metric_without_confidence_contract)
     diagnostics.sample_count = 1;
     diagnostics.standard_error = -1.0;
     EXPECT_THROW(core::compute_multiway_nash_conv({1.0, 2.0}, {1.0, 2.0}, diagnostics), std::invalid_argument);
+}
+
+TEST_CASE(multiway_nash_conv_requires_complete_per_seat_sampled_uncertainty) {
+    for (std::size_t seats = 2; seats <= 6; ++seats) {
+        for (std::size_t reported = 0; reported < seats; ++reported) {
+            core::MultiwayQualityDiagnostics diagnostics;
+            diagnostics.method = core::MultiwayMetricMethod::SampledEstimate;
+            diagnostics.sample_count = 100;
+            diagnostics.policy_version = "policy-v1";
+            diagnostics.confidence_level = 0.95;
+            diagnostics.confidence_interval_definition = "normal";
+            diagnostics.per_seat_sample_counts.assign(reported, 20);
+            diagnostics.per_seat_standard_errors.assign(reported, 0.1);
+            diagnostics.per_seat_confidence_intervals.assign(reported, 0.2);
+            std::vector<double> values(seats, 1.0);
+            EXPECT_THROW(core::compute_multiway_nash_conv(values, values, diagnostics), std::invalid_argument);
+        }
+    }
 }
 
 TEST_CASE(multiway_nash_conv_is_zero_for_a_no_improvement_profile) {
