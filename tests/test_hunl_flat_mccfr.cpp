@@ -1064,7 +1064,7 @@ TEST_CASE(hunl_sampled_scheduler_partition_deterministic_covers_each_trajectory_
 
     {
         const auto batches = core::HUNLSampledScheduler::partition_deterministic(2, 5);
-        EXPECT_EQ(batches.size(), 5U);
+        EXPECT_EQ(batches.size(), 2U);
         std::uint64_t covered = 0;
         for (std::size_t worker_index = 0; worker_index < batches.size(); ++worker_index) {
             const auto& batch = batches[worker_index];

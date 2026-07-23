@@ -1507,6 +1507,42 @@ TEST_CASE(hunl_sampled_scheduler_handles_zero_trajectories_and_zero_workers) {
     EXPECT_EQ(batches[0].trajectories.end, 0U);
 }
 
+TEST_CASE(hunl_sampled_scheduler_bounds_twenty_zero_trajectory_worker_requests) {
+    for (std::size_t scenario = 0; scenario < 20; ++scenario) {
+        const auto workers = scenario == 19U
+            ? std::numeric_limits<std::size_t>::max()
+            : (static_cast<std::size_t>(1U) << scenario);
+        const auto batches =
+            core::HUNLSampledScheduler::partition_deterministic(0U, workers);
+        EXPECT_EQ(batches.size(), 1U);
+        EXPECT_EQ(batches[0].worker_index, 0U);
+        EXPECT_EQ(batches[0].trajectories.begin, 0U);
+        EXPECT_EQ(batches[0].trajectories.end, 0U);
+    }
+}
+
+TEST_CASE(hunl_sampled_scheduler_clamps_twenty_oversized_worker_requests) {
+    for (std::uint64_t trajectories = 1U;
+         trajectories <= 20U;
+         ++trajectories) {
+        const auto batches =
+            core::HUNLSampledScheduler::partition_deterministic(
+                trajectories,
+                std::numeric_limits<std::size_t>::max());
+        EXPECT_EQ(
+            batches.size(),
+            static_cast<std::size_t>(trajectories));
+        std::uint64_t covered = 0U;
+        for (std::size_t index = 0; index < batches.size(); ++index) {
+            EXPECT_EQ(batches[index].worker_index, index);
+            EXPECT_EQ(batches[index].trajectories.begin, covered);
+            EXPECT_EQ(batches[index].trajectories.size(), 1U);
+            covered = batches[index].trajectories.end;
+        }
+        EXPECT_EQ(covered, trajectories);
+    }
+}
+
 TEST_CASE(hunl_sampled_simd_scalar_reference_kernels_match_hand_computed_rows) {
     const std::array<float, 6> regret = {1.0f, -2.0f, 3.0f, 3.0f, 2.0f, -1.0f};
     std::array<float, 6> strategy = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};

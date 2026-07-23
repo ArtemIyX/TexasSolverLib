@@ -5,8 +5,14 @@ namespace core {
 std::vector<HUNLSampledWorkerBatch> HUNLSampledScheduler::partition_deterministic(
     std::uint64_t trajectory_count,
     std::size_t worker_count) {
+    if (trajectory_count == 0U) {
+        return {{0U, {0U, 0U}}};
+    }
     if (worker_count == 0) {
         worker_count = 1;
+    }
+    if (trajectory_count < static_cast<std::uint64_t>(worker_count)) {
+        worker_count = static_cast<std::size_t>(trajectory_count);
     }
 
     std::vector<HUNLSampledWorkerBatch> batches;

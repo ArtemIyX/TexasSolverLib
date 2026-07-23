@@ -569,8 +569,7 @@ ordinary values.
 
 ### P2-4: inclusive `uint32_t` discount loops wrap at the maximum iteration
 
-Status: **Fixed in the checked-iteration-range remediation commit; tests added
-but not executed.**
+Status: **Fixed in `ecbaebd`; tests added but not executed.**
 
 All vector, preflop, dense HUNL, and sparse HUNL discount replay uses one
 64-bit closed-range iterator and narrows only values proven inside the target
@@ -605,7 +604,14 @@ and one-element maximum ranges.
 
 ### P3-1: the public sampled scheduler can allocate arbitrarily many empty batches
 
-Status: **Open.**
+Status: **Fixed in the bounded-scheduler remediation commit; tests added but
+not executed.**
+
+Zero trajectories now return exactly one deterministic empty batch regardless
+of requested workers. Positive work clamps workers to trajectory count, so
+every returned batch is useful. Twenty zero-work requests through
+`SIZE_MAX`, 20 small-work oversized requests, and the existing exact-coverage
+partitions are covered.
 
 `partition_deterministic(0, very_large_worker_count)` reserves and returns one
 empty batch per requested worker. Clamp workers to useful trajectories, while
