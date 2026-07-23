@@ -262,9 +262,9 @@ TEST_CASE(multiway_snapshot_rejects_chip_totals_outside_the_int_domain) {
                             std::numeric_limits<int>::max() - 1,
                             std::numeric_limits<int>::max()}) {
         auto snapshot = three_handed().snapshot();
-        snapshot.current_bet = 1;
-        snapshot.street_contributions[0] = 1;
-        snapshot.contributions[0] = 1;
+        snapshot.current_bet = 20;
+        snapshot.street_contributions[0] = 20;
+        snapshot.contributions[0] = 20;
         snapshot.last_full_raise_size = raise;
         EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
     }

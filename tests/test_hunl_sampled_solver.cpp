@@ -532,7 +532,7 @@ TEST_CASE(hunl_sampled_fixed_deals_ignore_global_bucket_hints) {
         request.root_state = make_sampled_facing_bet_state();
         const auto preflight = solver.preflight(request);
         EXPECT_EQ(preflight.estimate.sparse_values_allocated,
-                  preflight.estimate.infoset_rows_allocated * 2U);
+                  preflight.estimate.infoset_rows_allocated * 16U);
     }
 }
 

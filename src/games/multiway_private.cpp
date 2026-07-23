@@ -45,6 +45,7 @@ bool find_compatible_deal(
         used[entry.hole[0]] = false;
         used[entry.hole[1]] = false;
     }
+    scratch.holes = {};
     return false;
 }
 

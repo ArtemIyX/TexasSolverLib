@@ -122,8 +122,7 @@ TEST_CASE(ranges_structured_root_validation_rejects_blocked_and_accepts_compatib
         request.config.initial_ranges[0] = single_hand_range(first, second);
         request.config.initial_ranges[1] = single_hand_range(second, first);
         EXPECT_THROW(request.validate(), std::invalid_argument);
-        request.config.initial_ranges[1] = single_hand_range(
-            core::card_to_int(2, 2), core::card_to_int(3, 3));
+        request.config = range_contract_config();
         request.validate();
     }
 }
