@@ -604,8 +604,7 @@ and one-element maximum ranges.
 
 ### P3-1: the public sampled scheduler can allocate arbitrarily many empty batches
 
-Status: **Fixed in the bounded-scheduler remediation commit; tests added but
-not executed.**
+Status: **Fixed in `15ddae8`; tests added but not executed.**
 
 Zero trajectories now return exactly one deterministic empty batch regardless
 of requested workers. Positive work clamps workers to trajectory count, so
@@ -621,7 +620,13 @@ Regression plan: at least 20 zero/small trajectory and oversized-worker cases.
 
 ### P3-2: the installed CMake package does not discover its thread dependency
 
-Status: **Open.**
+Status: **Fixed in the installed-package dependency remediation commit; tests
+added but not executed.**
+
+The installed config now loads `CMakeFindDependencyMacro`, discovers Threads
+before importing `TexasSolverTargets.cmake`, and checks required components.
+A registered static CMake contract script performs 22 presence, uniqueness,
+ordering, dependency-propagation, and relocatability assertions.
 
 `TexasSolverConfig.cmake.in` imports `TexasSolverTargets.cmake` without
 including `CMakeFindDependencyMacro` and calling `find_dependency(Threads)`.

@@ -205,4 +205,11 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
 
         add_test(NAME ${test_name} COMMAND ${test_name})
     endforeach()
+
+    add_test(
+        NAME test_package_config_contract
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_package_config_contract.cmake
+    )
 endif()
