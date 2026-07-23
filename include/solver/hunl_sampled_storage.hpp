@@ -123,6 +123,7 @@ public:
         float* out) noexcept;
     [[nodiscard]] static std::uint64_t estimate_row_storage_bytes(
         const HUNLSampledInfosetShape& shape) noexcept;
+    void set_memory_limit_bytes(std::uint64_t limit) noexcept;
     void clear_keep_capacity() noexcept;
 
 private:
@@ -134,6 +135,7 @@ private:
     std::unordered_map<InfosetId, std::size_t> row_lookup_;
     std::vector<float> regret_;
     std::vector<float> strategy_sum_;
+    std::uint64_t memory_limit_bytes_ = 0;
 };
 
 }  // namespace core

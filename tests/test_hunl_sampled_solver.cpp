@@ -536,6 +536,17 @@ TEST_CASE(hunl_sampled_fixed_deals_ignore_global_bucket_hints) {
     }
 }
 
+TEST_CASE(hunl_sampled_storage_rejects_row_growth_before_the_memory_limit) {
+    for (std::uint8_t actions = 1; actions <= 20; ++actions) {
+        core::HUNLSampledStorage storage;
+        storage.set_memory_limit_bytes(1U);
+        EXPECT_THROW(storage.ensure_row({core::InfosetId{actions}, 0, core::Street::Flop, 1, actions}),
+                     std::runtime_error);
+        EXPECT_EQ(storage.row_count(), 0U);
+        EXPECT_EQ(storage.total_value_count(), 0U);
+    }
+}
+
 TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
     core::HUNLSampledSolverConfig config;
     config.bucket_count_hint = 512;

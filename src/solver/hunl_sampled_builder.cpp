@@ -170,10 +170,12 @@ HUNLSampledBuilderMemoryEstimate HUNLSampledBuilder::memory_estimate() const noe
     estimate.edges_bytes = static_cast<std::uint64_t>(edges_.capacity()) * sizeof(HUNLSampledEdge);
     estimate.lookup_bytes =
         static_cast<std::uint64_t>(node_lookup_.size()) *
-        static_cast<std::uint64_t>(sizeof(HUNLSampledStateKey) + sizeof(std::uint32_t) + sizeof(void*) * 2U);
+            static_cast<std::uint64_t>(sizeof(HUNLSampledStateKey) + sizeof(std::uint32_t) + sizeof(void*) * 2U) +
+        static_cast<std::uint64_t>(node_lookup_.bucket_count()) * sizeof(void*);
     estimate.infoset_bytes =
         static_cast<std::uint64_t>(infoset_lookup_.size()) *
         static_cast<std::uint64_t>(sizeof(std::string) + sizeof(InfosetId) + sizeof(void*) * 2U) +
+        static_cast<std::uint64_t>(infoset_lookup_.bucket_count()) * sizeof(void*) +
         static_cast<std::uint64_t>(string_vector_bytes(infoset_keys_));
     estimate.state_cache_bytes = static_cast<std::uint64_t>(states_.capacity()) * sizeof(HUNLState);
     for (const auto& state : states_) {

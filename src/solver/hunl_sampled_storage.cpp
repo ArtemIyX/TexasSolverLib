@@ -44,6 +44,13 @@ HUNLSampledRowView HUNLSampledStorage::ensure_row(const HUNLSampledInfosetShape&
         strategy_sum_.size() > std::numeric_limits<std::size_t>::max() - value_count) {
         throw std::length_error("HUNLSampledStorage row offset overflow");
     }
+    if (memory_limit_bytes_ != 0U) {
+        const auto current = memory_estimate().total_bytes();
+        const auto added = estimate_row_storage_bytes(shape);
+        if (current > memory_limit_bytes_ || added > memory_limit_bytes_ - current) {
+            throw std::runtime_error("sampled infoset row admission would exceed the configured memory limit");
+        }
+    }
     meta.regret_offset = regret_.size();
     meta.strategy_sum_offset = strategy_sum_.size();
 
@@ -124,7 +131,8 @@ HUNLSampledStorageMemoryEstimate HUNLSampledStorage::memory_estimate() const noe
         static_cast<std::uint64_t>(meta_.capacity()) * sizeof(HUNLSampledInfosetMeta);
     estimate.lookup_bytes =
         static_cast<std::uint64_t>(row_lookup_.size()) *
-        static_cast<std::uint64_t>(sizeof(InfosetId) + sizeof(std::size_t) + sizeof(void*) * 2U);
+            static_cast<std::uint64_t>(sizeof(InfosetId) + sizeof(std::size_t) + sizeof(void*) * 2U) +
+        static_cast<std::uint64_t>(row_lookup_.bucket_count()) * sizeof(void*);
     estimate.regret_bytes = static_cast<std::uint64_t>(regret_.capacity()) * sizeof(float);
     estimate.strategy_sum_bytes = static_cast<std::uint64_t>(strategy_sum_.capacity()) * sizeof(float);
     estimate.sparse_rows = static_cast<std::uint64_t>(meta_.size());
@@ -194,6 +202,10 @@ std::uint64_t HUNLSampledStorage::estimate_row_storage_bytes(
     return static_cast<std::uint64_t>(sizeof(HUNLSampledInfosetMeta)) +
         static_cast<std::uint64_t>(sizeof(InfosetId) + sizeof(std::size_t) + sizeof(void*) * 2U) +
         value_count * sizeof(float) * 2ULL;
+}
+
+void HUNLSampledStorage::set_memory_limit_bytes(std::uint64_t limit) noexcept {
+    memory_limit_bytes_ = limit;
 }
 
 void HUNLSampledStorage::clear_keep_capacity() noexcept {
