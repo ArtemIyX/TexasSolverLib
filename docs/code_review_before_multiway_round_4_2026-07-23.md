@@ -426,6 +426,10 @@ Regression gate:
 
 ### P2-1: an explicit fixed deal can still allocate the configured global bucket domain
 
+Status: **Fixed in the follow-up commit.** Fixed private roots now select the
+one-bucket domain before consulting global hints. The preflight regression
+covers 20 hint sizes and asserts each retains the two root-action values only.
+
 Evidence:
 
 - `infer_bucket_count()` returns `bucket_count_hint` before checking whether

@@ -49,11 +49,11 @@ std::uint8_t infer_root_action_count(const HUNLSampledSolveRequest& request) noe
 }
 
 std::uint64_t infer_bucket_count(const HUNLSampledSolveRequest& request, const HUNLSampledSolverConfig& config) noexcept {
-    if (config.bucket_count_hint > 0) {
-        return saturating_size(config.bucket_count_hint);
-    }
     if (request.root_state.has_value() && request.root_state->hole_cards.has_value()) {
         return 1ULL;
+    }
+    if (config.bucket_count_hint > 0) {
+        return saturating_size(config.bucket_count_hint);
     }
     return 128ULL;
 }

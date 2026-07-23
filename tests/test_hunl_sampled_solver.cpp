@@ -511,6 +511,21 @@ TEST_CASE(hunl_sampled_solver_preflight_warns_above_warning_threshold) {
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_warning_bytes);
 }
 
+TEST_CASE(hunl_sampled_fixed_deals_ignore_global_bucket_hints) {
+    for (const std::uint32_t hint : {1U, 2U, 3U, 4U, 8U, 16U, 32U, 64U, 128U, 256U,
+                                     512U, 1024U, 2048U, 4096U, 8192U, 16384U, 32768U,
+                                     65536U, 131072U, 262144U}) {
+        core::HUNLSampledSolverConfig config;
+        config.bucket_count_hint = hint;
+        core::HUNLSampledSolver solver(config);
+        core::HUNLSampledSolveRequest request;
+        request.root_state = make_sampled_facing_bet_state();
+        const auto preflight = solver.preflight(request);
+        EXPECT_EQ(preflight.estimate.sparse_values_allocated,
+                  preflight.estimate.infoset_rows_allocated * 2U);
+    }
+}
+
 TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
     core::HUNLSampledSolverConfig config;
     config.bucket_count_hint = 512;
