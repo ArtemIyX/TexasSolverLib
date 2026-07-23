@@ -155,6 +155,9 @@ MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPriva
 bool MultiwayCompiledPrivateRanges::try_sample_into(
     std::uint64_t seed,
     MultiwayPrivateWorkerScratch& scratch) const noexcept {
+    scratch.seat_count = 0;
+    scratch.attempts = 0;
+    scratch.holes = {};
     PcsRng rng(seed);
     for (std::uint32_t attempt_index = 0; attempt_index < max_rejection_attempts_; ++attempt_index) {
         const auto attempt = attempt_index + 1U;

@@ -550,6 +550,10 @@ for missing root and unavailable timed execution.
 
 ### P3-2: failed non-throwing private sampling leaves stale success metadata
 
+Status: **Fixed in the follow-up commit.** `try_sample_into()` now clears the
+seat count, attempts, and private-hole scratch before every sampling attempt,
+so any failure leaves a defined empty result rather than stale metadata.
+
 Evidence:
 
 - On success, `try_sample_into()` writes `seat_count` and `attempts` at

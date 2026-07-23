@@ -171,6 +171,28 @@ TEST_CASE(multiway_private_rejection_budget_accepts_the_full_uint32_domain_witho
     }
 }
 
+TEST_CASE(multiway_private_failed_try_sample_clears_reused_worker_scratch) {
+    auto config = ranges();
+    config.max_rejection_attempts = 1;
+    config.ranges[0] = {hand(14, 0, 13, 0)};
+    config.ranges[1] = {hand(14, 0, 13, 0), hand(10, 0, 8, 0)};
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    bool observed_failure = false;
+    for (std::uint64_t seed = 1; seed <= 20; ++seed) {
+        core::MultiwayPrivateWorkerScratch scratch;
+        scratch.seat_count = 6;
+        scratch.attempts = 99;
+        scratch.holes[0] = {1, 2};
+        if (!compiled.try_sample_into(seed, scratch)) {
+            observed_failure = true;
+            EXPECT_EQ(scratch.seat_count, 0U);
+            EXPECT_EQ(scratch.attempts, 0U);
+            EXPECT_EQ(scratch.holes[0], (std::array<std::uint8_t, 2>{0, 0}));
+        }
+    }
+    EXPECT_TRUE(observed_failure);
+}
+
 TEST_CASE(multiway_showdown_preserves_explicit_odd_chip_order) {
     core::MultiwayShowdownInput input;
     input.board = {c(14, 0), c(13, 0), c(12, 1), c(11, 2), c(2, 0)};
