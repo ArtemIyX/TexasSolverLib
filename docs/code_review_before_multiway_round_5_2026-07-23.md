@@ -477,8 +477,7 @@ source rejects the unsupported contract without returning a range.
 
 ### P2-1: sampled sparse storage admits invalid row shapes
 
-Status: **Fixed in the sampled-row-contract remediation commit; tests added but
-not executed.**
+Status: **Fixed in `100e3e3`; tests added but not executed.**
 
 Storage construction now accepts only the two supported layouts and Float32.
 Every row is validated before lookup or allocation: player 0/1, a decision
@@ -509,7 +508,15 @@ buckets, layouts, and shape reuse.
 
 ### P2-2: `FlatInfosetStore` narrows row offsets to 32 bits
 
-Status: **Open.**
+Status: **Fixed in the flat-layout arithmetic remediation commit; tests added
+but not executed.**
+
+`RowMeta::offset` is now `size_t`. Row-id, offset, required-size, vector-limit,
+and 64-row block-rounding arithmetic is checked before allocation. Row width
+and action metadata must fit `uint16_t`, reused keys must keep the original
+action shape, and arena growth reserves before transactional logical mutation.
+Twenty widths spanning a block boundary, 20 reused-key mismatches, and
+invalid width/action boundaries are covered.
 
 Evidence:
 

@@ -1,11 +1,19 @@
 #include "util/layout.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
 
-FlatInfosetStore::FlatInfosetStore(std::size_t row_width) : row_width_(std::max<std::size_t>(row_width, 1)) {}
+FlatInfosetStore::FlatInfosetStore(std::size_t row_width)
+    : row_width_(row_width) {
+    if (row_width == 0 ||
+        row_width > std::numeric_limits<std::uint16_t>::max()) {
+        throw std::invalid_argument(
+            "FlatInfosetStore row_width must fit the row action metadata");
+    }
+}
 
 std::size_t FlatInfosetStore::len() const noexcept {
     return meta_.size();
@@ -22,27 +30,74 @@ InfosetId FlatInfosetStore::intern(const std::string& key, std::size_t num_actio
     if (num_actions > row_width_) {
         throw std::invalid_argument("FlatInfosetStore::intern num_actions exceeds row_width");
     }
+    if (regret_arena_.size() != strategy_arena_.size()) {
+        throw std::logic_error("FlatInfosetStore arena sizes diverged");
+    }
 
     if (const auto it = key_to_id_.find(key); it != key_to_id_.end()) {
+        if (meta_for(it->second).num_actions != num_actions) {
+            throw std::invalid_argument(
+                "FlatInfosetStore reused key with a different action count");
+        }
         return it->second;
     }
 
+    if (meta_.size() > std::numeric_limits<std::uint32_t>::max()) {
+        throw std::length_error("FlatInfosetStore exhausted InfosetId values");
+    }
+    if (meta_.size() >
+        std::numeric_limits<std::size_t>::max() / row_width_) {
+        throw std::length_error("FlatInfosetStore row offset overflow");
+    }
     const InfosetId id{static_cast<std::uint32_t>(meta_.size())};
-    const auto offset = static_cast<std::uint32_t>(static_cast<std::size_t>(id.value) * row_width_);
-    const auto needed = static_cast<std::size_t>(offset) + row_width_;
+    const auto offset = meta_.size() * row_width_;
+    if (offset > std::numeric_limits<std::size_t>::max() - row_width_) {
+        throw std::length_error("FlatInfosetStore arena requirement overflow");
+    }
+    const auto needed = offset + row_width_;
+    if (needed > regret_arena_.max_size() ||
+        needed > strategy_arena_.max_size()) {
+        throw std::length_error("FlatInfosetStore arena exceeds vector capacity");
+    }
+    auto new_size = regret_arena_.size();
     if (needed > regret_arena_.size()) {
-        const auto new_size = arena_size_for(needed, row_width_);
-        regret_arena_.resize(new_size, 0.0);
-        strategy_arena_.resize(new_size, 0.0);
+        new_size = arena_size_for(needed, row_width_);
+        if (new_size > regret_arena_.max_size() ||
+            new_size > strategy_arena_.max_size()) {
+            throw std::length_error("FlatInfosetStore rounded arena exceeds vector capacity");
+        }
     }
 
-    meta_.push_back(RowMeta{
-        offset,
-        static_cast<std::uint16_t>(num_actions),
-        0,
-    });
-    id_to_key_.push_back(key);
-    key_to_id_.emplace(key, id);
+    regret_arena_.reserve(new_size);
+    strategy_arena_.reserve(new_size);
+    meta_.reserve(meta_.size() + 1U);
+    id_to_key_.reserve(id_to_key_.size() + 1U);
+    key_to_id_.reserve(key_to_id_.size() + 1U);
+
+    const auto old_regret_size = regret_arena_.size();
+    const auto old_strategy_size = strategy_arena_.size();
+    const auto old_meta_size = meta_.size();
+    const auto old_key_size = id_to_key_.size();
+    try {
+        regret_arena_.resize(new_size, 0.0);
+        strategy_arena_.resize(new_size, 0.0);
+        meta_.push_back(RowMeta{
+            offset,
+            static_cast<std::uint16_t>(num_actions),
+            0,
+        });
+        id_to_key_.push_back(key);
+        const auto inserted = key_to_id_.emplace(id_to_key_.back(), id);
+        if (!inserted.second) {
+            throw std::logic_error("FlatInfosetStore duplicate key insertion");
+        }
+    } catch (...) {
+        regret_arena_.resize(old_regret_size);
+        strategy_arena_.resize(old_strategy_size);
+        meta_.resize(old_meta_size);
+        id_to_key_.resize(old_key_size);
+        throw;
+    }
     return id;
 }
 
@@ -96,8 +151,18 @@ std::size_t FlatInfosetStore::strategy_arena_size() const noexcept {
 }
 
 std::size_t FlatInfosetStore::arena_size_for(std::size_t required, std::size_t row_width) {
+    if (row_width == 0 ||
+        row_width > std::numeric_limits<std::size_t>::max() / BLOCK_SIZE) {
+        throw std::length_error("FlatInfosetStore block width overflow");
+    }
     const auto block_width = BLOCK_SIZE * row_width;
+    if (required > std::numeric_limits<std::size_t>::max() - (block_width - 1U)) {
+        throw std::length_error("FlatInfosetStore block rounding overflow");
+    }
     const auto blocks_needed = (required + block_width - 1) / block_width;
+    if (blocks_needed > std::numeric_limits<std::size_t>::max() / block_width) {
+        throw std::length_error("FlatInfosetStore rounded arena overflow");
+    }
     return blocks_needed * block_width;
 }
 

@@ -13,7 +13,7 @@ namespace core {
 inline constexpr std::size_t BLOCK_SIZE = 64;
 
 struct RowMeta {
-    std::uint32_t offset = 0;
+    std::size_t offset = 0;
     std::uint16_t num_actions = 0;
     std::uint32_t last_discount_iter = 0;
 };
