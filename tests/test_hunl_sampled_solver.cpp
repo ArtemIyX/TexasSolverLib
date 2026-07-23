@@ -596,7 +596,7 @@ TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories)
 
     const auto result = solver.run_batches(request, 0);
     EXPECT_TRUE(result.profile.public_states_cached >= 1U);
-    EXPECT_TRUE(result.profile.worker_delta_bytes > 0U);
+    EXPECT_EQ(result.profile.worker_delta_bytes, 0U);
     EXPECT_TRUE(result.profile.export_bytes <= result.profile.total_memory_bytes);
     EXPECT_TRUE(result.profile.total_memory_bytes >= result.profile.worker_delta_bytes);
     EXPECT_TRUE(!result.profile.memory_rejected);

@@ -224,6 +224,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
         const auto root_id = builder_.root_id();
         const auto bucket_count = static_cast<std::uint32_t>(std::max<std::uint64_t>(1U, infer_bucket_count(effective_request, config_)));
         for (std::uint32_t batch = 0; batch < batches; ++batch) {
+            const auto traverse_started = std::chrono::steady_clock::now();
             std::vector<HUNLSampledTraversalRequest> trajectory_requests;
             trajectory_requests.reserve(config_.minibatch_size);
             for (std::uint32_t trajectory = 0; trajectory < config_.minibatch_size; ++trajectory) {
@@ -272,6 +273,9 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             if (!worker_batches.empty()) execute_worker(0);
             for (auto& thread : threads) thread.join();
             if (worker_error != nullptr) std::rethrow_exception(worker_error);
+            profile_.add_traverse_seconds(std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - traverse_started).count());
+            const auto merge_started = std::chrono::steady_clock::now();
             HUNLSampledWorkerScratch ordered_deltas;
             ordered_deltas.reserve_deltas(static_cast<std::size_t>(config_.minibatch_size) * kWorkerDeltaEntriesPerTraversal);
             for (std::size_t worker = 0; worker < worker_batches.size(); ++worker) {
@@ -283,11 +287,16 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
                     worker_results[worker].infosets_updated);
             }
             merge_hunl_sampled_worker_deltas(storage_, ordered_deltas);
+            profile_.add_merge_seconds(std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - merge_started).count());
         }
+        const auto export_started = std::chrono::steady_clock::now();
         const auto& root = builder_.node(root_id);
         if (root.type == HUNLFlatNodeType::Decision) {
             root_strategy_ = HUNLSampledStrategyExporter::export_average_strategy(storage_.view(root.infoset_id));
         }
+        profile_.add_export_seconds(std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - export_started).count());
     }
     if (effective_request.root_state.has_value()) {
         const auto& root = builder_.node(builder_.root_id());
@@ -347,7 +356,9 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::memory_estimate() const noexcept {
     estimate.infoset_rows_allocated = storage_memory.sparse_rows;
     estimate.sparse_values_allocated = storage_memory.sparse_values;
     estimate.terminal_cache_bytes = 0;
-    estimate.worker_delta_bytes = estimate_worker_delta_bytes({}, config_);
+    // Worker arenas are transient; live retained memory contains no worker
+    // scratch after a batch completes.
+    estimate.worker_delta_bytes = 0;
     estimate.export_bytes = saturating_multiply(
         saturating_size(root_strategy_.actions.capacity()), sizeof(HUNLSampledActionProbability));
     estimate.total_bytes_live = saturating_add(
