@@ -195,8 +195,22 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
 
     config_ = preflight_result.effective_config;
     builder_.set_max_cached_public_states(effective_public_state_cap(config_));
-    builder_.set_memory_limit_bytes(config_.enable_memory_guardrails ? config_.memory_fail_bytes : 0U);
-    storage_.set_memory_limit_bytes(config_.enable_memory_guardrails ? config_.memory_fail_bytes : 0U);
+    std::uint64_t mutable_growth_limit = 0U;
+    if (config_.enable_memory_guardrails) {
+        const auto reserved = saturating_add(
+            saturating_add(estimate_worker_delta_bytes(effective_request, config_),
+                           estimate_terminal_cache_bytes(effective_request, config_)),
+            estimate_export_bytes(effective_request));
+        if (reserved >= config_.memory_fail_bytes) {
+            throw std::runtime_error("sampled memory reservation leaves no safe builder/storage growth budget");
+        }
+        // Builder and sparse storage are the two independently growing live
+        // domains. Splitting the residual makes their independent admissions a
+        // global hard bound rather than two unrelated full-limit checks.
+        mutable_growth_limit = (config_.memory_fail_bytes - reserved) / 2U;
+    }
+    builder_.set_memory_limit_bytes(mutable_growth_limit);
+    storage_.set_memory_limit_bytes(mutable_growth_limit);
     if (effective_request.root_state.has_value()) {
         const auto initialized_root_id = builder_.initialize(*effective_request.root_state);
         if (initialized_root_id != builder_.root_id()) {

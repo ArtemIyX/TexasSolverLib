@@ -76,7 +76,9 @@ can cross its configured byte limit. Worker streams now merge in deterministic
 worker order without the former full-minibatch coordinator copy; 20 action
 shapes cover row admission. Builder node and edge expansion now perform the
 same checked byte admission before allocation; 20 builder-limit cases cover
-that boundary.
+that boundary. The builder and sparse-storage limits now split the residual
+hard budget after reserving worker, terminal, and export bytes, so separate
+admissions compose into one global bound.
 
 Evidence:
 
