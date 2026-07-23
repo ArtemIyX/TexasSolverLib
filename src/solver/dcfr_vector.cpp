@@ -1,4 +1,5 @@
 #include "solver/dcfr_vector.hpp"
+#include "util/iteration_range.hpp"
 
 #include "solver/dcfr.hpp"
 #include "util/abstraction.hpp"
@@ -199,7 +200,7 @@ void VectorDCFR::discount(VectorInfosetData& info, std::uint32_t t, double alpha
     if (info.last_discount_iter >= t) {
         return;
     }
-    for (std::uint32_t tt = info.last_discount_iter + 1; tt <= t; ++tt) {
+    for_each_u32_after(info.last_discount_iter, t, [&](std::uint32_t tt) {
         const auto tt_f = static_cast<double>(tt);
         const auto ta = std::pow(tt_f, alpha_in);
         const auto tb = std::pow(tt_f, beta_in);
@@ -208,7 +209,7 @@ void VectorDCFR::discount(VectorInfosetData& info, std::uint32_t t, double alpha
         const auto strat_scale = std::pow(tt_f / (tt_f + 1.0), gamma_in);
         discount_regrets(info.regret.data(), info.regret.size(), pos_scale, neg_scale);
         discount_strategy_sum(info.strategy_sum.data(), info.strategy_sum.size(), strat_scale);
-    }
+    });
     info.last_discount_iter = t;
 }
 

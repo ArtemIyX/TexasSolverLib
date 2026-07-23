@@ -1,4 +1,5 @@
 #include "solver/hunl_flat_mccfr.hpp"
+#include "util/iteration_range.hpp"
 
 #include "util/pcs.hpp"
 #include "util/simd.hpp"
@@ -1961,15 +1962,20 @@ void HUNLFlatMCCFR::discount_dense_infoset_row(InfosetId infoset_id, std::uint32
         return;
     }
 
-    for (std::uint32_t tt = meta.last_discount_iter + 1U; tt <= target_iteration; ++tt) {
-        const auto t = static_cast<double>(tt);
-        const auto ta = std::pow(t, config_.dcfr_alpha);
-        const auto tb = std::pow(t, config_.dcfr_beta);
-        const auto pos_scale = ta / (ta + 1.0);
-        const auto neg_scale = tb / (tb + 1.0);
-        const auto strat_scale = std::pow(t / (t + 1.0), config_.dcfr_gamma);
-        infoset_table_.discount_values(infoset_id, pos_scale, neg_scale, strat_scale);
-    }
+    for_each_u32_after(
+        meta.last_discount_iter,
+        target_iteration,
+        [&](std::uint32_t tt) {
+            const auto t = static_cast<double>(tt);
+            const auto ta = std::pow(t, config_.dcfr_alpha);
+            const auto tb = std::pow(t, config_.dcfr_beta);
+            const auto pos_scale = ta / (ta + 1.0);
+            const auto neg_scale = tb / (tb + 1.0);
+            const auto strat_scale =
+                std::pow(t / (t + 1.0), config_.dcfr_gamma);
+            infoset_table_.discount_values(
+                infoset_id, pos_scale, neg_scale, strat_scale);
+        });
     meta.last_discount_iter = target_iteration;
 }
 
@@ -1980,19 +1986,28 @@ void HUNLFlatMCCFR::discount_sparse_infoset_row(InfosetId infoset_id, std::uint3
     }
 
     auto row = sparse_storage_.view_mut(infoset_id);
-    for (std::uint32_t tt = meta->last_discount_iter + 1U; tt <= target_iteration; ++tt) {
-        const auto t = static_cast<double>(tt);
-        const auto ta = std::pow(t, config_.dcfr_alpha);
-        const auto tb = std::pow(t, config_.dcfr_beta);
-        const auto pos_scale = ta / (ta + 1.0);
-        const auto neg_scale = tb / (tb + 1.0);
-        const auto strat_scale = std::pow(t / (t + 1.0), config_.dcfr_gamma);
-        for (std::size_t offset = 0; offset < row.value_count(); ++offset) {
-            const auto regret = static_cast<double>(row.regret[offset]);
-            row.regret[offset] = static_cast<float>(regret >= 0.0 ? regret * pos_scale : regret * neg_scale);
-            row.strategy_sum[offset] = static_cast<float>(static_cast<double>(row.strategy_sum[offset]) * strat_scale);
-        }
-    }
+    for_each_u32_after(
+        meta->last_discount_iter,
+        target_iteration,
+        [&](std::uint32_t tt) {
+            const auto t = static_cast<double>(tt);
+            const auto ta = std::pow(t, config_.dcfr_alpha);
+            const auto tb = std::pow(t, config_.dcfr_beta);
+            const auto pos_scale = ta / (ta + 1.0);
+            const auto neg_scale = tb / (tb + 1.0);
+            const auto strat_scale =
+                std::pow(t / (t + 1.0), config_.dcfr_gamma);
+            for (std::size_t offset = 0; offset < row.value_count(); ++offset) {
+                const auto regret = static_cast<double>(row.regret[offset]);
+                row.regret[offset] = static_cast<float>(
+                    regret >= 0.0
+                        ? regret * pos_scale
+                        : regret * neg_scale);
+                row.strategy_sum[offset] = static_cast<float>(
+                    static_cast<double>(row.strategy_sum[offset]) *
+                    strat_scale);
+            }
+        });
     meta->last_discount_iter = target_iteration;
 }
 
@@ -2026,8 +2041,10 @@ void HUNLFlatMCCFR::begin_player_batch(std::uint32_t target_iteration, PlayerId 
 
 bool HUNLFlatMCCFR::run_next_player_subbatch() {
     if (!iteration_in_progress_) {
+        const auto target_iteration =
+            checked_next_u32_iteration(iterations_);
         iteration_in_progress_ = true;
-        in_progress_target_iteration_ = iterations_ + 1U;
+        in_progress_target_iteration_ = target_iteration;
         in_progress_player_ = 0;
         in_progress_trajectory_begin_ = 0;
         player_batch_snapshot_ready_ = false;
@@ -2064,7 +2081,7 @@ bool HUNLFlatMCCFR::run_next_player_subbatch() {
     }
 
     accumulate_last_iteration_into_total();
-    ++iterations_;
+    iterations_ = in_progress_target_iteration_;
     refresh_baseline_profile();
     iteration_in_progress_ = false;
     player_batch_snapshot_ready_ = false;

@@ -1,4 +1,5 @@
 #include "solver/hunl_flat_dcfr.hpp"
+#include "util/iteration_range.hpp"
 
 #include "solver/dcfr.hpp"
 #include "util/abstraction.hpp"
@@ -471,6 +472,7 @@ void HUNLFlatDCFR::execute_stage_command(StageCommand command, std::size_t worke
 }
 
 void HUNLFlatDCFR::run_iteration() {
+    (void)checked_next_u32_iteration(iterations_);
     pipeline_.run_iteration(*this);
 }
 
@@ -639,7 +641,7 @@ void HUNLFlatDCFR::apply_dcfr_discount_stage() {
 }
 
 void HUNLFlatDCFR::worker_discount_stage(std::size_t worker_index) {
-    const auto target_iter = iterations_ + 1U;
+    const auto target_iter = checked_next_u32_iteration(iterations_);
     auto& metas = infoset_table_.meta_mut();
     const auto range = parallel_plan_.workers[worker_index].infoset_range;
     const auto worker_start = std::chrono::steady_clock::now();
@@ -649,15 +651,19 @@ void HUNLFlatDCFR::worker_discount_stage(std::size_t worker_index) {
             continue;
         }
 
-        for (std::uint32_t tt = meta.last_discount_iter + 1U; tt <= target_iter; ++tt) {
-            const auto t = static_cast<double>(tt);
-            const auto ta = std::pow(t, alpha_);
-            const auto tb = std::pow(t, beta_);
-            const auto pos_scale = ta / (ta + 1.0);
-            const auto neg_scale = tb / (tb + 1.0);
-            const auto strat_scale = std::pow(t / (t + 1.0), gamma_);
-            infoset_table_.discount_values(meta.id, pos_scale, neg_scale, strat_scale);
-        }
+        for_each_u32_after(
+            meta.last_discount_iter,
+            target_iter,
+            [&](std::uint32_t tt) {
+                const auto t = static_cast<double>(tt);
+                const auto ta = std::pow(t, alpha_);
+                const auto tb = std::pow(t, beta_);
+                const auto pos_scale = ta / (ta + 1.0);
+                const auto neg_scale = tb / (tb + 1.0);
+                const auto strat_scale = std::pow(t / (t + 1.0), gamma_);
+                infoset_table_.discount_values(
+                    meta.id, pos_scale, neg_scale, strat_scale);
+            });
         meta.last_discount_iter = target_iter;
     }
     mark_worker_scope(

@@ -1,4 +1,5 @@
 #include "preflop/preflop_rvr.hpp"
+#include "util/iteration_range.hpp"
 #include "util/suit_iso.hpp"
 
 #include <algorithm>
@@ -377,7 +378,7 @@ void Class169VectorDCFR::compute_avg_strategy(const VectorInfosetData& info, std
 
 void Class169VectorDCFR::discount(VectorInfosetData& info, std::uint32_t t, double alpha, double beta, double gamma) {
     if (info.last_discount_iter >= t) return;
-    for (std::uint32_t tt = info.last_discount_iter + 1; tt <= t; ++tt) {
+    for_each_u32_after(info.last_discount_iter, t, [&](std::uint32_t tt) {
         const double tt_f = static_cast<double>(tt);
         const double pos_scale = std::pow(tt_f, alpha) / (std::pow(tt_f, alpha) + 1.0);
         const double neg_scale = std::pow(tt_f, beta) / (std::pow(tt_f, beta) + 1.0);
@@ -387,7 +388,7 @@ void Class169VectorDCFR::discount(VectorInfosetData& info, std::uint32_t t, doub
             else if (r < 0.0) r *= neg_scale;
         }
         for (double& s : info.strategy_sum) s *= strat_scale;
-    }
+    });
     info.last_discount_iter = t;
 }
 

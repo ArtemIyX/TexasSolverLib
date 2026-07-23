@@ -539,8 +539,7 @@ At least 20 row-width, block-boundary, reuse, and checked-overflow scenarios.
 
 ### P2-3: SIMD regret discounting does not match scalar NaN behavior
 
-Status: **Fixed in the SIMD special-lane remediation commit; tests added but
-not executed.**
+Status: **Fixed in `2f38e7e`; tests added but not executed.**
 
 SSE2 and AVX2 now scale only ordered positive/negative lanes and blend the
 original bits back for every other lane. This preserves NaN payloads and both
@@ -570,7 +569,16 @@ ordinary values.
 
 ### P2-4: inclusive `uint32_t` discount loops wrap at the maximum iteration
 
-Status: **Open.**
+Status: **Fixed in the checked-iteration-range remediation commit; tests added
+but not executed.**
+
+All vector, preflop, dense HUNL, and sparse HUNL discount replay uses one
+64-bit closed-range iterator and narrows only values proven inside the target
+domain. Exact and MCCFR iteration entry points reject an exhausted public
+counter before mutating in-progress state; metadata at `UINT32_MAX` is
+saturated and cannot start another epoch. Twenty low ranges, 20 maximum-edge
+ranges, exact maximum processing, empty saturation, and 20 checked increments
+are covered.
 
 Evidence:
 
