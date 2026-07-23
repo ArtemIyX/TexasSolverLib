@@ -1,6 +1,7 @@
 #include "games/multiway_state.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
@@ -55,6 +56,7 @@ void MultiwayBettingSnapshot::validate() const {
     int max_street_contribution = 0;
     std::size_t actionable_pending = 0;
     std::size_t actionable_seats = 0;
+    std::int64_t table_contributions = 0;
     for (std::size_t seat = 0; seat < count; ++seat) {
         if (stacks[seat] < 0 || contributions[seat] < 0 || street_contributions[seat] < 0 ||
             street_contributions[seat] > contributions[seat] ||
@@ -62,6 +64,12 @@ void MultiwayBettingSnapshot::validate() const {
             all_in[seat] != (stacks[seat] == 0) ||
             ((folded[seat] || all_in[seat]) && (may_raise[seat] || pending[seat]))) {
             throw std::invalid_argument("MultiwayBettingSnapshot has inconsistent seat state");
+        }
+        const auto original_stack = static_cast<std::int64_t>(stacks[seat]) + contributions[seat];
+        table_contributions += contributions[seat];
+        if (original_stack > std::numeric_limits<int>::max() ||
+            table_contributions > std::numeric_limits<int>::max()) {
+            throw std::invalid_argument("MultiwayBettingSnapshot exceeds supported chip totals");
         }
         if (!folded[seat] && !all_in[seat]) {
             ++actionable_seats;
@@ -83,6 +91,9 @@ void MultiwayBettingSnapshot::validate() const {
     }
     if (max_street_contribution != current_bet) {
         throw std::invalid_argument("MultiwayBettingSnapshot current bet does not match street contributions");
+    }
+    if (static_cast<std::int64_t>(current_bet) + last_full_raise_size > std::numeric_limits<int>::max()) {
+        throw std::invalid_argument("MultiwayBettingSnapshot raise target exceeds supported chip totals");
     }
     if (actionable_seats > 1U) {
         for (std::size_t seat = 0; seat < count; ++seat) {
@@ -296,8 +307,8 @@ std::vector<MultiwayAction> MultiwayState::legal_actions() const {
     } else {
         actions = {MultiwayAction::Check};
     }
-    const auto all_in_target = street_contributions_[seat] + stacks_[seat];
-    const auto minimum_full_raise_target = current_bet_ + last_full_raise_size_;
+    const auto all_in_target = static_cast<std::int64_t>(street_contributions_[seat]) + stacks_[seat];
+    const auto minimum_full_raise_target = static_cast<std::int64_t>(current_bet_) + last_full_raise_size_;
     const bool has_actionable_opponent = actionable_player_count() > 1U;
     if (has_actionable_opponent && may_raise_[seat] && all_in_target > minimum_full_raise_target) {
         actions.push_back(to_call > 0 ? MultiwayAction::Raise : MultiwayAction::Bet);

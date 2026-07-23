@@ -234,6 +234,10 @@ Regression gate:
 
 ### P1-3: arbitrary betting snapshots permit signed chip arithmetic overflow
 
+Status: **Fixed in the follow-up commit.** Snapshot admission now checks all
+per-seat original stacks, table contributions, and next full-raise target with
+64-bit intermediates; legal-menu target arithmetic also uses 64-bit values.
+
 Evidence:
 
 - Snapshot validation accepts any individually non-negative `int` stack,

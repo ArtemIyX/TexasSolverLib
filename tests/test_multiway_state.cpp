@@ -248,6 +248,28 @@ TEST_CASE(multiway_snapshot_rejects_every_omitted_unacted_responder) {
     }
 }
 
+TEST_CASE(multiway_snapshot_rejects_chip_totals_outside_the_int_domain) {
+    for (const int contribution : {std::numeric_limits<int>::max() - 19,
+                                   std::numeric_limits<int>::max() - 1,
+                                   std::numeric_limits<int>::max()}) {
+        auto snapshot = three_handed().snapshot();
+        snapshot.stacks[0] = 20;
+        snapshot.contributions[0] = contribution;
+        snapshot.street_contributions[0] = 0;
+        EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
+    }
+    for (const int raise : {std::numeric_limits<int>::max() - 19,
+                            std::numeric_limits<int>::max() - 1,
+                            std::numeric_limits<int>::max()}) {
+        auto snapshot = three_handed().snapshot();
+        snapshot.current_bet = 1;
+        snapshot.street_contributions[0] = 1;
+        snapshot.contributions[0] = 1;
+        snapshot.last_full_raise_size = raise;
+        EXPECT_THROW(core::MultiwayState::from_snapshot(snapshot), std::invalid_argument);
+    }
+}
+
 TEST_CASE(multiway_lone_final_responder_can_only_fold_or_call) {
     for (const int covering_stack : {101, 102, 103, 104, 105, 110, 120, 125, 150, 175,
                                      200, 250, 300, 400, 500, 750, 1000, 1500, 2500, 5000}) {
