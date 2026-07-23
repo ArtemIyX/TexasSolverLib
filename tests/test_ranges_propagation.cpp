@@ -3,6 +3,7 @@
 #include "ranges/source.hpp"
 #include "test_harness.hpp"
 
+#include <limits>
 #include <vector>
 
 namespace {
@@ -59,6 +60,36 @@ TEST_CASE(ranges_child_ranges_preserve_total_mass_after_renormalization) {
     EXPECT_NEAR(child.range.sum(), 1.0, 1e-12);
 }
 
+TEST_CASE(ranges_action_propagation_rejects_twenty_zero_mass_posteriors) {
+    const auto parent = make_two_combo_parent();
+    for (std::size_t index = 0; index < 20; ++index) {
+        core::ActionRangeFilter filter;
+        filter.action = core::ACTION_CALL;
+        filter.multipliers.assign(parent.range.size(), 0.0);
+        EXPECT_THROW(
+            core::propagate_range_to_action(parent, filter),
+            std::invalid_argument);
+    }
+}
+
+TEST_CASE(ranges_action_propagation_rejects_twenty_invalid_multipliers) {
+    const auto parent = make_two_combo_parent();
+    for (std::size_t index = 0; index < 20; ++index) {
+        core::ActionRangeFilter filter;
+        filter.action = core::ACTION_CALL;
+        filter.multipliers.assign(parent.range.size(), 1.0);
+        filter.multipliers[index % filter.multipliers.size()] =
+            index % 3U == 0U
+                ? -0.1
+                : (index % 3U == 1U
+                    ? std::numeric_limits<double>::infinity()
+                    : std::numeric_limits<double>::quiet_NaN());
+        EXPECT_THROW(
+            core::propagate_range_to_action(parent, filter),
+            std::invalid_argument);
+    }
+}
+
 TEST_CASE(ranges_fold_branch_removes_dead_combos) {
     const auto combos = core::enumerate_combos({
         core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2)});
@@ -99,6 +130,38 @@ TEST_CASE(ranges_chance_nodes_update_legal_combos_correctly) {
         }
     }
     EXPECT_NEAR(child.range.range.sum(), 1.0, 1e-12);
+}
+
+TEST_CASE(ranges_chance_propagation_rejects_twenty_invalid_probabilities) {
+    const std::vector<std::uint8_t> board = {
+        core::card_to_int(14, 0),
+        core::card_to_int(13, 1),
+        core::card_to_int(12, 2),
+    };
+    const auto combos = core::enumerate_combos(board);
+    core::RangeVector range;
+    range.kind = core::RangeVector::Kind::Combo;
+    range.weights.assign(combos.size(), 1.0);
+    range.normalize();
+    core::RangeMask mask;
+    mask.kind = core::RangeVector::Kind::Combo;
+    mask.enabled.assign(combos.size(), 1U);
+    const auto parent = core::make_canonical_range_from_values(
+        core::RangeSourceKind::UniformPrior, range, mask);
+
+    for (std::size_t index = 0; index < 20; ++index) {
+        const auto probability = index % 4U == 0U
+            ? -0.1
+            : (index % 4U == 1U
+                ? 1.1
+                : (index % 4U == 2U
+                    ? std::numeric_limits<double>::infinity()
+                    : std::numeric_limits<double>::quiet_NaN()));
+        EXPECT_THROW(
+            core::propagate_range_to_chance_card(
+                parent, combos, core::card_to_int(2, 0), probability),
+            std::invalid_argument);
+    }
 }
 
 }  // namespace

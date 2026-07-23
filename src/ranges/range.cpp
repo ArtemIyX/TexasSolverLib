@@ -46,8 +46,17 @@ void RangeVector::normalize() {
 }
 
 void RangeVector::clamp(Probability min_value, Probability max_value) {
-    if (!(min_value <= max_value)) {
-        throw std::invalid_argument("RangeVector::clamp requires min_value <= max_value");
+    if (!std::isfinite(min_value) ||
+        !std::isfinite(max_value) ||
+        !(min_value <= max_value)) {
+        throw std::invalid_argument(
+            "RangeVector::clamp requires finite ordered bounds");
+    }
+    for (const auto weight : weights) {
+        if (!std::isfinite(weight)) {
+            throw std::invalid_argument(
+                "RangeVector::clamp requires finite weights");
+        }
     }
     for (auto& weight : weights) {
         weight = std::clamp(weight, min_value, max_value);
@@ -55,7 +64,18 @@ void RangeVector::clamp(Probability min_value, Probability max_value) {
 }
 
 void RangeVector::renormalize() {
-    const auto total = sum();
+    Probability total = 0.0;
+    for (const auto weight : weights) {
+        if (!std::isfinite(weight) || weight < 0.0) {
+            throw std::invalid_argument(
+                "RangeVector::renormalize requires finite non-negative weights");
+        }
+        total += weight;
+    }
+    if (!std::isfinite(total)) {
+        throw std::invalid_argument(
+            "RangeVector::renormalize requires finite total mass");
+    }
     if (!(total > 0.0)) {
         if (!weights.empty()) {
             const auto uniform = 1.0 / static_cast<Probability>(weights.size());
@@ -99,12 +119,31 @@ void apply_mask(RangeVector& range, const RangeMask& mask) {
     if (range.size() != mask.size()) {
         throw std::invalid_argument("apply_mask requires matching vector sizes");
     }
+    Probability surviving_mass = 0.0;
     for (std::size_t i = 0; i < range.weights.size(); ++i) {
-        if (!mask.allows(i)) {
-            range.weights[i] = 0.0;
+        const auto weight = range.weights[i];
+        if (!std::isfinite(weight) || weight < 0.0) {
+            throw std::invalid_argument(
+                "apply_mask requires finite non-negative weights");
+        }
+        if (mask.allows(i)) {
+            surviving_mass += weight;
         }
     }
-    range.renormalize();
+    if (!std::isfinite(surviving_mass)) {
+        throw std::invalid_argument("apply_mask requires finite surviving mass");
+    }
+    if (!range.weights.empty() && !(surviving_mass > 0.0)) {
+        throw std::invalid_argument("apply_mask removed all range mass");
+    }
+    if (range.weights.empty()) {
+        return;
+    }
+    for (std::size_t i = 0; i < range.weights.size(); ++i) {
+        range.weights[i] = mask.allows(i)
+            ? range.weights[i] / surviving_mass
+            : 0.0;
+    }
 }
 
 RangeMask combine_masks(const RangeMask& lhs, const RangeMask& rhs) {

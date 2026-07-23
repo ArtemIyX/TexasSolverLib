@@ -4,6 +4,8 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <cmath>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -49,6 +51,55 @@ TEST_CASE(ranges_illegal_hands_are_removed_by_blocker_masking) {
         }
     }
     EXPECT_NEAR(range.sum(), 1.0, 1e-12);
+}
+
+TEST_CASE(ranges_twenty_all_blocked_posteriors_fail_without_resurrecting_hands) {
+    for (std::size_t count = 1; count <= 20; ++count) {
+        core::RangeVector range;
+        range.weights.assign(count, 1.0);
+        const auto original = range.weights;
+        core::RangeMask mask;
+        mask.enabled.assign(count, 0U);
+
+        EXPECT_THROW(core::apply_mask(range, mask), std::invalid_argument);
+        EXPECT_EQ(range.weights, original);
+    }
+}
+
+TEST_CASE(ranges_twenty_sparse_masks_preserve_zeroed_entries) {
+    for (std::size_t survivor = 0; survivor < 20; ++survivor) {
+        core::RangeVector range;
+        range.weights.assign(20, 1.0);
+        core::RangeMask mask;
+        mask.enabled.assign(20, 0U);
+        mask.enabled[survivor] = 1U;
+
+        core::apply_mask(range, mask);
+        EXPECT_NEAR(range.sum(), 1.0, 1e-12);
+        for (std::size_t index = 0; index < 20; ++index) {
+            EXPECT_NEAR(
+                range.weights[index],
+                index == survivor ? 1.0 : 0.0,
+                1e-12);
+        }
+    }
+}
+
+TEST_CASE(ranges_reject_twenty_non_finite_or_negative_prior_weights) {
+    for (std::size_t index = 0; index < 20; ++index) {
+        core::RangeVector range;
+        range.weights.assign(20, 1.0);
+        range.weights[index] = index % 3U == 0U
+            ? -1.0
+            : (index % 3U == 1U
+                ? std::numeric_limits<double>::infinity()
+                : std::numeric_limits<double>::quiet_NaN());
+        EXPECT_THROW(range.renormalize(), std::invalid_argument);
+
+        core::RangeMask mask;
+        mask.enabled.assign(20, 1U);
+        EXPECT_THROW(core::apply_mask(range, mask), std::invalid_argument);
+    }
 }
 
 TEST_CASE(ranges_board_cards_remove_impossible_combos) {

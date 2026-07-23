@@ -285,8 +285,7 @@ values.
 
 ### P1-6: HUNL infoset encoding can index out of bounds or alias long histories
 
-Status: **Fixed in the infoset-encoding remediation commit; tests added but not
-executed.**
+Status: **Fixed in `555f83b`; tests added but not executed.**
 
 One canonical validator now checks cards, blockers, enum/dimension bounds,
 street-length totals, history codes, and zeroed unused storage. Registry
@@ -327,7 +326,16 @@ and exact-capacity cases.
 
 ### P1-7: range masking and propagation can resurrect impossible hands
 
-Status: **Open.**
+Status: **Fixed in the range-posterior remediation commit; tests added but not
+executed.**
+
+Standalone zero-prior normalization remains an explicit uniform-prior
+operation. Masking now preflights finite non-negative weights and positive
+surviving mass before mutation, then normalizes only enabled entries. Action
+multipliers and bucket projection inputs are validated, and zero-mass
+posteriors/projections fail closed. Twenty all-blocked masks, 20 sparse
+single-survivor masks, 20 invalid priors, 20 zero-posterior filters, and 20
+invalid multipliers are covered, plus 20 invalid chance probabilities.
 
 Evidence:
 

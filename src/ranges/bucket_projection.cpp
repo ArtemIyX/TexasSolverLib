@@ -1,5 +1,6 @@
 #include "ranges/bucket_projection.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 namespace core {
@@ -68,6 +69,12 @@ BucketProjectionResult project_combo_range_to_buckets(
          combo_range.mask.size() != combo_range.range.size())) {
         throw std::invalid_argument("project_combo_range_to_buckets requires a combo-aligned mask");
     }
+    for (const auto weight : combo_range.range.weights) {
+        if (!std::isfinite(weight) || weight < 0.0) {
+            throw std::invalid_argument(
+                "project_combo_range_to_buckets requires finite non-negative weights");
+        }
+    }
 
     for (std::size_t combo_idx = 0; combo_idx < combos.hands.size(); ++combo_idx) {
         if (use_mask && !combo_range.mask.allows(combo_idx)) {
@@ -87,6 +94,12 @@ BucketProjectionResult project_combo_range_to_buckets(
 
         bucket_vector.weights[static_cast<std::size_t>(bucket)] += weight;
         result.projected_mass += weight;
+    }
+
+    if (!std::isfinite(result.projected_mass) ||
+        !(result.projected_mass > 0.0)) {
+        throw std::invalid_argument(
+            "project_combo_range_to_buckets has no representable probability mass");
     }
 
     // Keep bucketed and exact paths comparable by returning a canonical normalized bucket range.

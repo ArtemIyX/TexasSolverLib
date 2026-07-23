@@ -1,6 +1,7 @@
 #include "ranges/propagation.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -143,6 +144,12 @@ CanonicalRange propagate_range_to_action(
     if (!filter.multipliers.empty() && filter.multipliers.size() != parent.range.size()) {
         throw std::invalid_argument("action filter multipliers size must match parent range size");
     }
+    for (const auto multiplier : filter.multipliers) {
+        if (!std::isfinite(multiplier) || multiplier < 0.0) {
+            throw std::invalid_argument(
+                "action filter multipliers must be finite and non-negative");
+        }
+    }
 
     CanonicalRange out = parent;
     if (out.mask.empty()) {
@@ -187,6 +194,10 @@ ChanceRangeTransition propagate_range_to_chance_card(
     }
     if (parent.range.size() != combos.size()) {
         throw std::invalid_argument("chance propagation requires combo index aligned with parent range");
+    }
+    if (!std::isfinite(probability) || probability < 0.0 || probability > 1.0) {
+        throw std::invalid_argument(
+            "chance propagation requires probability in [0, 1]");
     }
 
     CanonicalRange out = parent;

@@ -46,7 +46,7 @@ CanonicalRange FileRangeSource::load() const {
         throw std::runtime_error("failed to load range file: " + path_.string());
     }
     out.mask = make_full_mask(out.range.size(), out.range.kind);
-    out.range.normalize();
+    apply_mask(out.range, out.mask);
     return out;
 }
 
