@@ -422,8 +422,7 @@ HUNLSampledMemoryPreflight HUNLSampledSolver::build_preflight_result(
         auto candidate_adjustments = result.adjustments;
         apply_adaptive_fallback(candidate, candidate_adjustments);
         if (candidate.minibatch_size == before.minibatch_size &&
-            candidate.bucket_count_hint == before.bucket_count_hint &&
-            candidate.depth_limit_plies_hint == before.depth_limit_plies_hint) {
+            candidate.bucket_count_hint == before.bucket_count_hint) {
             break;
         }
         const auto old_estimate = result.estimate.total_bytes();
@@ -463,10 +462,6 @@ void HUNLSampledSolver::apply_adaptive_fallback(
         adjustments.reduced_bucket_hint = true;
         return;
     }
-    if (config.depth_limit_plies_hint > 0U) {
-        --config.depth_limit_plies_hint;
-        adjustments.reduced_depth_limit_hint = true;
-    }
 }
 
 std::uint64_t HUNLSampledSolver::estimate_worker_delta_bytes(
@@ -492,11 +487,10 @@ std::uint64_t HUNLSampledSolver::estimate_export_bytes(const HUNLSampledSolveReq
 std::uint64_t HUNLSampledSolver::estimate_terminal_cache_bytes(
     const HUNLSampledSolveRequest& request,
     const HUNLSampledSolverConfig& config) noexcept {
-    const auto depth_factor = saturating_add(1ULL, static_cast<std::uint64_t>(config.depth_limit_plies_hint));
     const auto public_states = static_cast<std::uint64_t>(effective_public_state_cap(config));
     const auto action_factor = std::max<std::uint64_t>(1U, infer_root_action_count(request));
     return saturating_multiply(
-        saturating_multiply(saturating_multiply(public_states, action_factor), depth_factor),
+        saturating_multiply(public_states, action_factor),
         kDefaultTerminalCachePerStateBytes);
 }
 

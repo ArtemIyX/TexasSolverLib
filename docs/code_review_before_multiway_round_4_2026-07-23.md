@@ -358,6 +358,11 @@ Regression gate:
 
 ### P1-6: sampled `depth_limit_plies_hint` is an estimate-only control
 
+Status: **Fixed in the follow-up commit.** The sampled configuration now
+rejects every non-zero depth hint until traversal has a typed leaf evaluator.
+Preflight no longer models or adaptively reduces an unenforced cutoff; 20
+distinct hint values are covered by deterministic fail-closed regressions.
+
 Evidence:
 
 - The public config documents the field as the maximum plies cached/evaluated
