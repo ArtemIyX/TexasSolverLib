@@ -142,6 +142,11 @@ Regression gate:
 
 ### P1-1: the lone final responder can make an uncallable raise
 
+Status: **Fixed in the follow-up commit.** Aggressive actions now require an
+additional actionable opponent. The final covering responder retains only the
+meaningful fold/call decision; the regression enumerates 20 covering-stack
+sizes.
+
 Evidence:
 
 - `refresh_round_completion()` deliberately keeps the sole actionable player

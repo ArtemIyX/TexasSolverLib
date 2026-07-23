@@ -289,10 +289,11 @@ std::vector<MultiwayAction> MultiwayState::legal_actions() const {
     }
     const auto all_in_target = street_contributions_[seat] + stacks_[seat];
     const auto minimum_full_raise_target = current_bet_ + last_full_raise_size_;
-    if (may_raise_[seat] && all_in_target > minimum_full_raise_target) {
+    const bool has_actionable_opponent = actionable_player_count() > 1U;
+    if (has_actionable_opponent && may_raise_[seat] && all_in_target > minimum_full_raise_target) {
         actions.push_back(to_call > 0 ? MultiwayAction::Raise : MultiwayAction::Bet);
     }
-    if (may_raise_[seat] && all_in_target > current_bet_) {
+    if (has_actionable_opponent && may_raise_[seat] && all_in_target > current_bet_) {
         actions.push_back(MultiwayAction::AllIn);
     }
     return actions;

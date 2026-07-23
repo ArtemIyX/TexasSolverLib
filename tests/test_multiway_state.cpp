@@ -226,6 +226,21 @@ TEST_CASE(multiway_covering_stack_has_no_betting_actions_after_all_in_calls) {
     EXPECT_EQ(state.next_node_kind(), core::MultiwayNextNodeKind::BoardRunout);
 }
 
+TEST_CASE(multiway_lone_final_responder_can_only_fold_or_call) {
+    for (const int covering_stack : {101, 102, 103, 104, 105, 110, 120, 125, 150, 175,
+                                     200, 250, 300, 400, 500, 750, 1000, 1500, 2500, 5000}) {
+        core::MultiwayGameConfig config;
+        config.starting_stacks = {100, 100, covering_stack};
+        config.initial_contributions = {0, 0, 0};
+        config.initial_street_contributions = {0, 0, 0};
+        const auto responder = core::MultiwayState::initial(config)
+            .apply(core::MultiwayAction::AllIn)
+            .apply(core::MultiwayAction::Call);
+        EXPECT_EQ(responder.legal_actions(), (std::vector<core::MultiwayAction>{
+            core::MultiwayAction::Fold, core::MultiwayAction::Call}));
+    }
+}
+
 TEST_CASE(multiway_all_in_has_one_canonical_transition) {
     core::MultiwayGameConfig config;
     config.starting_stacks = {1000, 150, 1000};
