@@ -25,6 +25,7 @@ struct RangeCacheKey {
     std::optional<std::string> abstraction_path;
     std::optional<std::string> abstraction_version;
     RangeVector::Kind range_kind = RangeVector::Kind::Combo;
+    std::uint64_t solve_contract_fingerprint = 0;
 };
 
 struct RangeCacheEntry {

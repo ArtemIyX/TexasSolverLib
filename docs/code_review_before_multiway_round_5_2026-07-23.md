@@ -326,8 +326,7 @@ and exact-capacity cases.
 
 ### P1-7: range masking and propagation can resurrect impossible hands
 
-Status: **Fixed in the range-posterior remediation commit; tests added but not
-executed.**
+Status: **Fixed in `3033105`; tests added but not executed.**
 
 Standalone zero-prior normalization remains an explicit uniform-prior
 operation. Masking now preflights finite non-negative weights and positive
@@ -365,7 +364,15 @@ wrong-shape, and normal posterior cases.
 
 ### P1-8: range-cache compatibility omits strategy-defining configuration
 
-Status: **Open.**
+Status: **Fixed in the cache-contract remediation commit; tests added but not
+executed.**
+
+Cache version 2 carries a deterministic fingerprint of the complete HUNL solve
+contract: action menus/caps, all-in policy, rake, bucket/depth/mode/range
+policy, PCS, private root inputs, and all original public-state fields. Matching
+requires that fingerprint, and cache basenames include it to prevent
+incompatible entries from overwriting one another. More than 20 one-field
+contract mutations are covered.
 
 Evidence:
 

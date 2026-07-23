@@ -1,19 +1,184 @@
 #include "ranges/cache.hpp"
 
 #include <array>
+#include <cstring>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 namespace core {
 
 namespace {
 
 constexpr std::array<char, 8> RANGE_CACHE_MAGIC{{'T', 'S', 'R', 'C', 'A', 'C', 'H', 'E'}};
-constexpr std::uint8_t RANGE_CACHE_VERSION = 1;
+constexpr std::uint8_t RANGE_CACHE_VERSION = 2;
+
+class ContractFingerprint {
+public:
+    void add_byte(std::uint8_t value) noexcept {
+        value_ ^= value;
+        value_ *= 1099511628211ULL;
+    }
+
+    template <class Integer>
+    void add_integer(Integer value) noexcept {
+        using Unsigned = std::make_unsigned_t<Integer>;
+        auto bits = static_cast<Unsigned>(value);
+        for (std::size_t index = 0; index < sizeof(Unsigned); ++index) {
+            add_byte(static_cast<std::uint8_t>(bits & 0xffU));
+            bits >>= 8U;
+        }
+    }
+
+    void add_bool(bool value) noexcept {
+        add_byte(value ? 1U : 0U);
+    }
+
+    void add_double(double value) noexcept {
+        std::uint64_t bits = 0;
+        static_assert(sizeof(bits) == sizeof(value), "double fingerprint size");
+        std::memcpy(&bits, &value, sizeof(bits));
+        add_integer(bits);
+    }
+
+    void add_string(const std::string& value) noexcept {
+        add_integer<std::uint64_t>(value.size());
+        for (const auto ch : value) {
+            add_byte(static_cast<std::uint8_t>(ch));
+        }
+    }
+
+    [[nodiscard]] std::uint64_t value() const noexcept {
+        return value_;
+    }
+
+private:
+    std::uint64_t value_ = 14695981039346656037ULL;
+};
+
+template <class T, class AddValue>
+void add_optional(
+    ContractFingerprint& fingerprint,
+    const std::optional<T>& value,
+    AddValue add_value) noexcept {
+    fingerprint.add_bool(value.has_value());
+    if (value.has_value()) {
+        add_value(*value);
+    }
+}
+
+void add_doubles(
+    ContractFingerprint& fingerprint,
+    const std::vector<double>& values) noexcept {
+    fingerprint.add_integer<std::uint64_t>(values.size());
+    for (const auto value : values) {
+        fingerprint.add_double(value);
+    }
+}
+
+void add_range_input(
+    ContractFingerprint& fingerprint,
+    const HUNLRangeInput& range) noexcept {
+    fingerprint.add_integer<std::uint64_t>(range.hand_weights.size());
+    for (const auto& weighted : range.hand_weights) {
+        fingerprint.add_byte(weighted.hole[0]);
+        fingerprint.add_byte(weighted.hole[1]);
+        fingerprint.add_double(weighted.weight);
+    }
+    fingerprint.add_integer<std::uint64_t>(range.bucket_weights.size());
+    for (const auto& weighted : range.bucket_weights) {
+        fingerprint.add_byte(static_cast<std::uint8_t>(weighted.street));
+        fingerprint.add_integer(weighted.bucket);
+        fingerprint.add_double(weighted.weight);
+    }
+}
+
+std::uint64_t solve_contract_fingerprint(const HUNLConfig& config) noexcept {
+    ContractFingerprint fingerprint;
+    fingerprint.add_integer(config.starting_stack);
+    fingerprint.add_integer(config.small_blind);
+    fingerprint.add_integer(config.big_blind);
+    fingerprint.add_integer(config.ante);
+    fingerprint.add_byte(static_cast<std::uint8_t>(config.starting_street));
+    fingerprint.add_integer<std::uint64_t>(config.initial_board.size());
+    for (const auto card : config.initial_board) fingerprint.add_byte(card);
+    fingerprint.add_integer(config.initial_pot);
+    for (const auto contribution : config.initial_contributions) {
+        fingerprint.add_integer(contribution);
+    }
+    add_optional(
+        fingerprint,
+        config.initial_hole_cards,
+        [&](const auto& holes) noexcept {
+            for (const auto& hole : holes) {
+                fingerprint.add_byte(hole[0]);
+                fingerprint.add_byte(hole[1]);
+            }
+        });
+    fingerprint.add_byte(config.preflop_raise_cap);
+    fingerprint.add_byte(config.postflop_raise_cap);
+    add_doubles(fingerprint, config.bet_size_fractions);
+    add_optional(
+        fingerprint,
+        config.flop_bet_fractions,
+        [&](const auto& values) noexcept { add_doubles(fingerprint, values); });
+    add_optional(
+        fingerprint,
+        config.turn_bet_fractions,
+        [&](const auto& values) noexcept { add_doubles(fingerprint, values); });
+    add_optional(
+        fingerprint,
+        config.river_bet_fractions,
+        [&](const auto& values) noexcept { add_doubles(fingerprint, values); });
+    add_doubles(fingerprint, config.raise_size_xs);
+    fingerprint.add_bool(config.include_all_in);
+    add_optional(
+        fingerprint,
+        config.auto_all_in_spr_threshold,
+        [&](double value) noexcept { fingerprint.add_double(value); });
+    fingerprint.add_integer(config.force_allin_threshold);
+    fingerprint.add_integer(config.min_bet_bb);
+    fingerprint.add_bool(config.allow_oop_flop_lead);
+    fingerprint.add_double(config.rake_rate);
+    fingerprint.add_integer(config.rake_cap);
+    for (const auto count : config.bucket_counts_by_street) {
+        fingerprint.add_integer(count);
+    }
+    add_optional(
+        fingerprint,
+        config.abstraction_path,
+        [&](const auto& value) noexcept { fingerprint.add_string(value); });
+    add_optional(
+        fingerprint,
+        config.abstraction_version,
+        [&](const auto& value) noexcept { fingerprint.add_string(value); });
+    fingerprint.add_integer(config.depth_limit_plies);
+    fingerprint.add_byte(static_cast<std::uint8_t>(config.flat_solve_mode));
+    fingerprint.add_byte(static_cast<std::uint8_t>(config.range_policy));
+    for (const auto& range : config.initial_ranges) {
+        add_optional(
+            fingerprint,
+            range,
+            [&](const auto& value) noexcept {
+                add_range_input(fingerprint, value);
+            });
+    }
+    for (const auto& range : config.player_ranges) {
+        add_optional(
+            fingerprint,
+            range,
+            [&](const auto& value) noexcept {
+                add_range_input(fingerprint, value);
+            });
+    }
+    fingerprint.add_bool(config.use_pcs);
+    return fingerprint.value();
+}
 
 template <class T>
 void write_pod(std::ostream& out, const T& value) {
@@ -94,6 +259,7 @@ RangeCacheKey make_range_cache_key(
     key.abstraction_path = config.abstraction_path;
     key.abstraction_version = config.abstraction_version;
     key.range_kind = range_kind;
+    key.solve_contract_fingerprint = solve_contract_fingerprint(config);
     return key;
 }
 
@@ -113,7 +279,8 @@ bool range_cache_key_matches(
            key.initial_contributions == config.initial_contributions &&
            key.abstraction_path == config.abstraction_path &&
            key.abstraction_version == config.abstraction_version &&
-           key.range_kind == range_kind;
+           key.range_kind == range_kind &&
+           key.solve_contract_fingerprint == solve_contract_fingerprint(config);
 }
 
 std::string range_cache_basename(const RangeCacheKey& key) {
@@ -123,7 +290,9 @@ std::string range_cache_basename(const RangeCacheKey& key) {
         << "_" << board_token(key.board)
         << "_s" << key.starting_stack
         << "_b" << key.big_blind
-        << "_" << (key.range_kind == RangeVector::Kind::Combo ? "combo" : "bucket");
+        << "_" << (key.range_kind == RangeVector::Kind::Combo ? "combo" : "bucket")
+        << "_c" << std::hex << std::setw(16) << std::setfill('0')
+        << key.solve_contract_fingerprint;
     return oss.str();
 }
 
@@ -145,6 +314,7 @@ bool save_range_cache_entry(const std::filesystem::path& path, const RangeCacheE
     write_pod(out, entry.key.initial_contributions[0]);
     write_pod(out, entry.key.initial_contributions[1]);
     write_pod(out, entry.key.range_kind);
+    write_pod(out, entry.key.solve_contract_fingerprint);
     write_optional_string(out, entry.key.abstraction_path);
     write_optional_string(out, entry.key.abstraction_version);
     const auto board_size = static_cast<std::uint64_t>(entry.key.board.size());
@@ -185,6 +355,7 @@ bool load_range_cache_entry(const std::filesystem::path& path, RangeCacheEntry& 
         !read_pod(in, entry.key.initial_contributions[0]) ||
         !read_pod(in, entry.key.initial_contributions[1]) ||
         !read_pod(in, entry.key.range_kind) ||
+        !read_pod(in, entry.key.solve_contract_fingerprint) ||
         !read_optional_string(in, entry.key.abstraction_path) ||
         !read_optional_string(in, entry.key.abstraction_version)) {
         return false;
