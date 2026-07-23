@@ -68,7 +68,11 @@ inline void discount_regrets_sse2(double* regrets, std::size_t len, double pos_s
         const __m128d lt = _mm_cmplt_pd(v, zero);
         const __m128d pos_v = _mm_mul_pd(v, pos);
         const __m128d neg_v = _mm_mul_pd(v, neg);
-        v = _mm_or_pd(_mm_and_pd(gt, pos_v), _mm_and_pd(lt, neg_v));
+        const __m128d signed_mask = _mm_or_pd(gt, lt);
+        const __m128d scaled = _mm_or_pd(
+            _mm_and_pd(gt, pos_v),
+            _mm_and_pd(lt, neg_v));
+        v = _mm_or_pd(scaled, _mm_andnot_pd(signed_mask, v));
         _mm_storeu_pd(regrets + i, v);
     }
     for (; i < len; ++i) {
@@ -91,7 +95,13 @@ inline void discount_regrets_avx2(double* regrets, std::size_t len, double pos_s
         const __m256d lt = _mm256_cmp_pd(v, zero, _CMP_LT_OQ);
         const __m256d pos_v = _mm256_mul_pd(v, pos);
         const __m256d neg_v = _mm256_mul_pd(v, neg);
-        v = _mm256_or_pd(_mm256_and_pd(gt, pos_v), _mm256_and_pd(lt, neg_v));
+        const __m256d signed_mask = _mm256_or_pd(gt, lt);
+        const __m256d scaled = _mm256_or_pd(
+            _mm256_and_pd(gt, pos_v),
+            _mm256_and_pd(lt, neg_v));
+        v = _mm256_or_pd(
+            scaled,
+            _mm256_andnot_pd(signed_mask, v));
         _mm256_storeu_pd(regrets + i, v);
     }
     discount_regrets_sse2(regrets + i, len - i, pos_scale, neg_scale);

@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -42,6 +44,72 @@ TEST_CASE(simd_discount_regrets_vector_matches_scalar) {
 
     for (std::size_t i = 0; i < via_dispatch.size(); ++i) {
         EXPECT_TRUE(std::abs(via_dispatch[i] - via_scalar[i]) < TOL);
+    }
+}
+
+TEST_CASE(simd_discount_regrets_preserves_special_lanes_across_forty_shapes) {
+    for (std::size_t length = 1; length <= 40; ++length) {
+        const auto offset = length % 4U;
+        std::vector<double> base(length + offset, 123.0);
+        for (std::size_t index = 0; index < length; ++index) {
+            switch (index % 6U) {
+                case 0:
+                    base[offset + index] = static_cast<double>(index + 1U);
+                    break;
+                case 1:
+                    base[offset + index] = -static_cast<double>(index + 1U);
+                    break;
+                case 2:
+                    base[offset + index] = 0.0;
+                    break;
+                case 3:
+                    base[offset + index] = -0.0;
+                    break;
+                case 4:
+                    base[offset + index] =
+                        std::numeric_limits<double>::infinity();
+                    break;
+                default:
+                    base[offset + index] =
+                        -std::numeric_limits<double>::infinity();
+                    break;
+            }
+        }
+        const auto nan_index = (length * 7U + 3U) % length;
+        base[offset + nan_index] =
+            std::numeric_limits<double>::quiet_NaN();
+
+        auto via_dispatch = base;
+        auto via_scalar = base;
+        core::discount_regrets(
+            via_dispatch.data() + offset, length, 0.51, 0.27);
+        core::discount_regrets_scalar(
+            via_scalar.data() + offset, length, 0.51, 0.27);
+
+        for (std::size_t index = 0; index < length; ++index) {
+            const auto absolute_index = offset + index;
+            if (std::isnan(via_scalar[absolute_index])) {
+                std::uint64_t dispatch_bits = 0;
+                std::uint64_t scalar_bits = 0;
+                std::memcpy(
+                    &dispatch_bits,
+                    &via_dispatch[absolute_index],
+                    sizeof(dispatch_bits));
+                std::memcpy(
+                    &scalar_bits,
+                    &via_scalar[absolute_index],
+                    sizeof(scalar_bits));
+                EXPECT_EQ(dispatch_bits, scalar_bits);
+            } else if (via_scalar[absolute_index] == 0.0) {
+                EXPECT_EQ(
+                    std::signbit(via_dispatch[absolute_index]),
+                    std::signbit(via_scalar[absolute_index]));
+            } else {
+                EXPECT_EQ(
+                    via_dispatch[absolute_index],
+                    via_scalar[absolute_index]);
+            }
+        }
     }
 }
 

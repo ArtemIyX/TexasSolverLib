@@ -508,8 +508,7 @@ buckets, layouts, and shape reuse.
 
 ### P2-2: `FlatInfosetStore` narrows row offsets to 32 bits
 
-Status: **Fixed in the flat-layout arithmetic remediation commit; tests added
-but not executed.**
+Status: **Fixed in `fe2b482`; tests added but not executed.**
 
 `RowMeta::offset` is now `size_t`. Row-id, offset, required-size, vector-limit,
 and 64-row block-rounding arithmetic is checked before allocation. Row width
@@ -540,7 +539,14 @@ At least 20 row-width, block-boundary, reuse, and checked-overflow scenarios.
 
 ### P2-3: SIMD regret discounting does not match scalar NaN behavior
 
-Status: **Open.**
+Status: **Fixed in the SIMD special-lane remediation commit; tests added but
+not executed.**
+
+SSE2 and AVX2 now scale only ordered positive/negative lanes and blend the
+original bits back for every other lane. This preserves NaN payloads and both
+signed zeros exactly as the scalar branch does while retaining infinity and
+ordinary-value behavior. Forty lengths exercise vector widths, tails, NaN
+positions, infinities, signed zeros, and ordinary signs.
 
 Evidence:
 
