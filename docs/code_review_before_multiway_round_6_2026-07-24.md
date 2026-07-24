@@ -113,7 +113,7 @@ strategy state after every failure.
 
 ### P0-2: preflop-equity public inputs can index fixed storage out of bounds
 
-Status: **Open.**
+Status: **Fixed in the P0-2 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -149,6 +149,24 @@ Required regression coverage:
 At least 20 boundary cases must cover invalid low/high ranks, invalid class
 IDs, invalid variants, every private-card collision class, zero Monte Carlo
 samples, table coordinate overflow, and a damaged backing-vector shape.
+
+Implemented fix:
+
+- Rank, class, variant, two-card hand, and four-card private-deal validators now
+  reject malformed inputs before array access.
+- Exact and Monte Carlo equity require four valid distinct cards.
+- Monte Carlo equity rejects a zero sample count.
+- Both const and mutable `PreflopEquityTable::at()` overloads validate all
+  coordinates before flattening and verify the backing-vector shape before
+  indexing.
+- Invalid class decoding no longer aliases to pocket deuces.
+
+Regression coverage added:
+
+`tests/test_preflop_equity_validation.cpp` contains 32 independent test cases
+covering rank and class boundaries, variants, low/high invalid cards, same-hand
+and cross-player collisions, zero samples, every table coordinate, and cleared,
+shortened, or extended mutable backing storage.
 
 ### P0-3: partial worker-launch failure can terminate the process
 

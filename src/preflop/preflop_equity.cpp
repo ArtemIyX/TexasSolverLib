@@ -10,6 +10,7 @@
 #include <fstream>
 #include <limits>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -19,9 +20,52 @@ namespace {
 constexpr std::array<std::uint8_t, 13> RANKS = {14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2};
 constexpr std::size_t DECK_SIZE = 52;
 constexpr std::size_t BOARD_CARDS = 5;
+constexpr std::size_t EQUITY_TABLE_SIZE =
+    PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS;
 
 std::size_t rank_pos(std::uint8_t rank) {
     return static_cast<std::size_t>(std::find(RANKS.begin(), RANKS.end(), rank) - RANKS.begin());
+}
+
+void validate_rank(std::uint8_t rank, const char* caller) {
+    if (rank < 2U || rank > 14U) {
+        throw std::invalid_argument(std::string(caller) + " requires ranks in [2, 14]");
+    }
+}
+
+void validate_class(std::uint16_t class_idx, const char* caller) {
+    if (class_idx >= PREFLOP_NUM_CLASSES) {
+        throw std::out_of_range(std::string(caller) + " class index is out of range");
+    }
+}
+
+void validate_private_deal(
+    const std::array<std::uint8_t, 2>& hero,
+    const std::array<std::uint8_t, 2>& villain,
+    const char* caller) {
+    const std::array<std::uint8_t, 4> cards = {
+        hero[0], hero[1], villain[0], villain[1]};
+    if (!are_valid_and_distinct_cards(cards.data(), cards.size())) {
+        throw std::invalid_argument(
+            std::string(caller) + " requires four valid distinct private cards");
+    }
+}
+
+std::size_t equity_table_index(
+    std::size_t hero_class,
+    std::size_t villain_class,
+    std::size_t variant,
+    std::size_t backing_size) {
+    if (hero_class >= PREFLOP_NUM_CLASSES ||
+        villain_class >= PREFLOP_NUM_CLASSES ||
+        variant >= PREFLOP_NUM_VARIANTS) {
+        throw std::out_of_range("PreflopEquityTable coordinate is out of range");
+    }
+    if (backing_size != EQUITY_TABLE_SIZE) {
+        throw std::logic_error("PreflopEquityTable backing storage has an invalid size");
+    }
+    return (hero_class * PREFLOP_NUM_CLASSES + villain_class) *
+        PREFLOP_NUM_VARIANTS + variant;
 }
 
 std::array<std::uint8_t, DECK_SIZE> build_deck() {
@@ -57,6 +101,8 @@ HoleRep make_rep(const std::array<std::uint8_t, 2>& hero, const std::array<std::
 }  // namespace
 
 std::uint16_t class_index(std::uint8_t rank_hi, std::uint8_t rank_lo, bool suited) {
+    validate_rank(rank_hi, "class_index");
+    validate_rank(rank_lo, "class_index");
     if (rank_hi == rank_lo) {
         return static_cast<std::uint16_t>(rank_pos(rank_hi));
     }
@@ -69,6 +115,7 @@ std::uint16_t class_index(std::uint8_t rank_hi, std::uint8_t rank_lo, bool suite
 }
 
 std::tuple<std::uint8_t, std::uint8_t, bool> class_decode(std::uint16_t class_idx) {
+    validate_class(class_idx, "class_decode");
     const auto idx = static_cast<std::size_t>(class_idx);
     if (idx < 13) {
         return {static_cast<std::uint8_t>(RANKS[idx]), static_cast<std::uint8_t>(RANKS[idx]), false};
@@ -86,10 +133,13 @@ std::tuple<std::uint8_t, std::uint8_t, bool> class_decode(std::uint16_t class_id
         }
         remaining -= row_len;
     }
-    return {static_cast<std::uint8_t>(2), static_cast<std::uint8_t>(2), false};
+    throw std::logic_error("class_decode failed to decode a validated class index");
 }
 
 std::uint16_t hole_to_class(const std::array<std::uint8_t, 2>& hole) {
+    if (!are_valid_and_distinct_cards(hole.data(), hole.size())) {
+        throw std::invalid_argument("hole_to_class requires two valid distinct cards");
+    }
     const auto r0 = rank_of(hole[0]);
     const auto r1 = rank_of(hole[1]);
     const auto s0 = suit_of(hole[0]);
@@ -100,6 +150,11 @@ std::uint16_t hole_to_class(const std::array<std::uint8_t, 2>& hole) {
 }
 
 std::optional<HoleRep> build_hole_rep(std::uint16_t hero_class, std::uint16_t villain_class, std::uint8_t variant) {
+    validate_class(hero_class, "build_hole_rep");
+    validate_class(villain_class, "build_hole_rep");
+    if (variant >= PREFLOP_NUM_VARIANTS) {
+        throw std::out_of_range("build_hole_rep variant is out of range");
+    }
     const auto [h_hi, h_lo, h_suited] = class_decode(hero_class);
     const auto [v_hi, v_lo, v_suited] = class_decode(villain_class);
     const std::array<std::uint8_t, 2> hero = h_hi == h_lo
@@ -121,6 +176,7 @@ std::optional<HoleRep> build_hole_rep(std::uint16_t hero_class, std::uint16_t vi
 }
 
 double enumerate_pair_equity(const std::array<std::uint8_t, 2>& hero, const std::array<std::uint8_t, 2>& villain) {
+    validate_private_deal(hero, villain, "enumerate_pair_equity");
     std::array<bool, 64> used{};
     for (const auto c : hero) {
         used[c] = true;
@@ -177,6 +233,10 @@ double monte_carlo_pair_equity(
     const std::array<std::uint8_t, 2>& villain,
     std::size_t n_samples,
     std::uint64_t seed) {
+    validate_private_deal(hero, villain, "monte_carlo_pair_equity");
+    if (n_samples == 0U) {
+        throw std::invalid_argument("monte_carlo_pair_equity requires at least one sample");
+    }
     std::array<bool, 64> used{};
     for (const auto c : hero) {
         used[c] = true;
@@ -292,14 +352,14 @@ std::vector<double> build_equity_table_flat_parallel(std::size_t n_threads) {
 }
 
 PreflopEquityTable::PreflopEquityTable()
-    : table_(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS, std::numeric_limits<double>::quiet_NaN()) {}
+    : table_(EQUITY_TABLE_SIZE, std::numeric_limits<double>::quiet_NaN()) {}
 
 double PreflopEquityTable::at(std::size_t h, std::size_t v, std::size_t var) const {
-    return table_[(h * PREFLOP_NUM_CLASSES + v) * PREFLOP_NUM_VARIANTS + var];
+    return table_[equity_table_index(h, v, var, table_.size())];
 }
 
 double& PreflopEquityTable::at(std::size_t h, std::size_t v, std::size_t var) {
-    return table_[(h * PREFLOP_NUM_CLASSES + v) * PREFLOP_NUM_VARIANTS + var];
+    return table_[equity_table_index(h, v, var, table_.size())];
 }
 
 bool PreflopEquityTable::empty() const {
