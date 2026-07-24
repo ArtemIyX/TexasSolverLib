@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <numeric>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -26,6 +27,36 @@ core::MultiwayState flop_state(int stack = 1000) {
     game.starting_stacks = {stack, stack, stack};
     game.initial_contributions = {0, 0, 0};
     game.initial_street_contributions = {0, 0, 0};
+    game.first_player = 0;
+    game.street = core::Street::Flop;
+    return core::MultiwayState::initial(game);
+}
+
+core::MultiwayState flop_state_with_stacks(std::vector<int> stacks) {
+    core::MultiwayGameConfig game;
+    game.starting_stacks = std::move(stacks);
+    game.initial_contributions.assign(game.starting_stacks.size(), 0);
+    game.initial_street_contributions.assign(game.starting_stacks.size(), 0);
+    game.first_player = 0;
+    game.street = core::Street::Flop;
+    return core::MultiwayState::initial(game);
+}
+
+core::MultiwayState preflop_state() {
+    core::MultiwayGameConfig game;
+    game.starting_stacks = {1000, 1000, 1000};
+    game.initial_contributions = {0, 0, 0};
+    game.initial_street_contributions = {0, 0, 0};
+    game.first_player = 0;
+    game.street = core::Street::Preflop;
+    return core::MultiwayState::initial(game);
+}
+
+core::MultiwayState two_handed_flop_state() {
+    core::MultiwayGameConfig game;
+    game.starting_stacks = {1000, 1000};
+    game.initial_contributions = {0, 0};
+    game.initial_street_contributions = {0, 0};
     game.first_player = 0;
     game.street = core::Street::Flop;
     return core::MultiwayState::initial(game);
@@ -115,7 +146,7 @@ TEST_CASE(multiway_terminal_adapter_uses_root_owned_first_player_for_street_tran
 TEST_CASE(multiway_terminal_adapter_runs_out_all_in_board_before_showdown) {
     const core::MultiwayTerminalAdapter adapter(root_with_first_seat());
     const auto deal = private_deal();
-    const auto all_in = flop_state(100).apply(core::MultiwayAction::AllIn)
+    const auto all_in = flop_state().apply(core::MultiwayAction::AllIn)
         .apply(core::MultiwayAction::Call)
         .apply(core::MultiwayAction::Call)
         .snapshot();
@@ -127,7 +158,7 @@ TEST_CASE(multiway_terminal_adapter_runs_out_all_in_board_before_showdown) {
 
     const auto river_edges = adapter.canonical_board_chance_edges(all_in, turn.board, deal);
     const auto result = adapter.resolve_terminal(all_in, river_edges.front().board, deal);
-    EXPECT_EQ(sum(result.payouts) + sum(result.refunds), 300);
+    EXPECT_EQ(sum(result.payouts) + sum(result.refunds), 3000);
     EXPECT_NEAR(std::accumulate(result.utilities.begin(), result.utilities.end(), 0.0), 0.0, 1e-12);
 }
 
@@ -152,16 +183,18 @@ TEST_CASE(multiway_terminal_adapter_delegates_fold_terminals) {
 }
 
 TEST_CASE(multiway_terminal_adapter_delegates_side_pot_showdown_and_odd_chip_order) {
-    const core::MultiwayTerminalAdapter adapter(root_with_first_seat(0, 1));
+    auto root = root_with_first_seat(0, 1);
+    root.public_state.betting = flop_state_with_stacks({101, 301, 301}).snapshot();
+    const core::MultiwayTerminalAdapter adapter(root);
     core::MultiwayGameConfig game;
     game.starting_stacks = {101, 301, 301};
     game.initial_contributions = {101, 301, 301};
     game.initial_street_contributions = {0, 0, 0};
     game.street = core::Street::River;
     const auto betting = core::MultiwayState::initial(game).snapshot();
-    const std::vector<std::uint8_t> board = {c(14, 0), c(13, 0), c(12, 1), c(11, 2), c(2, 0)};
+    const std::vector<std::uint8_t> board = {kFlop[0], kFlop[1], kFlop[2], c(10, 3), c(11, 0)};
     core::MultiwayJointPrivateSample deal;
-    deal.holes = {{c(10, 0), c(3, 1)}, {c(10, 1), c(4, 1)}, {c(9, 3), c(8, 3)}};
+    deal.holes = {{c(12, 0), c(13, 0)}, {c(12, 1), c(13, 1)}, {c(14, 3), c(3, 3)}};
 
     const auto result = adapter.resolve_terminal(betting, board, deal);
     EXPECT_EQ(result.pots.size(), std::size_t{2});
@@ -186,4 +219,29 @@ TEST_CASE(multiway_terminal_adapter_rejects_invalid_state_board_and_private_deal
     auto overlapping_deal = deal;
     overlapping_deal.holes[1][0] = overlapping_deal.holes[0][0];
     EXPECT_THROW(adapter.canonical_board_chance_edges(complete, kFlop, overlapping_deal), std::invalid_argument);
+}
+
+TEST_CASE(multiway_terminal_adapter_rejects_snapshots_outside_root_lineage) {
+    const core::MultiwayTerminalAdapter adapter(root_with_first_seat());
+    const auto deal = private_deal();
+    const auto complete = complete_flop_betting();
+
+    EXPECT_THROW(
+        adapter.canonical_board_chance_edges(two_handed_flop_state().snapshot(), kFlop, deal),
+        std::invalid_argument);
+
+    auto changed_total = complete;
+    --changed_total.stacks[1];
+    EXPECT_THROW(adapter.canonical_board_chance_edges(changed_total, kFlop, deal), std::invalid_argument);
+
+    EXPECT_THROW(
+        adapter.canonical_board_chance_edges(preflop_state().snapshot(), kFlop, deal),
+        std::invalid_argument);
+
+    auto incompatible_street = complete;
+    incompatible_street.street = core::Street::Turn;
+    EXPECT_THROW(adapter.canonical_board_chance_edges(incompatible_street, kFlop, deal), std::invalid_argument);
+
+    const std::vector<std::uint8_t> changed_prefix = {c(3, 0), kFlop[1], kFlop[2]};
+    EXPECT_THROW(adapter.canonical_board_chance_edges(complete, changed_prefix, deal), std::invalid_argument);
 }

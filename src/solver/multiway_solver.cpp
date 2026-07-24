@@ -42,6 +42,39 @@ bool same_board(const std::vector<std::uint8_t>& left, const std::vector<std::ui
     return left == right;
 }
 
+bool same_betting_snapshot(
+    const MultiwayBettingSnapshot& left,
+    const MultiwayBettingSnapshot& right) noexcept {
+    return left.stacks == right.stacks &&
+           left.contributions == right.contributions &&
+           left.street_contributions == right.street_contributions &&
+           left.folded == right.folded &&
+           left.all_in == right.all_in &&
+           left.may_raise == right.may_raise &&
+           left.pending == right.pending &&
+           left.has_acted == right.has_acted &&
+           left.bet_faced_when_acted == right.bet_faced_when_acted &&
+           left.current_player == right.current_player &&
+           left.last_aggressor == right.last_aggressor &&
+           left.current_bet == right.current_bet &&
+           left.last_full_raise_size == right.last_full_raise_size &&
+           left.big_blind == right.big_blind &&
+           left.street == right.street;
+}
+
+bool same_public_state_descriptor(
+    const MultiwayPublicStateDescriptor& left,
+    const MultiwayPublicStateDescriptor& right) noexcept {
+    return left.id == right.id &&
+           left.parent_id == right.parent_id &&
+           left.canonical_history_id == right.canonical_history_id &&
+           same_betting_snapshot(left.betting, right.betting) &&
+           left.board == right.board &&
+           left.board_runout == right.board_runout &&
+           left.history == right.history &&
+           left.legal_actions == right.legal_actions;
+}
+
 bool delta_less(const MultiwayWorkerDelta& left, const MultiwayWorkerDelta& right) noexcept {
     if (left.infoset.seat != right.infoset.seat) return left.infoset.seat < right.infoset.seat;
     if (left.infoset.public_state != right.infoset.public_state) {
@@ -228,7 +261,13 @@ void MultiwaySparseRowStorage::admit_row(const MultiwaySparseRowShape& shape) {
     if (shape.infoset.public_state.value == 0 || shape.infoset.seat < 0) {
         throw std::invalid_argument("multiway sparse row requires a stable per-seat infoset id");
     }
-    if (has_row(shape.infoset)) return;
+    if (const auto* existing = metadata(shape.infoset)) {
+        if (existing->shape.bucket_count != shape.bucket_count ||
+            existing->shape.action_count != shape.action_count) {
+            throw std::invalid_argument("multiway sparse row infoset was admitted with a conflicting shape");
+        }
+        return;
+    }
     const auto values = checked_value_count(shape);
     if (metadata_.size() >= max_rows_ || values > max_values_ - regret_.size()) {
         throw std::length_error("multiway sparse row admission exceeds configured capacity");
@@ -310,8 +349,7 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
     validate_public_state_descriptor(state);
     const auto existing = public_state(state.id);
     if (existing != nullptr) {
-        if (existing->canonical_history_id != state.canonical_history_id ||
-            existing->board != state.board || existing->history.size() != state.history.size()) {
+        if (!same_public_state_descriptor(*existing, state)) {
             throw std::invalid_argument("multiway public state id was admitted with conflicting data");
         }
         return;
@@ -327,9 +365,13 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
 }
 
 void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape) {
-    if (public_state(shape.infoset.public_state) == nullptr || shape.infoset.seat < 0 ||
+    const auto* state = public_state(shape.infoset.public_state);
+    if (state == nullptr || shape.infoset.seat < 0 ||
         static_cast<std::size_t>(shape.infoset.seat) >= request_.root().seat_order.size()) {
         throw std::invalid_argument("multiway row must belong to an admitted per-seat public infoset");
+    }
+    if (shape.action_count != state->legal_actions.size()) {
+        throw std::invalid_argument("multiway row action count must match its public action menu");
     }
     const auto existed = storage_.has_row(shape.infoset);
     storage_.admit_row(shape);
@@ -364,9 +406,6 @@ MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy() const {
     std::vector<Probability> probabilities;
     if (storage_.has_row(root.root_infoset)) {
         probabilities = storage_.average_strategy(root.root_infoset, root.root_bucket);
-        if (probabilities.size() != root.public_state.legal_actions.size()) {
-            throw std::logic_error("multiway root row shape does not match the immutable root action menu");
-        }
     } else {
         const auto uniform = 1.0 / static_cast<double>(root.public_state.legal_actions.size());
         probabilities.assign(root.public_state.legal_actions.size(), uniform);

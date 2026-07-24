@@ -56,6 +56,10 @@ struct MultiwayActionDescriptor {
 struct MultiwayPublicHistoryEntry {
     PlayerId actor = -1;
     MultiwayActionDescriptor action{};
+
+    constexpr bool operator==(const MultiwayPublicHistoryEntry& other) const noexcept {
+        return actor == other.actor && action == other.action;
+    }
 };
 
 // The known board and its deterministic chance boundary.  `remaining_board_cards`
@@ -63,6 +67,11 @@ struct MultiwayPublicHistoryEntry {
 struct MultiwayBoardRunoutState {
     std::uint8_t remaining_board_cards = 2;
     bool chance_only_runout = false;
+
+    constexpr bool operator==(const MultiwayBoardRunoutState& other) const noexcept {
+        return remaining_board_cards == other.remaining_board_cards &&
+               chance_only_runout == other.chance_only_runout;
+    }
 };
 
 // Side-pot settlement follows the existing terminal layer's cyclic seat-id

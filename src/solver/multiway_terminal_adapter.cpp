@@ -1,6 +1,8 @@
 #include "solver/multiway_terminal_adapter.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <stdexcept>
 #include <utility>
 
@@ -56,9 +58,40 @@ void validate_private_deal(
     }
 }
 
-MultiwayState validated_state(const MultiwayBettingSnapshot& betting) {
+MultiwayState validate_root_consistent_state(
+    const MultiwayRootSnapshot& root,
+    const MultiwayBettingSnapshot& betting,
+    const std::vector<std::uint8_t>& board) {
     betting.validate();
-    return MultiwayState::from_snapshot(betting);
+    validate_board(board);
+    const auto seat_count = root.seat_order.size();
+    const auto& root_betting = root.public_state.betting;
+    if (betting.stacks.size() != seat_count || root_betting.stacks.size() != seat_count) {
+        throw std::invalid_argument("multiway terminal adapter betting snapshot does not match root seats");
+    }
+    for (std::size_t seat = 0; seat < seat_count; ++seat) {
+        const auto root_total = static_cast<std::int64_t>(root_betting.stacks[seat]) +
+            root_betting.contributions[seat];
+        const auto total = static_cast<std::int64_t>(betting.stacks[seat]) + betting.contributions[seat];
+        if (total != root_total) {
+            throw std::invalid_argument("multiway terminal adapter betting snapshot changes root chip accounting");
+        }
+    }
+    if (static_cast<std::uint8_t>(betting.street) < static_cast<std::uint8_t>(root_betting.street) ||
+        board.size() < root.public_state.board.size() ||
+        !std::equal(root.public_state.board.begin(), root.public_state.board.end(), board.begin())) {
+        throw std::invalid_argument("multiway terminal adapter state is outside the root board/street lineage");
+    }
+
+    const auto state = MultiwayState::from_snapshot(betting);
+    const auto minimum_board_cards = board_card_count(state.street());
+    const auto valid_board_shape = state.requires_board_runout()
+        ? board.size() >= minimum_board_cards && board.size() <= 5U
+        : board.size() == minimum_board_cards;
+    if (!valid_board_shape) {
+        throw std::invalid_argument("multiway terminal adapter board is incompatible with its betting state");
+    }
+    return state;
 }
 
 }  // namespace
@@ -71,7 +104,7 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board,
     const MultiwayJointPrivateSample& private_deal) const {
-    const auto state = validated_state(betting);
+    const auto state = validate_root_consistent_state(root_, betting, board);
     validate_private_deal(root_, board, private_deal);
 
     const auto kind = state.next_node_kind();
@@ -124,7 +157,7 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
 MultiwayStreetTransition MultiwayTerminalAdapter::apply_street_transition(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board) const {
-    const auto state = validated_state(betting);
+    const auto state = validate_root_consistent_state(root_, betting, board);
     if (!state.requires_street_transition()) {
         throw std::logic_error("multiway street transition is unavailable for this betting state");
     }
@@ -146,7 +179,7 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board,
     const MultiwayJointPrivateSample& private_deal) const {
-    const auto state = validated_state(betting);
+    const auto state = validate_root_consistent_state(root_, betting, board);
     validate_private_deal(root_, board, private_deal);
 
     if (state.next_node_kind() == MultiwayNextNodeKind::FoldTerminal) {

@@ -34,6 +34,17 @@ core::MultiwayPublicStateDescriptor root_public_state() {
     return state;
 }
 
+core::MultiwayPublicStateDescriptor board_runout_public_state() {
+    auto state = root_public_state();
+    const auto betting = core::MultiwayState::from_snapshot(state.betting)
+                             .apply(core::MultiwayAction::AllIn)
+                             .apply(core::MultiwayAction::Call);
+    state.betting = betting.snapshot();
+    state.board_runout.chance_only_runout = true;
+    state.legal_actions.clear();
+    return state;
+}
+
 core::MultiwayPrivateConfig root_ranges() {
     core::MultiwayPrivateConfig ranges;
     ranges.board = {card(2, 0), card(7, 1), card(9, 2)};
@@ -256,6 +267,44 @@ TEST_CASE(multiway_solver_sparse_admission_enforces_row_and_value_caps) {
     EXPECT_THROW(values_limited.admit_infoset_row(too_wide), std::length_error);
 }
 
+TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
+    core::MultiwaySolverCoordinator coordinator(valid_request());
+    const auto root_shape = root_row();
+    coordinator.admit_infoset_row(root_shape);
+    coordinator.admit_infoset_row(root_shape);
+    EXPECT_EQ(coordinator.storage().row_count(), std::size_t{1});
+    EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 1U);
+
+    auto conflicting_bucket_shape = root_shape;
+    conflicting_bucket_shape.bucket_count = 2;
+    EXPECT_THROW(coordinator.admit_infoset_row(conflicting_bucket_shape), std::invalid_argument);
+
+    auto conflicting_action_shape = root_shape;
+    conflicting_action_shape.action_count = 2;
+    EXPECT_THROW(coordinator.admit_infoset_row(conflicting_action_shape), std::invalid_argument);
+
+    const core::MultiwaySparseRowShape unknown_state_shape{{99}, 0, 1, 1};
+    EXPECT_THROW(coordinator.admit_infoset_row(unknown_state_shape), std::invalid_argument);
+
+    auto child = root_public_state();
+    child.id = {2};
+    child.parent_id = {1};
+    child.canonical_history_id = 102;
+    coordinator.admit_public_state(child);
+
+    const core::MultiwaySparseRowShape child_shape{{2}, 1, 1, 3};
+    coordinator.admit_infoset_row(child_shape);
+    EXPECT_TRUE(coordinator.storage().has_row(child_shape.infoset));
+
+    auto too_few_actions = child_shape;
+    too_few_actions.action_count = 2;
+    EXPECT_THROW(coordinator.admit_infoset_row(too_few_actions), std::invalid_argument);
+
+    auto too_many_actions = child_shape;
+    too_many_actions.action_count = 4;
+    EXPECT_THROW(coordinator.admit_infoset_row(too_many_actions), std::invalid_argument);
+}
+
 TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_free_identity) {
     core::MultiwaySolverCoordinator coordinator(valid_request());
     auto child = root_public_state();
@@ -269,6 +318,50 @@ TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_fr
     EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
     child.canonical_history_id = 103;
     EXPECT_THROW(coordinator.admit_public_state(child), std::invalid_argument);
+}
+
+TEST_CASE(multiway_solver_public_state_duplicate_id_requires_the_complete_descriptor_to_match) {
+    core::MultiwaySolverCoordinator coordinator(valid_request());
+    auto child = root_public_state();
+    child.id = {2};
+    child.parent_id = {1};
+    child.canonical_history_id = 102;
+    child.history = {{0, {core::MultiwayAction::Check, 0, 0, 9001}}};
+    coordinator.admit_public_state(child);
+    coordinator.admit_public_state(child);
+    EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
+
+    auto changed_parent = child;
+    changed_parent.parent_id = {};
+    EXPECT_THROW(coordinator.admit_public_state(changed_parent), std::invalid_argument);
+
+    auto changed_betting = child;
+    changed_betting.betting.current_player = 1;
+    EXPECT_THROW(coordinator.admit_public_state(changed_betting), std::invalid_argument);
+
+    auto changed_history = child;
+    changed_history.history[0].actor = 1;
+    EXPECT_THROW(coordinator.admit_public_state(changed_history), std::invalid_argument);
+
+    auto changed_action_descriptor = child;
+    for (auto& action : changed_action_descriptor.legal_actions) {
+        action.action_menu_id = 9002;
+    }
+    EXPECT_THROW(coordinator.admit_public_state(changed_action_descriptor), std::invalid_argument);
+
+    core::MultiwaySolverCoordinator runout_coordinator(valid_request());
+    auto runout = board_runout_public_state();
+    runout.id = {3};
+    runout.parent_id = {1};
+    runout.canonical_history_id = 103;
+    runout_coordinator.admit_public_state(runout);
+    runout_coordinator.admit_public_state(runout);
+    EXPECT_EQ(runout_coordinator.diagnostics().public_states_admitted, 2U);
+
+    auto changed_runout = runout;
+    changed_runout.board.push_back(card(3, 3));
+    changed_runout.board_runout.remaining_board_cards = 1;
+    EXPECT_THROW(runout_coordinator.admit_public_state(changed_runout), std::invalid_argument);
 }
 
 TEST_CASE(multiway_solver_public_state_admission_enforces_its_capacity) {

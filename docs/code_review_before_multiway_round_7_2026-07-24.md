@@ -236,6 +236,70 @@ It must create canonical public chance edges, apply street transitions, and
 delegate every terminal to the validated side-pot settlement code. Do not
 duplicate this logic in traversal, quality evaluation, and export paths.
 
+### P1-3: duplicate public-state admission could silently change a stable state contract
+
+**Status: fixed (2026-07-24; static verification only).**
+
+The post-remediation architecture rescan found that a repeated public-state ID
+was only partially compared. Coordinator admission now accepts a repeated ID
+only when its complete public descriptor is semantically identical: parent and
+history identities, betting snapshot, board/runout metadata, full public
+history, and typed action menu.
+
+Implementation and test evidence:
+
+- `include/solver/multiway_solver.hpp` adds value equality for the relevant
+  public contract components.
+- `src/solver/multiway_solver.cpp` performs full descriptor comparison during
+  duplicate admission.
+- `tests/test_multiway_solver.cpp` covers an idempotent exact duplicate and
+  rejected changes to parent, betting, runout, history, and action metadata.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
+### P1-4: sparse infoset rows were not bound to their public action menus
+
+**Status: fixed (2026-07-24; static verification only).**
+
+The post-remediation architecture rescan found that coordinator row admission
+could create or silently reuse a shape that did not correspond to the owning
+public state's typed action menu. Admission now requires the public state to be
+known and the action count to match exactly; repeated infoset rows are
+idempotent only for an identical shape and reject bucket/action conflicts.
+
+Implementation and test evidence:
+
+- `src/solver/multiway_solver.cpp` validates the owning state/action menu and
+  conflicting duplicate row shapes at admission time.
+- `tests/test_multiway_solver.cpp` covers exact duplicate idempotency,
+  conflicting shapes, unknown public states, and a non-root action-menu count
+  mismatch.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
+### P1-5: terminal adapter could combine a public state unrelated to its root
+
+**Status: fixed (2026-07-24; static verification only).**
+
+The post-remediation architecture rescan found that the adapter independently
+validated a root, a betting snapshot, and a sampled deal, but did not prove the
+snapshot was a valid descendant of that root. Adapter entry points now enforce
+matching seat cardinality, per-seat total chip accounting, non-regressing
+street progression, and canonical root-board lineage, including the special
+chance-only runout shape.
+
+Implementation and test evidence:
+
+- `src/solver/multiway_terminal_adapter.cpp` validates root-consistent public
+  inputs before chance, transition, or terminal work.
+- `tests/test_multiway_terminal_adapter.cpp` covers seat/accounting/street and
+  board-lineage rejection while retaining valid all-in and side-pot descendants.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
 ## P2 findings
 
 ### P2-1: NashConv diagnostics accept unknown value-unit enum values
