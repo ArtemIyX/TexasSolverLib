@@ -373,6 +373,10 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
     if (shape.action_count != state->legal_actions.size()) {
         throw std::invalid_argument("multiway row action count must match its public action menu");
     }
+    if (shape.infoset == request_.root().root_infoset &&
+        request_.root().root_bucket >= shape.bucket_count) {
+        throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
+    }
     const auto existed = storage_.has_row(shape.infoset);
     storage_.admit_row(shape);
     if (!existed) ++diagnostics_.sparse_rows_admitted;

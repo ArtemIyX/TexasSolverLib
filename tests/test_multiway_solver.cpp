@@ -267,6 +267,25 @@ TEST_CASE(multiway_solver_sparse_admission_enforces_row_and_value_caps) {
     EXPECT_THROW(values_limited.admit_infoset_row(too_wide), std::length_error);
 }
 
+TEST_CASE(multiway_solver_root_bucket_must_fit_its_admitted_sparse_row) {
+    auto root = valid_root();
+    root.root_bucket = 1;
+    core::MultiwayCFRConfig cfr;
+    cfr.player_count = 2;
+    core::MultiwaySolverCoordinator coordinator(
+        core::MultiwaySolveRequest(root, cfr, valid_limits()));
+
+    EXPECT_THROW(coordinator.admit_infoset_row(root_row(1)), std::invalid_argument);
+
+    coordinator.admit_infoset_row(root_row(2));
+    const auto policy = coordinator.export_root_policy();
+    EXPECT_EQ(policy.bucket, 1U);
+    EXPECT_EQ(policy.actions.size(), std::size_t{3});
+    for (const auto& action : policy.actions) {
+        EXPECT_NEAR(action.probability, 1.0 / 3.0, 1e-12);
+    }
+}
+
 TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     core::MultiwaySolverCoordinator coordinator(valid_request());
     const auto root_shape = root_row();

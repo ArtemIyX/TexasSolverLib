@@ -300,6 +300,25 @@ Implementation and test evidence:
 Those tests were added but not executed, per `AGENTS.md` and the requested
 no-build/no-test constraint.
 
+### P1-6: root bucket compatibility was deferred until policy export
+
+**Status: fixed (2026-07-24; static verification only).**
+
+The final architecture rescan found that a request could select a root bucket
+outside the root sparse row's bucket count and fail only while exporting a
+policy. Root-row admission now rejects that incompatible shape immediately,
+while non-root rows remain unaffected.
+
+Implementation and test evidence:
+
+- `src/solver/multiway_solver.cpp` validates `root_bucket` against the root
+  row's bucket count at admission.
+- `tests/test_multiway_solver.cpp` covers rejected one-bucket admission and
+  successful two-bucket admission/export for root bucket one.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
 ## P2 findings
 
 ### P2-1: NashConv diagnostics accept unknown value-unit enum values
