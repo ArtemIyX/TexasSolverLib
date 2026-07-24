@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -20,6 +21,21 @@ bool valid_action(MultiwayAction action) noexcept {
     return action == MultiwayAction::Fold || action == MultiwayAction::Check ||
            action == MultiwayAction::Call || action == MultiwayAction::Bet ||
            action == MultiwayAction::Raise || action == MultiwayAction::AllIn;
+}
+
+bool valid_odd_chip_rule(MultiwayOddChipRule rule) noexcept {
+    return rule == MultiwayOddChipRule::AscendingSeatIdFromFirstSeat;
+}
+
+std::uint8_t expected_board_card_count(Street street) {
+    switch (street) {
+        case Street::Preflop: return 0;
+        case Street::Flop: return 3;
+        case Street::Turn: return 4;
+        case Street::River: return 5;
+        case Street::Showdown: break;
+    }
+    throw std::invalid_argument("multiway public state has an invalid board street");
 }
 
 bool same_board(const std::vector<std::uint8_t>& left, const std::vector<std::uint8_t>& right) noexcept {
@@ -42,15 +58,39 @@ bool delta_is_finite(const MultiwayWorkerDelta& delta) noexcept {
 
 void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state) {
     state.betting.validate();
-    if (state.id.value == 0 || state.canonical_history_id == 0 || state.legal_actions.empty()) {
-        throw std::invalid_argument("multiway public state requires stable identities and an action menu");
+    if (state.id.value == 0 || state.canonical_history_id == 0) {
+        throw std::invalid_argument("multiway public state requires stable identities");
+    }
+    const auto known_board_cards = expected_board_card_count(state.betting.street);
+    const auto valid_board_size = state.board_runout.chance_only_runout
+        ? state.board.size() >= known_board_cards && state.board.size() <= 5U
+        : state.board.size() == known_board_cards;
+    if (!valid_board_size ||
+        state.board_runout.remaining_board_cards != 5U - state.board.size() ||
+        !are_valid_and_distinct_cards(state.board.data(), state.board.size())) {
+        throw std::invalid_argument("multiway public state has an inconsistent board/runout state");
+    }
+
+    const auto betting_state = MultiwayState::from_snapshot(state.betting);
+    if (state.board_runout.chance_only_runout != betting_state.requires_board_runout()) {
+        throw std::invalid_argument("multiway public state has an inconsistent chance-only runout flag");
+    }
+    const auto available_actions = betting_state.legal_actions();
+    if (state.legal_actions.size() != available_actions.size()) {
+        throw std::invalid_argument("multiway public state action menu does not match its betting snapshot");
     }
     for (std::size_t index = 0; index < state.legal_actions.size(); ++index) {
         const auto& action = state.legal_actions[index];
         if (!valid_action(action.action) || action.action_index != index || action.action_menu_id == 0 ||
             action.target_street_contribution < 0 ||
+            action.action != available_actions[index] ||
             (index != 0 && action.action_menu_id != state.legal_actions.front().action_menu_id)) {
             throw std::invalid_argument("multiway public state action menu is not a stable descriptor sequence");
+        }
+        try {
+            static_cast<void>(betting_state.apply(action.action, action.target_street_contribution));
+        } catch (const std::exception&) {
+            throw std::invalid_argument("multiway public state action descriptor is not executable");
         }
     }
     const auto seat_count = state.betting.stacks.size();
@@ -92,8 +132,9 @@ void MultiwayRootSnapshot::validate() const {
         root_infoset.seat != public_state.betting.current_player) {
         throw std::invalid_argument("multiway root infoset must identify the acting root seat");
     }
-    if (seat_order.size() != seat_count || odd_chip_first_seat < 0 ||
-        static_cast<std::size_t>(odd_chip_first_seat) >= seat_count) {
+    if (seat_order.size() != seat_count || next_street_first_seat < 0 ||
+        static_cast<std::size_t>(next_street_first_seat) >= seat_count || odd_chip_first_seat < 0 ||
+        static_cast<std::size_t>(odd_chip_first_seat) >= seat_count || !valid_odd_chip_rule(odd_chip_rule)) {
         throw std::invalid_argument("multiway root has invalid seat or odd-chip order");
     }
     std::vector<bool> seen(seat_count, false);
@@ -102,6 +143,15 @@ void MultiwayRootSnapshot::validate() const {
             throw std::invalid_argument("multiway root seat order must be a permutation");
         }
         seen[static_cast<std::size_t>(seat)] = true;
+    }
+    if (next_street_first_seat != seat_order.front()) {
+        throw std::invalid_argument("multiway root next-street seat must lead the canonical seat order");
+    }
+    for (std::size_t index = 1; index < seat_order.size(); ++index) {
+        const auto expected = static_cast<PlayerId>((seat_order[index - 1U] + 1) % seat_count);
+        if (seat_order[index] != expected) {
+            throw std::invalid_argument("multiway root seat order must follow the canonical seat cycle");
+        }
     }
     if (!same_board(public_state.board, private_ranges.board) || !valid_value_units(value_units)) {
         throw std::invalid_argument("multiway root has inconsistent board or value units");

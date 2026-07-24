@@ -45,11 +45,42 @@ struct MultiwayActionDescriptor {
     std::uint32_t action_index = 0;
     int target_street_contribution = 0;
     std::uint64_t action_menu_id = 0;
+
+    constexpr bool operator==(const MultiwayActionDescriptor& other) const noexcept {
+        return action == other.action && action_index == other.action_index &&
+               target_street_contribution == other.target_street_contribution &&
+               action_menu_id == other.action_menu_id;
+    }
 };
 
 struct MultiwayPublicHistoryEntry {
     PlayerId actor = -1;
     MultiwayActionDescriptor action{};
+};
+
+// The known board and its deterministic chance boundary.  `remaining_board_cards`
+// prevents a root from silently relying on a caller-selected runout length.
+struct MultiwayBoardRunoutState {
+    std::uint8_t remaining_board_cards = 2;
+    bool chance_only_runout = false;
+};
+
+// Side-pot settlement follows the existing terminal layer's cyclic seat-id
+// order, beginning at `odd_chip_first_seat`.  Seat order for transitions is
+// intentionally separate from this legacy settlement convention.
+enum class MultiwayOddChipRule : std::uint8_t {
+    AscendingSeatIdFromFirstSeat,
+};
+
+// A stable action abstraction is identified by its coordinator-assigned menu
+// id together with the version that produced its target sizes.
+struct MultiwayActionAbstractionIdentity {
+    std::uint64_t menu_id = 0;
+    std::uint64_t version = 0;
+
+    constexpr bool operator==(const MultiwayActionAbstractionIdentity& other) const noexcept {
+        return menu_id == other.menu_id && version == other.version;
+    }
 };
 
 // This descriptor is the canonical public object admitted by the coordinator.
@@ -60,6 +91,7 @@ struct MultiwayPublicStateDescriptor {
     std::uint64_t canonical_history_id = 0;
     MultiwayBettingSnapshot betting{};
     std::vector<std::uint8_t> board;
+    MultiwayBoardRunoutState board_runout{};
     std::vector<MultiwayPublicHistoryEntry> history;
     std::vector<MultiwayActionDescriptor> legal_actions;
 };
@@ -71,13 +103,24 @@ struct MultiwayRootSnapshot {
     MultiwayInfosetId root_infoset{};
     std::uint32_t root_bucket = 0;
     std::vector<PlayerId> seat_order;
+    // First actionable seat after a non-runout street transition.  This makes
+    // future transition ownership deterministic instead of caller-selected.
+    PlayerId next_street_first_seat = 0;
     PlayerId odd_chip_first_seat = -1;
+    MultiwayOddChipRule odd_chip_rule = MultiwayOddChipRule::AscendingSeatIdFromFirstSeat;
     MultiwayPrivateConfig private_ranges{};
     std::uint64_t action_abstraction_version = 0;
     std::uint64_t leaf_model_version = 0;
     MultiwayValueUnits value_units = MultiwayValueUnits::Chips;
 
     void validate() const;
+
+    [[nodiscard]] std::uint64_t action_menu_id() const noexcept {
+        return public_state.legal_actions.empty() ? 0 : public_state.legal_actions.front().action_menu_id;
+    }
+    [[nodiscard]] MultiwayActionAbstractionIdentity action_abstraction_identity() const noexcept {
+        return {action_menu_id(), action_abstraction_version};
+    }
 };
 
 struct MultiwaySolverLimits {

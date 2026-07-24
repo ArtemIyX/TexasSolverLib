@@ -10,6 +10,7 @@
 #include "solver/hunl_sampled_range.hpp"
 #include "solver/multiway_cfr.hpp"
 #include "solver/multiway_solver.hpp"
+#include "solver/multiway_terminal_adapter.hpp"
 #include "solver/dcfr_vector.hpp"
 #include "solver/dcfr_vector_parallel.hpp"
 #include "solver/exploit.hpp"
@@ -56,7 +57,10 @@ using ::core::HUNLStructuredRootRequest;
 using ::core::HUNLQualityMetric;
 using ::core::InfosetKey;
 using ::core::MultiwayAction;
+using ::core::MultiwayActionAbstractionIdentity;
 using ::core::MultiwayBettingSnapshot;
+using ::core::MultiwayBoardChanceEdge;
+using ::core::MultiwayBoardRunoutState;
 using ::core::MultiwayCFRAlgorithm;
 using ::core::MultiwayCFRConfig;
 using ::core::MultiwayCFRUpdate;
@@ -65,6 +69,7 @@ using ::core::make_multiway_external_sampling_request;
 using ::core::MultiwayGameConfig;
 using ::core::MultiwayMetricMethod;
 using ::core::MultiwayNashConv;
+using ::core::MultiwayOddChipRule;
 using ::core::MultiwayActionDescriptor;
 using ::core::MultiwayInfosetId;
 using ::core::MultiwayJointPrivateSample;
@@ -76,7 +81,9 @@ using ::core::MultiwaySidePot;
 using ::core::MultiwayShowdownInput;
 using ::core::MultiwayState;
 using ::core::MultiwayTerminalInput;
+using ::core::MultiwayTerminalAdapter;
 using ::core::MultiwayTerminalResult;
+using ::core::MultiwayStreetTransition;
 using ::core::MultiwayQualityMetric;
 using ::core::MultiwayQualityDiagnostics;
 using ::core::MultiwayPublicHistoryEntry;

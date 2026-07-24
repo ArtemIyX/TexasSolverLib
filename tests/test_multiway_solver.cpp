@@ -107,9 +107,13 @@ TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot) {
     const core::MultiwaySolveRequest request(root, cfr, valid_limits());
     root.public_state.legal_actions[0].action_menu_id = 77;
     root.private_ranges.board[0] = card(3, 0);
+    root.public_state.board_runout.remaining_board_cards = 1;
+    root.next_street_first_seat = 1;
 
     EXPECT_EQ(request.root().public_state.legal_actions[0].action_menu_id, 9001U);
     EXPECT_EQ(request.root().private_ranges.board[0], card(2, 0));
+    EXPECT_EQ(request.root().public_state.board_runout.remaining_board_cards, 2U);
+    EXPECT_EQ(request.root().next_street_first_seat, 0);
 }
 
 TEST_CASE(multiway_solver_request_rejects_non_external_or_wrong_seat_count_cfr) {
@@ -130,6 +134,64 @@ TEST_CASE(multiway_solver_root_rejects_inconsistent_board_or_nonacting_root_seat
 
     root = valid_root();
     root.root_infoset.seat = 1;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_solver_root_accepts_a_complete_valid_public_contract) {
+    const auto root = valid_root();
+    root.validate();
+
+    const auto request = valid_request();
+    EXPECT_EQ(request.root().public_state.board.size(), std::size_t{3});
+    EXPECT_EQ(request.root().public_state.board_runout.remaining_board_cards, 2U);
+    EXPECT_TRUE(!request.root().public_state.board_runout.chance_only_runout);
+    EXPECT_EQ(request.root().action_abstraction_identity().menu_id, 9001U);
+    EXPECT_EQ(request.root().action_abstraction_identity().version, 7U);
+}
+
+TEST_CASE(multiway_solver_root_rejects_inconsistent_board_runout_metadata) {
+    auto root = valid_root();
+    root.public_state.board_runout.remaining_board_cards = 1;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root = valid_root();
+    root.public_state.board_runout.chance_only_runout = true;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root = valid_root();
+    root.public_state.board.pop_back();
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_solver_root_rejects_action_descriptors_not_legal_or_executable_for_snapshot) {
+    auto root = valid_root();
+    root.public_state.legal_actions[0].action = core::MultiwayAction::Fold;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root = valid_root();
+    root.public_state.legal_actions[1].target_street_contribution = 99;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root = valid_root();
+    root.public_state.legal_actions[2].action_index = 1;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_solver_root_rejects_invalid_deterministic_next_street_and_odd_chip_metadata) {
+    auto root = valid_root();
+    root.next_street_first_seat = -1;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root = valid_root();
+    root.odd_chip_first_seat = 2;
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root = valid_root();
+    root.odd_chip_rule = static_cast<core::MultiwayOddChipRule>(255);
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root = valid_root();
+    root.seat_order = {0, 0};
     EXPECT_THROW(root.validate(), std::invalid_argument);
 }
 

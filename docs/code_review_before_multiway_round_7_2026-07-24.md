@@ -150,6 +150,27 @@ path must use bounded active-row arenas or ordered sparse delta streams.
 
 ### P1-1: the root snapshot does not define the complete multiway public contract
 
+**Status: fixed (2026-07-24; static verification only).**
+
+The integrated root boundary now carries explicit board/runout state, a
+deterministic next-street seat, an explicit odd-chip rule, stable typed action
+descriptors, and an action-abstraction identity. Validation derives the
+expected board/runout state from the immutable betting snapshot, validates the
+typed action menu against that snapshot, and preserves seat order, weighted
+ranges, version metadata, and value units in the copied solve request.
+
+Implementation evidence:
+
+- `include/solver/multiway_solver.hpp` defines the completed root contract.
+- `src/solver/multiway_solver.cpp` validates its board, action, seat, and
+  odd-chip invariants.
+- `tests/test_multiway_solver.cpp` covers complete valid roots, invalid
+  board/runout and action metadata, invalid seat/odd-chip metadata, and the
+  defensive request copy.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
 `MultiwayBettingSnapshot` captures betting-round state but not canonical public
 history/action-abstraction identity, board/chance state, positional metadata,
 weighted ranges, odd-chip order, or version metadata. The state transition API
@@ -172,6 +193,30 @@ odd-chip rule, weighted ranges, abstraction version, leaf-model version, and
 value units. Define stable typed action descriptors from that snapshot.
 
 ### P1-2: board-runout and terminal transitions are labels, not shared traversal operations
+
+**Status: fixed (2026-07-24; static verification only).**
+
+`MultiwayTerminalAdapter` now owns the integrated boundary for public board
+chance, root-owned street transition, and terminal resolution. It emits
+card-id-ordered one-card chance edges that exclude the supplied compatible
+private deal; transitions use the immutable root's next-street seat; and fold
+and showdown outcomes delegate to the established terminal settlement and
+showdown evaluators. The adapter validates board, state, transition, and
+private-deal compatibility and introduces no traversal, pot, odd-chip, or hand
+evaluation duplication.
+
+Implementation evidence:
+
+- `include/solver/multiway_terminal_adapter.hpp` defines the narrow adapter.
+- `src/solver/multiway_terminal_adapter.cpp` implements chance, transition,
+  and delegated settlement operations.
+- `tests/test_multiway_terminal_adapter.cpp` covers canonical chance ordering
+  and probability, root-owned transition order, all-in runout gating,
+  fold/showdown settlement delegation including odd chips and side pots, and
+  invalid inputs.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
 
 `MultiwayState` can identify `BoardRunout` and `StreetTransition`, but there is
 no common chance-edge API and no adapter that converts a state plus private
