@@ -596,13 +596,14 @@ TEST_CASE(hunl_sampled_solver_preflight_warns_above_warning_threshold) {
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_warning_bytes);
 }
 
-TEST_CASE(hunl_sampled_depth_hints_fail_closed_until_typed_leaf_evaluation_exists) {
+TEST_CASE(hunl_sampled_depth_hints_are_preflight_metadata_not_an_implicit_evaluator) {
     for (const std::uint32_t depth : {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U,
                                       16U, 32U, 64U, 128U, 256U, 512U, 1024U, 4096U,
                                       65536U, std::numeric_limits<std::uint32_t>::max()}) {
         core::HUNLSampledSolverConfig config;
         config.depth_limit_plies_hint = depth;
-        EXPECT_THROW(core::HUNLSampledSolver(config), std::invalid_argument);
+        core::HUNLSampledSolver solver(config);
+        EXPECT_EQ(solver.config().depth_limit_plies_hint, depth);
     }
 }
 
@@ -880,17 +881,13 @@ TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_wor
     }
 }
 
-TEST_CASE(hunl_sampled_solver_positive_time_budgets_fail_explicitly) {
+TEST_CASE(hunl_sampled_solver_positive_time_budgets_require_a_root) {
     core::HUNLSampledSolver solver;
     core::HUNLSampledSolveRequest request;
     request.root_action_count = 3;
 
-    EXPECT_THROW(
-        solver.solve_for(request, std::chrono::milliseconds{1}),
-        core::HUNLSampledTimedSolveNotReady);
-    EXPECT_THROW(
-        solver.solve_for(request, std::chrono::milliseconds{15'000}),
-        core::HUNLSampledTimedSolveNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{15'000}), core::HUNLSampledSolverNotReady);
     EXPECT_EQ(solver.profile().snapshot().traversals, 0U);
     EXPECT_EQ(solver.export_root_strategy().actions.size(), 0U);
 }
@@ -951,11 +948,12 @@ TEST_CASE(hunl_sampled_solver_fresh_run_clears_previous_rows_and_profile) {
     EXPECT_EQ(solver.profile().snapshot().sparse_rows, 0U);
 }
 
-TEST_CASE(hunl_sampled_solver_rejects_positive_timed_fixed_hand_requests) {
+TEST_CASE(hunl_sampled_solver_commits_whole_batches_for_timed_fixed_hand_requests) {
     core::HUNLSampledSolver solver;
     core::HUNLSampledSolveRequest request;
     request.root_state = make_sampled_facing_bet_state();
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledTimedSolveNotReady);
+    const auto result = solver.solve_for(request, std::chrono::milliseconds{1});
+    EXPECT_TRUE(!result.root_strategy.actions.empty());
 }
 
 TEST_CASE(hunl_sampled_solver_keeps_last_clean_snapshot_after_worker_failure) {
@@ -1002,12 +1000,7 @@ TEST_CASE(hunl_sampled_solver_reports_distinct_missing_root_and_timed_contracts)
         core::HUNLSampledSolver solver;
         core::HUNLSampledSolveRequest request;
         EXPECT_THROW(solver.run_batches(request, batches), core::HUNLSampledSolverNotReady);
-        try {
-            (void)solver.solve_for(request, std::chrono::milliseconds{1});
-            EXPECT_TRUE(false);
-        } catch (const core::HUNLSampledTimedSolveNotReady& error) {
-            EXPECT_TRUE(std::strstr(error.what(), "timed") != nullptr);
-        }
+        EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
     }
 }
 
@@ -1036,7 +1029,8 @@ void expect_sampled_positive_work_completes_bounded_batch() {
 
     EXPECT_EQ(initialized.batches_completed, 0U);
     const auto batch_result = solver.run_batches(request, 1);
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledTimedSolveNotReady);
+    const auto timed = solver.solve_for(request, std::chrono::milliseconds{1});
+    EXPECT_TRUE(!timed.root_strategy.actions.empty());
 
     const auto profile_after = solver.profile().snapshot();
     const auto memory_after = solver.memory_estimate();

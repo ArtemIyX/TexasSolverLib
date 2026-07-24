@@ -250,9 +250,11 @@ private:
         std::vector<double> inclusion_probabilities;
         std::vector<double> strategy_sum_values;
         std::vector<std::uint8_t> sampled_actions;
-        std::vector<WorkerDeltaRow> delta_rows;
+        // Prototype-only active-row arena. Unlike the historical full graph
+        // table, rows are allocated only after a trajectory touches them.
+        std::vector<WorkerDeltaRow> active_delta_rows;
         std::vector<InfosetId> dirty_row_ids;
-        std::vector<std::uint8_t> row_active;
+        std::unordered_map<InfosetId, std::size_t> active_delta_row_lookup;
         std::vector<WorkerBaselineRow> infoset_baseline_rows;
         std::unordered_map<InfosetId, std::size_t> infoset_baseline_lookup;
         std::vector<WorkerBaselineRow> node_baseline_rows;
@@ -264,9 +266,8 @@ private:
         double last_trajectory_seconds = 0.0;
 
         void prepare(std::size_t max_actions, std::size_t max_bucket_count, std::size_t max_depth);
-        void prepare_delta_rows(const std::vector<HUNLFlatInfosetTableMeta>& infoset_meta);
         void clear_keep_capacity() noexcept;
-        WorkerDeltaRow& ensure_row(InfosetId id);
+        WorkerDeltaRow& ensure_row(const HUNLFlatInfosetTableMeta& meta);
         WorkerBaselineRow& ensure_infoset_baseline_row(InfosetId id, std::size_t action_count);
         WorkerBaselineRow& ensure_node_baseline_row(std::uint32_t node_idx, std::size_t action_count);
     };

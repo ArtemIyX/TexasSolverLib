@@ -5,6 +5,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace core {
 
@@ -231,6 +232,42 @@ MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
         }
     }
     return update;
+}
+
+MultiwayExternalSamplingRequest make_multiway_external_sampling_request(
+    std::vector<Probability> player_reaches,
+    PlayerId traverser,
+    const MultiwayJointPrivateSample& private_sample,
+    std::vector<Probability> strategy,
+    std::vector<Value> sampled_action_values) {
+    if (private_sample.holes.empty() || private_sample.accepted_trajectories != 1U ||
+        private_sample.discarded_trajectories != 0U ||
+        !std::isfinite(private_sample.chance_reach) ||
+        !std::isfinite(private_sample.conditional_deal_probability) ||
+        !std::isfinite(private_sample.proposal_reach) ||
+        !std::isfinite(private_sample.inclusion_reach) ||
+        private_sample.chance_reach <= 0.0 || private_sample.conditional_deal_probability <= 0.0 ||
+        private_sample.proposal_reach <= 0.0 ||
+        private_sample.inclusion_reach <= 0.0 || private_sample.inclusion_reach > 1.0) {
+        throw std::invalid_argument("external-sampling request requires one accepted compiled private sample");
+    }
+    const auto expected_proposal =
+        private_sample.conditional_deal_probability * private_sample.inclusion_reach;
+    if (!std::isfinite(expected_proposal) ||
+        std::fabs(private_sample.proposal_reach - expected_proposal) > 1e-12) {
+        throw std::invalid_argument("compiled private sample has inconsistent proposal and inclusion reach");
+    }
+    MultiwayExternalSamplingRequest request;
+    request.player_reaches = std::move(player_reaches);
+    request.traverser = traverser;
+    request.chance_reach = private_sample.chance_reach;
+    request.sampling_reach = private_sample.proposal_reach;
+    request.strategy = std::move(strategy);
+    request.sampled_action_values = std::move(sampled_action_values);
+    if (traverser >= 0 && static_cast<std::size_t>(traverser) < request.player_reaches.size()) {
+        request.traverser_reach = request.player_reaches[static_cast<std::size_t>(traverser)];
+    }
+    return request;
 }
 
 void apply_multiway_cfr_update(

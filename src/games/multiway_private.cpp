@@ -48,6 +48,29 @@ bool find_compatible_deal(
     return false;
 }
 
+double compatible_deal_mass(
+    const std::vector<std::vector<MultiwayWeightedHole>>& ranges,
+    const std::vector<double>& range_totals,
+    std::size_t seat,
+    std::array<bool, 64>& used,
+    std::uint64_t& visited) {
+    if (++visited > kMaxFeasibilityNodes) {
+        throw std::runtime_error("multiway private range proposal normalization exceeded its bounded budget");
+    }
+    if (seat == ranges.size()) return 1.0;
+
+    double mass = 0.0;
+    for (const auto& entry : ranges[seat]) {
+        if (overlaps(entry.hole, used)) continue;
+        mark(entry.hole, used);
+        mass += (entry.weight / range_totals[seat]) *
+            compatible_deal_mass(ranges, range_totals, seat + 1U, used, visited);
+        used[entry.hole[0]] = false;
+        used[entry.hole[1]] = false;
+    }
+    return mass;
+}
+
 }  // namespace
 
 void MultiwayPrivateConfig::validate() const {
@@ -77,35 +100,31 @@ MultiwayJointPrivateSample sample_multiway_private_hands(
     const MultiwayPrivateConfig& config,
     std::uint64_t seed) {
     config.validate();
-    PcsRng rng(seed);
-    std::vector<std::vector<double>> weights(config.ranges.size());
-    for (std::size_t seat = 0; seat < config.ranges.size(); ++seat) {
-        weights[seat].reserve(config.ranges[seat].size());
-        for (const auto& entry : config.ranges[seat]) weights[seat].push_back(entry.weight);
-    }
-    std::uint64_t attempt_cursor = 0;
-    std::uint32_t attempt = 0;
-    while (detail::next_multiway_rejection_attempt(
-        attempt_cursor, config.max_rejection_attempts, attempt)) {
-        std::array<bool, 64> used = {};
-        for (const auto card : config.board) used[card] = true;
-        MultiwayJointPrivateSample sample;
-        sample.holes.resize(config.ranges.size());
-        sample.attempts = attempt;
-        bool compatible = true;
-        for (std::size_t seat = 0; seat < config.ranges.size(); ++seat) {
-            const auto selected = rng.sample_weighted(weights[seat]).first;
-            const auto hole = config.ranges[seat][selected].hole;
-            if (overlaps(hole, used)) {
-                compatible = false;
-                break;
-            }
-            sample.holes[seat] = hole;
-            mark(hole, used);
+    MultiwayCompiledPrivateRanges compiled = [&config] {
+        try {
+            return MultiwayCompiledPrivateRanges(config);
+        } catch (const std::invalid_argument&) {
+            // This compatibility API historically reports an impossible
+            // joint draw as rejection exhaustion. The compiled API keeps the
+            // stronger preflight distinction for coordinator use.
+            throw std::runtime_error(
+                "unable to sample compatible multiway private hands within rejection limit");
         }
-        if (compatible) return sample;
-    }
-    throw std::runtime_error("unable to sample compatible multiway private hands within rejection limit");
+    }();
+    MultiwayPrivateWorkerScratch scratch;
+    compiled.sample_into(seed, scratch);
+
+    MultiwayJointPrivateSample sample;
+    sample.holes.assign(scratch.holes.begin(), scratch.holes.begin() + scratch.seat_count);
+    sample.attempts = scratch.attempts;
+    sample.chance_reach = scratch.chance_reach;
+    sample.conditional_deal_probability = scratch.conditional_deal_probability;
+    sample.proposal_reach = scratch.proposal_reach;
+    sample.inclusion_reach = scratch.inclusion_reach;
+    sample.accepted_trajectories = scratch.accepted_trajectories;
+    sample.rejected_trajectories = scratch.rejected_trajectories;
+    sample.discarded_trajectories = scratch.discarded_trajectories;
+    return sample;
 }
 
 MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config)
@@ -113,6 +132,7 @@ MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPriva
     config.validate();
     ranges_.resize(config.ranges.size());
     cumulative_weights_.resize(config.ranges.size());
+    range_totals_.resize(config.ranges.size(), 0.0);
     for (std::size_t seat = 0; seat < config.ranges.size(); ++seat) {
         auto entries = config.ranges[seat];
         for (auto& entry : entries) {
@@ -138,6 +158,7 @@ MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPriva
         if (ranges_[seat].empty()) {
             throw std::invalid_argument("multiway compiled private range has no positive-mass hand");
         }
+        range_totals_[seat] = total;
     }
 
     std::array<std::size_t, 6> order = {};
@@ -152,6 +173,21 @@ MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPriva
     if (!find_compatible_deal(ranges_, order, 0, used, visited)) {
         throw std::invalid_argument("multiway private ranges have no compatible joint deal");
     }
+    used = {};
+    for (const auto card : board_) used[card] = true;
+    visited = 0;
+    compatible_deal_mass_ = compatible_deal_mass(ranges_, range_totals_, 0, used, visited);
+    if (!std::isfinite(compatible_deal_mass_) || compatible_deal_mass_ <= 0.0 || compatible_deal_mass_ > 1.0) {
+        throw std::runtime_error("multiway private range proposal normalization is invalid");
+    }
+    // A trajectory retries at most this many times. Its inclusion probability
+    // must therefore include deterministic bounded-rejection exhaustion.
+    accepted_trajectory_probability_ =
+        -std::expm1(static_cast<double>(max_rejection_attempts_) * std::log1p(-compatible_deal_mass_));
+    if (!std::isfinite(accepted_trajectory_probability_) || accepted_trajectory_probability_ <= 0.0 ||
+        accepted_trajectory_probability_ > 1.0) {
+        throw std::runtime_error("multiway private range inclusion probability is invalid");
+    }
 }
 
 bool MultiwayCompiledPrivateRanges::try_sample_into(
@@ -160,6 +196,13 @@ bool MultiwayCompiledPrivateRanges::try_sample_into(
     scratch.seat_count = 0;
     scratch.attempts = 0;
     scratch.holes = {};
+    scratch.chance_reach = 0.0;
+    scratch.conditional_deal_probability = 0.0;
+    scratch.proposal_reach = 0.0;
+    scratch.inclusion_reach = accepted_trajectory_probability_;
+    scratch.accepted_trajectories = 0;
+    scratch.rejected_trajectories = 0;
+    scratch.discarded_trajectories = 0;
     PcsRng rng(seed);
     std::uint64_t attempt_cursor = 0;
     std::uint32_t attempt = 0;
@@ -168,8 +211,12 @@ bool MultiwayCompiledPrivateRanges::try_sample_into(
         scratch.used.fill(false);
         for (const auto card : board_) scratch.used[card] = true;
         bool compatible = true;
+        double chance_reach = 1.0;
         for (std::size_t seat = 0; seat < ranges_.size(); ++seat) {
-            const auto& hole = ranges_[seat][sample_cumulative(cumulative_weights_[seat], rng)].hole;
+            const auto selected = sample_cumulative(cumulative_weights_[seat], rng);
+            const auto& entry = ranges_[seat][selected];
+            const auto& hole = entry.hole;
+            chance_reach *= entry.weight / range_totals_[seat];
             if (overlaps(hole, scratch.used)) { compatible = false; break; }
             scratch.holes[seat] = hole;
             mark(hole, scratch.used);
@@ -177,10 +224,18 @@ bool MultiwayCompiledPrivateRanges::try_sample_into(
         if (compatible) {
             scratch.seat_count = static_cast<std::uint8_t>(ranges_.size());
             scratch.attempts = attempt;
+            scratch.chance_reach = chance_reach;
+            scratch.conditional_deal_probability = chance_reach / compatible_deal_mass_;
+            scratch.proposal_reach =
+                scratch.conditional_deal_probability * accepted_trajectory_probability_;
+            scratch.accepted_trajectories = 1;
+            scratch.rejected_trajectories = attempt - 1U;
             return true;
         }
     }
     scratch.holes = {};
+    scratch.rejected_trajectories = max_rejection_attempts_;
+    scratch.discarded_trajectories = 1;
     return false;
 }
 

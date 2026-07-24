@@ -3,6 +3,7 @@
 #include "games/hunl.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -25,6 +26,25 @@ struct HUNLLeafEvaluationRequest {
 struct HUNLLeafEvaluationResult {
     std::array<double, 2> values = {0.0, 0.0};
     HUNLLeafValueUnits units = HUNLLeafValueUnits::Chips;
+};
+
+// A non-owning, non-virtual batch callback.  Callers submit requests in
+// deterministic traversal order and must write one same-unit result per
+// request.  Returning false rejects the solve at its last completed batch;
+// there is no heuristic fallback for a failed depth-limited value lookup.
+using HUNLLeafEvaluateBatchFn = bool (*) (
+    void* context,
+    const HUNLLeafEvaluationRequest* requests,
+    HUNLLeafEvaluationResult* results,
+    std::size_t count);
+
+struct HUNLLeafEvaluator {
+    void* context = nullptr;
+    HUNLLeafEvaluateBatchFn evaluate_batch = nullptr;
+
+    [[nodiscard]] bool valid() const noexcept {
+        return evaluate_batch != nullptr;
+    }
 };
 
 }  // namespace core

@@ -247,7 +247,6 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
     const auto max_bucket_count = std::max(bucket_count_per_player[0], bucket_count_per_player[1]);
     for (auto& scratch : worker_scratch_) {
         scratch.prepare(graph_.max_actions, max_bucket_count, graph_.max_depth + 1U);
-        scratch.prepare_delta_rows(infoset_meta_);
     }
     initialize_worker_threads();
 }
@@ -407,20 +406,6 @@ void HUNLFlatMCCFR::WorkerScratch::prepare(
     external_frame_action_values.resize(max_depth * max_actions, 0.0);
 }
 
-void HUNLFlatMCCFR::WorkerScratch::prepare_delta_rows(
-    const std::vector<HUNLFlatInfosetTableMeta>& infoset_meta) {
-    delta_rows.resize(infoset_meta.size());
-    row_active.assign(infoset_meta.size(), 0U);
-    dirty_row_ids.clear();
-    dirty_row_ids.reserve(infoset_meta.size());
-    for (const auto& meta : infoset_meta) {
-        auto& row = delta_rows[meta.id.value];
-        row.id = meta.id;
-        row.regret_delta.assign(meta.value_count, 0.0);
-        row.strategy_delta.assign(meta.value_count, 0.0);
-    }
-}
-
 void HUNLFlatMCCFR::initialize_traversal_node_metadata() {
     traversal_node_meta_.assign(graph_.node_meta.size(), {});
     for (std::size_t node_idx = 0; node_idx < graph_.node_meta.size(); ++node_idx) {
@@ -457,13 +442,13 @@ void HUNLFlatMCCFR::initialize_chance_sampling_metadata() {
 }
 
 void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
-    for (const auto infoset_id : dirty_row_ids) {
-        auto& row = delta_rows[infoset_id.value];
+    for (auto& row : active_delta_rows) {
         std::fill(row.regret_delta.begin(), row.regret_delta.end(), 0.0);
         std::fill(row.strategy_delta.begin(), row.strategy_delta.end(), 0.0);
-        row_active[infoset_id.value] = 0U;
     }
     dirty_row_ids.clear();
+    active_delta_rows.clear();
+    active_delta_row_lookup.clear();
     infoset_baseline_rows.clear();
     infoset_baseline_lookup.clear();
     node_baseline_rows.clear();
@@ -473,15 +458,21 @@ void HUNLFlatMCCFR::WorkerScratch::clear_keep_capacity() noexcept {
     last_trajectory_seconds = 0.0;
 }
 
-HUNLFlatMCCFR::WorkerDeltaRow& HUNLFlatMCCFR::WorkerScratch::ensure_row(InfosetId id) {
-    if (id.value >= delta_rows.size()) {
-        throw std::out_of_range("HUNLFlatMCCFR worker delta row id out of range");
+HUNLFlatMCCFR::WorkerDeltaRow& HUNLFlatMCCFR::WorkerScratch::ensure_row(
+    const HUNLFlatInfosetTableMeta& meta) {
+    const auto existing = active_delta_row_lookup.find(meta.id);
+    if (existing != active_delta_row_lookup.end()) {
+        return active_delta_rows[existing->second];
     }
-    if (row_active[id.value] == 0U) {
-        row_active[id.value] = 1U;
-        dirty_row_ids.push_back(id);
-    }
-    return delta_rows[id.value];
+    const auto row_index = active_delta_rows.size();
+    WorkerDeltaRow row;
+    row.id = meta.id;
+    row.regret_delta.assign(meta.value_count, 0.0);
+    row.strategy_delta.assign(meta.value_count, 0.0);
+    active_delta_rows.push_back(std::move(row));
+    active_delta_row_lookup.emplace(meta.id, row_index);
+    dirty_row_ids.push_back(meta.id);
+    return active_delta_rows.back();
 }
 
 HUNLFlatMCCFR::WorkerBaselineRow& HUNLFlatMCCFR::WorkerScratch::ensure_infoset_baseline_row(
@@ -899,7 +890,7 @@ double HUNLFlatMCCFR::traverse_external_dense_iterative(std::uint32_t node_idx, 
                             }
 
                             const auto own_reach = meta.player == 0 ? frame.p0 : frame.p1;
-                            auto& row = scratch.ensure_row(meta.infoset_id);
+                            auto& row = scratch.ensure_row(row_meta);
                             const auto dense_row = build_dense_traversal_row_view(
                                 infoset_table_,
                                 meta.infoset_id,
@@ -1015,7 +1006,7 @@ double HUNLFlatMCCFR::traverse_external_dense_iterative(std::uint32_t node_idx, 
                 const auto& row_meta = infoset_meta_[meta.infoset_meta_index];
                 const auto& average_strategy = average_policy_cache_[meta.infoset_id.value];
                 const auto own_reach = meta.player == 0 ? frame.p0 : frame.p1;
-                auto& row = scratch.ensure_row(meta.infoset_id);
+                auto& row = scratch.ensure_row(row_meta);
                 const auto dense_row = build_dense_traversal_row_view(
                     infoset_table_,
                     meta.infoset_id,
@@ -1251,7 +1242,7 @@ double HUNLFlatMCCFR::traverse_full_expansion_decision_dense_validation(
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-    auto& row = context.scratch->ensure_row(meta.infoset_id);
+    auto& row = context.scratch->ensure_row(row_meta);
     const auto dense_row = build_dense_traversal_row_view(
         infoset_table_,
         meta.infoset_id,
@@ -1319,7 +1310,7 @@ double HUNLFlatMCCFR::traverse_full_expansion_decision_generic(
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-    auto& row = context.scratch->ensure_row(meta.infoset_id);
+    auto& row = context.scratch->ensure_row(row_meta);
     const auto row_writeback_start = std::chrono::steady_clock::now();
     for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
         double node_value = 0.0;
@@ -1380,7 +1371,7 @@ double HUNLFlatMCCFR::traverse_opponent_sampled_decision_dense_validation(
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-    auto& row = context.scratch->ensure_row(meta.infoset_id);
+    auto& row = context.scratch->ensure_row(row_meta);
     const auto dense_row = build_dense_traversal_row_view(
         infoset_table_,
         meta.infoset_id,
@@ -1457,7 +1448,7 @@ double HUNLFlatMCCFR::traverse_opponent_sampled_decision_generic(
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-    auto& row = context.scratch->ensure_row(meta.infoset_id);
+    auto& row = context.scratch->ensure_row(row_meta);
     const auto row_writeback_start = std::chrono::steady_clock::now();
     for (std::size_t bucket = 0; bucket < row_meta.bucket_count; ++bucket) {
         fill_current_strategy_bucket(meta.infoset_id, bucket, bucket_strategy.data(), action_count);
@@ -1528,7 +1519,7 @@ double HUNLFlatMCCFR::traverse_average_strategy_decision(
     }
 
     const auto own_reach = meta.player == 0 ? context.p0 : context.p1;
-    auto& row = context.scratch->ensure_row(meta.infoset_id);
+    auto& row = context.scratch->ensure_row(row_meta);
     DenseTraversalRowView dense_row{};
     if (can_use_dense_validation_infoset_action_hand_fast_path()) {
         dense_row = build_dense_traversal_row_view(
@@ -2368,7 +2359,11 @@ void HUNLFlatMCCFR::merge_worker_rows(std::size_t worker_index) {
     }
 
     for (const auto infoset_id : scratch.dirty_row_ids) {
-        const auto& row = scratch.delta_rows[infoset_id.value];
+        const auto row_index = scratch.active_delta_row_lookup.find(infoset_id);
+        if (row_index == scratch.active_delta_row_lookup.end()) {
+            throw std::logic_error("HUNLFlatMCCFR active delta row is missing during merge");
+        }
+        const auto& row = scratch.active_delta_rows[row_index->second];
         if (infoset_id.value < touched_infosets_.size() && touched_infosets_[infoset_id.value] == 0U) {
             touched_infosets_[infoset_id.value] = 1U;
             ++unique_infosets_touched_;
@@ -2804,12 +2799,13 @@ HUNLFlatMCCFR::MemoryUsage HUNLFlatMCCFR::memory_usage() const noexcept {
         usage.worker_scratch_bytes += vector_storage_bytes(scratch.inclusion_probabilities);
         usage.worker_scratch_bytes += vector_storage_bytes(scratch.strategy_sum_values);
         usage.worker_scratch_bytes += vector_storage_bytes(scratch.sampled_actions);
-        usage.worker_scratch_bytes += vector_storage_bytes(scratch.delta_rows);
+        usage.worker_scratch_bytes += vector_storage_bytes(scratch.active_delta_rows);
         usage.worker_scratch_bytes += vector_storage_bytes(scratch.dirty_row_ids);
-        usage.worker_scratch_bytes += vector_storage_bytes(scratch.row_active);
+        usage.worker_scratch_bytes += static_cast<std::uint64_t>(
+            scratch.active_delta_row_lookup.bucket_count()) * sizeof(void*);
         usage.worker_scratch_bytes += vector_storage_bytes(scratch.external_frames);
         usage.worker_scratch_bytes += vector_storage_bytes(scratch.external_frame_action_values);
-        for (const auto& row : scratch.delta_rows) {
+        for (const auto& row : scratch.active_delta_rows) {
             usage.worker_scratch_bytes += vector_storage_bytes(row.regret_delta);
             usage.worker_scratch_bytes += vector_storage_bytes(row.strategy_delta);
         }

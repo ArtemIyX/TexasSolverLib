@@ -7,7 +7,9 @@
 #include "solver/hunl_bucket_map.hpp"
 #include "solver/hunl_bucket_terminal.hpp"
 #include "solver/hunl_sampled_solver.hpp"
+#include "solver/hunl_sampled_range.hpp"
 #include "solver/multiway_cfr.hpp"
+#include "solver/multiway_solver.hpp"
 #include "solver/dcfr_vector.hpp"
 #include "solver/dcfr_vector_parallel.hpp"
 #include "solver/exploit.hpp"
@@ -44,10 +46,12 @@ using ::core::ExploitOutput;
 using ::core::HUNLConfig;
 using ::core::HUNLLeafEvaluationRequest;
 using ::core::HUNLLeafEvaluationResult;
+using ::core::HUNLLeafEvaluator;
 using ::core::HUNLLeafValueUnits;
 using ::core::HUNLSolveOutput;
 using ::core::HUNLSampledSolveResult;
 using ::core::HUNLSampledSolverConfig;
+using ::core::HUNLSampledRangeSession;
 using ::core::HUNLStructuredRootRequest;
 using ::core::HUNLQualityMetric;
 using ::core::InfosetKey;
@@ -57,9 +61,12 @@ using ::core::MultiwayCFRAlgorithm;
 using ::core::MultiwayCFRConfig;
 using ::core::MultiwayCFRUpdate;
 using ::core::MultiwayExternalSamplingRequest;
+using ::core::make_multiway_external_sampling_request;
 using ::core::MultiwayGameConfig;
 using ::core::MultiwayMetricMethod;
 using ::core::MultiwayNashConv;
+using ::core::MultiwayActionDescriptor;
+using ::core::MultiwayInfosetId;
 using ::core::MultiwayJointPrivateSample;
 using ::core::MultiwayCompiledPrivateRanges;
 using ::core::MultiwayPrivateWorkerScratch;
@@ -72,7 +79,23 @@ using ::core::MultiwayTerminalInput;
 using ::core::MultiwayTerminalResult;
 using ::core::MultiwayQualityMetric;
 using ::core::MultiwayQualityDiagnostics;
+using ::core::MultiwayPublicHistoryEntry;
+using ::core::MultiwayPublicStateDescriptor;
+using ::core::MultiwayPublicStateId;
+using ::core::MultiwayRootActionProbability;
+using ::core::MultiwayRootPolicy;
+using ::core::MultiwayRootSnapshot;
+using ::core::MultiwaySolveDiagnostics;
+using ::core::MultiwaySolveRequest;
+using ::core::MultiwaySolveResult;
+using ::core::MultiwaySolverCoordinator;
+using ::core::MultiwaySolverLimits;
+using ::core::MultiwaySparseRowMetadata;
+using ::core::MultiwaySparseRowShape;
+using ::core::MultiwaySparseRowStorage;
 using ::core::MultiwayValueUnits;
+using ::core::MultiwayWorkerDelta;
+using ::core::MultiwayWorkerDeltaStream;
 using ::core::MultiwayWeightedHole;
 using ::core::PlayerId;
 using ::core::PreflopRvrOutput;
@@ -88,11 +111,13 @@ using ::core::VectorSolveOutput;
 inline HUNLSampledSolveResult solve_hunl_postflop_sampled(
     const HUNLStructuredRootRequest& root,
     HUNLSampledSolverConfig config = {},
-    std::uint32_t batches = 1) {
+    std::uint32_t batches = 1,
+    const HUNLLeafEvaluator* leaf_evaluator = nullptr) {
     root.validate();
     HUNLSampledSolver solver(config);
     HUNLSampledSolveRequest request;
     request.structured_root = root;
+    request.leaf_evaluator = leaf_evaluator;
     return solver.run_batches(request, batches);
 }
 

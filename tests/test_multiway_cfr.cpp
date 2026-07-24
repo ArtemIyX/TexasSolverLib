@@ -1,7 +1,9 @@
 #include "solver/multiway_cfr.hpp"
 #include "test_harness.hpp"
 
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -205,6 +207,79 @@ TEST_CASE(multiway_nash_conv_rejects_sampled_metric_without_confidence_contract)
     diagnostics.sample_count = 1;
     diagnostics.standard_error = -1.0;
     EXPECT_THROW(core::compute_multiway_nash_conv({1.0, 2.0}, {1.0, 2.0}, diagnostics), std::invalid_argument);
+}
+
+TEST_CASE(multiway_external_sampling_request_uses_compiled_private_proposal_reach_directly) {
+    core::MultiwayJointPrivateSample sample;
+    sample.holes = {
+        std::array<std::uint8_t, 2>{2U, 3U},
+        std::array<std::uint8_t, 2>{4U, 5U},
+    };
+    sample.chance_reach = 0.25;
+    sample.conditional_deal_probability = 1.0 / 3.0;
+    sample.inclusion_reach = 0.75;
+    sample.proposal_reach = 0.25;
+    sample.accepted_trajectories = 1;
+    const auto request = core::make_multiway_external_sampling_request(
+        {0.5, 0.75}, 1, sample, {0.5, 0.5}, {1.0, -1.0});
+    EXPECT_NEAR(request.chance_reach, sample.chance_reach, 1e-12);
+    EXPECT_NEAR(request.sampling_reach, sample.proposal_reach, 1e-12);
+    EXPECT_NEAR(request.traverser_reach, 0.75, 1e-12);
+
+    sample.proposal_reach = 0.20;
+    EXPECT_THROW(
+        core::make_multiway_external_sampling_request(
+            {0.5, 0.75}, 1, sample, {0.5, 0.5}, {1.0, -1.0}),
+        std::invalid_argument);
+}
+
+TEST_CASE(multiway_external_sampling_request_rejects_discarded_or_unaccepted_private_samples) {
+    core::MultiwayJointPrivateSample sample;
+    sample.holes = {std::array<std::uint8_t, 2>{2U, 3U}, std::array<std::uint8_t, 2>{4U, 5U}};
+    sample.chance_reach = 0.25;
+    sample.conditional_deal_probability = 0.5;
+    sample.inclusion_reach = 0.5;
+    sample.proposal_reach = 0.25;
+    sample.accepted_trajectories = 0;
+    sample.discarded_trajectories = 1;
+    EXPECT_THROW(
+        core::make_multiway_external_sampling_request(
+            {1.0, 1.0}, 0, sample, {0.5, 0.5}, {1.0, -1.0}),
+        std::invalid_argument);
+}
+
+TEST_CASE(multiway_external_sampling_request_rejects_invalid_private_reach_components) {
+    core::MultiwayJointPrivateSample sample;
+    sample.holes = {std::array<std::uint8_t, 2>{2U, 3U}, std::array<std::uint8_t, 2>{4U, 5U}};
+    sample.chance_reach = 0.25;
+    sample.conditional_deal_probability = 0.5;
+    sample.inclusion_reach = 1.5;
+    sample.proposal_reach = 0.75;
+    sample.accepted_trajectories = 1;
+    EXPECT_THROW(
+        core::make_multiway_external_sampling_request(
+            {1.0, 1.0}, 0, sample, {0.5, 0.5}, {1.0, -1.0}),
+        std::invalid_argument);
+}
+
+TEST_CASE(multiway_external_sampling_request_preserves_traverser_reach_for_each_seat) {
+    core::MultiwayJointPrivateSample sample;
+    sample.holes = {
+        std::array<std::uint8_t, 2>{2U, 3U},
+        std::array<std::uint8_t, 2>{4U, 5U},
+        std::array<std::uint8_t, 2>{6U, 7U},
+    };
+    sample.chance_reach = 0.4;
+    sample.conditional_deal_probability = 0.5;
+    sample.inclusion_reach = 0.8;
+    sample.proposal_reach = 0.4;
+    sample.accepted_trajectories = 1;
+    for (core::PlayerId traverser = 0; traverser < 3; ++traverser) {
+        const auto request = core::make_multiway_external_sampling_request(
+            {0.2, 0.5, 0.8}, traverser, sample, {0.5, 0.5}, {1.0, -1.0});
+        EXPECT_NEAR(request.traverser_reach, request.player_reaches[traverser], 1e-12);
+        EXPECT_NEAR(request.sampling_reach, 0.4, 1e-12);
+    }
 }
 
 TEST_CASE(multiway_nash_conv_requires_complete_per_seat_sampled_uncertainty) {

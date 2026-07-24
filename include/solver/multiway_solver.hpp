@@ -1,0 +1,256 @@
+#pragma once
+
+#include "games/multiway_private.hpp"
+#include "games/multiway_state.hpp"
+#include "solver/multiway_cfr.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+namespace core {
+
+// Stable numeric identities are assigned by the coordinator. Zero is reserved
+// as an invalid identity so an omitted id cannot become a storage key.
+struct MultiwayPublicStateId {
+    std::uint64_t value = 0;
+
+    constexpr bool operator==(const MultiwayPublicStateId& other) const noexcept {
+        return value == other.value;
+    }
+    constexpr bool operator<(const MultiwayPublicStateId& other) const noexcept {
+        return value < other.value;
+    }
+};
+
+struct MultiwayInfosetId {
+    MultiwayPublicStateId public_state{};
+    PlayerId seat = -1;
+
+    constexpr bool operator==(const MultiwayInfosetId& other) const noexcept {
+        return public_state == other.public_state && seat == other.seat;
+    }
+    constexpr bool operator<(const MultiwayInfosetId& other) const noexcept {
+        if (seat != other.seat) return seat < other.seat;
+        return public_state < other.public_state;
+    }
+};
+
+struct MultiwayActionDescriptor {
+    MultiwayAction action = MultiwayAction::Fold;
+    std::uint32_t action_index = 0;
+    int target_street_contribution = 0;
+    std::uint64_t action_menu_id = 0;
+};
+
+struct MultiwayPublicHistoryEntry {
+    PlayerId actor = -1;
+    MultiwayActionDescriptor action{};
+};
+
+// This descriptor is the canonical public object admitted by the coordinator.
+// It intentionally contains no private cards, ranges, or mutable policy data.
+struct MultiwayPublicStateDescriptor {
+    MultiwayPublicStateId id{};
+    MultiwayPublicStateId parent_id{};
+    std::uint64_t canonical_history_id = 0;
+    MultiwayBettingSnapshot betting{};
+    std::vector<std::uint8_t> board;
+    std::vector<MultiwayPublicHistoryEntry> history;
+    std::vector<MultiwayActionDescriptor> legal_actions;
+};
+
+// The complete public/private root needed by a future traversal. It is copied
+// into MultiwaySolveRequest and then exposed only through const accessors.
+struct MultiwayRootSnapshot {
+    MultiwayPublicStateDescriptor public_state;
+    MultiwayInfosetId root_infoset{};
+    std::uint32_t root_bucket = 0;
+    std::vector<PlayerId> seat_order;
+    PlayerId odd_chip_first_seat = -1;
+    MultiwayPrivateConfig private_ranges{};
+    std::uint64_t action_abstraction_version = 0;
+    std::uint64_t leaf_model_version = 0;
+    MultiwayValueUnits value_units = MultiwayValueUnits::Chips;
+
+    void validate() const;
+};
+
+struct MultiwaySolverLimits {
+    std::uint64_t seed = 1;
+    std::uint32_t worker_count = 1;
+    std::uint32_t trajectories_per_batch = 1;
+    std::size_t max_public_states = 0;
+    std::size_t max_sparse_rows = 0;
+    std::size_t max_sparse_values = 0;
+    std::size_t max_worker_delta_entries = 0;
+
+    void validate() const;
+};
+
+// Immutable boundary input. Traversal must treat this request as a batch
+// snapshot and cannot mutate the caller's root, ranges, or policy metadata.
+class MultiwaySolveRequest {
+public:
+    MultiwaySolveRequest(
+        MultiwayRootSnapshot root,
+        MultiwayCFRConfig cfr_config,
+        MultiwaySolverLimits limits = {});
+
+    [[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return root_; }
+    [[nodiscard]] const MultiwayCFRConfig& cfr_config() const noexcept { return cfr_config_; }
+    [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return limits_; }
+
+private:
+    MultiwayRootSnapshot root_;
+    MultiwayCFRConfig cfr_config_;
+    MultiwaySolverLimits limits_;
+};
+
+struct MultiwaySparseRowShape {
+    MultiwayInfosetId infoset{};
+    std::uint32_t bucket_count = 0;
+    std::uint8_t action_count = 0;
+};
+
+struct MultiwaySparseRowMetadata {
+    MultiwaySparseRowShape shape{};
+    std::size_t regret_offset = 0;
+    std::size_t strategy_sum_offset = 0;
+
+    [[nodiscard]] std::size_t value_count() const noexcept;
+};
+
+// Coordinator-owned sparse rows. Values are action-major: [action][bucket].
+// Only the coordinator receives a mutable instance; workers emit deltas.
+class MultiwaySparseRowStorage {
+public:
+    MultiwaySparseRowStorage(std::size_t max_rows, std::size_t max_values);
+
+    [[nodiscard]] bool has_row(MultiwayInfosetId infoset) const noexcept;
+    [[nodiscard]] const MultiwaySparseRowMetadata* metadata(MultiwayInfosetId infoset) const noexcept;
+    [[nodiscard]] std::vector<Probability> average_strategy(
+        MultiwayInfosetId infoset,
+        std::uint32_t bucket) const;
+    [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
+    [[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
+
+private:
+    friend class MultiwaySolverCoordinator;
+
+    void admit_row(const MultiwaySparseRowShape& shape);
+    void apply_delta(
+        MultiwayInfosetId infoset,
+        std::uint32_t bucket,
+        std::uint8_t action,
+        double regret,
+        double strategy_sum);
+
+    std::size_t max_rows_ = 0;
+    std::size_t max_values_ = 0;
+    std::vector<MultiwaySparseRowMetadata> metadata_;
+    std::vector<float> regret_;
+    std::vector<float> strategy_sum_;
+};
+
+struct MultiwayWorkerDelta {
+    MultiwayInfosetId infoset{};
+    std::uint32_t bucket = 0;
+    std::uint8_t action = 0;
+    double regret = 0.0;
+    double strategy_sum = 0.0;
+    std::uint64_t trajectory_id = 0;
+};
+
+// Bounded worker-local stream. Traversal appends allocation-free after the
+// constructor reserves capacity, sorts once at the worker boundary, and never
+// accesses coordinator storage directly.
+class MultiwayWorkerDeltaStream {
+public:
+    MultiwayWorkerDeltaStream(std::size_t worker_index, std::size_t capacity);
+
+    [[nodiscard]] std::size_t worker_index() const noexcept { return worker_index_; }
+    [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
+    [[nodiscard]] std::size_t size() const noexcept { return deltas_.size(); }
+    [[nodiscard]] bool try_append(const MultiwayWorkerDelta& delta) noexcept;
+    void sort_fixed_order() noexcept;
+    [[nodiscard]] bool is_fixed_order() const noexcept;
+    [[nodiscard]] const std::vector<MultiwayWorkerDelta>& deltas() const noexcept { return deltas_; }
+
+private:
+    std::size_t worker_index_ = 0;
+    std::size_t capacity_ = 0;
+    std::vector<MultiwayWorkerDelta> deltas_;
+};
+
+struct MultiwayRootActionProbability {
+    MultiwayActionDescriptor action{};
+    Probability probability = 0.0;
+};
+
+struct MultiwayRootPolicy {
+    MultiwayPublicStateId public_state{};
+    MultiwayInfosetId infoset{};
+    std::uint32_t bucket = 0;
+    std::vector<MultiwayRootActionProbability> actions;
+};
+
+struct MultiwaySolveDiagnostics {
+    std::uint64_t batches_completed = 0;
+    std::uint64_t trajectories_attempted = 0;
+    std::uint64_t trajectories_accepted = 0;
+    std::uint64_t trajectories_discarded = 0;
+    std::uint64_t public_states_admitted = 0;
+    std::uint64_t sparse_rows_admitted = 0;
+    std::uint64_t worker_delta_entries_merged = 0;
+    double traversal_seconds = 0.0;
+    double merge_seconds = 0.0;
+    double export_seconds = 0.0;
+    std::optional<MultiwayNashConv> quality;
+};
+
+// Immutable boundary output. It deliberately retains only a root policy,
+// per-seat root values, and diagnostics; it never exports dense global policy.
+class MultiwaySolveResult {
+public:
+    MultiwaySolveResult(
+        MultiwayRootPolicy root_policy,
+        std::vector<Value> root_values,
+        MultiwaySolveDiagnostics diagnostics);
+
+    [[nodiscard]] const MultiwayRootPolicy& root_policy() const noexcept { return root_policy_; }
+    [[nodiscard]] const std::vector<Value>& root_values() const noexcept { return root_values_; }
+    [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
+
+private:
+    MultiwayRootPolicy root_policy_;
+    std::vector<Value> root_values_;
+    MultiwaySolveDiagnostics diagnostics_;
+};
+
+// Coordinator boundary for multiway batches. It is the sole owner of public
+// state admission and row mutation. This is intentionally not a traversal API.
+class MultiwaySolverCoordinator {
+public:
+    explicit MultiwaySolverCoordinator(const MultiwaySolveRequest& request);
+
+    void admit_public_state(const MultiwayPublicStateDescriptor& state);
+    void admit_infoset_row(const MultiwaySparseRowShape& shape);
+    void merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams);
+
+    [[nodiscard]] MultiwayRootPolicy export_root_policy() const;
+    [[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
+    [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
+
+private:
+    [[nodiscard]] const MultiwayPublicStateDescriptor* public_state(
+        MultiwayPublicStateId id) const noexcept;
+
+    MultiwaySolveRequest request_;
+    MultiwaySparseRowStorage storage_;
+    std::vector<MultiwayPublicStateDescriptor> public_states_;
+    MultiwaySolveDiagnostics diagnostics_;
+};
+
+}  // namespace core

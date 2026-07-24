@@ -27,8 +27,8 @@ struct HUNLSampledSolverConfig {
     std::uint32_t minibatch_size = 64;
     std::uint32_t max_cached_public_states = 0;
     std::uint32_t bucket_count_hint = 0;
-    // Reserved for a future typed sampled leaf evaluator. Non-zero values are
-    // rejected so preflight can never claim a traversal cutoff it does not enforce.
+    // Optional preflight hint. The structured root remains authoritative; a
+    // non-zero selected cutoff requires HUNLSampledSolveRequest::leaf_evaluator.
     std::uint32_t depth_limit_plies_hint = 0;
     HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float32;
     HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand;

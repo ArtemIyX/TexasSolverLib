@@ -373,6 +373,32 @@ double variance_from_moments(std::uint64_t count, double sum, double sq_sum) {
     return std::max(0.0, sq_sum / static_cast<double>(count) - mean * mean);
 }
 
+core::HUNLFlatMCCFRConfig active_delta_config(
+    core::HUNLFlatSamplingMode mode = core::HUNLFlatSamplingMode::External) {
+    core::HUNLFlatMCCFRConfig config;
+    config.mode = mode;
+    config.seed = 0xA11CEULL;
+    config.traversals_per_iteration = 2;
+    config.batch_size = 1;
+    return config;
+}
+
+void expect_active_delta_batch(
+    core::HUNLFlatSamplingMode mode,
+    std::size_t workers = 1,
+    bool sparse_storage = false) {
+    auto config = active_delta_config(mode);
+    config.use_sparse_storage = sparse_storage;
+    core::HUNLFlatMCCFR solver(
+        make_external_sampling_graph(), {1, 1}, config,
+        core::HUNLFlatValueLayout::InfosetActionHand, workers);
+    solver.run_iteration();
+    const auto usage = solver.memory_usage();
+    EXPECT_TRUE(solver.profile().active_infoset_samples > 0U);
+    EXPECT_TRUE(usage.worker_scratch_bytes > 0U);
+    EXPECT_TRUE(usage.worker_scratch_bytes < usage.total_bytes());
+}
+
 core::HUNLFlatSolveGraph make_root_decision_graph() {
     core::HUNLFlatSolveGraph graph;
     graph.root = 0;
@@ -698,6 +724,65 @@ TEST_CASE(hunl_flat_mccfr_exports_average_strategy_in_exact_solver_shape) {
             static_cast<std::size_t>(infoset.action_count) *
                 solver.infoset_table().meta().at(infoset.id.value).bucket_count);
     }
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_external_sampling) {
+    expect_active_delta_batch(core::HUNLFlatSamplingMode::External);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_public_chance_sampling) {
+    expect_active_delta_batch(core::HUNLFlatSamplingMode::PublicChance);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_average_strategy_sampling) {
+    expect_active_delta_batch(core::HUNLFlatSamplingMode::AverageStrategy);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_exact_sampling) {
+    expect_active_delta_batch(core::HUNLFlatSamplingMode::Exact);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_two_workers) {
+    expect_active_delta_batch(core::HUNLFlatSamplingMode::External, 2U);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_four_workers) {
+    expect_active_delta_batch(core::HUNLFlatSamplingMode::External, 4U);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_sparse_central_storage) {
+    expect_active_delta_batch(core::HUNLFlatSamplingMode::External, 1U, true);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_counts_only_touched_infosets) {
+    auto config = active_delta_config();
+    config.traversals_per_iteration = 1;
+    core::HUNLFlatMCCFR solver(
+        make_sparse_sampling_visibility_graph(), {1, 1}, config);
+    solver.run_iteration();
+    EXPECT_TRUE(solver.profile().active_infoset_samples > 0U);
+    EXPECT_TRUE(solver.profile().active_infoset_samples <= solver.graph().infosets.size());
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_restarts_cleanly_each_iteration) {
+    auto config = active_delta_config();
+    core::HUNLFlatMCCFR solver(make_external_sampling_graph(), {1, 1}, config);
+    solver.run_iteration();
+    const auto first_active = solver.profile().active_infoset_samples;
+    const auto first_memory = solver.memory_usage().worker_scratch_bytes;
+    solver.run_iteration();
+    EXPECT_TRUE(solver.profile().active_infoset_samples > first_active);
+    EXPECT_TRUE(solver.memory_usage().worker_scratch_bytes >= first_memory);
+}
+
+TEST_CASE(hunl_flat_mccfr_active_delta_arena_keeps_worker_memory_accounted) {
+    auto config = active_delta_config();
+    config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+    core::HUNLFlatMCCFR solver(make_external_sampling_graph(), {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2U);
+    solver.run_iteration();
+    const auto usage = solver.memory_usage();
+    EXPECT_TRUE(usage.worker_scratch_bytes > 0U);
+    EXPECT_TRUE(usage.total_bytes() >= usage.worker_scratch_bytes + usage.graph_bytes);
 }
 
 TEST_CASE(hunl_flat_mccfr_external_sampling_converges_in_direction_of_exact_strategy) {

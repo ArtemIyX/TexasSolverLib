@@ -2,6 +2,7 @@
 #include "games/hunl.hpp"
 #include "test_harness.hpp"
 
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 
@@ -157,6 +158,141 @@ TEST_CASE(multiway_compiled_private_ranges_offer_nonthrowing_worker_sampling) {
     core::MultiwayPrivateWorkerScratch scratch;
     EXPECT_TRUE(compiled.try_sample_into(99, scratch));
     EXPECT_EQ(scratch.seat_count, 3U);
+}
+
+TEST_CASE(multiway_private_compiled_sampler_exposes_conditioned_proposal_and_inclusion_reach) {
+    core::MultiwayPrivateConfig config;
+    config.board = {c(2, 0), c(3, 1), c(4, 2)};
+    config.max_rejection_attempts = 1;
+    config.ranges = {
+        {hand(14, 0, 13, 0), hand(12, 0, 11, 0)},
+        {hand(14, 0, 10, 0), hand(9, 0, 8, 0)},
+    };
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    core::MultiwayPrivateWorkerScratch scratch;
+    bool accepted = false;
+    for (std::uint64_t seed = 1; seed <= 100U; ++seed) {
+        if (compiled.try_sample_into(seed, scratch)) {
+            accepted = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(accepted);
+    // One of four independent draws collides, so A = 3/4. Each compatible
+    // deal has chance C = 1/4 and therefore q = (C/A) * A = 1/4 here.
+    EXPECT_NEAR(scratch.chance_reach, 0.25, 1e-12);
+    EXPECT_NEAR(scratch.conditional_deal_probability, 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(scratch.inclusion_reach, 0.75, 1e-12);
+    EXPECT_NEAR(scratch.proposal_reach, 0.25, 1e-12);
+    EXPECT_EQ(scratch.accepted_trajectories, 1U);
+    EXPECT_EQ(scratch.rejected_trajectories, 0U);
+    EXPECT_EQ(scratch.discarded_trajectories, 0U);
+}
+
+TEST_CASE(multiway_private_proposal_contract_is_identity_for_always_compatible_ranges) {
+    core::MultiwayCompiledPrivateRanges compiled(ranges());
+    for (std::uint64_t seed = 1; seed <= 20U; ++seed) {
+        core::MultiwayPrivateWorkerScratch scratch;
+        EXPECT_TRUE(compiled.try_sample_into(seed, scratch));
+        EXPECT_NEAR(scratch.conditional_deal_probability, scratch.chance_reach, 1e-12);
+        EXPECT_NEAR(scratch.inclusion_reach, 1.0, 1e-12);
+        EXPECT_NEAR(scratch.proposal_reach, scratch.chance_reach, 1e-12);
+        EXPECT_EQ(scratch.accepted_trajectories, 1U);
+        EXPECT_EQ(scratch.discarded_trajectories, 0U);
+    }
+}
+
+TEST_CASE(multiway_private_proposal_inclusion_accounts_for_two_retry_attempts) {
+    core::MultiwayPrivateConfig config;
+    config.board = {c(2, 0), c(3, 1), c(4, 2)};
+    config.max_rejection_attempts = 2;
+    config.ranges = {
+        {hand(14, 0, 13, 0), hand(12, 0, 11, 0)},
+        {hand(14, 0, 10, 0), hand(9, 0, 8, 0)},
+    };
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    core::MultiwayPrivateWorkerScratch scratch;
+    bool accepted = false;
+    for (std::uint64_t seed = 1; seed <= 100U; ++seed) {
+        if (compiled.try_sample_into(seed, scratch)) {
+            accepted = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(accepted);
+    EXPECT_NEAR(scratch.inclusion_reach, 0.9375, 1e-12);
+    EXPECT_NEAR(scratch.conditional_deal_probability, 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(scratch.proposal_reach, 0.3125, 1e-12);
+}
+
+TEST_CASE(multiway_private_proposal_contract_records_rejections_before_an_accepted_retry) {
+    auto config = ranges();
+    config.max_rejection_attempts = 2;
+    config.ranges[0] = {hand(14, 0, 13, 0)};
+    config.ranges[1] = {hand(14, 0, 13, 0), hand(10, 0, 8, 0)};
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    bool observed_retry = false;
+    for (std::uint64_t seed = 1; seed <= 100U; ++seed) {
+        core::MultiwayPrivateWorkerScratch scratch;
+        if (compiled.try_sample_into(seed, scratch) && scratch.attempts == 2U) {
+            observed_retry = true;
+            EXPECT_EQ(scratch.rejected_trajectories, 1U);
+            EXPECT_EQ(scratch.accepted_trajectories, 1U);
+            EXPECT_EQ(scratch.discarded_trajectories, 0U);
+            break;
+        }
+    }
+    EXPECT_TRUE(observed_retry);
+}
+
+TEST_CASE(multiway_private_proposal_contract_marks_bounded_rejection_exhaustion) {
+    auto config = ranges();
+    config.max_rejection_attempts = 1;
+    config.ranges[0] = {hand(14, 0, 13, 0)};
+    config.ranges[1] = {hand(14, 0, 13, 0), hand(10, 0, 8, 0)};
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    bool observed_exhaustion = false;
+    for (std::uint64_t seed = 1; seed <= 100U; ++seed) {
+        core::MultiwayPrivateWorkerScratch scratch;
+        if (!compiled.try_sample_into(seed, scratch)) {
+            observed_exhaustion = true;
+            EXPECT_EQ(scratch.chance_reach, 0.0);
+            EXPECT_EQ(scratch.conditional_deal_probability, 0.0);
+            EXPECT_EQ(scratch.proposal_reach, 0.0);
+            EXPECT_NEAR(scratch.inclusion_reach, 0.5, 1e-12);
+            EXPECT_EQ(scratch.accepted_trajectories, 0U);
+            EXPECT_EQ(scratch.rejected_trajectories, 1U);
+            EXPECT_EQ(scratch.discarded_trajectories, 1U);
+            break;
+        }
+    }
+    EXPECT_TRUE(observed_exhaustion);
+}
+
+TEST_CASE(multiway_private_standalone_sample_preserves_compiled_proposal_fields) {
+    const auto config = ranges();
+    const auto sample = core::sample_multiway_private_hands(config, 77U);
+    EXPECT_TRUE(sample.chance_reach > 0.0);
+    EXPECT_NEAR(sample.conditional_deal_probability, sample.chance_reach, 1e-12);
+    EXPECT_NEAR(sample.proposal_reach, sample.chance_reach, 1e-12);
+    EXPECT_NEAR(sample.inclusion_reach, 1.0, 1e-12);
+    EXPECT_EQ(sample.accepted_trajectories, 1U);
+    EXPECT_EQ(sample.discarded_trajectories, 0U);
+}
+
+TEST_CASE(multiway_private_proposal_contract_is_seed_deterministic_including_reach_fields) {
+    auto config = ranges();
+    config.max_rejection_attempts = 2;
+    core::MultiwayCompiledPrivateRanges compiled(config);
+    core::MultiwayPrivateWorkerScratch first;
+    core::MultiwayPrivateWorkerScratch second;
+    EXPECT_EQ(compiled.try_sample_into(31337U, first), compiled.try_sample_into(31337U, second));
+    EXPECT_EQ(first.holes, second.holes);
+    EXPECT_EQ(first.attempts, second.attempts);
+    EXPECT_NEAR(first.chance_reach, second.chance_reach, 1e-12);
+    EXPECT_NEAR(first.conditional_deal_probability, second.conditional_deal_probability, 1e-12);
+    EXPECT_NEAR(first.proposal_reach, second.proposal_reach, 1e-12);
+    EXPECT_NEAR(first.inclusion_reach, second.inclusion_reach, 1e-12);
 }
 
 TEST_CASE(multiway_private_rejection_budget_accepts_the_full_uint32_domain_without_loop_wrap) {

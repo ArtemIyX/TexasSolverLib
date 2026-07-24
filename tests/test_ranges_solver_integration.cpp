@@ -3,9 +3,14 @@
 #include "core/lib.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_sampled_solver.hpp"
+#include "solver/hunl_sampled_range.hpp"
+#include "solver/hunl_sampled_storage.hpp"
 #include "test_harness.hpp"
 
+#include <chrono>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 
 namespace {
@@ -23,6 +28,49 @@ core::HUNLConfig range_contract_config() {
     config.initial_ranges[1] = single_hand_range(core::card_to_int(12, 1), core::card_to_int(11, 3));
     config.range_policy = core::HUNLRangePolicy::RequireExplicit;
     return config;
+}
+
+struct InjectedLeafContext {
+    std::uint32_t calls = 0;
+    bool received_public_state = true;
+};
+
+bool injected_zero_sum_leaf(
+    void* raw_context,
+    const core::HUNLLeafEvaluationRequest* requests,
+    core::HUNLLeafEvaluationResult* results,
+    std::size_t count) {
+    auto& context = *static_cast<InjectedLeafContext*>(raw_context);
+    for (std::size_t index = 0; index < count; ++index) {
+        ++context.calls;
+        context.received_public_state = context.received_public_state &&
+            !requests[index].public_state.hole_cards.has_value() &&
+            requests[index].bucket_reach[0].size() == 1U &&
+            requests[index].bucket_reach[1].size() == 1U;
+        results[index].values = {0.0, 0.0};
+        results[index].units = requests[index].units;
+    }
+    return true;
+}
+
+bool rejecting_leaf(
+    void*,
+    const core::HUNLLeafEvaluationRequest*,
+    core::HUNLLeafEvaluationResult*,
+    std::size_t) {
+    return false;
+}
+
+bool mismatched_unit_leaf(
+    void*,
+    const core::HUNLLeafEvaluationRequest*,
+    core::HUNLLeafEvaluationResult* results,
+    std::size_t count) {
+    for (std::size_t index = 0; index < count; ++index) {
+        results[index].values = {0.0, 0.0};
+        results[index].units = core::HUNLLeafValueUnits::BigBlinds;
+    }
+    return true;
 }
 
 }  // namespace
@@ -127,7 +175,7 @@ TEST_CASE(ranges_structured_root_validation_rejects_blocked_and_accepts_compatib
     }
 }
 
-TEST_CASE(ranges_structured_root_sampled_positive_work_is_fail_closed) {
+TEST_CASE(ranges_structured_root_sampled_positive_work_uses_private_range_trajectories) {
     core::HUNLStructuredRootRequest root;
     root.config = range_contract_config();
     root.blueprint_version = "blueprint-v1";
@@ -138,9 +186,231 @@ TEST_CASE(ranges_structured_root_sampled_positive_work_is_fail_closed) {
     config.workers = 1;
     config.max_cached_public_states = 1024;
     config.seed = 0xB10EULL;
-    EXPECT_THROW(
-        core::lib::solve_hunl_postflop_sampled(root, config, 1),
-        core::HUNLSampledStructuredRangeNotReady);
+    const auto result = core::lib::solve_hunl_postflop_sampled(root, config, 1);
+    EXPECT_EQ(result.batches_completed, 1U);
+    EXPECT_EQ(result.profile.traversals, 1U);
+    EXPECT_TRUE(!result.root_strategy.actions.empty());
+}
+
+TEST_CASE(ranges_single_joint_deal_matches_fixed_private_hand_sampled_oracle) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    const auto deal = root.normalized_joint_range().front();
+
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    config.workers = 1;
+    config.seed = 0x5EEDULL;
+
+    core::HUNLSampledSolver range_solver(config);
+    core::HUNLSampledSolveRequest range_request;
+    range_request.structured_root = root;
+    const auto range_result = range_solver.run_batches(range_request, 1U);
+
+    auto fixed_config = root.config;
+    fixed_config.initial_ranges = {std::nullopt, std::nullopt};
+    fixed_config.range_policy = core::HUNLRangePolicy::Uniform;
+    fixed_config.initial_hole_cards = deal.hole;
+    const auto fixed_root = core::HUNLState::initial(
+        std::make_shared<const core::HUNLConfig>(fixed_config));
+    core::HUNLSampledSolver fixed_solver(config);
+    core::HUNLSampledSolveRequest fixed_request;
+    fixed_request.root_state = fixed_root;
+    const auto fixed_result = fixed_solver.run_batches(fixed_request, 1U);
+
+    EXPECT_EQ(range_result.batches_completed, fixed_result.batches_completed);
+    EXPECT_EQ(range_solver.storage().row_count(), fixed_solver.storage().row_count());
+    for (std::size_t row_index = 0; row_index < range_solver.storage().row_count(); ++row_index) {
+        const auto range_id = range_solver.storage().meta()[row_index].id;
+        const auto fixed_id = fixed_solver.storage().meta()[row_index].id;
+        const auto range_row = range_solver.storage().view(range_id);
+        const auto fixed_row = fixed_solver.storage().view(fixed_id);
+        EXPECT_EQ(range_row.action_count, fixed_row.action_count);
+        EXPECT_EQ(range_row.bucket_count, fixed_row.bucket_count);
+        for (std::size_t value = 0; value < range_row.value_count(); ++value) {
+            EXPECT_NEAR(range_row.regret[value], fixed_row.regret[value], 1e-6);
+            EXPECT_NEAR(range_row.strategy_sum[value], fixed_row.strategy_sum[value], 1e-6);
+        }
+    }
+}
+
+TEST_CASE(ranges_structured_session_resumes_without_replaying_batch_ids) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    config.workers = 1;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile);
+
+    const auto first = session.resume_batches(1);
+    const auto second = session.resume_batches(1);
+    EXPECT_EQ(first.batches_completed, 1U);
+    EXPECT_EQ(second.batches_completed, 1U);
+    EXPECT_EQ(session.next_batch(), 2U);
+    EXPECT_EQ(profile.snapshot().traversals, 2U);
+}
+
+TEST_CASE(ranges_structured_session_deadline_preserves_the_next_unpublished_batch) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile);
+
+    const auto expired = session.resume_batches(
+        4U, std::chrono::steady_clock::now() - std::chrono::milliseconds{1});
+    EXPECT_EQ(expired.batches_completed, 0U);
+    EXPECT_TRUE(expired.timed_out);
+    EXPECT_EQ(session.next_batch(), 0U);
+    EXPECT_EQ(profile.snapshot().traversals, 0U);
+}
+
+TEST_CASE(ranges_sampled_solver_retains_structured_deadline_cursor_between_resumes) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    core::HUNLSampledSolver solver(config);
+
+    solver.begin_structured_session(root);
+    EXPECT_TRUE(solver.has_structured_session());
+    const auto first = solver.resume_structured_batches(1U);
+    const auto second = solver.resume_structured_batches(1U);
+    EXPECT_EQ(first.batches_completed, 1U);
+    EXPECT_EQ(second.batches_completed, 1U);
+    EXPECT_EQ(second.profile.traversals, 2U);
+}
+
+TEST_CASE(ranges_structured_depth_limit_uses_typed_injected_leaf_evaluator) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    config.workers = 1;
+    InjectedLeafContext context;
+    const core::HUNLLeafEvaluator evaluator{&context, injected_zero_sum_leaf};
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile, 0U, &evaluator);
+
+    const auto result = session.resume_batches(1);
+    EXPECT_EQ(result.batches_completed, 1U);
+    EXPECT_TRUE(context.calls > 0U);
+    EXPECT_TRUE(context.received_public_state);
+}
+
+TEST_CASE(ranges_structured_depth_limit_rejects_missing_typed_leaf_evaluator) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+    core::HUNLSampledSolverConfig config;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+
+    EXPECT_THROW(core::HUNLSampledRangeSession(root, config, storage, profile), std::invalid_argument);
+}
+
+TEST_CASE(ranges_structured_facade_passes_typed_leaf_evaluator_to_positive_work) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    InjectedLeafContext context;
+    const core::HUNLLeafEvaluator evaluator{&context, injected_zero_sum_leaf};
+
+    const auto result = core::lib::solve_hunl_postflop_sampled(root, config, 1U, &evaluator);
+    EXPECT_EQ(result.batches_completed, 1U);
+    EXPECT_TRUE(context.calls > 0U);
+}
+
+TEST_CASE(ranges_structured_solver_session_rejects_missing_leaf_before_it_is_retained) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+    core::HUNLSampledSolver solver;
+
+    EXPECT_THROW(solver.begin_structured_session(root), std::invalid_argument);
+    EXPECT_TRUE(!solver.has_structured_session());
+}
+
+TEST_CASE(ranges_structured_leaf_callback_failure_aborts_the_current_batch) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    const core::HUNLLeafEvaluator evaluator{nullptr, rejecting_leaf};
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile, 0U, &evaluator);
+
+    EXPECT_THROW(session.resume_batches(1U), std::runtime_error);
+    EXPECT_EQ(session.next_batch(), 0U);
+    EXPECT_EQ(profile.snapshot().traversals, 0U);
+}
+
+TEST_CASE(ranges_structured_leaf_callback_rejects_a_value_unit_mismatch) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    const core::HUNLLeafEvaluator evaluator{nullptr, mismatched_unit_leaf};
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile, 0U, &evaluator);
+
+    EXPECT_THROW(session.resume_batches(1U), std::runtime_error);
+    EXPECT_EQ(session.next_batch(), 0U);
+}
+
+TEST_CASE(ranges_structured_zero_batch_session_exports_typed_uniform_root_actions) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    core::HUNLSampledSolverConfig config;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile);
+
+    const auto result = session.resume_batches(0U);
+    EXPECT_EQ(result.batches_completed, 0U);
+    EXPECT_TRUE(!result.root_strategy.actions.empty());
+    double probability_sum = 0.0;
+    for (const auto& action : result.root_strategy.actions) {
+        EXPECT_TRUE(action.action_id >= core::ACTION_FOLD);
+        EXPECT_TRUE(action.action_menu_id != 0U);
+        probability_sum += action.probability;
+    }
+    EXPECT_NEAR(probability_sum, 1.0, 1e-12);
 }
 
 TEST_CASE(ranges_structured_root_allows_low_spr_balanced_pots_but_rejects_facing_bets) {

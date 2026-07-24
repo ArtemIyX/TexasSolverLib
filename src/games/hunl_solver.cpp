@@ -174,10 +174,6 @@ void HUNLStructuredRootRequest::validate() const {
     if (blueprint_version.empty()) {
         throw std::invalid_argument("HUNLStructuredRootRequest requires a blueprint version");
     }
-    if (config.depth_limit_plies != 0U) {
-        throw std::invalid_argument(
-            "HUNLStructuredRootRequest rejects depth limits until a shared HUNL leaf evaluator is configured");
-    }
     if (config.initial_contributions[0] != config.initial_contributions[1]) {
         throw std::invalid_argument(
             "HUNLStructuredRootRequest rejects unequal contributions until a full live betting snapshot is available");

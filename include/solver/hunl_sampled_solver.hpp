@@ -5,12 +5,14 @@
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/hunl_sampled_export.hpp"
 #include "solver/hunl_sampled_profile.hpp"
+#include "solver/hunl_sampled_range.hpp"
 #include "solver/hunl_sampled_storage.hpp"
 #include "solver/hunl_sampled_terminal.hpp"
 
 #include <chrono>
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 
@@ -20,6 +22,8 @@ struct HUNLSampledSolveRequest {
     std::uint8_t root_action_count = 0;
     std::optional<HUNLState> root_state = std::nullopt;
     std::optional<HUNLStructuredRootRequest> structured_root = std::nullopt;
+    // Non-owning. Required when the selected root has a non-zero depth limit.
+    const HUNLLeafEvaluator* leaf_evaluator = nullptr;
 };
 
 struct HUNLSampledSolveResult {
@@ -32,18 +36,6 @@ struct HUNLSampledSolveResult {
 class HUNLSampledSolverNotReady final : public std::logic_error {
 public:
     HUNLSampledSolverNotReady();
-};
-
-class HUNLSampledTimedSolveNotReady final : public std::logic_error {
-public:
-    HUNLSampledTimedSolveNotReady();
-};
-
-// Structured ranges require private-state-aware chance, bucket, and infoset
-// propagation.  They remain validation-only until that traversal exists.
-class HUNLSampledStructuredRangeNotReady final : public std::logic_error {
-public:
-    HUNLSampledStructuredRangeNotReady();
 };
 
 struct HUNLSampledMemoryEstimate {
@@ -92,16 +84,27 @@ class HUNLSampledSolver {
 public:
     explicit HUNLSampledSolver(HUNLSampledSolverConfig config = {});
 
-    // Timed sampled solving is unavailable and fails closed for positive
-    // budgets. Non-positive budgets initialize/export an unsolved uniform root.
+    // Runs deterministic whole batches until the deadline and returns the
+    // latest clean root export. Non-positive budgets initialize an unsolved
+    // uniform root without traversal work.
     [[nodiscard]] HUNLSampledSolveResult solve_for(
         const HUNLSampledSolveRequest& request,
         std::chrono::milliseconds budget);
-    // Positive batches support explicit fixed-private-card oracle roots only.
-    // Structured-range batches remain deliberately unavailable.
+    // Starts a fresh deterministic solve. Structured roots use the private
+    // range traversal; explicit roots remain the fixed-hand oracle path.
     [[nodiscard]] HUNLSampledSolveResult run_batches(
         const HUNLSampledSolveRequest& request,
         std::uint32_t batches);
+    // Begins one structured private-range solve retained by this coordinator.
+    // Call resume_structured_batches to continue it without replaying any
+    // trajectory ids. Starting another solve replaces this retained session.
+    void begin_structured_session(
+        HUNLStructuredRootRequest root,
+        const HUNLLeafEvaluator* leaf_evaluator = nullptr);
+    [[nodiscard]] HUNLSampledSolveResult resume_structured_batches(
+        std::uint32_t batches,
+        std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
+    [[nodiscard]] bool has_structured_session() const noexcept;
     [[nodiscard]] HUNLSampledRootStrategy export_root_strategy() const;
     [[nodiscard]] const HUNLSampledProfile& profile() const noexcept;
     [[nodiscard]] HUNLSampledMemoryEstimate memory_estimate() const noexcept;
@@ -122,7 +125,8 @@ private:
         const HUNLSampledSolverConfig& config) const noexcept;
     [[nodiscard]] HUNLSampledSolveResult run_batches_impl(
         const HUNLSampledSolveRequest& request,
-        std::uint32_t batches);
+        std::uint32_t batches,
+        std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
     static void apply_adaptive_fallback(
         HUNLSampledSolverConfig& config,
         HUNLSampledAdaptiveAdjustments& adjustments) noexcept;
@@ -141,6 +145,7 @@ private:
     HUNLSampledTerminalEvaluator terminal_evaluator_;
     HUNLSampledProfile profile_;
     HUNLSampledRootStrategy root_strategy_;
+    std::unique_ptr<HUNLSampledRangeSession> structured_session_;
 };
 
 }  // namespace core

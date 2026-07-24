@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/types.hpp"
+#include "games/multiway_private.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -50,6 +51,16 @@ struct MultiwayExternalSamplingRequest {
     std::vector<Probability> strategy;
     std::vector<Value> sampled_action_values;
 };
+
+// Constructs an update request from the compiled private-deal proposal
+// contract. This prevents traversal code from reconstructing conditioned
+// sampling reach from hole cards or rejection attempts.
+MultiwayExternalSamplingRequest make_multiway_external_sampling_request(
+    std::vector<Probability> player_reaches,
+    PlayerId traverser,
+    const MultiwayJointPrivateSample& private_sample,
+    std::vector<Probability> strategy,
+    std::vector<Value> sampled_action_values);
 
 enum class MultiwayMetricMethod : std::uint8_t {
     ExactEnumeration,

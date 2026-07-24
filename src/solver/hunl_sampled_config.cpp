@@ -21,9 +21,6 @@ HUNLSampledConfigValidation validate_sampled_config(
     if (config.bucket_count_hint > HUNL_SAMPLED_MAX_BUCKET_COUNT) {
         return {false, "bucket_count_hint exceeds the sampled row limit"};
     }
-    if (config.depth_limit_plies_hint != 0U) {
-        return {false, "sampled depth_limit_plies_hint requires an unavailable typed leaf evaluator"};
-    }
     if (config.memory_warning_bytes == 0 || config.memory_fail_bytes == 0) {
         return {false, "memory guardrail thresholds must be positive"};
     }

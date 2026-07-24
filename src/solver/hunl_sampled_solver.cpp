@@ -1,4 +1,5 @@
 #include "solver/hunl_sampled_solver.hpp"
+#include "solver/hunl_sampled_range.hpp"
 #include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_traversal.hpp"
 #include "util/pcs.hpp"
@@ -7,7 +8,6 @@
 #include <algorithm>
 #include <atomic>
 #include <limits>
-#include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -102,21 +102,11 @@ std::size_t sample_joint_deal(const std::vector<HUNLJointRangeDeal>& deals, std:
 
 HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
     : std::logic_error(
-          "positive sampled batches require an explicit fixed-private-card root state") {
-}
-
-HUNLSampledTimedSolveNotReady::HUNLSampledTimedSolveNotReady()
-    : std::logic_error(
-          "positive timed sampled solving is unavailable until deadline-aware traversal is implemented") {
+          "positive sampled batches require an explicit fixed-private-card or structured range root") {
 }
 
 std::uint64_t delta_entries_bytes(std::uint64_t entries) noexcept {
     return saturating_multiply(entries, sizeof(HUNLSampledValueDelta));
-}
-
-HUNLSampledStructuredRangeNotReady::HUNLSampledStructuredRangeNotReady()
-    : std::logic_error(
-          "structured range sampled solving is disabled until private-state-aware traversal is available") {
 }
 
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
@@ -129,16 +119,27 @@ HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
 HUNLSampledSolveResult HUNLSampledSolver::solve_for(
     const HUNLSampledSolveRequest& request,
     std::chrono::milliseconds budget) {
+    structured_session_.reset();
     if (budget.count() <= 0) {
         return run_batches(request, 0);
     }
-    (void)request;
-    throw HUNLSampledTimedSolveNotReady{};
+    HUNLSampledSolver staged(config_);
+    const auto result = staged.run_batches_impl(
+        request,
+        std::numeric_limits<std::uint32_t>::max(),
+        std::chrono::steady_clock::now() + budget);
+    config_ = std::move(staged.config_);
+    builder_ = std::move(staged.builder_);
+    storage_ = std::move(staged.storage_);
+    profile_ = std::move(staged.profile_);
+    root_strategy_ = std::move(staged.root_strategy_);
+    return result;
 }
 
 HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     const HUNLSampledSolveRequest& request,
     std::uint32_t batches) {
+    structured_session_.reset();
     // Build an independent session and publish it only after every phase has
     // completed. A rejected preflight, preparation failure, or worker failure
     // therefore leaves this solver's last clean root export intact.
@@ -152,29 +153,144 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches(
     return result;
 }
 
+void HUNLSampledSolver::begin_structured_session(
+    HUNLStructuredRootRequest root,
+    const HUNLLeafEvaluator* leaf_evaluator) {
+    root.validate();
+    HUNLSampledSolveRequest request;
+    request.structured_root = root;
+    request.leaf_evaluator = leaf_evaluator;
+    const auto preflight_result = preflight(request);
+    if (preflight_result.status == HUNLSampledMemoryStatus::Rejected) {
+        throw std::runtime_error(preflight_result.message);
+    }
+
+    structured_session_.reset();
+    builder_.clear();
+    storage_.clear_keep_capacity();
+    profile_.reset();
+    root_strategy_ = {};
+    config_ = preflight_result.effective_config;
+
+    std::uint64_t mutable_growth_limit = 0U;
+    if (config_.enable_memory_guardrails) {
+        const auto reserved = saturating_add(
+            saturating_add(estimate_worker_delta_bytes(request, config_),
+                           estimate_terminal_cache_bytes(request, config_)),
+            estimate_export_bytes(request));
+        if (reserved >= config_.memory_fail_bytes) {
+            throw std::runtime_error("sampled memory reservation leaves no safe range-storage growth budget");
+        }
+        mutable_growth_limit = (config_.memory_fail_bytes - reserved) / 2U;
+    }
+    storage_.set_memory_limit_bytes(mutable_growth_limit);
+    structured_session_ = std::make_unique<HUNLSampledRangeSession>(
+        std::move(root), config_, storage_, profile_, 0U, leaf_evaluator);
+    root_strategy_ = structured_session_->export_root_strategy();
+}
+
+HUNLSampledSolveResult HUNLSampledSolver::resume_structured_batches(
+    std::uint32_t batches,
+    std::optional<std::chrono::steady_clock::time_point> deadline) {
+    if (structured_session_ == nullptr) {
+        throw std::logic_error("no structured sampled session has been started");
+    }
+    const auto range_run = structured_session_->resume_batches(batches, deadline);
+    root_strategy_ = range_run.root_strategy;
+    const auto final_memory = memory_estimate();
+    profile_.record_sparse_storage(storage_.row_count(), storage_.total_value_count());
+    profile_.record_memory_budget(
+        final_memory.public_states_cached,
+        final_memory.infoset_rows_allocated,
+        final_memory.sparse_values_allocated,
+        final_memory.terminal_cache_bytes,
+        final_memory.worker_delta_bytes,
+        final_memory.export_bytes,
+        final_memory.total_bytes(),
+        false,
+        false);
+    profile_.record_observed_memory(final_memory.total_bytes(), final_memory.total_bytes());
+
+    HUNLSampledSolveResult result;
+    result.root_strategy = root_strategy_;
+    result.profile = profile_.snapshot();
+    result.batches_completed = range_run.batches_completed;
+    result.timed_out = range_run.timed_out;
+    return result;
+}
+
+bool HUNLSampledSolver::has_structured_session() const noexcept {
+    return structured_session_ != nullptr;
+}
+
 HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
     const HUNLSampledSolveRequest& request,
-    std::uint32_t batches) {
+    std::uint32_t batches,
+    std::optional<std::chrono::steady_clock::time_point> deadline) {
     if (request.root_state.has_value() && request.structured_root.has_value()) {
         throw std::invalid_argument(
             "sampled solve request must choose either an explicit root or a structured range root");
     }
-    if (batches > 0U && request.structured_root.has_value()) {
-        request.structured_root->validate();
-        throw HUNLSampledStructuredRangeNotReady{};
-    }
-    HUNLSampledSolveRequest effective_request = request;
     if (request.structured_root.has_value()) {
         request.structured_root->validate();
-        auto config = std::make_shared<const HUNLConfig>(request.structured_root->config);
-        effective_request.root_state = HUNLState::initial(config);
+        builder_.clear();
+        storage_.clear_keep_capacity();
+        profile_.reset();
+        root_strategy_ = {};
+
+        auto preflight_result = preflight(request);
+        if (preflight_result.status == HUNLSampledMemoryStatus::Rejected) {
+            throw std::runtime_error(preflight_result.message);
+        }
+        config_ = preflight_result.effective_config;
+        std::uint64_t mutable_growth_limit = 0U;
+        if (config_.enable_memory_guardrails) {
+            const auto reserved = saturating_add(
+                saturating_add(estimate_worker_delta_bytes(request, config_),
+                               estimate_terminal_cache_bytes(request, config_)),
+                estimate_export_bytes(request));
+            if (reserved >= config_.memory_fail_bytes) {
+                throw std::runtime_error("sampled memory reservation leaves no safe range-storage growth budget");
+            }
+            mutable_growth_limit = (config_.memory_fail_bytes - reserved) / 2U;
+        }
+        storage_.set_memory_limit_bytes(mutable_growth_limit);
+        const auto range_run = run_hunl_sampled_structured_range_batches(
+            *request.structured_root, config_, 0U, batches, deadline, storage_, profile_, request.leaf_evaluator);
+        root_strategy_ = range_run.root_strategy;
+        const auto final_memory = memory_estimate();
+        profile_.record_sparse_storage(storage_.row_count(), storage_.total_value_count());
+        profile_.record_memory_budget(
+            final_memory.public_states_cached,
+            final_memory.infoset_rows_allocated,
+            final_memory.sparse_values_allocated,
+            final_memory.terminal_cache_bytes,
+            final_memory.worker_delta_bytes,
+            final_memory.export_bytes,
+            final_memory.total_bytes(),
+            preflight_result.status == HUNLSampledMemoryStatus::Warning,
+            false);
+        profile_.record_observed_memory(final_memory.total_bytes(), final_memory.total_bytes());
+        HUNLSampledSolveResult result;
+        result.root_strategy = root_strategy_;
+        result.profile = profile_.snapshot();
+        result.batches_completed = range_run.batches_completed;
+        result.timed_out = range_run.timed_out;
+        return result;
     }
+    HUNLSampledSolveRequest effective_request = request;
     if (batches > 0 && !effective_request.root_state.has_value()) {
         throw HUNLSampledSolverNotReady{};
     }
+    if (effective_request.root_state.has_value() && effective_request.root_state->config != nullptr &&
+        effective_request.root_state->config->depth_limit_plies != 0U) {
+        throw std::invalid_argument(
+            "fixed-private sampled roots reject depth limits; use the structured typed leaf-evaluator path");
+    }
 
-    // run_batches starts an independent solve. A future resumable API must
-    // retain a validated session identity and a monotonic work cursor.
+    // Fixed-private roots remain independent oracle runs. Structured ranges
+    // use begin_structured_session()/resume_structured_batches() when a
+    // caller needs a retained monotonic trajectory cursor.
     builder_.clear();
     storage_.clear_keep_capacity();
     profile_.reset();
@@ -238,11 +354,17 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
     profile_.record_observed_memory(live_memory.total_bytes(), live_memory.total_bytes());
     root_strategy_ = HUNLSampledStrategyExporter::export_uniform(infer_root_action_count(effective_request));
 
+    std::uint32_t completed_batches = 0;
+    bool timed_out = false;
     if (batches > 0) {
         HUNLSampledTraversal traversal(builder_, storage_, terminal_evaluator_);
         const auto root_id = builder_.root_id();
         const auto bucket_count = static_cast<std::uint32_t>(std::max<std::uint64_t>(1U, infer_bucket_count(effective_request, config_)));
         for (std::uint32_t batch = 0; batch < batches; ++batch) {
+            if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+                timed_out = true;
+                break;
+            }
             const auto traverse_started = std::chrono::steady_clock::now();
             std::vector<HUNLSampledTraversalRequest> trajectory_requests;
             trajectory_requests.reserve(config_.minibatch_size);
@@ -323,6 +445,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             merge_hunl_sampled_worker_streams(storage_, worker_scratch);
             profile_.add_merge_seconds(std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - merge_started).count());
+            ++completed_batches;
         }
         const auto export_started = std::chrono::steady_clock::now();
         const auto& root = builder_.node(root_id);
@@ -367,8 +490,8 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
     HUNLSampledSolveResult result;
     result.root_strategy = root_strategy_;
     result.profile = profile_.snapshot();
-    result.batches_completed = batches;
-    result.timed_out = false;
+    result.batches_completed = completed_batches;
+    result.timed_out = timed_out;
     return result;
 }
 
