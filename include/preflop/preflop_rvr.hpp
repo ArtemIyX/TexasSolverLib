@@ -127,6 +127,7 @@ private:
     double gamma_ = 2.0;
     std::uint32_t iteration_ = 0;
     std::vector<std::optional<VectorInfosetData>> infosets_;
+    std::vector<std::string> infoset_key_suffixes_;
 
     static void compute_strategy(const VectorInfosetData& info, std::vector<double>& out);
     static void compute_avg_strategy(const VectorInfosetData& info, std::vector<double>& out);

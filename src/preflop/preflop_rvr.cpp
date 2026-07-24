@@ -6,8 +6,10 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace core {
 
@@ -58,11 +60,198 @@ std::string applied_action_token(const HUNLState& next) {
 
 std::string class_label(std::uint16_t idx) {
     const auto [hi, lo, suited] = class_decode(idx);
+    const auto rank_token = [](std::uint8_t rank) -> char {
+        if (rank >= 2 && rank <= 9) {
+            return static_cast<char>('0' + rank);
+        }
+        switch (rank) {
+        case 10:
+            return 'T';
+        case 11:
+            return 'J';
+        case 12:
+            return 'Q';
+        case 13:
+            return 'K';
+        case 14:
+            return 'A';
+        default:
+            throw std::logic_error("class rank is out of bounds");
+        }
+    };
     std::string s;
-    s += (hi == 14 ? "A" : std::to_string(hi));
-    s += (lo == 14 ? "A" : std::to_string(lo));
+    s += rank_token(hi);
+    s += rank_token(lo);
     if (hi != lo) s += suited ? "s" : "o";
     return s;
+}
+
+constexpr std::size_t class169_pair_count() {
+    return PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES;
+}
+
+void validate_class169_reach(
+    const std::vector<double>& reach,
+    const char* name) {
+    if (reach.size() != PREFLOP_NUM_CLASSES) {
+        throw std::invalid_argument(
+            std::string(name) + " must contain exactly 169 entries");
+    }
+    double total = 0.0;
+    for (const auto value : reach) {
+        if (!std::isfinite(value) || value < 0.0) {
+            throw std::invalid_argument(
+                std::string(name) +
+                " must contain finite non-negative values");
+        }
+        total += value;
+        if (!std::isfinite(total)) {
+            throw std::invalid_argument(
+                std::string(name) + " total must be finite");
+        }
+    }
+    if (total <= 0.0) {
+        throw std::invalid_argument(
+            std::string(name) + " must contain positive mass");
+    }
+}
+
+void validate_finite_table(
+    const std::vector<double>& values,
+    std::size_t expected_size,
+    const char* name,
+    bool require_non_negative) {
+    if (values.size() != expected_size) {
+        throw std::invalid_argument(
+            std::string(name) + " has an invalid shape");
+    }
+    for (const auto value : values) {
+        if (!std::isfinite(value) ||
+            (require_non_negative && value < 0.0)) {
+            throw std::invalid_argument(
+                std::string(name) + " contains an invalid value");
+        }
+    }
+}
+
+void validate_class169_tree_and_cache(
+    const PreflopBettingTree& tree,
+    const Class169TerminalCache& cache) {
+    if (tree.nodes.empty()) {
+        throw std::invalid_argument(
+            "Class169VectorDCFR requires a non-empty tree");
+    }
+    if (cache.leaves.size() != tree.nodes.size()) {
+        throw std::invalid_argument(
+            "Class169VectorDCFR cache must be node-aligned");
+    }
+
+    std::vector<std::uint8_t> color(tree.nodes.size(), 0U);
+    std::vector<std::size_t> parent_count(tree.nodes.size(), 0U);
+    std::unordered_set<std::string> decision_keys;
+    bool has_fold = false;
+    const auto visit = [&](const auto& self, std::size_t node_index) -> void {
+        if (node_index >= tree.nodes.size()) {
+            throw std::invalid_argument(
+                "Class169VectorDCFR child index is out of bounds");
+        }
+        if (color[node_index] == 1U) {
+            throw std::invalid_argument(
+                "Class169VectorDCFR tree contains a cycle");
+        }
+        if (color[node_index] == 2U) {
+            return;
+        }
+        color[node_index] = 1U;
+        const auto& node = tree.nodes[node_index];
+        const auto& leaf = cache.leaves[node_index];
+        if (node.big_blind <= 0 ||
+            node.contributions[0] < 0 ||
+            node.contributions[1] < 0 ||
+            node.initial_contributions[0] < 0 ||
+            node.initial_contributions[1] < 0) {
+            throw std::invalid_argument(
+                "Class169VectorDCFR tree contains invalid chip metadata");
+        }
+
+        switch (node.kind) {
+        case PreflopBettingTree::NodeKind::Decision:
+            if (leaf.kind != Class169LeafEntry::Kind::NonTerminal ||
+                node.player > 1U ||
+                node.actions.empty() ||
+                node.actions.size() != node.children.size() ||
+                node.key_suffix.empty() ||
+                !decision_keys.insert(node.key_suffix).second) {
+                throw std::invalid_argument(
+                    "Class169VectorDCFR decision node contract is invalid");
+            }
+            for (const auto child : node.children) {
+                if (child >= tree.nodes.size()) {
+                    throw std::invalid_argument(
+                        "Class169VectorDCFR child index is out of bounds");
+                }
+                ++parent_count[child];
+                if (parent_count[child] > 1U) {
+                    throw std::invalid_argument(
+                        "Class169VectorDCFR input must be a tree");
+                }
+                self(self, child);
+            }
+            break;
+        case PreflopBettingTree::NodeKind::Fold:
+            if (leaf.kind != Class169LeafEntry::Kind::Fold ||
+                !node.actions.empty() ||
+                !node.children.empty() ||
+                node.folded_player > 1U ||
+                !std::isfinite(leaf.payoff[0]) ||
+                !std::isfinite(leaf.payoff[1])) {
+                throw std::invalid_argument(
+                    "Class169VectorDCFR fold leaf contract is invalid");
+            }
+            has_fold = true;
+            break;
+        case PreflopBettingTree::NodeKind::EquityLeaf:
+            if (leaf.kind != Class169LeafEntry::Kind::Equity ||
+                !node.actions.empty() ||
+                !node.children.empty()) {
+                throw std::invalid_argument(
+                    "Class169VectorDCFR equity leaf contract is invalid");
+            }
+            validate_finite_table(
+                leaf.payoff_table[0],
+                class169_pair_count(),
+                "class-169 player-0 payoff table",
+                false);
+            validate_finite_table(
+                leaf.payoff_table[1],
+                class169_pair_count(),
+                "class-169 player-1 payoff table",
+                false);
+            break;
+        }
+        color[node_index] = 2U;
+    };
+    visit(visit, 0U);
+
+    if (std::any_of(
+            color.begin(),
+            color.end(),
+            [](std::uint8_t value) { return value != 2U; })) {
+        throw std::invalid_argument(
+            "Class169VectorDCFR tree contains unreachable nodes");
+    }
+    if (has_fold) {
+        validate_finite_table(
+            cache.shared_blocker_mass[0],
+            class169_pair_count(),
+            "class-169 player-0 blocker table",
+            true);
+        validate_finite_table(
+            cache.shared_blocker_mass[1],
+            class169_pair_count(),
+            "class-169 player-1 blocker table",
+            true);
+    }
 }
 
 }  // namespace
@@ -286,6 +475,10 @@ PreflopBettingTree PreflopBettingTree::build(const HUNLConfig& config) {
 
 Class169VectorDCFR::Class169VectorDCFR(std::size_t hand_count, double alpha, double beta, double gamma)
     : hand_count_(hand_count), alpha_(alpha), beta_(beta), gamma_(gamma) {
+    if (hand_count_ != PREFLOP_NUM_CLASSES) {
+        throw std::invalid_argument(
+            "Class169VectorDCFR requires exactly 169 hand classes");
+    }
     validate_dcfr_config_values(alpha_, beta_, gamma_);
 }
 
@@ -411,11 +604,17 @@ void Class169VectorDCFR::solve(
     std::uint32_t iterations,
     const std::vector<double>& root_reach_p0,
     const std::vector<double>& root_reach_p1) {
+    validate_class169_tree_and_cache(tree, cache);
+    validate_class169_reach(root_reach_p0, "root_reach_p0");
+    validate_class169_reach(root_reach_p1, "root_reach_p1");
+
     iteration_ = 0;
     infosets_.assign(tree.nodes.size(), std::nullopt);
+    infoset_key_suffixes_.assign(tree.nodes.size(), {});
     for (std::size_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
         if (tree.nodes[node_idx].kind == PreflopBettingTree::NodeKind::Decision) {
             infosets_[node_idx].emplace(tree.nodes[node_idx].children.size(), hand_count_);
+            infoset_key_suffixes_[node_idx] = tree.nodes[node_idx].key_suffix;
         }
     }
     for (std::uint32_t it = 0; it < iterations; ++it) {
@@ -444,13 +643,31 @@ void Class169VectorDCFR::solve(
 
 std::unordered_map<std::string, std::vector<double>> Class169VectorDCFR::average_strategy() const {
     std::unordered_map<std::string, std::vector<double>> out;
-    if (hand_count_ == 0) return out;
-    for (const auto& slot : infosets_) {
-        if (!slot) continue;
+    for (std::size_t node_index = 0;
+         node_index < infosets_.size();
+         ++node_index) {
+        const auto& slot = infosets_[node_index];
+        if (!slot.has_value()) {
+            continue;
+        }
         std::vector<double> avg;
         compute_avg_strategy(*slot, avg);
-        out.emplace("AA||p|", std::move(avg));
-        break;
+        const auto action_count = slot->action_count;
+        for (std::size_t hand = 0; hand < hand_count_; ++hand) {
+            const auto offset = hand * action_count;
+            std::vector<double> row(
+                avg.begin() + static_cast<std::ptrdiff_t>(offset),
+                avg.begin() + static_cast<std::ptrdiff_t>(
+                    offset + action_count));
+            const auto inserted = out.emplace(
+                class_label(static_cast<std::uint16_t>(hand)) +
+                    infoset_key_suffixes_.at(node_index),
+                std::move(row));
+            if (!inserted.second) {
+                throw std::logic_error(
+                    "Class169VectorDCFR produced a duplicate strategy key");
+            }
+        }
     }
     return out;
 }
@@ -495,9 +712,8 @@ Class169RvrOutput solve_hunl_preflop_rvr_class169(
     }();
     if (root_reach_p0.empty()) root_reach_p0 = default_reach;
     if (root_reach_p1.empty()) root_reach_p1 = default_reach;
-    if (root_reach_p0.size() != PREFLOP_NUM_CLASSES || root_reach_p1.size() != PREFLOP_NUM_CLASSES) {
-        throw std::runtime_error("root reach vectors must have 169 entries");
-    }
+    validate_class169_reach(root_reach_p0, "root_reach_p0");
+    validate_class169_reach(root_reach_p1, "root_reach_p1");
 
     const auto started = std::chrono::steady_clock::now();
     const auto tree = PreflopBettingTree::build(config);
@@ -507,8 +723,22 @@ Class169RvrOutput solve_hunl_preflop_rvr_class169(
 
     Class169RvrOutput out;
     out.average_strategy = solver.average_strategy();
-    out.decision_node_count = static_cast<std::uint32_t>(tree.nodes.size());
-    out.strategy_entry_count = static_cast<std::uint32_t>(out.average_strategy.size());
+    const auto decision_node_count = static_cast<std::size_t>(std::count_if(
+        tree.nodes.begin(),
+        tree.nodes.end(),
+        [](const auto& node) {
+            return node.kind == PreflopBettingTree::NodeKind::Decision;
+        }));
+    if (decision_node_count > std::numeric_limits<std::uint32_t>::max() ||
+        out.average_strategy.size() >
+            std::numeric_limits<std::uint32_t>::max()) {
+        throw std::overflow_error(
+            "class-169 output metadata exceeds uint32_t");
+    }
+    out.decision_node_count =
+        static_cast<std::uint32_t>(decision_node_count);
+    out.strategy_entry_count =
+        static_cast<std::uint32_t>(out.average_strategy.size());
     out.iterations = iterations;
     out.hand_count_per_player = {PREFLOP_NUM_CLASSES, PREFLOP_NUM_CLASSES};
     out.wallclock_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();

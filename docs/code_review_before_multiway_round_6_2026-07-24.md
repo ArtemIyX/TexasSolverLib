@@ -9,11 +9,13 @@ substantially safer than they were in the first five review rounds, but the
 repository is not yet a trustworthy base for blueprint generation or integrated
 multiway solving.
 
-This review found three P0, three P1, two P2, and one P3 problems. The highest
+This review found four P0, three P1, two P2, and one P3 problems. The highest
 risk is outside the recently reviewed sampled storage code:
 
 - two public preflop RVR APIs report completed work without solving the
   requested game;
+- the direct class-169 solver accepts unsafe dimensions and exports only one
+  fabricated strategy row;
 - public preflop-equity boundaries permit out-of-bounds array/vector access;
 - several thread owners can terminate the hosting process if worker creation
   fails after an earlier worker was launched;
@@ -223,6 +225,67 @@ Regression coverage added:
 points. Each case launches zero through nineteen workers, throws before the
 next launch, and verifies that the original exception propagates only after
 every started worker observes cancellation and exits.
+
+### P0-4: direct class-169 dimensions are unchecked and export is fabricated
+
+Status: **Fixed in the P0-4 remediation commit; tests added but not executed.**
+
+Evidence:
+
+- `Class169VectorDCFR` accepted any `hand_count`, while terminal traversal
+  unconditionally iterated 169 opponent classes and indexed the supplied reach
+  vectors. A short direct reach or hand dimension therefore caused
+  out-of-bounds reads.
+- The tree/cache-aware `solve()` accepted unaligned caches, invalid child
+  indices, empty decision rows, cycles, malformed terminal matrices, and
+  non-finite reach values without validating them before mutating solver state.
+- `average_strategy()` stopped after the first infoset and returned its entire
+  flattened class/action matrix under the fabricated key `AA||p|`.
+- The facade consequently reported one strategy entry and labeled total tree
+  nodes as decision nodes even after completing a real traversal.
+
+Impact:
+
+The only positive-work preflop RVR path could read outside caller storage or
+publish a plausible but structurally unusable blueprint containing one
+mis-keyed, wrong-shaped strategy entry.
+
+Required fix:
+
+Enforce exactly 169 classes and exact finite non-negative root reaches before
+mutation. Validate the complete tree/cache topology and matrix shapes. Export
+one action-probability row for every `(hand class, decision/public history)`
+pair using canonical class labels, and report actual decision/strategy counts.
+
+Required regression coverage:
+
+At least 20 cases must cover hand/reach dimensions, non-finite/negative/zero
+mass, tree/cache alignment, topology, terminal tables, failure atomicity,
+canonical class labels, row shapes, every decision history, and normalized
+positive-iteration export.
+
+Implemented fix:
+
+- The direct solver now requires exactly 169 hand classes and two exact,
+  finite, non-negative, positive-mass reach vectors.
+- A pre-mutation validator checks node/cache alignment, chip metadata, decision
+  ownership and action shape, child bounds, cycles, shared children,
+  reachability, unique public keys, leaf kinds, blocker matrices, payoff
+  matrices, and finite stored values.
+- Invalid solves leave iteration state and published strategy empty.
+- Export now emits one action row for every class at every decision, using
+  canonical labels such as `AA`, `TT`, `AKs`, and `AKo` plus the public-history
+  suffix.
+- Facade metadata now counts actual decision nodes and checks both public
+  counts before narrowing to 32 bits.
+
+Regression coverage added:
+
+`tests/test_class169_solver_contract.cpp` contains 38 independent test cases
+covering all dimension and reach failures, transactionality, malformed trees
+and caches, cycles/DAGs/unreachable nodes, duplicate histories, matrix shape
+and values, all 169 labels, per-action row shape, multi-decision export, and
+normalized positive-iteration output.
 
 ## P1 findings
 
@@ -496,12 +559,13 @@ and unsupported/unknown values fail before tree construction.
 1. P0-1: fail closed on fake preflop RVR work.
 2. P0-2: harden every preflop-equity boundary.
 3. P0-3: make all thread-launch paths exception-safe.
-4. P1-1: implement the advertised DCFR discount schedule and finite validation.
-5. P1-2: correct class-169 preflop action/state progression.
-6. P1-3: unify heads-up exploitability units.
-7. P2-1: harden standalone multiway numerical accumulation.
-8. P2-2: remove unchecked exact-oracle narrowing.
-9. P3-1: fail closed on the unavailable best-response walk mode.
+4. P0-4: validate and fully export the class-169 solver contract.
+5. P1-1: implement the advertised DCFR discount schedule and finite validation.
+6. P1-2: correct class-169 preflop action/state progression.
+7. P1-3: unify heads-up exploitability units.
+8. P2-1: harden standalone multiway numerical accumulation.
+9. P2-2: remove unchecked exact-oracle narrowing.
+10. P3-1: fail closed on the unavailable best-response walk mode.
 
 Each repair is to receive a dedicated test file or clearly isolated test
 section with at least 20 regression scenarios, a status/evidence update in this
