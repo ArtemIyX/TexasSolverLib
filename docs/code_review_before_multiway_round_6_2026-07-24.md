@@ -170,7 +170,7 @@ shortened, or extended mutable backing storage.
 
 ### P0-3: partial worker-launch failure can terminate the process
 
-Status: **Open.**
+Status: **Fixed in the P0-3 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -202,6 +202,27 @@ Required regression coverage:
 At least 20 deterministic launch-failure points across the four owners must
 prove exception propagation, joining, no deadlock, and unchanged published
 solver state.
+
+Implemented fix:
+
+- Added a scoped, C++17-compatible `ThreadJoinGuard`.
+- The guard invokes the owner's stop/cancellation callback and joins every
+  successfully created thread during stack unwinding.
+- Sampled solving and parallel equity use cancellation flags so partial launch
+  cleanup does not finish an unnecessary full batch/table.
+- Parallel equity also captures worker exceptions and rethrows them on the
+  coordinator after every worker has joined.
+- `HUNLFlatDCFR::WorkerPool` signals its persistent workers before joining when
+  construction is interrupted.
+- Parallel recursive DCFR now owns its persistent pool through the same guard
+  for startup and all later coordinator exceptions.
+
+Regression coverage added:
+
+`tests/test_thread_join_guard.cpp` contains 20 independent injected failure
+points. Each case launches zero through nineteen workers, throws before the
+next launch, and verifies that the original exception propagates only after
+every started worker observes cancellation and exits.
 
 ## P1 findings
 

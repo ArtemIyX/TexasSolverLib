@@ -2,8 +2,10 @@
 #include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_traversal.hpp"
 #include "util/pcs.hpp"
+#include "util/thread_join_guard.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -261,11 +263,20 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             std::vector<HUNLSampledWorkerScratch> worker_scratch(worker_batches.size());
             std::vector<HUNLSampledTraversalResult> worker_results(worker_batches.size());
             std::vector<std::thread> threads;
+            std::atomic<bool> launch_cancelled{false};
+            auto thread_guard = detail::make_thread_join_guard(
+                threads,
+                [&launch_cancelled] {
+                    launch_cancelled.store(true, std::memory_order_release);
+                });
             std::exception_ptr worker_error;
             std::mutex worker_error_mutex;
             threads.reserve(worker_batches.size() > 0U ? worker_batches.size() - 1U : 0U);
             const auto execute_worker = [&](std::size_t worker_index) {
                 try {
+                    if (launch_cancelled.load(std::memory_order_acquire)) {
+                        return;
+                    }
                     if (config_.test_throw_worker_index == static_cast<std::int32_t>(worker_index)) {
                         throw std::runtime_error("sampled solver regression worker failure");
                     }
@@ -275,6 +286,9 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
                     HUNLSampledWorkerScratch trajectory_scratch;
                     trajectory_scratch.reserve_deltas(kWorkerDeltaEntriesPerTraversal);
                     for (std::uint64_t id = range.begin; id < range.end; ++id) {
+                        if (launch_cancelled.load(std::memory_order_acquire)) {
+                            return;
+                        }
                         const auto result = traversal.run_unmerged(
                             trajectory_requests[static_cast<std::size_t>(id)], trajectory_scratch);
                         aggregate.deltas.insert(
@@ -292,6 +306,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             }
             if (!worker_batches.empty()) execute_worker(0);
             for (auto& thread : threads) thread.join();
+            thread_guard.release();
             if (worker_error != nullptr) std::rethrow_exception(worker_error);
             profile_.add_traverse_seconds(std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - traverse_started).count());

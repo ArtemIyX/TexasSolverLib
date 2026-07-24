@@ -5,6 +5,7 @@
 #include "util/abstraction.hpp"
 #include "util/profiling.hpp"
 #include "util/simd.hpp"
+#include "util/thread_join_guard.hpp"
 
 #include <array>
 #include <algorithm>
@@ -184,9 +185,19 @@ HUNLFlatDCFR::WorkerPool::WorkerPool(HUNLFlatDCFR& owner, std::size_t worker_cou
         throw std::invalid_argument("HUNLFlatDCFR worker_count must be at least 1");
     }
     threads_.reserve(worker_count);
+    auto thread_guard = detail::make_thread_join_guard(
+        threads_,
+        [this] {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                stop_ = true;
+            }
+            cv_.notify_all();
+        });
     for (std::size_t worker_index = 0; worker_index < worker_count; ++worker_index) {
         threads_.emplace_back([this, worker_index] { worker_loop(worker_index); });
     }
+    thread_guard.release();
 }
 
 HUNLFlatDCFR::WorkerPool::~WorkerPool() {

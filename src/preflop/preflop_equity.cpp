@@ -2,11 +2,13 @@
 
 #include "games/hunl_eval.hpp"
 #include "util/pcs.hpp"
+#include "util/thread_join_guard.hpp"
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <exception>
 #include <fstream>
 #include <limits>
 #include <mutex>
@@ -317,6 +319,9 @@ std::vector<double> build_equity_table_flat_parallel(std::size_t n_threads) {
     std::vector<double> table(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS, std::numeric_limits<double>::quiet_NaN());
     std::mutex mutex;
     std::atomic<std::size_t> cursor{0};
+    std::atomic<bool> cancel{false};
+    std::exception_ptr worker_error;
+    std::mutex worker_error_mutex;
     std::vector<std::tuple<std::uint16_t, std::uint16_t, std::uint8_t>> work;
     work.reserve(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS);
     for (std::uint16_t h = 0; h < PREFLOP_NUM_CLASSES; ++h) {
@@ -328,25 +333,40 @@ std::vector<double> build_equity_table_flat_parallel(std::size_t n_threads) {
     }
 
     std::vector<std::thread> threads;
+    auto thread_guard = detail::make_thread_join_guard(
+        threads,
+        [&cancel] { cancel.store(true, std::memory_order_release); });
     threads.reserve(n_threads);
     for (std::size_t t = 0; t < n_threads; ++t) {
         threads.emplace_back([&] {
-            while (true) {
-                const auto i = cursor.fetch_add(1, std::memory_order_relaxed);
-                if (i >= work.size()) {
-                    break;
+            try {
+                while (!cancel.load(std::memory_order_acquire)) {
+                    const auto i = cursor.fetch_add(1, std::memory_order_relaxed);
+                    if (i >= work.size()) {
+                        break;
+                    }
+                    const auto [h, v, variant] = work[i];
+                    if (auto rep = build_hole_rep(h, v, variant)) {
+                        const auto eq = enumerate_pair_equity(rep->hero, rep->villain);
+                        std::lock_guard<std::mutex> lock(mutex);
+                        table[(static_cast<std::size_t>(h) * PREFLOP_NUM_CLASSES + static_cast<std::size_t>(v)) * PREFLOP_NUM_VARIANTS + variant] = eq;
+                    }
                 }
-                const auto [h, v, variant] = work[i];
-                if (auto rep = build_hole_rep(h, v, variant)) {
-                    const auto eq = enumerate_pair_equity(rep->hero, rep->villain);
-                    std::lock_guard<std::mutex> lock(mutex);
-                    table[(static_cast<std::size_t>(h) * PREFLOP_NUM_CLASSES + static_cast<std::size_t>(v)) * PREFLOP_NUM_VARIANTS + variant] = eq;
+            } catch (...) {
+                cancel.store(true, std::memory_order_release);
+                std::lock_guard<std::mutex> lock(worker_error_mutex);
+                if (worker_error == nullptr) {
+                    worker_error = std::current_exception();
                 }
             }
         });
     }
     for (auto& thread : threads) {
         thread.join();
+    }
+    thread_guard.release();
+    if (worker_error != nullptr) {
+        std::rethrow_exception(worker_error);
     }
     return table;
 }

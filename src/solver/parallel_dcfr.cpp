@@ -4,6 +4,7 @@
 #include "games/hunl.hpp"
 #include "games/kuhn.hpp"
 #include "games/leduc.hpp"
+#include "util/thread_join_guard.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -779,6 +780,15 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     };
 
     std::vector<std::thread> workers;
+    auto thread_guard = detail::make_thread_join_guard(
+        workers,
+        [&pool] {
+            {
+                std::lock_guard<std::mutex> lock(pool.mutex);
+                pool.stop = true;
+            }
+            pool.cv.notify_all();
+        });
     workers.reserve(plan.worker_count);
     for (std::size_t i = 0; i < plan.worker_count; ++i) {
         workers.emplace_back(worker_fn, i);
@@ -837,6 +847,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     for (auto& worker : workers) {
         worker.join();
     }
+    thread_guard.release();
 
     const auto finalize_start = std::chrono::steady_clock::now();
     const auto average_strategy = build_average_strategy();
