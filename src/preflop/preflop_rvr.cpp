@@ -11,6 +11,11 @@
 
 namespace core {
 
+PreflopRvrNotReady::PreflopRvrNotReady()
+    : std::logic_error(
+          "the legacy preflop RVR facade is unavailable; use the tree/cache-aware class-169 solver") {
+}
+
 namespace {
 
 bool disjoint(const std::array<std::uint8_t, 2>& a, const std::array<std::uint8_t, 2>& b) {
@@ -495,13 +500,11 @@ void Class169VectorDCFR::solve(
     std::uint32_t iterations,
     const std::vector<double>& root_reach_p0,
     const std::vector<double>& root_reach_p1) {
+    (void)decision_node_count;
+    (void)iterations;
     (void)root_reach_p0;
     (void)root_reach_p1;
-    infosets_.assign(decision_node_count, std::nullopt);
-    for (std::uint32_t it = 0; it < iterations; ++it) ++iteration_;
-    if (decision_node_count == 0) {
-        throw std::runtime_error("decision_node_count must be positive");
-    }
+    throw PreflopRvrNotReady{};
 }
 
 std::unordered_map<std::string, std::vector<double>> Class169VectorDCFR::average_strategy() const {
@@ -522,20 +525,13 @@ std::uint32_t Class169VectorDCFR::iteration() const {
 }
 
 PreflopRvrOutput solve_hunl_preflop_rvr(const HUNLConfig& config, const PreflopEquityTable& table, std::uint32_t iterations, double alpha, double beta, double gamma) {
+    (void)config;
     (void)table;
     (void)iterations;
     (void)alpha;
     (void)beta;
     (void)gamma;
-    const auto combos = Class169Combos::build();
-    const auto blocker_mass = build_class169_blocker_mass(combos);
-    PreflopRvrOutput out;
-    out.base = solve_kuhn(1, 1.5, 0.0, 2.0);
-    out.decision_node_count = static_cast<std::uint32_t>(combos.combos.size() + blocker_mass[0].size());
-    if (config.starting_street != Street::Preflop) {
-        out.base.exploitability = 0.0;
-    }
-    return out;
+    throw PreflopRvrNotReady{};
 }
 
 Class169RvrOutput solve_hunl_preflop_rvr_class169(

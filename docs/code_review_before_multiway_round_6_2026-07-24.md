@@ -59,7 +59,8 @@ Severity:
 
 ### P0-1: public preflop RVR APIs report work that they do not perform
 
-Status: **Open.**
+Status: **Fixed fail-closed in the P0-1 remediation commit; tests added but
+not executed.**
 
 Evidence:
 
@@ -92,6 +93,23 @@ Required regression coverage:
 At least 20 calls spanning iteration counts, DCFR parameters, node counts, and
 root-reach shapes must prove that the incomplete surfaces always fail before
 mutating solver state or returning output.
+
+Implemented fix:
+
+- Added `PreflopRvrNotReady`.
+- `solve_hunl_preflop_rvr()` now always fails explicitly instead of returning a
+  one-iteration Kuhn result.
+- The count-only `Class169VectorDCFR::solve()` overload now fails before
+  changing its iteration counter or infoset state.
+- The tree/cache-aware class-169 overload remains available for real work.
+
+Regression coverage added:
+
+`tests/test_preflop_rvr_not_ready.cpp` contains 20 independent test cases
+covering zero through blueprint-scale iteration counts, alternate exponent
+values, zero through large node counts, and empty/short/exact/oversized reach
+vectors. The stateful overload is checked for unchanged iteration and empty
+strategy state after every failure.
 
 ### P0-2: preflop-equity public inputs can index fixed storage out of bounds
 
@@ -376,4 +394,3 @@ Each repair is to receive a dedicated test file or clearly isolated test
 section with at least 20 regression scenarios, a status/evidence update in this
 document, and a separate git commit. Tests will be written but not executed,
 per the user instruction and `AGENTS.md`.
-

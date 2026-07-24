@@ -6,9 +6,15 @@
 #include "solver/dcfr_vector.hpp"
 #include "solver/solver.hpp"
 
+#include <stdexcept>
 #include <unordered_map>
 
 namespace core {
+
+class PreflopRvrNotReady final : public std::logic_error {
+public:
+    PreflopRvrNotReady();
+};
 
 struct PreflopRvrOutput {
     SolveOutput base;
