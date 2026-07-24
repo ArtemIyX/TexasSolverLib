@@ -1,5 +1,6 @@
 #include "solver/hunl_flat_pipeline.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
+#include "util/checked_numeric.hpp"
 #include "util/profiling.hpp"
 
 #include <chrono>
@@ -10,10 +11,10 @@ namespace core {
 
 namespace {
 
-std::uint32_t count_nodes_of_type(
+std::size_t count_nodes_of_type(
     const HUNLFlatSolveGraph& graph,
     HUNLFlatNodeType type) {
-    std::uint32_t count = 0;
+    std::size_t count = 0;
     for (const auto& meta : graph.node_meta) {
         if (meta.type == type) {
             ++count;
@@ -78,15 +79,19 @@ HUNLFlatPipelinePlan HUNLFlatPipelinePlan::build(
     const HUNLFlatInfosetTable& infoset_table,
     const HUNLFlatParallelPlan& parallel_plan) {
     HUNLFlatPipelinePlan plan;
-    plan.buffers_.infoset_count = static_cast<std::uint32_t>(graph.infosets.size());
-    plan.buffers_.node_count = static_cast<std::uint32_t>(graph.node_count());
-    plan.buffers_.bucket_count = static_cast<std::uint32_t>(infoset_table.total_bucket_count());
-    plan.buffers_.value_count = static_cast<std::uint32_t>(infoset_table.total_value_count());
-    plan.buffers_.terminal_node_count =
-        count_nodes_of_type(graph, HUNLFlatNodeType::TerminalFold) +
-        count_nodes_of_type(graph, HUNLFlatNodeType::TerminalShowdown);
-    plan.buffers_.showdown_node_count = count_nodes_of_type(graph, HUNLFlatNodeType::TerminalShowdown);
-    plan.buffers_.depth_limited_node_count = count_nodes_of_type(graph, HUNLFlatNodeType::DepthLimited);
+    plan.buffers_.infoset_count = detail::checked_u32_count(graph.infosets.size(), "flat pipeline infoset count exceeds uint32_t");
+    plan.buffers_.node_count = detail::checked_u32_count(graph.node_count(), "flat pipeline node count exceeds uint32_t");
+    plan.buffers_.bucket_count = detail::checked_u32_count(infoset_table.total_bucket_count(), "flat pipeline bucket count exceeds uint32_t");
+    plan.buffers_.value_count = detail::checked_u32_count(infoset_table.total_value_count(), "flat pipeline value count exceeds uint32_t");
+    const auto terminal_node_count = detail::checked_size_add(
+        count_nodes_of_type(graph, HUNLFlatNodeType::TerminalFold),
+        count_nodes_of_type(graph, HUNLFlatNodeType::TerminalShowdown),
+        "flat pipeline terminal node count overflow");
+    plan.buffers_.terminal_node_count = detail::checked_u32_count(terminal_node_count, "flat pipeline terminal node count exceeds uint32_t");
+    plan.buffers_.showdown_node_count = detail::checked_u32_count(
+        count_nodes_of_type(graph, HUNLFlatNodeType::TerminalShowdown), "flat pipeline showdown node count exceeds uint32_t");
+    plan.buffers_.depth_limited_node_count = detail::checked_u32_count(
+        count_nodes_of_type(graph, HUNLFlatNodeType::DepthLimited), "flat pipeline depth-limited node count exceeds uint32_t");
     plan.buffers_.has_depth_limited_nodes = plan.buffers_.depth_limited_node_count > 0;
 
     plan.stages_.reserve(7);

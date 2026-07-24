@@ -1,4 +1,5 @@
 #include "util/infoset_registry.hpp"
+#include "util/checked_numeric.hpp"
 
 #include <cstddef>
 #include <stdexcept>
@@ -18,7 +19,8 @@ InfosetId InfosetRegistry::intern(const InfosetKey& key, std::size_t action_coun
         return it->second;
     }
 
-    const InfosetId id{static_cast<std::uint32_t>(id_to_key_.size())};
+    const InfosetId id{detail::checked_u32_count(
+        id_to_key_.size(), "InfosetRegistry cannot represent more than uint32_t infosets")};
     id_to_key_.push_back(key);
     meta_.push_back(InfosetMeta{action_count});
     key_to_id_.emplace(id_to_key_.back(), id);
@@ -40,7 +42,8 @@ InfosetId InfosetRegistry::intern(const HUNLInfosetEncoding& encoding, std::size
     }
 
     const auto key = hunl_infoset_key(encoding);
-    const InfosetId id{static_cast<std::uint32_t>(id_to_key_.size())};
+    const InfosetId id{detail::checked_u32_count(
+        id_to_key_.size(), "InfosetRegistry cannot represent more than uint32_t infosets")};
     id_to_key_.push_back(key);
     meta_.push_back(InfosetMeta{action_count});
     key_to_id_.emplace(id_to_key_.back(), id);

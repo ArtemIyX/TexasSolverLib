@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/types.hpp"
+#include "util/checked_numeric.hpp"
 #include "core/game.hpp"
 #include "util/infoset_lookup.hpp"
 #include "util/infoset_registry.hpp"
@@ -83,7 +84,7 @@ public:
 namespace detail {
 
 struct InfosetAccum {
-    std::uint32_t offset = 0;
+    std::size_t offset = 0;
     std::size_t action_count = 0;
     std::uint32_t last_discount_iter = 0;
     bool active = false;
@@ -169,13 +170,19 @@ public:
 
         auto& row = rows_[id.value];
         if (!row.active) {
-            row.offset = static_cast<std::uint32_t>(regret_arena_.size());
+            const auto new_size = checked_size_add(
+                regret_arena_.size(), action_count, "infoset accumulation arena size overflow");
+            if (strategy_arena_.size() != regret_arena_.size()) {
+                throw std::logic_error("infoset accumulation arenas are misaligned");
+            }
+            const auto offset = regret_arena_.size();
+            regret_arena_.resize(new_size, 0.0);
+            strategy_arena_.resize(new_size, 0.0);
+            active_ids_.push_back(id);
+            row.offset = offset;
             row.action_count = action_count;
             row.last_discount_iter = current_discount_iter_;
             row.active = true;
-            active_ids_.push_back(id);
-            regret_arena_.resize(regret_arena_.size() + action_count, 0.0);
-            strategy_arena_.resize(strategy_arena_.size() + action_count, 0.0);
         } else if (row.action_count != action_count) {
             throw std::invalid_argument("infoset action count changed");
         }
