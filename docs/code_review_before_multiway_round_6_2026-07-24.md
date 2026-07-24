@@ -468,7 +468,7 @@ solver root.
 
 ### P2-1: finite extreme multiway CFR inputs can produce non-finite outputs
 
-Status: **Open.**
+Status: **Fixed in the P2-1 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -497,9 +497,21 @@ At least 20 cases must cover maximum finite values, mixed scales, cancellation,
 overflowing node values/deltas, NashConv accumulation, and unchanged output
 rows after rejection.
 
+Implemented fix:
+
+- Regret matching now normalizes by the largest positive regret, avoiding an
+  overflowing positive-regret sum while producing a finite normalized row.
+- Full-tree and external-sampling updates reject non-finite node values and
+  deltas before returning an update; NashConv rejects non-finite derived values.
+
+Regression coverage added:
+
+`tests/test_multiway_numerical_contract.cpp` covers more than 20 extreme
+finite-regret, delta, NashConv, and transactional row-preservation scenarios.
+
 ### P2-2: exact-oracle IDs and pipeline counts still narrow without checks
 
-Status: **Open.**
+Status: **Fixed in the P2-2 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -527,11 +539,25 @@ At least 20 checked-boundary cases must cover exact maximum values, first
 overflowing values, multiplication/addition overflow, and unchanged state on
 rejection without allocating multi-gigabyte buffers.
 
+Implemented fix:
+
+- Added checked `size_t` addition and explicit `size_t` to `uint32_t`
+  conversion helpers.
+- Infoset-registry insertion rejects an unrepresentable ID before mutation, and
+  exact DCFR accumulation rows now retain `size_t` offsets.
+- Flat-pipeline graph, bucket, value, and terminal-node counts validate every
+  narrowing operation before publishing the plan.
+
+Regression coverage added:
+
+`tests/test_exact_oracle_count_contract.cpp` covers representable boundaries,
+20 first-overflow values, and arena-addition overflow without large allocations.
+
 ## P3 findings
 
 ### P3-1: `BrWalkMode::Vector` is accepted but ignored
 
-Status: **Open.**
+Status: **Fixed fail-closed in the P3-1 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -553,6 +579,17 @@ Required regression coverage:
 
 At least 20 mode-boundary calls must prove that `PerCombo` remains functional
 and unsupported/unknown values fail before tree construction.
+
+Implemented fix:
+
+- `compute_exploitability_and_value_with_mode()` now accepts only
+  `BrWalkMode::PerCombo`; `Vector` and unknown enum values throw before the
+  game tree is constructed.
+
+Regression coverage added:
+
+`tests/test_br_walk_mode_contract.cpp` covers `Vector`, 19 unknown mode values,
+and the supported per-combo path.
 
 ## Repair order
 
