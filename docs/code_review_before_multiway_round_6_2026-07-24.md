@@ -285,7 +285,7 @@ families, vector traversal ownership, and recursive output sensitivity.
 
 ### P1-2: the class-169 preflop tree ignores its action abstraction and permits unanswerable raises
 
-Status: **Open.**
+Status: **Fixed in the P1-2 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -318,6 +318,32 @@ Required regression coverage:
 At least 20 tree cases must cover custom sizing menus, deduplication/clamping,
 short stacks, calls, all-ins, no-covering-stack states, raise caps, and the
 absence of empty decision nodes.
+
+Implemented fix:
+
+- `PreflopBettingTree::build()` now validates the complete `HUNLConfig` and
+  rejects non-preflop or already-resolved private-card configurations.
+- The class-169 tree now derives actions and chip/state transitions from the
+  canonical `HUNLState` action engine. Configured raise and bet menus, menu
+  order, rounding, deduplication, raise caps, all-in policy, automatic all-in
+  thresholds, and forced-all-in thresholds therefore match the main game.
+- Aggressive actions are filtered whenever the opponent is already all-in or
+  has no chips behind. The remaining fold/call response is applied through the
+  canonical transition, including matched contributions and returned unmatched
+  chips.
+- Applied action tokens and public-history suffixes now come from the canonical
+  state history rather than a second hand-written encoding.
+- Tree construction rejects an empty decision menu and preserves a one-to-one
+  action/child alignment.
+
+Regression coverage added:
+
+`tests/test_preflop_tree_action_contract.cpp` contains 35 independent test cases
+covering custom and reordered menus, min-raise clamping and deduplication,
+all-in clamping, empty menus, caps zero through three, limps and big-blind
+options, calls/folds, explicit and automatic all-ins, forced thresholds,
+opponent actionability, forced-blind all-ins, antes, history keys, structural
+invariants, and invalid configurations.
 
 ### P1-3: direct solver exploitability uses a different metric than wrapper output
 
