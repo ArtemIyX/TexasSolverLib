@@ -332,7 +332,7 @@ struct HUNLSampledRangeSession::Impl {
                 const auto traverser = static_cast<PlayerId>(trajectory_id & 1U);
                 const auto seed = PcsRng::mix_seed(config.seed, trajectory_id, batch + 1U,
                                                     static_cast<std::uint64_t>(traverser));
-                const auto deal_index = [&deals, seed] {
+                const auto deal_index = [this, seed] {
                     PcsRng deal_rng(seed);
                     const auto draw = deal_rng.next_unit_f64();
                     double cumulative = 0.0;

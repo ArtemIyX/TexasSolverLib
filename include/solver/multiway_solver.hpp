@@ -19,6 +19,9 @@ struct MultiwayPublicStateId {
     constexpr bool operator==(const MultiwayPublicStateId& other) const noexcept {
         return value == other.value;
     }
+    constexpr bool operator!=(const MultiwayPublicStateId& other) const noexcept {
+        return !(*this == other);
+    }
     constexpr bool operator<(const MultiwayPublicStateId& other) const noexcept {
         return value < other.value;
     }
