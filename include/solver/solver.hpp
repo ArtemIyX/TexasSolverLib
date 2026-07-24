@@ -253,12 +253,7 @@ Value best_response_value(const StrategyMap& strategy, std::size_t br_player) {
 
 template <class G>
 Value exploitability(const StrategyMap& strategy) {
-    const auto on_policy = expected_value(G::initial(), strategy);
-    Value total = 0.0;
-    for (std::size_t player = 0; player < on_policy.size(); ++player) {
-        total += best_response_value<G>(strategy, player) - on_policy[player];
-    }
-    return total / static_cast<Value>(on_policy.size());
+    return mean_unilateral_improvement(G::initial(), strategy);
 }
 
 template <class G>

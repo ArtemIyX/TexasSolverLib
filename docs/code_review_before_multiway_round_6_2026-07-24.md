@@ -347,7 +347,7 @@ invariants, and invalid configurations.
 
 ### P1-3: direct solver exploitability uses a different metric than wrapper output
 
-Status: **Open.**
+Status: **Fixed in the P1-3 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -375,6 +375,31 @@ Required regression coverage:
 
 At least 20 constant-sum and zero-sum cases across direct sequential, direct
 parallel, and wrapper entry points must agree on value and exploitability.
+
+Implemented fix:
+
+- Added one shared heads-up metric path that computes the two on-policy values,
+  an infoset-constrained best response for each player, and mean unilateral
+  improvement.
+- Direct recursive and both direct parallel completion paths now report that
+  shared metric instead of `BR0 + BR1`.
+- The public generic wrapper delegates to the same implementation, removing the
+  former direct/wrapper unit mismatch.
+- Removed the direct solver's state-by-state maximizing helper, which was not
+  infoset-constrained and could overstate a best response in imperfect-
+  information games.
+- Non-zero constant-sum utility is now canceled by subtracting each player's
+  on-policy value before averaging; an initial pot can no longer appear as
+  exploitability.
+
+Regression coverage added:
+
+`tests/test_solver_exploitability_contract.cpp` contains 32 independent test
+cases covering zero-sum and positive/negative/non-integral constant-sum games,
+mixed and pure strategies, constant shifts, direct recursive Kuhn/Leduc,
+single- and multi-worker parallel solvers, public sequential/parallel wrappers,
+metric recomputation from exported strategies, and a non-zero-sum direct
+solver root.
 
 ## P2 findings
 

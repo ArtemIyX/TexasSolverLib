@@ -294,81 +294,214 @@ inline std::vector<Probability> normalize_or_uniform(const std::vector<double>& 
 }
 
 template <class G>
-double expected_value_player(
+std::array<Value, 2> profile_values(
     const G& state,
-    const std::unordered_map<InfosetKey, std::vector<Probability>>& strategy,
-    PlayerId target_player) {
+    const std::unordered_map<InfosetKey, std::vector<Probability>>& strategy) {
     if (state.is_terminal()) {
-        return state.utility().at(static_cast<std::size_t>(target_player));
+        const auto utility = state.utility();
+        return {utility.at(0), utility.at(1)};
     }
 
     const PlayerId player = state.current_player();
     if (player < 0) {
-        double value = 0.0;
+        std::array<Value, 2> value = {0.0, 0.0};
         for (const auto& outcome : state.chance_outcomes()) {
-            value += outcome.probability *
-                     expected_value_player(state.next_state(outcome.action), strategy, target_player);
+            const auto child = profile_values(
+                state.next_state(outcome.action), strategy);
+            value[0] += outcome.probability * child[0];
+            value[1] += outcome.probability * child[1];
         }
         return value;
     }
 
     const auto actions = state.legal_actions();
-    const auto key = state.infoset_key(player);
-    auto it = strategy.find(key);
-    const std::vector<Probability> local =
-        (it != strategy.end() && it->second.size() == actions.size())
-            ? it->second
-            : std::vector<Probability>(actions.size(), 1.0 / static_cast<double>(actions.size()));
-
-    double value = 0.0;
-    for (std::size_t i = 0; i < actions.size(); ++i) {
-        value += local[i] *
-                 expected_value_player(state.next_state(actions[i]), strategy, target_player);
+    const auto it = strategy.find(state.infoset_key(player));
+    const auto has_strategy =
+        it != strategy.end() && it->second.size() == actions.size();
+    const auto uniform = actions.empty()
+        ? 0.0
+        : 1.0 / static_cast<double>(actions.size());
+    std::array<Value, 2> value = {0.0, 0.0};
+    for (std::size_t action = 0; action < actions.size(); ++action) {
+        const auto probability =
+            has_strategy ? it->second[action] : uniform;
+        const auto child =
+            profile_values(state.next_state(actions[action]), strategy);
+        value[0] += probability * child[0];
+        value[1] += probability * child[1];
     }
     return value;
 }
 
 template <class G>
-double best_response_value(
+Value constrained_br_state_value(
     const G& state,
-    const std::unordered_map<InfosetKey, std::vector<Probability>>& strategy,
-    PlayerId br_player) {
+    std::size_t br_player,
+    const std::unordered_map<InfosetKey, std::size_t>& best_action,
+    const std::unordered_map<InfosetKey, std::vector<Probability>>& strategy) {
     if (state.is_terminal()) {
-        return state.utility().at(static_cast<std::size_t>(br_player));
+        return state.utility().at(br_player);
     }
 
     const PlayerId player = state.current_player();
     if (player < 0) {
-        double value = 0.0;
+        Value value = 0.0;
         for (const auto& outcome : state.chance_outcomes()) {
-            value += outcome.probability *
-                     best_response_value(state.next_state(outcome.action), strategy, br_player);
+            value += outcome.probability * constrained_br_state_value(
+                state.next_state(outcome.action),
+                br_player,
+                best_action,
+                strategy);
         }
         return value;
     }
 
     const auto actions = state.legal_actions();
-    if (player == br_player) {
-        double best = -std::numeric_limits<double>::infinity();
-        for (const auto action : actions) {
-            best = std::max(best, best_response_value(state.next_state(action), strategy, br_player));
-        }
-        return best;
+    if (static_cast<std::size_t>(player) == br_player) {
+        const auto it = best_action.find(state.infoset_key(player));
+        const auto action = it == best_action.end() ? 0U : it->second;
+        return constrained_br_state_value(
+            state.next_state(actions.at(action)),
+            br_player,
+            best_action,
+            strategy);
     }
 
-    const auto key = state.infoset_key(player);
-    auto it = strategy.find(key);
-    const std::vector<Probability> local =
-        (it != strategy.end() && it->second.size() == actions.size())
-            ? it->second
-            : std::vector<Probability>(actions.size(), 1.0 / static_cast<double>(actions.size()));
-
-    double value = 0.0;
-    for (std::size_t i = 0; i < actions.size(); ++i) {
-        value += local[i] *
-                 best_response_value(state.next_state(actions[i]), strategy, br_player);
+    const auto it = strategy.find(state.infoset_key(player));
+    const auto has_strategy =
+        it != strategy.end() && it->second.size() == actions.size();
+    const auto uniform = actions.empty()
+        ? 0.0
+        : 1.0 / static_cast<double>(actions.size());
+    Value value = 0.0;
+    for (std::size_t action = 0; action < actions.size(); ++action) {
+        const auto probability =
+            has_strategy ? it->second[action] : uniform;
+        value += probability * constrained_br_state_value(
+            state.next_state(actions[action]),
+            br_player,
+            best_action,
+            strategy);
     }
     return value;
+}
+
+template <class G>
+void collect_br_infosets(
+    const G& state,
+    Probability counterfactual_reach,
+    std::size_t br_player,
+    const std::unordered_map<InfosetKey, std::vector<Probability>>& strategy,
+    std::unordered_map<
+        InfosetKey,
+        std::vector<std::pair<G, Probability>>>& groups) {
+    if (state.is_terminal()) {
+        return;
+    }
+
+    const PlayerId player = state.current_player();
+    if (player < 0) {
+        for (const auto& outcome : state.chance_outcomes()) {
+            collect_br_infosets(
+                state.next_state(outcome.action),
+                counterfactual_reach * outcome.probability,
+                br_player,
+                strategy,
+                groups);
+        }
+        return;
+    }
+
+    const auto actions = state.legal_actions();
+    if (static_cast<std::size_t>(player) == br_player) {
+        groups[state.infoset_key(player)].push_back(
+            {state, counterfactual_reach});
+        for (const auto action : actions) {
+            collect_br_infosets(
+                state.next_state(action),
+                counterfactual_reach,
+                br_player,
+                strategy,
+                groups);
+        }
+        return;
+    }
+
+    const auto it = strategy.find(state.infoset_key(player));
+    const auto has_strategy =
+        it != strategy.end() && it->second.size() == actions.size();
+    const auto uniform = actions.empty()
+        ? 0.0
+        : 1.0 / static_cast<double>(actions.size());
+    for (std::size_t action = 0; action < actions.size(); ++action) {
+        const auto probability =
+            has_strategy ? it->second[action] : uniform;
+        collect_br_infosets(
+            state.next_state(actions[action]),
+            counterfactual_reach * probability,
+            br_player,
+            strategy,
+            groups);
+    }
+}
+
+template <class G>
+Value constrained_best_response_value(
+    const G& root,
+    const std::unordered_map<InfosetKey, std::vector<Probability>>& strategy,
+    std::size_t br_player) {
+    std::unordered_map<
+        InfosetKey,
+        std::vector<std::pair<G, Probability>>> groups;
+    collect_br_infosets(root, 1.0, br_player, strategy, groups);
+
+    std::unordered_map<InfosetKey, std::size_t> best_action;
+    for (;;) {
+        const auto previous = best_action;
+        for (const auto& [key, entries] : groups) {
+            const auto action_count = entries.front().first.legal_actions().size();
+            std::vector<Value> action_values(action_count, 0.0);
+            for (const auto& [state, counterfactual_reach] : entries) {
+                const auto actions = state.legal_actions();
+                for (std::size_t action = 0; action < actions.size(); ++action) {
+                    action_values[action] +=
+                        counterfactual_reach * constrained_br_state_value(
+                            state.next_state(actions[action]),
+                            br_player,
+                            best_action,
+                            strategy);
+                }
+            }
+
+            std::size_t best = 0;
+            for (std::size_t action = 1; action < action_values.size(); ++action) {
+                if (action_values[action] > action_values[best]) {
+                    best = action;
+                }
+            }
+            best_action[key] = best;
+        }
+        if (best_action == previous) {
+            break;
+        }
+    }
+
+    return constrained_br_state_value(
+        root, br_player, best_action, strategy);
+}
+
+template <class G>
+Value mean_unilateral_improvement(
+    const G& root,
+    const std::unordered_map<InfosetKey, std::vector<Probability>>& strategy) {
+    const auto on_policy = profile_values(root, strategy);
+    Value total_improvement = 0.0;
+    for (std::size_t player = 0; player < on_policy.size(); ++player) {
+        total_improvement +=
+            constrained_best_response_value(root, strategy, player) -
+            on_policy[player];
+    }
+    return total_improvement / static_cast<Value>(on_policy.size());
 }
 
 }  // namespace detail
@@ -523,10 +656,12 @@ SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
     out.iterations = iterations;
     out.used_parallel = false;
     out.traversal_seconds = std::chrono::duration<double>(traversal_finish - traversal_start).count();
-    out.game_value = detail::expected_value_player(root_, average_strategy_by_key, 0);
-    const double br0 = detail::best_response_value(root_, average_strategy_by_key, 0);
-    const double br1 = detail::best_response_value(root_, average_strategy_by_key, 1);
-    out.exploitability = br0 + br1;
+    const auto values =
+        detail::profile_values(root_, average_strategy_by_key);
+    out.game_value = values[0];
+    out.exploitability =
+        detail::mean_unilateral_improvement(
+            root_, average_strategy_by_key);
     out.average_strategy.reserve(average_strategy.size());
     for (auto& [key, strategy] : average_strategy_by_key) {
         out.average_strategy.emplace_back(std::move(key), std::move(strategy));

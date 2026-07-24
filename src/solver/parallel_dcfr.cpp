@@ -669,10 +669,12 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         out.profile.batch_count = batches.size();
         out.profile.snapshot_seconds = snapshot_seconds;
         out.profile.merge_seconds = merge_seconds;
-        out.game_value = detail::expected_value_player(root_, average_strategy_by_key, 0);
-        const double br0 = detail::best_response_value(root_, average_strategy_by_key, 0);
-        const double br1 = detail::best_response_value(root_, average_strategy_by_key, 1);
-        out.exploitability = br0 + br1;
+        const auto values =
+            detail::profile_values(root_, average_strategy_by_key);
+        out.game_value = values[0];
+        out.exploitability =
+            detail::mean_unilateral_improvement(
+                root_, average_strategy_by_key);
         out.average_strategy.reserve(average_strategy.size());
         for (auto& [key, strategy] : average_strategy_by_key) {
             out.average_strategy.emplace_back(std::move(key), std::move(strategy));
@@ -869,10 +871,12 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     out.profile.snapshot_seconds = snapshot_seconds;
     out.profile.merge_seconds = merge_seconds;
     out.profile.workers = pool.worker_profiles;
-    out.game_value = detail::expected_value_player(root_, average_strategy_by_key, 0);
-    const double br0 = detail::best_response_value(root_, average_strategy_by_key, 0);
-    const double br1 = detail::best_response_value(root_, average_strategy_by_key, 1);
-    out.exploitability = br0 + br1;
+    const auto values =
+        detail::profile_values(root_, average_strategy_by_key);
+    out.game_value = values[0];
+    out.exploitability =
+        detail::mean_unilateral_improvement(
+            root_, average_strategy_by_key);
     out.average_strategy.reserve(average_strategy.size());
     for (auto& [key, strategy] : average_strategy_by_key) {
         out.average_strategy.emplace_back(std::move(key), std::move(strategy));
