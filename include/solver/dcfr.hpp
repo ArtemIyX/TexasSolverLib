@@ -4,6 +4,7 @@
 #include "core/game.hpp"
 #include "util/infoset_lookup.hpp"
 #include "util/infoset_registry.hpp"
+#include "util/iteration_range.hpp"
 
 #include <algorithm>
 #include <array>
@@ -29,6 +30,48 @@ struct DCFRConfig {
     double gamma = 2.0;
 };
 
+inline void validate_alpha(double alpha) {
+    if (!std::isfinite(alpha) || alpha <= 0.0) {
+        throw std::invalid_argument(
+            "DCFR alpha must be > 0 and finite; alpha=0 silently stalls convergence");
+    }
+    if (alpha < 0.5) {
+        std::cerr << "[dcfr] WARNING: alpha=" << alpha
+                  << " is below the paper's analyzed range; production uses 1.5.\n";
+    }
+}
+
+inline void validate_dcfr_config_values(double alpha, double beta, double gamma) {
+    validate_alpha(alpha);
+    if (!std::isfinite(beta) || !std::isfinite(gamma) ||
+        beta < 0.0 || gamma < 0.0) {
+        throw std::invalid_argument(
+            "DCFR beta and gamma must be non-negative and finite");
+    }
+}
+
+struct DCFRIterationScales {
+    double positive_regret = 1.0;
+    double negative_regret = 1.0;
+    double strategy_sum = 1.0;
+};
+
+[[nodiscard]] inline DCFRIterationScales dcfr_iteration_scales(
+    std::uint32_t iteration,
+    double alpha,
+    double beta,
+    double gamma) {
+    if (iteration == 0U) {
+        throw std::invalid_argument("DCFR discount iteration must be positive");
+    }
+    const auto t = static_cast<double>(iteration);
+    return DCFRIterationScales{
+        1.0 / (1.0 + std::pow(t, -alpha)),
+        1.0 / (1.0 + std::pow(t, -beta)),
+        std::pow(t / (t + 1.0), gamma),
+    };
+}
+
 /**
  * @brief Base type for solver implementations.
  */
@@ -41,6 +84,8 @@ namespace detail {
 
 struct InfosetAccum {
     std::uint32_t offset = 0;
+    std::size_t action_count = 0;
+    std::uint32_t last_discount_iter = 0;
     bool active = false;
 };
 
@@ -102,6 +147,7 @@ public:
         active_ids_.clear();
         regret_arena_.clear();
         strategy_arena_.clear();
+        current_discount_iter_ = 0;
     }
 
     [[nodiscard]] std::size_t size() const noexcept {
@@ -124,16 +170,20 @@ public:
         auto& row = rows_[id.value];
         if (!row.active) {
             row.offset = static_cast<std::uint32_t>(regret_arena_.size());
+            row.action_count = action_count;
+            row.last_discount_iter = current_discount_iter_;
             row.active = true;
             active_ids_.push_back(id);
             regret_arena_.resize(regret_arena_.size() + action_count, 0.0);
             strategy_arena_.resize(strategy_arena_.size() + action_count, 0.0);
+        } else if (row.action_count != action_count) {
+            throw std::invalid_argument("infoset action count changed");
         }
 
         return InfosetAccumView{
             regret_arena_.data() + row.offset,
             strategy_arena_.data() + row.offset,
-            action_count,
+            row.action_count,
         };
     }
 
@@ -143,11 +193,48 @@ public:
         }
 
         const auto& row = rows_[id.value];
+        if (row.action_count != action_count) {
+            throw std::invalid_argument("infoset action count changed");
+        }
         return ConstInfosetAccumView{
             regret_arena_.data() + row.offset,
             strategy_arena_.data() + row.offset,
-            action_count,
+            row.action_count,
         };
+    }
+
+    void begin_dcfr_iteration(std::uint32_t target, const DCFRConfig& config) {
+        if (target == 0U) {
+            throw std::invalid_argument("DCFR discount iteration must be positive");
+        }
+        if (target < current_discount_iter_) {
+            throw std::invalid_argument("DCFR discount iteration cannot move backwards");
+        }
+        if (target == current_discount_iter_) {
+            return;
+        }
+
+        for (const auto id : active_ids_) {
+            auto& row = rows_[id.value];
+            for_each_u32_after(
+                row.last_discount_iter,
+                target,
+                [&](std::uint32_t iteration) {
+                    const auto scales = dcfr_iteration_scales(
+                        iteration, config.alpha, config.beta, config.gamma);
+                    for (std::size_t action = 0; action < row.action_count; ++action) {
+                        auto& regret = regret_arena_[row.offset + action];
+                        if (regret > 0.0) {
+                            regret *= scales.positive_regret;
+                        } else if (regret < 0.0) {
+                            regret *= scales.negative_regret;
+                        }
+                        strategy_arena_[row.offset + action] *= scales.strategy_sum;
+                    }
+                });
+            row.last_discount_iter = target;
+        }
+        current_discount_iter_ = target;
     }
 
 private:
@@ -155,6 +242,7 @@ private:
     std::vector<InfosetId> active_ids_;
     std::vector<double> regret_arena_;
     std::vector<double> strategy_arena_;
+    std::uint32_t current_discount_iter_ = 0;
 };
 
 inline std::vector<Probability> normalize_strategy(const double* regrets, std::size_t regret_count) {
@@ -285,17 +373,6 @@ double best_response_value(
 
 }  // namespace detail
 
-inline void validate_alpha(double alpha) {
-    if (!std::isfinite(alpha) || alpha <= 0.0) {
-        throw std::invalid_argument(
-            "DCFR alpha must be > 0 and finite; alpha=0 silently stalls convergence");
-    }
-    if (alpha < 0.5) {
-        std::cerr << "[dcfr] WARNING: alpha=" << alpha
-                  << " is below the paper's analyzed range; production uses 1.5.\n";
-    }
-}
-
 template <class G>
 class DCFRSolver : public DCFRSolverBase {
 public:
@@ -330,10 +407,7 @@ DCFRSolver<G>::DCFRSolver(DCFRConfig config, G root) : config_(config), root_(st
 
 template <class G>
 void DCFRSolver<G>::validate_config() const {
-    validate_alpha(config_.alpha);
-    if (config_.beta < 0.0 || config_.gamma < 0.0) {
-        throw std::invalid_argument("DCFR beta and gamma must be non-negative");
-    }
+    validate_dcfr_config_values(config_.alpha, config_.beta, config_.gamma);
 }
 
 template <class G>
@@ -429,6 +503,7 @@ SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
     locked_by_id_.clear();
     const auto traversal_start = std::chrono::steady_clock::now();
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
+        infosets_.begin_dcfr_iteration(iter + 1U, config_);
         cfr(root_, 0, {1.0, 1.0}, 1.0);
         cfr(root_, 1, {1.0, 1.0}, 1.0);
     }

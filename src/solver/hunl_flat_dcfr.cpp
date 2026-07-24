@@ -350,10 +350,7 @@ HUNLFlatDCFR::HUNLFlatDCFR(
     const auto max_bucket_count = max_bucket_width(infoset_table_);
     const auto max_depth_width = max_depth_slice_width(graph_);
     validate_flat_solver_graph(graph_);
-    validate_alpha(alpha_);
-    if (beta_ < 0.0 || gamma_ < 0.0) {
-        throw std::invalid_argument("HUNLFlatDCFR beta and gamma must be non-negative");
-    }
+    validate_dcfr_config_values(alpha_, beta_, gamma_);
     for (auto& scratch : worker_scratch_) {
         scratch.ensure_capacity(
             max_depth_width,
@@ -666,14 +663,13 @@ void HUNLFlatDCFR::worker_discount_stage(std::size_t worker_index) {
             meta.last_discount_iter,
             target_iter,
             [&](std::uint32_t tt) {
-                const auto t = static_cast<double>(tt);
-                const auto ta = std::pow(t, alpha_);
-                const auto tb = std::pow(t, beta_);
-                const auto pos_scale = ta / (ta + 1.0);
-                const auto neg_scale = tb / (tb + 1.0);
-                const auto strat_scale = std::pow(t / (t + 1.0), gamma_);
+                const auto scales =
+                    dcfr_iteration_scales(tt, alpha_, beta_, gamma_);
                 infoset_table_.discount_values(
-                    meta.id, pos_scale, neg_scale, strat_scale);
+                    meta.id,
+                    scales.positive_regret,
+                    scales.negative_regret,
+                    scales.strategy_sum);
             });
         meta.last_discount_iter = target_iter;
     }

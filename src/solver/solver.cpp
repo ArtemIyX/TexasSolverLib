@@ -10,10 +10,7 @@ namespace core {
 
 void validate_dcfr_parameters(double alpha, double beta, double gamma) {
     TEXASSOLVER_PROFILE_SCOPE("solver.validate_dcfr_parameters");
-    validate_alpha(alpha);
-    if (beta < 0.0 || gamma < 0.0) {
-        throw std::invalid_argument("DCFR beta and gamma must be non-negative");
-    }
+    validate_dcfr_config_values(alpha, beta, gamma);
 }
 
 SolveOutput solve_kuhn(

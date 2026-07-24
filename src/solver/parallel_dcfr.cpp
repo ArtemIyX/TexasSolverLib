@@ -209,10 +209,7 @@ ParallelDCFRSolver<G>::ParallelDCFRSolver(
       root_(std::move(root)),
       worker_count_(std::max<std::size_t>(1, worker_count)),
       frontier_multiplier_(std::max<std::size_t>(1, frontier_multiplier)) {
-    validate_alpha(config_.alpha);
-    if (config_.beta < 0.0 || config_.gamma < 0.0) {
-        throw std::invalid_argument("DCFR beta and gamma must be non-negative");
-    }
+    validate_dcfr_config_values(config_.alpha, config_.beta, config_.gamma);
 }
 
 bool profile_parallel_dcfr_enabled() {
@@ -615,6 +612,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
         double snapshot_seconds = 0.0;
         double merge_seconds = 0.0;
         for (std::uint32_t iter = 0; iter < iterations; ++iter) {
+            infosets_.begin_dcfr_iteration(iter + 1U, config_);
             for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
                 const auto snapshot_start = std::chrono::steady_clock::now();
                 const auto strategy = build_strategy_snapshot(infosets_);
@@ -798,6 +796,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     double snapshot_seconds = 0.0;
     double merge_seconds = 0.0;
     for (std::uint32_t iter = 0; iter < iterations; ++iter) {
+        infosets_.begin_dcfr_iteration(iter + 1U, config_);
         for (std::size_t traversing_player = 0; traversing_player < 2; ++traversing_player) {
             const auto snapshot_start = std::chrono::steady_clock::now();
             {

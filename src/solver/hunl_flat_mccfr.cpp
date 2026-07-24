@@ -1,4 +1,5 @@
 #include "solver/hunl_flat_mccfr.hpp"
+#include "solver/dcfr.hpp"
 #include "util/iteration_range.hpp"
 
 #include "util/pcs.hpp"
@@ -69,9 +70,8 @@ void validate_mccfr_config(const HUNLFlatMCCFRConfig& config) {
     if (config.as_epsilon < 0.0 || config.as_epsilon > 1.0) {
         throw std::invalid_argument("HUNLFlatMCCFR as_epsilon must be in [0, 1]");
     }
-    if (config.dcfr_alpha < 0.0 || config.dcfr_beta < 0.0 || config.dcfr_gamma < 0.0) {
-        throw std::invalid_argument("HUNLFlatMCCFR DCFR exponents must be non-negative");
-    }
+    validate_dcfr_config_values(
+        config.dcfr_alpha, config.dcfr_beta, config.dcfr_gamma);
     if (config.baseline_mode != HUNLFlatBaselineMode::None &&
         config.baseline_mode != HUNLFlatBaselineMode::MovingAverage) {
         throw std::invalid_argument(
@@ -1966,15 +1966,16 @@ void HUNLFlatMCCFR::discount_dense_infoset_row(InfosetId infoset_id, std::uint32
         meta.last_discount_iter,
         target_iteration,
         [&](std::uint32_t tt) {
-            const auto t = static_cast<double>(tt);
-            const auto ta = std::pow(t, config_.dcfr_alpha);
-            const auto tb = std::pow(t, config_.dcfr_beta);
-            const auto pos_scale = ta / (ta + 1.0);
-            const auto neg_scale = tb / (tb + 1.0);
-            const auto strat_scale =
-                std::pow(t / (t + 1.0), config_.dcfr_gamma);
+            const auto scales = dcfr_iteration_scales(
+                tt,
+                config_.dcfr_alpha,
+                config_.dcfr_beta,
+                config_.dcfr_gamma);
             infoset_table_.discount_values(
-                infoset_id, pos_scale, neg_scale, strat_scale);
+                infoset_id,
+                scales.positive_regret,
+                scales.negative_regret,
+                scales.strategy_sum);
         });
     meta.last_discount_iter = target_iteration;
 }
@@ -1990,22 +1991,20 @@ void HUNLFlatMCCFR::discount_sparse_infoset_row(InfosetId infoset_id, std::uint3
         meta->last_discount_iter,
         target_iteration,
         [&](std::uint32_t tt) {
-            const auto t = static_cast<double>(tt);
-            const auto ta = std::pow(t, config_.dcfr_alpha);
-            const auto tb = std::pow(t, config_.dcfr_beta);
-            const auto pos_scale = ta / (ta + 1.0);
-            const auto neg_scale = tb / (tb + 1.0);
-            const auto strat_scale =
-                std::pow(t / (t + 1.0), config_.dcfr_gamma);
+            const auto scales = dcfr_iteration_scales(
+                tt,
+                config_.dcfr_alpha,
+                config_.dcfr_beta,
+                config_.dcfr_gamma);
             for (std::size_t offset = 0; offset < row.value_count(); ++offset) {
                 const auto regret = static_cast<double>(row.regret[offset]);
                 row.regret[offset] = static_cast<float>(
                     regret >= 0.0
-                        ? regret * pos_scale
-                        : regret * neg_scale);
+                        ? regret * scales.positive_regret
+                        : regret * scales.negative_regret);
                 row.strategy_sum[offset] = static_cast<float>(
                     static_cast<double>(row.strategy_sum[offset]) *
-                    strat_scale);
+                    scales.strategy_sum);
             }
         });
     meta->last_discount_iter = target_iteration;

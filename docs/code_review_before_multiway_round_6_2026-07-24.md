@@ -228,7 +228,7 @@ every started worker observes cancellation and exits.
 
 ### P1-1: several advertised DCFR paths do not apply DCFR
 
-Status: **Open.**
+Status: **Fixed in the P1-1 remediation commit; tests added but not executed.**
 
 Evidence:
 
@@ -259,6 +259,29 @@ Required regression coverage:
 At least 20 cases must cover recursive, parallel, generic vector, class-169,
 flat, and MCCFR parameter validation; exact row-scale identities; and observable
 parameter sensitivity after multiple iterations.
+
+Implemented fix:
+
+- Added one shared, overflow-stable DCFR scale calculation and one finite
+  exponent validator.
+- Recursive and parallel infoset tables now discount every existing row at the
+  iteration boundary, before either player traversal. Rows first discovered
+  during an iteration inherit that iteration's discount cursor.
+- Generic vector and class-169 solvers now reset their iteration cursors for a
+  fresh solve, discount all rows before both player traversals, and update
+  regrets/averages only on the owning player's traversal.
+- Flat DCFR and dense/sparse MCCFR use the same stable scale calculation, so
+  very large finite exponents cannot overflow `pow(t, exponent)` into NaN.
+- Recursive, parallel, vector, class-169, flat, MCCFR, and facade validation now
+  reject non-finite beta/gamma as well as invalid alpha and negative values.
+
+Regression coverage added:
+
+`tests/test_dcfr_discount_contract.cpp` contains 38 independent test cases
+covering exact scale identities, delayed and idempotent discounting, late row
+activation, row-shape invariants, all three parameter sensitivities, maximum
+finite exponents, every non-finite/negative parameter class, all six solver
+families, vector traversal ownership, and recursive output sensitivity.
 
 ### P1-2: the class-169 preflop tree ignores its action abstraction and permits unanswerable raises
 

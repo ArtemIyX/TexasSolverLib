@@ -350,9 +350,7 @@ PreflopBettingTree PreflopBettingTree::build(const HUNLConfig& config) {
 
 Class169VectorDCFR::Class169VectorDCFR(std::size_t hand_count, double alpha, double beta, double gamma)
     : hand_count_(hand_count), alpha_(alpha), beta_(beta), gamma_(gamma) {
-    (void)alpha_;
-    (void)beta_;
-    (void)gamma_;
+    validate_dcfr_config_values(alpha_, beta_, gamma_);
 }
 
 void Class169VectorDCFR::compute_strategy(const VectorInfosetData& info, std::vector<double>& out) {
@@ -384,15 +382,12 @@ void Class169VectorDCFR::compute_avg_strategy(const VectorInfosetData& info, std
 void Class169VectorDCFR::discount(VectorInfosetData& info, std::uint32_t t, double alpha, double beta, double gamma) {
     if (info.last_discount_iter >= t) return;
     for_each_u32_after(info.last_discount_iter, t, [&](std::uint32_t tt) {
-        const double tt_f = static_cast<double>(tt);
-        const double pos_scale = std::pow(tt_f, alpha) / (std::pow(tt_f, alpha) + 1.0);
-        const double neg_scale = std::pow(tt_f, beta) / (std::pow(tt_f, beta) + 1.0);
-        const double strat_scale = std::pow(tt_f / (tt_f + 1.0), gamma);
+        const auto scales = dcfr_iteration_scales(tt, alpha, beta, gamma);
         for (double& r : info.regret) {
-            if (r > 0.0) r *= pos_scale;
-            else if (r < 0.0) r *= neg_scale;
+            if (r > 0.0) r *= scales.positive_regret;
+            else if (r < 0.0) r *= scales.negative_regret;
         }
-        for (double& s : info.strategy_sum) s *= strat_scale;
+        for (double& s : info.strategy_sum) s *= scales.strategy_sum;
     });
     info.last_discount_iter = t;
 }
@@ -444,8 +439,6 @@ std::vector<double> Class169VectorDCFR::traverse(
         return values;
     }
 
-    discount(info, iteration_, alpha_, beta_, gamma_);
-    compute_strategy(info, strategy);
     std::vector<double> action_values(node.children.size() * hand_count_, 0.0);
     std::vector<double> next_reach(hand_count_, 0.0);
     for (std::size_t a = 0; a < node.children.size(); ++a) {
@@ -482,6 +475,7 @@ void Class169VectorDCFR::solve(
     std::uint32_t iterations,
     const std::vector<double>& root_reach_p0,
     const std::vector<double>& root_reach_p1) {
+    iteration_ = 0;
     infosets_.assign(tree.nodes.size(), std::nullopt);
     for (std::size_t node_idx = 0; node_idx < tree.nodes.size(); ++node_idx) {
         if (tree.nodes[node_idx].kind == PreflopBettingTree::NodeKind::Decision) {
@@ -489,7 +483,12 @@ void Class169VectorDCFR::solve(
         }
     }
     for (std::uint32_t it = 0; it < iterations; ++it) {
-        ++iteration_;
+        iteration_ = checked_next_u32_iteration(iteration_);
+        for (auto& slot : infosets_) {
+            if (slot.has_value()) {
+                discount(*slot, iteration_, alpha_, beta_, gamma_);
+            }
+        }
         (void)traverse(tree, cache, 0, 0, root_reach_p0, root_reach_p1);
         (void)traverse(tree, cache, 0, 1, root_reach_p1, root_reach_p0);
     }

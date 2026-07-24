@@ -123,7 +123,7 @@ VectorDCFR VectorDCFR::with_init_noise_masked(
     double regret_init_noise,
     std::uint64_t rng_seed,
     const std::vector<bool>& skip_mask) {
-    validate_alpha(alpha_in);
+    validate_dcfr_config_values(alpha_in, beta_in, gamma_in);
     if (!skip_mask.empty() && skip_mask.size() != tree.nodes.size()) {
         throw std::invalid_argument("skip_mask must be empty or node-aligned");
     }
@@ -201,14 +201,17 @@ void VectorDCFR::discount(VectorInfosetData& info, std::uint32_t t, double alpha
         return;
     }
     for_each_u32_after(info.last_discount_iter, t, [&](std::uint32_t tt) {
-        const auto tt_f = static_cast<double>(tt);
-        const auto ta = std::pow(tt_f, alpha_in);
-        const auto tb = std::pow(tt_f, beta_in);
-        const auto pos_scale = ta / (ta + 1.0);
-        const auto neg_scale = tb / (tb + 1.0);
-        const auto strat_scale = std::pow(tt_f / (tt_f + 1.0), gamma_in);
-        discount_regrets(info.regret.data(), info.regret.size(), pos_scale, neg_scale);
-        discount_strategy_sum(info.strategy_sum.data(), info.strategy_sum.size(), strat_scale);
+        const auto scales = dcfr_iteration_scales(
+            tt, alpha_in, beta_in, gamma_in);
+        discount_regrets(
+            info.regret.data(),
+            info.regret.size(),
+            scales.positive_regret,
+            scales.negative_regret);
+        discount_strategy_sum(
+            info.strategy_sum.data(),
+            info.strategy_sum.size(),
+            scales.strategy_sum);
     });
     info.last_discount_iter = t;
 }
@@ -273,12 +276,17 @@ std::vector<double> VectorDCFR::traverse(
         node_values[h] = value;
     }
 
-    const std::size_t action_count = node.children.size();
-    const std::size_t hand_count = reach_p.size();
-    for (std::size_t h = 0; h < hand_count; ++h) {
-        for (std::size_t a = 0; a < action_count; ++a) {
-            info.regret[h * action_count + a] += reach_opp[h] * (action_values[a * hand_count + h] - node_values[h]);
-            info.strategy_sum[h * action_count + a] += reach_p[h] * strategy[h * action_count + a];
+    if (node.player == update_player) {
+        const std::size_t action_count = node.children.size();
+        const std::size_t hand_count = reach_p.size();
+        for (std::size_t h = 0; h < hand_count; ++h) {
+            for (std::size_t a = 0; a < action_count; ++a) {
+                info.regret[h * action_count + a] +=
+                    reach_opp[h] *
+                    (action_values[a * hand_count + h] - node_values[h]);
+                info.strategy_sum[h * action_count + a] +=
+                    reach_p[h] * strategy[h * action_count + a];
+            }
         }
     }
 
@@ -312,6 +320,7 @@ void VectorDCFR::solve(
     std::size_t hand_count,
     const std::vector<bool>& skip_mask,
     const TerminalEvaluator& terminal_eval) {
+    iteration = 0;
     infosets.assign(tree.nodes.size(), std::nullopt);
     for (std::size_t i = 0; i < tree.nodes.size(); ++i) {
         if (tree.nodes[i].tag == FlatNodeTag::Decision && (skip_mask.empty() || !skip_mask[i])) {
@@ -320,7 +329,12 @@ void VectorDCFR::solve(
     }
     const std::vector<double> root_reach(hand_count, 1.0);
     for (std::uint32_t it = 0; it < iterations; ++it) {
-        ++iteration;
+        iteration = checked_next_u32_iteration(iteration);
+        for (auto& slot : infosets) {
+            if (slot.has_value()) {
+                discount(*slot, iteration, alpha, beta, gamma);
+            }
+        }
         (void)traverse(tree, 0, 0, root_reach, root_reach, terminal_eval);
         (void)traverse(tree, 0, 1, root_reach, root_reach, terminal_eval);
     }
