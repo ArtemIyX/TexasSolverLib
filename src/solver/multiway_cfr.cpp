@@ -116,19 +116,35 @@ double multiway_counterfactual_reach(
 
 std::vector<Probability> multiway_regret_matching(const std::vector<double>& regrets) {
     if (regrets.empty()) throw std::invalid_argument("regret matching requires at least one action");
-    double positive_sum = 0.0;
+    double positive_scale = 0.0;
     for (const auto regret : regrets) {
         if (!std::isfinite(regret)) throw std::invalid_argument("regrets must be finite");
-        if (regret > 0.0) positive_sum += regret;
+        if (regret > positive_scale) positive_scale = regret;
     }
     std::vector<Probability> strategy(regrets.size(), 0.0);
-    if (positive_sum == 0.0) {
+    if (positive_scale == 0.0) {
         std::fill(strategy.begin(), strategy.end(), 1.0 / static_cast<double>(strategy.size()));
         return strategy;
     }
-    for (std::size_t action = 0; action < regrets.size(); ++action) {
-        strategy[action] = regrets[action] > 0.0 ? regrets[action] / positive_sum : 0.0;
+    double scaled_sum = 0.0;
+    for (const auto regret : regrets) {
+        if (regret > 0.0) scaled_sum += regret / positive_scale;
     }
+    if (!std::isfinite(scaled_sum) || scaled_sum <= 0.0) {
+        throw std::overflow_error("regret matching produced a non-finite normalization");
+    }
+    double assigned = 0.0;
+    std::size_t last_positive = 0;
+    for (std::size_t action = 0; action < regrets.size(); ++action) {
+        if (regrets[action] > 0.0) last_positive = action;
+    }
+    for (std::size_t action = 0; action < regrets.size(); ++action) {
+        if (regrets[action] > 0.0 && action != last_positive) {
+            strategy[action] = (regrets[action] / positive_scale) / scaled_sum;
+            assigned += strategy[action];
+        }
+    }
+    strategy[last_positive] = 1.0 - assigned;
     return strategy;
 }
 
@@ -150,10 +166,16 @@ MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
     for (std::size_t action = 0; action < strategy.size(); ++action) {
         update.node_value += strategy[action] * action_values[action];
     }
+    if (!std::isfinite(update.node_value)) {
+        throw std::overflow_error("full-tree CFR update has a non-finite node value");
+    }
     for (std::size_t action = 0; action < strategy.size(); ++action) {
         update.regret_deltas[action] =
             update.counterfactual_reach * (action_values[action] - update.node_value);
         update.strategy_deltas[action] = update.average_strategy_weight * strategy[action];
+        if (!std::isfinite(update.regret_deltas[action]) || !std::isfinite(update.strategy_deltas[action])) {
+            throw std::overflow_error("full-tree CFR update contains a non-finite delta");
+        }
     }
     return update;
 }
@@ -195,6 +217,9 @@ MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
     update.strategy_deltas.resize(request.strategy.size());
     for (std::size_t action = 0; action < request.strategy.size(); ++action) {
         update.node_value += request.strategy[action] * request.sampled_action_values[action];
+    }
+    if (!std::isfinite(update.node_value)) {
+        throw std::overflow_error("external-sampling CFR update has a non-finite node value");
     }
     for (std::size_t action = 0; action < request.strategy.size(); ++action) {
         update.regret_deltas[action] = importance_weight *
@@ -253,11 +278,17 @@ MultiwayNashConv compute_multiway_nash_conv(
             throw std::invalid_argument("NashConv values must be finite");
         }
         result.unilateral_improvements[player] = best_response_values[player] - profile_values[player];
+        if (!std::isfinite(result.unilateral_improvements[player])) {
+            throw std::overflow_error("NashConv unilateral improvement is non-finite");
+        }
         if (diagnostics.method == MultiwayMetricMethod::ExactEnumeration &&
             result.unilateral_improvements[player] < -kExactNashConvTolerance) {
             throw std::invalid_argument("exact NashConv best response is below profile value");
         }
         result.value += result.unilateral_improvements[player];
+        if (!std::isfinite(result.value)) {
+            throw std::overflow_error("NashConv accumulation is non-finite");
+        }
     }
     result.diagnostics = diagnostics;
     return result;
