@@ -319,6 +319,82 @@ Implementation and test evidence:
 Those tests were added but not executed, per `AGENTS.md` and the requested
 no-build/no-test constraint.
 
+### P1-7: a row-admission regression expected an obsolete late export failure
+
+**Status: fixed (2026-07-24; static verification only).**
+
+After action-menu validation moved to row admission, one regression still
+expected an invalid root row to be admitted and fail only at root export. The
+test now asserts the intended immediate `std::invalid_argument` at admission.
+
+Implementation and test evidence:
+
+- `tests/test_multiway_solver.cpp` contains the admission-focused regression
+  `multiway_solver_row_admission_rejects_a_shape_that_disagrees_with_root_actions`.
+
+The test was updated but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
+### P1-8: sparse infoset rows could be admitted for a nonacting seat
+
+**Status: fixed (2026-07-24; static verification only).**
+
+The final code review found that row admission checked the seat range but not
+decision ownership. The coordinator now admits a sparse row only when the
+public betting state is a decision and the infoset seat equals its current
+acting seat.
+
+Implementation and test evidence:
+
+- `src/solver/multiway_solver.cpp` enforces decision-node and acting-seat
+  ownership before admitting a row.
+- `tests/test_multiway_solver.cpp` uses a real checked-action descendant for
+  valid non-root admission and rejects a nonacting seat and a runout state.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
+### P1-9: adapter lineage checks allowed root seat state to reverse
+
+**Status: fixed (2026-07-24; static verification only).**
+
+The final code review found that preserving a seat's total chips did not prove
+that a candidate snapshot descended from the root: it could move committed
+chips back into the stack or reverse a fold/all-in. The adapter now enforces
+monotonic per-seat commitments and irreversible folded/all-in root state in
+addition to its existing total, street, and board-lineage checks.
+
+Implementation and test evidence:
+
+- `src/solver/multiway_terminal_adapter.cpp` rejects reduced root
+  contributions, unfolded root seats, and cleared root all-ins.
+- `tests/test_multiway_terminal_adapter.cpp` constructs valid candidate
+  snapshots and verifies each reversal is rejected.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
+### P1-10: child public states were not bound to a replayable parent action
+
+**Status: fixed (2026-07-24; static verification only).**
+
+The final code review found that child admission only checked whether a parent
+ID existed. Non-root public states now require a distinct history identity,
+the complete parent history plus one appended legal action by the parent’s
+acting seat, a replay-equivalent child betting snapshot, and unchanged
+board/runout metadata for the action edge.
+
+Implementation and test evidence:
+
+- `src/solver/multiway_solver.cpp` replays and validates every admitted
+  parent-to-child betting action.
+- `tests/test_multiway_solver.cpp` uses real checked-action descendants and
+  rejects missing/wrong history, invalid actor/menu, snapshot mismatch,
+  altered board/runout, reused history ID, and broken grandchild history.
+
+Those tests were added but not executed, per `AGENTS.md` and the requested
+no-build/no-test constraint.
+
 ## P2 findings
 
 ### P2-1: NashConv diagnostics accept unknown value-unit enum values

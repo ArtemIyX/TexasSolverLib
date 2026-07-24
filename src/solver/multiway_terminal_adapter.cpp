@@ -76,6 +76,11 @@ MultiwayState validate_root_consistent_state(
         if (total != root_total) {
             throw std::invalid_argument("multiway terminal adapter betting snapshot changes root chip accounting");
         }
+        if (betting.contributions[seat] < root_betting.contributions[seat] ||
+            (root_betting.folded[seat] && !betting.folded[seat]) ||
+            (root_betting.all_in[seat] && !betting.all_in[seat])) {
+            throw std::invalid_argument("multiway terminal adapter betting snapshot reverses root seat state");
+        }
     }
     if (static_cast<std::uint8_t>(betting.street) < static_cast<std::uint8_t>(root_betting.street) ||
         board.size() < root.public_state.board.size() ||

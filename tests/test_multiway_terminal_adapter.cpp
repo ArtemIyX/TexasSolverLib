@@ -62,6 +62,20 @@ core::MultiwayState two_handed_flop_state() {
     return core::MultiwayState::initial(game);
 }
 
+std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::MultiwayState& state) {
+    std::vector<core::MultiwayActionDescriptor> descriptors;
+    const auto actions = state.legal_actions();
+    descriptors.reserve(actions.size());
+    for (std::size_t index = 0; index < actions.size(); ++index) {
+        const auto action = actions[index];
+        const auto target = action == core::MultiwayAction::Bet || action == core::MultiwayAction::Raise
+            ? state.current_bet() + state.last_full_raise_size()
+            : 0;
+        descriptors.push_back({action, static_cast<std::uint32_t>(index), target, 8800});
+    }
+    return descriptors;
+}
+
 core::MultiwayRootSnapshot root_with_first_seat(core::PlayerId first_seat = 0, core::PlayerId odd_chip_first_seat = 0) {
     const auto state = flop_state();
     core::MultiwayRootSnapshot root;
@@ -84,6 +98,19 @@ core::MultiwayRootSnapshot root_with_first_seat(core::PlayerId first_seat = 0, c
     for (const auto& hole : deal.holes) root.private_ranges.ranges.push_back({{hole, 1.0}});
     root.action_abstraction_version = 1;
     root.leaf_model_version = 1;
+    return root;
+}
+
+core::MultiwayRootSnapshot root_for_betting_state(
+    const core::MultiwayState& state,
+    const std::vector<std::uint8_t>& board = kFlop) {
+    auto root = root_with_first_seat();
+    root.public_state.betting = state.snapshot();
+    root.public_state.board = board;
+    root.public_state.board_runout.remaining_board_cards = static_cast<std::uint8_t>(5U - board.size());
+    root.public_state.legal_actions = action_descriptors(state);
+    root.root_infoset = {{42}, state.current_player()};
+    root.private_ranges.board = board;
     return root;
 }
 
@@ -244,4 +271,37 @@ TEST_CASE(multiway_terminal_adapter_rejects_snapshots_outside_root_lineage) {
 
     const std::vector<std::uint8_t> changed_prefix = {c(3, 0), kFlop[1], kFlop[2]};
     EXPECT_THROW(adapter.canonical_board_chance_edges(complete, changed_prefix, deal), std::invalid_argument);
+}
+
+TEST_CASE(multiway_terminal_adapter_rejects_root_seat_state_reversals) {
+    const auto deal = private_deal();
+    const std::vector<std::uint8_t> turn = {kFlop[0], kFlop[1], kFlop[2], c(3, 3)};
+
+    core::MultiwayGameConfig turn_game;
+    turn_game.starting_stacks = {1000, 1000, 1000};
+    turn_game.initial_contributions = {100, 100, 100};
+    turn_game.initial_street_contributions = {0, 0, 0};
+    turn_game.street = core::Street::Turn;
+    const auto committed_root = root_for_betting_state(core::MultiwayState::initial(turn_game), turn);
+    const core::MultiwayTerminalAdapter committed_adapter(committed_root);
+    auto returned_commitment = committed_root.public_state.betting;
+    returned_commitment.stacks[0] += 100;
+    returned_commitment.contributions[0] -= 100;
+    EXPECT_THROW(
+        committed_adapter.canonical_board_chance_edges(returned_commitment, turn, deal),
+        std::invalid_argument);
+
+    const auto before_fold = flop_state().apply(core::MultiwayAction::Bet, 100);
+    const auto folded_root = root_for_betting_state(before_fold.apply(core::MultiwayAction::Fold));
+    const core::MultiwayTerminalAdapter folded_adapter(folded_root);
+    EXPECT_THROW(
+        folded_adapter.canonical_board_chance_edges(before_fold.snapshot(), kFlop, deal),
+        std::invalid_argument);
+
+    const auto all_in_root = root_for_betting_state(flop_state().apply(core::MultiwayAction::AllIn));
+    const core::MultiwayTerminalAdapter all_in_adapter(all_in_root);
+    const auto cleared_all_in = flop_state().apply(core::MultiwayAction::Bet, 999).snapshot();
+    EXPECT_THROW(
+        all_in_adapter.canonical_board_chance_edges(cleared_all_in, kFlop, deal),
+        std::invalid_argument);
 }

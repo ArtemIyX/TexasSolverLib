@@ -75,6 +75,32 @@ bool same_public_state_descriptor(
            left.legal_actions == right.legal_actions;
 }
 
+void validate_public_state_child_transition(
+    const MultiwayPublicStateDescriptor& parent,
+    const MultiwayPublicStateDescriptor& child) {
+    if (child.canonical_history_id == parent.canonical_history_id ||
+        child.history.size() != parent.history.size() + 1U ||
+        !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) ||
+        child.board != parent.board || child.board_runout != parent.board_runout) {
+        throw std::invalid_argument("multiway child public state is not a single parent action transition");
+    }
+
+    const auto parent_state = MultiwayState::from_snapshot(parent.betting);
+    const auto& appended = child.history.back();
+    if (parent_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision ||
+        appended.actor != parent.betting.current_player ||
+        std::find(parent.legal_actions.begin(), parent.legal_actions.end(), appended.action) ==
+            parent.legal_actions.end()) {
+        throw std::invalid_argument("multiway child history action is not in the parent decision menu");
+    }
+
+    const auto expected_betting = parent_state.apply(
+        appended.action.action, appended.action.target_street_contribution).snapshot();
+    if (!same_betting_snapshot(expected_betting, child.betting)) {
+        throw std::invalid_argument("multiway child betting snapshot does not match its parent action");
+    }
+}
+
 bool delta_less(const MultiwayWorkerDelta& left, const MultiwayWorkerDelta& right) noexcept {
     if (left.infoset.seat != right.infoset.seat) return left.infoset.seat < right.infoset.seat;
     if (left.infoset.public_state != right.infoset.public_state) {
@@ -357,8 +383,12 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
     if (public_states_.size() >= request_.limits().max_public_states) {
         throw std::length_error("multiway public-state admission exceeds configured capacity");
     }
-    if (state.parent_id.value != 0 && public_state(state.parent_id) == nullptr) {
-        throw std::invalid_argument("multiway public state parent must be admitted first");
+    if (state.parent_id.value != 0) {
+        const auto* parent = public_state(state.parent_id);
+        if (parent == nullptr) {
+            throw std::invalid_argument("multiway public state parent must be admitted first");
+        }
+        validate_public_state_child_transition(*parent, state);
     }
     public_states_.push_back(state);
     ++diagnostics_.public_states_admitted;
@@ -369,6 +399,11 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
     if (state == nullptr || shape.infoset.seat < 0 ||
         static_cast<std::size_t>(shape.infoset.seat) >= request_.root().seat_order.size()) {
         throw std::invalid_argument("multiway row must belong to an admitted per-seat public infoset");
+    }
+    const auto betting_state = MultiwayState::from_snapshot(state->betting);
+    if (betting_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision ||
+        shape.infoset.seat != state->betting.current_player) {
+        throw std::invalid_argument("multiway row must belong to its public decision owner");
     }
     if (shape.action_count != state->legal_actions.size()) {
         throw std::invalid_argument("multiway row action count must match its public action menu");

@@ -45,6 +45,18 @@ core::MultiwayPublicStateDescriptor board_runout_public_state() {
     return state;
 }
 
+core::MultiwayPublicStateDescriptor checked_action_child_public_state() {
+    auto state = root_public_state();
+    const auto descendant = core::MultiwayState::from_snapshot(state.betting)
+                                .apply(core::MultiwayAction::Check);
+    state.id = {2};
+    state.parent_id = {1};
+    state.canonical_history_id = 102;
+    state.betting = descendant.snapshot();
+    state.history = {{0, {core::MultiwayAction::Check, 0, 0, 9001}}};
+    return state;
+}
+
 core::MultiwayPrivateConfig root_ranges() {
     core::MultiwayPrivateConfig ranges;
     ranges.board = {card(2, 0), card(7, 1), card(9, 2)};
@@ -305,15 +317,16 @@ TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     const core::MultiwaySparseRowShape unknown_state_shape{{99}, 0, 1, 1};
     EXPECT_THROW(coordinator.admit_infoset_row(unknown_state_shape), std::invalid_argument);
 
-    auto child = root_public_state();
-    child.id = {2};
-    child.parent_id = {1};
-    child.canonical_history_id = 102;
+    auto child = checked_action_child_public_state();
     coordinator.admit_public_state(child);
 
     const core::MultiwaySparseRowShape child_shape{{2}, 1, 1, 3};
+    EXPECT_EQ(child.betting.current_player, child_shape.infoset.seat);
     coordinator.admit_infoset_row(child_shape);
     EXPECT_TRUE(coordinator.storage().has_row(child_shape.infoset));
+
+    const core::MultiwaySparseRowShape nonacting_child_shape{{2}, 0, 1, 3};
+    EXPECT_THROW(coordinator.admit_infoset_row(nonacting_child_shape), std::invalid_argument);
 
     auto too_few_actions = child_shape;
     too_few_actions.action_count = 2;
@@ -322,14 +335,19 @@ TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     auto too_many_actions = child_shape;
     too_many_actions.action_count = 4;
     EXPECT_THROW(coordinator.admit_infoset_row(too_many_actions), std::invalid_argument);
+
+    auto runout = board_runout_public_state();
+    runout.id = {3};
+    runout.canonical_history_id = 103;
+    coordinator.admit_public_state(runout);
+    const core::MultiwaySparseRowShape nondecision_shape{{3}, 0, 1, 0};
+    EXPECT_THROW(coordinator.admit_infoset_row(nondecision_shape), std::invalid_argument);
 }
 
 TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_free_identity) {
     core::MultiwaySolverCoordinator coordinator(valid_request());
-    auto child = root_public_state();
-    child.id = {2};
+    auto child = checked_action_child_public_state();
     child.parent_id = {99};
-    child.canonical_history_id = 102;
     EXPECT_THROW(coordinator.admit_public_state(child), std::invalid_argument);
 
     child.parent_id = {1};
@@ -339,13 +357,66 @@ TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_fr
     EXPECT_THROW(coordinator.admit_public_state(child), std::invalid_argument);
 }
 
+TEST_CASE(multiway_solver_child_admission_requires_a_replayed_parent_action_history) {
+    core::MultiwaySolverCoordinator coordinator(valid_request());
+    const auto child = checked_action_child_public_state();
+
+    auto missing_history = child;
+    missing_history.id = {3};
+    missing_history.canonical_history_id = 103;
+    missing_history.history.clear();
+    EXPECT_THROW(coordinator.admit_public_state(missing_history), std::invalid_argument);
+
+    auto wrong_actor = child;
+    wrong_actor.id = {3};
+    wrong_actor.canonical_history_id = 103;
+    wrong_actor.history.back().actor = 1;
+    EXPECT_THROW(coordinator.admit_public_state(wrong_actor), std::invalid_argument);
+
+    auto wrong_action_menu = child;
+    wrong_action_menu.id = {3};
+    wrong_action_menu.canonical_history_id = 103;
+    wrong_action_menu.history.back().action.action_menu_id = 9002;
+    EXPECT_THROW(coordinator.admit_public_state(wrong_action_menu), std::invalid_argument);
+
+    auto replay_mismatched_betting = child;
+    replay_mismatched_betting.id = {3};
+    replay_mismatched_betting.canonical_history_id = 103;
+    replay_mismatched_betting.betting = root_public_state().betting;
+    EXPECT_THROW(coordinator.admit_public_state(replay_mismatched_betting), std::invalid_argument);
+
+    auto altered_board = child;
+    altered_board.id = {3};
+    altered_board.canonical_history_id = 103;
+    altered_board.board[0] = card(3, 0);
+    EXPECT_THROW(coordinator.admit_public_state(altered_board), std::invalid_argument);
+
+    auto altered_runout = child;
+    altered_runout.id = {3};
+    altered_runout.canonical_history_id = 103;
+    altered_runout.board_runout.chance_only_runout = true;
+    EXPECT_THROW(coordinator.admit_public_state(altered_runout), std::invalid_argument);
+
+    auto reused_parent_history_id = child;
+    reused_parent_history_id.id = {3};
+    reused_parent_history_id.canonical_history_id = 101;
+    EXPECT_THROW(coordinator.admit_public_state(reused_parent_history_id), std::invalid_argument);
+
+    coordinator.admit_public_state(child);
+    auto nonappended_history = child;
+    const auto grandchild_betting = core::MultiwayState::from_snapshot(child.betting)
+                                        .apply(core::MultiwayAction::Check);
+    nonappended_history.id = {3};
+    nonappended_history.parent_id = {2};
+    nonappended_history.canonical_history_id = 103;
+    nonappended_history.betting = grandchild_betting.snapshot();
+    nonappended_history.history = {{1, {core::MultiwayAction::Check, 0, 0, 9001}}};
+    EXPECT_THROW(coordinator.admit_public_state(nonappended_history), std::invalid_argument);
+}
+
 TEST_CASE(multiway_solver_public_state_duplicate_id_requires_the_complete_descriptor_to_match) {
     core::MultiwaySolverCoordinator coordinator(valid_request());
-    auto child = root_public_state();
-    child.id = {2};
-    child.parent_id = {1};
-    child.canonical_history_id = 102;
-    child.history = {{0, {core::MultiwayAction::Check, 0, 0, 9001}}};
+    auto child = checked_action_child_public_state();
     coordinator.admit_public_state(child);
     coordinator.admit_public_state(child);
     EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
@@ -355,7 +426,7 @@ TEST_CASE(multiway_solver_public_state_duplicate_id_requires_the_complete_descri
     EXPECT_THROW(coordinator.admit_public_state(changed_parent), std::invalid_argument);
 
     auto changed_betting = child;
-    changed_betting.betting.current_player = 1;
+    changed_betting.betting.last_aggressor = 1;
     EXPECT_THROW(coordinator.admit_public_state(changed_betting), std::invalid_argument);
 
     auto changed_history = child;
@@ -371,7 +442,6 @@ TEST_CASE(multiway_solver_public_state_duplicate_id_requires_the_complete_descri
     core::MultiwaySolverCoordinator runout_coordinator(valid_request());
     auto runout = board_runout_public_state();
     runout.id = {3};
-    runout.parent_id = {1};
     runout.canonical_history_id = 103;
     runout_coordinator.admit_public_state(runout);
     runout_coordinator.admit_public_state(runout);
@@ -390,10 +460,7 @@ TEST_CASE(multiway_solver_public_state_admission_enforces_its_capacity) {
     cfr.player_count = 2;
     core::MultiwaySolverCoordinator coordinator(
         core::MultiwaySolveRequest(valid_root(), cfr, limits));
-    auto child = root_public_state();
-    child.id = {2};
-    child.parent_id = {1};
-    child.canonical_history_id = 102;
+    const auto child = checked_action_child_public_state();
     EXPECT_THROW(coordinator.admit_public_state(child), std::length_error);
 }
 
@@ -463,10 +530,9 @@ TEST_CASE(multiway_solver_root_export_is_uniform_until_its_sparse_row_is_admitte
     }
 }
 
-TEST_CASE(multiway_solver_root_export_rejects_a_row_shape_that_disagrees_with_root_actions) {
+TEST_CASE(multiway_solver_row_admission_rejects_a_shape_that_disagrees_with_root_actions) {
     core::MultiwaySolverCoordinator coordinator(valid_request());
-    coordinator.admit_infoset_row(root_row(1, 2));
-    EXPECT_THROW(coordinator.export_root_policy(), std::logic_error);
+    EXPECT_THROW(coordinator.admit_infoset_row(root_row(1, 2)), std::invalid_argument);
 }
 
 TEST_CASE(multiway_solver_result_copies_root_values_and_diagnostics) {
