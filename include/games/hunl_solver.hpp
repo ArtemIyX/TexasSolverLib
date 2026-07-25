@@ -18,6 +18,8 @@ enum class HUNLQualityMetric : std::uint8_t {
 
 struct HUNLStructuredRootRequest {
     HUNLConfig config;
+    // Traversal normalizes terminal values from its internal big-blind unit at
+    // the root boundary before comparing them with leaf values.
     HUNLLeafValueUnits value_units = HUNLLeafValueUnits::Chips;
     // Provenance for the externally selected blueprint. The sampled solver
     // starts unseeded (uniform regret matching); it never silently treats a

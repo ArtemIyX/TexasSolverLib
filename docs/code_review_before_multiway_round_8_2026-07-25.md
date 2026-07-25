@@ -107,6 +107,12 @@ Required fix:
 - reject unsupported units until conversion is implemented;
 - test branches that mix terminal and cutoff children for every unit.
 
+Status: **Fixed.** Structured HUNL converts its internal big-blind terminal
+utilities to the requested chips or big-blinds boundary before comparison with
+same-unit leaves. Multiway settlement declares chip utilities; the terminal
+adapter converts them once to the root's chips or big-blinds unit and labels the
+result. Unsupported normalizations are rejected at root validation.
+
 ### P0-3: depth-limited leaf requests lose private-hand identity
 
 At a cutoff, traversal clears `hole_cards` and supplies one scalar reach value

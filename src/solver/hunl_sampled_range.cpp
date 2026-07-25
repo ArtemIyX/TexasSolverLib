@@ -145,6 +145,16 @@ std::size_t sample_deal_index(
     return deals.size() - 1U;
 }
 
+double convert_terminal_value(
+    double big_blinds,
+    const HUNLStructuredRootRequest& root) {
+    if (root.value_units == HUNLLeafValueUnits::BigBlinds) return big_blinds;
+    if (root.value_units == HUNLLeafValueUnits::Chips) {
+        return big_blinds * static_cast<double>(root.config.big_blind);
+    }
+    throw std::logic_error("structured sampled traversal has unsupported terminal value units");
+}
+
 double traverse(
     const HUNLState& state,
     const HUNLStructuredRootRequest& root,
@@ -162,7 +172,7 @@ double traverse(
     if (state.is_terminal()) {
         const auto values = state.utility();
         if (values.size() != 2U) throw std::logic_error("structured sampled terminal has invalid utility arity");
-        return values[static_cast<std::size_t>(traverser)];
+        return convert_terminal_value(values[static_cast<std::size_t>(traverser)], root);
     }
     if (root.config.depth_limit_plies != 0U && plies >= root.config.depth_limit_plies) {
         if (leaf_evaluator == nullptr || !leaf_evaluator->valid()) {

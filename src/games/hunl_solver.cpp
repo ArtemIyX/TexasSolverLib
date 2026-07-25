@@ -167,6 +167,11 @@ void validate_config(const HUNLConfig& config) {
 
 void HUNLStructuredRootRequest::validate() const {
     config.validate();
+    if (value_units != HUNLLeafValueUnits::Chips &&
+        value_units != HUNLLeafValueUnits::BigBlinds) {
+        throw std::invalid_argument(
+            "HUNLStructuredRootRequest supports chip or big-blind values only");
+    }
     const auto policy = resolve_range_policy(config);
     if (policy != HUNLRangePolicy::UseInitialRanges && policy != HUNLRangePolicy::RequireExplicit) {
         throw std::invalid_argument("HUNLStructuredRootRequest requires explicit initial ranges");

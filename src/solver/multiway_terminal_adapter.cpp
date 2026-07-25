@@ -58,6 +58,23 @@ void validate_private_deal(
     }
 }
 
+MultiwayTerminalResult convert_terminal_utilities(
+    MultiwayTerminalResult result,
+    const MultiwayRootSnapshot& root,
+    int big_blind) {
+    if (result.utility_units != MultiwayValueUnits::Chips || big_blind <= 0) {
+        throw std::logic_error("multiway terminal adapter has invalid terminal value units");
+    }
+    if (root.value_units == MultiwayValueUnits::BigBlinds) {
+        const auto divisor = static_cast<double>(big_blind);
+        for (auto& utility : result.utilities) utility /= divisor;
+    } else if (root.value_units != MultiwayValueUnits::Chips) {
+        throw std::logic_error("multiway terminal adapter has unsupported root value units");
+    }
+    result.utility_units = root.value_units;
+    return result;
+}
+
 MultiwayState validate_root_consistent_state(
     const MultiwayRootSnapshot& root,
     const MultiwayBettingSnapshot& betting,
@@ -233,7 +250,8 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal(
         input.folded = betting.folded;
         input.strengths.assign(betting.contributions.size(), Strength{});
         input.odd_chip_first_seat = root_.odd_chip_first_seat;
-        return settle_multiway_terminal(input);
+        return convert_terminal_utilities(
+            settle_multiway_terminal(input), root_, betting.big_blind);
     }
     const auto showdown_ready = state.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal ||
         (state.requires_board_runout() && board.size() == 5U);
@@ -247,7 +265,8 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal(
     input.contributions = betting.contributions;
     input.folded = betting.folded;
     input.odd_chip_first_seat = root_.odd_chip_first_seat;
-    return evaluate_multiway_showdown(input);
+    return convert_terminal_utilities(
+        evaluate_multiway_showdown(input), root_, betting.big_blind);
 }
 
 }  // namespace core

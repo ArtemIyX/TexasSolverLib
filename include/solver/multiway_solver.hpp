@@ -143,6 +143,8 @@ struct MultiwayRootSnapshot {
     MultiwayPrivateConfig private_ranges{};
     std::uint64_t action_abstraction_version = 0;
     std::uint64_t leaf_model_version = 0;
+    // Terminal settlement is chips. The adapter converts utility values once
+    // at this root boundary; unsupported normalizations are rejected.
     MultiwayValueUnits value_units = MultiwayValueUnits::Chips;
 
     void validate() const;

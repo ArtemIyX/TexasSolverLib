@@ -10,13 +10,6 @@
 namespace core {
 namespace {
 
-bool valid_value_units(MultiwayValueUnits units) noexcept {
-    return units == MultiwayValueUnits::Chips ||
-           units == MultiwayValueUnits::BigBlinds ||
-           units == MultiwayValueUnits::PotFraction ||
-           units == MultiwayValueUnits::NormalizedStackFraction;
-}
-
 bool valid_action(MultiwayAction action) noexcept {
     return action == MultiwayAction::Fold || action == MultiwayAction::Check ||
            action == MultiwayAction::Call || action == MultiwayAction::Bet ||
@@ -284,7 +277,8 @@ void MultiwayRootSnapshot::validate() const {
             throw std::invalid_argument("multiway root seat order must follow the canonical seat cycle");
         }
     }
-    if (!same_board(public_state.board, private_ranges.board) || !valid_value_units(value_units)) {
+    if (!same_board(public_state.board, private_ranges.board) ||
+        (value_units != MultiwayValueUnits::Chips && value_units != MultiwayValueUnits::BigBlinds)) {
         throw std::invalid_argument("multiway root has inconsistent board or value units");
     }
 }

@@ -2,9 +2,12 @@
 
 #include "games/hunl_eval.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace core {
+
+enum class MultiwayValueUnits : std::uint8_t;
 
 // Input to terminal settlement after betting progression has completed.
 // Contributions are total chips committed by each seat, including folded seats.
@@ -36,6 +39,9 @@ struct MultiwayTerminalResult {
     std::vector<int> refunds;
     std::vector<int> payouts;
     std::vector<Value> utilities;
+    // Payouts and refunds always remain chips. Utilities use this explicit
+    // unit so an adapter cannot label raw chip results as normalized values.
+    MultiwayValueUnits utility_units{};
 };
 
 MultiwayPotLayout build_multiway_pot_layout(
