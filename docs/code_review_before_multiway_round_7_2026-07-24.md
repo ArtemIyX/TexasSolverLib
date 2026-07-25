@@ -399,6 +399,23 @@ no-build/no-test constraint.
 
 ### P2-1: NashConv diagnostics accept unknown value-unit enum values
 
+**Status: fixed (2026-07-25; static verification only).**
+
+The public NashConv diagnostics validator now rejects enum values outside the
+four defined `MultiwayValueUnits` variants before result publication. A focused
+regression passes an out-of-range enum value through
+`compute_multiway_nash_conv()` and expects `std::invalid_argument`.
+
+Implementation and test evidence:
+
+- `src/solver/multiway_cfr.cpp` validates `diagnostics.units` at the public
+  NashConv diagnostics boundary.
+- `tests/test_multiway_cfr.cpp` covers rejection of an unknown value-unit
+  enum value.
+
+The regression was added but not executed; no build or test command was run,
+per `AGENTS.md` and the requested no-build/no-test constraint.
+
 The diagnostics validator checks metric method and uncertainty fields but does
 not validate `MultiwayValueUnits`. `compute_multiway_nash_conv()` then returns
 the unvalidated value.

@@ -209,6 +209,12 @@ TEST_CASE(multiway_nash_conv_rejects_sampled_metric_without_confidence_contract)
     EXPECT_THROW(core::compute_multiway_nash_conv({1.0, 2.0}, {1.0, 2.0}, diagnostics), std::invalid_argument);
 }
 
+TEST_CASE(multiway_nash_conv_rejects_unknown_value_units_at_the_diagnostics_boundary) {
+    core::MultiwayQualityDiagnostics diagnostics;
+    diagnostics.units = static_cast<core::MultiwayValueUnits>(99);
+    EXPECT_THROW(core::compute_multiway_nash_conv({1.0, 2.0}, {1.0, 2.0}, diagnostics), std::invalid_argument);
+}
+
 TEST_CASE(multiway_external_sampling_request_uses_compiled_private_proposal_reach_directly) {
     core::MultiwayJointPrivateSample sample;
     sample.holes = {

@@ -47,6 +47,12 @@ void validate_strategy_and_values(
 }
 
 void validate_quality_diagnostics(const MultiwayQualityDiagnostics& diagnostics, std::size_t seat_count) {
+    if (diagnostics.units != MultiwayValueUnits::Chips &&
+        diagnostics.units != MultiwayValueUnits::BigBlinds &&
+        diagnostics.units != MultiwayValueUnits::PotFraction &&
+        diagnostics.units != MultiwayValueUnits::NormalizedStackFraction) {
+        throw std::invalid_argument("NashConv has unsupported value units");
+    }
     if (!std::isfinite(diagnostics.standard_error) || diagnostics.standard_error < 0.0) {
         throw std::invalid_argument("NashConv standard error must be finite and non-negative");
     }
