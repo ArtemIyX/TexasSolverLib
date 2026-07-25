@@ -64,6 +64,10 @@ Required fix:
   next chance distribution;
 - compare estimated values and regrets with exact enumeration.
 
+Status: **Fixed.** A trajectory now selects its private deal and all later
+chance/opponent actions from one continued `PcsRng` stream, so the recorded
+proposal factors match the sampled joint proposal.
+
 ### P0-2: structured HUNL and multiway terminal values can use incompatible units
 
 `HUNLState::utility()` always divides by `big_blind`, so terminal values are in

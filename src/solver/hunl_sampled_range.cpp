@@ -130,6 +130,21 @@ std::pair<std::size_t, double> sample_strategy(
     throw std::logic_error("structured sampled traversal has no selectable strategy action");
 }
 
+std::size_t sample_deal_index(
+    const std::vector<HUNLJointRangeDeal>& deals,
+    PcsRng& rng) {
+    if (deals.empty()) {
+        throw std::logic_error("structured sampled root has no compatible private deals");
+    }
+    const auto draw = rng.next_unit_f64();
+    double cumulative = 0.0;
+    for (std::size_t index = 0; index < deals.size(); ++index) {
+        cumulative += deals[index].weight;
+        if (draw < cumulative) return index;
+    }
+    return deals.size() - 1U;
+}
+
 double traverse(
     const HUNLState& state,
     const HUNLStructuredRootRequest& root,
@@ -332,20 +347,11 @@ struct HUNLSampledRangeSession::Impl {
                 const auto traverser = static_cast<PlayerId>(trajectory_id & 1U);
                 const auto seed = PcsRng::mix_seed(config.seed, trajectory_id, batch + 1U,
                                                     static_cast<std::uint64_t>(traverser));
-                const auto deal_index = [this, seed] {
-                    PcsRng deal_rng(seed);
-                    const auto draw = deal_rng.next_unit_f64();
-                    double cumulative = 0.0;
-                    for (std::size_t index = 0; index < deals.size(); ++index) {
-                        cumulative += deals[index].weight;
-                        if (draw < cumulative) return index;
-                    }
-                    return deals.size() - 1U;
-                }();
+                PcsRng rng(seed);
+                const auto deal_index = sample_deal_index(deals, rng);
                 HUNLSampledWorkerScratch trajectory_stream;
                 trajectory_stream.reserve_deltas(kDeltaEntriesPerTrajectory);
                 HUNLSampledTraversalResult result;
-                PcsRng rng(seed);
                 const auto chance = deals[deal_index].weight;
                 (void)traverse(root_for_deal(game_config, deals[deal_index]), root, leaf_evaluator, traverser,
                                trajectory_id, infosets, storage, trajectory_stream, rng,
