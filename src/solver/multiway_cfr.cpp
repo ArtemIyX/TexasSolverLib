@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -135,7 +136,11 @@ std::vector<Probability> multiway_regret_matching(const std::vector<double>& reg
     }
     double scaled_sum = 0.0;
     for (const auto regret : regrets) {
-        if (regret > 0.0) scaled_sum += regret / positive_scale;
+        // Terms too small to affect the normalization must not receive a
+        // rounded-up residual probability below.
+        if (regret > 0.0 && regret / positive_scale >= std::numeric_limits<double>::epsilon()) {
+            scaled_sum += regret / positive_scale;
+        }
     }
     if (!std::isfinite(scaled_sum) || scaled_sum <= 0.0) {
         throw std::overflow_error("regret matching produced a non-finite normalization");
@@ -143,10 +148,12 @@ std::vector<Probability> multiway_regret_matching(const std::vector<double>& reg
     double assigned = 0.0;
     std::size_t last_positive = 0;
     for (std::size_t action = 0; action < regrets.size(); ++action) {
-        if (regrets[action] > 0.0) last_positive = action;
+        if (regrets[action] > 0.0 && regrets[action] / positive_scale >= std::numeric_limits<double>::epsilon()) {
+            last_positive = action;
+        }
     }
     for (std::size_t action = 0; action < regrets.size(); ++action) {
-        if (regrets[action] > 0.0 && action != last_positive) {
+        if (regrets[action] > 0.0 && regrets[action] / positive_scale >= std::numeric_limits<double>::epsilon() && action != last_positive) {
             strategy[action] = (regrets[action] / positive_scale) / scaled_sum;
             assigned += strategy[action];
         }
@@ -286,10 +293,13 @@ void apply_multiway_cfr_update(
         throw std::invalid_argument("multiway CFR row shape does not match update");
     }
     for (std::size_t action = 0; action < regret_sum.size(); ++action) {
+        const auto next_regret = regret_sum[action] + update.regret_deltas[action];
+        const auto next_strategy = strategy_sum[action] + update.strategy_deltas[action];
         if (!std::isfinite(regret_sum[action]) || !std::isfinite(strategy_sum[action]) ||
             !std::isfinite(update.regret_deltas[action]) || !std::isfinite(update.strategy_deltas[action]) ||
-            !std::isfinite(regret_sum[action] + update.regret_deltas[action]) ||
-            !std::isfinite(strategy_sum[action] + update.strategy_deltas[action])) {
+            !std::isfinite(next_regret) || !std::isfinite(next_strategy) ||
+            (update.regret_deltas[action] != 0.0 && next_regret == regret_sum[action]) ||
+            (update.strategy_deltas[action] != 0.0 && next_strategy == strategy_sum[action])) {
             throw std::overflow_error("multiway CFR update would produce a non-finite row");
         }
     }

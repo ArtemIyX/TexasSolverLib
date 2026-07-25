@@ -92,7 +92,10 @@ MultiwayState validate_root_consistent_state(
     const auto minimum_board_cards = board_card_count(state.street());
     const auto valid_board_shape = state.requires_board_runout()
         ? board.size() >= minimum_board_cards && board.size() <= 5U
-        : board.size() == minimum_board_cards;
+        : state.requires_street_transition()
+            ? board.size() >= minimum_board_cards &&
+                  board.size() <= board_card_count(next_street(state.street()))
+            : board.size() == minimum_board_cards;
     if (!valid_board_shape) {
         throw std::invalid_argument("multiway terminal adapter board is incompatible with its betting state");
     }
@@ -136,8 +139,8 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
     }
     std::vector<std::uint8_t> available;
     available.reserve(52U - board.size() - private_deal.holes.size() * 2U);
-    for (std::uint8_t card = 0; card < 52U; ++card) {
-        if (!used[card]) available.push_back(card);
+    for (std::uint8_t card = 0; card < used.size(); ++card) {
+        if (is_valid_card(card) && !used[card]) available.push_back(card);
     }
     if (available.empty()) {
         throw std::invalid_argument("multiway board chance has no available cards");

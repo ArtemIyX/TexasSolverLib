@@ -84,7 +84,7 @@ std::size_t effective_public_state_cap(const HUNLSampledSolverConfig& config) no
     if (minibatch != 0U && workers > std::numeric_limits<std::size_t>::max() / minibatch) {
         return std::numeric_limits<std::size_t>::max();
     }
-    return std::max<std::size_t>(1U, minibatch * workers);
+    return std::max<std::size_t>(128U, minibatch * workers);
 }
 
 std::size_t sample_joint_deal(const std::vector<HUNLJointRangeDeal>& deals, std::uint64_t seed) {
@@ -128,11 +128,13 @@ HUNLSampledSolveResult HUNLSampledSolver::solve_for(
         request,
         std::numeric_limits<std::uint32_t>::max(),
         std::chrono::steady_clock::now() + budget);
-    config_ = std::move(staged.config_);
-    builder_ = std::move(staged.builder_);
-    storage_ = std::move(staged.storage_);
-    profile_ = std::move(staged.profile_);
-    root_strategy_ = std::move(staged.root_strategy_);
+    if (!result.timed_out) {
+        config_ = std::move(staged.config_);
+        builder_ = std::move(staged.builder_);
+        storage_ = std::move(staged.storage_);
+        profile_ = std::move(staged.profile_);
+        root_strategy_ = std::move(staged.root_strategy_);
+    }
     return result;
 }
 

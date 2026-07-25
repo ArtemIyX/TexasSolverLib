@@ -94,7 +94,10 @@ void validate_public_state_child_transition(
     if (child.canonical_history_id == parent.canonical_history_id) {
         throw std::invalid_argument("multiway child public state must have a distinct history identity");
     }
-    switch (child.incoming_edge.kind) {
+    const auto edge_kind = child.incoming_edge.kind == MultiwayPublicParentEdgeKind::None
+        ? MultiwayPublicParentEdgeKind::BettingAction
+        : child.incoming_edge.kind;
+    switch (edge_kind) {
         case MultiwayPublicParentEdgeKind::BettingAction: {
             if (child.history.size() != parent.history.size() + 1U ||
                 !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) ||
@@ -103,7 +106,9 @@ void validate_public_state_child_transition(
             }
             const auto& appended = child.history.back();
             if (parent_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision ||
-                appended.actor != parent.betting.current_player || appended.action != child.incoming_edge.action ||
+                appended.actor != parent.betting.current_player ||
+                (child.incoming_edge.kind != MultiwayPublicParentEdgeKind::None &&
+                 appended.action != child.incoming_edge.action) ||
                 std::find(parent.legal_actions.begin(), parent.legal_actions.end(), appended.action) ==
                     parent.legal_actions.end()) {
                 throw std::invalid_argument("multiway child history action is not in the parent decision menu");
@@ -456,8 +461,8 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
             throw std::invalid_argument("multiway public state parent must be admitted first");
         }
         validate_public_state_child_transition(request_.root(), *parent, state);
-    } else if (state.id != request_.root().public_state.id ||
-               state.incoming_edge.kind != MultiwayPublicParentEdgeKind::None) {
+    } else if (state.id != request_.root().public_state.id &&
+               MultiwayState::from_snapshot(state.betting).next_node_kind() != MultiwayNextNodeKind::BoardRunout) {
         throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
     }
     public_states_.push_back(state);
@@ -465,6 +470,10 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
 }
 
 void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape) {
+    if (!storage_.has_row(shape.infoset) &&
+        storage_.row_count() >= request_.limits().max_sparse_rows) {
+        throw std::length_error("multiway sparse row admission exceeds configured capacity");
+    }
     const auto* state = public_state(shape.infoset.public_state);
     if (state == nullptr || shape.infoset.seat < 0 ||
         static_cast<std::size_t>(shape.infoset.seat) >= request_.root().seat_order.size()) {
