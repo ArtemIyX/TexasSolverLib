@@ -432,6 +432,27 @@ boundary regression tests.
 
 ### P2-2: compiled-range feasibility has an opaque fixed search budget
 
+**Status: fixed (2026-07-25; static verification only).**
+
+Coordinator-side range admission now exposes a bounded feasibility preflight
+result with a typed status, visited-node count, requested node budget, and a
+reason. It distinguishes a proven incompatible range from an incomplete
+search caused by budget exhaustion. The compiled-range constructor runs this
+preflight before creating immutable worker sampling tables; worker trajectory
+sampling does not invoke feasibility search.
+
+Implementation and test evidence:
+
+- `include/games/multiway_private.hpp` exposes the coordinator-only
+  feasibility result and preflight API.
+- `src/games/multiway_private.cpp` performs the bounded preflight and maps
+  infeasible versus exhausted outcomes to distinct constructor failures.
+- `tests/test_multiway_private.cpp` covers feasible, infeasible, and
+  zero-budget exhausted preflight results.
+
+The regressions were added but not executed; no build or test command was
+run, per `AGENTS.md` and the requested no-build/no-test constraint.
+
 The compiled private-range constructor uses a bounded DFS with a fixed
 one-million-node limit. Valid sparse six-player ranges can exceed that budget,
 but callers receive no structured distinction between an impossible range and

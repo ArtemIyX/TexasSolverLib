@@ -153,6 +153,31 @@ TEST_CASE(multiway_compiled_private_ranges_reject_impossible_deals_before_worker
     EXPECT_THROW(core::MultiwayCompiledPrivateRanges(config), std::invalid_argument);
 }
 
+TEST_CASE(multiway_private_range_feasibility_preflight_reports_feasible_and_infeasible_configs) {
+    const auto feasible = core::preflight_multiway_private_range_feasibility(ranges());
+    EXPECT_EQ(feasible.status, core::MultiwayPrivateRangeFeasibilityStatus::Feasible);
+    EXPECT_TRUE(feasible.visited_nodes > 0U);
+    EXPECT_EQ(feasible.node_budget, 1'000'000U);
+    EXPECT_TRUE(!feasible.reason.empty());
+
+    auto impossible = ranges();
+    impossible.ranges[0] = {hand(14, 0, 13, 0)};
+    impossible.ranges[1] = {hand(14, 0, 13, 0)};
+    const auto infeasible = core::preflight_multiway_private_range_feasibility(impossible);
+    EXPECT_EQ(infeasible.status, core::MultiwayPrivateRangeFeasibilityStatus::Infeasible);
+    EXPECT_TRUE(infeasible.visited_nodes > 0U);
+    EXPECT_EQ(infeasible.node_budget, 1'000'000U);
+    EXPECT_TRUE(!infeasible.reason.empty());
+}
+
+TEST_CASE(multiway_private_range_feasibility_preflight_reports_budget_exhaustion) {
+    const auto result = core::preflight_multiway_private_range_feasibility(ranges(), 0U);
+    EXPECT_EQ(result.status, core::MultiwayPrivateRangeFeasibilityStatus::SearchBudgetExhausted);
+    EXPECT_EQ(result.visited_nodes, 0U);
+    EXPECT_EQ(result.node_budget, 0U);
+    EXPECT_TRUE(!result.reason.empty());
+}
+
 TEST_CASE(multiway_compiled_private_ranges_offer_nonthrowing_worker_sampling) {
     core::MultiwayCompiledPrivateRanges compiled(ranges());
     core::MultiwayPrivateWorkerScratch scratch;

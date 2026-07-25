@@ -25,27 +25,26 @@ std::size_t sample_cumulative(const std::vector<double>& cumulative, PcsRng& rng
     return static_cast<std::size_t>(std::lower_bound(cumulative.begin(), cumulative.end(), draw) - cumulative.begin());
 }
 
-constexpr std::uint64_t kMaxFeasibilityNodes = 1'000'000U;
-
-bool find_compatible_deal(
+MultiwayPrivateRangeFeasibilityStatus find_compatible_deal(
     const std::vector<std::vector<MultiwayWeightedHole>>& ranges,
     const std::array<std::size_t, 6>& order,
     std::size_t depth,
     std::array<bool, 64>& used,
-    std::uint64_t& visited) {
-    if (++visited > kMaxFeasibilityNodes) {
-        throw std::runtime_error("multiway private range feasibility search exceeded its bounded budget");
-    }
-    if (depth == ranges.size()) return true;
+    std::uint64_t& visited,
+    std::uint64_t node_budget) {
+    if (visited >= node_budget) return MultiwayPrivateRangeFeasibilityStatus::SearchBudgetExhausted;
+    ++visited;
+    if (depth == ranges.size()) return MultiwayPrivateRangeFeasibilityStatus::Feasible;
     const auto seat = order[depth];
     for (const auto& entry : ranges[seat]) {
         if (entry.weight <= 0.0 || overlaps(entry.hole, used)) continue;
         mark(entry.hole, used);
-        if (find_compatible_deal(ranges, order, depth + 1U, used, visited)) return true;
+        const auto status = find_compatible_deal(ranges, order, depth + 1U, used, visited, node_budget);
+        if (status != MultiwayPrivateRangeFeasibilityStatus::Infeasible) return status;
         used[entry.hole[0]] = false;
         used[entry.hole[1]] = false;
     }
-    return false;
+    return MultiwayPrivateRangeFeasibilityStatus::Infeasible;
 }
 
 double compatible_deal_mass(
@@ -54,7 +53,7 @@ double compatible_deal_mass(
     std::size_t seat,
     std::array<bool, 64>& used,
     std::uint64_t& visited) {
-    if (++visited > kMaxFeasibilityNodes) {
+    if (++visited > 1'000'000U) {
         throw std::runtime_error("multiway private range proposal normalization exceeded its bounded budget");
     }
     if (seat == ranges.size()) return 1.0;
@@ -127,9 +126,47 @@ MultiwayJointPrivateSample sample_multiway_private_hands(
     return sample;
 }
 
+MultiwayPrivateRangeFeasibilityResult preflight_multiway_private_range_feasibility(
+    const MultiwayPrivateConfig& config,
+    std::uint64_t node_budget) {
+    config.validate();
+
+    std::array<std::size_t, 6> order = {};
+    for (std::size_t seat = 0; seat < config.ranges.size(); ++seat) order[seat] = seat;
+    std::sort(order.begin(), order.begin() + config.ranges.size(),
+              [&config](std::size_t lhs, std::size_t rhs) {
+                  return config.ranges[lhs].size() < config.ranges[rhs].size();
+              });
+    std::array<bool, 64> used = {};
+    for (const auto card : config.board) used[card] = true;
+
+    MultiwayPrivateRangeFeasibilityResult result;
+    result.node_budget = node_budget;
+    result.status = find_compatible_deal(config.ranges, order, 0, used, result.visited_nodes, node_budget);
+    switch (result.status) {
+    case MultiwayPrivateRangeFeasibilityStatus::Feasible:
+        result.reason = "compatible joint deal found";
+        break;
+    case MultiwayPrivateRangeFeasibilityStatus::Infeasible:
+        result.reason = "no compatible joint deal exists";
+        break;
+    case MultiwayPrivateRangeFeasibilityStatus::SearchBudgetExhausted:
+        result.reason = "feasibility search exhausted its node budget";
+        break;
+    }
+    return result;
+}
+
 MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config)
     : board_(config.board), max_rejection_attempts_(config.max_rejection_attempts) {
     config.validate();
+    const auto feasibility = preflight_multiway_private_range_feasibility(config);
+    if (feasibility.status == MultiwayPrivateRangeFeasibilityStatus::Infeasible) {
+        throw std::invalid_argument("multiway private ranges have no compatible joint deal");
+    }
+    if (feasibility.status == MultiwayPrivateRangeFeasibilityStatus::SearchBudgetExhausted) {
+        throw std::runtime_error("multiway private range feasibility preflight exhausted its node budget");
+    }
     ranges_.resize(config.ranges.size());
     cumulative_weights_.resize(config.ranges.size());
     range_totals_.resize(config.ranges.size(), 0.0);
@@ -161,21 +198,9 @@ MultiwayCompiledPrivateRanges::MultiwayCompiledPrivateRanges(const MultiwayPriva
         range_totals_[seat] = total;
     }
 
-    std::array<std::size_t, 6> order = {};
-    for (std::size_t seat = 0; seat < ranges_.size(); ++seat) order[seat] = seat;
-    std::sort(order.begin(), order.begin() + ranges_.size(),
-              [this](std::size_t lhs, std::size_t rhs) {
-                  return ranges_[lhs].size() < ranges_[rhs].size();
-              });
     std::array<bool, 64> used = {};
     for (const auto card : board_) used[card] = true;
     std::uint64_t visited = 0;
-    if (!find_compatible_deal(ranges_, order, 0, used, visited)) {
-        throw std::invalid_argument("multiway private ranges have no compatible joint deal");
-    }
-    used = {};
-    for (const auto card : board_) used[card] = true;
-    visited = 0;
     compatible_deal_mass_ = compatible_deal_mass(ranges_, range_totals_, 0, used, visited);
     if (!std::isfinite(compatible_deal_mass_) || compatible_deal_mass_ <= 0.0 || compatible_deal_mass_ > 1.0) {
         throw std::runtime_error("multiway private range proposal normalization is invalid");

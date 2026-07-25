@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace core {
@@ -36,6 +37,25 @@ struct MultiwayPrivateConfig {
 
     void validate() const;
 };
+
+enum class MultiwayPrivateRangeFeasibilityStatus : std::uint8_t {
+    Feasible,
+    Infeasible,
+    SearchBudgetExhausted,
+};
+
+// Coordinator-only preflight for a compiled private-range request. This
+// bounded search must complete before workers begin trajectory sampling.
+struct MultiwayPrivateRangeFeasibilityResult {
+    MultiwayPrivateRangeFeasibilityStatus status = MultiwayPrivateRangeFeasibilityStatus::Infeasible;
+    std::uint64_t visited_nodes = 0;
+    std::uint64_t node_budget = 0;
+    std::string reason;
+};
+
+MultiwayPrivateRangeFeasibilityResult preflight_multiway_private_range_feasibility(
+    const MultiwayPrivateConfig& config,
+    std::uint64_t node_budget = 1'000'000U);
 
 struct MultiwayJointPrivateSample {
     std::vector<std::array<std::uint8_t, 2>> holes;
