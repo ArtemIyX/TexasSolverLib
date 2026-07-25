@@ -51,6 +51,9 @@ struct MultiwayActionDescriptor {
                target_street_contribution == other.target_street_contribution &&
                action_menu_id == other.action_menu_id;
     }
+    constexpr bool operator!=(const MultiwayActionDescriptor& other) const noexcept {
+        return !(*this == other);
+    }
 };
 
 struct MultiwayPublicHistoryEntry {
@@ -71,6 +74,9 @@ struct MultiwayBoardRunoutState {
     constexpr bool operator==(const MultiwayBoardRunoutState& other) const noexcept {
         return remaining_board_cards == other.remaining_board_cards &&
                chance_only_runout == other.chance_only_runout;
+    }
+    constexpr bool operator!=(const MultiwayBoardRunoutState& other) const noexcept {
+        return !(*this == other);
     }
 };
 

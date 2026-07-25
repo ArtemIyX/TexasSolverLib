@@ -186,6 +186,24 @@ TEST_CASE(multiway_solver_root_rejects_inconsistent_board_runout_metadata) {
     EXPECT_THROW(root.validate(), std::invalid_argument);
 }
 
+TEST_CASE(multiway_board_runout_state_compares_const_values) {
+    const core::MultiwayBoardRunoutState turn{1U, false};
+    const core::MultiwayBoardRunoutState same_turn{1U, false};
+    const core::MultiwayBoardRunoutState all_in_turn{1U, true};
+    EXPECT_TRUE(turn == same_turn);
+    EXPECT_TRUE(!(turn != same_turn));
+    EXPECT_TRUE(turn != all_in_turn);
+}
+
+TEST_CASE(multiway_action_descriptor_compares_const_values) {
+    const core::MultiwayActionDescriptor call{core::MultiwayAction::Call, 1U, 2, 9001U};
+    const core::MultiwayActionDescriptor same_call{core::MultiwayAction::Call, 1U, 2, 9001U};
+    const core::MultiwayActionDescriptor raise{core::MultiwayAction::Raise, 1U, 4, 9001U};
+    EXPECT_TRUE(call == same_call);
+    EXPECT_TRUE(!(call != same_call));
+    EXPECT_TRUE(call != raise);
+}
+
 TEST_CASE(multiway_solver_root_rejects_action_descriptors_not_legal_or_executable_for_snapshot) {
     auto root = valid_root();
     root.public_state.legal_actions[0].action = core::MultiwayAction::Fold;
@@ -314,18 +332,18 @@ TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     conflicting_action_shape.action_count = 2;
     EXPECT_THROW(coordinator.admit_infoset_row(conflicting_action_shape), std::invalid_argument);
 
-    const core::MultiwaySparseRowShape unknown_state_shape{{99}, 0, 1, 1};
+    const core::MultiwaySparseRowShape unknown_state_shape{{{99}, 0}, 1, 1};
     EXPECT_THROW(coordinator.admit_infoset_row(unknown_state_shape), std::invalid_argument);
 
     auto child = checked_action_child_public_state();
     coordinator.admit_public_state(child);
 
-    const core::MultiwaySparseRowShape child_shape{{2}, 1, 1, 3};
+    const core::MultiwaySparseRowShape child_shape{{{2}, 1}, 1, 3};
     EXPECT_EQ(child.betting.current_player, child_shape.infoset.seat);
     coordinator.admit_infoset_row(child_shape);
     EXPECT_TRUE(coordinator.storage().has_row(child_shape.infoset));
 
-    const core::MultiwaySparseRowShape nonacting_child_shape{{2}, 0, 1, 3};
+    const core::MultiwaySparseRowShape nonacting_child_shape{{{2}, 0}, 1, 3};
     EXPECT_THROW(coordinator.admit_infoset_row(nonacting_child_shape), std::invalid_argument);
 
     auto too_few_actions = child_shape;
@@ -340,7 +358,7 @@ TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     runout.id = {3};
     runout.canonical_history_id = 103;
     coordinator.admit_public_state(runout);
-    const core::MultiwaySparseRowShape nondecision_shape{{3}, 0, 1, 0};
+    const core::MultiwaySparseRowShape nondecision_shape{{{3}, 0}, 1, 0};
     EXPECT_THROW(coordinator.admit_infoset_row(nondecision_shape), std::invalid_argument);
 }
 

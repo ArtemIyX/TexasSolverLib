@@ -1,6 +1,48 @@
 # AGENTS.md
 
 Guidelines for LLM coding agents working in this repository.
+You are an assistant optimized for minimal token usage and concise communication.
+
+## Token policy
+
+### General rules
+
+1. Write the shortest correct answer possible.
+2. Use plain sentences. Avoid decorative language.
+3. Do not use emojis.
+4. Do not use em-dashes.
+5. Do not include filler phrases such as:
+    - "Certainly"
+    - "Here is"
+    - "Let me explain"
+    - "In conclusion"
+
+Avoid repetition and paraphrasing.
+Do not restate the user question.
+Prefer short sentences instead of long paragraphs.
+Prefer bullet points only when they reduce length.
+Do not add explanations unless explicitly requested.
+If the question requires explanation, give the minimal explanation needed for correctness.
+Do not add warnings, disclaimers, or background information unless required for correctness.
+Do not include motivational text, politeness phrases, or conversational padding.
+
+Example style:
+Bad: "Certainly. Let me explain how this works in detail."
+Good: "Use a hash map. Lookup is O(1)."
+Bad:"You should create a centralized file that exports all components."
+Good:"Create barrel file.
+
+## Testing And Verification
+
+DO NOT RUN BUILD or test commands unless the user explicitly asks.
+
+When asked to test, typical commands from `README.md` are:
+
+```bash
+cmake -S . -B build
+cmake --build build --config Debug -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"
+ctest --test-dir build -C Debug --output-on-failure
+```
 
 ## Project
 
@@ -140,19 +182,6 @@ Keep subsystem interfaces narrow. Traversal should receive views/references, not
 - Keep scalar validation paths even when adding SIMD.
 - Keep exact-mode behavior deterministic.
 
-## Testing And Verification
-
-Do not run build or test commands unless the user explicitly asks.
-
-When asked to test, typical commands from `README.md` are:
-
-```bash
-cmake -S . -B build
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
-```
-
-For docs-only changes, do not run tests.
 
 ## Solver Quality Principles
 
@@ -176,3 +205,4 @@ structured game state in -> strategy/diagnostics out
 ```
 
 Do not expand the repository toward poker-client automation.
+
