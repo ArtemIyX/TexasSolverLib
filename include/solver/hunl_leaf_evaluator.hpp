@@ -11,13 +11,17 @@
 namespace core {
 
 enum class HUNLLeafValueUnits : std::uint8_t { Chips, BigBlinds, PotFraction, NormalizedStackFraction };
+enum class HUNLLeafEvaluationScope : std::uint8_t { DealConditional };
 
 // Boundary contract for a future batched exact/value-network leaf backend.
 // A production solver must use this contract for every depth cutoff or reject
 // the cutoff request; it must never substitute a backend-specific heuristic.
 struct HUNLLeafEvaluationRequest {
     HUNLState public_state;
+    // Exact sampled private deal. public_state deliberately remains private-card free.
+    std::array<std::array<std::uint8_t, 2>, 2> private_hole_cards = {};
     std::array<std::vector<double>, 2> bucket_reach;
+    HUNLLeafEvaluationScope scope = HUNLLeafEvaluationScope::DealConditional;
     HUNLLeafValueUnits units = HUNLLeafValueUnits::Chips;
     std::string abstraction_version;
     std::string model_version;

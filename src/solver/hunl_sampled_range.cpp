@@ -182,8 +182,10 @@ double traverse(
         HUNLLeafEvaluationRequest request;
         request.public_state = state;
         request.public_state.hole_cards.reset();
+        request.private_hole_cards = *state.hole_cards;
         request.bucket_reach[0] = {reach.player[0]};
         request.bucket_reach[1] = {reach.player[1]};
+        request.scope = HUNLLeafEvaluationScope::DealConditional;
         request.units = root.value_units;
         request.abstraction_version = root.blueprint_version;
         request.model_version = root.model_version;

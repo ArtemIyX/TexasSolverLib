@@ -113,7 +113,12 @@ same-unit leaves. Multiway settlement declares chip utilities; the terminal
 adapter converts them once to the root's chips or big-blinds unit and labels the
 result. Unsupported normalizations are rejected at root validation.
 
-### P0-3: depth-limited leaf requests lose private-hand identity
+### P0-3: depth-limited leaf requests lose private-hand identity [Fixed]
+
+Fixed: leaf requests now carry the exact sampled two-player hole-card deal,
+while `public_state` remains private-card free. The contract explicitly marks
+the values as deal-conditional, and the injected leaf regression verifies the
+private deal is valid and available.
 
 At a cutoff, traversal clears `hole_cards` and supplies one scalar reach value
 per seat. Every private infoset also uses bucket zero.

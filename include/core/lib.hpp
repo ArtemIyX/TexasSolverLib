@@ -47,6 +47,7 @@ using ::core::ExploitOutput;
 using ::core::HUNLConfig;
 using ::core::HUNLLeafEvaluationRequest;
 using ::core::HUNLLeafEvaluationResult;
+using ::core::HUNLLeafEvaluationScope;
 using ::core::HUNLLeafEvaluator;
 using ::core::HUNLLeafValueUnits;
 using ::core::HUNLSolveOutput;

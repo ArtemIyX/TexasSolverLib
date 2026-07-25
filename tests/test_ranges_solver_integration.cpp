@@ -33,6 +33,7 @@ core::HUNLConfig range_contract_config() {
 struct InjectedLeafContext {
     std::uint32_t calls = 0;
     bool received_public_state = true;
+    bool received_private_deal = true;
 };
 
 bool injected_zero_sum_leaf(
@@ -47,6 +48,10 @@ bool injected_zero_sum_leaf(
             !requests[index].public_state.hole_cards.has_value() &&
             requests[index].bucket_reach[0].size() == 1U &&
             requests[index].bucket_reach[1].size() == 1U;
+        context.received_private_deal = context.received_private_deal &&
+            core::are_valid_and_distinct_cards(requests[index].private_hole_cards[0].data(), 2U) &&
+            core::are_valid_and_distinct_cards(requests[index].private_hole_cards[1].data(), 2U) &&
+            requests[index].scope == core::HUNLLeafEvaluationScope::DealConditional;
         results[index].values = {0.0, 0.0};
         results[index].units = requests[index].units;
     }
@@ -313,6 +318,7 @@ TEST_CASE(ranges_structured_depth_limit_uses_typed_injected_leaf_evaluator) {
     EXPECT_EQ(result.batches_completed, 1U);
     EXPECT_TRUE(context.calls > 0U);
     EXPECT_TRUE(context.received_public_state);
+    EXPECT_TRUE(context.received_private_deal);
 }
 
 TEST_CASE(ranges_structured_depth_limit_rejects_missing_typed_leaf_evaluator) {
