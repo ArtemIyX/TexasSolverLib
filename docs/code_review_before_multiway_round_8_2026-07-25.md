@@ -145,7 +145,12 @@ Required fix:
 - define whether leaf values are deal-conditional or range-conditional;
 - compare a deal-sensitive leaf backend with an untruncated exact tree.
 
-### P0-4: compiled multiway range sampling requires infeasible exact enumeration
+### P0-4: compiled multiway range sampling requires infeasible exact enumeration [Fixed]
+
+Fixed: compiled sampling now makes exactly one independent per-seat proposal
+per trajectory and discards collisions. Accepted samples retain their direct
+product proposal probability; construction no longer computes a global joint
+partition function by recursive enumeration.
 
 The round-7 feasibility preflight was fixed, but construction then runs a
 second recursive enumeration to compute total compatible joint mass. That
