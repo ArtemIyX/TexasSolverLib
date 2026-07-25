@@ -92,11 +92,28 @@ struct MultiwayActionAbstractionIdentity {
     }
 };
 
+enum class MultiwayPublicParentEdgeKind : std::uint8_t {
+    None,
+    BettingAction,
+    BoardChance,
+    StreetTransition,
+};
+
+// Typed incoming edge for a coordinator-admitted public state. Only the
+// payload matching `kind` is consumed: action, dealt_card, or next board.
+struct MultiwayPublicParentEdge {
+    MultiwayPublicParentEdgeKind kind = MultiwayPublicParentEdgeKind::None;
+    MultiwayActionDescriptor action{};
+    std::uint8_t dealt_card = 0;
+    std::vector<std::uint8_t> transition_board;
+};
+
 // This descriptor is the canonical public object admitted by the coordinator.
 // It intentionally contains no private cards, ranges, or mutable policy data.
 struct MultiwayPublicStateDescriptor {
     MultiwayPublicStateId id{};
     MultiwayPublicStateId parent_id{};
+    MultiwayPublicParentEdge incoming_edge{};
     std::uint64_t canonical_history_id = 0;
     MultiwayBettingSnapshot betting{};
     std::vector<std::uint8_t> board;

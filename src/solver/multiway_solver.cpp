@@ -23,6 +23,13 @@ bool valid_action(MultiwayAction action) noexcept {
            action == MultiwayAction::Raise || action == MultiwayAction::AllIn;
 }
 
+bool valid_public_parent_edge_kind(MultiwayPublicParentEdgeKind kind) noexcept {
+    return kind == MultiwayPublicParentEdgeKind::None ||
+           kind == MultiwayPublicParentEdgeKind::BettingAction ||
+           kind == MultiwayPublicParentEdgeKind::BoardChance ||
+           kind == MultiwayPublicParentEdgeKind::StreetTransition;
+}
+
 bool valid_odd_chip_rule(MultiwayOddChipRule rule) noexcept {
     return rule == MultiwayOddChipRule::AscendingSeatIdFromFirstSeat;
 }
@@ -67,6 +74,10 @@ bool same_public_state_descriptor(
     const MultiwayPublicStateDescriptor& right) noexcept {
     return left.id == right.id &&
            left.parent_id == right.parent_id &&
+           left.incoming_edge.kind == right.incoming_edge.kind &&
+           left.incoming_edge.action == right.incoming_edge.action &&
+           left.incoming_edge.dealt_card == right.incoming_edge.dealt_card &&
+           left.incoming_edge.transition_board == right.incoming_edge.transition_board &&
            left.canonical_history_id == right.canonical_history_id &&
            same_betting_snapshot(left.betting, right.betting) &&
            left.board == right.board &&
@@ -76,29 +87,75 @@ bool same_public_state_descriptor(
 }
 
 void validate_public_state_child_transition(
+    const MultiwayRootSnapshot& root,
     const MultiwayPublicStateDescriptor& parent,
     const MultiwayPublicStateDescriptor& child) {
-    if (child.canonical_history_id == parent.canonical_history_id ||
-        child.history.size() != parent.history.size() + 1U ||
-        !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) ||
-        child.board != parent.board || child.board_runout != parent.board_runout) {
-        throw std::invalid_argument("multiway child public state is not a single parent action transition");
-    }
-
     const auto parent_state = MultiwayState::from_snapshot(parent.betting);
-    const auto& appended = child.history.back();
-    if (parent_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision ||
-        appended.actor != parent.betting.current_player ||
-        std::find(parent.legal_actions.begin(), parent.legal_actions.end(), appended.action) ==
-            parent.legal_actions.end()) {
-        throw std::invalid_argument("multiway child history action is not in the parent decision menu");
+    if (child.canonical_history_id == parent.canonical_history_id) {
+        throw std::invalid_argument("multiway child public state must have a distinct history identity");
     }
-
-    const auto expected_betting = parent_state.apply(
-        appended.action.action, appended.action.target_street_contribution).snapshot();
-    if (!same_betting_snapshot(expected_betting, child.betting)) {
-        throw std::invalid_argument("multiway child betting snapshot does not match its parent action");
+    switch (child.incoming_edge.kind) {
+        case MultiwayPublicParentEdgeKind::BettingAction: {
+            if (child.history.size() != parent.history.size() + 1U ||
+                !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) ||
+                child.board != parent.board || child.board_runout != parent.board_runout) {
+                throw std::invalid_argument("multiway child action state does not preserve parent public data");
+            }
+            const auto& appended = child.history.back();
+            if (parent_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision ||
+                appended.actor != parent.betting.current_player || appended.action != child.incoming_edge.action ||
+                std::find(parent.legal_actions.begin(), parent.legal_actions.end(), appended.action) ==
+                    parent.legal_actions.end()) {
+                throw std::invalid_argument("multiway child history action is not in the parent decision menu");
+            }
+            const auto expected_betting = parent_state.apply(
+                appended.action.action, appended.action.target_street_contribution).snapshot();
+            if (!same_betting_snapshot(expected_betting, child.betting)) {
+                throw std::invalid_argument("multiway child betting snapshot does not match its parent action");
+            }
+            return;
+        }
+        case MultiwayPublicParentEdgeKind::BoardChance: {
+            const auto parent_kind = parent_state.next_node_kind();
+            if ((parent_kind != MultiwayNextNodeKind::BoardRunout &&
+                 parent_kind != MultiwayNextNodeKind::StreetTransition) ||
+                child.history != parent.history || !same_betting_snapshot(child.betting, parent.betting) ||
+                child.board.size() != parent.board.size() + 1U ||
+                !std::equal(parent.board.begin(), parent.board.end(), child.board.begin()) ||
+                child.board.back() != child.incoming_edge.dealt_card ||
+                !are_valid_and_distinct_cards(child.board.data(), child.board.size())) {
+                throw std::invalid_argument("multiway child board chance does not match its parent state");
+            }
+            const auto chance_only = parent_kind == MultiwayNextNodeKind::BoardRunout;
+            if (child.board_runout.remaining_board_cards != 5U - child.board.size() ||
+                child.board_runout.chance_only_runout != chance_only) {
+                throw std::invalid_argument("multiway child board chance has inconsistent runout metadata");
+            }
+            return;
+        }
+        case MultiwayPublicParentEdgeKind::StreetTransition: {
+            if (!parent_state.requires_street_transition() || child.history != parent.history ||
+                child.board != child.incoming_edge.transition_board ||
+                child.board.size() != expected_board_card_count(
+                    static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U)) ||
+                child.board.size() < parent.board.size() ||
+                !std::equal(parent.board.begin(), parent.board.end(), child.board.begin()) ||
+                child.board_runout.remaining_board_cards != 5U - child.board.size() ||
+                child.board_runout.chance_only_runout) {
+                throw std::invalid_argument("multiway child street transition has inconsistent public state");
+            }
+            const auto next_street = static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U);
+            const auto expected_betting = parent_state.begin_next_street(
+                next_street, root.next_street_first_seat).snapshot();
+            if (!same_betting_snapshot(expected_betting, child.betting)) {
+                throw std::invalid_argument("multiway child street transition does not match root seat semantics");
+            }
+            return;
+        }
+        case MultiwayPublicParentEdgeKind::None:
+            break;
     }
+    throw std::invalid_argument("multiway child public state requires a typed parent edge");
 }
 
 bool delta_less(const MultiwayWorkerDelta& left, const MultiwayWorkerDelta& right) noexcept {
@@ -117,12 +174,18 @@ bool delta_is_finite(const MultiwayWorkerDelta& delta) noexcept {
 
 void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state) {
     state.betting.validate();
-    if (state.id.value == 0 || state.canonical_history_id == 0) {
+    if (state.id.value == 0 || state.canonical_history_id == 0 ||
+        !valid_public_parent_edge_kind(state.incoming_edge.kind)) {
         throw std::invalid_argument("multiway public state requires stable identities");
     }
     const auto known_board_cards = expected_board_card_count(state.betting.street);
+    const auto betting_state = MultiwayState::from_snapshot(state.betting);
     const auto valid_board_size = state.board_runout.chance_only_runout
         ? state.board.size() >= known_board_cards && state.board.size() <= 5U
+        : betting_state.requires_street_transition()
+            ? state.board.size() >= known_board_cards &&
+                  state.board.size() <= expected_board_card_count(
+                      static_cast<Street>(static_cast<std::uint8_t>(state.betting.street) + 1U))
         : state.board.size() == known_board_cards;
     if (!valid_board_size ||
         state.board_runout.remaining_board_cards != 5U - state.board.size() ||
@@ -130,7 +193,6 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
         throw std::invalid_argument("multiway public state has an inconsistent board/runout state");
     }
 
-    const auto betting_state = MultiwayState::from_snapshot(state.betting);
     if (state.board_runout.chance_only_runout != betting_state.requires_board_runout()) {
         throw std::invalid_argument("multiway public state has an inconsistent chance-only runout flag");
     }
@@ -178,6 +240,11 @@ std::size_t checked_value_count(const MultiwaySparseRowShape& shape) {
 void MultiwayRootSnapshot::validate() const {
     validate_public_state_descriptor(public_state);
     private_ranges.validate();
+
+    if (public_state.parent_id.value != 0 ||
+        public_state.incoming_edge.kind != MultiwayPublicParentEdgeKind::None) {
+        throw std::invalid_argument("multiway root must not carry a parent edge");
+    }
 
     const auto seat_count = public_state.betting.stacks.size();
     if (seat_count < 2U || seat_count > 6U || private_ranges.ranges.size() != seat_count) {
@@ -388,7 +455,10 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
         if (parent == nullptr) {
             throw std::invalid_argument("multiway public state parent must be admitted first");
         }
-        validate_public_state_child_transition(*parent, state);
+        validate_public_state_child_transition(request_.root(), *parent, state);
+    } else if (state.id != request_.root().public_state.id ||
+               state.incoming_edge.kind != MultiwayPublicParentEdgeKind::None) {
+        throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
     }
     public_states_.push_back(state);
     ++diagnostics_.public_states_admitted;

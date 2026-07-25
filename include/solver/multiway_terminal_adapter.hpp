@@ -24,6 +24,21 @@ struct MultiwayStreetTransition {
     MultiwayBoardRunoutState board_runout{};
 };
 
+// Admission-ready binding for a canonical public chance successor. The caller
+// assigns its coordinator id/history/action menu, while retaining this parent
+// identity and typed edge unchanged.
+struct MultiwayPublicBoardChanceEdge {
+    MultiwayPublicStateId parent_id{};
+    MultiwayPublicParentEdge incoming_edge{};
+    MultiwayBoardChanceEdge chance{};
+};
+
+struct MultiwayPublicStreetTransition {
+    MultiwayPublicStateId parent_id{};
+    MultiwayPublicParentEdge incoming_edge{};
+    MultiwayStreetTransition transition{};
+};
+
 // Cold integrated boundary for public chance, betting transitions, and
 // terminal settlement. It owns no traversal or policy state.
 class MultiwayTerminalAdapter {
@@ -38,9 +53,20 @@ public:
         const std::vector<std::uint8_t>& board,
         const MultiwayJointPrivateSample& private_deal) const;
 
+    [[nodiscard]] std::vector<MultiwayPublicBoardChanceEdge> canonical_public_board_chance_edges(
+        MultiwayPublicStateId parent_id,
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<std::uint8_t>& board,
+        const MultiwayJointPrivateSample& private_deal) const;
+
     // Applies the root's fixed next-street seat. The supplied board must be
     // exactly complete for the immediately following street.
     [[nodiscard]] MultiwayStreetTransition apply_street_transition(
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<std::uint8_t>& board) const;
+
+    [[nodiscard]] MultiwayPublicStreetTransition apply_public_street_transition(
+        MultiwayPublicStateId parent_id,
         const MultiwayBettingSnapshot& betting,
         const std::vector<std::uint8_t>& board) const;
 

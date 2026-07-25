@@ -159,6 +159,28 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
     return edges;
 }
 
+std::vector<MultiwayPublicBoardChanceEdge> MultiwayTerminalAdapter::canonical_public_board_chance_edges(
+    MultiwayPublicStateId parent_id,
+    const MultiwayBettingSnapshot& betting,
+    const std::vector<std::uint8_t>& board,
+    const MultiwayJointPrivateSample& private_deal) const {
+    if (parent_id.value == 0) {
+        throw std::invalid_argument("multiway public board chance requires a parent identity");
+    }
+    const auto edges = canonical_board_chance_edges(betting, board, private_deal);
+    std::vector<MultiwayPublicBoardChanceEdge> result;
+    result.reserve(edges.size());
+    for (const auto& edge : edges) {
+        MultiwayPublicBoardChanceEdge successor;
+        successor.parent_id = parent_id;
+        successor.incoming_edge.kind = MultiwayPublicParentEdgeKind::BoardChance;
+        successor.incoming_edge.dealt_card = edge.dealt_card;
+        successor.chance = edge;
+        result.push_back(std::move(successor));
+    }
+    return result;
+}
+
 MultiwayStreetTransition MultiwayTerminalAdapter::apply_street_transition(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board) const {
@@ -177,6 +199,21 @@ MultiwayStreetTransition MultiwayTerminalAdapter::apply_street_transition(
     result.board = board;
     result.board_runout.remaining_board_cards = static_cast<std::uint8_t>(5U - board.size());
     result.board_runout.chance_only_runout = false;
+    return result;
+}
+
+MultiwayPublicStreetTransition MultiwayTerminalAdapter::apply_public_street_transition(
+    MultiwayPublicStateId parent_id,
+    const MultiwayBettingSnapshot& betting,
+    const std::vector<std::uint8_t>& board) const {
+    if (parent_id.value == 0) {
+        throw std::invalid_argument("multiway public street transition requires a parent identity");
+    }
+    MultiwayPublicStreetTransition result;
+    result.parent_id = parent_id;
+    result.incoming_edge.kind = MultiwayPublicParentEdgeKind::StreetTransition;
+    result.incoming_edge.transition_board = board;
+    result.transition = apply_street_transition(betting, board);
     return result;
 }
 
