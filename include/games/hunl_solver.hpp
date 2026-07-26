@@ -45,9 +45,21 @@ struct HUNLStructuredRootRequest {
     // version string as a prior strategy or leaf value table.
     std::string blueprint_version;
     std::string model_version;
+    // The private hand whose acting-root strategy is exported. Bucket zero is
+    // the only current structured-range bucket; keeping it explicit prevents
+    // a future abstraction from silently changing the export contract.
+    struct HeroSelection {
+        PlayerId player = -1;
+        std::array<std::uint8_t, 2> hole_cards = {0, 0};
+        std::uint32_t bucket = 0;
+    };
+    std::optional<HeroSelection> hero_selection = std::nullopt;
+    // Optional diagnostic only. It never replaces `root_strategy`.
+    bool include_range_wide_root_diagnostics = false;
 
     [[nodiscard]] std::vector<HUNLJointRangeDeal> normalized_joint_range() const;
     [[nodiscard]] HUNLState public_root_state(std::shared_ptr<const HUNLConfig> config) const;
+    [[nodiscard]] HeroSelection effective_hero_selection() const;
     void validate() const;
 };
 

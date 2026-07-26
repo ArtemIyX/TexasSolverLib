@@ -75,6 +75,12 @@ HUNLConfig range_config_for_root(const HUNLStructuredRootRequest& request) {
     return range_config;
 }
 
+bool same_hole_cards(
+    const std::array<std::uint8_t, 2>& left,
+    const std::array<std::uint8_t, 2>& right) noexcept {
+    return left == right || (left[0] == right[1] && left[1] == right[0]);
+}
+
 HUNLFlatSolveMode resolve_flat_solve_mode(const HUNLConfig& config) {
     if (config.flat_solve_mode != HUNLFlatSolveMode::Auto) {
         return config.flat_solve_mode;
@@ -259,6 +265,37 @@ void HUNLStructuredRootRequest::validate() const {
     }
     if (live_root.has_value()) live_root->validate(config);
     validate_hunl_joint_range_feasibility(range_config_for_root(*this));
+    const auto selection = effective_hero_selection();
+    if (selection.player < 0 || selection.player > 1 || selection.bucket != 0U ||
+        !is_valid_card(selection.hole_cards[0]) || !is_valid_card(selection.hole_cards[1]) ||
+        selection.hole_cards[0] == selection.hole_cards[1]) {
+        throw std::invalid_argument("HUNLStructuredRootRequest has an invalid selected hero hand or bucket");
+    }
+    const auto root_player = live_root.has_value()
+        ? live_root->bind_config(std::make_shared<const HUNLConfig>(config)).current_player()
+        : HUNLState::initial(std::make_shared<const HUNLConfig>(config)).current_player();
+    if (selection.player != root_player) {
+        throw std::invalid_argument("HUNLStructuredRootRequest selected hero is not the root actor");
+    }
+    const auto deals = normalize_hunl_joint_range(range_config_for_root(*this));
+    const auto selected = static_cast<std::size_t>(selection.player);
+    if (std::none_of(deals.begin(), deals.end(), [&selection, selected](const HUNLJointRangeDeal& deal) {
+            return same_hole_cards(deal.hole[selected], selection.hole_cards);
+        })) {
+        throw std::invalid_argument("HUNLStructuredRootRequest selected hero hand is not in the compatible joint range");
+    }
+}
+
+HUNLStructuredRootRequest::HeroSelection HUNLStructuredRootRequest::effective_hero_selection() const {
+    if (hero_selection.has_value()) return *hero_selection;
+    // Compatibility is limited to an unambiguous one-combo player-zero range.
+    // Any range with multiple hero hands must name the acting hand explicitly.
+    const auto& range = config.initial_ranges[0];
+    if (!range.has_value() || range->hand_weights.size() != 1U) {
+        throw std::invalid_argument(
+            "HUNLStructuredRootRequest requires an explicit selected hero hand and bucket for a multi-hand range");
+    }
+    return {0, range->hand_weights.front().hole, 0U};
 }
 
 std::vector<HUNLJointRangeDeal> HUNLStructuredRootRequest::normalized_joint_range() const {

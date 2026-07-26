@@ -602,6 +602,14 @@ updates. Test the actual sparse merge path at precision boundaries.
 
 ### P1-12: structured root export collapses private hands into one action mix
 
+Status: **Fixed.** Structured roots now carry a selected acting hero hand and
+explicit bucket. Root strategy export reads only that private infoset rather
+than averaging compatible opponent deals. Legacy one-combo player-zero ranges
+remain unambiguous; multi-hand hero ranges reject missing selection. Optional
+range-wide aggregation is exposed separately as a diagnostic and never
+replaces the selected-hand root strategy. Regression coverage verifies the
+multi-hand rejection, selected export, and separate diagnostic.
+
 Root export averages every compatible joint deal into one
 `HUNLSampledRootStrategy`. The request does not select the hero's known hand or
 root bucket.

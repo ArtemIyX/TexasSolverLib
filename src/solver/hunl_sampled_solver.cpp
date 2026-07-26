@@ -212,6 +212,7 @@ HUNLSampledSolveResult HUNLSampledSolver::resume_structured_batches(
 
     HUNLSampledSolveResult result;
     result.root_strategy = root_strategy_;
+    result.range_wide_root_strategy = range_run.range_wide_root_strategy;
     result.profile = profile_.snapshot();
     result.batches_completed = range_run.batches_completed;
     result.timed_out = range_run.timed_out;
@@ -279,6 +280,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             std::max(final_memory.total_bytes(), preflight_result.estimate.total_bytes()));
         HUNLSampledSolveResult result;
         result.root_strategy = root_strategy_;
+        result.range_wide_root_strategy = range_run.range_wide_root_strategy;
         result.profile = profile_.snapshot();
         result.batches_completed = range_run.batches_completed;
         result.timed_out = range_run.timed_out;

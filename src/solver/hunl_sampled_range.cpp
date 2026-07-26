@@ -537,9 +537,10 @@ HUNLState root_for_deal(
     return public_root_state.clone_with_hole_cards(deal.hole);
 }
 
-const HUNLJointRangeDeal& first_deal(const std::vector<HUNLJointRangeDeal>& deals) {
-    if (deals.empty()) throw std::logic_error("structured sampled root has no compatible private deals");
-    return deals.front();
+bool same_hole_cards(
+    const std::array<std::uint8_t, 2>& left,
+    const std::array<std::uint8_t, 2>& right) noexcept {
+    return left == right || (left[0] == right[1] && left[1] == right[0]);
 }
 
 HUNLSampledRangeMemoryEstimate estimate_range_memory(
@@ -622,9 +623,11 @@ struct HUNLSampledRangeSession::Impl {
     HUNLState public_root_state;
     std::vector<HUNLJointRangeDeal> deals;
     PrivateInfosetCoordinator infosets;
+    HUNLStructuredRootRequest::HeroSelection hero_selection;
     HUNLState root_state;
     std::vector<ActionId> root_actions;
     HUNLSampledRootStrategy last_clean_root_strategy;
+    std::optional<HUNLSampledRootStrategy> last_range_wide_root_strategy = std::nullopt;
     std::uint64_t next_batch = 0;
     std::uint32_t next_local_trajectory = 0;
 
@@ -657,15 +660,57 @@ struct HUNLSampledRangeSession::Impl {
         memory_guard.admit_retained(planned_memory.joint_deal_bytes);
         memory_guard.admit_retained(sizeof(HUNLState) + sizeof(HUNLSampledRootStrategy) + 4096U);
         deals = root.normalized_joint_range();
-        root_state = root_for_deal(public_root_state, first_deal(deals));
+        hero_selection = root.effective_hero_selection();
+        root_state = root_for_deal(public_root_state, selected_hero_deal());
         root_actions = root_state.legal_actions();
-        if (deals.empty() || root_actions.empty()) {
+        if (root_state.current_player() != hero_selection.player || root_actions.empty()) {
             throw std::logic_error("structured sampled root has no compatible deal or legal root action");
         }
         last_clean_root_strategy = export_root_strategy();
+        if (root.include_range_wide_root_diagnostics) {
+            HUNLSampledRootStrategy diagnostic;
+            if (!export_range_wide_root_strategy_until(std::nullopt, diagnostic)) {
+                throw std::logic_error("unbounded structured range-wide root export was cancelled");
+            }
+            last_range_wide_root_strategy = std::move(diagnostic);
+        }
+    }
+
+    const HUNLJointRangeDeal& selected_hero_deal() const {
+        const auto player = static_cast<std::size_t>(hero_selection.player);
+        const auto found = std::find_if(deals.begin(), deals.end(), [this, player](const HUNLJointRangeDeal& deal) {
+            return same_hole_cards(deal.hole[player], hero_selection.hole_cards);
+        });
+        if (found == deals.end()) {
+            throw std::logic_error("structured sampled root has no compatible selected hero deal");
+        }
+        return *found;
     }
 
     bool export_root_strategy_until(
+        const std::optional<std::chrono::steady_clock::time_point>& deadline,
+        HUNLSampledRootStrategy& output) {
+        if (deadline_expired(deadline)) return false;
+        memory_guard.check_peak(estimate_range_memory(root, config).export_bytes);
+        const auto state = root_for_deal(public_root_state, selected_hero_deal());
+        const auto infoset = infosets.admit(state);
+        auto exported = HUNLSampledStrategyExporter::export_average_strategy(
+            storage.view(infoset), hero_selection.bucket);
+        std::vector<int> target_contributions(root_actions.size(), 0);
+        for (std::size_t action = 0; action < exported.actions.size(); ++action) {
+            const auto child = root_state.next_state(root_actions[action]);
+            target_contributions[action] = root_state.current_player() >= 0
+                ? child.contributions[static_cast<std::size_t>(root_state.current_player())]
+                : 0;
+        }
+        HUNLSampledStrategyExporter::attach_action_descriptors(
+            exported, root_actions, target_contributions);
+        if (deadline_expired(deadline)) return false;
+        output = std::move(exported);
+        return true;
+    }
+
+    bool export_range_wide_root_strategy_until(
         const std::optional<std::chrono::steady_clock::time_point>& deadline,
         HUNLSampledRootStrategy& output) {
         if (deadline_expired(deadline)) return false;
@@ -967,11 +1012,22 @@ struct HUNLSampledRangeSession::Impl {
             HUNLSampledRootStrategy exported;
             if (export_root_strategy_until(deadline, exported)) {
                 last_clean_root_strategy = std::move(exported);
+                if (root.include_range_wide_root_diagnostics) {
+                    HUNLSampledRootStrategy diagnostic;
+                    if (export_range_wide_root_strategy_until(deadline, diagnostic)) {
+                        last_range_wide_root_strategy = std::move(diagnostic);
+                    } else {
+                        output.timed_out = deadline.has_value();
+                    }
+                }
             } else {
                 output.timed_out = deadline.has_value();
             }
         }
         output.root_strategy = last_clean_root_strategy;
+        if (root.include_range_wide_root_diagnostics) {
+            output.range_wide_root_strategy = last_range_wide_root_strategy;
+        }
         return output;
     }
 };

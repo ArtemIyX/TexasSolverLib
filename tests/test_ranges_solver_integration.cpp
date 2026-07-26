@@ -230,6 +230,50 @@ TEST_CASE(ranges_structured_root_request_validates_versions_units_and_joint_reac
     EXPECT_THROW(request.validate(), std::invalid_argument);
 }
 
+TEST_CASE(ranges_structured_root_requires_selected_hero_for_multi_hand_export_and_keeps_wide_diagnostics_separate) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.initial_ranges[0]->hand_weights.push_back(
+        {{core::card_to_int(10, 0), core::card_to_int(9, 2)}, 1.0});
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root.hero_selection = core::HUNLStructuredRootRequest::HeroSelection{
+        1, {core::card_to_int(12, 1), core::card_to_int(11, 3)}, 0U};
+    EXPECT_THROW(root.validate(), std::invalid_argument);
+
+    root.hero_selection = core::HUNLStructuredRootRequest::HeroSelection{
+        0, {core::card_to_int(10, 0), core::card_to_int(9, 2)}, 0U};
+    root.include_range_wide_root_diagnostics = true;
+    root.validate();
+
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1U;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile);
+    EXPECT_EQ(storage.row_count(), 2U);
+    const auto selected = storage.view_mut(storage.meta()[0].id);
+    const auto other = storage.view_mut(storage.meta()[1].id);
+    EXPECT_TRUE(selected.action_count >= 2U);
+    for (std::size_t action = 0; action < selected.action_count; ++action) {
+        selected.strategy_sum[core::HUNLSampledStorage::value_index(
+            selected.layout, selected.bucket_count, selected.action_count, 0U, action)] =
+            action == 0U ? 1.0F : 0.0F;
+        other.strategy_sum[core::HUNLSampledStorage::value_index(
+            other.layout, other.bucket_count, other.action_count, 0U, action)] =
+            action == 1U ? 1.0F : 0.0F;
+    }
+    const auto result = session.resume_batches(0U);
+    EXPECT_NEAR(result.root_strategy.actions[0].probability, 1.0, 1e-12);
+    EXPECT_NEAR(result.root_strategy.actions[1].probability, 0.0, 1e-12);
+    EXPECT_TRUE(result.range_wide_root_strategy.has_value());
+    EXPECT_EQ(result.root_strategy.actions.size(), result.range_wide_root_strategy->actions.size());
+    EXPECT_NEAR(result.range_wide_root_strategy->actions[0].probability, 0.5, 1e-12);
+    EXPECT_NEAR(result.range_wide_root_strategy->actions[1].probability, 0.5, 1e-12);
+}
+
 TEST_CASE(ranges_structured_root_rejects_unknown_units_and_anonymous_depth_leaf_model) {
     core::HUNLStructuredRootRequest request;
     request.config = range_contract_config();
