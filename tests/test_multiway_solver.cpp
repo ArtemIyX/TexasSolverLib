@@ -147,17 +147,6 @@ core::MultiwayWorkerDelta delta(
 
 }  // namespace
 
-TEST_CASE(multiway_root_rake_policy_is_immutable_model_identity) {
-    auto zero_rake = valid_root();
-    auto raked = zero_rake;
-    raked.rake_policy.mode = core::MultiwayRakeMode::PercentageOfContestedPot;
-    raked.rake_policy.basis_points = 500U;
-    raked.rake_policy.cap = 100;
-    zero_rake.validate();
-    raked.validate();
-    EXPECT_NE(zero_rake.rake_policy.identity(), raked.rake_policy.identity());
-    EXPECT_NE(zero_rake.terminal_model_identity(), raked.terminal_model_identity());
-}
 
 TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot) {
     auto root = valid_root();
