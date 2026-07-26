@@ -287,10 +287,76 @@ double convert_terminal_value(
     throw std::logic_error("structured sampled traversal has unsupported terminal value units");
 }
 
+HUNLLeafEvaluationRequest make_leaf_request(
+    const HUNLState& state,
+    const HUNLStructuredRootRequest& root,
+    const RangeReach& reach,
+    const std::optional<std::chrono::steady_clock::time_point>& deadline) {
+    HUNLLeafEvaluationRequest request;
+    request.public_state = state;
+    request.public_state.hole_cards.reset();
+    request.private_hole_cards = *state.hole_cards;
+    request.bucket_reach[0] = {reach.player[0]};
+    request.bucket_reach[1] = {reach.player[1]};
+    request.scope = HUNLLeafEvaluationScope::DealConditional;
+    request.units = root.value_units;
+    request.deadline = deadline;
+    request.abstraction_version = root.blueprint_version;
+    request.model_version = root.model_version;
+    return request;
+}
+
+bool valid_leaf_result(
+    const HUNLLeafEvaluationRequest& request,
+    const HUNLLeafEvaluationResult& result) noexcept {
+    const auto total = result.values[0] + result.values[1];
+    const auto scale = std::max({1.0, std::abs(result.values[0]), std::abs(result.values[1])});
+    return result.populated &&
+        result.units == request.units &&
+        result.scope == request.scope &&
+        result.abstraction_version == request.abstraction_version &&
+        result.model_version == request.model_version &&
+        std::isfinite(result.values[0]) &&
+        std::isfinite(result.values[1]) &&
+        std::abs(total) <= scale * 1e-9;
+}
+
+bool same_leaf_request(
+    const HUNLLeafEvaluationRequest& expected,
+    const HUNLLeafEvaluationRequest& actual) noexcept {
+    const auto& left = expected.public_state;
+    const auto& right = actual.public_state;
+    const auto same_public_state =
+        !left.hole_cards.has_value() && !right.hole_cards.has_value() &&
+        left.board == right.board && left.street == right.street &&
+        left.contributions == right.contributions && left.stacks == right.stacks &&
+        left.street_history == right.street_history &&
+        left.street_aggressor == right.street_aggressor &&
+        left.street_num_raises == right.street_num_raises && left.to_call == right.to_call &&
+        left.cur_player == right.cur_player && left.folded == right.folded && left.all_in == right.all_in &&
+        left.config == right.config && left.betting_tokens == right.betting_tokens &&
+        left.current_street_tokens == right.current_street_tokens &&
+        left.betting_history_codes == right.betting_history_codes &&
+        left.current_street_history_codes == right.current_street_history_codes &&
+        left.pending_board_deals == right.pending_board_deals;
+    return same_public_state && expected.private_hole_cards == actual.private_hole_cards &&
+        expected.bucket_reach == actual.bucket_reach &&
+        expected.scope == actual.scope &&
+        expected.units == actual.units &&
+        expected.abstraction_version == actual.abstraction_version &&
+        expected.model_version == actual.model_version;
+}
+
+struct LeafResultCursor {
+    const std::vector<HUNLLeafEvaluationRequest>& requests;
+    const std::vector<HUNLLeafEvaluationResult>& results;
+    std::size_t next = 0U;
+    std::size_t end = 0U;
+};
+
 double traverse(
     const HUNLState& state,
     const HUNLStructuredRootRequest& root,
-    const HUNLLeafEvaluator* leaf_evaluator,
     PlayerId traverser,
     std::uint64_t trajectory_id,
     const PrivateInfosetCoordinator& infosets,
@@ -299,7 +365,9 @@ double traverse(
     PcsRng& rng,
     RangeReach reach,
     std::uint32_t plies,
-    std::mutex& leaf_evaluator_mutex,
+    std::vector<HUNLLeafEvaluationRequest>* leaf_requests,
+    LeafResultCursor* leaf_results,
+    bool write_deltas,
     const std::optional<std::chrono::steady_clock::time_point>& deadline,
     bool& cancelled,
     HUNLSampledTraversalResult& result) {
@@ -314,41 +382,22 @@ double traverse(
         return convert_terminal_value(values[static_cast<std::size_t>(traverser)], root);
     }
     if (root.config.depth_limit_plies != 0U && plies >= root.config.depth_limit_plies) {
-        if (leaf_evaluator == nullptr || !leaf_evaluator->valid()) {
-            throw std::invalid_argument(
-                "structured sampled depth limit requires a typed leaf evaluator");
-        }
-        HUNLLeafEvaluationRequest request;
-        request.public_state = state;
-        request.public_state.hole_cards.reset();
-        request.private_hole_cards = *state.hole_cards;
-        request.bucket_reach[0] = {reach.player[0]};
-        request.bucket_reach[1] = {reach.player[1]};
-        request.scope = HUNLLeafEvaluationScope::DealConditional;
-        request.units = root.value_units;
-        request.deadline = deadline;
-        request.abstraction_version = root.blueprint_version;
-        request.model_version = root.model_version;
-        HUNLLeafEvaluationResult leaf;
-        bool accepted = false;
-        {
-            std::lock_guard<std::mutex> lock(leaf_evaluator_mutex);
-            if (deadline_expired(deadline)) {
-                cancelled = true;
-                return 0.0;
-            }
-            accepted = leaf_evaluator->evaluate_batch(leaf_evaluator->context, &request, &leaf, 1U);
-        }
-        if (deadline_expired(deadline)) {
-            cancelled = true;
+        const auto request = make_leaf_request(state, root, reach, deadline);
+        if (leaf_requests != nullptr) {
+            leaf_requests->push_back(request);
             return 0.0;
         }
-        if (!accepted ||
-            leaf.units != root.value_units ||
-            !std::isfinite(leaf.values[0]) || !std::isfinite(leaf.values[1])) {
-            throw std::runtime_error("structured sampled leaf evaluator rejected a depth cutoff");
+        if (leaf_results == nullptr || leaf_results->next >= leaf_results->end ||
+            leaf_results->next >= leaf_results->results.size()) {
+            throw std::logic_error("structured sampled leaf batch has an invalid result shape");
         }
-        return leaf.values[static_cast<std::size_t>(traverser)];
+        const auto index = leaf_results->next++;
+        const auto& planned_request = leaf_results->requests[index];
+        if (!same_leaf_request(planned_request, request) ||
+            !valid_leaf_result(planned_request, leaf_results->results[index])) {
+            throw std::runtime_error("structured sampled leaf evaluator returned invalid provenance or utilities");
+        }
+        return leaf_results->results[index].values[static_cast<std::size_t>(traverser)];
     }
     if (state.current_player() == -1) {
         const auto outcomes = state.chance_outcomes();
@@ -356,8 +405,8 @@ double traverse(
         ++result.chance_nodes_sampled;
         reach.chance *= selected.second;
         reach.sampling *= selected.second;
-        return traverse(state.apply(outcomes[selected.first].action), root, leaf_evaluator, traverser,
-                        trajectory_id, infosets, storage, scratch, rng, reach, plies + 1U, leaf_evaluator_mutex, deadline,
+        return traverse(state.apply(outcomes[selected.first].action), root, traverser,
+                        trajectory_id, infosets, storage, scratch, rng, reach, plies + 1U, leaf_requests, leaf_results, write_deltas, deadline,
                         cancelled, result);
     }
 
@@ -378,15 +427,17 @@ double traverse(
     if (acting_player != traverser) {
         const auto selected = sample_strategy(strategy, actions.size(), rng);
         ++result.opponent_nodes_sampled;
-        for (std::size_t action = 0; action < actions.size(); ++action) {
-            append_delta(scratch, trajectory_id, infoset, action, 0.0,
-                         strategy_weight * static_cast<double>(strategy[action]));
+        if (write_deltas) {
+            for (std::size_t action = 0; action < actions.size(); ++action) {
+                append_delta(scratch, trajectory_id, infoset, action, 0.0,
+                             strategy_weight * static_cast<double>(strategy[action]));
+            }
         }
         ++result.infosets_updated;
         reach.player[acting_index] *= selected.second;
         reach.sampling *= selected.second;
-        return traverse(state.apply(actions[selected.first]), root, leaf_evaluator, traverser, trajectory_id,
-                        infosets, storage, scratch, rng, reach, plies + 1U, leaf_evaluator_mutex, deadline, cancelled, result);
+        return traverse(state.apply(actions[selected.first]), root, traverser, trajectory_id,
+                        infosets, storage, scratch, rng, reach, plies + 1U, leaf_requests, leaf_results, write_deltas, deadline, cancelled, result);
     }
 
     std::array<double, kMaxDecisionActions> action_values = {};
@@ -394,9 +445,9 @@ double traverse(
     for (std::size_t action = 0; action < actions.size(); ++action) {
         auto child_reach = reach;
         child_reach.player[acting_index] *= static_cast<double>(strategy[action]);
-        action_values[action] = traverse(state.apply(actions[action]), root, leaf_evaluator, traverser,
+        action_values[action] = traverse(state.apply(actions[action]), root, traverser,
                                          trajectory_id, infosets, storage, scratch, rng, child_reach,
-                                         plies + 1U, leaf_evaluator_mutex, deadline, cancelled, result);
+                                         plies + 1U, leaf_requests, leaf_results, write_deltas, deadline, cancelled, result);
         if (cancelled) return 0.0;
         node_value += static_cast<double>(strategy[action]) * action_values[action];
     }
@@ -404,10 +455,12 @@ double traverse(
     const auto counterfactual_reach = reach.chance * reach.player[other];
     const auto importance_weight = counterfactual_reach / reach.sampling;
     if (!std::isfinite(importance_weight)) throw std::overflow_error("structured sampled regret weight is non-finite");
-    for (std::size_t action = 0; action < actions.size(); ++action) {
-        append_delta(scratch, trajectory_id, infoset, action,
-                     importance_weight * (action_values[action] - node_value),
-                     strategy_weight * static_cast<double>(strategy[action]));
+    if (write_deltas) {
+        for (std::size_t action = 0; action < actions.size(); ++action) {
+            append_delta(scratch, trajectory_id, infoset, action,
+                         importance_weight * (action_values[action] - node_value),
+                         strategy_weight * static_cast<double>(strategy[action]));
+        }
     }
     ++result.infosets_updated;
     return node_value;
@@ -520,8 +573,20 @@ HUNLSampledRangeMemoryEstimate estimate_range_memory(
         saturating_multiply(
             saturating_multiply(largest_partition + 1U, kDeltaEntriesPerTrajectory),
             sizeof(HUNLSampledValueDelta)),
-        sizeof(HUNLSampledWorkerScratch) + sizeof(HUNLSampledTraversalResult) + sizeof(std::thread));
-    estimate.batch_scratch_bytes = saturating_multiply(workers, per_worker);
+            sizeof(HUNLSampledWorkerScratch) + sizeof(HUNLSampledTraversalResult) + sizeof(std::thread));
+    const auto leaf_slots = root.config.depth_limit_plies == 0U ? 0U :
+        saturating_multiply(trajectories, kDeltaEntriesPerTrajectory);
+    const auto leaf_metadata = saturating_add(
+        saturating_add(saturating_size(root.blueprint_version.size() + 1U),
+                       saturating_size(root.model_version.size() + 1U)),
+        sizeof(double) * 2U);
+    const auto leaf_batch_bytes = saturating_multiply(
+        leaf_slots,
+        saturating_add(
+            sizeof(HUNLLeafEvaluationRequest) + sizeof(HUNLLeafEvaluationResult),
+            leaf_metadata));
+    estimate.batch_scratch_bytes = saturating_add(
+        saturating_multiply(workers, per_worker), leaf_batch_bytes);
     estimate.export_bytes = saturating_add(
         saturating_multiply(16U, sizeof(HUNLSampledActionProbability)),
         saturating_add(16U * sizeof(double), 16U * sizeof(int)));
@@ -705,6 +770,92 @@ struct HUNLSampledRangeSession::Impl {
                     subbatch_count,
                     std::min<std::size_t>(requested_workers, subbatch_count));
                 memory_guard.check_peak(estimate_range_memory(root, config).batch_scratch_bytes);
+                struct LeafRequestRange {
+                    std::size_t begin = 0U;
+                    std::size_t end = 0U;
+                };
+                std::array<LeafRequestRange, kTrajectorySubbatchSize> leaf_request_ranges = {};
+                std::vector<HUNLLeafEvaluationRequest> leaf_requests;
+                std::vector<HUNLLeafEvaluationResult> leaf_results;
+                if (root.config.depth_limit_plies != 0U) {
+                    leaf_requests.reserve(
+                        static_cast<std::size_t>(subbatch_count) * kDeltaEntriesPerTrajectory);
+                    for (std::uint32_t offset_in_batch = 0; offset_in_batch < subbatch_count; ++offset_in_batch) {
+                        const auto local = subbatch_begin + offset_in_batch;
+                        const auto trajectory_id =
+                            batch * static_cast<std::uint64_t>(config.minibatch_size) + local;
+                        const auto traverser = static_cast<PlayerId>(trajectory_id & 1U);
+                        const auto seed = PcsRng::mix_seed(
+                            config.seed,
+                            trajectory_id,
+                            batch + 1U,
+                            static_cast<std::uint64_t>(traverser));
+                        PcsRng rng(seed);
+                        const auto deal_index = deals.size() == 1U ? 0U : sample_deal_index(deals, rng);
+                        auto& leaf_range = leaf_request_ranges[offset_in_batch];
+                        leaf_range.begin = leaf_requests.size();
+                        HUNLSampledWorkerScratch planning_scratch;
+                        HUNLSampledTraversalResult planning_result;
+                        bool planning_cancelled = false;
+                        const auto chance = deals.size() == 1U ? 1.0 : deals[deal_index].weight;
+                        (void)traverse(
+                            root_for_deal(public_root_state, deals[deal_index]),
+                            root,
+                            traverser,
+                            trajectory_id,
+                            infosets,
+                            storage,
+                            planning_scratch,
+                            rng,
+                            RangeReach{{1.0, 1.0}, chance, chance},
+                            0U,
+                            &leaf_requests,
+                            nullptr,
+                            false,
+                            deadline,
+                            planning_cancelled,
+                            planning_result);
+                        if (planning_cancelled) {
+                            output.timed_out = true;
+                            break;
+                        }
+                        leaf_range.end = leaf_requests.size();
+                        if (leaf_range.end - leaf_range.begin > kDeltaEntriesPerTrajectory) {
+                            throw std::length_error("structured sampled leaf batch exceeds its per-trajectory cap");
+                        }
+                    }
+                    if (output.timed_out || reserve_expired(deadline)) {
+                        output.timed_out = true;
+                        break;
+                    }
+                    if (!leaf_requests.empty()) {
+                        leaf_results.resize(leaf_requests.size());
+                        bool accepted = false;
+                        {
+                            std::lock_guard<std::mutex> lock(leaf_evaluator_mutex);
+                            if (!deadline_expired(deadline)) {
+                                accepted = leaf_evaluator->evaluate_batch(
+                                    leaf_evaluator->context,
+                                    leaf_requests.data(),
+                                    leaf_results.data(),
+                                    leaf_requests.size());
+                            }
+                        }
+                        if (deadline_expired(deadline)) {
+                            output.timed_out = true;
+                            break;
+                        }
+                        if (!accepted) {
+                            throw std::runtime_error("structured sampled leaf evaluator rejected a depth-cutoff batch");
+                        }
+                        for (std::size_t index = 0; index < leaf_requests.size(); ++index) {
+                            if (!valid_leaf_result(leaf_requests[index], leaf_results[index])) {
+                                throw std::runtime_error(
+                                    "structured sampled leaf evaluator returned invalid provenance or utilities");
+                            }
+                        }
+                    }
+                }
                 std::vector<HUNLSampledWorkerScratch> worker_streams(worker_batches.size());
                 std::vector<HUNLSampledTraversalResult> worker_results(worker_batches.size());
                 std::vector<std::thread> threads;
@@ -739,10 +890,11 @@ struct HUNLSampledRangeSession::Impl {
                             HUNLSampledTraversalResult result;
                             bool trajectory_cancelled = false;
                             const auto chance = deals.size() == 1U ? 1.0 : deals[deal_index].weight;
+                            const auto& leaf_range = leaf_request_ranges[relative];
+                            LeafResultCursor leaf_cursor{leaf_requests, leaf_results, leaf_range.begin, leaf_range.end};
                             (void)traverse(
                                 root_for_deal(public_root_state, deals[deal_index]),
                                 root,
-                                leaf_evaluator,
                                 traverser,
                                 trajectory_id,
                                 infosets,
@@ -751,13 +903,18 @@ struct HUNLSampledRangeSession::Impl {
                                 rng,
                                 RangeReach{{1.0, 1.0}, chance, chance},
                                 0U,
-                                leaf_evaluator_mutex,
+                                nullptr,
+                                root.config.depth_limit_plies == 0U ? nullptr : &leaf_cursor,
+                                true,
                                 deadline,
                                 trajectory_cancelled,
                                 result);
                             if (trajectory_cancelled) {
                                 cancelled.store(true, std::memory_order_release);
                                 return;
+                            }
+                            if (root.config.depth_limit_plies != 0U && leaf_cursor.next != leaf_cursor.end) {
+                                throw std::logic_error("structured sampled leaf batch result count does not match traversal");
                             }
                             stream.deltas.insert(
                                 stream.deltas.end(),

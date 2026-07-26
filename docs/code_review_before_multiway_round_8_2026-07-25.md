@@ -447,6 +447,15 @@ Enforce the same byte budget before deal, infoset-map, row, and scratch growth.
 
 ### P1-7: the leaf callback is not batched or provenance-checked
 
+Status: **Fixed.** The coordinator now dry-runs each deterministic trajectory
+after admission, collects all cutoff requests for the bounded subbatch, and
+calls the leaf backend once before immutable worker traversal consumes the
+ordered results. Results must acknowledge every request and match units,
+scope, blueprint/model versions, finite two-player shape, and the zero-sum
+utility convention. Deadline checks bracket the batched backend call; a
+deadline or callback failure publishes no partial batch. Regressions cover a
+multi-request callback plus provenance and conservation rejection.
+
 Traversal calls the batch callback with `count == 1` from recursion and
 allocates/copies state and vectors for every cutoff. It checks units and
 finiteness only.

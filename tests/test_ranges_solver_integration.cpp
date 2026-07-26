@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -35,8 +36,11 @@ core::HUNLConfig range_contract_config() {
 
 struct InjectedLeafContext {
     std::uint32_t calls = 0;
+    std::uint32_t batch_calls = 0;
+    std::size_t largest_batch = 0U;
     bool received_public_state = true;
     bool received_private_deal = true;
+    bool received_provenance = true;
 };
 
 bool injected_zero_sum_leaf(
@@ -45,6 +49,8 @@ bool injected_zero_sum_leaf(
     core::HUNLLeafEvaluationResult* results,
     std::size_t count) {
     auto& context = *static_cast<InjectedLeafContext*>(raw_context);
+    ++context.batch_calls;
+    context.largest_batch = std::max(context.largest_batch, count);
     for (std::size_t index = 0; index < count; ++index) {
         ++context.calls;
         context.received_public_state = context.received_public_state &&
@@ -55,8 +61,15 @@ bool injected_zero_sum_leaf(
             core::are_valid_and_distinct_cards(requests[index].private_hole_cards[0].data(), 2U) &&
             core::are_valid_and_distinct_cards(requests[index].private_hole_cards[1].data(), 2U) &&
             requests[index].scope == core::HUNLLeafEvaluationScope::DealConditional;
+        context.received_provenance = context.received_provenance &&
+            requests[index].abstraction_version == "blueprint-v1" &&
+            requests[index].model_version == "leaf-v1";
         results[index].values = {0.0, 0.0};
         results[index].units = requests[index].units;
+        results[index].scope = requests[index].scope;
+        results[index].populated = true;
+        results[index].abstraction_version = requests[index].abstraction_version;
+        results[index].model_version = requests[index].model_version;
     }
     return true;
 }
@@ -81,6 +94,38 @@ bool mismatched_unit_leaf(
     return true;
 }
 
+bool mismatched_provenance_leaf(
+    void*,
+    const core::HUNLLeafEvaluationRequest* requests,
+    core::HUNLLeafEvaluationResult* results,
+    std::size_t count) {
+    for (std::size_t index = 0; index < count; ++index) {
+        results[index].values = {0.0, 0.0};
+        results[index].units = requests[index].units;
+        results[index].scope = requests[index].scope;
+        results[index].populated = true;
+        results[index].abstraction_version = requests[index].abstraction_version;
+        results[index].model_version = "wrong-model";
+    }
+    return true;
+}
+
+bool non_zero_sum_leaf(
+    void*,
+    const core::HUNLLeafEvaluationRequest* requests,
+    core::HUNLLeafEvaluationResult* results,
+    std::size_t count) {
+    for (std::size_t index = 0; index < count; ++index) {
+        results[index].values = {1.0, 0.0};
+        results[index].units = requests[index].units;
+        results[index].scope = requests[index].scope;
+        results[index].populated = true;
+        results[index].abstraction_version = requests[index].abstraction_version;
+        results[index].model_version = requests[index].model_version;
+    }
+    return true;
+}
+
 struct DeadlineAwareLeafContext {
     bool received_deadline = false;
 };
@@ -91,7 +136,7 @@ bool deadline_aware_slow_leaf(
     core::HUNLLeafEvaluationResult*,
     std::size_t count) {
     auto& context = *static_cast<DeadlineAwareLeafContext*>(raw_context);
-    if (count != 1U || !requests[0].deadline.has_value()) return false;
+    if (count == 0U || !requests[0].deadline.has_value()) return false;
     context.received_deadline = true;
     while (std::chrono::steady_clock::now() < *requests[0].deadline) {
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
@@ -308,8 +353,8 @@ TEST_CASE(ranges_single_joint_deal_matches_fixed_private_hand_sampled_oracle) {
     const auto deal = root.normalized_joint_range().front();
 
     core::HUNLSampledSolverConfig config;
-    config.minibatch_size = 1;
-    config.workers = 1;
+    config.minibatch_size = 2;
+    config.workers = 2;
     config.seed = 0x5EEDULL;
 
     core::HUNLSampledSolver range_solver(config);
@@ -448,8 +493,8 @@ TEST_CASE(ranges_structured_depth_limit_uses_typed_injected_leaf_evaluator) {
     root.model_version = "leaf-v1";
 
     core::HUNLSampledSolverConfig config;
-    config.minibatch_size = 1;
-    config.workers = 1;
+    config.minibatch_size = 2;
+    config.workers = 2;
     InjectedLeafContext context;
     const core::HUNLLeafEvaluator evaluator{&context, injected_zero_sum_leaf};
     core::HUNLSampledStorage storage;
@@ -459,8 +504,11 @@ TEST_CASE(ranges_structured_depth_limit_uses_typed_injected_leaf_evaluator) {
     const auto result = session.resume_batches(1);
     EXPECT_EQ(result.batches_completed, 1U);
     EXPECT_TRUE(context.calls > 0U);
+    EXPECT_EQ(context.batch_calls, 1U);
+    EXPECT_TRUE(context.largest_batch > 1U);
     EXPECT_TRUE(context.received_public_state);
     EXPECT_TRUE(context.received_private_deal);
+    EXPECT_TRUE(context.received_provenance);
 }
 
 TEST_CASE(ranges_structured_depth_limit_rejects_missing_typed_leaf_evaluator) {
@@ -537,6 +585,30 @@ TEST_CASE(ranges_structured_leaf_callback_rejects_a_value_unit_mismatch) {
 
     EXPECT_THROW(session.resume_batches(1U), std::runtime_error);
     EXPECT_EQ(session.next_batch(), 0U);
+}
+
+TEST_CASE(ranges_structured_leaf_callback_rejects_wrong_provenance_and_non_zero_sum_values) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+
+    core::HUNLSampledStorage provenance_storage;
+    core::HUNLSampledProfile provenance_profile;
+    const core::HUNLLeafEvaluator bad_provenance{nullptr, mismatched_provenance_leaf};
+    core::HUNLSampledRangeSession provenance_session(
+        root, config, provenance_storage, provenance_profile, 0U, &bad_provenance);
+    EXPECT_THROW(provenance_session.resume_batches(1U), std::runtime_error);
+
+    core::HUNLSampledStorage value_storage;
+    core::HUNLSampledProfile value_profile;
+    const core::HUNLLeafEvaluator bad_values{nullptr, non_zero_sum_leaf};
+    core::HUNLSampledRangeSession value_session(
+        root, config, value_storage, value_profile, 0U, &bad_values);
+    EXPECT_THROW(value_session.resume_batches(1U), std::runtime_error);
 }
 
 TEST_CASE(ranges_structured_zero_batch_session_exports_typed_uniform_root_actions) {

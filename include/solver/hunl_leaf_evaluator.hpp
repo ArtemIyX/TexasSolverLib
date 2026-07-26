@@ -35,6 +35,12 @@ struct HUNLLeafEvaluationRequest {
 struct HUNLLeafEvaluationResult {
     std::array<double, 2> values = {0.0, 0.0};
     HUNLLeafValueUnits units = HUNLLeafValueUnits::Chips;
+    HUNLLeafEvaluationScope scope = HUNLLeafEvaluationScope::DealConditional;
+    // A backend must acknowledge every submitted request. This lets callers
+    // reject a successful callback that left part of the output batch unset.
+    bool populated = false;
+    std::string abstraction_version;
+    std::string model_version;
 };
 
 // A non-owning, non-virtual batch callback.  Callers submit requests in
