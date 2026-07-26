@@ -425,7 +425,7 @@ Collect deterministic cutoff requests across trajectories, call the backend in
 real batches, and validate units, versions, result count, shape, and the chosen
 utility-conservation convention.
 
-### P1-8: rejection work is not bounded by the decision deadline
+### P1-8: rejection work is not bounded by the decision deadline [Fixed]
 
 `max_rejection_attempts` accepts any nonzero `uint32_t`. One trajectory may
 perform all attempts without cancellation.
@@ -444,6 +444,10 @@ Required fix:
 
 Use an admitted work budget, cancellation checks, or one proposal attempt per
 trajectory.
+
+Status: **Fixed.** Compiled private-range sampling makes one independent
+per-seat proposal per trajectory and discards collisions. It no longer retries
+up to `max_rejection_attempts`.
 
 ### P1-9: the target cash-game contract has no rake semantics
 
