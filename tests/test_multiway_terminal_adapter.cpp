@@ -268,6 +268,33 @@ TEST_CASE(multiway_terminal_adapter_delegates_fold_terminals) {
     EXPECT_EQ(result.utilities, expected.utilities);
 }
 
+TEST_CASE(multiway_terminal_adapter_converts_fold_terminal_utilities_once_at_the_root_boundary) {
+    auto chips_root = root_for_betting_state(flop_state());
+    auto big_blinds_root = chips_root;
+    big_blinds_root.value_units = core::MultiwayValueUnits::BigBlinds;
+    AdapterFixture chips(std::move(chips_root));
+    AdapterFixture big_blinds(std::move(big_blinds_root));
+    const auto resolve_fold = [](AdapterFixture& fixture) {
+        const auto deal = fixture.adapter.sample_private_deal(1U);
+        auto state = fixture.request.root().public_state;
+        state = fixture.admit_action_child(state, 1U);
+        state = fixture.admit_action_child(state, 0U);
+        state = fixture.admit_action_child(state, 0U);
+        return fixture.adapter.resolve_terminal(state.id, deal);
+    };
+
+    const auto chips_result = resolve_fold(chips);
+    const auto big_blinds_result = resolve_fold(big_blinds);
+    EXPECT_EQ(chips_result.utility_units, core::MultiwayValueUnits::Chips);
+    EXPECT_EQ(big_blinds_result.utility_units, core::MultiwayValueUnits::BigBlinds);
+    EXPECT_EQ(big_blinds_result.payouts, chips_result.payouts);
+    EXPECT_EQ(big_blinds_result.refunds, chips_result.refunds);
+    EXPECT_EQ(big_blinds_result.rake_taken, chips_result.rake_taken);
+    for (std::size_t seat = 0; seat < chips_result.utilities.size(); ++seat) {
+        EXPECT_NEAR(big_blinds_result.utilities[seat], chips_result.utilities[seat] / 100.0, 1e-12);
+    }
+}
+
 TEST_CASE(multiway_terminal_adapter_requires_admitted_state_and_bound_deal_token) {
     AdapterFixture fixture(root_for_betting_state(flop_state()));
     const auto deal = fixture.adapter.sample_private_deal(1);

@@ -595,6 +595,63 @@ TEST_CASE(multiway_solver_merge_rejects_missing_misindexed_or_unsorted_worker_st
     EXPECT_THROW(coordinator.merge_worker_streams({unsorted, sorted}), std::invalid_argument);
 }
 
+TEST_CASE(multiway_solver_merge_is_transactional_when_a_late_cell_is_invalid) {
+    core::MultiwaySolverCoordinator coordinator(valid_request());
+    coordinator.admit_infoset_row(root_row());
+    core::MultiwayWorkerDeltaStream first(0, 2);
+    core::MultiwayWorkerDeltaStream second(1, 2);
+    EXPECT_TRUE(first.try_append(delta(0, 1.0, 4.0, 1U)));
+    auto invalid = delta(3, 1.0, 1.0, 2U);
+    EXPECT_TRUE(second.try_append(invalid));
+    first.sort_fixed_order();
+    second.sort_fixed_order();
+
+    EXPECT_THROW(coordinator.merge_worker_streams({first, second}), std::invalid_argument);
+    const auto policy = coordinator.export_root_policy();
+    for (const auto& action : policy.actions) {
+        EXPECT_NEAR(action.probability, 1.0 / 3.0, 1e-12);
+    }
+    EXPECT_EQ(coordinator.diagnostics().worker_delta_entries_merged, 0U);
+}
+
+TEST_CASE(multiway_solver_worker_partitions_merge_identical_trajectory_ids_identically) {
+    const auto merged_policy = [](std::size_t workers) {
+        auto limits = valid_limits();
+        limits.worker_count = static_cast<std::uint32_t>(workers);
+        limits.max_worker_delta_entries = 12U;
+        core::MultiwayCFRConfig cfr;
+        cfr.player_count = 2;
+        core::MultiwaySolverCoordinator coordinator(
+            core::MultiwaySolveRequest(valid_root(), cfr, limits));
+        coordinator.admit_infoset_row(root_row());
+        std::vector<core::MultiwayWorkerDeltaStream> streams;
+        streams.reserve(workers);
+        for (std::size_t worker = 0; worker < workers; ++worker) {
+            streams.emplace_back(worker, 12U);
+        }
+        for (std::uint64_t trajectory = 0; trajectory < 12U; ++trajectory) {
+            const auto worker = static_cast<std::size_t>(trajectory % workers);
+            EXPECT_TRUE(streams[worker].try_append(delta(
+                static_cast<std::uint8_t>(trajectory % 3U),
+                static_cast<double>(trajectory + 1U),
+                static_cast<double>(trajectory + 2U),
+                trajectory)));
+        }
+        for (auto& stream : streams) stream.sort_fixed_order();
+        coordinator.merge_worker_streams(streams);
+        return coordinator.export_root_policy();
+    };
+
+    const auto baseline = merged_policy(1U);
+    for (std::size_t workers = 2U; workers <= 6U; ++workers) {
+        const auto policy = merged_policy(workers);
+        EXPECT_EQ(policy.actions.size(), baseline.actions.size());
+        for (std::size_t action = 0; action < policy.actions.size(); ++action) {
+            EXPECT_NEAR(policy.actions[action].probability, baseline.actions[action].probability, 1e-12);
+        }
+    }
+}
+
 TEST_CASE(multiway_solver_merge_is_fixed_order_and_exports_only_root_policy) {
     core::MultiwaySolverCoordinator coordinator(valid_request());
     coordinator.admit_infoset_row(root_row());

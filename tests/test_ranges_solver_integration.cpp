@@ -16,6 +16,7 @@
 #include <optional>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -453,6 +454,24 @@ TEST_CASE(ranges_structured_session_resumes_without_replaying_batch_ids) {
     EXPECT_EQ(profile.snapshot().traversals, 2U);
 }
 
+TEST_CASE(ranges_structured_session_move_retains_its_private_storage_lifetime) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1U;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession original(root, config, storage, profile);
+    core::HUNLSampledRangeSession moved(std::move(original));
+
+    const auto result = moved.resume_batches(1U);
+    EXPECT_EQ(result.batches_completed, 1U);
+    EXPECT_EQ(moved.next_batch(), 1U);
+    EXPECT_EQ(profile.snapshot().traversals, 1U);
+}
+
 TEST_CASE(ranges_structured_session_deadline_preserves_the_next_unpublished_batch) {
     core::HUNLStructuredRootRequest root;
     root.config = range_contract_config();
@@ -470,6 +489,31 @@ TEST_CASE(ranges_structured_session_deadline_preserves_the_next_unpublished_batc
     EXPECT_TRUE(expired.timed_out);
     EXPECT_EQ(session.next_batch(), 0U);
     EXPECT_EQ(profile.snapshot().traversals, 0U);
+}
+
+TEST_CASE(ranges_structured_expired_export_deadline_preserves_the_last_clean_root_policy) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    core::HUNLSampledSolverConfig config;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile);
+    const auto clean = session.resume_batches(0U);
+
+    const auto expired = session.resume_batches(
+        0U, std::chrono::steady_clock::now() - std::chrono::milliseconds{1});
+    EXPECT_TRUE(expired.timed_out);
+    EXPECT_EQ(expired.batches_completed, 0U);
+    EXPECT_EQ(expired.root_strategy.actions.size(), clean.root_strategy.actions.size());
+    for (std::size_t action = 0; action < clean.root_strategy.actions.size(); ++action) {
+        EXPECT_EQ(expired.root_strategy.actions[action].action_id, clean.root_strategy.actions[action].action_id);
+        EXPECT_NEAR(
+            expired.root_strategy.actions[action].probability,
+            clean.root_strategy.actions[action].probability,
+            1e-12);
+    }
 }
 
 TEST_CASE(ranges_structured_deadline_cancels_a_cooperative_slow_leaf_before_publication) {

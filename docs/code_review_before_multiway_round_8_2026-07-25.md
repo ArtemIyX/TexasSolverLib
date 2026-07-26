@@ -750,23 +750,26 @@ three-card combination with exact combination probability. The typed parent
 edge carries the full dealt-card sequence, and admission verifies that
 canonical sequence against the successor board.
 
-### P2-5: required regression gates are still absent
+### P2-5: required regression gates
 
-Missing gates include:
+Status: **Component gates fixed.** Focused regression coverage now includes
+trajectory-seeded sampling and a hand-computed sampled update; terminal unit
+normalization and leaf-unit/provenance rejection; two-through-six-seat private
+proposal sampling; batch and root-export deadline preservation; off-tree live
+facing-bet roots; deterministic worker-count merge equivalence and late-cell
+transactional rejection; admitted-state/deal-token provenance; raked terminal
+conservation with chips-to-big-blinds conversion; structured session memory
+accounting; Float64 precision-boundary rejection; and movable structured
+session lifetime. The fixed-capacity terminal oracle is compared for two- and
+three-seat raked toys.
 
-- RNG-domain separation and exact sampled-estimator comparison;
-- mixed terminal/cutoff value-unit tests;
-- deal-sensitive leaf equivalence;
-- broad two-through-six-seat proposal sampling;
-- deadline overshoot inside a batch and during export;
-- live facing-bet/off-tree structured roots;
-- transactional multiway merge under late-stream failure;
-- worker-count equivalence for identical trajectory IDs;
-- sampler provenance and disconnected-state rejection;
-- rake and value-unit terminal conservation;
-- session-owned peak-memory accounting;
-- solver move/session lifetime;
-- exhaustive three-player toy traversal and NashConv comparison.
+The sole remaining delivery blocker is an integrated multiway traversal
+runner. The repository still has no execution path that connects the
+multiway request, private sampler, public-state coordinator, terminal adapter,
+worker streams, and NashConv diagnostics. Therefore an exhaustive three-player
+toy traversal and end-to-end NashConv comparison cannot be supplied without
+implementing that new traversal; this status does not claim that such an
+integrated path exists.
 
 ## Round-7 status
 

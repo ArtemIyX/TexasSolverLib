@@ -1,6 +1,7 @@
 #include "games/multiway_fixed.hpp"
 #include "test_harness.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace {
@@ -81,5 +82,42 @@ TEST_CASE(multiway_fixed_terminal_matches_vector_oracle_with_side_pots_and_rake)
         EXPECT_EQ(fixed.refunds[seat], oracle.refunds[seat]);
         EXPECT_EQ(fixed.payouts[seat], oracle.payouts[seat]);
         EXPECT_EQ(fixed.utilities[seat], oracle.utilities[seat]);
+    }
+}
+
+TEST_CASE(multiway_fixed_two_and_three_seat_raked_terminal_toys_match_the_oracle) {
+    for (const std::size_t seats : {std::size_t{2}, std::size_t{3}}) {
+        core::MultiwayTerminalInput oracle_input;
+        oracle_input.contributions.assign(seats, 100);
+        oracle_input.folded.assign(seats, false);
+        oracle_input.strengths.reserve(seats);
+        for (std::size_t seat = 0; seat < seats; ++seat) {
+            oracle_input.strengths.push_back(core::Strength{static_cast<std::uint64_t>(seats - seat)});
+        }
+        oracle_input.rake_policy.mode = core::MultiwayRakeMode::PercentageOfContestedPot;
+        oracle_input.rake_policy.basis_points = 500U;
+        oracle_input.rake_policy.cap = 100;
+        const auto oracle = core::settle_multiway_terminal(oracle_input);
+
+        core::MultiwayFixedTerminalInput fixed_input;
+        fixed_input.seat_count = static_cast<std::uint8_t>(seats);
+        fixed_input.rake_policy = oracle_input.rake_policy;
+        for (std::size_t seat = 0; seat < seats; ++seat) {
+            fixed_input.contributions[seat] = oracle_input.contributions[seat];
+            fixed_input.folded[seat] = oracle_input.folded[seat];
+            fixed_input.strengths[seat] = oracle_input.strengths[seat];
+        }
+        core::MultiwayFixedTerminalScratch scratch;
+        core::MultiwayFixedTerminalResult fixed;
+        core::settle_multiway_terminal_fixed(fixed_input, scratch, fixed);
+
+        EXPECT_EQ(fixed.rake_taken, oracle.rake_taken);
+        int settled_chips = fixed.rake_taken;
+        for (std::size_t seat = 0; seat < seats; ++seat) {
+            EXPECT_EQ(fixed.payouts[seat], oracle.payouts[seat]);
+            EXPECT_EQ(fixed.utilities[seat], oracle.utilities[seat]);
+            settled_chips += fixed.payouts[seat] + fixed.refunds[seat];
+        }
+        EXPECT_EQ(settled_chips, static_cast<int>(seats * 100U));
     }
 }

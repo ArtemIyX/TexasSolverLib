@@ -153,6 +153,43 @@ TEST_CASE(multiway_compiled_private_ranges_reject_impossible_deals_before_worker
     EXPECT_THROW(core::MultiwayCompiledPrivateRanges(config), std::invalid_argument);
 }
 
+TEST_CASE(multiway_private_compiled_proposal_samples_two_through_six_seat_toys) {
+    for (std::size_t seats = 2U; seats <= 6U; ++seats) {
+        core::MultiwayPrivateConfig config;
+        config.board = {c(2, 0), c(2, 1), c(2, 2)};
+        for (std::size_t seat = 0; seat < seats; ++seat) {
+            const auto rank = static_cast<std::uint8_t>(4U + seat);
+            config.ranges.push_back({
+                hand(rank, 0, rank, 1, 1.0),
+                hand(rank, 2, rank, 3, 3.0),
+            });
+        }
+
+        core::MultiwayCompiledPrivateRanges compiled(config);
+        for (std::uint64_t seed = 1U; seed <= 5U; ++seed) {
+            core::MultiwayPrivateWorkerScratch scratch;
+            EXPECT_TRUE(compiled.try_sample_into(seed, scratch));
+            EXPECT_EQ(scratch.seat_count, seats);
+            EXPECT_EQ(scratch.accepted_trajectories, 1U);
+            EXPECT_EQ(scratch.discarded_trajectories, 0U);
+
+            double expected_reach = 1.0;
+            for (std::size_t seat = 0; seat < seats; ++seat) {
+                EXPECT_TRUE(!overlap(scratch.holes[seat], {c(2, 0), c(2, 1)}));
+                for (std::size_t other = seat + 1U; other < seats; ++other) {
+                    EXPECT_TRUE(!overlap(scratch.holes[seat], scratch.holes[other]));
+                }
+                const auto& range = config.ranges[seat];
+                expected_reach *= scratch.holes[seat] == range[0].hole ? 0.25 : 0.75;
+            }
+            EXPECT_NEAR(scratch.chance_reach, expected_reach, 1e-12);
+            EXPECT_NEAR(scratch.conditional_deal_probability, expected_reach, 1e-12);
+            EXPECT_NEAR(scratch.proposal_reach, expected_reach, 1e-12);
+            EXPECT_NEAR(scratch.inclusion_reach, 1.0, 1e-12);
+        }
+    }
+}
+
 TEST_CASE(multiway_private_range_feasibility_preflight_reports_feasible_and_infeasible_configs) {
     const auto feasible = core::preflight_multiway_private_range_feasibility(ranges());
     EXPECT_EQ(feasible.status, core::MultiwayPrivateRangeFeasibilityStatus::Feasible);
