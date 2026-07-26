@@ -181,11 +181,19 @@ public:
     [[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return root_; }
     [[nodiscard]] const MultiwayCFRConfig& cfr_config() const noexcept { return cfr_config_; }
     [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return limits_; }
+    [[nodiscard]] const MultiwayPrivateRangeFeasibilityResult& private_range_feasibility() const noexcept {
+        return private_range_feasibility_;
+    }
+    [[nodiscard]] const MultiwayCompiledPrivateRanges& compiled_private_ranges() const noexcept {
+        return *compiled_private_ranges_;
+    }
 
 private:
     MultiwayRootSnapshot root_;
     MultiwayCFRConfig cfr_config_;
     MultiwaySolverLimits limits_;
+    MultiwayPrivateRangeFeasibilityResult private_range_feasibility_{};
+    std::optional<MultiwayCompiledPrivateRanges> compiled_private_ranges_;
 };
 
 struct MultiwaySparseRowShape {

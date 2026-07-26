@@ -304,7 +304,7 @@ a global cell/trajectory ordering, computes and validates every pending cell,
 then commits each cell once. Duplicate trajectory updates to the same cell are
 rejected before any row or diagnostic mutation.
 
-### P1-3: root construction does not establish joint private-range feasibility
+### P1-3: root construction does not establish joint private-range feasibility [Fixed]
 
 `MultiwayRootSnapshot::validate()` performs only independent marginal
 validation.
@@ -325,6 +325,11 @@ Required fix:
 Bind a successful structured feasibility/proposal compilation result to solve
 request construction. Preserve distinct infeasible, search-exhausted, and
 proposal-normalization statuses.
+
+Status: **Fixed.** `MultiwaySolveRequest` now retains the successful
+feasibility result and immutable compiled private-range proposal. Infeasible
+and search-exhausted feasibility statuses are rejected during request
+construction before a coordinator can be created.
 
 ### P1-4: terminal adapter inputs are not proven descendants or sampler outputs
 

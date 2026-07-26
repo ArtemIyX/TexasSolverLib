@@ -290,14 +290,24 @@ MultiwaySolveRequest::MultiwaySolveRequest(
     MultiwayRootSnapshot root,
     MultiwayCFRConfig cfr_config,
     MultiwaySolverLimits limits)
-    : root_(std::move(root)), cfr_config_(cfr_config), limits_(limits) {
+    : root_(std::move(root)),
+      cfr_config_(cfr_config),
+      limits_(limits),
+      private_range_feasibility_(preflight_multiway_private_range_feasibility(root_.private_ranges)) {
     root_.validate();
+    if (private_range_feasibility_.status == MultiwayPrivateRangeFeasibilityStatus::Infeasible) {
+        throw std::invalid_argument("multiway solve request has no compatible private deal");
+    }
+    if (private_range_feasibility_.status == MultiwayPrivateRangeFeasibilityStatus::SearchBudgetExhausted) {
+        throw std::runtime_error("multiway solve request private-range feasibility preflight exhausted its budget");
+    }
     cfr_config_.validate();
     limits_.validate();
     if (cfr_config_.algorithm != MultiwayCFRAlgorithm::ExternalSamplingMCCFR ||
         cfr_config_.player_count != root_.seat_order.size()) {
         throw std::invalid_argument("multiway boundary requires external sampling with the root seat count");
     }
+    compiled_private_ranges_.emplace(root_.private_ranges);
 }
 
 std::size_t MultiwaySparseRowMetadata::value_count() const noexcept {
