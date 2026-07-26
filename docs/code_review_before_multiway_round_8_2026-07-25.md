@@ -239,7 +239,7 @@ and value units.
 
 ## P1 findings
 
-### P1-1: coordinator admission again accepts untyped and disconnected states
+### P1-1: coordinator admission again accepts untyped and disconnected states [Fixed]
 
 Post-round-7 commit `b784319` weakened two previously fixed contracts:
 
@@ -268,6 +268,10 @@ Required fix:
 - every non-root state must carry an explicit typed edge;
 - update test fixtures instead of weakening validation to accept omitted edge
   metadata.
+
+Status: **Fixed.** Child transitions now require an explicit typed edge,
+including betting actions, and the coordinator admits a parentless state only
+when it is its configured immutable root.
 
 ### P1-2: multiway worker merge is nontransactional and worker-count dependent
 

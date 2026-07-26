@@ -87,10 +87,7 @@ void validate_public_state_child_transition(
     if (child.canonical_history_id == parent.canonical_history_id) {
         throw std::invalid_argument("multiway child public state must have a distinct history identity");
     }
-    const auto edge_kind = child.incoming_edge.kind == MultiwayPublicParentEdgeKind::None
-        ? MultiwayPublicParentEdgeKind::BettingAction
-        : child.incoming_edge.kind;
-    switch (edge_kind) {
+    switch (child.incoming_edge.kind) {
         case MultiwayPublicParentEdgeKind::BettingAction: {
             if (child.history.size() != parent.history.size() + 1U ||
                 !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) ||
@@ -100,8 +97,7 @@ void validate_public_state_child_transition(
             const auto& appended = child.history.back();
             if (parent_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision ||
                 appended.actor != parent.betting.current_player ||
-                (child.incoming_edge.kind != MultiwayPublicParentEdgeKind::None &&
-                 appended.action != child.incoming_edge.action) ||
+                appended.action != child.incoming_edge.action ||
                 std::find(parent.legal_actions.begin(), parent.legal_actions.end(), appended.action) ==
                     parent.legal_actions.end()) {
                 throw std::invalid_argument("multiway child history action is not in the parent decision menu");
@@ -455,8 +451,7 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
             throw std::invalid_argument("multiway public state parent must be admitted first");
         }
         validate_public_state_child_transition(request_.root(), *parent, state);
-    } else if (state.id != request_.root().public_state.id &&
-               MultiwayState::from_snapshot(state.betting).next_node_kind() != MultiwayNextNodeKind::BoardRunout) {
+    } else if (state.id != request_.root().public_state.id) {
         throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
     }
     public_states_.push_back(state);
