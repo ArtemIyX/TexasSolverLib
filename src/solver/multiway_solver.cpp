@@ -91,7 +91,8 @@ void validate_public_state_child_transition(
         case MultiwayPublicParentEdgeKind::BettingAction: {
             if (child.history.size() != parent.history.size() + 1U ||
                 !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) ||
-                child.board != parent.board || child.board_runout != parent.board_runout) {
+                child.board != parent.board ||
+                child.board_runout.remaining_board_cards != parent.board_runout.remaining_board_cards) {
                 throw std::invalid_argument("multiway child action state does not preserve parent public data");
             }
             const auto& appended = child.history.back();

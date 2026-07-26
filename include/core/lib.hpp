@@ -86,6 +86,7 @@ using ::core::MultiwayShowdownInput;
 using ::core::MultiwayState;
 using ::core::MultiwayTerminalInput;
 using ::core::MultiwayTerminalAdapter;
+using ::core::MultiwaySamplerDealToken;
 using ::core::MultiwayTerminalResult;
 using ::core::MultiwayStreetTransition;
 using ::core::MultiwayPublicStreetTransition;

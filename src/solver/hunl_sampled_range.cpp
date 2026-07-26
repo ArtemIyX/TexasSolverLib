@@ -360,11 +360,11 @@ struct HUNLSampledRangeSession::Impl {
                 const auto seed = PcsRng::mix_seed(config.seed, trajectory_id, batch + 1U,
                                                     static_cast<std::uint64_t>(traverser));
                 PcsRng rng(seed);
-                const auto deal_index = sample_deal_index(deals, rng);
+                const auto deal_index = deals.size() == 1U ? 0U : sample_deal_index(deals, rng);
                 HUNLSampledWorkerScratch trajectory_stream;
                 trajectory_stream.reserve_deltas(kDeltaEntriesPerTrajectory);
                 HUNLSampledTraversalResult result;
-                const auto chance = deals[deal_index].weight;
+                const auto chance = deals.size() == 1U ? 1.0 : deals[deal_index].weight;
                 (void)traverse(root_for_deal(game_config, deals[deal_index]), root, leaf_evaluator, traverser,
                                trajectory_id, infosets, storage, trajectory_stream, rng,
                                RangeReach{{1.0, 1.0}, chance, chance}, 0U, result);

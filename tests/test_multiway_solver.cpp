@@ -34,27 +34,44 @@ core::MultiwayPublicStateDescriptor root_public_state() {
     return state;
 }
 
-core::MultiwayPublicStateDescriptor board_runout_public_state() {
-    auto state = root_public_state();
-    const auto betting = core::MultiwayState::from_snapshot(state.betting)
-                             .apply(core::MultiwayAction::AllIn)
-                             .apply(core::MultiwayAction::Call);
-    state.betting = betting.snapshot();
-    state.board_runout.chance_only_runout = true;
-    state.legal_actions.clear();
-    return state;
+std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::MultiwayState& state) {
+    std::vector<core::MultiwayActionDescriptor> descriptors;
+    const auto actions = state.legal_actions();
+    descriptors.reserve(actions.size());
+    for (std::size_t index = 0; index < actions.size(); ++index) {
+        const auto action = actions[index];
+        const auto target = action == core::MultiwayAction::Bet || action == core::MultiwayAction::Raise
+            ? state.current_bet() + state.last_full_raise_size()
+            : 0;
+        descriptors.push_back({action, static_cast<std::uint32_t>(index), target, 9001});
+    }
+    return descriptors;
+}
+
+core::MultiwayPublicStateDescriptor action_child_public_state(
+    const core::MultiwayPublicStateDescriptor& parent,
+    std::uint64_t id,
+    std::uint64_t history_id,
+    std::size_t action_index) {
+    auto child = parent;
+    const auto action = parent.legal_actions.at(action_index);
+    child.id = {id};
+    child.parent_id = parent.id;
+    child.canonical_history_id = history_id;
+    child.incoming_edge = {};
+    child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BettingAction;
+    child.incoming_edge.action = action;
+    child.history.push_back({parent.betting.current_player, action});
+    const auto state = core::MultiwayState::from_snapshot(parent.betting)
+                           .apply(action.action, action.target_street_contribution);
+    child.betting = state.snapshot();
+    child.board_runout.chance_only_runout = state.requires_board_runout();
+    child.legal_actions = action_descriptors(state);
+    return child;
 }
 
 core::MultiwayPublicStateDescriptor checked_action_child_public_state() {
-    auto state = root_public_state();
-    const auto descendant = core::MultiwayState::from_snapshot(state.betting)
-                                .apply(core::MultiwayAction::Check);
-    state.id = {2};
-    state.parent_id = {1};
-    state.canonical_history_id = 102;
-    state.betting = descendant.snapshot();
-    state.history = {{0, {core::MultiwayAction::Check, 0, 0, 9001}}};
-    return state;
+    return action_child_public_state(root_public_state(), 2, 102, 0);
 }
 
 core::MultiwayPrivateConfig root_ranges() {
@@ -90,7 +107,7 @@ core::MultiwaySolverLimits valid_limits() {
     core::MultiwaySolverLimits limits;
     limits.worker_count = 2;
     limits.trajectories_per_batch = 8;
-    limits.max_public_states = 3;
+    limits.max_public_states = 6;
     limits.max_sparse_rows = 3;
     limits.max_sparse_values = 12;
     limits.max_worker_delta_entries = 4;
@@ -354,11 +371,11 @@ TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     too_many_actions.action_count = 4;
     EXPECT_THROW(coordinator.admit_infoset_row(too_many_actions), std::invalid_argument);
 
-    auto runout = board_runout_public_state();
-    runout.id = {3};
-    runout.canonical_history_id = 103;
+    const auto all_in = action_child_public_state(root_public_state(), 3, 103, 2);
+    coordinator.admit_public_state(all_in);
+    const auto runout = action_child_public_state(all_in, 4, 104, 1);
     coordinator.admit_public_state(runout);
-    const core::MultiwaySparseRowShape nondecision_shape{{{3}, 0}, 1, 0};
+    const core::MultiwaySparseRowShape nondecision_shape{{{4}, 0}, 1, 0};
     EXPECT_THROW(coordinator.admit_infoset_row(nondecision_shape), std::invalid_argument);
 }
 
@@ -458,12 +475,12 @@ TEST_CASE(multiway_solver_public_state_duplicate_id_requires_the_complete_descri
     EXPECT_THROW(coordinator.admit_public_state(changed_action_descriptor), std::invalid_argument);
 
     core::MultiwaySolverCoordinator runout_coordinator(valid_request());
-    auto runout = board_runout_public_state();
-    runout.id = {3};
-    runout.canonical_history_id = 103;
+    const auto all_in = action_child_public_state(root_public_state(), 3, 103, 2);
+    runout_coordinator.admit_public_state(all_in);
+    auto runout = action_child_public_state(all_in, 4, 104, 1);
     runout_coordinator.admit_public_state(runout);
     runout_coordinator.admit_public_state(runout);
-    EXPECT_EQ(runout_coordinator.diagnostics().public_states_admitted, 2U);
+    EXPECT_EQ(runout_coordinator.diagnostics().public_states_admitted, 3U);
 
     auto changed_runout = runout;
     changed_runout.board.push_back(card(3, 3));

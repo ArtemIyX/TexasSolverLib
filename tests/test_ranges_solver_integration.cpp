@@ -202,6 +202,7 @@ TEST_CASE(ranges_single_joint_deal_matches_fixed_private_hand_sampled_oracle) {
     root.config = range_contract_config();
     root.blueprint_version = "blueprint-v1";
     root.model_version = "value-v1";
+    root.value_units = core::HUNLLeafValueUnits::BigBlinds;
     const auto deal = root.normalized_joint_range().front();
 
     core::HUNLSampledSolverConfig config;
