@@ -384,6 +384,15 @@ longer accepted at this boundary.
 
 ### P1-5: structured range execution ignores workers and mutates central storage during traversal
 
+Status: **Fixed.** The coordinator now performs a deterministic admission pass
+for each fixed-size trajectory subbatch using the same RNG stream as execution.
+It creates rows before worker launch; recursive workers only use immutable
+lookup and storage views, accumulate local delta streams, and merge once in
+global trajectory order. The workers setting partitions the subbatch
+deterministically. Leaf callbacks are serialized pending the dedicated batched
+leaf boundary. The regression compares one and two workers over the same four
+trajectory IDs and verifies identical sparse rows.
+
 The structured positive path is serial. `config.workers` is unused.
 `PrivateInfosetCoordinator::ensure()` performs hash lookup, allocation, row
 admission, and central storage mutation from recursive traversal.

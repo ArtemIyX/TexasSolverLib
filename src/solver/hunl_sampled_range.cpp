@@ -1,16 +1,22 @@
 #include "solver/hunl_sampled_range.hpp"
 
+#include "solver/hunl_sampled_scheduler.hpp"
 #include "solver/hunl_sampled_traversal.hpp"
 #include "util/pcs.hpp"
+#include "util/thread_join_guard.hpp"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -20,6 +26,7 @@ namespace {
 
 constexpr std::size_t kMaxDecisionActions = 16U;
 constexpr std::size_t kDeltaEntriesPerTrajectory = 4096U;
+constexpr std::uint32_t kTrajectorySubbatchSize = 8U;
 constexpr auto kRootExportReserve = std::chrono::milliseconds{1};
 
 struct RangeReach {
@@ -51,22 +58,14 @@ public:
         infosets_.reserve(1024U);
     }
 
-    [[nodiscard]] InfosetId ensure(const HUNLState& state) {
-        const auto player = state.current_player();
-        if (player < 0 || player > 1 || !state.hole_cards.has_value()) {
-            throw std::logic_error("structured sampled traversal requires an acting private state");
-        }
+    [[nodiscard]] InfosetId admit(const HUNLState& state) {
+        const auto player = validate_state(state);
         const auto actions = state.legal_actions();
-        if (actions.empty() || actions.size() > kMaxDecisionActions) {
-            throw std::logic_error("structured sampled traversal has an invalid action menu");
-        }
+        validate_actions(actions);
         const auto key = state.infoset_encoding(player);
         const auto existing = infosets_.find(key);
         if (existing != infosets_.end()) {
-            if (existing->second.player != player || existing->second.street != state.street ||
-                existing->second.action_count != actions.size()) {
-                throw std::logic_error("structured sampled traversal reused an incompatible private infoset");
-            }
+            validate_existing(existing->second, player, state.street, actions.size());
             return existing->second.id;
         }
         if (infosets_.size() >= static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
@@ -78,7 +77,44 @@ public:
         return id;
     }
 
+    [[nodiscard]] InfosetId lookup(
+        const HUNLState& state,
+        PlayerId player,
+        std::size_t action_count) const {
+        const auto key = state.infoset_encoding(player);
+        const auto existing = infosets_.find(key);
+        if (existing == infosets_.end()) {
+            throw std::logic_error("structured sampled traversal reached an unadmitted private infoset");
+        }
+        validate_existing(existing->second, player, state.street, action_count);
+        return existing->second.id;
+    }
+
 private:
+    static PlayerId validate_state(const HUNLState& state) {
+        const auto player = state.current_player();
+        if (player < 0 || player > 1 || !state.hole_cards.has_value()) {
+            throw std::logic_error("structured sampled traversal requires an acting private state");
+        }
+        return player;
+    }
+
+    static void validate_actions(const std::vector<ActionId>& actions) {
+        if (actions.empty() || actions.size() > kMaxDecisionActions) {
+            throw std::logic_error("structured sampled traversal has an invalid action menu");
+        }
+    }
+
+    static void validate_existing(
+        const PrivateInfoset& infoset,
+        PlayerId player,
+        Street street,
+        std::size_t action_count) {
+        if (infoset.player != player || infoset.street != street || infoset.action_count != action_count) {
+            throw std::logic_error("structured sampled traversal reused an incompatible private infoset");
+        }
+    }
+
     HUNLSampledStorage& storage_;
     std::unordered_map<HUNLInfosetEncoding, PrivateInfoset, HUNLInfosetEncodingHash> infosets_;
 };
@@ -172,12 +208,13 @@ double traverse(
     const HUNLLeafEvaluator* leaf_evaluator,
     PlayerId traverser,
     std::uint64_t trajectory_id,
-    PrivateInfosetCoordinator& infosets,
-    HUNLSampledStorage& storage,
+    const PrivateInfosetCoordinator& infosets,
+    const HUNLSampledStorage& storage,
     HUNLSampledWorkerScratch& scratch,
     PcsRng& rng,
     RangeReach reach,
     std::uint32_t plies,
+    std::mutex& leaf_evaluator_mutex,
     const std::optional<std::chrono::steady_clock::time_point>& deadline,
     bool& cancelled,
     HUNLSampledTraversalResult& result) {
@@ -208,7 +245,15 @@ double traverse(
         request.abstraction_version = root.blueprint_version;
         request.model_version = root.model_version;
         HUNLLeafEvaluationResult leaf;
-        const auto accepted = leaf_evaluator->evaluate_batch(leaf_evaluator->context, &request, &leaf, 1U);
+        bool accepted = false;
+        {
+            std::lock_guard<std::mutex> lock(leaf_evaluator_mutex);
+            if (deadline_expired(deadline)) {
+                cancelled = true;
+                return 0.0;
+            }
+            accepted = leaf_evaluator->evaluate_batch(leaf_evaluator->context, &request, &leaf, 1U);
+        }
         if (deadline_expired(deadline)) {
             cancelled = true;
             return 0.0;
@@ -227,7 +272,7 @@ double traverse(
         reach.chance *= selected.second;
         reach.sampling *= selected.second;
         return traverse(state.apply(outcomes[selected.first].action), root, leaf_evaluator, traverser,
-                        trajectory_id, infosets, storage, scratch, rng, reach, plies + 1U, deadline,
+                        trajectory_id, infosets, storage, scratch, rng, reach, plies + 1U, leaf_evaluator_mutex, deadline,
                         cancelled, result);
     }
 
@@ -238,7 +283,7 @@ double traverse(
         !std::isfinite(reach.sampling) || reach.sampling <= 0.0) {
         throw std::logic_error("structured sampled traversal has invalid decision state");
     }
-    const auto infoset = infosets.ensure(state);
+    const auto infoset = infosets.lookup(state, acting_player, actions.size());
     const auto row = storage.view(infoset);
     std::array<float, kMaxDecisionActions> strategy = {};
     HUNLSampledStorage::compute_current_strategy(row, 0U, strategy.data());
@@ -256,7 +301,7 @@ double traverse(
         reach.player[acting_index] *= selected.second;
         reach.sampling *= selected.second;
         return traverse(state.apply(actions[selected.first]), root, leaf_evaluator, traverser, trajectory_id,
-                        infosets, storage, scratch, rng, reach, plies + 1U, deadline, cancelled, result);
+                        infosets, storage, scratch, rng, reach, plies + 1U, leaf_evaluator_mutex, deadline, cancelled, result);
     }
 
     std::array<double, kMaxDecisionActions> action_values = {};
@@ -266,7 +311,7 @@ double traverse(
         child_reach.player[acting_index] *= static_cast<double>(strategy[action]);
         action_values[action] = traverse(state.apply(actions[action]), root, leaf_evaluator, traverser,
                                          trajectory_id, infosets, storage, scratch, rng, child_reach,
-                                         plies + 1U, deadline, cancelled, result);
+                                         plies + 1U, leaf_evaluator_mutex, deadline, cancelled, result);
         if (cancelled) return 0.0;
         node_value += static_cast<double>(strategy[action]) * action_values[action];
     }
@@ -281,6 +326,71 @@ double traverse(
     }
     ++result.infosets_updated;
     return node_value;
+}
+
+bool admit_trajectory(
+    const HUNLState& state,
+    const HUNLStructuredRootRequest& root,
+    PlayerId traverser,
+    PrivateInfosetCoordinator& infosets,
+    const HUNLSampledStorage& storage,
+    PcsRng& rng,
+    std::uint32_t plies,
+    const std::optional<std::chrono::steady_clock::time_point>& deadline) {
+    if (deadline_expired(deadline) || state.is_terminal() ||
+        (root.config.depth_limit_plies != 0U && plies >= root.config.depth_limit_plies)) {
+        return !deadline_expired(deadline);
+    }
+    if (state.current_player() == -1) {
+        const auto outcomes = state.chance_outcomes();
+        const auto selected = sample_probability(outcomes, rng);
+        return admit_trajectory(
+            state.apply(outcomes[selected.first].action),
+            root,
+            traverser,
+            infosets,
+            storage,
+            rng,
+            plies + 1U,
+            deadline);
+    }
+
+    const auto acting_player = state.current_player();
+    const auto actions = state.legal_actions();
+    if (actions.empty() || actions.size() > kMaxDecisionActions) {
+        throw std::logic_error("structured sampled admission has an invalid action menu");
+    }
+    const auto infoset = infosets.admit(state);
+    const auto row = storage.view(infoset);
+    std::array<float, kMaxDecisionActions> strategy = {};
+    HUNLSampledStorage::compute_current_strategy(row, 0U, strategy.data());
+
+    if (acting_player != traverser) {
+        const auto selected = sample_strategy(strategy, actions.size(), rng);
+        return admit_trajectory(
+            state.apply(actions[selected.first]),
+            root,
+            traverser,
+            infosets,
+            storage,
+            rng,
+            plies + 1U,
+            deadline);
+    }
+    for (std::size_t action = 0; action < actions.size(); ++action) {
+        if (!admit_trajectory(
+                state.apply(actions[action]),
+                root,
+                traverser,
+                infosets,
+                storage,
+                rng,
+                plies + 1U,
+                deadline)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 HUNLState root_for_deal(
@@ -302,6 +412,7 @@ struct HUNLSampledRangeSession::Impl {
     HUNLSampledStorage& storage;
     HUNLSampledProfile& profile;
     const HUNLLeafEvaluator* leaf_evaluator = nullptr;
+    std::mutex leaf_evaluator_mutex;
     std::shared_ptr<const HUNLConfig> game_config;
     HUNLState public_root_state;
     std::vector<HUNLJointRangeDeal> deals;
@@ -355,7 +466,7 @@ struct HUNLSampledRangeSession::Impl {
         for (const auto& deal : deals) {
             if (deadline_expired(deadline)) return false;
             const auto state = root_for_deal(public_root_state, deal);
-            const auto infoset = infosets.ensure(state);
+            const auto infoset = infosets.admit(state);
             const auto strategy = HUNLSampledStrategyExporter::export_average_strategy(storage.view(infoset));
             for (std::size_t action = 0; action < probabilities.size(); ++action) {
                 probabilities[action] += deal.weight * strategy.actions[action].probability;
@@ -403,31 +514,137 @@ struct HUNLSampledRangeSession::Impl {
                     output.timed_out = true;
                     break;
                 }
-                const auto local = next_local_trajectory;
-                if (batch > (std::numeric_limits<std::uint64_t>::max() - local) / config.minibatch_size) {
-                    throw std::overflow_error("structured sampled trajectory id space exhausted");
+                const auto remaining = config.minibatch_size - next_local_trajectory;
+                const auto requested_workers = std::max<std::size_t>(1U, config.workers);
+                const auto subbatch_count = std::min(remaining, kTrajectorySubbatchSize);
+                const auto subbatch_begin = next_local_trajectory;
+
+                // Coordinator admission consumes the same per-trajectory RNG
+                // stream as execution. All rows are therefore immutable before
+                // a worker enters recursive traversal.
+                for (std::uint32_t offset_in_batch = 0; offset_in_batch < subbatch_count; ++offset_in_batch) {
+                    const auto local = subbatch_begin + offset_in_batch;
+                    if (batch > (std::numeric_limits<std::uint64_t>::max() - local) / config.minibatch_size) {
+                        throw std::overflow_error("structured sampled trajectory id space exhausted");
+                    }
+                    const auto trajectory_id =
+                        batch * static_cast<std::uint64_t>(config.minibatch_size) + local;
+                    const auto traverser = static_cast<PlayerId>(trajectory_id & 1U);
+                    const auto seed = PcsRng::mix_seed(
+                        config.seed,
+                        trajectory_id,
+                        batch + 1U,
+                        static_cast<std::uint64_t>(traverser));
+                    PcsRng rng(seed);
+                    const auto deal_index = deals.size() == 1U ? 0U : sample_deal_index(deals, rng);
+                    if (!admit_trajectory(
+                            root_for_deal(public_root_state, deals[deal_index]),
+                            root,
+                            traverser,
+                            infosets,
+                            storage,
+                            rng,
+                            0U,
+                            deadline)) {
+                        output.timed_out = true;
+                        break;
+                    }
                 }
-                const auto trajectory_id = batch * static_cast<std::uint64_t>(config.minibatch_size) + local;
-                const auto traverser = static_cast<PlayerId>(trajectory_id & 1U);
-                const auto seed = PcsRng::mix_seed(config.seed, trajectory_id, batch + 1U,
-                                                    static_cast<std::uint64_t>(traverser));
-                PcsRng rng(seed);
-                const auto deal_index = deals.size() == 1U ? 0U : sample_deal_index(deals, rng);
-                HUNLSampledWorkerScratch trajectory_stream;
-                trajectory_stream.reserve_deltas(kDeltaEntriesPerTrajectory);
-                HUNLSampledTraversalResult result;
-                bool cancelled = false;
-                const auto chance = deals.size() == 1U ? 1.0 : deals[deal_index].weight;
-                (void)traverse(root_for_deal(public_root_state, deals[deal_index]), root, leaf_evaluator, traverser,
-                               trajectory_id, infosets, storage, trajectory_stream, rng,
-                               RangeReach{{1.0, 1.0}, chance, chance}, 0U, deadline, cancelled, result);
-                if (cancelled || reserve_expired(deadline)) {
+                if (output.timed_out || reserve_expired(deadline)) {
                     output.timed_out = true;
                     break;
                 }
-                merge_hunl_sampled_worker_deltas(storage, trajectory_stream);
-                ++next_local_trajectory;
-                profile.record_traversal(1U, result.nodes_visited, result.infosets_updated);
+
+                const auto worker_batches = HUNLSampledScheduler::partition_deterministic(
+                    subbatch_count,
+                    std::min<std::size_t>(requested_workers, subbatch_count));
+                std::vector<HUNLSampledWorkerScratch> worker_streams(worker_batches.size());
+                std::vector<HUNLSampledTraversalResult> worker_results(worker_batches.size());
+                std::vector<std::thread> threads;
+                threads.reserve(worker_batches.size() > 0U ? worker_batches.size() - 1U : 0U);
+                std::atomic<bool> cancelled{false};
+                auto thread_guard = detail::make_thread_join_guard(
+                    threads,
+                    [&cancelled] { cancelled.store(true, std::memory_order_release); });
+                std::exception_ptr worker_error;
+                std::mutex worker_error_mutex;
+                const auto execute_worker = [&](std::size_t worker_index) {
+                    try {
+                        const auto range = worker_batches[worker_index].trajectories;
+                        auto& stream = worker_streams[worker_index];
+                        stream.reserve_deltas(
+                            static_cast<std::size_t>(range.size()) * kDeltaEntriesPerTrajectory);
+                        for (std::uint64_t relative = range.begin; relative < range.end; ++relative) {
+                            if (cancelled.load(std::memory_order_acquire)) return;
+                            const auto local = subbatch_begin + static_cast<std::uint32_t>(relative);
+                            const auto trajectory_id =
+                                batch * static_cast<std::uint64_t>(config.minibatch_size) + local;
+                            const auto traverser = static_cast<PlayerId>(trajectory_id & 1U);
+                            const auto seed = PcsRng::mix_seed(
+                                config.seed,
+                                trajectory_id,
+                                batch + 1U,
+                                static_cast<std::uint64_t>(traverser));
+                            PcsRng rng(seed);
+                            const auto deal_index = deals.size() == 1U ? 0U : sample_deal_index(deals, rng);
+                            HUNLSampledWorkerScratch trajectory_stream;
+                            trajectory_stream.reserve_deltas(kDeltaEntriesPerTrajectory);
+                            HUNLSampledTraversalResult result;
+                            bool trajectory_cancelled = false;
+                            const auto chance = deals.size() == 1U ? 1.0 : deals[deal_index].weight;
+                            (void)traverse(
+                                root_for_deal(public_root_state, deals[deal_index]),
+                                root,
+                                leaf_evaluator,
+                                traverser,
+                                trajectory_id,
+                                infosets,
+                                storage,
+                                trajectory_stream,
+                                rng,
+                                RangeReach{{1.0, 1.0}, chance, chance},
+                                0U,
+                                leaf_evaluator_mutex,
+                                deadline,
+                                trajectory_cancelled,
+                                result);
+                            if (trajectory_cancelled) {
+                                cancelled.store(true, std::memory_order_release);
+                                return;
+                            }
+                            stream.deltas.insert(
+                                stream.deltas.end(),
+                                trajectory_stream.deltas.begin(),
+                                trajectory_stream.deltas.end());
+                            worker_results[worker_index].nodes_visited += result.nodes_visited;
+                            worker_results[worker_index].infosets_updated += result.infosets_updated;
+                        }
+                    } catch (...) {
+                        cancelled.store(true, std::memory_order_release);
+                        std::lock_guard<std::mutex> lock(worker_error_mutex);
+                        if (worker_error == nullptr) worker_error = std::current_exception();
+                    }
+                };
+                for (std::size_t worker = 1U; worker < worker_batches.size(); ++worker) {
+                    threads.emplace_back(execute_worker, worker);
+                }
+                if (!worker_batches.empty()) execute_worker(0U);
+                for (auto& thread : threads) thread.join();
+                thread_guard.release();
+                if (worker_error != nullptr) std::rethrow_exception(worker_error);
+                if (cancelled.load(std::memory_order_acquire) || reserve_expired(deadline)) {
+                    output.timed_out = true;
+                    break;
+                }
+
+                merge_hunl_sampled_worker_streams(storage, worker_streams);
+                next_local_trajectory += subbatch_count;
+                for (std::size_t worker = 0; worker < worker_results.size(); ++worker) {
+                    profile.record_traversal(
+                        worker_batches[worker].trajectories.size(),
+                        worker_results[worker].nodes_visited,
+                        worker_results[worker].infosets_updated);
+                }
                 if (next_local_trajectory == config.minibatch_size) {
                     next_local_trajectory = 0U;
                     ++next_batch;

@@ -232,6 +232,44 @@ TEST_CASE(ranges_structured_root_sampled_positive_work_uses_private_range_trajec
     EXPECT_TRUE(!result.root_strategy.actions.empty());
 }
 
+TEST_CASE(ranges_structured_workers_merge_the_same_deterministic_trajectory_batch) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+
+    core::HUNLSampledSolverConfig serial_config;
+    serial_config.minibatch_size = 4U;
+    serial_config.workers = 1U;
+    serial_config.seed = 0xC0FFEEULL;
+    core::HUNLSampledStorage serial_storage;
+    core::HUNLSampledProfile serial_profile;
+    core::HUNLSampledRangeSession serial(root, serial_config, serial_storage, serial_profile);
+    const auto serial_result = serial.resume_batches(1U);
+
+    auto parallel_config = serial_config;
+    parallel_config.workers = 2U;
+    core::HUNLSampledStorage parallel_storage;
+    core::HUNLSampledProfile parallel_profile;
+    core::HUNLSampledRangeSession parallel(root, parallel_config, parallel_storage, parallel_profile);
+    const auto parallel_result = parallel.resume_batches(1U);
+
+    EXPECT_EQ(serial_result.batches_completed, 1U);
+    EXPECT_EQ(parallel_result.batches_completed, 1U);
+    EXPECT_EQ(serial_profile.snapshot().traversals, 4U);
+    EXPECT_EQ(parallel_profile.snapshot().traversals, 4U);
+    EXPECT_EQ(serial_storage.row_count(), parallel_storage.row_count());
+    for (std::size_t row_index = 0; row_index < serial_storage.row_count(); ++row_index) {
+        const auto serial_row = serial_storage.view(serial_storage.meta()[row_index].id);
+        const auto parallel_row = parallel_storage.view(parallel_storage.meta()[row_index].id);
+        EXPECT_EQ(serial_row.value_count(), parallel_row.value_count());
+        for (std::size_t value = 0; value < serial_row.value_count(); ++value) {
+            EXPECT_NEAR(serial_row.regret[value], parallel_row.regret[value], 1e-6);
+            EXPECT_NEAR(serial_row.strategy_sum[value], parallel_row.strategy_sum[value], 1e-6);
+        }
+    }
+}
+
 TEST_CASE(ranges_single_joint_deal_matches_fixed_private_hand_sampled_oracle) {
     core::HUNLStructuredRootRequest root;
     root.config = range_contract_config();
