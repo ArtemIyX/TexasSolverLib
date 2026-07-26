@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -292,6 +293,22 @@ TEST_CASE(ranges_structured_session_deadline_preserves_the_next_unpublished_batc
     EXPECT_EQ(expired.batches_completed, 0U);
     EXPECT_TRUE(expired.timed_out);
     EXPECT_EQ(session.next_batch(), 0U);
+    EXPECT_EQ(profile.snapshot().traversals, 0U);
+}
+
+TEST_CASE(ranges_structured_session_rejects_exhausted_batch_identity_before_replay) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(
+        root, config, storage, profile, std::numeric_limits<std::uint64_t>::max());
+
+    EXPECT_THROW(session.resume_batches(1U), std::overflow_error);
+    EXPECT_EQ(session.next_batch(), std::numeric_limits<std::uint64_t>::max());
     EXPECT_EQ(profile.snapshot().traversals, 0U);
 }
 

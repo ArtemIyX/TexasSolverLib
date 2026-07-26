@@ -282,14 +282,14 @@ struct HUNLSampledRangeSession::Impl {
     PrivateInfosetCoordinator infosets;
     HUNLState root_state;
     std::vector<ActionId> root_actions;
-    std::uint32_t next_batch = 0;
+    std::uint64_t next_batch = 0;
 
     Impl(
         HUNLStructuredRootRequest input_root,
         HUNLSampledSolverConfig input_config,
         HUNLSampledStorage& input_storage,
         HUNLSampledProfile& input_profile,
-        std::uint32_t first_batch,
+        std::uint64_t first_batch,
         const HUNLLeafEvaluator* input_leaf_evaluator)
         : root(std::move(input_root)),
           config(std::move(input_config)),
@@ -349,13 +349,19 @@ struct HUNLSampledRangeSession::Impl {
                 break;
             }
             const auto batch = next_batch;
+            if (batch == std::numeric_limits<std::uint64_t>::max()) {
+                throw std::overflow_error("structured sampled batch id space exhausted");
+            }
             HUNLSampledWorkerScratch batch_stream;
             batch_stream.reserve_deltas(
                 static_cast<std::size_t>(config.minibatch_size) * kDeltaEntriesPerTrajectory);
             std::uint64_t nodes = 0;
             std::uint64_t updated = 0;
             for (std::uint32_t local = 0; local < config.minibatch_size; ++local) {
-                const auto trajectory_id = static_cast<std::uint64_t>(batch) * config.minibatch_size + local;
+                if (batch > (std::numeric_limits<std::uint64_t>::max() - local) / config.minibatch_size) {
+                    throw std::overflow_error("structured sampled trajectory id space exhausted");
+                }
+                const auto trajectory_id = batch * static_cast<std::uint64_t>(config.minibatch_size) + local;
                 const auto traverser = static_cast<PlayerId>(trajectory_id & 1U);
                 const auto seed = PcsRng::mix_seed(config.seed, trajectory_id, batch + 1U,
                                                     static_cast<std::uint64_t>(traverser));
@@ -388,7 +394,7 @@ HUNLSampledRangeSession::HUNLSampledRangeSession(
     HUNLSampledSolverConfig config,
     HUNLSampledStorage& storage,
     HUNLSampledProfile& profile,
-    std::uint32_t first_batch,
+    std::uint64_t first_batch,
     const HUNLLeafEvaluator* leaf_evaluator)
     : impl_(std::make_unique<Impl>(
           std::move(root), std::move(config), storage, profile, first_batch, leaf_evaluator)) {}
@@ -403,7 +409,7 @@ HUNLSampledRangeRunResult HUNLSampledRangeSession::resume_batches(
     return impl_->resume_batches(batch_count, deadline);
 }
 
-std::uint32_t HUNLSampledRangeSession::next_batch() const noexcept {
+std::uint64_t HUNLSampledRangeSession::next_batch() const noexcept {
     return impl_ == nullptr ? 0U : impl_->next_batch;
 }
 

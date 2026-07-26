@@ -636,6 +636,10 @@ Required fix:
 
 Use checked `uint64_t` batch and global trajectory counters.
 
+Status: **Fixed.** The retained batch cursor and reported completed-batch
+count are `uint64_t`; trajectory IDs use checked `uint64_t` arithmetic and
+reject exhaustion before a trajectory or seed can replay.
+
 ### P2-4: preflop-to-flop chance creates six equivalent public board orders
 
 The terminal adapter advances board chance one card at a time and preserves

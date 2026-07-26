@@ -18,7 +18,7 @@ namespace core {
 // deterministic whole-batch boundaries.
 struct HUNLSampledRangeRunResult {
     HUNLSampledRootStrategy root_strategy;
-    std::uint32_t batches_completed = 0;
+    std::uint64_t batches_completed = 0;
     bool timed_out = false;
 };
 
@@ -29,7 +29,7 @@ public:
         HUNLSampledSolverConfig config,
         HUNLSampledStorage& storage,
         HUNLSampledProfile& profile,
-        std::uint32_t first_batch = 0U,
+        std::uint64_t first_batch = 0U,
         const HUNLLeafEvaluator* leaf_evaluator = nullptr);
     ~HUNLSampledRangeSession();
     HUNLSampledRangeSession(HUNLSampledRangeSession&&) noexcept;
@@ -40,7 +40,7 @@ public:
     [[nodiscard]] HUNLSampledRangeRunResult resume_batches(
         std::uint32_t batch_count,
         std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
-    [[nodiscard]] std::uint32_t next_batch() const noexcept;
+    [[nodiscard]] std::uint64_t next_batch() const noexcept;
     [[nodiscard]] HUNLSampledRootStrategy export_root_strategy();
 
 private:
@@ -51,7 +51,7 @@ private:
 HUNLSampledRangeRunResult run_hunl_sampled_structured_range_batches(
     const HUNLStructuredRootRequest& root,
     const HUNLSampledSolverConfig& config,
-    std::uint32_t first_batch,
+    std::uint64_t first_batch,
     std::uint32_t batch_count,
     std::optional<std::chrono::steady_clock::time_point> deadline,
     HUNLSampledStorage& storage,
