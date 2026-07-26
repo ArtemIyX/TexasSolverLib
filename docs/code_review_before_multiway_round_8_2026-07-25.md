@@ -597,6 +597,10 @@ Required fix:
 Use an optional target only for actions where it is absent, or require the
 exact resulting street contribution for every descriptor.
 
+Status: **Fixed.** Every public action descriptor now records the acting
+seat's exact resulting street contribution. Admission replays the action and
+rejects descriptors whose recorded target does not equal the replayed result.
+
 ### P2-2: structured root metadata validation is incomplete
 
 `HUNLStructuredRootRequest::validate()` does not reject unknown

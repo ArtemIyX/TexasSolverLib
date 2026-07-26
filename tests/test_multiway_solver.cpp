@@ -29,7 +29,7 @@ core::MultiwayPublicStateDescriptor root_public_state() {
     state.legal_actions = {
         {core::MultiwayAction::Check, 0, 0, 9001},
         {core::MultiwayAction::Bet, 1, 100, 9001},
-        {core::MultiwayAction::AllIn, 2, 0, 9001},
+        {core::MultiwayAction::AllIn, 2, 1000, 9001},
     };
     return state;
 }
@@ -40,9 +40,15 @@ std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::Multi
     descriptors.reserve(actions.size());
     for (std::size_t index = 0; index < actions.size(); ++index) {
         const auto action = actions[index];
+        const auto seat = static_cast<std::size_t>(state.current_player());
+        const auto current = state.street_contributions()[seat];
         const auto target = action == core::MultiwayAction::Bet || action == core::MultiwayAction::Raise
             ? state.current_bet() + state.last_full_raise_size()
-            : 0;
+            : action == core::MultiwayAction::AllIn
+                ? current + state.stacks()[seat]
+                : action == core::MultiwayAction::Call
+                    ? std::min(state.current_bet(), current + state.stacks()[seat])
+                    : current;
         descriptors.push_back({action, static_cast<std::uint32_t>(index), target, 9001});
     }
     return descriptors;
@@ -233,6 +239,18 @@ TEST_CASE(multiway_solver_root_rejects_action_descriptors_not_legal_or_executabl
     root = valid_root();
     root.public_state.legal_actions[2].action_index = 1;
     EXPECT_THROW(root.validate(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_solver_action_descriptors_require_exact_resulting_contributions) {
+    auto root = valid_root();
+    root.public_state.legal_actions[0].target_street_contribution = 1;
+    core::MultiwayCFRConfig cfr;
+    cfr.player_count = 2;
+    EXPECT_THROW(core::MultiwaySolveRequest(root, cfr, valid_limits()), std::invalid_argument);
+
+    root = valid_root();
+    root.public_state.legal_actions[2].target_street_contribution = 999;
+    EXPECT_THROW(core::MultiwaySolveRequest(root, cfr, valid_limits()), std::invalid_argument);
 }
 
 TEST_CASE(multiway_solver_root_rejects_invalid_deterministic_next_street_and_odd_chip_metadata) {

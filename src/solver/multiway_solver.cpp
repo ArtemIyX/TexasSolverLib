@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <exception>
 #include <limits>
 #include <stdexcept>
@@ -70,6 +71,7 @@ bool same_public_state_descriptor(
            left.incoming_edge.kind == right.incoming_edge.kind &&
            left.incoming_edge.action == right.incoming_edge.action &&
            left.incoming_edge.dealt_card == right.incoming_edge.dealt_card &&
+           left.incoming_edge.dealt_cards == right.incoming_edge.dealt_cards &&
            left.incoming_edge.transition_board == right.incoming_edge.transition_board &&
            left.canonical_history_id == right.canonical_history_id &&
            same_betting_snapshot(left.betting, right.betting) &&
@@ -115,11 +117,19 @@ void validate_public_state_child_transition(
             if ((parent_kind != MultiwayNextNodeKind::BoardRunout &&
                  parent_kind != MultiwayNextNodeKind::StreetTransition) ||
                 child.history != parent.history || !same_betting_snapshot(child.betting, parent.betting) ||
-                child.board.size() != parent.board.size() + 1U ||
+                child.board.size() <= parent.board.size() ||
                 !std::equal(parent.board.begin(), parent.board.end(), child.board.begin()) ||
-                child.board.back() != child.incoming_edge.dealt_card ||
                 !are_valid_and_distinct_cards(child.board.data(), child.board.size())) {
                 throw std::invalid_argument("multiway child board chance does not match its parent state");
+            }
+            const auto dealt_count = child.board.size() - parent.board.size();
+            if (child.incoming_edge.dealt_cards.size() != dealt_count ||
+                !std::equal(child.incoming_edge.dealt_cards.begin(), child.incoming_edge.dealt_cards.end(),
+                            child.board.begin() + static_cast<std::ptrdiff_t>(parent.board.size())) ||
+                child.incoming_edge.dealt_card != child.incoming_edge.dealt_cards.front() ||
+                (dealt_count == 3U &&
+                 !std::is_sorted(child.incoming_edge.dealt_cards.begin(), child.incoming_edge.dealt_cards.end()))) {
+                throw std::invalid_argument("multiway child board chance has an invalid dealt-card descriptor");
             }
             const auto chance_only = parent_kind == MultiwayNextNodeKind::BoardRunout;
             if (child.board_runout.remaining_board_cards != 5U - child.board.size() ||
@@ -204,7 +214,11 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
             throw std::invalid_argument("multiway public state action menu is not a stable descriptor sequence");
         }
         try {
-            static_cast<void>(betting_state.apply(action.action, action.target_street_contribution));
+            const auto successor = betting_state.apply(action.action, action.target_street_contribution);
+            const auto acting_seat = static_cast<std::size_t>(betting_state.current_player());
+            if (successor.street_contributions()[acting_seat] != action.target_street_contribution) {
+                throw std::invalid_argument("action descriptor does not encode its exact resulting contribution");
+            }
         } catch (const std::exception&) {
             throw std::invalid_argument("multiway public state action descriptor is not executable");
         }

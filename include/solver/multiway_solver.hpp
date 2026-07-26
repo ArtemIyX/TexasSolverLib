@@ -45,6 +45,8 @@ struct MultiwayInfosetId {
 struct MultiwayActionDescriptor {
     MultiwayAction action = MultiwayAction::Fold;
     std::uint32_t action_index = 0;
+    // Exact acting-seat street contribution after this action. This is
+    // required for every action, including Fold, Check, Call, and AllIn.
     int target_street_contribution = 0;
     std::uint64_t action_menu_id = 0;
 
@@ -113,6 +115,9 @@ struct MultiwayPublicParentEdge {
     MultiwayPublicParentEdgeKind kind = MultiwayPublicParentEdgeKind::None;
     MultiwayActionDescriptor action{};
     std::uint8_t dealt_card = 0;
+    // A preflop-to-flop chance edge deals a canonical sorted three-card
+    // combination. Turn and river edges contain one card.
+    std::vector<std::uint8_t> dealt_cards;
     std::vector<std::uint8_t> transition_board;
 };
 
