@@ -78,6 +78,8 @@ using ::core::MultiwayJointPrivateSample;
 using ::core::MultiwayCompiledPrivateRanges;
 using ::core::MultiwayPrivateWorkerScratch;
 using ::core::MultiwayPotLayout;
+using ::core::MultiwayRakeMode;
+using ::core::MultiwayRakePolicy;
 using ::core::MultiwayPrivateConfig;
 using ::core::MultiwayPrivateRangeFeasibilityResult;
 using ::core::MultiwayPrivateRangeFeasibilityStatus;

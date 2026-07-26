@@ -30,6 +30,7 @@ void MultiwayGameConfig::validate() const {
     if (big_blind <= 0 || !valid_street(street)) {
         throw std::invalid_argument("MultiwayGameConfig has an invalid blind or street");
     }
+    rake_policy.validate();
     for (std::size_t seat = 0; seat < count; ++seat) {
         const auto street_contribution = initial_street_contributions.empty() ? 0 : initial_street_contributions[seat];
         if (starting_stacks[seat] < 0 || initial_contributions[seat] < 0 ||

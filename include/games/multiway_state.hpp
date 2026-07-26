@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/hunl.hpp"
+#include "games/multiway_rake.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -35,6 +36,7 @@ struct MultiwayGameConfig {
     PlayerId first_player = 0;
     int big_blind = 100;
     Street street = Street::Flop;
+    MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
 
     void validate() const;
 };

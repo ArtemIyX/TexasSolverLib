@@ -147,6 +147,8 @@ struct MultiwayRootSnapshot {
     PlayerId next_street_first_seat = 0;
     PlayerId odd_chip_first_seat = -1;
     MultiwayOddChipRule odd_chip_rule = MultiwayOddChipRule::AscendingSeatIdFromFirstSeat;
+    // Rake is immutable root/model metadata, including explicit zero rake.
+    MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
     MultiwayPrivateConfig private_ranges{};
     std::uint64_t action_abstraction_version = 0;
     std::uint64_t leaf_model_version = 0;
@@ -161,6 +163,9 @@ struct MultiwayRootSnapshot {
     }
     [[nodiscard]] MultiwayActionAbstractionIdentity action_abstraction_identity() const noexcept {
         return {action_menu_id(), action_abstraction_version};
+    }
+    [[nodiscard]] std::uint64_t terminal_model_identity() const noexcept {
+        return leaf_model_version ^ rake_policy.identity();
     }
 };
 

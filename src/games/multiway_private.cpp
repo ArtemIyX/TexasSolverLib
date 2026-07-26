@@ -238,6 +238,7 @@ void MultiwayShowdownInput::validate() const {
         !are_valid_and_distinct_cards(board.data(), board.size())) {
         throw std::invalid_argument("MultiwayShowdownInput has invalid dimensions or board");
     }
+    rake_policy.validate();
     std::array<bool, 64> used = {};
     for (const auto card : board) used[card] = true;
     for (const auto& hole : holes) {
@@ -254,6 +255,8 @@ MultiwayTerminalResult evaluate_multiway_showdown(const MultiwayShowdownInput& i
     terminal.contributions = input.contributions;
     terminal.folded = input.folded;
     terminal.odd_chip_first_seat = input.odd_chip_first_seat;
+    terminal.rake_policy = input.rake_policy;
+    terminal.flop_seen = input.flop_seen;
     terminal.strengths.resize(input.holes.size());
     for (std::size_t seat = 0; seat < input.holes.size(); ++seat) {
         std::array<std::uint8_t, 7> cards = {};

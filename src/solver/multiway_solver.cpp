@@ -249,6 +249,7 @@ std::size_t checked_value_count(const MultiwaySparseRowShape& shape) {
 void MultiwayRootSnapshot::validate() const {
     validate_public_state_descriptor(public_state);
     private_ranges.validate();
+    rake_policy.validate();
 
     if (public_state.parent_id.value != 0 ||
         public_state.incoming_edge.kind != MultiwayPublicParentEdgeKind::None) {

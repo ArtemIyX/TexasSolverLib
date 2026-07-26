@@ -122,6 +122,8 @@ struct MultiwayShowdownInput {
     std::vector<int> contributions;
     std::vector<bool> folded;
     PlayerId odd_chip_first_seat = 0;
+    MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
+    bool flop_seen = true;
 
     void validate() const;
 };

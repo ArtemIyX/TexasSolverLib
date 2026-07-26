@@ -145,6 +145,46 @@ TEST_CASE(multiway_terminal_utilities_are_zero_sum_with_refunds) {
     EXPECT_EQ(sum(result.payouts) + sum(result.refunds), 1150);
 }
 
+TEST_CASE(multiway_terminal_rake_is_once_capped_and_conserved) {
+    auto terminal_input = input({100, 300, 300}, {false, false, false}, {10, 5, 8});
+    terminal_input.rake_policy.mode = core::MultiwayRakeMode::PercentageOfContestedPot;
+    terminal_input.rake_policy.basis_points = 500U;
+    terminal_input.rake_policy.cap = 20;
+
+    const auto result = core::settle_multiway_terminal(terminal_input);
+    EXPECT_EQ(result.rake_taken, 20);
+    EXPECT_EQ(result.pots[0].amount, 280);
+    EXPECT_EQ(result.pots[1].amount, 400);
+    EXPECT_EQ(result.payouts[0], 280);
+    EXPECT_EQ(result.payouts[2], 400);
+    EXPECT_EQ(sum(result.payouts) + sum(result.refunds) + result.rake_taken, 700);
+    const auto utility_sum = std::accumulate(result.utilities.begin(), result.utilities.end(), 0.0);
+    EXPECT_NEAR(utility_sum, -20.0, 1e-9);
+}
+
+TEST_CASE(multiway_terminal_rake_honors_no_flop_no_drop_and_explicit_zero) {
+    auto terminal_input = input({100, 100, 100}, {false, false, false}, {9, 8, 7});
+    terminal_input.rake_policy.mode = core::MultiwayRakeMode::PercentageOfContestedPot;
+    terminal_input.rake_policy.basis_points = 500U;
+    terminal_input.rake_policy.cap = 100;
+    terminal_input.flop_seen = false;
+    const auto no_drop = core::settle_multiway_terminal(terminal_input);
+    EXPECT_EQ(no_drop.rake_taken, 0);
+    EXPECT_EQ(sum(no_drop.payouts), 300);
+
+    terminal_input.rake_policy = core::MultiwayRakePolicy::explicit_zero();
+    terminal_input.flop_seen = true;
+    const auto explicit_zero = core::settle_multiway_terminal(terminal_input);
+    EXPECT_EQ(explicit_zero.rake_taken, 0);
+    EXPECT_EQ(sum(explicit_zero.payouts), 300);
+}
+
+TEST_CASE(multiway_terminal_rejects_ambiguous_zero_rake_policy) {
+    auto terminal_input = input({100, 100}, {false, false}, {1, 2});
+    terminal_input.rake_policy.basis_points = 1U;
+    EXPECT_THROW(core::settle_multiway_terminal(terminal_input), std::invalid_argument);
+}
+
 TEST_CASE(multiway_terminal_handles_zero_contribution_folded_seat) {
     const auto result = core::settle_multiway_terminal(input({100, 100, 0}, {false, false, true}, {4, 8, 99}));
     EXPECT_EQ(result.pots.size(), std::size_t{1});

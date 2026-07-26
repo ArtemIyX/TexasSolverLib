@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/hunl_eval.hpp"
+#include "games/multiway_rake.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -19,6 +20,9 @@ struct MultiwayTerminalInput {
     // of the button).  It is explicit so settlement never relies on raw seat
     // identifiers as an unstated game rule.
     PlayerId odd_chip_first_seat = 0;
+    MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
+    // A flop was dealt before this terminal. It controls no-flop-no-drop rake.
+    bool flop_seen = true;
 
     void validate() const;
 };
@@ -39,6 +43,8 @@ struct MultiwayTerminalResult {
     std::vector<int> refunds;
     std::vector<int> payouts;
     std::vector<Value> utilities;
+    // Chips removed from contested pots exactly once by `rake_policy`.
+    int rake_taken = 0;
     // Payouts and refunds always remain chips. Utilities use this explicit
     // unit so an adapter cannot label raw chip results as normalized values.
     MultiwayValueUnits utility_units{};

@@ -1,11 +1,40 @@
 #include "games/multiway_terminal.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
 
 namespace core {
+
+void MultiwayRakePolicy::validate() const {
+    if (mode == MultiwayRakeMode::ExplicitZero) {
+        if (basis_points != 0U || cap != 0 || !no_flop_no_drop) {
+            throw std::invalid_argument("explicit zero rake must have zero rate, cap, and no-drop setting");
+        }
+        return;
+    }
+    if (mode != MultiwayRakeMode::PercentageOfContestedPot ||
+        basis_points == 0U || basis_points > 10'000U || cap <= 0) {
+        throw std::invalid_argument("multiway rake policy has an invalid percentage or cap");
+    }
+}
+
+int MultiwayRakePolicy::rake_for_contested_pot(int contested_pot, bool flop_seen) const {
+    validate();
+    if (contested_pot < 0) throw std::invalid_argument("multiway rake contested pot must be non-negative");
+    if (mode == MultiwayRakeMode::ExplicitZero || (no_flop_no_drop && !flop_seen)) return 0;
+    const auto raw = static_cast<std::int64_t>(contested_pot) * basis_points / 10'000;
+    return static_cast<int>(std::min<std::int64_t>(raw, cap));
+}
+
+std::uint64_t MultiwayRakePolicy::identity() const noexcept {
+    return static_cast<std::uint64_t>(mode) |
+        (static_cast<std::uint64_t>(no_flop_no_drop) << 2U) |
+        (static_cast<std::uint64_t>(basis_points) << 3U) |
+        (static_cast<std::uint64_t>(static_cast<std::uint32_t>(cap)) << 17U);
+}
 
 void MultiwayTerminalInput::validate() const {
     const auto count = contributions.size();
@@ -25,6 +54,7 @@ void MultiwayTerminalInput::validate() const {
     if (total > std::numeric_limits<int>::max()) {
         throw std::invalid_argument("MultiwayTerminalInput total contributions exceed supported chip range");
     }
+    rake_policy.validate();
 }
 
 MultiwayPotLayout build_multiway_pot_layout(
@@ -126,7 +156,27 @@ MultiwayTerminalResult settle_multiway_terminal(
     result.payouts.assign(count, 0);
     result.utilities.assign(count, 0.0);
 
+    const auto contested_total = std::accumulate(
+        result.pots.begin(), result.pots.end(), std::int64_t{0},
+        [](std::int64_t total, const MultiwaySidePot& pot) { return total + pot.amount; });
+    if (contested_total > std::numeric_limits<int>::max()) {
+        throw std::invalid_argument("multiway contested pot exceeds supported chip range");
+    }
+    result.rake_taken = input.rake_policy.rake_for_contested_pot(
+        static_cast<int>(contested_total), input.flop_seen);
+    auto remaining_rake = result.rake_taken;
+    for (auto& pot : result.pots) {
+        const auto taken = std::min(pot.amount, remaining_rake);
+        pot.amount -= taken;
+        remaining_rake -= taken;
+        if (remaining_rake == 0) break;
+    }
+    if (remaining_rake != 0) {
+        throw std::logic_error("multiway rake exceeds contested pot");
+    }
+
     for (const auto& pot : result.pots) {
+        if (pot.amount == 0) continue;
         Strength best = input.strengths[static_cast<std::size_t>(pot.eligible_players.front())];
         for (const auto player : pot.eligible_players) {
             best = std::max(best, input.strengths[static_cast<std::size_t>(player)]);

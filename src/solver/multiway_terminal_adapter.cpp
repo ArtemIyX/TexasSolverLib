@@ -321,6 +321,8 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
         input.folded = betting.folded;
         input.strengths.assign(betting.contributions.size(), Strength{});
         input.odd_chip_first_seat = root_.odd_chip_first_seat;
+        input.rake_policy = root_.rake_policy;
+        input.flop_seen = board.size() >= 3U;
         return convert_terminal_utilities(
             settle_multiway_terminal(input), root_, betting.big_blind);
     }
@@ -336,6 +338,8 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
     input.contributions = betting.contributions;
     input.folded = betting.folded;
     input.odd_chip_first_seat = root_.odd_chip_first_seat;
+    input.rake_policy = root_.rake_policy;
+    input.flop_seen = board.size() >= 3U;
     return convert_terminal_utilities(
         evaluate_multiway_showdown(input), root_, betting.big_blind);
 }

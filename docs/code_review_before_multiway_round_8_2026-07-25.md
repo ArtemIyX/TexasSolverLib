@@ -503,6 +503,17 @@ up to `max_rejection_attempts`.
 
 ### P1-9: the target cash-game contract has no rake semantics
 
+Status: **Fixed.** An immutable typed rake policy now belongs to game, root,
+showdown, and terminal inputs. The default is an explicit validated zero-rake
+policy. Percentage rake is floor-rounded, capped, and applied exactly once to
+the combined contested-pot total, never to uncalled-bet refunds; it honors
+no-flop-no-drop and is removed from ordered pots deterministically before
+payout splitting. Terminal results expose the rake, so chip conservation is
+`payouts + refunds + rake == contributions` and utility conservation is
+`sum(utilities) == -rake`. The root terminal-model identity includes the rake
+policy. Regressions cover cap, no-drop, explicit zero, validation, identity,
+and conservation.
+
 The playbook requires exact rake before strategy training, but multiway game,
 root, terminal, and result contracts contain no rake policy, cap, or
 no-flop-no-drop metadata.
