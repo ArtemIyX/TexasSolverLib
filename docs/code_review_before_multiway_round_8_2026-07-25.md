@@ -415,6 +415,14 @@ run worker-local trajectories, then globally merge in fixed trajectory order.
 
 ### P1-6: structured-session memory guardrails omit major allocations
 
+Status: **Fixed.** Structured preflight now estimates joint-deal retention,
+private-infoset lookup storage, session retention, bounded worker scratch, and
+root export space. The live session tracks and checks its own retained and
+transient budget before deal normalization, lookup growth, export, and worker
+scratch allocation. Solver observed peak memory retains the structured
+preflight peak for one-shot sessions. The regression verifies the new estimate
+fields and rejects a one-byte direct-session cap before range construction.
+
 The session retains a normalized joint-deal vector and an unbounded private
 infoset hash map. These are absent from memory estimates. The normalized
 heads-up range also reserves the complete 1,326 by 1,326 deal capacity.

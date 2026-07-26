@@ -176,10 +176,7 @@ void HUNLSampledSolver::begin_structured_session(
 
     std::uint64_t mutable_growth_limit = 0U;
     if (config_.enable_memory_guardrails) {
-        const auto reserved = saturating_add(
-            saturating_add(estimate_worker_delta_bytes(request, config_),
-                           estimate_terminal_cache_bytes(request, config_)),
-            estimate_export_bytes(request));
+        const auto reserved = estimate_terminal_cache_bytes(request, config_);
         if (reserved >= config_.memory_fail_bytes) {
             throw std::runtime_error("sampled memory reservation leaves no safe range-storage growth budget");
         }
@@ -187,7 +184,7 @@ void HUNLSampledSolver::begin_structured_session(
     }
     storage_.set_memory_limit_bytes(mutable_growth_limit);
     structured_session_ = std::make_unique<HUNLSampledRangeSession>(
-        std::move(root), config_, storage_, profile_, 0U, leaf_evaluator);
+        std::move(root), config_, storage_, profile_, 0U, leaf_evaluator, mutable_growth_limit);
     root_strategy_ = structured_session_->export_root_strategy();
 }
 
@@ -247,10 +244,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
         config_ = preflight_result.effective_config;
         std::uint64_t mutable_growth_limit = 0U;
         if (config_.enable_memory_guardrails) {
-            const auto reserved = saturating_add(
-                saturating_add(estimate_worker_delta_bytes(request, config_),
-                               estimate_terminal_cache_bytes(request, config_)),
-                estimate_export_bytes(request));
+            const auto reserved = estimate_terminal_cache_bytes(request, config_);
             if (reserved >= config_.memory_fail_bytes) {
                 throw std::runtime_error("sampled memory reservation leaves no safe range-storage growth budget");
             }
@@ -258,7 +252,15 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
         }
         storage_.set_memory_limit_bytes(mutable_growth_limit);
         const auto range_run = run_hunl_sampled_structured_range_batches(
-            *request.structured_root, config_, 0U, batches, deadline, storage_, profile_, request.leaf_evaluator);
+            *request.structured_root,
+            config_,
+            0U,
+            batches,
+            deadline,
+            storage_,
+            profile_,
+            request.leaf_evaluator,
+            mutable_growth_limit);
         root_strategy_ = range_run.root_strategy;
         const auto final_memory = memory_estimate();
         profile_.record_sparse_storage(storage_.row_count(), storage_.total_value_count());
@@ -272,7 +274,9 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             final_memory.total_bytes(),
             preflight_result.status == HUNLSampledMemoryStatus::Warning,
             false);
-        profile_.record_observed_memory(final_memory.total_bytes(), final_memory.total_bytes());
+        profile_.record_observed_memory(
+            final_memory.total_bytes(),
+            std::max(final_memory.total_bytes(), preflight_result.estimate.total_bytes()));
         HUNLSampledSolveResult result;
         result.root_strategy = root_strategy_;
         result.profile = profile_.snapshot();
@@ -521,11 +525,20 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::memory_estimate() const noexcept {
     estimate.worker_delta_bytes = 0;
     estimate.export_bytes = saturating_multiply(
         saturating_size(root_strategy_.actions.capacity()), sizeof(HUNLSampledActionProbability));
+    if (structured_session_ != nullptr) {
+        const auto range_memory = structured_session_->memory_estimate();
+        estimate.structured_joint_deal_bytes = range_memory.joint_deal_bytes;
+        estimate.structured_infoset_lookup_bytes = range_memory.infoset_lookup_bytes;
+        estimate.structured_session_bytes = range_memory.retained_bytes;
+        estimate.export_bytes = saturating_add(estimate.export_bytes, range_memory.export_bytes);
+    }
     estimate.total_bytes_live = saturating_add(
         saturating_add(estimate.public_state_cache_bytes, estimate.infoset_row_bytes),
         saturating_add(
             saturating_add(estimate.terminal_cache_bytes, estimate.worker_delta_bytes),
-            estimate.export_bytes));
+            saturating_add(
+                estimate.export_bytes,
+                estimate.structured_session_bytes)));
     return estimate;
 }
 
@@ -580,14 +593,31 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::estimate_memory_for(
     estimate.terminal_cache_bytes = estimate_terminal_cache_bytes(request, config);
     estimate.worker_delta_bytes = estimate_worker_delta_bytes(request, config);
     estimate.export_bytes = estimate_export_bytes(request);
+    if (request.structured_root.has_value()) {
+        const auto range_memory = estimate_hunl_sampled_range_memory(*request.structured_root, config);
+        estimate.structured_joint_deal_bytes = range_memory.joint_deal_bytes;
+        estimate.structured_infoset_lookup_bytes = range_memory.infoset_lookup_bytes;
+        estimate.structured_session_bytes = range_memory.retained_bytes;
+        estimate.terminal_cache_bytes = 0U;
+        estimate.worker_delta_bytes = range_memory.batch_scratch_bytes;
+        estimate.export_bytes = saturating_add(estimate.export_bytes, range_memory.export_bytes);
+    }
     const auto retained = memory_estimate();
     estimate.public_state_cache_bytes = std::max(estimate.public_state_cache_bytes, retained.public_state_cache_bytes);
     estimate.infoset_row_bytes = std::max(estimate.infoset_row_bytes, retained.infoset_row_bytes);
+    estimate.structured_joint_deal_bytes = std::max(
+        estimate.structured_joint_deal_bytes, retained.structured_joint_deal_bytes);
+    estimate.structured_infoset_lookup_bytes = std::max(
+        estimate.structured_infoset_lookup_bytes, retained.structured_infoset_lookup_bytes);
+    estimate.structured_session_bytes = std::max(
+        estimate.structured_session_bytes, retained.structured_session_bytes);
     estimate.total_bytes_live = saturating_add(
         saturating_add(estimate.public_state_cache_bytes, estimate.infoset_row_bytes),
         saturating_add(
             saturating_add(estimate.terminal_cache_bytes, estimate.worker_delta_bytes),
-            estimate.export_bytes));
+            saturating_add(
+                estimate.export_bytes,
+                estimate.structured_session_bytes)));
     return estimate;
 }
 

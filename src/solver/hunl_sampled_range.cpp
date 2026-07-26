@@ -28,6 +28,60 @@ constexpr std::size_t kMaxDecisionActions = 16U;
 constexpr std::size_t kDeltaEntriesPerTrajectory = 4096U;
 constexpr std::uint32_t kTrajectorySubbatchSize = 8U;
 constexpr auto kRootExportReserve = std::chrono::milliseconds{1};
+constexpr std::uint64_t kSaturatedMemoryEstimate = std::numeric_limits<std::uint64_t>::max();
+
+std::uint64_t saturating_add(std::uint64_t left, std::uint64_t right) noexcept {
+    return left > kSaturatedMemoryEstimate - right ? kSaturatedMemoryEstimate : left + right;
+}
+
+std::uint64_t saturating_multiply(std::uint64_t left, std::uint64_t right) noexcept {
+    if (left == 0U || right == 0U) return 0U;
+    return left > kSaturatedMemoryEstimate / right ? kSaturatedMemoryEstimate : left * right;
+}
+
+std::uint64_t saturating_size(std::size_t value) noexcept {
+    if constexpr (sizeof(std::size_t) > sizeof(std::uint64_t)) {
+        if (value > static_cast<std::size_t>(kSaturatedMemoryEstimate)) {
+            return kSaturatedMemoryEstimate;
+        }
+    }
+    return static_cast<std::uint64_t>(value);
+}
+
+std::uint64_t range_hand_count(const HUNLStructuredRootRequest& root, std::size_t player) noexcept {
+    if (player >= root.config.initial_ranges.size() ||
+        !root.config.initial_ranges[player].has_value()) {
+        return 0U;
+    }
+    return saturating_size(root.config.initial_ranges[player]->hand_weights.size());
+}
+
+class RangeMemoryGuard {
+public:
+    explicit RangeMemoryGuard(std::uint64_t limit_bytes) : limit_bytes_(limit_bytes) {}
+
+    void admit_retained(std::uint64_t bytes) {
+        if (limit_bytes_ != 0U &&
+            (retained_bytes_ > limit_bytes_ || bytes > limit_bytes_ - retained_bytes_)) {
+            throw std::runtime_error("structured sampled range session exceeded its memory budget");
+        }
+        retained_bytes_ = saturating_add(retained_bytes_, bytes);
+    }
+
+    void check_peak(std::uint64_t transient_bytes) const {
+        if (limit_bytes_ != 0U &&
+            (retained_bytes_ > limit_bytes_ || transient_bytes > limit_bytes_ - retained_bytes_)) {
+            throw std::runtime_error("structured sampled range batch exceeds its memory budget");
+        }
+    }
+
+    [[nodiscard]] std::uint64_t retained_bytes() const noexcept { return retained_bytes_; }
+    [[nodiscard]] std::uint64_t limit_bytes() const noexcept { return limit_bytes_; }
+
+private:
+    std::uint64_t limit_bytes_ = 0U;
+    std::uint64_t retained_bytes_ = 0U;
+};
 
 struct RangeReach {
     std::array<double, 2> player = {1.0, 1.0};
@@ -54,7 +108,11 @@ struct PrivateInfoset {
 
 class PrivateInfosetCoordinator {
 public:
-    explicit PrivateInfosetCoordinator(HUNLSampledStorage& storage) : storage_(storage) {
+    explicit PrivateInfosetCoordinator(HUNLSampledStorage& storage, RangeMemoryGuard& memory_guard)
+        : storage_(storage),
+          memory_guard_(memory_guard) {
+        memory_guard_.admit_retained(
+            saturating_multiply(2048U, sizeof(void*)));
         infosets_.reserve(1024U);
     }
 
@@ -71,6 +129,19 @@ public:
         if (infosets_.size() >= static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
             throw std::length_error("structured sampled private infoset id space exhausted");
         }
+        const auto next_size = infosets_.size() + 1U;
+        if (next_size > static_cast<std::size_t>(
+                static_cast<double>(infosets_.bucket_count()) * infosets_.max_load_factor())) {
+            const auto target_buckets = std::max<std::uint64_t>(
+                saturating_multiply(saturating_size(next_size), 4U),
+                saturating_multiply(saturating_size(infosets_.bucket_count()), 2U));
+            memory_guard_.admit_retained(saturating_multiply(target_buckets, sizeof(void*)));
+            infosets_.reserve(next_size * 2U);
+        }
+        memory_guard_.admit_retained(
+            saturating_add(
+                sizeof(HUNLInfosetEncoding) + sizeof(PrivateInfoset),
+                sizeof(void*) * 3U));
         const auto id = InfosetId{static_cast<std::uint32_t>(infosets_.size())};
         storage_.ensure_row({id, player, state.street, 1U, static_cast<std::uint8_t>(actions.size())});
         infosets_.emplace(key, PrivateInfoset{id, player, state.street, static_cast<std::uint8_t>(actions.size())});
@@ -115,7 +186,21 @@ private:
         }
     }
 
+public:
+    [[nodiscard]] std::uint64_t memory_bytes() const noexcept {
+        const auto buckets = saturating_multiply(
+            saturating_size(infosets_.bucket_count()), sizeof(void*));
+        const auto nodes = saturating_multiply(
+            saturating_size(infosets_.size()),
+            saturating_add(
+                sizeof(HUNLInfosetEncoding) + sizeof(PrivateInfoset),
+                sizeof(void*) * 3U));
+        return saturating_add(buckets, nodes);
+    }
+
+private:
     HUNLSampledStorage& storage_;
+    RangeMemoryGuard& memory_guard_;
     std::unordered_map<HUNLInfosetEncoding, PrivateInfoset, HUNLInfosetEncodingHash> infosets_;
 };
 
@@ -404,13 +489,68 @@ const HUNLJointRangeDeal& first_deal(const std::vector<HUNLJointRangeDeal>& deal
     return deals.front();
 }
 
+HUNLSampledRangeMemoryEstimate estimate_range_memory(
+    const HUNLStructuredRootRequest& root,
+    const HUNLSampledSolverConfig& config) noexcept {
+    HUNLSampledRangeMemoryEstimate estimate;
+    const auto deal_capacity = saturating_multiply(range_hand_count(root, 0U), range_hand_count(root, 1U));
+    estimate.joint_deal_bytes = saturating_multiply(deal_capacity, sizeof(HUNLJointRangeDeal));
+
+    const auto estimated_infosets = std::max<std::uint64_t>(
+        1024U,
+        saturating_multiply(static_cast<std::uint64_t>(config.minibatch_size), 4096U));
+    const auto lookup_nodes = saturating_multiply(
+        estimated_infosets,
+        saturating_add(
+            sizeof(HUNLInfosetEncoding) + sizeof(PrivateInfoset),
+            sizeof(void*) * 3U));
+    const auto lookup_buckets = saturating_multiply(
+        saturating_multiply(estimated_infosets, 4U),
+        sizeof(void*));
+    estimate.infoset_lookup_bytes = saturating_add(lookup_nodes, lookup_buckets);
+
+    const auto trajectories = std::min<std::uint64_t>(
+        std::max<std::uint64_t>(1U, config.minibatch_size),
+        kTrajectorySubbatchSize);
+    const auto workers = std::min<std::uint64_t>(
+        trajectories,
+        std::max<std::uint64_t>(1U, saturating_size(config.workers)));
+    const auto largest_partition = (trajectories + workers - 1U) / workers;
+    const auto per_worker = saturating_add(
+        saturating_multiply(
+            saturating_multiply(largest_partition + 1U, kDeltaEntriesPerTrajectory),
+            sizeof(HUNLSampledValueDelta)),
+        sizeof(HUNLSampledWorkerScratch) + sizeof(HUNLSampledTraversalResult) + sizeof(std::thread));
+    estimate.batch_scratch_bytes = saturating_multiply(workers, per_worker);
+    estimate.export_bytes = saturating_add(
+        saturating_multiply(16U, sizeof(HUNLSampledActionProbability)),
+        saturating_add(16U * sizeof(double), 16U * sizeof(int)));
+    estimate.retained_bytes = saturating_add(
+        saturating_add(estimate.joint_deal_bytes, estimate.infoset_lookup_bytes),
+        sizeof(HUNLState) + sizeof(HUNLSampledRootStrategy) + 4096U);
+    return estimate;
+}
+
 }  // namespace
+
+std::uint64_t HUNLSampledRangeMemoryEstimate::peak_bytes() const noexcept {
+    return saturating_add(
+        retained_bytes,
+        saturating_add(batch_scratch_bytes, export_bytes));
+}
+
+HUNLSampledRangeMemoryEstimate estimate_hunl_sampled_range_memory(
+    const HUNLStructuredRootRequest& root,
+    const HUNLSampledSolverConfig& config) noexcept {
+    return estimate_range_memory(root, config);
+}
 
 struct HUNLSampledRangeSession::Impl {
     HUNLStructuredRootRequest root;
     HUNLSampledSolverConfig config;
     HUNLSampledStorage& storage;
     HUNLSampledProfile& profile;
+    RangeMemoryGuard memory_guard;
     const HUNLLeafEvaluator* leaf_evaluator = nullptr;
     std::mutex leaf_evaluator_mutex;
     std::shared_ptr<const HUNLConfig> game_config;
@@ -429,18 +569,17 @@ struct HUNLSampledRangeSession::Impl {
         HUNLSampledStorage& input_storage,
         HUNLSampledProfile& input_profile,
         std::uint64_t first_batch,
-        const HUNLLeafEvaluator* input_leaf_evaluator)
+        const HUNLLeafEvaluator* input_leaf_evaluator,
+        std::uint64_t memory_limit_bytes)
         : root(std::move(input_root)),
           config(std::move(input_config)),
           storage(input_storage),
           profile(input_profile),
+          memory_guard(memory_limit_bytes),
           leaf_evaluator(input_leaf_evaluator),
           game_config(std::make_shared<const HUNLConfig>(root.config)),
           public_root_state(root.public_root_state(game_config)),
-          deals(root.normalized_joint_range()),
-          infosets(storage),
-          root_state(root_for_deal(public_root_state, first_deal(deals))),
-          root_actions(root_state.legal_actions()),
+          infosets(storage, memory_guard),
           next_batch(first_batch) {
         validate_sampled_config_or_throw(config);
         root.validate();
@@ -449,6 +588,12 @@ struct HUNLSampledRangeSession::Impl {
             throw std::invalid_argument(
                 "structured sampled depth limit requires a typed leaf evaluator");
         }
+        const auto planned_memory = estimate_range_memory(root, config);
+        memory_guard.admit_retained(planned_memory.joint_deal_bytes);
+        memory_guard.admit_retained(sizeof(HUNLState) + sizeof(HUNLSampledRootStrategy) + 4096U);
+        deals = root.normalized_joint_range();
+        root_state = root_for_deal(public_root_state, first_deal(deals));
+        root_actions = root_state.legal_actions();
         if (deals.empty() || root_actions.empty()) {
             throw std::logic_error("structured sampled root has no compatible deal or legal root action");
         }
@@ -459,6 +604,7 @@ struct HUNLSampledRangeSession::Impl {
         const std::optional<std::chrono::steady_clock::time_point>& deadline,
         HUNLSampledRootStrategy& output) {
         if (deadline_expired(deadline)) return false;
+        memory_guard.check_peak(estimate_range_memory(root, config).export_bytes);
         auto exported = HUNLSampledStrategyExporter::export_uniform(
             static_cast<std::uint8_t>(root_actions.size()));
         std::vector<double> probabilities(root_actions.size(), 0.0);
@@ -558,6 +704,7 @@ struct HUNLSampledRangeSession::Impl {
                 const auto worker_batches = HUNLSampledScheduler::partition_deterministic(
                     subbatch_count,
                     std::min<std::size_t>(requested_workers, subbatch_count));
+                memory_guard.check_peak(estimate_range_memory(root, config).batch_scratch_bytes);
                 std::vector<HUNLSampledWorkerScratch> worker_streams(worker_batches.size());
                 std::vector<HUNLSampledTraversalResult> worker_results(worker_batches.size());
                 std::vector<std::thread> threads;
@@ -678,9 +825,10 @@ HUNLSampledRangeSession::HUNLSampledRangeSession(
     HUNLSampledStorage& storage,
     HUNLSampledProfile& profile,
     std::uint64_t first_batch,
-    const HUNLLeafEvaluator* leaf_evaluator)
+    const HUNLLeafEvaluator* leaf_evaluator,
+    std::uint64_t memory_limit_bytes)
     : impl_(std::make_unique<Impl>(
-          std::move(root), std::move(config), storage, profile, first_batch, leaf_evaluator)) {}
+          std::move(root), std::move(config), storage, profile, first_batch, leaf_evaluator, memory_limit_bytes)) {}
 
 HUNLSampledRangeSession::~HUNLSampledRangeSession() = default;
 HUNLSampledRangeSession::HUNLSampledRangeSession(HUNLSampledRangeSession&&) noexcept = default;
@@ -700,16 +848,35 @@ HUNLSampledRootStrategy HUNLSampledRangeSession::export_root_strategy() {
     return impl_->export_root_strategy();
 }
 
+HUNLSampledRangeMemoryEstimate HUNLSampledRangeSession::memory_estimate() const noexcept {
+    if (impl_ == nullptr) return {};
+    HUNLSampledRangeMemoryEstimate estimate;
+    estimate.joint_deal_bytes = saturating_multiply(
+        saturating_size(impl_->deals.capacity()), sizeof(HUNLJointRangeDeal));
+    estimate.infoset_lookup_bytes = impl_->infosets.memory_bytes();
+    estimate.retained_bytes = std::max(
+        impl_->memory_guard.retained_bytes(),
+        saturating_add(
+            saturating_add(estimate.joint_deal_bytes, estimate.infoset_lookup_bytes),
+            sizeof(HUNLState) + sizeof(HUNLSampledRootStrategy)));
+    const auto planned = estimate_range_memory(impl_->root, impl_->config);
+    estimate.batch_scratch_bytes = planned.batch_scratch_bytes;
+    estimate.export_bytes = planned.export_bytes;
+    return estimate;
+}
+
 HUNLSampledRangeRunResult run_hunl_sampled_structured_range_batches(
     const HUNLStructuredRootRequest& root,
     const HUNLSampledSolverConfig& config,
-    std::uint32_t first_batch,
+    std::uint64_t first_batch,
     std::uint32_t batch_count,
     std::optional<std::chrono::steady_clock::time_point> deadline,
     HUNLSampledStorage& storage,
     HUNLSampledProfile& profile,
-    const HUNLLeafEvaluator* leaf_evaluator) {
-    HUNLSampledRangeSession session(root, config, storage, profile, first_batch, leaf_evaluator);
+    const HUNLLeafEvaluator* leaf_evaluator,
+    std::uint64_t memory_limit_bytes) {
+    HUNLSampledRangeSession session(
+        root, config, storage, profile, first_batch, leaf_evaluator, memory_limit_bytes);
     return session.resume_batches(batch_count, deadline);
 }
 

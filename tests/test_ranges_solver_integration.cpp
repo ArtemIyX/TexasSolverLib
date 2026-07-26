@@ -270,6 +270,35 @@ TEST_CASE(ranges_structured_workers_merge_the_same_deterministic_trajectory_batc
     }
 }
 
+TEST_CASE(ranges_structured_memory_preflight_and_session_guard_count_retained_range_state) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1U;
+    config.max_cached_public_states = 1U;
+
+    const auto range_memory = core::estimate_hunl_sampled_range_memory(root, config);
+    EXPECT_TRUE(range_memory.joint_deal_bytes >= sizeof(core::HUNLJointRangeDeal));
+    EXPECT_TRUE(range_memory.infoset_lookup_bytes > 0U);
+    EXPECT_TRUE(range_memory.peak_bytes() >= range_memory.retained_bytes);
+
+    core::HUNLSampledSolveRequest request;
+    request.structured_root = root;
+    core::HUNLSampledSolver solver(config);
+    const auto preflight = solver.preflight(request);
+    EXPECT_TRUE(preflight.estimate.structured_joint_deal_bytes >= sizeof(core::HUNLJointRangeDeal));
+    EXPECT_TRUE(preflight.estimate.structured_infoset_lookup_bytes > 0U);
+    EXPECT_TRUE(preflight.estimate.structured_session_bytes > 0U);
+
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    EXPECT_THROW(
+        core::HUNLSampledRangeSession(root, config, storage, profile, 0U, nullptr, 1U),
+        std::runtime_error);
+}
+
 TEST_CASE(ranges_single_joint_deal_matches_fixed_private_hand_sampled_oracle) {
     core::HUNLStructuredRootRequest root;
     root.config = range_contract_config();

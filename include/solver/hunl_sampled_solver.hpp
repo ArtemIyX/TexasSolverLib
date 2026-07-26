@@ -48,6 +48,9 @@ struct HUNLSampledMemoryEstimate {
     std::uint64_t terminal_cache_bytes = 0;
     std::uint64_t worker_delta_bytes = 0;
     std::uint64_t export_bytes = 0;
+    std::uint64_t structured_joint_deal_bytes = 0;
+    std::uint64_t structured_infoset_lookup_bytes = 0;
+    std::uint64_t structured_session_bytes = 0;
     std::uint64_t total_bytes_live = 0;
 
     [[nodiscard]] std::uint64_t total_bytes() const noexcept {

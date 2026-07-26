@@ -22,6 +22,20 @@ struct HUNLSampledRangeRunResult {
     bool timed_out = false;
 };
 
+struct HUNLSampledRangeMemoryEstimate {
+    std::uint64_t joint_deal_bytes = 0;
+    std::uint64_t infoset_lookup_bytes = 0;
+    std::uint64_t retained_bytes = 0;
+    std::uint64_t batch_scratch_bytes = 0;
+    std::uint64_t export_bytes = 0;
+
+    [[nodiscard]] std::uint64_t peak_bytes() const noexcept;
+};
+
+[[nodiscard]] HUNLSampledRangeMemoryEstimate estimate_hunl_sampled_range_memory(
+    const HUNLStructuredRootRequest& root,
+    const HUNLSampledSolverConfig& config) noexcept;
+
 class HUNLSampledRangeSession {
 public:
     HUNLSampledRangeSession(
@@ -30,7 +44,8 @@ public:
         HUNLSampledStorage& storage,
         HUNLSampledProfile& profile,
         std::uint64_t first_batch = 0U,
-        const HUNLLeafEvaluator* leaf_evaluator = nullptr);
+        const HUNLLeafEvaluator* leaf_evaluator = nullptr,
+        std::uint64_t memory_limit_bytes = 0U);
     ~HUNLSampledRangeSession();
     HUNLSampledRangeSession(HUNLSampledRangeSession&&) noexcept;
     HUNLSampledRangeSession& operator=(HUNLSampledRangeSession&&) noexcept;
@@ -42,6 +57,7 @@ public:
         std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
     [[nodiscard]] std::uint64_t next_batch() const noexcept;
     [[nodiscard]] HUNLSampledRootStrategy export_root_strategy();
+    [[nodiscard]] HUNLSampledRangeMemoryEstimate memory_estimate() const noexcept;
 
 private:
     struct Impl;
@@ -56,6 +72,7 @@ HUNLSampledRangeRunResult run_hunl_sampled_structured_range_batches(
     std::optional<std::chrono::steady_clock::time_point> deadline,
     HUNLSampledStorage& storage,
     HUNLSampledProfile& profile,
-    const HUNLLeafEvaluator* leaf_evaluator = nullptr);
+    const HUNLLeafEvaluator* leaf_evaluator = nullptr,
+    std::uint64_t memory_limit_bytes = 0U);
 
 }  // namespace core
