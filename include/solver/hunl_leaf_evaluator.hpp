@@ -3,8 +3,10 @@
 #include "games/hunl.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,6 +25,9 @@ struct HUNLLeafEvaluationRequest {
     std::array<std::vector<double>, 2> bucket_reach;
     HUNLLeafEvaluationScope scope = HUNLLeafEvaluationScope::DealConditional;
     HUNLLeafValueUnits units = HUNLLeafValueUnits::Chips;
+    // A timed solve supplies its cooperative cancellation deadline. Backends
+    // must return promptly once it is reached.
+    std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt;
     std::string abstraction_version;
     std::string model_version;
 };
@@ -34,8 +39,9 @@ struct HUNLLeafEvaluationResult {
 
 // A non-owning, non-virtual batch callback.  Callers submit requests in
 // deterministic traversal order and must write one same-unit result per
-// request.  Returning false rejects the solve at its last completed batch;
-// there is no heuristic fallback for a failed depth-limited value lookup.
+// request. Timed callbacks must observe each request deadline. Returning false
+// rejects the solve at its last completed batch; there is no heuristic fallback
+// for a failed depth-limited value lookup.
 using HUNLLeafEvaluateBatchFn = bool (*) (
     void* context,
     const HUNLLeafEvaluationRequest* requests,

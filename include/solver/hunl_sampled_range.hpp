@@ -14,8 +14,8 @@
 namespace core {
 
 // Structured ranges use a private-state traversal rather than the fixed-deal
-// public-node cache. The coordinator owns this object and invokes it only at
-// deterministic whole-batch boundaries.
+// public-node cache. The coordinator owns this object and advances it through
+// deterministic one-trajectory subbatches.
 struct HUNLSampledRangeRunResult {
     HUNLSampledRootStrategy root_strategy;
     std::uint64_t batches_completed = 0;

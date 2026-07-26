@@ -182,6 +182,16 @@ Required fix:
 
 ### P0-5: timed structured solving can exceed its deadline
 
+Status: **Fixed.** Structured range sessions now use deterministic one-trajectory
+subbatches with a resumable intra-batch cursor. They check the deadline before
+and after every trajectory, at traversal nodes, before and after leaf calls,
+before merge, and during root export. Timed calls reserve one millisecond for
+root export and return the last fully exported root strategy if time expires.
+Leaf requests carry the cooperative deadline, and an expired leaf result is
+discarded without merging or advancing its trajectory cursor. The regression
+uses a deliberately slow deadline-aware leaf callback and verifies no batch is
+published.
+
 The deadline is checked only before a whole minibatch. It is not checked between
 trajectories, around leaf calls, after the batch, or during root export.
 

@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 
 namespace {
 
@@ -77,6 +78,24 @@ bool mismatched_unit_leaf(
         results[index].units = core::HUNLLeafValueUnits::BigBlinds;
     }
     return true;
+}
+
+struct DeadlineAwareLeafContext {
+    bool received_deadline = false;
+};
+
+bool deadline_aware_slow_leaf(
+    void* raw_context,
+    const core::HUNLLeafEvaluationRequest* requests,
+    core::HUNLLeafEvaluationResult*,
+    std::size_t count) {
+    auto& context = *static_cast<DeadlineAwareLeafContext*>(raw_context);
+    if (count != 1U || !requests[0].deadline.has_value()) return false;
+    context.received_deadline = true;
+    while (std::chrono::steady_clock::now() < *requests[0].deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+    return false;
 }
 
 }  // namespace
@@ -292,6 +311,29 @@ TEST_CASE(ranges_structured_session_deadline_preserves_the_next_unpublished_batc
         4U, std::chrono::steady_clock::now() - std::chrono::milliseconds{1});
     EXPECT_EQ(expired.batches_completed, 0U);
     EXPECT_TRUE(expired.timed_out);
+    EXPECT_EQ(session.next_batch(), 0U);
+    EXPECT_EQ(profile.snapshot().traversals, 0U);
+}
+
+TEST_CASE(ranges_structured_deadline_cancels_a_cooperative_slow_leaf_before_publication) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.config.depth_limit_plies = 1U;
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "leaf-v1";
+    core::HUNLSampledSolverConfig config;
+    config.minibatch_size = 1U;
+    DeadlineAwareLeafContext context;
+    const core::HUNLLeafEvaluator evaluator{&context, deadline_aware_slow_leaf};
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, config, storage, profile, 0U, &evaluator);
+
+    const auto result = session.resume_batches(
+        1U, std::chrono::steady_clock::now() + std::chrono::milliseconds{20});
+    EXPECT_TRUE(context.received_deadline);
+    EXPECT_TRUE(result.timed_out);
+    EXPECT_EQ(result.batches_completed, 0U);
     EXPECT_EQ(session.next_batch(), 0U);
     EXPECT_EQ(profile.snapshot().traversals, 0U);
 }

@@ -20,12 +20,23 @@ namespace {
 
 constexpr std::size_t kMaxDecisionActions = 16U;
 constexpr std::size_t kDeltaEntriesPerTrajectory = 4096U;
+constexpr auto kRootExportReserve = std::chrono::milliseconds{1};
 
 struct RangeReach {
     std::array<double, 2> player = {1.0, 1.0};
     double chance = 1.0;
     double sampling = 1.0;
 };
+
+[[nodiscard]] bool deadline_expired(
+    const std::optional<std::chrono::steady_clock::time_point>& deadline) noexcept {
+    return deadline.has_value() && std::chrono::steady_clock::now() >= *deadline;
+}
+
+[[nodiscard]] bool reserve_expired(
+    const std::optional<std::chrono::steady_clock::time_point>& deadline) noexcept {
+    return deadline.has_value() && std::chrono::steady_clock::now() + kRootExportReserve >= *deadline;
+}
 
 struct PrivateInfoset {
     InfosetId id{};
@@ -167,7 +178,13 @@ double traverse(
     PcsRng& rng,
     RangeReach reach,
     std::uint32_t plies,
+    const std::optional<std::chrono::steady_clock::time_point>& deadline,
+    bool& cancelled,
     HUNLSampledTraversalResult& result) {
+    if (deadline_expired(deadline)) {
+        cancelled = true;
+        return 0.0;
+    }
     ++result.nodes_visited;
     if (state.is_terminal()) {
         const auto values = state.utility();
@@ -187,10 +204,16 @@ double traverse(
         request.bucket_reach[1] = {reach.player[1]};
         request.scope = HUNLLeafEvaluationScope::DealConditional;
         request.units = root.value_units;
+        request.deadline = deadline;
         request.abstraction_version = root.blueprint_version;
         request.model_version = root.model_version;
         HUNLLeafEvaluationResult leaf;
-        if (!leaf_evaluator->evaluate_batch(leaf_evaluator->context, &request, &leaf, 1U) ||
+        const auto accepted = leaf_evaluator->evaluate_batch(leaf_evaluator->context, &request, &leaf, 1U);
+        if (deadline_expired(deadline)) {
+            cancelled = true;
+            return 0.0;
+        }
+        if (!accepted ||
             leaf.units != root.value_units ||
             !std::isfinite(leaf.values[0]) || !std::isfinite(leaf.values[1])) {
             throw std::runtime_error("structured sampled leaf evaluator rejected a depth cutoff");
@@ -204,7 +227,8 @@ double traverse(
         reach.chance *= selected.second;
         reach.sampling *= selected.second;
         return traverse(state.apply(outcomes[selected.first].action), root, leaf_evaluator, traverser,
-                        trajectory_id, infosets, storage, scratch, rng, reach, plies + 1U, result);
+                        trajectory_id, infosets, storage, scratch, rng, reach, plies + 1U, deadline,
+                        cancelled, result);
     }
 
     const auto acting_player = state.current_player();
@@ -232,7 +256,7 @@ double traverse(
         reach.player[acting_index] *= selected.second;
         reach.sampling *= selected.second;
         return traverse(state.apply(actions[selected.first]), root, leaf_evaluator, traverser, trajectory_id,
-                        infosets, storage, scratch, rng, reach, plies + 1U, result);
+                        infosets, storage, scratch, rng, reach, plies + 1U, deadline, cancelled, result);
     }
 
     std::array<double, kMaxDecisionActions> action_values = {};
@@ -242,7 +266,8 @@ double traverse(
         child_reach.player[acting_index] *= static_cast<double>(strategy[action]);
         action_values[action] = traverse(state.apply(actions[action]), root, leaf_evaluator, traverser,
                                          trajectory_id, infosets, storage, scratch, rng, child_reach,
-                                         plies + 1U, result);
+                                         plies + 1U, deadline, cancelled, result);
+        if (cancelled) return 0.0;
         node_value += static_cast<double>(strategy[action]) * action_values[action];
     }
     const auto other = 1U - acting_index;
@@ -282,7 +307,9 @@ struct HUNLSampledRangeSession::Impl {
     PrivateInfosetCoordinator infosets;
     HUNLState root_state;
     std::vector<ActionId> root_actions;
+    HUNLSampledRootStrategy last_clean_root_strategy;
     std::uint64_t next_batch = 0;
+    std::uint32_t next_local_trajectory = 0;
 
     Impl(
         HUNLStructuredRootRequest input_root,
@@ -312,14 +339,19 @@ struct HUNLSampledRangeSession::Impl {
         if (deals.empty() || root_actions.empty()) {
             throw std::logic_error("structured sampled root has no compatible deal or legal root action");
         }
+        last_clean_root_strategy = export_root_strategy();
     }
 
-    HUNLSampledRootStrategy export_root_strategy() {
-        auto output = HUNLSampledStrategyExporter::export_uniform(
+    bool export_root_strategy_until(
+        const std::optional<std::chrono::steady_clock::time_point>& deadline,
+        HUNLSampledRootStrategy& output) {
+        if (deadline_expired(deadline)) return false;
+        auto exported = HUNLSampledStrategyExporter::export_uniform(
             static_cast<std::uint8_t>(root_actions.size()));
         std::vector<double> probabilities(root_actions.size(), 0.0);
         std::vector<int> target_contributions(root_actions.size(), 0);
         for (const auto& deal : deals) {
+            if (deadline_expired(deadline)) return false;
             const auto state = root_for_deal(game_config, deal);
             const auto infoset = infosets.ensure(state);
             const auto strategy = HUNLSampledStrategyExporter::export_average_strategy(storage.view(infoset));
@@ -327,15 +359,26 @@ struct HUNLSampledRangeSession::Impl {
                 probabilities[action] += deal.weight * strategy.actions[action].probability;
             }
         }
-        for (std::size_t action = 0; action < output.actions.size(); ++action) {
-            output.actions[action].probability = probabilities[action];
+        for (std::size_t action = 0; action < exported.actions.size(); ++action) {
+            exported.actions[action].probability = probabilities[action];
             const auto child = root_state.next_state(root_actions[action]);
             target_contributions[action] = root_state.current_player() >= 0
                 ? child.contributions[static_cast<std::size_t>(root_state.current_player())]
                 : 0;
         }
         HUNLSampledStrategyExporter::attach_action_descriptors(
-            output, root_actions, target_contributions);
+            exported, root_actions, target_contributions);
+        if (deadline_expired(deadline)) return false;
+        output = std::move(exported);
+        return true;
+    }
+
+    HUNLSampledRootStrategy export_root_strategy() {
+        HUNLSampledRootStrategy output;
+        if (!export_root_strategy_until(std::nullopt, output)) {
+            throw std::logic_error("unbounded structured root export was cancelled");
+        }
+        last_clean_root_strategy = output;
         return output;
     }
 
@@ -343,8 +386,9 @@ struct HUNLSampledRangeSession::Impl {
         std::uint32_t batch_count,
         std::optional<std::chrono::steady_clock::time_point> deadline) {
         HUNLSampledRangeRunResult output;
+        output.root_strategy = last_clean_root_strategy;
         for (std::uint32_t offset = 0; offset < batch_count; ++offset) {
-            if (deadline.has_value() && std::chrono::steady_clock::now() >= *deadline) {
+            if (reserve_expired(deadline)) {
                 output.timed_out = true;
                 break;
             }
@@ -352,12 +396,12 @@ struct HUNLSampledRangeSession::Impl {
             if (batch == std::numeric_limits<std::uint64_t>::max()) {
                 throw std::overflow_error("structured sampled batch id space exhausted");
             }
-            HUNLSampledWorkerScratch batch_stream;
-            batch_stream.reserve_deltas(
-                static_cast<std::size_t>(config.minibatch_size) * kDeltaEntriesPerTrajectory);
-            std::uint64_t nodes = 0;
-            std::uint64_t updated = 0;
-            for (std::uint32_t local = 0; local < config.minibatch_size; ++local) {
+            while (next_local_trajectory < config.minibatch_size) {
+                if (reserve_expired(deadline)) {
+                    output.timed_out = true;
+                    break;
+                }
+                const auto local = next_local_trajectory;
                 if (batch > (std::numeric_limits<std::uint64_t>::max() - local) / config.minibatch_size) {
                     throw std::overflow_error("structured sampled trajectory id space exhausted");
                 }
@@ -370,21 +414,41 @@ struct HUNLSampledRangeSession::Impl {
                 HUNLSampledWorkerScratch trajectory_stream;
                 trajectory_stream.reserve_deltas(kDeltaEntriesPerTrajectory);
                 HUNLSampledTraversalResult result;
+                bool cancelled = false;
                 const auto chance = deals.size() == 1U ? 1.0 : deals[deal_index].weight;
                 (void)traverse(root_for_deal(game_config, deals[deal_index]), root, leaf_evaluator, traverser,
                                trajectory_id, infosets, storage, trajectory_stream, rng,
-                               RangeReach{{1.0, 1.0}, chance, chance}, 0U, result);
-                batch_stream.deltas.insert(
-                    batch_stream.deltas.end(), trajectory_stream.deltas.begin(), trajectory_stream.deltas.end());
-                nodes += result.nodes_visited;
-                updated += result.infosets_updated;
+                               RangeReach{{1.0, 1.0}, chance, chance}, 0U, deadline, cancelled, result);
+                if (cancelled || reserve_expired(deadline)) {
+                    output.timed_out = true;
+                    break;
+                }
+                merge_hunl_sampled_worker_deltas(storage, trajectory_stream);
+                ++next_local_trajectory;
+                profile.record_traversal(1U, result.nodes_visited, result.infosets_updated);
+                if (next_local_trajectory == config.minibatch_size) {
+                    next_local_trajectory = 0U;
+                    ++next_batch;
+                    ++output.batches_completed;
+                    if (deadline_expired(deadline)) output.timed_out = true;
+                    break;
+                }
+                if (deadline_expired(deadline)) {
+                    output.timed_out = true;
+                    break;
+                }
             }
-            merge_hunl_sampled_worker_deltas(storage, batch_stream);
-            profile.record_traversal(config.minibatch_size, nodes, updated);
-            ++next_batch;
-            ++output.batches_completed;
+            if (output.timed_out) break;
         }
-        output.root_strategy = export_root_strategy();
+        if (!output.timed_out) {
+            HUNLSampledRootStrategy exported;
+            if (export_root_strategy_until(deadline, exported)) {
+                last_clean_root_strategy = std::move(exported);
+            } else {
+                output.timed_out = deadline.has_value();
+            }
+        }
+        output.root_strategy = last_clean_root_strategy;
         return output;
     }
 };
