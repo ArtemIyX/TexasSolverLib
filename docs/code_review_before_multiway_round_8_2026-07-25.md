@@ -536,7 +536,7 @@ Required fix:
 Make the selected hero private state/bucket explicit and export its policy.
 Keep optional range-wide diagnostics separate.
 
-### P1-13: moving a solver with a retained structured session leaves internal references behind
+### P1-13: moving a solver with a retained structured session leaves internal references behind [Fixed]
 
 `HUNLSampledRangeSession::Impl` stores references to a solver's `storage` and
 `profile`. `HUNLSampledSolver` does not delete or customize move operations and
@@ -560,6 +560,9 @@ Required fix:
 Delete solver moves while a self-referential session design exists, or
 implement a custom move that rebuilds/rebinds the session safely. Add
 compile-time and runtime lifetime tests.
+
+Status: **Fixed.** `HUNLSampledSolver` is non-copyable and non-movable while
+its retained session holds references to its storage and profile.
 
 ## P2 findings
 

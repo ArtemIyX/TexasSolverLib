@@ -83,6 +83,10 @@ struct HUNLSampledMemoryPreflight {
 class HUNLSampledSolver {
 public:
     explicit HUNLSampledSolver(HUNLSampledSolverConfig config = {});
+    HUNLSampledSolver(const HUNLSampledSolver&) = delete;
+    HUNLSampledSolver& operator=(const HUNLSampledSolver&) = delete;
+    HUNLSampledSolver(HUNLSampledSolver&&) = delete;
+    HUNLSampledSolver& operator=(HUNLSampledSolver&&) = delete;
 
     // Runs deterministic whole batches until the deadline and returns the
     // latest clean root export. Non-positive budgets initialize an unsolved
