@@ -570,6 +570,14 @@ scratch, and an allocation-free terminal kernel for production traversal.
 
 ### P1-11: float row storage silently loses updates and disagrees with the public numerical helper
 
+Status: **Fixed.** Coordinator-owned sparse regrets and average-strategy sums
+now use Float64 storage. The deterministic global merge order and direct row
+mutation both reject any finite nonzero delta that does not change its Float64
+accumulator, matching the public numerical helper instead of silently losing
+mass. The precision-boundary regression exercises the actual worker-stream
+merge at `2^53`, verifies transactional rejection of `+1`, and accepts the
+next representable `+2` update.
+
 `apply_multiway_cfr_update()` now throws when a nonzero double delta is absorbed
 by a large double accumulator. The actual sparse storage uses floats and casts
 each update without checking whether it changed the stored value.

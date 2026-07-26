@@ -223,6 +223,9 @@ struct MultiwaySparseRowMetadata {
 };
 
 // Coordinator-owned sparse rows. Values are action-major: [action][bucket].
+// Persistent accumulators are Float64. Merges use fixed global delta order and
+// reject a nonzero delta that a Float64 accumulator cannot represent, rather
+// than silently losing long-run regret or average-strategy mass.
 // Only the coordinator receives a mutable instance; workers emit deltas.
 class MultiwaySparseRowStorage {
 public:
@@ -250,8 +253,8 @@ private:
     std::size_t max_rows_ = 0;
     std::size_t max_values_ = 0;
     std::vector<MultiwaySparseRowMetadata> metadata_;
-    std::vector<float> regret_;
-    std::vector<float> strategy_sum_;
+    std::vector<double> regret_;
+    std::vector<double> strategy_sum_;
 };
 
 struct MultiwayWorkerDelta {

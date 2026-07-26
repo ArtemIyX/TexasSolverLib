@@ -1,6 +1,7 @@
 #include "solver/multiway_solver.hpp"
 #include "test_harness.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -322,6 +323,36 @@ TEST_CASE(multiway_solver_sparse_admission_is_idempotent_and_action_major) {
     EXPECT_NEAR(at_bucket_zero[1], 1.0, 1e-12);
     EXPECT_NEAR(at_bucket_one[0], 1.0, 1e-12);
     EXPECT_NEAR(at_bucket_one[1], 0.0, 1e-12);
+}
+
+TEST_CASE(multiway_solver_sparse_merge_rejects_lost_nonzero_float64_updates_transactionally) {
+    core::MultiwaySolverCoordinator coordinator(valid_request());
+    coordinator.admit_infoset_row(root_row());
+    const auto large = std::ldexp(1.0, 53);
+
+    core::MultiwayWorkerDeltaStream first_large(0, 1);
+    core::MultiwayWorkerDeltaStream second_large(1, 1);
+    EXPECT_TRUE(first_large.try_append(delta(0, large, large, 0U)));
+    first_large.sort_fixed_order();
+    second_large.sort_fixed_order();
+    coordinator.merge_worker_streams({first_large, second_large});
+
+    core::MultiwayWorkerDeltaStream first_lost(0, 1);
+    core::MultiwayWorkerDeltaStream second_lost(1, 1);
+    EXPECT_TRUE(first_lost.try_append(delta(0, 1.0, 1.0, 1U)));
+    first_lost.sort_fixed_order();
+    second_lost.sort_fixed_order();
+    EXPECT_THROW(coordinator.merge_worker_streams({first_lost, second_lost}), std::overflow_error);
+    const auto after_rejection = coordinator.storage().average_strategy({{1}, 0}, 0U);
+    EXPECT_NEAR(after_rejection[0], 1.0, 1e-12);
+
+    core::MultiwayWorkerDeltaStream first_representable(0, 1);
+    core::MultiwayWorkerDeltaStream second_representable(1, 1);
+    EXPECT_TRUE(first_representable.try_append(delta(0, 2.0, 2.0, 2U)));
+    first_representable.sort_fixed_order();
+    second_representable.sort_fixed_order();
+    coordinator.merge_worker_streams({first_representable, second_representable});
+    EXPECT_NEAR(coordinator.storage().average_strategy({{1}, 0}, 0U)[0], 1.0, 1e-12);
 }
 
 TEST_CASE(multiway_solver_sparse_admission_enforces_row_and_value_caps) {

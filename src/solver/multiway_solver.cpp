@@ -359,7 +359,7 @@ std::vector<Probability> MultiwaySparseRowStorage::average_strategy(
     double total = 0.0;
     for (std::size_t action = 0; action < result.size(); ++action) {
         const auto index = row->strategy_sum_offset + action * row->shape.bucket_count + bucket;
-        result[action] = strategy_sum_[index] > 0.0F ? strategy_sum_[index] : 0.0;
+        result[action] = strategy_sum_[index] > 0.0 ? strategy_sum_[index] : 0.0;
         total += result[action];
     }
     if (total == 0.0) {
@@ -396,8 +396,8 @@ void MultiwaySparseRowStorage::admit_row(const MultiwaySparseRowShape& shape) {
         [](const MultiwaySparseRowMetadata& existing, MultiwayInfosetId key) {
             return existing.shape.infoset < key;
         });
-    regret_.resize(regret_.size() + values, 0.0F);
-    strategy_sum_.resize(strategy_sum_.size() + values, 0.0F);
+    regret_.resize(regret_.size() + values, 0.0);
+    strategy_sum_.resize(strategy_sum_.size() + values, 0.0);
     metadata_.insert(insertion, row);
 }
 
@@ -416,14 +416,12 @@ void MultiwaySparseRowStorage::apply_delta(
     const auto updated_regret = static_cast<double>(regret_[index]) + regret;
     const auto updated_strategy = static_cast<double>(strategy_sum_[index]) + strategy_sum;
     if (!std::isfinite(updated_regret) || !std::isfinite(updated_strategy) ||
-        updated_regret > std::numeric_limits<float>::max() ||
-        updated_regret < -std::numeric_limits<float>::max() ||
-        updated_strategy > std::numeric_limits<float>::max() ||
-        updated_strategy < -std::numeric_limits<float>::max()) {
-        throw std::overflow_error("multiway sparse delta would overflow row storage");
+        (regret != 0.0 && updated_regret == regret_[index]) ||
+        (strategy_sum != 0.0 && updated_strategy == strategy_sum_[index])) {
+        throw std::overflow_error("multiway sparse delta would lose a nonzero Float64 update");
     }
-    regret_[index] = static_cast<float>(updated_regret);
-    strategy_sum_[index] = static_cast<float>(updated_strategy);
+    regret_[index] = updated_regret;
+    strategy_sum_[index] = updated_strategy;
 }
 
 MultiwayWorkerDeltaStream::MultiwayWorkerDeltaStream(std::size_t worker_index, std::size_t capacity)
@@ -538,8 +536,8 @@ void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayW
 
     struct PendingCell {
         std::size_t index = 0;
-        float regret = 0.0F;
-        float strategy_sum = 0.0F;
+        double regret = 0.0;
+        double strategy_sum = 0.0;
     };
     std::vector<PendingCell> pending;
     pending.reserve(deltas.size());
@@ -567,15 +565,17 @@ void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayW
             }
             previous_trajectory = delta.trajectory_id;
             have_trajectory = true;
-            regret += delta.regret;
-            strategy_sum += delta.strategy_sum;
-            if (!std::isfinite(regret) || !std::isfinite(strategy_sum) ||
-                regret > std::numeric_limits<float>::max() || regret < -std::numeric_limits<float>::max() ||
-                strategy_sum > std::numeric_limits<float>::max() || strategy_sum < -std::numeric_limits<float>::max()) {
-                throw std::overflow_error("multiway sparse batch delta would overflow row storage");
+            const auto next_regret = regret + delta.regret;
+            const auto next_strategy_sum = strategy_sum + delta.strategy_sum;
+            if (!std::isfinite(next_regret) || !std::isfinite(next_strategy_sum) ||
+                (delta.regret != 0.0 && next_regret == regret) ||
+                (delta.strategy_sum != 0.0 && next_strategy_sum == strategy_sum)) {
+                throw std::overflow_error("multiway sparse merge would lose a nonzero Float64 update");
             }
+            regret = next_regret;
+            strategy_sum = next_strategy_sum;
         }
-        pending.push_back({index, static_cast<float>(regret), static_cast<float>(strategy_sum)});
+        pending.push_back({index, regret, strategy_sum});
         begin = end;
     }
 
