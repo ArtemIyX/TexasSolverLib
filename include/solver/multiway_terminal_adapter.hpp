@@ -12,6 +12,7 @@ namespace core {
 // edge, so consumers never need to reconstruct a runout from a card label.
 struct MultiwayBoardChanceEdge {
     std::uint8_t dealt_card = 0;
+    std::vector<std::uint8_t> dealt_cards;
     std::vector<std::uint8_t> board;
     MultiwayBoardRunoutState board_runout{};
     Probability probability = 0.0;
@@ -65,9 +66,9 @@ public:
 
     [[nodiscard]] MultiwaySamplerDealToken sample_private_deal(std::uint64_t seed) const;
 
-    // Returns one-card, card-id-ordered chance edges after excluding the
-    // sampled private deal. A StreetTransition can be advanced card-by-card
-    // until the next street's board is complete; BoardRunout advances to river.
+    // Returns canonical public chance edges after excluding the sampled
+    // private deal. Preflop-to-flop edges deal sorted three-card combinations;
+    // all later edges deal one card.
     [[nodiscard]] std::vector<MultiwayBoardChanceEdge> canonical_board_chance_edges(
         MultiwayPublicStateId public_state,
         const MultiwaySamplerDealToken& private_deal) const;

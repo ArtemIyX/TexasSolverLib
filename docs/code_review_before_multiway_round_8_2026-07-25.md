@@ -664,6 +664,11 @@ Required fix:
 Emit canonical three-card flop combinations, or canonicalize the completed
 flop before public-state identity and compensate chance multiplicity exactly.
 
+Status: **Fixed.** Preflop-to-flop chance now emits one edge per sorted
+three-card combination with exact combination probability. The typed parent
+edge carries the full dealt-card sequence, and admission verifies that
+canonical sequence against the successor board.
+
 ### P2-5: required regression gates are still absent
 
 Missing gates include:

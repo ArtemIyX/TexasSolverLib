@@ -203,18 +203,38 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
         throw std::invalid_argument("multiway board chance has no available cards");
     }
 
-    const auto probability = 1.0 / static_cast<Probability>(available.size());
+    const auto cards_to_deal = state.street() == Street::Preflop &&
+        kind == MultiwayNextNodeKind::StreetTransition ? 3U : 1U;
+    if (available.size() < cards_to_deal) {
+        throw std::invalid_argument("multiway board chance has too few available cards");
+    }
+    const auto outcome_count = cards_to_deal == 1U
+        ? available.size()
+        : available.size() * (available.size() - 1U) * (available.size() - 2U) / 6U;
+    const auto probability = 1.0 / static_cast<Probability>(outcome_count);
     std::vector<MultiwayBoardChanceEdge> edges;
-    edges.reserve(available.size());
-    for (const auto card : available) {
+    edges.reserve(outcome_count);
+    const auto append_edge = [&](std::vector<std::uint8_t> dealt_cards) {
         MultiwayBoardChanceEdge edge;
-        edge.dealt_card = card;
+        edge.dealt_card = dealt_cards.front();
+        edge.dealt_cards = std::move(dealt_cards);
         edge.board = board;
-        edge.board.push_back(card);
+        edge.board.insert(edge.board.end(), edge.dealt_cards.begin(), edge.dealt_cards.end());
         edge.board_runout.remaining_board_cards = static_cast<std::uint8_t>(5U - edge.board.size());
         edge.board_runout.chance_only_runout = chance_only_runout;
         edge.probability = probability;
         edges.push_back(std::move(edge));
+    };
+    if (cards_to_deal == 1U) {
+        for (const auto card : available) append_edge({card});
+    } else {
+        for (std::size_t first = 0; first + 2U < available.size(); ++first) {
+            for (std::size_t second = first + 1U; second + 1U < available.size(); ++second) {
+                for (std::size_t third = second + 1U; third < available.size(); ++third) {
+                    append_edge({available[first], available[second], available[third]});
+                }
+            }
+        }
     }
     return edges;
 }
@@ -233,6 +253,7 @@ std::vector<MultiwayPublicBoardChanceEdge> MultiwayTerminalAdapter::canonical_pu
         successor.parent_id = parent_id;
         successor.incoming_edge.kind = MultiwayPublicParentEdgeKind::BoardChance;
         successor.incoming_edge.dealt_card = edge.dealt_card;
+        successor.incoming_edge.dealt_cards = edge.dealt_cards;
         successor.chance = edge;
         result.push_back(std::move(successor));
     }

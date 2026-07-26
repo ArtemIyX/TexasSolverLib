@@ -1,6 +1,7 @@
 #include "solver/multiway_terminal_adapter.hpp"
 #include "test_harness.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -32,15 +33,31 @@ core::MultiwayState flop_state(int stack = 1000) {
     return core::MultiwayState::initial(game);
 }
 
+core::MultiwayState preflop_state(int stack = 1000) {
+    core::MultiwayGameConfig game;
+    game.starting_stacks = {stack, stack, stack};
+    game.initial_contributions = {0, 0, 0};
+    game.initial_street_contributions = {0, 0, 0};
+    game.first_player = 0;
+    game.street = core::Street::Preflop;
+    return core::MultiwayState::initial(game);
+}
+
 std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::MultiwayState& state) {
     std::vector<core::MultiwayActionDescriptor> descriptors;
     const auto actions = state.legal_actions();
     descriptors.reserve(actions.size());
     for (std::size_t index = 0; index < actions.size(); ++index) {
         const auto action = actions[index];
+        const auto seat = static_cast<std::size_t>(state.current_player());
+        const auto current = state.street_contributions()[seat];
         const auto target = action == core::MultiwayAction::Bet || action == core::MultiwayAction::Raise
             ? state.current_bet() + state.last_full_raise_size()
-            : 0;
+            : action == core::MultiwayAction::AllIn
+                ? current + state.stacks()[seat]
+                : action == core::MultiwayAction::Call
+                    ? std::min(state.current_bet(), current + state.stacks()[seat])
+                    : current;
         descriptors.push_back({action, static_cast<std::uint32_t>(index), target, 8800});
     }
     return descriptors;
@@ -95,6 +112,7 @@ struct AdapterFixture {
         child.incoming_edge = {};
         child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BoardChance;
         child.incoming_edge.dealt_card = chance.dealt_card;
+        child.incoming_edge.dealt_cards = chance.dealt_cards;
         child.board = chance.board;
         child.board_runout = chance.board_runout;
         coordinator.admit_public_state(child);
@@ -183,6 +201,27 @@ TEST_CASE(multiway_terminal_adapter_enumerates_canonical_exclusive_board_chance_
         EXPECT_EQ(edge.board_runout.remaining_board_cards, 1U);
         EXPECT_TRUE(!edge.board_runout.chance_only_runout);
         EXPECT_NEAR(edge.probability, 1.0 / 43.0, 1e-12);
+        total_probability += edge.probability;
+    }
+    EXPECT_NEAR(total_probability, 1.0, 1e-12);
+}
+
+TEST_CASE(multiway_terminal_adapter_collapses_preflop_flop_orders_to_canonical_combinations) {
+    AdapterFixture fixture(root_for_betting_state(preflop_state(), {}));
+    const auto deal = fixture.adapter.sample_private_deal(1);
+    auto state = fixture.request.root().public_state;
+    state = fixture.admit_action_child(state, 0);
+    state = fixture.admit_action_child(state, 0);
+    state = fixture.admit_action_child(state, 0);
+
+    const auto edges = fixture.adapter.canonical_board_chance_edges(state.id, deal);
+    EXPECT_EQ(edges.size(), std::size_t{15180});
+    double total_probability = 0.0;
+    for (const auto& edge : edges) {
+        EXPECT_EQ(edge.dealt_cards.size(), std::size_t{3});
+        EXPECT_TRUE(std::is_sorted(edge.dealt_cards.begin(), edge.dealt_cards.end()));
+        EXPECT_EQ(edge.board, edge.dealt_cards);
+        EXPECT_EQ(edge.board_runout.remaining_board_cards, 2U);
         total_probability += edge.probability;
     }
     EXPECT_NEAR(total_probability, 1.0, 1e-12);
