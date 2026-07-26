@@ -11,6 +11,8 @@
 
 namespace core {
 
+class MultiwayTerminalAdapter;
+
 // Stable numeric identities are assigned by the coordinator. Zero is reserved
 // as an invalid identity so an omitted id cannot become a storage key.
 struct MultiwayPublicStateId {
@@ -332,6 +334,7 @@ public:
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
 
 private:
+    friend class MultiwayTerminalAdapter;
     [[nodiscard]] const MultiwayPublicStateDescriptor* public_state(
         MultiwayPublicStateId id) const noexcept;
 

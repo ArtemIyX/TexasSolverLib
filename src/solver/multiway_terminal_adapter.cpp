@@ -121,11 +121,51 @@ MultiwayState validate_root_consistent_state(
 
 }  // namespace
 
-MultiwayTerminalAdapter::MultiwayTerminalAdapter(const MultiwayRootSnapshot& root) : root_(root) {
+MultiwayTerminalAdapter::MultiwayTerminalAdapter(const MultiwaySolverCoordinator& coordinator)
+    : coordinator_(&coordinator), root_(coordinator.request_.root()) {
     root_.validate();
 }
 
+MultiwaySamplerDealToken MultiwayTerminalAdapter::sample_private_deal(std::uint64_t seed) const {
+    MultiwayPrivateWorkerScratch scratch;
+    if (!coordinator_->request_.compiled_private_ranges().try_sample_into(seed, scratch)) {
+        throw std::runtime_error("multiway sampler proposal collided");
+    }
+    MultiwayJointPrivateSample deal;
+    deal.holes.assign(scratch.holes.begin(), scratch.holes.begin() + scratch.seat_count);
+    deal.attempts = scratch.attempts;
+    deal.chance_reach = scratch.chance_reach;
+    deal.conditional_deal_probability = scratch.conditional_deal_probability;
+    deal.proposal_reach = scratch.proposal_reach;
+    deal.inclusion_reach = scratch.inclusion_reach;
+    deal.accepted_trajectories = scratch.accepted_trajectories;
+    deal.rejected_trajectories = scratch.rejected_trajectories;
+    deal.discarded_trajectories = scratch.discarded_trajectories;
+    return MultiwaySamplerDealToken(*coordinator_, std::move(deal));
+}
+
+const MultiwayPublicStateDescriptor& MultiwayTerminalAdapter::require_public_state(
+    MultiwayPublicStateId id) const {
+    const auto* state = coordinator_->public_state(id);
+    if (state == nullptr) throw std::invalid_argument("multiway terminal adapter requires an admitted public state");
+    return *state;
+}
+
+void MultiwayTerminalAdapter::validate_token(const MultiwaySamplerDealToken& token) const {
+    if (token.coordinator_ != coordinator_) {
+        throw std::invalid_argument("multiway terminal adapter received a deal token from another coordinator");
+    }
+}
+
 std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_chance_edges(
+    MultiwayPublicStateId public_state,
+    const MultiwaySamplerDealToken& private_deal) const {
+    validate_token(private_deal);
+    const auto& state = require_public_state(public_state);
+    return canonical_board_chance_edges_impl(state.betting, state.board, private_deal.deal_);
+}
+
+std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_chance_edges_impl(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board,
     const MultiwayJointPrivateSample& private_deal) const {
@@ -181,13 +221,11 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
 
 std::vector<MultiwayPublicBoardChanceEdge> MultiwayTerminalAdapter::canonical_public_board_chance_edges(
     MultiwayPublicStateId parent_id,
-    const MultiwayBettingSnapshot& betting,
-    const std::vector<std::uint8_t>& board,
-    const MultiwayJointPrivateSample& private_deal) const {
+    const MultiwaySamplerDealToken& private_deal) const {
     if (parent_id.value == 0) {
         throw std::invalid_argument("multiway public board chance requires a parent identity");
     }
-    const auto edges = canonical_board_chance_edges(betting, board, private_deal);
+    const auto edges = canonical_board_chance_edges(parent_id, private_deal);
     std::vector<MultiwayPublicBoardChanceEdge> result;
     result.reserve(edges.size());
     for (const auto& edge : edges) {
@@ -202,6 +240,12 @@ std::vector<MultiwayPublicBoardChanceEdge> MultiwayTerminalAdapter::canonical_pu
 }
 
 MultiwayStreetTransition MultiwayTerminalAdapter::apply_street_transition(
+    MultiwayPublicStateId public_state) const {
+    const auto& state = require_public_state(public_state);
+    return apply_street_transition_impl(state.betting, state.board);
+}
+
+MultiwayStreetTransition MultiwayTerminalAdapter::apply_street_transition_impl(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board) const {
     const auto state = validate_root_consistent_state(root_, betting, board);
@@ -223,21 +267,27 @@ MultiwayStreetTransition MultiwayTerminalAdapter::apply_street_transition(
 }
 
 MultiwayPublicStreetTransition MultiwayTerminalAdapter::apply_public_street_transition(
-    MultiwayPublicStateId parent_id,
-    const MultiwayBettingSnapshot& betting,
-    const std::vector<std::uint8_t>& board) const {
+    MultiwayPublicStateId parent_id) const {
     if (parent_id.value == 0) {
         throw std::invalid_argument("multiway public street transition requires a parent identity");
     }
     MultiwayPublicStreetTransition result;
     result.parent_id = parent_id;
     result.incoming_edge.kind = MultiwayPublicParentEdgeKind::StreetTransition;
-    result.incoming_edge.transition_board = board;
-    result.transition = apply_street_transition(betting, board);
+    result.transition = apply_street_transition(parent_id);
+    result.incoming_edge.transition_board = result.transition.board;
     return result;
 }
 
 MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal(
+    MultiwayPublicStateId public_state,
+    const MultiwaySamplerDealToken& private_deal) const {
+    validate_token(private_deal);
+    const auto& state = require_public_state(public_state);
+    return resolve_terminal_impl(state.betting, state.board, private_deal.deal_);
+}
+
+MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board,
     const MultiwayJointPrivateSample& private_deal) const {

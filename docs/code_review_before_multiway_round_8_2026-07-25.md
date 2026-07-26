@@ -331,7 +331,7 @@ feasibility result and immutable compiled private-range proposal. Infeasible
 and search-exhausted feasibility statuses are rejected during request
 construction before a coordinator can be created.
 
-### P1-4: terminal adapter inputs are not proven descendants or sampler outputs
+### P1-4: terminal adapter inputs are not proven descendants or sampler outputs [Fixed]
 
 The adapter checks monotonic chips, folds, all-ins, street order, and board
 prefix. It does not replay coordinator-admitted action/chance edges. It also
@@ -355,6 +355,12 @@ Required fix:
 Resolve chance, transitions, and terminals from an admitted public-state ID
 plus a sampler-issued immutable deal token. Do not accept unrelated raw
 snapshots and publicly constructible samples at this boundary.
+
+Status: **Fixed.** `MultiwayTerminalAdapter` is now bound to a coordinator.
+Its public chance, transition, and terminal APIs accept only coordinator-admitted
+public-state IDs and opaque deal tokens issued from the request's compiled
+private-range sampler. Raw snapshots and publicly constructible samples are no
+longer accepted at this boundary.
 
 ### P1-5: structured range execution ignores workers and mutates central storage during traversal
 

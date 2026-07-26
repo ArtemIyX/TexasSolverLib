@@ -3,6 +3,7 @@
 #include "solver/multiway_solver.hpp"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace core {
@@ -39,45 +40,74 @@ struct MultiwayPublicStreetTransition {
     MultiwayStreetTransition transition{};
 };
 
+// An opaque private deal issued only by a coordinator-bound terminal adapter.
+// It cannot be constructed or inspected by traversal callers.
+class MultiwaySamplerDealToken {
+public:
+    MultiwaySamplerDealToken() = delete;
+
+private:
+    friend class MultiwayTerminalAdapter;
+    MultiwaySamplerDealToken(
+        const MultiwaySolverCoordinator& coordinator,
+        MultiwayJointPrivateSample deal)
+        : coordinator_(&coordinator), deal_(std::move(deal)) {}
+
+    const MultiwaySolverCoordinator* coordinator_ = nullptr;
+    MultiwayJointPrivateSample deal_{};
+};
+
 // Cold integrated boundary for public chance, betting transitions, and
 // terminal settlement. It owns no traversal or policy state.
 class MultiwayTerminalAdapter {
 public:
-    explicit MultiwayTerminalAdapter(const MultiwayRootSnapshot& root);
+    explicit MultiwayTerminalAdapter(const MultiwaySolverCoordinator& coordinator);
+
+    [[nodiscard]] MultiwaySamplerDealToken sample_private_deal(std::uint64_t seed) const;
 
     // Returns one-card, card-id-ordered chance edges after excluding the
     // sampled private deal. A StreetTransition can be advanced card-by-card
     // until the next street's board is complete; BoardRunout advances to river.
     [[nodiscard]] std::vector<MultiwayBoardChanceEdge> canonical_board_chance_edges(
-        const MultiwayBettingSnapshot& betting,
-        const std::vector<std::uint8_t>& board,
-        const MultiwayJointPrivateSample& private_deal) const;
+        MultiwayPublicStateId public_state,
+        const MultiwaySamplerDealToken& private_deal) const;
 
     [[nodiscard]] std::vector<MultiwayPublicBoardChanceEdge> canonical_public_board_chance_edges(
         MultiwayPublicStateId parent_id,
-        const MultiwayBettingSnapshot& betting,
-        const std::vector<std::uint8_t>& board,
-        const MultiwayJointPrivateSample& private_deal) const;
+        const MultiwaySamplerDealToken& private_deal) const;
 
     // Applies the root's fixed next-street seat. The supplied board must be
     // exactly complete for the immediately following street.
     [[nodiscard]] MultiwayStreetTransition apply_street_transition(
-        const MultiwayBettingSnapshot& betting,
-        const std::vector<std::uint8_t>& board) const;
+        MultiwayPublicStateId public_state) const;
 
     [[nodiscard]] MultiwayPublicStreetTransition apply_public_street_transition(
-        MultiwayPublicStateId parent_id,
-        const MultiwayBettingSnapshot& betting,
-        const std::vector<std::uint8_t>& board) const;
+        MultiwayPublicStateId parent_id) const;
 
     // Resolves exactly a fold terminal or a completed showdown/runout by
     // delegating to the established terminal and showdown layers.
     [[nodiscard]] MultiwayTerminalResult resolve_terminal(
+        MultiwayPublicStateId public_state,
+        const MultiwaySamplerDealToken& private_deal) const;
+
+private:
+    [[nodiscard]] const MultiwayPublicStateDescriptor& require_public_state(
+        MultiwayPublicStateId id) const;
+    void validate_token(const MultiwaySamplerDealToken& token) const;
+
+    [[nodiscard]] std::vector<MultiwayBoardChanceEdge> canonical_board_chance_edges_impl(
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<std::uint8_t>& board,
+        const MultiwayJointPrivateSample& private_deal) const;
+    [[nodiscard]] MultiwayStreetTransition apply_street_transition_impl(
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<std::uint8_t>& board) const;
+    [[nodiscard]] MultiwayTerminalResult resolve_terminal_impl(
         const MultiwayBettingSnapshot& betting,
         const std::vector<std::uint8_t>& board,
         const MultiwayJointPrivateSample& private_deal) const;
 
-private:
+    const MultiwaySolverCoordinator* coordinator_ = nullptr;
     MultiwayRootSnapshot root_;
 };
 
