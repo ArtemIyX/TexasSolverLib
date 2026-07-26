@@ -17,6 +17,7 @@
 #include "games/hunl.hpp"
 #include "games/hunl_eval.hpp"
 #include "games/multiway_state.hpp"
+#include "games/multiway_fixed.hpp"
 #include "games/multiway_terminal.hpp"
 #include "games/multiway_private.hpp"
 #include "games/hunl_solver.hpp"
@@ -69,6 +70,14 @@ using ::core::MultiwayCFRUpdate;
 using ::core::MultiwayExternalSamplingRequest;
 using ::core::make_multiway_external_sampling_request;
 using ::core::MultiwayGameConfig;
+using ::core::MultiwayFixedActionMenu;
+using ::core::MultiwayFixedSidePot;
+using ::core::MultiwayFixedState;
+using ::core::MultiwayFixedTerminalInput;
+using ::core::MultiwayFixedTerminalResult;
+using ::core::MultiwayFixedTerminalScratch;
+using ::core::make_multiway_fixed_state;
+using ::core::settle_multiway_terminal_fixed;
 using ::core::MultiwayMetricMethod;
 using ::core::MultiwayNashConv;
 using ::core::MultiwayOddChipRule;

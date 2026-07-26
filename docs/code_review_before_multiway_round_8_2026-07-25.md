@@ -538,6 +538,14 @@ and conservation tests.
 
 ### P1-10: current multiway state and terminal APIs are not production hot kernels
 
+Status: **Fixed.** `multiway_fixed` now provides a separate six-seat bounded
+state view, fixed action menu, cold vector-to-fixed conversions, reusable
+worker terminal scratch, and an allocation-free side-pot settlement kernel.
+It keeps the vector state/terminal APIs unchanged as correctness oracles and
+does not yet alter traversal ownership. Fixed state action/application and
+raked side-pot settlement regressions compare the kernel directly with those
+oracles.
+
 `MultiwayState` owns multiple vectors, copies them in `apply()`, and allocates a
 new action vector at each decision. Terminal settlement allocates vectors for
 levels, contributors, eligible seats, winners, pots, payouts, and utilities.
@@ -757,7 +765,7 @@ The four round-7 P0 findings are stale as written:
 - **P0-4:** `HUNLFlatMCCFR` now uses active worker delta rows. Keep it as an
   oracle/prototype; do not widen it into the multiway production path.
 
-Round-7 P1-5 and P1-10 are not fully closed:
+Round-7 P1-5 remains not fully closed:
 
 - terminal lineage still accepts independently supplied snapshots and deals;
 - commit `b784319` made typed betting edges optional and admitted disconnected
