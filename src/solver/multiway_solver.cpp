@@ -489,18 +489,75 @@ void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayW
     if (streams.size() != request_.limits().worker_count) {
         throw std::invalid_argument("multiway merge requires one stream for every configured worker");
     }
+
+    std::size_t delta_count = 0;
     for (std::size_t worker = 0; worker < streams.size(); ++worker) {
         const auto& stream = streams[worker];
         if (stream.worker_index() != worker || stream.size() > request_.limits().max_worker_delta_entries ||
             !stream.is_fixed_order()) {
             throw std::invalid_argument("multiway worker streams must be bounded and in fixed worker/row/action order");
         }
-        for (const auto& delta : stream.deltas()) {
-            storage_.apply_delta(
-                delta.infoset, delta.bucket, delta.action, delta.regret, delta.strategy_sum);
-            ++diagnostics_.worker_delta_entries_merged;
+        if (stream.size() > std::numeric_limits<std::size_t>::max() - delta_count) {
+            throw std::overflow_error("multiway worker delta count overflows size_t");
         }
+        delta_count += stream.size();
     }
+
+    std::vector<MultiwayWorkerDelta> deltas;
+    deltas.reserve(delta_count);
+    for (const auto& stream : streams) {
+        deltas.insert(deltas.end(), stream.deltas().begin(), stream.deltas().end());
+    }
+    std::sort(deltas.begin(), deltas.end(), delta_less);
+
+    struct PendingCell {
+        std::size_t index = 0;
+        float regret = 0.0F;
+        float strategy_sum = 0.0F;
+    };
+    std::vector<PendingCell> pending;
+    pending.reserve(deltas.size());
+    for (std::size_t begin = 0; begin < deltas.size();) {
+        const auto& first = deltas[begin];
+        const auto* row = storage_.metadata(first.infoset);
+        if (row == nullptr || first.bucket >= row->shape.bucket_count || first.action >= row->shape.action_count) {
+            throw std::invalid_argument("multiway delta does not match an admitted row cell");
+        }
+        const auto index = row->regret_offset +
+            static_cast<std::size_t>(first.action) * row->shape.bucket_count + first.bucket;
+        double regret = storage_.regret_[index];
+        double strategy_sum = storage_.strategy_sum_[index];
+        std::uint64_t previous_trajectory = 0;
+        bool have_trajectory = false;
+        std::size_t end = begin;
+        for (; end < deltas.size(); ++end) {
+            const auto& delta = deltas[end];
+            if (!(delta.infoset == first.infoset) || delta.bucket != first.bucket || delta.action != first.action) break;
+            if (!delta_is_finite(delta)) {
+                throw std::invalid_argument("multiway delta must be finite");
+            }
+            if (have_trajectory && delta.trajectory_id == previous_trajectory) {
+                throw std::invalid_argument("multiway merge received duplicate trajectory updates for one cell");
+            }
+            previous_trajectory = delta.trajectory_id;
+            have_trajectory = true;
+            regret += delta.regret;
+            strategy_sum += delta.strategy_sum;
+            if (!std::isfinite(regret) || !std::isfinite(strategy_sum) ||
+                regret > std::numeric_limits<float>::max() || regret < -std::numeric_limits<float>::max() ||
+                strategy_sum > std::numeric_limits<float>::max() || strategy_sum < -std::numeric_limits<float>::max()) {
+                throw std::overflow_error("multiway sparse batch delta would overflow row storage");
+            }
+        }
+        pending.push_back({index, static_cast<float>(regret), static_cast<float>(strategy_sum)});
+        begin = end;
+    }
+
+    for (const auto& cell : pending) {
+        storage_.regret_[cell.index] = cell.regret;
+        storage_.strategy_sum_[cell.index] = cell.strategy_sum;
+    }
+    diagnostics_.worker_delta_entries_merged += delta_count;
 }
 
 MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy() const {

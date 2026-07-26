@@ -273,7 +273,7 @@ Status: **Fixed.** Child transitions now require an explicit typed edge,
 including betting actions, and the coordinator admits a parentless state only
 when it is its configured immutable root.
 
-### P1-2: multiway worker merge is nontransactional and worker-count dependent
+### P1-2: multiway worker merge is nontransactional and worker-count dependent [Fixed]
 
 `merge_worker_streams()` validates one stream, then immediately applies its
 deltas before inspecting later streams.
@@ -298,6 +298,11 @@ Required fix:
 - validate all resulting central values;
 - commit every cell once only after all validation succeeds;
 - test identical trajectory sets under several worker partitions.
+
+Status: **Fixed.** The coordinator now validates all bounded streams, performs
+a global cell/trajectory ordering, computes and validates every pending cell,
+then commits each cell once. Duplicate trajectory updates to the same cell are
+rejected before any row or diagnostic mutation.
 
 ### P1-3: root construction does not establish joint private-range feasibility
 
