@@ -618,6 +618,10 @@ Required fix:
 Validate enum boundaries and require model identity whenever leaf values can
 affect the solve.
 
+Status: **Fixed.** Structured-root validation rejects unknown value-unit enum
+values and requires a non-empty leaf model version whenever a depth limit can
+invoke leaf evaluation.
+
 ### P2-3: retained structured batch IDs can wrap and replay trajectories
 
 The retained batch cursor is `uint32_t`, incremented without a checked bound.

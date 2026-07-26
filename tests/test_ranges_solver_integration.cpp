@@ -164,6 +164,20 @@ TEST_CASE(ranges_structured_root_request_validates_versions_units_and_joint_reac
     EXPECT_THROW(request.validate(), std::invalid_argument);
 }
 
+TEST_CASE(ranges_structured_root_rejects_unknown_units_and_anonymous_depth_leaf_model) {
+    core::HUNLStructuredRootRequest request;
+    request.config = range_contract_config();
+    request.blueprint_version = "blueprint-v1";
+    request.value_units = static_cast<core::HUNLLeafValueUnits>(99);
+    EXPECT_THROW(request.validate(), std::invalid_argument);
+
+    request.value_units = core::HUNLLeafValueUnits::Chips;
+    request.config.depth_limit_plies = 1U;
+    EXPECT_THROW(request.validate(), std::invalid_argument);
+    request.model_version = "leaf-v1";
+    request.validate();
+}
+
 TEST_CASE(ranges_structured_root_validation_rejects_blocked_and_accepts_compatible_deals) {
     for (std::uint8_t rank = 2; rank <= 14; ++rank) {
         core::HUNLStructuredRootRequest request;
