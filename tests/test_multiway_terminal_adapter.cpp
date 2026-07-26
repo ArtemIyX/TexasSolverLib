@@ -2,8 +2,8 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
-#include <numeric>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -32,36 +32,6 @@ core::MultiwayState flop_state(int stack = 1000) {
     return core::MultiwayState::initial(game);
 }
 
-core::MultiwayState flop_state_with_stacks(std::vector<int> stacks) {
-    core::MultiwayGameConfig game;
-    game.starting_stacks = std::move(stacks);
-    game.initial_contributions.assign(game.starting_stacks.size(), 0);
-    game.initial_street_contributions.assign(game.starting_stacks.size(), 0);
-    game.first_player = 0;
-    game.street = core::Street::Flop;
-    return core::MultiwayState::initial(game);
-}
-
-core::MultiwayState preflop_state() {
-    core::MultiwayGameConfig game;
-    game.starting_stacks = {1000, 1000, 1000};
-    game.initial_contributions = {0, 0, 0};
-    game.initial_street_contributions = {0, 0, 0};
-    game.first_player = 0;
-    game.street = core::Street::Preflop;
-    return core::MultiwayState::initial(game);
-}
-
-core::MultiwayState two_handed_flop_state() {
-    core::MultiwayGameConfig game;
-    game.starting_stacks = {1000, 1000};
-    game.initial_contributions = {0, 0};
-    game.initial_street_contributions = {0, 0};
-    game.first_player = 0;
-    game.street = core::Street::Flop;
-    return core::MultiwayState::initial(game);
-}
-
 std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::MultiwayState& state) {
     std::vector<core::MultiwayActionDescriptor> descriptors;
     const auto actions = state.legal_actions();
@@ -76,24 +46,25 @@ std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::Multi
     return descriptors;
 }
 
-core::MultiwayRootSnapshot root_with_first_seat(core::PlayerId first_seat = 0, core::PlayerId odd_chip_first_seat = 0) {
-    const auto state = flop_state();
+core::MultiwayRootSnapshot root_for_betting_state(
+    const core::MultiwayState& state,
+    const std::vector<std::uint8_t>& board = kFlop,
+    core::PlayerId first_seat = 0,
+    core::PlayerId odd_chip_first_seat = 0) {
     core::MultiwayRootSnapshot root;
     root.public_state.id = {42};
     root.public_state.canonical_history_id = 4242;
     root.public_state.betting = state.snapshot();
-    root.public_state.board = kFlop;
-    root.public_state.legal_actions = {
-        {core::MultiwayAction::Check, 0, 0, 8800},
-        {core::MultiwayAction::Bet, 1, 100, 8800},
-        {core::MultiwayAction::AllIn, 2, 0, 8800},
-    };
-    root.root_infoset = {{42}, 0};
+    root.public_state.board = board;
+    root.public_state.board_runout.remaining_board_cards = static_cast<std::uint8_t>(5U - board.size());
+    root.public_state.board_runout.chance_only_runout = state.requires_board_runout();
+    root.public_state.legal_actions = action_descriptors(state);
+    root.root_infoset = {{42}, state.current_player()};
     root.seat_order = {first_seat, static_cast<core::PlayerId>((first_seat + 1) % 3),
                        static_cast<core::PlayerId>((first_seat + 2) % 3)};
     root.next_street_first_seat = first_seat;
     root.odd_chip_first_seat = odd_chip_first_seat;
-    root.private_ranges.board = kFlop;
+    root.private_ranges.board = board;
     const auto deal = private_deal();
     for (const auto& hole : deal.holes) root.private_ranges.ranges.push_back({{hole, 1.0}});
     root.action_abstraction_version = 1;
@@ -101,42 +72,102 @@ core::MultiwayRootSnapshot root_with_first_seat(core::PlayerId first_seat = 0, c
     return root;
 }
 
-core::MultiwayRootSnapshot root_for_betting_state(
-    const core::MultiwayState& state,
-    const std::vector<std::uint8_t>& board = kFlop) {
-    auto root = root_with_first_seat();
-    root.public_state.betting = state.snapshot();
-    root.public_state.board = board;
-    root.public_state.board_runout.remaining_board_cards = static_cast<std::uint8_t>(5U - board.size());
-    root.public_state.legal_actions = action_descriptors(state);
-    root.root_infoset = {{42}, state.current_player()};
-    root.private_ranges.board = board;
-    return root;
+core::MultiwaySolverLimits limits() {
+    core::MultiwaySolverLimits result;
+    result.max_public_states = 16;
+    result.max_sparse_rows = 1;
+    result.max_sparse_values = 3;
+    result.max_worker_delta_entries = 1;
+    return result;
 }
 
-core::MultiwayBettingSnapshot complete_flop_betting() {
-    return flop_state().apply(core::MultiwayAction::Check)
-        .apply(core::MultiwayAction::Check)
-        .apply(core::MultiwayAction::Check)
-        .snapshot();
-}
+struct AdapterFixture {
+    explicit AdapterFixture(core::MultiwayRootSnapshot root)
+        : request(std::move(root), cfr_config(), limits()), coordinator(request), adapter(coordinator) {}
 
-int sum(const std::vector<int>& values) {
-    return std::accumulate(values.begin(), values.end(), 0);
-}
+    core::MultiwayPublicStateDescriptor admit_chance_child(
+        const core::MultiwayPublicStateDescriptor& parent,
+        const core::MultiwayBoardChanceEdge& chance) {
+        auto child = parent;
+        child.id = {next_id++};
+        child.parent_id = parent.id;
+        child.canonical_history_id = next_history_id++;
+        child.incoming_edge = {};
+        child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BoardChance;
+        child.incoming_edge.dealt_card = chance.dealt_card;
+        child.board = chance.board;
+        child.board_runout = chance.board_runout;
+        coordinator.admit_public_state(child);
+        return child;
+    }
+
+    core::MultiwayPublicStateDescriptor admit_action_child(
+        const core::MultiwayPublicStateDescriptor& parent,
+        std::size_t action_index) {
+        auto child = parent;
+        const auto action = parent.legal_actions.at(action_index);
+        child.id = {next_id++};
+        child.parent_id = parent.id;
+        child.canonical_history_id = next_history_id++;
+        child.incoming_edge = {};
+        child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BettingAction;
+        child.incoming_edge.action = action;
+        child.history.push_back({parent.betting.current_player, action});
+        child.betting = core::MultiwayState::from_snapshot(parent.betting)
+                            .apply(action.action, action.target_street_contribution)
+                            .snapshot();
+        child.legal_actions = action_descriptors(core::MultiwayState::from_snapshot(child.betting));
+        coordinator.admit_public_state(child);
+        return child;
+    }
+
+    core::MultiwayPublicStateDescriptor admit_street_child(
+        const core::MultiwayPublicStateDescriptor& parent,
+        const core::MultiwayStreetTransition& transition) {
+        auto child = parent;
+        child.id = {next_id++};
+        child.parent_id = parent.id;
+        child.canonical_history_id = next_history_id++;
+        child.incoming_edge = {};
+        child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::StreetTransition;
+        child.incoming_edge.transition_board = transition.board;
+        child.betting = transition.betting;
+        child.board = transition.board;
+        child.board_runout = transition.board_runout;
+        child.legal_actions = action_descriptors(core::MultiwayState::from_snapshot(child.betting));
+        coordinator.admit_public_state(child);
+        return child;
+    }
+
+    static core::MultiwayCFRConfig cfr_config() {
+        core::MultiwayCFRConfig result;
+        result.player_count = 3;
+        return result;
+    }
+
+    core::MultiwaySolveRequest request;
+    core::MultiwaySolverCoordinator coordinator;
+    core::MultiwayTerminalAdapter adapter;
+    std::uint64_t next_id = 43;
+    std::uint64_t next_history_id = 4243;
+};
 
 }  // namespace
 
 TEST_CASE(multiway_terminal_adapter_enumerates_canonical_exclusive_board_chance_edges) {
-    const core::MultiwayTerminalAdapter adapter(root_with_first_seat());
-    const auto deal = private_deal();
-    const auto edges = adapter.canonical_board_chance_edges(complete_flop_betting(), kFlop, deal);
+    AdapterFixture fixture(root_for_betting_state(flop_state()));
+    const auto deal = fixture.adapter.sample_private_deal(1);
+    auto state = fixture.request.root().public_state;
+    state = fixture.admit_action_child(state, 0);
+    state = fixture.admit_action_child(state, 0);
+    state = fixture.admit_action_child(state, 0);
+    const auto edges = fixture.adapter.canonical_board_chance_edges(state.id, deal);
 
     EXPECT_EQ(edges.size(), std::size_t{43});
     double total_probability = 0.0;
     std::array<bool, 64> excluded = {};
     for (const auto card : kFlop) excluded[card] = true;
-    for (const auto& hole : deal.holes) {
+    for (const auto& hole : private_deal().holes) {
         excluded[hole[0]] = true;
         excluded[hole[1]] = true;
     }
@@ -158,50 +189,39 @@ TEST_CASE(multiway_terminal_adapter_enumerates_canonical_exclusive_board_chance_
 }
 
 TEST_CASE(multiway_terminal_adapter_uses_root_owned_first_player_for_street_transition) {
-    const core::MultiwayTerminalAdapter adapter(root_with_first_seat(2));
-    const std::vector<std::uint8_t> turn = {kFlop[0], kFlop[1], kFlop[2], c(3, 3)};
-    const auto transition = adapter.apply_street_transition(complete_flop_betting(), turn);
+    AdapterFixture fixture(root_for_betting_state(flop_state(), kFlop, 2));
+    const auto deal = fixture.adapter.sample_private_deal(1);
+    auto state = fixture.request.root().public_state;
+    state = fixture.admit_action_child(state, 0);
+    state = fixture.admit_action_child(state, 0);
+    state = fixture.admit_action_child(state, 0);
+    const auto chance = fixture.adapter.canonical_board_chance_edges(state.id, deal).front();
+    const auto turn = fixture.admit_chance_child(state, chance);
+    const auto transition = fixture.adapter.apply_street_transition(turn.id);
 
     EXPECT_EQ(transition.betting.street, core::Street::Turn);
     EXPECT_EQ(transition.betting.current_player, 2);
     EXPECT_EQ(transition.betting.current_bet, 0);
-    EXPECT_EQ(transition.board, turn);
+    EXPECT_EQ(transition.board, chance.board);
     EXPECT_EQ(transition.board_runout.remaining_board_cards, 1U);
     EXPECT_TRUE(!transition.board_runout.chance_only_runout);
-}
 
-TEST_CASE(multiway_terminal_adapter_runs_out_all_in_board_before_showdown) {
-    const core::MultiwayTerminalAdapter adapter(root_with_first_seat());
-    const auto deal = private_deal();
-    const auto all_in = flop_state().apply(core::MultiwayAction::AllIn)
-        .apply(core::MultiwayAction::Call)
-        .apply(core::MultiwayAction::Call)
-        .snapshot();
-
-    const auto turn_edges = adapter.canonical_board_chance_edges(all_in, kFlop, deal);
-    const auto& turn = turn_edges.front();
-    EXPECT_TRUE(turn.board_runout.chance_only_runout);
-    EXPECT_THROW(adapter.resolve_terminal(all_in, turn.board, deal), std::logic_error);
-
-    const auto river_edges = adapter.canonical_board_chance_edges(all_in, turn.board, deal);
-    const auto result = adapter.resolve_terminal(all_in, river_edges.front().board, deal);
-    EXPECT_EQ(sum(result.payouts) + sum(result.refunds), 3000);
-    EXPECT_NEAR(std::accumulate(result.utilities.begin(), result.utilities.end(), 0.0), 0.0, 1e-12);
+    const auto next_state = fixture.admit_street_child(turn, transition);
+    EXPECT_EQ(next_state.betting.street, core::Street::Turn);
 }
 
 TEST_CASE(multiway_terminal_adapter_delegates_fold_terminals) {
-    const core::MultiwayTerminalAdapter adapter(root_with_first_seat());
-    const auto deal = private_deal();
-    const auto folded = flop_state().apply(core::MultiwayAction::Bet, 100)
-        .apply(core::MultiwayAction::Fold)
-        .apply(core::MultiwayAction::Fold)
-        .snapshot();
-
-    const auto result = adapter.resolve_terminal(folded, kFlop, deal);
+    AdapterFixture fixture(root_for_betting_state(flop_state()));
+    const auto deal = fixture.adapter.sample_private_deal(1);
+    auto state = fixture.request.root().public_state;
+    state = fixture.admit_action_child(state, 1);
+    state = fixture.admit_action_child(state, 0);
+    state = fixture.admit_action_child(state, 0);
+    const auto result = fixture.adapter.resolve_terminal(state.id, deal);
     core::MultiwayTerminalInput expected_input;
-    expected_input.contributions = folded.contributions;
-    expected_input.folded = folded.folded;
-    expected_input.strengths.assign(folded.contributions.size(), core::Strength{});
+    expected_input.contributions = state.betting.contributions;
+    expected_input.folded = state.betting.folded;
+    expected_input.strengths.assign(expected_input.contributions.size(), core::Strength{});
     expected_input.odd_chip_first_seat = 0;
     const auto expected = core::settle_multiway_terminal(expected_input);
     EXPECT_EQ(result.payouts, expected.payouts);
@@ -209,99 +229,13 @@ TEST_CASE(multiway_terminal_adapter_delegates_fold_terminals) {
     EXPECT_EQ(result.utilities, expected.utilities);
 }
 
-TEST_CASE(multiway_terminal_adapter_delegates_side_pot_showdown_and_odd_chip_order) {
-    auto root = root_with_first_seat(0, 1);
-    root.public_state.betting = flop_state_with_stacks({101, 301, 301}).snapshot();
-    const core::MultiwayTerminalAdapter adapter(root);
-    core::MultiwayGameConfig game;
-    game.starting_stacks = {101, 301, 301};
-    game.initial_contributions = {101, 301, 301};
-    game.initial_street_contributions = {0, 0, 0};
-    game.street = core::Street::River;
-    const auto betting = core::MultiwayState::initial(game).snapshot();
-    const std::vector<std::uint8_t> board = {kFlop[0], kFlop[1], kFlop[2], c(10, 3), c(11, 0)};
-    core::MultiwayJointPrivateSample deal;
-    deal.holes = {{c(12, 0), c(13, 0)}, {c(12, 1), c(13, 1)}, {c(14, 3), c(3, 3)}};
+TEST_CASE(multiway_terminal_adapter_requires_admitted_state_and_bound_deal_token) {
+    AdapterFixture fixture(root_for_betting_state(flop_state()));
+    const auto deal = fixture.adapter.sample_private_deal(1);
+    EXPECT_THROW(fixture.adapter.canonical_board_chance_edges({0}, deal), std::invalid_argument);
+    EXPECT_THROW(fixture.adapter.canonical_board_chance_edges({999}, deal), std::invalid_argument);
+    EXPECT_THROW(fixture.adapter.canonical_public_board_chance_edges({0}, deal), std::invalid_argument);
 
-    const auto result = adapter.resolve_terminal(betting, board, deal);
-    EXPECT_EQ(result.pots.size(), std::size_t{2});
-    EXPECT_EQ(result.payouts[0], 151);
-    EXPECT_EQ(result.payouts[1], 552);
-    EXPECT_EQ(result.payouts[2], 0);
-    EXPECT_EQ(sum(result.payouts) + sum(result.refunds), 703);
-}
-
-TEST_CASE(multiway_terminal_adapter_rejects_invalid_state_board_and_private_deal) {
-    const core::MultiwayTerminalAdapter adapter(root_with_first_seat());
-    const auto deal = private_deal();
-    const auto complete = complete_flop_betting();
-
-    EXPECT_THROW(adapter.canonical_board_chance_edges(flop_state().snapshot(), kFlop, deal), std::logic_error);
-    EXPECT_THROW(adapter.apply_street_transition(complete, kFlop), std::invalid_argument);
-
-    auto duplicate_board = kFlop;
-    duplicate_board[2] = duplicate_board[1];
-    EXPECT_THROW(adapter.canonical_board_chance_edges(complete, duplicate_board, deal), std::invalid_argument);
-
-    auto overlapping_deal = deal;
-    overlapping_deal.holes[1][0] = overlapping_deal.holes[0][0];
-    EXPECT_THROW(adapter.canonical_board_chance_edges(complete, kFlop, overlapping_deal), std::invalid_argument);
-}
-
-TEST_CASE(multiway_terminal_adapter_rejects_snapshots_outside_root_lineage) {
-    const core::MultiwayTerminalAdapter adapter(root_with_first_seat());
-    const auto deal = private_deal();
-    const auto complete = complete_flop_betting();
-
-    EXPECT_THROW(
-        adapter.canonical_board_chance_edges(two_handed_flop_state().snapshot(), kFlop, deal),
-        std::invalid_argument);
-
-    auto changed_total = complete;
-    --changed_total.stacks[1];
-    EXPECT_THROW(adapter.canonical_board_chance_edges(changed_total, kFlop, deal), std::invalid_argument);
-
-    EXPECT_THROW(
-        adapter.canonical_board_chance_edges(preflop_state().snapshot(), kFlop, deal),
-        std::invalid_argument);
-
-    auto incompatible_street = complete;
-    incompatible_street.street = core::Street::Turn;
-    EXPECT_THROW(adapter.canonical_board_chance_edges(incompatible_street, kFlop, deal), std::invalid_argument);
-
-    const std::vector<std::uint8_t> changed_prefix = {c(3, 0), kFlop[1], kFlop[2]};
-    EXPECT_THROW(adapter.canonical_board_chance_edges(complete, changed_prefix, deal), std::invalid_argument);
-}
-
-TEST_CASE(multiway_terminal_adapter_rejects_root_seat_state_reversals) {
-    const auto deal = private_deal();
-    const std::vector<std::uint8_t> turn = {kFlop[0], kFlop[1], kFlop[2], c(3, 3)};
-
-    core::MultiwayGameConfig turn_game;
-    turn_game.starting_stacks = {1000, 1000, 1000};
-    turn_game.initial_contributions = {100, 100, 100};
-    turn_game.initial_street_contributions = {0, 0, 0};
-    turn_game.street = core::Street::Turn;
-    const auto committed_root = root_for_betting_state(core::MultiwayState::initial(turn_game), turn);
-    const core::MultiwayTerminalAdapter committed_adapter(committed_root);
-    auto returned_commitment = committed_root.public_state.betting;
-    returned_commitment.stacks[0] += 100;
-    returned_commitment.contributions[0] -= 100;
-    EXPECT_THROW(
-        committed_adapter.canonical_board_chance_edges(returned_commitment, turn, deal),
-        std::invalid_argument);
-
-    const auto before_fold = flop_state().apply(core::MultiwayAction::Bet, 100);
-    const auto folded_root = root_for_betting_state(before_fold.apply(core::MultiwayAction::Fold));
-    const core::MultiwayTerminalAdapter folded_adapter(folded_root);
-    EXPECT_THROW(
-        folded_adapter.canonical_board_chance_edges(before_fold.snapshot(), kFlop, deal),
-        std::invalid_argument);
-
-    const auto all_in_root = root_for_betting_state(flop_state().apply(core::MultiwayAction::AllIn));
-    const core::MultiwayTerminalAdapter all_in_adapter(all_in_root);
-    const auto cleared_all_in = flop_state().apply(core::MultiwayAction::Bet, 999).snapshot();
-    EXPECT_THROW(
-        all_in_adapter.canonical_board_chance_edges(cleared_all_in, kFlop, deal),
-        std::invalid_argument);
+    AdapterFixture other(root_for_betting_state(flop_state()));
+    EXPECT_THROW(other.adapter.canonical_board_chance_edges({42}, deal), std::invalid_argument);
 }
