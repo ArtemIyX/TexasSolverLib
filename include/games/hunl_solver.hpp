@@ -6,6 +6,8 @@
 #include "solver/hunl_leaf_evaluator.hpp"
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -16,8 +18,25 @@ enum class HUNLQualityMetric : std::uint8_t {
     PerPlayerExploitability,
 };
 
+// Immutable public resolver boundary. The state contains exact chips, actor,
+// pending call, raise state, board, and canonical betting history. The
+// request's range/configuration metadata is rebound before private deals are
+// attached, so callers cannot mutate a live state after admission.
+struct HUNLLiveRootSnapshot {
+    HUNLState public_state;
+    std::vector<ActionId> legal_actions;
+    std::string canonical_public_history;
+    std::string state_version;
+
+    void validate(const HUNLConfig& config) const;
+    [[nodiscard]] HUNLState bind_config(std::shared_ptr<const HUNLConfig> config) const;
+};
+
 struct HUNLStructuredRootRequest {
     HUNLConfig config;
+    // Absent roots retain the legacy config-derived balanced entry. Unequal
+    // contributions and live/off-tree roots require this full snapshot.
+    std::optional<HUNLLiveRootSnapshot> live_root = std::nullopt;
     // Traversal normalizes terminal values from its internal big-blind unit at
     // the root boundary before comparing them with leaf values.
     HUNLLeafValueUnits value_units = HUNLLeafValueUnits::Chips;
@@ -28,6 +47,7 @@ struct HUNLStructuredRootRequest {
     std::string model_version;
 
     [[nodiscard]] std::vector<HUNLJointRangeDeal> normalized_joint_range() const;
+    [[nodiscard]] HUNLState public_root_state(std::shared_ptr<const HUNLConfig> config) const;
     void validate() const;
 };
 

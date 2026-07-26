@@ -50,6 +50,7 @@ using ::core::HUNLLeafEvaluationResult;
 using ::core::HUNLLeafEvaluationScope;
 using ::core::HUNLLeafEvaluator;
 using ::core::HUNLLeafValueUnits;
+using ::core::HUNLLiveRootSnapshot;
 using ::core::HUNLSolveOutput;
 using ::core::HUNLSampledSolveResult;
 using ::core::HUNLSampledSolverConfig;

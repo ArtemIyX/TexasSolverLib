@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <stdexcept>
 
@@ -63,6 +64,15 @@ bool has_range_inputs(const HUNLConfig& config) {
            config.initial_ranges[1].has_value() ||
            config.player_ranges[0].has_value() ||
            config.player_ranges[1].has_value();
+}
+
+HUNLConfig range_config_for_root(const HUNLStructuredRootRequest& request) {
+    auto range_config = request.config;
+    if (request.live_root.has_value()) {
+        range_config.starting_street = request.live_root->public_state.street;
+        range_config.initial_board = request.live_root->public_state.board;
+    }
+    return range_config;
 }
 
 HUNLFlatSolveMode resolve_flat_solve_mode(const HUNLConfig& config) {
@@ -165,6 +175,66 @@ void validate_config(const HUNLConfig& config) {
     }
 }
 
+void HUNLLiveRootSnapshot::validate(const HUNLConfig& config) const {
+    if (state_version.empty()) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot requires a state version");
+    }
+    if (public_state.hole_cards.has_value()) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot must not contain private hole cards");
+    }
+    if (public_state.street < Street::Flop || public_state.street > Street::River ||
+        public_state.board.size() != expected_board_len(public_state.street) ||
+        !are_valid_and_distinct_cards(public_state.board.data(), public_state.board.size())) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot has an invalid public board state");
+    }
+    if (public_state.cur_player < 0 || public_state.cur_player > 1 ||
+        public_state.pending_board_deals != 0U ||
+        public_state.folded[0] || public_state.folded[1] ||
+        public_state.all_in[0] || public_state.all_in[1]) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot must be an actionable non-terminal state");
+    }
+    for (std::size_t player = 0; player < 2U; ++player) {
+        if (public_state.contributions[player] < 0 || public_state.stacks[player] < 0 ||
+            static_cast<std::int64_t>(public_state.contributions[player]) +
+                    public_state.stacks[player] != config.starting_stack) {
+            throw std::invalid_argument("HUNLLiveRootSnapshot has inconsistent stacks or contributions");
+        }
+    }
+    const auto contribution_delta =
+        static_cast<std::int64_t>(public_state.contributions[0]) - public_state.contributions[1];
+    const auto expected_to_call = std::abs(contribution_delta);
+    if (public_state.to_call < 0 || static_cast<std::int64_t>(public_state.to_call) != expected_to_call) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot has an inconsistent pending call");
+    }
+    if (public_state.to_call > 0) {
+        const auto aggressor = public_state.contributions[0] > public_state.contributions[1] ? 0 : 1;
+        const auto responder = 1 - aggressor;
+        if (public_state.street_aggressor != aggressor ||
+            public_state.cur_player != responder ||
+            public_state.street_num_raises == 0U) {
+            throw std::invalid_argument("HUNLLiveRootSnapshot has inconsistent raise rights");
+        }
+    } else if (public_state.street_aggressor != -1 || public_state.street_num_raises != 0U) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot has stale raise rights");
+    }
+    if (canonical_public_history.empty() || legal_actions.empty()) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot requires history and typed legal actions");
+    }
+
+    auto bound = bind_config(std::make_shared<const HUNLConfig>(config));
+    if (bound.format_history() != canonical_public_history || bound.legal_actions() != legal_actions) {
+        throw std::invalid_argument("HUNLLiveRootSnapshot history or legal action menu does not match state");
+    }
+}
+
+HUNLState HUNLLiveRootSnapshot::bind_config(std::shared_ptr<const HUNLConfig> config) const {
+    if (!config) throw std::invalid_argument("HUNLLiveRootSnapshot requires a non-null configuration");
+    auto bound = public_state;
+    bound.hole_cards.reset();
+    bound.config = std::move(config);
+    return bound;
+}
+
 void HUNLStructuredRootRequest::validate() const {
     config.validate();
     if (value_units != HUNLLeafValueUnits::Chips &&
@@ -183,16 +253,24 @@ void HUNLStructuredRootRequest::validate() const {
         throw std::invalid_argument(
             "HUNLStructuredRootRequest requires a leaf model version with a depth limit");
     }
-    if (config.initial_contributions[0] != config.initial_contributions[1]) {
+    if (!live_root.has_value() && config.initial_contributions[0] != config.initial_contributions[1]) {
         throw std::invalid_argument(
             "HUNLStructuredRootRequest rejects unequal contributions until a full live betting snapshot is available");
     }
-    validate_hunl_joint_range_feasibility(config);
+    if (live_root.has_value()) live_root->validate(config);
+    validate_hunl_joint_range_feasibility(range_config_for_root(*this));
 }
 
 std::vector<HUNLJointRangeDeal> HUNLStructuredRootRequest::normalized_joint_range() const {
     validate();
-    return normalize_hunl_joint_range(config);
+    return normalize_hunl_joint_range(range_config_for_root(*this));
+}
+
+HUNLState HUNLStructuredRootRequest::public_root_state(
+    std::shared_ptr<const HUNLConfig> config) const {
+    validate();
+    if (live_root.has_value()) return live_root->bind_config(std::move(config));
+    return HUNLState::initial(std::move(config));
 }
 
 void validate_structured_root_request(const HUNLStructuredRootRequest& request) {

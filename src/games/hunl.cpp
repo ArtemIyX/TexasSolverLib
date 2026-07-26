@@ -757,13 +757,14 @@ HUNLState HUNLState::clone_with_hole_cards(
         throw std::invalid_argument("HUNLState::clone_with_hole_cards board cards must be valid and distinct");
     }
     validate_hole_cards_against_board(hole, board, "HUNLState::clone_with_hole_cards");
-    PlayerId next_cur = 1;
-    if (street == Street::Preflop || contributions[0] < contributions[1]) {
-        next_cur = 0;
-    }
     HUNLState next = *this;
     next.hole_cards = hole;
-    next.cur_player = next_cur;
+    if (next.cur_player < 0) {
+        next.cur_player = 1;
+        if (street == Street::Preflop || contributions[0] < contributions[1]) {
+            next.cur_player = 0;
+        }
+    }
     return next;
 }
 

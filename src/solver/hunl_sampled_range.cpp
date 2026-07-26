@@ -284,9 +284,9 @@ double traverse(
 }
 
 HUNLState root_for_deal(
-    const std::shared_ptr<const HUNLConfig>& config,
+    const HUNLState& public_root_state,
     const HUNLJointRangeDeal& deal) {
-    return HUNLState::initial(config).clone_with_hole_cards(deal.hole);
+    return public_root_state.clone_with_hole_cards(deal.hole);
 }
 
 const HUNLJointRangeDeal& first_deal(const std::vector<HUNLJointRangeDeal>& deals) {
@@ -303,6 +303,7 @@ struct HUNLSampledRangeSession::Impl {
     HUNLSampledProfile& profile;
     const HUNLLeafEvaluator* leaf_evaluator = nullptr;
     std::shared_ptr<const HUNLConfig> game_config;
+    HUNLState public_root_state;
     std::vector<HUNLJointRangeDeal> deals;
     PrivateInfosetCoordinator infosets;
     HUNLState root_state;
@@ -324,9 +325,10 @@ struct HUNLSampledRangeSession::Impl {
           profile(input_profile),
           leaf_evaluator(input_leaf_evaluator),
           game_config(std::make_shared<const HUNLConfig>(root.config)),
+          public_root_state(root.public_root_state(game_config)),
           deals(root.normalized_joint_range()),
           infosets(storage),
-          root_state(root_for_deal(game_config, first_deal(deals))),
+          root_state(root_for_deal(public_root_state, first_deal(deals))),
           root_actions(root_state.legal_actions()),
           next_batch(first_batch) {
         validate_sampled_config_or_throw(config);
@@ -352,7 +354,7 @@ struct HUNLSampledRangeSession::Impl {
         std::vector<int> target_contributions(root_actions.size(), 0);
         for (const auto& deal : deals) {
             if (deadline_expired(deadline)) return false;
-            const auto state = root_for_deal(game_config, deal);
+            const auto state = root_for_deal(public_root_state, deal);
             const auto infoset = infosets.ensure(state);
             const auto strategy = HUNLSampledStrategyExporter::export_average_strategy(storage.view(infoset));
             for (std::size_t action = 0; action < probabilities.size(); ++action) {
@@ -416,7 +418,7 @@ struct HUNLSampledRangeSession::Impl {
                 HUNLSampledTraversalResult result;
                 bool cancelled = false;
                 const auto chance = deals.size() == 1U ? 1.0 : deals[deal_index].weight;
-                (void)traverse(root_for_deal(game_config, deals[deal_index]), root, leaf_evaluator, traverser,
+                (void)traverse(root_for_deal(public_root_state, deals[deal_index]), root, leaf_evaluator, traverser,
                                trajectory_id, infosets, storage, trajectory_stream, rng,
                                RangeReach{{1.0, 1.0}, chance, chance}, 0U, deadline, cancelled, result);
                 if (cancelled || reserve_expired(deadline)) {

@@ -7,6 +7,7 @@
 #include "solver/hunl_sampled_storage.hpp"
 #include "test_harness.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <limits>
@@ -493,7 +494,7 @@ TEST_CASE(ranges_structured_zero_batch_session_exports_typed_uniform_root_action
     EXPECT_NEAR(probability_sum, 1.0, 1e-12);
 }
 
-TEST_CASE(ranges_structured_root_allows_low_spr_balanced_pots_but_rejects_facing_bets) {
+TEST_CASE(ranges_structured_root_allows_low_spr_balanced_pots_but_requires_a_live_snapshot_for_facing_bets) {
     core::HUNLStructuredRootRequest request;
     request.config = range_contract_config();
     request.config.starting_stack = 100;
@@ -504,6 +505,53 @@ TEST_CASE(ranges_structured_root_allows_low_spr_balanced_pots_but_rejects_facing
 
     request.config.initial_contributions = {400, 600};
     EXPECT_THROW(request.validate(), std::invalid_argument);
+}
+
+TEST_CASE(ranges_structured_live_root_accepts_an_off_tree_facing_bet_and_preserves_the_actor) {
+    core::HUNLStructuredRootRequest root;
+    root.config = range_contract_config();
+    root.blueprint_version = "blueprint-v1";
+    root.model_version = "value-v1";
+
+    auto config = std::make_shared<const core::HUNLConfig>(root.config);
+    core::HUNLLiveRootSnapshot live;
+    live.public_state.board = root.config.initial_board;
+    live.public_state.street = root.config.starting_street;
+    live.public_state.contributions = {500, 700};
+    live.public_state.stacks = {500, 300};
+    live.public_state.street_aggressor = 1;
+    live.public_state.street_num_raises = 1U;
+    live.public_state.to_call = 200;
+    live.public_state.cur_player = 0;
+    live.public_state.config = config;
+    // 200 is not in the configured 33/75/100/150/200% opening menu at this pot.
+    live.public_state.current_street_tokens = {"b200"};
+    live.public_state.current_street_history_codes = {-200};
+    live.canonical_public_history = live.public_state.format_history();
+    live.legal_actions = live.public_state.legal_actions();
+    live.state_version = "live-state-v1";
+    root.live_root = live;
+
+    root.validate();
+    const auto public_root = root.public_root_state(config);
+    EXPECT_EQ(public_root.current_player(), 0);
+    EXPECT_EQ(public_root.to_call, 200);
+    EXPECT_EQ(public_root.contributions[0], 500);
+    EXPECT_EQ(public_root.contributions[1], 700);
+    EXPECT_TRUE(std::find(live.legal_actions.begin(), live.legal_actions.end(), core::ACTION_FOLD) !=
+                live.legal_actions.end());
+    EXPECT_TRUE(std::find(live.legal_actions.begin(), live.legal_actions.end(), core::ACTION_CALL) !=
+                live.legal_actions.end());
+
+    core::HUNLSampledSolverConfig solver_config;
+    solver_config.minibatch_size = 1U;
+    core::HUNLSampledStorage storage;
+    core::HUNLSampledProfile profile;
+    core::HUNLSampledRangeSession session(root, solver_config, storage, profile);
+    const auto result = session.resume_batches(1U);
+    EXPECT_EQ(result.batches_completed, 1U);
+    EXPECT_EQ(result.root_strategy.actions[0].action_id, core::ACTION_FOLD);
+    EXPECT_EQ(result.root_strategy.actions[1].action_id, core::ACTION_CALL);
 }
 
 TEST_CASE(ranges_sampled_request_rejects_ambiguous_fixed_and_range_roots) {

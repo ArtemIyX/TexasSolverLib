@@ -223,6 +223,16 @@ Required fix:
 
 ### P0-6: the structured root cannot represent a live off-tree subgame
 
+Status: **Fixed.** HUNLLiveRootSnapshot is an immutable-by-value structured
+resolver boundary carrying the exact public HUNLState, typed legal action menu,
+canonical public history, and state version. Admission validates board, stacks,
+total contributions, pending call, raise rights, actor, action menu, and
+history before rebinding the request configuration. Structured traversal now
+attaches each sampled private deal to this validated state instead of
+reconstructing the initial configuration. Legacy config-derived roots remain
+compatible but still reject unequal contributions. The regression covers a
+player-zero live facing-bet root with an inserted 200-chip off-tree bet.
+
 `HUNLStructuredRootRequest` rejects unequal contributions. The range session
 always reconstructs `HUNLState::initial(config)`.
 
