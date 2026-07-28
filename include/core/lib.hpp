@@ -15,6 +15,7 @@
 #include "solver/multiway_memory.hpp"
 #include "solver/multiway_scheduler.hpp"
 #include "solver/multiway_traversal.hpp"
+#include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"
@@ -81,6 +82,8 @@ using ::core::MultiwayScheduler;
 using ::core::MultiwayTrajectoryRange;
 using ::core::MultiwayWorkerBatch;
 using ::core::MultiwayExternalSamplingTraversal;
+using ::core::MultiwayLeafEvaluationRequest;
+using ::core::MultiwayLeafEvaluator;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayPublicBuilder;
