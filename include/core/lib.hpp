@@ -9,6 +9,8 @@
 #include "solver/hunl_sampled_solver.hpp"
 #include "solver/hunl_sampled_range.hpp"
 #include "solver/multiway_cfr.hpp"
+#include "solver/multiway_blueprint_config.hpp"
+#include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
 #include "solver/dcfr_vector.hpp"
@@ -60,6 +62,9 @@ using ::core::HUNLStructuredRootRequest;
 using ::core::HUNLQualityMetric;
 using ::core::InfosetKey;
 using ::core::MultiwayAction;
+using ::core::MultiwayBlueprintConfig;
+using ::core::MultiwayModelIdentity;
+using ::core::make_multiway_model_identity;
 using ::core::MultiwayActionAbstractionIdentity;
 using ::core::MultiwayBettingSnapshot;
 using ::core::MultiwayBoardChanceEdge;
