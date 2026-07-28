@@ -75,4 +75,33 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
     return result;
 }
 
+std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::insert_exact_observed_action(
+    const MultiwayBettingSnapshot& betting,
+    std::vector<MultiwayActionDescriptor> menu,
+    MultiwayAction observed_action,
+    int target_street_contribution,
+    std::uint64_t action_menu_id) {
+    if (action_menu_id == 0U) throw std::invalid_argument("multiway observed action requires a menu id");
+    const auto state = MultiwayState::from_snapshot(betting);
+    const auto legal = state.legal_actions();
+    if (std::find(legal.begin(), legal.end(), observed_action) == legal.end()) {
+        throw std::invalid_argument("multiway observed action is not legal in this public state");
+    }
+    const auto successor = state.apply(observed_action, target_street_contribution);
+    const auto actor = static_cast<std::size_t>(state.current_player());
+    const auto exact_target = successor.street_contributions()[actor];
+    const auto duplicate = std::find_if(menu.begin(), menu.end(),
+        [observed_action, exact_target](const MultiwayActionDescriptor& action) {
+            return action.action == observed_action && action.target_street_contribution == exact_target;
+        });
+    if (duplicate == menu.end()) {
+        menu.push_back({observed_action, 0U, exact_target, action_menu_id});
+    }
+    for (std::size_t index = 0; index < menu.size(); ++index) {
+        menu[index].action_index = static_cast<std::uint32_t>(index);
+        menu[index].action_menu_id = action_menu_id;
+    }
+    return menu;
+}
+
 }  // namespace core

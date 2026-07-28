@@ -27,6 +27,13 @@ public:
         const MultiwayBettingSnapshot& betting,
         std::uint64_t action_menu_id) const;
 
+    [[nodiscard]] static std::vector<MultiwayActionDescriptor> insert_exact_observed_action(
+        const MultiwayBettingSnapshot& betting,
+        std::vector<MultiwayActionDescriptor> menu,
+        MultiwayAction observed_action,
+        int target_street_contribution,
+        std::uint64_t action_menu_id);
+
 private:
     MultiwayActionAbstractionConfig config_;
 };
