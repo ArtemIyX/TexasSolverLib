@@ -20,6 +20,7 @@
 #include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_blueprint_query.hpp"
 #include "solver/multiway_range_update.hpp"
+#include "solver/multiway_checkpoint.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"
@@ -96,6 +97,7 @@ using ::core::MultiwayBlueprintTrainer;
 using ::core::MultiwayBlueprintQuery;
 using ::core::MultiwayBucketActionPolicy;
 using ::core::update_anonymous_multiway_range;
+using ::core::MultiwayCheckpoint;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayPublicBuilder;
