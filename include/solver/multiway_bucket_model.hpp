@@ -1,0 +1,45 @@
+#pragma once
+
+#include "games/hunl.hpp"
+#include "solver/multiway_model_identity.hpp"
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
+
+namespace core {
+
+inline constexpr std::uint32_t MULTIWAY_INVALID_BUCKET = 0xffffffffU;
+inline constexpr std::size_t MULTIWAY_HOLE_COMBINATION_COUNT = 1326U;
+
+// Immutable bucket assignments for one canonical postflop board. Entries use
+// the fixed unordered-card index; board-blocked hands retain INVALID_BUCKET.
+class MultiwayBucketTable {
+public:
+    MultiwayBucketTable(
+        MultiwayModelIdentity identity,
+        Street street,
+        std::vector<std::uint8_t> canonical_board,
+        std::uint32_t bucket_count,
+        std::vector<std::uint32_t> assignments);
+
+    [[nodiscard]] const MultiwayModelIdentity& identity() const noexcept { return identity_; }
+    [[nodiscard]] Street street() const noexcept { return street_; }
+    [[nodiscard]] const std::vector<std::uint8_t>& canonical_board() const noexcept {
+        return canonical_board_;
+    }
+    [[nodiscard]] std::uint32_t bucket_count() const noexcept { return bucket_count_; }
+
+    [[nodiscard]] std::uint32_t lookup(const std::array<std::uint8_t, 2>& hole) const;
+    [[nodiscard]] static std::size_t hole_index(const std::array<std::uint8_t, 2>& hole);
+
+private:
+    MultiwayModelIdentity identity_{};
+    Street street_ = Street::Preflop;
+    std::vector<std::uint8_t> canonical_board_;
+    std::uint32_t bucket_count_ = 0;
+    std::vector<std::uint32_t> assignments_;
+};
+
+}  // namespace core
