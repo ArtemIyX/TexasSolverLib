@@ -154,6 +154,18 @@ std::array<std::uint8_t, 2> MultiwayTerminalAdapter::sampled_hole(
     return private_deal.deal_.holes[static_cast<std::size_t>(seat)];
 }
 
+MultiwayExternalSamplingRequest MultiwayTerminalAdapter::make_external_sampling_request(
+    const MultiwaySamplerDealToken& private_deal,
+    std::vector<Probability> player_reaches,
+    PlayerId traverser,
+    std::vector<Probability> strategy,
+    std::vector<Value> sampled_action_values) const {
+    validate_token(private_deal);
+    return core::make_multiway_external_sampling_request(
+        std::move(player_reaches), traverser, private_deal.deal_, std::move(strategy),
+        std::move(sampled_action_values));
+}
+
 const MultiwayPublicStateDescriptor& MultiwayTerminalAdapter::require_public_state(
     MultiwayPublicStateId id) const {
     const auto* state = coordinator_->public_state(id);

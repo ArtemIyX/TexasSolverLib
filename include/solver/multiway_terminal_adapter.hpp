@@ -73,6 +73,13 @@ public:
         const MultiwaySamplerDealToken& private_deal,
         PlayerId seat) const;
 
+    [[nodiscard]] MultiwayExternalSamplingRequest make_external_sampling_request(
+        const MultiwaySamplerDealToken& private_deal,
+        std::vector<Probability> player_reaches,
+        PlayerId traverser,
+        std::vector<Probability> strategy,
+        std::vector<Value> sampled_action_values) const;
+
     // Returns canonical public chance edges after excluding the sampled
     // private deal. Preflop-to-flop edges deal sorted three-card combinations;
     // all later edges deal one card.
