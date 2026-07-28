@@ -661,9 +661,13 @@ struct HUNLSampledRangeSession::Impl {
         memory_guard.admit_retained(sizeof(HUNLState) + sizeof(HUNLSampledRootStrategy) + 4096U);
         deals = root.normalized_joint_range();
         hero_selection = root.effective_hero_selection();
+        // A multi-deal legacy range root exports a selected player-zero
+        // private infoset. A single compatible deal must retain the native
+        // dealt-state actor so it remains identical to the fixed-hand oracle.
+        if (!root.live_root.has_value() && deals.size() > 1U) public_root_state.cur_player = 0;
         root_state = root_for_deal(public_root_state, selected_hero_deal());
         root_actions = root_state.legal_actions();
-        if (root_state.current_player() != hero_selection.player || root_actions.empty()) {
+        if (root_actions.empty()) {
             throw std::logic_error("structured sampled root has no compatible deal or legal root action");
         }
         last_clean_root_strategy = export_root_strategy();

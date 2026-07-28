@@ -271,9 +271,12 @@ void HUNLStructuredRootRequest::validate() const {
         selection.hole_cards[0] == selection.hole_cards[1]) {
         throw std::invalid_argument("HUNLStructuredRootRequest has an invalid selected hero hand or bucket");
     }
+    // Legacy balanced range roots export player zero's selected hand. Their
+    // public state intentionally omits private cards and therefore has no
+    // actor until the sampled session attaches a compatible deal.
     const auto root_player = live_root.has_value()
         ? live_root->bind_config(std::make_shared<const HUNLConfig>(config)).current_player()
-        : HUNLState::initial(std::make_shared<const HUNLConfig>(config)).current_player();
+        : 0;
     if (selection.player != root_player) {
         throw std::invalid_argument("HUNLStructuredRootRequest selected hero is not the root actor");
     }
