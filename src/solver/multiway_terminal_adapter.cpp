@@ -144,6 +144,16 @@ MultiwaySamplerDealToken MultiwayTerminalAdapter::sample_private_deal(std::uint6
     return MultiwaySamplerDealToken(*coordinator_, std::move(deal));
 }
 
+std::array<std::uint8_t, 2> MultiwayTerminalAdapter::sampled_hole(
+    const MultiwaySamplerDealToken& private_deal,
+    PlayerId seat) const {
+    validate_token(private_deal);
+    if (seat < 0 || static_cast<std::size_t>(seat) >= private_deal.deal_.holes.size()) {
+        throw std::out_of_range("multiway sampled hole seat is unavailable");
+    }
+    return private_deal.deal_.holes[static_cast<std::size_t>(seat)];
+}
+
 const MultiwayPublicStateDescriptor& MultiwayTerminalAdapter::require_public_state(
     MultiwayPublicStateId id) const {
     const auto* state = coordinator_->public_state(id);

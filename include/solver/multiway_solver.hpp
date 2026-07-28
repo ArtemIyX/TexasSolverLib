@@ -236,6 +236,9 @@ public:
     [[nodiscard]] std::vector<Probability> average_strategy(
         MultiwayInfosetId infoset,
         std::uint32_t bucket) const;
+    [[nodiscard]] std::vector<Probability> regret_matched_strategy(
+        MultiwayInfosetId infoset,
+        std::uint32_t bucket) const;
     [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
     [[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 

@@ -76,4 +76,51 @@ std::size_t MultiwayBucketTable::hole_index(const std::array<std::uint8_t, 2>& h
     return static_cast<std::size_t>(low) * (103U - low) / 2U + (high - low - 1U);
 }
 
+MultiwayBucketRegistry::MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables)
+    : tables_(std::move(tables)) {
+    if (tables_.empty()) throw std::invalid_argument("multiway bucket registry requires at least one table");
+    identity_ = tables_.front().identity();
+    identity_.validate();
+    for (const auto& table : tables_) {
+        if (table.identity() != identity_) {
+            throw std::invalid_argument("multiway bucket registry has mixed model identities");
+        }
+    }
+    std::sort(tables_.begin(), tables_.end(), [](const MultiwayBucketTable& left,
+                                                  const MultiwayBucketTable& right) {
+        if (left.street() != right.street()) return left.street() < right.street();
+        return left.canonical_board() < right.canonical_board();
+    });
+    for (std::size_t index = 1; index < tables_.size(); ++index) {
+        if (tables_[index - 1U].street() == tables_[index].street() &&
+            tables_[index - 1U].canonical_board() == tables_[index].canonical_board()) {
+            throw std::invalid_argument("multiway bucket registry has duplicate board tables");
+        }
+    }
+}
+
+const MultiwayBucketTable& MultiwayBucketRegistry::table(
+    Street street,
+    const std::vector<std::uint8_t>& canonical_board) const {
+    const auto found = std::lower_bound(
+        tables_.begin(), tables_.end(), std::pair<Street, const std::vector<std::uint8_t>&>{street, canonical_board},
+        [](const MultiwayBucketTable& candidate,
+           const std::pair<Street, const std::vector<std::uint8_t>&>& key) {
+            if (candidate.street() != key.first) return candidate.street() < key.first;
+            return candidate.canonical_board() < key.second;
+        });
+    if (found == tables_.end() || found->street() != street ||
+        found->canonical_board() != canonical_board) {
+        throw std::out_of_range("multiway bucket registry has no table for the canonical board");
+    }
+    return *found;
+}
+
+std::uint32_t MultiwayBucketRegistry::lookup(
+    Street street,
+    const std::vector<std::uint8_t>& canonical_board,
+    const std::array<std::uint8_t, 2>& hole) const {
+    return table(street, canonical_board).lookup(hole);
+}
+
 }  // namespace core

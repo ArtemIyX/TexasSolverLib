@@ -2,6 +2,7 @@
 
 #include "solver/multiway_solver.hpp"
 
+#include <array>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -65,6 +66,12 @@ public:
     explicit MultiwayTerminalAdapter(const MultiwaySolverCoordinator& coordinator);
 
     [[nodiscard]] MultiwaySamplerDealToken sample_private_deal(std::uint64_t seed) const;
+
+    // Exposes one already-sampled private hand only to traversal code that is
+    // bound to this adapter's coordinator. It cannot sample or mutate ranges.
+    [[nodiscard]] std::array<std::uint8_t, 2> sampled_hole(
+        const MultiwaySamplerDealToken& private_deal,
+        PlayerId seat) const;
 
     // Returns canonical public chance edges after excluding the sampled
     // private deal. Preflop-to-flop edges deal sorted three-card combinations;

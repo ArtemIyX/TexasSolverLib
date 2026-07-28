@@ -382,6 +382,20 @@ std::vector<Probability> MultiwaySparseRowStorage::average_strategy(
     return result;
 }
 
+std::vector<Probability> MultiwaySparseRowStorage::regret_matched_strategy(
+    MultiwayInfosetId infoset,
+    std::uint32_t bucket) const {
+    const auto* row = metadata(infoset);
+    if (row == nullptr || bucket >= row->shape.bucket_count) {
+        throw std::out_of_range("multiway regret row or bucket is unavailable");
+    }
+    std::vector<double> regrets(row->shape.action_count, 0.0);
+    for (std::size_t action = 0; action < regrets.size(); ++action) {
+        regrets[action] = regret_[row->regret_offset + action * row->shape.bucket_count + bucket];
+    }
+    return multiway_regret_matching(regrets);
+}
+
 void MultiwaySparseRowStorage::admit_row(const MultiwaySparseRowShape& shape) {
     if (shape.infoset.public_state.value == 0 || shape.infoset.seat < 0) {
         throw std::invalid_argument("multiway sparse row requires a stable per-seat infoset id");

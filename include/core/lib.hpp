@@ -13,6 +13,8 @@
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_memory.hpp"
+#include "solver/multiway_scheduler.hpp"
+#include "solver/multiway_traversal.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"
@@ -69,11 +71,16 @@ using ::core::MultiwayAction;
 using ::core::MultiwayActionAbstraction;
 using ::core::MultiwayActionAbstractionConfig;
 using ::core::MultiwayBucketTable;
+using ::core::MultiwayBucketRegistry;
 using ::core::MultiwayMemoryBudget;
 using ::core::MultiwayMemoryEstimate;
 using ::core::MultiwayMemoryPreflight;
 using ::core::MultiwayMemoryStatus;
 using ::core::preflight_multiway_memory;
+using ::core::MultiwayScheduler;
+using ::core::MultiwayTrajectoryRange;
+using ::core::MultiwayWorkerBatch;
+using ::core::MultiwayExternalSamplingTraversal;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayPublicBuilder;

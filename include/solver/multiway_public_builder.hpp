@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/multiway_solver.hpp"
+#include "solver/multiway_terminal_adapter.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -25,6 +26,16 @@ public:
     [[nodiscard]] static MultiwayPublicStateDescriptor make_action_child(
         const MultiwayPublicStateDescriptor& parent,
         std::uint32_t action_index,
+        std::vector<MultiwayActionDescriptor> child_legal_actions);
+
+    [[nodiscard]] static MultiwayPublicStateDescriptor make_board_chance_child(
+        const MultiwayPublicStateDescriptor& parent,
+        const MultiwayPublicBoardChanceEdge& edge,
+        std::vector<MultiwayActionDescriptor> child_legal_actions);
+
+    [[nodiscard]] static MultiwayPublicStateDescriptor make_street_transition_child(
+        const MultiwayPublicStateDescriptor& parent,
+        const MultiwayPublicStreetTransition& transition,
         std::vector<MultiwayActionDescriptor> child_legal_actions);
 
     [[nodiscard]] static std::uint64_t stable_history_id(

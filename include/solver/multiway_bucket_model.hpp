@@ -42,4 +42,24 @@ private:
     std::vector<std::uint32_t> assignments_;
 };
 
+// Sorted immutable board registry. Lookup uses binary search, not a hash map,
+// so traversal can resolve a board/bucket pair without a hot-path allocation.
+class MultiwayBucketRegistry {
+public:
+    explicit MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables);
+
+    [[nodiscard]] const MultiwayModelIdentity& identity() const noexcept { return identity_; }
+    [[nodiscard]] const MultiwayBucketTable& table(
+        Street street,
+        const std::vector<std::uint8_t>& canonical_board) const;
+    [[nodiscard]] std::uint32_t lookup(
+        Street street,
+        const std::vector<std::uint8_t>& canonical_board,
+        const std::array<std::uint8_t, 2>& hole) const;
+
+private:
+    MultiwayModelIdentity identity_{};
+    std::vector<MultiwayBucketTable> tables_;
+};
+
 }  // namespace core

@@ -55,6 +55,18 @@ std::uint64_t non_zero(std::uint64_t value) noexcept {
     return value == 0U ? 1U : value;
 }
 
+std::uint64_t child_history_id(
+    const MultiwayPublicStateDescriptor& parent,
+    const MultiwayPublicParentEdge& edge) noexcept {
+    auto hash = kFnvOffset;
+    append_u64(hash, parent.canonical_history_id);
+    append_u64(hash, static_cast<std::uint64_t>(edge.kind));
+    append_u64(hash, edge.dealt_card);
+    for (const auto card : edge.dealt_cards) append_u64(hash, card);
+    for (const auto card : edge.transition_board) append_u64(hash, card);
+    return non_zero(hash);
+}
+
 MultiwayBoardRunoutState runout_state(const MultiwayState& state, std::size_t board_count) {
     if (board_count > 5U) throw std::invalid_argument("multiway public builder has an oversized board");
     return {
@@ -140,6 +152,53 @@ MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_action_child(
     child.id = {stable_public_state_id(child.betting, child.board, child.history, child.legal_actions)};
     if (child.id == parent.id) {
         throw std::logic_error("multiway public builder produced a duplicate parent and child identity");
+    }
+    return child;
+}
+
+MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_board_chance_child(
+    const MultiwayPublicStateDescriptor& parent,
+    const MultiwayPublicBoardChanceEdge& edge,
+    std::vector<MultiwayActionDescriptor> child_legal_actions) {
+    if (edge.parent_id != parent.id || edge.incoming_edge.kind != MultiwayPublicParentEdgeKind::BoardChance) {
+        throw std::invalid_argument("multiway public builder board chance edge has the wrong parent");
+    }
+    MultiwayPublicStateDescriptor child;
+    child.parent_id = parent.id;
+    child.incoming_edge = edge.incoming_edge;
+    child.betting = parent.betting;
+    child.board = edge.chance.board;
+    child.board_runout = edge.chance.board_runout;
+    child.history = parent.history;
+    child.legal_actions = std::move(child_legal_actions);
+    child.canonical_history_id = child_history_id(parent, child.incoming_edge);
+    child.id = {stable_public_state_id(child.betting, child.board, child.history, child.legal_actions)};
+    if (child.id == parent.id) {
+        throw std::logic_error("multiway public builder produced a duplicate chance identity");
+    }
+    return child;
+}
+
+MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_street_transition_child(
+    const MultiwayPublicStateDescriptor& parent,
+    const MultiwayPublicStreetTransition& transition,
+    std::vector<MultiwayActionDescriptor> child_legal_actions) {
+    if (transition.parent_id != parent.id ||
+        transition.incoming_edge.kind != MultiwayPublicParentEdgeKind::StreetTransition) {
+        throw std::invalid_argument("multiway public builder street transition has the wrong parent");
+    }
+    MultiwayPublicStateDescriptor child;
+    child.parent_id = parent.id;
+    child.incoming_edge = transition.incoming_edge;
+    child.betting = transition.transition.betting;
+    child.board = transition.transition.board;
+    child.board_runout = transition.transition.board_runout;
+    child.history = parent.history;
+    child.legal_actions = std::move(child_legal_actions);
+    child.canonical_history_id = child_history_id(parent, child.incoming_edge);
+    child.id = {stable_public_state_id(child.betting, child.board, child.history, child.legal_actions)};
+    if (child.id == parent.id) {
+        throw std::logic_error("multiway public builder produced a duplicate street-transition identity");
     }
     return child;
 }
