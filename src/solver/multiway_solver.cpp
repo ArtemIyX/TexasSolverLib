@@ -202,16 +202,24 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
         throw std::invalid_argument("multiway public state has an inconsistent chance-only runout flag");
     }
     const auto available_actions = betting_state.legal_actions();
-    if (state.legal_actions.size() != available_actions.size()) {
-        throw std::invalid_argument("multiway public state action menu does not match its betting snapshot");
-    }
+    std::vector<bool> covered_actions(available_actions.size(), false);
     for (std::size_t index = 0; index < state.legal_actions.size(); ++index) {
         const auto& action = state.legal_actions[index];
         if (!valid_action(action.action) || action.action_index != index || action.action_menu_id == 0 ||
             action.target_street_contribution < 0 ||
-            action.action != available_actions[index] ||
             (index != 0 && action.action_menu_id != state.legal_actions.front().action_menu_id)) {
             throw std::invalid_argument("multiway public state action menu is not a stable descriptor sequence");
+        }
+        const auto available = std::find(available_actions.begin(), available_actions.end(), action.action);
+        if (available == available_actions.end()) {
+            throw std::invalid_argument("multiway public state action is unavailable in its betting snapshot");
+        }
+        covered_actions[static_cast<std::size_t>(available - available_actions.begin())] = true;
+        for (std::size_t prior = 0; prior < index; ++prior) {
+            if (state.legal_actions[prior].action == action.action &&
+                state.legal_actions[prior].target_street_contribution == action.target_street_contribution) {
+                throw std::invalid_argument("multiway public state action menu contains a duplicate target");
+            }
         }
         try {
             const auto successor = betting_state.apply(action.action, action.target_street_contribution);
@@ -222,6 +230,9 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
         } catch (const std::exception&) {
             throw std::invalid_argument("multiway public state action descriptor is not executable");
         }
+    }
+    for (const auto covered : covered_actions) {
+        if (!covered) throw std::invalid_argument("multiway public state action menu omits a legal action kind");
     }
     const auto seat_count = state.betting.stacks.size();
     for (const auto& entry : state.history) {
