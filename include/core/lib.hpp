@@ -16,6 +16,8 @@
 #include "solver/multiway_scheduler.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
+#include "solver/multiway_export.hpp"
+#include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"
@@ -86,6 +88,9 @@ using ::core::MultiwayRootBatchResult;
 using ::core::MultiwayRootBatchRunner;
 using ::core::MultiwayLeafEvaluationRequest;
 using ::core::MultiwayLeafEvaluator;
+using ::core::MultiwayBlueprintSnapshot;
+using ::core::export_multiway_root_snapshot;
+using ::core::MultiwayBlueprintTrainer;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayPublicBuilder;

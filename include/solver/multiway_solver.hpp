@@ -348,6 +348,7 @@ public:
     [[nodiscard]] MultiwayRootPolicy export_root_policy() const;
     [[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
+    [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
 
 private:
     friend class MultiwayTerminalAdapter;

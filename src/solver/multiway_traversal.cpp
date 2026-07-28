@@ -123,6 +123,10 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     if (worker_count_ == 0U || worker_delta_capacity_ == 0U) {
         throw std::invalid_argument("multiway root batch runner requires positive worker limits");
     }
+    if (worker_count_ != coordinator.limits().worker_count ||
+        worker_delta_capacity_ > coordinator.limits().max_worker_delta_entries) {
+        throw std::invalid_argument("multiway root batch runner limits must fit its coordinator");
+    }
 }
 
 MultiwayRootBatchResult MultiwayRootBatchRunner::run(
@@ -132,10 +136,12 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     MultiwayRootBatchResult result;
     const auto batches = MultiwayScheduler::partition_deterministic(trajectory_count, worker_count_);
     std::vector<MultiwayWorkerDeltaStream> streams;
-    streams.reserve(batches.size());
+    streams.reserve(worker_count_);
+    for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
+        streams.emplace_back(worker, worker_delta_capacity_);
+    }
     for (const auto& batch : batches) {
-        streams.emplace_back(batch.worker_index, worker_delta_capacity_);
-        auto& stream = streams.back();
+        auto& stream = streams[batch.worker_index];
         for (auto local_id = batch.trajectories.begin; local_id < batch.trajectories.end; ++local_id) {
             const auto trajectory_id = first_trajectory_id + local_id;
             ++result.trajectories_attempted;
