@@ -18,6 +18,7 @@
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_blueprint_trainer.hpp"
+#include "solver/multiway_blueprint_query.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"
@@ -91,6 +92,7 @@ using ::core::MultiwayLeafEvaluator;
 using ::core::MultiwayBlueprintSnapshot;
 using ::core::export_multiway_root_snapshot;
 using ::core::MultiwayBlueprintTrainer;
+using ::core::MultiwayBlueprintQuery;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayPublicBuilder;
