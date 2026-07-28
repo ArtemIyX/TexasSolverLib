@@ -5,6 +5,7 @@
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_public_builder.hpp"
+#include "solver/multiway_scheduler.hpp"
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
 
@@ -44,12 +45,46 @@ public:
         std::uint64_t seed,
         MultiwayWorkerDeltaStream& stream);
 
+    [[nodiscard]] PlayerId root_traverser() const noexcept {
+        return root_->public_state.betting.current_player;
+    }
+
 private:
     MultiwaySolverCoordinator* coordinator_ = nullptr;
     const MultiwayRootSnapshot* root_ = nullptr;
     const MultiwayActionAbstraction* action_abstraction_ = nullptr;
     const MultiwayBucketRegistry* buckets_ = nullptr;
     const MultiwayLeafEvaluator* leaf_evaluator_ = nullptr;
+};
+
+struct MultiwayRootBatchResult {
+    std::uint64_t trajectories_attempted = 0;
+    std::uint64_t trajectories_accepted = 0;
+    std::uint64_t trajectories_discarded = 0;
+    std::uint64_t delta_entries_merged = 0;
+};
+
+// Deterministic root-only batch runner. Workers are kept logically separate
+// until coordinator merge; parallel dispatch can be introduced without
+// changing seeds, partitions, or merge order.
+class MultiwayRootBatchRunner {
+public:
+    MultiwayRootBatchRunner(
+        MultiwayRootExternalSamplingTraversal traversal,
+        MultiwaySolverCoordinator& coordinator,
+        std::uint32_t worker_count,
+        std::size_t worker_delta_capacity);
+
+    [[nodiscard]] MultiwayRootBatchResult run(
+        std::uint64_t first_trajectory_id,
+        std::uint64_t trajectory_count,
+        std::uint64_t seed);
+
+private:
+    MultiwayRootExternalSamplingTraversal traversal_;
+    MultiwaySolverCoordinator* coordinator_ = nullptr;
+    std::uint32_t worker_count_ = 0;
+    std::size_t worker_delta_capacity_ = 0;
 };
 
 }  // namespace core

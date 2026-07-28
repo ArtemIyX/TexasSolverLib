@@ -82,6 +82,8 @@ using ::core::MultiwayScheduler;
 using ::core::MultiwayTrajectoryRange;
 using ::core::MultiwayWorkerBatch;
 using ::core::MultiwayExternalSamplingTraversal;
+using ::core::MultiwayRootBatchResult;
+using ::core::MultiwayRootBatchRunner;
 using ::core::MultiwayLeafEvaluationRequest;
 using ::core::MultiwayLeafEvaluator;
 using ::core::MultiwayBlueprintConfig;

@@ -100,4 +100,57 @@ bool MultiwayRootExternalSamplingTraversal::run(
         stream, infoset, bucket, trajectory_id, request);
 }
 
+namespace {
+
+std::uint64_t mix_seed(std::uint64_t seed, std::uint64_t trajectory_id) noexcept {
+    auto value = seed + 0x9e3779b97f4a7c15ULL + trajectory_id;
+    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31U);
+}
+
+}  // namespace
+
+MultiwayRootBatchRunner::MultiwayRootBatchRunner(
+    MultiwayRootExternalSamplingTraversal traversal,
+    MultiwaySolverCoordinator& coordinator,
+    std::uint32_t worker_count,
+    std::size_t worker_delta_capacity)
+    : traversal_(std::move(traversal)),
+      coordinator_(&coordinator),
+      worker_count_(worker_count),
+      worker_delta_capacity_(worker_delta_capacity) {
+    if (worker_count_ == 0U || worker_delta_capacity_ == 0U) {
+        throw std::invalid_argument("multiway root batch runner requires positive worker limits");
+    }
+}
+
+MultiwayRootBatchResult MultiwayRootBatchRunner::run(
+    std::uint64_t first_trajectory_id,
+    std::uint64_t trajectory_count,
+    std::uint64_t seed) {
+    MultiwayRootBatchResult result;
+    const auto batches = MultiwayScheduler::partition_deterministic(trajectory_count, worker_count_);
+    std::vector<MultiwayWorkerDeltaStream> streams;
+    streams.reserve(batches.size());
+    for (const auto& batch : batches) {
+        streams.emplace_back(batch.worker_index, worker_delta_capacity_);
+        auto& stream = streams.back();
+        for (auto local_id = batch.trajectories.begin; local_id < batch.trajectories.end; ++local_id) {
+            const auto trajectory_id = first_trajectory_id + local_id;
+            ++result.trajectories_attempted;
+            if (traversal_.run(
+                    traversal_.root_traverser(), trajectory_id, mix_seed(seed, trajectory_id), stream)) {
+                ++result.trajectories_accepted;
+            } else {
+                ++result.trajectories_discarded;
+            }
+        }
+        stream.sort_fixed_order();
+        result.delta_entries_merged += stream.size();
+    }
+    coordinator_->merge_worker_streams(streams);
+    return result;
+}
+
 }  // namespace core
