@@ -9,11 +9,16 @@
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace core {
 
 inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
+inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
+// The production abstraction emits at most five entries; one exact off-tree
+// insertion needs six. Two spare entries keep the boundary explicit.
+inline constexpr std::size_t MULTIWAY_MAX_TRAVERSAL_ACTIONS = 8U;
 
 // Allocation-free after the caller has prepared the external-sampling request.
 // Recursive game traversal owns action-value estimation; this kernel owns only
@@ -28,9 +33,9 @@ public:
         const MultiwayExternalSamplingRequest& request);
 };
 
-// Bounded lazy traversal. It recursively samples same-street opponent
-// decisions, enumerates traverser decisions, and stops at exact terminals or
-// the typed leaf boundary. Public chance remains outside this milestone.
+// Bounded lazy traversal. It samples opponent and public-chance nodes,
+// enumerates traverser decisions, and stops at exact terminals or the typed
+// strategic leaf boundary.
 class MultiwayRootExternalSamplingTraversal {
 public:
     MultiwayRootExternalSamplingTraversal(
@@ -39,7 +44,8 @@ public:
         const MultiwayActionAbstraction& action_abstraction,
         const MultiwayBucketRegistry& buckets,
         const MultiwayLeafEvaluator* leaf_evaluator = nullptr,
-        std::uint32_t max_decision_depth = 1U);
+        std::uint32_t max_decision_depth = 1U,
+        std::uint32_t max_public_chance_depth = 0U);
 
     [[nodiscard]] bool run(
         PlayerId traverser,
@@ -59,9 +65,16 @@ public:
 private:
     struct TraversalContext;
 
-    [[nodiscard]] Value traverse_same_street(
+    [[nodiscard]] Value traverse_decision(
         const MultiwayPublicStateDescriptor& state,
         std::uint32_t decision_depth,
+        std::uint32_t public_chance_depth,
+        TraversalContext& context);
+
+    [[nodiscard]] Value traverse_public_chance(
+        const MultiwayPublicStateDescriptor& state,
+        std::uint32_t decision_depth,
+        std::uint32_t public_chance_depth,
         TraversalContext& context);
 
     [[nodiscard]] Value evaluate_leaf(
@@ -74,6 +87,7 @@ private:
     const MultiwayBucketRegistry* buckets_ = nullptr;
     const MultiwayLeafEvaluator* leaf_evaluator_ = nullptr;
     std::uint32_t max_decision_depth_ = 1U;
+    std::uint32_t max_public_chance_depth_ = 0U;
     MultiwayTerminalAdapter terminal_;
 };
 

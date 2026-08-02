@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -44,13 +43,15 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     const MultiwayActionAbstraction& action_abstraction,
     const MultiwayBucketRegistry& buckets,
     const MultiwayLeafEvaluator* leaf_evaluator,
-    std::uint32_t max_decision_depth)
+    std::uint32_t max_decision_depth,
+    std::uint32_t max_public_chance_depth)
     : coordinator_(&coordinator),
       root_(&root),
       action_abstraction_(&action_abstraction),
       buckets_(&buckets),
       leaf_evaluator_(leaf_evaluator),
       max_decision_depth_(max_decision_depth),
+      max_public_chance_depth_(max_public_chance_depth),
       terminal_(coordinator) {
     root.validate();
     if (root.public_state.betting.street < Street::Flop ||
@@ -59,6 +60,12 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     }
     if (max_decision_depth_ == 0U || max_decision_depth_ > MULTIWAY_MAX_DECISION_DEPTH) {
         throw std::invalid_argument("multiway traversal decision depth is outside the supported range");
+    }
+    if (max_public_chance_depth_ > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH) {
+        throw std::invalid_argument("multiway traversal public chance depth is outside the supported range");
+    }
+    if (root.public_state.legal_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
+        throw std::invalid_argument("multiway root action menu exceeds the compact traversal limit");
     }
 }
 
@@ -73,6 +80,7 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     std::uint64_t random_state = 0;
     Probability private_chance_reach = 0.0;
     Probability private_sampling_reach = 0.0;
+    Probability public_chance_reach = 1.0;
     Probability public_sampling_reach = 1.0;
     bool accepted = true;
 };
@@ -191,29 +199,29 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
     return value;
 }
 
-Value MultiwayRootExternalSamplingTraversal::traverse_same_street(
+Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     const MultiwayPublicStateDescriptor& state,
     std::uint32_t decision_depth,
+    std::uint32_t public_chance_depth,
     TraversalContext& context) {
     if (!context.accepted) return 0.0;
     const auto actor = state.betting.current_player;
     if (actor < 0 || state.legal_actions.empty()) {
         throw std::logic_error("multiway recursive traversal requires a decision state");
     }
+    const auto action_count = state.legal_actions.size();
+    if (action_count > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
+        throw std::length_error("multiway traversal action menu exceeds the compact traversal limit");
+    }
     const auto& table = buckets_->table(state.betting.street, state.board);
     const auto bucket = table.lookup(context.terminal->sampled_hole(*context.deal, actor));
     const MultiwayInfosetId infoset = {state.id, actor};
-    constexpr auto max_actions = static_cast<std::size_t>(std::numeric_limits<std::uint8_t>::max());
-    const auto action_count = state.legal_actions.size();
-    if (action_count > max_actions) {
-        throw std::length_error("multiway traversal action menu exceeds its compact action id");
-    }
     coordinator_->admit_infoset_row({
         infoset,
         table.bucket_count(),
         static_cast<std::uint8_t>(action_count),
     });
-    std::array<Probability, max_actions> strategy{};
+    std::array<Probability, MULTIWAY_MAX_TRAVERSAL_ACTIONS> strategy{};
     coordinator_->storage().regret_matched_strategy_into(
         infoset, bucket, strategy.data(), action_count);
     const auto betting_state = MultiwayState::from_snapshot(state.betting);
@@ -226,6 +234,10 @@ Value MultiwayRootExternalSamplingTraversal::traverse_same_street(
         if (next.current_player() >= 0) {
             child_actions = action_abstraction_->make_legal_actions(
                 next.snapshot(), root_->action_menu_id());
+            if (child_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
+                throw std::length_error(
+                    "multiway generated action menu exceeds the compact traversal limit");
+            }
         }
         const auto child = MultiwayPublicBuilder::make_action_child(
             state, static_cast<std::uint32_t>(action), std::move(child_actions));
@@ -237,7 +249,14 @@ Value MultiwayRootExternalSamplingTraversal::traverse_same_street(
         const auto next_depth = decision_depth + 1U;
         if (next.current_player() >= 0 && next.street() == state.betting.street &&
             next_depth < max_decision_depth_) {
-            return traverse_same_street(child, next_depth, context);
+            return traverse_decision(child, next_depth, public_chance_depth, context);
+        }
+        if (next.requires_board_runout()) {
+            return traverse_public_chance(child, next_depth, public_chance_depth, context);
+        }
+        if (next.requires_street_transition() &&
+            public_chance_depth < max_public_chance_depth_) {
+            return traverse_public_chance(child, next_depth, public_chance_depth, context);
         }
         return evaluate_leaf(child, context.traverser);
     };
@@ -259,7 +278,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_same_street(
         return value;
     }
 
-    std::array<Value, max_actions> action_values{};
+    std::array<Value, MULTIWAY_MAX_TRAVERSAL_ACTIONS> action_values{};
     auto& traverser_reach = context.player_reaches[static_cast<std::size_t>(actor)];
     const auto saved_reach = traverser_reach;
     for (std::size_t action = 0; action < action_count; ++action) {
@@ -283,7 +302,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_same_street(
         context.player_reaches.data(),
         context.player_count,
         actor,
-        context.private_chance_reach,
+        context.private_chance_reach * context.public_chance_reach,
         sampling_reach,
         strategy.data(),
         action_values.data(),
@@ -291,6 +310,57 @@ Value MultiwayRootExternalSamplingTraversal::traverse_same_street(
         node_value);
     if (!context.accepted) return 0.0;
     return node_value;
+}
+
+Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
+    const MultiwayPublicStateDescriptor& state,
+    std::uint32_t decision_depth,
+    std::uint32_t public_chance_depth,
+    TraversalContext& context) {
+    const auto sampled = context.terminal->sample_admitted_public_board_chance(
+        state, *context.deal, context.random_state);
+    const auto chance_child = MultiwayPublicBuilder::make_board_chance_child(
+        state, sampled, {});
+    coordinator_->admit_public_state(chance_child);
+
+    const auto saved_chance_reach = context.public_chance_reach;
+    const auto saved_sampling_reach = context.public_sampling_reach;
+    context.public_chance_reach *= sampled.probability;
+    context.public_sampling_reach *= sampled.probability;
+    const auto next_chance_depth = public_chance_depth + 1U;
+
+    Value value = 0.0;
+    if (chance_child.board_runout.chance_only_runout) {
+        if (chance_child.board.size() == 5U) {
+            value = context.terminal->resolve_terminal(chance_child.id, *context.deal)
+                .utilities[static_cast<std::size_t>(context.traverser)];
+        } else {
+            value = traverse_public_chance(
+                chance_child, decision_depth, next_chance_depth, context);
+        }
+    } else {
+        const auto transition =
+            context.terminal->apply_admitted_public_street_transition(chance_child);
+        auto next_actions = action_abstraction_->make_legal_actions(
+            transition.transition.betting, root_->action_menu_id());
+        if (next_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
+            throw std::length_error(
+                "multiway generated action menu exceeds the compact traversal limit");
+        }
+        const auto transition_child = MultiwayPublicBuilder::make_street_transition_child(
+            chance_child, transition, std::move(next_actions));
+        coordinator_->admit_public_state(transition_child);
+        if (decision_depth < max_decision_depth_) {
+            value = traverse_decision(
+                transition_child, decision_depth, next_chance_depth, context);
+        } else {
+            value = evaluate_leaf(transition_child, context.traverser);
+        }
+    }
+
+    context.public_chance_reach = saved_chance_reach;
+    context.public_sampling_reach = saved_sampling_reach;
+    return value;
 }
 
 bool MultiwayRootExternalSamplingTraversal::run(
@@ -318,7 +388,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     context.private_chance_reach = sampled_reach.chance_reach;
     context.private_sampling_reach = sampled_reach.proposal_reach;
     const auto initial_size = stream.size();
-    (void)traverse_same_street(root_state, 0U, context);
+    (void)traverse_decision(root_state, 0U, 0U, context);
     if (!context.accepted) stream.rewind(initial_size);
     return context.accepted;
 }
