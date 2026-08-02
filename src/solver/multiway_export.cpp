@@ -40,8 +40,8 @@ MultiwayBlueprintSnapshot export_multiway_root_snapshot(
     std::uint32_t assigned = 0;
     for (std::size_t index = 0; index < policy.actions.size(); ++index) {
         const auto raw = policy.actions[index].probability * std::numeric_limits<std::uint16_t>::max();
-        const auto quantized = index + 1U == policy.actions.size()
-            ? std::numeric_limits<std::uint16_t>::max() - assigned
+        const std::uint16_t quantized = index + 1U == policy.actions.size()
+            ? static_cast<std::uint16_t>(std::numeric_limits<std::uint16_t>::max() - assigned)
             : static_cast<std::uint16_t>(std::floor(raw));
         assigned += quantized;
         snapshot.actions.push_back({policy.actions[index].action, quantized});

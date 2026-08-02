@@ -2,6 +2,7 @@
 
 #include "games/multiway_private.hpp"
 #include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway_solver.hpp"
 
 #include <cstdint>
 #include <vector>
