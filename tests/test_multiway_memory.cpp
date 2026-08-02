@@ -32,5 +32,6 @@ TEST_CASE(multiway_memory_preflight_reports_warning_and_rejection) {
 }
 
 TEST_CASE(multiway_memory_budget_rejects_invalid_limits) {
-    EXPECT_THROW(core::MultiwayMemoryBudget{2, 1}.validate(), std::invalid_argument);
+    const core::MultiwayMemoryBudget invalid{2, 1};
+    EXPECT_THROW(invalid.validate(), std::invalid_argument);
 }
