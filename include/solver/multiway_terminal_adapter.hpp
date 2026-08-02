@@ -42,6 +42,11 @@ struct MultiwayPublicStreetTransition {
     MultiwayStreetTransition transition{};
 };
 
+struct MultiwayPrivateSamplingReach {
+    Probability chance_reach = 0.0;
+    Probability proposal_reach = 0.0;
+};
+
 // An opaque private deal issued only by a coordinator-bound terminal adapter.
 // It cannot be constructed or inspected by traversal callers.
 class MultiwaySamplerDealToken {
@@ -72,6 +77,9 @@ public:
     [[nodiscard]] std::array<std::uint8_t, 2> sampled_hole(
         const MultiwaySamplerDealToken& private_deal,
         PlayerId seat) const;
+
+    [[nodiscard]] MultiwayPrivateSamplingReach sampled_reach(
+        const MultiwaySamplerDealToken& private_deal) const;
 
     [[nodiscard]] MultiwayExternalSamplingRequest make_external_sampling_request(
         const MultiwaySamplerDealToken& private_deal,

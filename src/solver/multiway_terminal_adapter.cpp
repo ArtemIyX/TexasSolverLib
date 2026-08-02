@@ -154,6 +154,12 @@ std::array<std::uint8_t, 2> MultiwayTerminalAdapter::sampled_hole(
     return private_deal.deal_.holes[static_cast<std::size_t>(seat)];
 }
 
+MultiwayPrivateSamplingReach MultiwayTerminalAdapter::sampled_reach(
+    const MultiwaySamplerDealToken& private_deal) const {
+    validate_token(private_deal);
+    return {private_deal.deal_.chance_reach, private_deal.deal_.proposal_reach};
+}
+
 MultiwayExternalSamplingRequest MultiwayTerminalAdapter::make_external_sampling_request(
     const MultiwaySamplerDealToken& private_deal,
     std::vector<Probability> player_reaches,

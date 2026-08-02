@@ -13,6 +13,8 @@
 
 namespace core {
 
+inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
+
 // Allocation-free after the caller has prepared the external-sampling request.
 // Recursive game traversal owns action-value estimation; this kernel owns only
 // the mathematically shared CFR-to-worker-delta conversion.
@@ -26,10 +28,9 @@ public:
         const MultiwayExternalSamplingRequest& request);
 };
 
-// Initial executable traversal scope. It evaluates every root action at an
-// exact terminal or a supplied depth-limit leaf, then emits a worker-local
-// external-sampling update. Deeper recursive sampling extends this boundary
-// without changing its root/worker contracts.
+// Bounded lazy traversal. It recursively samples same-street opponent
+// decisions, enumerates traverser decisions, and stops at exact terminals or
+// the typed leaf boundary. Public chance remains outside this milestone.
 class MultiwayRootExternalSamplingTraversal {
 public:
     MultiwayRootExternalSamplingTraversal(
@@ -37,7 +38,8 @@ public:
         const MultiwayRootSnapshot& root,
         const MultiwayActionAbstraction& action_abstraction,
         const MultiwayBucketRegistry& buckets,
-        const MultiwayLeafEvaluator* leaf_evaluator = nullptr);
+        const MultiwayLeafEvaluator* leaf_evaluator = nullptr,
+        std::uint32_t max_decision_depth = 1U);
 
     [[nodiscard]] bool run(
         PlayerId traverser,
@@ -49,12 +51,30 @@ public:
         return root_->public_state.betting.current_player;
     }
 
+    [[nodiscard]] PlayerId traverser_for_trajectory(
+        std::uint64_t trajectory_id) const noexcept {
+        return root_->seat_order[trajectory_id % root_->seat_order.size()];
+    }
+
 private:
+    struct TraversalContext;
+
+    [[nodiscard]] Value traverse_same_street(
+        const MultiwayPublicStateDescriptor& state,
+        std::uint32_t decision_depth,
+        TraversalContext& context);
+
+    [[nodiscard]] Value evaluate_leaf(
+        const MultiwayPublicStateDescriptor& state,
+        PlayerId traverser) const;
+
     MultiwaySolverCoordinator* coordinator_ = nullptr;
     const MultiwayRootSnapshot* root_ = nullptr;
     const MultiwayActionAbstraction* action_abstraction_ = nullptr;
     const MultiwayBucketRegistry* buckets_ = nullptr;
     const MultiwayLeafEvaluator* leaf_evaluator_ = nullptr;
+    std::uint32_t max_decision_depth_ = 1U;
+    MultiwayTerminalAdapter terminal_;
 };
 
 struct MultiwayRootBatchResult {

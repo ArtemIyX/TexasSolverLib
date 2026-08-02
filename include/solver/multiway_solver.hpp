@@ -239,6 +239,11 @@ public:
     [[nodiscard]] std::vector<Probability> regret_matched_strategy(
         MultiwayInfosetId infoset,
         std::uint32_t bucket) const;
+    void regret_matched_strategy_into(
+        MultiwayInfosetId infoset,
+        std::uint32_t bucket,
+        Probability* output,
+        std::size_t output_size) const;
     [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
     [[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 
@@ -280,6 +285,7 @@ public:
     [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
     [[nodiscard]] std::size_t size() const noexcept { return deltas_.size(); }
     [[nodiscard]] bool try_append(const MultiwayWorkerDelta& delta) noexcept;
+    void rewind(std::size_t size) noexcept;
     void sort_fixed_order() noexcept;
     [[nodiscard]] bool is_fixed_order() const noexcept;
     [[nodiscard]] const std::vector<MultiwayWorkerDelta>& deltas() const noexcept { return deltas_; }
