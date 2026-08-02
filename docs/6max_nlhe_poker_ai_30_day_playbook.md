@@ -31,6 +31,38 @@ The central strategic idea is:
 
 There is no credible guarantee of winning. Six-player cash poker is a general-sum imperfect-information game, and standard CFR convergence guarantees do not extend cleanly from two-player zero-sum games. The goal is therefore empirical robustness, low exploitability in reduced games, and strong cross-play—not a mathematically certified 6-player Nash equilibrium.
 
+### Implementation progress: bounded same-street traversal
+
+Completed production substeps:
+
+- Added allocation-free `blueprint`, `fold_biased`, `call_biased`, and `raise_biased` continuation-policy kernels with the planned 5x weighting and normalization.
+- Added allocation-free fixed-policy leaf expectation evaluation over caller-owned action, probability, and value buffers.
+- Extended multiway external sampling from one root ply to configurable same-street decision depth.
+- Added lazy public-state and sparse-row admission only along visited trajectories.
+- Added deterministic opponent action sampling, traverser action enumeration, exact terminal settlement, and trajectory-local delta rollback on capacity exhaustion.
+- Connected each fixed continuation policy to the production typed leaf callback through caller-owned, allocation-free provider views; invalid provider data is rejected as a non-finite leaf value.
+- Rotated traversers deterministically across the stable root seat order so two-through-six-seat sparse rows can train without changing root-only export.
+- Bounded configured same-street recursion to 1-64 decision plies.
+- Preserved root-only strategy export and fixed-order worker merge behavior.
+- Removed per-node strategy, action-value, reach, request, and CFR-delta heap allocations from recursive traversal by using caller-owned fixed buffers and direct bounded delta emission.
+- Reused one terminal adapter per traversal and one reconstructed betting state per visited node while preserving trajectory seeding and fixed-order merge semantics.
+- Added dedicated continuation-policy and recursive same-street traversal test files covering all four profiles, validation and normalization, caller-owned continuation-leaf views and provider failures, depth bounds and cutoff, valid opponent traversers, deterministic batch seat rotation, lazy admission, opponent sampling, terminal and leaf paths, and capacity rollback. Test code was written and statically inspected; tests were not executed.
+
+Completed review substep:
+
+- Statically re-reviewed external-sampling reach math, nested reach restoration, arbitrary-seat traversal, deterministic batch rotation, recursion bounds, continuation leaf data flow, API compatibility, and dedicated test compile plausibility. No build, compile, or test command was run.
+- Confirmed sampled opponent reach and proposal reach are retained until a nested traverser update, traverser reach is restored after action enumeration, sampled-branch reach is restored on return, and rejected trajectories rewind all emitted deltas.
+- Fixed the continuation evaluator factory to accept an explicit caller-owned context pointer, preventing a temporary context from binding to a returned evaluator and documenting the lifetime of the context and synchronous provider views.
+- Confirmed the P1 integration gates are remediated: fixed continuation policies reach the production leaf callback, and deterministic trajectory rotation permits every root seat to act as traverser when reachable within the configured depth.
+
+Remaining limitations for the next milestone:
+
+- Street-transition and board-chance recursion still terminate at the typed leaf-evaluator boundary.
+- The fixed policy leaf adapter consumes blueprint action probabilities and continuation action values supplied by the caller; CPU terminal rollouts across future streets are not connected yet.
+- Traversal remains logically worker-partitioned and deterministic but is not dispatched concurrently.
+- Continuation-policy profile selection across all active seats and common-random-number rollout batches remain to be implemented.
+- Profile public-state admission, child descriptor construction, bucket lookup, terminal settlement, and fixed-order merge before changing their storage or scheduling; these remain the likely allocation and lookup costs.
+
 ---
 
 ## 2. Decisions that must be frozen in the first 24 hours
