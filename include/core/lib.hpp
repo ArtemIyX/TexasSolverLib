@@ -154,6 +154,7 @@ using ::core::MultiwayQualityMetric;
 using ::core::MultiwayQualityDiagnostics;
 using ::core::MultiwayPublicHistoryEntry;
 using ::core::MultiwayPublicBoardChanceEdge;
+using ::core::MultiwaySampledPublicBoardChance;
 using ::core::MultiwayPublicParentEdge;
 using ::core::MultiwayPublicParentEdgeKind;
 using ::core::MultiwayPublicStateDescriptor;

@@ -33,6 +33,11 @@ public:
         const MultiwayPublicBoardChanceEdge& edge,
         std::vector<MultiwayActionDescriptor> child_legal_actions);
 
+    [[nodiscard]] static MultiwayPublicStateDescriptor make_board_chance_child(
+        const MultiwayPublicStateDescriptor& parent,
+        const MultiwaySampledPublicBoardChance& edge,
+        std::vector<MultiwayActionDescriptor> child_legal_actions);
+
     [[nodiscard]] static MultiwayPublicStateDescriptor make_street_transition_child(
         const MultiwayPublicStateDescriptor& parent,
         const MultiwayPublicStreetTransition& transition,

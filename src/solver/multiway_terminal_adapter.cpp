@@ -144,6 +144,34 @@ MultiwaySamplerDealToken MultiwayTerminalAdapter::sample_private_deal(std::uint6
     return MultiwaySamplerDealToken(*coordinator_, std::move(deal));
 }
 
+namespace {
+
+std::uint64_t next_random(std::uint64_t& state) noexcept {
+    state += 0x9e3779b97f4a7c15ULL;
+    auto value = state;
+    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31U);
+}
+
+std::uint64_t sample_bounded(std::uint64_t& state, std::uint64_t bound) noexcept {
+    const auto threshold = (std::uint64_t{0} - bound) % bound;
+    for (;;) {
+        const auto value = next_random(state);
+        if (value >= threshold) return value % bound;
+    }
+}
+
+std::uint64_t choose_two(std::uint64_t count) noexcept {
+    return count < 2U ? 0U : count * (count - 1U) / 2U;
+}
+
+std::uint64_t choose_three(std::uint64_t count) noexcept {
+    return count < 3U ? 0U : count * (count - 1U) * (count - 2U) / 6U;
+}
+
+}  // namespace
+
 std::array<std::uint8_t, 2> MultiwayTerminalAdapter::sampled_hole(
     const MultiwaySamplerDealToken& private_deal,
     PlayerId seat) const {
@@ -285,6 +313,130 @@ std::vector<MultiwayPublicBoardChanceEdge> MultiwayTerminalAdapter::canonical_pu
         successor.chance = edge;
         result.push_back(std::move(successor));
     }
+    return result;
+}
+
+MultiwaySampledPublicBoardChance MultiwayTerminalAdapter::sample_public_board_chance(
+    MultiwayPublicStateId parent_id,
+    const MultiwaySamplerDealToken& private_deal,
+    std::uint64_t& random_state) const {
+    if (parent_id.value == 0U) {
+        throw std::invalid_argument("multiway sampled public chance requires a parent identity");
+    }
+    validate_token(private_deal);
+    const auto& state = require_public_state(parent_id);
+    return sample_public_board_chance_impl(
+        parent_id, state.betting, state.board, private_deal.deal_, random_state);
+}
+
+MultiwaySampledPublicBoardChance MultiwayTerminalAdapter::sample_public_board_chance_impl(
+    MultiwayPublicStateId parent_id,
+    const MultiwayBettingSnapshot& betting,
+    const std::vector<std::uint8_t>& board,
+    const MultiwayJointPrivateSample& private_deal,
+    std::uint64_t& random_state) const {
+    const auto state = validate_root_consistent_state(root_, betting, board);
+    validate_private_deal(root_, board, private_deal);
+    const auto kind = state.next_node_kind();
+    if (kind != MultiwayNextNodeKind::BoardRunout &&
+        kind != MultiwayNextNodeKind::StreetTransition) {
+        throw std::logic_error("multiway sampled board chance is unavailable for this betting state");
+    }
+
+    return sample_validated_public_board_chance(
+        parent_id, state.street(), kind, board, private_deal, random_state);
+}
+
+MultiwaySampledPublicBoardChance MultiwayTerminalAdapter::sample_admitted_public_board_chance(
+    const MultiwayPublicStateDescriptor& parent,
+    const MultiwaySamplerDealToken& private_deal,
+    std::uint64_t& random_state) const {
+    validate_token(private_deal);
+    const auto kind = parent.board_runout.chance_only_runout
+        ? MultiwayNextNodeKind::BoardRunout
+        : MultiwayNextNodeKind::StreetTransition;
+    return sample_validated_public_board_chance(
+        parent.id, parent.betting.street, kind, parent.board, private_deal.deal_, random_state);
+}
+
+MultiwaySampledPublicBoardChance MultiwayTerminalAdapter::sample_validated_public_board_chance(
+    MultiwayPublicStateId parent_id,
+    Street street,
+    MultiwayNextNodeKind kind,
+    const std::vector<std::uint8_t>& board,
+    const MultiwayJointPrivateSample& private_deal,
+    std::uint64_t& random_state) const {
+
+    const auto expected_current_board = board_card_count(street);
+    const auto maximum_board_cards = kind == MultiwayNextNodeKind::BoardRunout
+        ? std::uint8_t{5}
+        : board_card_count(next_street(street));
+    if (board.size() < expected_current_board || board.size() >= maximum_board_cards) {
+        throw std::invalid_argument("multiway sampled board chance has an invalid board boundary");
+    }
+
+    std::array<bool, 64> used{};
+    for (const auto card : board) used[card] = true;
+    for (const auto& hole : private_deal.holes) {
+        used[hole[0]] = true;
+        used[hole[1]] = true;
+    }
+    std::array<std::uint8_t, 52> available{};
+    std::size_t available_count = 0;
+    for (std::uint8_t card = 0; card < used.size(); ++card) {
+        if (is_valid_card(card) && !used[card]) available[available_count++] = card;
+    }
+    const auto cards_to_deal = street == Street::Preflop && board.empty() ? 3U : 1U;
+    if (available_count < cards_to_deal) {
+        throw std::invalid_argument("multiway sampled board chance has too few available cards");
+    }
+    const auto outcome_count = cards_to_deal == 3U
+        ? choose_three(available_count)
+        : static_cast<std::uint64_t>(available_count);
+    auto outcome = sample_bounded(random_state, outcome_count);
+
+    MultiwaySampledPublicBoardChance result;
+    result.parent_id = parent_id;
+    result.dealt_card_count = static_cast<std::uint8_t>(cards_to_deal);
+    result.board_count = static_cast<std::uint8_t>(board.size() + cards_to_deal);
+    result.board_runout = {
+        static_cast<std::uint8_t>(5U - result.board_count),
+        kind == MultiwayNextNodeKind::BoardRunout,
+    };
+    result.probability = 1.0 / static_cast<Probability>(outcome_count);
+    std::copy(board.begin(), board.end(), result.board.begin());
+    if (cards_to_deal == 1U) {
+        result.dealt_cards[0] = available[static_cast<std::size_t>(outcome)];
+    } else {
+        std::size_t first = 0;
+        for (; first + 2U < available_count; ++first) {
+            const auto block = choose_two(available_count - first - 1U);
+            if (outcome < block) break;
+            outcome -= block;
+        }
+        std::size_t second = first + 1U;
+        for (; second + 1U < available_count; ++second) {
+            const auto block = available_count - second - 1U;
+            if (outcome < block) break;
+            outcome -= block;
+        }
+        const auto third = second + 1U + static_cast<std::size_t>(outcome);
+        result.dealt_cards = {available[first], available[second], available[third]};
+    }
+    std::copy_n(
+        result.dealt_cards.begin(),
+        result.dealt_card_count,
+        result.board.begin() + board.size());
+    return result;
+}
+
+MultiwayPublicStreetTransition MultiwayTerminalAdapter::apply_admitted_public_street_transition(
+    const MultiwayPublicStateDescriptor& parent) const {
+    MultiwayPublicStreetTransition result;
+    result.parent_id = parent.id;
+    result.incoming_edge.kind = MultiwayPublicParentEdgeKind::StreetTransition;
+    result.transition = apply_street_transition_impl(parent.betting, parent.board);
+    result.incoming_edge.transition_board = result.transition.board;
     return result;
 }
 

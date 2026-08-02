@@ -42,6 +42,18 @@ struct MultiwayPublicStreetTransition {
     MultiwayStreetTransition transition{};
 };
 
+// One directly sampled public chance edge. Fixed storage avoids materializing
+// the complete chance menu in traversal. Flop cards are canonical sorted.
+struct MultiwaySampledPublicBoardChance {
+    MultiwayPublicStateId parent_id{};
+    std::array<std::uint8_t, 3> dealt_cards{};
+    std::uint8_t dealt_card_count = 0;
+    std::array<std::uint8_t, 5> board{};
+    std::uint8_t board_count = 0;
+    MultiwayBoardRunoutState board_runout{};
+    Probability probability = 0.0;
+};
+
 struct MultiwayPrivateSamplingReach {
     Probability chance_reach = 0.0;
     Probability proposal_reach = 0.0;
@@ -99,6 +111,13 @@ public:
         MultiwayPublicStateId parent_id,
         const MultiwaySamplerDealToken& private_deal) const;
 
+    // Samples one canonical outcome without building the full edge list.
+    // random_state is caller-owned trajectory state and advances only here.
+    [[nodiscard]] MultiwaySampledPublicBoardChance sample_public_board_chance(
+        MultiwayPublicStateId parent_id,
+        const MultiwaySamplerDealToken& private_deal,
+        std::uint64_t& random_state) const;
+
     // Applies the root's fixed next-street seat. The supplied board must be
     // exactly complete for the immediately following street.
     [[nodiscard]] MultiwayStreetTransition apply_street_transition(
@@ -114,6 +133,14 @@ public:
         const MultiwaySamplerDealToken& private_deal) const;
 
 private:
+    friend class MultiwayRootExternalSamplingTraversal;
+
+    [[nodiscard]] MultiwaySampledPublicBoardChance sample_admitted_public_board_chance(
+        const MultiwayPublicStateDescriptor& parent,
+        const MultiwaySamplerDealToken& private_deal,
+        std::uint64_t& random_state) const;
+    [[nodiscard]] MultiwayPublicStreetTransition apply_admitted_public_street_transition(
+        const MultiwayPublicStateDescriptor& parent) const;
     [[nodiscard]] const MultiwayPublicStateDescriptor& require_public_state(
         MultiwayPublicStateId id) const;
     void validate_token(const MultiwaySamplerDealToken& token) const;
@@ -122,6 +149,19 @@ private:
         const MultiwayBettingSnapshot& betting,
         const std::vector<std::uint8_t>& board,
         const MultiwayJointPrivateSample& private_deal) const;
+    [[nodiscard]] MultiwaySampledPublicBoardChance sample_public_board_chance_impl(
+        MultiwayPublicStateId parent_id,
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<std::uint8_t>& board,
+        const MultiwayJointPrivateSample& private_deal,
+        std::uint64_t& random_state) const;
+    [[nodiscard]] MultiwaySampledPublicBoardChance sample_validated_public_board_chance(
+        MultiwayPublicStateId parent_id,
+        Street street,
+        MultiwayNextNodeKind kind,
+        const std::vector<std::uint8_t>& board,
+        const MultiwayJointPrivateSample& private_deal,
+        std::uint64_t& random_state) const;
     [[nodiscard]] MultiwayStreetTransition apply_street_transition_impl(
         const MultiwayBettingSnapshot& betting,
         const std::vector<std::uint8_t>& board) const;

@@ -1,5 +1,6 @@
 #include "solver/multiway_public_builder.hpp"
 
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -175,6 +176,36 @@ MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_board_chance_child(
     child.id = {stable_public_state_id(child.betting, child.board, child.history, child.legal_actions)};
     if (child.id == parent.id) {
         throw std::logic_error("multiway public builder produced a duplicate chance identity");
+    }
+    return child;
+}
+
+MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_board_chance_child(
+    const MultiwayPublicStateDescriptor& parent,
+    const MultiwaySampledPublicBoardChance& edge,
+    std::vector<MultiwayActionDescriptor> child_legal_actions) {
+    if (edge.parent_id != parent.id ||
+        (edge.dealt_card_count != 1U && edge.dealt_card_count != 3U) ||
+        edge.board_count == 0U || edge.board_count > edge.board.size() ||
+        edge.dealt_card_count > edge.board_count ||
+        !std::isfinite(edge.probability) || edge.probability <= 0.0 || edge.probability > 1.0) {
+        throw std::invalid_argument("multiway public builder sampled chance edge is invalid");
+    }
+    MultiwayPublicStateDescriptor child;
+    child.parent_id = parent.id;
+    child.incoming_edge.kind = MultiwayPublicParentEdgeKind::BoardChance;
+    child.incoming_edge.dealt_card = edge.dealt_cards[0];
+    child.incoming_edge.dealt_cards.assign(
+        edge.dealt_cards.begin(), edge.dealt_cards.begin() + edge.dealt_card_count);
+    child.betting = parent.betting;
+    child.board.assign(edge.board.begin(), edge.board.begin() + edge.board_count);
+    child.board_runout = edge.board_runout;
+    child.history = parent.history;
+    child.legal_actions = std::move(child_legal_actions);
+    child.canonical_history_id = child_history_id(parent, child.incoming_edge);
+    child.id = {stable_public_state_id(child.betting, child.board, child.history, child.legal_actions)};
+    if (child.id == parent.id) {
+        throw std::logic_error("multiway public builder produced a duplicate sampled chance identity");
     }
     return child;
 }
