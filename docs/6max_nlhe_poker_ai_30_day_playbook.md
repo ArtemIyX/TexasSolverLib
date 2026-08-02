@@ -31,7 +31,7 @@ The central strategic idea is:
 
 There is no credible guarantee of winning. Six-player cash poker is a general-sum imperfect-information game, and standard CFR convergence guarantees do not extend cleanly from two-player zero-sum games. The goal is therefore empirical robustness, low exploitability in reduced games, and strong cross-play—not a mathematically certified 6-player Nash equilibrium.
 
-### Implementation progress: bounded same-street traversal
+### Implementation progress: bounded lazy multi-street traversal
 
 Completed production substeps:
 
@@ -47,9 +47,20 @@ Completed production substeps:
 - Removed per-node strategy, action-value, reach, request, and CFR-delta heap allocations from recursive traversal by using caller-owned fixed buffers and direct bounded delta emission.
 - Reused one terminal adapter per traversal and one reconstructed betting state per visited node while preserving trajectory seeding and fixed-order merge semantics.
 - Added dedicated continuation-policy and recursive same-street traversal test files covering all four profiles, validation and normalization, caller-owned continuation-leaf views and provider failures, depth bounds and cutoff, valid opponent traversers, deterministic batch seat rotation, lazy admission, opponent sampling, terminal and leaf paths, and capacity rollback. Test code was written and statically inspected; tests were not executed.
+- Added dedicated direct public-chance sampler and cross-street traversal test files covering deterministic paths, distinct seeds, collision exclusion, canonical flop combinations and exact probabilities, single-card turn/river sampling, bounded chance depth and action-menu width, oversized root-menu rejection before row admission, lazy chance/transition admission, next-street bucket traversal and reach cancellation, all-in runouts to exact river terminals, and cross-street rollback. Test code was written and statically inspected; tests were not executed.
+- Added deterministic direct public-chance sampling without enumerating the legal chance menu, using fixed-size scratch, collision exclusion, unbiased bounded selection, sorted three-card flop combinations, and exact `1 / C(n,k)` probability metadata.
+- Extended lazy traversal across action, sampled chance, and street-transition children with next-street action abstraction and bucket lookup.
+- Propagated sampled public chance into both chance reach and proposal reach exactly once, with branch-local restoration before sibling traversal.
+- Added configurable zero-through-three public chance boundaries while keeping the constructor source-compatible; zero retains typed-leaf behavior at strategic street boundaries.
+- Made all-in board runouts bypass strategic cutoffs, sample through the river, and settle with the exact terminal adapter.
+- Kept the sampled chance hot path allocation-free, bypassed redundant coordinator lookup and full root/private validation for already-admitted traversal states, removed a duplicate chance-state reconstruction, and replaced recursive overflow vectors with fixed eight-entry strategy/value scratch.
 
 Completed review substep:
 
+- Statically reviewed direct bounded RNG, canonical flop unranking, exact chance probabilities, collision filtering, chance/proposal reach cancellation, action/chance depth boundaries, typed admission order, regular transitions, all-in runouts, future bucket lookup, rollback, arbitrary-seat traversal, admitted-state fast paths, inline action scratch, API compatibility, and dedicated test assumptions. No build, compile, or test command was run.
+- Confirmed the direct preflop sampler fixture is valid: six fixed private cards leave 46 available cards, giving `C(46,3) = 15180` canonical flop outcomes; turn and river fixtures correctly leave 43 and 42 cards.
+- Remediated the recursive scratch P2: the production abstraction needs at most five actions and one exact off-tree insertion needs at most six, so traversal now enforces an explicit eight-action compact limit at the root and before admitting lazily generated menus.
+- Final static re-review confirmed oversized root menus fail before sparse-row admission or sampling, generated menus fail before child admission, fixed strategy/value recursion scratch performs no heap allocation, and chance/traversal reach math is unchanged. Persistent vector-backed menu and public-descriptor construction remains the separately documented allocation target. No build, compile, or test command was run.
 - Statically re-reviewed external-sampling reach math, nested reach restoration, arbitrary-seat traversal, deterministic batch rotation, recursion bounds, continuation leaf data flow, API compatibility, and dedicated test compile plausibility. No build, compile, or test command was run.
 - Confirmed sampled opponent reach and proposal reach are retained until a nested traverser update, traverser reach is restored after action enumeration, sampled-branch reach is restored on return, and rejected trajectories rewind all emitted deltas.
 - Fixed the continuation evaluator factory to accept an explicit caller-owned context pointer, preventing a temporary context from binding to a returned evaluator and documenting the lifetime of the context and synchronous provider views.
@@ -57,10 +68,13 @@ Completed review substep:
 
 Remaining limitations for the next milestone:
 
-- Street-transition and board-chance recursion still terminate at the typed leaf-evaluator boundary.
+- Regular street-transition recursion is opt-in through `max_public_chance_depth`; its default remains zero for compatibility.
+- Future-street traversal requires the bucket registry to contain the sampled canonical board tables it may visit.
+- Custom root or generated action menus above eight entries are rejected by the compact traversal boundary.
 - The fixed policy leaf adapter consumes blueprint action probabilities and continuation action values supplied by the caller; CPU terminal rollouts across future streets are not connected yet.
 - Traversal remains logically worker-partitioned and deterministic but is not dispatched concurrently.
 - Continuation-policy profile selection across all active seats and common-random-number rollout batches remain to be implemented.
+- Profile persistent public-descriptor construction/admission before replacing its vector-backed board, history, and edge payloads with arena-backed compact records.
 - Profile public-state admission, child descriptor construction, bucket lookup, terminal settlement, and fixed-order merge before changing their storage or scheduling; these remain the likely allocation and lookup costs.
 
 ---
