@@ -16,6 +16,7 @@
 #include "solver/multiway_scheduler.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
+#include "solver/multiway_continuation_policy.hpp"
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_blueprint_query.hpp"
@@ -91,6 +92,11 @@ using ::core::MultiwayRootBatchResult;
 using ::core::MultiwayRootBatchRunner;
 using ::core::MultiwayLeafEvaluationRequest;
 using ::core::MultiwayLeafEvaluator;
+using ::core::MultiwayContinuationPolicyKind;
+using ::core::MultiwayFixedContinuationPolicy;
+using ::core::MultiwayContinuationLeafContext;
+using ::core::MultiwayContinuationLeafData;
+using ::core::make_multiway_fixed_continuation_leaf_evaluator;
 using ::core::MultiwayBlueprintSnapshot;
 using ::core::export_multiway_root_snapshot;
 using ::core::MultiwayBlueprintTrainer;
