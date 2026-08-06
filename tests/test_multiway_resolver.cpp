@@ -18,7 +18,7 @@ struct ResolverFixture {
         : identity(core::make_multiway_model_identity(core::MultiwayBlueprintConfig{})),
           root(make_root()),
           buckets(core::build_multiway_baseline_bucket_registry(
-              identity, {{core::Street::Flop, {2U, 9U, 17U}}})) {}
+              identity, {{core::Street::Flop, {8U, 13U, 17U}}})) {}
 
     static core::MultiwayPublicStateDescriptor make_root() {
         core::MultiwayGameConfig config;
@@ -30,7 +30,7 @@ struct ResolverFixture {
         config.street = core::Street::Flop;
         const auto state = core::MultiwayState::initial(config);
         const auto menu = core::MultiwayActionAbstraction().make_legal_actions(state.snapshot(), 91U);
-        return core::MultiwayPublicBuilder::make_root(state.snapshot(), {2U, 9U, 17U}, menu);
+        return core::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     }
 
     core::MultiwayResolverRequest request() const {
@@ -92,9 +92,9 @@ TEST_CASE(multiway_resolver_distinguishes_anonymous_and_blockers_only_ranges) {
     auto request = fixture.request();
     request.opponent_ranges.resize(2U);
     request.opponent_ranges[0].seat = 1;
-    request.opponent_ranges[0].hands.push_back({{7U, 8U}, 1.0});
+    request.opponent_ranges[0].hands.push_back({{36U, 37U}, 1.0});
     request.opponent_ranges[1].seat = 2;
-    request.opponent_ranges[1].hands.push_back({{10U, 11U}, 1.0});
+    request.opponent_ranges[1].hands.push_back({{40U, 41U}, 1.0});
     auto resolver = fixture.resolver();
     const auto anonymous = resolver.resolve(request);
     request.inference_mode = core::MultiwayInferenceMode::BlockersOnly;
@@ -113,7 +113,7 @@ TEST_CASE(multiway_resolver_preserves_an_exact_off_tree_root_action) {
     const auto state = core::MultiwayState::from_snapshot(fixture.root.betting);
     const auto menu = core::MultiwayActionAbstraction::insert_exact_observed_action(
         state.snapshot(), fixture.root.legal_actions, core::MultiwayAction::Bet, 650, 91U);
-    fixture.root = core::MultiwayPublicBuilder::make_root(state.snapshot(), {2U, 9U, 17U}, menu);
+    fixture.root = core::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     auto resolver = fixture.resolver();
     const auto result = resolver.resolve(fixture.request());
 
