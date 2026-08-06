@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -354,7 +355,13 @@ public:
 
     void admit_public_state(const MultiwayPublicStateDescriptor& state);
     void admit_infoset_row(const MultiwaySparseRowShape& shape);
+    void regret_matched_strategy_into(
+        MultiwayInfosetId infoset,
+        std::uint32_t bucket,
+        Probability* output,
+        std::size_t output_size) const;
     void merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams);
+    void merge_worker_streams(const std::vector<const MultiwayWorkerDeltaStream*>& streams);
 
     [[nodiscard]] MultiwayRootPolicy export_root_policy() const;
     [[nodiscard]] MultiwayRootPolicy export_root_current_policy() const;
@@ -376,6 +383,7 @@ private:
     MultiwaySparseRowStorage storage_;
     std::vector<MultiwayPublicStateDescriptor> public_states_;
     MultiwaySolveDiagnostics diagnostics_;
+    mutable std::mutex traversal_mutex_;
 };
 
 }  // namespace core

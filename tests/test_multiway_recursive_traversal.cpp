@@ -71,9 +71,11 @@ core::MultiwayRootSnapshot make_root(const core::MultiwayActionAbstraction& abst
     return root;
 }
 
-core::MultiwaySolverLimits make_limits(std::size_t delta_capacity = 128U) {
+core::MultiwaySolverLimits make_limits(
+    std::size_t delta_capacity = 128U,
+    std::uint32_t worker_count = 1U) {
     core::MultiwaySolverLimits limits;
-    limits.worker_count = 1U;
+    limits.worker_count = worker_count;
     limits.trajectories_per_batch = 8U;
     limits.max_public_states = 128U;
     limits.max_sparse_rows = 32U;
@@ -113,6 +115,34 @@ core::Value probe_leaf(
     return static_cast<core::Value>(request.betting->contributions[traverser] -
                                     request.betting->current_bet);
 }
+
+core::Value deterministic_leaf(
+    const core::MultiwayLeafEvaluationRequest& request,
+    const void*) noexcept {
+    const auto traverser = static_cast<std::size_t>(request.traverser);
+    return static_cast<core::Value>(
+        request.betting->contributions[traverser] - request.betting->current_bet);
+}
+
+struct ParallelRunnerFixture {
+    explicit ParallelRunnerFixture(std::uint32_t worker_count)
+        : root(make_root(abstraction)),
+          request(root, make_cfr(), make_limits(1024U, worker_count)),
+          coordinator(request),
+          buckets(make_buckets()),
+          evaluator{deterministic_leaf, nullptr},
+          traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U),
+          runner(traversal, coordinator, worker_count, 1024U) {}
+
+    core::MultiwayActionAbstraction abstraction;
+    core::MultiwayRootSnapshot root;
+    core::MultiwaySolveRequest request;
+    core::MultiwaySolverCoordinator coordinator;
+    core::MultiwayBucketRegistry buckets;
+    core::MultiwayLeafEvaluator evaluator;
+    core::MultiwayRootExternalSamplingTraversal traversal;
+    core::MultiwayRootBatchRunner runner;
+};
 
 struct TraversalFixture {
     explicit TraversalFixture(
@@ -270,6 +300,60 @@ TEST_CASE(multiway_recursive_batch_rotates_traversers_deterministically_across_s
     EXPECT_EQ(result.trajectories_discarded, 0U);
     EXPECT_TRUE(result.delta_entries_merged > 0U);
     EXPECT_TRUE(fixture.coordinator.storage().row_count() >= 3U);
+    EXPECT_EQ(
+        fixture.coordinator.diagnostics().worker_delta_entries_merged,
+        result.delta_entries_merged);
+}
+
+TEST_CASE(multiway_root_batch_runner_partitions_workers_and_merges_in_fixed_order) {
+    ParallelRunnerFixture fixture(3U);
+    const auto result = fixture.runner.run(100U, 7U, 0x5eedU);
+
+    EXPECT_EQ(result.trajectories_attempted, 7U);
+    EXPECT_EQ(result.trajectories_accepted + result.trajectories_discarded, 7U);
+    EXPECT_TRUE(result.delta_entries_merged > 0U);
+    EXPECT_EQ(
+        fixture.coordinator.diagnostics().worker_delta_entries_merged,
+        result.delta_entries_merged);
+}
+
+TEST_CASE(multiway_root_batch_runner_is_deterministic_across_worker_partitions) {
+    ParallelRunnerFixture single_worker(1U);
+    ParallelRunnerFixture three_workers(3U);
+
+    const auto expected = single_worker.runner.run(50U, 6U, 0x1234U);
+    const auto actual = three_workers.runner.run(50U, 6U, 0x1234U);
+    EXPECT_EQ(expected.trajectories_attempted, actual.trajectories_attempted);
+    EXPECT_EQ(expected.trajectories_accepted, actual.trajectories_accepted);
+    EXPECT_EQ(expected.trajectories_discarded, actual.trajectories_discarded);
+    EXPECT_EQ(expected.delta_entries_merged, actual.delta_entries_merged);
+
+    const auto expected_policy = single_worker.coordinator.export_root_policy();
+    const auto actual_policy = three_workers.coordinator.export_root_policy();
+    EXPECT_EQ(expected_policy.actions.size(), actual_policy.actions.size());
+    for (std::size_t action = 0; action < expected_policy.actions.size(); ++action) {
+        EXPECT_EQ(expected_policy.actions[action].action, actual_policy.actions[action].action);
+        EXPECT_NEAR(
+            expected_policy.actions[action].probability,
+            actual_policy.actions[action].probability,
+            1e-12);
+    }
+}
+
+TEST_CASE(multiway_root_batch_runner_rethrows_worker_failure_without_merging) {
+    ParallelRunnerFixture fixture(2U);
+    fixture.runner.set_test_worker_failure_for_testing(1);
+
+    EXPECT_THROW(fixture.runner.run(0U, 4U, 0x99U), std::runtime_error);
+    EXPECT_EQ(fixture.coordinator.diagnostics().worker_delta_entries_merged, 0U);
+}
+
+TEST_CASE(multiway_root_batch_runner_one_worker_remains_compatible) {
+    ParallelRunnerFixture fixture(1U);
+    const auto result = fixture.runner.run(0U, 3U, 0x77U);
+
+    EXPECT_EQ(result.trajectories_attempted, 3U);
+    EXPECT_EQ(result.trajectories_accepted + result.trajectories_discarded, 3U);
     EXPECT_EQ(
         fixture.coordinator.diagnostics().worker_delta_entries_merged,
         result.delta_entries_merged);

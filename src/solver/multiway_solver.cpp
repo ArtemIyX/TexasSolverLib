@@ -560,10 +560,12 @@ MultiwaySolveResult::MultiwaySolveResult(
 MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest& request)
     : request_(request),
       storage_(request.limits().max_sparse_rows, request.limits().max_sparse_values) {
+    public_states_.reserve(request.limits().max_public_states);
     admit_public_state(request_.root().public_state);
 }
 
 void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDescriptor& state) {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
     validate_public_state_descriptor(state);
     const auto existing = public_state(state.id);
     if (existing != nullptr) {
@@ -589,6 +591,7 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
 }
 
 void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape) {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
     if (!storage_.has_row(shape.infoset) &&
         storage_.row_count() >= request_.limits().max_sparse_rows) {
         throw std::length_error("multiway sparse row admission exceeds configured capacity");
@@ -615,28 +618,47 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
     if (!existed) ++diagnostics_.sparse_rows_admitted;
 }
 
+void MultiwaySolverCoordinator::regret_matched_strategy_into(
+    MultiwayInfosetId infoset,
+    std::uint32_t bucket,
+    Probability* output,
+    std::size_t output_size) const {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    storage_.regret_matched_strategy_into(infoset, bucket, output, output_size);
+}
+
 void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams) {
+    std::vector<const MultiwayWorkerDeltaStream*> stream_views;
+    stream_views.reserve(streams.size());
+    for (const auto& stream : streams) stream_views.push_back(&stream);
+    merge_worker_streams(stream_views);
+}
+
+void MultiwaySolverCoordinator::merge_worker_streams(
+    const std::vector<const MultiwayWorkerDeltaStream*>& streams) {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
     if (streams.size() != request_.limits().worker_count) {
         throw std::invalid_argument("multiway merge requires one stream for every configured worker");
     }
 
     std::size_t delta_count = 0;
     for (std::size_t worker = 0; worker < streams.size(); ++worker) {
-        const auto& stream = streams[worker];
-        if (stream.worker_index() != worker || stream.size() > request_.limits().max_worker_delta_entries ||
-            !stream.is_fixed_order()) {
+        const auto* stream = streams[worker];
+        if (stream == nullptr || stream->worker_index() != worker ||
+            stream->size() > request_.limits().max_worker_delta_entries ||
+            !stream->is_fixed_order()) {
             throw std::invalid_argument("multiway worker streams must be bounded and in fixed worker/row/action order");
         }
-        if (stream.size() > std::numeric_limits<std::size_t>::max() - delta_count) {
+        if (stream->size() > std::numeric_limits<std::size_t>::max() - delta_count) {
             throw std::overflow_error("multiway worker delta count overflows size_t");
         }
-        delta_count += stream.size();
+        delta_count += stream->size();
     }
 
     std::vector<MultiwayWorkerDelta> deltas;
     deltas.reserve(delta_count);
-    for (const auto& stream : streams) {
-        deltas.insert(deltas.end(), stream.deltas().begin(), stream.deltas().end());
+    for (const auto* stream : streams) {
+        deltas.insert(deltas.end(), stream->deltas().begin(), stream->deltas().end());
     }
     std::sort(deltas.begin(), deltas.end(), delta_less);
 

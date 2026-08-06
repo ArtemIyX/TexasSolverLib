@@ -488,6 +488,13 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal(
     return resolve_terminal_impl(state.betting, state.board, private_deal.deal_);
 }
 
+MultiwayTerminalResult MultiwayTerminalAdapter::resolve_admitted_terminal(
+    const MultiwayPublicStateDescriptor& state,
+    const MultiwaySamplerDealToken& private_deal) const {
+    validate_token(private_deal);
+    return resolve_terminal_impl(state.betting, state.board, private_deal.deal_);
+}
+
 MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board,

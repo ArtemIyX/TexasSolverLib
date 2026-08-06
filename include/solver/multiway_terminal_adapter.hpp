@@ -141,6 +141,9 @@ private:
         std::uint64_t& random_state) const;
     [[nodiscard]] MultiwayPublicStreetTransition apply_admitted_public_street_transition(
         const MultiwayPublicStateDescriptor& parent) const;
+    [[nodiscard]] MultiwayTerminalResult resolve_admitted_terminal(
+        const MultiwayPublicStateDescriptor& state,
+        const MultiwaySamplerDealToken& private_deal) const;
     [[nodiscard]] const MultiwayPublicStateDescriptor& require_public_state(
         MultiwayPublicStateId id) const;
     void validate_token(const MultiwaySamplerDealToken& token) const;

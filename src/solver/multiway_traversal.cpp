@@ -1,9 +1,14 @@
 #include "solver/multiway_traversal.hpp"
+#include "util/thread_join_guard.hpp"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
+#include <exception>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace core {
@@ -210,7 +215,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     const MultiwayPublicStateDescriptor& state,
     std::uint32_t decision_depth,
     std::uint32_t public_chance_depth,
-    TraversalContext& context) {
+    TraversalContext& context) const {
     if (!context.accepted) return 0.0;
     const auto actor = state.betting.current_player;
     if (actor < 0 || state.legal_actions.empty()) {
@@ -229,7 +234,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         static_cast<std::uint8_t>(action_count),
     });
     std::array<Probability, MULTIWAY_MAX_TRAVERSAL_ACTIONS> strategy{};
-    coordinator_->storage().regret_matched_strategy_into(
+    coordinator_->regret_matched_strategy_into(
         infoset, bucket, strategy.data(), action_count);
     const auto betting_state = MultiwayState::from_snapshot(state.betting);
 
@@ -250,7 +255,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             state, static_cast<std::uint32_t>(action), std::move(child_actions));
         coordinator_->admit_public_state(child);
         if (next.is_terminal()) {
-            return context.terminal->resolve_terminal(child.id, *context.deal)
+            return context.terminal->resolve_admitted_terminal(child, *context.deal)
                 .utilities[static_cast<std::size_t>(context.traverser)];
         }
         const auto next_depth = decision_depth + 1U;
@@ -324,7 +329,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
     const MultiwayPublicStateDescriptor& state,
     std::uint32_t decision_depth,
     std::uint32_t public_chance_depth,
-    TraversalContext& context) {
+    TraversalContext& context) const {
     const auto sampled = context.terminal->sample_admitted_public_board_chance(
         state, *context.deal, context.random_state);
     const auto chance_child = MultiwayPublicBuilder::make_board_chance_child(
@@ -340,7 +345,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
     Value value = 0.0;
     if (chance_child.board_runout.chance_only_runout) {
         if (chance_child.board.size() == 5U) {
-            value = context.terminal->resolve_terminal(chance_child.id, *context.deal)
+            value = context.terminal->resolve_admitted_terminal(chance_child, *context.deal)
                 .utilities[static_cast<std::size_t>(context.traverser)];
         } else {
             value = traverse_public_chance(
@@ -376,7 +381,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     std::uint64_t trajectory_id,
     std::uint64_t seed,
     MultiwayWorkerDeltaStream& stream,
-    double iteration_weight) {
+    double iteration_weight) const {
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -430,6 +435,17 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
         worker_delta_capacity_ > coordinator.limits().max_worker_delta_entries) {
         throw std::invalid_argument("multiway root batch runner limits must fit its coordinator");
     }
+    worker_scratch_.reserve(worker_count_);
+    worker_stream_views_.reserve(worker_count_);
+    for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
+        worker_scratch_.emplace_back(worker, worker_delta_capacity_);
+        worker_stream_views_.push_back(&worker_scratch_.back().stream);
+    }
+}
+
+void MultiwayRootBatchRunner::set_test_worker_failure_for_testing(
+    std::int32_t worker_index) noexcept {
+    test_worker_failure_index_ = worker_index;
 }
 
 MultiwayRootBatchResult MultiwayRootBatchRunner::run(
@@ -440,33 +456,66 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
         throw std::invalid_argument("multiway batch iteration weight must be finite and positive");
     }
-    MultiwayRootBatchResult result;
     const auto batches = MultiwayScheduler::partition_deterministic(trajectory_count, worker_count_);
-    std::vector<MultiwayWorkerDeltaStream> streams;
-    streams.reserve(worker_count_);
-    for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
-        streams.emplace_back(worker, worker_delta_capacity_);
-    }
-    for (const auto& batch : batches) {
-        auto& stream = streams[batch.worker_index];
-        for (auto local_id = batch.trajectories.begin; local_id < batch.trajectories.end; ++local_id) {
-            const auto trajectory_id = first_trajectory_id + local_id;
-            ++result.trajectories_attempted;
-            if (traversal_.run(
-                    traversal_.traverser_for_trajectory(trajectory_id),
-                    trajectory_id,
-                    mix_seed(seed, trajectory_id),
-                    stream,
-                    iteration_weight)) {
-                ++result.trajectories_accepted;
-            } else {
-                ++result.trajectories_discarded;
+    for (auto& scratch : worker_scratch_) scratch.reset();
+
+    std::atomic<bool> cancelled{false};
+    std::exception_ptr worker_error;
+    std::mutex worker_error_mutex;
+    const auto execute_worker = [&](std::size_t worker_index) {
+        try {
+            if (cancelled.load(std::memory_order_acquire)) return;
+            if (test_worker_failure_index_ == static_cast<std::int32_t>(worker_index)) {
+                throw std::runtime_error("injected multiway root batch worker failure");
             }
+            const auto& batch = batches[worker_index];
+            auto& scratch = worker_scratch_[worker_index];
+            for (auto local_id = batch.trajectories.begin;
+                 local_id < batch.trajectories.end;
+                 ++local_id) {
+                if (cancelled.load(std::memory_order_acquire)) return;
+                const auto trajectory_id = first_trajectory_id + local_id;
+                ++scratch.attempted;
+                if (traversal_.run(
+                        traversal_.traverser_for_trajectory(trajectory_id),
+                        trajectory_id,
+                        mix_seed(seed, trajectory_id),
+                        scratch.stream,
+                        iteration_weight)) {
+                    ++scratch.accepted;
+                } else {
+                    ++scratch.discarded;
+                }
+            }
+            scratch.stream.sort_fixed_order();
+        } catch (...) {
+            cancelled.store(true, std::memory_order_release);
+            std::lock_guard<std::mutex> lock(worker_error_mutex);
+            if (worker_error == nullptr) worker_error = std::current_exception();
         }
-        stream.sort_fixed_order();
-        result.delta_entries_merged += stream.size();
+    };
+
+    std::vector<std::thread> threads;
+    threads.reserve(batches.size() > 0U ? batches.size() - 1U : 0U);
+    auto thread_guard = detail::make_thread_join_guard(
+        threads,
+        [&cancelled] { cancelled.store(true, std::memory_order_release); });
+    for (std::size_t worker = 1U; worker < batches.size(); ++worker) {
+        threads.emplace_back(execute_worker, worker);
     }
-    coordinator_->merge_worker_streams(streams);
+    if (!batches.empty()) execute_worker(0U);
+    for (auto& thread : threads) thread.join();
+    thread_guard.release();
+    if (worker_error != nullptr) std::rethrow_exception(worker_error);
+
+    MultiwayRootBatchResult result;
+    for (const auto& scratch : worker_scratch_) {
+        result.trajectories_attempted += scratch.attempted;
+        result.trajectories_accepted += scratch.accepted;
+        result.trajectories_discarded += scratch.discarded;
+        result.delta_entries_merged += scratch.stream.size();
+    }
+    coordinator_->merge_worker_streams(worker_stream_views_);
     return result;
 }
 

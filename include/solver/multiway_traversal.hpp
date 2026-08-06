@@ -53,7 +53,7 @@ public:
         std::uint64_t trajectory_id,
         std::uint64_t seed,
         MultiwayWorkerDeltaStream& stream,
-        double iteration_weight = 1.0);
+        double iteration_weight = 1.0) const;
 
     [[nodiscard]] PlayerId root_traverser() const noexcept {
         return root_->public_state.betting.current_player;
@@ -71,13 +71,13 @@ private:
         const MultiwayPublicStateDescriptor& state,
         std::uint32_t decision_depth,
         std::uint32_t public_chance_depth,
-        TraversalContext& context);
+        TraversalContext& context) const;
 
     [[nodiscard]] Value traverse_public_chance(
         const MultiwayPublicStateDescriptor& state,
         std::uint32_t decision_depth,
         std::uint32_t public_chance_depth,
-        TraversalContext& context);
+        TraversalContext& context) const;
 
     [[nodiscard]] Value evaluate_leaf(
         const MultiwayPublicStateDescriptor& state,
@@ -117,11 +117,34 @@ public:
         std::uint64_t seed,
         double iteration_weight = 1.0);
 
+    // Test-only failure injection verifies join-before-merge behavior.
+    void set_test_worker_failure_for_testing(std::int32_t worker_index) noexcept;
+
 private:
+    struct WorkerScratch {
+        explicit WorkerScratch(std::size_t worker_index, std::size_t delta_capacity)
+            : stream(worker_index, delta_capacity) {}
+
+        MultiwayWorkerDeltaStream stream;
+        std::uint64_t attempted = 0;
+        std::uint64_t accepted = 0;
+        std::uint64_t discarded = 0;
+
+        void reset() noexcept {
+            stream.rewind(0U);
+            attempted = 0;
+            accepted = 0;
+            discarded = 0;
+        }
+    };
+
     MultiwayRootExternalSamplingTraversal traversal_;
     MultiwaySolverCoordinator* coordinator_ = nullptr;
     std::uint32_t worker_count_ = 0;
     std::size_t worker_delta_capacity_ = 0;
+    std::vector<WorkerScratch> worker_scratch_;
+    std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
+    std::int32_t test_worker_failure_index_ = -1;
 };
 
 }  // namespace core
