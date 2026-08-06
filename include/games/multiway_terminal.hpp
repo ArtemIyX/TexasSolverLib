@@ -8,6 +8,8 @@
 
 namespace core {
 
+struct MultiwayGameRules;
+
 enum class MultiwayValueUnits : std::uint8_t;
 
 // Input to terminal settlement after betting progression has completed.
@@ -62,5 +64,9 @@ MultiwayTerminalResult settle_multiway_terminal(const MultiwayTerminalInput& inp
 MultiwayTerminalResult settle_multiway_terminal(
     const MultiwayTerminalInput& input,
     const MultiwayPotLayout& layout);
+// Applies the validated rules profile's rake policy at the settlement boundary.
+MultiwayTerminalResult settle_multiway_terminal(
+    const MultiwayTerminalInput& input,
+    const MultiwayGameRules& rules);
 
 }  // namespace core

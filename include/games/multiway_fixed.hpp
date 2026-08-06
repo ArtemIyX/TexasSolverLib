@@ -9,6 +9,8 @@
 
 namespace core {
 
+struct MultiwayGameRules;
+
 constexpr std::size_t kMultiwayFixedMaxSeats = 6U;
 constexpr std::size_t kMultiwayFixedMaxActions = 4U;
 
@@ -47,6 +49,9 @@ struct MultiwayFixedState {
 
 // Cold boundary conversion. Hot traversal should retain MultiwayFixedState.
 [[nodiscard]] MultiwayFixedState make_multiway_fixed_state(const MultiwayGameConfig& config);
+[[nodiscard]] MultiwayFixedState make_multiway_fixed_state(
+    const MultiwayGameRules& rules,
+    PlayerId first_player = 0);
 [[nodiscard]] MultiwayFixedState make_multiway_fixed_state(const MultiwayBettingSnapshot& snapshot);
 
 struct MultiwayFixedTerminalInput {
@@ -87,6 +92,13 @@ struct MultiwayFixedTerminalResult {
 // Allocation-free settlement kernel. `scratch` is worker-owned and reusable.
 void settle_multiway_terminal_fixed(
     const MultiwayFixedTerminalInput& input,
+    MultiwayFixedTerminalScratch& scratch,
+    MultiwayFixedTerminalResult& result);
+
+// Applies the validated rules profile's rake policy at the settlement boundary.
+void settle_multiway_terminal_fixed(
+    const MultiwayFixedTerminalInput& input,
+    const MultiwayGameRules& rules,
     MultiwayFixedTerminalScratch& scratch,
     MultiwayFixedTerminalResult& result);
 

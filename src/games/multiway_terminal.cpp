@@ -1,5 +1,7 @@
 #include "games/multiway_terminal.hpp"
 
+#include "games/multiway_rules.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -209,6 +211,18 @@ MultiwayTerminalResult settle_multiway_terminal(
             result.payouts[seat] + result.refunds[seat] - input.contributions[seat]);
     }
     return result;
+}
+
+MultiwayTerminalResult settle_multiway_terminal(
+    const MultiwayTerminalInput& input,
+    const MultiwayGameRules& rules) {
+    rules.validate();
+    if (input.contributions.size() != rules.player_count) {
+        throw std::invalid_argument("multiway terminal input does not match rule seat count");
+    }
+    auto ruled_input = input;
+    ruled_input.rake_policy = rules.rake_policy;
+    return settle_multiway_terminal(ruled_input);
 }
 
 }  // namespace core

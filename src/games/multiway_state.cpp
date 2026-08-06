@@ -1,5 +1,7 @@
 #include "games/multiway_state.hpp"
 
+#include "games/multiway_rules.hpp"
+
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -145,6 +147,10 @@ MultiwayState MultiwayState::initial(const MultiwayGameConfig& config) {
     state.current_player_ = state.next_pending_after(config.first_player - 1);
     state.refresh_round_completion();
     return state;
+}
+
+MultiwayState MultiwayState::initial(const MultiwayGameRules& rules, PlayerId first_player) {
+    return initial(rules.make_initial_game_config(first_player));
 }
 
 MultiwayState MultiwayState::from_snapshot(const MultiwayBettingSnapshot& snapshot) {

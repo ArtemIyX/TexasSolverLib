@@ -1,5 +1,7 @@
 #include "games/multiway_fixed.hpp"
 
+#include "games/multiway_rules.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -270,6 +272,10 @@ MultiwayFixedState make_multiway_fixed_state(const MultiwayGameConfig& config) {
     return state;
 }
 
+MultiwayFixedState make_multiway_fixed_state(const MultiwayGameRules& rules, PlayerId first_player) {
+    return make_multiway_fixed_state(rules.make_initial_game_config(first_player));
+}
+
 MultiwayFixedState make_multiway_fixed_state(const MultiwayBettingSnapshot& snapshot) {
     snapshot.validate();
     MultiwayFixedState state;
@@ -396,6 +402,20 @@ void settle_multiway_terminal_fixed(
     for (std::size_t seat = 0; seat < input.seat_count; ++seat) {
         result.utilities[seat] = static_cast<Value>(result.payouts[seat] + result.refunds[seat] - input.contributions[seat]);
     }
+}
+
+void settle_multiway_terminal_fixed(
+    const MultiwayFixedTerminalInput& input,
+    const MultiwayGameRules& rules,
+    MultiwayFixedTerminalScratch& scratch,
+    MultiwayFixedTerminalResult& result) {
+    rules.validate();
+    if (input.seat_count != rules.player_count) {
+        throw std::invalid_argument("fixed multiway terminal input does not match rule seat count");
+    }
+    auto ruled_input = input;
+    ruled_input.rake_policy = rules.rake_policy;
+    settle_multiway_terminal_fixed(ruled_input, scratch, result);
 }
 
 }  // namespace core

@@ -8,6 +8,8 @@
 
 namespace core {
 
+struct MultiwayGameRules;
+
 // This layer owns multiway betting progression only. Pot construction,
 // private cards, and terminal utilities remain separate multiway subsystems.
 enum class MultiwayAction : std::uint8_t {
@@ -67,6 +69,9 @@ struct MultiwayBettingSnapshot {
 class MultiwayState {
 public:
     static MultiwayState initial(const MultiwayGameConfig& config);
+    // Constructs the standard preflop root for a validated rules profile,
+    // including its forced blind posts.
+    static MultiwayState initial(const MultiwayGameRules& rules, PlayerId first_player = 0);
     static MultiwayState from_snapshot(const MultiwayBettingSnapshot& snapshot);
     [[nodiscard]] MultiwayBettingSnapshot snapshot() const;
 

@@ -34,6 +34,7 @@
 #include "games/hunl_eval.hpp"
 #include "games/multiway_state.hpp"
 #include "games/multiway_rules.hpp"
+#include "games/multiway_replay.hpp"
 #include "games/multiway_fixed.hpp"
 #include "games/multiway_terminal.hpp"
 #include "games/multiway_private.hpp"
@@ -129,6 +130,12 @@ using ::core::MultiwayExternalSamplingRequest;
 using ::core::make_multiway_external_sampling_request;
 using ::core::MultiwayGameConfig;
 using ::core::MultiwayGameRules;
+using ::core::MultiwayHandHistory;
+using ::core::MultiwayReplayDecision;
+using ::core::MultiwayReplayEvent;
+using ::core::MultiwayReplayEventKind;
+using ::core::apply_multiway_replay_event;
+using ::core::replay_multiway_hand;
 using ::core::MultiwayFixedActionMenu;
 using ::core::MultiwayFixedSidePot;
 using ::core::MultiwayFixedState;
