@@ -18,7 +18,7 @@ inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
 inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
 // The production abstraction emits at most five entries; one exact off-tree
 // insertion needs six. Two spare entries keep the boundary explicit.
-inline constexpr std::size_t MULTIWAY_MAX_TRAVERSAL_ACTIONS = 8U;
+inline constexpr std::size_t MULTIWAY_MAX_TRAVERSAL_ACTIONS = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
 
 // Allocation-free after the caller has prepared the external-sampling request.
 // Recursive game traversal owns action-value estimation; this kernel owns only
