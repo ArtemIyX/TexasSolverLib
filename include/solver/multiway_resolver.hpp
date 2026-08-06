@@ -1,12 +1,16 @@
 #pragma once
 
 #include "games/multiway_private.hpp"
+#include "solver/multiway_action_abstraction.hpp"
+#include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway_export.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_solver.hpp"
 
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 namespace core {
@@ -47,6 +51,7 @@ enum class MultiwayResolverStatus : std::uint8_t {
     DeadlineFallback,
     InvalidRequest,
     ArtifactMismatch,
+    BucketUnavailable,
     ResourceExhausted,
 };
 
@@ -57,6 +62,14 @@ struct MultiwayResolverDiagnostics {
     bool deadline_expired = false;
     bool used_fallback = false;
     bool policy_normalized = false;
+    bool used_latest_stable_root = false;
+    bool used_blueprint_fallback = false;
+    bool used_static_fallback = false;
+    bool anonymous_ranges_merged = false;
+    std::uint32_t root_bucket = 0;
+    std::uint32_t root_menu_size = 0;
+    std::uint32_t admitted_range_entries = 0;
+    std::uint64_t resolved_public_state_id = 0;
 };
 
 struct MultiwayResolverResult {
@@ -66,11 +79,38 @@ struct MultiwayResolverResult {
     MultiwayResolverDiagnostics diagnostics{};
 };
 
-// Phase 5 supplies the deadline-safe implementation. This declaration keeps
-// the public request/result contract stable without adding resolver behavior.
+// Artifact dependencies are borrowed and must outlive the resolver. A null
+// bucket registry is valid only for preflop roots; postflop roots then return
+// a validated static fallback with BucketUnavailable diagnostics.
+struct MultiwayResolverConfig {
+    const MultiwayBucketRegistry* buckets = nullptr;
+    const MultiwayBlueprintSnapshot* blueprint = nullptr;
+    MultiwayActionAbstractionConfig action_abstraction{};
+    std::uint32_t trajectories_per_batch = 32U;
+    std::uint32_t max_batches = 64U;
+    std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
+
+    void validate() const;
+};
+
+// In-process deadline-safe resolver. A successful solve retains its root
+// policy for a later compatible deadline fallback. No private request data is
+// retained after resolve returns.
 class MultiwayResolver {
 public:
+    explicit MultiwayResolver(MultiwayResolverConfig config = {});
     [[nodiscard]] MultiwayResolverResult resolve(const MultiwayResolverRequest& request) const;
+
+private:
+    struct StableRootPolicy {
+        MultiwayModelIdentity identity{};
+        std::uint64_t public_state_id = 0;
+        std::vector<MultiwayResolverActionProbability> policy;
+    };
+
+    MultiwayResolverConfig config_{};
+    mutable std::mutex stable_policy_mutex_;
+    mutable StableRootPolicy stable_policy_{};
 };
 
 }  // namespace core

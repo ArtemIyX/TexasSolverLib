@@ -141,6 +141,7 @@ using ::core::MultiwayCheckpoint;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayResolver;
+using ::core::MultiwayResolverConfig;
 using ::core::MultiwayResolverActionProbability;
 using ::core::MultiwayResolverDiagnostics;
 using ::core::MultiwayResolverRequest;
