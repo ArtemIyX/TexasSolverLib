@@ -441,6 +441,38 @@ void MultiwaySparseRowStorage::regret_matched_strategy_into(
     output[last_positive] = 1.0 - assigned;
 }
 
+std::vector<double> MultiwaySparseRowStorage::strategy_sums(
+    MultiwayInfosetId infoset,
+    std::uint32_t bucket) const {
+    const auto* row = metadata(infoset);
+    if (row == nullptr || bucket >= row->shape.bucket_count) {
+        throw std::out_of_range("multiway strategy sum row or bucket is unavailable");
+    }
+    std::vector<double> result(row->shape.action_count, 0.0);
+    for (std::size_t action = 0; action < result.size(); ++action) {
+        result[action] = strategy_sum_[row->strategy_sum_offset + action * row->shape.bucket_count + bucket];
+    }
+    return result;
+}
+
+void MultiwaySparseRowStorage::scale_regrets(double factor) {
+    if (!std::isfinite(factor) || factor <= 0.0 || factor > 1.0) {
+        throw std::invalid_argument("multiway regret discount must be finite and in (0, 1]");
+    }
+    for (auto& regret : regret_) regret *= factor;
+}
+
+std::size_t MultiwaySparseRowStorage::prune_negative_regrets() noexcept {
+    std::size_t pruned = 0;
+    for (auto& regret : regret_) {
+        if (regret < 0.0) {
+            regret = 0.0;
+            ++pruned;
+        }
+    }
+    return pruned;
+}
+
 void MultiwaySparseRowStorage::admit_row(const MultiwaySparseRowShape& shape) {
     if (shape.infoset.public_state.value == 0 || shape.infoset.seat < 0) {
         throw std::invalid_argument("multiway sparse row requires a stable per-seat infoset id");
@@ -679,6 +711,75 @@ MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy() const {
         result.actions.push_back({root.public_state.legal_actions[action], probabilities[action]});
     }
     return result;
+}
+
+MultiwayRootPolicy MultiwaySolverCoordinator::export_root_current_policy() const {
+    const auto& root = request_.root();
+    MultiwayRootPolicy result;
+    result.public_state = root.public_state.id;
+    result.infoset = root.root_infoset;
+    result.bucket = root.root_bucket;
+    std::vector<Probability> probabilities;
+    if (storage_.has_row(root.root_infoset)) {
+        probabilities = storage_.regret_matched_strategy(root.root_infoset, root.root_bucket);
+    } else {
+        probabilities.assign(root.public_state.legal_actions.size(),
+            1.0 / static_cast<double>(root.public_state.legal_actions.size()));
+    }
+    result.actions.reserve(probabilities.size());
+    for (std::size_t action = 0; action < probabilities.size(); ++action) {
+        result.actions.push_back({root.public_state.legal_actions[action], probabilities[action]});
+    }
+    return result;
+}
+
+std::vector<double> MultiwaySolverCoordinator::export_root_strategy_sums() const {
+    const auto& root = request_.root();
+    if (!storage_.has_row(root.root_infoset)) {
+        return std::vector<double>(root.public_state.legal_actions.size(), 0.0);
+    }
+    return storage_.strategy_sums(root.root_infoset, root.root_bucket);
+}
+
+MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy_since(
+    const std::vector<double>& baseline_strategy_sums) const {
+    const auto& root = request_.root();
+    const auto sums = export_root_strategy_sums();
+    if (baseline_strategy_sums.size() != sums.size()) {
+        throw std::invalid_argument("multiway root policy baseline has an incompatible action count");
+    }
+    MultiwayRootPolicy result;
+    result.public_state = root.public_state.id;
+    result.infoset = root.root_infoset;
+    result.bucket = root.root_bucket;
+    double total = 0.0;
+    std::vector<double> values(sums.size(), 0.0);
+    for (std::size_t action = 0; action < sums.size(); ++action) {
+        values[action] = sums[action] - baseline_strategy_sums[action];
+        if (!std::isfinite(values[action]) || values[action] < -1e-12) {
+            throw std::logic_error("multiway root policy baseline exceeds accumulated strategy mass");
+        }
+        if (values[action] < 0.0) values[action] = 0.0;
+        total += values[action];
+    }
+    if (total == 0.0) {
+        values.assign(values.size(), 1.0 / static_cast<double>(values.size()));
+    } else {
+        for (auto& value : values) value /= total;
+    }
+    result.actions.reserve(values.size());
+    for (std::size_t action = 0; action < values.size(); ++action) {
+        result.actions.push_back({root.public_state.legal_actions[action], values[action]});
+    }
+    return result;
+}
+
+void MultiwaySolverCoordinator::scale_regrets(double factor) {
+    storage_.scale_regrets(factor);
+}
+
+std::size_t MultiwaySolverCoordinator::prune_negative_regrets() noexcept {
+    return storage_.prune_negative_regrets();
 }
 
 const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::public_state(

@@ -9,7 +9,11 @@ namespace core {
 void MultiwayBlueprintSnapshot::validate() const {
     identity.validate();
     if (public_state.value == 0U || infoset.public_state != public_state || infoset.seat < 0 ||
-        actions.empty()) {
+        actions.empty() ||
+        (policy_kind != MultiwayBlueprintPolicyKind::Current &&
+         policy_kind != MultiwayBlueprintPolicyKind::WeightedAverage &&
+         policy_kind != MultiwayBlueprintPolicyKind::LateWindowAverage) ||
+        training.trajectories != trajectories) {
         throw std::invalid_argument("multiway blueprint snapshot has invalid root metadata");
     }
     std::uint64_t total = 0;
@@ -27,15 +31,23 @@ void MultiwayBlueprintSnapshot::validate() const {
 MultiwayBlueprintSnapshot export_multiway_root_snapshot(
     const MultiwayModelIdentity& identity,
     const MultiwaySolverCoordinator& coordinator,
-    std::uint64_t trajectories) {
+    std::uint64_t trajectories,
+    MultiwayBlueprintPolicyKind policy_kind,
+    const MultiwayBlueprintTrainingMetadata& training) {
     identity.validate();
-    const auto policy = coordinator.export_root_policy();
+    const auto policy = policy_kind == MultiwayBlueprintPolicyKind::Current
+        ? coordinator.export_root_current_policy()
+        : coordinator.export_root_policy();
+    auto persisted_training = training;
+    if (persisted_training.trajectories == 0U) persisted_training.trajectories = trajectories;
     MultiwayBlueprintSnapshot snapshot;
     snapshot.identity = identity;
     snapshot.public_state = policy.public_state;
     snapshot.infoset = policy.infoset;
     snapshot.bucket = policy.bucket;
     snapshot.trajectories = trajectories;
+    snapshot.policy_kind = policy_kind;
+    snapshot.training = persisted_training;
     snapshot.actions.reserve(policy.actions.size());
     std::uint32_t assigned = 0;
     for (std::size_t index = 0; index < policy.actions.size(); ++index) {

@@ -30,7 +30,8 @@ public:
         MultiwayInfosetId infoset,
         std::uint32_t bucket,
         std::uint64_t trajectory_id,
-        const MultiwayExternalSamplingRequest& request);
+        const MultiwayExternalSamplingRequest& request,
+        double iteration_weight = 1.0);
 };
 
 // Bounded lazy traversal. It samples opponent and public-chance nodes,
@@ -51,7 +52,8 @@ public:
         PlayerId traverser,
         std::uint64_t trajectory_id,
         std::uint64_t seed,
-        MultiwayWorkerDeltaStream& stream);
+        MultiwayWorkerDeltaStream& stream,
+        double iteration_weight = 1.0);
 
     [[nodiscard]] PlayerId root_traverser() const noexcept {
         return root_->public_state.betting.current_player;
@@ -112,7 +114,8 @@ public:
     [[nodiscard]] MultiwayRootBatchResult run(
         std::uint64_t first_trajectory_id,
         std::uint64_t trajectory_count,
-        std::uint64_t seed);
+        std::uint64_t seed,
+        double iteration_weight = 1.0);
 
 private:
     MultiwayRootExternalSamplingTraversal traversal_;

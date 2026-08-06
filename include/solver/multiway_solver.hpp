@@ -244,6 +244,11 @@ public:
         std::uint32_t bucket,
         Probability* output,
         std::size_t output_size) const;
+    [[nodiscard]] std::vector<double> strategy_sums(
+        MultiwayInfosetId infoset,
+        std::uint32_t bucket) const;
+    void scale_regrets(double factor);
+    [[nodiscard]] std::size_t prune_negative_regrets() noexcept;
     [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
     [[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 
@@ -352,6 +357,12 @@ public:
     void merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams);
 
     [[nodiscard]] MultiwayRootPolicy export_root_policy() const;
+    [[nodiscard]] MultiwayRootPolicy export_root_current_policy() const;
+    [[nodiscard]] std::vector<double> export_root_strategy_sums() const;
+    [[nodiscard]] MultiwayRootPolicy export_root_policy_since(
+        const std::vector<double>& baseline_strategy_sums) const;
+    void scale_regrets(double factor);
+    [[nodiscard]] std::size_t prune_negative_regrets() noexcept;
     [[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
     [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }

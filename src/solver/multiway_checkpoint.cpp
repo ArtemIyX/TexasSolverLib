@@ -8,7 +8,7 @@ namespace core {
 namespace {
 
 // MultiwayModelIdentity gained rules and resolver schema hashes.
-constexpr std::array<char, 8> kMagic = {'M', 'W', 'B', 'P', '0', '0', '0', '2'};
+constexpr std::array<char, 8> kMagic = {'M', 'W', 'B', 'P', '0', '0', '0', '3'};
 
 template <class T>
 void write_value(std::ofstream& out, const T& value) {
@@ -39,6 +39,8 @@ void MultiwayCheckpoint::save_atomic(
     write_value(out, snapshot.infoset);
     write_value(out, snapshot.bucket);
     write_value(out, snapshot.trajectories);
+    write_value(out, snapshot.policy_kind);
+    write_value(out, snapshot.training);
     const auto count = static_cast<std::uint32_t>(snapshot.actions.size());
     write_value(out, count);
     for (const auto& action : snapshot.actions) write_value(out, action);
@@ -65,12 +67,32 @@ MultiwayBlueprintSnapshot MultiwayCheckpoint::load(const std::filesystem::path& 
     snapshot.infoset = read_value<MultiwayInfosetId>(in);
     snapshot.bucket = read_value<std::uint32_t>(in);
     snapshot.trajectories = read_value<std::uint64_t>(in);
+    snapshot.policy_kind = read_value<MultiwayBlueprintPolicyKind>(in);
+    snapshot.training = read_value<MultiwayBlueprintTrainingMetadata>(in);
     const auto count = read_value<std::uint32_t>(in);
     if (count == 0U || count > 64U) throw std::runtime_error("multiway checkpoint action count is invalid");
     snapshot.actions.resize(count);
     for (auto& action : snapshot.actions) action = read_value<MultiwayQuantizedRootAction>(in);
     snapshot.validate();
     return snapshot;
+}
+
+MultiwayBlueprintSnapshot MultiwayCheckpoint::load_for_resume(
+    const std::filesystem::path& path,
+    const MultiwayModelIdentity& expected_identity) {
+    const auto snapshot = load(path);
+    validate_resume_identity(snapshot, expected_identity);
+    return snapshot;
+}
+
+void MultiwayCheckpoint::validate_resume_identity(
+    const MultiwayBlueprintSnapshot& snapshot,
+    const MultiwayModelIdentity& expected_identity) {
+    snapshot.validate();
+    expected_identity.validate();
+    if (snapshot.identity != expected_identity) {
+        throw std::invalid_argument("multiway checkpoint model identity does not match the requested resume");
+    }
 }
 
 }  // namespace core

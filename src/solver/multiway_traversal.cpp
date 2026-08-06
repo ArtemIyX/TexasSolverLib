@@ -13,7 +13,11 @@ bool MultiwayExternalSamplingTraversal::append_infoset_update(
     MultiwayInfosetId infoset,
     std::uint32_t bucket,
     std::uint64_t trajectory_id,
-    const MultiwayExternalSamplingRequest& request) {
+    const MultiwayExternalSamplingRequest& request,
+    double iteration_weight) {
+    if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
+        throw std::invalid_argument("multiway iteration weight must be finite and positive");
+    }
     if (infoset.public_state.value == 0U || infoset.seat != request.traverser) {
         throw std::invalid_argument("multiway traversal update infoset must identify the traverser");
     }
@@ -28,7 +32,7 @@ bool MultiwayExternalSamplingTraversal::append_infoset_update(
                 bucket,
                 static_cast<std::uint8_t>(action),
                 update.regret_deltas[action],
-                update.strategy_deltas[action],
+                update.strategy_deltas[action] * iteration_weight,
                 trajectory_id,
             })) {
             throw std::logic_error("multiway traversal delta capacity changed during append");
@@ -82,6 +86,7 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     Probability private_sampling_reach = 0.0;
     Probability public_chance_reach = 1.0;
     Probability public_sampling_reach = 1.0;
+    double iteration_weight = 1.0;
     bool accepted = true;
 };
 
@@ -122,13 +127,15 @@ bool append_infoset_update_noalloc(
     const Probability* strategy,
     const Value* action_values,
     std::size_t action_count,
+    double iteration_weight,
     Value& node_value) {
     if (infoset.public_state.value == 0U || infoset.seat != traverser ||
         player_reaches == nullptr || player_count < 2U || player_count > 6U ||
         traverser < 0 || static_cast<std::size_t>(traverser) >= player_count ||
         strategy == nullptr || action_values == nullptr || action_count == 0U ||
         !std::isfinite(chance_reach) || chance_reach < 0.0 || chance_reach > 1.0 ||
-        !std::isfinite(sampling_reach) || sampling_reach <= 0.0 || sampling_reach > 1.0) {
+        !std::isfinite(sampling_reach) || sampling_reach <= 0.0 || sampling_reach > 1.0 ||
+        !std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
         throw std::invalid_argument("multiway allocation-free update has invalid inputs");
     }
     if (stream.capacity() - stream.size() < action_count) return false;
@@ -163,7 +170,7 @@ bool append_infoset_update_noalloc(
     }
     for (std::size_t action = 0; action < action_count; ++action) {
         const auto regret = importance_weight * (action_values[action] - node_value);
-        const auto strategy_sum = average_strategy_weight * strategy[action];
+        const auto strategy_sum = average_strategy_weight * strategy[action] * iteration_weight;
         if (!std::isfinite(regret) || !std::isfinite(strategy_sum)) {
             throw std::overflow_error("multiway allocation-free update contains a non-finite delta");
         }
@@ -174,7 +181,7 @@ bool append_infoset_update_noalloc(
             bucket,
             static_cast<std::uint8_t>(action),
             importance_weight * (action_values[action] - node_value),
-            average_strategy_weight * strategy[action],
+            average_strategy_weight * strategy[action] * iteration_weight,
             trajectory_id,
         });
         if (!appended) {
@@ -307,6 +314,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         strategy.data(),
         action_values.data(),
         action_count,
+        context.iteration_weight,
         node_value);
     if (!context.accepted) return 0.0;
     return node_value;
@@ -367,7 +375,8 @@ bool MultiwayRootExternalSamplingTraversal::run(
     PlayerId traverser,
     std::uint64_t trajectory_id,
     std::uint64_t seed,
-    MultiwayWorkerDeltaStream& stream) {
+    MultiwayWorkerDeltaStream& stream,
+    double iteration_weight) {
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -387,6 +396,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     context.random_state = seed;
     context.private_chance_reach = sampled_reach.chance_reach;
     context.private_sampling_reach = sampled_reach.proposal_reach;
+    context.iteration_weight = iteration_weight;
     const auto initial_size = stream.size();
     (void)traverse_decision(root_state, 0U, 0U, context);
     if (!context.accepted) stream.rewind(initial_size);
@@ -425,7 +435,11 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
 MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     std::uint64_t first_trajectory_id,
     std::uint64_t trajectory_count,
-    std::uint64_t seed) {
+    std::uint64_t seed,
+    double iteration_weight) {
+    if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
+        throw std::invalid_argument("multiway batch iteration weight must be finite and positive");
+    }
     MultiwayRootBatchResult result;
     const auto batches = MultiwayScheduler::partition_deterministic(trajectory_count, worker_count_);
     std::vector<MultiwayWorkerDeltaStream> streams;
@@ -442,7 +456,8 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
                     traversal_.traverser_for_trajectory(trajectory_id),
                     trajectory_id,
                     mix_seed(seed, trajectory_id),
-                    stream)) {
+                    stream,
+                    iteration_weight)) {
                 ++result.trajectories_accepted;
             } else {
                 ++result.trajectories_discarded;
