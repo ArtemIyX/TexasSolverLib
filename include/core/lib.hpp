@@ -12,6 +12,7 @@
 #include "solver/multiway_blueprint_config.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway_bucket_artifact.hpp"
 #include "solver/multiway_memory.hpp"
 #include "solver/multiway_scheduler.hpp"
 #include "solver/multiway_traversal.hpp"
@@ -82,6 +83,14 @@ using ::core::MultiwayActionAbstraction;
 using ::core::MultiwayActionAbstractionConfig;
 using ::core::MultiwayBucketTable;
 using ::core::MultiwayBucketRegistry;
+using ::core::MultiwayBucketBaselineProfile;
+using ::core::MultiwayBucketFeatures;
+using ::core::MultiwayBucketBoardRequest;
+using ::core::build_multiway_baseline_bucket_table;
+using ::core::build_multiway_baseline_bucket_registry;
+using ::core::deserialize_multiway_bucket_registry;
+using ::core::serialize_multiway_bucket_registry;
+using ::core::validate_multiway_bucket_coverage;
 using ::core::MultiwayMemoryBudget;
 using ::core::MultiwayMemoryEstimate;
 using ::core::MultiwayMemoryPreflight;

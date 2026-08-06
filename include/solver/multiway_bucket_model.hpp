@@ -30,6 +30,9 @@ public:
         return canonical_board_;
     }
     [[nodiscard]] std::uint32_t bucket_count() const noexcept { return bucket_count_; }
+    [[nodiscard]] const std::vector<std::uint32_t>& assignments() const noexcept {
+        return assignments_;
+    }
 
     [[nodiscard]] std::uint32_t lookup(const std::array<std::uint8_t, 2>& hole) const;
     [[nodiscard]] static std::size_t hole_index(const std::array<std::uint8_t, 2>& hole);
@@ -49,6 +52,9 @@ public:
     explicit MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables);
 
     [[nodiscard]] const MultiwayModelIdentity& identity() const noexcept { return identity_; }
+    [[nodiscard]] const std::vector<MultiwayBucketTable>& tables() const noexcept {
+        return tables_;
+    }
     [[nodiscard]] const MultiwayBucketTable& table(
         Street street,
         const std::vector<std::uint8_t>& canonical_board) const;
