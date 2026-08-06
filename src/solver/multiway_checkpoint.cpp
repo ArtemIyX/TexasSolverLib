@@ -73,6 +73,9 @@ MultiwayBlueprintSnapshot MultiwayCheckpoint::load(const std::filesystem::path& 
     if (count == 0U || count > 64U) throw std::runtime_error("multiway checkpoint action count is invalid");
     snapshot.actions.resize(count);
     for (auto& action : snapshot.actions) action = read_value<MultiwayQuantizedRootAction>(in);
+    if (in.peek() != std::char_traits<char>::eof()) {
+        throw std::runtime_error("multiway checkpoint has trailing data");
+    }
     snapshot.validate();
     return snapshot;
 }

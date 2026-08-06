@@ -1,5 +1,6 @@
 #include "solver/multiway_resolver.hpp"
 
+#include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
 
 #include <algorithm>
@@ -234,6 +235,18 @@ void MultiwayResolverConfig::validate() const {
     if (trajectories_per_batch == 0U || max_batches == 0U || deadline_reserve.count() < 0) {
         throw std::invalid_argument("multiway resolver has invalid batch or deadline limits");
     }
+    if (verified_blueprint != nullptr && blueprint != nullptr) {
+        throw std::invalid_argument("multiway resolver accepts either a verified or legacy blueprint");
+    }
+    if (verified_blueprint != nullptr) {
+        verified_blueprint->snapshot.validate();
+        verified_blueprint->manifest.validate();
+        if (verified_blueprint->snapshot.identity != verified_blueprint->manifest.identity ||
+            verified_blueprint->manifest.snapshot_hash !=
+                MultiwayBlueprintArtifacts::snapshot_hash(verified_blueprint->snapshot)) {
+            throw std::invalid_argument("multiway resolver verified blueprint is invalid");
+        }
+    }
 }
 
 MultiwayResolver::MultiwayResolver(MultiwayResolverConfig config) : config_(config) {
@@ -259,6 +272,12 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             static_cast<std::size_t>(request.hero_seat) >= state.stacks().size() ||
             state.folded()[static_cast<std::size_t>(request.hero_seat)] || state.legal_actions().empty()) {
             throw std::invalid_argument("multiway resolver hero is not the current legal actor");
+        }
+        const auto* blueprint = config_.verified_blueprint == nullptr
+            ? config_.blueprint : &config_.verified_blueprint->snapshot;
+        if (config_.verified_blueprint != nullptr &&
+            config_.verified_blueprint->snapshot.identity != request.blueprint_identity) {
+            throw std::invalid_argument("multiway resolver verified blueprint identity does not match request");
         }
         const auto range_hash = validate_ranges(request, state, &result.diagnostics);
         auto menu = reconstruct_root_menu(request, state, config_);
@@ -300,7 +319,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 }
             }
             if (result.policy.empty() && try_apply_blueprint_policy(
-                    config_.blueprint, request.blueprint_identity, menu, &result.policy)) {
+                    blueprint, request.blueprint_identity, menu, &result.policy)) {
                 result.diagnostics.used_blueprint_fallback = true;
             }
             if (result.policy.empty()) {
@@ -316,7 +335,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             use_fallback(result.diagnostics.status);
             return result;
         }
-        if (config_.blueprint != nullptr && config_.blueprint->identity != request.blueprint_identity) {
+        if (blueprint != nullptr && blueprint->identity != request.blueprint_identity) {
             use_fallback(MultiwayResolverStatus::ArtifactMismatch);
             return result;
         }
@@ -327,7 +346,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
         }
 
         result.policy = static_policy(menu);
-        (void)try_apply_blueprint_policy(config_.blueprint, request.blueprint_identity, menu, &result.policy);
+        (void)try_apply_blueprint_policy(blueprint, request.blueprint_identity, menu, &result.policy);
         for (std::uint32_t batch = 0U; batch < config_.max_batches; ++batch) {
             for (std::size_t action = 0; action < result.policy.size(); ++action) {
                 const auto perturbation = 0.75 + 0.5 * unit_random(

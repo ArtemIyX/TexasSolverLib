@@ -24,6 +24,7 @@
 #include "solver/multiway_blueprint_query.hpp"
 #include "solver/multiway_range_update.hpp"
 #include "solver/multiway_checkpoint.hpp"
+#include "solver/multiway_artifact.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_resolver.hpp"
 #include "solver/multiway_public_builder.hpp"
@@ -138,6 +139,14 @@ using ::core::MultiwayBlueprintQuery;
 using ::core::MultiwayBucketActionPolicy;
 using ::core::update_anonymous_multiway_range;
 using ::core::MultiwayCheckpoint;
+using ::core::MultiwayArtifactSource;
+using ::core::MultiwayBlueprintArtifacts;
+using ::core::MultiwayBlueprintManifest;
+using ::core::MultiwayPublicDecisionLog;
+using ::core::MultiwayPublicDecisionPolicy;
+using ::core::MultiwayProtectedReplayRecord;
+using ::core::MultiwayVerifiedBlueprintArtifact;
+using ::core::make_multiway_public_decision_log;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayResolver;

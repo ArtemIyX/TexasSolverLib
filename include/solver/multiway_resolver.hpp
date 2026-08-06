@@ -15,6 +15,8 @@
 
 namespace core {
 
+struct MultiwayVerifiedBlueprintArtifact;
+
 enum class MultiwayInferenceMode : std::uint8_t {
     AnonymousWithinHand,
     BlockersOnly,
@@ -84,6 +86,10 @@ struct MultiwayResolverResult {
 // a validated static fallback with BucketUnavailable diagnostics.
 struct MultiwayResolverConfig {
     const MultiwayBucketRegistry* buckets = nullptr;
+    // Verified artifacts are preferred over the legacy raw snapshot pointer.
+    // Passing both is rejected so resolver deployment cannot silently bypass
+    // manifest verification.
+    const MultiwayVerifiedBlueprintArtifact* verified_blueprint = nullptr;
     const MultiwayBlueprintSnapshot* blueprint = nullptr;
     MultiwayActionAbstractionConfig action_abstraction{};
     std::uint32_t trajectories_per_batch = 32U;
