@@ -8,6 +8,8 @@
 
 namespace core {
 
+class MultiwayResolver;
+
 // Cold-path factory for coordinator-admitted public descriptors. It owns no
 // tree storage and never selects strategic bet sizes; Phase 2 supplies target
 // contributions for Bet and Raise actions.
@@ -47,6 +49,8 @@ public:
         const std::vector<MultiwayPublicHistoryEntry>& history) noexcept;
 
 private:
+    friend class MultiwayResolver;
+
     [[nodiscard]] static std::uint64_t stable_public_state_id(
         const MultiwayBettingSnapshot& betting,
         const std::vector<std::uint8_t>& board,

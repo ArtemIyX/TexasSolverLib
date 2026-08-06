@@ -79,7 +79,7 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
 }
 
 struct MultiwayRootExternalSamplingTraversal::TraversalContext {
-    MultiwayTerminalAdapter* terminal = nullptr;
+    const MultiwayTerminalAdapter* terminal = nullptr;
     const MultiwaySamplerDealToken* deal = nullptr;
     MultiwayWorkerDeltaStream* stream = nullptr;
     std::array<Probability, 6> player_reaches{};

@@ -198,7 +198,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
                         config_.open_caller_increment_big_blind_basis_points * caller_count / 10000;
                     const auto squeeze = std::max(saturated_add(state.current_bet(), state.last_full_raise_size()),
                         saturated_add(state.current_bet(), static_cast<int>(std::min<std::int64_t>(
-                            increment, std::numeric_limits<int>::max() - state.current_bet())));
+                            increment, std::numeric_limits<int>::max() - state.current_bet()))));
                     append_aggressive(aggressive, squeeze);
                     const auto call = state.current_bet() - actor_contribution;
                     append_aggressive(aggressive, saturated_add(saturated_add(state.current_bet(), pot), call));
