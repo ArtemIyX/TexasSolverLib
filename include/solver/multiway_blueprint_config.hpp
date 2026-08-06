@@ -24,6 +24,10 @@ struct MultiwayBlueprintConfig {
     std::uint64_t action_abstraction_version = 1;
     std::uint64_t bucket_model_version = 1;
     std::uint64_t terminal_model_version = 1;
+    // Versioned independently so a rule-profile or resolver-contract change
+    // cannot silently reuse a prior artifact.
+    std::uint64_t rules_profile_version = 1;
+    std::uint64_t resolver_schema_version = 1;
     std::uint64_t code_schema_version = 1;
 
     void validate() const;

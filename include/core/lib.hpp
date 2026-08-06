@@ -23,6 +23,7 @@
 #include "solver/multiway_range_update.hpp"
 #include "solver/multiway_checkpoint.hpp"
 #include "solver/multiway_model_identity.hpp"
+#include "solver/multiway_resolver.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
@@ -32,6 +33,7 @@
 #include "games/hunl.hpp"
 #include "games/hunl_eval.hpp"
 #include "games/multiway_state.hpp"
+#include "games/multiway_rules.hpp"
 #include "games/multiway_fixed.hpp"
 #include "games/multiway_terminal.hpp"
 #include "games/multiway_private.hpp"
@@ -106,6 +108,14 @@ using ::core::update_anonymous_multiway_range;
 using ::core::MultiwayCheckpoint;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
+using ::core::MultiwayResolver;
+using ::core::MultiwayResolverActionProbability;
+using ::core::MultiwayResolverDiagnostics;
+using ::core::MultiwayResolverRequest;
+using ::core::MultiwayResolverResult;
+using ::core::MultiwayResolverSeatRange;
+using ::core::MultiwayResolverStatus;
+using ::core::MultiwayInferenceMode;
 using ::core::MultiwayPublicBuilder;
 using ::core::make_multiway_model_identity;
 using ::core::MultiwayActionAbstractionIdentity;
@@ -118,6 +128,7 @@ using ::core::MultiwayCFRUpdate;
 using ::core::MultiwayExternalSamplingRequest;
 using ::core::make_multiway_external_sampling_request;
 using ::core::MultiwayGameConfig;
+using ::core::MultiwayGameRules;
 using ::core::MultiwayFixedActionMenu;
 using ::core::MultiwayFixedSidePot;
 using ::core::MultiwayFixedState;

@@ -18,7 +18,8 @@ void MultiwayBlueprintConfig::validate() const {
         throw std::invalid_argument("multiway blueprint requires non-zero bucket counts");
     }
     if (action_abstraction_version == 0U || bucket_model_version == 0U ||
-        terminal_model_version == 0U || code_schema_version == 0U) {
+        terminal_model_version == 0U || rules_profile_version == 0U ||
+        resolver_schema_version == 0U || code_schema_version == 0U) {
         throw std::invalid_argument("multiway blueprint requires non-zero model versions");
     }
 }
