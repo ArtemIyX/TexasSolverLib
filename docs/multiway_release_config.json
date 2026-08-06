@@ -1,0 +1,62 @@
+{
+  "profile": "multiway_6max_release_v1",
+  "config_schema_version": 1,
+  "library_mapping": {
+    "rules": "core::MultiwayGameRules",
+    "blueprint": "core::MultiwayBlueprintConfig",
+    "memory": "core::MultiwayMemoryBudget",
+    "resolver": "core::MultiwayResolverConfig"
+  },
+  "rules": {
+    "profile_version": 1,
+    "player_count": 6,
+    "initial_stack_chips": 10000,
+    "small_blind_chips": 50,
+    "big_blind_chips": 100,
+    "ante_chips": 0,
+    "straddle_chips": 0,
+    "rake": "explicit_zero",
+    "rebuys_enabled": false
+  },
+  "blueprint": {
+    "flop_bucket_count": 96,
+    "turn_bucket_count": 128,
+    "river_bucket_count": 192,
+    "action_abstraction_version": 1,
+    "bucket_model_version": 1,
+    "terminal_model_version": 1,
+    "rules_profile_version": 1,
+    "resolver_schema_version": 1,
+    "code_schema_version": 1
+  },
+  "memory_gib": {
+    "preflight_warning": 48,
+    "resident_operating_cap": 56,
+    "host_hard_cap": 60
+  },
+  "resolver": {
+    "external_deadline_ms": 20000,
+    "internal_deadline_ms": 15000,
+    "deadline_reserve_ms": 100,
+    "trajectories_per_batch": 32,
+    "max_batches": 64,
+    "inference_mode": "AnonymousWithinHand",
+    "sampling_seed_source": "protected_per_decision_seed"
+  },
+  "artifacts": {
+    "primary_checkpoint": "artifacts/multiway/primary.blueprint",
+    "known_good_checkpoint": "artifacts/multiway/known_good.blueprint",
+    "manifest_suffix": ".manifest",
+    "require_verified_artifact": true,
+    "require_identity_match": true,
+    "static_legal_policy_fallback": true
+  },
+  "release": {
+    "require_deterministic_replay": true,
+    "freeze_rules_and_versions": true,
+    "freeze_bucket_tables": true,
+    "freeze_action_abstraction": true,
+    "freeze_training_and_sampling_seeds": true,
+    "freeze_protocol_schema": true
+  }
+}
