@@ -18,6 +18,7 @@
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_continuation_policy.hpp"
+#include "solver/multiway_rollout_leaf.hpp"
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_blueprint_query.hpp"
@@ -113,6 +114,17 @@ using ::core::MultiwayFixedContinuationPolicy;
 using ::core::MultiwayContinuationLeafContext;
 using ::core::MultiwayContinuationLeafData;
 using ::core::make_multiway_fixed_continuation_leaf_evaluator;
+using ::core::MultiwayRolloutActionMenu;
+using ::core::MultiwayRolloutActionProviderFn;
+using ::core::MultiwayRolloutInput;
+using ::core::MultiwayRolloutInputProviderFn;
+using ::core::MultiwayRolloutLeafContext;
+using ::core::MultiwayRolloutLimits;
+using ::core::MultiwayRolloutProfileResult;
+using ::core::MultiwayRolloutScratch;
+using ::core::MultiwayRolloutStatus;
+using ::core::evaluate_multiway_rollout_profiles;
+using ::core::make_multiway_rollout_leaf_evaluator;
 using ::core::MultiwayBlueprintSnapshot;
 using ::core::MultiwayBlueprintPolicyKind;
 using ::core::MultiwayBlueprintTrainingMetadata;

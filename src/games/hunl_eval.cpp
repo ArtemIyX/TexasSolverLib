@@ -243,7 +243,14 @@ Strength Strength::evaluate_5(const std::array<std::uint8_t, 5>& cards) {
 }
 
 Strength Strength::evaluate_7(const std::array<std::uint8_t, 7>& cards) {
-    return evaluate_n(std::vector<std::uint8_t>(cards.begin(), cards.end()));
+    return from_phevaluator_rank(evaluate_7cards(
+        to_phevaluator_card(cards[0]),
+        to_phevaluator_card(cards[1]),
+        to_phevaluator_card(cards[2]),
+        to_phevaluator_card(cards[3]),
+        to_phevaluator_card(cards[4]),
+        to_phevaluator_card(cards[5]),
+        to_phevaluator_card(cards[6])));
 }
 
 int compare_7(
