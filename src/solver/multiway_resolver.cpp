@@ -141,6 +141,18 @@ bool valid_inference_mode(MultiwayInferenceMode mode) noexcept {
         mode == MultiwayInferenceMode::BlockersOnly;
 }
 
+void set_policy_provenance(
+    MultiwayResolverDiagnostics* diagnostics,
+    MultiwayPolicyProvenance provenance) noexcept {
+    diagnostics->policy_provenance = provenance;
+    diagnostics->used_latest_stable_root = provenance == MultiwayPolicyProvenance::StableRootFallback;
+    diagnostics->used_blueprint_fallback = provenance == MultiwayPolicyProvenance::BlueprintFallback;
+    diagnostics->used_static_fallback = provenance == MultiwayPolicyProvenance::StaticLegalFallback;
+    diagnostics->used_fallback = provenance == MultiwayPolicyProvenance::StableRootFallback ||
+        provenance == MultiwayPolicyProvenance::BlueprintFallback ||
+        provenance == MultiwayPolicyProvenance::StaticLegalFallback;
+}
+
 std::uint64_t validate_ranges(
     const MultiwayResolverRequest& request,
     const MultiwayState& state,
@@ -260,6 +272,8 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
     try {
         config_.validate();
         request.blueprint_identity.validate();
+        result.diagnostics.artifact_identity = request.blueprint_identity;
+        result.diagnostics.has_artifact_identity = true;
         if (!valid_inference_mode(request.inference_mode) || request.public_state.id.value == 0U ||
             request.public_state.canonical_history_id == 0U || request.hero_seat < 0 ||
             !are_valid_and_distinct_cards(request.hero_cards.data(), request.hero_cards.size()) ||
@@ -311,22 +325,24 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
 
         const auto use_fallback = [&](MultiwayResolverStatus status) {
             result.diagnostics.status = status;
-            result.diagnostics.used_fallback = true;
             {
                 std::lock_guard<std::mutex> lock(stable_policy_mutex_);
                 if (stable_policy_.identity == request.blueprint_identity &&
                     stable_policy_.public_state_id == reconstructed_id && same_menu(stable_policy_.policy, menu)) {
                     result.policy = stable_policy_.policy;
-                    result.diagnostics.used_latest_stable_root = true;
+                    set_policy_provenance(
+                        &result.diagnostics, MultiwayPolicyProvenance::StableRootFallback);
                 }
             }
             if (result.policy.empty() && try_apply_blueprint_policy(
                     blueprint, request.blueprint_identity, menu, &result.policy)) {
-                result.diagnostics.used_blueprint_fallback = true;
+                set_policy_provenance(
+                    &result.diagnostics, MultiwayPolicyProvenance::BlueprintFallback);
             }
             if (result.policy.empty()) {
                 result.policy = static_policy(menu);
-                result.diagnostics.used_static_fallback = true;
+                set_policy_provenance(
+                    &result.diagnostics, MultiwayPolicyProvenance::StaticLegalFallback);
             }
             result.diagnostics.policy_normalized = normalize(result.policy);
             sample_policy(&result, request.sampling_seed, reconstructed_id);
@@ -367,6 +383,8 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             }
         }
         result.diagnostics.status = MultiwayResolverStatus::Solved;
+        set_policy_provenance(
+            &result.diagnostics, MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
         result.diagnostics.policy_normalized = true;
         sample_policy(&result, request.sampling_seed, reconstructed_id);
         {
@@ -377,8 +395,15 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
         }
         return result;
     } catch (const std::exception&) {
-        result = {};
+        const auto artifact_identity = result.diagnostics.artifact_identity;
+        const auto has_artifact_identity = result.diagnostics.has_artifact_identity;
+        result.sampled_action = {};
+        result.has_sampled_action = false;
+        result.policy.clear();
+        result.diagnostics = {};
         result.diagnostics.status = MultiwayResolverStatus::InvalidRequest;
+        result.diagnostics.artifact_identity = artifact_identity;
+        result.diagnostics.has_artifact_identity = has_artifact_identity;
         return result;
     }
 }

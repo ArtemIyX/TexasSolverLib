@@ -12,7 +12,7 @@
 namespace core {
 namespace {
 
-constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '1'};
+constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '2'};
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
@@ -88,6 +88,11 @@ void append_identity(std::uint64_t& hash, const MultiwayModelIdentity& identity)
     append_u64(hash, identity.terminal_model_hash);
     append_u64(hash, identity.resolver_schema_hash);
     append_u64(hash, identity.code_schema_hash);
+    append_u64(hash, identity.range_semantics_hash);
+    append_u64(hash, identity.future_bucket_model_hash);
+    append_u64(hash, identity.off_tree_policy_hash);
+    append_u64(hash, identity.continuation_policy_hash);
+    append_u64(hash, identity.runtime_search_schema_hash);
     append_u64(hash, identity.combined_hash);
 }
 
@@ -234,12 +239,15 @@ void MultiwayPublicDecisionLog::validate() const {
     identity.validate();
     if (schema_version != MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION || public_state_id == 0U ||
         decision_index == 0U || acting_seat < 0 || policy.empty() ||
-        sampled_action.action_menu_id == 0U ||
+        sampled_action.action_menu_id == 0U || policy_provenance == MultiwayPolicyProvenance::None ||
+        search_engine_version == 0U ||
         (resolver_status != MultiwayResolverStatus::Solved &&
+         resolver_status != MultiwayResolverStatus::Partial &&
          resolver_status != MultiwayResolverStatus::DeadlineFallback &&
          resolver_status != MultiwayResolverStatus::ArtifactMismatch &&
          resolver_status != MultiwayResolverStatus::BucketUnavailable &&
-         resolver_status != MultiwayResolverStatus::ResourceExhausted)) {
+         resolver_status != MultiwayResolverStatus::ResourceExhausted &&
+         resolver_status != MultiwayResolverStatus::RejectedByBudget)) {
         throw std::invalid_argument("multiway public decision log has invalid metadata");
     }
     std::uint64_t total = 0;
@@ -272,6 +280,9 @@ MultiwayPublicDecisionLog make_multiway_public_decision_log(
     log.acting_seat = request.hero_seat;
     log.sampled_action = result.sampled_action;
     log.resolver_status = result.diagnostics.status;
+    log.policy_provenance = result.diagnostics.policy_provenance;
+    log.search_engine = result.diagnostics.search_engine;
+    log.search_engine_version = result.diagnostics.search_engine_version;
     log.used_fallback = result.diagnostics.used_fallback;
     log.policy.reserve(result.policy.size());
     std::uint32_t assigned = 0;

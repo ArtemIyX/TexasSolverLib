@@ -185,7 +185,7 @@ TEST_CASE(multiway_baseline_fixture_harness_covers_required_resolver_categories)
     const core::MultiwayResolverBaselineFixtureHarness harness(fixture.resolver_config());
 
     const auto valid = harness.run({
-        core::MultiwayBaselineFixtureKind::Valid, fixture.request(), {0U, 4'242U}});
+        core::MultiwayBaselineFixtureKind::Valid, fixture.request(), {0U, 0U, 4'242U}});
     EXPECT_EQ(valid.fixture, core::MultiwayBaselineFixtureKind::Valid);
     EXPECT_EQ(valid.status, core::MultiwayResolverStatus::Solved);
     EXPECT_EQ(valid.fallback, core::MultiwayResolverFallbackKind::None);
@@ -235,9 +235,9 @@ TEST_CASE(multiway_baseline_harness_isolates_stable_root_and_excludes_measuremen
     auto expired_request = fixture.request();
     expired_request.deadline = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
     const auto after_solved = harness.run({
-        core::MultiwayBaselineFixtureKind::DeadlineExhausted, expired_request, {101U, 4'242U}});
+        core::MultiwayBaselineFixtureKind::DeadlineExhausted, expired_request, {101U, 0U, 4'242U}});
     const auto fresh = core::MultiwayResolverBaselineFixtureHarness(fixture.resolver_config()).run({
-        core::MultiwayBaselineFixtureKind::DeadlineExhausted, expired_request, {202U, 8'484U}});
+        core::MultiwayBaselineFixtureKind::DeadlineExhausted, expired_request, {202U, 0U, 8'484U}});
 
     EXPECT_EQ(solved.status, core::MultiwayResolverStatus::Solved);
     EXPECT_EQ(after_solved.fallback, core::MultiwayResolverFallbackKind::StaticLegal);
@@ -264,7 +264,7 @@ TEST_CASE(multiway_traversal_baseline_reports_per_run_deltas_and_repeatable_outp
         3U,
         0x5eedU,
         1.0,
-        {11U, 101U});
+        {11U, 0U, 101U});
     const auto second = core::record_multiway_traversal_baseline(
         core::MultiwayBaselineFixtureKind::Valid,
         fixture.runner,
@@ -273,7 +273,7 @@ TEST_CASE(multiway_traversal_baseline_reports_per_run_deltas_and_repeatable_outp
         3U,
         0x5eedU,
         1.0,
-        {22U, 202U});
+        {22U, 0U, 202U});
     TraversalBaselineFixture repeat_fixture;
     const auto repeat = core::record_multiway_traversal_baseline(
         core::MultiwayBaselineFixtureKind::Valid,
@@ -283,7 +283,7 @@ TEST_CASE(multiway_traversal_baseline_reports_per_run_deltas_and_repeatable_outp
         3U,
         0x5eedU,
         1.0,
-        {33U, 303U});
+        {33U, 0U, 303U});
 
     EXPECT_EQ(first.batch.trajectories_attempted, 3U);
     EXPECT_EQ(first.batch.trajectories_accepted, 3U);
@@ -317,4 +317,35 @@ TEST_CASE(multiway_traversal_baseline_marks_the_max_row_fixture_and_reuses_its_r
         0x5eedU);
     EXPECT_EQ(repeat.sparse_rows_admitted, 0U);
     EXPECT_EQ(repeat.batch.trajectories_accepted, 1U);
+}
+
+TEST_CASE(multiway_baseline_records_environment_metrics_without_affecting_deterministic_output) {
+    ResolverBaselineFixture fixture;
+    const core::MultiwayResolverBaselineFixtureHarness harness(fixture.resolver_config());
+    const auto report = harness.run({core::MultiwayBaselineFixtureKind::Valid, fixture.request(), {}});
+
+    EXPECT_TRUE(report.measurements.elapsed_nanoseconds > 0U);
+    EXPECT_TRUE(!report.measurements.allocation_bytes_available);
+    EXPECT_EQ(report.measurements.allocated_bytes, 0U);
+    EXPECT_EQ(
+        report.measurements.peak_resident_memory_available,
+        report.measurements.peak_resident_memory_bytes != 0U);
+
+    auto environmental_difference = report;
+    environmental_difference.measurements.elapsed_nanoseconds = 1U;
+    environmental_difference.measurements.process_cpu_nanoseconds = 2U;
+    environmental_difference.measurements.observed_memory_bytes = 3U;
+    environmental_difference.measurements.peak_resident_memory_bytes = 4U;
+    environmental_difference.measurements.peak_resident_memory_available = true;
+    environmental_difference.measurements.allocated_bytes = 5U;
+    environmental_difference.measurements.allocation_bytes_available = true;
+    EXPECT_TRUE(core::equivalent_multiway_resolver_baseline(report, environmental_difference));
+    EXPECT_EQ(
+        core::serialize_multiway_resolver_baseline(report),
+        core::serialize_multiway_resolver_baseline(environmental_difference));
+
+    const auto serialized = core::serialize_multiway_resolver_baseline(report);
+    EXPECT_TRUE(serialized.find("process_cpu_nanoseconds=") == std::string::npos);
+    EXPECT_TRUE(serialized.find("peak_resident_memory_bytes=") == std::string::npos);
+    EXPECT_TRUE(serialized.find("allocated_bytes=") == std::string::npos);
 }

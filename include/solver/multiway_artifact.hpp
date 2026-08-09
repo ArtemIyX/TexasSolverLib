@@ -10,8 +10,8 @@
 
 namespace core {
 
-inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 1U;
-inline constexpr std::uint32_t MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION = 1U;
+inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 2U;
+inline constexpr std::uint32_t MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION = 2U;
 inline constexpr std::uint32_t MULTIWAY_PROTECTED_REPLAY_SCHEMA_VERSION = 1U;
 
 // Sidecar for a compact root-only checkpoint. It binds the artifact bytes to
@@ -70,6 +70,9 @@ struct MultiwayPublicDecisionLog {
     PlayerId acting_seat = -1;
     MultiwayActionDescriptor sampled_action{};
     MultiwayResolverStatus resolver_status = MultiwayResolverStatus::InvalidRequest;
+    MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
+    MultiwayResolverEngine search_engine = MultiwayResolverEngine::LegacyDeterministicAdjustment;
+    std::uint64_t search_engine_version = 0;
     bool used_fallback = false;
     std::vector<MultiwayPublicDecisionPolicy> policy;
 

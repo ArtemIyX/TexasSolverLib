@@ -31,7 +31,16 @@ enum class MultiwayResolverFallbackKind : std::uint8_t {
 // memory. A supplied nonzero observed_memory_bytes takes precedence.
 struct MultiwayBaselineMeasurements {
     std::uint64_t elapsed_nanoseconds = 0;
+    std::uint64_t process_cpu_nanoseconds = 0;
+    // Current RSS is a snapshot; peak RSS is process lifetime on supported
+    // platforms. Neither is an allocation counter.
     std::uint64_t observed_memory_bytes = 0;
+    std::uint64_t peak_resident_memory_bytes = 0;
+    bool peak_resident_memory_available = false;
+    // The library has no allocator hook. This remains explicitly unavailable
+    // rather than treating RSS growth as allocation volume.
+    std::uint64_t allocated_bytes = 0;
+    bool allocation_bytes_available = false;
 };
 
 // Fixture inputs may contain private request data while they are executing.
@@ -49,6 +58,11 @@ struct MultiwayResolverBaselineFixture {
 struct MultiwayResolverBaselineReport {
     MultiwayBaselineFixtureKind fixture = MultiwayBaselineFixtureKind::Valid;
     MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
+    MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
+    MultiwayResolverEngine search_engine = MultiwayResolverEngine::LegacyDeterministicAdjustment;
+    std::uint64_t search_engine_version = 0;
+    MultiwayModelIdentity artifact_identity{};
+    bool has_artifact_identity = false;
     MultiwayResolverFallbackKind fallback = MultiwayResolverFallbackKind::None;
     bool has_sampled_action = false;
     MultiwayActionDescriptor sampled_action{};
@@ -69,6 +83,8 @@ struct MultiwayTraversalBaselineReport {
     std::uint64_t public_states_admitted = 0;
     std::uint64_t sparse_rows_admitted = 0;
     std::uint64_t worker_delta_entries_merged = 0;
+    std::uint64_t minimum_worker_trajectories = 0;
+    std::uint64_t maximum_worker_trajectories = 0;
     MultiwayBaselineMeasurements measurements{};
 };
 
@@ -90,6 +106,8 @@ private:
 // Returns the current process resident set when the platform exposes a safe
 // source. Zero means the metric is unavailable. This is reporting-only.
 [[nodiscard]] std::uint64_t observed_multiway_process_memory_bytes() noexcept;
+[[nodiscard]] std::uint64_t observed_multiway_process_peak_memory_bytes() noexcept;
+[[nodiscard]] std::uint64_t observed_multiway_process_cpu_nanoseconds() noexcept;
 
 // Captures existing public paths without changing resolver or traversal
 // behavior. The request is borrowed for the call and is never retained.
@@ -109,9 +127,9 @@ private:
     double iteration_weight = 1.0,
     MultiwayBaselineMeasurements measurements = {});
 
-// Deterministic equality intentionally excludes elapsed time and observed
-// memory because those are environmental measurements. Policy values compare
-// using MULTIWAY_BASELINE_POLICY_ABSOLUTE_TOLERANCE.
+// Deterministic equality intentionally excludes elapsed time, CPU time, and
+// observed memory because those are environmental measurements. Policy values
+// compare using MULTIWAY_BASELINE_POLICY_ABSOLUTE_TOLERANCE.
 [[nodiscard]] bool equivalent_multiway_resolver_baseline(
     const MultiwayResolverBaselineReport& lhs,
     const MultiwayResolverBaselineReport& rhs,

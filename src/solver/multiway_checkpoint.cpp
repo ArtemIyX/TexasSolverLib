@@ -7,8 +7,8 @@
 namespace core {
 namespace {
 
-// MultiwayModelIdentity gained rules and resolver schema hashes.
-constexpr std::array<char, 8> kMagic = {'M', 'W', 'B', 'P', '0', '0', '0', '3'};
+// MultiwayModelIdentity gained Phase 0 semantic identity components.
+constexpr std::array<char, 8> kMagic = {'M', 'W', 'B', 'P', '0', '0', '0', '4'};
 
 template <class T>
 void write_value(std::ofstream& out, const T& value) {

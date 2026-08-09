@@ -29,6 +29,12 @@ struct MultiwayBlueprintConfig {
     std::uint64_t rules_profile_version = 1;
     std::uint64_t resolver_schema_version = 1;
     std::uint64_t code_schema_version = 1;
+    // Semantic versions only. Diagnostic formats must not be added here.
+    std::uint64_t range_semantics_version = 1;
+    std::uint64_t future_bucket_model_version = 1;
+    std::uint64_t off_tree_policy_version = 1;
+    std::uint64_t continuation_policy_version = 1;
+    std::uint64_t runtime_search_schema_version = 1;
 
     void validate() const;
 };

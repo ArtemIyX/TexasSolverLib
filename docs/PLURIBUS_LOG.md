@@ -38,6 +38,56 @@ resolver and root-traversal paths. This does not change production inference.
 
 ### Deferred
 
-- P0.2 policy provenance and status-code contract.
-- P0.3 centralized model identity inputs.
-- P0.4 allocation and timing profile expansion.
+None in Phase 0 implementation.
+
+## P0.2 - Policy Provenance and Status Observability
+
+**Status:** Complete
+**Completed:** 2026-08-09
+
+- Added distinct resolver statuses for partial and budget-rejected outcomes.
+  They are forward-compatible values only; the legacy resolver does not emit
+  either one yet.
+- Added policy provenance for legacy adjustment, stable-root, blueprint, and
+  static-legal policy paths.
+- Added the legacy search-engine identifier/version and request artifact
+  identity to resolver diagnostics.
+- Extended public decision logs with provenance and search-engine metadata.
+
+## P0.3 - Centralized Semantic Model Identity Inputs
+
+**Status:** Complete
+**Completed:** 2026-08-09
+
+- Added explicit identity components for range semantics, future buckets,
+  off-tree policy, continuation policy, and runtime search schema.
+- Centralized their hashing in `make_multiway_model_identity`.
+- Bound the new components into artifact identity hashing and bumped the
+  manifest schema version.
+- Diagnostic formatting remains outside the model identity contract.
+
+## P0.4 - Baseline Allocation and Timing Profile
+
+**Status:** Complete
+**Completed:** 2026-08-09
+
+- Added cold-boundary profiler scopes for resolver and root batches. Detailed
+  baseline reports cover the contained traversal, private sampling, terminal,
+  row-admission, and merge work without adding locks or allocations to those
+  hot operations.
+- Baseline reports now collect wall-clock time, process CPU time when exposed
+  by the platform, current resident-memory snapshots, and process peak RSS on
+  Windows/Linux. Peak RSS is explicitly unavailable on other platforms.
+- Root-batch reports include accepted trajectories and deterministic worker
+  minimum/maximum trajectory counts for imbalance measurement.
+- Allocation-byte telemetry is explicitly unavailable until the host supplies
+  an allocator profiler; RSS is not treated as allocation volume.
+
+### Validation
+
+- Added resolver, public-decision-log, semantic-identity, artifact-rejection,
+  and baseline-environment regression coverage.
+- Debug build passed.
+- `scripts/ctest-compact.ps1` passed with `ALL TESTS PASSED` using a
+  process-local PowerShell execution-policy bypass because direct execution was
+  blocked by host policy.

@@ -98,6 +98,8 @@ struct MultiwayRootBatchResult {
     std::uint64_t trajectories_accepted = 0;
     std::uint64_t trajectories_discarded = 0;
     std::uint64_t delta_entries_merged = 0;
+    std::uint64_t minimum_worker_trajectories = 0;
+    std::uint64_t maximum_worker_trajectories = 0;
 };
 
 // Deterministic root-only batch runner. Workers are kept logically separate

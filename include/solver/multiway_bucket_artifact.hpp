@@ -9,7 +9,7 @@
 
 namespace core {
 
-inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 1U;
+inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 2U;
 
 // Versioned deterministic baseline used until trained clustering artifacts are
 // introduced. The counts are part of the model identity through blueprint config.

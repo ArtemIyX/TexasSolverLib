@@ -19,7 +19,10 @@ void MultiwayBlueprintConfig::validate() const {
     }
     if (action_abstraction_version == 0U || bucket_model_version == 0U ||
         terminal_model_version == 0U || rules_profile_version == 0U ||
-        resolver_schema_version == 0U || code_schema_version == 0U) {
+        resolver_schema_version == 0U || code_schema_version == 0U ||
+        range_semantics_version == 0U || future_bucket_model_version == 0U ||
+        off_tree_policy_version == 0U || continuation_policy_version == 0U ||
+        runtime_search_schema_version == 0U) {
         throw std::invalid_argument("multiway blueprint requires non-zero model versions");
     }
 }

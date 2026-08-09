@@ -175,3 +175,72 @@ TEST_CASE(multiway_resolver_never_exports_an_illegal_blueprint_action) {
             fixture.root.legal_actions.end());
     }
 }
+
+TEST_CASE(multiway_resolver_reports_provenance_engine_and_safe_invalid_identity) {
+    ResolverFixture fixture;
+    auto resolver = fixture.resolver();
+    const auto solved = resolver.resolve(fixture.request());
+
+    EXPECT_EQ(solved.diagnostics.status, core::MultiwayResolverStatus::Solved);
+    EXPECT_EQ(
+        solved.diagnostics.policy_provenance,
+        core::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+    EXPECT_EQ(
+        solved.diagnostics.search_engine,
+        core::MultiwayResolverEngine::LegacyDeterministicAdjustment);
+    EXPECT_EQ(
+        solved.diagnostics.search_engine_version,
+        core::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION);
+    EXPECT_TRUE(solved.diagnostics.has_artifact_identity);
+    EXPECT_EQ(solved.diagnostics.artifact_identity, fixture.identity);
+
+    auto invalid_request = fixture.request();
+    invalid_request.hero_cards[0] = invalid_request.public_state.board[0];
+    const auto invalid = resolver.resolve(invalid_request);
+    EXPECT_EQ(invalid.diagnostics.status, core::MultiwayResolverStatus::InvalidRequest);
+    EXPECT_TRUE(invalid.diagnostics.has_artifact_identity);
+    EXPECT_EQ(invalid.diagnostics.artifact_identity, fixture.identity);
+    EXPECT_TRUE(!invalid.has_sampled_action);
+    EXPECT_TRUE(invalid.policy.empty());
+}
+
+TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provenance) {
+    ResolverFixture fixture;
+    auto expired_request = fixture.request();
+    expired_request.deadline = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+
+    const auto static_fallback = core::MultiwayResolver().resolve(expired_request);
+    EXPECT_EQ(static_fallback.diagnostics.status, core::MultiwayResolverStatus::BucketUnavailable);
+    EXPECT_EQ(
+        static_fallback.diagnostics.policy_provenance,
+        core::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_TRUE(static_fallback.diagnostics.used_static_fallback);
+
+    auto stable_resolver = fixture.resolver();
+    (void)stable_resolver.resolve(fixture.request());
+    const auto stable_fallback = stable_resolver.resolve(expired_request);
+    EXPECT_EQ(stable_fallback.diagnostics.status, core::MultiwayResolverStatus::DeadlineFallback);
+    EXPECT_EQ(
+        stable_fallback.diagnostics.policy_provenance,
+        core::MultiwayPolicyProvenance::StableRootFallback);
+    EXPECT_TRUE(stable_fallback.diagnostics.used_latest_stable_root);
+
+    core::MultiwayBlueprintSnapshot blueprint;
+    blueprint.identity = fixture.identity;
+    blueprint.public_state = fixture.root.id;
+    blueprint.infoset = {fixture.root.id, 0};
+    blueprint.trajectories = 1U;
+    blueprint.training.trajectories = 1U;
+    blueprint.actions = {{fixture.root.legal_actions.front(), 65535U}};
+    blueprint.validate();
+    core::MultiwayResolverConfig blueprint_config;
+    blueprint_config.buckets = &fixture.buckets;
+    blueprint_config.blueprint = &blueprint;
+    core::MultiwayResolver blueprint_resolver(blueprint_config);
+    const auto blueprint_fallback = blueprint_resolver.resolve(expired_request);
+    EXPECT_EQ(blueprint_fallback.diagnostics.status, core::MultiwayResolverStatus::DeadlineFallback);
+    EXPECT_EQ(
+        blueprint_fallback.diagnostics.policy_provenance,
+        core::MultiwayPolicyProvenance::BlueprintFallback);
+    EXPECT_TRUE(blueprint_fallback.diagnostics.used_blueprint_fallback);
+}

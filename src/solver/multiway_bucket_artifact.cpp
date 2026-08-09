@@ -10,7 +10,7 @@ namespace core {
 namespace {
 
 constexpr std::uint8_t kMagic[] = {'M', 'W', 'B', 'K'};
-constexpr std::size_t kIdentityFieldCount = 8U;
+constexpr std::size_t kIdentityFieldCount = 13U;
 
 std::size_t board_size_for(Street street) noexcept {
     switch (street) {
@@ -59,6 +59,11 @@ void append_identity(std::vector<std::uint8_t>& output, const MultiwayModelIdent
     append_u64(output, identity.terminal_model_hash);
     append_u64(output, identity.resolver_schema_hash);
     append_u64(output, identity.code_schema_hash);
+    append_u64(output, identity.range_semantics_hash);
+    append_u64(output, identity.future_bucket_model_hash);
+    append_u64(output, identity.off_tree_policy_hash);
+    append_u64(output, identity.continuation_policy_hash);
+    append_u64(output, identity.runtime_search_schema_hash);
     append_u64(output, identity.combined_hash);
 }
 
@@ -71,6 +76,11 @@ MultiwayModelIdentity read_identity(const std::vector<std::uint8_t>& input, std:
     identity.terminal_model_hash = read_u64(input, cursor);
     identity.resolver_schema_hash = read_u64(input, cursor);
     identity.code_schema_hash = read_u64(input, cursor);
+    identity.range_semantics_hash = read_u64(input, cursor);
+    identity.future_bucket_model_hash = read_u64(input, cursor);
+    identity.off_tree_policy_hash = read_u64(input, cursor);
+    identity.continuation_policy_hash = read_u64(input, cursor);
+    identity.runtime_search_schema_hash = read_u64(input, cursor);
     identity.combined_hash = read_u64(input, cursor);
     identity.validate();
     return identity;

@@ -50,15 +50,42 @@ struct MultiwayResolverActionProbability {
 
 enum class MultiwayResolverStatus : std::uint8_t {
     Solved,
+    // Reserved for the runtime-search path. The legacy resolver does not emit
+    // this value until it can export a clean partial search result.
+    Partial,
     DeadlineFallback,
     InvalidRequest,
     ArtifactMismatch,
     BucketUnavailable,
     ResourceExhausted,
+    // Reserved for future request preflight; legacy resolver limits do not
+    // currently reject a request by this status.
+    RejectedByBudget,
 };
+
+// The producing policy path. This remains separate from status so a future
+// partial search cannot be mislabeled as a completed solve.
+enum class MultiwayPolicyProvenance : std::uint8_t {
+    None,
+    LegacyDeterministicAdjustment,
+    StableRootFallback,
+    BlueprintFallback,
+    StaticLegalFallback,
+};
+
+enum class MultiwayResolverEngine : std::uint8_t {
+    LegacyDeterministicAdjustment,
+};
+
+inline constexpr std::uint64_t MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION = 1U;
 
 struct MultiwayResolverDiagnostics {
     MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
+    MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
+    MultiwayResolverEngine search_engine = MultiwayResolverEngine::LegacyDeterministicAdjustment;
+    std::uint64_t search_engine_version = MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
+    MultiwayModelIdentity artifact_identity{};
+    bool has_artifact_identity = false;
     std::uint64_t completed_batches = 0;
     std::uint64_t completed_trajectories = 0;
     bool deadline_expired = false;

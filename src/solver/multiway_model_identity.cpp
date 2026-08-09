@@ -36,7 +36,9 @@ std::uint64_t rules_hash(const MultiwayBlueprintConfig& config) noexcept {
 void MultiwayModelIdentity::validate() const {
     if (rules_hash == 0U || rules_schema_hash == 0U || action_abstraction_hash == 0U ||
         bucket_model_hash == 0U || terminal_model_hash == 0U || resolver_schema_hash == 0U ||
-        code_schema_hash == 0U || combined_hash == 0U) {
+        code_schema_hash == 0U || range_semantics_hash == 0U || future_bucket_model_hash == 0U ||
+        off_tree_policy_hash == 0U || continuation_policy_hash == 0U ||
+        runtime_search_schema_hash == 0U || combined_hash == 0U) {
         throw std::invalid_argument("multiway model identity requires non-zero hashes");
     }
 }
@@ -75,6 +77,26 @@ MultiwayModelIdentity make_multiway_model_identity(const MultiwayBlueprintConfig
     append_u64(schema_hash, config.code_schema_version);
     identity.code_schema_hash = finish(schema_hash);
 
+    auto range_hash = kFnvOffset;
+    append_u64(range_hash, config.range_semantics_version);
+    identity.range_semantics_hash = finish(range_hash);
+
+    auto future_bucket_hash = kFnvOffset;
+    append_u64(future_bucket_hash, config.future_bucket_model_version);
+    identity.future_bucket_model_hash = finish(future_bucket_hash);
+
+    auto off_tree_hash = kFnvOffset;
+    append_u64(off_tree_hash, config.off_tree_policy_version);
+    identity.off_tree_policy_hash = finish(off_tree_hash);
+
+    auto continuation_hash = kFnvOffset;
+    append_u64(continuation_hash, config.continuation_policy_version);
+    identity.continuation_policy_hash = finish(continuation_hash);
+
+    auto runtime_search_hash = kFnvOffset;
+    append_u64(runtime_search_hash, config.runtime_search_schema_version);
+    identity.runtime_search_schema_hash = finish(runtime_search_hash);
+
     auto combined_hash = kFnvOffset;
     append_u64(combined_hash, identity.rules_hash);
     append_u64(combined_hash, identity.rules_schema_hash);
@@ -83,6 +105,11 @@ MultiwayModelIdentity make_multiway_model_identity(const MultiwayBlueprintConfig
     append_u64(combined_hash, identity.terminal_model_hash);
     append_u64(combined_hash, identity.resolver_schema_hash);
     append_u64(combined_hash, identity.code_schema_hash);
+    append_u64(combined_hash, identity.range_semantics_hash);
+    append_u64(combined_hash, identity.future_bucket_model_hash);
+    append_u64(combined_hash, identity.off_tree_policy_hash);
+    append_u64(combined_hash, identity.continuation_policy_hash);
+    append_u64(combined_hash, identity.runtime_search_schema_hash);
     identity.combined_hash = finish(combined_hash);
     identity.validate();
     return identity;

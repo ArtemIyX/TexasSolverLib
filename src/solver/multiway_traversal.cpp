@@ -383,7 +383,6 @@ bool MultiwayRootExternalSamplingTraversal::run(
     std::uint64_t seed,
     MultiwayWorkerDeltaStream& stream,
     double iteration_weight) const {
-    TEXASSOLVER_PROFILE_SCOPE("multiway.traversal.trajectory");
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -512,11 +511,17 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     if (worker_error != nullptr) std::rethrow_exception(worker_error);
 
     MultiwayRootBatchResult result;
+    result.minimum_worker_trajectories = std::numeric_limits<std::uint64_t>::max();
     for (const auto& scratch : worker_scratch_) {
         result.trajectories_attempted += scratch.attempted;
         result.trajectories_accepted += scratch.accepted;
         result.trajectories_discarded += scratch.discarded;
         result.delta_entries_merged += scratch.stream.size();
+        result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
+        result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
+    }
+    if (result.minimum_worker_trajectories == std::numeric_limits<std::uint64_t>::max()) {
+        result.minimum_worker_trajectories = 0U;
     }
     coordinator_->merge_worker_streams(worker_stream_views_);
     return result;
