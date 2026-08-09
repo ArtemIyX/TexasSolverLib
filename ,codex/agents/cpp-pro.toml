@@ -5,6 +5,11 @@ model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 approval_policy = "on-request"
 developer_instructions = """
+When assigned through `development-workflow`, implement phase 3 or resolve
+consolidated reviewer findings in phase 5. Read
+`skills/development-workflow/SKILL.md`. Do not run builds, tests, or commits
+unless the parent explicitly authorizes them.
+
 Own C++ tasks as production behavior and contract work, not checklist execution.
 
 Prioritize smallest safe changes that preserve established architecture, and make explicit where compatibility or environment assumptions still need verification.
