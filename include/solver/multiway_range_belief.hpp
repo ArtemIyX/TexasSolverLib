@@ -25,6 +25,7 @@ struct MultiwayRangeBeliefMetadata {
     std::uint64_t last_update_revision = 0U;
     std::uint64_t last_action_id = 0U;
     bool has_last_action = false;
+    // Legal mass before this row is normalized.
     double input_mass = 0.0;
     double normalized_mass = 0.0;
 };
@@ -72,6 +73,12 @@ private:
 // Returned views are invalidated by a subsequent reset or copy_from call.
 class MultiwayRangeBeliefs {
 public:
+    MultiwayRangeBeliefs() = default;
+    MultiwayRangeBeliefs(const MultiwayRangeBeliefs&) = delete;
+    MultiwayRangeBeliefs& operator=(const MultiwayRangeBeliefs&) = delete;
+    MultiwayRangeBeliefs(MultiwayRangeBeliefs&&) = delete;
+    MultiwayRangeBeliefs& operator=(MultiwayRangeBeliefs&&) = delete;
+
     void reset_uniform(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
     void reset_supplied(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
 
@@ -92,6 +99,11 @@ private:
     static Row make_supplied_row(const MultiwayRangeBeliefSeatInput& input, std::uint64_t revision);
     static void normalize_row(Row& row);
     static void validate_seat_reset(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
+    using RowBuilder = Row (*)(const MultiwayRangeBeliefSeatInput&, std::uint64_t);
+    void reset_rows(
+        std::size_t seat_count,
+        const MultiwayRangeBeliefSeatInput* seats,
+        RowBuilder builder);
 
     std::array<Row, MULTIWAY_RANGE_BELIEF_MAX_SEATS> rows_ = {};
     std::size_t seat_count_ = 0U;

@@ -1,7 +1,9 @@
 #include "solver/multiway_range_belief.hpp"
 
 #include <cmath>
+#include <new>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace core {
@@ -107,33 +109,50 @@ MultiwayRangeBeliefs::Row MultiwayRangeBeliefs::make_supplied_row(
 void MultiwayRangeBeliefs::reset_uniform(
     std::size_t seat_count,
     const MultiwayRangeBeliefSeatInput* seats) {
-    validate_seat_reset(seat_count, seats);
-    const auto next_revision = revision_ + 1U;
-    std::array<Row, MULTIWAY_RANGE_BELIEF_MAX_SEATS> next = {};
-    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
-        next[seat] = make_uniform_row(seats[seat], next_revision);
-    }
-    rows_ = std::move(next);
-    seat_count_ = seat_count;
-    revision_ = next_revision;
+    reset_rows(seat_count, seats, make_uniform_row);
 }
 
 void MultiwayRangeBeliefs::reset_supplied(
     std::size_t seat_count,
     const MultiwayRangeBeliefSeatInput* seats) {
+    reset_rows(seat_count, seats, make_supplied_row);
+}
+
+void MultiwayRangeBeliefs::reset_rows(
+    std::size_t seat_count,
+    const MultiwayRangeBeliefSeatInput* seats,
+    RowBuilder builder) {
     validate_seat_reset(seat_count, seats);
     const auto next_revision = revision_ + 1U;
-    std::array<Row, MULTIWAY_RANGE_BELIEF_MAX_SEATS> next = {};
-    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
-        next[seat] = make_supplied_row(seats[seat], next_revision);
+    static_assert(std::is_nothrow_move_assignable<Row>::value,
+                  "range-belief row replacement must preserve transactional reset");
+    using RowStorage = std::aligned_storage_t<sizeof(Row), alignof(Row)>;
+    std::array<RowStorage, MULTIWAY_RANGE_BELIEF_MAX_SEATS> staged;
+    std::size_t staged_count = 0U;
+    const auto staged_row = [&staged](std::size_t seat) noexcept -> Row* {
+        return std::launder(reinterpret_cast<Row*>(&staged[seat]));
+    };
+    try {
+        for (; staged_count < seat_count; ++staged_count) {
+            ::new (static_cast<void*>(&staged[staged_count])) Row(builder(seats[staged_count], next_revision));
+        }
+    } catch (...) {
+        for (std::size_t seat = 0U; seat < staged_count; ++seat) staged_row(seat)->~Row();
+        throw;
     }
-    rows_ = std::move(next);
+    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+        rows_[seat] = std::move(*staged_row(seat));
+        staged_row(seat)->~Row();
+    }
     seat_count_ = seat_count;
     revision_ = next_revision;
 }
 
 void MultiwayRangeBeliefs::copy_from(const MultiwayRangeBeliefs& other) noexcept {
-    if (this != &other) *this = other;
+    if (this == &other) return;
+    for (std::size_t seat = 0U; seat < other.seat_count_; ++seat) rows_[seat] = other.rows_[seat];
+    seat_count_ = other.seat_count_;
+    revision_ = other.revision_;
 }
 
 MultiwayRangeBeliefView MultiwayRangeBeliefs::view(std::size_t seat) const {
