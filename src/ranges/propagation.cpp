@@ -1,5 +1,7 @@
 #include "ranges/propagation.hpp"
 
+#include "core/canonical_combo.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -16,17 +18,6 @@ std::uint16_t encode_hole(std::array<std::uint8_t, 2> hole) {
     return static_cast<std::uint16_t>(
         (static_cast<std::uint16_t>(hole[0]) << 8U) |
         static_cast<std::uint16_t>(hole[1]));
-}
-
-bool overlaps_dead_cards(
-    const std::array<std::uint8_t, 2>& hole,
-    const std::vector<std::uint8_t>& dead_cards) {
-    for (const auto card : dead_cards) {
-        if (hole[0] == card || hole[1] == card) {
-            return true;
-        }
-    }
-    return false;
 }
 
 RangeMask make_identity_mask(std::size_t value_count, RangeVector::Kind kind) {
@@ -74,32 +65,15 @@ ComboIndex enumerate_combos(const std::vector<std::uint8_t>& board) {
     if (!are_valid_and_distinct_cards(board.data(), board.size())) {
         throw std::invalid_argument("enumerate_combos requires valid distinct board cards");
     }
-    std::array<bool, 64> blocked = {};
-    for (const auto card : board) {
-        blocked[card] = true;
-    }
-
     ComboIndex out;
     out.board = board;
     out.hands.reserve(1326);
-    for (std::uint8_t rank0 = 2; rank0 <= 14; ++rank0) {
-        for (std::uint8_t suit0 = 0; suit0 < 4; ++suit0) {
-            const auto card0 = card_to_int(rank0, suit0);
-            if (blocked[card0]) {
-                continue;
-            }
-            for (std::uint8_t rank1 = 2; rank1 <= 14; ++rank1) {
-                for (std::uint8_t suit1 = 0; suit1 < 4; ++suit1) {
-                    const auto card1 = card_to_int(rank1, suit1);
-                    if (blocked[card1] || card0 >= card1) {
-                        continue;
-                    }
-                    const std::array<std::uint8_t, 2> hole = {card0, card1};
-                    out.hands.push_back(hole);
-                    out.hand_to_index.emplace(encode_hole(hole), out.hands.size() - 1U);
-                }
-            }
-        }
+    const auto legal = canonical_combos().legal_mask(board.data(), board.size());
+    for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
+        if (!legal.test(id)) continue;
+        const auto hole = canonical_combos().cards(static_cast<CanonicalComboId>(id));
+        out.hands.push_back(hole);
+        out.hand_to_index.emplace(encode_hole(hole), out.hands.size() - 1U);
     }
     return out;
 }
@@ -118,9 +92,11 @@ RangeMask dead_card_mask(const ComboIndex& combos, const std::vector<std::uint8_
     }
     RangeMask mask;
     mask.kind = RangeVector::Kind::Combo;
+    std::array<bool, 64> dead = {};
+    for (const auto card : dead_cards) dead[card] = true;
     mask.enabled.reserve(combos.hands.size());
     for (const auto& hole : combos.hands) {
-        mask.enabled.push_back(static_cast<std::uint8_t>(!overlaps_dead_cards(hole, dead_cards)));
+        mask.enabled.push_back(static_cast<std::uint8_t>(!dead[hole[0]] && !dead[hole[1]]));
     }
     return mask;
 }

@@ -2,6 +2,7 @@
 
 #include "util/abstraction.hpp"
 #include "util/api.hpp"
+#include "core/canonical_combo.hpp"
 #include "solver/dcfr.hpp"
 #include "solver/hunl_flat_dcfr.hpp"
 #include "solver/hunl_bucket_map.hpp"
@@ -64,6 +65,11 @@ namespace core::lib {
  * @brief Stable convenience aliases for external consumers.
  */
 using ::core::ActionId;
+using ::core::CanonicalComboCards;
+using ::core::CanonicalComboId;
+using ::core::CanonicalComboLegalMask;
+using ::core::CanonicalComboView;
+using ::core::canonical_combos;
 using ::core::ChanceOutcome;
 using ::core::Class169RvrOutput;
 using ::core::ExploitOutput;

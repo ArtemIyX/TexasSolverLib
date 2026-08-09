@@ -22,12 +22,19 @@ const std::vector<std::uint8_t> kBoard = {
     card(2, 0), card(7, 1), card(9, 2), card(4, 3), card(6, 0),
 };
 
-std::vector<std::uint32_t> one_bucket_assignments() {
+std::vector<std::uint8_t> compact_bucket_board(const std::vector<std::uint8_t>& hunl_board) {
+    std::vector<std::uint8_t> compact;
+    compact.reserve(hunl_board.size());
+    for (const auto card : hunl_board) compact.push_back(card - core::HUNL_CARD_FIRST);
+    return compact;
+}
+
+std::vector<std::uint32_t> one_bucket_assignments(const std::vector<std::uint8_t>& compact_board) {
     std::vector<std::uint32_t> assignments(core::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
     for (std::uint8_t first = 0; first < 52U; ++first) {
         for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
             const std::array<std::uint8_t, 2> hole = {first, second};
-            for (const auto board_card : kBoard) {
+            for (const auto board_card : compact_board) {
                 if (first == board_card || second == board_card) {
                     assignments[core::MultiwayBucketTable::hole_index(hole)] =
                         core::MULTIWAY_INVALID_BUCKET;
@@ -93,9 +100,10 @@ core::MultiwayCFRConfig make_cfr() {
 core::MultiwayBucketRegistry make_buckets() {
     core::MultiwayBlueprintConfig config;
     config.player_count = 3U;
+    const auto compact_board = compact_bucket_board(kBoard);
     return core::MultiwayBucketRegistry({core::MultiwayBucketTable(
         core::make_multiway_model_identity(config), core::Street::River,
-        kBoard, 1U, one_bucket_assignments())});
+        compact_board, 1U, one_bucket_assignments(compact_board))});
 }
 
 struct LeafProbe {

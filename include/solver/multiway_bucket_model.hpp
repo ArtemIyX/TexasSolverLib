@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/canonical_combo.hpp"
 #include "games/hunl.hpp"
 #include "solver/multiway_model_identity.hpp"
 
@@ -11,7 +12,7 @@
 namespace core {
 
 inline constexpr std::uint32_t MULTIWAY_INVALID_BUCKET = 0xffffffffU;
-inline constexpr std::size_t MULTIWAY_HOLE_COMBINATION_COUNT = 1326U;
+inline constexpr std::size_t MULTIWAY_HOLE_COMBINATION_COUNT = CANONICAL_HOLE_COMBINATION_COUNT;
 
 // Immutable bucket assignments for one canonical postflop board. Entries use
 // the fixed unordered-card index; board-blocked hands retain INVALID_BUCKET.
@@ -34,8 +35,12 @@ public:
         return assignments_;
     }
 
+    // Compact artifact-card API. Cards are in [0, 51].
     [[nodiscard]] std::uint32_t lookup(const std::array<std::uint8_t, 2>& hole) const;
+    // HUNL runtime-card API. Cards are encoded in [8, 59].
+    [[nodiscard]] std::uint32_t lookup_hunl(const std::array<std::uint8_t, 2>& hole) const;
     [[nodiscard]] static std::size_t hole_index(const std::array<std::uint8_t, 2>& hole);
+    [[nodiscard]] static std::size_t hole_index_hunl(const std::array<std::uint8_t, 2>& hole);
 
 private:
     MultiwayModelIdentity identity_{};
@@ -55,10 +60,19 @@ public:
     [[nodiscard]] const std::vector<MultiwayBucketTable>& tables() const noexcept {
         return tables_;
     }
+    // Compact artifact-board API. Cards are in [0, 51].
     [[nodiscard]] const MultiwayBucketTable& table(
         Street street,
         const std::vector<std::uint8_t>& canonical_board) const;
+    // HUNL runtime-board API. Cards are encoded in [8, 59].
+    [[nodiscard]] const MultiwayBucketTable& table_hunl(
+        Street street,
+        const std::vector<std::uint8_t>& canonical_board) const;
     [[nodiscard]] std::uint32_t lookup(
+        Street street,
+        const std::vector<std::uint8_t>& canonical_board,
+        const std::array<std::uint8_t, 2>& hole) const;
+    [[nodiscard]] std::uint32_t lookup_hunl(
         Street street,
         const std::vector<std::uint8_t>& canonical_board,
         const std::array<std::uint8_t, 2>& hole) const;

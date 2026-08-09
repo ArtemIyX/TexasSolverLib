@@ -18,7 +18,7 @@ struct ResolverFixture {
         : identity(core::make_multiway_model_identity(core::MultiwayBlueprintConfig{})),
           root(make_root()),
           buckets(core::build_multiway_baseline_bucket_registry(
-              identity, {{core::Street::Flop, {8U, 13U, 17U}}})) {}
+              identity, {{core::Street::Flop, {0U, 5U, 9U}}})) {}
 
     static core::MultiwayPublicStateDescriptor make_root() {
         core::MultiwayGameConfig config;

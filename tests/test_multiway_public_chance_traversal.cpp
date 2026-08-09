@@ -29,13 +29,20 @@ const std::array<std::array<std::uint8_t, 2>, 2> kHoles = {{
     {card(12, 0), card(11, 0)},
 }};
 
-std::vector<std::uint32_t> assignments_for(const std::vector<std::uint8_t>& board) {
+std::vector<std::uint8_t> compact_bucket_board(const std::vector<std::uint8_t>& hunl_board) {
+    std::vector<std::uint8_t> compact;
+    compact.reserve(hunl_board.size());
+    for (const auto card : hunl_board) compact.push_back(card - core::HUNL_CARD_FIRST);
+    return compact;
+}
+
+std::vector<std::uint32_t> assignments_for(const std::vector<std::uint8_t>& compact_board) {
     std::vector<std::uint32_t> assignments(core::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
     for (std::uint8_t first = 0; first < 52U; ++first) {
         for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
             const std::array<std::uint8_t, 2> hole = {first, second};
-            if (std::find(board.begin(), board.end(), first) != board.end() ||
-                std::find(board.begin(), board.end(), second) != board.end()) {
+            if (std::find(compact_board.begin(), compact_board.end(), first) != compact_board.end() ||
+                std::find(compact_board.begin(), compact_board.end(), second) != compact_board.end()) {
                 assignments[core::MultiwayBucketTable::hole_index(hole)] =
                     core::MULTIWAY_INVALID_BUCKET;
             }
@@ -49,11 +56,12 @@ core::MultiwayBucketRegistry make_flop_turn_buckets(bool include_turns) {
     config.player_count = 2U;
     const auto identity = core::make_multiway_model_identity(config);
     std::vector<core::MultiwayBucketTable> tables;
-    tables.emplace_back(identity, core::Street::Flop, kFlop, 1U, assignments_for(kFlop));
+    const auto compact_flop = compact_bucket_board(kFlop);
+    tables.emplace_back(identity, core::Street::Flop, compact_flop, 1U, assignments_for(compact_flop));
     if (include_turns) {
         for (std::uint8_t candidate = 0; candidate < 52U; ++candidate) {
-            if (std::find(kFlop.begin(), kFlop.end(), candidate) != kFlop.end()) continue;
-            auto board = kFlop;
+            if (std::find(compact_flop.begin(), compact_flop.end(), candidate) != compact_flop.end()) continue;
+            auto board = compact_flop;
             board.push_back(candidate);
             tables.emplace_back(
                 identity, core::Street::Turn, board, 1U, assignments_for(board));
@@ -67,9 +75,10 @@ core::MultiwayBucketRegistry make_root_buckets(
     const std::vector<std::uint8_t>& board) {
     core::MultiwayBlueprintConfig config;
     config.player_count = 2U;
+    const auto compact_board = compact_bucket_board(board);
     return core::MultiwayBucketRegistry({core::MultiwayBucketTable(
-        core::make_multiway_model_identity(config), street, board, 1U,
-        assignments_for(board))});
+        core::make_multiway_model_identity(config), street, compact_board, 1U,
+        assignments_for(compact_board))});
 }
 
 core::MultiwaySolverLimits limits(std::size_t delta_capacity = 256U) {

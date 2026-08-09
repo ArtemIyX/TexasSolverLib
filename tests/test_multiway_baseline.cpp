@@ -24,7 +24,7 @@ struct ResolverBaselineFixture {
         : identity(core::make_multiway_model_identity(core::MultiwayBlueprintConfig{})),
           root(make_root()),
           buckets(core::build_multiway_baseline_bucket_registry(
-              identity, {{core::Street::Flop, {8U, 13U, 17U}}})) {}
+              identity, {{core::Street::Flop, {0U, 5U, 9U}}})) {}
 
     static core::MultiwayPublicStateDescriptor make_root() {
         core::MultiwayGameConfig config;
@@ -77,11 +77,18 @@ const std::vector<std::uint8_t> kTraversalBoard = {
     card(2U, 0U), card(7U, 1U), card(9U, 2U), card(4U, 3U), card(6U, 0U),
 };
 
-std::vector<std::uint32_t> one_bucket_assignments() {
+std::vector<std::uint8_t> compact_bucket_board(const std::vector<std::uint8_t>& hunl_board) {
+    std::vector<std::uint8_t> compact;
+    compact.reserve(hunl_board.size());
+    for (const auto card : hunl_board) compact.push_back(card - core::HUNL_CARD_FIRST);
+    return compact;
+}
+
+std::vector<std::uint32_t> one_bucket_assignments(const std::vector<std::uint8_t>& compact_board) {
     std::vector<std::uint32_t> assignments(core::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
     for (std::uint8_t first = 0U; first < 52U; ++first) {
         for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
-            for (const auto board_card : kTraversalBoard) {
+            for (const auto board_card : compact_board) {
                 if (first == board_card || second == board_card) {
                     assignments[core::MultiwayBucketTable::hole_index({first, second})] =
                         core::MULTIWAY_INVALID_BUCKET;
@@ -145,9 +152,10 @@ core::MultiwayCFRConfig traversal_cfr() {
 core::MultiwayBucketRegistry traversal_buckets() {
     core::MultiwayBlueprintConfig config;
     config.player_count = 3U;
+    const auto compact_board = compact_bucket_board(kTraversalBoard);
     return core::MultiwayBucketRegistry({core::MultiwayBucketTable(
         core::make_multiway_model_identity(config), core::Street::River,
-        kTraversalBoard, 1U, one_bucket_assignments())});
+        compact_board, 1U, one_bucket_assignments(compact_board))});
 }
 
 core::Value traversal_leaf(

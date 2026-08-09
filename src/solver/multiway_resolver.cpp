@@ -315,7 +315,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 auto canonical_board = request.public_state.board;
                 std::sort(canonical_board.begin(), canonical_board.end());
                 try {
-                    bucket = config_.buckets->lookup(state.street(), canonical_board, request.hero_cards);
+                    bucket = config_.buckets->lookup_hunl(state.street(), canonical_board, request.hero_cards);
                 } catch (const std::out_of_range&) {
                     result.diagnostics.status = MultiwayResolverStatus::BucketUnavailable;
                 }

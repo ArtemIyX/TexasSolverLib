@@ -226,8 +226,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     if (action_count > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
         throw std::length_error("multiway traversal action menu exceeds the compact traversal limit");
     }
-    const auto& table = buckets_->table(state.betting.street, state.board);
-    const auto bucket = table.lookup(context.terminal->sampled_hole(*context.deal, actor));
+    const auto& table = buckets_->table_hunl(state.betting.street, state.board);
+    const auto bucket = table.lookup_hunl(context.terminal->sampled_hole(*context.deal, actor));
     const MultiwayInfosetId infoset = {state.id, actor};
     coordinator_->admit_infoset_row({
         infoset,
