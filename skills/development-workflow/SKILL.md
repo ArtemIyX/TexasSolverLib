@@ -1,6 +1,6 @@
 ---
 name: development-workflow
-description: Orchestrate scoped software changes with local subagents, parallel correctness/performance/unit-test reviews, tests, verification, concise reporting, and small focused commits. Use when implementing, fixing, refactoring, or reviewing a repository change that benefits from a repeatable multi-agent workflow.
+description: Orchestrate scoped software changes with a fixed local subagent roster, parallel correctness/performance and unit-test reviews, tests, verification, concise reporting, and small focused commits. Use when implementing, fixing, refactoring, or reviewing a repository change that benefits from a repeatable multi-agent workflow.
 ---
 
 # Development Workflow
@@ -8,62 +8,63 @@ description: Orchestrate scoped software changes with local subagents, parallel 
 Use this workflow for a bounded repository change. Read repository instructions
 and inspect the worktree before assigning tasks. Preserve unrelated changes.
 
-## Roles
+## Fixed agent roster
 
-Use short, bounded prompts. Give each agent its permitted actions and a clear
-deliverable.
+Use only these exact task names. Reuse an existing agent with a follow-up task
+when it is idle. Do not create role-specific agent names.
 
-| Role | Purpose | May edit? |
+| Exact task name | Responsibilities | May edit? |
 | --- | --- | --- |
-| Explorer | Locate code paths, contracts, tests, risks, and dirty files. | No |
-| Architect | Turn evidence into a small implementation plan and acceptance criteria. | No |
-| Worker | Implement one approved scope. | Yes |
-| Correctness reviewer | Find behavioral, API, safety, concurrency, and compatibility defects. | No |
-| Performance reviewer | Inspect hot paths, allocation, complexity, memory, and scheduling. | No |
-| Unit-test reviewer | Find missing coverage and weak assertions. | No |
-| Fix worker | Fix consolidated review findings. | Yes |
-| Unit-test worker | Add regression tests for fixed findings and acceptance criteria. | Yes |
-| Test-fixer | Run only user-authorized verification and fix feature-caused failures. | Yes |
-| Final verifier | Check diff scope, test results, documentation, and release readiness. | No |
-| Git expert | Stage only scoped files and create focused commits. | Yes, Git only |
+| `root` | Explorer, architect, final verifier, and report. | Yes, only when needed |
+| `cpp_pro` | Production worker and fix worker. | Yes |
+| `code_reviewer` | Correctness and performance review. | No |
+| `test_automator` | Unit-test review and regression-test author. | Yes, tests only |
+| `build_test_fixer` | User-authorized build/test execution and scoped fixes. | Yes |
+| `git_expert` | Focused staging and commits. | Yes, Git only |
+
+Use short, bounded prompts. State permitted actions and expected deliverables.
+If a named agent does not exist, create it with the exact name above. Reuse it
+afterward. Do not create variants such as `code_reviewer_p0` or `worker_2`.
 
 ## Workflow
 
-1. **Explorer**: inspect repository instructions, current behavior, tests,
-   relevant files, and `git status`. Report evidence and risks.
-2. **Architect**: define the smallest useful scope, unchanged contracts,
-   files likely affected, acceptance criteria, and validation commands. Skip
-   only for a trivial one-file change.
-3. **Worker**: implement the approved scope. Do not run builds or tests unless
-   authorized. Do not commit.
-4. **Reviewers in parallel**: after the worker stops editing, run correctness,
-   performance, and unit-test reviews simultaneously. Reviewers do not edit
-   or run expensive commands.
-5. **Fix worker**: consolidate actionable findings, fix them in one pass, and
-   report each disposition. Repeat the relevant review if a fix is material.
-6. **Unit-test worker**: add tests for every fixed bug and the accepted
-   behavior. Keep tests deterministic and scoped. Do not hide a production bug
-   with a weaker assertion.
-7. **Test-fixer**: run the repository's user-authorized build and test
+1. **`root` as explorer**: inspect repository instructions, current behavior,
+   tests, relevant files, and `git status`. Report evidence and risks.
+2. **`root` as architect**: define the smallest useful scope, unchanged
+   contracts, files likely affected, acceptance criteria, and validation
+   commands. Skip only for a trivial one-file change.
+3. **`cpp_pro`**: implement the approved scope. Do not run builds or tests
+   unless authorized. Do not commit.
+4. **Reviews in parallel**: after edits stabilize, run `code_reviewer` for
+   correctness/performance and `test_automator` for unit-test review. Neither
+   edits during this review pass or runs expensive commands.
+5. **`cpp_pro` as fix worker**: consolidate actionable findings, fix them in
+   one pass, and report each disposition. Repeat the relevant review if a fix
+   is material.
+6. **`test_automator` as unit-test worker**: add tests for every fixed bug and
+   the accepted behavior. Keep tests deterministic and scoped. Do not hide a
+   production bug with a weaker assertion.
+7. **`build_test_fixer`**: run the repository's user-authorized build and test
    commands. Fix only failures caused by the scoped change. Re-run affected
    verification until clean. Record commands, failures, and fixes.
-8. **Final verifier**: confirm requirements, test evidence, documentation,
-   no accidental API/privacy regressions, and a clean scoped diff. Do not
-   reimplement the feature.
-9. **Git expert**: create small focused commits. Stage only the scoped files,
+8. **`root` as final verifier**: confirm requirements, test evidence,
+   documentation, no accidental API/privacy regressions, and a clean scoped
+   diff. Do not reimplement the feature.
+9. **`git_expert`**: create small focused commits. Stage only scoped files,
    run a staged diff check, and never include unrelated dirty files.
-10. **Report**: lead with outcome. List feature scope, commits, tests written,
-    commands and results, failures fixed, deferred work, and unrelated changes
-    intentionally left untouched.
+10. **`root` report**: lead with outcome. List feature scope, commits, tests
+    written, commands and results, failures fixed, deferred work, and
+    unrelated changes intentionally left untouched.
 
 ## Parallelism and ownership
 
-- Run the three reviewers in parallel only after implementation is stable.
-- Never run two editing agents concurrently in the same files.
-- Explorer and architect may run in parallel only when their inputs do not
-  overlap; architect must wait for exploration evidence before finalizing scope.
-- Keep a single fix worker and a single test writer for each change.
-- Use a final verifier after all edits and before committing.
+- Run `code_reviewer` and `test_automator` in parallel only after
+  implementation is stable.
+- Never run `cpp_pro`, `test_automator`, and `build_test_fixer` concurrently
+  when any could edit the same workspace.
+- Keep exploration, architecture, final verification, and reporting in `root`.
+- Reuse `cpp_pro` for each production edit and `test_automator` for each test
+  edit. Use a final verification pass before committing.
 
 ## Commit policy
 
