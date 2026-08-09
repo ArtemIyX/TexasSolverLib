@@ -24,7 +24,7 @@ task. Do not create suffixed variants.
 | `code-reviewer` | `code_reviewer` | Correctness, API, safety, compatibility review | No |
 | `performance-engineer` | `performance_engineer` | Performance, hot-path, memory, concurrency review | No |
 | `test-automator` | `test_automator` | Unit-test review and regression-test implementation | Tests only |
-| `build-test-fixer` | `build_test_fixer` | Authorized verification and scoped build/test fixes | Yes |
+| `build-test-fixer` | `build_test_fixer` | Required quiet verification and scoped build/test fixes | Yes |
 | `final-verifier` | `final_verifier` | Read-only final scope and evidence verification | No |
 | `git-expert` | `git_expert` | Focused staging and commits | Git only |
 
@@ -48,8 +48,16 @@ and expected deliverable.
    Re-run only materially affected reviews if needed.
 6. **`test-automator` writes tests**: add deterministic regression tests for
    each fixed issue and each accepted behavior.
-7. **`build-test-fixer` verifies**: run only user-authorized build/test commands,
-   fix scoped failures, and re-run until clean.
+7. **`build-test-fixer` verifies**: after phase 6, always invoke
+   `build-test-fixer`; this workflow authorizes its verification commands. Run:
+
+   ```powershell
+   cmake --build build --config Debug -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"
+   .\scripts\ctest-compact.ps1
+   ```
+
+   The agent fixes only scoped failures and reruns both commands until they
+   pass. Do not skip this phase unless the user explicitly instructs otherwise.
 8. **`final-verifier` verifies**: check scope, test evidence, documentation,
    contract preservation, and unrelated changes. `root` then reports outcome,
    tests, fixes, limitations, and commits.
