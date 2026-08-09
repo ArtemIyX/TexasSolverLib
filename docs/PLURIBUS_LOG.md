@@ -52,6 +52,30 @@ until its implementation and required validation are finished.
 - `scripts/ctest-compact.ps1` passed with `ALL TESTS PASSED` using a
   process-local PowerShell execution-policy bypass.
 
+## P1.3 - Bayes Action-Observation Updates
+
+**Status:** Complete
+**Completed:** 2026-08-09
+**Implementation commits:**
+
+- `8592f88 Apply multiway range observations`
+- `20fda71 Harden multiway range observations`
+- `4f14c42 Test multiway range observations`
+
+- Added fixed-row, two-pass Bayes updates for observed actions with explicit
+  source, public-state, menu, table, action-index, and revision provenance.
+- Updates validate policy/table identity before mutation, preserve illegal
+  combinations at zero, and return a typed no-posterior result unchanged.
+- Preserved legacy action metadata compatibility and isolated the new path from
+  resolver, traversal, sampler, and public descriptors.
+
+### Validation
+
+- Added exact posterior, table-binding, blocker, transaction, seat-isolation,
+  and repeat-update regression coverage.
+- Quiet Debug build passed.
+- `scripts/ctest-compact.ps1` passed with `ALL TESTS PASSED`.
+
 ## P0.1 - Resolver and Traversal Baselines
 
 **Status:** Complete  
