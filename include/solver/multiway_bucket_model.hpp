@@ -31,7 +31,7 @@ public:
         return canonical_board_;
     }
     [[nodiscard]] std::uint32_t bucket_count() const noexcept { return bucket_count_; }
-    // Stable identity of this artifact table's model/street/canonical board.
+    // Stable runtime-only identity of this table's model, board, and assignments.
     [[nodiscard]] std::uint64_t table_identity() const noexcept { return table_identity_; }
     [[nodiscard]] const std::vector<std::uint32_t>& assignments() const noexcept {
         return assignments_;

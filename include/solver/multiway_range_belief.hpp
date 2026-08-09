@@ -31,6 +31,7 @@ struct MultiwayRangeBeliefMetadata {
         MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
         std::uint64_t public_state_id = 0U;
         std::uint64_t action_menu_id = 0U;
+        std::uint64_t bucket_table_identity = 0U;
         std::uint64_t source_revision = 0U;
         std::uint8_t observed_action = 0U;
         bool applied = false;
