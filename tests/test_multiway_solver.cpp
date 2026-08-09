@@ -1,4 +1,5 @@
 #include "solver/multiway_solver.hpp"
+#include "solver/multiway_public_builder.hpp"
 #include "test_harness.hpp"
 
 #include <cmath>
@@ -22,17 +23,13 @@ core::MultiwayPublicStateDescriptor root_public_state() {
     game.first_player = 0;
     const auto betting = core::MultiwayState::initial(game).snapshot();
 
-    core::MultiwayPublicStateDescriptor state;
-    state.id = {1};
-    state.canonical_history_id = 101;
-    state.betting = betting;
-    state.board = {card(2, 0), card(7, 1), card(9, 2)};
-    state.legal_actions = {
+    const std::vector<core::MultiwayActionDescriptor> actions = {
         {core::MultiwayAction::Check, 0, 0, 9001},
         {core::MultiwayAction::Bet, 1, 100, 9001},
         {core::MultiwayAction::AllIn, 2, 1000, 9001},
     };
-    return state;
+    return core::MultiwayPublicBuilder::make_root(
+        betting, {card(2, 0), card(7, 1), card(9, 2)}, actions);
 }
 
 std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::MultiwayState& state) {
@@ -50,31 +47,21 @@ std::vector<core::MultiwayActionDescriptor> action_descriptors(const core::Multi
                 : action == core::MultiwayAction::Call
                     ? std::min(state.current_bet(), current + state.stacks()[seat])
                     : current;
-        descriptors.push_back({action, static_cast<std::uint32_t>(index), target, 9001});
+        descriptors.push_back({action, static_cast<std::uint32_t>(index), target, 0U});
     }
-    return descriptors;
+    return core::MultiwayPublicBuilder::canonicalize_action_menu(state.snapshot(), std::move(descriptors));
 }
 
 core::MultiwayPublicStateDescriptor action_child_public_state(
     const core::MultiwayPublicStateDescriptor& parent,
-    std::uint64_t id,
-    std::uint64_t history_id,
+    std::uint64_t,
+    std::uint64_t,
     std::size_t action_index) {
-    auto child = parent;
     const auto action = parent.legal_actions.at(action_index);
-    child.id = {id};
-    child.parent_id = parent.id;
-    child.canonical_history_id = history_id;
-    child.incoming_edge = {};
-    child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BettingAction;
-    child.incoming_edge.action = action;
-    child.history.push_back({parent.betting.current_player, action});
     const auto state = core::MultiwayState::from_snapshot(parent.betting)
                            .apply(action.action, action.target_street_contribution);
-    child.betting = state.snapshot();
-    child.board_runout.chance_only_runout = state.requires_board_runout();
-    child.legal_actions = action_descriptors(state);
-    return child;
+    return core::MultiwayPublicBuilder::make_action_child(
+        parent, action_index, action_descriptors(state));
 }
 
 core::MultiwayPublicStateDescriptor checked_action_child_public_state() {
@@ -100,7 +87,7 @@ core::MultiwayPrivateConfig root_ranges() {
 core::MultiwayRootSnapshot valid_root() {
     core::MultiwayRootSnapshot root;
     root.public_state = root_public_state();
-    root.root_infoset = {{1}, 0};
+    root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0;
     root.seat_order = {0, 1};
     root.odd_chip_first_seat = 0;
@@ -127,8 +114,12 @@ core::MultiwaySolveRequest valid_request() {
     return core::MultiwaySolveRequest(valid_root(), cfr, valid_limits());
 }
 
+core::MultiwayInfosetId root_infoset() {
+    return {root_public_state().id, 0};
+}
+
 core::MultiwaySparseRowShape root_row(std::uint32_t buckets = 1, std::uint8_t actions = 3) {
-    return {{{1}, 0}, buckets, actions};
+    return {root_infoset(), buckets, actions};
 }
 
 core::MultiwayWorkerDelta delta(
@@ -137,7 +128,7 @@ core::MultiwayWorkerDelta delta(
     double strategy_sum,
     std::uint64_t trajectory_id = 0) {
     core::MultiwayWorkerDelta result;
-    result.infoset = {{1}, 0};
+    result.infoset = root_infoset();
     result.action = action;
     result.regret = regret;
     result.strategy_sum = strategy_sum;
@@ -158,7 +149,7 @@ TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot) {
     root.public_state.board_runout.remaining_board_cards = 1;
     root.next_street_first_seat = 1;
 
-    EXPECT_EQ(request.root().public_state.legal_actions[0].action_menu_id, 9001U);
+    EXPECT_EQ(request.root().public_state.legal_actions[0].action_menu_id, valid_root().action_menu_id());
     EXPECT_EQ(request.root().private_ranges.board[0], card(2, 0));
     EXPECT_EQ(request.root().public_state.board_runout.remaining_board_cards, 2U);
     EXPECT_EQ(request.root().next_street_first_seat, 0);
@@ -193,7 +184,7 @@ TEST_CASE(multiway_solver_root_accepts_a_complete_valid_public_contract) {
     EXPECT_EQ(request.root().public_state.board.size(), std::size_t{3});
     EXPECT_EQ(request.root().public_state.board_runout.remaining_board_cards, 2U);
     EXPECT_TRUE(!request.root().public_state.board_runout.chance_only_runout);
-    EXPECT_EQ(request.root().action_abstraction_identity().menu_id, 9001U);
+    EXPECT_EQ(request.root().action_abstraction_identity().menu_id, valid_root().action_menu_id());
     EXPECT_EQ(request.root().action_abstraction_identity().version, 7U);
 }
 
@@ -289,7 +280,7 @@ TEST_CASE(multiway_solver_sparse_admission_is_idempotent_and_action_major) {
 
     EXPECT_EQ(coordinator.storage().row_count(), std::size_t{1});
     EXPECT_EQ(coordinator.storage().value_count(), std::size_t{6});
-    const auto* metadata = coordinator.storage().metadata({{1}, 0});
+    const auto* metadata = coordinator.storage().metadata(root_infoset());
     EXPECT_TRUE(metadata != nullptr);
     EXPECT_EQ(metadata->regret_offset, std::size_t{0});
     EXPECT_EQ(metadata->strategy_sum_offset, std::size_t{0});
@@ -306,8 +297,8 @@ TEST_CASE(multiway_solver_sparse_admission_is_idempotent_and_action_major) {
     first.sort_fixed_order();
     second.sort_fixed_order();
     coordinator.merge_worker_streams({first, second});
-    const auto at_bucket_zero = coordinator.storage().average_strategy({{1}, 0}, 0);
-    const auto at_bucket_one = coordinator.storage().average_strategy({{1}, 0}, 1);
+    const auto at_bucket_zero = coordinator.storage().average_strategy(root_infoset(), 0);
+    const auto at_bucket_one = coordinator.storage().average_strategy(root_infoset(), 1);
     EXPECT_NEAR(at_bucket_zero[0], 0.0, 1e-12);
     EXPECT_NEAR(at_bucket_zero[1], 1.0, 1e-12);
     EXPECT_NEAR(at_bucket_one[0], 1.0, 1e-12);
@@ -332,7 +323,7 @@ TEST_CASE(multiway_solver_sparse_merge_rejects_lost_nonzero_float64_updates_tran
     first_lost.sort_fixed_order();
     second_lost.sort_fixed_order();
     EXPECT_THROW(coordinator.merge_worker_streams({first_lost, second_lost}), std::overflow_error);
-    const auto after_rejection = coordinator.storage().average_strategy({{1}, 0}, 0U);
+    const auto after_rejection = coordinator.storage().average_strategy(root_infoset(), 0U);
     EXPECT_NEAR(after_rejection[0], 1.0, 1e-12);
 
     core::MultiwayWorkerDeltaStream first_representable(0, 1);
@@ -341,7 +332,7 @@ TEST_CASE(multiway_solver_sparse_merge_rejects_lost_nonzero_float64_updates_tran
     first_representable.sort_fixed_order();
     second_representable.sort_fixed_order();
     coordinator.merge_worker_streams({first_representable, second_representable});
-    EXPECT_NEAR(coordinator.storage().average_strategy({{1}, 0}, 0U)[0], 1.0, 1e-12);
+    EXPECT_NEAR(coordinator.storage().average_strategy(root_infoset(), 0U)[0], 1.0, 1e-12);
 }
 
 TEST_CASE(multiway_solver_sparse_admission_enforces_row_and_value_caps) {
@@ -355,7 +346,7 @@ TEST_CASE(multiway_solver_sparse_admission_enforces_row_and_value_caps) {
     coordinator.admit_infoset_row(root_row());
 
     auto second = root_row();
-    second.infoset = {{1}, 1};
+    second.infoset = {root_public_state().id, 1};
     EXPECT_THROW(coordinator.admit_infoset_row(second), std::length_error);
 
     auto too_wide = root_row(2);
@@ -405,12 +396,12 @@ TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     auto child = checked_action_child_public_state();
     coordinator.admit_public_state(child);
 
-    const core::MultiwaySparseRowShape child_shape{{{2}, 1}, 1, 3};
+    const core::MultiwaySparseRowShape child_shape{{child.id, 1}, 1, 3};
     EXPECT_EQ(child.betting.current_player, child_shape.infoset.seat);
     coordinator.admit_infoset_row(child_shape);
     EXPECT_TRUE(coordinator.storage().has_row(child_shape.infoset));
 
-    const core::MultiwaySparseRowShape nonacting_child_shape{{{2}, 0}, 1, 3};
+    const core::MultiwaySparseRowShape nonacting_child_shape{{child.id, 0}, 1, 3};
     EXPECT_THROW(coordinator.admit_infoset_row(nonacting_child_shape), std::invalid_argument);
 
     auto too_few_actions = child_shape;
@@ -425,7 +416,7 @@ TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     coordinator.admit_public_state(all_in);
     const auto runout = action_child_public_state(all_in, 4, 104, 1);
     coordinator.admit_public_state(runout);
-    const core::MultiwaySparseRowShape nondecision_shape{{{4}, 0}, 1, 0};
+    const core::MultiwaySparseRowShape nondecision_shape{{runout.id, 0}, 1, 0};
     EXPECT_THROW(coordinator.admit_infoset_row(nondecision_shape), std::invalid_argument);
 }
 
@@ -435,7 +426,7 @@ TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_fr
     child.parent_id = {99};
     EXPECT_THROW(coordinator.admit_public_state(child), std::invalid_argument);
 
-    child.parent_id = {1};
+    child.parent_id = root_public_state().id;
     coordinator.admit_public_state(child);
     EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
     child.canonical_history_id = 103;
@@ -654,7 +645,7 @@ TEST_CASE(multiway_solver_merge_is_fixed_order_and_exports_only_root_policy) {
     coordinator.merge_worker_streams({first, second});
 
     const auto policy = coordinator.export_root_policy();
-    EXPECT_EQ(policy.public_state.value, 1U);
+    EXPECT_EQ(policy.public_state, root_public_state().id);
     EXPECT_EQ(policy.infoset.seat, 0);
     EXPECT_EQ(policy.actions.size(), std::size_t{3});
     EXPECT_NEAR(policy.actions[0].probability, 1.0 / 6.0, 1e-12);

@@ -38,6 +38,15 @@ void validate_board(const std::vector<std::uint8_t>& board) {
     }
 }
 
+bool board_contains(
+    const std::vector<std::uint8_t>& complete,
+    const std::vector<std::uint8_t>& subset) noexcept {
+    for (const auto card : subset) {
+        if (std::find(complete.begin(), complete.end(), card) == complete.end()) return false;
+    }
+    return true;
+}
+
 void validate_private_deal(
     const MultiwayRootSnapshot& root,
     const std::vector<std::uint8_t>& board,
@@ -101,7 +110,7 @@ MultiwayState validate_root_consistent_state(
     }
     if (static_cast<std::uint8_t>(betting.street) < static_cast<std::uint8_t>(root_betting.street) ||
         board.size() < root.public_state.board.size() ||
-        !std::equal(root.public_state.board.begin(), root.public_state.board.end(), board.begin())) {
+        !board_contains(board, root.public_state.board)) {
         throw std::invalid_argument("multiway terminal adapter state is outside the root board/street lineage");
     }
 

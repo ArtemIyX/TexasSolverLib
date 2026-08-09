@@ -2,6 +2,7 @@
 #include "solver/multiway_blueprint_config.hpp"
 #include "test_harness.hpp"
 
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -217,4 +218,26 @@ TEST_CASE(multiway_artifact_fails_closed_for_malformed_manifest) {
     EXPECT_THROW(core::MultiwayBlueprintArtifacts::load_verified(path, expected.identity), std::runtime_error);
     std::filesystem::remove(path);
     std::filesystem::remove(path.string() + ".manifest");
+}
+
+TEST_CASE(multiway_artifact_rejects_schema_v2_manifest_magic) {
+    const auto expected = snapshot();
+    const auto path = artifact_path("schema_v2_manifest");
+    const auto manifest = path.string() + ".manifest";
+    core::MultiwayBlueprintArtifacts::save_atomic(path, expected);
+    {
+        std::ifstream in(manifest, std::ios::binary);
+        std::array<char, 8> magic = {};
+        in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+        EXPECT_TRUE(static_cast<bool>(in));
+        EXPECT_EQ(magic[7], '3');
+    }
+    {
+        std::fstream out(manifest, std::ios::binary | std::ios::in | std::ios::out);
+        out.seekp(7);
+        out.put('2');
+    }
+    EXPECT_THROW(core::MultiwayBlueprintArtifacts::load_verified(path, expected.identity), std::runtime_error);
+    std::filesystem::remove(path);
+    std::filesystem::remove(manifest);
 }

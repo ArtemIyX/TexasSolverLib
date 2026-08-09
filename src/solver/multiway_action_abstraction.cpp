@@ -1,4 +1,5 @@
 #include "solver/multiway_action_abstraction.hpp"
+#include "solver/multiway_public_builder.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -44,7 +45,6 @@ MultiwayPreflopSituation inferred_preflop_situation(const MultiwayState& state) 
 void normalize_menu(
     const MultiwayState& state,
     std::vector<MultiwayActionDescriptor>& menu,
-    std::uint64_t action_menu_id,
     const MultiwayActionDescriptor* protected_action) {
     const auto actor = static_cast<std::size_t>(state.current_player());
     std::vector<MultiwayActionDescriptor> unique;
@@ -58,7 +58,7 @@ void normalize_menu(
         if (duplicate == unique.end()) {
             const auto successor = state.apply(candidate.action, candidate.target_street_contribution);
             unique.push_back({candidate.action, 0U,
-                successor.street_contributions()[actor], action_menu_id});
+                successor.street_contributions()[actor], 0U});
         }
     }
 
@@ -86,11 +86,7 @@ void normalize_menu(
         }
         unique.erase(remove);
     }
-    for (std::size_t index = 0; index < unique.size(); ++index) {
-        unique[index].action_index = static_cast<std::uint32_t>(index);
-        unique[index].action_menu_id = action_menu_id;
-    }
-    menu = std::move(unique);
+    menu = MultiwayPublicBuilder::canonicalize_action_menu(state.snapshot(), std::move(unique));
 }
 
 }  // namespace
@@ -139,7 +135,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
     const MultiwayBettingSnapshot& betting,
     std::uint64_t action_menu_id,
     MultiwayActionAbstractionContext context) const {
-    if (action_menu_id == 0U) throw std::invalid_argument("multiway action abstraction requires a menu id");
+    (void)action_menu_id;
     const auto state = MultiwayState::from_snapshot(betting);
     const auto base_actions = state.legal_actions();
     const auto actor = static_cast<std::size_t>(state.current_player());
@@ -158,7 +154,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
                 return existing.action == action && existing.target_street_contribution == actual_target;
             });
         if (duplicate == result.end()) {
-            result.push_back({action, 0U, actual_target, action_menu_id});
+            result.push_back({action, 0U, actual_target, 0U});
         }
     };
     const auto append_aggressive = [&](MultiwayAction action, int target) {
@@ -283,7 +279,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
     }
 
     if (has_action(MultiwayAction::AllIn)) append(MultiwayAction::AllIn, 0);
-    normalize_menu(state, result, action_menu_id, nullptr);
+    normalize_menu(state, result, nullptr);
     return result;
 }
 
@@ -293,7 +289,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::insert_exact_ob
     MultiwayAction observed_action,
     int target_street_contribution,
     std::uint64_t action_menu_id) {
-    if (action_menu_id == 0U) throw std::invalid_argument("multiway observed action requires a menu id");
+    (void)action_menu_id;
     const auto state = MultiwayState::from_snapshot(betting);
     const auto legal = state.legal_actions();
     if (std::find(legal.begin(), legal.end(), observed_action) == legal.end()) {
@@ -302,9 +298,9 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::insert_exact_ob
     const auto successor = state.apply(observed_action, target_street_contribution);
     const auto actor = static_cast<std::size_t>(state.current_player());
     const MultiwayActionDescriptor observed = {
-        observed_action, 0U, successor.street_contributions()[actor], action_menu_id};
+        observed_action, 0U, successor.street_contributions()[actor], 0U};
     menu.push_back(observed);
-    normalize_menu(state, menu, action_menu_id, &observed);
+    normalize_menu(state, menu, &observed);
     return menu;
 }
 

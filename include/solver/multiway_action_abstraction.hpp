@@ -73,6 +73,8 @@ public:
 
     [[nodiscard]] std::vector<MultiwayActionDescriptor> make_legal_actions(
         const MultiwayBettingSnapshot& betting,
+        // Retained for source compatibility. Schema-v2 derives the id from
+        // canonical action/target entries.
         std::uint64_t action_menu_id) const;
 
     [[nodiscard]] std::vector<MultiwayActionDescriptor> make_legal_actions(
@@ -85,6 +87,8 @@ public:
         std::vector<MultiwayActionDescriptor> menu,
         MultiwayAction observed_action,
         int target_street_contribution,
+        // Retained for source compatibility. The returned menu has a newly
+        // derived id when the inserted action changes its canonical entries.
         std::uint64_t action_menu_id);
 
 private:

@@ -12,7 +12,7 @@
 namespace core {
 namespace {
 
-constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '2'};
+constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '3'};
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 

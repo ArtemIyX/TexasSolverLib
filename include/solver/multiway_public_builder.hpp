@@ -15,8 +15,20 @@ class MultiwayResolver;
 // contributions for Bet and Raise actions.
 class MultiwayPublicBuilder {
 public:
+    // Schema-v2 canonical action identity. The returned menu is sorted by
+    // (action, target contribution), has contiguous indices, and has one
+    // derived non-zero menu id on every entry.
+    [[nodiscard]] static std::vector<MultiwayActionDescriptor> canonicalize_action_menu(
+        const MultiwayBettingSnapshot& betting,
+        std::vector<MultiwayActionDescriptor> menu);
+
+    [[nodiscard]] static std::uint64_t stable_action_menu_id(
+        const std::vector<MultiwayActionDescriptor>& canonical_menu) noexcept;
+
     [[nodiscard]] static std::vector<MultiwayActionDescriptor> make_legal_actions(
         const MultiwayBettingSnapshot& betting,
+        // Retained for source compatibility. Schema-v2 derives the id from
+        // canonical action/target entries.
         std::uint64_t action_menu_id,
         const std::vector<int>& target_street_contributions);
 
@@ -45,6 +57,10 @@ public:
         const MultiwayPublicStreetTransition& transition,
         std::vector<MultiwayActionDescriptor> child_legal_actions);
 
+    // Schema-v2 uses tagged, length-prefixed bytes. History contains ordered
+    // actor/action/target/menu-id records. Public state contains the complete
+    // betting snapshot, canonical sorted board, ordered history, and canonical
+    // action menu. Parent links and diagnostic fields are deliberately absent.
     [[nodiscard]] static std::uint64_t stable_history_id(
         const std::vector<MultiwayPublicHistoryEntry>& history) noexcept;
 

@@ -1,4 +1,5 @@
 #include "solver/multiway_terminal_adapter.hpp"
+#include "solver/multiway_public_builder.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -69,14 +70,9 @@ core::MultiwayRootSnapshot root_for_betting_state(
     core::PlayerId first_seat = 0,
     core::PlayerId odd_chip_first_seat = 0) {
     core::MultiwayRootSnapshot root;
-    root.public_state.id = {42};
-    root.public_state.canonical_history_id = 4242;
-    root.public_state.betting = state.snapshot();
-    root.public_state.board = board;
-    root.public_state.board_runout.remaining_board_cards = static_cast<std::uint8_t>(5U - board.size());
-    root.public_state.board_runout.chance_only_runout = state.requires_board_runout();
-    root.public_state.legal_actions = action_descriptors(state);
-    root.root_infoset = {{42}, state.current_player()};
+    root.public_state = core::MultiwayPublicBuilder::make_root(
+        state.snapshot(), board, action_descriptors(state));
+    root.root_infoset = {root.public_state.id, state.current_player()};
     root.seat_order = {first_seat, static_cast<core::PlayerId>((first_seat + 1) % 3),
                        static_cast<core::PlayerId>((first_seat + 2) % 3)};
     root.next_street_first_seat = first_seat;
@@ -105,16 +101,12 @@ struct AdapterFixture {
     core::MultiwayPublicStateDescriptor admit_chance_child(
         const core::MultiwayPublicStateDescriptor& parent,
         const core::MultiwayBoardChanceEdge& chance) {
-        auto child = parent;
-        child.id = {next_id++};
-        child.parent_id = parent.id;
-        child.canonical_history_id = next_history_id++;
-        child.incoming_edge = {};
-        child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BoardChance;
-        child.incoming_edge.dealt_card = chance.dealt_card;
-        child.incoming_edge.dealt_cards = chance.dealt_cards;
-        child.board = chance.board;
-        child.board_runout = chance.board_runout;
+        core::MultiwayPublicBoardChanceEdge edge;
+        edge.parent_id = parent.id;
+        edge.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BoardChance;
+        edge.chance = chance;
+        const auto child = core::MultiwayPublicBuilder::make_board_chance_child(
+            parent, edge, parent.legal_actions);
         coordinator.admit_public_state(child);
         return child;
     }
@@ -122,19 +114,11 @@ struct AdapterFixture {
     core::MultiwayPublicStateDescriptor admit_action_child(
         const core::MultiwayPublicStateDescriptor& parent,
         std::size_t action_index) {
-        auto child = parent;
         const auto action = parent.legal_actions.at(action_index);
-        child.id = {next_id++};
-        child.parent_id = parent.id;
-        child.canonical_history_id = next_history_id++;
-        child.incoming_edge = {};
-        child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::BettingAction;
-        child.incoming_edge.action = action;
-        child.history.push_back({parent.betting.current_player, action});
-        child.betting = core::MultiwayState::from_snapshot(parent.betting)
-                            .apply(action.action, action.target_street_contribution)
-                            .snapshot();
-        child.legal_actions = action_descriptors(core::MultiwayState::from_snapshot(child.betting));
+        const auto state = core::MultiwayState::from_snapshot(parent.betting)
+                               .apply(action.action, action.target_street_contribution);
+        const auto child = core::MultiwayPublicBuilder::make_action_child(
+            parent, static_cast<std::uint32_t>(action_index), action_descriptors(state));
         coordinator.admit_public_state(child);
         return child;
     }
@@ -142,17 +126,13 @@ struct AdapterFixture {
     core::MultiwayPublicStateDescriptor admit_street_child(
         const core::MultiwayPublicStateDescriptor& parent,
         const core::MultiwayStreetTransition& transition) {
-        auto child = parent;
-        child.id = {next_id++};
-        child.parent_id = parent.id;
-        child.canonical_history_id = next_history_id++;
-        child.incoming_edge = {};
-        child.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::StreetTransition;
-        child.incoming_edge.transition_board = transition.board;
-        child.betting = transition.betting;
-        child.board = transition.board;
-        child.board_runout = transition.board_runout;
-        child.legal_actions = action_descriptors(core::MultiwayState::from_snapshot(child.betting));
+        core::MultiwayPublicStreetTransition public_transition;
+        public_transition.parent_id = parent.id;
+        public_transition.incoming_edge.kind = core::MultiwayPublicParentEdgeKind::StreetTransition;
+        public_transition.transition = transition;
+        const auto child = core::MultiwayPublicBuilder::make_street_transition_child(
+            parent, public_transition,
+            action_descriptors(core::MultiwayState::from_snapshot(transition.betting)));
         coordinator.admit_public_state(child);
         return child;
     }
@@ -166,8 +146,6 @@ struct AdapterFixture {
     core::MultiwaySolveRequest request;
     core::MultiwaySolverCoordinator coordinator;
     core::MultiwayTerminalAdapter adapter;
-    std::uint64_t next_id = 43;
-    std::uint64_t next_history_id = 4243;
 };
 
 }  // namespace

@@ -199,14 +199,11 @@ std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
     const MultiwayState& state,
     const MultiwayResolverConfig& config) {
     const auto supplied = &request.public_state.legal_actions;
-    const auto menu_id = supplied->empty() ? request.public_state.canonical_history_id :
-        supplied->front().action_menu_id;
-    if (menu_id == 0U) throw std::invalid_argument("multiway resolver root needs a stable action menu id");
     MultiwayActionAbstraction abstraction(config.action_abstraction);
-    auto menu = abstraction.make_legal_actions(state.snapshot(), menu_id);
+    auto menu = abstraction.make_legal_actions(state.snapshot(), 0U);
     for (std::size_t index = 0; index < supplied->size(); ++index) {
         const auto& observed = supplied->at(index);
-        if (observed.action_index != index || observed.action_menu_id != menu_id) {
+        if (observed.action_index != index) {
             throw std::invalid_argument("multiway resolver root action menu is malformed");
         }
         const auto successor = state.apply(observed.action, observed.target_street_contribution);
@@ -216,7 +213,7 @@ std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
         }
         menu = MultiwayActionAbstraction::insert_exact_observed_action(
             state.snapshot(), std::move(menu), observed.action,
-            observed.target_street_contribution, menu_id);
+            observed.target_street_contribution, 0U);
     }
     return menu;
 }
@@ -289,6 +286,8 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             state.folded()[static_cast<std::size_t>(request.hero_seat)] || state.legal_actions().empty()) {
             throw std::invalid_argument("multiway resolver hero is not the current legal actor");
         }
+        auto canonical_board = request.public_state.board;
+        std::sort(canonical_board.begin(), canonical_board.end());
         const auto* blueprint = config_.verified_blueprint == nullptr
             ? config_.blueprint : &config_.verified_blueprint->snapshot;
         if (config_.verified_blueprint != nullptr &&
@@ -301,7 +300,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             throw std::invalid_argument("multiway resolver reconstructed an invalid root menu");
         }
         const auto reconstructed_id = MultiwayPublicBuilder::stable_public_state_id(
-            request.public_state.betting, request.public_state.board, request.public_state.history, menu);
+            request.public_state.betting, canonical_board, request.public_state.history, menu);
         result.diagnostics.root_menu_size = static_cast<std::uint32_t>(menu.size());
         result.diagnostics.resolved_public_state_id = reconstructed_id;
 
@@ -312,8 +311,6 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             } else if (config_.buckets->identity() != request.blueprint_identity) {
                 result.diagnostics.status = MultiwayResolverStatus::ArtifactMismatch;
             } else {
-                auto canonical_board = request.public_state.board;
-                std::sort(canonical_board.begin(), canonical_board.end());
                 try {
                     bucket = config_.buckets->lookup_hunl(state.street(), canonical_board, request.hero_cards);
                 } catch (const std::out_of_range&) {

@@ -2,6 +2,7 @@
 #include "solver/multiway_blueprint_config.hpp"
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_model_identity.hpp"
+#include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "test_harness.hpp"
 
@@ -56,13 +57,9 @@ core::MultiwayRootSnapshot make_root(const core::MultiwayActionAbstraction& abst
     const auto betting = core::MultiwayState::initial(game).snapshot();
 
     core::MultiwayRootSnapshot root;
-    root.public_state.id = {1U};
-    root.public_state.canonical_history_id = 1U;
-    root.public_state.betting = betting;
-    root.public_state.board = kBoard;
-    root.public_state.board_runout.remaining_board_cards = 0U;
-    root.public_state.legal_actions = abstraction.make_legal_actions(betting, 77U);
-    root.root_infoset = {{1U}, 0};
+    root.public_state = core::MultiwayPublicBuilder::make_root(
+        betting, kBoard, abstraction.make_legal_actions(betting, 77U));
+    root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
     root.seat_order = {0, 1, 2};
     root.next_street_first_seat = 0;

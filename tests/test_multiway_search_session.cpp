@@ -42,15 +42,12 @@ core::MultiwayRootSnapshot make_root(core::Street street) {
 
     const core::MultiwayActionAbstraction abstraction;
     core::MultiwayRootSnapshot root;
-    root.public_state.id = {71U};
-    root.public_state.canonical_history_id = 701U;
-    root.public_state.betting = betting;
+    std::vector<std::uint8_t> board;
     if (street != core::Street::Preflop) {
-        root.public_state.board = {card(2U, 0U), card(7U, 1U), card(9U, 2U)};
+        board = {card(2U, 0U), card(7U, 1U), card(9U, 2U)};
     }
-    root.public_state.board_runout.remaining_board_cards =
-        static_cast<std::uint8_t>(5U - root.public_state.board.size());
-    root.public_state.legal_actions = abstraction.make_legal_actions(betting, 9'001U);
+    root.public_state = core::MultiwayPublicBuilder::make_root(
+        betting, board, abstraction.make_legal_actions(betting, 9'001U));
     root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
     root.seat_order = {0, 1};
@@ -106,6 +103,20 @@ static_assert(!std::is_move_constructible_v<core::MultiwaySearchSession>);
 static_assert(!std::is_move_assignable_v<core::MultiwaySearchSession>);
 
 }  // namespace
+
+TEST_CASE(multiway_search_session_request_rejects_stale_schema_v2_public_descriptors) {
+    auto root = make_root(core::Street::Flop);
+    ++root.public_state.id.value;
+    EXPECT_THROW(make_request(root), std::invalid_argument);
+
+    root = make_root(core::Street::Flop);
+    ++root.public_state.canonical_history_id;
+    EXPECT_THROW(make_request(root), std::invalid_argument);
+
+    root = make_root(core::Street::Flop);
+    ++root.public_state.legal_actions.front().action_menu_id;
+    EXPECT_THROW(make_request(root), std::invalid_argument);
+}
 
 TEST_CASE(multiway_search_session_initializes_request_local_postflop_state) {
     auto root = make_root(core::Street::Flop);

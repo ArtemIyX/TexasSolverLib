@@ -1,6 +1,8 @@
 #include "solver/multiway_solver.hpp"
+#include "solver/multiway_public_builder.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <exception>
@@ -41,6 +43,29 @@ std::uint8_t expected_board_card_count(Street street) {
 
 bool same_board(const std::vector<std::uint8_t>& left, const std::vector<std::uint8_t>& right) noexcept {
     return left == right;
+}
+
+bool board_contains(
+    const std::vector<std::uint8_t>& complete,
+    const std::vector<std::uint8_t>& subset) noexcept {
+    return std::includes(complete.begin(), complete.end(), subset.begin(), subset.end());
+}
+
+bool matches_added_board_cards(
+    const std::vector<std::uint8_t>& parent,
+    const std::vector<std::uint8_t>& child,
+    const std::vector<std::uint8_t>& dealt_cards) noexcept {
+    if (child.size() <= parent.size() || dealt_cards.size() > 5U) return false;
+    std::array<std::uint8_t, 5U> added = {};
+    std::size_t count = 0U;
+    for (const auto card : child) {
+        if (!std::binary_search(parent.begin(), parent.end(), card)) added[count++] = card;
+    }
+    if (child.size() != parent.size() + count || count != dealt_cards.size()) return false;
+    for (std::size_t index = 0U; index < count; ++index) {
+        if (added[index] != dealt_cards[index]) return false;
+    }
+    return true;
 }
 
 bool same_betting_snapshot(
@@ -86,13 +111,11 @@ void validate_public_state_child_transition(
     const MultiwayPublicStateDescriptor& parent,
     const MultiwayPublicStateDescriptor& child) {
     const auto parent_state = MultiwayState::from_snapshot(parent.betting);
-    if (child.canonical_history_id == parent.canonical_history_id) {
-        throw std::invalid_argument("multiway child public state must have a distinct history identity");
-    }
     switch (child.incoming_edge.kind) {
         case MultiwayPublicParentEdgeKind::BettingAction: {
             if (child.history.size() != parent.history.size() + 1U ||
                 !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) ||
+                child.canonical_history_id == parent.canonical_history_id ||
                 child.board != parent.board ||
                 child.board_runout.remaining_board_cards != parent.board_runout.remaining_board_cards) {
                 throw std::invalid_argument("multiway child action state does not preserve parent public data");
@@ -118,17 +141,13 @@ void validate_public_state_child_transition(
                  parent_kind != MultiwayNextNodeKind::StreetTransition) ||
                 child.history != parent.history || !same_betting_snapshot(child.betting, parent.betting) ||
                 child.board.size() <= parent.board.size() ||
-                !std::equal(parent.board.begin(), parent.board.end(), child.board.begin()) ||
+                !board_contains(child.board, parent.board) ||
                 !are_valid_and_distinct_cards(child.board.data(), child.board.size())) {
                 throw std::invalid_argument("multiway child board chance does not match its parent state");
             }
-            const auto dealt_count = child.board.size() - parent.board.size();
-            if (child.incoming_edge.dealt_cards.size() != dealt_count ||
-                !std::equal(child.incoming_edge.dealt_cards.begin(), child.incoming_edge.dealt_cards.end(),
-                            child.board.begin() + static_cast<std::ptrdiff_t>(parent.board.size())) ||
+            if (!matches_added_board_cards(parent.board, child.board, child.incoming_edge.dealt_cards) ||
                 child.incoming_edge.dealt_card != child.incoming_edge.dealt_cards.front() ||
-                (dealt_count == 3U &&
-                 !std::is_sorted(child.incoming_edge.dealt_cards.begin(), child.incoming_edge.dealt_cards.end()))) {
+                !std::is_sorted(child.incoming_edge.dealt_cards.begin(), child.incoming_edge.dealt_cards.end())) {
                 throw std::invalid_argument("multiway child board chance has an invalid dealt-card descriptor");
             }
             const auto chance_only = parent_kind == MultiwayNextNodeKind::BoardRunout;
@@ -144,7 +163,7 @@ void validate_public_state_child_transition(
                 child.board.size() != expected_board_card_count(
                     static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U)) ||
                 child.board.size() < parent.board.size() ||
-                !std::equal(parent.board.begin(), parent.board.end(), child.board.begin()) ||
+                !board_contains(child.board, parent.board) ||
                 child.board_runout.remaining_board_cards != 5U - child.board.size() ||
                 child.board_runout.chance_only_runout) {
                 throw std::invalid_argument("multiway child street transition has inconsistent public state");
@@ -192,7 +211,7 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
                   state.board.size() <= expected_board_card_count(
                       static_cast<Street>(static_cast<std::uint8_t>(state.betting.street) + 1U))
         : state.board.size() == known_board_cards;
-    if (!valid_board_size ||
+    if (!valid_board_size || !std::is_sorted(state.board.begin(), state.board.end()) ||
         state.board_runout.remaining_board_cards != 5U - state.board.size() ||
         !are_valid_and_distinct_cards(state.board.data(), state.board.size())) {
         throw std::invalid_argument("multiway public state has an inconsistent board/runout state");
@@ -203,11 +222,18 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
     }
     const auto available_actions = betting_state.legal_actions();
     std::vector<bool> covered_actions(available_actions.size(), false);
+    const auto expected_menu_id = MultiwayPublicBuilder::stable_action_menu_id(state.legal_actions);
     for (std::size_t index = 0; index < state.legal_actions.size(); ++index) {
         const auto& action = state.legal_actions[index];
         if (!valid_action(action.action) || action.action_index != index || action.action_menu_id == 0 ||
             action.target_street_contribution < 0 ||
-            (index != 0 && action.action_menu_id != state.legal_actions.front().action_menu_id)) {
+            action.action_menu_id != expected_menu_id ||
+            (index != 0 &&
+             (static_cast<std::uint8_t>(action.action) <
+                  static_cast<std::uint8_t>(state.legal_actions[index - 1U].action) ||
+              (action.action == state.legal_actions[index - 1U].action &&
+               action.target_street_contribution <=
+                   state.legal_actions[index - 1U].target_street_contribution)))) {
             throw std::invalid_argument("multiway public state action menu is not a stable descriptor sequence");
         }
         const auto available = std::find(available_actions.begin(), available_actions.end(), action.action);
@@ -237,10 +263,15 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
     const auto seat_count = state.betting.stacks.size();
     for (const auto& entry : state.history) {
         if (entry.actor < 0 || static_cast<std::size_t>(entry.actor) >= seat_count ||
-            !valid_action(entry.action.action) || entry.action.action_menu_id == 0 ||
+            !valid_action(entry.action.action) || entry.action.action_index != 0U || entry.action.action_menu_id == 0 ||
             entry.action.target_street_contribution < 0) {
             throw std::invalid_argument("multiway public state history contains an invalid action descriptor");
         }
+    }
+    if (state.canonical_history_id != MultiwayPublicBuilder::stable_history_id(state.history) ||
+        state.id.value != MultiwayPublicBuilder::stable_public_state_id(
+            state.betting, state.board, state.history, state.legal_actions)) {
+        throw std::invalid_argument("multiway public state descriptor does not match its schema-v2 fingerprint");
     }
 }
 

@@ -17,6 +17,19 @@ TEST_CASE(multiway_model_identity_is_deterministic_and_versioned) {
     EXPECT_TRUE(changed.bucket_model_hash != first.bucket_model_hash);
 }
 
+TEST_CASE(multiway_model_identity_defaults_to_resolver_schema_v2) {
+    const core::MultiwayBlueprintConfig current_config;
+    EXPECT_EQ(current_config.resolver_schema_version, 2U);
+    const auto current = core::make_multiway_model_identity(current_config);
+
+    auto legacy_config = current_config;
+    legacy_config.resolver_schema_version = 1U;
+    const auto legacy = core::make_multiway_model_identity(legacy_config);
+
+    EXPECT_TRUE(current.resolver_schema_hash != legacy.resolver_schema_hash);
+    EXPECT_TRUE(current.combined_hash != legacy.combined_hash);
+}
+
 TEST_CASE(multiway_blueprint_config_rejects_invalid_rules_and_versions) {
     core::MultiwayBlueprintConfig config;
     config.player_count = 7;

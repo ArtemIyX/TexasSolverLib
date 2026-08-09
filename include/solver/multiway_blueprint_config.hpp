@@ -27,7 +27,7 @@ struct MultiwayBlueprintConfig {
     // Versioned independently so a rule-profile or resolver-contract change
     // cannot silently reuse a prior artifact.
     std::uint64_t rules_profile_version = 1;
-    std::uint64_t resolver_schema_version = 1;
+    std::uint64_t resolver_schema_version = 2;
     std::uint64_t code_schema_version = 1;
     // Semantic versions only. Diagnostic formats must not be added here.
     std::uint64_t range_semantics_version = 1;
