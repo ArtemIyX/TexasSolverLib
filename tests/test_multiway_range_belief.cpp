@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -52,6 +53,9 @@ void expect_same_row(
     EXPECT_EQ(actual.metadata().observation.source, expected.metadata.observation.source);
     EXPECT_EQ(actual.metadata().observation.public_state_id, expected.metadata.observation.public_state_id);
     EXPECT_EQ(actual.metadata().observation.action_menu_id, expected.metadata.observation.action_menu_id);
+    EXPECT_EQ(
+        actual.metadata().observation.bucket_table_identity,
+        expected.metadata.observation.bucket_table_identity);
     EXPECT_EQ(actual.metadata().observation.source_revision, expected.metadata.observation.source_revision);
     EXPECT_EQ(actual.metadata().observation.observed_action, expected.metadata.observation.observed_action);
     EXPECT_EQ(actual.metadata().observation.applied, expected.metadata.observation.applied);
@@ -186,12 +190,50 @@ TEST_CASE(multiway_range_beliefs_apply_exact_observation_posterior_and_metadata)
     EXPECT_EQ(updated.metadata().observation.source, core::MultiwayRangeBeliefSource::Search);
     EXPECT_EQ(updated.metadata().observation.public_state_id, 91U);
     EXPECT_EQ(updated.metadata().observation.action_menu_id, 53U);
+    EXPECT_EQ(updated.metadata().observation.bucket_table_identity, fixture.table.table_identity());
     EXPECT_EQ(updated.metadata().observation.source_revision, 71U);
     EXPECT_EQ(updated.metadata().observation.observed_action, 0U);
     EXPECT_TRUE(updated.metadata().observation.applied);
     EXPECT_NEAR(updated.metadata().input_mass, posterior_mass, 1e-15);
     EXPECT_NEAR(updated.metadata().normalized_mass, 1.0, 0.0);
     expect_same_row(beliefs.view(1U), untouched_second);
+}
+
+TEST_CASE(multiway_range_beliefs_bind_observations_to_exact_table_content) {
+    ObservationFixture fixture;
+    auto changed_assignments = two_bucket_assignments(fixture.compact_board);
+    const std::array<std::uint8_t, 2> changed_compact_hole = {3U, 4U};
+    const auto changed_index = core::MultiwayBucketTable::hole_index(changed_compact_hole);
+    changed_assignments[changed_index] = 1U;
+    const core::MultiwayBucketTable changed_table(
+        fixture.identity, core::Street::Flop, fixture.compact_board, 2U, std::move(changed_assignments));
+    EXPECT_TRUE(changed_table.table_identity() != fixture.table.table_identity());
+
+    const std::array<core::MultiwayRangeBeliefSuppliedEntry, 1> entries = {{{{11U, 12U}, 1.0}}};
+    const std::array<core::MultiwayRangeBeliefSeatInput, 2> seats = {{
+        {entries.data(), entries.size(), nullptr, 0U},
+        {entries.data(), entries.size(), nullptr, 0U},
+    }};
+    core::MultiwayRangeBeliefs beliefs;
+    beliefs.reset_supplied(seats.size(), seats.data());
+    const auto before = snapshot(beliefs.view(0U));
+    const auto before_revision = beliefs.revision();
+
+    const core::MultiwayRangeBeliefObservation stale_binding(
+        changed_table, fixture.policy, core::MultiwayRangeBeliefSource::Blueprint, 0U, 1U);
+    EXPECT_THROW(beliefs.apply_observation(0U, stale_binding), std::invalid_argument);
+    EXPECT_EQ(beliefs.revision(), before_revision);
+    expect_same_row(beliefs.view(0U), before);
+
+    const auto changed_policy = make_policy(fixture.identity, changed_table.table_identity());
+    const core::MultiwayRangeBeliefObservation verified_binding(
+        changed_table, changed_policy, core::MultiwayRangeBeliefSource::Blueprint, 0U, 2U);
+    EXPECT_EQ(
+        beliefs.apply_observation(0U, verified_binding),
+        core::MultiwayRangeBeliefUpdateResult::Applied);
+    EXPECT_EQ(
+        beliefs.view(0U).metadata().observation.bucket_table_identity,
+        changed_table.table_identity());
 }
 
 TEST_CASE(multiway_range_beliefs_observation_zero_mass_and_validation_are_transactional) {
