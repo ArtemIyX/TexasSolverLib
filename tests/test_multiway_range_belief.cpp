@@ -1,12 +1,15 @@
 #include "solver/multiway_range_belief.hpp"
+#include "solver/multiway_blueprint_config.hpp"
 #include "test_harness.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 
@@ -44,12 +47,64 @@ void expect_same_row(
     EXPECT_EQ(actual.legal_mask(), expected.legal_mask);
     EXPECT_EQ(actual.metadata().source, expected.metadata.source);
     EXPECT_EQ(actual.metadata().last_update_revision, expected.metadata.last_update_revision);
+    EXPECT_EQ(actual.metadata().last_action_id, expected.metadata.last_action_id);
+    EXPECT_EQ(actual.metadata().has_last_action, expected.metadata.has_last_action);
+    EXPECT_EQ(actual.metadata().observation.source, expected.metadata.observation.source);
+    EXPECT_EQ(actual.metadata().observation.public_state_id, expected.metadata.observation.public_state_id);
+    EXPECT_EQ(actual.metadata().observation.action_menu_id, expected.metadata.observation.action_menu_id);
+    EXPECT_EQ(actual.metadata().observation.source_revision, expected.metadata.observation.source_revision);
+    EXPECT_EQ(actual.metadata().observation.observed_action, expected.metadata.observation.observed_action);
+    EXPECT_EQ(actual.metadata().observation.applied, expected.metadata.observation.applied);
     EXPECT_EQ(actual.metadata().input_mass, expected.metadata.input_mass);
     EXPECT_EQ(actual.metadata().normalized_mass, expected.metadata.normalized_mass);
     for (std::size_t id = 0U; id < actual.size(); ++id) {
         EXPECT_EQ(actual.weight(static_cast<core::CanonicalComboId>(id)), expected.weights[id]);
     }
 }
+
+std::vector<std::uint32_t> two_bucket_assignments(const std::vector<std::uint8_t>& compact_board) {
+    std::vector<std::uint32_t> assignments(
+        core::MULTIWAY_HOLE_COMBINATION_COUNT, core::MULTIWAY_INVALID_BUCKET);
+    for (std::uint8_t first = 0U; first < 52U; ++first) {
+        for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
+            if (std::find(compact_board.begin(), compact_board.end(), first) != compact_board.end() ||
+                std::find(compact_board.begin(), compact_board.end(), second) != compact_board.end()) {
+                continue;
+            }
+            const std::array<std::uint8_t, 2> hole = {first, second};
+            assignments[core::MultiwayBucketTable::hole_index(hole)] =
+                static_cast<std::uint32_t>(core::MultiwayBucketTable::hole_index(hole) % 2U);
+        }
+    }
+    return assignments;
+}
+
+core::MultiwayBucketActionPolicy make_policy(
+    const core::MultiwayModelIdentity& identity,
+    std::uint64_t table_identity) {
+    core::MultiwayBucketActionPolicy policy;
+    policy.identity = identity;
+    policy.public_state = {91U};
+    policy.action_menu_id = 53U;
+    policy.bucket_table_identity = table_identity;
+    policy.bucket_count = 2U;
+    policy.action_count = 2U;
+    policy.probabilities = {49151U, 16384U, 16384U, 49151U};
+    return policy;
+}
+
+struct ObservationFixture {
+    ObservationFixture()
+        : identity(core::make_multiway_model_identity(config)),
+          table(identity, core::Street::Flop, compact_board, 2U, two_bucket_assignments(compact_board)),
+          policy(make_policy(identity, table.table_identity())) {}
+
+    core::MultiwayBlueprintConfig config;
+    core::MultiwayModelIdentity identity;
+    const std::vector<std::uint8_t> compact_board = {0U, 1U, 2U};
+    core::MultiwayBucketTable table;
+    core::MultiwayBucketActionPolicy policy;
+};
 
 }  // namespace
 
@@ -80,6 +135,7 @@ TEST_CASE(multiway_range_beliefs_uniform_initialization_tracks_masks_and_metadat
     EXPECT_EQ(first.metadata().source, core::MultiwayRangeBeliefSource::Uniform);
     EXPECT_EQ(second.metadata().last_update_revision, 1U);
     EXPECT_TRUE(!second.metadata().has_last_action);
+    EXPECT_TRUE(!second.metadata().observation.applied);
     EXPECT_NEAR(second.metadata().input_mass, 1176.0, 0.0);
     EXPECT_NEAR(second.metadata().normalized_mass, 1.0, 0.0);
 
@@ -93,6 +149,148 @@ TEST_CASE(multiway_range_beliefs_uniform_initialization_tracks_masks_and_metadat
         EXPECT_NEAR(total_weight(view), 1.0, 1e-12);
         EXPECT_EQ(view.metadata().last_update_revision, 2U);
     }
+}
+
+TEST_CASE(multiway_range_beliefs_apply_exact_observation_posterior_and_metadata) {
+    ObservationFixture fixture;
+    const std::array<std::uint8_t, 3> hunl_board = {8U, 9U, 10U};
+    const std::array<core::MultiwayRangeBeliefSuppliedEntry, 2> entries = {{
+        {{11U, 12U}, 0.25},
+        {{11U, 13U}, 0.75},
+    }};
+    const std::array<core::MultiwayRangeBeliefSeatInput, 2> seats = {{
+        {entries.data(), entries.size(), hunl_board.data(), hunl_board.size()},
+        {entries.data(), entries.size(), hunl_board.data(), hunl_board.size()},
+    }};
+    core::MultiwayRangeBeliefs beliefs;
+    beliefs.reset_supplied(seats.size(), seats.data());
+    const auto untouched_second = snapshot(beliefs.view(1U));
+    const core::MultiwayRangeBeliefObservation observation(
+        fixture.table, fixture.policy, core::MultiwayRangeBeliefSource::Search, 0U, 71U);
+    const auto likelihood_zero = fixture.policy.likelihood(0U, 0U);
+    const auto likelihood_one = fixture.policy.likelihood(1U, 0U);
+    const auto posterior_mass = 0.25 * likelihood_zero + 0.75 * likelihood_one;
+
+    EXPECT_EQ(
+        beliefs.apply_observation(0U, observation),
+        core::MultiwayRangeBeliefUpdateResult::Applied);
+    const auto updated = beliefs.view(0U);
+    EXPECT_NEAR(updated.weight(combo_id(11U, 12U)), 0.25 * likelihood_zero / posterior_mass, 1e-15);
+    EXPECT_NEAR(updated.weight(combo_id(11U, 13U)), 0.75 * likelihood_one / posterior_mass, 1e-15);
+    EXPECT_NEAR(total_weight(updated), 1.0, 1e-12);
+    EXPECT_EQ(beliefs.revision(), 2U);
+    EXPECT_EQ(updated.metadata().source, core::MultiwayRangeBeliefSource::Search);
+    EXPECT_EQ(updated.metadata().last_update_revision, 2U);
+    EXPECT_EQ(updated.metadata().last_action_id, 0U);
+    EXPECT_TRUE(updated.metadata().has_last_action);
+    EXPECT_EQ(updated.metadata().observation.source, core::MultiwayRangeBeliefSource::Search);
+    EXPECT_EQ(updated.metadata().observation.public_state_id, 91U);
+    EXPECT_EQ(updated.metadata().observation.action_menu_id, 53U);
+    EXPECT_EQ(updated.metadata().observation.source_revision, 71U);
+    EXPECT_EQ(updated.metadata().observation.observed_action, 0U);
+    EXPECT_TRUE(updated.metadata().observation.applied);
+    EXPECT_NEAR(updated.metadata().input_mass, posterior_mass, 1e-15);
+    EXPECT_NEAR(updated.metadata().normalized_mass, 1.0, 0.0);
+    expect_same_row(beliefs.view(1U), untouched_second);
+}
+
+TEST_CASE(multiway_range_beliefs_observation_zero_mass_and_validation_are_transactional) {
+    ObservationFixture fixture;
+    const std::array<core::MultiwayRangeBeliefSuppliedEntry, 1> entries = {{{{11U, 12U}, 1.0}}};
+    const std::array<core::MultiwayRangeBeliefSeatInput, 2> seats = {{
+        {entries.data(), entries.size(), nullptr, 0U},
+        {entries.data(), entries.size(), nullptr, 0U},
+    }};
+    core::MultiwayRangeBeliefs beliefs;
+    beliefs.reset_supplied(seats.size(), seats.data());
+    const auto before = snapshot(beliefs.view(0U));
+    const auto before_revision = beliefs.revision();
+
+    auto zero_policy = fixture.policy;
+    zero_policy.probabilities = {0U, 0U, 65535U, 65535U};
+    const core::MultiwayRangeBeliefObservation zero_observation(
+        fixture.table, zero_policy, core::MultiwayRangeBeliefSource::Blueprint, 0U, 1U);
+    EXPECT_EQ(
+        beliefs.apply_observation(0U, zero_observation),
+        core::MultiwayRangeBeliefUpdateResult::NoPosteriorMass);
+    EXPECT_EQ(beliefs.revision(), before_revision);
+    expect_same_row(beliefs.view(0U), before);
+
+    const auto expect_invalid = [&beliefs, &before, before_revision](
+                                    const core::MultiwayRangeBeliefObservation& observation) {
+        EXPECT_THROW(beliefs.apply_observation(0U, observation), std::invalid_argument);
+        EXPECT_EQ(beliefs.revision(), before_revision);
+        expect_same_row(beliefs.view(0U), before);
+    };
+    const core::MultiwayRangeBeliefObservation invalid_source(
+        fixture.table, fixture.policy, core::MultiwayRangeBeliefSource::Uniform, 0U, 1U);
+    expect_invalid(invalid_source);
+
+    const core::MultiwayRangeBeliefObservation invalid_action(
+        fixture.table, fixture.policy, core::MultiwayRangeBeliefSource::Blueprint, 2U, 1U);
+    expect_invalid(invalid_action);
+
+    auto malformed_policy = fixture.policy;
+    malformed_policy.probabilities[0] = 0U;
+    const core::MultiwayRangeBeliefObservation malformed(
+        fixture.table, malformed_policy, core::MultiwayRangeBeliefSource::Blueprint, 0U, 1U);
+    expect_invalid(malformed);
+
+    auto wrong_table_policy = fixture.policy;
+    ++wrong_table_policy.bucket_table_identity;
+    const core::MultiwayRangeBeliefObservation wrong_table(
+        fixture.table, wrong_table_policy, core::MultiwayRangeBeliefSource::Blueprint, 0U, 1U);
+    expect_invalid(wrong_table);
+
+    auto wrong_identity_policy = fixture.policy;
+    core::MultiwayBlueprintConfig other_config;
+    other_config.player_count = 2U;
+    wrong_identity_policy.identity = core::make_multiway_model_identity(other_config);
+    const core::MultiwayRangeBeliefObservation wrong_identity(
+        fixture.table, wrong_identity_policy, core::MultiwayRangeBeliefSource::Blueprint, 0U, 1U);
+    expect_invalid(wrong_identity);
+    EXPECT_THROW(beliefs.apply_observation(2U, zero_observation), std::out_of_range);
+}
+
+TEST_CASE(multiway_range_beliefs_observation_prunes_table_blockers_and_updates_repeatedly) {
+    ObservationFixture fixture;
+    const std::array<core::MultiwayRangeBeliefSuppliedEntry, 2> entries = {{
+        {{8U, 11U}, 0.4},
+        {{11U, 12U}, 0.6},
+    }};
+    const std::array<core::MultiwayRangeBeliefSeatInput, 2> seats = {{
+        {entries.data(), entries.size(), nullptr, 0U},
+        {entries.data(), entries.size(), nullptr, 0U},
+    }};
+    core::MultiwayRangeBeliefs beliefs;
+    beliefs.reset_supplied(seats.size(), seats.data());
+    const core::MultiwayRangeBeliefObservation first_observation(
+        fixture.table, fixture.policy, core::MultiwayRangeBeliefSource::Translated, 0U, 5U);
+    EXPECT_EQ(
+        beliefs.apply_observation(0U, first_observation),
+        core::MultiwayRangeBeliefUpdateResult::Applied);
+    auto first = beliefs.view(0U);
+    EXPECT_TRUE(!first.legal(combo_id(8U, 11U)));
+    EXPECT_NEAR(first.weight(combo_id(8U, 11U)), 0.0, 0.0);
+    EXPECT_NEAR(first.weight(combo_id(11U, 12U)), 1.0, 1e-15);
+    EXPECT_EQ(first.metadata().observation.source, core::MultiwayRangeBeliefSource::Translated);
+    EXPECT_EQ(first.metadata().observation.source_revision, 5U);
+
+    const core::MultiwayRangeBeliefObservation second_observation(
+        fixture.table, fixture.policy, core::MultiwayRangeBeliefSource::Fallback, 1U, 6U);
+    EXPECT_EQ(
+        beliefs.apply_observation(0U, second_observation),
+        core::MultiwayRangeBeliefUpdateResult::Applied);
+    const auto second = beliefs.view(0U);
+    EXPECT_NEAR(second.weight(combo_id(11U, 12U)), 1.0, 1e-15);
+    EXPECT_EQ(beliefs.revision(), 3U);
+    EXPECT_EQ(second.metadata().last_update_revision, 3U);
+    EXPECT_EQ(second.metadata().last_action_id, 1U);
+    EXPECT_EQ(second.metadata().observation.source, core::MultiwayRangeBeliefSource::Fallback);
+    EXPECT_EQ(second.metadata().observation.source_revision, 6U);
+    EXPECT_EQ(second.metadata().observation.observed_action, 1U);
+    EXPECT_EQ(beliefs.view(1U).metadata().last_update_revision, 1U);
+    EXPECT_EQ(beliefs.view(1U).metadata().source, core::MultiwayRangeBeliefSource::Supplied);
 }
 
 TEST_CASE(multiway_range_beliefs_supplied_rows_merge_duplicates_and_expose_legal_input_mass) {
