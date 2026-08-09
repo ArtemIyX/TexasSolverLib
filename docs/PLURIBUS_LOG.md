@@ -4,6 +4,29 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P1.1 - Canonical Combination IDs
+
+**Status:** Implemented, validation pending
+**Implemented:** 2026-08-09
+**Implementation commit:** `cb88695 Add canonical HUNL combination indexing`
+
+- Added one fixed 1,326-entry HUNL-card combination view with unordered
+  pair-to-ID, ID-to-pair, and dead-card legal-mask operations.
+- Updated HUNL joint-range normalization and range enumeration to use the
+  shared mapping while retaining board-relative range indices where required.
+- Separated compact bucket-artifact cards from HUNL runtime cards with explicit
+  adapters; updated resolver, traversal, range-update, and fixture boundaries.
+- Added exhaustive combination, mask, and compact-artifact/HUNL-adapter tests.
+
+### Validation
+
+- Static staged and working-tree diff checks passed.
+- Build and test commands were not authorized or run.
+
+### Deferred
+
+- Mark complete only after the required build and test validation passes.
+
 ## P0.1 - Resolver and Traversal Baselines
 
 **Status:** Complete  

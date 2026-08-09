@@ -38,7 +38,7 @@ and expected deliverable.
 2. **`architect-reviewer` scopes**: define the smallest useful design, unchanged
    contracts, acceptance criteria, and validation. Skip only for trivial work.
 3. **`cpp-pro` implements**: make the approved production change. Do not run
-   builds or tests unless authorized. Do not commit.
+   builds or tests unless authorized. Do not commit directly.
 4. **Reviews run in parallel** after editing is stable:
    - `code-reviewer`: correctness and compatibility.
    - `performance-engineer`: hot paths, allocation, memory, and concurrency.
@@ -53,8 +53,12 @@ and expected deliverable.
 8. **`final-verifier` verifies**: check scope, test evidence, documentation,
    contract preservation, and unrelated changes. `root` then reports outcome,
    tests, fixes, limitations, and commits.
-9. **`git-expert` commits**: stage only scoped files, inspect the staged diff,
-   and create small focused commits.
+9. **`git-expert` commits**: invoke `git-expert` after every stable scoped
+   change, phase, review fix, test addition, or documentation update. It must
+   stage only that unit's files, inspect the staged diff, and create a small
+   focused commit before work proceeds to the next independent unit. When
+   build/test verification is deferred, commit the work anyway and record that
+   limitation accurately; never imply that it passed.
 
 ## Ownership and commits
 
@@ -62,5 +66,9 @@ and expected deliverable.
 - Run the three read-only reviewers simultaneously only after `cpp-pro` stops.
 - Keep implementation and regression tests in one commit when they form one
   behavior change. Make a separate commit for independent documentation.
+- Update `docs/PLURIBUS_LOG.md` for every roadmap item touched. Record the
+  implementation scope, commit, validation evidence, and limitations in the
+  same scoped commit. Use an explicit pending-validation status until required
+  verification passes; mark an item complete only after that evidence exists.
 - Never commit generated output, local configuration, or unrelated user work.
 - Do not claim success until required verification passes.
