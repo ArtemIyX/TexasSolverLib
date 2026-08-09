@@ -31,6 +31,8 @@ public:
         return canonical_board_;
     }
     [[nodiscard]] std::uint32_t bucket_count() const noexcept { return bucket_count_; }
+    // Stable identity of this artifact table's model/street/canonical board.
+    [[nodiscard]] std::uint64_t table_identity() const noexcept { return table_identity_; }
     [[nodiscard]] const std::vector<std::uint32_t>& assignments() const noexcept {
         return assignments_;
     }
@@ -47,6 +49,7 @@ private:
     Street street_ = Street::Preflop;
     std::vector<std::uint8_t> canonical_board_;
     std::uint32_t bucket_count_ = 0;
+    std::uint64_t table_identity_ = 0U;
     std::vector<std::uint32_t> assignments_;
 };
 

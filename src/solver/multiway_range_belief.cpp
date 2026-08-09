@@ -1,6 +1,7 @@
 #include "solver/multiway_range_belief.hpp"
 
 #include <cmath>
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <type_traits>
@@ -42,6 +43,8 @@ void MultiwayRangeBeliefObservation::validate() const {
     }
     policy_->validate();
     if (table_->identity() != policy_->identity || table_->bucket_count() != policy_->bucket_count ||
+        policy_->bucket_table_identity == 0U ||
+        policy_->bucket_table_identity != table_->table_identity() ||
         observed_action_ >= policy_->action_count) {
         throw std::invalid_argument("multiway range belief observation has incompatible policy data");
     }
@@ -104,6 +107,8 @@ void MultiwayRangeBeliefs::apply_observation_metadata(
     double input_mass) noexcept {
     row.metadata.source = observation.source();
     row.metadata.last_update_revision = revision;
+    row.metadata.last_action_id = observation.observed_action();
+    row.metadata.has_last_action = true;
     row.metadata.observation.source = observation.source();
     row.metadata.observation.public_state_id = observation.policy().public_state.value;
     row.metadata.observation.action_menu_id = observation.policy().action_menu_id;
@@ -122,6 +127,8 @@ MultiwayRangeBeliefs::Row MultiwayRangeBeliefs::make_uniform_row(
     row.legal_mask = canonical_combos().legal_mask(input.dead_cards, input.dead_card_count);
     row.metadata.source = MultiwayRangeBeliefSource::Uniform;
     row.metadata.last_update_revision = revision;
+    row.metadata.last_action_id = 0U;
+    row.metadata.has_last_action = false;
     for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
         row.weights[id] = row.legal_mask.test(id) ? 1.0 : 0.0;
     }
@@ -141,6 +148,8 @@ MultiwayRangeBeliefs::Row MultiwayRangeBeliefs::make_supplied_row(
     row.legal_mask = canonical_combos().legal_mask(input.dead_cards, input.dead_card_count);
     row.metadata.source = MultiwayRangeBeliefSource::Supplied;
     row.metadata.last_update_revision = revision;
+    row.metadata.last_action_id = 0U;
+    row.metadata.has_last_action = false;
     for (std::size_t index = 0U; index < input.entry_count; ++index) {
         const auto& entry = input.entries[index];
         if (!std::isfinite(entry.weight) || entry.weight < 0.0) {
@@ -175,11 +184,14 @@ MultiwayRangeBeliefUpdateResult MultiwayRangeBeliefs::apply_observation(
     const auto& policy = observation.policy();
     const auto& row = rows_[seat];
     const auto& assignments = table.assignments();
+    const auto action_offset = static_cast<std::size_t>(observation.observed_action()) * policy.bucket_count;
+    const auto* action_probabilities = policy.probabilities.data() + action_offset;
+    const auto probability_scale = 1.0 / static_cast<double>(std::numeric_limits<std::uint16_t>::max());
     double posterior_mass = 0.0;
     for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
         const auto bucket = assignments[id];
         if (!row.legal_mask.test(id) || bucket == MULTIWAY_INVALID_BUCKET) continue;
-        const auto likelihood = policy.likelihood(bucket, observation.observed_action());
+        const auto likelihood = static_cast<double>(action_probabilities[bucket]) * probability_scale;
         posterior_mass += row.weights[id] * likelihood;
     }
     if (!std::isfinite(posterior_mass) || posterior_mass < 0.0) {
@@ -196,7 +208,7 @@ MultiwayRangeBeliefUpdateResult MultiwayRangeBeliefs::apply_observation(
             updated.weights[id] = 0.0;
             continue;
         }
-        const auto likelihood = policy.likelihood(bucket, observation.observed_action());
+        const auto likelihood = static_cast<double>(action_probabilities[bucket]) * probability_scale;
         updated.weights[id] = updated.weights[id] * likelihood / posterior_mass;
     }
     apply_observation_metadata(updated, observation, next_revision, posterior_mass);

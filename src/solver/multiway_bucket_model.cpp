@@ -37,6 +37,24 @@ std::uint8_t compact_card_from_hunl(std::uint8_t card) {
     return static_cast<std::uint8_t>(card - HUNL_CARD_FIRST);
 }
 
+std::uint64_t stable_table_identity(
+    const MultiwayModelIdentity& identity,
+    Street street,
+    const std::vector<std::uint8_t>& canonical_board) noexcept {
+    std::uint64_t hash = 14695981039346656037ULL;
+    const auto append = [&hash](std::uint64_t value) noexcept {
+        for (std::uint8_t byte = 0U; byte < 8U; ++byte) {
+            hash ^= (value >> (byte * 8U)) & 0xffU;
+            hash *= 1099511628211ULL;
+        }
+    };
+    append(identity.combined_hash);
+    append(static_cast<std::uint8_t>(street));
+    append(canonical_board.size());
+    for (const auto card : canonical_board) append(card);
+    return hash;
+}
+
 std::array<std::uint8_t, 2> compact_hole_from_hunl(const std::array<std::uint8_t, 2>& hole) {
     const std::array<std::uint8_t, 2> compact = {
         compact_card_from_hunl(hole[0]), compact_card_from_hunl(hole[1])};
@@ -118,6 +136,7 @@ MultiwayBucketTable::MultiwayBucketTable(
             }
         }
     }
+    table_identity_ = stable_table_identity(identity_, street_, canonical_board_);
 }
 
 std::uint32_t MultiwayBucketTable::lookup(const std::array<std::uint8_t, 2>& hole) const {

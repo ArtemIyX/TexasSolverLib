@@ -24,6 +24,9 @@ enum class MultiwayRangeBeliefSource : std::uint8_t {
 struct MultiwayRangeBeliefMetadata {
     MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
     std::uint64_t last_update_revision = 0U;
+    // Legacy compact action diagnostics retained for source compatibility.
+    std::uint64_t last_action_id = 0U;
+    bool has_last_action = false;
     struct Observation {
         MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
         std::uint64_t public_state_id = 0U;
@@ -57,7 +60,8 @@ enum class MultiwayRangeBeliefUpdateResult : std::uint8_t {
 };
 
 // Immutable, borrowed binding to the exact policy row used to observe an
-// action. The referenced table and policy must remain alive for apply_observation.
+// action. The referenced table and policy must remain alive and immutable for
+// the full apply_observation call.
 class MultiwayRangeBeliefObservation {
 public:
     MultiwayRangeBeliefObservation(
