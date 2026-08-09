@@ -15,7 +15,37 @@ void validate_dead_cards(const MultiwayRangeBeliefSeatInput& input) {
     }
 }
 
+bool is_observation_source(MultiwayRangeBeliefSource source) noexcept {
+    return source == MultiwayRangeBeliefSource::Blueprint ||
+           source == MultiwayRangeBeliefSource::Search ||
+           source == MultiwayRangeBeliefSource::Translated ||
+           source == MultiwayRangeBeliefSource::Fallback;
+}
+
 }  // namespace
+
+MultiwayRangeBeliefObservation::MultiwayRangeBeliefObservation(
+    const MultiwayBucketTable& table,
+    const MultiwayBucketActionPolicy& policy,
+    MultiwayRangeBeliefSource source,
+    std::uint8_t observed_action,
+    std::uint64_t source_revision) noexcept
+    : table_(&table),
+      policy_(&policy),
+      source_(source),
+      observed_action_(observed_action),
+      source_revision_(source_revision) {}
+
+void MultiwayRangeBeliefObservation::validate() const {
+    if (table_ == nullptr || policy_ == nullptr || !is_observation_source(source_)) {
+        throw std::invalid_argument("multiway range belief observation is invalid");
+    }
+    policy_->validate();
+    if (table_->identity() != policy_->identity || table_->bucket_count() != policy_->bucket_count ||
+        observed_action_ >= policy_->action_count) {
+        throw std::invalid_argument("multiway range belief observation has incompatible policy data");
+    }
+}
 
 double MultiwayRangeBeliefView::weight(CanonicalComboId id) const {
     if (!valid() || id >= CANONICAL_HOLE_COMBINATION_COUNT) {
@@ -64,6 +94,23 @@ void MultiwayRangeBeliefs::normalize_row(Row& row) {
     }
     row.metadata.input_mass = total;
     for (auto& weight : row.weights) weight /= total;
+    row.metadata.normalized_mass = 1.0;
+}
+
+void MultiwayRangeBeliefs::apply_observation_metadata(
+    Row& row,
+    const MultiwayRangeBeliefObservation& observation,
+    std::uint64_t revision,
+    double input_mass) noexcept {
+    row.metadata.source = observation.source();
+    row.metadata.last_update_revision = revision;
+    row.metadata.observation.source = observation.source();
+    row.metadata.observation.public_state_id = observation.policy().public_state.value;
+    row.metadata.observation.action_menu_id = observation.policy().action_menu_id;
+    row.metadata.observation.source_revision = observation.source_revision();
+    row.metadata.observation.observed_action = observation.observed_action();
+    row.metadata.observation.applied = true;
+    row.metadata.input_mass = input_mass;
     row.metadata.normalized_mass = 1.0;
 }
 
@@ -116,6 +163,45 @@ void MultiwayRangeBeliefs::reset_supplied(
     std::size_t seat_count,
     const MultiwayRangeBeliefSeatInput* seats) {
     reset_rows(seat_count, seats, make_supplied_row);
+}
+
+MultiwayRangeBeliefUpdateResult MultiwayRangeBeliefs::apply_observation(
+    std::size_t seat,
+    const MultiwayRangeBeliefObservation& observation) {
+    if (seat >= seat_count_) throw std::out_of_range("multiway range belief seat is unavailable");
+    observation.validate();
+
+    const auto& table = observation.table();
+    const auto& policy = observation.policy();
+    const auto& row = rows_[seat];
+    const auto& assignments = table.assignments();
+    double posterior_mass = 0.0;
+    for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
+        const auto bucket = assignments[id];
+        if (!row.legal_mask.test(id) || bucket == MULTIWAY_INVALID_BUCKET) continue;
+        const auto likelihood = policy.likelihood(bucket, observation.observed_action());
+        posterior_mass += row.weights[id] * likelihood;
+    }
+    if (!std::isfinite(posterior_mass) || posterior_mass < 0.0) {
+        throw std::invalid_argument("multiway range belief posterior mass is invalid");
+    }
+    if (posterior_mass == 0.0) return MultiwayRangeBeliefUpdateResult::NoPosteriorMass;
+
+    const auto next_revision = revision_ + 1U;
+    auto& updated = rows_[seat];
+    for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
+        const auto bucket = assignments[id];
+        if (!updated.legal_mask.test(id) || bucket == MULTIWAY_INVALID_BUCKET) {
+            updated.legal_mask.reset(id);
+            updated.weights[id] = 0.0;
+            continue;
+        }
+        const auto likelihood = policy.likelihood(bucket, observation.observed_action());
+        updated.weights[id] = updated.weights[id] * likelihood / posterior_mass;
+    }
+    apply_observation_metadata(updated, observation, next_revision, posterior_mass);
+    revision_ = next_revision;
+    return MultiwayRangeBeliefUpdateResult::Applied;
 }
 
 void MultiwayRangeBeliefs::reset_rows(

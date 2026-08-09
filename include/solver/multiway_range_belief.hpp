@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/canonical_combo.hpp"
+#include "solver/multiway_range_update.hpp"
 
 #include <array>
 #include <cstddef>
@@ -23,8 +24,14 @@ enum class MultiwayRangeBeliefSource : std::uint8_t {
 struct MultiwayRangeBeliefMetadata {
     MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
     std::uint64_t last_update_revision = 0U;
-    std::uint64_t last_action_id = 0U;
-    bool has_last_action = false;
+    struct Observation {
+        MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
+        std::uint64_t public_state_id = 0U;
+        std::uint64_t action_menu_id = 0U;
+        std::uint64_t source_revision = 0U;
+        std::uint8_t observed_action = 0U;
+        bool applied = false;
+    } observation{};
     // Legal mass before this row is normalized.
     double input_mass = 0.0;
     double normalized_mass = 0.0;
@@ -42,6 +49,37 @@ struct MultiwayRangeBeliefSeatInput {
     std::size_t entry_count = 0U;
     const std::uint8_t* dead_cards = nullptr;
     std::size_t dead_card_count = 0U;
+};
+
+enum class MultiwayRangeBeliefUpdateResult : std::uint8_t {
+    Applied,
+    NoPosteriorMass,
+};
+
+// Immutable, borrowed binding to the exact policy row used to observe an
+// action. The referenced table and policy must remain alive for apply_observation.
+class MultiwayRangeBeliefObservation {
+public:
+    MultiwayRangeBeliefObservation(
+        const MultiwayBucketTable& table,
+        const MultiwayBucketActionPolicy& policy,
+        MultiwayRangeBeliefSource source,
+        std::uint8_t observed_action,
+        std::uint64_t source_revision) noexcept;
+
+    [[nodiscard]] const MultiwayBucketTable& table() const noexcept { return *table_; }
+    [[nodiscard]] const MultiwayBucketActionPolicy& policy() const noexcept { return *policy_; }
+    [[nodiscard]] MultiwayRangeBeliefSource source() const noexcept { return source_; }
+    [[nodiscard]] std::uint8_t observed_action() const noexcept { return observed_action_; }
+    [[nodiscard]] std::uint64_t source_revision() const noexcept { return source_revision_; }
+    void validate() const;
+
+private:
+    const MultiwayBucketTable* table_ = nullptr;
+    const MultiwayBucketActionPolicy* policy_ = nullptr;
+    MultiwayRangeBeliefSource source_ = MultiwayRangeBeliefSource::None;
+    std::uint8_t observed_action_ = 0U;
+    std::uint64_t source_revision_ = 0U;
 };
 
 class MultiwayRangeBeliefView {
@@ -81,6 +119,9 @@ public:
 
     void reset_uniform(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
     void reset_supplied(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
+    [[nodiscard]] MultiwayRangeBeliefUpdateResult apply_observation(
+        std::size_t seat,
+        const MultiwayRangeBeliefObservation& observation);
 
     void copy_from(const MultiwayRangeBeliefs& other) noexcept;
 
@@ -98,6 +139,11 @@ private:
     static Row make_uniform_row(const MultiwayRangeBeliefSeatInput& input, std::uint64_t revision);
     static Row make_supplied_row(const MultiwayRangeBeliefSeatInput& input, std::uint64_t revision);
     static void normalize_row(Row& row);
+    static void apply_observation_metadata(
+        Row& row,
+        const MultiwayRangeBeliefObservation& observation,
+        std::uint64_t revision,
+        double input_mass) noexcept;
     static void validate_seat_reset(std::size_t seat_count, const MultiwayRangeBeliefSeatInput* seats);
     using RowBuilder = Row (*)(const MultiwayRangeBeliefSeatInput&, std::uint64_t);
     void reset_rows(
