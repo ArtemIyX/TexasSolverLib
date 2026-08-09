@@ -373,6 +373,7 @@ public:
     [[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
     [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
+    [[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
 
 private:
     friend class MultiwayTerminalAdapter;

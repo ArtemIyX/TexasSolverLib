@@ -25,6 +25,7 @@
 #include "solver/multiway_blueprint_query.hpp"
 #include "solver/multiway_range_update.hpp"
 #include "solver/multiway_range_belief.hpp"
+#include "solver/multiway_search_session.hpp"
 #include "solver/multiway_checkpoint.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_model_identity.hpp"
@@ -153,6 +154,9 @@ using ::core::MultiwayRangeBeliefSuppliedEntry;
 using ::core::MultiwayRangeBeliefUpdateResult;
 using ::core::MultiwayRangeBeliefView;
 using ::core::MultiwayRangeBeliefs;
+using ::core::MultiwaySearchSession;
+using ::core::MultiwaySearchSessionDependencies;
+using ::core::MultiwaySearchSessionRootMetadata;
 using ::core::update_anonymous_multiway_range;
 using ::core::MultiwayCheckpoint;
 using ::core::MultiwayArtifactSource;
