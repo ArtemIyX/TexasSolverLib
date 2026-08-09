@@ -1,5 +1,6 @@
 #include "solver/multiway_traversal.hpp"
 #include "util/thread_join_guard.hpp"
+#include "util/profiling.hpp"
 
 #include <algorithm>
 #include <array>
@@ -382,6 +383,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     std::uint64_t seed,
     MultiwayWorkerDeltaStream& stream,
     double iteration_weight) const {
+    TEXASSOLVER_PROFILE_SCOPE("multiway.traversal.trajectory");
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -453,6 +455,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     std::uint64_t trajectory_count,
     std::uint64_t seed,
     double iteration_weight) {
+    TEXASSOLVER_PROFILE_SCOPE("multiway.traversal.root_batch");
     if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
         throw std::invalid_argument("multiway batch iteration weight must be finite and positive");
     }

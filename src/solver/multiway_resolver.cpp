@@ -2,6 +2,7 @@
 
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
+#include "util/profiling.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -254,6 +255,7 @@ MultiwayResolver::MultiwayResolver(MultiwayResolverConfig config) : config_(conf
 }
 
 MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& request) const {
+    TEXASSOLVER_PROFILE_SCOPE("multiway.resolver.resolve");
     MultiwayResolverResult result;
     try {
         config_.validate();
