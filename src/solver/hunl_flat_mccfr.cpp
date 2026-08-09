@@ -226,6 +226,11 @@ HUNLFlatMCCFR::HUNLFlatMCCFR(
       node_action_baselines_(graph_.node_meta.size()),
       node_action_baseline_counts_(graph_.node_meta.size()) {
     validate_mccfr_config(config_);
+    if (config_.use_sparse_storage &&
+        (bucket_count_per_player[0] > std::numeric_limits<std::uint32_t>::max() ||
+         bucket_count_per_player[1] > std::numeric_limits<std::uint32_t>::max())) {
+        throw std::length_error("HUNLFlatMCCFR sparse bucket count exceeds uint32 storage");
+    }
     if (std::any_of(graph_.node_meta.begin(), graph_.node_meta.end(), [](const auto& node) {
             return node.type == HUNLFlatNodeType::DepthLimited;
         })) {
@@ -374,7 +379,7 @@ std::size_t HUNLFlatMCCFR::row_value_index(
     if (config_.use_sparse_storage) {
         return HUNLSampledStorage::value_index(
             sparse_storage_.layout(),
-            meta.bucket_count,
+            static_cast<std::uint32_t>(meta.bucket_count),
             meta.action_count,
             bucket,
             action);
@@ -1700,7 +1705,7 @@ void HUNLFlatMCCFR::compute_current_strategy_rows() {
             regret_matching_action_major_f64(
                 regret,
                 meta.action_count,
-                meta.bucket_count,
+                static_cast<std::uint32_t>(meta.bucket_count),
                 current_strategy);
             add_sampled_kernel_profile(
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - kernel_start).count(),

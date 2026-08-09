@@ -45,7 +45,7 @@ struct MultiwayBlueprintTrainingConfig {
     MultiwayActionAbstractionConfig action_abstraction{};
     MultiwayCFRConfig cfr{6, MultiwayCFRAlgorithm::ExternalSamplingMCCFR,
         MultiwayQualityMetric::NashConv, true};
-    MultiwaySolverLimits limits{1, 1, 1024, 1024, 8192, 8192};
+    MultiwaySolverLimits limits{1, 1, 1024, 1024, 8192, 8192, 8192};
     MultiwayBlueprintIterationSchedule schedule{};
     std::uint64_t deterministic_seed = 1;
     std::uint32_t max_decision_depth = 1;

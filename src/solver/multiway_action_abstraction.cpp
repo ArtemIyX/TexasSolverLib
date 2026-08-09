@@ -169,6 +169,9 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
     const auto has_action = [&base_actions](MultiwayAction action) {
         return std::find(base_actions.begin(), base_actions.end(), action) != base_actions.end();
     };
+    for (const auto action : base_actions) {
+        if (action != MultiwayAction::AllIn && !is_aggressive(action)) append(action, 0);
+    }
     if (state.street() == Street::Preflop) {
         const auto situation = context.preflop_situation == MultiwayPreflopSituation::Auto
             ? inferred_preflop_situation(state)
@@ -279,9 +282,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
         }
     }
 
-    for (const auto action : base_actions) {
-        if (!is_aggressive(action)) append(action, 0);
-    }
+    if (has_action(MultiwayAction::AllIn)) append(MultiwayAction::AllIn, 0);
     normalize_menu(state, result, action_menu_id, nullptr);
     return result;
 }

@@ -52,11 +52,11 @@ struct MultiwayActionAbstractionConfig {
 
     // Default preflop templates. Unopened opens use big-blind units; single-
     // open and three-bet templates use current-bet units.
-    std::array<std::uint16_t, 3> unopened_raise_to_big_blind_basis_points = {225, 300, 450};
-    std::uint16_t single_open_in_position_basis_points = 300;
-    std::uint16_t single_open_out_of_position_basis_points = 350;
+    std::array<std::uint16_t, 3> unopened_raise_to_big_blind_basis_points = {22500, 30000, 45000};
+    std::uint16_t single_open_in_position_basis_points = 30000;
+    std::uint16_t single_open_out_of_position_basis_points = 35000;
     std::uint16_t open_caller_increment_big_blind_basis_points = 10000;
-    std::uint16_t three_bet_or_more_basis_points = 220;
+    std::uint16_t three_bet_or_more_basis_points = 22000;
 
     std::array<std::uint16_t, 2> contextual_multiway_first_bet_basis_points = {3300, 7500};
     std::array<std::uint16_t, 3> contextual_three_way_first_bet_basis_points = {3300, 7500, 12500};

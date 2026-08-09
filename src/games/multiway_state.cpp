@@ -321,9 +321,13 @@ std::vector<MultiwayAction> MultiwayState::legal_actions() const {
     }
     const auto all_in_target = static_cast<std::int64_t>(street_contributions_[seat]) + stacks_[seat];
     const auto minimum_full_raise_target = static_cast<std::int64_t>(current_bet_) + last_full_raise_size_;
+    const auto opening_preflop_action = street_ == Street::Preflop &&
+        std::none_of(has_acted_.begin(), has_acted_.end(), [](bool acted) { return acted; });
     const bool has_actionable_opponent = actionable_player_count() > 1U;
     if (has_actionable_opponent && may_raise_[seat] && all_in_target > minimum_full_raise_target) {
-        actions.push_back(to_call > 0 ? MultiwayAction::Raise : MultiwayAction::Bet);
+        actions.push_back(to_call > 0 && !opening_preflop_action
+            ? MultiwayAction::Raise
+            : MultiwayAction::Bet);
     }
     if (has_actionable_opponent && may_raise_[seat] && all_in_target > current_bet_) {
         actions.push_back(MultiwayAction::AllIn);

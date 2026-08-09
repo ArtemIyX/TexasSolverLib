@@ -213,6 +213,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
                 append_failure(result, MultiwayEvaluationFailure::InvalidSample, deal.duplicate_index);
                 continue;
             }
+            add_metrics(result.metrics, sample);
             for (std::size_t seat = 0; seat < seat_count; ++seat) {
                 nash_profile_sum[seat] += sample.profile_values.values[seat];
                 nash_response_sum[seat] += sample.best_response_values.values[seat];

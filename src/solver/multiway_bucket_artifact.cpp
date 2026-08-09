@@ -102,6 +102,17 @@ bool request_less(const MultiwayBucketBoardRequest& left, const MultiwayBucketBo
     return left.canonical_board < right.canonical_board;
 }
 
+bool are_valid_compact_cards(const std::uint8_t* cards, std::size_t count) noexcept {
+    if (cards == nullptr && count != 0U) return false;
+    for (std::size_t index = 0U; index < count; ++index) {
+        if (cards[index] >= 52U) return false;
+        for (std::size_t prior = 0U; prior < index; ++prior) {
+            if (cards[index] == cards[prior]) return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 MultiwayBucketBaselineProfile MultiwayBucketBaselineProfile::standard() noexcept {
@@ -128,7 +139,7 @@ std::uint32_t MultiwayBucketBaselineProfile::bucket_count(Street street) const {
 bool is_multiway_canonical_board(Street street, const std::vector<std::uint8_t>& board) noexcept {
     const auto expected_size = board_size_for(street);
     if (expected_size == 0U || board.size() != expected_size ||
-        !are_valid_and_distinct_cards(board.data(), board.size())) {
+        !are_valid_compact_cards(board.data(), board.size())) {
         return false;
     }
     return std::is_sorted(board.begin(), board.end());
@@ -139,7 +150,7 @@ MultiwayBucketFeatures make_multiway_bucket_features(
     const std::vector<std::uint8_t>& canonical_board,
     const std::array<std::uint8_t, 2>& hole) {
     if (!is_multiway_canonical_board(street, canonical_board) ||
-        !are_valid_and_distinct_cards(hole.data(), hole.size()) ||
+        !are_valid_compact_cards(hole.data(), hole.size()) ||
         std::find(canonical_board.begin(), canonical_board.end(), hole[0]) != canonical_board.end() ||
         std::find(canonical_board.begin(), canonical_board.end(), hole[1]) != canonical_board.end()) {
         throw std::invalid_argument("multiway bucket features require a live hole pair and canonical board");
@@ -147,7 +158,7 @@ MultiwayBucketFeatures make_multiway_bucket_features(
 
     MultiwayBucketFeatures features;
     features.board_size = static_cast<std::uint8_t>(canonical_board.size());
-    std::array<std::uint8_t, 13U> rank_counts = {};
+    std::array<std::uint8_t, 15U> rank_counts = {};
     for (const auto card : canonical_board) {
         const auto rank = rank_of(card);
         const auto suit = suit_of(card);

@@ -30,7 +30,7 @@ struct HUNLSampledSolveResult {
     HUNLSampledRootStrategy root_strategy;
     std::optional<HUNLSampledRootStrategy> range_wide_root_strategy = std::nullopt;
     HUNLSampledProfileSnapshot profile;
-    std::uint32_t batches_completed = 0;
+    std::uint64_t batches_completed = 0;
     bool timed_out = false;
 };
 

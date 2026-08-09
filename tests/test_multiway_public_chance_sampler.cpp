@@ -128,7 +128,9 @@ bool same_edge(
 void expect_no_collision(
     const core::MultiwaySampledPublicBoardChance& edge,
     const std::vector<std::uint8_t>& original_board) {
-    std::array<bool, 52> used{};
+    // Card ids use the shared rank/suit encoding (8..59), not compact deck
+    // offsets. Keep this guard large enough for every valid encoded card.
+    std::array<bool, 64> used{};
     for (const auto board_card : original_board) used[board_card] = true;
     for (const auto& hole : kHoles) {
         used[hole[0]] = true;

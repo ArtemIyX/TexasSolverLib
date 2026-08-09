@@ -17,6 +17,30 @@ std::size_t expected_board_count(Street street) {
     throw std::invalid_argument("multiway bucket table requires a postflop street");
 }
 
+bool are_valid_compact_cards(const std::uint8_t* cards, std::size_t count) noexcept {
+    if (cards == nullptr && count != 0U) return false;
+    for (std::size_t index = 0U; index < count; ++index) {
+        if (cards[index] >= 52U) return false;
+        for (std::size_t prior = 0U; prior < index; ++prior) {
+            if (cards[index] == cards[prior]) return false;
+        }
+    }
+    return true;
+}
+
+std::array<std::uint8_t, 2> compact_hole(const std::array<std::uint8_t, 2>& hole) {
+    std::array<std::uint8_t, 2> result = hole;
+    for (auto& card : result) {
+        if (card >= 52U && is_valid_card(card)) {
+            card = static_cast<std::uint8_t>(card - 8U);
+        }
+    }
+    if (!are_valid_compact_cards(result.data(), result.size())) {
+        throw std::invalid_argument("multiway bucket lookup requires valid hole cards");
+    }
+    return result;
+}
+
 bool is_live_hole(const std::vector<std::uint8_t>& board, const std::array<std::uint8_t, 2>& hole) {
     return std::find(board.begin(), board.end(), hole[0]) == board.end() &&
            std::find(board.begin(), board.end(), hole[1]) == board.end();
@@ -37,7 +61,7 @@ MultiwayBucketTable::MultiwayBucketTable(
       assignments_(std::move(assignments)) {
     identity_.validate();
     if (canonical_board_.size() != expected_board_count(street_) ||
-        !are_valid_and_distinct_cards(canonical_board_.data(), canonical_board_.size()) ||
+        !are_valid_compact_cards(canonical_board_.data(), canonical_board_.size()) ||
         bucket_count_ == 0U || assignments_.size() != MULTIWAY_HOLE_COMBINATION_COUNT) {
         throw std::invalid_argument("multiway bucket table has invalid metadata");
     }
@@ -57,10 +81,11 @@ MultiwayBucketTable::MultiwayBucketTable(
 }
 
 std::uint32_t MultiwayBucketTable::lookup(const std::array<std::uint8_t, 2>& hole) const {
-    if (!are_valid_and_distinct_cards(hole.data(), hole.size()) || !is_live_hole(canonical_board_, hole)) {
+    const auto compact = compact_hole(hole);
+    if (!is_live_hole(canonical_board_, hole)) {
         throw std::invalid_argument("multiway bucket lookup requires a live distinct hole-card pair");
     }
-    const auto bucket = assignments_[hole_index(hole)];
+    const auto bucket = assignments_[hole_index(compact)];
     if (bucket >= bucket_count_) {
         throw std::logic_error("multiway bucket table has no assignment for a live hole-card pair");
     }
@@ -68,7 +93,7 @@ std::uint32_t MultiwayBucketTable::lookup(const std::array<std::uint8_t, 2>& hol
 }
 
 std::size_t MultiwayBucketTable::hole_index(const std::array<std::uint8_t, 2>& hole) {
-    if (!are_valid_and_distinct_cards(hole.data(), hole.size())) {
+    if (!are_valid_compact_cards(hole.data(), hole.size())) {
         throw std::invalid_argument("multiway bucket hole index requires distinct valid cards");
     }
     const auto low = std::min(hole[0], hole[1]);
@@ -109,11 +134,27 @@ const MultiwayBucketTable& MultiwayBucketRegistry::table(
             if (candidate.street() != key.first) return candidate.street() < key.first;
             return candidate.canonical_board() < key.second;
         });
-    if (found == tables_.end() || found->street() != street ||
-        found->canonical_board() != canonical_board) {
+    if (found != tables_.end() && found->street() == street &&
+        found->canonical_board() == canonical_board) {
+        return *found;
+    }
+
+    auto compact_board = canonical_board;
+    for (auto& card : compact_board) {
+        if (card >= 52U && is_valid_card(card)) card = static_cast<std::uint8_t>(card - 8U);
+    }
+    const auto compact_found = std::lower_bound(
+        tables_.begin(), tables_.end(), std::pair<Street, const std::vector<std::uint8_t>&>{street, compact_board},
+        [](const MultiwayBucketTable& candidate,
+           const std::pair<Street, const std::vector<std::uint8_t>&>& key) {
+            if (candidate.street() != key.first) return candidate.street() < key.first;
+            return candidate.canonical_board() < key.second;
+        });
+    if (compact_found == tables_.end() || compact_found->street() != street ||
+        compact_found->canonical_board() != compact_board) {
         throw std::out_of_range("multiway bucket registry has no table for the canonical board");
     }
-    return *found;
+    return *compact_found;
 }
 
 std::uint32_t MultiwayBucketRegistry::lookup(
