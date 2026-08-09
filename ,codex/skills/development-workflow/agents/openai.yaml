@@ -1,0 +1,4 @@
+interface:
+  display_name: "Development Workflow"
+  short_description: "Parallel multi-agent change workflow"
+  default_prompt: "Use $development-workflow to implement this change with parallel reviews and verification."
