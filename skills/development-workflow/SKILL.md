@@ -17,13 +17,15 @@ task. Do not create suffixed variants.
 
 | Agent identity | Collaboration task name | Role | May edit? |
 | --- | --- | --- | --- |
-| `root` | `root` | Explorer, final verifier, report | Only when needed |
+| `root` | `root` | Orchestration and report | Only when needed |
+| `repo-explorer` | `repo_explorer` | Read-only repository discovery | No |
 | `architect-reviewer` | `architect_reviewer` | Architecture and scope review | No |
 | `cpp-pro` | `cpp_pro` | Production implementation and review fixes | Yes |
 | `code-reviewer` | `code_reviewer` | Correctness, API, safety, compatibility review | No |
 | `performance-engineer` | `performance_engineer` | Performance, hot-path, memory, concurrency review | No |
 | `test-automator` | `test_automator` | Unit-test review and regression-test implementation | Tests only |
 | `build-test-fixer` | `build_test_fixer` | Authorized verification and scoped build/test fixes | Yes |
+| `final-verifier` | `final_verifier` | Read-only final scope and evidence verification | No |
 | `git-expert` | `git_expert` | Focused staging and commits | Git only |
 
 Use short, bounded prompts. State the phase, permitted actions, affected scope,
@@ -31,7 +33,7 @@ and expected deliverable.
 
 ## Workflow
 
-1. **`root` explores**: inspect instructions, current behavior, tests, relevant
+1. **`repo-explorer` explores**: inspect instructions, current behavior, tests, relevant
    files, and `git status`. Report evidence and risks.
 2. **`architect-reviewer` scopes**: define the smallest useful design, unchanged
    contracts, acceptance criteria, and validation. Skip only for trivial work.
@@ -48,9 +50,9 @@ and expected deliverable.
    each fixed issue and each accepted behavior.
 7. **`build-test-fixer` verifies**: run only user-authorized build/test commands,
    fix scoped failures, and re-run until clean.
-8. **`root` verifies and reports**: check scope, test evidence, documentation,
-   contract preservation, and unrelated changes. Report outcome, tests, fixes,
-   limitations, and commits.
+8. **`final-verifier` verifies**: check scope, test evidence, documentation,
+   contract preservation, and unrelated changes. `root` then reports outcome,
+   tests, fixes, limitations, and commits.
 9. **`git-expert` commits**: stage only scoped files, inspect the staged diff,
    and create small focused commits.
 

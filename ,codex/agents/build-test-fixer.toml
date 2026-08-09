@@ -1,4 +1,4 @@
-name = "build_test_fixer"
+name = "build-test-fixer"
 description = "Builds the CMake project quietly, runs compact CTest output, fixes build or test failures, and repeats until the project passes."
 model = "gpt-5.6"
 model_reasoning_effort = "high"
