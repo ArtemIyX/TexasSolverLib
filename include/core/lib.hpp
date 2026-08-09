@@ -24,6 +24,7 @@
 #include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_blueprint_query.hpp"
 #include "solver/multiway_range_update.hpp"
+#include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_checkpoint.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_model_identity.hpp"
@@ -144,6 +145,12 @@ using ::core::MultiwayBlueprintTrainingStatus;
 using ::core::MultiwayBlueprintIterationSchedule;
 using ::core::MultiwayBlueprintQuery;
 using ::core::MultiwayBucketActionPolicy;
+using ::core::MultiwayRangeBeliefMetadata;
+using ::core::MultiwayRangeBeliefSeatInput;
+using ::core::MultiwayRangeBeliefSource;
+using ::core::MultiwayRangeBeliefSuppliedEntry;
+using ::core::MultiwayRangeBeliefView;
+using ::core::MultiwayRangeBeliefs;
 using ::core::update_anonymous_multiway_range;
 using ::core::MultiwayCheckpoint;
 using ::core::MultiwayArtifactSource;
