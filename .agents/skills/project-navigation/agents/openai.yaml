@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Navigation"
+  short_description: "Find TexasSolver code and placement fast"
+  default_prompt: "Use $project-navigation to locate the relevant TexasSolver files for this task."
