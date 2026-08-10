@@ -1,0 +1,4 @@
+interface:
+  display_name: "TexasSolver Build and Test Fixer"
+  short_description: "Build quietly, diagnose, repair, and retest C++"
+  default_prompt: "Use $cpp-build-test-fixer to repair current TexasSolver build and test failures."

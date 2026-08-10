@@ -1,0 +1,4 @@
+interface:
+  display_name: "TexasSolver C++ Tests"
+  short_description: "Create focused C++ behavior and regression tests"
+  default_prompt: "Use $cpp-unit-tests to add tests for this TexasSolver C++ change."
