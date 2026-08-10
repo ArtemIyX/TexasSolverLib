@@ -5,6 +5,7 @@ description: Inspect Git repositories, find and review changes, and create clean
 
 # Git Commit Hygiene
 
+IT IS FORBIDDEN to run builds, tests, benchmarks, installs, or solver jobs unless the user explicitly asks. When asked to verify, use the repository's documented CMake commands and report exactly what ran.
 Use this workflow to make Git actions safe, scoped, and easy to understand.
 
 ## Inspect first

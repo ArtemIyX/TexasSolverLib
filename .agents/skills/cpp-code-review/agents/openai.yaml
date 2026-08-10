@@ -1,0 +1,4 @@
+interface:
+  display_name: "TexasSolver C++ Review"
+  short_description: "Evidence-based review of selected C++ changes"
+  default_prompt: "Use $cpp-code-review to review my selected TexasSolver C++ changes."

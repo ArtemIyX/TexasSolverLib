@@ -9,6 +9,8 @@ Write correct C++17 that matches TexasSolver's established namespace, file layou
 
 ## Workflow
 
+IT IS FORBIDDEN to run builds, tests, benchmarks, installs, or solver jobs unless the user explicitly asks. When asked to verify, use the repository's documented CMake commands and report exactly what ran.
+
 1. Read `AGENTS.md` and the public header, matching implementation, tests, and example nearest to the requested type. Search exact symbols with `rg` before broad searches.
 2. Identify the contract: ownership, units, determinism, public API, error handling, legacy compatibility, and whether the affected code is hot.
 3. Make the narrowest coherent change. Add a public module as mirrored `include/<area>/name.hpp` and `src/<area>/name.cpp`; CMake discovers normal pairs automatically.
