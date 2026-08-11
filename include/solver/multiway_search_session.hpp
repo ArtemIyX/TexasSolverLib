@@ -36,6 +36,7 @@ public:
     MultiwaySearchSession(MultiwaySearchSession&&) = delete;
     MultiwaySearchSession& operator=(MultiwaySearchSession&&) = delete;
 
+    [[nodiscard]] MultiwaySolverCoordinator& coordinator() noexcept { return coordinator_; }
     [[nodiscard]] const MultiwaySolverCoordinator& coordinator() const noexcept { return coordinator_; }
     [[nodiscard]] MultiwayRangeBeliefView belief(PlayerId seat) const;
     [[nodiscard]] MultiwayRangeBeliefUpdateResult apply_observation(

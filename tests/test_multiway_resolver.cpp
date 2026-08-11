@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 
 namespace {
 
@@ -67,6 +68,38 @@ bool is_legal_output(
     const core::MultiwayResolverResult& result,
     const std::vector<core::MultiwayActionDescriptor>& menu) {
     return result.has_sampled_action && std::find(menu.begin(), menu.end(), result.sampled_action) != menu.end();
+}
+
+core::Value resolver_search_leaf(
+    const core::MultiwayLeafEvaluationRequest& request,
+    const void*) noexcept {
+    const auto seat = static_cast<std::size_t>(request.traverser);
+    return static_cast<core::Value>(
+        request.betting->contributions[seat] - request.betting->current_bet);
+}
+
+core::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
+    core::MultiwayResolverConfig config;
+    config.buckets = &fixture.buckets;
+    config.trajectories_per_batch = 2U;
+    config.max_batches = 1U;
+    config.search_mode = core::MultiwayResolverSearchMode::SearchActive;
+    config.search_limits.worker_count = 1U;
+    config.search_limits.trajectories_per_batch = config.trajectories_per_batch;
+    config.search_limits.max_public_states = 32U;
+    config.search_limits.max_sparse_rows = 16U;
+    config.search_limits.max_sparse_values = 2'048U;
+    config.search_limits.max_worker_delta_entries = 128U;
+    static const core::MultiwayLeafEvaluator evaluator = {resolver_search_leaf, nullptr};
+    config.leaf_evaluator = &evaluator;
+    return config;
+}
+
+void add_complete_search_ranges(core::MultiwayResolverRequest* request) {
+    request->opponent_ranges = {
+        {1, {{{36U, 37U}, 1.0}}},
+        {2, {{{40U, 41U}, 1.0}}},
+    };
 }
 
 }  // namespace
@@ -243,4 +276,33 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
         blueprint_fallback.diagnostics.policy_provenance,
         core::MultiwayPolicyProvenance::BlueprintFallback);
     EXPECT_TRUE(blueprint_fallback.diagnostics.used_blueprint_fallback);
+}
+
+TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    core::MultiwayResolver resolver(search_config(fixture));
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::Solved);
+    EXPECT_EQ(result.diagnostics.policy_provenance, core::MultiwayPolicyProvenance::RuntimeSearch);
+    EXPECT_EQ(result.diagnostics.search_engine, core::MultiwayResolverEngine::RootExternalSamplingMCCFR);
+    EXPECT_EQ(result.diagnostics.search_engine_version, core::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION);
+    EXPECT_EQ(result.diagnostics.completed_batches, 1U);
+    EXPECT_EQ(result.diagnostics.completed_trajectories, 2U);
+    EXPECT_TRUE(result.diagnostics.policy_normalized);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_search_mode_falls_back_without_complete_live_ranges) {
+    ResolverFixture fixture;
+    core::MultiwayResolver resolver(search_config(fixture));
+
+    const auto result = resolver.resolve(fixture.request());
+
+    EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::RejectedByBudget);
+    EXPECT_TRUE(result.diagnostics.used_fallback);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }

@@ -4,6 +4,7 @@
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_export.hpp"
+#include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_solver.hpp"
 
@@ -68,6 +69,7 @@ enum class MultiwayResolverStatus : std::uint8_t {
 enum class MultiwayPolicyProvenance : std::uint8_t {
     None,
     LegacyDeterministicAdjustment,
+    RuntimeSearch,
     StableRootFallback,
     BlueprintFallback,
     StaticLegalFallback,
@@ -75,9 +77,18 @@ enum class MultiwayPolicyProvenance : std::uint8_t {
 
 enum class MultiwayResolverEngine : std::uint8_t {
     LegacyDeterministicAdjustment,
+    RootExternalSamplingMCCFR,
 };
 
 inline constexpr std::uint64_t MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION = 1U;
+inline constexpr std::uint64_t MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION = 1U;
+
+enum class MultiwayResolverSearchMode : std::uint8_t {
+    LegacyStatic,
+    SearchShadow,
+    SearchActive,
+    ForcedFallback,
+};
 
 struct MultiwayResolverDiagnostics {
     MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
@@ -122,6 +133,11 @@ struct MultiwayResolverConfig {
     std::uint32_t trajectories_per_batch = 32U;
     std::uint32_t max_batches = 64U;
     std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
+    MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::LegacyStatic;
+    MultiwaySolverLimits search_limits{};
+    const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
+    std::uint32_t search_max_decision_depth = 1U;
+    std::uint32_t search_max_public_chance_depth = 0U;
 
     void validate() const;
 };

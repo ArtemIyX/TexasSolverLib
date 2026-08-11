@@ -2,6 +2,8 @@
 
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
+#include "solver/multiway_search_session.hpp"
+#include "solver/multiway_traversal.hpp"
 #include "util/profiling.hpp"
 
 #include <algorithm>
@@ -141,6 +143,13 @@ bool valid_inference_mode(MultiwayInferenceMode mode) noexcept {
         mode == MultiwayInferenceMode::BlockersOnly;
 }
 
+bool valid_search_mode(MultiwayResolverSearchMode mode) noexcept {
+    return mode == MultiwayResolverSearchMode::LegacyStatic ||
+        mode == MultiwayResolverSearchMode::SearchShadow ||
+        mode == MultiwayResolverSearchMode::SearchActive ||
+        mode == MultiwayResolverSearchMode::ForcedFallback;
+}
+
 void set_policy_provenance(
     MultiwayResolverDiagnostics* diagnostics,
     MultiwayPolicyProvenance provenance) noexcept {
@@ -218,6 +227,116 @@ std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
     return menu;
 }
 
+bool make_search_root(
+    const MultiwayResolverRequest& request,
+    const MultiwayState& state,
+    const std::vector<std::uint8_t>& board,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    std::uint32_t bucket,
+    MultiwayRootSnapshot* root) {
+    const auto seat_count = state.stacks().size();
+    if (state.street() < Street::Flop || state.street() > Street::River ||
+        seat_count < 2U || seat_count > 6U) {
+        return false;
+    }
+
+    std::array<const MultiwayResolverSeatRange*, 6U> ranges = {};
+    for (const auto& range : request.opponent_ranges) {
+        ranges[static_cast<std::size_t>(range.seat)] = &range;
+    }
+    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+        if (static_cast<PlayerId>(seat) != request.hero_seat &&
+            (state.folded()[seat] || ranges[seat] == nullptr)) {
+            return false;
+        }
+    }
+
+    root->public_state = MultiwayPublicBuilder::make_root(state.snapshot(), board, menu);
+    root->root_infoset = {root->public_state.id, request.hero_seat};
+    root->root_bucket = bucket;
+    root->seat_order.clear();
+    root->seat_order.reserve(seat_count);
+    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+        root->seat_order.push_back(static_cast<PlayerId>(seat));
+    }
+    root->next_street_first_seat = 0;
+    root->odd_chip_first_seat = 0;
+    root->private_ranges.board = board;
+    root->private_ranges.ranges.assign(seat_count, {});
+    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+        if (static_cast<PlayerId>(seat) == request.hero_seat) {
+            root->private_ranges.ranges[seat].push_back({request.hero_cards, 1.0});
+        } else {
+            root->private_ranges.ranges[seat] = ranges[seat]->hands;
+        }
+    }
+    root->action_abstraction_version = request.blueprint_identity.action_abstraction_hash;
+    root->leaf_model_version = request.blueprint_identity.terminal_model_hash;
+    return true;
+}
+
+bool run_search(
+    const MultiwayResolverRequest& request,
+    const MultiwayState& state,
+    const MultiwayResolverConfig& config,
+    const std::vector<std::uint8_t>& board,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    std::uint32_t bucket,
+    std::uint64_t public_state_id,
+    std::vector<MultiwayResolverActionProbability>* policy,
+    MultiwayResolverDiagnostics* diagnostics) {
+    MultiwayRootSnapshot root;
+    if (!make_search_root(request, state, board, menu, bucket, &root)) return false;
+
+    try {
+        MultiwayCFRConfig cfr;
+        cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
+        MultiwaySolveRequest solve_request(std::move(root), cfr, config.search_limits);
+        MultiwaySearchSession session(solve_request, {config.buckets}, 1U);
+        MultiwayActionAbstraction abstraction(config.action_abstraction);
+        MultiwayRootExternalSamplingTraversal traversal(
+            session.coordinator(), session.coordinator().root(), abstraction, *config.buckets,
+            config.leaf_evaluator, config.search_max_decision_depth,
+            config.search_max_public_chance_depth);
+        MultiwayRootBatchRunner runner(
+            traversal, session.coordinator(), config.search_limits.worker_count,
+            config.search_limits.max_worker_delta_entries);
+
+        std::uint64_t first_trajectory = 0U;
+        bool expired = false;
+        for (std::uint32_t batch = 0U; batch < config.max_batches; ++batch) {
+            if (deadline_reached(request.deadline, config.deadline_reserve)) {
+                expired = true;
+                break;
+            }
+            const auto batch_result = runner.run(
+                first_trajectory, config.trajectories_per_batch,
+                request.sampling_seed ^ public_state_id);
+            first_trajectory += config.trajectories_per_batch;
+            ++diagnostics->completed_batches;
+            diagnostics->completed_trajectories += batch_result.trajectories_accepted;
+            if (deadline_reached(request.deadline, config.deadline_reserve)) {
+                expired = true;
+                break;
+            }
+        }
+        if (diagnostics->completed_batches == 0U) return false;
+
+        const auto root_policy = session.coordinator().export_root_policy();
+        policy->clear();
+        policy->reserve(root_policy.actions.size());
+        for (const auto& action : root_policy.actions) {
+            policy->push_back({action.action, action.probability});
+        }
+        if (!normalize(*policy)) return false;
+        diagnostics->deadline_expired = expired;
+        return true;
+    } catch (const std::exception&) {
+        policy->clear();
+        return false;
+    }
+}
+
 void sample_policy(
     MultiwayResolverResult* result,
     std::uint64_t seed,
@@ -244,6 +363,20 @@ void MultiwayResolverConfig::validate() const {
     action_abstraction.validate();
     if (trajectories_per_batch == 0U || max_batches == 0U || deadline_reserve.count() < 0) {
         throw std::invalid_argument("multiway resolver has invalid batch or deadline limits");
+    }
+    if (!valid_search_mode(search_mode)) {
+        throw std::invalid_argument("multiway resolver has an invalid search mode");
+    }
+    if (search_mode == MultiwayResolverSearchMode::SearchShadow ||
+        search_mode == MultiwayResolverSearchMode::SearchActive) {
+        search_limits.validate();
+        if (leaf_evaluator == nullptr || !leaf_evaluator->valid() ||
+            search_limits.trajectories_per_batch != trajectories_per_batch ||
+            search_max_decision_depth == 0U ||
+            search_max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH ||
+            search_max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH) {
+            throw std::invalid_argument("multiway resolver search configuration is invalid");
+        }
     }
     if (verified_blueprint != nullptr && blueprint != nullptr) {
         throw std::invalid_argument("multiway resolver accepts either a verified or legacy blueprint");
@@ -358,6 +491,44 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             result.diagnostics.deadline_expired = true;
             use_fallback(MultiwayResolverStatus::DeadlineFallback);
             return result;
+        }
+
+        if (config_.search_mode == MultiwayResolverSearchMode::ForcedFallback) {
+            use_fallback(MultiwayResolverStatus::RejectedByBudget);
+            return result;
+        }
+
+        if (config_.search_mode == MultiwayResolverSearchMode::SearchShadow ||
+            config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+            MultiwayResolverDiagnostics search_diagnostics = result.diagnostics;
+            std::vector<MultiwayResolverActionProbability> search_policy;
+            const auto search_completed = run_search(
+                request, state, config_, canonical_board, menu, bucket, reconstructed_id,
+                &search_policy, &search_diagnostics);
+            if (search_completed && config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+                result.policy = std::move(search_policy);
+                result.diagnostics = search_diagnostics;
+                result.diagnostics.status = result.diagnostics.deadline_expired
+                    ? MultiwayResolverStatus::Partial : MultiwayResolverStatus::Solved;
+                result.diagnostics.search_engine = MultiwayResolverEngine::RootExternalSamplingMCCFR;
+                result.diagnostics.search_engine_version = MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
+                set_policy_provenance(&result.diagnostics, MultiwayPolicyProvenance::RuntimeSearch);
+                result.diagnostics.policy_normalized = true;
+                sample_policy(&result, request.sampling_seed, reconstructed_id);
+                {
+                    std::lock_guard<std::mutex> lock(stable_policy_mutex_);
+                    stable_policy_.identity = request.blueprint_identity;
+                    stable_policy_.public_state_id = reconstructed_id;
+                    stable_policy_.policy = result.policy;
+                }
+                return result;
+            }
+            if (config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+                use_fallback(deadline_reached(request.deadline, config_.deadline_reserve)
+                    ? MultiwayResolverStatus::DeadlineFallback
+                    : MultiwayResolverStatus::RejectedByBudget);
+                return result;
+            }
         }
 
         result.policy = static_policy(menu);
