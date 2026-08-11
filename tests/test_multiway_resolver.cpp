@@ -292,6 +292,13 @@ TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
     EXPECT_EQ(result.diagnostics.search_engine_version, core::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION);
     EXPECT_EQ(result.diagnostics.completed_batches, 1U);
     EXPECT_EQ(result.diagnostics.completed_trajectories, 2U);
+    EXPECT_TRUE(result.diagnostics.search_merged_delta_entries > 0U);
+    EXPECT_EQ(result.diagnostics.search_first_trajectory_id, 0U);
+    EXPECT_EQ(result.diagnostics.search_trajectory_count, 2U);
+    EXPECT_EQ(result.diagnostics.search_root_revision, 1U);
+    EXPECT_EQ(result.diagnostics.search_worker_count, 1U);
+    EXPECT_TRUE(result.diagnostics.search_admitted_rows > 0U);
+    EXPECT_TRUE(result.diagnostics.search_admitted_values > 0U);
     EXPECT_TRUE(result.diagnostics.policy_normalized);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
@@ -358,6 +365,7 @@ TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
     EXPECT_TRUE(result.diagnostics.shadow_search_completed);
     EXPECT_EQ(result.diagnostics.shadow_completed_batches, 1U);
     EXPECT_EQ(result.diagnostics.shadow_completed_trajectories, 2U);
+    EXPECT_TRUE(result.diagnostics.shadow_search_merged_delta_entries > 0U);
     EXPECT_TRUE(result.diagnostics.shadow_policy_l1_distance >= 0.0);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
