@@ -4,6 +4,42 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## M2 - Isolated real sampled root search: clean batches and shadow comparison
+
+**Status:** Complete
+**Completed:** 2026-08-11
+**Implementation commit:** `b5b5b4b fix(multiway): enforce clean root search batches`
+
+- Added an explicit clean flag to root batch results, set only after worker
+  streams are merged by the coordinator.
+- Rejected active resolver searches that produce no accepted trajectory or no
+  merged delta, preserving legal fallback behavior.
+- Added shadow-mode completion counters and normalized-policy L1 divergence
+  diagnostics.
+- Added regression coverage for clean batches, no-progress search fallback,
+  and shadow comparison.
+
+### Files
+
+- `include/solver/multiway_resolver.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_recursive_traversal.cpp`
+- `tests/test_multiway_resolver.cpp`
+
+### Validation
+
+- Not run. The repository instruction explicitly prohibited build and test
+  commands for this task.
+- Reviewed staged diff with `git diff --cached --check`.
+
+### Limitations
+
+- Broader M2 runtime-budget integration remains. Runtime search is still
+  root-only; rerooting, off-tree expansion, future abstraction, and
+  continuation-policy integration remain future M4-M6 work.
+
 ## P1.1 - Canonical Combination IDs
 
 **Status:** Complete
