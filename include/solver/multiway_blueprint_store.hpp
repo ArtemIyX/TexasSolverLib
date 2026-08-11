@@ -3,6 +3,7 @@
 #include "solver/multiway_export.hpp"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace core {
