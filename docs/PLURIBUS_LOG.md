@@ -4,6 +4,39 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P2.2 - Implement runtime budget and clean-batch semantics
+
+**Status:** Complete
+**Completed:** 2026-08-11
+**Implementation commit:** `227a6eb feat(multiway): add resolver runtime budget`
+
+- Added a request-local runtime budget with an internal deadline derived from
+  the external deadline and reserve.
+- Enforced batch, trajectory, sparse-row, sparse-value, cancellation, and
+  clean-merge checks before root-policy export.
+- Preserved the last clean batch as a partial result when the deadline expires
+  after that batch, and rejected requests with no clean batch.
+- Added direct budget contract tests and resolver deadline regression coverage.
+
+### Files
+
+- `include/solver/multiway_resolver_budget.hpp`
+- `src/solver/multiway_resolver_budget.cpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver_budget.cpp`
+- `tests/test_multiway_resolver.cpp`
+
+### Validation
+
+- Not run. The repository instruction explicitly prohibited build and test
+  commands for this task.
+- Reviewed staged diff with `git diff --cached --check`.
+
+### Limitations
+
+- Budget cancellation is cooperative at bounded batch checkpoints. Interrupting
+  an in-flight trajectory remains future scheduler/traversal work.
+
 ## M2 - Isolated real sampled root search: clean batches and shadow comparison
 
 **Status:** Complete
