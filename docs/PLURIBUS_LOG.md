@@ -4,6 +4,13 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Next planned work
+
+P2.3, session-local deterministic search rows, is the next execution item.
+The 24-commit scope and acceptance gates are in
+[p2_3_session_rows_execution_plan.md](p2_3_session_rows_execution_plan.md).
+This is a plan only; no P2.3 implementation or validation is claimed complete.
+
 ## P2.2 - Implement runtime budget and clean-batch semantics
 
 **Status:** Complete
