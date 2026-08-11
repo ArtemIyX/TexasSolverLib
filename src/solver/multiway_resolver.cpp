@@ -365,7 +365,6 @@ RuntimeSearchOutcome run_search(
     std::uint64_t public_state_id,
     std::vector<MultiwayResolverActionProbability>* policy,
     MultiwayResolverDiagnostics* diagnostics) {
-    RuntimeSearchMeasurement measurement(diagnostics);
     MultiwayRootSnapshot root;
     if (!make_search_root(request, state, board, menu, bucket, &root)) {
         return RuntimeSearchOutcome::NoRoot;
@@ -376,6 +375,7 @@ RuntimeSearchOutcome run_search(
         cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
         MultiwaySolveRequest solve_request(std::move(root), cfr, config.search_limits);
         MultiwaySearchSession session(solve_request, {config.buckets}, 1U);
+        RuntimeSearchMeasurement measurement(diagnostics);
         MultiwayActionAbstraction abstraction(config.action_abstraction);
         MultiwayRootExternalSamplingTraversal traversal(
             session.coordinator(), session.coordinator().root(), abstraction, *config.buckets,
