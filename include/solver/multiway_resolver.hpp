@@ -106,6 +106,10 @@ struct MultiwayResolverDiagnostics {
     bool used_blueprint_fallback = false;
     bool used_static_fallback = false;
     bool anonymous_ranges_merged = false;
+    bool shadow_search_completed = false;
+    std::uint64_t shadow_completed_batches = 0;
+    std::uint64_t shadow_completed_trajectories = 0;
+    double shadow_policy_l1_distance = 0.0;
     std::uint32_t root_bucket = 0;
     std::uint32_t root_menu_size = 0;
     std::uint32_t admitted_range_entries = 0;

@@ -16,6 +16,13 @@ namespace {
 
 constexpr double kMinimumProbability = 1e-12;
 
+enum class RuntimeSearchOutcome : std::uint8_t {
+    NoRoot,
+    NoCleanBatch,
+    Failed,
+    Completed,
+};
+
 std::uint64_t mix_seed(std::uint64_t value) noexcept {
     value += 0x9e3779b97f4a7c15ULL;
     value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
@@ -55,6 +62,33 @@ bool normalize(std::vector<MultiwayResolverActionProbability>& policy) noexcept 
     if (!std::isfinite(total) || total <= 0.0) return false;
     for (auto& entry : policy) entry.probability /= total;
     return true;
+}
+
+double policy_l1_distance(
+    const std::vector<MultiwayResolverActionProbability>& left,
+    const std::vector<MultiwayResolverActionProbability>& right) noexcept {
+    double distance = 0.0;
+    for (const auto& right_entry : right) {
+        double left_probability = 0.0;
+        for (const auto& left_entry : left) {
+            if (left_entry.action == right_entry.action) {
+                left_probability = left_entry.probability;
+                break;
+            }
+        }
+        distance += std::fabs(left_probability - right_entry.probability);
+    }
+    for (const auto& left_entry : left) {
+        bool present = false;
+        for (const auto& right_entry : right) {
+            if (right_entry.action == left_entry.action) {
+                present = true;
+                break;
+            }
+        }
+        if (!present) distance += left_entry.probability;
+    }
+    return distance;
 }
 
 std::vector<MultiwayResolverActionProbability> static_policy(
@@ -275,7 +309,7 @@ bool make_search_root(
     return true;
 }
 
-bool run_search(
+RuntimeSearchOutcome run_search(
     const MultiwayResolverRequest& request,
     const MultiwayState& state,
     const MultiwayResolverConfig& config,
@@ -286,7 +320,9 @@ bool run_search(
     std::vector<MultiwayResolverActionProbability>* policy,
     MultiwayResolverDiagnostics* diagnostics) {
     MultiwayRootSnapshot root;
-    if (!make_search_root(request, state, board, menu, bucket, &root)) return false;
+    if (!make_search_root(request, state, board, menu, bucket, &root)) {
+        return RuntimeSearchOutcome::NoRoot;
+    }
 
     try {
         MultiwayCFRConfig cfr;
@@ -312,7 +348,11 @@ bool run_search(
             const auto batch_result = runner.run(
                 first_trajectory, config.trajectories_per_batch,
                 request.sampling_seed ^ public_state_id);
-            first_trajectory += config.trajectories_per_batch;
+            first_trajectory += batch_result.trajectories_attempted;
+            if (!batch_result.clean || batch_result.trajectories_accepted == 0U ||
+                batch_result.delta_entries_merged == 0U) {
+                return RuntimeSearchOutcome::NoCleanBatch;
+            }
             ++diagnostics->completed_batches;
             diagnostics->completed_trajectories += batch_result.trajectories_accepted;
             if (deadline_reached(request.deadline, config.deadline_reserve)) {
@@ -320,7 +360,9 @@ bool run_search(
                 break;
             }
         }
-        if (diagnostics->completed_batches == 0U) return false;
+        if (diagnostics->completed_batches == 0U) {
+            return RuntimeSearchOutcome::NoCleanBatch;
+        }
 
         const auto root_policy = session.coordinator().export_root_policy();
         policy->clear();
@@ -328,12 +370,12 @@ bool run_search(
         for (const auto& action : root_policy.actions) {
             policy->push_back({action.action, action.probability});
         }
-        if (!normalize(*policy)) return false;
+        if (!normalize(*policy)) return RuntimeSearchOutcome::Failed;
         diagnostics->deadline_expired = expired;
-        return true;
+        return RuntimeSearchOutcome::Completed;
     } catch (const std::exception&) {
         policy->clear();
-        return false;
+        return RuntimeSearchOutcome::Failed;
     }
 }
 
@@ -498,14 +540,15 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             return result;
         }
 
+        std::vector<MultiwayResolverActionProbability> search_policy;
         if (config_.search_mode == MultiwayResolverSearchMode::SearchShadow ||
             config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
             MultiwayResolverDiagnostics search_diagnostics = result.diagnostics;
-            std::vector<MultiwayResolverActionProbability> search_policy;
-            const auto search_completed = run_search(
+            const auto search_outcome = run_search(
                 request, state, config_, canonical_board, menu, bucket, reconstructed_id,
                 &search_policy, &search_diagnostics);
-            if (search_completed && config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+            if (search_outcome == RuntimeSearchOutcome::Completed &&
+                config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
                 result.policy = std::move(search_policy);
                 result.diagnostics = search_diagnostics;
                 result.diagnostics.status = result.diagnostics.deadline_expired
@@ -524,10 +567,19 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 return result;
             }
             if (config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
-                use_fallback(deadline_reached(request.deadline, config_.deadline_reserve)
+                const auto fallback_status = deadline_reached(request.deadline, config_.deadline_reserve)
                     ? MultiwayResolverStatus::DeadlineFallback
-                    : MultiwayResolverStatus::RejectedByBudget);
+                    : search_outcome == RuntimeSearchOutcome::NoRoot
+                        ? MultiwayResolverStatus::RejectedByBudget
+                        : MultiwayResolverStatus::ResourceExhausted;
+                use_fallback(fallback_status);
                 return result;
+            }
+            if (search_outcome == RuntimeSearchOutcome::Completed) {
+                result.diagnostics.shadow_search_completed = true;
+                result.diagnostics.shadow_completed_batches = search_diagnostics.completed_batches;
+                result.diagnostics.shadow_completed_trajectories =
+                    search_diagnostics.completed_trajectories;
             }
         }
 
@@ -554,6 +606,10 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
         set_policy_provenance(
             &result.diagnostics, MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
         result.diagnostics.policy_normalized = true;
+        if (result.diagnostics.shadow_search_completed) {
+            result.diagnostics.shadow_policy_l1_distance =
+                policy_l1_distance(search_policy, result.policy);
+        }
         sample_policy(&result, request.sampling_seed, reconstructed_id);
         {
             std::lock_guard<std::mutex> lock(stable_policy_mutex_);

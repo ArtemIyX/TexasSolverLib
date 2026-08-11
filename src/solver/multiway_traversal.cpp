@@ -524,6 +524,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         result.minimum_worker_trajectories = 0U;
     }
     coordinator_->merge_worker_streams(worker_stream_views_);
+    result.clean = true;
     return result;
 }
 

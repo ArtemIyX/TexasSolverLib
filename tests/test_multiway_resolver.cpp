@@ -306,3 +306,41 @@ TEST_CASE(multiway_resolver_search_mode_falls_back_without_complete_live_ranges)
     EXPECT_TRUE(result.diagnostics.used_fallback);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
+
+TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto config = search_config(fixture);
+    config.search_limits.max_worker_delta_entries = 1U;
+    core::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::ResourceExhausted);
+    EXPECT_TRUE(result.diagnostics.used_fallback);
+    EXPECT_EQ(result.diagnostics.completed_batches, 0U);
+    EXPECT_EQ(result.diagnostics.completed_trajectories, 0U);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto config = search_config(fixture);
+    config.search_mode = core::MultiwayResolverSearchMode::SearchShadow;
+    core::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::Solved);
+    EXPECT_EQ(
+        result.diagnostics.policy_provenance,
+        core::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+    EXPECT_TRUE(result.diagnostics.shadow_search_completed);
+    EXPECT_EQ(result.diagnostics.shadow_completed_batches, 1U);
+    EXPECT_EQ(result.diagnostics.shadow_completed_trajectories, 2U);
+    EXPECT_TRUE(result.diagnostics.shadow_policy_l1_distance >= 0.0);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}

@@ -304,6 +304,7 @@ TEST_CASE(multiway_recursive_batch_rotates_traversers_deterministically_across_s
     EXPECT_EQ(result.trajectories_accepted, 3U);
     EXPECT_EQ(result.trajectories_discarded, 0U);
     EXPECT_TRUE(result.delta_entries_merged > 0U);
+    EXPECT_TRUE(result.clean);
     EXPECT_TRUE(fixture.coordinator.storage().row_count() >= 3U);
     EXPECT_EQ(
         fixture.coordinator.diagnostics().worker_delta_entries_merged,
@@ -317,6 +318,7 @@ TEST_CASE(multiway_root_batch_runner_partitions_workers_and_merges_in_fixed_orde
     EXPECT_EQ(result.trajectories_attempted, 7U);
     EXPECT_EQ(result.trajectories_accepted + result.trajectories_discarded, 7U);
     EXPECT_TRUE(result.delta_entries_merged > 0U);
+    EXPECT_TRUE(result.clean);
     EXPECT_EQ(
         fixture.coordinator.diagnostics().worker_delta_entries_merged,
         result.delta_entries_merged);
@@ -359,6 +361,7 @@ TEST_CASE(multiway_root_batch_runner_one_worker_remains_compatible) {
 
     EXPECT_EQ(result.trajectories_attempted, 3U);
     EXPECT_EQ(result.trajectories_accepted + result.trajectories_discarded, 3U);
+    EXPECT_TRUE(result.clean);
     EXPECT_EQ(
         fixture.coordinator.diagnostics().worker_delta_entries_merged,
         result.delta_entries_merged);
