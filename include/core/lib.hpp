@@ -191,6 +191,8 @@ using ::core::serialize_multiway_traversal_baseline;
 using ::core::MultiwayResolverConfig;
 using ::core::MultiwayResolverActionProbability;
 using ::core::MultiwayResolverDiagnostics;
+using ::core::MultiwayResolverSearchEligibility;
+using ::core::MultiwayResolverSearchMode;
 using ::core::MultiwayResolverRequest;
 using ::core::MultiwayResolverResult;
 using ::core::MultiwayResolverSeatRange;

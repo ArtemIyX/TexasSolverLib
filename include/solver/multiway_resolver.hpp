@@ -91,6 +91,18 @@ enum class MultiwayResolverSearchMode : std::uint8_t {
     ForcedFallback,
 };
 
+// Explains whether the request may enter runtime search. It is diagnostic-only
+// and never contains private range or card data.
+enum class MultiwayResolverSearchEligibility : std::uint8_t {
+    NotRequested,
+    Eligible,
+    UnsupportedStreet,
+    SeatCount,
+    FoldedSeat,
+    IncompleteRanges,
+    MenuTooLarge,
+};
+
 struct MultiwayResolverDiagnostics {
     MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
     MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
@@ -104,6 +116,8 @@ struct MultiwayResolverDiagnostics {
     std::uint64_t search_first_trajectory_id = 0;
     std::uint64_t search_trajectory_count = 0;
     std::uint64_t search_root_revision = 0;
+    std::uint64_t search_elapsed_nanoseconds = 0;
+    std::uint64_t search_observed_memory_bytes = 0;
     std::uint32_t search_worker_count = 0;
     std::size_t search_admitted_rows = 0U;
     std::size_t search_admitted_values = 0U;
@@ -118,11 +132,15 @@ struct MultiwayResolverDiagnostics {
     std::uint64_t shadow_completed_batches = 0;
     std::uint64_t shadow_completed_trajectories = 0;
     std::uint64_t shadow_search_merged_delta_entries = 0;
+    std::uint64_t shadow_search_elapsed_nanoseconds = 0;
+    std::uint64_t shadow_search_observed_memory_bytes = 0;
     double shadow_policy_l1_distance = 0.0;
     std::uint32_t root_bucket = 0;
     std::uint32_t root_menu_size = 0;
     std::uint32_t admitted_range_entries = 0;
     std::uint64_t resolved_public_state_id = 0;
+    MultiwayResolverSearchEligibility search_eligibility =
+        MultiwayResolverSearchEligibility::NotRequested;
 };
 
 struct MultiwayResolverResult {
@@ -151,6 +169,9 @@ struct MultiwayResolverConfig {
     const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
     std::uint32_t search_max_decision_depth = 1U;
     std::uint32_t search_max_public_chance_depth = 0U;
+    std::uint8_t active_search_min_seats = 2U;
+    std::uint8_t active_search_max_seats = 6U;
+    std::uint32_t active_search_max_menu_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
 
     void validate() const;
 };

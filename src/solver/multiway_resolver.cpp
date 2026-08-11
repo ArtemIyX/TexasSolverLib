@@ -1,6 +1,7 @@
 #include "solver/multiway_resolver.hpp"
 
 #include "solver/multiway_artifact.hpp"
+#include "solver/multiway_baseline.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
@@ -8,6 +9,7 @@
 #include "util/profiling.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -16,6 +18,21 @@ namespace core {
 namespace {
 
 constexpr double kMinimumProbability = 1e-12;
+
+struct RuntimeSearchMeasurement {
+    explicit RuntimeSearchMeasurement(MultiwayResolverDiagnostics* diagnostics) noexcept
+        : diagnostics(diagnostics), started(std::chrono::steady_clock::now()) {}
+
+    ~RuntimeSearchMeasurement() {
+        diagnostics->search_elapsed_nanoseconds = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - started).count());
+        diagnostics->search_observed_memory_bytes = observed_multiway_process_memory_bytes();
+    }
+
+    MultiwayResolverDiagnostics* diagnostics = nullptr;
+    std::chrono::steady_clock::time_point started{};
+};
 
 enum class RuntimeSearchOutcome : std::uint8_t {
     NoRoot,
@@ -262,6 +279,34 @@ std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
     return menu;
 }
 
+MultiwayResolverSearchEligibility search_eligibility(
+    const MultiwayResolverRequest& request,
+    const MultiwayState& state,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    const MultiwayResolverConfig& config) noexcept {
+    if (!is_postflop(state.street())) {
+        return MultiwayResolverSearchEligibility::UnsupportedStreet;
+    }
+    const auto seat_count = state.stacks().size();
+    if (seat_count < config.active_search_min_seats || seat_count > config.active_search_max_seats) {
+        return MultiwayResolverSearchEligibility::SeatCount;
+    }
+    if (menu.size() > config.active_search_max_menu_actions) {
+        return MultiwayResolverSearchEligibility::MenuTooLarge;
+    }
+
+    std::array<bool, 6U> has_range = {};
+    for (const auto& range : request.opponent_ranges) {
+        has_range[static_cast<std::size_t>(range.seat)] = true;
+    }
+    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+        if (static_cast<PlayerId>(seat) == request.hero_seat) continue;
+        if (state.folded()[seat]) return MultiwayResolverSearchEligibility::FoldedSeat;
+        if (!has_range[seat]) return MultiwayResolverSearchEligibility::IncompleteRanges;
+    }
+    return MultiwayResolverSearchEligibility::Eligible;
+}
+
 bool make_search_root(
     const MultiwayResolverRequest& request,
     const MultiwayState& state,
@@ -320,6 +365,7 @@ RuntimeSearchOutcome run_search(
     std::uint64_t public_state_id,
     std::vector<MultiwayResolverActionProbability>* policy,
     MultiwayResolverDiagnostics* diagnostics) {
+    RuntimeSearchMeasurement measurement(diagnostics);
     MultiwayRootSnapshot root;
     if (!make_search_root(request, state, board, menu, bucket, &root)) {
         return RuntimeSearchOutcome::NoRoot;
@@ -440,6 +486,11 @@ void MultiwayResolverConfig::validate() const {
     }
     if (!valid_search_mode(search_mode)) {
         throw std::invalid_argument("multiway resolver has an invalid search mode");
+    }
+    if (active_search_min_seats < 2U || active_search_min_seats > active_search_max_seats ||
+        active_search_max_seats > 6U || active_search_max_menu_actions == 0U ||
+        active_search_max_menu_actions > MULTIWAY_MAX_ABSTRACTED_ACTIONS) {
+        throw std::invalid_argument("multiway resolver has invalid active-search eligibility limits");
     }
     if (search_mode == MultiwayResolverSearchMode::SearchShadow ||
         search_mode == MultiwayResolverSearchMode::SearchActive) {
@@ -572,9 +623,20 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             return result;
         }
 
+        const auto runtime_search_requested =
+            config_.search_mode == MultiwayResolverSearchMode::SearchShadow ||
+            config_.search_mode == MultiwayResolverSearchMode::SearchActive;
+        if (runtime_search_requested) {
+            result.diagnostics.search_eligibility = search_eligibility(request, state, menu, config_);
+            if (config_.search_mode == MultiwayResolverSearchMode::SearchActive &&
+                result.diagnostics.search_eligibility != MultiwayResolverSearchEligibility::Eligible) {
+                use_fallback(MultiwayResolverStatus::RejectedByBudget);
+                return result;
+            }
+        }
+
         std::vector<MultiwayResolverActionProbability> search_policy;
-        if (config_.search_mode == MultiwayResolverSearchMode::SearchShadow ||
-            config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+        if (result.diagnostics.search_eligibility == MultiwayResolverSearchEligibility::Eligible) {
             MultiwayResolverDiagnostics search_diagnostics = result.diagnostics;
             const auto search_outcome = run_search(
                 request, state, config_, canonical_board, menu, bucket, reconstructed_id,
@@ -614,6 +676,10 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                     search_diagnostics.completed_trajectories;
                 result.diagnostics.shadow_search_merged_delta_entries =
                     search_diagnostics.search_merged_delta_entries;
+                result.diagnostics.shadow_search_elapsed_nanoseconds =
+                    search_diagnostics.search_elapsed_nanoseconds;
+                result.diagnostics.shadow_search_observed_memory_bytes =
+                    search_diagnostics.search_observed_memory_bytes;
             }
         }
 
