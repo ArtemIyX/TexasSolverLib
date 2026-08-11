@@ -60,6 +60,16 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
   `MultiwayPublicDecisionLog` for every delivered decision. Create
   `MultiwayProtectedReplayRecord` only in protected storage; it binds the
   model identity, public history, and per-decision seeds with an integrity hash.
+- Runtime search rows belong to one `MultiwaySearchSession`. Workers write only
+  bounded local delta streams; coordinator merge is the sole row-mutation path.
+  Export a runtime policy only from the latest clean session snapshot after a
+  complete merge. Snapshot diagnostics may include row/value counts, root
+  revision, trajectory interval, worker count, and merged-entry count, but not
+  cards, ranges, raw deltas, or seeds.
+- Reproduce a runtime-search fixture with the same request, seed, worker count,
+  limits, and batch partition. This is the bitwise replay contract. Comparisons
+  across different worker counts use normalized-policy tolerance and must not be
+  claimed bitwise equivalent by default.
 
 ## Stabilization and freeze
 

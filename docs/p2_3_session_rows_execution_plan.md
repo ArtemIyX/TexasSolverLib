@@ -1,8 +1,8 @@
 # P2.3 Execution Plan: Session-Local Deterministic Search Rows
 
-**Status:** Planned  
-**Roadmap task:** P2.3 - Wire worker-local deltas into session rows  
-**Prerequisites:** P0.1-P0.4, P1.1-P1.4, P2.1-P2.2  
+**Status:** Complete
+**Roadmap task:** P2.3 - Wire worker-local deltas into session rows
+**Prerequisites:** P0.1-P0.4, P1.1-P1.4, P2.1-P2.2
 **Scope:** Multiway runtime search only. No HUNL behavior changes.
 
 ## Decision
@@ -123,7 +123,7 @@ Rows are never shared between requests and no partial batch is exported.
 
 ## Exit and follow-up
 
-P2.3 is complete only after the acceptance gates, focused tests, code review, and
-project-log entry are complete. P2.4 can then expand shadow diagnostics using the
-clean-snapshot provenance. P3.1 remains blocked on this contract because a blueprint
-runtime reader must not rely on live mutable search rows.
+The session-row snapshot boundary, resolver export path, focused regressions,
+code review, and project-log entry are complete. P2.4 can expand shadow diagnostics
+using the clean-snapshot provenance. P3.1 remains blocked on this contract because a
+blueprint runtime reader must not rely on live mutable search rows.

@@ -4,12 +4,39 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
-## Next planned work
+## P2.3 - Wire worker-local deltas into session rows
 
-P2.3, session-local deterministic search rows, is the next execution item.
-The 24-commit scope and acceptance gates are in
-[p2_3_session_rows_execution_plan.md](p2_3_session_rows_execution_plan.md).
-This is a plan only; no P2.3 implementation or validation is claimed complete.
+**Status:** Complete
+**Completed:** 2026-08-11
+**Implementation commits:** `f6a0f3a`, `db9a8e4`
+
+- Added request-local row metrics and immutable clean-batch snapshots.
+- Resolver runtime and shadow search now export only through the latest clean
+  session snapshot and report non-private merge provenance.
+- Added deterministic replay and rejected-snapshot preservation coverage.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_search_session.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `src/solver/multiway_search_session.cpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_search_session.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `docs/multiway_release_runbook.md`
+
+### Validation
+
+- Added focused session and resolver regression tests.
+- Build and tests were not run because the task explicitly prohibited them.
+- Reviewed each staged commit with `git diff --cached --check`.
+
+### Limitations
+
+- P3 full-blueprint artifact work remains separate.
+- Cross-worker comparisons retain the existing normalized-policy tolerance;
+  bitwise replay is defined for a fixed worker layout.
 
 ## P2.2 - Implement runtime budget and clean-batch semantics
 
