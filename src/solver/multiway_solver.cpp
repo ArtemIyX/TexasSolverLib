@@ -45,6 +45,22 @@ bool same_board(const std::vector<std::uint8_t>& left, const std::vector<std::ui
     return left == right;
 }
 
+bool same_card_set(const std::vector<std::uint8_t>& left, const std::vector<std::uint8_t>& right) noexcept {
+    if (left.size() != right.size()) return false;
+    for (const auto card : left) {
+        if (std::find(right.begin(), right.end(), card) == right.end()) return false;
+    }
+    return true;
+}
+
+bool same_history_action(
+    const MultiwayActionDescriptor& left,
+    const MultiwayActionDescriptor& right) noexcept {
+    return left.action == right.action &&
+           left.target_street_contribution == right.target_street_contribution &&
+           left.action_menu_id == right.action_menu_id;
+}
+
 bool board_contains(
     const std::vector<std::uint8_t>& complete,
     const std::vector<std::uint8_t>& subset) noexcept {
@@ -123,9 +139,11 @@ void validate_public_state_child_transition(
             const auto& appended = child.history.back();
             if (parent_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision ||
                 appended.actor != parent.betting.current_player ||
-                appended.action != child.incoming_edge.action ||
-                std::find(parent.legal_actions.begin(), parent.legal_actions.end(), appended.action) ==
-                    parent.legal_actions.end()) {
+                !same_history_action(appended.action, child.incoming_edge.action) ||
+                std::none_of(parent.legal_actions.begin(), parent.legal_actions.end(),
+                    [&appended](const MultiwayActionDescriptor& action) {
+                        return same_history_action(action, appended.action);
+                    })) {
                 throw std::invalid_argument("multiway child history action is not in the parent decision menu");
             }
             const auto expected_betting = parent_state.apply(
@@ -331,7 +349,7 @@ void MultiwayRootSnapshot::validate() const {
             throw std::invalid_argument("multiway root seat order must follow the canonical seat cycle");
         }
     }
-    if (!same_board(public_state.board, private_ranges.board) ||
+    if (!same_card_set(public_state.board, private_ranges.board) ||
         (value_units != MultiwayValueUnits::Chips && value_units != MultiwayValueUnits::BigBlinds)) {
         throw std::invalid_argument("multiway root has inconsistent board or value units");
     }

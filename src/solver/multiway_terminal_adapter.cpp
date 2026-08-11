@@ -285,6 +285,7 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
         edge.dealt_cards = std::move(dealt_cards);
         edge.board = board;
         edge.board.insert(edge.board.end(), edge.dealt_cards.begin(), edge.dealt_cards.end());
+        std::sort(edge.board.begin(), edge.board.end());
         edge.board_runout.remaining_board_cards = static_cast<std::uint8_t>(5U - edge.board.size());
         edge.board_runout.chance_only_runout = chance_only_runout;
         edge.probability = probability;
@@ -436,6 +437,7 @@ MultiwaySampledPublicBoardChance MultiwayTerminalAdapter::sample_validated_publi
         result.dealt_cards.begin(),
         result.dealt_card_count,
         result.board.begin() + board.size());
+    std::sort(result.board.begin(), result.board.begin() + result.board_count);
     return result;
 }
 

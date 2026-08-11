@@ -90,6 +90,7 @@ CompactBoardKey compact_board_key_from_hunl(Street street, const std::vector<std
     for (std::size_t index = 0U; index < key.size; ++index) {
         key.cards[index] = compact_card_from_hunl(board[index]);
     }
+    std::sort(key.cards.begin(), key.cards.begin() + static_cast<std::ptrdiff_t>(key.size));
     if (!are_valid_compact_cards(key.cards.data(), key.size)) {
         throw std::invalid_argument("multiway bucket HUNL adapter requires distinct board cards");
     }
@@ -122,6 +123,7 @@ MultiwayBucketTable::MultiwayBucketTable(
       bucket_count_(bucket_count),
       assignments_(std::move(assignments)) {
     identity_.validate();
+    std::sort(canonical_board_.begin(), canonical_board_.end());
     if (canonical_board_.size() != expected_board_count(street_) ||
         !are_valid_compact_cards(canonical_board_.data(), canonical_board_.size()) ||
         bucket_count_ == 0U || assignments_.size() != MULTIWAY_HOLE_COMBINATION_COUNT) {

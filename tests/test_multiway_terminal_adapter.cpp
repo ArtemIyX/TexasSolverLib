@@ -172,10 +172,11 @@ TEST_CASE(multiway_terminal_adapter_enumerates_canonical_exclusive_board_chance_
         if (index != 0U) EXPECT_TRUE(edges[index - 1U].dealt_card < edge.dealt_card);
         EXPECT_TRUE(!excluded[edge.dealt_card]);
         EXPECT_EQ(edge.board.size(), std::size_t{4});
-        EXPECT_EQ(edge.board[0], kFlop[0]);
-        EXPECT_EQ(edge.board[1], kFlop[1]);
-        EXPECT_EQ(edge.board[2], kFlop[2]);
-        EXPECT_EQ(edge.board[3], edge.dealt_card);
+        EXPECT_TRUE(std::is_sorted(edge.board.begin(), edge.board.end()));
+        for (const auto card : kFlop) {
+            EXPECT_TRUE(std::find(edge.board.begin(), edge.board.end(), card) != edge.board.end());
+        }
+        EXPECT_TRUE(std::find(edge.board.begin(), edge.board.end(), edge.dealt_card) != edge.board.end());
         EXPECT_EQ(edge.board_runout.remaining_board_cards, 1U);
         EXPECT_TRUE(!edge.board_runout.chance_only_runout);
         EXPECT_NEAR(edge.probability, 1.0 / 43.0, 1e-12);

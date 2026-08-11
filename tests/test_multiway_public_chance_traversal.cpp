@@ -257,6 +257,9 @@ TEST_CASE(multiway_public_chance_traversal_rejects_oversized_root_action_menu) {
         1000,
         83U,
     });
+    root.public_state = core::MultiwayPublicBuilder::make_root(
+        state.snapshot(), kFlop, std::move(root.public_state.legal_actions));
+    root.root_infoset = {root.public_state.id, state.current_player()};
     EXPECT_EQ(
         root.public_state.legal_actions.size(),
         core::MULTIWAY_MAX_TRAVERSAL_ACTIONS + 1U);

@@ -64,14 +64,14 @@ public:
     [[nodiscard]] static std::uint64_t stable_history_id(
         const std::vector<MultiwayPublicHistoryEntry>& history) noexcept;
 
-private:
-    friend class MultiwayResolver;
-
     [[nodiscard]] static std::uint64_t stable_public_state_id(
         const MultiwayBettingSnapshot& betting,
         const std::vector<std::uint8_t>& board,
         const std::vector<MultiwayPublicHistoryEntry>& history,
         const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept;
+
+private:
+    friend class MultiwayResolver;
 };
 
 }  // namespace core
