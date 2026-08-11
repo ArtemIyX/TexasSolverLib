@@ -4,6 +4,29 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Implementation workflow skill
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added a project-local skill that orchestrates navigation, implementation,
+  focused tests, code review, project logging, and one scoped commit.
+
+### Files
+
+- `.agents/skills/implementation-workflow/SKILL.md`
+- `.agents/skills/implementation-workflow/agents/openai.yaml`
+
+### Validation
+
+- Skill structure validation passed.
+- Build and tests were not run because the task explicitly prohibited them.
+
+### Limitations
+
+- The workflow applies only when `$implementation-workflow` is invoked or its
+  implementation trigger matches.
+
 ## P3.2-P3.4 - Blueprint coverage, artifact, and traversal provider
 
 **Status:** Complete

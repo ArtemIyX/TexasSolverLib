@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implementation Workflow"
+  short_description: "Run TexasSolver implementation workflow"
+  default_prompt: "Use $implementation-workflow to implement the requested TexasSolver change."
