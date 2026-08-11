@@ -2,6 +2,7 @@
 
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
+#include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "util/profiling.hpp"
@@ -338,29 +339,38 @@ RuntimeSearchOutcome run_search(
             traversal, session.coordinator(), config.search_limits.worker_count,
             config.search_limits.max_worker_delta_entries);
 
+        MultiwayResolverBudget budget({
+            request.deadline,
+            config.deadline_reserve,
+            config.max_batches,
+            config.trajectories_per_batch,
+            config.search_limits.max_sparse_rows,
+            config.search_limits.max_sparse_values,
+        });
         std::uint64_t first_trajectory = 0U;
-        bool expired = false;
         for (std::uint32_t batch = 0U; batch < config.max_batches; ++batch) {
-            if (deadline_reached(request.deadline, config.deadline_reserve)) {
-                expired = true;
+            if (budget.checkpoint(batch, first_trajectory) !=
+                MultiwayResolverBudgetCheckpoint::Ready) {
                 break;
             }
             const auto batch_result = runner.run(
                 first_trajectory, config.trajectories_per_batch,
                 request.sampling_seed ^ public_state_id);
             first_trajectory += batch_result.trajectories_attempted;
-            if (!batch_result.clean || batch_result.trajectories_accepted == 0U ||
-                batch_result.delta_entries_merged == 0U) {
+            if (!budget.accept_clean_batch(
+                    batch_result.clean,
+                    batch_result.trajectories_accepted,
+                    batch_result.delta_entries_merged,
+                    session.coordinator().storage().row_count(),
+                    session.coordinator().storage().value_count())) {
                 return RuntimeSearchOutcome::NoCleanBatch;
             }
             ++diagnostics->completed_batches;
             diagnostics->completed_trajectories += batch_result.trajectories_accepted;
-            if (deadline_reached(request.deadline, config.deadline_reserve)) {
-                expired = true;
-                break;
-            }
+            if (budget.deadline_reached()) break;
         }
         if (diagnostics->completed_batches == 0U) {
+            diagnostics->deadline_expired = budget.deadline_expired();
             return RuntimeSearchOutcome::NoCleanBatch;
         }
 
@@ -371,7 +381,7 @@ RuntimeSearchOutcome run_search(
             policy->push_back({action.action, action.probability});
         }
         if (!normalize(*policy)) return RuntimeSearchOutcome::Failed;
-        diagnostics->deadline_expired = expired;
+        diagnostics->deadline_expired = budget.deadline_expired() || budget.deadline_reached();
         return RuntimeSearchOutcome::Completed;
     } catch (const std::exception&) {
         policy->clear();

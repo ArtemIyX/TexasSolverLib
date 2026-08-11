@@ -307,6 +307,23 @@ TEST_CASE(multiway_resolver_search_mode_falls_back_without_complete_live_ranges)
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 
+TEST_CASE(multiway_resolver_search_budget_rejects_an_expired_request_before_batch_start) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    request.deadline = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+    core::MultiwayResolver resolver(search_config(fixture));
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::DeadlineFallback);
+    EXPECT_TRUE(result.diagnostics.deadline_expired);
+    EXPECT_EQ(result.diagnostics.completed_batches, 0U);
+    EXPECT_EQ(result.diagnostics.completed_trajectories, 0U);
+    EXPECT_TRUE(result.diagnostics.used_fallback);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
 TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
     ResolverFixture fixture;
     auto request = fixture.request();
