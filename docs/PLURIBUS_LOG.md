@@ -4,6 +4,62 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P2.5 - Replace bounded perturbation only for eligible requests
+
+**Status:** Complete
+**Completed:** 2026-08-11
+**Implementation commits:** `9d4fbd7`, `f4dda35`
+
+- Added typed runtime-search eligibility diagnostics and host-configured seat
+  and root-menu limits.
+- Active search now requires a supported postflop root and complete live
+  non-hero ranges; otherwise it uses the established fallback chain.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `docs/multiway_release_runbook.md`
+
+### Validation
+
+- Added focused active-search eligibility and fallback coverage.
+- Build and tests were not run because the task explicitly prohibited them.
+- Reviewed staged commits with `git diff --cached --check`.
+
+### Limitations
+
+- Full blueprint runtime lookup remains P3 work.
+
+## P2.4 - Add resolver feature flag and shadow mode
+
+**Status:** Complete
+**Completed:** 2026-08-11
+**Implementation commits:** `9d4fbd7`, `f4dda35`
+
+- Added privacy-safe shadow elapsed-time and observed-memory diagnostics.
+- Preserved the legacy output in shadow mode while reporting completed search
+  counters, merge volume, and policy divergence.
+
+### Files
+
+- `include/solver/multiway_resolver.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `docs/multiway_release_runbook.md`
+
+### Validation
+
+- Added focused shadow diagnostics coverage.
+- Build and tests were not run because the task explicitly prohibited them.
+- Reviewed staged commits with `git diff --cached --check`.
+
+### Limitations
+
+- Shadow mode may increase request latency and memory; it remains opt-in.
+
 ## P2.3 - Wire worker-local deltas into session rows
 
 **Status:** Complete
