@@ -1,4 +1,5 @@
 #include "solver/multiway_artifact.hpp"
+#include "solver/multiway_blueprint_store.hpp"
 #include "solver/multiway_blueprint_config.hpp"
 #include "test_harness.hpp"
 
@@ -44,6 +45,27 @@ TEST_CASE(multiway_artifact_rejects_checkpoint_integrity_mismatch) {
     EXPECT_THROW(core::MultiwayBlueprintArtifacts::load_verified(path, expected.identity), std::runtime_error);
     std::filesystem::remove(path);
     std::filesystem::remove(path.string() + ".manifest");
+}
+
+TEST_CASE(multiway_full_blueprint_artifact_round_trips_and_rejects_corruption) {
+    const auto expected = snapshot();
+    const auto path = artifact_path("full_blueprint");
+    core::MultiwayFullBlueprintArtifact artifact;
+    artifact.identity = expected.identity;
+    artifact.training = expected.training;
+    artifact.rows = {{{{31U}, 0}, 0U, 17U, {{{core::MultiwayAction::Check, 0U, 0, 17U}, 65535U}}}};
+    core::MultiwayFullBlueprintArtifacts::save_atomic(path, artifact);
+    const auto loaded = core::MultiwayFullBlueprintArtifacts::load_verified(path, expected.identity);
+    EXPECT_EQ(loaded.rows.size(), std::size_t{1U});
+    EXPECT_EQ(loaded.rows.front().infoset.public_state.value, 31U);
+
+    {
+        std::fstream out(path, std::ios::binary | std::ios::in | std::ios::out);
+        out.seekp(-1, std::ios::end);
+        out.put('\0');
+    }
+    EXPECT_THROW(core::MultiwayFullBlueprintArtifacts::load_verified(path, expected.identity), std::invalid_argument);
+    std::filesystem::remove(path);
 }
 
 TEST_CASE(multiway_artifact_rejects_mismatched_identity) {

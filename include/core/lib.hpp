@@ -22,6 +22,8 @@
 #include "solver/multiway_rollout_leaf.hpp"
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_blueprint_trainer.hpp"
+#include "solver/multiway_blueprint_store.hpp"
+#include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_blueprint_query.hpp"
 #include "solver/multiway_range_update.hpp"
 #include "solver/multiway_range_belief.hpp"
@@ -144,6 +146,11 @@ using ::core::MultiwayBlueprintTrainingConfig;
 using ::core::MultiwayBlueprintTrainingSession;
 using ::core::MultiwayBlueprintTrainingStatus;
 using ::core::MultiwayBlueprintIterationSchedule;
+using ::core::MultiwayBlueprintCoverageManifest;
+using ::core::MultiwayBlueprintRow;
+using ::core::MultiwayBlueprintStore;
+using ::core::MultiwayBlueprintPolicyProvider;
+using ::core::MultiwayBlueprintLookupStatus;
 using ::core::MultiwayBlueprintQuery;
 using ::core::MultiwayBucketActionPolicy;
 using ::core::MultiwayRangeBeliefMetadata;
@@ -163,6 +170,8 @@ using ::core::update_anonymous_multiway_range;
 using ::core::MultiwayCheckpoint;
 using ::core::MultiwayArtifactSource;
 using ::core::MultiwayBlueprintArtifacts;
+using ::core::MultiwayFullBlueprintArtifact;
+using ::core::MultiwayFullBlueprintArtifacts;
 using ::core::MultiwayBlueprintManifest;
 using ::core::MultiwayPublicDecisionLog;
 using ::core::MultiwayPublicDecisionPolicy;

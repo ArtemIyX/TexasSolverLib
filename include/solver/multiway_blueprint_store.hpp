@@ -13,7 +13,7 @@ namespace core {
 struct MultiwayBlueprintRow {
     MultiwayInfosetId infoset{};
     std::uint32_t bucket = 0U;
-    std::uint32_t action_menu_id = 0U;
+    std::uint64_t action_menu_id = 0U;
     std::vector<MultiwayQuantizedRootAction> actions;
 
     void validate() const;
@@ -28,7 +28,7 @@ public:
     [[nodiscard]] const MultiwayBlueprintRow* find(
         MultiwayInfosetId infoset,
         std::uint32_t bucket,
-        std::uint32_t action_menu_id) const noexcept;
+        std::uint64_t action_menu_id) const noexcept;
 
 private:
     MultiwayModelIdentity identity_{};

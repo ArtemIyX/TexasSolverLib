@@ -2,6 +2,7 @@
 
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_export.hpp"
+#include "solver/multiway_blueprint_store.hpp"
 #include "solver/multiway_resolver.hpp"
 
 #include <cstdint>
@@ -35,6 +36,29 @@ struct MultiwayVerifiedBlueprintArtifact {
     MultiwayArtifactSource source = MultiwayArtifactSource::Primary;
 
     void validate(const MultiwayModelIdentity& expected_identity) const;
+};
+
+inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 1U;
+
+// Full runtime lookup payload. It is independent of the compact root
+// snapshot so hosts can retain the latter as a compatible fallback.
+struct MultiwayFullBlueprintArtifact {
+    std::uint32_t schema_version = MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION;
+    MultiwayModelIdentity identity{};
+    MultiwayBlueprintTrainingMetadata training{};
+    std::vector<MultiwayBlueprintRow> rows;
+    std::uint64_t payload_hash = 0U;
+
+    void validate() const;
+};
+
+class MultiwayFullBlueprintArtifacts {
+public:
+    static void save_atomic(const std::filesystem::path& path, const MultiwayFullBlueprintArtifact& artifact);
+    [[nodiscard]] static MultiwayFullBlueprintArtifact load_verified(
+        const std::filesystem::path& path,
+        const MultiwayModelIdentity& expected_identity);
+    [[nodiscard]] static std::uint64_t payload_hash(const MultiwayFullBlueprintArtifact& artifact) noexcept;
 };
 
 class MultiwayBlueprintArtifacts {

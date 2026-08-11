@@ -252,6 +252,7 @@ public:
     [[nodiscard]] std::size_t prune_negative_regrets() noexcept;
     [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
     [[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
+    [[nodiscard]] const std::vector<MultiwaySparseRowMetadata>& rows() const noexcept { return metadata_; }
 
 private:
     friend class MultiwaySolverCoordinator;
@@ -374,6 +375,8 @@ public:
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
     [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
     [[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
+    [[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
+        MultiwayPublicStateId id) const noexcept;
 
 private:
     friend class MultiwayTerminalAdapter;

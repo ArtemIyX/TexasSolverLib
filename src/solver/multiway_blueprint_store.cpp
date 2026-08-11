@@ -55,7 +55,7 @@ MultiwayBlueprintStore::MultiwayBlueprintStore(
 const MultiwayBlueprintRow* MultiwayBlueprintStore::find(
     MultiwayInfosetId infoset,
     std::uint32_t bucket,
-    std::uint32_t action_menu_id) const noexcept {
+    std::uint64_t action_menu_id) const noexcept {
     MultiwayBlueprintRow key;
     key.infoset = infoset;
     key.bucket = bucket;

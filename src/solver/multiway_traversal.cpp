@@ -1,4 +1,5 @@
 #include "solver/multiway_traversal.hpp"
+#include "solver/multiway_blueprint_policy_provider.hpp"
 #include "util/thread_join_guard.hpp"
 #include "util/profiling.hpp"
 
@@ -54,7 +55,8 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     const MultiwayBucketRegistry& buckets,
     const MultiwayLeafEvaluator* leaf_evaluator,
     std::uint32_t max_decision_depth,
-    std::uint32_t max_public_chance_depth)
+    std::uint32_t max_public_chance_depth,
+    const MultiwayBlueprintPolicyProvider* blueprint_policy)
     : coordinator_(&coordinator),
       root_(&root),
       action_abstraction_(&action_abstraction),
@@ -62,6 +64,7 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
       leaf_evaluator_(leaf_evaluator),
       max_decision_depth_(max_decision_depth),
       max_public_chance_depth_(max_public_chance_depth),
+      blueprint_policy_(blueprint_policy),
       terminal_(coordinator) {
     root.validate();
     if (root.public_state.betting.street < Street::Flop ||
@@ -235,8 +238,14 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         static_cast<std::uint8_t>(action_count),
     });
     std::array<Probability, MULTIWAY_MAX_TRAVERSAL_ACTIONS> strategy{};
-    coordinator_->regret_matched_strategy_into(
-        infoset, bucket, strategy.data(), action_count);
+    const auto lookup = actor == context.traverser || blueprint_policy_ == nullptr
+        ? MultiwayBlueprintLookupStatus::Missing
+        : blueprint_policy_->strategy_into(
+            infoset, bucket, state.legal_actions.data(), action_count, strategy.data());
+    if (lookup != MultiwayBlueprintLookupStatus::Hit) {
+        coordinator_->regret_matched_strategy_into(
+            infoset, bucket, strategy.data(), action_count);
+    }
     const auto betting_state = MultiwayState::from_snapshot(state.betting);
 
     const auto evaluate_action = [&](std::size_t action) {

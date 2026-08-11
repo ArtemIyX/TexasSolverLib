@@ -150,7 +150,54 @@ void MultiwayBlueprintTrainer::run_batches(
             due(status_.batches - schedule_.pruning_warmup_batches, schedule_.pruning_interval_batches)) {
             status_.pruned_negative_regrets += coordinator_->prune_negative_regrets();
         }
+        const auto& diagnostics = coordinator_->diagnostics();
+        status_.visited_public_descriptors = diagnostics.public_states_admitted;
+        status_.admitted_rows = diagnostics.sparse_rows_admitted;
+        status_.admitted_action_cells = coordinator_->storage().value_count();
     }
+}
+
+MultiwayBlueprintCoverageManifest MultiwayBlueprintTrainer::coverage_manifest() const noexcept {
+    return {
+        status_.visited_public_descriptors,
+        status_.admitted_rows,
+        status_.admitted_action_cells,
+        status_.terminal_visits,
+        status_.leaf_visits,
+        status_.missing_lookup_requests,
+    };
+}
+
+MultiwayFullBlueprintArtifact MultiwayBlueprintTrainer::export_full_policy() const {
+    MultiwayFullBlueprintArtifact artifact;
+    artifact.identity = identity_;
+    artifact.training = make_metadata(status_, schedule_, deterministic_seed_);
+    const auto& storage = coordinator_->storage();
+    for (const auto& metadata : storage.rows()) {
+        const auto* state = coordinator_->find_public_state(metadata.shape.infoset.public_state);
+        if (state == nullptr) throw std::logic_error("multiway sparse row has no admitted public state");
+        for (std::uint32_t bucket = 0U; bucket < metadata.shape.bucket_count; ++bucket) {
+            const auto strategy = storage.average_strategy(metadata.shape.infoset, bucket);
+            MultiwayBlueprintRow row;
+            row.infoset = metadata.shape.infoset;
+            row.bucket = bucket;
+            row.action_menu_id = state->legal_actions.front().action_menu_id;
+            row.actions.reserve(strategy.size());
+            std::uint32_t assigned = 0U;
+            for (std::size_t action = 0U; action < strategy.size(); ++action) {
+                const auto probability = action + 1U == strategy.size()
+                    ? static_cast<std::uint16_t>(std::numeric_limits<std::uint16_t>::max() - assigned)
+                    : static_cast<std::uint16_t>(std::floor(strategy[action] *
+                        std::numeric_limits<std::uint16_t>::max()));
+                assigned += probability;
+                row.actions.push_back({state->legal_actions[action], probability});
+            }
+            artifact.rows.push_back(std::move(row));
+        }
+    }
+    artifact.payload_hash = MultiwayFullBlueprintArtifacts::payload_hash(artifact);
+    artifact.validate();
+    return artifact;
 }
 
 MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPolicyKind policy_kind) const {
@@ -241,6 +288,14 @@ MultiwayBlueprintSnapshot MultiwayBlueprintTrainingSession::export_policy(
 
 const MultiwayBlueprintTrainingStatus& MultiwayBlueprintTrainingSession::status() const noexcept {
     return trainer_->status();
+}
+
+MultiwayBlueprintCoverageManifest MultiwayBlueprintTrainingSession::coverage_manifest() const noexcept {
+    return trainer_->coverage_manifest();
+}
+
+MultiwayFullBlueprintArtifact MultiwayBlueprintTrainingSession::export_full_policy() const {
+    return trainer_->export_full_policy();
 }
 
 }  // namespace core

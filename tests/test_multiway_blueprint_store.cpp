@@ -1,5 +1,6 @@
 #include "solver/multiway_blueprint_config.hpp"
 #include "solver/multiway_blueprint_store.hpp"
+#include "solver/multiway_blueprint_policy_provider.hpp"
 #include "test_harness.hpp"
 
 #include <cstdint>
@@ -43,4 +44,24 @@ TEST_CASE(multiway_blueprint_store_rejects_duplicate_and_malformed_rows) {
     auto malformed = row(2U, 0, 0U);
     malformed.actions[0].probability = 1U;
     EXPECT_THROW(core::MultiwayBlueprintStore(identity(), {malformed}), std::invalid_argument);
+}
+
+TEST_CASE(multiway_blueprint_provider_distinguishes_hit_miss_and_menu_mismatch) {
+    const auto stored = row(1U, 0, 0U);
+    const core::MultiwayBlueprintStore store(identity(), {stored});
+    const core::MultiwayBlueprintPolicyProvider provider(store);
+    core::Probability probability = 0.0;
+    EXPECT_EQ(
+        provider.strategy_into({{1U}, 0}, 0U, &stored.actions.front().action, 1U, &probability),
+        core::MultiwayBlueprintLookupStatus::Hit);
+    EXPECT_NEAR(probability, 1.0, 1e-12);
+
+    EXPECT_EQ(
+        provider.strategy_into({{2U}, 0}, 0U, &stored.actions.front().action, 1U, &probability),
+        core::MultiwayBlueprintLookupStatus::Missing);
+    auto incompatible = stored.actions.front().action;
+    incompatible.target_street_contribution = 1;
+    EXPECT_EQ(
+        provider.strategy_into({{1U}, 0}, 0U, &incompatible, 1U, &probability),
+        core::MultiwayBlueprintLookupStatus::IncompatibleMenu);
 }

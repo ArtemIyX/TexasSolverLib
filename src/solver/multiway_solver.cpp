@@ -861,4 +861,9 @@ const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::public_state(
     return found == public_states_.end() ? nullptr : &*found;
 }
 
+const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::find_public_state(
+    MultiwayPublicStateId id) const noexcept {
+    return public_state(id);
+}
+
 }  // namespace core

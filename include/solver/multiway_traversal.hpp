@@ -14,6 +14,8 @@
 
 namespace core {
 
+class MultiwayBlueprintPolicyProvider;
+
 inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
 inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
 // The production abstraction emits at most five entries; one exact off-tree
@@ -46,7 +48,8 @@ public:
         const MultiwayBucketRegistry& buckets,
         const MultiwayLeafEvaluator* leaf_evaluator = nullptr,
         std::uint32_t max_decision_depth = 1U,
-        std::uint32_t max_public_chance_depth = 0U);
+        std::uint32_t max_public_chance_depth = 0U,
+        const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr);
 
     [[nodiscard]] bool run(
         PlayerId traverser,
@@ -90,6 +93,7 @@ private:
     const MultiwayLeafEvaluator* leaf_evaluator_ = nullptr;
     std::uint32_t max_decision_depth_ = 1U;
     std::uint32_t max_public_chance_depth_ = 0U;
+    const MultiwayBlueprintPolicyProvider* blueprint_policy_ = nullptr;
     MultiwayTerminalAdapter terminal_;
 };
 

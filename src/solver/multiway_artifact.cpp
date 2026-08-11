@@ -13,6 +13,7 @@ namespace core {
 namespace {
 
 constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '3'};
+constexpr std::array<char, 8> kFullBlueprintMagic = {'M', 'W', 'F', 'B', '0', '0', '0', '1'};
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
@@ -156,6 +157,117 @@ std::uint64_t replay_hash(const MultiwayProtectedReplayRecord& record) noexcept 
 }
 
 }  // namespace
+
+void MultiwayFullBlueprintArtifact::validate() const {
+    if (schema_version != MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION || payload_hash == 0U) {
+        throw std::invalid_argument("multiway full blueprint has invalid schema or hash");
+    }
+    identity.validate();
+    const MultiwayBlueprintStore store(identity, rows);
+    (void)store;
+    if (payload_hash != MultiwayFullBlueprintArtifacts::payload_hash(*this)) {
+        throw std::invalid_argument("multiway full blueprint payload hash does not match");
+    }
+}
+
+std::uint64_t MultiwayFullBlueprintArtifacts::payload_hash(
+    const MultiwayFullBlueprintArtifact& artifact) noexcept {
+    auto hash = kFnvOffset;
+    append_u64(hash, artifact.schema_version);
+    append_identity(hash, artifact.identity);
+    append_u64(hash, artifact.training.batches);
+    append_u64(hash, artifact.training.trajectories);
+    append_u64(hash, artifact.training.deterministic_seed);
+    append_u64(hash, artifact.training.late_window_start_batch);
+    append_u64(hash, artifact.training.schedule_hash);
+    append_u64(hash, artifact.training.pruned_negative_regrets);
+    append_u64(hash, artifact.training.linear_iteration_weighting);
+    append_u64(hash, artifact.training.discounting_enabled);
+    append_u64(hash, artifact.training.negative_regret_pruning_enabled);
+    append_u64(hash, artifact.rows.size());
+    for (const auto& row : artifact.rows) {
+        append_u64(hash, row.infoset.public_state.value);
+        append_u64(hash, static_cast<std::uint64_t>(row.infoset.seat));
+        append_u64(hash, row.bucket);
+        append_u64(hash, row.action_menu_id);
+        append_u64(hash, row.actions.size());
+        for (const auto& action : row.actions) {
+            append_action(hash, action.action);
+            append_u64(hash, action.probability);
+        }
+    }
+    return finish(hash);
+}
+
+void MultiwayFullBlueprintArtifacts::save_atomic(
+    const std::filesystem::path& path,
+    const MultiwayFullBlueprintArtifact& artifact) {
+    auto sealed = artifact;
+    sealed.payload_hash = payload_hash(sealed);
+    sealed.validate();
+    const auto temporary = path.string() + ".tmp";
+    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+    if (!out) throw std::runtime_error("multiway full blueprint temporary file cannot be opened");
+    out.write(kFullBlueprintMagic.data(), static_cast<std::streamsize>(kFullBlueprintMagic.size()));
+    write_value(out, sealed.schema_version);
+    write_value(out, sealed.identity);
+    write_value(out, sealed.training);
+    const auto rows = static_cast<std::uint64_t>(sealed.rows.size());
+    write_value(out, rows);
+    for (const auto& row : sealed.rows) {
+        write_value(out, row.infoset);
+        write_value(out, row.bucket);
+        write_value(out, row.action_menu_id);
+        const auto actions = static_cast<std::uint32_t>(row.actions.size());
+        write_value(out, actions);
+        for (const auto& action : row.actions) write_value(out, action);
+    }
+    write_value(out, sealed.payload_hash);
+    out.close();
+    if (!out) throw std::runtime_error("multiway full blueprint write failed");
+    std::error_code error;
+    std::filesystem::rename(temporary, path, error);
+    if (error) {
+        std::filesystem::remove(path, error);
+        error.clear();
+        std::filesystem::rename(temporary, path, error);
+        if (error) throw std::runtime_error("multiway full blueprint publish failed");
+    }
+}
+
+MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(
+    const std::filesystem::path& path,
+    const MultiwayModelIdentity& expected_identity) {
+    expected_identity.validate();
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("multiway full blueprint cannot be opened");
+    std::array<char, kFullBlueprintMagic.size()> magic{};
+    in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+    if (!in || magic != kFullBlueprintMagic) throw std::runtime_error("multiway full blueprint schema is invalid");
+    MultiwayFullBlueprintArtifact artifact;
+    artifact.schema_version = read_value<std::uint32_t>(in);
+    artifact.identity = read_value<MultiwayModelIdentity>(in);
+    artifact.training = read_value<MultiwayBlueprintTrainingMetadata>(in);
+    const auto row_count = read_value<std::uint64_t>(in);
+    if (row_count > 100000000U) throw std::runtime_error("multiway full blueprint row count is invalid");
+    artifact.rows.resize(static_cast<std::size_t>(row_count));
+    for (auto& row : artifact.rows) {
+        row.infoset = read_value<MultiwayInfosetId>(in);
+        row.bucket = read_value<std::uint32_t>(in);
+        row.action_menu_id = read_value<std::uint64_t>(in);
+        const auto action_count = read_value<std::uint32_t>(in);
+        if (action_count == 0U || action_count > 64U) throw std::runtime_error("multiway full blueprint action count is invalid");
+        row.actions.resize(action_count);
+        for (auto& action : row.actions) action = read_value<MultiwayQuantizedRootAction>(in);
+    }
+    artifact.payload_hash = read_value<std::uint64_t>(in);
+    if (in.peek() != std::char_traits<char>::eof()) throw std::runtime_error("multiway full blueprint has trailing data");
+    artifact.validate();
+    if (artifact.identity != expected_identity) {
+        throw std::invalid_argument("multiway full blueprint identity does not match");
+    }
+    return artifact;
+}
 
 void MultiwayBlueprintManifest::validate() const {
     if (schema_version != MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION || snapshot_hash == 0U) {

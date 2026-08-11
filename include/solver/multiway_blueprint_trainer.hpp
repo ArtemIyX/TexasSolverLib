@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/multiway_export.hpp"
+#include "solver/multiway_artifact.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_bucket_artifact.hpp"
 #include "games/multiway_rules.hpp"
@@ -32,8 +33,26 @@ struct MultiwayBlueprintTrainingStatus {
     std::uint64_t batches = 0;
     std::uint64_t trajectories = 0;
     std::uint64_t pruned_negative_regrets = 0;
+    std::uint64_t visited_public_descriptors = 0;
+    std::uint64_t admitted_rows = 0;
+    std::uint64_t admitted_action_cells = 0;
+    std::uint64_t terminal_visits = 0;
+    std::uint64_t leaf_visits = 0;
+    std::uint64_t missing_lookup_requests = 0;
     std::uint64_t late_window_start_batch = 0;
     bool late_window_active = false;
+};
+
+// Public-only coverage summary for a sparse full-blueprint export. Zero
+// counts remain meaningful: they distinguish an empty sparse table from an
+// unavailable report without retaining private cards or ranges.
+struct MultiwayBlueprintCoverageManifest {
+    std::uint64_t visited_public_descriptors = 0;
+    std::uint64_t admitted_rows = 0;
+    std::uint64_t admitted_action_cells = 0;
+    std::uint64_t terminal_visits = 0;
+    std::uint64_t leaf_visits = 0;
+    std::uint64_t missing_lookup_requests = 0;
 };
 
 // Production composition boundary. Artifact inputs are non-owning and must
@@ -74,6 +93,8 @@ public:
     [[nodiscard]] std::uint64_t trajectories() const noexcept { return status_.trajectories; }
     [[nodiscard]] std::uint64_t batches() const noexcept { return status_.batches; }
     [[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept { return status_; }
+    [[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
+    [[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
     [[nodiscard]] MultiwayBlueprintSnapshot publish(
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
     void resume_from(const MultiwayBlueprintSnapshot& checkpoint);
@@ -104,6 +125,8 @@ public:
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
     [[nodiscard]] const MultiwayBlueprintTrainingConfig& config() const noexcept { return config_; }
     [[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept;
+    [[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
+    [[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
 
 private:
     MultiwayBlueprintTrainingConfig config_{};

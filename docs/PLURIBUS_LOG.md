@@ -4,6 +4,40 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P3.2-P3.4 - Blueprint coverage, artifact, and traversal provider
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added sparse training coverage counters and a public-only coverage manifest.
+- Added an atomic, hash-verified full-blueprint row artifact beside the root fallback artifact.
+- Added immutable lock-free blueprint lookup for non-traverser traversal decisions, with explicit miss and incompatible-menu outcomes.
+
+### Files
+
+- `include/solver/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway_artifact.hpp`
+- `src/solver/multiway_artifact.cpp`
+- `include/solver/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway_blueprint_policy_provider.cpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_traversal.cpp`
+- `include/solver/multiway_solver.hpp`
+- `src/solver/multiway_solver.cpp`
+- `include/core/lib.hpp`
+- `tests/test_multiway_blueprint_store.cpp`
+- `tests/test_multiway_artifact.cpp`
+
+### Validation
+
+- Added focused artifact and lookup-provider tests.
+- Build and tests were not run because the task explicitly prohibited them.
+
+### Limitations
+
+- P3.5 full checkpoint/resume equivalence remains incomplete.
+
 ## P3.1 - Define full blueprint row and index schema
 
 **Status:** Complete
