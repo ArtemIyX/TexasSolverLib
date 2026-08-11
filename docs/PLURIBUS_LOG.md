@@ -4,6 +4,32 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P3.1 - Define full blueprint row and index schema
+
+**Status:** Complete
+**Completed:** 2026-08-12
+**Implementation commits:** `ed5188c`, `fce9455`
+
+- Added an immutable, identity-bound blueprint row store with deterministic
+  sorted lookup by public state, seat, bucket, and action-menu identity.
+- Rows reject duplicate keys, malformed menus, and non-normalized policies.
+
+### Files
+
+- `include/solver/multiway_blueprint_store.hpp`
+- `src/solver/multiway_blueprint_store.cpp`
+- `tests/test_multiway_blueprint_store.cpp`
+
+### Validation
+
+- Added a 128-row deterministic lookup fixture and malformed-row checks.
+- Build and tests were not run because the task explicitly prohibited them.
+
+### Limitations
+
+- P3.2-P3.5 serialization, trainer integration, artifact loading, and resume
+  work remain incomplete.
+
 ## P2.5 - Replace bounded perturbation only for eligible requests
 
 **Status:** Complete
