@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Log Updater"
+  short_description: "Update the Pluribus project progress log"
+  default_prompt: "Use $update-project-log to record the completed task in docs/PLURIBUS_LOG.md."
