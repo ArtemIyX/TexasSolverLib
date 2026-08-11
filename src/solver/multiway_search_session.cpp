@@ -58,6 +58,46 @@ MultiwayRangeBeliefUpdateResult MultiwaySearchSession::apply_observation(
     return beliefs_.apply_observation(static_cast<std::size_t>(seat), observation);
 }
 
+MultiwaySearchSessionRowView MultiwaySearchSession::row_view() const noexcept {
+    const auto& storage = coordinator_.storage();
+    return {
+        storage.row_count(),
+        storage.value_count(),
+        storage.has_row(coordinator_.root().root_infoset),
+    };
+}
+
+bool MultiwaySearchSession::capture_clean_snapshot(
+    bool clean,
+    std::uint64_t batch_index,
+    std::uint64_t first_trajectory_id,
+    std::uint64_t trajectory_count,
+    std::uint64_t accepted_trajectories,
+    std::uint64_t merged_delta_entries,
+    std::uint32_t worker_count) {
+    const auto rows = row_view();
+    if (!clean || batch_index == 0U || trajectory_count == 0U || accepted_trajectories == 0U ||
+        merged_delta_entries == 0U || worker_count != coordinator_.limits().worker_count || !rows.has_root_row) {
+        return false;
+    }
+    clean_snapshot_ = MultiwaySearchSessionCleanSnapshot{
+        coordinator_.export_root_policy(),
+        rows,
+        root_metadata_.revision,
+        batch_index,
+        first_trajectory_id,
+        trajectory_count,
+        accepted_trajectories,
+        merged_delta_entries,
+        worker_count,
+    };
+    return true;
+}
+
+const MultiwaySearchSessionCleanSnapshot* MultiwaySearchSession::clean_snapshot() const noexcept {
+    return clean_snapshot_ ? &*clean_snapshot_ : nullptr;
+}
+
 void MultiwaySearchSession::initialize_beliefs() {
     const auto& root = coordinator_.root();
     const auto seat_count = root.seat_order.size();
