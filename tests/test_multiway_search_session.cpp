@@ -1,4 +1,5 @@
 #include "core/lib.hpp"
+#include "solver/multiway_traversal.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -214,6 +215,73 @@ TEST_CASE(multiway_search_session_permits_preflop_without_bucket_registry) {
     EXPECT_EQ(session.belief(1).metadata().source, core::MultiwayRangeBeliefSource::Supplied);
 }
 
+TEST_CASE(multiway_search_session_exposes_only_its_own_clean_row_snapshot) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession session(request, {&buckets}, 11U);
+
+    const auto before = session.row_view();
+    EXPECT_EQ(before.row_count, std::size_t{0});
+    EXPECT_EQ(before.value_count, std::size_t{0});
+    EXPECT_TRUE(!before.has_root_row);
+    EXPECT_TRUE(session.clean_snapshot() == nullptr);
+
+    const core::MultiwayActionAbstraction abstraction;
+    const core::MultiwayLeafEvaluator evaluator = {
+        [](const core::MultiwayLeafEvaluationRequest& leaf, const void*) noexcept {
+            return static_cast<core::Value>(leaf.betting->contributions[static_cast<std::size_t>(leaf.traverser)]);
+        },
+        nullptr,
+    };
+    core::MultiwayRootExternalSamplingTraversal traversal(
+        session.coordinator(), session.coordinator().root(), abstraction, buckets, &evaluator, 1U);
+    core::MultiwayRootBatchRunner runner(traversal, session.coordinator(), 1U, 8U);
+    const auto result = runner.run(8U, 1U, 0x45U);
+
+    const auto rows = session.row_view();
+    EXPECT_TRUE(result.clean);
+    EXPECT_TRUE(result.trajectories_accepted > 0U);
+    EXPECT_TRUE(result.delta_entries_merged > 0U);
+    EXPECT_TRUE(rows.row_count > 0U);
+    EXPECT_TRUE(rows.value_count > 0U);
+    EXPECT_TRUE(rows.has_root_row);
+
+    EXPECT_TRUE(!session.capture_clean_snapshot(
+        false, 1U, 8U, 1U, result.trajectories_accepted, result.delta_entries_merged, 1U));
+    EXPECT_TRUE(session.clean_snapshot() == nullptr);
+    EXPECT_TRUE(session.capture_clean_snapshot(
+        result.clean, 1U, 8U, 1U, result.trajectories_accepted, result.delta_entries_merged, 1U));
+
+    const auto* snapshot = session.clean_snapshot();
+    EXPECT_TRUE(snapshot != nullptr);
+    EXPECT_EQ(snapshot->root_revision, 11U);
+    EXPECT_EQ(snapshot->batch_index, 1U);
+    EXPECT_EQ(snapshot->first_trajectory_id, 8U);
+    EXPECT_EQ(snapshot->trajectory_count, 1U);
+    EXPECT_EQ(snapshot->accepted_trajectories, result.trajectories_accepted);
+    EXPECT_EQ(snapshot->merged_delta_entries, result.delta_entries_merged);
+    EXPECT_EQ(snapshot->worker_count, 1U);
+    EXPECT_EQ(snapshot->rows.row_count, rows.row_count);
+    EXPECT_EQ(snapshot->rows.value_count, rows.value_count);
+    EXPECT_TRUE(snapshot->rows.has_root_row);
+    EXPECT_EQ(snapshot->root_policy.public_state, request.root().public_state.id);
+}
+
+TEST_CASE(multiway_search_session_rejects_invalid_clean_snapshot_metadata) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession session(request, {&buckets}, 3U);
+
+    EXPECT_TRUE(!session.capture_clean_snapshot(true, 0U, 0U, 1U, 1U, 1U, 1U));
+    EXPECT_TRUE(!session.capture_clean_snapshot(true, 1U, 0U, 0U, 1U, 1U, 1U));
+    EXPECT_TRUE(!session.capture_clean_snapshot(true, 1U, 0U, 1U, 0U, 1U, 1U));
+    EXPECT_TRUE(!session.capture_clean_snapshot(true, 1U, 0U, 1U, 1U, 0U, 1U));
+    EXPECT_TRUE(!session.capture_clean_snapshot(true, 1U, 0U, 1U, 1U, 1U, 2U));
+    EXPECT_TRUE(session.clean_snapshot() == nullptr);
+}
+
 TEST_CASE(multiway_search_session_is_exposed_by_core_lib) {
     const auto root = make_root(core::Street::Preflop);
     const core::lib::MultiwaySolveRequest request = make_request(root);
@@ -221,5 +289,7 @@ TEST_CASE(multiway_search_session_is_exposed_by_core_lib) {
     core::lib::MultiwaySearchSession session(request, dependencies, 3U);
 
     const core::lib::MultiwaySearchSessionRootMetadata metadata = session.root_metadata();
+    const core::lib::MultiwaySearchSessionRowView rows = session.row_view();
     EXPECT_EQ(metadata.revision, 3U);
+    EXPECT_EQ(rows.row_count, std::size_t{0});
 }
