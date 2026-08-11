@@ -10,6 +10,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <vector>
@@ -99,6 +100,13 @@ struct MultiwayResolverDiagnostics {
     bool has_artifact_identity = false;
     std::uint64_t completed_batches = 0;
     std::uint64_t completed_trajectories = 0;
+    std::uint64_t search_merged_delta_entries = 0;
+    std::uint64_t search_first_trajectory_id = 0;
+    std::uint64_t search_trajectory_count = 0;
+    std::uint64_t search_root_revision = 0;
+    std::uint32_t search_worker_count = 0;
+    std::size_t search_admitted_rows = 0U;
+    std::size_t search_admitted_values = 0U;
     bool deadline_expired = false;
     bool used_fallback = false;
     bool policy_normalized = false;
@@ -109,6 +117,7 @@ struct MultiwayResolverDiagnostics {
     bool shadow_search_completed = false;
     std::uint64_t shadow_completed_batches = 0;
     std::uint64_t shadow_completed_trajectories = 0;
+    std::uint64_t shadow_search_merged_delta_entries = 0;
     double shadow_policy_l1_distance = 0.0;
     std::uint32_t root_bucket = 0;
     std::uint32_t root_menu_size = 0;

@@ -353,8 +353,9 @@ RuntimeSearchOutcome run_search(
                 MultiwayResolverBudgetCheckpoint::Ready) {
                 break;
             }
+            const auto batch_first_trajectory = first_trajectory;
             const auto batch_result = runner.run(
-                first_trajectory, config.trajectories_per_batch,
+                batch_first_trajectory, config.trajectories_per_batch,
                 request.sampling_seed ^ public_state_id);
             first_trajectory += batch_result.trajectories_attempted;
             if (!budget.accept_clean_batch(
@@ -365,8 +366,27 @@ RuntimeSearchOutcome run_search(
                     session.coordinator().storage().value_count())) {
                 return RuntimeSearchOutcome::NoCleanBatch;
             }
+            if (!session.capture_clean_snapshot(
+                    batch_result.clean,
+                    static_cast<std::uint64_t>(batch) + 1U,
+                    batch_first_trajectory,
+                    batch_result.trajectories_attempted,
+                    batch_result.trajectories_accepted,
+                    batch_result.delta_entries_merged,
+                    config.search_limits.worker_count)) {
+                return RuntimeSearchOutcome::NoCleanBatch;
+            }
+            const auto* snapshot = session.clean_snapshot();
+            if (snapshot == nullptr) return RuntimeSearchOutcome::NoCleanBatch;
             ++diagnostics->completed_batches;
             diagnostics->completed_trajectories += batch_result.trajectories_accepted;
+            diagnostics->search_merged_delta_entries += batch_result.delta_entries_merged;
+            diagnostics->search_first_trajectory_id = snapshot->first_trajectory_id;
+            diagnostics->search_trajectory_count = snapshot->trajectory_count;
+            diagnostics->search_root_revision = snapshot->root_revision;
+            diagnostics->search_worker_count = snapshot->worker_count;
+            diagnostics->search_admitted_rows = snapshot->rows.row_count;
+            diagnostics->search_admitted_values = snapshot->rows.value_count;
             if (budget.deadline_reached()) break;
         }
         if (diagnostics->completed_batches == 0U) {
@@ -374,7 +394,9 @@ RuntimeSearchOutcome run_search(
             return RuntimeSearchOutcome::NoCleanBatch;
         }
 
-        const auto root_policy = session.coordinator().export_root_policy();
+        const auto* snapshot = session.clean_snapshot();
+        if (snapshot == nullptr) return RuntimeSearchOutcome::NoCleanBatch;
+        const auto& root_policy = snapshot->root_policy;
         policy->clear();
         policy->reserve(root_policy.actions.size());
         for (const auto& action : root_policy.actions) {
@@ -590,6 +612,8 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 result.diagnostics.shadow_completed_batches = search_diagnostics.completed_batches;
                 result.diagnostics.shadow_completed_trajectories =
                     search_diagnostics.completed_trajectories;
+                result.diagnostics.shadow_search_merged_delta_entries =
+                    search_diagnostics.search_merged_delta_entries;
             }
         }
 
