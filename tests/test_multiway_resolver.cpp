@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <stdexcept>
 
 namespace {
 
@@ -290,6 +291,7 @@ TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
     EXPECT_EQ(result.diagnostics.policy_provenance, core::MultiwayPolicyProvenance::RuntimeSearch);
     EXPECT_EQ(result.diagnostics.search_engine, core::MultiwayResolverEngine::RootExternalSamplingMCCFR);
     EXPECT_EQ(result.diagnostics.search_engine_version, core::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION);
+    EXPECT_EQ(result.diagnostics.search_eligibility, core::MultiwayResolverSearchEligibility::Eligible);
     EXPECT_EQ(result.diagnostics.completed_batches, 1U);
     EXPECT_EQ(result.diagnostics.completed_trajectories, 2U);
     EXPECT_TRUE(result.diagnostics.search_merged_delta_entries > 0U);
@@ -310,8 +312,36 @@ TEST_CASE(multiway_resolver_search_mode_falls_back_without_complete_live_ranges)
     const auto result = resolver.resolve(fixture.request());
 
     EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::RejectedByBudget);
+    EXPECT_EQ(
+        result.diagnostics.search_eligibility,
+        core::MultiwayResolverSearchEligibility::IncompleteRanges);
     EXPECT_TRUE(result.diagnostics.used_fallback);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_active_search_respects_controlled_seat_eligibility) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto config = search_config(fixture);
+    config.active_search_max_seats = 2U;
+    core::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::RejectedByBudget);
+    EXPECT_EQ(result.diagnostics.search_eligibility, core::MultiwayResolverSearchEligibility::SeatCount);
+    EXPECT_TRUE(result.diagnostics.used_fallback);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_rejects_invalid_active_search_eligibility_limits) {
+    ResolverFixture fixture;
+    auto config = search_config(fixture);
+    config.active_search_min_seats = 4U;
+    config.active_search_max_seats = 3U;
+
+    EXPECT_THROW(core::MultiwayResolver(config), std::invalid_argument);
 }
 
 TEST_CASE(multiway_resolver_search_budget_rejects_an_expired_request_before_batch_start) {
@@ -362,10 +392,12 @@ TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
     EXPECT_EQ(
         result.diagnostics.policy_provenance,
         core::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+    EXPECT_EQ(result.diagnostics.search_eligibility, core::MultiwayResolverSearchEligibility::Eligible);
     EXPECT_TRUE(result.diagnostics.shadow_search_completed);
     EXPECT_EQ(result.diagnostics.shadow_completed_batches, 1U);
     EXPECT_EQ(result.diagnostics.shadow_completed_trajectories, 2U);
     EXPECT_TRUE(result.diagnostics.shadow_search_merged_delta_entries > 0U);
+    EXPECT_TRUE(result.diagnostics.shadow_search_elapsed_nanoseconds > 0U);
     EXPECT_TRUE(result.diagnostics.shadow_policy_l1_distance >= 0.0);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
