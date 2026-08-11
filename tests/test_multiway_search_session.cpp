@@ -98,6 +98,32 @@ core::CanonicalComboId combo_id(core::CanonicalComboCards cards) {
     return core::canonical_combos().id(cards);
 }
 
+core::Value session_leaf(
+    const core::MultiwayLeafEvaluationRequest& leaf,
+    const void*) noexcept {
+    return static_cast<core::Value>(
+        leaf.betting->contributions[static_cast<std::size_t>(leaf.traverser)]);
+}
+
+core::MultiwaySearchSessionCleanSnapshot capture_clean_snapshot(
+    const core::MultiwaySolveRequest& request,
+    const core::MultiwayBucketRegistry& buckets,
+    std::uint64_t seed) {
+    core::MultiwaySearchSession session(request, {&buckets}, 1U);
+    const core::MultiwayActionAbstraction abstraction;
+    const core::MultiwayLeafEvaluator evaluator = {session_leaf, nullptr};
+    core::MultiwayRootExternalSamplingTraversal traversal(
+        session.coordinator(), session.coordinator().root(), abstraction, buckets, &evaluator, 1U);
+    core::MultiwayRootBatchRunner runner(traversal, session.coordinator(), 1U, 8U);
+    const auto result = runner.run(0U, 1U, seed);
+    if (!session.capture_clean_snapshot(
+            result.clean, 1U, 0U, 1U, result.trajectories_accepted,
+            result.delta_entries_merged, 1U)) {
+        throw std::runtime_error("session fixture failed to capture a clean snapshot");
+    }
+    return *session.clean_snapshot();
+}
+
 static_assert(!std::is_copy_constructible_v<core::MultiwaySearchSession>);
 static_assert(!std::is_copy_assignable_v<core::MultiwaySearchSession>);
 static_assert(!std::is_move_constructible_v<core::MultiwaySearchSession>);
@@ -228,12 +254,7 @@ TEST_CASE(multiway_search_session_exposes_only_its_own_clean_row_snapshot) {
     EXPECT_TRUE(session.clean_snapshot() == nullptr);
 
     const core::MultiwayActionAbstraction abstraction;
-    const core::MultiwayLeafEvaluator evaluator = {
-        [](const core::MultiwayLeafEvaluationRequest& leaf, const void*) noexcept {
-            return static_cast<core::Value>(leaf.betting->contributions[static_cast<std::size_t>(leaf.traverser)]);
-        },
-        nullptr,
-    };
+    const core::MultiwayLeafEvaluator evaluator = {session_leaf, nullptr};
     core::MultiwayRootExternalSamplingTraversal traversal(
         session.coordinator(), session.coordinator().root(), abstraction, buckets, &evaluator, 1U);
     core::MultiwayRootBatchRunner runner(traversal, session.coordinator(), 1U, 8U);
@@ -266,6 +287,21 @@ TEST_CASE(multiway_search_session_exposes_only_its_own_clean_row_snapshot) {
     EXPECT_EQ(snapshot->rows.value_count, rows.value_count);
     EXPECT_TRUE(snapshot->rows.has_root_row);
     EXPECT_EQ(snapshot->root_policy.public_state, request.root().public_state.id);
+
+    const auto preserved = *snapshot;
+    EXPECT_TRUE(!session.capture_clean_snapshot(
+        false, 2U, 9U, 1U, result.trajectories_accepted, result.delta_entries_merged, 1U));
+    const auto* after_rejection = session.clean_snapshot();
+    EXPECT_TRUE(after_rejection != nullptr);
+    EXPECT_EQ(after_rejection->batch_index, preserved.batch_index);
+    EXPECT_EQ(after_rejection->root_policy.actions.size(), preserved.root_policy.actions.size());
+    for (std::size_t action = 0U; action < preserved.root_policy.actions.size(); ++action) {
+        EXPECT_EQ(after_rejection->root_policy.actions[action].action, preserved.root_policy.actions[action].action);
+        EXPECT_NEAR(
+            after_rejection->root_policy.actions[action].probability,
+            preserved.root_policy.actions[action].probability,
+            0.0);
+    }
 }
 
 TEST_CASE(multiway_search_session_rejects_invalid_clean_snapshot_metadata) {
@@ -280,6 +316,27 @@ TEST_CASE(multiway_search_session_rejects_invalid_clean_snapshot_metadata) {
     EXPECT_TRUE(!session.capture_clean_snapshot(true, 1U, 0U, 1U, 1U, 0U, 1U));
     EXPECT_TRUE(!session.capture_clean_snapshot(true, 1U, 0U, 1U, 1U, 1U, 2U));
     EXPECT_TRUE(session.clean_snapshot() == nullptr);
+}
+
+TEST_CASE(multiway_search_session_replays_clean_snapshots_for_identical_inputs) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+
+    const auto first = capture_clean_snapshot(request, buckets, 0x57U);
+    const auto second = capture_clean_snapshot(request, buckets, 0x57U);
+
+    EXPECT_EQ(first.rows.row_count, second.rows.row_count);
+    EXPECT_EQ(first.rows.value_count, second.rows.value_count);
+    EXPECT_EQ(first.merged_delta_entries, second.merged_delta_entries);
+    EXPECT_EQ(first.root_policy.actions.size(), second.root_policy.actions.size());
+    for (std::size_t action = 0U; action < first.root_policy.actions.size(); ++action) {
+        EXPECT_EQ(first.root_policy.actions[action].action, second.root_policy.actions[action].action);
+        EXPECT_NEAR(
+            first.root_policy.actions[action].probability,
+            second.root_policy.actions[action].probability,
+            0.0);
+    }
 }
 
 TEST_CASE(multiway_search_session_is_exposed_by_core_lib) {
