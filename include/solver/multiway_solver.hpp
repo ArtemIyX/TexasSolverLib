@@ -385,6 +385,9 @@ public:
     [[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
     [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
+    [[nodiscard]] std::size_t merge_scratch_capacity() const noexcept {
+        return merge_deltas_.capacity();
+    }
     [[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
     [[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
         MultiwayPublicStateId id) const noexcept;
@@ -393,12 +396,23 @@ public:
 
 private:
     friend class MultiwayTerminalAdapter;
+    struct PendingMergeCell {
+        std::size_t index = 0U;
+        double regret = 0.0;
+        double strategy_sum = 0.0;
+    };
+
     [[nodiscard]] const MultiwayPublicStateDescriptor* public_state(
         MultiwayPublicStateId id) const noexcept;
+    void merge_worker_streams_locked(
+        const std::vector<const MultiwayWorkerDeltaStream*>& streams);
 
     MultiwaySolveRequest request_;
     MultiwaySparseRowStorage storage_;
     std::vector<MultiwayPublicStateDescriptor> public_states_;
+    std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
+    std::vector<MultiwayWorkerDelta> merge_deltas_;
+    std::vector<PendingMergeCell> pending_merge_cells_;
     MultiwaySolveDiagnostics diagnostics_;
     mutable std::mutex traversal_mutex_;
 };

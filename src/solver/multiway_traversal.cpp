@@ -596,6 +596,8 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     }
     worker_scratch_.reserve(worker_count_);
     worker_stream_views_.reserve(worker_count_);
+    worker_batches_.resize(worker_count_);
+    threads_.reserve(worker_count_ > 0U ? worker_count_ - 1U : 0U);
     for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
         worker_scratch_.emplace_back(worker, worker_delta_capacity_);
         worker_stream_views_.push_back(&worker_scratch_.back().stream);
@@ -616,7 +618,11 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
         throw std::invalid_argument("multiway batch iteration weight must be finite and positive");
     }
-    const auto batches = MultiwayScheduler::partition_deterministic(trajectory_count, worker_count_);
+    const auto batch_count = MultiwayScheduler::partition_deterministic_into(
+        trajectory_count,
+        worker_count_,
+        worker_batches_.data(),
+        worker_batches_.size());
     for (auto& scratch : worker_scratch_) scratch.reset(profile_mode_);
 
     std::atomic<bool> cancelled{false};
@@ -628,7 +634,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
             if (test_worker_failure_index_ == static_cast<std::int32_t>(worker_index)) {
                 throw std::runtime_error("injected multiway root batch worker failure");
             }
-            const auto& batch = batches[worker_index];
+            const auto& batch = worker_batches_[worker_index];
             auto& scratch = worker_scratch_[worker_index];
             for (auto local_id = batch.trajectories.begin;
                  local_id < batch.trajectories.end;
@@ -656,16 +662,15 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         }
     };
 
-    std::vector<std::thread> threads;
-    threads.reserve(batches.size() > 0U ? batches.size() - 1U : 0U);
+    threads_.clear();
     auto thread_guard = detail::make_thread_join_guard(
-        threads,
+        threads_,
         [&cancelled] { cancelled.store(true, std::memory_order_release); });
-    for (std::size_t worker = 1U; worker < batches.size(); ++worker) {
-        threads.emplace_back(execute_worker, worker);
+    for (std::size_t worker = 1U; worker < batch_count; ++worker) {
+        threads_.emplace_back(execute_worker, worker);
     }
-    if (!batches.empty()) execute_worker(0U);
-    for (auto& thread : threads) thread.join();
+    if (batch_count != 0U) execute_worker(0U);
+    for (auto& thread : threads_) thread.join();
     thread_guard.release();
     if (worker_error != nullptr) std::rethrow_exception(worker_error);
 

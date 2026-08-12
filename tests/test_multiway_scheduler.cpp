@@ -22,3 +22,21 @@ TEST_CASE(multiway_scheduler_handles_empty_and_oversized_worker_requests) {
     EXPECT_EQ(clamped[0].trajectories.size(), 1U);
     EXPECT_EQ(clamped[1].trajectories.size(), 1U);
 }
+
+TEST_CASE(multiway_scheduler_writes_reusable_fixed_partition_storage) {
+    core::MultiwayWorkerBatch batches[4] = {};
+    const auto first_count = core::MultiwayScheduler::partition_deterministic_into(
+        17U, 4U, batches, 4U);
+    EXPECT_EQ(first_count, 4U);
+    EXPECT_EQ(batches[0].trajectories.begin, 0U);
+    EXPECT_EQ(batches[0].trajectories.end, 5U);
+    EXPECT_EQ(batches[3].trajectories.begin, 13U);
+    EXPECT_EQ(batches[3].trajectories.end, 17U);
+
+    const auto second_count = core::MultiwayScheduler::partition_deterministic_into(
+        2U, 4U, batches, 4U);
+    EXPECT_EQ(second_count, 2U);
+    EXPECT_EQ(batches[0].trajectories.size(), 1U);
+    EXPECT_EQ(batches[1].trajectories.size(), 1U);
+    EXPECT_EQ(core::MultiwayScheduler::partition_deterministic_into(1U, 1U, nullptr, 0U), 0U);
+}

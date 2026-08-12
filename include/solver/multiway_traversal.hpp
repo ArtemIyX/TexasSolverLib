@@ -12,6 +12,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <thread>
+#include <vector>
 
 namespace core {
 
@@ -162,6 +164,8 @@ private:
     MultiwaySearchProfileMode profile_mode_ = MultiwaySearchProfileMode::Disabled;
     std::vector<WorkerScratch> worker_scratch_;
     std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
+    std::vector<MultiwayWorkerBatch> worker_batches_;
+    std::vector<std::thread> threads_;
     std::int32_t test_worker_failure_index_ = -1;
 };
 

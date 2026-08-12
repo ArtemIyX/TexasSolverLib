@@ -654,6 +654,23 @@ TEST_CASE(multiway_solver_merge_is_fixed_order_and_exports_only_root_policy) {
     EXPECT_EQ(coordinator.diagnostics().worker_delta_entries_merged, 3U);
 }
 
+TEST_CASE(multiway_solver_preallocates_and_reuses_bounded_merge_scratch) {
+    core::MultiwaySolverCoordinator coordinator(valid_request());
+    coordinator.admit_infoset_row(root_row());
+    EXPECT_EQ(coordinator.merge_scratch_capacity(), 8U);
+
+    for (std::uint64_t trajectory = 0U; trajectory < 2U; ++trajectory) {
+        core::MultiwayWorkerDeltaStream first(0U, 4U);
+        core::MultiwayWorkerDeltaStream second(1U, 4U);
+        EXPECT_TRUE(first.try_append(delta(0U, 1.0, 1.0, trajectory * 2U)));
+        EXPECT_TRUE(second.try_append(delta(1U, 1.0, 1.0, trajectory * 2U + 1U)));
+        first.sort_fixed_order();
+        second.sort_fixed_order();
+        coordinator.merge_worker_streams({first, second});
+        EXPECT_EQ(coordinator.merge_scratch_capacity(), 8U);
+    }
+}
+
 TEST_CASE(multiway_solver_root_export_is_uniform_until_its_sparse_row_is_admitted) {
     core::MultiwaySolverCoordinator coordinator(valid_request());
     const auto policy = coordinator.export_root_policy();

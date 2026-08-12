@@ -360,6 +360,10 @@ void MultiwaySolverLimits::validate() const {
         max_sparse_rows == 0U || max_sparse_values == 0U || max_worker_delta_entries == 0U) {
         throw std::invalid_argument("multiway solver limits require non-zero bounded capacities");
     }
+    if (max_worker_delta_entries >
+        std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)) {
+        throw std::overflow_error("multiway aggregate worker delta capacity overflows size_t");
+    }
 }
 
 MultiwaySolveRequest::MultiwaySolveRequest(
@@ -610,6 +614,11 @@ MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest&
     : request_(request),
       storage_(request.limits().max_sparse_rows, request.limits().max_sparse_values) {
     public_states_.reserve(request.limits().max_public_states);
+    merge_stream_views_.reserve(request.limits().worker_count);
+    const auto merge_capacity = static_cast<std::size_t>(request.limits().worker_count) *
+        request.limits().max_worker_delta_entries;
+    merge_deltas_.reserve(merge_capacity);
+    pending_merge_cells_.reserve(merge_capacity);
     admit_public_state(request_.root().public_state);
 }
 
@@ -677,15 +686,23 @@ void MultiwaySolverCoordinator::regret_matched_strategy_into(
 }
 
 void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams) {
-    std::vector<const MultiwayWorkerDeltaStream*> stream_views;
-    stream_views.reserve(streams.size());
-    for (const auto& stream : streams) stream_views.push_back(&stream);
-    merge_worker_streams(stream_views);
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    if (streams.size() != request_.limits().worker_count) {
+        throw std::invalid_argument("multiway merge requires one stream for every configured worker");
+    }
+    merge_stream_views_.clear();
+    for (const auto& stream : streams) merge_stream_views_.push_back(&stream);
+    merge_worker_streams_locked(merge_stream_views_);
 }
 
 void MultiwaySolverCoordinator::merge_worker_streams(
     const std::vector<const MultiwayWorkerDeltaStream*>& streams) {
     std::lock_guard<std::mutex> lock(traversal_mutex_);
+    merge_worker_streams_locked(streams);
+}
+
+void MultiwaySolverCoordinator::merge_worker_streams_locked(
+    const std::vector<const MultiwayWorkerDeltaStream*>& streams) {
     if (streams.size() != request_.limits().worker_count) {
         throw std::invalid_argument("multiway merge requires one stream for every configured worker");
     }
@@ -704,22 +721,19 @@ void MultiwaySolverCoordinator::merge_worker_streams(
         delta_count += stream->size();
     }
 
-    std::vector<MultiwayWorkerDelta> deltas;
-    deltas.reserve(delta_count);
-    for (const auto* stream : streams) {
-        deltas.insert(deltas.end(), stream->deltas().begin(), stream->deltas().end());
+    merge_deltas_.clear();
+    pending_merge_cells_.clear();
+    if (delta_count > merge_deltas_.capacity() || delta_count > pending_merge_cells_.capacity()) {
+        throw std::logic_error("multiway merge scratch capacity changed after coordinator construction");
     }
-    std::sort(deltas.begin(), deltas.end(), delta_less);
+    for (const auto* stream : streams) {
+        merge_deltas_.insert(
+            merge_deltas_.end(), stream->deltas().begin(), stream->deltas().end());
+    }
+    std::sort(merge_deltas_.begin(), merge_deltas_.end(), delta_less);
 
-    struct PendingCell {
-        std::size_t index = 0;
-        double regret = 0.0;
-        double strategy_sum = 0.0;
-    };
-    std::vector<PendingCell> pending;
-    pending.reserve(deltas.size());
-    for (std::size_t begin = 0; begin < deltas.size();) {
-        const auto& first = deltas[begin];
+    for (std::size_t begin = 0; begin < merge_deltas_.size();) {
+        const auto& first = merge_deltas_[begin];
         const auto* row = storage_.metadata(first.infoset);
         if (row == nullptr || first.bucket >= row->shape.bucket_count || first.action >= row->shape.action_count) {
             throw std::invalid_argument("multiway delta does not match an admitted row cell");
@@ -731,8 +745,8 @@ void MultiwaySolverCoordinator::merge_worker_streams(
         std::uint64_t previous_trajectory = 0;
         bool have_trajectory = false;
         std::size_t end = begin;
-        for (; end < deltas.size(); ++end) {
-            const auto& delta = deltas[end];
+        for (; end < merge_deltas_.size(); ++end) {
+            const auto& delta = merge_deltas_[end];
             if (!(delta.infoset == first.infoset) || delta.bucket != first.bucket || delta.action != first.action) break;
             if (!delta_is_finite(delta)) {
                 throw std::invalid_argument("multiway delta must be finite");
@@ -752,11 +766,11 @@ void MultiwaySolverCoordinator::merge_worker_streams(
             regret = next_regret;
             strategy_sum = next_strategy_sum;
         }
-        pending.push_back({index, regret, strategy_sum});
+        pending_merge_cells_.push_back({index, regret, strategy_sum});
         begin = end;
     }
 
-    for (const auto& cell : pending) {
+    for (const auto& cell : pending_merge_cells_) {
         storage_.regret_[cell.index] = cell.regret;
         storage_.strategy_sum_[cell.index] = cell.strategy_sum;
     }
