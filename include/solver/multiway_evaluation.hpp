@@ -1,6 +1,8 @@
 #pragma once
 
+#include "games/multiway_replay.hpp"
 #include "solver/multiway_cfr.hpp"
+#include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_solver.hpp"
 
 #include <array>
@@ -14,6 +16,7 @@ inline constexpr std::size_t kMultiwayEvaluationMaxSeats = 6U;
 inline constexpr std::size_t kMultiwayEvaluationMaxCandidates = 64U;
 inline constexpr std::size_t kMultiwayEvaluationMaxScenarios = 256U;
 inline constexpr std::uint64_t kMultiwayEvaluationMaxDuplicateDeals = 1'000'000U;
+inline constexpr std::uint32_t MULTIWAY_AIVAT_EVALUATION_RECORD_SCHEMA_VERSION = 1U;
 
 // The evaluator intentionally exchanges compact ids instead of owning policy
 // objects. Callers keep the candidate registry and callback context alive for
@@ -48,6 +51,45 @@ struct MultiwayEvaluationSample {
 
     void validate() const;
 };
+
+// Protected, cold-path input for an external AIVAT implementation. It is not
+// emitted in public decision logs and is never consumed by runtime traversal.
+struct MultiwayAivatActionValue {
+    MultiwayActionDescriptor action{};
+    double probability = 0.0;
+    Value estimated_value = 0.0;
+};
+
+struct MultiwayAivatDecisionRecord {
+    std::uint64_t decision_index = 0U;
+    PlayerId acting_seat = -1;
+    MultiwayActionDescriptor sampled_action{};
+    std::uint64_t decision_seed = 0U;
+    std::vector<MultiwayAivatActionValue> action_values;
+};
+
+struct MultiwayAivatEvaluationRecord {
+    std::uint32_t schema_version = MULTIWAY_AIVAT_EVALUATION_RECORD_SCHEMA_VERSION;
+    MultiwayModelIdentity identity{};
+    MultiwayHandHistory public_history{};
+    MultiwayEvaluationSeatValues raw_chip_outcome{};
+    std::vector<MultiwayAivatDecisionRecord> decisions;
+    std::uint64_t integrity_hash = 0U;
+
+    void seal() noexcept;
+    void validate() const;
+};
+
+// Callback boundary for host-owned protected storage and external AIVAT
+// tooling. False means the host rejected the record; no estimator is invoked.
+using MultiwayAivatEvaluationRecordSinkFn = bool (*) (
+    const MultiwayAivatEvaluationRecord& record,
+    const void* context) noexcept;
+
+[[nodiscard]] bool publish_multiway_aivat_evaluation_record(
+    const MultiwayAivatEvaluationRecord& record,
+    MultiwayAivatEvaluationRecordSinkFn sink,
+    const void* context);
 
 struct MultiwayEvaluationMatchRequest {
     const MultiwayEvaluationDeal* deal = nullptr;

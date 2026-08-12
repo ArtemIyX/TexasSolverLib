@@ -25,18 +25,28 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
 
 1. Validate rules, blueprint configuration, solver limits, memory preflight,
    bucket registry, and expected model identity before accepting requests.
-2. Load the primary checkpoint with
+2. Derive the expected identity from the frozen release profile. Verify the
+   future-bucket model before either blueprint artifact; it must carry that
+   exact identity.
+3. Load the full blueprint primary with
+   `MultiwayFullBlueprintArtifacts::load_verified`. On failure, load only its
+   validated known-good full-blueprint counterpart. Verify identity and payload
+   hash before retaining either result. If both fail, disable runtime search.
+4. Load the compact root fallback with
    `MultiwayBlueprintArtifacts::load_with_fallback(primary, known_good, identity)`.
    Both checkpoint/manifest pairs must validate and have the expected identity
-   and snapshot hash. If primary fails, use only the validated known-good pair.
-   If both fail, do not construct the resolver or accept play.
-3. Pass the returned artifact through `MultiwayResolverConfig::verified_blueprint`.
-   Do not also set the legacy `blueprint` pointer. Require the bucket registry
-   identity to equal the verified artifact identity.
-4. Package the known-good checkpoint, its `.manifest`, the bucket registry,
-   this profile, and the static legal policy implementation together. Rotate a
-   newly evaluated artifact into primary only after retaining the previous
-   verified primary as known-good.
+   and snapshot hash. If both fail, disable blueprint and root fallback lookup,
+   but retain static legal fallback for valid requests.
+5. Build a `MultiwayBlueprintStore` from the verified full artifact and pass it
+   through `MultiwayResolverConfig::full_blueprint`; pass the compact artifact
+   through `verified_blueprint`. Do not set the legacy `blueprint` pointer.
+   Require the bucket registry, full blueprint, and root fallback identities to
+   match.
+6. Package both primary and known-good variants of the full blueprint and root
+   fallback, root manifests, future-bucket model, this profile, and the static
+   legal policy implementation together. Promote a candidate only after it
+   passes identity/hash verification and evaluation; retain the prior verified
+   pair as known-good for rollback.
 
 ## Request, fallback, and failure handling
 
@@ -60,6 +70,11 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
   `MultiwayPublicDecisionLog` for every delivered decision. Create
   `MultiwayProtectedReplayRecord` only in protected storage; it binds the
   model identity, public history, and per-decision seeds with an integrity hash.
+- Create `MultiwayAivatEvaluationRecord` only in the same protected boundary.
+  It binds public history, sampled actions, policies, action-value estimates,
+  raw chip outcomes, model identity, and deterministic seeds with an integrity
+  hash for an external estimator. Do not emit it through decision logs or pass
+  it into resolver traversal; this release does not claim estimator correctness.
 - Runtime search rows belong to one `MultiwaySearchSession`. Workers write only
   bounded local delta streams; coordinator merge is the sole row-mutation path.
   Export a runtime policy only from the latest clean session snapshot after a
@@ -80,6 +95,10 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
   `active_search_max_menu_actions`. Active search requires a supported
   postflop root, complete live ranges for every non-hero seat, and a clean
   batch. Ineligible or unsuccessful requests use the normal fallback chain.
+- Treat `off_tree_mode`, `continuation_mode`, the search-budget fields, and
+  deterministic-mode fields as compatibility inputs. A change to any of them
+  invalidates the expected model identity and requires rebuilding and
+  reevaluating both full and root artifacts.
 
 ## Stabilization and freeze
 
@@ -93,11 +112,26 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
   internal deadline, exceeds the operating cap, produces non-normalized or
   non-finite policy, fails artifact verification, or cannot replay exactly.
 
+## Promotion and rollback
+
+1. Stage a full blueprint, root fallback, root manifest, future-bucket model,
+   and release profile as one candidate set. Verify every identity and hash
+   before changing the active set.
+2. Run the host dry-run for missing, corrupt, and identity-mismatched full and
+   root artifacts. Confirm that a valid request still receives static legal
+   fallback when both non-static artifacts are unavailable.
+3. Promote the verified candidate set atomically. Keep the previous full and
+   root artifact set as known-good.
+4. Roll back the full blueprint and root fallback together. Never combine a
+   root snapshot, future-bucket model, or full blueprint from different model
+   identities.
+
 ## Static verification inventory
 
 Existing focused sources cover malformed manifests and identity mismatches
 (`test_multiway_artifact.cpp`), missing buckets, malformed requests, deadline
-fallback, and legal policy output (`test_multiway_resolver.cpp`), and injected
-worker-failure propagation without merge (`test_multiway_recursive_traversal.cpp`).
-No additional failure-injection source is needed for this documentation-only
-release boundary. Do not run these tests as part of this release-document step.
+fallback, and legal policy output (`test_multiway_resolver.cpp`), injected
+worker-failure propagation without merge (`test_multiway_recursive_traversal.cpp`),
+and sealed AIVAT record integrity plus protected sink boundaries
+(`test_multiway_aivat_record.cpp`). Do not run these tests as part of this
+release-document step.

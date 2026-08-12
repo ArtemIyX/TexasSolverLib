@@ -41,11 +41,38 @@
     "trajectories_per_batch": 32,
     "max_batches": 64,
     "inference_mode": "AnonymousWithinHand",
-    "sampling_seed_source": "protected_per_decision_seed"
+    "sampling_seed_source": "protected_per_decision_seed",
+    "off_tree_mode": "continuation_policy",
+    "continuation_mode": "rollout_or_baseline",
+    "search_budget": {
+      "max_trajectories": 2048,
+      "max_elapsed_ms": 15000,
+      "max_resident_gib": 56
+    },
+    "deterministic_mode": {
+      "required": true,
+      "trajectory_seed_derivation": "per_decision_and_trajectory",
+      "fixed_worker_merge_order": true
+    }
   },
   "artifacts": {
-    "primary_checkpoint": "artifacts/multiway/primary.blueprint",
-    "known_good_checkpoint": "artifacts/multiway/known_good.blueprint",
+    "full_blueprint": {
+      "primary": "artifacts/multiway/primary.full.blueprint",
+      "known_good": "artifacts/multiway/known_good.full.blueprint",
+      "identity_source": "derived_release_profile",
+      "required": true
+    },
+    "root_fallback": {
+      "primary_checkpoint": "artifacts/multiway/primary.blueprint",
+      "known_good_checkpoint": "artifacts/multiway/known_good.blueprint",
+      "identity_source": "derived_release_profile",
+      "required": true
+    },
+    "future_bucket_model": {
+      "source": "artifacts/multiway/future_bucket_model.bin",
+      "identity_source": "derived_release_profile",
+      "required": true
+    },
     "manifest_suffix": ".manifest",
     "require_verified_artifact": true,
     "require_identity_match": true,
@@ -57,6 +84,12 @@
     "freeze_bucket_tables": true,
     "freeze_action_abstraction": true,
     "freeze_training_and_sampling_seeds": true,
-    "freeze_protocol_schema": true
+    "freeze_protocol_schema": true,
+    "compatibility_policy": {
+      "require_exact_model_identity": true,
+      "reject_mismatched_full_blueprint": true,
+      "reject_mismatched_root_fallback": true,
+      "allow_static_legal_fallback_for_valid_requests": true
+    }
   }
 }

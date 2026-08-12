@@ -4,6 +4,35 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P8.5-P8.6 - Produce AIVAT-compatible evaluation records and update release runbook and configuration
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added a protected, integrity-sealed AIVAT evaluation-record schema with public history, sampled actions, policy/action-value estimates, raw chip outcomes, model identity, and deterministic decision seeds.
+- Added a host-owned protected sink boundary. No AIVAT estimator is implemented or used by runtime traversal.
+- Updated the release profile and runbook for full-blueprint and root-fallback artifacts, future-bucket identity, search and deterministic settings, compatibility policy, promotion, and paired rollback.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_evaluation.hpp`
+- `src/solver/multiway_evaluation.cpp`
+- `tests/test_multiway_aivat_record.cpp`
+- `docs/multiway_release_config.json`
+- `docs/multiway_release_runbook.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- JSON configuration parsed successfully.
+- Static code review completed with no actionable findings.
+- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- The record is an external-estimator boundary only; AIVAT correctness is not claimed.
+
 ## P8.1-P8.4 - Differential suites and resolver evaluation adapter
 
 **Status:** Complete
