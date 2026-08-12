@@ -31,6 +31,7 @@ TEST_CASE(multiway_blueprint_store_finds_128_sorted_rows) {
     const core::MultiwayBlueprintStore store(identity(), std::move(rows));
 
     EXPECT_EQ(store.row_count(), std::size_t{128U});
+    EXPECT_TRUE(store.memory_bytes() >= 128U * sizeof(core::MultiwayBlueprintRow));
     for (std::uint64_t index = 1U; index <= 128U; ++index) {
         const auto* found = store.find({{index}, 0}, 0U, 77U);
         EXPECT_TRUE(found != nullptr);

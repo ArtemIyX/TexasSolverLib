@@ -1,6 +1,7 @@
 #include "solver/multiway_blueprint_store.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace core {
@@ -62,6 +63,22 @@ const MultiwayBlueprintRow* MultiwayBlueprintStore::find(
     key.action_menu_id = action_menu_id;
     const auto it = std::lower_bound(rows_.begin(), rows_.end(), key, row_less);
     return it != rows_.end() && same_key(*it, key) ? &*it : nullptr;
+}
+
+std::uint64_t MultiwayBlueprintStore::memory_bytes() const noexcept {
+    constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+    const auto saturating_add = [maximum](std::uint64_t left, std::uint64_t right) noexcept {
+        return right > maximum - left ? maximum : left + right;
+    };
+    const auto saturating_multiply = [maximum](std::uint64_t left, std::uint64_t right) noexcept {
+        return left != 0U && right > maximum / left ? maximum : left * right;
+    };
+    auto bytes = saturating_multiply(rows_.capacity(), sizeof(MultiwayBlueprintRow));
+    for (const auto& row : rows_) {
+        bytes = saturating_add(bytes, saturating_multiply(
+            row.actions.capacity(), sizeof(MultiwayQuantizedRootAction)));
+    }
+    return bytes;
 }
 
 }  // namespace core

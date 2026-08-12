@@ -6,6 +6,7 @@
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_model_identity.hpp"
+#include "solver/multiway_memory.hpp"
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_search_profile.hpp"
 
@@ -129,6 +130,11 @@ struct MultiwayResolverDiagnostics {
     std::size_t search_admitted_rows = 0U;
     std::size_t search_admitted_values = 0U;
     MultiwaySearchProfileSnapshot search_profile{};
+    MultiwayMemoryStatus search_memory_status = MultiwayMemoryStatus::Ok;
+    MultiwayMemoryAdmissionStage search_memory_stage = MultiwayMemoryAdmissionStage::None;
+    std::uint64_t search_estimated_memory_bytes = 0U;
+    std::uint64_t search_admitted_memory_bytes = 0U;
+    bool search_memory_degraded = false;
     bool deadline_expired = false;
     bool used_fallback = false;
     bool policy_normalized = false;
@@ -184,6 +190,12 @@ struct MultiwayResolverConfig {
     std::uint8_t active_search_max_seats = 6U;
     std::uint32_t active_search_max_menu_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
     MultiwaySearchProfileMode search_profile_mode = MultiwaySearchProfileMode::Disabled;
+    MultiwayMemoryBudget search_memory_budget{};
+    // Optional request-local capacities owned by a typed or host leaf path.
+    // A typed rollout cache is measured automatically when these remain zero.
+    std::uint64_t search_future_bucket_cache_bytes = 0U;
+    std::uint64_t search_continuation_scratch_bytes_per_worker = 0U;
+    std::uint64_t search_continuation_cache_bytes = 0U;
 
     void validate() const;
 };

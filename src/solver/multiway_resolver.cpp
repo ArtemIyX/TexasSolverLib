@@ -7,6 +7,7 @@
 #include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
 #include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_rollout_leaf.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "util/profiling.hpp"
 
@@ -39,6 +40,7 @@ struct RuntimeSearchMeasurement {
 
 enum class RuntimeSearchOutcome : std::uint8_t {
     NoRoot,
+    MemoryRejected,
     NoCleanBatch,
     Failed,
     Completed,
@@ -375,6 +377,62 @@ bool make_search_root(
     return true;
 }
 
+std::uint64_t saturating_add(std::uint64_t left, std::uint64_t right) noexcept {
+    return right > std::numeric_limits<std::uint64_t>::max() - left
+        ? std::numeric_limits<std::uint64_t>::max()
+        : left + right;
+}
+
+std::uint64_t saturating_multiply(std::uint64_t left, std::uint64_t right) noexcept {
+    return left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left
+        ? std::numeric_limits<std::uint64_t>::max()
+        : left * right;
+}
+
+MultiwayMemoryInputs search_memory_inputs(
+    const MultiwayRootSnapshot& root,
+    const MultiwayResolverConfig& config,
+    const MultiwaySolverLimits& limits) noexcept {
+    MultiwayMemoryInputs inputs;
+    inputs.blueprint_index_bytes = config.full_blueprint == nullptr
+        ? 0U : config.full_blueprint->memory_bytes();
+    inputs.range_row_count = root.private_ranges.ranges.size();
+    for (const auto& range : root.private_ranges.ranges) {
+        inputs.range_entry_count = saturating_add(inputs.range_entry_count, range.size());
+    }
+    inputs.future_bucket_cache_bytes = config.search_future_bucket_cache_bytes;
+    inputs.off_tree_menu_entries = saturating_multiply(
+        limits.max_public_states,
+        config.active_search_max_menu_actions);
+    inputs.continuation_scratch_bytes_per_worker =
+        config.search_continuation_scratch_bytes_per_worker;
+    inputs.continuation_cache_bytes = config.search_continuation_cache_bytes;
+    if (config.leaf_evaluator != nullptr &&
+        config.leaf_evaluator->evaluate == &evaluate_multiway_rollout_leaf &&
+        config.leaf_evaluator->context != nullptr) {
+        const auto* rollout = static_cast<const MultiwayRolloutLeafContext*>(
+            config.leaf_evaluator->context);
+        if (inputs.continuation_scratch_bytes_per_worker == 0U) {
+            inputs.continuation_scratch_bytes_per_worker = sizeof(MultiwayRolloutScratch);
+        }
+        if (inputs.continuation_cache_bytes == 0U && rollout->cache != nullptr) {
+            inputs.continuation_cache_bytes = rollout->cache->memory_bytes();
+        }
+    }
+    inputs.export_action_capacity = root.public_state.legal_actions.size();
+    return inputs;
+}
+
+void record_memory_preflight(
+    const MultiwayMemoryPreflight& preflight,
+    MultiwayResolverDiagnostics* diagnostics) noexcept {
+    diagnostics->search_memory_status = preflight.status;
+    diagnostics->search_memory_stage = preflight.highest_admitted_stage;
+    diagnostics->search_estimated_memory_bytes = preflight.estimate.total_bytes;
+    diagnostics->search_admitted_memory_bytes = preflight.estimate.admitted_bytes;
+    diagnostics->search_memory_degraded = preflight.degraded;
+}
+
 RuntimeSearchOutcome run_search(
     const MultiwayResolverRequest& request,
     const MultiwayState& state,
@@ -391,17 +449,36 @@ RuntimeSearchOutcome run_search(
     }
 
     try {
+        const auto memory_preflight = preflight_multiway_memory(
+            config.search_limits,
+            config.search_memory_budget,
+            search_memory_inputs(root, config, config.search_limits));
+        record_memory_preflight(memory_preflight, diagnostics);
+        if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
+            return RuntimeSearchOutcome::MemoryRejected;
+        }
         MultiwayCFRConfig cfr;
         cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
         MultiwaySolveRequest solve_request(std::move(root), cfr, config.search_limits);
         MultiwaySearchSession session(solve_request, {config.buckets}, 1U);
         RuntimeSearchMeasurement measurement(diagnostics);
         MultiwayActionAbstraction abstraction(config.action_abstraction);
+        std::optional<MultiwayRolloutLeafContext> rollout_context;
+        MultiwayLeafEvaluator effective_leaf = *config.leaf_evaluator;
+        if (config.leaf_evaluator->evaluate == &evaluate_multiway_rollout_leaf &&
+            config.leaf_evaluator->context != nullptr) {
+            rollout_context = *static_cast<const MultiwayRolloutLeafContext*>(
+                config.leaf_evaluator->context);
+            if (!memory_preflight.optional_continuation_cache_admitted) {
+                rollout_context->cache = nullptr;
+            }
+            effective_leaf = make_multiway_rollout_leaf_evaluator(&*rollout_context);
+        }
         std::optional<MultiwayBlueprintPolicyProvider> blueprint_provider;
         if (config.full_blueprint != nullptr) blueprint_provider.emplace(*config.full_blueprint);
         MultiwayRootExternalSamplingTraversal traversal(
             session.coordinator(), session.coordinator().root(), abstraction, *config.buckets,
-            config.leaf_evaluator, config.search_max_decision_depth,
+            &effective_leaf, config.search_max_decision_depth,
             config.search_max_public_chance_depth,
             blueprint_provider ? &*blueprint_provider : nullptr);
         MultiwayRootBatchRunner runner(
@@ -514,6 +591,7 @@ void sample_policy(
 
 void MultiwayResolverConfig::validate() const {
     action_abstraction.validate();
+    search_memory_budget.validate();
     if (trajectories_per_batch == 0U || max_batches == 0U || deadline_reserve.count() < 0) {
         throw std::invalid_argument("multiway resolver has invalid batch or deadline limits");
     }
@@ -600,6 +678,13 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     if (limits.max_sparse_values == 0U) limits.max_sparse_values = 65'536U;
     if (limits.max_worker_delta_entries == 0U) limits.max_worker_delta_entries = 8'192U;
     limits.validate();
+    const auto memory_preflight = preflight_multiway_memory(
+        limits,
+        config_.search_memory_budget,
+        search_memory_inputs(root, config_, limits));
+    if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
+        throw std::length_error("multiway runtime session memory preflight rejected the request");
+    }
     return std::make_unique<MultiwayRuntimeSession>(
         MultiwaySolveRequest(std::move(root), cfr, limits),
         MultiwaySearchSessionDependencies{config_.buckets});
@@ -729,6 +814,13 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             const auto search_outcome = run_search(
                 request, state, config_, canonical_board, menu, bucket, reconstructed_id,
                 &search_policy, &search_diagnostics);
+            result.diagnostics.search_memory_status = search_diagnostics.search_memory_status;
+            result.diagnostics.search_memory_stage = search_diagnostics.search_memory_stage;
+            result.diagnostics.search_estimated_memory_bytes =
+                search_diagnostics.search_estimated_memory_bytes;
+            result.diagnostics.search_admitted_memory_bytes =
+                search_diagnostics.search_admitted_memory_bytes;
+            result.diagnostics.search_memory_degraded = search_diagnostics.search_memory_degraded;
             if (search_outcome == RuntimeSearchOutcome::Completed &&
                 config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
                 result.policy = std::move(search_policy);
@@ -751,7 +843,8 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             if (config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
                 const auto fallback_status = deadline_reached(request.deadline, config_.deadline_reserve)
                     ? MultiwayResolverStatus::DeadlineFallback
-                    : search_outcome == RuntimeSearchOutcome::NoRoot
+                    : (search_outcome == RuntimeSearchOutcome::NoRoot ||
+                       search_outcome == RuntimeSearchOutcome::MemoryRejected)
                         ? MultiwayResolverStatus::RejectedByBudget
                         : MultiwayResolverStatus::ResourceExhausted;
                 use_fallback(fallback_status);

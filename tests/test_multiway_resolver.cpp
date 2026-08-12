@@ -392,6 +392,25 @@ TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 
+TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto config = search_config(fixture);
+    config.search_memory_budget = core::MultiwayMemoryBudget{1U, 3U, 2U};
+    core::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, core::MultiwayResolverStatus::RejectedByBudget);
+    EXPECT_EQ(result.diagnostics.search_memory_status, core::MultiwayMemoryStatus::Rejected);
+    EXPECT_EQ(result.diagnostics.search_memory_stage, core::MultiwayMemoryAdmissionStage::None);
+    EXPECT_EQ(result.diagnostics.search_admitted_memory_bytes, 0U);
+    EXPECT_TRUE(result.diagnostics.search_estimated_memory_bytes > 0U);
+    EXPECT_EQ(result.diagnostics.completed_batches, 0U);
+    EXPECT_TRUE(result.diagnostics.used_fallback);
+}
+
 TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
     ResolverFixture fixture;
     auto request = fixture.request();

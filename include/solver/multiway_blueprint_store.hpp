@@ -25,6 +25,7 @@ public:
 
     [[nodiscard]] const MultiwayModelIdentity& identity() const noexcept { return identity_; }
     [[nodiscard]] std::size_t row_count() const noexcept { return rows_.size(); }
+    [[nodiscard]] std::uint64_t memory_bytes() const noexcept;
     [[nodiscard]] const MultiwayBlueprintRow* find(
         MultiwayInfosetId infoset,
         std::uint32_t bucket,
