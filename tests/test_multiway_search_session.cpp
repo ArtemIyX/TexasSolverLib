@@ -339,6 +339,50 @@ TEST_CASE(multiway_search_session_replays_clean_snapshots_for_identical_inputs) 
     }
 }
 
+TEST_CASE(multiway_search_session_exports_and_freezes_only_actual_hero_hand_policy) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession session(request, {&buckets}, 19U);
+    const auto actual = combo_id(root.private_ranges.ranges[0][0].hole);
+
+    const auto exported = session.export_hero_policy(0, actual);
+    EXPECT_EQ(exported.hero_seat, 0);
+    EXPECT_EQ(exported.root_revision, 19U);
+    EXPECT_EQ(exported.rows.size(), std::size_t{1});
+    EXPECT_EQ(exported.rows.front().combo, actual);
+    EXPECT_EQ(exported.actual_hand_actions.size(), request.root().public_state.legal_actions.size());
+    EXPECT_TRUE(!exported.actual_hand_frozen);
+
+    session.freeze_actual_hand_policy(0, actual, exported.actual_hand_actions);
+    const auto frozen = session.export_hero_policy(0, actual);
+    EXPECT_TRUE(frozen.actual_hand_frozen);
+    EXPECT_EQ(frozen.actual_hand_actions.size(), exported.actual_hand_actions.size());
+    for (std::size_t action = 0U; action < frozen.actual_hand_actions.size(); ++action) {
+        EXPECT_EQ(frozen.actual_hand_actions[action].action, exported.actual_hand_actions[action].action);
+        EXPECT_NEAR(
+            frozen.actual_hand_actions[action].probability,
+            exported.actual_hand_actions[action].probability,
+            0.0);
+    }
+
+    session.clear_actual_hand_freeze();
+    EXPECT_TRUE(!session.export_hero_policy(0, actual).actual_hand_frozen);
+}
+
+TEST_CASE(multiway_search_session_rejects_absent_hero_hand_and_invalid_freeze) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession session(request, {&buckets}, 1U);
+    const auto actual = combo_id(root.private_ranges.ranges[0][0].hole);
+
+    EXPECT_THROW(session.export_hero_policy(0, combo_id({card(2U, 0U), card(3U, 0U)})), std::invalid_argument);
+    auto actions = session.export_hero_policy(0, actual).actual_hand_actions;
+    actions.front().probability = 0.0;
+    EXPECT_THROW(session.freeze_actual_hand_policy(0, actual, actions), std::invalid_argument);
+}
+
 TEST_CASE(multiway_search_session_is_exposed_by_core_lib) {
     const auto root = make_root(core::Street::Preflop);
     const core::lib::MultiwaySolveRequest request = make_request(root);

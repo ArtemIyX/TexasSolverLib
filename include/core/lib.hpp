@@ -166,6 +166,8 @@ using ::core::MultiwaySearchSessionCleanSnapshot;
 using ::core::MultiwaySearchSessionDependencies;
 using ::core::MultiwaySearchSessionRootMetadata;
 using ::core::MultiwaySearchSessionRowView;
+using ::core::MultiwaySearchSessionHeroRow;
+using ::core::MultiwaySearchSessionHeroPolicy;
 using ::core::update_anonymous_multiway_range;
 using ::core::MultiwayCheckpoint;
 using ::core::MultiwayArtifactSource;

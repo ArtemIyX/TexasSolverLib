@@ -1,7 +1,9 @@
 #include "solver/multiway_search_session.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cmath>
 #include <stdexcept>
 #include <vector>
 
@@ -96,6 +98,94 @@ bool MultiwaySearchSession::capture_clean_snapshot(
 
 const MultiwaySearchSessionCleanSnapshot* MultiwaySearchSession::clean_snapshot() const noexcept {
     return clean_snapshot_ ? &*clean_snapshot_ : nullptr;
+}
+
+MultiwaySearchSessionHeroPolicy MultiwaySearchSession::export_hero_policy(
+    PlayerId hero_seat,
+    CanonicalComboId actual_hand,
+    const MultiwayBlueprintPolicyProvider* blueprint_policy) const {
+    if (hero_seat < 0 || static_cast<std::size_t>(hero_seat) >= beliefs_.seat_count() ||
+        root_metadata_.public_state != coordinator_.root().public_state.id) {
+        throw std::invalid_argument("multiway hero policy has an unavailable seat or root");
+    }
+    const auto& root = coordinator_.root();
+    const MultiwayInfosetId infoset = {root.public_state.id, hero_seat};
+    const auto& legal_actions = root.public_state.legal_actions;
+    const auto actual_view = belief(hero_seat);
+    if (!actual_view.legal(actual_hand) || actual_view.weight(actual_hand) <= 0.0) {
+        throw std::invalid_argument("multiway hero actual hand is absent from the current belief");
+    }
+
+    MultiwaySearchSessionHeroPolicy result;
+    result.hero_seat = hero_seat;
+    result.infoset = infoset;
+    result.root_revision = root_metadata_.revision;
+    const auto& combos = canonical_combos();
+    for (std::uint32_t value = 0U; value < MULTIWAY_HOLE_COMBINATION_COUNT; ++value) {
+        const auto combo = static_cast<CanonicalComboId>(value);
+        if (!actual_view.legal(combo) || actual_view.weight(combo) <= 0.0) continue;
+        std::uint32_t bucket = root.root_bucket;
+        if (root.public_state.betting.street != Street::Preflop) {
+            bucket = buckets_->table_hunl(root.public_state.betting.street, root.public_state.board)
+                .lookup_hunl(combos.cards(combo));
+        }
+        std::vector<Probability> probabilities;
+        if (coordinator_.storage().has_row(infoset)) {
+            probabilities = coordinator_.storage().average_strategy(infoset, bucket);
+        } else {
+            probabilities.assign(legal_actions.size(), 0.0);
+            const auto lookup = blueprint_policy == nullptr
+                ? MultiwayBlueprintLookupStatus::Missing
+                : blueprint_policy->strategy_into(
+                    infoset, bucket, legal_actions.data(), legal_actions.size(), probabilities.data());
+            if (lookup != MultiwayBlueprintLookupStatus::Hit) {
+                const auto uniform = 1.0 / static_cast<Probability>(legal_actions.size());
+                std::fill(probabilities.begin(), probabilities.end(), uniform);
+            }
+        }
+        MultiwaySearchSessionHeroRow row;
+        row.combo = combo;
+        row.actions.reserve(legal_actions.size());
+        for (std::size_t action = 0U; action < legal_actions.size(); ++action) {
+            row.actions.push_back({legal_actions[action], probabilities[action]});
+        }
+        if (combo == actual_hand) result.actual_hand_actions = row.actions;
+        result.rows.push_back(std::move(row));
+    }
+    if (actual_hand_freeze_ && actual_hand_freeze_->hero_seat == hero_seat &&
+        actual_hand_freeze_->combo == actual_hand &&
+        actual_hand_freeze_->root_revision == root_metadata_.revision) {
+        result.actual_hand_actions = actual_hand_freeze_->actions;
+        result.actual_hand_frozen = true;
+    }
+    return result;
+}
+
+void MultiwaySearchSession::freeze_actual_hand_policy(
+    PlayerId hero_seat,
+    CanonicalComboId actual_hand,
+    const std::vector<MultiwayRootActionProbability>& actions) {
+    if (hero_seat < 0 || static_cast<std::size_t>(hero_seat) >= beliefs_.seat_count() ||
+        !belief(hero_seat).legal(actual_hand) || belief(hero_seat).weight(actual_hand) <= 0.0 ||
+        actions.size() != action_menu_.size() || actions.empty()) {
+        throw std::invalid_argument("multiway actual hand freeze has an incompatible action menu");
+    }
+    Probability total = 0.0;
+    for (std::size_t index = 0U; index < actions.size(); ++index) {
+        if (actions[index].action != action_menu_[index] || !std::isfinite(actions[index].probability) ||
+            actions[index].probability < 0.0) {
+            throw std::invalid_argument("multiway actual hand freeze has invalid action data");
+        }
+        total += actions[index].probability;
+    }
+    if (std::fabs(total - 1.0) > 1e-12) {
+        throw std::invalid_argument("multiway actual hand freeze policy is not normalized");
+    }
+    actual_hand_freeze_ = ActualHandFreeze{hero_seat, actual_hand, root_metadata_.revision, actions};
+}
+
+void MultiwaySearchSession::clear_actual_hand_freeze() noexcept {
+    actual_hand_freeze_.reset();
 }
 
 void MultiwaySearchSession::initialize_beliefs() {

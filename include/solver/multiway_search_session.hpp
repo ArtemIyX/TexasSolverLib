@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_solver.hpp"
 
@@ -27,6 +28,22 @@ struct MultiwaySearchSessionRowView {
     std::size_t row_count = 0U;
     std::size_t value_count = 0U;
     bool has_root_row = false;
+};
+
+// Range-wide policy export remains request-local. Only the selected actual
+// hand may be frozen; hypothetical rows remain available to range updates.
+struct MultiwaySearchSessionHeroRow {
+    CanonicalComboId combo{};
+    std::vector<MultiwayRootActionProbability> actions;
+};
+
+struct MultiwaySearchSessionHeroPolicy {
+    PlayerId hero_seat = -1;
+    MultiwayInfosetId infoset{};
+    std::uint64_t root_revision = 0U;
+    std::vector<MultiwaySearchSessionHeroRow> rows;
+    std::vector<MultiwayRootActionProbability> actual_hand_actions;
+    bool actual_hand_frozen = false;
 };
 
 // Immutable export captured only after a fully merged batch. It contains no
@@ -80,6 +97,15 @@ public:
         std::uint64_t merged_delta_entries,
         std::uint32_t worker_count);
     [[nodiscard]] const MultiwaySearchSessionCleanSnapshot* clean_snapshot() const noexcept;
+    [[nodiscard]] MultiwaySearchSessionHeroPolicy export_hero_policy(
+        PlayerId hero_seat,
+        CanonicalComboId actual_hand,
+        const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr) const;
+    void freeze_actual_hand_policy(
+        PlayerId hero_seat,
+        CanonicalComboId actual_hand,
+        const std::vector<MultiwayRootActionProbability>& actions);
+    void clear_actual_hand_freeze() noexcept;
 
 private:
     void initialize_beliefs();
@@ -91,6 +117,13 @@ private:
     std::vector<MultiwayActionDescriptor> action_menu_;
     MultiwaySearchSessionRootMetadata root_metadata_{};
     std::optional<MultiwaySearchSessionCleanSnapshot> clean_snapshot_;
+    struct ActualHandFreeze {
+        PlayerId hero_seat = -1;
+        CanonicalComboId combo{};
+        std::uint64_t root_revision = 0U;
+        std::vector<MultiwayRootActionProbability> actions;
+    };
+    std::optional<ActualHandFreeze> actual_hand_freeze_;
 };
 
 }  // namespace core

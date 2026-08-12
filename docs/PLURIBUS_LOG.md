@@ -4,6 +4,33 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P3.4, P4.2-P4.3 - Runtime blueprint prior and hero policy lifecycle
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Connected the immutable full-blueprint store to runtime traversal as the non-traverser policy prior.
+- Added request-local hero-range export, actual-hand policy freeze, and explicit freeze clearing for a new round root.
+- Preserved singleton actual-hand behavior when callers do not supply a hero range.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `include/solver/multiway_search_session.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_search_session.cpp`
+- `tests/test_multiway_search_session.cpp`
+
+### Validation
+
+- Added focused hero policy export and freeze coverage.
+- Build and tests were not run because the task explicitly prohibited them.
+
+### Limitations
+
+- P3.5 full checkpoint/resume equivalence and P4.1/P4.4/P4.5 root reconstruction, observed-action orchestration, and street rerooting remain separate work.
+
 ## Implementation workflow skill
 
 **Status:** Complete

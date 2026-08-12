@@ -2,6 +2,7 @@
 
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_baseline.hpp"
+#include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
@@ -12,6 +13,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 
 namespace core {
@@ -220,6 +222,20 @@ std::uint64_t validate_ranges(
     MultiwayResolverDiagnostics* diagnostics) {
     std::array<bool, 6U> seen = {};
     std::uint64_t range_hash = 14695981039346656037ULL;
+    bool hero_present = request.hero_range.empty();
+    for (const auto& hand : request.hero_range) {
+        if (!are_valid_and_distinct_cards(hand.hole.data(), hand.hole.size()) ||
+            contains_card(request.public_state.board, hand.hole[0]) ||
+            contains_card(request.public_state.board, hand.hole[1]) ||
+            !std::isfinite(hand.weight) || hand.weight <= 0.0 ||
+            diagnostics->admitted_range_entries == std::numeric_limits<std::uint32_t>::max()) {
+            throw std::invalid_argument("multiway resolver has an invalid hero range hand");
+        }
+        hero_present = hero_present || hand.hole == request.hero_cards;
+        ++diagnostics->admitted_range_entries;
+        range_hash = mix_seed(range_hash ^ (static_cast<std::uint64_t>(hand.hole[0]) << 8U) ^ hand.hole[1]);
+    }
+    if (!hero_present) throw std::invalid_argument("multiway resolver hero range excludes the actual hand");
     for (const auto& range : request.opponent_ranges) {
         if (range.seat < 0 || static_cast<std::size_t>(range.seat) >= state.stacks().size() ||
             range.seat == request.hero_seat || state.folded()[static_cast<std::size_t>(range.seat)] ||
@@ -345,7 +361,10 @@ bool make_search_root(
     root->private_ranges.ranges.assign(seat_count, {});
     for (std::size_t seat = 0U; seat < seat_count; ++seat) {
         if (static_cast<PlayerId>(seat) == request.hero_seat) {
-            root->private_ranges.ranges[seat].push_back({request.hero_cards, 1.0});
+            root->private_ranges.ranges[seat] = request.hero_range;
+            if (root->private_ranges.ranges[seat].empty()) {
+                root->private_ranges.ranges[seat].push_back({request.hero_cards, 1.0});
+            }
         } else {
             root->private_ranges.ranges[seat] = ranges[seat]->hands;
         }
@@ -377,10 +396,13 @@ RuntimeSearchOutcome run_search(
         MultiwaySearchSession session(solve_request, {config.buckets}, 1U);
         RuntimeSearchMeasurement measurement(diagnostics);
         MultiwayActionAbstraction abstraction(config.action_abstraction);
+        std::optional<MultiwayBlueprintPolicyProvider> blueprint_provider;
+        if (config.full_blueprint != nullptr) blueprint_provider.emplace(*config.full_blueprint);
         MultiwayRootExternalSamplingTraversal traversal(
             session.coordinator(), session.coordinator().root(), abstraction, *config.buckets,
             config.leaf_evaluator, config.search_max_decision_depth,
-            config.search_max_public_chance_depth);
+            config.search_max_public_chance_depth,
+            blueprint_provider ? &*blueprint_provider : nullptr);
         MultiwayRootBatchRunner runner(
             traversal, session.coordinator(), config.search_limits.worker_count,
             config.search_limits.max_worker_delta_entries);
@@ -506,6 +528,7 @@ void MultiwayResolverConfig::validate() const {
     if (verified_blueprint != nullptr && blueprint != nullptr) {
         throw std::invalid_argument("multiway resolver accepts either a verified or legacy blueprint");
     }
+    if (full_blueprint != nullptr) full_blueprint->identity().validate();
     if (verified_blueprint != nullptr) {
         verified_blueprint->snapshot.validate();
         verified_blueprint->manifest.validate();
@@ -609,6 +632,10 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             return result;
         }
         if (blueprint != nullptr && blueprint->identity != request.blueprint_identity) {
+            use_fallback(MultiwayResolverStatus::ArtifactMismatch);
+            return result;
+        }
+        if (config_.full_blueprint != nullptr && config_.full_blueprint->identity() != request.blueprint_identity) {
             use_fallback(MultiwayResolverStatus::ArtifactMismatch);
             return result;
         }

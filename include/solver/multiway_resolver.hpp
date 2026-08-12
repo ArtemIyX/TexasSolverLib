@@ -18,6 +18,7 @@
 namespace core {
 
 struct MultiwayVerifiedBlueprintArtifact;
+class MultiwayBlueprintStore;
 
 enum class MultiwayInferenceMode : std::uint8_t {
     AnonymousWithinHand,
@@ -39,6 +40,9 @@ struct MultiwayResolverRequest {
     MultiwayPublicStateDescriptor public_state{};
     PlayerId hero_seat = -1;
     std::array<std::uint8_t, 2> hero_cards = {0, 0};
+    // Optional full hero belief. When omitted, the resolver uses the known
+    // actual hand as a singleton belief for backward compatibility.
+    std::vector<MultiwayWeightedHole> hero_range;
     std::vector<MultiwayResolverSeatRange> opponent_ranges;
     std::chrono::steady_clock::time_point deadline{};
     MultiwayInferenceMode inference_mode = MultiwayInferenceMode::AnonymousWithinHand;
@@ -160,6 +164,9 @@ struct MultiwayResolverConfig {
     // manifest verification.
     const MultiwayVerifiedBlueprintArtifact* verified_blueprint = nullptr;
     const MultiwayBlueprintSnapshot* blueprint = nullptr;
+    // Immutable arbitrary-state prior used only by request-local traversal.
+    // The compact root snapshot above remains the fallback artifact.
+    const MultiwayBlueprintStore* full_blueprint = nullptr;
     MultiwayActionAbstractionConfig action_abstraction{};
     std::uint32_t trajectories_per_batch = 32U;
     std::uint32_t max_batches = 64U;
