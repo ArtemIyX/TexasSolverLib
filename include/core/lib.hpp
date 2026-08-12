@@ -28,6 +28,7 @@
 #include "solver/multiway_range_update.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_search_session.hpp"
+#include "solver/multiway_runtime_session.hpp"
 #include "solver/multiway_checkpoint.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_model_identity.hpp"
@@ -169,6 +170,7 @@ using ::core::MultiwaySearchSessionRootMetadata;
 using ::core::MultiwaySearchSessionRowView;
 using ::core::MultiwaySearchSessionHeroRow;
 using ::core::MultiwaySearchSessionHeroPolicy;
+using ::core::MultiwayRuntimeSession;
 using ::core::update_anonymous_multiway_range;
 using ::core::MultiwayCheckpoint;
 using ::core::MultiwayArtifactSource;

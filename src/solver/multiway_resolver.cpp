@@ -6,6 +6,7 @@
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
+#include "solver/multiway_runtime_session.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "util/profiling.hpp"
 
@@ -542,6 +543,44 @@ void MultiwayResolverConfig::validate() const {
 
 MultiwayResolver::MultiwayResolver(MultiwayResolverConfig config) : config_(config) {
     config_.validate();
+}
+
+std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
+    const MultiwayResolverRequest& request) const {
+    config_.validate();
+    request.blueprint_identity.validate();
+    if (!valid_inference_mode(request.inference_mode) || request.public_state.id.value == 0U ||
+        request.public_state.canonical_history_id == 0U || request.hero_seat < 0 ||
+        !are_valid_and_distinct_cards(request.hero_cards.data(), request.hero_cards.size()) ||
+        request.public_state.board.size() != board_count_for(request.public_state.betting.street) ||
+        !are_valid_and_distinct_cards(request.public_state.board.data(), request.public_state.board.size()) ||
+        contains_card(request.public_state.board, request.hero_cards[0]) ||
+        contains_card(request.public_state.board, request.hero_cards[1])) {
+        throw std::invalid_argument("multiway runtime session request has invalid hero cards");
+    }
+    const auto state = MultiwayState::from_snapshot(request.public_state.betting);
+    if (state.current_player() != request.hero_seat ||
+        static_cast<std::size_t>(request.hero_seat) >= state.stacks().size() ||
+        state.folded()[static_cast<std::size_t>(request.hero_seat)] || state.legal_actions().empty() ||
+        !is_postflop(state.street()) ||
+        config_.buckets == nullptr || config_.buckets->identity() != request.blueprint_identity) {
+        throw std::invalid_argument("multiway runtime session has incompatible public state or buckets");
+    }
+    MultiwayResolverDiagnostics diagnostics;
+    (void)validate_ranges(request, state, &diagnostics);
+    auto board = request.public_state.board;
+    std::sort(board.begin(), board.end());
+    const auto menu = reconstruct_root_menu(request, state, config_);
+    const auto bucket = config_.buckets->lookup_hunl(state.street(), board, request.hero_cards);
+    MultiwayRootSnapshot root;
+    if (!make_search_root(request, state, board, menu, bucket, &root)) {
+        throw std::invalid_argument("multiway runtime session could not construct a search root");
+    }
+    MultiwayCFRConfig cfr;
+    cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
+    return std::make_unique<MultiwayRuntimeSession>(
+        MultiwaySolveRequest(std::move(root), cfr, config_.search_limits),
+        MultiwaySearchSessionDependencies{config_.buckets});
 }
 
 MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& request) const {

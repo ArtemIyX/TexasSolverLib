@@ -1,0 +1,36 @@
+#include "solver/multiway_runtime_session.hpp"
+
+#include <limits>
+#include <stdexcept>
+#include <utility>
+
+namespace core {
+
+MultiwayRuntimeSession::MultiwayRuntimeSession(
+    MultiwaySolveRequest initial_request,
+    MultiwaySearchSessionDependencies dependencies)
+    : dependencies_(dependencies),
+      round_(std::make_unique<MultiwaySearchSession>(initial_request, dependencies_, root_revision_)) {}
+
+MultiwayRangeBeliefUpdateResult MultiwayRuntimeSession::observe_action(
+    PlayerId seat,
+    const MultiwayRangeBeliefObservation& observation) {
+    return round_->apply_observation(seat, observation);
+}
+
+void MultiwayRuntimeSession::reroot(
+    MultiwayRootSnapshot next_root,
+    MultiwayCFRConfig cfr,
+    MultiwaySolverLimits limits,
+    bool street_transition) {
+    if (root_revision_ == std::numeric_limits<std::uint64_t>::max()) {
+        throw std::overflow_error("multiway runtime root revision overflow");
+    }
+    const auto root = street_transition
+        ? round_->make_next_round_root(std::move(next_root))
+        : round_->make_reroot_root(std::move(next_root));
+    MultiwaySolveRequest request(root, cfr, limits);
+    round_ = std::make_unique<MultiwaySearchSession>(request, dependencies_, ++root_revision_);
+}
+
+}  // namespace core

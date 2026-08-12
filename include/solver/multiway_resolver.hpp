@@ -13,12 +13,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <memory>
 #include <vector>
 
 namespace core {
 
 struct MultiwayVerifiedBlueprintArtifact;
 class MultiwayBlueprintStore;
+class MultiwayRuntimeSession;
 
 enum class MultiwayInferenceMode : std::uint8_t {
     AnonymousWithinHand,
@@ -190,6 +192,8 @@ class MultiwayResolver {
 public:
     explicit MultiwayResolver(MultiwayResolverConfig config = {});
     [[nodiscard]] MultiwayResolverResult resolve(const MultiwayResolverRequest& request) const;
+    [[nodiscard]] std::unique_ptr<MultiwayRuntimeSession> begin_runtime_session(
+        const MultiwayResolverRequest& request) const;
 
 private:
     struct StableRootPolicy {

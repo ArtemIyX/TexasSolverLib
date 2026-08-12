@@ -4,6 +4,34 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P4.1-P4.5 - Resolver-managed runtime hand lifecycle
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added a request-local runtime session factory on `MultiwayResolver` for validated postflop snapshots.
+- Added an owning runtime session that applies observed-action Bayes updates and replaces the round state on street or qualifying same-street reroots.
+- Rerooting carries legal posterior ranges forward and clears the previous actual-hand freeze.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `include/solver/multiway_runtime_session.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_runtime_session.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `tests/test_multiway_search_session.cpp`
+
+### Validation
+
+- Added focused resolver factory and round-replacement coverage.
+- Build and tests were not run because the task explicitly prohibited them.
+
+### Limitations
+
+- Full-hand terminal replay remains owned by the existing rules and replay suites; this lifecycle layer does not duplicate terminal settlement.
+
 ## P3.5, P4.4-P4.5 - Resumable blueprints and posterior rerooting
 
 **Status:** Complete

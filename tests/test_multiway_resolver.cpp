@@ -2,6 +2,7 @@
 #include "solver/multiway_blueprint_config.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver.hpp"
+#include "solver/multiway_runtime_session.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -119,6 +120,19 @@ TEST_CASE(multiway_resolver_returns_a_normalized_legal_deadline_safe_decision) {
     double total = 0.0;
     for (const auto& entry : result.policy) total += entry.probability;
     EXPECT_NEAR(total, 1.0, 1e-12);
+}
+
+TEST_CASE(multiway_resolver_begins_a_request_local_runtime_session) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto resolver = fixture.resolver();
+
+    const auto runtime = resolver.begin_runtime_session(request);
+    EXPECT_TRUE(runtime != nullptr);
+    EXPECT_EQ(runtime->root_revision(), 1U);
+    EXPECT_EQ(runtime->round().root_metadata().public_state, fixture.root.id);
+    EXPECT_EQ(runtime->round().belief(0).metadata().source, core::MultiwayRangeBeliefSource::Supplied);
 }
 
 TEST_CASE(multiway_resolver_distinguishes_anonymous_and_blockers_only_ranges) {
