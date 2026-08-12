@@ -68,6 +68,87 @@ struct ResolverFixture {
     }
 };
 
+void run_terminal_differential_case(std::uint8_t index) {
+    core::MultiwayTerminalInput input;
+    input.contributions = {
+        10 + static_cast<int>(index % 5U),
+        30 + static_cast<int>(index % 7U),
+        50 + static_cast<int>(index % 11U),
+    };
+    input.folded = {index % 4U == 0U, index % 5U == 0U, false};
+    input.strengths = {
+        {index % 3U},
+        {(index + 1U) % 3U},
+        {(index + 2U) % 3U},
+    };
+    input.odd_chip_first_seat = static_cast<core::PlayerId>(index % 3U);
+    const auto direct = core::settle_multiway_terminal(input);
+    core::MultiwayFixedTerminalScratch scratch;
+    core::MultiwayFixedTerminalResult fixed;
+    core::settle_multiway_terminal_fixed(fixed_input(input), scratch, fixed);
+    for (std::size_t seat = 0U; seat < input.contributions.size(); ++seat) {
+        EXPECT_EQ(fixed.refunds[seat], direct.refunds[seat]);
+        EXPECT_EQ(fixed.payouts[seat], direct.payouts[seat]);
+        EXPECT_EQ(fixed.utilities[seat], direct.utilities[seat]);
+    }
+}
+
+void run_range_differential_case(std::uint8_t index) {
+    const auto first = index;
+    const auto second = static_cast<std::uint8_t>(index + 1U);
+    const auto alternate = static_cast<std::uint8_t>(index + 2U);
+    const std::array<core::MultiwayRangeBeliefSuppliedEntry, 3> entries = {{
+        {{first, second}, static_cast<double>(index + 1U)},
+        {{second, first}, static_cast<double>(index + 2U)},
+        {{second, alternate}, static_cast<double>(index + 3U)},
+    }};
+    const std::array<core::MultiwayRangeBeliefSeatInput, 2> seats = {{
+        {entries.data(), entries.size(), nullptr, 0U},
+        {entries.data(), entries.size(), nullptr, 0U},
+    }};
+    core::MultiwayRangeBeliefs beliefs;
+    beliefs.reset_supplied(seats.size(), seats.data());
+    const auto view = beliefs.view(0U);
+    const auto total = static_cast<double>(3U * index + 6U);
+    EXPECT_NEAR(view.weight(core::canonical_combos().id({first, second})),
+        static_cast<double>(2U * index + 3U) / total, 1e-15);
+    EXPECT_NEAR(view.weight(core::canonical_combos().id({second, alternate})),
+        static_cast<double>(index + 3U) / total, 1e-15);
+    EXPECT_NEAR(view.metadata().input_mass, total, 1e-15);
+}
+
+void run_artifact_hash_differential_case(std::uint8_t index) {
+    core::MultiwayBlueprintConfig config;
+    core::MultiwayBlueprintSnapshot baseline;
+    baseline.identity = core::make_multiway_model_identity(config);
+    baseline.public_state = {71U};
+    baseline.infoset = {{71U}, 0};
+    baseline.trajectories = 1U;
+    baseline.training.trajectories = 1U;
+    baseline.actions = {{{core::MultiwayAction::Check, 0U, 0, 17U}, 65535U}};
+    auto changed = baseline;
+    changed.public_state = {static_cast<std::uint64_t>(100U + index)};
+    changed.infoset.public_state = changed.public_state;
+    EXPECT_EQ(core::MultiwayBlueprintArtifacts::snapshot_hash(baseline),
+        core::MultiwayBlueprintArtifacts::snapshot_hash(baseline));
+    EXPECT_TRUE(core::MultiwayBlueprintArtifacts::snapshot_hash(baseline) !=
+        core::MultiwayBlueprintArtifacts::snapshot_hash(changed));
+}
+
+void run_adapter_differential_case(std::uint8_t index) {
+    ResolverFixture fixture;
+    core::MultiwayResolverEvaluationAdapterConfig config;
+    config.candidates = {{1U, core::MultiwayResolverEvaluationCandidateKind::StaticLegal}};
+    core::MultiwayResolverEvaluationAdapter adapter(config);
+    auto request = fixture.request();
+    request.sampling_seed = index + 1U;
+    const auto first = adapter.resolve(1U, request, index);
+    const auto second = adapter.resolve(1U, request, index);
+    EXPECT_EQ(first.sampling_seed, second.sampling_seed);
+    EXPECT_EQ(first.result.diagnostics.policy_provenance, core::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_TRUE(first.result.has_sampled_action);
+}
+
 }  // namespace
 
 TEST_CASE(multiway_p81_terminal_fixed_and_dynamic_settlement_are_chip_exact) {
@@ -165,3 +246,115 @@ TEST_CASE(multiway_p84_evaluation_adapter_selects_deterministic_request_local_ca
         core::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
     EXPECT_THROW(adapter.resolve(99U, fixture.request(), 7U), std::invalid_argument);
 }
+
+#define P8_DIFFERENTIAL_CASE(name, helper, index) TEST_CASE(name) { helper(index); }
+
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_01, run_terminal_differential_case, 1U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_02, run_terminal_differential_case, 2U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_03, run_terminal_differential_case, 3U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_04, run_terminal_differential_case, 4U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_05, run_terminal_differential_case, 5U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_06, run_terminal_differential_case, 6U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_07, run_terminal_differential_case, 7U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_08, run_terminal_differential_case, 8U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_09, run_terminal_differential_case, 9U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_10, run_terminal_differential_case, 10U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_11, run_terminal_differential_case, 11U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_12, run_terminal_differential_case, 12U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_13, run_terminal_differential_case, 13U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_14, run_terminal_differential_case, 14U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_15, run_terminal_differential_case, 15U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_16, run_terminal_differential_case, 16U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_17, run_terminal_differential_case, 17U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_18, run_terminal_differential_case, 18U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_19, run_terminal_differential_case, 19U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_20, run_terminal_differential_case, 20U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_21, run_terminal_differential_case, 21U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_22, run_terminal_differential_case, 22U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_23, run_terminal_differential_case, 23U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_24, run_terminal_differential_case, 24U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_25, run_terminal_differential_case, 25U)
+P8_DIFFERENTIAL_CASE(multiway_p81_terminal_differential_26, run_terminal_differential_case, 26U)
+
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_01, run_range_differential_case, 1U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_02, run_range_differential_case, 2U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_03, run_range_differential_case, 3U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_04, run_range_differential_case, 4U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_05, run_range_differential_case, 5U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_06, run_range_differential_case, 6U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_07, run_range_differential_case, 7U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_08, run_range_differential_case, 8U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_09, run_range_differential_case, 9U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_10, run_range_differential_case, 10U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_11, run_range_differential_case, 11U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_12, run_range_differential_case, 12U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_13, run_range_differential_case, 13U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_14, run_range_differential_case, 14U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_15, run_range_differential_case, 15U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_16, run_range_differential_case, 16U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_17, run_range_differential_case, 17U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_18, run_range_differential_case, 18U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_19, run_range_differential_case, 19U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_20, run_range_differential_case, 20U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_21, run_range_differential_case, 21U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_22, run_range_differential_case, 22U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_23, run_range_differential_case, 23U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_24, run_range_differential_case, 24U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_25, run_range_differential_case, 25U)
+P8_DIFFERENTIAL_CASE(multiway_p82_range_differential_26, run_range_differential_case, 26U)
+
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_01, run_artifact_hash_differential_case, 1U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_02, run_artifact_hash_differential_case, 2U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_03, run_artifact_hash_differential_case, 3U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_04, run_artifact_hash_differential_case, 4U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_05, run_artifact_hash_differential_case, 5U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_06, run_artifact_hash_differential_case, 6U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_07, run_artifact_hash_differential_case, 7U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_08, run_artifact_hash_differential_case, 8U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_09, run_artifact_hash_differential_case, 9U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_10, run_artifact_hash_differential_case, 10U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_11, run_artifact_hash_differential_case, 11U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_12, run_artifact_hash_differential_case, 12U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_13, run_artifact_hash_differential_case, 13U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_14, run_artifact_hash_differential_case, 14U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_15, run_artifact_hash_differential_case, 15U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_16, run_artifact_hash_differential_case, 16U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_17, run_artifact_hash_differential_case, 17U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_18, run_artifact_hash_differential_case, 18U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_19, run_artifact_hash_differential_case, 19U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_20, run_artifact_hash_differential_case, 20U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_21, run_artifact_hash_differential_case, 21U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_22, run_artifact_hash_differential_case, 22U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_23, run_artifact_hash_differential_case, 23U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_24, run_artifact_hash_differential_case, 24U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_25, run_artifact_hash_differential_case, 25U)
+P8_DIFFERENTIAL_CASE(multiway_p83_artifact_differential_26, run_artifact_hash_differential_case, 26U)
+
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_01, run_adapter_differential_case, 1U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_02, run_adapter_differential_case, 2U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_03, run_adapter_differential_case, 3U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_04, run_adapter_differential_case, 4U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_05, run_adapter_differential_case, 5U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_06, run_adapter_differential_case, 6U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_07, run_adapter_differential_case, 7U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_08, run_adapter_differential_case, 8U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_09, run_adapter_differential_case, 9U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_10, run_adapter_differential_case, 10U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_11, run_adapter_differential_case, 11U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_12, run_adapter_differential_case, 12U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_13, run_adapter_differential_case, 13U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_14, run_adapter_differential_case, 14U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_15, run_adapter_differential_case, 15U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_16, run_adapter_differential_case, 16U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_17, run_adapter_differential_case, 17U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_18, run_adapter_differential_case, 18U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_19, run_adapter_differential_case, 19U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_20, run_adapter_differential_case, 20U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_21, run_adapter_differential_case, 21U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_22, run_adapter_differential_case, 22U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_23, run_adapter_differential_case, 23U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_24, run_adapter_differential_case, 24U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_25, run_adapter_differential_case, 25U)
+P8_DIFFERENTIAL_CASE(multiway_p84_adapter_differential_26, run_adapter_differential_case, 26U)
+
+#undef P8_DIFFERENTIAL_CASE

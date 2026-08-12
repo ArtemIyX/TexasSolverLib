@@ -12,6 +12,7 @@ until its implementation and required validation are finished.
 - Added chip-exact fixed-versus-dynamic terminal settlement coverage, canonical range duplicate coverage, and artifact identity/hash round-trip coverage.
 - Added request-local resolver evaluation candidates for static legal, blueprint-only, search-disabled, and search-enabled policies.
 - Each adapter decision derives a deterministic seed and returns resolver policy, status, and provenance to the host-owned evaluation callback.
+- Expanded `test_multiway_p8_differential` to 108 deterministic cases across P8.1-P8.4.
 
 ### Files
 
