@@ -79,6 +79,23 @@ enum class MultiwayActionTranslationStatus : std::uint8_t {
     DeviationTooLarge,
 };
 
+// Cold-path policy for deviations which must remain explicit in a local
+// search rather than use a blueprint translation.
+struct MultiwayDeviationExpansionConfig {
+    std::uint64_t policy_version = 1U;
+    std::uint16_t minimum_pseudo_harmonic_distance_basis_points = 1000U;
+    std::uint8_t minimum_active_seats = 2U;
+    std::uint8_t enabled_postflop_street_mask = 0x07U;
+    std::uint8_t maximum_menu_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
+
+    void validate() const;
+};
+
+enum class MultiwayDeviationDisposition : std::uint8_t {
+    Translate,
+    Expand,
+};
+
 // The observed descriptor remains authoritative for public history and range
 // updates. translated_action is only a blueprint-policy lookup key.
 struct MultiwayActionTranslation {
@@ -117,6 +134,14 @@ public:
         const std::vector<MultiwayActionDescriptor>& menu,
         MultiwayAction observed_action,
         int target_street_contribution,
+        MultiwayActionAbstractionContext context = {}) const;
+
+    [[nodiscard]] MultiwayDeviationDisposition classify_observed_action(
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<MultiwayActionDescriptor>& menu,
+        MultiwayAction observed_action,
+        int target_street_contribution,
+        const MultiwayDeviationExpansionConfig& expansion,
         MultiwayActionAbstractionContext context = {}) const;
 
     [[nodiscard]] static std::vector<MultiwayActionDescriptor> insert_exact_observed_action(

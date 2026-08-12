@@ -70,6 +70,15 @@ public:
         const std::vector<MultiwayPublicHistoryEntry>& history,
         const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept;
 
+    // Lossless live-round key. This aliases the schema-v2 public-state
+    // encoding, which already includes the full current history, exact target
+    // contributions, active seats in the betting snapshot, board, and menu.
+    [[nodiscard]] static std::uint64_t stable_lossless_current_round_key(
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<std::uint8_t>& board,
+        const std::vector<MultiwayPublicHistoryEntry>& history,
+        const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept;
+
 private:
     friend class MultiwayResolver;
 };

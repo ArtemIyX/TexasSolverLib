@@ -17,6 +17,7 @@ namespace core {
 // session does not traverse postflop states.
 struct MultiwaySearchSessionDependencies {
     const MultiwayBucketRegistry* buckets = nullptr;
+    bool lossless_current_round_keys = true;
 };
 
 struct MultiwaySearchSessionRootMetadata {
@@ -29,6 +30,13 @@ struct MultiwaySearchSessionRowView {
     std::size_t row_count = 0U;
     std::size_t value_count = 0U;
     bool has_root_row = false;
+};
+
+// A prepared replacement root. Planning it is transactional: the current
+// session remains unchanged until the runtime owner elects to reroot.
+struct MultiwayLocalExpansion {
+    MultiwayRootSnapshot root{};
+    MultiwayActionDescriptor observed_action{};
 };
 
 // Range-wide policy export remains request-local. Only the selected actual
@@ -87,6 +95,12 @@ public:
     }
     void record_action_translation(MultiwayActionTranslation translation);
     [[nodiscard]] const MultiwayActionTranslation* action_translation() const noexcept;
+    [[nodiscard]] MultiwayLocalExpansion plan_local_expansion(
+        const MultiwayActionAbstraction& abstraction,
+        MultiwayAction observed_action,
+        int target_street_contribution,
+        const MultiwayDeviationExpansionConfig& expansion,
+        MultiwayActionAbstractionContext context = {}) const;
     [[nodiscard]] const MultiwaySearchSessionRootMetadata& root_metadata() const noexcept {
         return root_metadata_;
     }
@@ -119,6 +133,7 @@ private:
     void validate_dependencies() const;
 
     MultiwaySolverCoordinator coordinator_;
+    MultiwaySearchSessionDependencies dependencies_{};
     MultiwayRangeBeliefs beliefs_;
     const MultiwayBucketRegistry* buckets_ = nullptr;
     std::vector<MultiwayActionDescriptor> action_menu_;

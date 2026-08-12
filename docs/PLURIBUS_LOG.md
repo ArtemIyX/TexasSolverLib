@@ -4,6 +4,39 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P5.3-P5.6 - Local expansion, lossless keys, and future bucket artifacts
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added configurable cold-path classification and transactional planning for important off-tree local expansion.
+- Enforced schema-v2 lossless current-round public keys in live search sessions.
+- Added versioned potential-aware offline features, deterministic Lloyd clustering, and immutable future-bucket artifact loading.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_action_abstraction.hpp`
+- `include/solver/multiway_future_bucket.hpp`
+- `include/solver/multiway_public_builder.hpp`
+- `include/solver/multiway_search_session.hpp`
+- `src/solver/multiway_action_abstraction.cpp`
+- `src/solver/multiway_future_bucket.cpp`
+- `src/solver/multiway_public_builder.cpp`
+- `src/solver/multiway_search_session.cpp`
+- `tests/test_multiway_action_abstraction.cpp`
+- `tests/test_multiway_future_bucket.cpp`
+- `tests/test_multiway_public_builder.cpp`
+- `tests/test_multiway_search_session.cpp`
+
+### Validation
+
+- Tests were added but not run because this request did not ask for command execution.
+
+### Limitations
+
+- Future-cluster profile calibration remains an offline evaluation task; runtime performs lookup only.
+
 ## P5.2 Test Fixture Correction - Upper pseudo-harmonic boundary
 
 **Status:** Complete

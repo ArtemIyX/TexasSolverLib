@@ -151,6 +151,15 @@ void MultiwayActionAbstractionConfig::validate() const {
     }
 }
 
+void MultiwayDeviationExpansionConfig::validate() const {
+    if (policy_version == 0U || minimum_pseudo_harmonic_distance_basis_points > 20000U ||
+        minimum_active_seats < 2U || minimum_active_seats > 6U ||
+        enabled_postflop_street_mask == 0U || maximum_menu_actions == 0U ||
+        maximum_menu_actions > MULTIWAY_MAX_ABSTRACTED_ACTIONS) {
+        throw std::invalid_argument("multiway deviation expansion configuration is invalid");
+    }
+}
+
 std::uint64_t MultiwayActionAbstraction::menu_profile_identity(
     MultiwayActionAbstractionContext context) const noexcept {
     constexpr std::uint64_t kOffset = 14695981039346656037ULL;
@@ -238,6 +247,37 @@ MultiwayActionTranslation MultiwayActionAbstraction::translate_observed_action(
     const auto threshold = static_cast<double>(config_.translation_max_pseudo_harmonic_distance_basis_points) / 10000.0;
     if (best_distance <= threshold) result.status = MultiwayActionTranslationStatus::Translated;
     return result;
+}
+
+MultiwayDeviationDisposition MultiwayActionAbstraction::classify_observed_action(
+    const MultiwayBettingSnapshot& betting,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    MultiwayAction observed_action,
+    int target_street_contribution,
+    const MultiwayDeviationExpansionConfig& expansion,
+    MultiwayActionAbstractionContext context) const {
+    expansion.validate();
+    const auto translated = translate_observed_action(
+        betting, menu, observed_action, target_street_contribution, context);
+    if (translated.status == MultiwayActionTranslationStatus::ExactMenuAction ||
+        !is_aggressive(observed_action) || menu.size() >= expansion.maximum_menu_actions) {
+        return MultiwayDeviationDisposition::Translate;
+    }
+    const auto state = MultiwayState::from_snapshot(betting);
+    const auto active = static_cast<std::uint8_t>(std::count(
+        state.folded().begin(), state.folded().end(), false));
+    const auto street_bit = state.street() < Street::Flop || state.street() > Street::River
+        ? 0U : static_cast<std::uint8_t>(1U << (static_cast<std::uint8_t>(state.street()) -
+                                                static_cast<std::uint8_t>(Street::Flop)));
+    if (active < expansion.minimum_active_seats || (expansion.enabled_postflop_street_mask & street_bit) == 0U) {
+        return MultiwayDeviationDisposition::Translate;
+    }
+    if (translated.status == MultiwayActionTranslationStatus::DeviationTooLarge) {
+        return MultiwayDeviationDisposition::Expand;
+    }
+    const auto distance = pseudo_harmonic_distance(translated.observed_scale, translated.translated_scale);
+    return distance >= static_cast<double>(expansion.minimum_pseudo_harmonic_distance_basis_points) / 10000.0
+        ? MultiwayDeviationDisposition::Expand : MultiwayDeviationDisposition::Translate;
 }
 
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_actions(

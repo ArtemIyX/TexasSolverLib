@@ -95,6 +95,22 @@ TEST_CASE(multiway_public_builder_schema_v2_changes_menu_id_for_off_tree_action)
     }));
 }
 
+TEST_CASE(multiway_public_builder_lossless_current_round_key_tracks_exact_targets) {
+    const auto snapshot = root_snapshot();
+    const core::MultiwayActionAbstraction abstraction;
+    const auto menu = abstraction.make_legal_actions(snapshot, 0U);
+    const auto root = core::MultiwayPublicBuilder::make_root(snapshot, {8U, 13U, 18U}, menu);
+    const auto expanded = core::MultiwayActionAbstraction::insert_exact_observed_action(
+        snapshot, menu, core::MultiwayAction::Bet, 501, 0U);
+    const auto expanded_root = core::MultiwayPublicBuilder::make_root(snapshot, {8U, 13U, 18U}, expanded);
+
+    EXPECT_TRUE(root.id != expanded_root.id);
+    EXPECT_EQ(
+        expanded_root.id.value,
+        core::MultiwayPublicBuilder::stable_lossless_current_round_key(
+            expanded_root.betting, expanded_root.board, expanded_root.history, expanded_root.legal_actions));
+}
+
 TEST_CASE(multiway_public_builder_rejects_mismatched_action_targets) {
     const auto snapshot = root_snapshot();
     EXPECT_THROW(

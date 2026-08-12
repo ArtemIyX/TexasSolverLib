@@ -1,4 +1,5 @@
 #include "solver/multiway_search_session.hpp"
+#include "solver/multiway_public_builder.hpp"
 
 #include <algorithm>
 #include <array>
@@ -15,6 +16,7 @@ MultiwaySearchSession::MultiwaySearchSession(
     MultiwaySearchSessionDependencies dependencies,
     std::uint64_t public_root_revision)
     : coordinator_(request),
+      dependencies_(dependencies),
       buckets_(dependencies.buckets),
       action_menu_(coordinator_.root().public_state.legal_actions),
       root_metadata_({
@@ -32,6 +34,12 @@ void MultiwaySearchSession::validate_dependencies() const {
         root_metadata_.action_abstraction.menu_id == 0U ||
         root_metadata_.action_abstraction.version == 0U) {
         throw std::invalid_argument("multiway search session has invalid root or action dependencies");
+    }
+    if (dependencies_.lossless_current_round_keys && root.public_state.id.value !=
+        MultiwayPublicBuilder::stable_lossless_current_round_key(
+            root.public_state.betting, root.public_state.board, root.public_state.history,
+            root.public_state.legal_actions)) {
+        throw std::invalid_argument("multiway search session requires a lossless current-round public key");
     }
 
     if (root.public_state.betting.street == Street::Preflop) return;
@@ -84,6 +92,36 @@ void MultiwaySearchSession::record_action_translation(MultiwayActionTranslation 
 
 const MultiwayActionTranslation* MultiwaySearchSession::action_translation() const noexcept {
     return action_translation_ ? &*action_translation_ : nullptr;
+}
+
+MultiwayLocalExpansion MultiwaySearchSession::plan_local_expansion(
+    const MultiwayActionAbstraction& abstraction,
+    MultiwayAction observed_action,
+    int target_street_contribution,
+    const MultiwayDeviationExpansionConfig& expansion,
+    MultiwayActionAbstractionContext context) const {
+    const auto& current = coordinator_.root();
+    if (abstraction.classify_observed_action(
+            current.public_state.betting, action_menu_, observed_action,
+            target_street_contribution, expansion, context) != MultiwayDeviationDisposition::Expand) {
+        throw std::invalid_argument("multiway local expansion was not admitted by policy");
+    }
+    const auto menu = MultiwayActionAbstraction::insert_exact_observed_action(
+        current.public_state.betting, action_menu_, observed_action, target_street_contribution, 0U);
+    MultiwayLocalExpansion result;
+    result.root = current;
+    result.root.public_state.legal_actions = menu;
+    result.root.public_state.canonical_history_id =
+        MultiwayPublicBuilder::stable_history_id(result.root.public_state.history);
+    result.root.public_state.id = {MultiwayPublicBuilder::stable_lossless_current_round_key(
+        result.root.public_state.betting, result.root.public_state.board,
+        result.root.public_state.history, result.root.public_state.legal_actions)};
+    result.root.root_infoset.public_state = result.root.public_state.id;
+    const auto state = MultiwayState::from_snapshot(current.public_state.betting);
+    const auto successor = state.apply(observed_action, target_street_contribution);
+    result.observed_action = {observed_action, 0U,
+        successor.street_contributions()[static_cast<std::size_t>(state.current_player())], 0U};
+    return result;
 }
 
 MultiwaySearchSessionRowView MultiwaySearchSession::row_view() const noexcept {

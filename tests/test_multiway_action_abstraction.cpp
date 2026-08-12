@@ -154,6 +154,25 @@ TEST_CASE(multiway_action_abstraction_deduplicates_and_compacts_exact_insertions
     }
 }
 
+TEST_CASE(multiway_action_abstraction_classifies_large_off_tree_bets_for_local_expansion) {
+    const auto state = flop_root(3U);
+    core::MultiwayActionAbstractionConfig action_config;
+    action_config.translation_max_pseudo_harmonic_distance_basis_points = 1U;
+    const core::MultiwayActionAbstraction abstraction(action_config);
+    const auto menu = abstraction.make_legal_actions(state.snapshot(), 0U);
+    core::MultiwayDeviationExpansionConfig expansion;
+    expansion.minimum_pseudo_harmonic_distance_basis_points = 1U;
+
+    EXPECT_EQ(
+        abstraction.classify_observed_action(
+            state.snapshot(), menu, core::MultiwayAction::Bet, 2500, expansion),
+        core::MultiwayDeviationDisposition::Expand);
+    const auto expanded = core::MultiwayActionAbstraction::insert_exact_observed_action(
+        state.snapshot(), menu, core::MultiwayAction::Bet, 2500, 0U);
+    EXPECT_TRUE(contains(expanded, core::MultiwayAction::Bet, 2500));
+    EXPECT_TRUE(expanded.size() <= core::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+}
+
 namespace {
 
 bool has_exact_legal_targets(

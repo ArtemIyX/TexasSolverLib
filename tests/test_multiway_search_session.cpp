@@ -197,6 +197,24 @@ TEST_CASE(multiway_search_session_retains_observed_and_translated_action_metadat
     EXPECT_THROW(session.record_action_translation(unrelated), std::invalid_argument);
 }
 
+TEST_CASE(multiway_search_session_plans_important_deviation_without_mutating_current_root) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession session(request, {&buckets}, 23U);
+    core::MultiwayActionAbstractionConfig action_config;
+    action_config.translation_max_pseudo_harmonic_distance_basis_points = 1U;
+    const core::MultiwayActionAbstraction abstraction(action_config);
+    core::MultiwayDeviationExpansionConfig expansion;
+    expansion.minimum_pseudo_harmonic_distance_basis_points = 1U;
+    const auto planned = session.plan_local_expansion(
+        abstraction, core::MultiwayAction::Bet, 500, expansion);
+
+    EXPECT_TRUE(planned.root.public_state.id != session.root_metadata().public_state);
+    EXPECT_TRUE(planned.root.public_state.legal_actions.size() <= core::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+    EXPECT_EQ(session.root_metadata().public_state, root.public_state.id);
+}
+
 TEST_CASE(multiway_search_session_isolates_request_data_and_belief_updates) {
     auto root = make_root(core::Street::Flop);
     const auto first_hole = root.private_ranges.ranges[0][0].hole;

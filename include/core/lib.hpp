@@ -14,6 +14,7 @@
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_bucket_artifact.hpp"
+#include "solver/multiway_future_bucket.hpp"
 #include "solver/multiway_memory.hpp"
 #include "solver/multiway_scheduler.hpp"
 #include "solver/multiway_traversal.hpp"
@@ -106,10 +107,18 @@ using ::core::MultiwayBucketRegistry;
 using ::core::MultiwayBucketBaselineProfile;
 using ::core::MultiwayBucketFeatures;
 using ::core::MultiwayBucketBoardRequest;
+using ::core::MultiwayDeviationDisposition;
+using ::core::MultiwayDeviationExpansionConfig;
+using ::core::MultiwayFutureBucketArtifact;
+using ::core::MultiwayFutureBucketFeatures;
+using ::core::MultiwayFutureBucketProfile;
 using ::core::build_multiway_baseline_bucket_table;
 using ::core::build_multiway_baseline_bucket_registry;
+using ::core::build_multiway_future_bucket_artifact;
+using ::core::deserialize_multiway_future_bucket_artifact;
 using ::core::deserialize_multiway_bucket_registry;
 using ::core::serialize_multiway_bucket_registry;
+using ::core::serialize_multiway_future_bucket_artifact;
 using ::core::validate_multiway_bucket_coverage;
 using ::core::MultiwayMemoryBudget;
 using ::core::MultiwayMemoryEstimate;

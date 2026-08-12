@@ -409,4 +409,12 @@ std::uint64_t MultiwayPublicBuilder::stable_public_state_id(
     return non_zero(hash);
 }
 
+std::uint64_t MultiwayPublicBuilder::stable_lossless_current_round_key(
+    const MultiwayBettingSnapshot& betting,
+    const std::vector<std::uint8_t>& board,
+    const std::vector<MultiwayPublicHistoryEntry>& history,
+    const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept {
+    return stable_public_state_id(betting, board, history, legal_actions);
+}
+
 }  // namespace core
