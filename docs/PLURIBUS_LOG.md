@@ -13,6 +13,7 @@ until its implementation and required validation are finished.
 - Added request-local resolver evaluation candidates for static legal, blueprint-only, search-disabled, and search-enabled policies.
 - Each adapter decision derives a deterministic seed and returns resolver policy, status, and provenance to the host-owned evaluation callback.
 - Expanded `test_multiway_p8_differential` to 108 deterministic cases across P8.1-P8.4.
+- Added the direct bucket-artifact include required by the resolver fixture.
 
 ### Files
 

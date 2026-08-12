@@ -3,6 +3,7 @@
 #include "games/multiway_terminal.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_blueprint_config.hpp"
+#include "solver/multiway_bucket_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_resolver_evaluation.hpp"
