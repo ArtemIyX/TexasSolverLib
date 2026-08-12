@@ -578,8 +578,16 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     }
     MultiwayCFRConfig cfr;
     cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
+    auto limits = config_.search_limits;
+    if (limits.worker_count == 0U) limits.worker_count = 1U;
+    if (limits.trajectories_per_batch == 0U) limits.trajectories_per_batch = config_.trajectories_per_batch;
+    if (limits.max_public_states == 0U) limits.max_public_states = 1'024U;
+    if (limits.max_sparse_rows == 0U) limits.max_sparse_rows = 1'024U;
+    if (limits.max_sparse_values == 0U) limits.max_sparse_values = 65'536U;
+    if (limits.max_worker_delta_entries == 0U) limits.max_worker_delta_entries = 8'192U;
+    limits.validate();
     return std::make_unique<MultiwayRuntimeSession>(
-        MultiwaySolveRequest(std::move(root), cfr, config_.search_limits),
+        MultiwaySolveRequest(std::move(root), cfr, limits),
         MultiwaySearchSessionDependencies{config_.buckets});
 }
 

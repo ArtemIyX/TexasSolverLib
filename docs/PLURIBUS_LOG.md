@@ -4,6 +4,26 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P4 Regression - Runtime session default solver limits
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Initialized bounded runtime-session solver limits when the resolver is configured in legacy mode and has no active-search limits.
+
+### Files
+
+- `src/solver/multiway_resolver.cpp`
+
+### Validation
+
+- Attempted the required Debug build twice.
+- Validation was blocked before compilation because MSBuild received duplicate `Path` and `PATH` environment variables.
+
+### Limitations
+
+- The compact test suite was not run because the required build could not start.
+
 ## P4.1-P4.5 - Resolver-managed runtime hand lifecycle
 
 **Status:** Complete
