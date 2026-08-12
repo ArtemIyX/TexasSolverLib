@@ -4,6 +4,34 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P5.1-P5.2 - Contextual action menu profiles and pseudo-harmonic translation
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added versioned contextual menu-profile identities derived from sizing templates and position/situation context.
+- Added a cold-path pseudo-harmonic off-tree translator with configurable distance threshold, versioned policy identity, exact legality checks, and exact target contributions.
+- Preserved observed-action metadata separately from the translated blueprint lookup action in request-local search sessions.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_action_abstraction.hpp`
+- `include/solver/multiway_search_session.hpp`
+- `src/solver/multiway_action_abstraction.cpp`
+- `src/solver/multiway_search_session.cpp`
+- `tests/test_multiway_action_abstraction.cpp`
+- `tests/test_multiway_search_session.cpp`
+
+### Validation
+
+- Added focused profile, translation-boundary, legality, and session-metadata coverage.
+- Tests were not run because this request did not ask for execution.
+
+### Limitations
+
+- The threshold is configurable; production tuning requires separate policy-quality evidence.
+
 ## P4 Test Coverage - Runtime lifecycle contracts
 
 **Status:** Complete

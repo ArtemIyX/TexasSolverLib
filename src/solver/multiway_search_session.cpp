@@ -61,6 +61,31 @@ MultiwayRangeBeliefUpdateResult MultiwaySearchSession::apply_observation(
     return beliefs_.apply_observation(static_cast<std::size_t>(seat), observation);
 }
 
+void MultiwaySearchSession::record_action_translation(MultiwayActionTranslation translation) {
+    if (translation.menu_profile_identity == 0U || translation.policy_version == 0U ||
+        translation.policy_identity == 0U ||
+        translation.status == MultiwayActionTranslationStatus::DeviationTooLarge ||
+        translation.observed_action.action_menu_id != 0U ||
+        translation.translated_action.action_menu_id == 0U) {
+        throw std::invalid_argument("multiway search session has an invalid action translation");
+    }
+    if (std::find(action_menu_.begin(), action_menu_.end(), translation.translated_action) == action_menu_.end()) {
+        throw std::invalid_argument("multiway search session translation is not bound to its action menu");
+    }
+    const auto state = MultiwayState::from_snapshot(coordinator_.root().public_state.betting);
+    const auto successor = state.apply(
+        translation.observed_action.action, translation.observed_action.target_street_contribution);
+    const auto actor = static_cast<std::size_t>(state.current_player());
+    if (successor.street_contributions()[actor] != translation.observed_action.target_street_contribution) {
+        throw std::invalid_argument("multiway search session translation has a non-exact observed target");
+    }
+    action_translation_ = std::move(translation);
+}
+
+const MultiwayActionTranslation* MultiwaySearchSession::action_translation() const noexcept {
+    return action_translation_ ? &*action_translation_ : nullptr;
+}
+
 MultiwaySearchSessionRowView MultiwaySearchSession::row_view() const noexcept {
     const auto& storage = coordinator_.storage();
     return {

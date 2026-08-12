@@ -44,6 +44,12 @@ struct MultiwayActionAbstractionContext {
 };
 
 struct MultiwayActionAbstractionConfig {
+    // Increment whenever a menu template or its contextual selection changes.
+    std::uint64_t menu_profile_version = 1U;
+    // Increment whenever pseudo-harmonic translation semantics change.
+    std::uint64_t translation_policy_version = 1U;
+    // Symmetric relative-distance limit in basis points: 2*|a-b|/(a+b).
+    std::uint16_t translation_max_pseudo_harmonic_distance_basis_points = 1000U;
     std::array<std::uint16_t, 3> first_bet_basis_points = {3300, 7500, 12500};
     std::array<std::uint16_t, 2> raise_basis_points = {7500, 12500};
     std::uint8_t multiway_first_bet_count = 2;
@@ -67,6 +73,25 @@ struct MultiwayActionAbstractionConfig {
     void validate() const;
 };
 
+enum class MultiwayActionTranslationStatus : std::uint8_t {
+    ExactMenuAction,
+    Translated,
+    DeviationTooLarge,
+};
+
+// The observed descriptor remains authoritative for public history and range
+// updates. translated_action is only a blueprint-policy lookup key.
+struct MultiwayActionTranslation {
+    MultiwayActionDescriptor observed_action{};
+    MultiwayActionDescriptor translated_action{};
+    MultiwayActionTranslationStatus status = MultiwayActionTranslationStatus::DeviationTooLarge;
+    std::uint64_t menu_profile_identity = 0U;
+    std::uint64_t policy_version = 0U;
+    std::uint64_t policy_identity = 0U;
+    double observed_scale = 0.0;
+    double translated_scale = 0.0;
+};
+
 class MultiwayActionAbstraction {
 public:
     explicit MultiwayActionAbstraction(MultiwayActionAbstractionConfig config = {});
@@ -81,6 +106,18 @@ public:
         const MultiwayBettingSnapshot& betting,
         std::uint64_t action_menu_id,
         MultiwayActionAbstractionContext context) const;
+
+    [[nodiscard]] std::uint64_t menu_profile_identity(
+        MultiwayActionAbstractionContext context = {}) const noexcept;
+
+    // Cold boundary for legal off-tree actions. Invalid actions are rejected;
+    // actions outside the configured distance remain untranslatable.
+    [[nodiscard]] MultiwayActionTranslation translate_observed_action(
+        const MultiwayBettingSnapshot& betting,
+        const std::vector<MultiwayActionDescriptor>& menu,
+        MultiwayAction observed_action,
+        int target_street_contribution,
+        MultiwayActionAbstractionContext context = {}) const;
 
     [[nodiscard]] static std::vector<MultiwayActionDescriptor> insert_exact_observed_action(
         const MultiwayBettingSnapshot& betting,

@@ -2,6 +2,7 @@
 #include "solver/multiway_public_builder.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <numeric>
@@ -13,6 +14,32 @@ namespace {
 
 bool is_aggressive(MultiwayAction action) noexcept {
     return action == MultiwayAction::Bet || action == MultiwayAction::Raise;
+}
+
+void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
+    constexpr std::uint64_t kPrime = 1099511628211ULL;
+    for (std::size_t index = 0U; index < sizeof(value); ++index) {
+        hash ^= static_cast<std::uint8_t>(value & 0xffU);
+        hash *= kPrime;
+        value >>= 8U;
+    }
+}
+
+double action_scale(const MultiwayState& state, const MultiwayActionDescriptor& action) noexcept {
+    const auto actor = static_cast<std::size_t>(state.current_player());
+    const auto contribution = state.street_contributions()[actor];
+    const auto call = std::max(0, state.current_bet() - contribution);
+    const auto pot = std::accumulate(state.contributions().begin(), state.contributions().end(), 0);
+    const auto reference = std::max(1, pot + call);
+    const auto increment = action.action == MultiwayAction::Bet
+        ? action.target_street_contribution - contribution
+        : action.target_street_contribution - state.current_bet();
+    return static_cast<double>(std::max(0, increment)) / static_cast<double>(reference);
+}
+
+double pseudo_harmonic_distance(double left, double right) noexcept {
+    const auto sum = left + right;
+    return sum <= 0.0 ? (left == right ? 0.0 : 2.0) : 2.0 * std::fabs(left - right) / sum;
 }
 
 int saturated_multiply_divide(int value, std::uint16_t basis_points) noexcept {
@@ -92,6 +119,10 @@ void normalize_menu(
 }  // namespace
 
 void MultiwayActionAbstractionConfig::validate() const {
+    if (menu_profile_version == 0U || translation_policy_version == 0U ||
+        translation_max_pseudo_harmonic_distance_basis_points > 20000U) {
+        throw std::invalid_argument("multiway action abstraction has an invalid version or translation threshold");
+    }
     if (multiway_first_bet_count == 0U || multiway_first_bet_count > first_bet_basis_points.size() ||
         three_way_first_bet_count == 0U || three_way_first_bet_count > first_bet_basis_points.size() ||
         heads_up_first_bet_count == 0U || heads_up_first_bet_count > first_bet_basis_points.size()) {
@@ -120,6 +151,31 @@ void MultiwayActionAbstractionConfig::validate() const {
     }
 }
 
+std::uint64_t MultiwayActionAbstraction::menu_profile_identity(
+    MultiwayActionAbstractionContext context) const noexcept {
+    constexpr std::uint64_t kOffset = 14695981039346656037ULL;
+    auto hash = kOffset;
+    append_u64(hash, config_.menu_profile_version);
+    append_u64(hash, config_.multiway_first_bet_count);
+    append_u64(hash, config_.three_way_first_bet_count);
+    append_u64(hash, config_.heads_up_first_bet_count);
+    append_u64(hash, static_cast<std::uint8_t>(context.preflop_situation));
+    append_u64(hash, static_cast<std::uint8_t>(context.relative_position));
+    append_u64(hash, static_cast<std::uint8_t>(context.postflop_sizing));
+    for (const auto value : config_.first_bet_basis_points) append_u64(hash, value);
+    for (const auto value : config_.raise_basis_points) append_u64(hash, value);
+    for (const auto value : config_.unopened_raise_to_big_blind_basis_points) append_u64(hash, value);
+    append_u64(hash, config_.single_open_in_position_basis_points);
+    append_u64(hash, config_.single_open_out_of_position_basis_points);
+    append_u64(hash, config_.open_caller_increment_big_blind_basis_points);
+    append_u64(hash, config_.three_bet_or_more_basis_points);
+    for (const auto value : config_.contextual_multiway_first_bet_basis_points) append_u64(hash, value);
+    for (const auto value : config_.contextual_three_way_first_bet_basis_points) append_u64(hash, value);
+    for (const auto value : config_.contextual_heads_up_first_bet_basis_points) append_u64(hash, value);
+    for (const auto value : config_.contextual_raise_basis_points) append_u64(hash, value);
+    return hash;
+}
+
 MultiwayActionAbstraction::MultiwayActionAbstraction(MultiwayActionAbstractionConfig config)
     : config_(config) {
     config_.validate();
@@ -129,6 +185,59 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
     const MultiwayBettingSnapshot& betting,
     std::uint64_t action_menu_id) const {
     return make_legal_actions(betting, action_menu_id, {});
+}
+
+MultiwayActionTranslation MultiwayActionAbstraction::translate_observed_action(
+    const MultiwayBettingSnapshot& betting,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    MultiwayAction observed_action,
+    int target_street_contribution,
+    MultiwayActionAbstractionContext context) const {
+    const auto state = MultiwayState::from_snapshot(betting);
+    const auto legal = state.legal_actions();
+    if (std::find(legal.begin(), legal.end(), observed_action) == legal.end()) {
+        throw std::invalid_argument("multiway observed action is not legal in this public state");
+    }
+    const auto actor = static_cast<std::size_t>(state.current_player());
+    const auto successor = state.apply(observed_action, target_street_contribution);
+    MultiwayActionTranslation result;
+    result.observed_action = {observed_action, 0U, successor.street_contributions()[actor], 0U};
+    result.menu_profile_identity = menu_profile_identity(context);
+    result.policy_version = config_.translation_policy_version;
+    result.policy_identity = result.menu_profile_identity;
+    append_u64(result.policy_identity, config_.translation_policy_version);
+    append_u64(result.policy_identity, config_.translation_max_pseudo_harmonic_distance_basis_points);
+
+    for (const auto& candidate : menu) {
+        const auto candidate_successor = state.apply(candidate.action, candidate.target_street_contribution);
+        if (candidate_successor.street_contributions()[actor] != candidate.target_street_contribution) {
+            throw std::invalid_argument("multiway translation menu has a non-exact action target");
+        }
+        if (candidate.action == result.observed_action.action &&
+            candidate.target_street_contribution == result.observed_action.target_street_contribution) {
+            result.translated_action = candidate;
+            result.status = MultiwayActionTranslationStatus::ExactMenuAction;
+            return result;
+        }
+    }
+    if (!is_aggressive(observed_action)) return result;
+
+    result.observed_scale = action_scale(state, result.observed_action);
+    double best_distance = std::numeric_limits<double>::infinity();
+    for (const auto& candidate : menu) {
+        if (candidate.action != observed_action || !is_aggressive(candidate.action)) continue;
+        const auto scale = action_scale(state, candidate);
+        const auto distance = pseudo_harmonic_distance(result.observed_scale, scale);
+        if (distance < best_distance ||
+            (distance == best_distance && candidate.target_street_contribution < result.translated_action.target_street_contribution)) {
+            best_distance = distance;
+            result.translated_action = candidate;
+            result.translated_scale = scale;
+        }
+    }
+    const auto threshold = static_cast<double>(config_.translation_max_pseudo_harmonic_distance_basis_points) / 10000.0;
+    if (best_distance <= threshold) result.status = MultiwayActionTranslationStatus::Translated;
+    return result;
 }
 
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_actions(

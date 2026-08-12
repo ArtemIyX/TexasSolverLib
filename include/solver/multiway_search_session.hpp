@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_solver.hpp"
@@ -84,6 +85,8 @@ public:
     [[nodiscard]] const std::vector<MultiwayActionDescriptor>& action_menu() const noexcept {
         return action_menu_;
     }
+    void record_action_translation(MultiwayActionTranslation translation);
+    [[nodiscard]] const MultiwayActionTranslation* action_translation() const noexcept;
     [[nodiscard]] const MultiwaySearchSessionRootMetadata& root_metadata() const noexcept {
         return root_metadata_;
     }
@@ -119,6 +122,7 @@ private:
     MultiwayRangeBeliefs beliefs_;
     const MultiwayBucketRegistry* buckets_ = nullptr;
     std::vector<MultiwayActionDescriptor> action_menu_;
+    std::optional<MultiwayActionTranslation> action_translation_;
     MultiwaySearchSessionRootMetadata root_metadata_{};
     std::optional<MultiwaySearchSessionCleanSnapshot> clean_snapshot_;
     struct ActualHandFreeze {

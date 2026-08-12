@@ -153,3 +153,34 @@ TEST_CASE(multiway_action_abstraction_deduplicates_and_compacts_exact_insertions
         EXPECT_EQ(next.street_contributions()[0], inserted[index].target_street_contribution);
     }
 }
+
+TEST_CASE(multiway_action_abstraction_profiles_context_and_translates_small_off_tree_bets) {
+    const auto state = flop_root(3U, 2000, 100);
+    const core::MultiwayActionAbstraction abstraction;
+    const auto compatibility = abstraction.make_legal_actions(state.snapshot(), 39U);
+    const auto contextual = abstraction.make_legal_actions(
+        state.snapshot(), 40U, {core::MultiwayPreflopSituation::Auto,
+            core::MultiwayRelativePosition::Unknown, core::MultiwayPostflopSizingMode::Contextual});
+
+    EXPECT_NE(abstraction.menu_profile_identity(), abstraction.menu_profile_identity(
+        {core::MultiwayPreflopSituation::Auto, core::MultiwayRelativePosition::Unknown,
+            core::MultiwayPostflopSizingMode::Contextual}));
+    EXPECT_TRUE(contains(compatibility, core::MultiwayAction::Bet, 100));
+    const auto translated = abstraction.translate_observed_action(
+        state.snapshot(), compatibility, core::MultiwayAction::Bet, 105);
+    EXPECT_EQ(translated.status, core::MultiwayActionTranslationStatus::Translated);
+    EXPECT_EQ(translated.observed_action.target_street_contribution, 105);
+    EXPECT_EQ(translated.translated_action.target_street_contribution, 100);
+    EXPECT_TRUE(translated.menu_profile_identity != 0U);
+    EXPECT_EQ(translated.policy_version, 1U);
+    EXPECT_TRUE(translated.policy_identity != 0U);
+
+    const auto too_large = abstraction.translate_observed_action(
+        state.snapshot(), compatibility, core::MultiwayAction::Bet, 125);
+    EXPECT_EQ(too_large.status, core::MultiwayActionTranslationStatus::DeviationTooLarge);
+    const auto all_in = abstraction.translate_observed_action(
+        state.snapshot(), compatibility, core::MultiwayAction::AllIn, 1900);
+    EXPECT_EQ(all_in.status, core::MultiwayActionTranslationStatus::ExactMenuAction);
+    EXPECT_THROW(abstraction.translate_observed_action(
+        state.snapshot(), contextual, core::MultiwayAction::Raise, 100), std::invalid_argument);
+}

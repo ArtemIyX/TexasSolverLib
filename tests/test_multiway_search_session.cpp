@@ -175,6 +175,28 @@ TEST_CASE(multiway_search_session_initializes_request_local_postflop_state) {
     EXPECT_NEAR(first.weight(combo_id({card(2U, 0U), card(3U, 0U)})), 0.0, 0.0);
 }
 
+TEST_CASE(multiway_search_session_retains_observed_and_translated_action_metadata) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession session(request, {&buckets}, 23U);
+    const core::MultiwayActionAbstraction abstraction;
+    const auto translated = abstraction.translate_observed_action(
+        root.public_state.betting, root.public_state.legal_actions,
+        root.public_state.legal_actions.front().action,
+        root.public_state.legal_actions.front().target_street_contribution);
+
+    session.record_action_translation(translated);
+    const auto* recorded = session.action_translation();
+    EXPECT_TRUE(recorded != nullptr);
+    EXPECT_EQ(recorded->observed_action.action_menu_id, 0U);
+    EXPECT_EQ(recorded->translated_action, root.public_state.legal_actions.front());
+
+    auto unrelated = translated;
+    ++unrelated.translated_action.action_menu_id;
+    EXPECT_THROW(session.record_action_translation(unrelated), std::invalid_argument);
+}
+
 TEST_CASE(multiway_search_session_isolates_request_data_and_belief_updates) {
     auto root = make_root(core::Street::Flop);
     const auto first_hole = root.private_ranges.ranges[0][0].hole;

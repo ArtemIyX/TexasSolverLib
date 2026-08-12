@@ -96,6 +96,8 @@ using ::core::MultiwayAction;
 using ::core::MultiwayActionAbstraction;
 using ::core::MultiwayActionAbstractionConfig;
 using ::core::MultiwayActionAbstractionContext;
+using ::core::MultiwayActionTranslation;
+using ::core::MultiwayActionTranslationStatus;
 using ::core::MultiwayPreflopSituation;
 using ::core::MultiwayRelativePosition;
 using ::core::MultiwayPostflopSizingMode;
