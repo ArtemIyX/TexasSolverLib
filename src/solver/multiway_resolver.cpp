@@ -406,7 +406,9 @@ RuntimeSearchOutcome run_search(
             blueprint_provider ? &*blueprint_provider : nullptr);
         MultiwayRootBatchRunner runner(
             traversal, session.coordinator(), config.search_limits.worker_count,
-            config.search_limits.max_worker_delta_entries);
+            config.search_limits.max_worker_delta_entries,
+            config.search_profile_mode);
+        MultiwaySearchProfile search_profile(config.search_profile_mode);
 
         MultiwayResolverBudget budget({
             request.deadline,
@@ -426,6 +428,7 @@ RuntimeSearchOutcome run_search(
             const auto batch_result = runner.run(
                 batch_first_trajectory, config.trajectories_per_batch,
                 request.sampling_seed ^ public_state_id);
+            search_profile.merge(batch_result.profile);
             first_trajectory += batch_result.trajectories_attempted;
             if (!budget.accept_clean_batch(
                     batch_result.clean,
@@ -435,15 +438,20 @@ RuntimeSearchOutcome run_search(
                     session.coordinator().storage().value_count())) {
                 return RuntimeSearchOutcome::NoCleanBatch;
             }
-            if (!session.capture_clean_snapshot(
-                    batch_result.clean,
-                    static_cast<std::uint64_t>(batch) + 1U,
-                    batch_first_trajectory,
-                    batch_result.trajectories_attempted,
-                    batch_result.trajectories_accepted,
-                    batch_result.delta_entries_merged,
-                    config.search_limits.worker_count)) {
-                return RuntimeSearchOutcome::NoCleanBatch;
+            {
+                MultiwaySearchProfileScope profile_scope(
+                    &search_profile, MultiwaySearchProfileStage::RootExport);
+                if (!session.capture_clean_snapshot(
+                        batch_result.clean,
+                        static_cast<std::uint64_t>(batch) + 1U,
+                        batch_first_trajectory,
+                        batch_result.trajectories_attempted,
+                        batch_result.trajectories_accepted,
+                        batch_result.delta_entries_merged,
+                        config.search_limits.worker_count)) {
+                    diagnostics->search_profile = search_profile.snapshot();
+                    return RuntimeSearchOutcome::NoCleanBatch;
+                }
             }
             const auto* snapshot = session.clean_snapshot();
             if (snapshot == nullptr) return RuntimeSearchOutcome::NoCleanBatch;
@@ -456,6 +464,7 @@ RuntimeSearchOutcome run_search(
             diagnostics->search_worker_count = snapshot->worker_count;
             diagnostics->search_admitted_rows = snapshot->rows.row_count;
             diagnostics->search_admitted_values = snapshot->rows.value_count;
+            diagnostics->search_profile = search_profile.snapshot();
             if (budget.deadline_reached()) break;
         }
         if (diagnostics->completed_batches == 0U) {
@@ -473,6 +482,7 @@ RuntimeSearchOutcome run_search(
         }
         if (!normalize(*policy)) return RuntimeSearchOutcome::Failed;
         diagnostics->deadline_expired = budget.deadline_expired() || budget.deadline_reached();
+        diagnostics->search_profile = search_profile.snapshot();
         return RuntimeSearchOutcome::Completed;
     } catch (const std::exception&) {
         policy->clear();
@@ -509,6 +519,10 @@ void MultiwayResolverConfig::validate() const {
     }
     if (!valid_search_mode(search_mode)) {
         throw std::invalid_argument("multiway resolver has an invalid search mode");
+    }
+    if (search_profile_mode != MultiwaySearchProfileMode::Disabled &&
+        search_profile_mode != MultiwaySearchProfileMode::Checkpoints) {
+        throw std::invalid_argument("multiway resolver has an invalid search profile mode");
     }
     if (active_search_min_seats < 2U || active_search_min_seats > active_search_max_seats ||
         active_search_max_seats > 6U || active_search_max_menu_actions == 0U ||

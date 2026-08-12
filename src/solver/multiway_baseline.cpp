@@ -234,6 +234,7 @@ MultiwayTraversalBaselineReport record_multiway_traversal_baseline(
         difference(diagnostics.worker_delta_entries_merged, before.worker_delta_entries_merged),
         batch.minimum_worker_trajectories,
         batch.maximum_worker_trajectories,
+        batch.profile,
         measurements,
     };
 }

@@ -170,7 +170,12 @@ struct TraversalBaselineFixture {
           buckets(traversal_buckets()),
           evaluator{traversal_leaf, nullptr},
           traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U),
-          runner(traversal, coordinator, 1U, 128U) {}
+          runner(
+              traversal,
+              coordinator,
+              1U,
+              128U,
+              core::MultiwaySearchProfileMode::Checkpoints) {}
 
     core::MultiwayActionAbstraction abstraction;
     core::MultiwayRootSnapshot root;
@@ -298,6 +303,32 @@ TEST_CASE(multiway_traversal_baseline_reports_per_run_deltas_and_repeatable_outp
         core::serialize_multiway_traversal_baseline(first),
         core::serialize_multiway_traversal_baseline(repeat));
     EXPECT_EQ(second.measurements.observed_memory_bytes, 202U);
+    EXPECT_TRUE(first.search_profile.profiled());
+    EXPECT_EQ(
+        first.search_profile.checkpoint(core::MultiwaySearchProfileStage::PrivateDealSampling).calls,
+        3U);
+    EXPECT_TRUE(
+        first.search_profile.checkpoint(core::MultiwaySearchProfileStage::PublicGraphAdmission).calls > 0U);
+    EXPECT_TRUE(
+        first.search_profile.checkpoint(core::MultiwaySearchProfileStage::RowLookup).calls > 0U);
+    EXPECT_EQ(
+        first.search_profile.checkpoint(core::MultiwaySearchProfileStage::DeltaMerge).calls,
+        1U);
+}
+
+TEST_CASE(multiway_search_profile_ranks_checkpoint_time_without_text_keys) {
+    core::MultiwaySearchProfile profile(core::MultiwaySearchProfileMode::Checkpoints);
+    profile.add(core::MultiwaySearchProfileStage::RowLookup, 20U, 2U);
+    profile.add(core::MultiwaySearchProfileStage::DeltaMerge, 90U, 1U);
+    profile.add(core::MultiwaySearchProfileStage::ContinuationLeaf, 40U, 3U);
+
+    const auto snapshot = profile.snapshot();
+    const auto ranking = core::rank_multiway_search_profile(snapshot);
+    EXPECT_TRUE(snapshot.profiled());
+    EXPECT_EQ(ranking[0].stage, core::MultiwaySearchProfileStage::DeltaMerge);
+    EXPECT_EQ(ranking[1].stage, core::MultiwaySearchProfileStage::ContinuationLeaf);
+    EXPECT_EQ(ranking[2].stage, core::MultiwaySearchProfileStage::RowLookup);
+    EXPECT_EQ(snapshot.checkpoint(core::MultiwaySearchProfileStage::RowLookup).calls, 2U);
 }
 
 TEST_CASE(multiway_traversal_baseline_marks_the_max_row_fixture_and_reuses_its_row) {

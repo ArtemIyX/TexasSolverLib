@@ -16,6 +16,7 @@
 #include "solver/multiway_bucket_artifact.hpp"
 #include "solver/multiway_future_bucket.hpp"
 #include "solver/multiway_memory.hpp"
+#include "solver/multiway_search_profile.hpp"
 #include "solver/multiway_scheduler.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
@@ -126,6 +127,12 @@ using ::core::MultiwayMemoryEstimate;
 using ::core::MultiwayMemoryPreflight;
 using ::core::MultiwayMemoryStatus;
 using ::core::preflight_multiway_memory;
+using ::core::MultiwaySearchProfileCheckpoint;
+using ::core::MultiwaySearchProfileMode;
+using ::core::MultiwaySearchProfileRankingEntry;
+using ::core::MultiwaySearchProfileSnapshot;
+using ::core::MultiwaySearchProfileStage;
+using ::core::rank_multiway_search_profile;
 using ::core::MultiwayScheduler;
 using ::core::MultiwayTrajectoryRange;
 using ::core::MultiwayWorkerBatch;

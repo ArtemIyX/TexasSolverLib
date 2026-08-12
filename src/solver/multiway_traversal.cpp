@@ -160,6 +160,7 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     Probability public_chance_reach = 1.0;
     Probability public_sampling_reach = 1.0;
     double iteration_weight = 1.0;
+    MultiwaySearchProfile* profile = nullptr;
     bool accepted = true;
 };
 
@@ -286,6 +287,8 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
             root_->leaf_model_version,
         });
     }
+    MultiwaySearchProfileScope profile_scope(
+        context.profile, MultiwaySearchProfileStage::ContinuationLeaf);
     const auto value = (*leaf_evaluator_)({
         &state.betting,
         &state.board,
@@ -324,20 +327,33 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     if (action_count > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
         throw std::length_error("multiway traversal action menu exceeds the compact traversal limit");
     }
-    const auto& table = buckets_->table_hunl(state.betting.street, state.board);
-    const auto bucket = table.lookup_hunl(context.terminal->sampled_hole(*context.deal, actor));
+    const MultiwayBucketTable* table_ptr = nullptr;
+    std::uint32_t bucket = 0U;
+    {
+        MultiwaySearchProfileScope profile_scope(
+            context.profile, MultiwaySearchProfileStage::RowLookup);
+        table_ptr = &buckets_->table_hunl(state.betting.street, state.board);
+        bucket = table_ptr->lookup_hunl(context.terminal->sampled_hole(*context.deal, actor));
+    }
+    const auto& table = *table_ptr;
     const MultiwayInfosetId infoset = {state.id, actor};
-    coordinator_->admit_infoset_row({
-        infoset,
-        table.bucket_count(),
-        static_cast<std::uint8_t>(action_count),
-    });
+    {
+        MultiwaySearchProfileScope profile_scope(
+            context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
+        coordinator_->admit_infoset_row({
+            infoset,
+            table.bucket_count(),
+            static_cast<std::uint8_t>(action_count),
+        });
+    }
     std::array<Probability, MULTIWAY_MAX_TRAVERSAL_ACTIONS> strategy{};
     const auto lookup = actor == context.traverser || blueprint_policy_ == nullptr
         ? MultiwayBlueprintLookupStatus::Missing
         : blueprint_policy_->strategy_into(
             infoset, bucket, state.legal_actions.data(), action_count, strategy.data());
     if (lookup != MultiwayBlueprintLookupStatus::Hit) {
+        MultiwaySearchProfileScope profile_scope(
+            context.profile, MultiwaySearchProfileStage::RegretMatching);
         coordinator_->regret_matched_strategy_into(
             infoset, bucket, strategy.data(), action_count);
     }
@@ -349,6 +365,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             state.legal_actions[action].target_street_contribution);
         std::vector<MultiwayActionDescriptor> child_actions;
         if (next.current_player() >= 0) {
+            MultiwaySearchProfileScope profile_scope(
+                context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
             child_actions = action_abstraction_->make_legal_actions(
                 next.snapshot(), root_->action_menu_id());
             if (child_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
@@ -356,10 +374,17 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
                     "multiway generated action menu exceeds the compact traversal limit");
             }
         }
-        const auto child = MultiwayPublicBuilder::make_action_child(
-            state, static_cast<std::uint32_t>(action), std::move(child_actions));
-        coordinator_->admit_public_state(child);
+        MultiwayPublicStateDescriptor child;
+        {
+            MultiwaySearchProfileScope profile_scope(
+                context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
+            child = MultiwayPublicBuilder::make_action_child(
+                state, static_cast<std::uint32_t>(action), std::move(child_actions));
+            coordinator_->admit_public_state(child);
+        }
         if (next.is_terminal()) {
+            MultiwaySearchProfileScope profile_scope(
+                context.profile, MultiwaySearchProfileStage::TerminalSettlement);
             return context.terminal->resolve_admitted_terminal(child, *context.deal)
                 .utilities[static_cast<std::size_t>(context.traverser)];
         }
@@ -435,11 +460,21 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
     std::uint32_t decision_depth,
     std::uint32_t public_chance_depth,
     TraversalContext& context) const {
-    const auto sampled = context.terminal->sample_admitted_public_board_chance(
-        state, *context.deal, context.random_state);
-    const auto chance_child = MultiwayPublicBuilder::make_board_chance_child(
-        state, sampled, {});
-    coordinator_->admit_public_state(chance_child);
+    MultiwaySampledPublicBoardChance sampled;
+    {
+        MultiwaySearchProfileScope profile_scope(
+            context.profile, MultiwaySearchProfileStage::PublicChanceSampling);
+        sampled = context.terminal->sample_admitted_public_board_chance(
+            state, *context.deal, context.random_state);
+    }
+    MultiwayPublicStateDescriptor chance_child;
+    {
+        MultiwaySearchProfileScope profile_scope(
+            context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
+        chance_child = MultiwayPublicBuilder::make_board_chance_child(
+            state, sampled, {});
+        coordinator_->admit_public_state(chance_child);
+    }
 
     const auto saved_chance_reach = context.public_chance_reach;
     const auto saved_sampling_reach = context.public_sampling_reach;
@@ -450,6 +485,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
     Value value = 0.0;
     if (chance_child.board_runout.chance_only_runout) {
         if (chance_child.board.size() == 5U) {
+            MultiwaySearchProfileScope profile_scope(
+                context.profile, MultiwaySearchProfileStage::TerminalSettlement);
             value = context.terminal->resolve_admitted_terminal(chance_child, *context.deal)
                 .utilities[static_cast<std::size_t>(context.traverser)];
         } else {
@@ -459,15 +496,24 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
     } else {
         const auto transition =
             context.terminal->apply_admitted_public_street_transition(chance_child);
-        auto next_actions = action_abstraction_->make_legal_actions(
-            transition.transition.betting, root_->action_menu_id());
+        auto next_actions = [&] {
+            MultiwaySearchProfileScope profile_scope(
+                context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
+            return action_abstraction_->make_legal_actions(
+                transition.transition.betting, root_->action_menu_id());
+        }();
         if (next_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
             throw std::length_error(
                 "multiway generated action menu exceeds the compact traversal limit");
         }
-        const auto transition_child = MultiwayPublicBuilder::make_street_transition_child(
-            chance_child, transition, std::move(next_actions));
-        coordinator_->admit_public_state(transition_child);
+        const auto transition_child = [&] {
+            MultiwaySearchProfileScope profile_scope(
+                context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
+            auto child = MultiwayPublicBuilder::make_street_transition_child(
+                chance_child, transition, std::move(next_actions));
+            coordinator_->admit_public_state(child);
+            return child;
+        }();
         if (decision_depth < max_decision_depth_) {
             value = traverse_decision(
                 transition_child, decision_depth, next_chance_depth, context);
@@ -486,14 +532,19 @@ bool MultiwayRootExternalSamplingTraversal::run(
     std::uint64_t trajectory_id,
     std::uint64_t seed,
     MultiwayWorkerDeltaStream& stream,
-    double iteration_weight) const {
+    double iteration_weight,
+    MultiwaySearchProfile* profile) const {
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
         root_state.legal_actions.empty()) {
         throw std::invalid_argument("multiway root traversal requires a valid root seat traverser");
     }
-    const auto deal = terminal_.sample_private_deal(seed);
+    const auto deal = [&] {
+        MultiwaySearchProfileScope profile_scope(
+            profile, MultiwaySearchProfileStage::PrivateDealSampling);
+        return terminal_.sample_private_deal(seed);
+    }();
     const auto sampled_reach = terminal_.sampled_reach(deal);
     TraversalContext context;
     context.terminal = &terminal_;
@@ -507,6 +558,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     context.private_chance_reach = sampled_reach.chance_reach;
     context.private_sampling_reach = sampled_reach.proposal_reach;
     context.iteration_weight = iteration_weight;
+    context.profile = profile;
     const auto initial_size = stream.size();
     (void)traverse_decision(root_state, 0U, 0U, context);
     if (!context.accepted) stream.rewind(initial_size);
@@ -528,11 +580,13 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     MultiwayRootExternalSamplingTraversal traversal,
     MultiwaySolverCoordinator& coordinator,
     std::uint32_t worker_count,
-    std::size_t worker_delta_capacity)
+    std::size_t worker_delta_capacity,
+    MultiwaySearchProfileMode profile_mode)
     : traversal_(std::move(traversal)),
       coordinator_(&coordinator),
       worker_count_(worker_count),
-      worker_delta_capacity_(worker_delta_capacity) {
+      worker_delta_capacity_(worker_delta_capacity),
+      profile_mode_(profile_mode) {
     if (worker_count_ == 0U || worker_delta_capacity_ == 0U) {
         throw std::invalid_argument("multiway root batch runner requires positive worker limits");
     }
@@ -563,7 +617,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         throw std::invalid_argument("multiway batch iteration weight must be finite and positive");
     }
     const auto batches = MultiwayScheduler::partition_deterministic(trajectory_count, worker_count_);
-    for (auto& scratch : worker_scratch_) scratch.reset();
+    for (auto& scratch : worker_scratch_) scratch.reset(profile_mode_);
 
     std::atomic<bool> cancelled{false};
     std::exception_ptr worker_error;
@@ -587,7 +641,8 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
                         trajectory_id,
                         mix_seed(seed, trajectory_id),
                         scratch.stream,
-                        iteration_weight)) {
+                        iteration_weight,
+                        &scratch.profile)) {
                     ++scratch.accepted;
                 } else {
                     ++scratch.discarded;
@@ -615,6 +670,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     if (worker_error != nullptr) std::rethrow_exception(worker_error);
 
     MultiwayRootBatchResult result;
+    MultiwaySearchProfile batch_profile(profile_mode_);
     result.minimum_worker_trajectories = std::numeric_limits<std::uint64_t>::max();
     for (const auto& scratch : worker_scratch_) {
         result.trajectories_attempted += scratch.attempted;
@@ -623,11 +679,17 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         result.delta_entries_merged += scratch.stream.size();
         result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
         result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
+        batch_profile.merge(scratch.profile.snapshot());
     }
     if (result.minimum_worker_trajectories == std::numeric_limits<std::uint64_t>::max()) {
         result.minimum_worker_trajectories = 0U;
     }
-    coordinator_->merge_worker_streams(worker_stream_views_);
+    {
+        MultiwaySearchProfileScope profile_scope(
+            &batch_profile, MultiwaySearchProfileStage::DeltaMerge);
+        coordinator_->merge_worker_streams(worker_stream_views_);
+    }
+    result.profile = batch_profile.snapshot();
     result.clean = true;
     return result;
 }

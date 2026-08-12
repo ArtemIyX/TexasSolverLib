@@ -6,6 +6,7 @@
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_scheduler.hpp"
+#include "solver/multiway_search_profile.hpp"
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
 
@@ -58,7 +59,8 @@ public:
         std::uint64_t trajectory_id,
         std::uint64_t seed,
         MultiwayWorkerDeltaStream& stream,
-        double iteration_weight = 1.0) const;
+        double iteration_weight = 1.0,
+        MultiwaySearchProfile* profile = nullptr) const;
 
     [[nodiscard]] PlayerId root_traverser() const noexcept {
         return root_->public_state.betting.current_player;
@@ -108,6 +110,7 @@ struct MultiwayRootBatchResult {
     std::uint64_t delta_entries_merged = 0;
     std::uint64_t minimum_worker_trajectories = 0;
     std::uint64_t maximum_worker_trajectories = 0;
+    MultiwaySearchProfileSnapshot profile{};
     bool clean = false;
 };
 
@@ -120,7 +123,8 @@ public:
         MultiwayRootExternalSamplingTraversal traversal,
         MultiwaySolverCoordinator& coordinator,
         std::uint32_t worker_count,
-        std::size_t worker_delta_capacity);
+        std::size_t worker_delta_capacity,
+        MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled);
 
     [[nodiscard]] MultiwayRootBatchResult run(
         std::uint64_t first_trajectory_id,
@@ -140,12 +144,14 @@ private:
         std::uint64_t attempted = 0;
         std::uint64_t accepted = 0;
         std::uint64_t discarded = 0;
+        MultiwaySearchProfile profile{};
 
-        void reset() noexcept {
+        void reset(MultiwaySearchProfileMode profile_mode) noexcept {
             stream.rewind(0U);
             attempted = 0;
             accepted = 0;
             discarded = 0;
+            profile.reset(profile_mode);
         }
     };
 
@@ -153,6 +159,7 @@ private:
     MultiwaySolverCoordinator* coordinator_ = nullptr;
     std::uint32_t worker_count_ = 0;
     std::size_t worker_delta_capacity_ = 0;
+    MultiwaySearchProfileMode profile_mode_ = MultiwaySearchProfileMode::Disabled;
     std::vector<WorkerScratch> worker_scratch_;
     std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
     std::int32_t test_worker_failure_index_ = -1;

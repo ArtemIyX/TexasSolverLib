@@ -85,6 +85,7 @@ struct MultiwayTraversalBaselineReport {
     std::uint64_t worker_delta_entries_merged = 0;
     std::uint64_t minimum_worker_trajectories = 0;
     std::uint64_t maximum_worker_trajectories = 0;
+    MultiwaySearchProfileSnapshot search_profile{};
     MultiwayBaselineMeasurements measurements{};
 };
 

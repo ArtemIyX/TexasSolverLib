@@ -7,6 +7,7 @@
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_solver.hpp"
+#include "solver/multiway_search_profile.hpp"
 
 #include <array>
 #include <chrono>
@@ -127,6 +128,7 @@ struct MultiwayResolverDiagnostics {
     std::uint32_t search_worker_count = 0;
     std::size_t search_admitted_rows = 0U;
     std::size_t search_admitted_values = 0U;
+    MultiwaySearchProfileSnapshot search_profile{};
     bool deadline_expired = false;
     bool used_fallback = false;
     bool policy_normalized = false;
@@ -181,6 +183,7 @@ struct MultiwayResolverConfig {
     std::uint8_t active_search_min_seats = 2U;
     std::uint8_t active_search_max_seats = 6U;
     std::uint32_t active_search_max_menu_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
+    MultiwaySearchProfileMode search_profile_mode = MultiwaySearchProfileMode::Disabled;
 
     void validate() const;
 };
