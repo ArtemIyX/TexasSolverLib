@@ -4,6 +4,26 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P5.3-P5.6 Test Coverage - Local expansion and future bucket artifacts
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added 66 deterministic dedicated contract cases for P5.3 and P5.6.
+- Covers expansion admission, limits, invalid inputs, feature determinism, profile validation, artifact reproducibility, round trips, and malformed payload rejection.
+
+### Files
+
+- `tests/test_multiway_phase5_p53_p56.cpp`
+
+### Validation
+
+- Tests were added but not run because this request did not ask for command execution.
+
+### Limitations
+
+- No runtime performance or policy-quality calibration is asserted.
+
 ## P5.3-P5.6 - Local expansion, lossless keys, and future bucket artifacts
 
 **Status:** Complete
