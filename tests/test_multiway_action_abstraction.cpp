@@ -162,7 +162,7 @@ TEST_CASE(multiway_action_abstraction_profiles_context_and_translates_small_off_
         state.snapshot(), 40U, {core::MultiwayPreflopSituation::Auto,
             core::MultiwayRelativePosition::Unknown, core::MultiwayPostflopSizingMode::Contextual});
 
-    EXPECT_NE(abstraction.menu_profile_identity(), abstraction.menu_profile_identity(
+    EXPECT_TRUE(abstraction.menu_profile_identity() != abstraction.menu_profile_identity(
         {core::MultiwayPreflopSituation::Auto, core::MultiwayRelativePosition::Unknown,
             core::MultiwayPostflopSizingMode::Contextual}));
     EXPECT_TRUE(contains(compatibility, core::MultiwayAction::Bet, 100));
