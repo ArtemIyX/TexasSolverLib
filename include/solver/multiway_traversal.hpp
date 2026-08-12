@@ -113,6 +113,7 @@ struct MultiwayRootBatchResult {
     std::uint64_t minimum_worker_trajectories = 0;
     std::uint64_t maximum_worker_trajectories = 0;
     MultiwaySearchProfileSnapshot profile{};
+    MultiwayRunMetadata run{};
     bool clean = false;
 };
 

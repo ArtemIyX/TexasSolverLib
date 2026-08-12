@@ -315,6 +315,9 @@ TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
     EXPECT_EQ(result.diagnostics.search_worker_count, 1U);
     EXPECT_TRUE(result.diagnostics.search_admitted_rows > 0U);
     EXPECT_TRUE(result.diagnostics.search_admitted_values > 0U);
+    EXPECT_TRUE(result.diagnostics.search_schedule_fingerprint != 0U);
+    EXPECT_TRUE(result.diagnostics.search_merged_stream_fingerprint != 0U);
+    EXPECT_TRUE(result.diagnostics.search_bitwise_deterministic);
     EXPECT_TRUE(result.diagnostics.policy_normalized);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }

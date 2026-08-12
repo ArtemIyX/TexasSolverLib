@@ -541,6 +541,10 @@ RuntimeSearchOutcome run_search(
             diagnostics->search_worker_count = snapshot->worker_count;
             diagnostics->search_admitted_rows = snapshot->rows.row_count;
             diagnostics->search_admitted_values = snapshot->rows.value_count;
+            diagnostics->search_schedule_fingerprint = batch_result.run.schedule_fingerprint;
+            diagnostics->search_merged_stream_fingerprint =
+                batch_result.run.merged_stream_fingerprint;
+            diagnostics->search_bitwise_deterministic = batch_result.run.bitwise_deterministic;
             diagnostics->search_profile = search_profile.snapshot();
             if (budget.deadline_reached()) break;
         }

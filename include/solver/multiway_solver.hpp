@@ -3,6 +3,7 @@
 #include "games/multiway_private.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway_cfr.hpp"
+#include "solver/multiway_scheduler.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -178,6 +179,7 @@ struct MultiwaySolverLimits {
     std::size_t max_sparse_rows = 0;
     std::size_t max_sparse_values = 0;
     std::size_t max_worker_delta_entries = 0;
+    MultiwayRunMode run_mode = MultiwayRunMode::Deterministic;
 
     void validate() const;
 };
@@ -334,6 +336,7 @@ struct MultiwaySolveDiagnostics {
     std::uint64_t public_states_admitted = 0;
     std::uint64_t sparse_rows_admitted = 0;
     std::uint64_t worker_delta_entries_merged = 0;
+    std::uint64_t last_merged_stream_fingerprint = 0U;
     double traversal_seconds = 0.0;
     double merge_seconds = 0.0;
     double export_seconds = 0.0;

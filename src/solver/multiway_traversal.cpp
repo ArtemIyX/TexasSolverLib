@@ -565,17 +565,6 @@ bool MultiwayRootExternalSamplingTraversal::run(
     return context.accepted;
 }
 
-namespace {
-
-std::uint64_t mix_seed(std::uint64_t seed, std::uint64_t trajectory_id) noexcept {
-    auto value = seed + 0x9e3779b97f4a7c15ULL + trajectory_id;
-    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
-    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
-    return value ^ (value >> 31U);
-}
-
-}  // namespace
-
 MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     MultiwayRootExternalSamplingTraversal traversal,
     MultiwaySolverCoordinator& coordinator,
@@ -645,7 +634,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
                 if (traversal_.run(
                         traversal_.traverser_for_trajectory(trajectory_id),
                         trajectory_id,
-                        mix_seed(seed, trajectory_id),
+                        multiway_deterministic_trajectory_seed(seed, trajectory_id),
                         scratch.stream,
                         iteration_weight,
                         &scratch.profile)) {
@@ -675,6 +664,13 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     if (worker_error != nullptr) std::rethrow_exception(worker_error);
 
     MultiwayRootBatchResult result;
+    result.run.mode = MultiwayRunMode::Deterministic;
+    result.run.worker_count = worker_count_;
+    result.run.base_seed = seed;
+    result.run.first_trajectory_id = first_trajectory_id;
+    result.run.trajectory_count = trajectory_count;
+    result.run.schedule_fingerprint = multiway_deterministic_schedule_fingerprint(
+        worker_count_, seed, first_trajectory_id, trajectory_count);
     MultiwaySearchProfile batch_profile(profile_mode_);
     result.minimum_worker_trajectories = std::numeric_limits<std::uint64_t>::max();
     for (const auto& scratch : worker_scratch_) {
@@ -694,6 +690,8 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
             &batch_profile, MultiwaySearchProfileStage::DeltaMerge);
         coordinator_->merge_worker_streams(worker_stream_views_);
     }
+    result.run.merged_stream_fingerprint =
+        coordinator_->diagnostics().last_merged_stream_fingerprint;
     result.profile = batch_profile.snapshot();
     result.clean = true;
     return result;

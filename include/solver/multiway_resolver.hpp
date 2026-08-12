@@ -135,6 +135,9 @@ struct MultiwayResolverDiagnostics {
     std::uint64_t search_estimated_memory_bytes = 0U;
     std::uint64_t search_admitted_memory_bytes = 0U;
     bool search_memory_degraded = false;
+    std::uint64_t search_schedule_fingerprint = 0U;
+    std::uint64_t search_merged_stream_fingerprint = 0U;
+    bool search_bitwise_deterministic = false;
     bool deadline_expired = false;
     bool used_fallback = false;
     bool policy_normalized = false;

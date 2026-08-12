@@ -3,6 +3,44 @@
 #include <algorithm>
 
 namespace core {
+namespace {
+
+void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
+    for (std::size_t byte = 0U; byte < sizeof(value); ++byte) {
+        hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
+        hash *= 1099511628211ULL;
+    }
+}
+
+}  // namespace
+
+std::uint64_t multiway_deterministic_trajectory_seed(
+    std::uint64_t base_seed,
+    std::uint64_t trajectory_id) noexcept {
+    auto value = base_seed + 0x9e3779b97f4a7c15ULL + trajectory_id;
+    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31U);
+}
+
+std::uint64_t multiway_deterministic_schedule_fingerprint(
+    std::uint32_t worker_count,
+    std::uint64_t base_seed,
+    std::uint64_t first_trajectory_id,
+    std::uint64_t trajectory_count) noexcept {
+    std::uint64_t hash = 1469598103934665603ULL;
+    hash_u64(static_cast<std::uint64_t>(MultiwayRunMode::Deterministic), hash);
+    hash_u64(worker_count, hash);
+    hash_u64(base_seed, hash);
+    hash_u64(first_trajectory_id, hash);
+    hash_u64(trajectory_count, hash);
+    hash_u64(MULTIWAY_PARTITION_VERSION, hash);
+    hash_u64(MULTIWAY_TRAJECTORY_SEED_VERSION, hash);
+    hash_u64(MULTIWAY_ACTION_SAMPLING_VERSION, hash);
+    hash_u64(MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION, hash);
+    hash_u64(MULTIWAY_MERGE_ORDER_VERSION, hash);
+    return hash == 0U ? 1U : hash;
+}
 
 std::size_t MultiwayScheduler::partition_deterministic_into(
     std::uint64_t trajectory_count,

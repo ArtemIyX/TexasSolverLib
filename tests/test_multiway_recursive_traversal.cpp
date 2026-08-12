@@ -353,25 +353,57 @@ TEST_CASE(multiway_root_batch_runner_partitions_workers_and_merges_in_fixed_orde
 
 TEST_CASE(multiway_root_batch_runner_is_deterministic_across_worker_partitions) {
     ParallelRunnerFixture single_worker(1U);
-    ParallelRunnerFixture three_workers(3U);
+    ParallelRunnerFixture repeated_single_worker(1U);
+    ParallelRunnerFixture two_workers(2U);
+    ParallelRunnerFixture four_workers(4U);
 
     const auto expected = single_worker.runner.run(50U, 6U, 0x1234U);
-    const auto actual = three_workers.runner.run(50U, 6U, 0x1234U);
-    EXPECT_EQ(expected.trajectories_attempted, actual.trajectories_attempted);
-    EXPECT_EQ(expected.trajectories_accepted, actual.trajectories_accepted);
-    EXPECT_EQ(expected.trajectories_discarded, actual.trajectories_discarded);
-    EXPECT_EQ(expected.delta_entries_merged, actual.delta_entries_merged);
+    const auto repeat = repeated_single_worker.runner.run(50U, 6U, 0x1234U);
+    const auto two = two_workers.runner.run(50U, 6U, 0x1234U);
+    const auto four = four_workers.runner.run(50U, 6U, 0x1234U);
+    EXPECT_EQ(expected.trajectories_attempted, repeat.trajectories_attempted);
+    EXPECT_EQ(expected.trajectories_accepted, two.trajectories_accepted);
+    EXPECT_EQ(expected.trajectories_discarded, four.trajectories_discarded);
+    EXPECT_EQ(expected.delta_entries_merged, two.delta_entries_merged);
+    EXPECT_EQ(expected.delta_entries_merged, four.delta_entries_merged);
+    EXPECT_EQ(expected.run.schedule_fingerprint, repeat.run.schedule_fingerprint);
+    EXPECT_TRUE(expected.run.schedule_fingerprint != two.run.schedule_fingerprint);
+    EXPECT_TRUE(two.run.schedule_fingerprint != four.run.schedule_fingerprint);
+    EXPECT_EQ(expected.run.merged_stream_fingerprint, repeat.run.merged_stream_fingerprint);
+    EXPECT_EQ(expected.run.merged_stream_fingerprint, two.run.merged_stream_fingerprint);
+    EXPECT_EQ(expected.run.merged_stream_fingerprint, four.run.merged_stream_fingerprint);
+    EXPECT_TRUE(expected.run.bitwise_deterministic);
+    EXPECT_EQ(expected.run.partition_version, core::MULTIWAY_PARTITION_VERSION);
+    EXPECT_EQ(expected.run.action_sampling_version, core::MULTIWAY_ACTION_SAMPLING_VERSION);
+    EXPECT_EQ(expected.run.public_chance_order_version, core::MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION);
+    EXPECT_EQ(expected.run.merge_order_version, core::MULTIWAY_MERGE_ORDER_VERSION);
 
     const auto expected_policy = single_worker.coordinator.export_root_policy();
-    const auto actual_policy = three_workers.coordinator.export_root_policy();
-    EXPECT_EQ(expected_policy.actions.size(), actual_policy.actions.size());
+    const auto repeat_policy = repeated_single_worker.coordinator.export_root_policy();
+    const auto two_policy = two_workers.coordinator.export_root_policy();
+    const auto four_policy = four_workers.coordinator.export_root_policy();
+    EXPECT_EQ(expected_policy.actions.size(), two_policy.actions.size());
     for (std::size_t action = 0; action < expected_policy.actions.size(); ++action) {
-        EXPECT_EQ(expected_policy.actions[action].action, actual_policy.actions[action].action);
-        EXPECT_NEAR(
-            expected_policy.actions[action].probability,
-            actual_policy.actions[action].probability,
-            1e-12);
+        EXPECT_EQ(expected_policy.actions[action].action, repeat_policy.actions[action].action);
+        EXPECT_EQ(expected_policy.actions[action].action, two_policy.actions[action].action);
+        EXPECT_EQ(expected_policy.actions[action].action, four_policy.actions[action].action);
+        EXPECT_EQ(expected_policy.actions[action].probability, repeat_policy.actions[action].probability);
+        EXPECT_EQ(expected_policy.actions[action].probability, two_policy.actions[action].probability);
+        EXPECT_EQ(expected_policy.actions[action].probability, four_policy.actions[action].probability);
     }
+}
+
+TEST_CASE(multiway_recursive_workers_publish_deltas_without_mutating_shared_row_values) {
+    TraversalFixture fixture(2U);
+    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+
+    EXPECT_TRUE(fixture.traversal.run(0, 99U, 0x12345678U, stream));
+    EXPECT_TRUE(stream.size() > 0U);
+    const auto strategy_sums = fixture.coordinator.export_root_strategy_sums();
+    EXPECT_TRUE(!strategy_sums.empty());
+    for (const auto value : strategy_sums) EXPECT_EQ(value, 0.0);
+    EXPECT_EQ(fixture.coordinator.diagnostics().worker_delta_entries_merged, 0U);
+    EXPECT_EQ(fixture.coordinator.diagnostics().last_merged_stream_fingerprint, 0U);
 }
 
 TEST_CASE(multiway_root_batch_runner_rethrows_worker_failure_without_merging) {

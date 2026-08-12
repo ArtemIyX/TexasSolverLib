@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <exception>
 #include <limits>
 #include <stdexcept>
@@ -214,6 +215,35 @@ bool delta_is_finite(const MultiwayWorkerDelta& delta) noexcept {
     return std::isfinite(delta.regret) && std::isfinite(delta.strategy_sum);
 }
 
+void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
+    for (std::size_t byte = 0U; byte < sizeof(value); ++byte) {
+        hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
+        hash *= 1099511628211ULL;
+    }
+}
+
+std::uint64_t delta_stream_fingerprint(
+    const std::vector<MultiwayWorkerDelta>& deltas) noexcept {
+    std::uint64_t hash = 1469598103934665603ULL;
+    hash_u64(MULTIWAY_MERGE_ORDER_VERSION, hash);
+    hash_u64(deltas.size(), hash);
+    for (const auto& delta : deltas) {
+        hash_u64(delta.infoset.public_state.value, hash);
+        hash_u64(static_cast<std::uint64_t>(static_cast<std::int64_t>(delta.infoset.seat)), hash);
+        hash_u64(delta.bucket, hash);
+        hash_u64(delta.action, hash);
+        hash_u64(delta.trajectory_id, hash);
+        std::uint64_t regret_bits = 0U;
+        std::uint64_t strategy_bits = 0U;
+        static_assert(sizeof(regret_bits) == sizeof(delta.regret));
+        std::memcpy(&regret_bits, &delta.regret, sizeof(regret_bits));
+        std::memcpy(&strategy_bits, &delta.strategy_sum, sizeof(strategy_bits));
+        hash_u64(regret_bits, hash);
+        hash_u64(strategy_bits, hash);
+    }
+    return hash == 0U ? 1U : hash;
+}
+
 void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state) {
     state.betting.validate();
     if (state.id.value == 0 || state.canonical_history_id == 0 ||
@@ -363,6 +393,9 @@ void MultiwaySolverLimits::validate() const {
     if (max_worker_delta_entries >
         std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)) {
         throw std::overflow_error("multiway aggregate worker delta capacity overflows size_t");
+    }
+    if (run_mode != MultiwayRunMode::Deterministic) {
+        throw std::invalid_argument("multiway solver supports only deterministic run mode");
     }
 }
 
@@ -731,6 +764,7 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
             merge_deltas_.end(), stream->deltas().begin(), stream->deltas().end());
     }
     std::sort(merge_deltas_.begin(), merge_deltas_.end(), delta_less);
+    const auto stream_fingerprint = delta_stream_fingerprint(merge_deltas_);
 
     for (std::size_t begin = 0; begin < merge_deltas_.size();) {
         const auto& first = merge_deltas_[begin];
@@ -775,6 +809,7 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
         storage_.strategy_sum_[cell.index] = cell.strategy_sum;
     }
     diagnostics_.worker_delta_entries_merged += delta_count;
+    diagnostics_.last_merged_stream_fingerprint = stream_fingerprint;
 }
 
 MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy() const {

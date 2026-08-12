@@ -1,4 +1,5 @@
 #include "solver/multiway_scheduler.hpp"
+#include "solver/multiway_solver.hpp"
 #include "test_harness.hpp"
 
 TEST_CASE(multiway_scheduler_partitions_trajectories_in_fixed_order) {
@@ -39,4 +40,28 @@ TEST_CASE(multiway_scheduler_writes_reusable_fixed_partition_storage) {
     EXPECT_EQ(batches[0].trajectories.size(), 1U);
     EXPECT_EQ(batches[1].trajectories.size(), 1U);
     EXPECT_EQ(core::MultiwayScheduler::partition_deterministic_into(1U, 1U, nullptr, 0U), 0U);
+}
+
+TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity) {
+    const auto first_seed = core::multiway_deterministic_trajectory_seed(0x1234U, 17U);
+    EXPECT_EQ(first_seed, core::multiway_deterministic_trajectory_seed(0x1234U, 17U));
+    EXPECT_TRUE(first_seed != core::multiway_deterministic_trajectory_seed(0x1234U, 18U));
+
+    const auto first = core::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U);
+    const auto repeat = core::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U);
+    EXPECT_EQ(first, repeat);
+    EXPECT_TRUE(first != core::multiway_deterministic_schedule_fingerprint(2U, 7U, 9U, 32U));
+    EXPECT_TRUE(first != core::multiway_deterministic_schedule_fingerprint(4U, 8U, 9U, 32U));
+}
+
+TEST_CASE(multiway_solver_limits_reject_unimplemented_relaxed_run_modes) {
+    core::MultiwaySolverLimits limits;
+    limits.worker_count = 1U;
+    limits.trajectories_per_batch = 1U;
+    limits.max_public_states = 1U;
+    limits.max_sparse_rows = 1U;
+    limits.max_sparse_values = 1U;
+    limits.max_worker_delta_entries = 1U;
+    limits.run_mode = static_cast<core::MultiwayRunMode>(255U);
+    EXPECT_THROW(limits.validate(), std::invalid_argument);
 }
