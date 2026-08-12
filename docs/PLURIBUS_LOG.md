@@ -16,6 +16,7 @@ until its implementation and required validation are finished.
 - Added the direct bucket-artifact include required by the resolver fixture.
 - Made the terminal fixture's hand strengths explicit `Strength` values.
 - Added 886 differential assertions and candidate-configuration rejection guards across the P8 fixture matrix.
+- Generated range differential cards from the valid HUNL card encoding interval.
 
 ### Files
 

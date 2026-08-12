@@ -107,9 +107,9 @@ void run_terminal_differential_case(std::uint8_t index) {
 }
 
 void run_range_differential_case(std::uint8_t index) {
-    const auto first = index;
-    const auto second = static_cast<std::uint8_t>(index + 1U);
-    const auto alternate = static_cast<std::uint8_t>(index + 2U);
+    const auto first = static_cast<std::uint8_t>(core::HUNL_CARD_FIRST + index);
+    const auto second = static_cast<std::uint8_t>(first + 1U);
+    const auto alternate = static_cast<std::uint8_t>(first + 2U);
     const std::array<core::MultiwayRangeBeliefSuppliedEntry, 3> entries = {{
         {{first, second}, static_cast<double>(index + 1U)},
         {{second, first}, static_cast<double>(index + 2U)},
