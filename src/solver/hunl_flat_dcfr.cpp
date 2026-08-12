@@ -1,4 +1,5 @@
 #include "solver/hunl_flat_dcfr.hpp"
+#include "solver/hunl_sampled_simd.hpp"
 #include "util/iteration_range.hpp"
 
 #include "solver/dcfr.hpp"
@@ -712,6 +713,15 @@ void HUNLFlatDCFR::worker_strategy_stage(std::size_t worker_index) {
                     scratch.row_weights.data(),
                     meta.action_count);
             }
+            continue;
+        }
+
+        if (infoset_table_.precision() == HUNLFlatStoragePrecision::Float64) {
+            regret_matching_action_major_f64(
+                infoset_table_.regret(meta.id),
+                meta.action_count,
+                meta.bucket_count,
+                infoset_table_.current_strategy_mut(meta.id));
             continue;
         }
 

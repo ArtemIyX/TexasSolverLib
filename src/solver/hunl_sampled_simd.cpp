@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 
 #if defined(__AVX2__)
 #include <immintrin.h>
@@ -23,6 +24,98 @@ bool use_sampled_avx2() noexcept {
 }
 
 #if defined(__AVX2__)
+void regret_matching_action_major_f32_avx2(
+    const float* regret,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    float* strategy) {
+    const auto zero = _mm256_setzero_ps();
+    const auto uniform = _mm256_set1_ps(1.0f / static_cast<float>(action_count));
+    for (std::uint32_t bucket = 0; bucket + 7U < bucket_count; bucket += 8U) {
+        auto total = _mm256_setzero_ps();
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            const auto values = _mm256_loadu_ps(regret + offset);
+            if (_mm256_movemask_ps(_mm256_cmp_ps(values, values, _CMP_UNORD_Q)) != 0) {
+                regret_matching_action_major_f32_scalar(regret, action_count, bucket_count, strategy);
+                return;
+            }
+            const auto positive = _mm256_max_ps(values, zero);
+            _mm256_storeu_ps(strategy + offset, positive);
+            total = _mm256_add_ps(total, positive);
+        }
+        const auto has_positive = _mm256_cmp_ps(total, zero, _CMP_GT_OQ);
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            const auto normalized = _mm256_div_ps(_mm256_loadu_ps(strategy + offset), total);
+            _mm256_storeu_ps(strategy + offset, _mm256_blendv_ps(uniform, normalized, has_positive));
+        }
+    }
+    for (std::uint32_t bucket = bucket_count - bucket_count % 8U; bucket < bucket_count; ++bucket) {
+        float total = 0.0f;
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            if (std::isnan(regret[offset])) {
+                regret_matching_action_major_f32_scalar(regret, action_count, bucket_count, strategy);
+                return;
+            }
+            const auto positive = std::max(regret[offset], 0.0f);
+            strategy[offset] = positive;
+            total += positive;
+        }
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            strategy[offset] = total > 0.0f ? strategy[offset] / total : 1.0f / static_cast<float>(action_count);
+        }
+    }
+}
+
+void regret_matching_action_major_f64_avx2(
+    const double* regret,
+    std::uint32_t action_count,
+    std::uint32_t bucket_count,
+    double* strategy) {
+    const auto zero = _mm256_setzero_pd();
+    const auto uniform = _mm256_set1_pd(1.0 / static_cast<double>(action_count));
+    for (std::uint32_t bucket = 0; bucket + 3U < bucket_count; bucket += 4U) {
+        auto total = _mm256_setzero_pd();
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            const auto values = _mm256_loadu_pd(regret + offset);
+            if (_mm256_movemask_pd(_mm256_cmp_pd(values, values, _CMP_UNORD_Q)) != 0) {
+                regret_matching_action_major_f64_scalar(regret, action_count, bucket_count, strategy);
+                return;
+            }
+            const auto positive = _mm256_max_pd(values, zero);
+            _mm256_storeu_pd(strategy + offset, positive);
+            total = _mm256_add_pd(total, positive);
+        }
+        const auto has_positive = _mm256_cmp_pd(total, zero, _CMP_GT_OQ);
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            const auto normalized = _mm256_div_pd(_mm256_loadu_pd(strategy + offset), total);
+            _mm256_storeu_pd(strategy + offset, _mm256_blendv_pd(uniform, normalized, has_positive));
+        }
+    }
+    for (std::uint32_t bucket = bucket_count - bucket_count % 4U; bucket < bucket_count; ++bucket) {
+        double total = 0.0;
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            if (std::isnan(regret[offset])) {
+                regret_matching_action_major_f64_scalar(regret, action_count, bucket_count, strategy);
+                return;
+            }
+            const auto positive = std::max(regret[offset], 0.0);
+            strategy[offset] = positive;
+            total += positive;
+        }
+        for (std::uint32_t action = 0; action < action_count; ++action) {
+            const auto offset = static_cast<std::size_t>(action) * bucket_count + bucket;
+            strategy[offset] = total > 0.0 ? strategy[offset] / total : 1.0 / static_cast<double>(action_count);
+        }
+    }
+}
+
 void accumulate_average_strategy_action_major_f32_avx2(
     const float* strategy,
     const float* reach_or_weight,
@@ -209,6 +302,12 @@ void regret_matching_action_major_f32(
     std::uint32_t action_count,
     std::uint32_t bucket_count,
     float* strategy) {
+#if defined(__AVX2__)
+    if (use_sampled_avx2()) {
+        regret_matching_action_major_f32_avx2(regret, action_count, bucket_count, strategy);
+        return;
+    }
+#endif
     regret_matching_action_major_f32_scalar(regret, action_count, bucket_count, strategy);
 }
 
@@ -250,6 +349,12 @@ void regret_matching_action_major_f64(
     std::uint32_t action_count,
     std::uint32_t bucket_count,
     double* strategy) {
+#if defined(__AVX2__)
+    if (use_sampled_avx2()) {
+        regret_matching_action_major_f64_avx2(regret, action_count, bucket_count, strategy);
+        return;
+    }
+#endif
     regret_matching_action_major_f64_scalar(regret, action_count, bucket_count, strategy);
 }
 

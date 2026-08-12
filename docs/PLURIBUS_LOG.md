@@ -4,6 +4,32 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P7.5 - Optimize row math only after profile evidence
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Profiled a 20-iteration, 1326-bucket HUNL flat run; strategy, regret, and average-row stages accounted for 18.36 ms of 33.22 ms solve time.
+- Added AVX2 action-major regret matching with scalar fallback and routed Float64 action-major DCFR strategy rows through the dispatched kernel.
+- Preserved scalar NaN behavior and retained Float32 and hand-action paths.
+
+### Files
+
+- `src/solver/hunl_sampled_simd.cpp`
+- `src/solver/hunl_flat_dcfr.cpp`
+- `tests/test_hunl_p75_row_math.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Built and ran `test_hunl_p75_row_math`: 54 tests passed.
+- Built and ran `test_hunl_flat_dcfr`: 35 tests passed.
+- Completed static code review with no actionable findings.
+
+### Limitations
+
+- AVX2 compilation remains blocked by a pre-existing intrinsic type error in `src/util/simd.cpp`; no local SIMD speed claim is made.
+
 ## P7.1-P7.4 - Dedicated contract test expansion
 
 **Status:** Complete
