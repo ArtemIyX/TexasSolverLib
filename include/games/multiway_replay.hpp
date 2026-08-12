@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_rules.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::games::multiway {
 
 // Public, deterministic event log. Decision seeds are retained even though
 // engine action application itself is deterministic, so policy sampling can be
@@ -53,4 +55,4 @@ struct MultiwayHandHistory {
 // and ordered replay events. No caller-provided state is trusted.
 [[nodiscard]] MultiwayState replay_multiway_hand(const MultiwayHandHistory& history);
 
-}  // namespace core
+}  // namespace texas::games::multiway

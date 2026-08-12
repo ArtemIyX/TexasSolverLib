@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_continuation_policy_kind.hpp"
 #include "solver/multiway_solver.hpp"
 
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // This key deliberately contains only public state, the acting seat, and the
 // abstract future bucket. It must not acquire private cards or range weights.
@@ -36,4 +38,4 @@ private:
     MultiwayContinuationPolicyKind policy_ = MultiwayContinuationPolicyKind::Blueprint;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

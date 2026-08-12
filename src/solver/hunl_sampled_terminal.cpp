@@ -1,6 +1,6 @@
 #include "solver/hunl_sampled_terminal.hpp"
 
-namespace core {
+namespace texas::solver::hunl {
 
 double HUNLSampledTerminalEvaluator::evaluate_terminal(
     const HUNLSampledTerminalInput& input,
@@ -27,4 +27,4 @@ double HUNLSampledTerminalEvaluator::evaluate_showdown(
     return sign * showdown_utility;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

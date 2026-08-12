@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <algorithm>
 
-namespace core {
+namespace texas::solver::hunl {
 
 void HUNLSampledProfile::reset() noexcept {
     snapshot_ = {};
@@ -103,4 +103,4 @@ std::size_t HUNLSampledProfile::format_summary(char* buffer, std::size_t buffer_
     return count < buffer_size ? count : buffer_size - 1;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

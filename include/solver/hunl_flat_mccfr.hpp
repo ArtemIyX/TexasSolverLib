@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_flat_expected_value.hpp"
 #include "solver/hunl_sampled_config.hpp"
@@ -21,7 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 class HUNLFlatMCCFR {
 public:
@@ -466,4 +468,4 @@ private:
     std::vector<std::vector<std::uint32_t>> node_action_baseline_counts_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

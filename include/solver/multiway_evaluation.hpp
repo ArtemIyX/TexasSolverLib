@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_cfr.hpp"
 #include "solver/multiway_model_identity.hpp"
@@ -10,7 +12,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 inline constexpr std::size_t kMultiwayEvaluationMaxSeats = 6U;
 inline constexpr std::size_t kMultiwayEvaluationMaxCandidates = 64U;
@@ -234,4 +236,4 @@ struct MultiwayEvaluationResult {
 [[nodiscard]] std::vector<MultiwayEvaluationFailureFixture>
 multiway_evaluation_failure_fixtures();
 
-}  // namespace core
+}  // namespace texas::solver::multiway

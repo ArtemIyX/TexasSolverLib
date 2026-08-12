@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -155,7 +155,7 @@ HUNLFlatBucketMap HUNLFlatBucketMap::from_abstraction(
         }
         for (const auto& hole : enumerate_live_hands(entry.board)) {
             validate_bucket_lookup_context(entry.board, hole, entry.street);
-            const auto bucket = core::lookup_bucket(map.tables_, entry.board, hole, entry.street);
+            const auto bucket = texas::lookup_bucket(map.tables_, entry.board, hole, entry.street);
             if (bucket < 0 || static_cast<std::size_t>(bucket) >= entry.bucket_hand_counts.size()) {
                 continue;
             }
@@ -189,7 +189,7 @@ std::int32_t HUNLFlatBucketMap::lookup_bucket(
     const std::array<std::uint8_t, 2>& hole) const {
     const auto& bucket_entry = entry(infoset_id);
     validate_bucket_lookup_context(bucket_entry.board, hole, bucket_entry.street);
-    return core::lookup_bucket(tables_, bucket_entry.board, hole, bucket_entry.street);
+    return texas::lookup_bucket(tables_, bucket_entry.board, hole, bucket_entry.street);
 }
 
 std::uint32_t HUNLFlatBucketMap::bucket_count(InfosetId infoset_id) const {
@@ -311,4 +311,4 @@ HUNLFlatBucketEntry& HUNLFlatBucketMap::entry_mut(InfosetId infoset_id) {
     return *entries_[infoset_id.value];
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

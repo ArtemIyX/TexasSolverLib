@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "ranges/propagation.hpp"
 #include "util/abstraction.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::ranges {
 
 struct BucketProjectionResult {
     CanonicalRange bucket_range;
@@ -32,4 +34,4 @@ struct BucketProjectionResult {
     const AbstractionTables& tables,
     Street street);
 
-}  // namespace core
+}  // namespace texas::ranges

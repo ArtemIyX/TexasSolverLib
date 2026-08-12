@@ -20,20 +20,20 @@ namespace {
 
 constexpr double TOL = 1e-6;
 
-core::HUNLState make_lazy_root_state() {
-    auto config = std::make_shared<core::HUNLConfig>();
-    config->starting_street = core::Street::Flop;
+texas::HUNLState make_lazy_root_state() {
+    auto config = std::make_shared<texas::HUNLConfig>();
+    config->starting_street = texas::Street::Flop;
     config->initial_board = {
-        core::card_to_int(14, 0),
-        core::card_to_int(13, 1),
-        core::card_to_int(2, 2),
+        texas::card_to_int(14, 0),
+        texas::card_to_int(13, 1),
+        texas::card_to_int(2, 2),
     };
     config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {core::card_to_int(12, 0), core::card_to_int(11, 1)},
-        {core::card_to_int(10, 2), core::card_to_int(9, 3)},
+        {texas::card_to_int(12, 0), texas::card_to_int(11, 1)},
+        {texas::card_to_int(10, 2), texas::card_to_int(9, 3)},
     }};
-    auto state = core::HUNLState::initial(config);
-    state.street = core::Street::Turn;
+    auto state = texas::HUNLState::initial(config);
+    state.street = texas::Street::Turn;
     state.cur_player = -1;
     state.pending_board_deals = 1;
     state.current_street_tokens.clear();
@@ -41,142 +41,142 @@ core::HUNLState make_lazy_root_state() {
     return state;
 }
 
-core::HUNLState make_sampled_facing_bet_state() {
-    auto config = std::make_shared<core::HUNLConfig>();
+texas::HUNLState make_sampled_facing_bet_state() {
+    auto config = std::make_shared<texas::HUNLConfig>();
     config->starting_stack = 1000;
     config->big_blind = 100;
-    config->starting_street = core::Street::River;
+    config->starting_street = texas::Street::River;
     config->initial_board = {
-        core::card_to_int(2, 0),
-        core::card_to_int(3, 1),
-        core::card_to_int(4, 2),
-        core::card_to_int(8, 3),
-        core::card_to_int(9, 0),
+        texas::card_to_int(2, 0),
+        texas::card_to_int(3, 1),
+        texas::card_to_int(4, 2),
+        texas::card_to_int(8, 3),
+        texas::card_to_int(9, 0),
     };
     config->initial_pot = 200;
     config->initial_contributions = {100, 100};
     config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {core::card_to_int(14, 1), core::card_to_int(14, 2)},
-        {core::card_to_int(13, 1), core::card_to_int(13, 2)},
+        {texas::card_to_int(14, 1), texas::card_to_int(14, 2)},
+        {texas::card_to_int(13, 1), texas::card_to_int(13, 2)},
     }};
     config->river_bet_fractions = std::vector<double>{1.0};
     config->postflop_raise_cap = 1;
     config->include_all_in = false;
 
-    const auto root = core::HUNLState::initial(config);
-    return root.apply(core::ACTION_BET_33);
+    const auto root = texas::HUNLState::initial(config);
+    return root.apply(texas::ACTION_BET_33);
 }
 
-core::HUNLState make_suit_symmetric_chance_state() {
-    auto config = std::make_shared<core::HUNLConfig>();
-    config->starting_street = core::Street::Flop;
+texas::HUNLState make_suit_symmetric_chance_state() {
+    auto config = std::make_shared<texas::HUNLConfig>();
+    config->starting_street = texas::Street::Flop;
     config->initial_board = {
-        core::card_to_int(14, 0),
-        core::card_to_int(14, 1),
-        core::card_to_int(14, 2),
+        texas::card_to_int(14, 0),
+        texas::card_to_int(14, 1),
+        texas::card_to_int(14, 2),
     };
     config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {core::card_to_int(13, 0), core::card_to_int(13, 1)},
-        {core::card_to_int(12, 0), core::card_to_int(12, 1)},
+        {texas::card_to_int(13, 0), texas::card_to_int(13, 1)},
+        {texas::card_to_int(12, 0), texas::card_to_int(12, 1)},
     }};
-    auto state = core::HUNLState::initial(config);
-    state.street = core::Street::Turn;
+    auto state = texas::HUNLState::initial(config);
+    state.street = texas::Street::Turn;
     state.cur_player = -1;
     state.pending_board_deals = 1;
     return state;
 }
 
-core::HUNLState make_sampled_tie_showdown_state() {
-    auto config = std::make_shared<core::HUNLConfig>();
+texas::HUNLState make_sampled_tie_showdown_state() {
+    auto config = std::make_shared<texas::HUNLConfig>();
     config->starting_stack = 1000;
     config->big_blind = 100;
-    config->starting_street = core::Street::River;
+    config->starting_street = texas::Street::River;
     config->initial_board = {
-        core::card_to_int(10, 0),
-        core::card_to_int(11, 0),
-        core::card_to_int(12, 0),
-        core::card_to_int(13, 0),
-        core::card_to_int(14, 0),
+        texas::card_to_int(10, 0),
+        texas::card_to_int(11, 0),
+        texas::card_to_int(12, 0),
+        texas::card_to_int(13, 0),
+        texas::card_to_int(14, 0),
     };
     config->initial_pot = 200;
     config->initial_contributions = {100, 100};
     config->initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {core::card_to_int(2, 1), core::card_to_int(3, 1)},
-        {core::card_to_int(4, 2), core::card_to_int(5, 2)},
+        {texas::card_to_int(2, 1), texas::card_to_int(3, 1)},
+        {texas::card_to_int(4, 2), texas::card_to_int(5, 2)},
     }};
     config->include_all_in = false;
     config->bet_size_fractions.clear();
     config->river_bet_fractions = std::vector<double>{};
 
-    return core::HUNLState::initial(config)
-        .apply(core::ACTION_CHECK)
-        .apply(core::ACTION_CHECK);
+    return texas::HUNLState::initial(config)
+        .apply(texas::ACTION_CHECK)
+        .apply(texas::ACTION_CHECK);
 }
 
 TEST_CASE(hunl_sampled_config_defaults_validate) {
-    const core::HUNLSampledSolverConfig config;
-    const auto validation = core::validate_sampled_config(config);
+    const texas::HUNLSampledSolverConfig config;
+    const auto validation = texas::validate_sampled_config(config);
 
     EXPECT_TRUE(validation.ok);
-    EXPECT_EQ(config.precision, core::HUNLFlatStoragePrecision::Float32);
-    EXPECT_EQ(config.layout, core::HUNLFlatValueLayout::InfosetActionHand);
+    EXPECT_EQ(config.precision, texas::HUNLFlatStoragePrecision::Float32);
+    EXPECT_EQ(config.layout, texas::HUNLFlatValueLayout::InfosetActionHand);
     EXPECT_TRUE(!config.use_public_chance_isomorphism);
     EXPECT_TRUE(config.enable_memory_guardrails);
     EXPECT_TRUE(config.memory_warning_bytes < config.memory_fail_bytes);
 }
 
 TEST_CASE(hunl_sampled_config_rejects_unimplemented_float64_precision) {
-    auto config = core::HUNLSampledSolverConfig{};
-    config.precision = core::HUNLFlatStoragePrecision::Float64;
+    auto config = texas::HUNLSampledSolverConfig{};
+    config.precision = texas::HUNLFlatStoragePrecision::Float64;
 
-    const auto validation = core::validate_sampled_config(config);
+    const auto validation = texas::validate_sampled_config(config);
     EXPECT_TRUE(!validation.ok);
-    EXPECT_THROW(core::validate_sampled_config_or_throw(config), std::invalid_argument);
-    EXPECT_THROW(core::HUNLSampledSolver(config), std::invalid_argument);
+    EXPECT_THROW(texas::validate_sampled_config_or_throw(config), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledSolver(config), std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_config_rejects_unimplemented_compressed16_precision) {
-    auto config = core::HUNLSampledSolverConfig{};
-    config.precision = core::HUNLFlatStoragePrecision::Compressed16;
+    auto config = texas::HUNLSampledSolverConfig{};
+    config.precision = texas::HUNLFlatStoragePrecision::Compressed16;
 
-    const auto validation = core::validate_sampled_config(config);
+    const auto validation = texas::validate_sampled_config(config);
     EXPECT_TRUE(!validation.ok);
-    EXPECT_THROW(core::validate_sampled_config_or_throw(config), std::invalid_argument);
-    EXPECT_THROW(core::HUNLSampledSolver(config), std::invalid_argument);
+    EXPECT_THROW(texas::validate_sampled_config_or_throw(config), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledSolver(config), std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_storage_rejects_precision_that_views_cannot_represent) {
     EXPECT_THROW(
-        core::HUNLSampledStorage(
-            core::HUNLFlatValueLayout::InfosetActionHand,
-            core::HUNLFlatStoragePrecision::Float64),
+        texas::HUNLSampledStorage(
+            texas::HUNLFlatValueLayout::InfosetActionHand,
+            texas::HUNLFlatStoragePrecision::Float64),
         std::invalid_argument);
     EXPECT_THROW(
-        core::HUNLSampledStorage(
-            core::HUNLFlatValueLayout::InfosetActionHand,
-            core::HUNLFlatStoragePrecision::Compressed16),
+        texas::HUNLSampledStorage(
+            texas::HUNLFlatValueLayout::InfosetActionHand,
+            texas::HUNLFlatStoragePrecision::Compressed16),
         std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_storage_rejects_twenty_invalid_layout_values) {
     for (std::uint8_t raw = 2U; raw < 22U; ++raw) {
-        const auto layout = static_cast<core::HUNLFlatValueLayout>(raw);
+        const auto layout = static_cast<texas::HUNLFlatValueLayout>(raw);
         EXPECT_THROW(
-            core::HUNLSampledStorage(
+            texas::HUNLSampledStorage(
                 layout,
-                core::HUNLFlatStoragePrecision::Float32),
+                texas::HUNLFlatStoragePrecision::Float32),
             std::invalid_argument);
 
-        core::HUNLSampledSolverConfig config;
+        texas::HUNLSampledSolverConfig config;
         config.layout = layout;
-        EXPECT_TRUE(!core::validate_sampled_config(config).ok);
+        EXPECT_TRUE(!texas::validate_sampled_config(config).ok);
     }
 }
 
 TEST_CASE(hunl_sampled_storage_rejects_more_than_twenty_invalid_row_shapes) {
-    const core::HUNLSampledInfosetShape base{
-        core::InfosetId{71}, 0, core::Street::Flop, 2, 2};
-    std::vector<core::HUNLSampledInfosetShape> invalid;
+    const texas::HUNLSampledInfosetShape base{
+        texas::InfosetId{71}, 0, texas::Street::Flop, 2, 2};
+    std::vector<texas::HUNLSampledInfosetShape> invalid;
     for (int player = -10; player < 0; ++player) {
         auto shape = base;
         shape.player = player;
@@ -189,7 +189,7 @@ TEST_CASE(hunl_sampled_storage_rejects_more_than_twenty_invalid_row_shapes) {
     }
     for (std::uint8_t raw = 4U; raw < 9U; ++raw) {
         auto shape = base;
-        shape.street = static_cast<core::Street>(raw);
+        shape.street = static_cast<texas::Street>(raw);
         invalid.push_back(shape);
     }
     {
@@ -199,7 +199,7 @@ TEST_CASE(hunl_sampled_storage_rejects_more_than_twenty_invalid_row_shapes) {
     }
     {
         auto shape = base;
-        shape.bucket_count = core::HUNL_SAMPLED_MAX_BUCKET_COUNT + 1U;
+        shape.bucket_count = texas::HUNL_SAMPLED_MAX_BUCKET_COUNT + 1U;
         invalid.push_back(shape);
     }
     {
@@ -208,9 +208,9 @@ TEST_CASE(hunl_sampled_storage_rejects_more_than_twenty_invalid_row_shapes) {
         invalid.push_back(shape);
     }
     for (std::uint16_t actions =
-             static_cast<std::uint16_t>(core::HUNL_SAMPLED_MAX_ACTION_COUNT) + 1U;
+             static_cast<std::uint16_t>(texas::HUNL_SAMPLED_MAX_ACTION_COUNT) + 1U;
          actions <= static_cast<std::uint16_t>(
-             core::HUNL_SAMPLED_MAX_ACTION_COUNT) + 5U;
+             texas::HUNL_SAMPLED_MAX_ACTION_COUNT) + 5U;
          ++actions) {
         auto shape = base;
         shape.action_count = static_cast<std::uint8_t>(actions);
@@ -219,7 +219,7 @@ TEST_CASE(hunl_sampled_storage_rejects_more_than_twenty_invalid_row_shapes) {
 
     EXPECT_TRUE(invalid.size() > 20U);
     for (const auto& shape : invalid) {
-        core::HUNLSampledStorage storage;
+        texas::HUNLSampledStorage storage;
         EXPECT_THROW(storage.ensure_row(shape), std::invalid_argument);
         EXPECT_EQ(storage.row_count(), 0U);
         EXPECT_EQ(storage.total_value_count(), 0U);
@@ -227,16 +227,16 @@ TEST_CASE(hunl_sampled_storage_rejects_more_than_twenty_invalid_row_shapes) {
 }
 
 TEST_CASE(hunl_sampled_storage_accepts_twenty_valid_boundary_combinations) {
-    core::HUNLSampledStorage storage;
+    texas::HUNLSampledStorage storage;
     for (std::uint32_t index = 0; index < 20U; ++index) {
-        const auto street = static_cast<core::Street>(index % 4U);
+        const auto street = static_cast<texas::Street>(index % 4U);
         const auto row = storage.ensure_row({
-            core::InfosetId{100U + index},
-            static_cast<core::PlayerId>(index % 2U),
+            texas::InfosetId{100U + index},
+            static_cast<texas::PlayerId>(index % 2U),
             street,
             1U + index,
             static_cast<std::uint8_t>(
-                1U + index % core::HUNL_SAMPLED_MAX_ACTION_COUNT),
+                1U + index % texas::HUNL_SAMPLED_MAX_ACTION_COUNT),
         });
         EXPECT_TRUE(!row.empty());
     }
@@ -244,9 +244,9 @@ TEST_CASE(hunl_sampled_storage_accepts_twenty_valid_boundary_combinations) {
 }
 
 TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
-    const core::HUNLFlatMCCFRConfig config;
+    const texas::HUNLFlatMCCFRConfig config;
 
-    EXPECT_EQ(config.mode, core::HUNLFlatSamplingMode::External);
+    EXPECT_EQ(config.mode, texas::HUNLFlatSamplingMode::External);
     EXPECT_EQ(config.seed, 1U);
     EXPECT_EQ(config.traversals_per_iteration, 1024U);
     EXPECT_EQ(config.batch_size, 64U);
@@ -257,15 +257,15 @@ TEST_CASE(hunl_flat_mccfr_config_defaults_match_external_sampling_baseline) {
     EXPECT_NEAR(config.dcfr_gamma, 2.0, TOL);
     EXPECT_TRUE(!config.use_sparse_storage);
     EXPECT_TRUE(!config.keep_dense_validation_backend);
-    EXPECT_EQ(config.baseline_mode, core::HUNLFlatBaselineMode::None);
+    EXPECT_EQ(config.baseline_mode, texas::HUNLFlatBaselineMode::None);
 }
 
 TEST_CASE(hunl_sampled_storage_allocates_one_sparse_row) {
-    core::HUNLSampledStorage storage;
+    texas::HUNLSampledStorage storage;
     const auto row = storage.ensure_row({
-        core::InfosetId{7},
+        texas::InfosetId{7},
         1,
-        core::Street::Turn,
+        texas::Street::Turn,
         3,
         2,
     });
@@ -280,8 +280,8 @@ TEST_CASE(hunl_sampled_storage_allocates_one_sparse_row) {
 }
 
 TEST_CASE(hunl_sampled_storage_reusing_id_with_identical_shape_is_allowed) {
-    core::HUNLSampledStorage storage;
-    const core::HUNLSampledInfosetShape shape{core::InfosetId{17}, 1, core::Street::River, 4, 3};
+    texas::HUNLSampledStorage storage;
+    const texas::HUNLSampledInfosetShape shape{texas::InfosetId{17}, 1, texas::Street::River, 4, 3};
     const auto first = storage.ensure_row(shape);
     first.regret[0] = 2.0f;
     const auto second = storage.ensure_row(shape);
@@ -292,16 +292,16 @@ TEST_CASE(hunl_sampled_storage_reusing_id_with_identical_shape_is_allowed) {
 }
 
 TEST_CASE(hunl_sampled_storage_reusing_id_with_different_shape_fails_for_each_dimension) {
-    const core::HUNLSampledInfosetShape base{core::InfosetId{18}, 0, core::Street::Turn, 2, 2};
-    const std::array<core::HUNLSampledInfosetShape, 4> mismatches = {{
+    const texas::HUNLSampledInfosetShape base{texas::InfosetId{18}, 0, texas::Street::Turn, 2, 2};
+    const std::array<texas::HUNLSampledInfosetShape, 4> mismatches = {{
         {base.id, 1, base.street, base.bucket_count, base.action_count},
-        {base.id, base.player, core::Street::River, base.bucket_count, base.action_count},
+        {base.id, base.player, texas::Street::River, base.bucket_count, base.action_count},
         {base.id, base.player, base.street, 3, base.action_count},
         {base.id, base.player, base.street, base.bucket_count, 3},
     }};
 
     for (const auto& mismatch : mismatches) {
-        core::HUNLSampledStorage storage;
+        texas::HUNLSampledStorage storage;
         storage.ensure_row(base);
         EXPECT_THROW(storage.ensure_row(mismatch), std::invalid_argument);
         EXPECT_EQ(storage.row_count(), 1U);
@@ -310,18 +310,18 @@ TEST_CASE(hunl_sampled_storage_reusing_id_with_different_shape_fails_for_each_di
 }
 
 TEST_CASE(hunl_sampled_storage_requires_reacquiring_views_after_row_growth) {
-    core::HUNLSampledStorage storage;
-    const auto first = storage.ensure_row({core::InfosetId{19}, 0, core::Street::Turn, 1, 2});
+    texas::HUNLSampledStorage storage;
+    const auto first = storage.ensure_row({texas::InfosetId{19}, 0, texas::Street::Turn, 1, 2});
     first.regret[0] = 4.0f;
-    storage.ensure_row({core::InfosetId{20}, 1, core::Street::River, 2, 1});
+    storage.ensure_row({texas::InfosetId{20}, 1, texas::Street::River, 2, 1});
 
-    const auto reacquired = storage.view_mut(core::InfosetId{19});
+    const auto reacquired = storage.view_mut(texas::InfosetId{19});
     EXPECT_EQ(reacquired.value_count(), 2U);
     EXPECT_EQ(reacquired.regret[0], 4.0f);
 }
 
 TEST_CASE(hunl_sampled_storage_value_count_uses_checked_size_t_arithmetic) {
-    core::HUNLSampledInfosetMeta meta;
+    texas::HUNLSampledInfosetMeta meta;
     meta.bucket_count = 3;
     meta.action_count = 7;
     EXPECT_EQ(meta.value_count(), static_cast<std::size_t>(21));
@@ -334,11 +334,11 @@ TEST_CASE(hunl_sampled_storage_value_count_uses_checked_size_t_arithmetic) {
 }
 
 TEST_CASE(hunl_sampled_storage_computes_current_strategy_on_demand_and_estimates_memory) {
-    core::HUNLSampledStorage storage(core::HUNLFlatValueLayout::InfosetHandAction);
+    texas::HUNLSampledStorage storage(texas::HUNLFlatValueLayout::InfosetHandAction);
     const auto row = storage.ensure_row({
-        core::InfosetId{3},
+        texas::InfosetId{3},
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
         2,
     });
@@ -349,11 +349,11 @@ TEST_CASE(hunl_sampled_storage_computes_current_strategy_on_demand_and_estimates
     row.regret[3] = -4.0f;
 
     std::array<float, 2> strategy = {0.0f, 0.0f};
-    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{3}), 0, strategy.data());
+    texas::HUNLSampledStorage::compute_current_strategy(storage.view(texas::InfosetId{3}), 0, strategy.data());
     EXPECT_NEAR(strategy[0], 0.75, TOL);
     EXPECT_NEAR(strategy[1], 0.25, TOL);
 
-    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{3}), 1, strategy.data());
+    texas::HUNLSampledStorage::compute_current_strategy(storage.view(texas::InfosetId{3}), 1, strategy.data());
     EXPECT_NEAR(strategy[0], 0.5, TOL);
     EXPECT_NEAR(strategy[1], 0.5, TOL);
 
@@ -364,37 +364,37 @@ TEST_CASE(hunl_sampled_storage_computes_current_strategy_on_demand_and_estimates
 }
 
 TEST_CASE(hunl_sampled_config_rejects_inverted_memory_thresholds) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.memory_warning_bytes = 1024U;
     config.memory_fail_bytes = 512U;
 
-    const auto validation = core::validate_sampled_config(config);
+    const auto validation = texas::validate_sampled_config(config);
     EXPECT_TRUE(!validation.ok);
 }
 
 TEST_CASE(hunl_sampled_storage_missing_rows_export_uniform_and_clear_resets_counts) {
-    core::HUNLSampledStorage storage;
+    texas::HUNLSampledStorage storage;
 
-    EXPECT_TRUE(!storage.has_row(core::InfosetId{99}));
-    EXPECT_TRUE(storage.view(core::InfosetId{99}).empty());
-    EXPECT_TRUE(storage.view_mut(core::InfosetId{99}).empty());
-    EXPECT_TRUE(storage.meta_for(core::InfosetId{99}) == nullptr);
-    EXPECT_TRUE(storage.meta_for_mut(core::InfosetId{99}) == nullptr);
+    EXPECT_TRUE(!storage.has_row(texas::InfosetId{99}));
+    EXPECT_TRUE(storage.view(texas::InfosetId{99}).empty());
+    EXPECT_TRUE(storage.view_mut(texas::InfosetId{99}).empty());
+    EXPECT_TRUE(storage.meta_for(texas::InfosetId{99}) == nullptr);
+    EXPECT_TRUE(storage.meta_for_mut(texas::InfosetId{99}) == nullptr);
 
     std::array<float, 3> strategy = {0.0f, 0.0f, 0.0f};
-    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{99}), 0, strategy.data());
+    texas::HUNLSampledStorage::compute_current_strategy(storage.view(texas::InfosetId{99}), 0, strategy.data());
     EXPECT_EQ(strategy[0], 0.0f);
     EXPECT_EQ(strategy[1], 0.0f);
     EXPECT_EQ(strategy[2], 0.0f);
 
     auto row = storage.ensure_row({
-        core::InfosetId{5},
+        texas::InfosetId{5},
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
         3,
     });
-    core::HUNLSampledStorage::compute_current_strategy(storage.view(core::InfosetId{5}), 9, strategy.data());
+    texas::HUNLSampledStorage::compute_current_strategy(storage.view(texas::InfosetId{5}), 9, strategy.data());
     EXPECT_NEAR(strategy[0], 1.0 / 3.0, TOL);
     EXPECT_NEAR(strategy[1], 1.0 / 3.0, TOL);
     EXPECT_NEAR(strategy[2], 1.0 / 3.0, TOL);
@@ -406,11 +406,11 @@ TEST_CASE(hunl_sampled_storage_missing_rows_export_uniform_and_clear_resets_coun
     storage.clear_keep_capacity();
     EXPECT_EQ(storage.row_count(), 0U);
     EXPECT_EQ(storage.total_value_count(), 0U);
-    EXPECT_TRUE(storage.view(core::InfosetId{5}).empty());
+    EXPECT_TRUE(storage.view(texas::InfosetId{5}).empty());
 }
 
 TEST_CASE(hunl_sampled_builder_starts_with_root_only_and_grows_lazily) {
-    core::HUNLSampledBuilder builder;
+    texas::HUNLSampledBuilder builder;
     const auto root_state = make_lazy_root_state();
     const auto root_id = builder.initialize(root_state);
 
@@ -429,7 +429,7 @@ TEST_CASE(hunl_sampled_builder_starts_with_root_only_and_grows_lazily) {
 }
 
 TEST_CASE(hunl_sampled_builder_caches_nodes_by_public_state_key) {
-    core::HUNLSampledBuilder builder;
+    texas::HUNLSampledBuilder builder;
     const auto root_state = make_lazy_root_state();
     const auto root_id = builder.initialize(root_state);
 
@@ -443,8 +443,8 @@ TEST_CASE(hunl_sampled_builder_caches_nodes_by_public_state_key) {
 }
 
 TEST_CASE(hunl_sampled_builder_public_chance_isomorphism_is_disabled_for_private_state_safety) {
-    core::HUNLSampledBuilder requested_builder({true});
-    core::HUNLSampledBuilder raw_builder({false});
+    texas::HUNLSampledBuilder requested_builder({true});
+    texas::HUNLSampledBuilder raw_builder({false});
     const auto root_state = make_lazy_root_state();
 
     const auto requested_root = requested_builder.initialize(root_state);
@@ -466,14 +466,14 @@ TEST_CASE(hunl_sampled_builder_rejects_history_overflow_instead_of_truncating_ke
     auto second = first;
     first.betting_history_codes.clear();
     second.betting_history_codes.clear();
-    first.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES + 1U, 7);
+    first.current_street_history_codes.assign(texas::HUNL_MAX_HISTORY_CODES + 1U, 7);
     second.current_street_history_codes = first.current_street_history_codes;
     second.current_street_history_codes.back() = 8;
 
-    EXPECT_THROW(core::HUNLSampledBuilder::make_key(first), std::invalid_argument);
-    EXPECT_THROW(core::HUNLSampledBuilder::make_key(second), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledBuilder::make_key(first), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledBuilder::make_key(second), std::invalid_argument);
 
-    core::HUNLSampledBuilder builder;
+    texas::HUNLSampledBuilder builder;
     EXPECT_THROW(builder.initialize(first), std::invalid_argument);
     EXPECT_THROW(builder.initialize(second), std::invalid_argument);
 }
@@ -481,24 +481,24 @@ TEST_CASE(hunl_sampled_builder_rejects_history_overflow_instead_of_truncating_ke
 TEST_CASE(hunl_sampled_builder_accepts_history_at_exact_key_capacity) {
     auto state = make_lazy_root_state();
     state.betting_history_codes.clear();
-    state.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES, 7);
+    state.current_street_history_codes.assign(texas::HUNL_MAX_HISTORY_CODES, 7);
 
-    const auto key = core::HUNLSampledBuilder::make_key(state);
-    EXPECT_EQ(key.history_count, core::HUNL_MAX_HISTORY_CODES);
-    EXPECT_EQ(key.street_lengths[0], core::HUNL_MAX_HISTORY_CODES);
+    const auto key = texas::HUNLSampledBuilder::make_key(state);
+    EXPECT_EQ(key.history_count, texas::HUNL_MAX_HISTORY_CODES);
+    EXPECT_EQ(key.street_lengths[0], texas::HUNL_MAX_HISTORY_CODES);
 }
 
 TEST_CASE(hunl_sampled_builder_accepts_exact_capacity_split_across_streets) {
     auto state = make_lazy_root_state();
     state.betting_history_codes = {{1, 2, 3}, {4, 5}, {6}};
-    state.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES - 6U, 9);
+    state.current_street_history_codes.assign(texas::HUNL_MAX_HISTORY_CODES - 6U, 9);
 
-    const auto key = core::HUNLSampledBuilder::make_key(state);
-    EXPECT_EQ(key.history_count, core::HUNL_MAX_HISTORY_CODES);
+    const auto key = texas::HUNLSampledBuilder::make_key(state);
+    EXPECT_EQ(key.history_count, texas::HUNL_MAX_HISTORY_CODES);
     EXPECT_EQ(key.street_lengths[0], 3U);
     EXPECT_EQ(key.street_lengths[1], 2U);
     EXPECT_EQ(key.street_lengths[2], 1U);
-    EXPECT_EQ(key.street_lengths[3], core::HUNL_MAX_HISTORY_CODES - 6U);
+    EXPECT_EQ(key.street_lengths[3], texas::HUNL_MAX_HISTORY_CODES - 6U);
 }
 
 TEST_CASE(hunl_sampled_builder_rejects_cumulative_overflow_across_street_segments) {
@@ -511,15 +511,15 @@ TEST_CASE(hunl_sampled_builder_rejects_cumulative_overflow_across_street_segment
     };
     state.current_street_history_codes.clear();
 
-    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledBuilder::make_key(state), std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_builder_rejects_current_street_overflow_after_prior_history) {
     auto state = make_lazy_root_state();
     state.betting_history_codes = {{1, 2, 3}, {4, 5}, {6}};
-    state.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES - 5U, 9);
+    state.current_street_history_codes.assign(texas::HUNL_MAX_HISTORY_CODES - 5U, 9);
 
-    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledBuilder::make_key(state), std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_builder_rejects_each_single_segment_overflow) {
@@ -527,10 +527,10 @@ TEST_CASE(hunl_sampled_builder_rejects_each_single_segment_overflow) {
         auto state = make_lazy_root_state();
         state.betting_history_codes.clear();
         state.betting_history_codes.resize(street + 1U);
-        state.betting_history_codes[street].assign(core::HUNL_MAX_HISTORY_CODES + 1U, 1);
+        state.betting_history_codes[street].assign(texas::HUNL_MAX_HISTORY_CODES + 1U, 1);
         state.current_street_history_codes.clear();
 
-        EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+        EXPECT_THROW(texas::HUNLSampledBuilder::make_key(state), std::invalid_argument);
     }
 }
 
@@ -539,7 +539,7 @@ TEST_CASE(hunl_sampled_builder_rejects_current_history_when_all_street_slots_are
     state.betting_history_codes.resize(4);
     state.current_street_history_codes = {1};
 
-    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledBuilder::make_key(state), std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_builder_distinguishes_different_in_capacity_history_suffixes) {
@@ -547,12 +547,12 @@ TEST_CASE(hunl_sampled_builder_distinguishes_different_in_capacity_history_suffi
     auto second = first;
     first.betting_history_codes.clear();
     second.betting_history_codes.clear();
-    first.current_street_history_codes.assign(core::HUNL_MAX_HISTORY_CODES, 7);
+    first.current_street_history_codes.assign(texas::HUNL_MAX_HISTORY_CODES, 7);
     second.current_street_history_codes = first.current_street_history_codes;
     second.current_street_history_codes.back() = 8;
 
-    const auto first_key = core::HUNLSampledBuilder::make_key(first);
-    const auto second_key = core::HUNLSampledBuilder::make_key(second);
+    const auto first_key = texas::HUNLSampledBuilder::make_key(first);
+    const auto second_key = texas::HUNLSampledBuilder::make_key(second);
     EXPECT_TRUE(!(first_key == second_key));
 
 }
@@ -561,12 +561,12 @@ TEST_CASE(hunl_sampled_builder_rejects_excess_street_segments_in_keys) {
     auto state = make_lazy_root_state();
     state.betting_history_codes.resize(5);
 
-    EXPECT_THROW(core::HUNLSampledBuilder::make_key(state), std::invalid_argument);
+    EXPECT_THROW(texas::HUNLSampledBuilder::make_key(state), std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
-    core::HUNLSampledSolver solver;
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest request;
     request.root_state = make_lazy_root_state();
 
     const auto empty_memory = solver.memory_estimate();
@@ -583,16 +583,16 @@ TEST_CASE(hunl_sampled_solver_memory_estimate_includes_lazy_graph_cache) {
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_warns_above_warning_threshold) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.memory_warning_bytes = 1U;
     config.memory_fail_bytes = 1024ULL * 1024ULL * 1024ULL;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 2;
 
     const auto preflight = solver.preflight(request);
-    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Warning);
+    EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Warning);
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_warning_bytes);
 }
 
@@ -600,9 +600,9 @@ TEST_CASE(hunl_sampled_depth_hints_are_preflight_metadata_not_an_implicit_evalua
     for (const std::uint32_t depth : {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U,
                                       16U, 32U, 64U, 128U, 256U, 512U, 1024U, 4096U,
                                       65536U, std::numeric_limits<std::uint32_t>::max()}) {
-        core::HUNLSampledSolverConfig config;
+        texas::HUNLSampledSolverConfig config;
         config.depth_limit_plies_hint = depth;
-        core::HUNLSampledSolver solver(config);
+        texas::HUNLSampledSolver solver(config);
         EXPECT_EQ(solver.config().depth_limit_plies_hint, depth);
     }
 }
@@ -611,10 +611,10 @@ TEST_CASE(hunl_sampled_fixed_deals_ignore_global_bucket_hints) {
     for (const std::uint32_t hint : {1U, 2U, 3U, 4U, 8U, 16U, 32U, 64U, 128U, 256U,
                                      512U, 1024U, 2048U, 4096U, 8192U, 16384U, 32768U,
                                      65536U, 131072U, 262144U}) {
-        core::HUNLSampledSolverConfig config;
+        texas::HUNLSampledSolverConfig config;
         config.bucket_count_hint = hint;
-        core::HUNLSampledSolver solver(config);
-        core::HUNLSampledSolveRequest request;
+        texas::HUNLSampledSolver solver(config);
+        texas::HUNLSampledSolveRequest request;
         request.root_state = make_sampled_facing_bet_state();
         const auto preflight = solver.preflight(request);
         EXPECT_EQ(preflight.estimate.sparse_values_allocated,
@@ -624,11 +624,11 @@ TEST_CASE(hunl_sampled_fixed_deals_ignore_global_bucket_hints) {
 
 TEST_CASE(hunl_sampled_storage_rejects_row_growth_before_the_memory_limit) {
     for (std::uint8_t actions = 1;
-         actions <= core::HUNL_SAMPLED_MAX_ACTION_COUNT;
+         actions <= texas::HUNL_SAMPLED_MAX_ACTION_COUNT;
          ++actions) {
-        core::HUNLSampledStorage storage;
+        texas::HUNLSampledStorage storage;
         storage.set_memory_limit_bytes(1U);
-        EXPECT_THROW(storage.ensure_row({core::InfosetId{actions}, 0, core::Street::Flop, 1, actions}),
+        EXPECT_THROW(storage.ensure_row({texas::InfosetId{actions}, 0, texas::Street::Flop, 1, actions}),
                      std::runtime_error);
         EXPECT_EQ(storage.row_count(), 0U);
         EXPECT_EQ(storage.total_value_count(), 0U);
@@ -638,52 +638,52 @@ TEST_CASE(hunl_sampled_storage_rejects_row_growth_before_the_memory_limit) {
 TEST_CASE(hunl_sampled_storage_admits_capacity_peaks_before_twenty_row_growth_shapes) {
     for (std::uint32_t scenario = 1; scenario <= 20; ++scenario) {
         const auto actions = static_cast<std::uint8_t>(
-            1U + (scenario - 1U) % core::HUNL_SAMPLED_MAX_ACTION_COUNT);
+            1U + (scenario - 1U) % texas::HUNL_SAMPLED_MAX_ACTION_COUNT);
         const auto buckets = scenario;
-        core::HUNLSampledStorage storage;
+        texas::HUNLSampledStorage storage;
         auto first = storage.ensure_row({
-            core::InfosetId{0}, 0, core::Street::Flop, buckets, actions});
+            texas::InfosetId{0}, 0, texas::Street::Flop, buckets, actions});
         first.regret[0] = static_cast<float>(actions);
         const auto retained = storage.memory_estimate().total_bytes();
         storage.set_memory_limit_bytes(retained);
 
         EXPECT_THROW(
             storage.ensure_row({
-                core::InfosetId{1}, 1, core::Street::Turn, buckets, actions}),
+                texas::InfosetId{1}, 1, texas::Street::Turn, buckets, actions}),
             std::runtime_error);
         EXPECT_EQ(storage.row_count(), 1U);
         EXPECT_EQ(
             storage.total_value_count(),
             static_cast<std::size_t>(actions) * buckets);
-        EXPECT_NEAR(storage.view(core::InfosetId{0}).regret[0], actions, TOL);
-        EXPECT_TRUE(!storage.has_row(core::InfosetId{1}));
+        EXPECT_NEAR(storage.view(texas::InfosetId{0}).regret[0], actions, TOL);
+        EXPECT_TRUE(!storage.has_row(texas::InfosetId{1}));
     }
 }
 
 TEST_CASE(hunl_sampled_storage_rejects_twenty_logical_only_row_budgets_transactionally) {
     for (std::uint32_t scenario = 1; scenario <= 20; ++scenario) {
         const auto actions = static_cast<std::uint8_t>(
-            1U + (scenario - 1U) % core::HUNL_SAMPLED_MAX_ACTION_COUNT);
+            1U + (scenario - 1U) % texas::HUNL_SAMPLED_MAX_ACTION_COUNT);
         const auto buckets = scenario;
-        core::HUNLSampledStorage storage;
+        texas::HUNLSampledStorage storage;
         storage.ensure_row({
-            core::InfosetId{0}, 0, core::Street::Flop, buckets, actions});
+            texas::InfosetId{0}, 0, texas::Street::Flop, buckets, actions});
         const auto retained = storage.memory_estimate().total_bytes();
-        const core::HUNLSampledInfosetShape second{
-            core::InfosetId{1}, 1, core::Street::River, buckets, actions};
+        const texas::HUNLSampledInfosetShape second{
+            texas::InfosetId{1}, 1, texas::Street::River, buckets, actions};
         storage.set_memory_limit_bytes(
-            retained + core::HUNLSampledStorage::estimate_row_storage_bytes(second));
+            retained + texas::HUNLSampledStorage::estimate_row_storage_bytes(second));
 
         EXPECT_THROW(storage.ensure_row(second), std::runtime_error);
         EXPECT_EQ(storage.row_count(), 1U);
-        EXPECT_TRUE(storage.has_row(core::InfosetId{0}));
-        EXPECT_TRUE(!storage.has_row(core::InfosetId{1}));
+        EXPECT_TRUE(storage.has_row(texas::InfosetId{0}));
+        EXPECT_TRUE(!storage.has_row(texas::InfosetId{1}));
     }
 }
 
 TEST_CASE(hunl_sampled_builder_rejects_node_growth_before_the_memory_limit) {
     for (std::uint64_t limit = 1; limit <= 20; ++limit) {
-        core::HUNLSampledBuilder builder;
+        texas::HUNLSampledBuilder builder;
         builder.set_memory_limit_bytes(limit);
         EXPECT_THROW(builder.initialize(make_sampled_facing_bet_state()), std::runtime_error);
         EXPECT_EQ(builder.node_count(), 0U);
@@ -692,42 +692,42 @@ TEST_CASE(hunl_sampled_builder_rejects_node_growth_before_the_memory_limit) {
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.bucket_count_hint = 512;
     config.workers = 4;
     config.minibatch_size = 1024;
     config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
     config.memory_fail_bytes = 20ULL * 1024ULL * 1024ULL;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 2;
 
     const auto preflight = solver.preflight(request);
-    EXPECT_TRUE(preflight.status == core::HUNLSampledMemoryStatus::Ok ||
-                preflight.status == core::HUNLSampledMemoryStatus::Warning);
+    EXPECT_TRUE(preflight.status == texas::HUNLSampledMemoryStatus::Ok ||
+                preflight.status == texas::HUNLSampledMemoryStatus::Warning);
     EXPECT_TRUE(preflight.adjustments.reduced_minibatch);
     EXPECT_TRUE(preflight.effective_config.minibatch_size <= config.minibatch_size);
     EXPECT_TRUE(preflight.estimate.total_bytes() <= preflight.effective_config.memory_fail_bytes);
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_without_guardrails_stays_ok_under_tight_thresholds) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.enable_memory_guardrails = false;
     config.memory_warning_bytes = 1U;
     config.memory_fail_bytes = 2U;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 3;
 
     const auto preflight = solver.preflight(request);
-    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Ok);
+    EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Ok);
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_fail_bytes);
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_rejects_when_adaptive_fallback_is_disabled) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.adaptive_memory_fallback = false;
     config.bucket_count_hint = 2048;
     config.workers = 8;
@@ -735,18 +735,18 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_when_adaptive_fallback_is_disabl
     config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
     config.memory_fail_bytes = 16ULL * 1024ULL * 1024ULL;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 4;
 
     const auto preflight = solver.preflight(request);
-    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
     EXPECT_TRUE(!preflight.adjustments.reduced_minibatch);
 }
 
 TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories) {
-    core::HUNLSampledSolver solver;
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest request;
     request.root_state = make_lazy_root_state();
 
     const auto result = solver.run_batches(request, 0);
@@ -760,36 +760,36 @@ TEST_CASE(hunl_sampled_solver_run_batches_records_live_memory_budget_categories)
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_rejects_impossible_config_without_unbounded_fallback) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.max_cached_public_states = std::numeric_limits<std::uint32_t>::max();
     config.memory_warning_bytes = 1U;
     config.memory_fail_bytes = 1024U;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 2;
 
     const auto preflight = solver.preflight(request);
-    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
     EXPECT_TRUE(preflight.adjustments.reduced_minibatch);
     EXPECT_EQ(preflight.effective_config.minibatch_size, 1U);
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_records_strictly_decreasing_adaptive_estimates) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.minibatch_size = 1024;
     config.bucket_count_hint = 4096;
     config.memory_warning_bytes = 1U;
     config.memory_fail_bytes = 2ULL * 1024ULL * 1024ULL;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 4;
 
     const auto preflight = solver.preflight(request);
     EXPECT_TRUE(preflight.adjustments.recorded_step_count > 0U);
     EXPECT_TRUE(preflight.adjustments.recorded_step_count <=
-                core::HUNLSampledAdaptiveAdjustments::kMaxRecordedSteps);
+                texas::HUNLSampledAdaptiveAdjustments::kMaxRecordedSteps);
     for (std::size_t step = 0; step < preflight.adjustments.recorded_step_count; ++step) {
         EXPECT_TRUE(preflight.adjustments.estimate_after[step] <
                     preflight.adjustments.estimate_before[step]);
@@ -797,37 +797,37 @@ TEST_CASE(hunl_sampled_solver_preflight_records_strictly_decreasing_adaptive_est
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_rejects_when_worker_arena_exceeds_hard_limit) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.minibatch_size = 1;
     config.bucket_count_hint = 32;
     config.memory_warning_bytes = 1U;
     config.memory_fail_bytes = 8U * 1024U;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 4;
 
     const auto preflight = solver.preflight(request);
-    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_fail_bytes);
 }
 
 TEST_CASE(hunl_sampled_solver_preflight_handles_largest_valid_memory_estimates_without_wrap) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.max_cached_public_states = std::numeric_limits<std::uint32_t>::max();
     config.workers = std::numeric_limits<std::size_t>::max();
     config.minibatch_size = std::numeric_limits<std::uint32_t>::max();
-    config.bucket_count_hint = core::HUNL_SAMPLED_MAX_BUCKET_COUNT;
+    config.bucket_count_hint = texas::HUNL_SAMPLED_MAX_BUCKET_COUNT;
     config.depth_limit_plies_hint = 0;
     config.adaptive_memory_fallback = false;
     config.memory_fail_bytes = 1ULL << 40U;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = std::numeric_limits<std::uint8_t>::max();
 
     const auto preflight = solver.preflight(request);
-    EXPECT_EQ(preflight.status, core::HUNLSampledMemoryStatus::Rejected);
+    EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_fail_bytes);
     EXPECT_TRUE(
         preflight.estimate.total_bytes() <
@@ -835,8 +835,8 @@ TEST_CASE(hunl_sampled_solver_preflight_handles_largest_valid_memory_estimates_w
 }
 
 TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without_work) {
-    core::HUNLSampledSolver solver;
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 3;
 
     const auto result = solver.solve_for(request, std::chrono::milliseconds{0});
@@ -850,8 +850,8 @@ TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without
 }
 
 TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_work) {
-    core::HUNLSampledSolver solver;
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 3;
     const auto root_id = solver.builder().initialize(make_lazy_root_state());
 
@@ -860,7 +860,7 @@ TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_wor
     const auto profile_before = solver.profile().snapshot();
     const auto strategy_before = solver.export_root_strategy();
 
-    EXPECT_THROW(solver.run_batches(request, 1), core::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.run_batches(request, 1), texas::HUNLSampledSolverNotReady);
 
     EXPECT_EQ(root_id, 0U);
     EXPECT_EQ(initialized.batches_completed, 0U);
@@ -882,18 +882,18 @@ TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_wor
 }
 
 TEST_CASE(hunl_sampled_solver_positive_time_budgets_require_a_root) {
-    core::HUNLSampledSolver solver;
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 3;
 
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{15'000}), core::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), texas::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{15'000}), texas::HUNLSampledSolverNotReady);
     EXPECT_EQ(solver.profile().snapshot().traversals, 0U);
     EXPECT_EQ(solver.export_root_strategy().actions.size(), 0U);
 }
 
 TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.adaptive_memory_fallback = false;
     config.bucket_count_hint = 4096;
     config.workers = 8;
@@ -901,22 +901,22 @@ TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
     config.memory_warning_bytes = 8ULL * 1024ULL * 1024ULL;
     config.memory_fail_bytes = 16ULL * 1024ULL * 1024ULL;
 
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_action_count = 4;
 
     EXPECT_THROW(solver.run_batches(request, 0), std::runtime_error);
 }
 
 TEST_CASE(hunl_sampled_solver_runs_prepared_positive_work_with_deterministic_worker_batches) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.workers = 2;
     config.minibatch_size = 2;
     config.max_cached_public_states = 1024;
     config.seed = 77;
-    core::HUNLSampledSolver first(config);
-    core::HUNLSampledSolver second(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver first(config);
+    texas::HUNLSampledSolver second(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_state = make_lazy_root_state();
     const auto first_result = first.run_batches(request, 1);
     const auto second_result = second.run_batches(request, 1);
@@ -930,17 +930,17 @@ TEST_CASE(hunl_sampled_solver_runs_prepared_positive_work_with_deterministic_wor
 }
 
 TEST_CASE(hunl_sampled_solver_fresh_run_clears_previous_rows_and_profile) {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.minibatch_size = 1;
     config.max_cached_public_states = 128;
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest first;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest first;
     first.root_state = make_sampled_facing_bet_state();
     const auto worked = solver.run_batches(first, 1);
     EXPECT_TRUE(worked.profile.traversals > 0U);
     EXPECT_TRUE(solver.storage().row_count() > 0U);
 
-    core::HUNLSampledSolveRequest second;
+    texas::HUNLSampledSolveRequest second;
     second.root_state = make_lazy_root_state();
     const auto reset = solver.run_batches(second, 0);
     EXPECT_EQ(reset.profile.traversals, 0U);
@@ -949,8 +949,8 @@ TEST_CASE(hunl_sampled_solver_fresh_run_clears_previous_rows_and_profile) {
 }
 
 TEST_CASE(hunl_sampled_solver_commits_whole_batches_for_timed_fixed_hand_requests) {
-    core::HUNLSampledSolver solver;
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest request;
     request.root_state = make_sampled_facing_bet_state();
     const auto result = solver.solve_for(request, std::chrono::milliseconds{1});
     EXPECT_TRUE(!result.root_strategy.actions.empty());
@@ -959,12 +959,12 @@ TEST_CASE(hunl_sampled_solver_commits_whole_batches_for_timed_fixed_hand_request
 TEST_CASE(hunl_sampled_solver_keeps_last_clean_snapshot_after_worker_failure) {
     for (std::uint32_t minibatch : {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U,
                                     11U, 12U, 13U, 14U, 15U, 16U, 17U, 18U, 19U, 20U}) {
-        core::HUNLSampledSolverConfig config;
+        texas::HUNLSampledSolverConfig config;
         config.minibatch_size = minibatch;
         config.workers = 1;
         config.test_throw_worker_index = 0;
-        core::HUNLSampledSolver solver(config);
-        core::HUNLSampledSolveRequest request;
+        texas::HUNLSampledSolver solver(config);
+        texas::HUNLSampledSolveRequest request;
         request.root_state = make_sampled_facing_bet_state();
         const auto clean = solver.run_batches(request, 0);
         const auto strategy_before = solver.export_root_strategy();
@@ -983,7 +983,7 @@ TEST_CASE(hunl_sampled_solver_keeps_last_clean_snapshot_after_worker_failure) {
 
 TEST_CASE(hunl_sampled_builder_admits_twenty_edge_capacity_peaks_before_expansion) {
     for (std::uint64_t slack = 0; slack < 20; ++slack) {
-        core::HUNLSampledBuilder builder;
+        texas::HUNLSampledBuilder builder;
         const auto root = builder.initialize(make_sampled_facing_bet_state());
         const auto retained = builder.memory_estimate().total_bytes();
         builder.set_memory_limit_bytes(retained + slack);
@@ -997,29 +997,29 @@ TEST_CASE(hunl_sampled_builder_admits_twenty_edge_capacity_peaks_before_expansio
 
 TEST_CASE(hunl_sampled_solver_reports_distinct_missing_root_and_timed_contracts) {
     for (std::uint32_t batches = 1; batches <= 20; ++batches) {
-        core::HUNLSampledSolver solver;
-        core::HUNLSampledSolveRequest request;
-        EXPECT_THROW(solver.run_batches(request, batches), core::HUNLSampledSolverNotReady);
-        EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), core::HUNLSampledSolverNotReady);
+        texas::HUNLSampledSolver solver;
+        texas::HUNLSampledSolveRequest request;
+        EXPECT_THROW(solver.run_batches(request, batches), texas::HUNLSampledSolverNotReady);
+        EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), texas::HUNLSampledSolverNotReady);
     }
 }
 
 TEST_CASE(hunl_sampled_builder_enforces_public_state_admission_limit_during_expansion) {
-    core::HUNLSampledBuilder builder({false, 1});
+    texas::HUNLSampledBuilder builder({false, 1});
     const auto root = builder.initialize(make_lazy_root_state());
     EXPECT_THROW(builder.ensure_expanded(root), std::runtime_error);
     EXPECT_EQ(builder.node_count(), 1U);
 }
 
 void expect_sampled_positive_work_completes_bounded_batch() {
-    core::HUNLSampledSolverConfig config;
+    texas::HUNLSampledSolverConfig config;
     config.seed = 0xC0FFEEU;
     // This is a behavioral regression test, not a throughput benchmark.
     // One deterministic trajectory exercises run_batches; timed solving must fail closed.
     config.minibatch_size = 1;
     config.max_cached_public_states = 128;
-    core::HUNLSampledSolver solver(config);
-    core::HUNLSampledSolveRequest request;
+    texas::HUNLSampledSolver solver(config);
+    texas::HUNLSampledSolveRequest request;
     request.root_state = make_sampled_facing_bet_state();
 
     const auto initialized = solver.run_batches(request, 0);
@@ -1050,14 +1050,14 @@ TEST_CASE(hunl_sampled_positive_work_completes_bounded_external_batch) {
 }
 
 TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {
-    core::HUNLSampledBuilder builder;
+    texas::HUNLSampledBuilder builder;
     const auto root_id = builder.initialize(make_lazy_root_state());
-    core::HUNLSampledStorage storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledStorage storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
 
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.trajectory_id = 0;
     request.traversing_player = 0;
@@ -1082,14 +1082,14 @@ TEST_CASE(hunl_sampled_traversal_expands_only_the_selected_deeper_path) {
 
 TEST_CASE(hunl_sampled_external_traversal_matches_hand_computed_river_update) {
     const auto root_state = make_sampled_facing_bet_state();
-    core::HUNLSampledBuilder builder({false});
+    texas::HUNLSampledBuilder builder({false});
     const auto root_id = builder.initialize(root_state);
-    core::HUNLSampledStorage storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledStorage storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
 
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.traversing_player = 0;
     request.seed = 17;
@@ -1100,8 +1100,8 @@ TEST_CASE(hunl_sampled_external_traversal_matches_hand_computed_river_update) {
     const auto root_infoset = builder.node(root_id).infoset_id;
     const auto row = storage.view(root_infoset);
 
-    EXPECT_NEAR(root_state.apply(core::ACTION_FOLD).utility()[0], 0.0, TOL);
-    EXPECT_NEAR(root_state.apply(core::ACTION_CALL).utility()[0], 4.0, TOL);
+    EXPECT_NEAR(root_state.apply(texas::ACTION_FOLD).utility()[0], 0.0, TOL);
+    EXPECT_NEAR(root_state.apply(texas::ACTION_CALL).utility()[0], 4.0, TOL);
     EXPECT_NEAR(result.value, 2.0, TOL);
     EXPECT_EQ(result.infosets_updated, 1U);
     EXPECT_EQ(result.opponent_nodes_sampled, 0U);
@@ -1114,16 +1114,16 @@ TEST_CASE(hunl_sampled_external_traversal_matches_hand_computed_river_update) {
 
 TEST_CASE(hunl_sampled_terminal_uses_trajectory_private_holes_not_builder_cached_deal) {
     const auto root_state = make_sampled_facing_bet_state();
-    core::HUNLSampledBuilder builder({false});
+    texas::HUNLSampledBuilder builder({false});
     const auto root_id = builder.initialize(root_state);
-    core::HUNLSampledStorage storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledStorage storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.traversing_player = 0;
-    core::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
+    texas::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
     const auto fixed = traversal.run_unmerged(request, scratch).value;
     auto swapped = *root_state.hole_cards;
     std::swap(swapped[0], swapped[1]);
@@ -1134,60 +1134,60 @@ TEST_CASE(hunl_sampled_terminal_uses_trajectory_private_holes_not_builder_cached
 
 TEST_CASE(hunl_sampled_unmerged_traversal_keeps_central_rows_unchanged_until_coordinator_merge) {
     const auto root_state = make_sampled_facing_bet_state();
-    core::HUNLSampledBuilder builder({false});
+    texas::HUNLSampledBuilder builder({false});
     const auto root_id = builder.initialize(root_state);
-    core::HUNLSampledStorage storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledStorage storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.traversing_player = 0;
-    core::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
+    texas::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
     (void)traversal.run_unmerged(request, scratch);
     const auto row = storage.view(builder.node(root_id).infoset_id);
     EXPECT_NEAR(row.regret[0], 0.0, TOL);
     EXPECT_TRUE(!scratch.deltas.empty());
-    core::merge_hunl_sampled_worker_deltas(storage, scratch);
+    texas::merge_hunl_sampled_worker_deltas(storage, scratch);
     EXPECT_TRUE(std::abs(storage.view(builder.node(root_id).infoset_id).regret[0]) > 0.0f);
 }
 
 TEST_CASE(hunl_sampled_unmerged_traversal_requires_coordinator_preparation) {
-    core::HUNLSampledBuilder builder({false});
+    texas::HUNLSampledBuilder builder({false});
     const auto root_id = builder.initialize(make_sampled_facing_bet_state());
-    core::HUNLSampledStorage storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledStorage storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
-    EXPECT_THROW(traversal.run_unmerged(request, scratch), core::HUNLSampledTraversalPreparationRequired);
-    core::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
+    EXPECT_THROW(traversal.run_unmerged(request, scratch), texas::HUNLSampledTraversalPreparationRequired);
+    texas::prepare_hunl_sampled_trajectory(builder, storage, terminal_evaluator, request);
     EXPECT_TRUE(traversal.run_unmerged(request, scratch).nodes_visited > 0U);
 }
 
 TEST_CASE(hunl_sampled_coordinator_merge_orders_worker_deltas_deterministically) {
-    core::HUNLSampledStorage storage;
-    storage.ensure_row({core::InfosetId{0}, 0, core::Street::River, 1, 2});
-    core::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledStorage storage;
+    storage.ensure_row({texas::InfosetId{0}, 0, texas::Street::River, 1, 2});
+    texas::HUNLSampledWorkerScratch scratch;
     scratch.deltas = {
-        {core::InfosetId{0}, 0, 1, 2.0, 3.0},
-        {core::InfosetId{0}, 0, 0, 1.0, 4.0},
+        {texas::InfosetId{0}, 0, 1, 2.0, 3.0},
+        {texas::InfosetId{0}, 0, 0, 1.0, 4.0},
     };
-    core::merge_hunl_sampled_worker_deltas(storage, scratch);
+    texas::merge_hunl_sampled_worker_deltas(storage, scratch);
     EXPECT_EQ(scratch.deltas[0].action, 0U);
-    const auto row = storage.view(core::InfosetId{0});
+    const auto row = storage.view(texas::InfosetId{0});
     EXPECT_NEAR(row.regret[0], 1.0, TOL);
     EXPECT_NEAR(row.regret[1], 2.0, TOL);
 }
 
 TEST_CASE(hunl_sampled_kway_merge_is_bit_identical_across_twenty_worker_partitions) {
     const auto merged_row = [](std::size_t worker_count) {
-        core::HUNLSampledStorage storage;
+        texas::HUNLSampledStorage storage;
         storage.ensure_row({
-            core::InfosetId{0}, 0, core::Street::River, 2, 2});
-        std::vector<core::HUNLSampledWorkerScratch> streams(worker_count);
-        const auto batches = core::HUNLSampledScheduler::partition_deterministic(
+            texas::InfosetId{0}, 0, texas::Street::River, 2, 2});
+        std::vector<texas::HUNLSampledWorkerScratch> streams(worker_count);
+        const auto batches = texas::HUNLSampledScheduler::partition_deterministic(
             240U, worker_count);
         for (std::size_t worker = 0; worker < batches.size(); ++worker) {
             for (std::uint64_t trajectory = batches[worker].trajectories.begin;
@@ -1197,7 +1197,7 @@ TEST_CASE(hunl_sampled_kway_merge_is_bit_identical_across_twenty_worker_partitio
                     100'000'000.0, 1.0, -100'000'000.0};
                 const auto value = cancellation[trajectory % cancellation.size()];
                 streams[worker].deltas.push_back({
-                    core::InfosetId{0},
+                    texas::InfosetId{0},
                     static_cast<std::uint32_t>(trajectory & 1U),
                     static_cast<std::uint8_t>((trajectory >> 1U) & 1U),
                     value,
@@ -1206,8 +1206,8 @@ TEST_CASE(hunl_sampled_kway_merge_is_bit_identical_across_twenty_worker_partitio
                 });
             }
         }
-        core::merge_hunl_sampled_worker_streams(storage, streams);
-        const auto row = storage.view(core::InfosetId{0});
+        texas::merge_hunl_sampled_worker_streams(storage, streams);
+        const auto row = storage.view(texas::InfosetId{0});
         std::array<float, 8> values = {};
         for (std::size_t index = 0; index < 4; ++index) {
             values[index] = row.regret[index];
@@ -1230,17 +1230,17 @@ TEST_CASE(hunl_sampled_merge_rejects_bad_deltas_without_mutating_any_row) {
         -1e80, 1e70, -1e70, 1e60, -1e60, 1e50, -1e50, 1e45, -1e45, 1e40,
         -1e40, 1e39, -1e39, 4e38};
     for (const double value : invalid) {
-        core::HUNLSampledStorage storage;
-        auto row = storage.ensure_row({core::InfosetId{0}, 0, core::Street::River, 1, 2});
+        texas::HUNLSampledStorage storage;
+        auto row = storage.ensure_row({texas::InfosetId{0}, 0, texas::Street::River, 1, 2});
         row.regret[0] = 1.0f;
         row.strategy_sum[0] = 2.0f;
-        core::HUNLSampledWorkerScratch scratch;
+        texas::HUNLSampledWorkerScratch scratch;
         scratch.deltas = {
-            {core::InfosetId{0}, 0, 0, value, 0.0},
-            {core::InfosetId{0}, 0, 1, 1.0, 1.0},
+            {texas::InfosetId{0}, 0, 0, value, 0.0},
+            {texas::InfosetId{0}, 0, 1, 1.0, 1.0},
         };
-        EXPECT_THROW(core::merge_hunl_sampled_worker_deltas(storage, scratch), std::overflow_error);
-        const auto unchanged = storage.view(core::InfosetId{0});
+        EXPECT_THROW(texas::merge_hunl_sampled_worker_deltas(storage, scratch), std::overflow_error);
+        const auto unchanged = storage.view(texas::InfosetId{0});
         EXPECT_NEAR(unchanged.regret[0], 1.0, TOL);
         EXPECT_NEAR(unchanged.strategy_sum[0], 2.0, TOL);
         EXPECT_NEAR(unchanged.regret[1], 0.0, TOL);
@@ -1249,11 +1249,11 @@ TEST_CASE(hunl_sampled_merge_rejects_bad_deltas_without_mutating_any_row) {
 
 TEST_CASE(hunl_sampled_external_traversal_samples_opponent_strategy_probabilities) {
     const auto root_state = make_sampled_facing_bet_state();
-    core::HUNLSampledBuilder builder({false});
+    texas::HUNLSampledBuilder builder({false});
     const auto root_id = builder.initialize(root_state);
     builder.ensure_expanded(root_id);
 
-    core::HUNLSampledStorage storage;
+    texas::HUNLSampledStorage storage;
     const auto root_node = builder.node(root_id);
     auto row = storage.ensure_row({
         root_node.infoset_id,
@@ -1265,10 +1265,10 @@ TEST_CASE(hunl_sampled_external_traversal_samples_opponent_strategy_probabilitie
     row.regret[0] = 3.0f;
     row.regret[1] = 1.0f;
 
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.traversing_player = 1;
     request.seed = 991;
@@ -1296,7 +1296,7 @@ TEST_CASE(hunl_sampled_external_traversal_samples_opponent_strategy_probabilitie
 }
 
 TEST_CASE(hunl_sampled_external_traversal_samples_chance_edges_by_probability) {
-    core::HUNLSampledBuilder builder({true});
+    texas::HUNLSampledBuilder builder({true});
     const auto root_id = builder.initialize(make_suit_symmetric_chance_state());
     builder.ensure_expanded(root_id);
     const auto root = builder.node(root_id);
@@ -1317,15 +1317,15 @@ TEST_CASE(hunl_sampled_external_traversal_samples_chance_edges_by_probability) {
 
     for (std::size_t edge_slot = 0; edge_slot < root.edge_count; ++edge_slot) {
         auto& child = builder.node_mut(builder.edge(root.edge_begin + edge_slot).child);
-        child.type = core::HUNLFlatNodeType::TerminalShowdown;
+        child.type = texas::HUNLFlatNodeType::TerminalShowdown;
         child.terminal_utility = {1.0, -1.0};
     }
 
-    core::HUNLSampledStorage storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledStorage storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.traversing_player = 0;
     request.seed = 1234567;
@@ -1351,13 +1351,13 @@ TEST_CASE(hunl_sampled_external_traversal_samples_chance_edges_by_probability) {
 }
 
 TEST_CASE(hunl_sampled_external_traversal_uses_independent_draws_down_the_path) {
-    core::HUNLSampledBuilder builder({false});
+    texas::HUNLSampledBuilder builder({false});
     const auto root_id = builder.initialize(make_lazy_root_state());
-    core::HUNLSampledStorage storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledStorage storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal traversal(builder, storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = root_id;
     request.traversing_player = 0;
     request.seed = 44;
@@ -1376,14 +1376,14 @@ TEST_CASE(hunl_sampled_external_traversal_uses_independent_draws_down_the_path) 
 }
 
 TEST_CASE(hunl_sampled_terminal_values_preserve_win_loss_and_tie_perspectives) {
-    const auto win_state = make_sampled_facing_bet_state().apply(core::ACTION_CALL);
-    core::HUNLSampledBuilder win_builder({false});
+    const auto win_state = make_sampled_facing_bet_state().apply(texas::ACTION_CALL);
+    texas::HUNLSampledBuilder win_builder({false});
     const auto win_root = win_builder.initialize(win_state);
-    core::HUNLSampledStorage win_storage;
-    core::HUNLSampledTerminalEvaluator terminal_evaluator;
-    core::HUNLSampledTraversal win_traversal(win_builder, win_storage, terminal_evaluator);
-    core::HUNLSampledWorkerScratch scratch;
-    core::HUNLSampledTraversalRequest request;
+    texas::HUNLSampledStorage win_storage;
+    texas::HUNLSampledTerminalEvaluator terminal_evaluator;
+    texas::HUNLSampledTraversal win_traversal(win_builder, win_storage, terminal_evaluator);
+    texas::HUNLSampledWorkerScratch scratch;
+    texas::HUNLSampledTraversalRequest request;
     request.root_node_id = win_root;
 
     request.traversing_player = 0;
@@ -1396,10 +1396,10 @@ TEST_CASE(hunl_sampled_terminal_values_preserve_win_loss_and_tie_perspectives) {
     EXPECT_TRUE(loser.value < 0.0);
 
     const auto tie_state = make_sampled_tie_showdown_state();
-    core::HUNLSampledBuilder tie_builder({false});
+    texas::HUNLSampledBuilder tie_builder({false});
     const auto tie_root = tie_builder.initialize(tie_state);
-    core::HUNLSampledStorage tie_storage;
-    core::HUNLSampledTraversal tie_traversal(tie_builder, tie_storage, terminal_evaluator);
+    texas::HUNLSampledStorage tie_storage;
+    texas::HUNLSampledTraversal tie_traversal(tie_builder, tie_storage, terminal_evaluator);
     request.root_node_id = tie_root;
     request.traversing_player = 0;
     const auto tie0 = tie_traversal.run(request, scratch);
@@ -1411,11 +1411,11 @@ TEST_CASE(hunl_sampled_terminal_values_preserve_win_loss_and_tie_perspectives) {
 }
 
 TEST_CASE(hunl_sampled_exporter_normalizes_sparse_rows_for_both_layouts) {
-    core::HUNLSampledStorage action_major(core::HUNLFlatValueLayout::InfosetActionHand);
+    texas::HUNLSampledStorage action_major(texas::HUNLFlatValueLayout::InfosetActionHand);
     auto action_row = action_major.ensure_row({
-        core::InfosetId{1},
+        texas::InfosetId{1},
         0,
-        core::Street::Turn,
+        texas::Street::Turn,
         2,
         2,
     });
@@ -1425,16 +1425,16 @@ TEST_CASE(hunl_sampled_exporter_normalizes_sparse_rows_for_both_layouts) {
     action_row.strategy_sum[3] = 3.0f;
 
     const auto action_exported =
-        core::HUNLSampledStrategyExporter::export_average_strategy(action_major.view(core::InfosetId{1}), 1);
+        texas::HUNLSampledStrategyExporter::export_average_strategy(action_major.view(texas::InfosetId{1}), 1);
     EXPECT_EQ(action_exported.actions.size(), 2U);
     EXPECT_NEAR(action_exported.actions[0].probability, 0.25, TOL);
     EXPECT_NEAR(action_exported.actions[1].probability, 0.75, TOL);
 
-    core::HUNLSampledStorage bucket_major(core::HUNLFlatValueLayout::InfosetHandAction);
+    texas::HUNLSampledStorage bucket_major(texas::HUNLFlatValueLayout::InfosetHandAction);
     auto bucket_row = bucket_major.ensure_row({
-        core::InfosetId{2},
+        texas::InfosetId{2},
         0,
-        core::Street::Turn,
+        texas::Street::Turn,
         2,
         2,
     });
@@ -1444,42 +1444,42 @@ TEST_CASE(hunl_sampled_exporter_normalizes_sparse_rows_for_both_layouts) {
     bucket_row.strategy_sum[3] = 2.0f;
 
     const auto bucket_exported =
-        core::HUNLSampledStrategyExporter::export_average_strategy(bucket_major.view(core::InfosetId{2}), 0);
+        texas::HUNLSampledStrategyExporter::export_average_strategy(bucket_major.view(texas::InfosetId{2}), 0);
     EXPECT_EQ(bucket_exported.actions.size(), 2U);
     EXPECT_NEAR(bucket_exported.actions[0].probability, 0.25, TOL);
     EXPECT_NEAR(bucket_exported.actions[1].probability, 0.75, TOL);
 }
 
 TEST_CASE(hunl_sampled_exporter_uniform_and_zero_sum_rows_stay_normalized) {
-    const auto uniform = core::HUNLSampledStrategyExporter::export_uniform(4);
+    const auto uniform = texas::HUNLSampledStrategyExporter::export_uniform(4);
     EXPECT_EQ(uniform.actions.size(), 4U);
     for (const auto& action : uniform.actions) {
         EXPECT_NEAR(action.probability, 0.25, TOL);
     }
 
-    core::HUNLSampledStorage storage(core::HUNLFlatValueLayout::InfosetActionHand);
+    texas::HUNLSampledStorage storage(texas::HUNLFlatValueLayout::InfosetActionHand);
     storage.ensure_row({
-        core::InfosetId{7},
+        texas::InfosetId{7},
         0,
-        core::Street::River,
+        texas::Street::River,
         2,
         3,
     });
     const auto exported =
-        core::HUNLSampledStrategyExporter::export_average_strategy(storage.view(core::InfosetId{7}), 0);
+        texas::HUNLSampledStrategyExporter::export_average_strategy(storage.view(texas::InfosetId{7}), 0);
     EXPECT_EQ(exported.actions.size(), 3U);
     EXPECT_NEAR(exported.actions[0].probability, 1.0 / 3.0, TOL);
     EXPECT_NEAR(exported.actions[1].probability, 1.0 / 3.0, TOL);
     EXPECT_NEAR(exported.actions[2].probability, 1.0 / 3.0, TOL);
-    EXPECT_TRUE(core::HUNLSampledStrategyExporter::export_average_strategy(
-                    storage.view(core::InfosetId{7}),
+    EXPECT_TRUE(texas::HUNLSampledStrategyExporter::export_average_strategy(
+                    storage.view(texas::InfosetId{7}),
                     9)
                     .actions.empty());
 }
 
 TEST_CASE(hunl_sampled_scheduler_partitions_trajectories_deterministically) {
-    const auto first = core::HUNLSampledScheduler::partition_deterministic(10, 3);
-    const auto second = core::HUNLSampledScheduler::partition_deterministic(10, 3);
+    const auto first = texas::HUNLSampledScheduler::partition_deterministic(10, 3);
+    const auto second = texas::HUNLSampledScheduler::partition_deterministic(10, 3);
 
     EXPECT_EQ(first.size(), 3U);
     EXPECT_EQ(first[0].trajectories.begin, 0U);
@@ -1497,7 +1497,7 @@ TEST_CASE(hunl_sampled_scheduler_partitions_trajectories_deterministically) {
 }
 
 TEST_CASE(hunl_sampled_scheduler_handles_zero_trajectories_and_zero_workers) {
-    const auto batches = core::HUNLSampledScheduler::partition_deterministic(0, 0);
+    const auto batches = texas::HUNLSampledScheduler::partition_deterministic(0, 0);
 
     EXPECT_EQ(batches.size(), 1U);
     EXPECT_EQ(batches[0].worker_index, 0U);
@@ -1511,7 +1511,7 @@ TEST_CASE(hunl_sampled_scheduler_bounds_twenty_zero_trajectory_worker_requests) 
             ? std::numeric_limits<std::size_t>::max()
             : (static_cast<std::size_t>(1U) << scenario);
         const auto batches =
-            core::HUNLSampledScheduler::partition_deterministic(0U, workers);
+            texas::HUNLSampledScheduler::partition_deterministic(0U, workers);
         EXPECT_EQ(batches.size(), 1U);
         EXPECT_EQ(batches[0].worker_index, 0U);
         EXPECT_EQ(batches[0].trajectories.begin, 0U);
@@ -1524,7 +1524,7 @@ TEST_CASE(hunl_sampled_scheduler_clamps_twenty_oversized_worker_requests) {
          trajectories <= 20U;
          ++trajectories) {
         const auto batches =
-            core::HUNLSampledScheduler::partition_deterministic(
+            texas::HUNLSampledScheduler::partition_deterministic(
                 trajectories,
                 std::numeric_limits<std::size_t>::max());
         EXPECT_EQ(
@@ -1544,7 +1544,7 @@ TEST_CASE(hunl_sampled_scheduler_clamps_twenty_oversized_worker_requests) {
 TEST_CASE(hunl_sampled_simd_scalar_reference_kernels_match_hand_computed_rows) {
     const std::array<float, 6> regret = {1.0f, -2.0f, 3.0f, 3.0f, 2.0f, -1.0f};
     std::array<float, 6> strategy = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-    core::regret_matching_action_major_f32(regret.data(), 2, 3, strategy.data());
+    texas::regret_matching_action_major_f32(regret.data(), 2, 3, strategy.data());
 
     EXPECT_NEAR(strategy[0], 0.25, TOL);
     EXPECT_NEAR(strategy[3], 0.75, TOL);
@@ -1555,7 +1555,7 @@ TEST_CASE(hunl_sampled_simd_scalar_reference_kernels_match_hand_computed_rows) {
 
     const std::array<float, 3> reach = {2.0f, 4.0f, 1.0f};
     std::array<float, 6> strategy_sum = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-    core::accumulate_average_strategy_action_major_f32(
+    texas::accumulate_average_strategy_action_major_f32(
         strategy.data(),
         reach.data(),
         2,
@@ -1574,7 +1574,7 @@ TEST_CASE(hunl_sampled_simd_scalar_reference_kernels_match_hand_computed_rows) {
     const std::array<float, 3> node_values = {4.0f, 3.0f, 2.0f};
     const std::array<float, 3> cf_reach = {1.0f, 0.5f, 2.0f};
     std::array<float, 6> regret_delta = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-    core::add_regret_delta_action_major_f32(
+    texas::add_regret_delta_action_major_f32(
         action_values.data(),
         node_values.data(),
         cf_reach.data(),
@@ -1589,7 +1589,7 @@ TEST_CASE(hunl_sampled_simd_scalar_reference_kernels_match_hand_computed_rows) {
     EXPECT_NEAR(regret_delta[4], -1.0, TOL);
     EXPECT_NEAR(regret_delta[5], 2.0, TOL);
 
-    const auto weighted = core::weighted_sum_f32_f64_accum(
+    const auto weighted = texas::weighted_sum_f32_f64_accum(
         static_cast<std::uint32_t>(action_values.size()),
         action_values.data(),
         action_values.data());
@@ -1600,12 +1600,12 @@ TEST_CASE(hunl_sampled_simd_double_kernels_and_runtime_disable_match_scalar_refe
     const std::array<double, 6> regret = {1.0, -2.0, 3.0, 3.0, 2.0, -1.0};
     std::array<double, 6> strategy_scalar = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     std::array<double, 6> strategy_dispatched = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    core::regret_matching_action_major_f64_scalar(regret.data(), 2, 3, strategy_scalar.data());
+    texas::regret_matching_action_major_f64_scalar(regret.data(), 2, 3, strategy_scalar.data());
 
-    const auto was_enabled = core::hunl_sampled_simd_enabled();
-    core::set_hunl_sampled_simd_enabled(false);
-    core::regret_matching_action_major_f64(regret.data(), 2, 3, strategy_dispatched.data());
-    EXPECT_EQ(core::hunl_sampled_simd_backend(), core::HUNLSampledSimdBackend::Scalar);
+    const auto was_enabled = texas::hunl_sampled_simd_enabled();
+    texas::set_hunl_sampled_simd_enabled(false);
+    texas::regret_matching_action_major_f64(regret.data(), 2, 3, strategy_dispatched.data());
+    EXPECT_EQ(texas::hunl_sampled_simd_backend(), texas::HUNLSampledSimdBackend::Scalar);
 
     for (std::size_t i = 0; i < strategy_scalar.size(); ++i) {
         EXPECT_NEAR(strategy_scalar[i], strategy_dispatched[i], TOL);
@@ -1616,14 +1616,14 @@ TEST_CASE(hunl_sampled_simd_double_kernels_and_runtime_disable_match_scalar_refe
     const std::array<double, 3> cf_reach = {1.0, 0.5, 2.0};
     std::array<double, 6> regret_delta_scalar = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     std::array<double, 6> regret_delta_dispatched = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    core::add_regret_delta_action_major_f64_scalar(
+    texas::add_regret_delta_action_major_f64_scalar(
         action_values.data(),
         node_values.data(),
         cf_reach.data(),
         2,
         3,
         regret_delta_scalar.data());
-    core::add_regret_delta_action_major_f64(
+    texas::add_regret_delta_action_major_f64(
         action_values.data(),
         node_values.data(),
         cf_reach.data(),
@@ -1634,11 +1634,11 @@ TEST_CASE(hunl_sampled_simd_double_kernels_and_runtime_disable_match_scalar_refe
         EXPECT_NEAR(regret_delta_scalar[i], regret_delta_dispatched[i], TOL);
     }
 
-    core::set_hunl_sampled_simd_enabled(was_enabled);
+    texas::set_hunl_sampled_simd_enabled(was_enabled);
 }
 
 TEST_CASE(hunl_sampled_profile_formats_summary_into_caller_buffer) {
-    core::HUNLSampledProfile profile;
+    texas::HUNLSampledProfile profile;
     profile.record_traversal(128, 4096, 64);
     profile.record_sparse_storage(12, 768);
     profile.record_memory_budget(8, 12, 768, 64, 128, 32, 1024, false, false);

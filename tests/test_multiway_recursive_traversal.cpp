@@ -17,7 +17,7 @@
 namespace {
 
 constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit) {
-    return core::card_to_int(rank, suit);
+    return texas::card_to_int(rank, suit);
 }
 
 const std::vector<std::uint8_t> kBoard = {
@@ -27,19 +27,19 @@ const std::vector<std::uint8_t> kBoard = {
 std::vector<std::uint8_t> compact_bucket_board(const std::vector<std::uint8_t>& hunl_board) {
     std::vector<std::uint8_t> compact;
     compact.reserve(hunl_board.size());
-    for (const auto card : hunl_board) compact.push_back(card - core::HUNL_CARD_FIRST);
+    for (const auto card : hunl_board) compact.push_back(card);
     return compact;
 }
 
 std::vector<std::uint32_t> one_bucket_assignments(const std::vector<std::uint8_t>& compact_board) {
-    std::vector<std::uint32_t> assignments(core::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
+    std::vector<std::uint32_t> assignments(texas::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
     for (std::uint8_t first = 0; first < 52U; ++first) {
         for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
             const std::array<std::uint8_t, 2> hole = {first, second};
             for (const auto board_card : compact_board) {
                 if (first == board_card || second == board_card) {
-                    assignments[core::MultiwayBucketTable::hole_index(hole)] =
-                        core::MULTIWAY_INVALID_BUCKET;
+                    assignments[texas::MultiwayBucketTable::hole_index(hole)] =
+                        texas::MULTIWAY_INVALID_BUCKET;
                 }
             }
         }
@@ -47,18 +47,18 @@ std::vector<std::uint32_t> one_bucket_assignments(const std::vector<std::uint8_t
     return assignments;
 }
 
-core::MultiwayRootSnapshot make_root(const core::MultiwayActionAbstraction& abstraction) {
-    core::MultiwayGameConfig game;
+texas::MultiwayRootSnapshot make_root(const texas::MultiwayActionAbstraction& abstraction) {
+    texas::MultiwayGameConfig game;
     game.starting_stacks = {1000, 1000, 1000};
     game.initial_contributions = {0, 0, 0};
     game.initial_street_contributions = {0, 0, 0};
     game.first_player = 0;
     game.big_blind = 100;
-    game.street = core::Street::River;
-    const auto betting = core::MultiwayState::initial(game).snapshot();
+    game.street = texas::Street::River;
+    const auto betting = texas::MultiwayState::initial(game).snapshot();
 
-    core::MultiwayRootSnapshot root;
-    root.public_state = core::MultiwayPublicBuilder::make_root(
+    texas::MultiwayRootSnapshot root;
+    root.public_state = texas::MultiwayPublicBuilder::make_root(
         betting, kBoard, abstraction.make_legal_actions(betting, 77U));
     root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
@@ -76,10 +76,10 @@ core::MultiwayRootSnapshot make_root(const core::MultiwayActionAbstraction& abst
     return root;
 }
 
-core::MultiwaySolverLimits make_limits(
+texas::MultiwaySolverLimits make_limits(
     std::size_t delta_capacity = 128U,
     std::uint32_t worker_count = 1U) {
-    core::MultiwaySolverLimits limits;
+    texas::MultiwaySolverLimits limits;
     limits.worker_count = worker_count;
     limits.trajectories_per_batch = 8U;
     limits.max_public_states = 128U;
@@ -89,31 +89,31 @@ core::MultiwaySolverLimits make_limits(
     return limits;
 }
 
-core::MultiwayCFRConfig make_cfr() {
-    core::MultiwayCFRConfig cfr;
+texas::MultiwayCFRConfig make_cfr() {
+    texas::MultiwayCFRConfig cfr;
     cfr.player_count = 3U;
     return cfr;
 }
 
-core::MultiwayBucketRegistry make_buckets() {
-    core::MultiwayBlueprintConfig config;
+texas::MultiwayBucketRegistry make_buckets() {
+    texas::MultiwayBlueprintConfig config;
     config.player_count = 3U;
     const auto compact_board = compact_bucket_board(kBoard);
-    return core::MultiwayBucketRegistry({core::MultiwayBucketTable(
-        core::make_multiway_model_identity(config), core::Street::River,
+    return texas::MultiwayBucketRegistry({texas::MultiwayBucketTable(
+        texas::make_multiway_model_identity(config), texas::Street::River,
         compact_board, 1U, one_bucket_assignments(compact_board))});
 }
 
 struct LeafProbe {
     std::size_t calls = 0U;
-    std::vector<core::PlayerId> actors;
+    std::vector<texas::PlayerId> actors;
     std::vector<int> current_bets;
-    std::vector<core::MultiwayContinuationPolicyKind> policies;
+    std::vector<texas::MultiwayContinuationPolicyKind> policies;
     std::size_t requests_with_private_context = 0U;
 };
 
-core::Value probe_leaf(
-    const core::MultiwayLeafEvaluationRequest& request,
+texas::Value probe_leaf(
+    const texas::MultiwayLeafEvaluationRequest& request,
     const void* context) noexcept {
     auto& probe = *const_cast<LeafProbe*>(static_cast<const LeafProbe*>(context));
     ++probe.calls;
@@ -127,15 +127,15 @@ core::Value probe_leaf(
         ++probe.requests_with_private_context;
     }
     const auto traverser = static_cast<std::size_t>(request.traverser);
-    return static_cast<core::Value>(request.betting->contributions[traverser] -
+    return static_cast<texas::Value>(request.betting->contributions[traverser] -
                                     request.betting->current_bet);
 }
 
-core::Value deterministic_leaf(
-    const core::MultiwayLeafEvaluationRequest& request,
+texas::Value deterministic_leaf(
+    const texas::MultiwayLeafEvaluationRequest& request,
     const void*) noexcept {
     const auto traverser = static_cast<std::size_t>(request.traverser);
-    return static_cast<core::Value>(
+    return static_cast<texas::Value>(
         request.betting->contributions[traverser] - request.betting->current_bet);
 }
 
@@ -149,14 +149,14 @@ struct ParallelRunnerFixture {
           traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U),
           runner(traversal, coordinator, worker_count, 1024U) {}
 
-    core::MultiwayActionAbstraction abstraction;
-    core::MultiwayRootSnapshot root;
-    core::MultiwaySolveRequest request;
-    core::MultiwaySolverCoordinator coordinator;
-    core::MultiwayBucketRegistry buckets;
-    core::MultiwayLeafEvaluator evaluator;
-    core::MultiwayRootExternalSamplingTraversal traversal;
-    core::MultiwayRootBatchRunner runner;
+    texas::MultiwayActionAbstraction abstraction;
+    texas::MultiwayRootSnapshot root;
+    texas::MultiwaySolveRequest request;
+    texas::MultiwaySolverCoordinator coordinator;
+    texas::MultiwayBucketRegistry buckets;
+    texas::MultiwayLeafEvaluator evaluator;
+    texas::MultiwayRootExternalSamplingTraversal traversal;
+    texas::MultiwayRootBatchRunner runner;
 };
 
 struct TraversalFixture {
@@ -170,19 +170,19 @@ struct TraversalFixture {
           evaluator{probe_leaf, &probe},
           traversal(coordinator, request.root(), abstraction, buckets, &evaluator, max_depth) {}
 
-    core::MultiwayActionAbstraction abstraction;
-    core::MultiwayRootSnapshot root;
-    core::MultiwaySolveRequest request;
-    core::MultiwaySolverCoordinator coordinator;
-    core::MultiwayBucketRegistry buckets;
+    texas::MultiwayActionAbstraction abstraction;
+    texas::MultiwayRootSnapshot root;
+    texas::MultiwaySolveRequest request;
+    texas::MultiwaySolverCoordinator coordinator;
+    texas::MultiwayBucketRegistry buckets;
     LeafProbe probe;
-    core::MultiwayLeafEvaluator evaluator;
-    core::MultiwayRootExternalSamplingTraversal traversal;
+    texas::MultiwayLeafEvaluator evaluator;
+    texas::MultiwayRootExternalSamplingTraversal traversal;
 };
 
 void expect_same_delta(
-    const core::MultiwayWorkerDelta& left,
-    const core::MultiwayWorkerDelta& right) {
+    const texas::MultiwayWorkerDelta& left,
+    const texas::MultiwayWorkerDelta& right) {
     EXPECT_EQ(left.infoset, right.infoset);
     EXPECT_EQ(left.bucket, right.bucket);
     EXPECT_EQ(left.action, right.action);
@@ -194,33 +194,33 @@ void expect_same_delta(
 }  // namespace
 
 TEST_CASE(multiway_recursive_traversal_rejects_unsupported_depth_and_invalid_seat) {
-    core::MultiwayActionAbstraction abstraction;
+    texas::MultiwayActionAbstraction abstraction;
     const auto root = make_root(abstraction);
-    const core::MultiwaySolveRequest request(root, make_cfr(), make_limits());
-    core::MultiwaySolverCoordinator coordinator(request);
+    const texas::MultiwaySolveRequest request(root, make_cfr(), make_limits());
+    texas::MultiwaySolverCoordinator coordinator(request);
     const auto buckets = make_buckets();
     LeafProbe probe;
-    const core::MultiwayLeafEvaluator evaluator = {probe_leaf, &probe};
+    const texas::MultiwayLeafEvaluator evaluator = {probe_leaf, &probe};
 
     EXPECT_THROW(
-        core::MultiwayRootExternalSamplingTraversal(
+        texas::MultiwayRootExternalSamplingTraversal(
             coordinator, request.root(), abstraction, buckets, &evaluator, 0U),
         std::invalid_argument);
     EXPECT_THROW(
-        core::MultiwayRootExternalSamplingTraversal(
+        texas::MultiwayRootExternalSamplingTraversal(
             coordinator, request.root(), abstraction, buckets, &evaluator, 65U),
         std::invalid_argument);
 
-    core::MultiwayRootExternalSamplingTraversal traversal(
+    texas::MultiwayRootExternalSamplingTraversal traversal(
         coordinator, request.root(), abstraction, buckets, &evaluator, 1U);
-    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
     EXPECT_THROW(traversal.run(-1, 1U, 7U, stream), std::invalid_argument);
     EXPECT_THROW(traversal.run(3, 1U, 7U, stream), std::invalid_argument);
 }
 
 TEST_CASE(multiway_recursive_traversal_accepts_a_non_root_opponent_traverser) {
     TraversalFixture fixture(2U);
-    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
 
     EXPECT_TRUE(fixture.traversal.run(1, 1U, 7U, stream));
     EXPECT_TRUE(stream.size() > 0U);
@@ -232,7 +232,7 @@ TEST_CASE(multiway_recursive_traversal_accepts_a_non_root_opponent_traverser) {
 
 TEST_CASE(multiway_recursive_traversal_depth_one_cuts_off_at_typed_leaves) {
     TraversalFixture fixture(1U);
-    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
 
     EXPECT_TRUE(fixture.traversal.run(0, 10U, 123U, stream));
     EXPECT_EQ(fixture.probe.calls, fixture.request.root().public_state.legal_actions.size());
@@ -245,24 +245,24 @@ TEST_CASE(multiway_recursive_traversal_depth_one_cuts_off_at_typed_leaves) {
 
 TEST_CASE(multiway_recursive_traversal_selects_a_public_information_set_continuation_policy) {
     TraversalFixture fixture(1U);
-    const core::MultiwayFixedContinuationSelector selector(
-        core::MultiwayContinuationPolicyKind::CallBiased);
-    fixture.traversal = core::MultiwayRootExternalSamplingTraversal(
+    const texas::MultiwayFixedContinuationSelector selector(
+        texas::MultiwayContinuationPolicyKind::CallBiased);
+    fixture.traversal = texas::MultiwayRootExternalSamplingTraversal(
         fixture.coordinator, fixture.request.root(), fixture.abstraction, fixture.buckets,
         &fixture.evaluator, 1U, 0U, nullptr, &selector);
-    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
 
     EXPECT_TRUE(fixture.traversal.run(0, 14U, 0x55U, stream));
     EXPECT_EQ(fixture.probe.policies.size(), fixture.request.root().public_state.legal_actions.size());
     EXPECT_EQ(fixture.probe.requests_with_private_context, fixture.probe.policies.size());
     for (const auto policy : fixture.probe.policies) {
-        EXPECT_EQ(policy, core::MultiwayContinuationPolicyKind::CallBiased);
+        EXPECT_EQ(policy, texas::MultiwayContinuationPolicyKind::CallBiased);
     }
 }
 
 TEST_CASE(multiway_recursive_traversal_lazily_admits_sampled_opponent_children_and_rows) {
     TraversalFixture fixture(2U);
-    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
 
     EXPECT_TRUE(fixture.traversal.run(0, 11U, 456U, stream));
     const auto root_action_count = fixture.request.root().public_state.legal_actions.size();
@@ -276,8 +276,8 @@ TEST_CASE(multiway_recursive_traversal_lazily_admits_sampled_opponent_children_a
 TEST_CASE(multiway_recursive_traversal_is_deterministic_for_the_same_seed) {
     TraversalFixture first(2U);
     TraversalFixture second(2U);
-    core::MultiwayWorkerDeltaStream first_stream(0U, 128U);
-    core::MultiwayWorkerDeltaStream second_stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream first_stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream second_stream(0U, 128U);
 
     EXPECT_TRUE(first.traversal.run(0, 99U, 0x12345678U, first_stream));
     EXPECT_TRUE(second.traversal.run(0, 99U, 0x12345678U, second_stream));
@@ -293,7 +293,7 @@ TEST_CASE(multiway_recursive_traversal_reaches_both_terminal_and_leaf_paths) {
     bool found_mixed_paths = false;
     for (std::uint64_t seed = 1U; seed <= 64U && !found_mixed_paths; ++seed) {
         TraversalFixture fixture(3U);
-        core::MultiwayWorkerDeltaStream stream(0U, 128U);
+        texas::MultiwayWorkerDeltaStream stream(0U, 128U);
         EXPECT_TRUE(fixture.traversal.run(0, 12U, seed, stream));
         const auto root_action_count = fixture.request.root().public_state.legal_actions.size();
         found_mixed_paths = fixture.probe.calls > 0U && fixture.probe.calls < root_action_count;
@@ -306,8 +306,8 @@ TEST_CASE(multiway_recursive_traversal_reaches_both_terminal_and_leaf_paths) {
 
 TEST_CASE(multiway_recursive_traversal_rolls_back_trajectory_deltas_on_capacity_exhaustion) {
     TraversalFixture fixture(2U, 1U);
-    core::MultiwayWorkerDeltaStream stream(0U, 1U);
-    core::MultiwayWorkerDelta sentinel;
+    texas::MultiwayWorkerDeltaStream stream(0U, 1U);
+    texas::MultiwayWorkerDelta sentinel;
     sentinel.infoset = {{1U}, 0};
     sentinel.trajectory_id = 1U;
     EXPECT_TRUE(stream.try_append(sentinel));
@@ -324,7 +324,7 @@ TEST_CASE(multiway_recursive_batch_rotates_traversers_deterministically_across_s
     EXPECT_EQ(fixture.traversal.traverser_for_trajectory(2U), 2);
     EXPECT_EQ(fixture.traversal.traverser_for_trajectory(3U), 0);
 
-    core::MultiwayRootBatchRunner runner(
+    texas::MultiwayRootBatchRunner runner(
         fixture.traversal, fixture.coordinator, 1U, 128U);
     const auto result = runner.run(0U, 3U, 0x5eedU);
     EXPECT_EQ(result.trajectories_attempted, 3U);
@@ -373,10 +373,10 @@ TEST_CASE(multiway_root_batch_runner_is_deterministic_across_worker_partitions) 
     EXPECT_EQ(expected.run.merged_stream_fingerprint, two.run.merged_stream_fingerprint);
     EXPECT_EQ(expected.run.merged_stream_fingerprint, four.run.merged_stream_fingerprint);
     EXPECT_TRUE(expected.run.bitwise_deterministic);
-    EXPECT_EQ(expected.run.partition_version, core::MULTIWAY_PARTITION_VERSION);
-    EXPECT_EQ(expected.run.action_sampling_version, core::MULTIWAY_ACTION_SAMPLING_VERSION);
-    EXPECT_EQ(expected.run.public_chance_order_version, core::MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION);
-    EXPECT_EQ(expected.run.merge_order_version, core::MULTIWAY_MERGE_ORDER_VERSION);
+    EXPECT_EQ(expected.run.partition_version, texas::MULTIWAY_PARTITION_VERSION);
+    EXPECT_EQ(expected.run.action_sampling_version, texas::MULTIWAY_ACTION_SAMPLING_VERSION);
+    EXPECT_EQ(expected.run.public_chance_order_version, texas::MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION);
+    EXPECT_EQ(expected.run.merge_order_version, texas::MULTIWAY_MERGE_ORDER_VERSION);
 
     const auto expected_policy = single_worker.coordinator.export_root_policy();
     const auto repeat_policy = repeated_single_worker.coordinator.export_root_policy();
@@ -395,7 +395,7 @@ TEST_CASE(multiway_root_batch_runner_is_deterministic_across_worker_partitions) 
 
 TEST_CASE(multiway_recursive_workers_publish_deltas_without_mutating_shared_row_values) {
     TraversalFixture fixture(2U);
-    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
 
     EXPECT_TRUE(fixture.traversal.run(0, 99U, 0x12345678U, stream));
     EXPECT_TRUE(stream.size() > 0U);

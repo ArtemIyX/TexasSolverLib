@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 std::uint8_t board_card_count(Street street) {
@@ -204,7 +204,7 @@ MultiwayExternalSamplingRequest MultiwayTerminalAdapter::make_external_sampling_
     std::vector<Probability> strategy,
     std::vector<Value> sampled_action_values) const {
     validate_token(private_deal);
-    return core::make_multiway_external_sampling_request(
+    return texas::make_multiway_external_sampling_request(
         std::move(player_reaches), traverser, private_deal.deal_, std::move(strategy),
         std::move(sampled_action_values));
 }
@@ -542,4 +542,4 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
         evaluate_multiway_showdown(input), root_, betting.big_blind);
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

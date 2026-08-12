@@ -8,39 +8,39 @@
 
 namespace {
 
-core::CanonicalRange make_two_combo_parent() {
-    const auto combos = core::enumerate_combos({
-        core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2)});
-    core::RangeVector range;
-    range.kind = core::RangeVector::Kind::Combo;
+texas::CanonicalRange make_two_combo_parent() {
+    const auto combos = texas::enumerate_combos({
+        texas::card_to_int(14, 0), texas::card_to_int(13, 1), texas::card_to_int(12, 2)});
+    texas::RangeVector range;
+    range.kind = texas::RangeVector::Kind::Combo;
     range.weights.assign(combos.size(), 0.0);
     range.weights[0] = 0.4;
     range.weights[1] = 0.6;
     range.normalize();
-    core::RangeMask mask;
-    mask.kind = core::RangeVector::Kind::Combo;
+    texas::RangeMask mask;
+    mask.kind = texas::RangeVector::Kind::Combo;
     mask.enabled.assign(combos.size(), 1U);
-    return core::make_canonical_range_from_values(core::RangeSourceKind::UniformPrior, range, mask);
+    return texas::make_canonical_range_from_values(texas::RangeSourceKind::UniformPrior, range, mask);
 }
 
 TEST_CASE(ranges_parent_splits_correctly_across_actions) {
-    const auto combos = core::enumerate_combos({
-        core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2)});
+    const auto combos = texas::enumerate_combos({
+        texas::card_to_int(14, 0), texas::card_to_int(13, 1), texas::card_to_int(12, 2)});
     const auto parent = make_two_combo_parent();
 
-    core::RangeMask first_only;
-    first_only.kind = core::RangeVector::Kind::Combo;
+    texas::RangeMask first_only;
+    first_only.kind = texas::RangeVector::Kind::Combo;
     first_only.enabled.assign(combos.size(), 0U);
     first_only.enabled[0] = 1U;
 
-    core::RangeMask second_only;
-    second_only.kind = core::RangeVector::Kind::Combo;
+    texas::RangeMask second_only;
+    second_only.kind = texas::RangeVector::Kind::Combo;
     second_only.enabled.assign(combos.size(), 0U);
     second_only.enabled[1] = 1U;
 
-    const auto children = core::propagate_range_to_actions(parent, {
-        core::ActionRangeFilter{core::ACTION_CHECK, first_only, {}},
-        core::ActionRangeFilter{core::ACTION_BET_75, second_only, {}},
+    const auto children = texas::propagate_range_to_actions(parent, {
+        texas::ActionRangeFilter{texas::ACTION_CHECK, first_only, {}},
+        texas::ActionRangeFilter{texas::ACTION_BET_75, second_only, {}},
     });
 
     EXPECT_EQ(children.size(), 2U);
@@ -52,22 +52,22 @@ TEST_CASE(ranges_parent_splits_correctly_across_actions) {
 
 TEST_CASE(ranges_child_ranges_preserve_total_mass_after_renormalization) {
     const auto parent = make_two_combo_parent();
-    core::ActionRangeFilter filter;
-    filter.action = core::ACTION_CALL;
+    texas::ActionRangeFilter filter;
+    filter.action = texas::ACTION_CALL;
     filter.multipliers = std::vector<double>(parent.range.size(), 0.5);
 
-    const auto child = core::propagate_range_to_action(parent, filter);
+    const auto child = texas::propagate_range_to_action(parent, filter);
     EXPECT_NEAR(child.range.sum(), 1.0, 1e-12);
 }
 
 TEST_CASE(ranges_action_propagation_rejects_twenty_zero_mass_posteriors) {
     const auto parent = make_two_combo_parent();
     for (std::size_t index = 0; index < 20; ++index) {
-        core::ActionRangeFilter filter;
-        filter.action = core::ACTION_CALL;
+        texas::ActionRangeFilter filter;
+        filter.action = texas::ACTION_CALL;
         filter.multipliers.assign(parent.range.size(), 0.0);
         EXPECT_THROW(
-            core::propagate_range_to_action(parent, filter),
+            texas::propagate_range_to_action(parent, filter),
             std::invalid_argument);
     }
 }
@@ -75,8 +75,8 @@ TEST_CASE(ranges_action_propagation_rejects_twenty_zero_mass_posteriors) {
 TEST_CASE(ranges_action_propagation_rejects_twenty_invalid_multipliers) {
     const auto parent = make_two_combo_parent();
     for (std::size_t index = 0; index < 20; ++index) {
-        core::ActionRangeFilter filter;
-        filter.action = core::ACTION_CALL;
+        texas::ActionRangeFilter filter;
+        filter.action = texas::ACTION_CALL;
         filter.multipliers.assign(parent.range.size(), 1.0);
         filter.multipliers[index % filter.multipliers.size()] =
             index % 3U == 0U
@@ -85,24 +85,24 @@ TEST_CASE(ranges_action_propagation_rejects_twenty_invalid_multipliers) {
                     ? std::numeric_limits<double>::infinity()
                     : std::numeric_limits<double>::quiet_NaN());
         EXPECT_THROW(
-            core::propagate_range_to_action(parent, filter),
+            texas::propagate_range_to_action(parent, filter),
             std::invalid_argument);
     }
 }
 
 TEST_CASE(ranges_fold_branch_removes_dead_combos) {
-    const auto combos = core::enumerate_combos({
-        core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2)});
+    const auto combos = texas::enumerate_combos({
+        texas::card_to_int(14, 0), texas::card_to_int(13, 1), texas::card_to_int(12, 2)});
     const auto parent = make_two_combo_parent();
 
-    core::RangeMask surviving_only;
-    surviving_only.kind = core::RangeVector::Kind::Combo;
+    texas::RangeMask surviving_only;
+    surviving_only.kind = texas::RangeVector::Kind::Combo;
     surviving_only.enabled.assign(combos.size(), 0U);
     surviving_only.enabled[1] = 1U;
 
-    const auto folded = core::propagate_range_to_action(
+    const auto folded = texas::propagate_range_to_action(
         parent,
-        core::ActionRangeFilter{core::ACTION_FOLD, surviving_only, {}});
+        texas::ActionRangeFilter{texas::ACTION_FOLD, surviving_only, {}});
 
     EXPECT_NEAR(folded.range.weights[0], 0.0, 1e-12);
     EXPECT_NEAR(folded.range.weights[1], 1.0, 1e-12);
@@ -110,19 +110,19 @@ TEST_CASE(ranges_fold_branch_removes_dead_combos) {
 
 TEST_CASE(ranges_chance_nodes_update_legal_combos_correctly) {
     const std::vector<std::uint8_t> board = {
-        core::card_to_int(14, 0), core::card_to_int(13, 1), core::card_to_int(12, 2)};
-    const auto combos = core::enumerate_combos(board);
-    core::RangeVector range;
-    range.kind = core::RangeVector::Kind::Combo;
+        texas::card_to_int(14, 0), texas::card_to_int(13, 1), texas::card_to_int(12, 2)};
+    const auto combos = texas::enumerate_combos(board);
+    texas::RangeVector range;
+    range.kind = texas::RangeVector::Kind::Combo;
     range.weights.assign(combos.size(), 1.0);
     range.normalize();
-    core::RangeMask mask;
-    mask.kind = core::RangeVector::Kind::Combo;
+    texas::RangeMask mask;
+    mask.kind = texas::RangeVector::Kind::Combo;
     mask.enabled.assign(combos.size(), 1U);
-    const auto parent = core::make_canonical_range_from_values(core::RangeSourceKind::UniformPrior, range, mask);
+    const auto parent = texas::make_canonical_range_from_values(texas::RangeSourceKind::UniformPrior, range, mask);
 
-    const auto dealt = core::card_to_int(2, 0);
-    const auto child = core::propagate_range_to_chance_card(parent, combos, dealt, 1.0);
+    const auto dealt = texas::card_to_int(2, 0);
+    const auto child = texas::propagate_range_to_chance_card(parent, combos, dealt, 1.0);
 
     for (std::size_t i = 0; i < combos.hands.size(); ++i) {
         if (combos.hands[i][0] == dealt || combos.hands[i][1] == dealt) {
@@ -134,20 +134,20 @@ TEST_CASE(ranges_chance_nodes_update_legal_combos_correctly) {
 
 TEST_CASE(ranges_chance_propagation_rejects_twenty_invalid_probabilities) {
     const std::vector<std::uint8_t> board = {
-        core::card_to_int(14, 0),
-        core::card_to_int(13, 1),
-        core::card_to_int(12, 2),
+        texas::card_to_int(14, 0),
+        texas::card_to_int(13, 1),
+        texas::card_to_int(12, 2),
     };
-    const auto combos = core::enumerate_combos(board);
-    core::RangeVector range;
-    range.kind = core::RangeVector::Kind::Combo;
+    const auto combos = texas::enumerate_combos(board);
+    texas::RangeVector range;
+    range.kind = texas::RangeVector::Kind::Combo;
     range.weights.assign(combos.size(), 1.0);
     range.normalize();
-    core::RangeMask mask;
-    mask.kind = core::RangeVector::Kind::Combo;
+    texas::RangeMask mask;
+    mask.kind = texas::RangeVector::Kind::Combo;
     mask.enabled.assign(combos.size(), 1U);
-    const auto parent = core::make_canonical_range_from_values(
-        core::RangeSourceKind::UniformPrior, range, mask);
+    const auto parent = texas::make_canonical_range_from_values(
+        texas::RangeSourceKind::UniformPrior, range, mask);
 
     for (std::size_t index = 0; index < 20; ++index) {
         const auto probability = index % 4U == 0U
@@ -158,8 +158,8 @@ TEST_CASE(ranges_chance_propagation_rejects_twenty_invalid_probabilities) {
                     ? std::numeric_limits<double>::infinity()
                     : std::numeric_limits<double>::quiet_NaN()));
         EXPECT_THROW(
-            core::propagate_range_to_chance_card(
-                parent, combos, core::card_to_int(2, 0), probability),
+            texas::propagate_range_to_chance_card(
+                parent, combos, texas::card_to_int(2, 0), probability),
             std::invalid_argument);
     }
 }

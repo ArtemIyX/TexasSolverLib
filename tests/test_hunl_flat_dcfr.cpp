@@ -17,7 +17,7 @@
 namespace {
 
 constexpr std::uint8_t c(std::uint8_t rank, std::uint8_t suit) {
-    return core::card_to_int(rank, suit);
+    return texas::card_to_int(rank, suit);
 }
 
 std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b) {
@@ -146,7 +146,7 @@ std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::vector<
     std::vector<std::uint8_t> live_cards;
     for (std::uint8_t rank = 2; rank <= 14; ++rank) {
         for (std::uint8_t suit = 0; suit < 4; ++suit) {
-            const auto card = core::card_to_int(rank, suit);
+            const auto card = texas::card_to_int(rank, suit);
             if (!blocked[card]) {
                 live_cards.push_back(card);
             }
@@ -168,14 +168,14 @@ std::filesystem::path make_tmp_path(const std::string& name) {
 
 std::filesystem::path write_two_bucket_river_abstraction(const std::vector<std::uint8_t>& board) {
     const auto tmp = make_tmp_path("texas_hunl_flat_dcfr_bucket_ranges.npz");
-    const auto board_key = core::canonicalize_board(board);
+    const auto board_key = texas::canonicalize_board(board);
 
     std::string river_hand_index = "{\"" + board_key + "\":{";
     std::vector<std::uint8_t> river_assignments;
     const auto live_hands = enumerate_live_hands(board);
     river_assignments.reserve(live_hands.size());
     for (std::size_t i = 0; i < live_hands.size(); ++i) {
-        const auto [canonical_board_key, hand_key] = core::canonicalize(board, live_hands[i]);
+        const auto [canonical_board_key, hand_key] = texas::canonicalize(board, live_hands[i]);
         (void)canonical_board_key;
         if (i > 0) {
             river_hand_index += ",";
@@ -211,37 +211,37 @@ std::filesystem::path write_two_bucket_river_abstraction(const std::vector<std::
     return tmp;
 }
 
-core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 2;
     graph.max_actions = 2;
 
     graph.children = {1, 2, 3, 4, 5, 6};
     graph.chance_outcomes = {
-        core::HUNLFlatChanceOutcome{0, 0.5, 1},
-        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+        texas::HUNLFlatChanceOutcome{0, 0.5, 1},
+        texas::HUNLFlatChanceOutcome{1, 0.5, 2},
     };
 
-    const auto shared_infoset = core::InfosetId{0};
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    const auto shared_infoset = texas::InfosetId{0};
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         shared_infoset,
         0,
         2,
         {},
         0,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
     graph.infoset_debug_keys = {"shared-depth-infoset"};
     graph.infoset_nodes = {1, 2};
 
     auto make_terminal_meta = [](double value) {
-        core::HUNLFlatNodeMeta meta;
-        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        texas::HUNLFlatNodeMeta meta;
+        meta.type = texas::HUNLFlatNodeType::TerminalFold;
         meta.terminal_utility = {value, -value};
-        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
         return meta;
     };
 
@@ -251,8 +251,8 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].chance_begin = 0;
     graph.node_meta[0].chance_count = 2;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = texas::Street::Flop;
 
     for (std::uint32_t node_idx : {1U, 2U}) {
         auto& meta = graph.node_meta[node_idx];
@@ -260,8 +260,8 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
         meta.child_count = 2;
         meta.infoset_id = shared_infoset;
         meta.player = 0;
-        meta.type = core::HUNLFlatNodeType::Decision;
-        meta.street = core::Street::Flop;
+        meta.type = texas::HUNLFlatNodeType::Decision;
+        meta.street = texas::Street::Flop;
         meta.action_count = 2;
         meta.has_infoset = true;
     }
@@ -273,29 +273,29 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
 
     graph.depth_order = {0, 1, 2, 3, 4, 5, 6};
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, 2},
-        core::HUNLFlatSlice{3, 4},
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, 2},
+        texas::HUNLFlatSlice{3, 4},
     };
     graph.node_depths = {0, 1, 1, 2, 2, 2, 2};
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {6, 5, 4, 3, 2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 
-core::HUNLFlatSolveGraph make_unreachable_infoset_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_unreachable_infoset_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 1;
     graph.max_actions = 1;
     graph.children = {1, 3};
     graph.node_meta.resize(4);
     graph.infosets = {
-        core::HUNLFlatInfoset{core::InfosetId{0}, 0, 1, {}, 0, 0, core::Street::Flop, 1},
-        core::HUNLFlatInfoset{core::InfosetId{1}, 1, 1, {}, 1, 0, core::Street::Flop, 1},
+        texas::HUNLFlatInfoset{texas::InfosetId{0}, 0, 1, {}, 0, 0, texas::Street::Flop, 1},
+        texas::HUNLFlatInfoset{texas::InfosetId{1}, 1, 1, {}, 1, 0, texas::Street::Flop, 1},
     };
     graph.infoset_debug_keys = {"reachable", "unreachable"};
     graph.infoset_nodes = {0, 2};
@@ -304,32 +304,32 @@ core::HUNLFlatSolveGraph make_unreachable_infoset_graph() {
     graph.reverse_order = {3, 1, 2, 0};
     graph.street_order = graph.depth_order;
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 2},
-        core::HUNLFlatSlice{2, 2},
+        texas::HUNLFlatSlice{0, 2},
+        texas::HUNLFlatSlice{2, 2},
     };
     graph.node_depths = {0, 1, 0, 1};
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
 
-    auto set_decision = [&](std::uint32_t node_idx, core::InfosetId infoset_id) {
+    auto set_decision = [&](std::uint32_t node_idx, texas::InfosetId infoset_id) {
         graph.node_meta[node_idx].child_begin = node_idx == 0 ? 0 : 1;
         graph.node_meta[node_idx].child_count = 1;
         graph.node_meta[node_idx].infoset_id = infoset_id;
         graph.node_meta[node_idx].player = 0;
-        graph.node_meta[node_idx].type = core::HUNLFlatNodeType::Decision;
-        graph.node_meta[node_idx].street = core::Street::Flop;
+        graph.node_meta[node_idx].type = texas::HUNLFlatNodeType::Decision;
+        graph.node_meta[node_idx].street = texas::Street::Flop;
         graph.node_meta[node_idx].action_count = 1;
         graph.node_meta[node_idx].has_infoset = true;
     };
 
     auto set_terminal = [&](std::uint32_t node_idx, double value) {
-        graph.node_meta[node_idx].type = core::HUNLFlatNodeType::TerminalFold;
+        graph.node_meta[node_idx].type = texas::HUNLFlatNodeType::TerminalFold;
         graph.node_meta[node_idx].terminal_utility = {value, -value};
-        graph.node_meta[node_idx].terminal_kind = core::TerminalKind::fold(1, 1);
+        graph.node_meta[node_idx].terminal_kind = texas::TerminalKind::fold(1, 1);
     };
 
-    set_decision(0, core::InfosetId{0});
-    set_decision(2, core::InfosetId{1});
+    set_decision(0, texas::InfosetId{0});
+    set_decision(2, texas::InfosetId{1});
     set_terminal(1, 1.0);
     set_terminal(3, -2.0);
     return graph;
@@ -338,12 +338,12 @@ core::HUNLFlatSolveGraph make_unreachable_infoset_graph() {
 }  // namespace
 
 TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 3},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iterations(2);
 
@@ -357,12 +357,12 @@ TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration) {
 }
 
 TEST_CASE(hunl_flat_dcfr_keeps_configured_worker_pool_across_iterations) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 3},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         3);
 
     EXPECT_EQ(solver.worker_count(), 3U);
@@ -374,12 +374,12 @@ TEST_CASE(hunl_flat_dcfr_keeps_configured_worker_pool_across_iterations) {
 }
 
 TEST_CASE(hunl_flat_dcfr_accepts_single_worker_pool_configuration) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1);
 
     EXPECT_EQ(solver.worker_count(), 1U);
@@ -388,12 +388,12 @@ TEST_CASE(hunl_flat_dcfr_accepts_single_worker_pool_configuration) {
 }
 
 TEST_CASE(hunl_flat_dcfr_strategy_stage_writes_normalized_rows) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     auto& table = solver.infoset_table_mut();
     for (const auto& meta : table.meta()) {
@@ -424,12 +424,12 @@ TEST_CASE(hunl_flat_dcfr_strategy_stage_writes_normalized_rows) {
 }
 
 TEST_CASE(hunl_flat_dcfr_exports_average_strategy_by_infoset_key) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
     const auto exported = solver.export_average_strategy();
@@ -445,12 +445,12 @@ TEST_CASE(hunl_flat_dcfr_exports_average_strategy_by_infoset_key) {
 }
 
 TEST_CASE(hunl_flat_dcfr_forward_reach_initializes_root_reaches) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
@@ -460,12 +460,12 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_initializes_root_reaches) {
 }
 
 TEST_CASE(hunl_flat_dcfr_forward_reach_distributes_mass_across_explicit_rows) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {4, 4},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
@@ -480,12 +480,12 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_distributes_mass_across_explicit_rows) {
 }
 
 TEST_CASE(hunl_flat_dcfr_precomputes_normalized_bucket_reach) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {4, 4},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
@@ -523,15 +523,15 @@ TEST_CASE(hunl_flat_dcfr_precomputes_normalized_bucket_reach) {
 
 TEST_CASE(hunl_flat_dcfr_zero_reach_infosets_fall_back_to_uniform_bucket_priors) {
     const auto graph = make_unreachable_infoset_graph();
-    core::HUNLFlatDCFR solver(
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 3},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1);
 
     solver.run_iteration();
 
-    const auto unreachable_infoset = core::InfosetId{1};
+    const auto unreachable_infoset = texas::InfosetId{1};
     const auto& infoset_meta = solver.infoset_table().meta()[unreachable_infoset.value];
     const auto bucket_range = solver.infoset_table().infoset_bucket_range(unreachable_infoset);
     EXPECT_NEAR(solver.infoset_bucket_totals()[unreachable_infoset.value], 0.0, 1e-12);
@@ -544,16 +544,16 @@ TEST_CASE(hunl_flat_dcfr_zero_reach_infosets_fall_back_to_uniform_bucket_priors)
 }
 
 TEST_CASE(hunl_flat_dcfr_forward_reach_propagates_strategy_on_decision_nodes) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     const auto root_idx = graph.root;
     const auto& root_meta = graph.node_meta[root_idx];
-    EXPECT_EQ(root_meta.type, core::HUNLFlatNodeType::Decision);
+    EXPECT_EQ(root_meta.type, texas::HUNLFlatNodeType::Decision);
     EXPECT_TRUE(root_meta.child_count >= 2);
 
     auto& table = solver.infoset_table_mut();
@@ -585,10 +585,10 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_propagates_strategy_on_decision_nodes) {
 
 TEST_CASE(hunl_flat_dcfr_forward_reach_uses_local_bucket_mass_per_node) {
     const auto graph = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR solver(
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1);
 
     auto& table = solver.infoset_table_mut();
@@ -610,19 +610,19 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_uses_local_bucket_mass_per_node) {
 }
 
 TEST_CASE(hunl_flat_dcfr_forward_reach_weights_chance_nodes) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
     bool checked_chance = false;
     for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& meta = graph.node_meta[node_idx];
-        if (meta.type != core::HUNLFlatNodeType::Chance || meta.chance_count == 0) {
+        if (meta.type != texas::HUNLFlatNodeType::Chance || meta.chance_count == 0) {
             continue;
         }
 
@@ -641,28 +641,28 @@ TEST_CASE(hunl_flat_dcfr_forward_reach_weights_chance_nodes) {
 }
 
 TEST_CASE(hunl_flat_dcfr_terminal_stage_uses_precomputed_leaf_utilities) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
     bool saw_terminal = false;
     for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& meta = graph.node_meta[node_idx];
-        if (meta.type != core::HUNLFlatNodeType::TerminalFold &&
-            meta.type != core::HUNLFlatNodeType::TerminalShowdown) {
+        if (meta.type != texas::HUNLFlatNodeType::TerminalFold &&
+            meta.type != texas::HUNLFlatNodeType::TerminalShowdown) {
             continue;
         }
 
         saw_terminal = true;
-        if (meta.type == core::HUNLFlatNodeType::TerminalFold) {
-            EXPECT_TRUE(meta.terminal_kind.tag == core::TerminalKindTag::Fold);
+        if (meta.type == texas::HUNLFlatNodeType::TerminalFold) {
+            EXPECT_TRUE(meta.terminal_kind.tag == texas::TerminalKindTag::Fold);
         } else {
-            EXPECT_TRUE(meta.terminal_kind.tag == core::TerminalKindTag::Showdown);
+            EXPECT_TRUE(meta.terminal_kind.tag == texas::TerminalKindTag::Showdown);
         }
         EXPECT_NEAR(meta.terminal_utility[0], solver.terminal_values()[node_idx], 1e-12);
     }
@@ -671,20 +671,20 @@ TEST_CASE(hunl_flat_dcfr_terminal_stage_uses_precomputed_leaf_utilities) {
 }
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_copies_terminal_values_into_node_values) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
     bool saw_terminal = false;
     for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& meta = graph.node_meta[node_idx];
-        if (meta.type != core::HUNLFlatNodeType::TerminalFold &&
-            meta.type != core::HUNLFlatNodeType::TerminalShowdown) {
+        if (meta.type != texas::HUNLFlatNodeType::TerminalFold &&
+            meta.type != texas::HUNLFlatNodeType::TerminalShowdown) {
             continue;
         }
         saw_terminal = true;
@@ -695,33 +695,33 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_copies_terminal_values_into_node_values)
 }
 
 TEST_CASE(hunl_flat_dcfr_rejects_depth_limited_graphs_without_shared_leaf_evaluator) {
-    auto config = core::benchmark_turn_subgame();
+    auto config = texas::benchmark_turn_subgame();
     config.depth_limit_plies = 1;
-    const auto graph = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
+    const auto graph = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
     EXPECT_THROW(
-        core::HUNLFlatDCFR(graph, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand),
+        texas::HUNLFlatDCFR(graph, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand),
         std::invalid_argument);
 }
 
 TEST_CASE(hunl_flat_dcfr_depth_limited_rejection_is_worker_count_independent) {
-    auto config = core::benchmark_turn_subgame();
+    auto config = texas::benchmark_turn_subgame();
     config.depth_limit_plies = 1;
-    const auto graph_a = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
-    const auto graph_b = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
+    const auto graph_a = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
+    const auto graph_b = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
 
-    EXPECT_THROW(core::HUNLFlatDCFR(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 1),
+    EXPECT_THROW(texas::HUNLFlatDCFR(graph_a, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 1),
                  std::invalid_argument);
-    EXPECT_THROW(core::HUNLFlatDCFR(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 2),
+    EXPECT_THROW(texas::HUNLFlatDCFR(graph_b, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 2),
                  std::invalid_argument);
 }
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
@@ -748,10 +748,10 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children) {
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph) {
     const auto graph = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR solver(
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1);
 
     auto& table = solver.infoset_table_mut();
@@ -775,12 +775,12 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_
 }
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     auto& table = solver.infoset_table_mut();
     const auto& root_meta = graph.node_meta[graph.root];
@@ -797,7 +797,7 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children) {
 
     solver.run_iteration();
 
-    if (root_meta.type == core::HUNLFlatNodeType::Decision && root_meta.child_count >= 2) {
+    if (root_meta.type == texas::HUNLFlatNodeType::Decision && root_meta.child_count >= 2) {
         const auto a0 = solver.action_values()[root_meta.child_begin];
         const auto a1 = solver.action_values()[root_meta.child_begin + 1];
         EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
@@ -808,12 +808,12 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children) {
 }
 
 TEST_CASE(hunl_flat_dcfr_regret_update_uses_action_minus_node_value) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     auto& table = solver.infoset_table_mut();
     const auto root_infoset = graph.node_meta[graph.root].infoset_id;
@@ -834,12 +834,12 @@ TEST_CASE(hunl_flat_dcfr_regret_update_uses_action_minus_node_value) {
 }
 
 TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iteration();
 
@@ -861,34 +861,34 @@ TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
 }
 
 TEST_CASE(hunl_flat_dcfr_float32_precision_tracks_double_on_small_game) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph_f64 = core::HUNLFlatSolveGraph::build(config);
-    const auto graph_f32 = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph_f64 = texas::HUNLFlatSolveGraph::build(config);
+    const auto graph_f32 = texas::HUNLFlatSolveGraph::build(config);
 
-    core::HUNLFlatDCFR solver_f64(
+    texas::HUNLFlatDCFR solver_f64(
         graph_f64,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
         1.5,
         0.0,
         2.0,
-        core::HUNLFlatStoragePrecision::Float64);
-    core::HUNLFlatDCFR solver_f32(
+        texas::HUNLFlatStoragePrecision::Float64);
+    texas::HUNLFlatDCFR solver_f32(
         graph_f32,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
         1.5,
         0.0,
         2.0,
-        core::HUNLFlatStoragePrecision::Float32);
+        texas::HUNLFlatStoragePrecision::Float32);
 
     solver_f64.run_iterations(3);
     solver_f32.run_iterations(3);
 
-    EXPECT_EQ(solver_f64.storage_precision(), core::HUNLFlatStoragePrecision::Float64);
-    EXPECT_EQ(solver_f32.storage_precision(), core::HUNLFlatStoragePrecision::Float32);
+    EXPECT_EQ(solver_f64.storage_precision(), texas::HUNLFlatStoragePrecision::Float64);
+    EXPECT_EQ(solver_f32.storage_precision(), texas::HUNLFlatStoragePrecision::Float32);
     EXPECT_NEAR(solver_f64.node_values()[graph_f64.root], solver_f32.node_values()[graph_f32.root], 1e-5);
     EXPECT_NEAR(solver_f64.terminal_values()[0], solver_f32.terminal_values()[0], 1e-9);
 
@@ -913,10 +913,10 @@ TEST_CASE(hunl_flat_dcfr_float32_precision_tracks_double_on_small_game) {
 
 TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values) {
     const auto graph = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR solver(
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1);
 
     auto& table = solver.infoset_table_mut();
@@ -939,10 +939,10 @@ TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values) {
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph_for_hand_action_layout) {
     const auto graph = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR solver(
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatValueLayout::InfosetHandAction,
         1);
 
     auto& table = solver.infoset_table_mut();
@@ -967,10 +967,10 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_
 
 TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values_for_hand_action_layout) {
     const auto graph = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR solver(
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatValueLayout::InfosetHandAction,
         1);
 
     auto& table = solver.infoset_table_mut();
@@ -992,12 +992,12 @@ TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values_for_h
 }
 
 TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     solver.run_iterations(2);
 
@@ -1007,12 +1007,12 @@ TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration) {
 }
 
 TEST_CASE(hunl_flat_dcfr_produces_normalized_strategies_after_simd_passes) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatValueLayout::InfosetHandAction,
         2);
 
     solver.run_iterations(3);
@@ -1041,19 +1041,19 @@ TEST_CASE(hunl_flat_dcfr_produces_normalized_strategies_after_simd_passes) {
 }
 
 TEST_CASE(hunl_flat_dcfr_matches_across_worker_counts_on_small_tree) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph_a = core::HUNLFlatSolveGraph::build(config);
-    const auto graph_b = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph_a = texas::HUNLFlatSolveGraph::build(config);
+    const auto graph_b = texas::HUNLFlatSolveGraph::build(config);
 
-    core::HUNLFlatDCFR single_worker(
+    texas::HUNLFlatDCFR single_worker(
         graph_a,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatValueLayout::InfosetHandAction,
         1);
-    core::HUNLFlatDCFR two_workers(
+    texas::HUNLFlatDCFR two_workers(
         graph_b,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatValueLayout::InfosetHandAction,
         2);
 
     single_worker.run_iterations(2);
@@ -1079,13 +1079,13 @@ TEST_CASE(hunl_flat_dcfr_matches_across_worker_counts_on_small_tree) {
 }
 
 TEST_CASE(hunl_flat_dcfr_rejects_negative_range_weights_in_config_validation) {
-    auto config = core::default_tiny_subgame();
+    auto config = texas::default_tiny_subgame();
     config.initial_hole_cards = std::nullopt;
-    config.range_policy = core::HUNLRangePolicy::RequireExplicit;
-    core::HUNLRangeInput range;
+    config.range_policy = texas::HUNLRangePolicy::RequireExplicit;
+    texas::HUNLRangeInput range;
     range.hand_weights.push_back({{c(14, 1), c(13, 3)}, -0.5});
     config.initial_ranges[0] = range;
-    core::HUNLRangeInput opponent_range;
+    texas::HUNLRangeInput opponent_range;
     opponent_range.hand_weights.push_back({{c(12, 1), c(11, 3)}, 1.0});
     config.initial_ranges[1] = opponent_range;
 
@@ -1093,26 +1093,26 @@ TEST_CASE(hunl_flat_dcfr_rejects_negative_range_weights_in_config_validation) {
 }
 
 TEST_CASE(hunl_flat_bucket_map_applies_mixed_range_inputs_per_infoset_player) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
     const auto hole = (*config->initial_hole_cards)[0];
 
-    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
         graph,
-        core::load_abstraction(abstraction_path));
+        texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    core::HUNLRangeInput mixed_range;
+    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    texas::HUNLRangeInput mixed_range;
     mixed_range.hand_weights.push_back({hole, 3.0});
-    mixed_range.bucket_weights.push_back({core::Street::River, 1U, 1.0});
+    mixed_range.bucket_weights.push_back({texas::Street::River, 1U, 1.0});
     player_ranges[0] = mixed_range;
 
     bucket_map.apply_range_inputs(graph, player_ranges);
 
     bool checked_player_zero_infoset = false;
     for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 0 || infoset.street != core::Street::River) {
+        if (infoset.player != 0 || infoset.street != texas::Street::River) {
             continue;
         }
         const auto mapped_bucket = bucket_map.lookup_bucket(infoset.id, hole);
@@ -1132,25 +1132,25 @@ TEST_CASE(hunl_flat_bucket_map_applies_mixed_range_inputs_per_infoset_player) {
 }
 
 TEST_CASE(hunl_flat_bucket_map_applies_direct_bucket_weights) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
 
-    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
         graph,
-        core::load_abstraction(abstraction_path));
+        texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    core::HUNLRangeInput bucket_only_range;
-    bucket_only_range.bucket_weights.push_back({core::Street::River, 0U, 2.0});
-    bucket_only_range.bucket_weights.push_back({core::Street::River, 1U, 6.0});
+    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    texas::HUNLRangeInput bucket_only_range;
+    bucket_only_range.bucket_weights.push_back({texas::Street::River, 0U, 2.0});
+    bucket_only_range.bucket_weights.push_back({texas::Street::River, 1U, 6.0});
     player_ranges[1] = bucket_only_range;
 
     bucket_map.apply_range_inputs(graph, player_ranges);
 
     bool checked_player_one_infoset = false;
     for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 1 || infoset.street != core::Street::River) {
+        if (infoset.player != 1 || infoset.street != texas::Street::River) {
             continue;
         }
         const auto* weights = bucket_map.bucket_weights(infoset.id);
@@ -1167,25 +1167,25 @@ TEST_CASE(hunl_flat_bucket_map_applies_direct_bucket_weights) {
 }
 
 TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_non_matching_streets) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
 
-    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
         graph,
-        core::load_abstraction(abstraction_path));
+        texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    core::HUNLRangeInput turn_only_range;
-    turn_only_range.bucket_weights.push_back({core::Street::Turn, 0U, 5.0});
-    turn_only_range.bucket_weights.push_back({core::Street::Turn, 1U, 1.0});
+    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    texas::HUNLRangeInput turn_only_range;
+    turn_only_range.bucket_weights.push_back({texas::Street::Turn, 0U, 5.0});
+    turn_only_range.bucket_weights.push_back({texas::Street::Turn, 1U, 1.0});
     player_ranges[0] = turn_only_range;
 
     bucket_map.apply_range_inputs(graph, player_ranges);
 
     bool checked_infoset = false;
     for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 0 || infoset.street != core::Street::River) {
+        if (infoset.player != 0 || infoset.street != texas::Street::River) {
             continue;
         }
         const auto* weights = bucket_map.bucket_weights(infoset.id);
@@ -1200,16 +1200,16 @@ TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_non_matching_streets) {
 }
 
 TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
 
-    auto bucket_map = core::HUNLFlatBucketMap::from_abstraction(
+    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
         graph,
-        core::load_abstraction(abstraction_path));
+        texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<core::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    core::HUNLRangeInput blocked_hand_range;
+    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
+    texas::HUNLRangeInput blocked_hand_range;
     blocked_hand_range.hand_weights.push_back({{config->initial_board[0], c(9, 1)}, 5.0});
     player_ranges[0] = blocked_hand_range;
 
@@ -1217,7 +1217,7 @@ TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
 
     bool checked_infoset = false;
     for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 0 || infoset.street != core::Street::River) {
+        if (infoset.player != 0 || infoset.street != texas::Street::River) {
             continue;
         }
         const auto* weights = bucket_map.bucket_weights(infoset.id);
@@ -1232,12 +1232,12 @@ TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
 }
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_root_value_stays_between_child_values_with_more_rows) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(
         graph,
         {4, 4},
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     auto& table = solver.infoset_table_mut();
     const auto root_infoset = graph.node_meta[graph.root].infoset_id;
@@ -1264,19 +1264,19 @@ TEST_CASE(hunl_flat_dcfr_backward_stage_root_value_stays_between_child_values_wi
 }
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_action_hand_layout_matches_across_worker_counts) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
-    const auto graph_a = core::HUNLFlatSolveGraph::build(config);
-    const auto graph_b = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+    const auto graph_a = texas::HUNLFlatSolveGraph::build(config);
+    const auto graph_b = texas::HUNLFlatSolveGraph::build(config);
 
-    core::HUNLFlatDCFR single_worker(
+    texas::HUNLFlatDCFR single_worker(
         graph_a,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1);
-    core::HUNLFlatDCFR two_workers(
+    texas::HUNLFlatDCFR two_workers(
         graph_b,
         {2, 2},
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         2);
 
     single_worker.run_iteration();

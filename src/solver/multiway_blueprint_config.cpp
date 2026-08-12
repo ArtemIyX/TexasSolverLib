@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 
 void MultiwayBlueprintConfig::validate() const {
     if (player_count < 2U || player_count > 6U) {
@@ -28,4 +28,4 @@ void MultiwayBlueprintConfig::validate() const {
     }
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

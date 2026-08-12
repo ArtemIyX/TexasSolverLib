@@ -20,7 +20,7 @@
 #include <unistd.h>
 #endif
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 MultiwayResolverFallbackKind fallback_kind(const MultiwayResolverDiagnostics& diagnostics) noexcept {
@@ -326,4 +326,4 @@ std::string serialize_multiway_traversal_baseline(const MultiwayTraversalBaselin
     return output.str();
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

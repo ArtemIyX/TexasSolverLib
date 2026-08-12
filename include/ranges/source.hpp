@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 #include "ranges/range.hpp"
 
@@ -10,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::ranges {
 
 /**
  * @brief Solver-agnostic description of where a range came from.
@@ -119,4 +121,4 @@ CanonicalRange make_canonical_range_from_values(
     RangeVector range,
     RangeMask mask = {});
 
-}  // namespace core
+}  // namespace texas::ranges

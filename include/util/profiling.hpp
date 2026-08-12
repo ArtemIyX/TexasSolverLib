@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstdint>
 #include <string_view>
 
-namespace core::profiling {
+namespace texas::util::profiling {
 
 bool enabled() noexcept;
 bool detail_enabled() noexcept;
@@ -26,13 +28,13 @@ private:
 
 void write_report();
 
-}  // namespace core::profiling
+}  // namespace texas::util::profiling
 
 #define TEXASSOLVER_PROFILE_SCOPE(name_literal) \
     TEXASSOLVER_PROFILE_SCOPE_IMPL(name_literal, __COUNTER__)
 
 #define TEXASSOLVER_PROFILE_SCOPE_IMPL(name_literal, counter) \
-    ::core::profiling::ScopedTimer TEXASSOLVER_PROFILE_SCOPE_NAME(counter){name_literal}
+    ::texas::util::profiling::ScopedTimer TEXASSOLVER_PROFILE_SCOPE_NAME(counter){name_literal}
 
 #define TEXASSOLVER_PROFILE_SCOPE_NAME(counter) TEXASSOLVER_PROFILE_SCOPE_NAME_IMPL(counter)
 #define TEXASSOLVER_PROFILE_SCOPE_NAME_IMPL(counter) _profile_scope_##counter

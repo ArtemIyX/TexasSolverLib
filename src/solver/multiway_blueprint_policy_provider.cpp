@@ -2,7 +2,7 @@
 
 #include <limits>
 
-namespace core {
+namespace texas::solver::multiway {
 
 MultiwayBlueprintLookupStatus MultiwayBlueprintPolicyProvider::strategy_into(
     MultiwayInfosetId infoset,
@@ -29,4 +29,4 @@ MultiwayBlueprintLookupStatus MultiwayBlueprintPolicyProvider::strategy_into(
     return MultiwayBlueprintLookupStatus::Hit;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

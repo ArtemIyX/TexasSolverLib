@@ -18,7 +18,7 @@
 #include <optional>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr double kMinimumProbability = 1e-12;
@@ -669,7 +669,7 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     auto board = request.public_state.board;
     std::sort(board.begin(), board.end());
     const auto menu = reconstruct_root_menu(request, state, config_);
-    const auto bucket = config_.buckets->lookup_hunl(state.street(), board, request.hero_cards);
+    const auto bucket = config_.buckets->lookup(state.street(), board, request.hero_cards);
     auto limits = config_.search_limits;
     if (limits.worker_count == 0U) limits.worker_count = 1U;
     if (limits.trajectories_per_batch == 0U) limits.trajectories_per_batch = config_.trajectories_per_batch;
@@ -745,7 +745,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 result.diagnostics.status = MultiwayResolverStatus::ArtifactMismatch;
             } else {
                 try {
-                    bucket = config_.buckets->lookup_hunl(state.street(), canonical_board, request.hero_cards);
+                    bucket = config_.buckets->lookup(state.street(), canonical_board, request.hero_cards);
                 } catch (const std::out_of_range&) {
                     result.diagnostics.status = MultiwayResolverStatus::BucketUnavailable;
                 }
@@ -919,4 +919,4 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
     }
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLSampledProfileSnapshot {
     double time_traverse_seconds = 0.0;
@@ -58,4 +60,4 @@ private:
     HUNLSampledProfileSnapshot snapshot_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

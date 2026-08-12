@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_private.hpp"
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_solver.hpp"
@@ -7,7 +9,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Quantized action-major policy for every bucket at one public state.
 struct MultiwayBucketActionPolicy {
@@ -35,4 +37,4 @@ struct MultiwayBucketActionPolicy {
     std::uint8_t observed_action,
     Probability likelihood_floor = 1e-6);
 
-}  // namespace core
+}  // namespace texas::solver::multiway

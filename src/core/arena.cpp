@@ -1,6 +1,6 @@
 #include "core/arena.hpp"
 
-namespace core {
+namespace texas::core {
 
 void Arena::reset() noexcept {
     release(0);
@@ -55,6 +55,6 @@ Arena::Block& Arena::acquire_block(std::size_t min_bytes) {
     return blocks_.back();
 }
 
-}  // namespace core
+}  // namespace texas::core
 
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "util/abstraction.hpp"
 #include "util/api.hpp"
 #include "core/canonical_combo.hpp"
@@ -69,277 +71,277 @@
 #include <memory>
 #include <unordered_map>
 
-namespace core::lib {
+namespace texas::core::lib {
 
 /**
  * @brief Stable convenience aliases for external consumers.
  */
-using ::core::ActionId;
-using ::core::CanonicalComboCards;
-using ::core::CanonicalComboId;
-using ::core::CanonicalComboLegalMask;
-using ::core::CanonicalComboView;
-using ::core::canonical_combos;
-using ::core::ChanceOutcome;
-using ::core::Class169RvrOutput;
-using ::core::ExploitOutput;
-using ::core::HUNLConfig;
-using ::core::HUNLLeafEvaluationRequest;
-using ::core::HUNLLeafEvaluationResult;
-using ::core::HUNLLeafEvaluationScope;
-using ::core::HUNLLeafEvaluator;
-using ::core::HUNLLeafValueUnits;
-using ::core::HUNLLiveRootSnapshot;
-using ::core::HUNLSolveOutput;
-using ::core::HUNLSampledSolveResult;
-using ::core::HUNLSampledSolverConfig;
-using ::core::HUNLSampledRangeSession;
-using ::core::HUNLStructuredRootRequest;
-using ::core::HUNLQualityMetric;
-using ::core::InfosetKey;
-using ::core::MultiwayAction;
-using ::core::MultiwayActionAbstraction;
-using ::core::MultiwayActionAbstractionConfig;
-using ::core::MultiwayActionAbstractionContext;
-using ::core::MultiwayActionTranslation;
-using ::core::MultiwayActionTranslationStatus;
-using ::core::MultiwayPreflopSituation;
-using ::core::MultiwayRelativePosition;
-using ::core::MultiwayPostflopSizingMode;
-using ::core::MultiwayBucketTable;
-using ::core::MultiwayBucketRegistry;
-using ::core::MultiwayBucketBaselineProfile;
-using ::core::MultiwayBucketFeatures;
-using ::core::MultiwayBucketBoardRequest;
-using ::core::MultiwayDeviationDisposition;
-using ::core::MultiwayDeviationExpansionConfig;
-using ::core::MultiwayFutureBucketArtifact;
-using ::core::MultiwayFutureBucketFeatures;
-using ::core::MultiwayFutureBucketProfile;
-using ::core::build_multiway_baseline_bucket_table;
-using ::core::build_multiway_baseline_bucket_registry;
-using ::core::build_multiway_future_bucket_artifact;
-using ::core::deserialize_multiway_future_bucket_artifact;
-using ::core::deserialize_multiway_bucket_registry;
-using ::core::serialize_multiway_bucket_registry;
-using ::core::serialize_multiway_future_bucket_artifact;
-using ::core::validate_multiway_bucket_coverage;
-using ::core::MultiwayMemoryBudget;
-using ::core::MultiwayMemoryAdmissionStage;
-using ::core::MultiwayMemoryEstimate;
-using ::core::MultiwayMemoryInputs;
-using ::core::MultiwayMemoryPreflight;
-using ::core::MultiwayMemoryStatus;
-using ::core::preflight_multiway_memory;
-using ::core::MultiwaySearchProfileCheckpoint;
-using ::core::MultiwaySearchProfileMode;
-using ::core::MultiwaySearchProfileRankingEntry;
-using ::core::MultiwaySearchProfileSnapshot;
-using ::core::MultiwaySearchProfileStage;
-using ::core::rank_multiway_search_profile;
-using ::core::MultiwayScheduler;
-using ::core::MultiwayRunMetadata;
-using ::core::MultiwayRunMode;
-using ::core::MultiwayTrajectoryRange;
-using ::core::MultiwayWorkerBatch;
-using ::core::multiway_deterministic_schedule_fingerprint;
-using ::core::multiway_deterministic_trajectory_seed;
-using ::core::MultiwayExternalSamplingTraversal;
-using ::core::MultiwayRootBatchResult;
-using ::core::MultiwayRootBatchRunner;
-using ::core::MultiwayLeafEvaluationRequest;
-using ::core::MultiwayLeafEvaluator;
-using ::core::MultiwayContinuationPolicyKind;
-using ::core::MultiwayFixedContinuationPolicy;
-using ::core::MultiwayFixedContinuationSelector;
-using ::core::MultiwayContinuationSelectionKey;
-using ::core::MultiwayContinuationLeafContext;
-using ::core::MultiwayContinuationLeafData;
-using ::core::make_multiway_fixed_continuation_leaf_evaluator;
-using ::core::MultiwayRolloutActionMenu;
-using ::core::MultiwayRolloutActionProviderFn;
-using ::core::MultiwayRolloutInput;
-using ::core::MultiwayRolloutInputProviderFn;
-using ::core::MultiwayRolloutLeafContext;
-using ::core::MultiwayRolloutLimits;
-using ::core::MultiwayRolloutProfileResult;
-using ::core::MultiwayRolloutRunoutMode;
-using ::core::MultiwayRolloutScratch;
-using ::core::MultiwayRolloutStatus;
-using ::core::MultiwayContinuationCache;
-using ::core::MultiwayContinuationCacheKey;
-using ::core::MultiwayContinuationDiagnostics;
-using ::core::evaluate_multiway_rollout_profiles;
-using ::core::make_multiway_rollout_leaf_evaluator;
-using ::core::MultiwayBlueprintSnapshot;
-using ::core::MultiwayBlueprintPolicyKind;
-using ::core::MultiwayBlueprintTrainingMetadata;
-using ::core::export_multiway_root_snapshot;
-using ::core::MultiwayBlueprintTrainer;
-using ::core::MultiwayBlueprintTrainingConfig;
-using ::core::MultiwayBlueprintTrainingSession;
-using ::core::MultiwayBlueprintTrainingStatus;
-using ::core::MultiwayBlueprintTrainingCheckpoint;
-using ::core::MultiwayBlueprintIterationSchedule;
-using ::core::MultiwayBlueprintCoverageManifest;
-using ::core::MultiwayBlueprintRow;
-using ::core::MultiwayBlueprintStore;
-using ::core::MultiwayBlueprintPolicyProvider;
-using ::core::MultiwayBlueprintLookupStatus;
-using ::core::MultiwayBlueprintQuery;
-using ::core::MultiwayBucketActionPolicy;
-using ::core::MultiwayRangeBeliefMetadata;
-using ::core::MultiwayRangeBeliefObservation;
-using ::core::MultiwayRangeBeliefSeatInput;
-using ::core::MultiwayRangeBeliefSource;
-using ::core::MultiwayRangeBeliefSuppliedEntry;
-using ::core::MultiwayRangeBeliefUpdateResult;
-using ::core::MultiwayRangeBeliefView;
-using ::core::MultiwayRangeBeliefs;
-using ::core::MultiwaySearchSession;
-using ::core::MultiwaySearchSessionCleanSnapshot;
-using ::core::MultiwaySearchSessionDependencies;
-using ::core::MultiwaySearchSessionRootMetadata;
-using ::core::MultiwaySearchSessionRowView;
-using ::core::MultiwaySearchSessionHeroRow;
-using ::core::MultiwaySearchSessionHeroPolicy;
-using ::core::MultiwayRuntimeSession;
-using ::core::update_anonymous_multiway_range;
-using ::core::MultiwayCheckpoint;
-using ::core::MultiwayArtifactSource;
-using ::core::MultiwayBlueprintArtifacts;
-using ::core::MultiwayFullBlueprintArtifact;
-using ::core::MultiwayFullBlueprintArtifacts;
-using ::core::MultiwayBlueprintManifest;
-using ::core::MultiwayPublicDecisionLog;
-using ::core::MultiwayPublicDecisionPolicy;
-using ::core::MultiwayProtectedReplayRecord;
-using ::core::MultiwayAivatActionValue;
-using ::core::MultiwayAivatDecisionRecord;
-using ::core::MultiwayAivatEvaluationRecord;
-using ::core::MultiwayAivatEvaluationRecordSinkFn;
-using ::core::MultiwayVerifiedBlueprintArtifact;
-using ::core::make_multiway_public_decision_log;
-using ::core::publish_multiway_aivat_evaluation_record;
-using ::core::MultiwayBlueprintConfig;
-using ::core::MultiwayModelIdentity;
-using ::core::MultiwayResolver;
-using ::core::MultiwayResolverEvaluationAdapter;
-using ::core::MultiwayResolverEvaluationAdapterConfig;
-using ::core::MultiwayResolverEvaluationCandidate;
-using ::core::MultiwayResolverEvaluationCandidateKind;
-using ::core::MultiwayResolverEvaluationDecision;
-using ::core::MultiwayBaselineFixtureKind;
-using ::core::MultiwayBaselineMeasurements;
-using ::core::MultiwayResolverBaselineFixture;
-using ::core::MultiwayResolverBaselineFixtureHarness;
-using ::core::MultiwayResolverBaselineReport;
-using ::core::MultiwayTraversalBaselineReport;
-using ::core::MultiwayResolverFallbackKind;
-using ::core::observed_multiway_process_memory_bytes;
-using ::core::observed_multiway_process_peak_memory_bytes;
-using ::core::observed_multiway_process_cpu_nanoseconds;
-using ::core::record_multiway_resolver_baseline;
-using ::core::record_multiway_traversal_baseline;
-using ::core::equivalent_multiway_resolver_baseline;
-using ::core::equivalent_multiway_traversal_baseline;
-using ::core::serialize_multiway_resolver_baseline;
-using ::core::serialize_multiway_traversal_baseline;
-using ::core::MultiwayResolverConfig;
-using ::core::MultiwayResolverActionProbability;
-using ::core::MultiwayResolverDiagnostics;
-using ::core::MultiwayResolverSearchEligibility;
-using ::core::MultiwayResolverSearchMode;
-using ::core::MultiwayResolverRequest;
-using ::core::MultiwayResolverResult;
-using ::core::MultiwayResolverSeatRange;
-using ::core::MultiwayResolverStatus;
-using ::core::MultiwayPolicyProvenance;
-using ::core::MultiwayResolverEngine;
-using ::core::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
-using ::core::MultiwayInferenceMode;
-using ::core::MultiwayPublicBuilder;
-using ::core::make_multiway_model_identity;
-using ::core::MultiwayActionAbstractionIdentity;
-using ::core::MultiwayBettingSnapshot;
-using ::core::MultiwayBoardChanceEdge;
-using ::core::MultiwayBoardRunoutState;
-using ::core::MultiwayCFRAlgorithm;
-using ::core::MultiwayCFRConfig;
-using ::core::MultiwayCFRUpdate;
-using ::core::MultiwayExternalSamplingRequest;
-using ::core::make_multiway_external_sampling_request;
-using ::core::MultiwayGameConfig;
-using ::core::MultiwayGameRules;
-using ::core::MultiwayHandHistory;
-using ::core::MultiwayReplayDecision;
-using ::core::MultiwayReplayEvent;
-using ::core::MultiwayReplayEventKind;
-using ::core::apply_multiway_replay_event;
-using ::core::replay_multiway_hand;
-using ::core::MultiwayFixedActionMenu;
-using ::core::MultiwayFixedSidePot;
-using ::core::MultiwayFixedState;
-using ::core::MultiwayFixedTerminalInput;
-using ::core::MultiwayFixedTerminalResult;
-using ::core::MultiwayFixedTerminalScratch;
-using ::core::make_multiway_fixed_state;
-using ::core::settle_multiway_terminal_fixed;
-using ::core::MultiwayMetricMethod;
-using ::core::MultiwayNashConv;
-using ::core::MultiwayOddChipRule;
-using ::core::MultiwayActionDescriptor;
-using ::core::MultiwayInfosetId;
-using ::core::MultiwayJointPrivateSample;
-using ::core::MultiwayCompiledPrivateRanges;
-using ::core::MultiwayPrivateWorkerScratch;
-using ::core::MultiwayPotLayout;
-using ::core::MultiwayRakeMode;
-using ::core::MultiwayRakePolicy;
-using ::core::MultiwayPrivateConfig;
-using ::core::MultiwayPrivateRangeFeasibilityResult;
-using ::core::MultiwayPrivateRangeFeasibilityStatus;
-using ::core::preflight_multiway_private_range_feasibility;
-using ::core::MultiwaySidePot;
-using ::core::MultiwayShowdownInput;
-using ::core::MultiwayState;
-using ::core::MultiwayTerminalInput;
-using ::core::MultiwayTerminalAdapter;
-using ::core::MultiwaySamplerDealToken;
-using ::core::MultiwayTerminalResult;
-using ::core::MultiwayStreetTransition;
-using ::core::MultiwayPublicStreetTransition;
-using ::core::MultiwayQualityMetric;
-using ::core::MultiwayQualityDiagnostics;
-using ::core::MultiwayPublicHistoryEntry;
-using ::core::MultiwayPublicBoardChanceEdge;
-using ::core::MultiwaySampledPublicBoardChance;
-using ::core::MultiwayPublicParentEdge;
-using ::core::MultiwayPublicParentEdgeKind;
-using ::core::MultiwayPublicStateDescriptor;
-using ::core::MultiwayPublicStateId;
-using ::core::MultiwayRootActionProbability;
-using ::core::MultiwayRootPolicy;
-using ::core::MultiwayRootSnapshot;
-using ::core::MultiwaySolveDiagnostics;
-using ::core::MultiwaySolveRequest;
-using ::core::MultiwaySolveResult;
-using ::core::MultiwaySolverCoordinator;
-using ::core::MultiwaySolverLimits;
-using ::core::MultiwaySparseRowMetadata;
-using ::core::MultiwaySparseRowShape;
-using ::core::MultiwaySparseRowStorage;
-using ::core::MultiwayValueUnits;
-using ::core::MultiwayWorkerDelta;
-using ::core::MultiwayWorkerDeltaStream;
-using ::core::MultiwayWeightedHole;
-using ::core::PlayerId;
-using ::core::PreflopRvrOutput;
-using ::core::PreflopSolveOutput;
-using ::core::Probability;
-using ::core::SolveOutput;
-using ::core::Value;
-using ::core::VectorSolveOutput;
+using ::texas::ActionId;
+using ::texas::CanonicalComboCards;
+using ::texas::CanonicalComboId;
+using ::texas::CanonicalComboLegalMask;
+using ::texas::CanonicalComboView;
+using ::texas::canonical_combos;
+using ::texas::ChanceOutcome;
+using ::texas::Class169RvrOutput;
+using ::texas::ExploitOutput;
+using ::texas::HUNLConfig;
+using ::texas::HUNLLeafEvaluationRequest;
+using ::texas::HUNLLeafEvaluationResult;
+using ::texas::HUNLLeafEvaluationScope;
+using ::texas::HUNLLeafEvaluator;
+using ::texas::HUNLLeafValueUnits;
+using ::texas::HUNLLiveRootSnapshot;
+using ::texas::HUNLSolveOutput;
+using ::texas::HUNLSampledSolveResult;
+using ::texas::HUNLSampledSolverConfig;
+using ::texas::HUNLSampledRangeSession;
+using ::texas::HUNLStructuredRootRequest;
+using ::texas::HUNLQualityMetric;
+using ::texas::InfosetKey;
+using ::texas::MultiwayAction;
+using ::texas::MultiwayActionAbstraction;
+using ::texas::MultiwayActionAbstractionConfig;
+using ::texas::MultiwayActionAbstractionContext;
+using ::texas::MultiwayActionTranslation;
+using ::texas::MultiwayActionTranslationStatus;
+using ::texas::MultiwayPreflopSituation;
+using ::texas::MultiwayRelativePosition;
+using ::texas::MultiwayPostflopSizingMode;
+using ::texas::MultiwayBucketTable;
+using ::texas::MultiwayBucketRegistry;
+using ::texas::MultiwayBucketBaselineProfile;
+using ::texas::MultiwayBucketFeatures;
+using ::texas::MultiwayBucketBoardRequest;
+using ::texas::MultiwayDeviationDisposition;
+using ::texas::MultiwayDeviationExpansionConfig;
+using ::texas::MultiwayFutureBucketArtifact;
+using ::texas::MultiwayFutureBucketFeatures;
+using ::texas::MultiwayFutureBucketProfile;
+using ::texas::build_multiway_baseline_bucket_table;
+using ::texas::build_multiway_baseline_bucket_registry;
+using ::texas::build_multiway_future_bucket_artifact;
+using ::texas::deserialize_multiway_future_bucket_artifact;
+using ::texas::deserialize_multiway_bucket_registry;
+using ::texas::serialize_multiway_bucket_registry;
+using ::texas::serialize_multiway_future_bucket_artifact;
+using ::texas::validate_multiway_bucket_coverage;
+using ::texas::MultiwayMemoryBudget;
+using ::texas::MultiwayMemoryAdmissionStage;
+using ::texas::MultiwayMemoryEstimate;
+using ::texas::MultiwayMemoryInputs;
+using ::texas::MultiwayMemoryPreflight;
+using ::texas::MultiwayMemoryStatus;
+using ::texas::preflight_multiway_memory;
+using ::texas::MultiwaySearchProfileCheckpoint;
+using ::texas::MultiwaySearchProfileMode;
+using ::texas::MultiwaySearchProfileRankingEntry;
+using ::texas::MultiwaySearchProfileSnapshot;
+using ::texas::MultiwaySearchProfileStage;
+using ::texas::rank_multiway_search_profile;
+using ::texas::MultiwayScheduler;
+using ::texas::MultiwayRunMetadata;
+using ::texas::MultiwayRunMode;
+using ::texas::MultiwayTrajectoryRange;
+using ::texas::MultiwayWorkerBatch;
+using ::texas::multiway_deterministic_schedule_fingerprint;
+using ::texas::multiway_deterministic_trajectory_seed;
+using ::texas::MultiwayExternalSamplingTraversal;
+using ::texas::MultiwayRootBatchResult;
+using ::texas::MultiwayRootBatchRunner;
+using ::texas::MultiwayLeafEvaluationRequest;
+using ::texas::MultiwayLeafEvaluator;
+using ::texas::MultiwayContinuationPolicyKind;
+using ::texas::MultiwayFixedContinuationPolicy;
+using ::texas::MultiwayFixedContinuationSelector;
+using ::texas::MultiwayContinuationSelectionKey;
+using ::texas::MultiwayContinuationLeafContext;
+using ::texas::MultiwayContinuationLeafData;
+using ::texas::make_multiway_fixed_continuation_leaf_evaluator;
+using ::texas::MultiwayRolloutActionMenu;
+using ::texas::MultiwayRolloutActionProviderFn;
+using ::texas::MultiwayRolloutInput;
+using ::texas::MultiwayRolloutInputProviderFn;
+using ::texas::MultiwayRolloutLeafContext;
+using ::texas::MultiwayRolloutLimits;
+using ::texas::MultiwayRolloutProfileResult;
+using ::texas::MultiwayRolloutRunoutMode;
+using ::texas::MultiwayRolloutScratch;
+using ::texas::MultiwayRolloutStatus;
+using ::texas::MultiwayContinuationCache;
+using ::texas::MultiwayContinuationCacheKey;
+using ::texas::MultiwayContinuationDiagnostics;
+using ::texas::evaluate_multiway_rollout_profiles;
+using ::texas::make_multiway_rollout_leaf_evaluator;
+using ::texas::MultiwayBlueprintSnapshot;
+using ::texas::MultiwayBlueprintPolicyKind;
+using ::texas::MultiwayBlueprintTrainingMetadata;
+using ::texas::export_multiway_root_snapshot;
+using ::texas::MultiwayBlueprintTrainer;
+using ::texas::MultiwayBlueprintTrainingConfig;
+using ::texas::MultiwayBlueprintTrainingSession;
+using ::texas::MultiwayBlueprintTrainingStatus;
+using ::texas::MultiwayBlueprintTrainingCheckpoint;
+using ::texas::MultiwayBlueprintIterationSchedule;
+using ::texas::MultiwayBlueprintCoverageManifest;
+using ::texas::MultiwayBlueprintRow;
+using ::texas::MultiwayBlueprintStore;
+using ::texas::MultiwayBlueprintPolicyProvider;
+using ::texas::MultiwayBlueprintLookupStatus;
+using ::texas::MultiwayBlueprintQuery;
+using ::texas::MultiwayBucketActionPolicy;
+using ::texas::MultiwayRangeBeliefMetadata;
+using ::texas::MultiwayRangeBeliefObservation;
+using ::texas::MultiwayRangeBeliefSeatInput;
+using ::texas::MultiwayRangeBeliefSource;
+using ::texas::MultiwayRangeBeliefSuppliedEntry;
+using ::texas::MultiwayRangeBeliefUpdateResult;
+using ::texas::MultiwayRangeBeliefView;
+using ::texas::MultiwayRangeBeliefs;
+using ::texas::MultiwaySearchSession;
+using ::texas::MultiwaySearchSessionCleanSnapshot;
+using ::texas::MultiwaySearchSessionDependencies;
+using ::texas::MultiwaySearchSessionRootMetadata;
+using ::texas::MultiwaySearchSessionRowView;
+using ::texas::MultiwaySearchSessionHeroRow;
+using ::texas::MultiwaySearchSessionHeroPolicy;
+using ::texas::MultiwayRuntimeSession;
+using ::texas::update_anonymous_multiway_range;
+using ::texas::MultiwayCheckpoint;
+using ::texas::MultiwayArtifactSource;
+using ::texas::MultiwayBlueprintArtifacts;
+using ::texas::MultiwayFullBlueprintArtifact;
+using ::texas::MultiwayFullBlueprintArtifacts;
+using ::texas::MultiwayBlueprintManifest;
+using ::texas::MultiwayPublicDecisionLog;
+using ::texas::MultiwayPublicDecisionPolicy;
+using ::texas::MultiwayProtectedReplayRecord;
+using ::texas::MultiwayAivatActionValue;
+using ::texas::MultiwayAivatDecisionRecord;
+using ::texas::MultiwayAivatEvaluationRecord;
+using ::texas::MultiwayAivatEvaluationRecordSinkFn;
+using ::texas::MultiwayVerifiedBlueprintArtifact;
+using ::texas::make_multiway_public_decision_log;
+using ::texas::publish_multiway_aivat_evaluation_record;
+using ::texas::MultiwayBlueprintConfig;
+using ::texas::MultiwayModelIdentity;
+using ::texas::MultiwayResolver;
+using ::texas::MultiwayResolverEvaluationAdapter;
+using ::texas::MultiwayResolverEvaluationAdapterConfig;
+using ::texas::MultiwayResolverEvaluationCandidate;
+using ::texas::MultiwayResolverEvaluationCandidateKind;
+using ::texas::MultiwayResolverEvaluationDecision;
+using ::texas::MultiwayBaselineFixtureKind;
+using ::texas::MultiwayBaselineMeasurements;
+using ::texas::MultiwayResolverBaselineFixture;
+using ::texas::MultiwayResolverBaselineFixtureHarness;
+using ::texas::MultiwayResolverBaselineReport;
+using ::texas::MultiwayTraversalBaselineReport;
+using ::texas::MultiwayResolverFallbackKind;
+using ::texas::observed_multiway_process_memory_bytes;
+using ::texas::observed_multiway_process_peak_memory_bytes;
+using ::texas::observed_multiway_process_cpu_nanoseconds;
+using ::texas::record_multiway_resolver_baseline;
+using ::texas::record_multiway_traversal_baseline;
+using ::texas::equivalent_multiway_resolver_baseline;
+using ::texas::equivalent_multiway_traversal_baseline;
+using ::texas::serialize_multiway_resolver_baseline;
+using ::texas::serialize_multiway_traversal_baseline;
+using ::texas::MultiwayResolverConfig;
+using ::texas::MultiwayResolverActionProbability;
+using ::texas::MultiwayResolverDiagnostics;
+using ::texas::MultiwayResolverSearchEligibility;
+using ::texas::MultiwayResolverSearchMode;
+using ::texas::MultiwayResolverRequest;
+using ::texas::MultiwayResolverResult;
+using ::texas::MultiwayResolverSeatRange;
+using ::texas::MultiwayResolverStatus;
+using ::texas::MultiwayPolicyProvenance;
+using ::texas::MultiwayResolverEngine;
+using ::texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
+using ::texas::MultiwayInferenceMode;
+using ::texas::MultiwayPublicBuilder;
+using ::texas::make_multiway_model_identity;
+using ::texas::MultiwayActionAbstractionIdentity;
+using ::texas::MultiwayBettingSnapshot;
+using ::texas::MultiwayBoardChanceEdge;
+using ::texas::MultiwayBoardRunoutState;
+using ::texas::MultiwayCFRAlgorithm;
+using ::texas::MultiwayCFRConfig;
+using ::texas::MultiwayCFRUpdate;
+using ::texas::MultiwayExternalSamplingRequest;
+using ::texas::make_multiway_external_sampling_request;
+using ::texas::MultiwayGameConfig;
+using ::texas::MultiwayGameRules;
+using ::texas::MultiwayHandHistory;
+using ::texas::MultiwayReplayDecision;
+using ::texas::MultiwayReplayEvent;
+using ::texas::MultiwayReplayEventKind;
+using ::texas::apply_multiway_replay_event;
+using ::texas::replay_multiway_hand;
+using ::texas::MultiwayFixedActionMenu;
+using ::texas::MultiwayFixedSidePot;
+using ::texas::MultiwayFixedState;
+using ::texas::MultiwayFixedTerminalInput;
+using ::texas::MultiwayFixedTerminalResult;
+using ::texas::MultiwayFixedTerminalScratch;
+using ::texas::make_multiway_fixed_state;
+using ::texas::settle_multiway_terminal_fixed;
+using ::texas::MultiwayMetricMethod;
+using ::texas::MultiwayNashConv;
+using ::texas::MultiwayOddChipRule;
+using ::texas::MultiwayActionDescriptor;
+using ::texas::MultiwayInfosetId;
+using ::texas::MultiwayJointPrivateSample;
+using ::texas::MultiwayCompiledPrivateRanges;
+using ::texas::MultiwayPrivateWorkerScratch;
+using ::texas::MultiwayPotLayout;
+using ::texas::MultiwayRakeMode;
+using ::texas::MultiwayRakePolicy;
+using ::texas::MultiwayPrivateConfig;
+using ::texas::MultiwayPrivateRangeFeasibilityResult;
+using ::texas::MultiwayPrivateRangeFeasibilityStatus;
+using ::texas::preflight_multiway_private_range_feasibility;
+using ::texas::MultiwaySidePot;
+using ::texas::MultiwayShowdownInput;
+using ::texas::MultiwayState;
+using ::texas::MultiwayTerminalInput;
+using ::texas::MultiwayTerminalAdapter;
+using ::texas::MultiwaySamplerDealToken;
+using ::texas::MultiwayTerminalResult;
+using ::texas::MultiwayStreetTransition;
+using ::texas::MultiwayPublicStreetTransition;
+using ::texas::MultiwayQualityMetric;
+using ::texas::MultiwayQualityDiagnostics;
+using ::texas::MultiwayPublicHistoryEntry;
+using ::texas::MultiwayPublicBoardChanceEdge;
+using ::texas::MultiwaySampledPublicBoardChance;
+using ::texas::MultiwayPublicParentEdge;
+using ::texas::MultiwayPublicParentEdgeKind;
+using ::texas::MultiwayPublicStateDescriptor;
+using ::texas::MultiwayPublicStateId;
+using ::texas::MultiwayRootActionProbability;
+using ::texas::MultiwayRootPolicy;
+using ::texas::MultiwayRootSnapshot;
+using ::texas::MultiwaySolveDiagnostics;
+using ::texas::MultiwaySolveRequest;
+using ::texas::MultiwaySolveResult;
+using ::texas::MultiwaySolverCoordinator;
+using ::texas::MultiwaySolverLimits;
+using ::texas::MultiwaySparseRowMetadata;
+using ::texas::MultiwaySparseRowShape;
+using ::texas::MultiwaySparseRowStorage;
+using ::texas::MultiwayValueUnits;
+using ::texas::MultiwayWorkerDelta;
+using ::texas::MultiwayWorkerDeltaStream;
+using ::texas::MultiwayWeightedHole;
+using ::texas::PlayerId;
+using ::texas::PreflopRvrOutput;
+using ::texas::PreflopSolveOutput;
+using ::texas::Probability;
+using ::texas::SolveOutput;
+using ::texas::Value;
+using ::texas::VectorSolveOutput;
 
 // Production-facing range/blueprint entry point. The fixed-hand
 // solve_hunl_postflop overload remains the exact small-game oracle; it does
@@ -367,7 +369,7 @@ inline SolveOutput solve_kuhn(
     double gamma,
     std::size_t workers = 1,
     std::size_t frontier_multiplier = 8) {
-    return ::core::solve_kuhn(iterations, alpha, beta, gamma, workers, frontier_multiplier);
+    return ::texas::solve_kuhn(iterations, alpha, beta, gamma, workers, frontier_multiplier);
 }
 
 /**
@@ -380,7 +382,7 @@ inline SolveOutput solve_leduc(
     double gamma,
     std::size_t workers = 1,
     std::size_t frontier_multiplier = 8) {
-    return ::core::solve_leduc(iterations, alpha, beta, gamma, workers, frontier_multiplier);
+    return ::texas::solve_leduc(iterations, alpha, beta, gamma, workers, frontier_multiplier);
 }
 
 inline HUNLSolveOutput solve_hunl_postflop(
@@ -392,7 +394,7 @@ inline HUNLSolveOutput solve_hunl_postflop(
     std::size_t workers = 1,
     std::size_t frontier_multiplier = 8,
     bool force_parallel = false) {
-    return ::core::solve_hunl_postflop(
+    return ::texas::solve_hunl_postflop(
         config, iterations, alpha, beta, gamma, workers, frontier_multiplier, force_parallel);
 }
 
@@ -402,13 +404,13 @@ inline PreflopSolveOutput solve_hunl_preflop(
     double alpha,
     double beta,
     double gamma) {
-    return ::core::solve_hunl_preflop(config, iterations, alpha, beta, gamma);
+    return ::texas::solve_hunl_preflop(config, iterations, alpha, beta, gamma);
 }
 
 inline ExploitOutput compute_exploitability(
     const HUNLConfig& config,
     const std::unordered_map<std::string, std::vector<double>>& strategy) {
-    return ::core::compute_exploitability_and_value(config, strategy);
+    return ::texas::compute_exploitability_and_value(config, strategy);
 }
 
 inline double compute_restricted_game_value(
@@ -416,7 +418,7 @@ inline double compute_restricted_game_value(
     const std::unordered_map<std::string, std::vector<double>>& strategy,
     const std::vector<std::array<std::uint8_t, 2>>& p0_holes,
     const std::vector<std::array<std::uint8_t, 2>>& p1_holes) {
-    return ::core::compute_restricted_game_value(config, strategy, p0_holes, p1_holes);
+    return ::texas::compute_restricted_game_value(config, strategy, p0_holes, p1_holes);
 }
 
 inline VectorSolveOutput solve_range_vs_range_rust(
@@ -426,8 +428,8 @@ inline VectorSolveOutput solve_range_vs_range_rust(
     double alpha,
     double beta,
     double gamma) {
-    return ::core::solve_vector_dcfr(
-        ::core::BettingTree::build_from(::core::HUNLState::initial(std::make_shared<const HUNLConfig>(config))),
+    return ::texas::solve_vector_dcfr(
+        ::texas::BettingTree::build_from(::texas::HUNLState::initial(std::make_shared<const HUNLConfig>(config))),
         hole_pairs,
         iterations,
         alpha,
@@ -442,7 +444,7 @@ inline PreflopRvrOutput solve_hunl_preflop_rvr(
     double alpha,
     double beta,
     double gamma) {
-    return ::core::solve_hunl_preflop_rvr(config, table, iterations, alpha, beta, gamma);
+    return ::texas::solve_hunl_preflop_rvr(config, table, iterations, alpha, beta, gamma);
 }
 
 inline Class169RvrOutput solve_hunl_preflop_rvr_class169(
@@ -454,7 +456,7 @@ inline Class169RvrOutput solve_hunl_preflop_rvr_class169(
     double alpha,
     double beta,
     double gamma) {
-    return ::core::solve_hunl_preflop_rvr_class169(
+    return ::texas::solve_hunl_preflop_rvr_class169(
         config,
         table,
         std::move(root_reach_p0),
@@ -465,6 +467,6 @@ inline Class169RvrOutput solve_hunl_preflop_rvr_class169(
         gamma);
 }
 
-}  // namespace core::lib
+}  // namespace texas::core::lib
 
 

@@ -5,34 +5,34 @@
 
 namespace {
 
-core::MultiwayAivatEvaluationRecord record_fixture() {
-    core::MultiwayBlueprintConfig config;
-    core::MultiwayAivatEvaluationRecord record;
-    record.identity = core::make_multiway_model_identity(config);
-    record.public_history = core::MultiwayHandHistory::from_rules(core::MultiwayGameRules::standard_6max(), 0, 71U);
+texas::MultiwayAivatEvaluationRecord record_fixture() {
+    texas::MultiwayBlueprintConfig config;
+    texas::MultiwayAivatEvaluationRecord record;
+    record.identity = texas::make_multiway_model_identity(config);
+    record.public_history = texas::MultiwayHandHistory::from_rules(texas::MultiwayGameRules::standard_6max(), 0, 71U);
     record.public_history.events.push_back({
-        core::MultiwayReplayEventKind::Decision,
-        {0, core::MultiwayAction::Fold, 0, 73U},
-        core::Street::Flop,
+        texas::MultiwayReplayEventKind::Decision,
+        {0, texas::MultiwayAction::Fold, 0, 73U},
+        texas::Street::Flop,
         0});
     record.raw_chip_outcome.seat_count = 6U;
     record.raw_chip_outcome.values[0] = -100.0;
     record.raw_chip_outcome.values[1] = 100.0;
-    core::MultiwayAivatDecisionRecord decision;
+    texas::MultiwayAivatDecisionRecord decision;
     decision.decision_index = 1U;
     decision.acting_seat = 0;
-    decision.sampled_action = {core::MultiwayAction::Fold, 0U, 0, 17U};
+    decision.sampled_action = {texas::MultiwayAction::Fold, 0U, 0, 17U};
     decision.decision_seed = 73U;
     decision.action_values = {
-        {{core::MultiwayAction::Fold, 0U, 0, 17U}, 0.25, -100.0},
-        {{core::MultiwayAction::Call, 1U, 100, 17U}, 0.75, 25.0},
+        {{texas::MultiwayAction::Fold, 0U, 0, 17U}, 0.25, -100.0},
+        {{texas::MultiwayAction::Call, 1U, 100, 17U}, 0.75, 25.0},
     };
     record.decisions.push_back(decision);
     record.seal();
     return record;
 }
 
-bool accepting_sink(const core::MultiwayAivatEvaluationRecord& record, const void* context) noexcept {
+bool accepting_sink(const texas::MultiwayAivatEvaluationRecord& record, const void* context) noexcept {
     const auto* expected_hash = static_cast<const std::uint64_t*>(context);
     return record.integrity_hash == *expected_hash;
 }
@@ -46,7 +46,7 @@ TEST_CASE(multiway_aivat_record_seals_public_history_policy_values_and_raw_outco
     EXPECT_EQ(record.decisions.size(), std::size_t{1});
     EXPECT_EQ(record.raw_chip_outcome.values[0], -100.0);
 
-    const auto accepted = core::publish_multiway_aivat_evaluation_record(
+    const auto accepted = texas::publish_multiway_aivat_evaluation_record(
         record, accepting_sink, &record.integrity_hash);
     EXPECT_TRUE(accepted);
 }
@@ -68,6 +68,6 @@ TEST_CASE(multiway_aivat_record_rejects_tampered_history_policy_and_outcome) {
 TEST_CASE(multiway_aivat_record_rejects_missing_protected_sink) {
     const auto record = record_fixture();
     EXPECT_THROW(
-        core::publish_multiway_aivat_evaluation_record(record, nullptr, nullptr),
+        texas::publish_multiway_aivat_evaluation_record(record, nullptr, nullptr),
         std::invalid_argument);
 }

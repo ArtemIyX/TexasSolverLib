@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_flat_graph.hpp"
 #include "util/abstraction.hpp"
 
@@ -10,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLFlatBucketEntry {
     InfosetId infoset_id{};
@@ -52,4 +54,4 @@ private:
     std::vector<std::optional<HUNLFlatBucketEntry>> entries_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

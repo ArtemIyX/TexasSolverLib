@@ -12,29 +12,29 @@ void expect_facade_not_ready(
     double alpha,
     double beta,
     double gamma) {
-    core::HUNLConfig config;
-    core::PreflopEquityTable table;
+    texas::HUNLConfig config;
+    texas::PreflopEquityTable table;
     EXPECT_THROW(
-        core::solve_hunl_preflop_rvr(
+        texas::solve_hunl_preflop_rvr(
             config,
             table,
             iterations,
             alpha,
             beta,
             gamma),
-        core::PreflopRvrNotReady);
+        texas::PreflopRvrNotReady);
 }
 
 void expect_count_overload_not_ready(
     std::size_t decision_nodes,
     std::uint32_t iterations,
     std::size_t reach_size) {
-    core::Class169VectorDCFR solver(core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     const std::vector<double> reach(reach_size, 1.0);
     const auto iteration_before = solver.iteration();
     EXPECT_THROW(
         solver.solve(decision_nodes, iterations, reach, reach),
-        core::PreflopRvrNotReady);
+        texas::PreflopRvrNotReady);
     EXPECT_EQ(solver.iteration(), iteration_before);
     EXPECT_TRUE(solver.average_strategy().empty());
 }
@@ -82,27 +82,27 @@ TEST_CASE(preflop_rvr_facade_rejects_large_finite_exponents) {
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_zero_nodes) {
-    expect_count_overload_not_ready(0U, 1U, core::PREFLOP_NUM_CLASSES);
+    expect_count_overload_not_ready(0U, 1U, texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_one_node) {
-    expect_count_overload_not_ready(1U, 1U, core::PREFLOP_NUM_CLASSES);
+    expect_count_overload_not_ready(1U, 1U, texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_two_nodes) {
-    expect_count_overload_not_ready(2U, 1U, core::PREFLOP_NUM_CLASSES);
+    expect_count_overload_not_ready(2U, 1U, texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_many_nodes) {
-    expect_count_overload_not_ready(1000U, 1U, core::PREFLOP_NUM_CLASSES);
+    expect_count_overload_not_ready(1000U, 1U, texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_zero_iterations) {
-    expect_count_overload_not_ready(10U, 0U, core::PREFLOP_NUM_CLASSES);
+    expect_count_overload_not_ready(10U, 0U, texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_many_iterations) {
-    expect_count_overload_not_ready(10U, 100000U, core::PREFLOP_NUM_CLASSES);
+    expect_count_overload_not_ready(10U, 100000U, texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_empty_reaches) {
@@ -114,9 +114,9 @@ TEST_CASE(preflop_rvr_count_overload_rejects_short_reaches) {
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_class_sized_reaches) {
-    expect_count_overload_not_ready(10U, 1U, core::PREFLOP_NUM_CLASSES);
+    expect_count_overload_not_ready(10U, 1U, texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(preflop_rvr_count_overload_rejects_oversized_reaches) {
-    expect_count_overload_not_ready(10U, 1U, core::PREFLOP_NUM_CLASSES + 1U);
+    expect_count_overload_not_ready(10U, 1U, texas::PREFLOP_NUM_CLASSES + 1U);
 }

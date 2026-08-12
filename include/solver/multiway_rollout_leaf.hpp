@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway_continuation_policy.hpp"
 
@@ -9,7 +11,7 @@
 #include <limits>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Bounded continuation leaf evaluation. All storage is caller-owned so each
 // worker can retain one context and scratch instance without shared mutation.
@@ -205,4 +207,4 @@ struct MultiwayRolloutLeafContext {
 [[nodiscard]] MultiwayLeafEvaluator make_multiway_rollout_leaf_evaluator(
     const MultiwayRolloutLeafContext* context) noexcept;
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 enum class MultiwaySearchProfileMode : std::uint8_t {
     Disabled = 0U,
@@ -139,4 +141,4 @@ rank_multiway_search_profile(const MultiwaySearchProfileSnapshot& snapshot) noex
     return result;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

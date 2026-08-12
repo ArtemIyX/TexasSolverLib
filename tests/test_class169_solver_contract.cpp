@@ -11,36 +11,36 @@ namespace {
 
 constexpr double TOL = 1e-12;
 constexpr std::size_t PAIR_COUNT =
-    core::PREFLOP_NUM_CLASSES * core::PREFLOP_NUM_CLASSES;
+    texas::PREFLOP_NUM_CLASSES * texas::PREFLOP_NUM_CLASSES;
 
 std::vector<double> valid_reach() {
-    return std::vector<double>(core::PREFLOP_NUM_CLASSES, 1.0);
+    return std::vector<double>(texas::PREFLOP_NUM_CLASSES, 1.0);
 }
 
-core::PreflopBettingTree valid_one_decision_tree() {
-    core::PreflopBettingTree tree;
+texas::PreflopBettingTree valid_one_decision_tree() {
+    texas::PreflopBettingTree tree;
     tree.nodes.resize(3U);
     tree.nodes[0].kind =
-        core::PreflopBettingTree::NodeKind::Decision;
+        texas::PreflopBettingTree::NodeKind::Decision;
     tree.nodes[0].player = 0U;
     tree.nodes[0].actions = {"f", "c"};
     tree.nodes[0].children = {1U, 2U};
     tree.nodes[0].key_suffix = "||p|";
 
-    tree.nodes[1].kind = core::PreflopBettingTree::NodeKind::Fold;
+    tree.nodes[1].kind = texas::PreflopBettingTree::NodeKind::Fold;
     tree.nodes[1].folded_player = 0U;
-    tree.nodes[2].kind = core::PreflopBettingTree::NodeKind::Fold;
+    tree.nodes[2].kind = texas::PreflopBettingTree::NodeKind::Fold;
     tree.nodes[2].folded_player = 1U;
     return tree;
 }
 
-core::Class169TerminalCache valid_fold_cache(std::size_t node_count = 3U) {
-    core::Class169TerminalCache cache;
+texas::Class169TerminalCache valid_fold_cache(std::size_t node_count = 3U) {
+    texas::Class169TerminalCache cache;
     cache.leaves.resize(node_count);
     cache.leaves[0].kind =
-        core::Class169LeafEntry::Kind::NonTerminal;
+        texas::Class169LeafEntry::Kind::NonTerminal;
     for (std::size_t node = 1; node < node_count; ++node) {
-        cache.leaves[node].kind = core::Class169LeafEntry::Kind::Fold;
+        cache.leaves[node].kind = texas::Class169LeafEntry::Kind::Fold;
         cache.leaves[node].payoff = {-1.0, 1.0};
     }
     cache.shared_blocker_mass = {
@@ -50,44 +50,44 @@ core::Class169TerminalCache valid_fold_cache(std::size_t node_count = 3U) {
     return cache;
 }
 
-core::PreflopBettingTree valid_two_decision_tree() {
-    core::PreflopBettingTree tree;
+texas::PreflopBettingTree valid_two_decision_tree() {
+    texas::PreflopBettingTree tree;
     tree.nodes.resize(4U);
     tree.nodes[0].kind =
-        core::PreflopBettingTree::NodeKind::Decision;
+        texas::PreflopBettingTree::NodeKind::Decision;
     tree.nodes[0].player = 0U;
     tree.nodes[0].actions = {"c"};
     tree.nodes[0].children = {1U};
     tree.nodes[0].key_suffix = "||p|";
 
     tree.nodes[1].kind =
-        core::PreflopBettingTree::NodeKind::Decision;
+        texas::PreflopBettingTree::NodeKind::Decision;
     tree.nodes[1].player = 1U;
     tree.nodes[1].actions = {"x", "A"};
     tree.nodes[1].children = {2U, 3U};
     tree.nodes[1].key_suffix = "||p|c";
 
-    tree.nodes[2].kind = core::PreflopBettingTree::NodeKind::Fold;
+    tree.nodes[2].kind = texas::PreflopBettingTree::NodeKind::Fold;
     tree.nodes[2].folded_player = 0U;
-    tree.nodes[3].kind = core::PreflopBettingTree::NodeKind::Fold;
+    tree.nodes[3].kind = texas::PreflopBettingTree::NodeKind::Fold;
     tree.nodes[3].folded_player = 1U;
     return tree;
 }
 
-core::Class169TerminalCache valid_two_decision_cache() {
+texas::Class169TerminalCache valid_two_decision_cache() {
     auto cache = valid_fold_cache(4U);
     cache.leaves[1].kind =
-        core::Class169LeafEntry::Kind::NonTerminal;
+        texas::Class169LeafEntry::Kind::NonTerminal;
     return cache;
 }
 
 void expect_invalid_solve(
-    const core::PreflopBettingTree& tree,
-    const core::Class169TerminalCache& cache,
+    const texas::PreflopBettingTree& tree,
+    const texas::Class169TerminalCache& cache,
     const std::vector<double>& reach0,
     const std::vector<double>& reach1) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     EXPECT_THROW(
         solver.solve(tree, cache, 1U, reach0, reach1),
         std::invalid_argument);
@@ -99,31 +99,31 @@ void expect_invalid_solve(
 
 TEST_CASE(class169_constructor_rejects_zero_hands) {
     EXPECT_THROW(
-        core::Class169VectorDCFR(0U, 1.5, 0.0, 2.0),
+        texas::Class169VectorDCFR(0U, 1.5, 0.0, 2.0),
         std::invalid_argument);
 }
 
 TEST_CASE(class169_constructor_rejects_one_hand) {
     EXPECT_THROW(
-        core::Class169VectorDCFR(1U, 1.5, 0.0, 2.0),
+        texas::Class169VectorDCFR(1U, 1.5, 0.0, 2.0),
         std::invalid_argument);
 }
 
 TEST_CASE(class169_constructor_rejects_168_hands) {
     EXPECT_THROW(
-        core::Class169VectorDCFR(168U, 1.5, 0.0, 2.0),
+        texas::Class169VectorDCFR(168U, 1.5, 0.0, 2.0),
         std::invalid_argument);
 }
 
 TEST_CASE(class169_constructor_rejects_170_hands) {
     EXPECT_THROW(
-        core::Class169VectorDCFR(170U, 1.5, 0.0, 2.0),
+        texas::Class169VectorDCFR(170U, 1.5, 0.0, 2.0),
         std::invalid_argument);
 }
 
 TEST_CASE(class169_constructor_accepts_exact_dimension) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     EXPECT_EQ(solver.iteration(), 0U);
 }
 
@@ -209,7 +209,7 @@ TEST_CASE(class169_rejects_zero_mass_reach) {
     expect_invalid_solve(
         valid_one_decision_tree(),
         valid_fold_cache(),
-        std::vector<double>(core::PREFLOP_NUM_CLASSES, 0.0),
+        std::vector<double>(texas::PREFLOP_NUM_CLASSES, 0.0),
         valid_reach());
 }
 
@@ -225,8 +225,8 @@ TEST_CASE(class169_rejects_overflowing_reach_total) {
 }
 
 TEST_CASE(class169_invalid_resolve_preserves_previous_output) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     const auto tree = valid_one_decision_tree();
     const auto cache = valid_fold_cache();
     solver.solve(tree, cache, 1U, valid_reach(), valid_reach());
@@ -331,7 +331,7 @@ TEST_CASE(class169_rejects_duplicate_decision_key) {
 TEST_CASE(class169_rejects_cache_kind_mismatch) {
     auto cache = valid_fold_cache();
     cache.leaves[1].kind =
-        core::Class169LeafEntry::Kind::Equity;
+        texas::Class169LeafEntry::Kind::Equity;
     expect_invalid_solve(
         valid_one_decision_tree(),
         cache,
@@ -371,8 +371,8 @@ TEST_CASE(class169_rejects_negative_blocker_mass) {
 }
 
 TEST_CASE(class169_zero_iteration_export_contains_every_class) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     solver.solve(
         valid_one_decision_tree(),
         valid_fold_cache(),
@@ -381,12 +381,12 @@ TEST_CASE(class169_zero_iteration_export_contains_every_class) {
         valid_reach());
     EXPECT_EQ(
         solver.average_strategy().size(),
-        core::PREFLOP_NUM_CLASSES);
+        texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(class169_export_uses_canonical_pair_labels) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     solver.solve(
         valid_one_decision_tree(),
         valid_fold_cache(),
@@ -402,8 +402,8 @@ TEST_CASE(class169_export_uses_canonical_pair_labels) {
 }
 
 TEST_CASE(class169_export_rows_match_action_count) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     solver.solve(
         valid_one_decision_tree(),
         valid_fold_cache(),
@@ -419,8 +419,8 @@ TEST_CASE(class169_export_rows_match_action_count) {
 }
 
 TEST_CASE(class169_export_contains_every_decision_and_class) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     solver.solve(
         valid_two_decision_tree(),
         valid_two_decision_cache(),
@@ -429,12 +429,12 @@ TEST_CASE(class169_export_contains_every_decision_and_class) {
         valid_reach());
     EXPECT_EQ(
         solver.average_strategy().size(),
-        2U * core::PREFLOP_NUM_CLASSES);
+        2U * texas::PREFLOP_NUM_CLASSES);
 }
 
 TEST_CASE(class169_export_preserves_each_public_history) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     solver.solve(
         valid_two_decision_tree(),
         valid_two_decision_cache(),
@@ -449,8 +449,8 @@ TEST_CASE(class169_export_preserves_each_public_history) {
 }
 
 TEST_CASE(class169_positive_iteration_export_is_normalized) {
-    core::Class169VectorDCFR solver(
-        core::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
+    texas::Class169VectorDCFR solver(
+        texas::PREFLOP_NUM_CLASSES, 1.5, 0.0, 2.0);
     solver.solve(
         valid_one_decision_tree(),
         valid_fold_cache(),

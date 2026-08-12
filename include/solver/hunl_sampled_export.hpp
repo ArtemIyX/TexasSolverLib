@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/hunl_sampled_storage.hpp"
 #include "games/hunl.hpp"
 
@@ -7,7 +9,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLSampledActionProbability {
     std::uint32_t action_index = 0;
@@ -33,4 +35,4 @@ public:
         const std::vector<int>& target_contributions);
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

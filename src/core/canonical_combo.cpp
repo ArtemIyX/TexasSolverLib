@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-namespace core {
+namespace texas::core {
 namespace {
 
 constexpr std::size_t compact_pair_index(std::uint8_t low, std::uint8_t high) noexcept {
@@ -13,8 +13,8 @@ constexpr std::size_t compact_pair_index(std::uint8_t low, std::uint8_t high) no
 constexpr std::array<CanonicalComboCards, CANONICAL_HOLE_COMBINATION_COUNT> make_combo_cards() {
     std::array<CanonicalComboCards, CANONICAL_HOLE_COMBINATION_COUNT> result = {};
     std::size_t index = 0U;
-    for (std::uint8_t low = HUNL_CARD_FIRST; low < HUNL_CARD_LAST; ++low) {
-        for (std::uint8_t high = static_cast<std::uint8_t>(low + 1U); high <= HUNL_CARD_LAST; ++high) {
+    for (std::uint8_t low = 0U; low + 1U < DECK_CARD_COUNT; ++low) {
+        for (std::uint8_t high = static_cast<std::uint8_t>(low + 1U); high < DECK_CARD_COUNT; ++high) {
             result[index++] = {low, high};
         }
     }
@@ -33,14 +33,12 @@ const CanonicalComboCards& CanonicalComboView::cards(CanonicalComboId id) const 
 }
 
 CanonicalComboId CanonicalComboView::id(const CanonicalComboCards& hole) const {
-    if (!is_hunl_card(hole[0]) || !is_hunl_card(hole[1]) || hole[0] == hole[1]) {
-        throw std::invalid_argument("canonical combo requires distinct HUNL cards");
+    if (!is_card_index(hole[0]) || !is_card_index(hole[1]) || hole[0] == hole[1]) {
+        throw std::invalid_argument("canonical combo requires distinct valid cards");
     }
     const auto low = std::min(hole[0], hole[1]);
     const auto high = std::max(hole[0], hole[1]);
-    return static_cast<CanonicalComboId>(compact_pair_index(
-        static_cast<std::uint8_t>(low - HUNL_CARD_FIRST),
-        static_cast<std::uint8_t>(high - HUNL_CARD_FIRST)));
+    return static_cast<CanonicalComboId>(compact_pair_index(low, high));
 }
 
 CanonicalComboLegalMask CanonicalComboView::legal_mask(
@@ -49,23 +47,22 @@ CanonicalComboLegalMask CanonicalComboView::legal_mask(
     if (dead_cards == nullptr && dead_card_count != 0U) {
         throw std::invalid_argument("canonical combo dead cards are missing");
     }
-    std::array<bool, HUNL_CARD_COUNT> dead = {};
+    std::array<bool, DECK_CARD_COUNT> dead = {};
     for (std::size_t index = 0U; index < dead_card_count; ++index) {
         const auto card = dead_cards[index];
-        if (!is_hunl_card(card)) {
-            throw std::invalid_argument("canonical combo dead cards must be HUNL cards");
+        if (!is_card_index(card)) {
+            throw std::invalid_argument("canonical combo dead cards must be valid cards");
         }
-        const auto compact = static_cast<std::size_t>(card - HUNL_CARD_FIRST);
-        if (dead[compact]) {
+        if (dead[card]) {
             throw std::invalid_argument("canonical combo dead cards must be distinct");
         }
-        dead[compact] = true;
+        dead[card] = true;
     }
 
     CanonicalComboLegalMask mask;
     for (std::size_t index = 0U; index < kComboCards.size(); ++index) {
         const auto& hole = kComboCards[index];
-        mask.set(index, !dead[hole[0] - HUNL_CARD_FIRST] && !dead[hole[1] - HUNL_CARD_FIRST]);
+        mask.set(index, !dead[hole[0]] && !dead[hole[1]]);
     }
     return mask;
 }
@@ -75,4 +72,4 @@ const CanonicalComboView& canonical_combos() noexcept {
     return view;
 }
 
-}  // namespace core
+}  // namespace texas::core

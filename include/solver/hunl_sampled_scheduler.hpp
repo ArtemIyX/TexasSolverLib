@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLSampledTrajectoryRange {
     std::uint64_t begin = 0;
@@ -35,4 +37,4 @@ public:
         std::size_t worker_count);
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

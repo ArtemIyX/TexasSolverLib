@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 
 #include <array>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLSampledTerminalInput {
     std::array<int, 2> contributions = {0, 0};
@@ -24,4 +26,4 @@ public:
         double showdown_utility) const noexcept;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

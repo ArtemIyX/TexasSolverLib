@@ -3,7 +3,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 
 Probability MultiwayBlueprintQuery::root_action_probability(
     const MultiwayBlueprintSnapshot& snapshot,
@@ -31,4 +31,4 @@ MultiwayRootActionProbability MultiwayBlueprintQuery::root_action(
     };
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

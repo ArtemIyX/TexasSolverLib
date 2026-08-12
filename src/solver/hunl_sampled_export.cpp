@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -87,4 +87,4 @@ void HUNLSampledStrategyExporter::attach_action_descriptors(
     }
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

@@ -8,7 +8,7 @@
 #include <numeric>
 #include <stdexcept>
 
-namespace core {
+namespace texas::games::multiway {
 
 void MultiwayRakePolicy::validate() const {
     if (mode == MultiwayRakeMode::ExplicitZero) {
@@ -225,4 +225,4 @@ MultiwayTerminalResult settle_multiway_terminal(
     return settle_multiway_terminal(ruled_input);
 }
 
-}  // namespace core
+}  // namespace texas::games::multiway

@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_bucket_artifact.hpp"
 
 #include <array>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 inline constexpr std::uint32_t MULTIWAY_FUTURE_BUCKET_ARTIFACT_SCHEMA_VERSION = 1U;
 
@@ -43,7 +45,7 @@ public:
 
     [[nodiscard]] const MultiwayFutureBucketProfile& profile() const noexcept { return profile_; }
     [[nodiscard]] const MultiwayBucketRegistry& registry() const noexcept { return registry_; }
-    [[nodiscard]] std::uint32_t lookup_hunl(
+    [[nodiscard]] std::uint32_t lookup(
         Street street, const std::vector<std::uint8_t>& board,
         const std::array<std::uint8_t, 2>& hole) const;
 
@@ -61,4 +63,4 @@ private:
 [[nodiscard]] MultiwayFutureBucketArtifact deserialize_multiway_future_bucket_artifact(
     const std::vector<std::uint8_t>& bytes);
 
-}  // namespace core
+}  // namespace texas::solver::multiway

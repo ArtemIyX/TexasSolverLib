@@ -17,7 +17,7 @@ void expect_partial_launch_is_joined(std::size_t failure_index) {
 
     try {
         std::vector<std::thread> threads;
-        auto guard = core::detail::make_thread_join_guard(
+        auto guard = texas::detail::make_thread_join_guard(
             threads,
             [&stop] { stop.store(true, std::memory_order_release); });
         threads.reserve(20U);

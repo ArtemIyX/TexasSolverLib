@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 #include "ranges/source.hpp"
 
@@ -8,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::ranges {
 
 /**
  * @brief Canonical combo ordering for exact-hand ranges on a given board.
@@ -74,4 +76,4 @@ std::vector<ChanceRangeTransition> propagate_range_to_chance_outcomes(
     const ComboIndex& combos,
     const std::vector<ChanceOutcome>& outcomes);
 
-}  // namespace core
+}  // namespace texas::ranges

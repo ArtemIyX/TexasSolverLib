@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <thread>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 std::uint64_t checked_multiply(std::uint64_t left, std::uint64_t right) noexcept {
@@ -148,4 +148,4 @@ MultiwayMemoryPreflight preflight_multiway_memory(
     return result;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

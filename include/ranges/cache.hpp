@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 #include "ranges/source.hpp"
 
@@ -10,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace core {
+namespace texas::ranges {
 
 struct RangeCacheKey {
     std::uint8_t player = 0;
@@ -55,4 +57,4 @@ std::optional<RangeCacheEntry> load_range_cache_if_compatible(
     std::uint8_t player,
     RangeVector::Kind range_kind);
 
-}  // namespace core
+}  // namespace texas::ranges

@@ -13,13 +13,13 @@ void scalar_regret_matching(const T* regret, std::uint32_t actions, std::uint32_
 template <>
 void scalar_regret_matching<float>(
     const float* regret, std::uint32_t actions, std::uint32_t buckets, float* strategy) {
-    core::regret_matching_action_major_f32_scalar(regret, actions, buckets, strategy);
+    texas::regret_matching_action_major_f32_scalar(regret, actions, buckets, strategy);
 }
 
 template <>
 void scalar_regret_matching<double>(
     const double* regret, std::uint32_t actions, std::uint32_t buckets, double* strategy) {
-    core::regret_matching_action_major_f64_scalar(regret, actions, buckets, strategy);
+    texas::regret_matching_action_major_f64_scalar(regret, actions, buckets, strategy);
 }
 
 template <class T>
@@ -28,13 +28,13 @@ void dispatched_regret_matching(const T* regret, std::uint32_t actions, std::uin
 template <>
 void dispatched_regret_matching<float>(
     const float* regret, std::uint32_t actions, std::uint32_t buckets, float* strategy) {
-    core::regret_matching_action_major_f32(regret, actions, buckets, strategy);
+    texas::regret_matching_action_major_f32(regret, actions, buckets, strategy);
 }
 
 template <>
 void dispatched_regret_matching<double>(
     const double* regret, std::uint32_t actions, std::uint32_t buckets, double* strategy) {
-    core::regret_matching_action_major_f64(regret, actions, buckets, strategy);
+    texas::regret_matching_action_major_f64(regret, actions, buckets, strategy);
 }
 
 template <class T>
@@ -165,10 +165,10 @@ TEST_CASE(hunl_p75_f64_nan_row_preserves_scalar_fallback) {
 TEST_CASE(hunl_p75_f32_dispatch_rejects_null_or_empty_rows_without_writing) {
     std::vector<float> strategy = {3.0f, 5.0f};
     const std::vector<float> regret = {1.0f, 2.0f};
-    core::regret_matching_action_major_f32(nullptr, 2U, 1U, strategy.data());
-    core::regret_matching_action_major_f32(regret.data(), 2U, 1U, nullptr);
-    core::regret_matching_action_major_f32(regret.data(), 0U, 1U, strategy.data());
-    core::regret_matching_action_major_f32(regret.data(), 2U, 0U, strategy.data());
+    texas::regret_matching_action_major_f32(nullptr, 2U, 1U, strategy.data());
+    texas::regret_matching_action_major_f32(regret.data(), 2U, 1U, nullptr);
+    texas::regret_matching_action_major_f32(regret.data(), 0U, 1U, strategy.data());
+    texas::regret_matching_action_major_f32(regret.data(), 2U, 0U, strategy.data());
     EXPECT_NEAR(strategy[0], 3.0, 1e-5);
     EXPECT_NEAR(strategy[1], 5.0, 1e-5);
 }
@@ -176,10 +176,10 @@ TEST_CASE(hunl_p75_f32_dispatch_rejects_null_or_empty_rows_without_writing) {
 TEST_CASE(hunl_p75_f64_dispatch_rejects_null_or_empty_rows_without_writing) {
     std::vector<double> strategy = {3.0, 5.0};
     const std::vector<double> regret = {1.0, 2.0};
-    core::regret_matching_action_major_f64(nullptr, 2U, 1U, strategy.data());
-    core::regret_matching_action_major_f64(regret.data(), 2U, 1U, nullptr);
-    core::regret_matching_action_major_f64(regret.data(), 0U, 1U, strategy.data());
-    core::regret_matching_action_major_f64(regret.data(), 2U, 0U, strategy.data());
+    texas::regret_matching_action_major_f64(nullptr, 2U, 1U, strategy.data());
+    texas::regret_matching_action_major_f64(regret.data(), 2U, 1U, nullptr);
+    texas::regret_matching_action_major_f64(regret.data(), 0U, 1U, strategy.data());
+    texas::regret_matching_action_major_f64(regret.data(), 2U, 0U, strategy.data());
     EXPECT_NEAR(strategy[0], 3.0, 1e-12);
     EXPECT_NEAR(strategy[1], 5.0, 1e-12);
 }

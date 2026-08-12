@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_resolver.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Candidate modes deliberately select existing resolver fallback/search paths.
 // Match scheduling remains owned by the evaluation host.
@@ -55,4 +57,4 @@ private:
     MultiwayResolverEvaluationAdapterConfig config_{};
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

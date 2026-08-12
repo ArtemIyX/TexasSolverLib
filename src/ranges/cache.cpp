@@ -14,7 +14,7 @@
 #include <string>
 #include <type_traits>
 
-namespace core {
+namespace texas::ranges {
 
 namespace {
 
@@ -499,4 +499,4 @@ std::optional<RangeCacheEntry> load_range_cache_if_compatible(
     return entry;
 }
 
-}  // namespace core
+}  // namespace texas::ranges

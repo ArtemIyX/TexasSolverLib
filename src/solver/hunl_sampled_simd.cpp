@@ -8,7 +8,7 @@
 #include <immintrin.h>
 #endif
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -590,4 +590,4 @@ double weighted_sum_f32_f64_accum(std::uint32_t n, const float* values, const fl
     return dot_f32_f64_accum(n, values, weights);
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

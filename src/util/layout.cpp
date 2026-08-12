@@ -4,7 +4,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::util {
 
 FlatInfosetStore::FlatInfosetStore(std::size_t row_width)
     : row_width_(row_width) {
@@ -180,6 +180,6 @@ const RowMeta& FlatInfosetStore::meta_for(InfosetId id) const {
     return meta_[id.value];
 }
 
-}  // namespace core
+}  // namespace texas::util
 
 

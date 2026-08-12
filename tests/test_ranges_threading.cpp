@@ -7,37 +7,37 @@
 
 namespace {
 
-core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 2;
     graph.max_actions = 2;
 
     graph.children = {1, 2, 3, 4, 5, 6};
     graph.chance_outcomes = {
-        core::HUNLFlatChanceOutcome{0, 0.5, 1},
-        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+        texas::HUNLFlatChanceOutcome{0, 0.5, 1},
+        texas::HUNLFlatChanceOutcome{1, 0.5, 2},
     };
 
-    const auto shared_infoset = core::InfosetId{0};
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    const auto shared_infoset = texas::InfosetId{0};
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         shared_infoset,
         0,
         2,
         {},
         0,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
     graph.infoset_debug_keys = {"shared-depth-infoset"};
     graph.infoset_nodes = {1, 2};
 
     auto make_terminal_meta = [](double value) {
-        core::HUNLFlatNodeMeta meta;
-        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        texas::HUNLFlatNodeMeta meta;
+        meta.type = texas::HUNLFlatNodeType::TerminalFold;
         meta.terminal_utility = {value, -value};
-        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
         return meta;
     };
 
@@ -47,8 +47,8 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].chance_begin = 0;
     graph.node_meta[0].chance_count = 2;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = texas::Street::Flop;
 
     for (std::uint32_t node_idx : {1U, 2U}) {
         auto& meta = graph.node_meta[node_idx];
@@ -56,8 +56,8 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
         meta.child_count = 2;
         meta.infoset_id = shared_infoset;
         meta.player = 0;
-        meta.type = core::HUNLFlatNodeType::Decision;
-        meta.street = core::Street::Flop;
+        meta.type = texas::HUNLFlatNodeType::Decision;
+        meta.street = texas::Street::Flop;
         meta.action_count = 2;
         meta.has_infoset = true;
     }
@@ -69,35 +69,35 @@ core::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
 
     graph.depth_order = {0, 1, 2, 3, 4, 5, 6};
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, 2},
-        core::HUNLFlatSlice{3, 4},
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, 2},
+        texas::HUNLFlatSlice{3, 4},
     };
     graph.node_depths = {0, 1, 1, 2, 2, 2, 2};
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {6, 5, 4, 3, 2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 
 TEST_CASE(ranges_single_thread_and_multi_thread_runs_match_within_tolerance) {
-    const auto config = core::benchmark_turn_subgame();
-    const auto single = core::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 1, 8, true);
-    const auto multi = core::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 2, 8, true);
+    const auto config = texas::benchmark_turn_subgame();
+    const auto single = texas::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 1, 8, true);
+    const auto multi = texas::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 2, 8, true);
 
     EXPECT_NEAR(single.game_value, multi.game_value, 1e-12);
     EXPECT_NEAR(single.exploitability, multi.exploitability, 1e-12);
 }
 
 TEST_CASE(ranges_worker_scheduling_does_not_change_normalized_ranges) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
-    const auto graph_a = core::HUNLFlatSolveGraph::build(config);
-    const auto graph_b = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+    const auto graph_a = texas::HUNLFlatSolveGraph::build(config);
+    const auto graph_b = texas::HUNLFlatSolveGraph::build(config);
 
-    core::HUNLFlatDCFR two_workers(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetHandAction, 2);
-    core::HUNLFlatDCFR three_workers(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetHandAction, 3);
+    texas::HUNLFlatDCFR two_workers(graph_a, {2, 2}, texas::HUNLFlatValueLayout::InfosetHandAction, 2);
+    texas::HUNLFlatDCFR three_workers(graph_b, {2, 2}, texas::HUNLFlatValueLayout::InfosetHandAction, 3);
     two_workers.run_iteration();
     three_workers.run_iteration();
 
@@ -115,9 +115,9 @@ TEST_CASE(ranges_worker_scheduling_does_not_change_normalized_ranges) {
 }
 
 TEST_CASE(ranges_multiworker_run_does_not_corrupt_range_tables) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::benchmark_turn_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    core::HUNLFlatDCFR solver(graph, {2, 2}, core::HUNLFlatValueLayout::InfosetHandAction, 4);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    texas::HUNLFlatDCFR solver(graph, {2, 2}, texas::HUNLFlatValueLayout::InfosetHandAction, 4);
     solver.run_iterations(2);
 
     for (const auto value : solver.bucket_reach()) {
@@ -135,9 +135,9 @@ TEST_CASE(ranges_multiworker_run_does_not_corrupt_range_tables) {
 }
 
 TEST_CASE(ranges_repeated_runs_with_same_config_are_deterministic) {
-    const auto config = core::benchmark_turn_subgame();
-    const auto first = core::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 2, 8, true);
-    const auto second = core::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 2, 8, true);
+    const auto config = texas::benchmark_turn_subgame();
+    const auto first = texas::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 2, 8, true);
+    const auto second = texas::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 2, 8, true);
 
     EXPECT_NEAR(first.game_value, second.game_value, 1e-12);
     EXPECT_NEAR(first.exploitability, second.exploitability, 1e-12);
@@ -147,8 +147,8 @@ TEST_CASE(ranges_repeated_runs_with_same_config_are_deterministic) {
 TEST_CASE(ranges_shared_infoset_same_depth_graph_matches_across_worker_counts) {
     const auto graph_a = make_shared_infoset_same_depth_graph();
     const auto graph_b = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR single_worker(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 1);
-    core::HUNLFlatDCFR two_workers(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+    texas::HUNLFlatDCFR single_worker(graph_a, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatDCFR two_workers(graph_b, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 2);
 
     for (auto* solver : {&single_worker, &two_workers}) {
         auto& table = solver->infoset_table_mut();
@@ -186,8 +186,8 @@ TEST_CASE(ranges_shared_infoset_same_depth_graph_matches_across_worker_counts) {
 TEST_CASE(ranges_shared_infoset_same_depth_graph_repeated_runs_are_deterministic) {
     const auto graph_a = make_shared_infoset_same_depth_graph();
     const auto graph_b = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR first(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 2);
-    core::HUNLFlatDCFR second(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+    texas::HUNLFlatDCFR first(graph_a, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 2);
+    texas::HUNLFlatDCFR second(graph_b, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 2);
 
     for (auto* solver : {&first, &second}) {
         auto& table = solver->infoset_table_mut();
@@ -218,8 +218,8 @@ TEST_CASE(ranges_shared_infoset_same_depth_graph_repeated_runs_are_deterministic
 TEST_CASE(ranges_shared_infoset_same_depth_graph_matches_across_layouts_and_worker_counts) {
     const auto graph_a = make_shared_infoset_same_depth_graph();
     const auto graph_b = make_shared_infoset_same_depth_graph();
-    core::HUNLFlatDCFR hand_action(graph_a, {2, 2}, core::HUNLFlatValueLayout::InfosetHandAction, 1);
-    core::HUNLFlatDCFR action_hand(graph_b, {2, 2}, core::HUNLFlatValueLayout::InfosetActionHand, 3);
+    texas::HUNLFlatDCFR hand_action(graph_a, {2, 2}, texas::HUNLFlatValueLayout::InfosetHandAction, 1);
+    texas::HUNLFlatDCFR action_hand(graph_b, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 3);
 
     for (auto* solver : {&hand_action, &action_hand}) {
         auto& table = solver->infoset_table_mut();

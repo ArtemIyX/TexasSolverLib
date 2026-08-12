@@ -3,7 +3,7 @@
 #include "test_harness.hpp"
 
 TEST_CASE(multiway_scheduler_partitions_trajectories_in_fixed_order) {
-    const auto batches = core::MultiwayScheduler::partition_deterministic(10U, 3U);
+    const auto batches = texas::MultiwayScheduler::partition_deterministic(10U, 3U);
     EXPECT_EQ(batches.size(), 3U);
     EXPECT_EQ(batches[0].trajectories.begin, 0U);
     EXPECT_EQ(batches[0].trajectories.end, 4U);
@@ -14,19 +14,19 @@ TEST_CASE(multiway_scheduler_partitions_trajectories_in_fixed_order) {
 }
 
 TEST_CASE(multiway_scheduler_handles_empty_and_oversized_worker_requests) {
-    const auto empty = core::MultiwayScheduler::partition_deterministic(0U, 0U);
+    const auto empty = texas::MultiwayScheduler::partition_deterministic(0U, 0U);
     EXPECT_EQ(empty.size(), 1U);
     EXPECT_EQ(empty[0].trajectories.size(), 0U);
 
-    const auto clamped = core::MultiwayScheduler::partition_deterministic(2U, 100U);
+    const auto clamped = texas::MultiwayScheduler::partition_deterministic(2U, 100U);
     EXPECT_EQ(clamped.size(), 2U);
     EXPECT_EQ(clamped[0].trajectories.size(), 1U);
     EXPECT_EQ(clamped[1].trajectories.size(), 1U);
 }
 
 TEST_CASE(multiway_scheduler_writes_reusable_fixed_partition_storage) {
-    core::MultiwayWorkerBatch batches[4] = {};
-    const auto first_count = core::MultiwayScheduler::partition_deterministic_into(
+    texas::MultiwayWorkerBatch batches[4] = {};
+    const auto first_count = texas::MultiwayScheduler::partition_deterministic_into(
         17U, 4U, batches, 4U);
     EXPECT_EQ(first_count, 4U);
     EXPECT_EQ(batches[0].trajectories.begin, 0U);
@@ -34,34 +34,34 @@ TEST_CASE(multiway_scheduler_writes_reusable_fixed_partition_storage) {
     EXPECT_EQ(batches[3].trajectories.begin, 13U);
     EXPECT_EQ(batches[3].trajectories.end, 17U);
 
-    const auto second_count = core::MultiwayScheduler::partition_deterministic_into(
+    const auto second_count = texas::MultiwayScheduler::partition_deterministic_into(
         2U, 4U, batches, 4U);
     EXPECT_EQ(second_count, 2U);
     EXPECT_EQ(batches[0].trajectories.size(), 1U);
     EXPECT_EQ(batches[1].trajectories.size(), 1U);
-    EXPECT_EQ(core::MultiwayScheduler::partition_deterministic_into(1U, 1U, nullptr, 0U), 0U);
+    EXPECT_EQ(texas::MultiwayScheduler::partition_deterministic_into(1U, 1U, nullptr, 0U), 0U);
 }
 
 TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity) {
-    const auto first_seed = core::multiway_deterministic_trajectory_seed(0x1234U, 17U);
-    EXPECT_EQ(first_seed, core::multiway_deterministic_trajectory_seed(0x1234U, 17U));
-    EXPECT_TRUE(first_seed != core::multiway_deterministic_trajectory_seed(0x1234U, 18U));
+    const auto first_seed = texas::multiway_deterministic_trajectory_seed(0x1234U, 17U);
+    EXPECT_EQ(first_seed, texas::multiway_deterministic_trajectory_seed(0x1234U, 17U));
+    EXPECT_TRUE(first_seed != texas::multiway_deterministic_trajectory_seed(0x1234U, 18U));
 
-    const auto first = core::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U);
-    const auto repeat = core::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U);
+    const auto first = texas::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U);
+    const auto repeat = texas::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U);
     EXPECT_EQ(first, repeat);
-    EXPECT_TRUE(first != core::multiway_deterministic_schedule_fingerprint(2U, 7U, 9U, 32U));
-    EXPECT_TRUE(first != core::multiway_deterministic_schedule_fingerprint(4U, 8U, 9U, 32U));
+    EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(2U, 7U, 9U, 32U));
+    EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(4U, 8U, 9U, 32U));
 }
 
 TEST_CASE(multiway_solver_limits_reject_unimplemented_relaxed_run_modes) {
-    core::MultiwaySolverLimits limits;
+    texas::MultiwaySolverLimits limits;
     limits.worker_count = 1U;
     limits.trajectories_per_batch = 1U;
     limits.max_public_states = 1U;
     limits.max_sparse_rows = 1U;
     limits.max_sparse_values = 1U;
     limits.max_worker_delta_entries = 1U;
-    limits.run_mode = static_cast<core::MultiwayRunMode>(255U);
+    limits.run_mode = static_cast<texas::MultiwayRunMode>(255U);
     EXPECT_THROW(limits.validate(), std::invalid_argument);
 }

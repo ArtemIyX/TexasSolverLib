@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 
 #include <array>
@@ -10,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::util {
 
 inline constexpr std::uint8_t ABSTRACTION_SCHEMA_VERSION = 1;
 inline constexpr std::array<std::array<std::uint8_t, 4>, 24> SUIT_PERMUTATIONS = {{
@@ -67,6 +69,6 @@ std::int32_t lookup_bucket(
     const std::array<std::uint8_t, 2>& hole,
     Street street);
 
-}  // namespace core
+}  // namespace texas::util
 
 

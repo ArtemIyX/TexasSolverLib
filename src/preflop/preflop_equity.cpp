@@ -16,7 +16,7 @@
 #include <thread>
 #include <vector>
 
-namespace core {
+namespace texas::preflop {
 
 namespace {
 constexpr std::array<std::uint8_t, 13> RANKS = {14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2};
@@ -468,6 +468,6 @@ void PreflopEquityTable::save_csv(const std::string& path) const {
     }
 }
 
-}  // namespace core
+}  // namespace texas::preflop
 
 

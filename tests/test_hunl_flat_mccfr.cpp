@@ -12,37 +12,37 @@
 
 namespace {
 
-core::HUNLFlatSolveGraph make_public_chance_conflict_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_public_chance_conflict_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 2;
     graph.max_actions = 2;
 
     graph.children = {1, 2, 3, 4, 5, 6};
     graph.chance_outcomes = {
-        core::HUNLFlatChanceOutcome{0, 0.5, 1},
-        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+        texas::HUNLFlatChanceOutcome{0, 0.5, 1},
+        texas::HUNLFlatChanceOutcome{1, 0.5, 2},
     };
 
-    const auto shared_infoset = core::InfosetId{0};
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    const auto shared_infoset = texas::InfosetId{0};
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         shared_infoset,
         0,
         2,
         {},
         0,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
     graph.infoset_debug_keys = {"pcs-shared-infoset"};
     graph.infoset_nodes = {1, 2};
 
     auto make_terminal_meta = [](double value) {
-        core::HUNLFlatNodeMeta meta;
-        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        texas::HUNLFlatNodeMeta meta;
+        meta.type = texas::HUNLFlatNodeType::TerminalFold;
         meta.terminal_utility = {value, -value};
-        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
         return meta;
     };
 
@@ -51,8 +51,8 @@ core::HUNLFlatSolveGraph make_public_chance_conflict_graph() {
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].chance_begin = 0;
     graph.node_meta[0].chance_count = 2;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = texas::Street::Flop;
 
     for (std::uint32_t node_idx : {1U, 2U}) {
         auto& meta = graph.node_meta[node_idx];
@@ -60,8 +60,8 @@ core::HUNLFlatSolveGraph make_public_chance_conflict_graph() {
         meta.child_count = 2;
         meta.infoset_id = shared_infoset;
         meta.player = 0;
-        meta.type = core::HUNLFlatNodeType::Decision;
-        meta.street = core::Street::Flop;
+        meta.type = texas::HUNLFlatNodeType::Decision;
+        meta.street = texas::Street::Flop;
         meta.action_count = 2;
         meta.has_infoset = true;
     }
@@ -73,21 +73,21 @@ core::HUNLFlatSolveGraph make_public_chance_conflict_graph() {
 
     graph.depth_order = {0, 1, 2, 3, 4, 5, 6};
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, 2},
-        core::HUNLFlatSlice{3, 4},
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, 2},
+        texas::HUNLFlatSlice{3, 4},
     };
     graph.node_depths = {0, 1, 1, 2, 2, 2, 2};
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {6, 5, 4, 3, 2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 
-core::HUNLFlatSolveGraph make_external_sampling_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_external_sampling_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 3;
     graph.max_actions = 2;
@@ -102,40 +102,40 @@ core::HUNLFlatSolveGraph make_external_sampling_graph() {
         13, 14,
     };
     graph.chance_outcomes = {
-        core::HUNLFlatChanceOutcome{0, 0.5, 1},
-        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+        texas::HUNLFlatChanceOutcome{0, 0.5, 1},
+        texas::HUNLFlatChanceOutcome{1, 0.5, 2},
     };
 
-    const auto player1_infoset = core::InfosetId{0};
-    const auto player0_infoset = core::InfosetId{1};
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    const auto player1_infoset = texas::InfosetId{0};
+    const auto player0_infoset = texas::InfosetId{1};
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         player1_infoset,
         0,
         2,
         {},
         0,
         1,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         player0_infoset,
         2,
         4,
         {},
         1,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
     graph.infoset_debug_keys = {"player1-shared", "player0-shared"};
     graph.infoset_nodes = {1, 2, 3, 4, 5, 6};
 
     auto make_terminal_meta = [](double value) {
-        core::HUNLFlatNodeMeta meta;
-        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        texas::HUNLFlatNodeMeta meta;
+        meta.type = texas::HUNLFlatNodeType::TerminalFold;
         meta.terminal_utility = {value, -value};
-        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
         return meta;
     };
 
@@ -144,8 +144,8 @@ core::HUNLFlatSolveGraph make_external_sampling_graph() {
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].chance_begin = 0;
     graph.node_meta[0].chance_count = 2;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = texas::Street::Flop;
 
     for (std::uint32_t node_idx : {1U, 2U}) {
         auto& meta = graph.node_meta[node_idx];
@@ -153,8 +153,8 @@ core::HUNLFlatSolveGraph make_external_sampling_graph() {
         meta.child_count = 2;
         meta.infoset_id = player1_infoset;
         meta.player = 1;
-        meta.type = core::HUNLFlatNodeType::Decision;
-        meta.street = core::Street::Flop;
+        meta.type = texas::HUNLFlatNodeType::Decision;
+        meta.street = texas::Street::Flop;
         meta.action_count = 2;
         meta.has_infoset = true;
     }
@@ -165,8 +165,8 @@ core::HUNLFlatSolveGraph make_external_sampling_graph() {
         meta.child_count = 2;
         meta.infoset_id = player0_infoset;
         meta.player = 0;
-        meta.type = core::HUNLFlatNodeType::Decision;
-        meta.street = core::Street::Flop;
+        meta.type = texas::HUNLFlatNodeType::Decision;
+        meta.street = texas::Street::Flop;
         meta.action_count = 2;
         meta.has_infoset = true;
     }
@@ -182,62 +182,62 @@ core::HUNLFlatSolveGraph make_external_sampling_graph() {
 
     graph.depth_order = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, 2},
-        core::HUNLFlatSlice{3, 4},
-        core::HUNLFlatSlice{7, 8},
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, 2},
+        texas::HUNLFlatSlice{3, 4},
+        texas::HUNLFlatSlice{7, 8},
     };
     graph.node_depths = {0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3};
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 
-core::HUNLFlatSolveGraph make_sparse_sampling_visibility_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_sparse_sampling_visibility_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 2;
     graph.max_actions = 2;
 
     graph.children = {3, 4, 3, 4};
     graph.chance_outcomes = {
-        core::HUNLFlatChanceOutcome{0, 0.5, 1},
-        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+        texas::HUNLFlatChanceOutcome{0, 0.5, 1},
+        texas::HUNLFlatChanceOutcome{1, 0.5, 2},
     };
 
-    const auto infoset_a = core::InfosetId{0};
-    const auto infoset_b = core::InfosetId{1};
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    const auto infoset_a = texas::InfosetId{0};
+    const auto infoset_b = texas::InfosetId{1};
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         infoset_a,
         0,
         1,
         {},
         0,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         infoset_b,
         1,
         1,
         {},
         1,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
     graph.infoset_debug_keys = {"sparse-a", "sparse-b"};
     graph.infoset_nodes = {1, 2};
 
     auto make_terminal_meta = [](double value) {
-        core::HUNLFlatNodeMeta meta;
-        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        texas::HUNLFlatNodeMeta meta;
+        meta.type = texas::HUNLFlatNodeType::TerminalFold;
         meta.terminal_utility = {value, -value};
-        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
         return meta;
     };
 
@@ -246,8 +246,8 @@ core::HUNLFlatSolveGraph make_sparse_sampling_visibility_graph() {
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].chance_begin = 0;
     graph.node_meta[0].chance_count = 2;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = texas::Street::Flop;
 
     for (std::uint32_t node_idx : {1U, 2U}) {
         auto& meta = graph.node_meta[node_idx];
@@ -255,8 +255,8 @@ core::HUNLFlatSolveGraph make_sparse_sampling_visibility_graph() {
         meta.child_count = 2;
         meta.infoset_id = node_idx == 1 ? infoset_a : infoset_b;
         meta.player = 0;
-        meta.type = core::HUNLFlatNodeType::Decision;
-        meta.street = core::Street::Flop;
+        meta.type = texas::HUNLFlatNodeType::Decision;
+        meta.street = texas::Street::Flop;
         meta.action_count = 2;
         meta.has_infoset = true;
     }
@@ -266,21 +266,21 @@ core::HUNLFlatSolveGraph make_sparse_sampling_visibility_graph() {
 
     graph.depth_order = {0, 1, 2, 3, 4};
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, 2},
-        core::HUNLFlatSlice{3, 2},
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, 2},
+        texas::HUNLFlatSlice{3, 2},
     };
     graph.node_depths = {0, 1, 1, 2, 2};
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {4, 3, 2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 
-core::HUNLFlatSolveGraph make_wide_average_strategy_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_wide_average_strategy_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 2;
     graph.max_actions = 8;
@@ -291,29 +291,29 @@ core::HUNLFlatSolveGraph make_wide_average_strategy_graph() {
         11, 12, 13, 14, 15, 16, 17, 18,
     };
     graph.chance_outcomes = {
-        core::HUNLFlatChanceOutcome{0, 0.5, 1},
-        core::HUNLFlatChanceOutcome{1, 0.5, 2},
+        texas::HUNLFlatChanceOutcome{0, 0.5, 1},
+        texas::HUNLFlatChanceOutcome{1, 0.5, 2},
     };
 
-    const auto shared_infoset = core::InfosetId{0};
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    const auto shared_infoset = texas::InfosetId{0};
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         shared_infoset,
         0,
         2,
         {},
         0,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         8,
     });
     graph.infoset_debug_keys = {"wide-player0"};
     graph.infoset_nodes = {1, 2};
 
     auto make_terminal_meta = [](double value) {
-        core::HUNLFlatNodeMeta meta;
-        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        texas::HUNLFlatNodeMeta meta;
+        meta.type = texas::HUNLFlatNodeType::TerminalFold;
         meta.terminal_utility = {value, -value};
-        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
         return meta;
     };
 
@@ -322,8 +322,8 @@ core::HUNLFlatSolveGraph make_wide_average_strategy_graph() {
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].chance_begin = 0;
     graph.node_meta[0].chance_count = 2;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Chance;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
+    graph.node_meta[0].street = texas::Street::Flop;
 
     for (std::uint32_t node_idx : {1U, 2U}) {
         auto& meta = graph.node_meta[node_idx];
@@ -331,8 +331,8 @@ core::HUNLFlatSolveGraph make_wide_average_strategy_graph() {
         meta.child_count = 8;
         meta.infoset_id = shared_infoset;
         meta.player = 0;
-        meta.type = core::HUNLFlatNodeType::Decision;
-        meta.street = core::Street::Flop;
+        meta.type = texas::HUNLFlatNodeType::Decision;
+        meta.street = texas::Street::Flop;
         meta.action_count = 8;
         meta.has_infoset = true;
     }
@@ -346,23 +346,23 @@ core::HUNLFlatSolveGraph make_wide_average_strategy_graph() {
 
     graph.depth_order = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18};
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, 2},
-        core::HUNLFlatSlice{3, 16},
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, 2},
+        texas::HUNLFlatSlice{3, 16},
     };
     graph.node_depths = {0, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2};
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 
-double root_value(const core::HUNLFlatMCCFR& solver) {
+double root_value(const texas::HUNLFlatMCCFR& solver) {
     const auto table = solver.export_average_strategy_table();
-    const auto terminal_values = core::build_flat_terminal_value_table(solver.graph());
-    return core::compute_flat_expected_value(solver.graph(), table.view(), &terminal_values)[0];
+    const auto terminal_values = texas::build_flat_terminal_value_table(solver.graph());
+    return texas::compute_flat_expected_value(solver.graph(), table.view(), &terminal_values)[0];
 }
 
 double variance_from_moments(std::uint64_t count, double sum, double sq_sum) {
@@ -373,9 +373,9 @@ double variance_from_moments(std::uint64_t count, double sum, double sq_sum) {
     return std::max(0.0, sq_sum / static_cast<double>(count) - mean * mean);
 }
 
-core::HUNLFlatMCCFRConfig active_delta_config(
-    core::HUNLFlatSamplingMode mode = core::HUNLFlatSamplingMode::External) {
-    core::HUNLFlatMCCFRConfig config;
+texas::HUNLFlatMCCFRConfig active_delta_config(
+    texas::HUNLFlatSamplingMode mode = texas::HUNLFlatSamplingMode::External) {
+    texas::HUNLFlatMCCFRConfig config;
     config.mode = mode;
     config.seed = 0xA11CEULL;
     config.traversals_per_iteration = 2;
@@ -384,14 +384,14 @@ core::HUNLFlatMCCFRConfig active_delta_config(
 }
 
 void expect_active_delta_batch(
-    core::HUNLFlatSamplingMode mode,
+    texas::HUNLFlatSamplingMode mode,
     std::size_t workers = 1,
     bool sparse_storage = false) {
     auto config = active_delta_config(mode);
     config.use_sparse_storage = sparse_storage;
-    core::HUNLFlatMCCFR solver(
+    texas::HUNLFlatMCCFR solver(
         make_external_sampling_graph(), {1, 1}, config,
-        core::HUNLFlatValueLayout::InfosetActionHand, workers);
+        texas::HUNLFlatValueLayout::InfosetActionHand, workers);
     solver.run_iteration();
     const auto usage = solver.memory_usage();
     EXPECT_TRUE(solver.profile().active_infoset_samples > 0U);
@@ -399,34 +399,34 @@ void expect_active_delta_batch(
     EXPECT_TRUE(usage.worker_scratch_bytes < usage.total_bytes());
 }
 
-core::HUNLFlatSolveGraph make_root_decision_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_root_decision_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 1;
     graph.max_actions = 2;
 
     graph.children = {1, 2};
-    graph.actions = {core::ACTION_CHECK, core::ACTION_BET_75};
+    graph.actions = {texas::ACTION_CHECK, texas::ACTION_BET_75};
 
-    const auto root_infoset = core::InfosetId{0};
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    const auto root_infoset = texas::InfosetId{0};
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         root_infoset,
         0,
         1,
         {},
         0,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         2,
     });
     graph.infoset_debug_keys = {"root-decision"};
     graph.infoset_nodes = {0};
 
     auto make_terminal_meta = [](double value) {
-        core::HUNLFlatNodeMeta meta;
-        meta.type = core::HUNLFlatNodeType::TerminalFold;
+        texas::HUNLFlatNodeMeta meta;
+        meta.type = texas::HUNLFlatNodeType::TerminalFold;
         meta.terminal_utility = {value, -value};
-        meta.terminal_kind = core::TerminalKind::fold(1, 1);
+        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
         return meta;
     };
 
@@ -435,8 +435,8 @@ core::HUNLFlatSolveGraph make_root_decision_graph() {
     graph.node_meta[0].child_count = 2;
     graph.node_meta[0].infoset_id = root_infoset;
     graph.node_meta[0].player = 0;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Decision;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Decision;
+    graph.node_meta[0].street = texas::Street::Flop;
     graph.node_meta[0].action_count = 2;
     graph.node_meta[0].has_infoset = true;
 
@@ -446,27 +446,27 @@ core::HUNLFlatSolveGraph make_root_decision_graph() {
 
     graph.depth_order = {0, 1, 2};
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, 2},
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, 2},
     };
     graph.node_depths = {0, 1, 1};
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
     return graph;
 }
 
 void expect_matching_deadline_batch_state(
-    core::HUNLFlatSamplingMode mode,
+    texas::HUNLFlatSamplingMode mode,
     bool use_sparse_storage,
     std::size_t workers,
     bool update_both_players) {
     auto normal_graph = make_external_sampling_graph();
     auto batch_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
+    texas::HUNLFlatMCCFRConfig config;
     config.mode = mode;
     config.seed = 0x5EEDU;
     config.traversals_per_iteration = 8;
@@ -474,8 +474,8 @@ void expect_matching_deadline_batch_state(
     config.update_both_players = update_both_players;
     config.use_sparse_storage = use_sparse_storage;
 
-    core::HUNLFlatMCCFR normal(normal_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
-    core::HUNLFlatMCCFR batch_limited(batch_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
+    texas::HUNLFlatMCCFR normal(normal_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, workers);
+    texas::HUNLFlatMCCFR batch_limited(batch_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, workers);
 
     constexpr std::uint32_t iteration_count = 3;
     const auto player_batches_per_iteration = update_both_players ? 2ULL : 1ULL;
@@ -523,47 +523,47 @@ void expect_matching_deadline_batch_state(
             mode_value, sparse_value, workers_value, both_players_value);                    \
     }
 
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_one_worker_one_player, core::HUNLFlatSamplingMode::Exact, false, 1U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_one_worker_both_players, core::HUNLFlatSamplingMode::Exact, false, 1U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_three_workers_one_player, core::HUNLFlatSamplingMode::Exact, false, 3U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_three_workers_both_players, core::HUNLFlatSamplingMode::Exact, false, 3U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_one_worker_one_player, core::HUNLFlatSamplingMode::Exact, true, 1U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_one_worker_both_players, core::HUNLFlatSamplingMode::Exact, true, 1U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_three_workers_one_player, core::HUNLFlatSamplingMode::Exact, true, 3U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_three_workers_both_players, core::HUNLFlatSamplingMode::Exact, true, 3U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_one_worker_one_player, core::HUNLFlatSamplingMode::PublicChance, false, 1U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_one_worker_both_players, core::HUNLFlatSamplingMode::PublicChance, false, 1U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_three_workers_one_player, core::HUNLFlatSamplingMode::PublicChance, false, 3U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_three_workers_both_players, core::HUNLFlatSamplingMode::PublicChance, false, 3U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_one_worker_one_player, core::HUNLFlatSamplingMode::PublicChance, true, 1U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_one_worker_both_players, core::HUNLFlatSamplingMode::PublicChance, true, 1U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_three_workers_one_player, core::HUNLFlatSamplingMode::PublicChance, true, 3U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_three_workers_both_players, core::HUNLFlatSamplingMode::PublicChance, true, 3U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_one_worker_one_player, core::HUNLFlatSamplingMode::External, false, 1U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_one_worker_both_players, core::HUNLFlatSamplingMode::External, false, 1U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_three_workers_one_player, core::HUNLFlatSamplingMode::External, false, 3U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_three_workers_both_players, core::HUNLFlatSamplingMode::External, false, 3U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_one_worker_one_player, core::HUNLFlatSamplingMode::External, true, 1U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_one_worker_both_players, core::HUNLFlatSamplingMode::External, true, 1U, true)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_three_workers_one_player, core::HUNLFlatSamplingMode::External, true, 3U, false)
-DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_three_workers_both_players, core::HUNLFlatSamplingMode::External, true, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_one_worker_one_player, texas::HUNLFlatSamplingMode::Exact, false, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_one_worker_both_players, texas::HUNLFlatSamplingMode::Exact, false, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_three_workers_one_player, texas::HUNLFlatSamplingMode::Exact, false, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_dense_three_workers_both_players, texas::HUNLFlatSamplingMode::Exact, false, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_one_worker_one_player, texas::HUNLFlatSamplingMode::Exact, true, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_one_worker_both_players, texas::HUNLFlatSamplingMode::Exact, true, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_three_workers_one_player, texas::HUNLFlatSamplingMode::Exact, true, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_exact_sparse_three_workers_both_players, texas::HUNLFlatSamplingMode::Exact, true, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_one_worker_one_player, texas::HUNLFlatSamplingMode::PublicChance, false, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_one_worker_both_players, texas::HUNLFlatSamplingMode::PublicChance, false, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_three_workers_one_player, texas::HUNLFlatSamplingMode::PublicChance, false, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_dense_three_workers_both_players, texas::HUNLFlatSamplingMode::PublicChance, false, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_one_worker_one_player, texas::HUNLFlatSamplingMode::PublicChance, true, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_one_worker_both_players, texas::HUNLFlatSamplingMode::PublicChance, true, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_three_workers_one_player, texas::HUNLFlatSamplingMode::PublicChance, true, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_public_chance_sparse_three_workers_both_players, texas::HUNLFlatSamplingMode::PublicChance, true, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_one_worker_one_player, texas::HUNLFlatSamplingMode::External, false, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_one_worker_both_players, texas::HUNLFlatSamplingMode::External, false, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_three_workers_one_player, texas::HUNLFlatSamplingMode::External, false, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_dense_three_workers_both_players, texas::HUNLFlatSamplingMode::External, false, 3U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_one_worker_one_player, texas::HUNLFlatSamplingMode::External, true, 1U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_one_worker_both_players, texas::HUNLFlatSamplingMode::External, true, 1U, true)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_three_workers_one_player, texas::HUNLFlatSamplingMode::External, true, 3U, false)
+DEADLINE_BATCH_EQUIVALENCE_CASE(hunl_flat_mccfr_deadline_batches_match_normal_external_sparse_three_workers_both_players, texas::HUNLFlatSamplingMode::External, true, 3U, true)
 
 #undef DEADLINE_BATCH_EQUIVALENCE_CASE
 
 void expect_mccfr_memory_report(
-    core::HUNLFlatSamplingMode mode,
+    texas::HUNLFlatSamplingMode mode,
     bool sparse,
     std::size_t workers,
     std::uint32_t batch_size,
-    core::HUNLFlatBaselineMode baseline) {
+    texas::HUNLFlatBaselineMode baseline) {
     auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
+    texas::HUNLFlatMCCFRConfig config;
     config.mode = mode;
     config.traversals_per_iteration = 8;
     config.batch_size = batch_size;
     config.use_sparse_storage = sparse;
     config.baseline_mode = baseline;
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, workers);
     const auto usage = solver.memory_usage();
     const auto snapshot = solver.export_root_snapshot();
     EXPECT_EQ(snapshot.memory_used_bytes, usage.total_bytes());
@@ -583,34 +583,34 @@ void expect_mccfr_memory_report(
 #define MCCFR_MEMORY_CASE(name, mode_value, sparse_value, workers_value, batch_value, baseline_value) \
     TEST_CASE(name) { expect_mccfr_memory_report(mode_value, sparse_value, workers_value, batch_value, baseline_value); }
 #define MCCFR_MEMORY_FAMILY(prefix, mode_value) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w1_b1_none, mode_value, false, 1U, 1U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w2_b1_none, mode_value, false, 2U, 1U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w4_b1_none, mode_value, false, 4U, 1U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w1_b8_none, mode_value, false, 1U, 8U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w2_b8_none, mode_value, false, 2U, 8U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w4_b8_none, mode_value, false, 4U, 8U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b1_none, mode_value, true, 1U, 1U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b1_none, mode_value, true, 2U, 1U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b1_none, mode_value, true, 4U, 1U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b8_none, mode_value, true, 1U, 8U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b8_none, mode_value, true, 2U, 8U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b8_none, mode_value, true, 4U, 8U, core::HUNLFlatBaselineMode::None) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w1_b1_baseline, mode_value, false, 1U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w2_b1_baseline, mode_value, false, 2U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w4_b1_baseline, mode_value, false, 4U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w1_b8_baseline, mode_value, false, 1U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w2_b8_baseline, mode_value, false, 2U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_dense_w4_b8_baseline, mode_value, false, 4U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b1_baseline, mode_value, true, 1U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b1_baseline, mode_value, true, 2U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b1_baseline, mode_value, true, 4U, 1U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b8_baseline, mode_value, true, 1U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b8_baseline, mode_value, true, 2U, 8U, core::HUNLFlatBaselineMode::MovingAverage) \
-    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b8_baseline, mode_value, true, 4U, 8U, core::HUNLFlatBaselineMode::MovingAverage)
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b1_none, mode_value, false, 1U, 1U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b1_none, mode_value, false, 2U, 1U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b1_none, mode_value, false, 4U, 1U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b8_none, mode_value, false, 1U, 8U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b8_none, mode_value, false, 2U, 8U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b8_none, mode_value, false, 4U, 8U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b1_none, mode_value, true, 1U, 1U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b1_none, mode_value, true, 2U, 1U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b1_none, mode_value, true, 4U, 1U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b8_none, mode_value, true, 1U, 8U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b8_none, mode_value, true, 2U, 8U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b8_none, mode_value, true, 4U, 8U, texas::HUNLFlatBaselineMode::None) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b1_baseline, mode_value, false, 1U, 1U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b1_baseline, mode_value, false, 2U, 1U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b1_baseline, mode_value, false, 4U, 1U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w1_b8_baseline, mode_value, false, 1U, 8U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w2_b8_baseline, mode_value, false, 2U, 8U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_dense_w4_b8_baseline, mode_value, false, 4U, 8U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b1_baseline, mode_value, true, 1U, 1U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b1_baseline, mode_value, true, 2U, 1U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b1_baseline, mode_value, true, 4U, 1U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w1_b8_baseline, mode_value, true, 1U, 8U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w2_b8_baseline, mode_value, true, 2U, 8U, texas::HUNLFlatBaselineMode::MovingAverage) \
+    MCCFR_MEMORY_CASE(prefix##_sparse_w4_b8_baseline, mode_value, true, 4U, 8U, texas::HUNLFlatBaselineMode::MovingAverage)
 
-MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_exact, core::HUNLFlatSamplingMode::Exact)
-MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_public_chance, core::HUNLFlatSamplingMode::PublicChance)
-MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_external, core::HUNLFlatSamplingMode::External)
+MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_exact, texas::HUNLFlatSamplingMode::Exact)
+MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_public_chance, texas::HUNLFlatSamplingMode::PublicChance)
+MCCFR_MEMORY_FAMILY(hunl_flat_mccfr_memory_external, texas::HUNLFlatSamplingMode::External)
 
 #undef MCCFR_MEMORY_FAMILY
 #undef MCCFR_MEMORY_CASE
@@ -619,13 +619,13 @@ TEST_CASE(hunl_flat_mccfr_same_seed_produces_identical_output) {
     const auto graph_a = make_public_chance_conflict_graph();
     const auto graph_b = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 17;
     config.traversals_per_iteration = 64;
 
-    core::HUNLFlatMCCFR first(graph_a, {1, 1}, config);
-    core::HUNLFlatMCCFR second(graph_b, {1, 1}, config);
+    texas::HUNLFlatMCCFR first(graph_a, {1, 1}, config);
+    texas::HUNLFlatMCCFR second(graph_b, {1, 1}, config);
 
     first.run_iterations(40);
     second.run_iterations(40);
@@ -645,34 +645,34 @@ TEST_CASE(hunl_flat_mccfr_same_seed_produces_identical_output) {
 
 TEST_CASE(hunl_flat_mccfr_rejects_invalid_constructor_configs) {
     {
-        core::HUNLFlatMCCFRConfig config;
+        texas::HUNLFlatMCCFRConfig config;
         config.traversals_per_iteration = 0;
         EXPECT_THROW(
-            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            texas::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
             std::invalid_argument);
     }
 
     {
-        core::HUNLFlatMCCFRConfig config;
+        texas::HUNLFlatMCCFRConfig config;
         config.batch_size = 0;
         EXPECT_THROW(
-            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            texas::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
             std::invalid_argument);
     }
 
     {
-        core::HUNLFlatMCCFRConfig config;
+        texas::HUNLFlatMCCFRConfig config;
         config.as_epsilon = 1.5;
         EXPECT_THROW(
-            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            texas::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
             std::invalid_argument);
     }
 
     {
-        core::HUNLFlatMCCFRConfig config;
-        config.baseline_mode = core::HUNLFlatBaselineMode::DepthLimitedValueTable;
+        texas::HUNLFlatMCCFRConfig config;
+        config.baseline_mode = texas::HUNLFlatBaselineMode::DepthLimitedValueTable;
         EXPECT_THROW(
-            core::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
+            texas::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
             std::invalid_argument);
     }
 }
@@ -681,16 +681,16 @@ TEST_CASE(hunl_flat_mccfr_public_chance_sampling_moves_toward_exact_value_with_m
     const auto low_graph = make_public_chance_conflict_graph();
     const auto high_graph = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig low_config;
-    low_config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig low_config;
+    low_config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     low_config.seed = 9;
     low_config.traversals_per_iteration = 4;
 
-    core::HUNLFlatMCCFRConfig high_config = low_config;
+    texas::HUNLFlatMCCFRConfig high_config = low_config;
     high_config.traversals_per_iteration = 64;
 
-    core::HUNLFlatMCCFR low_sample_solver(low_graph, {1, 1}, low_config);
-    core::HUNLFlatMCCFR high_sample_solver(high_graph, {1, 1}, high_config);
+    texas::HUNLFlatMCCFR low_sample_solver(low_graph, {1, 1}, low_config);
+    texas::HUNLFlatMCCFR high_sample_solver(high_graph, {1, 1}, high_config);
 
     low_sample_solver.run_iterations(25);
     high_sample_solver.run_iterations(250);
@@ -706,12 +706,12 @@ TEST_CASE(hunl_flat_mccfr_public_chance_sampling_moves_toward_exact_value_with_m
 TEST_CASE(hunl_flat_mccfr_exports_average_strategy_in_exact_solver_shape) {
     const auto graph = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 5;
     config.traversals_per_iteration = 32;
 
-    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand);
+    texas::HUNLFlatMCCFR solver(graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand);
     solver.run_iterations(20);
 
     const auto exported = solver.export_average_strategy();
@@ -727,37 +727,37 @@ TEST_CASE(hunl_flat_mccfr_exports_average_strategy_in_exact_solver_shape) {
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_external_sampling) {
-    expect_active_delta_batch(core::HUNLFlatSamplingMode::External);
+    expect_active_delta_batch(texas::HUNLFlatSamplingMode::External);
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_public_chance_sampling) {
-    expect_active_delta_batch(core::HUNLFlatSamplingMode::PublicChance);
+    expect_active_delta_batch(texas::HUNLFlatSamplingMode::PublicChance);
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_average_strategy_sampling) {
-    expect_active_delta_batch(core::HUNLFlatSamplingMode::AverageStrategy);
+    expect_active_delta_batch(texas::HUNLFlatSamplingMode::AverageStrategy);
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_exact_sampling) {
-    expect_active_delta_batch(core::HUNLFlatSamplingMode::Exact);
+    expect_active_delta_batch(texas::HUNLFlatSamplingMode::Exact);
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_two_workers) {
-    expect_active_delta_batch(core::HUNLFlatSamplingMode::External, 2U);
+    expect_active_delta_batch(texas::HUNLFlatSamplingMode::External, 2U);
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_four_workers) {
-    expect_active_delta_batch(core::HUNLFlatSamplingMode::External, 4U);
+    expect_active_delta_batch(texas::HUNLFlatSamplingMode::External, 4U);
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_handles_sparse_central_storage) {
-    expect_active_delta_batch(core::HUNLFlatSamplingMode::External, 1U, true);
+    expect_active_delta_batch(texas::HUNLFlatSamplingMode::External, 1U, true);
 }
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_counts_only_touched_infosets) {
     auto config = active_delta_config();
     config.traversals_per_iteration = 1;
-    core::HUNLFlatMCCFR solver(
+    texas::HUNLFlatMCCFR solver(
         make_sparse_sampling_visibility_graph(), {1, 1}, config);
     solver.run_iteration();
     EXPECT_TRUE(solver.profile().active_infoset_samples > 0U);
@@ -766,7 +766,7 @@ TEST_CASE(hunl_flat_mccfr_active_delta_arena_counts_only_touched_infosets) {
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_restarts_cleanly_each_iteration) {
     auto config = active_delta_config();
-    core::HUNLFlatMCCFR solver(make_external_sampling_graph(), {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(make_external_sampling_graph(), {1, 1}, config);
     solver.run_iteration();
     const auto first_active = solver.profile().active_infoset_samples;
     const auto first_memory = solver.memory_usage().worker_scratch_bytes;
@@ -777,8 +777,8 @@ TEST_CASE(hunl_flat_mccfr_active_delta_arena_restarts_cleanly_each_iteration) {
 
 TEST_CASE(hunl_flat_mccfr_active_delta_arena_keeps_worker_memory_accounted) {
     auto config = active_delta_config();
-    config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
-    core::HUNLFlatMCCFR solver(make_external_sampling_graph(), {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2U);
+    config.baseline_mode = texas::HUNLFlatBaselineMode::MovingAverage;
+    texas::HUNLFlatMCCFR solver(make_external_sampling_graph(), {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 2U);
     solver.run_iteration();
     const auto usage = solver.memory_usage();
     EXPECT_TRUE(usage.worker_scratch_bytes > 0U);
@@ -789,25 +789,25 @@ TEST_CASE(hunl_flat_mccfr_external_sampling_converges_in_direction_of_exact_stra
     const auto exact_graph = make_external_sampling_graph();
     const auto external_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig exact_config;
-    exact_config.mode = core::HUNLFlatSamplingMode::Exact;
+    texas::HUNLFlatMCCFRConfig exact_config;
+    exact_config.mode = texas::HUNLFlatSamplingMode::Exact;
     exact_config.seed = 3;
     exact_config.traversals_per_iteration = 1;
 
-    core::HUNLFlatMCCFRConfig external_config;
-    external_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig external_config;
+    external_config.mode = texas::HUNLFlatSamplingMode::External;
     external_config.seed = 3;
     external_config.traversals_per_iteration = 64;
 
-    core::HUNLFlatMCCFR exact_solver(exact_graph, {1, 1}, exact_config);
-    core::HUNLFlatMCCFR external_solver(external_graph, {1, 1}, external_config);
+    texas::HUNLFlatMCCFR exact_solver(exact_graph, {1, 1}, exact_config);
+    texas::HUNLFlatMCCFR external_solver(external_graph, {1, 1}, external_config);
 
     exact_solver.run_iterations(60);
     external_solver.run_iterations(240);
 
     const auto exact_exported = exact_solver.export_average_strategy();
     const auto external_exported = external_solver.export_average_strategy();
-    const auto key = std::string(exact_solver.graph().infoset_key(core::InfosetId{1}));
+    const auto key = std::string(exact_solver.graph().infoset_key(texas::InfosetId{1}));
 
     const auto exact_it = exact_exported.find(key);
     const auto external_it = external_exported.find(key);
@@ -823,16 +823,16 @@ TEST_CASE(hunl_flat_mccfr_external_sampling_visits_fewer_nodes_than_public_chanc
     const auto public_graph = make_external_sampling_graph();
     const auto external_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig public_config;
-    public_config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig public_config;
+    public_config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     public_config.seed = 21;
     public_config.traversals_per_iteration = 8;
 
-    core::HUNLFlatMCCFRConfig external_config = public_config;
-    external_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig external_config = public_config;
+    external_config.mode = texas::HUNLFlatSamplingMode::External;
 
-    core::HUNLFlatMCCFR public_solver(public_graph, {1, 1}, public_config);
-    core::HUNLFlatMCCFR external_solver(external_graph, {1, 1}, external_config);
+    texas::HUNLFlatMCCFR public_solver(public_graph, {1, 1}, public_config);
+    texas::HUNLFlatMCCFR external_solver(external_graph, {1, 1}, external_config);
 
     public_solver.run_iteration();
     external_solver.run_iteration();
@@ -847,12 +847,12 @@ TEST_CASE(hunl_flat_mccfr_external_sampling_visits_fewer_nodes_than_public_chanc
 TEST_CASE(hunl_flat_mccfr_external_sampling_keeps_regret_and_strategy_rows_finite) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 33;
     config.traversals_per_iteration = 32;
 
-    core::HUNLFlatMCCFR solver(graph, {2, 2}, config);
+    texas::HUNLFlatMCCFR solver(graph, {2, 2}, config);
     solver.run_iterations(120);
 
     for (const auto& meta : solver.infoset_table().meta()) {
@@ -868,13 +868,13 @@ TEST_CASE(hunl_flat_mccfr_static_partition_multiworker_matches_single_worker_wit
     const auto single_graph = make_external_sampling_graph();
     const auto multi_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 77;
     config.traversals_per_iteration = 32;
 
-    core::HUNLFlatMCCFR single_worker(single_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
-    core::HUNLFlatMCCFR four_workers(multi_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+    texas::HUNLFlatMCCFR single_worker(single_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR four_workers(multi_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 4);
 
     single_worker.run_iterations(40);
     four_workers.run_iterations(40);
@@ -895,12 +895,12 @@ TEST_CASE(hunl_flat_mccfr_static_partition_multiworker_matches_single_worker_wit
 TEST_CASE(hunl_flat_mccfr_multiworker_profile_exposes_merge_time_and_worker_breakdown) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 91;
     config.traversals_per_iteration = 16;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 3);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 3);
     solver.run_iterations(5);
 
     EXPECT_EQ(solver.worker_count(), 3U);
@@ -922,13 +922,13 @@ TEST_CASE(hunl_flat_mccfr_multiworker_same_seed_is_deterministic) {
     const auto first_graph = make_external_sampling_graph();
     const auto second_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 123;
     config.traversals_per_iteration = 24;
 
-    core::HUNLFlatMCCFR first(first_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
-    core::HUNLFlatMCCFR second(second_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+    texas::HUNLFlatMCCFR first(first_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 4);
+    texas::HUNLFlatMCCFR second(second_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 4);
 
     first.run_iterations(20);
     second.run_iterations(20);
@@ -949,13 +949,13 @@ TEST_CASE(hunl_flat_mccfr_multiworker_same_seed_is_deterministic) {
 TEST_CASE(hunl_flat_mccfr_external_profile_tracks_branch_split_and_worker_aggregates) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 141;
     config.traversals_per_iteration = 24;
     config.batch_size = 6;
 
-    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 3);
+    texas::HUNLFlatMCCFR solver(graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 3);
     solver.run_iterations(12);
 
     const auto& profile = solver.profile();
@@ -997,29 +997,29 @@ TEST_CASE(hunl_flat_mccfr_iterative_external_dense_path_matches_recursive_dense_
     const auto recursive_graph = make_external_sampling_graph();
     const auto iterative_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig recursive_config;
-    recursive_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig recursive_config;
+    recursive_config.mode = texas::HUNLFlatSamplingMode::External;
     recursive_config.seed = 1234;
     recursive_config.traversals_per_iteration = 64;
     recursive_config.batch_size = 16;
 
-    core::HUNLFlatMCCFRConfig iterative_config = recursive_config;
+    texas::HUNLFlatMCCFRConfig iterative_config = recursive_config;
     iterative_config.use_iterative_external_dense_traversal = true;
 
-    core::HUNLFlatMCCFR recursive_solver(
+    texas::HUNLFlatMCCFR recursive_solver(
         recursive_graph,
         {2, 2},
         recursive_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
-    core::HUNLFlatMCCFR iterative_solver(
+        texas::HUNLFlatStoragePrecision::Float64);
+    texas::HUNLFlatMCCFR iterative_solver(
         iterative_graph,
         {2, 2},
         iterative_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
+        texas::HUNLFlatStoragePrecision::Float64);
 
     recursive_solver.run_iterations(30);
     iterative_solver.run_iterations(30);
@@ -1046,30 +1046,30 @@ TEST_CASE(hunl_flat_mccfr_iterative_external_flag_is_ignored_when_variance_reduc
     const auto recursive_graph = make_external_sampling_graph();
     const auto guarded_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig recursive_config;
-    recursive_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig recursive_config;
+    recursive_config.mode = texas::HUNLFlatSamplingMode::External;
     recursive_config.seed = 12345;
     recursive_config.traversals_per_iteration = 32;
     recursive_config.batch_size = 8;
-    recursive_config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+    recursive_config.baseline_mode = texas::HUNLFlatBaselineMode::MovingAverage;
 
-    core::HUNLFlatMCCFRConfig guarded_config = recursive_config;
+    texas::HUNLFlatMCCFRConfig guarded_config = recursive_config;
     guarded_config.use_iterative_external_dense_traversal = true;
 
-    core::HUNLFlatMCCFR recursive_solver(
+    texas::HUNLFlatMCCFR recursive_solver(
         recursive_graph,
         {1, 1},
         recursive_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
-    core::HUNLFlatMCCFR guarded_solver(
+        texas::HUNLFlatStoragePrecision::Float64);
+    texas::HUNLFlatMCCFR guarded_solver(
         guarded_graph,
         {1, 1},
         guarded_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
+        texas::HUNLFlatStoragePrecision::Float64);
 
     recursive_solver.run_iterations(20);
     guarded_solver.run_iterations(20);
@@ -1091,30 +1091,30 @@ TEST_CASE(hunl_flat_mccfr_iterative_external_flag_is_ignored_in_sparse_mode) {
     const auto recursive_graph = make_external_sampling_graph();
     const auto guarded_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig recursive_config;
-    recursive_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig recursive_config;
+    recursive_config.mode = texas::HUNLFlatSamplingMode::External;
     recursive_config.seed = 2222;
     recursive_config.traversals_per_iteration = 24;
     recursive_config.use_sparse_storage = true;
     recursive_config.keep_dense_validation_backend = true;
 
-    core::HUNLFlatMCCFRConfig guarded_config = recursive_config;
+    texas::HUNLFlatMCCFRConfig guarded_config = recursive_config;
     guarded_config.use_iterative_external_dense_traversal = true;
 
-    core::HUNLFlatMCCFR recursive_solver(
+    texas::HUNLFlatMCCFR recursive_solver(
         recursive_graph,
         {2, 2},
         recursive_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
-    core::HUNLFlatMCCFR guarded_solver(
+        texas::HUNLFlatStoragePrecision::Float64);
+    texas::HUNLFlatMCCFR guarded_solver(
         guarded_graph,
         {2, 2},
         guarded_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
+        texas::HUNLFlatStoragePrecision::Float64);
 
     recursive_solver.run_iterations(18);
     guarded_solver.run_iterations(18);
@@ -1134,7 +1134,7 @@ TEST_CASE(hunl_flat_mccfr_iterative_external_flag_is_ignored_in_sparse_mode) {
 
 TEST_CASE(hunl_sampled_scheduler_partition_deterministic_covers_each_trajectory_exactly_once) {
     {
-        const auto batches = core::HUNLSampledScheduler::partition_deterministic(10, 3);
+        const auto batches = texas::HUNLSampledScheduler::partition_deterministic(10, 3);
         EXPECT_EQ(batches.size(), 3U);
         EXPECT_EQ(batches[0].worker_index, 0U);
         EXPECT_EQ(batches[1].worker_index, 1U);
@@ -1148,7 +1148,7 @@ TEST_CASE(hunl_sampled_scheduler_partition_deterministic_covers_each_trajectory_
     }
 
     {
-        const auto batches = core::HUNLSampledScheduler::partition_deterministic(2, 5);
+        const auto batches = texas::HUNLSampledScheduler::partition_deterministic(2, 5);
         EXPECT_EQ(batches.size(), 2U);
         std::uint64_t covered = 0;
         for (std::size_t worker_index = 0; worker_index < batches.size(); ++worker_index) {
@@ -1162,7 +1162,7 @@ TEST_CASE(hunl_sampled_scheduler_partition_deterministic_covers_each_trajectory_
     }
 
     {
-        const auto batches = core::HUNLSampledScheduler::partition_deterministic(9, 0);
+        const auto batches = texas::HUNLSampledScheduler::partition_deterministic(9, 0);
         EXPECT_EQ(batches.size(), 1U);
         EXPECT_EQ(batches[0].worker_index, 0U);
         EXPECT_EQ(batches[0].trajectories.begin, 0U);
@@ -1174,14 +1174,14 @@ TEST_CASE(hunl_flat_mccfr_same_seed_matches_across_worker_counts) {
     const auto single_graph = make_external_sampling_graph();
     const auto multi_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 321;
     config.traversals_per_iteration = 30;
     config.batch_size = 8;
 
-    core::HUNLFlatMCCFR single(single_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
-    core::HUNLFlatMCCFR multi(multi_graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+    texas::HUNLFlatMCCFR single(single_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR multi(multi_graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 4);
 
     single.run_iterations(18);
     multi.run_iterations(18);
@@ -1202,13 +1202,13 @@ TEST_CASE(hunl_flat_mccfr_same_seed_matches_across_worker_counts) {
 TEST_CASE(hunl_flat_mccfr_profile_accumulates_across_iterations_and_players) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 211;
     config.traversals_per_iteration = 10;
     config.update_both_players = true;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 2);
     solver.run_iterations(7);
 
     EXPECT_EQ(solver.iterations(), 7U);
@@ -1221,8 +1221,8 @@ TEST_CASE(hunl_flat_mccfr_profile_accumulates_across_iterations_and_players) {
 TEST_CASE(hunl_flat_mccfr_profile_tracks_player_batch_rebuilds_and_worker_dispatch_structure) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 919;
     config.traversals_per_iteration = 10;
     config.batch_size = 4;
@@ -1230,7 +1230,7 @@ TEST_CASE(hunl_flat_mccfr_profile_tracks_player_batch_rebuilds_and_worker_dispat
 
     constexpr std::uint32_t iterations = 5;
     constexpr std::size_t workers = 3;
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, workers);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, workers);
     solver.run_iterations(iterations);
 
     const auto player_batches =
@@ -1258,16 +1258,16 @@ TEST_CASE(hunl_flat_mccfr_profile_tracks_player_batch_rebuilds_and_worker_dispat
 TEST_CASE(hunl_flat_mccfr_default_layout_keeps_nonzero_offset_infoset_rows_normalized) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 57;
     config.traversals_per_iteration = 20;
 
-    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetHandAction, 1);
+    texas::HUNLFlatMCCFR solver(graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetHandAction, 1);
     solver.run_iterations(40);
 
     const auto exported = solver.export_average_strategy();
-    const auto key = std::string(solver.graph().infoset_key(core::InfosetId{1}));
+    const auto key = std::string(solver.graph().infoset_key(texas::InfosetId{1}));
     const auto it = exported.find(key);
     EXPECT_TRUE(it != exported.end());
     EXPECT_EQ(it->second.size(), 4U);
@@ -1282,14 +1282,14 @@ TEST_CASE(hunl_flat_mccfr_default_layout_keeps_nonzero_offset_infoset_rows_norma
 TEST_CASE(hunl_flat_mccfr_sparse_storage_allocates_rows_on_first_visit_and_exports_uniform_unvisited_rows) {
     const auto graph = make_sparse_sampling_visibility_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 1;
     config.traversals_per_iteration = 1;
     config.update_both_players = false;
     config.use_sparse_storage = true;
 
-    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR solver(graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
     EXPECT_TRUE(solver.using_sparse_storage());
     EXPECT_EQ(solver.sparse_storage().row_count(), 0U);
 
@@ -1304,8 +1304,8 @@ TEST_CASE(hunl_flat_mccfr_sparse_storage_allocates_rows_on_first_visit_and_expor
     EXPECT_TRUE(it_a != exported.end());
     EXPECT_TRUE(it_b != exported.end());
 
-    const auto visited = solver.sparse_storage().has_row(core::InfosetId{0}) ? it_a : it_b;
-    const auto unvisited = solver.sparse_storage().has_row(core::InfosetId{0}) ? it_b : it_a;
+    const auto visited = solver.sparse_storage().has_row(texas::InfosetId{0}) ? it_a : it_b;
+    const auto unvisited = solver.sparse_storage().has_row(texas::InfosetId{0}) ? it_b : it_a;
     EXPECT_TRUE(visited->second[0] + visited->second[1] > 0.0);
     EXPECT_NEAR(unvisited->second[0], 0.5, 1e-9);
     EXPECT_NEAR(unvisited->second[1], 0.5, 1e-9);
@@ -1317,14 +1317,14 @@ TEST_CASE(hunl_flat_mccfr_sparse_storage_seeded_runs_are_deterministic) {
     const auto first_graph = make_external_sampling_graph();
     const auto second_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 404;
     config.traversals_per_iteration = 32;
     config.use_sparse_storage = true;
 
-    core::HUNLFlatMCCFR first(first_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
-    core::HUNLFlatMCCFR second(second_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+    texas::HUNLFlatMCCFR first(first_graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 4);
+    texas::HUNLFlatMCCFR second(second_graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 4);
 
     first.run_iterations(30);
     second.run_iterations(30);
@@ -1346,15 +1346,15 @@ TEST_CASE(hunl_flat_mccfr_sparse_storage_seeded_runs_are_deterministic) {
 TEST_CASE(hunl_flat_mccfr_sparse_mode_can_keep_dense_validation_backend) {
     const auto graph = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 12;
     config.traversals_per_iteration = 4;
     config.update_both_players = false;
     config.use_sparse_storage = true;
     config.keep_dense_validation_backend = true;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     EXPECT_TRUE(solver.using_sparse_storage());
     EXPECT_EQ(solver.infoset_table().meta().size(), graph.infosets.size());
 }
@@ -1363,29 +1363,29 @@ TEST_CASE(hunl_flat_mccfr_sparse_external_with_dense_validation_backend_matches_
     const auto dense_graph = make_external_sampling_graph();
     const auto sparse_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig dense_config;
-    dense_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig dense_config;
+    dense_config.mode = texas::HUNLFlatSamplingMode::External;
     dense_config.seed = 313;
     dense_config.traversals_per_iteration = 32;
 
-    core::HUNLFlatMCCFRConfig sparse_config = dense_config;
+    texas::HUNLFlatMCCFRConfig sparse_config = dense_config;
     sparse_config.use_sparse_storage = true;
     sparse_config.keep_dense_validation_backend = true;
 
-    core::HUNLFlatMCCFR dense_solver(
+    texas::HUNLFlatMCCFR dense_solver(
         dense_graph,
         {2, 2},
         dense_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
-    core::HUNLFlatMCCFR sparse_solver(
+        texas::HUNLFlatStoragePrecision::Float64);
+    texas::HUNLFlatMCCFR sparse_solver(
         sparse_graph,
         {2, 2},
         sparse_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         1,
-        core::HUNLFlatStoragePrecision::Float64);
+        texas::HUNLFlatStoragePrecision::Float64);
 
     dense_solver.run_iterations(25);
     sparse_solver.run_iterations(25);
@@ -1408,19 +1408,19 @@ TEST_CASE(hunl_flat_mccfr_sparse_external_with_dense_validation_backend_matches_
 TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_converges_in_direction_of_best_action) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::AverageStrategy;
     config.seed = 505;
     config.traversals_per_iteration = 64;
     config.as_epsilon = 0.1;
     config.as_tau = 1.0;
     config.as_beta = 10.0;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_iterations(240);
 
     const auto exported = solver.export_average_strategy();
-    const auto key = std::string(solver.graph().infoset_key(core::InfosetId{1}));
+    const auto key = std::string(solver.graph().infoset_key(texas::InfosetId{1}));
     const auto it = exported.find(key);
     EXPECT_TRUE(it != exported.end());
     EXPECT_TRUE(it->second.size() >= 2U);
@@ -1433,8 +1433,8 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_converges_in_direction_of_be
 TEST_CASE(hunl_flat_mccfr_average_strategy_profile_tracks_as_branch_and_worker_aggregates) {
     const auto graph = make_wide_average_strategy_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::AverageStrategy;
     config.seed = 606;
     config.traversals_per_iteration = 48;
     config.batch_size = 12;
@@ -1442,7 +1442,7 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_profile_tracks_as_branch_and_worker_a
     config.as_tau = 0.0;
     config.as_beta = 0.1;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 2);
     solver.run_iterations(30);
 
     const auto& profile = solver.profile();
@@ -1474,19 +1474,19 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_reduces_action_expansions_on
     const auto external_graph = make_wide_average_strategy_graph();
     const auto average_graph = make_wide_average_strategy_graph();
 
-    core::HUNLFlatMCCFRConfig external_config;
-    external_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig external_config;
+    external_config.mode = texas::HUNLFlatSamplingMode::External;
     external_config.seed = 808;
     external_config.traversals_per_iteration = 64;
 
-    core::HUNLFlatMCCFRConfig average_config = external_config;
-    average_config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    texas::HUNLFlatMCCFRConfig average_config = external_config;
+    average_config.mode = texas::HUNLFlatSamplingMode::AverageStrategy;
     average_config.as_epsilon = 0.1;
     average_config.as_tau = 0.0;
     average_config.as_beta = 0.1;
 
-    core::HUNLFlatMCCFR external_solver(external_graph, {1, 1}, external_config);
-    core::HUNLFlatMCCFR average_solver(average_graph, {1, 1}, average_config);
+    texas::HUNLFlatMCCFR external_solver(external_graph, {1, 1}, external_config);
+    texas::HUNLFlatMCCFR average_solver(average_graph, {1, 1}, average_config);
 
     external_solver.run_iterations(40);
     average_solver.run_iterations(40);
@@ -1505,13 +1505,13 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_reduces_action_expansions_on
 TEST_CASE(hunl_flat_mccfr_public_chance_profile_does_not_record_opponent_or_as_specific_counters) {
     const auto graph = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 515;
     config.traversals_per_iteration = 16;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
     solver.run_iterations(20);
 
     EXPECT_TRUE(solver.total_counters().chance_nodes_visited > 0U);
@@ -1525,13 +1525,13 @@ TEST_CASE(hunl_flat_mccfr_public_chance_profile_does_not_record_opponent_or_as_s
 TEST_CASE(hunl_flat_mccfr_merge_profile_aggregates_worker_breakdown_exactly) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 8080;
     config.traversals_per_iteration = 20;
     config.batch_size = 5;
 
-    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 4);
+    texas::HUNLFlatMCCFR solver(graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 4);
     solver.run_iterations(10);
 
     double worker_merge_seconds = 0.0;
@@ -1551,15 +1551,15 @@ TEST_CASE(hunl_flat_mccfr_merge_profile_aggregates_worker_breakdown_exactly) {
 TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_forces_at_least_one_action_when_needed) {
     const auto graph = make_wide_average_strategy_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::AverageStrategy;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::AverageStrategy;
     config.seed = 909;
     config.traversals_per_iteration = 32;
     config.as_epsilon = 0.05;
     config.as_tau = 0.0;
     config.as_beta = 0.1;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_iterations(100);
 
     EXPECT_TRUE(solver.total_counters().as_actions_considered > 0U);
@@ -1572,17 +1572,17 @@ TEST_CASE(hunl_flat_mccfr_average_strategy_sampling_forces_at_least_one_action_w
 TEST_CASE(hunl_flat_mccfr_sampled_dcfr_keeps_small_external_game_stable) {
     const auto graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 1001;
     config.traversals_per_iteration = 32;
     config.use_discounting = true;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_iterations(120);
 
     const auto exported = solver.export_average_strategy();
-    const auto key = std::string(solver.graph().infoset_key(core::InfosetId{1}));
+    const auto key = std::string(solver.graph().infoset_key(texas::InfosetId{1}));
     const auto it = exported.find(key);
     EXPECT_TRUE(it != exported.end());
     EXPECT_TRUE(it->second.size() >= 2U);
@@ -1595,20 +1595,20 @@ TEST_CASE(hunl_flat_mccfr_sampled_dcfr_keeps_small_external_game_stable) {
 TEST_CASE(hunl_flat_mccfr_sampled_dcfr_tracks_sparse_last_discount_iter_for_visited_rows_only) {
     const auto graph = make_sparse_sampling_visibility_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 1;
     config.traversals_per_iteration = 1;
     config.update_both_players = false;
     config.use_sparse_storage = true;
     config.use_discounting = true;
 
-    core::HUNLFlatMCCFR solver(graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR solver(graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
     solver.run_iteration();
 
     EXPECT_EQ(solver.sparse_storage().row_count(), 1U);
-    const auto visited_id = solver.sparse_storage().has_row(core::InfosetId{0}) ? core::InfosetId{0} : core::InfosetId{1};
-    const auto unvisited_id = visited_id.value == 0 ? core::InfosetId{1} : core::InfosetId{0};
+    const auto visited_id = solver.sparse_storage().has_row(texas::InfosetId{0}) ? texas::InfosetId{0} : texas::InfosetId{1};
+    const auto unvisited_id = visited_id.value == 0 ? texas::InfosetId{1} : texas::InfosetId{0};
     const auto* visited_meta = solver.sparse_storage().meta_for(visited_id);
     const auto* unvisited_meta = solver.sparse_storage().meta_for(unvisited_id);
     EXPECT_TRUE(visited_meta != nullptr);
@@ -1620,23 +1620,23 @@ TEST_CASE(hunl_flat_mccfr_sampled_dcfr_matches_vanilla_direction_on_small_game) 
     const auto vanilla_graph = make_external_sampling_graph();
     const auto dcfr_graph = make_external_sampling_graph();
 
-    core::HUNLFlatMCCFRConfig vanilla_config;
-    vanilla_config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig vanilla_config;
+    vanilla_config.mode = texas::HUNLFlatSamplingMode::External;
     vanilla_config.seed = 2002;
     vanilla_config.traversals_per_iteration = 64;
 
-    core::HUNLFlatMCCFRConfig dcfr_config = vanilla_config;
+    texas::HUNLFlatMCCFRConfig dcfr_config = vanilla_config;
     dcfr_config.use_discounting = true;
 
-    core::HUNLFlatMCCFR vanilla_solver(vanilla_graph, {1, 1}, vanilla_config);
-    core::HUNLFlatMCCFR dcfr_solver(dcfr_graph, {1, 1}, dcfr_config);
+    texas::HUNLFlatMCCFR vanilla_solver(vanilla_graph, {1, 1}, vanilla_config);
+    texas::HUNLFlatMCCFR dcfr_solver(dcfr_graph, {1, 1}, dcfr_config);
 
     vanilla_solver.run_iterations(180);
     dcfr_solver.run_iterations(180);
 
     const auto vanilla_exported = vanilla_solver.export_average_strategy();
     const auto dcfr_exported = dcfr_solver.export_average_strategy();
-    const auto key = std::string(vanilla_solver.graph().infoset_key(core::InfosetId{1}));
+    const auto key = std::string(vanilla_solver.graph().infoset_key(texas::InfosetId{1}));
     const auto vanilla_it = vanilla_exported.find(key);
     const auto dcfr_it = dcfr_exported.find(key);
     EXPECT_TRUE(vanilla_it != vanilla_exported.end());
@@ -1649,14 +1649,14 @@ TEST_CASE(hunl_flat_mccfr_sampled_dcfr_matches_vanilla_direction_on_small_game) 
 TEST_CASE(hunl_flat_mccfr_variance_reduction_reduces_sampled_estimator_variance_on_public_chance_graph) {
     const auto graph = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 31337;
     config.traversals_per_iteration = 32;
     config.update_both_players = false;
-    config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+    config.baseline_mode = texas::HUNLFlatBaselineMode::MovingAverage;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_iterations(120);
 
     const auto& counters = solver.total_counters();
@@ -1678,16 +1678,16 @@ TEST_CASE(hunl_flat_mccfr_variance_reduction_baselines_stay_sparse_and_determini
     const auto first_graph = make_sparse_sampling_visibility_graph();
     const auto second_graph = make_sparse_sampling_visibility_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 5150;
     config.traversals_per_iteration = 1;
     config.update_both_players = false;
     config.use_sparse_storage = true;
-    config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+    config.baseline_mode = texas::HUNLFlatBaselineMode::MovingAverage;
 
-    core::HUNLFlatMCCFR first(first_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
-    core::HUNLFlatMCCFR second(second_graph, {2, 2}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR first(first_graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR second(second_graph, {2, 2}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
 
     first.run_iterations(8);
     second.run_iterations(8);
@@ -1718,13 +1718,13 @@ TEST_CASE(hunl_flat_mccfr_variance_reduction_baselines_stay_sparse_and_determini
 TEST_CASE(hunl_flat_mccfr_exports_root_average_strategy_without_materializing_full_map) {
     const auto graph = make_root_decision_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 77;
     config.traversals_per_iteration = 16;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_iterations(12);
 
     const auto root = solver.export_root_average_strategy();
@@ -1737,14 +1737,14 @@ TEST_CASE(hunl_flat_mccfr_exports_root_average_strategy_without_materializing_fu
 TEST_CASE(hunl_flat_mccfr_sparse_root_export_is_uniform_before_any_samples) {
     const auto graph = make_root_decision_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 101;
     config.traversals_per_iteration = 8;
     config.update_both_players = false;
     config.use_sparse_storage = true;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
     const auto root = solver.export_root_average_strategy();
 
     EXPECT_EQ(root.actions.size(), 2U);
@@ -1756,15 +1756,15 @@ TEST_CASE(hunl_flat_mccfr_sparse_root_export_is_uniform_before_any_samples) {
 TEST_CASE(hunl_flat_mccfr_deadline_mode_returns_latest_clean_root_snapshot_on_immediate_timeout) {
     const auto graph = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 88;
     config.traversals_per_iteration = 16;
     config.batch_size = 4;
     config.update_both_players = false;
     config.use_sparse_storage = true;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
     const auto result = solver.solve_for(std::chrono::milliseconds{0});
 
     EXPECT_TRUE(!result.snapshots.empty());
@@ -1777,15 +1777,15 @@ TEST_CASE(hunl_flat_mccfr_deadline_mode_returns_latest_clean_root_snapshot_on_im
 TEST_CASE(hunl_flat_mccfr_deadline_snapshot_reports_uniform_entropy_and_zero_delta_without_batches) {
     const auto graph = make_public_chance_conflict_graph();
 
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::PublicChance;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::PublicChance;
     config.seed = 89;
     config.traversals_per_iteration = 16;
     config.batch_size = 4;
     config.update_both_players = false;
     config.use_sparse_storage = true;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 1);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 1);
     const auto result = solver.solve_for(std::chrono::milliseconds{-5});
 
     EXPECT_EQ(result.batches_completed, 0U);
@@ -1798,14 +1798,14 @@ TEST_CASE(hunl_flat_mccfr_deadline_snapshot_reports_uniform_entropy_and_zero_del
 
 TEST_CASE(hunl_flat_mccfr_root_export_contains_stable_action_descriptors) {
     const auto graph = make_root_decision_graph();
-    core::HUNLFlatMCCFRConfig config;
+    texas::HUNLFlatMCCFRConfig config;
     config.use_sparse_storage = true;
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     const auto root = solver.export_root_average_strategy();
     EXPECT_EQ(root.actions.size(), 2U);
-    EXPECT_EQ(root.actions[0].action_id, core::ACTION_CHECK);
+    EXPECT_EQ(root.actions[0].action_id, texas::ACTION_CHECK);
     EXPECT_EQ(root.actions[0].target_contribution, 0);
-    EXPECT_EQ(root.actions[1].action_id, core::ACTION_BET_75);
+    EXPECT_EQ(root.actions[1].action_id, texas::ACTION_BET_75);
     EXPECT_EQ(root.actions[1].target_contribution, 75);
     EXPECT_TRUE(root.actions[0].action_menu_id != 0U);
     EXPECT_EQ(root.actions[0].action_menu_id, root.actions[1].action_menu_id);
@@ -1813,30 +1813,30 @@ TEST_CASE(hunl_flat_mccfr_root_export_contains_stable_action_descriptors) {
 
 TEST_CASE(hunl_flat_mccfr_worker_exception_is_rethrown_by_coordinator) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.traversals_per_iteration = 2;
     config.batch_size = 1;
     config.test_throw_worker_index = 1;
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config, core::HUNLFlatValueLayout::InfosetActionHand, 2);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 2);
     EXPECT_THROW(solver.run_batches(1), std::runtime_error);
 }
 
 TEST_CASE(hunl_flat_mccfr_rejects_depth_limited_graphs_without_shared_leaf_evaluator) {
-    auto config = core::benchmark_turn_subgame();
+    auto config = texas::benchmark_turn_subgame();
     config.depth_limit_plies = 1;
-    const auto graph = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
-    EXPECT_THROW(core::HUNLFlatMCCFR(graph, {1, 1}), std::invalid_argument);
+    const auto graph = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
+    EXPECT_THROW(texas::HUNLFlatMCCFR(graph, {1, 1}), std::invalid_argument);
 }
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_zero_budget_does_not_create_a_strategy_snapshot) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.traversals_per_iteration = 8;
     config.batch_size = 2;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     EXPECT_EQ(solver.run_batches(0), 0U);
     EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 0U);
     EXPECT_EQ(solver.profile().traversals, 0U);
@@ -1845,13 +1845,13 @@ TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_zero_budget_does_not_create_a_st
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_rebuilds_once_for_all_subbatches_of_one_player) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.traversals_per_iteration = 8;
     config.batch_size = 2;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_batches(4);
 
     EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 1U);
@@ -1861,13 +1861,13 @@ TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_rebuilds_once_for_all_subbatches
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_rebuilds_once_per_traversing_player) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.traversals_per_iteration = 8;
     config.batch_size = 2;
     config.update_both_players = true;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_batches(8);
 
     EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 2U);
@@ -1877,14 +1877,14 @@ TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_rebuilds_once_per_traversing_pla
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_reaches_deep_regret_through_nonzero_opponent_action) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 17;
     config.traversals_per_iteration = 32;
     config.batch_size = 32;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_batches(1);
 
     const auto& deep_meta = solver.infoset_table().meta()[1];
@@ -1897,13 +1897,13 @@ TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_reaches_deep_regret_through_nonz
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_resumes_remaining_subbatches_without_rebuilding_snapshot) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.traversals_per_iteration = 8;
     config.batch_size = 2;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_batches(1);
     EXPECT_EQ(solver.profile().strategy_snapshot_rebuilds, 1U);
     solver.run_batches(3);
@@ -1914,13 +1914,13 @@ TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_resumes_remaining_subbatches_wit
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_then_normal_iteration_preserves_current_player_snapshot) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.traversals_per_iteration = 8;
     config.batch_size = 2;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_batches(1);
     solver.run_iteration();
 
@@ -1930,13 +1930,13 @@ TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_then_normal_iteration_preserves_
 
 TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_starts_a_new_snapshot_after_a_completed_iteration) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.traversals_per_iteration = 8;
     config.batch_size = 2;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     solver.run_batches(4);
     solver.run_batches(1);
 
@@ -1946,14 +1946,14 @@ TEST_CASE(hunl_flat_mccfr_deadline_batch_driver_starts_a_new_snapshot_after_a_co
 
 TEST_CASE(hunl_flat_mccfr_positive_deadline_uses_the_shared_snapshot_state_machine) {
     const auto graph = make_external_sampling_graph();
-    core::HUNLFlatMCCFRConfig config;
-    config.mode = core::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatMCCFRConfig config;
+    config.mode = texas::HUNLFlatSamplingMode::External;
     config.seed = 99;
     config.traversals_per_iteration = 1;
     config.batch_size = 1;
     config.update_both_players = false;
 
-    core::HUNLFlatMCCFR solver(graph, {1, 1}, config);
+    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config);
     const auto result = solver.solve_for(std::chrono::milliseconds{25});
 
     EXPECT_TRUE(result.batches_completed >= 1U);

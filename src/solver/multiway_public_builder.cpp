@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
@@ -417,4 +417,4 @@ std::uint64_t MultiwayPublicBuilder::stable_lossless_current_round_key(
     return stable_public_state_id(betting, board, history, legal_actions);
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

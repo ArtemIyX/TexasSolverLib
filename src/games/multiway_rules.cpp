@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace core {
+namespace texas::games::multiway {
 namespace {
 
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
@@ -70,4 +70,4 @@ MultiwayGameConfig MultiwayGameRules::make_initial_game_config(PlayerId first_pl
     return config;
 }
 
-}  // namespace core
+}  // namespace texas::games::multiway

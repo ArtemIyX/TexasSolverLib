@@ -9,7 +9,7 @@
 #include <limits>
 #include <tuple>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr Value kInvalid = std::numeric_limits<Value>::quiet_NaN();
@@ -103,10 +103,6 @@ bool valid_cached_result(
         if (!std::isfinite(policy_value)) return false;
     }
     return true;
-}
-
-std::uint8_t compact_to_hunl_card(std::uint8_t card) noexcept {
-    return static_cast<std::uint8_t>((card / 4U + 2U) * 4U + card % 4U);
 }
 
 bool valid_input(const MultiwayRolloutInput& input) noexcept {
@@ -216,10 +212,10 @@ Value settle(MultiwayRolloutScratch& scratch, std::uint8_t board_count, PlayerId
         input.folded[seat] = scratch.state.folded[seat];
         std::array<std::uint8_t, 7> cards{};
         for (std::size_t card = 0; card < board_count; ++card) {
-            cards[card] = compact_to_hunl_card(scratch.board[card]);
+            cards[card] = scratch.board[card];
         }
-        cards[5] = compact_to_hunl_card(scratch.holes[seat][0]);
-        cards[6] = compact_to_hunl_card(scratch.holes[seat][1]);
+        cards[5] = scratch.holes[seat][0];
+        cards[6] = scratch.holes[seat][1];
         input.strengths[seat] = Strength::evaluate_7(cards);
     }
     settle_multiway_terminal_fixed(input, scratch.terminal_scratch, scratch.terminal_result);
@@ -568,4 +564,4 @@ MultiwayLeafEvaluator make_multiway_rollout_leaf_evaluator(const MultiwayRollout
     return {evaluate_multiway_rollout_leaf, context};
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

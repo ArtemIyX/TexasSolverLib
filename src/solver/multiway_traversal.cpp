@@ -15,7 +15,7 @@
 #include <thread>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
@@ -274,8 +274,8 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         throw std::logic_error("multiway recursive traversal requires a leaf evaluator at its boundary");
     }
     const auto actor = state.betting.current_player >= 0 ? state.betting.current_player : context.traverser;
-    const auto& table = buckets_->table_hunl(state.betting.street, state.board);
-    const auto bucket = table.lookup_hunl(context.terminal->sampled_hole(*context.deal, actor));
+    const auto& table = buckets_->table(state.betting.street, state.board);
+    const auto bucket = table.lookup(context.terminal->sampled_hole(*context.deal, actor));
     MultiwayContinuationPolicyKind policy = MultiwayContinuationPolicyKind::Blueprint;
     if (continuation_selector_ != nullptr) {
         policy = continuation_selector_->select({
@@ -332,8 +332,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     {
         MultiwaySearchProfileScope profile_scope(
             context.profile, MultiwaySearchProfileStage::RowLookup);
-        table_ptr = &buckets_->table_hunl(state.betting.street, state.board);
-        bucket = table_ptr->lookup_hunl(context.terminal->sampled_hole(*context.deal, actor));
+        table_ptr = &buckets_->table(state.betting.street, state.board);
+        bucket = table_ptr->lookup(context.terminal->sampled_hole(*context.deal, actor));
     }
     const auto& table = *table_ptr;
     const MultiwayInfosetId infoset = {state.id, actor};
@@ -697,4 +697,4 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     return result;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

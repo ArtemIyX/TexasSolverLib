@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
@@ -80,4 +80,4 @@ std::vector<MultiwayWorkerBatch> MultiwayScheduler::partition_deterministic(
     return result;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

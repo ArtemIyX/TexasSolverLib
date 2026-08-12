@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_rake.hpp"
 #include "solver/multiway_continuation_policy_kind.hpp"
 
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Immutable configuration for one offline multiway blueprint. All chip values
 // are exact integers; stack bands and action templates are added in later
@@ -42,4 +44,4 @@ struct MultiwayBlueprintConfig {
     void validate() const;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

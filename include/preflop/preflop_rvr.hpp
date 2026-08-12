@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "games/hunl.hpp"
 #include "preflop/preflop_equity.hpp"
@@ -9,7 +11,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace core {
+namespace texas::preflop {
 
 class PreflopRvrNotReady final : public std::logic_error {
 public:
@@ -159,6 +161,6 @@ Class169RvrOutput solve_hunl_preflop_rvr_class169(
     double beta,
     double gamma);
 
-}  // namespace core
+}  // namespace texas::preflop
 
 

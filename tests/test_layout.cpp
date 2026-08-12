@@ -6,7 +6,7 @@
 #include <type_traits>
 
 TEST_CASE(layout_intern_returns_stable_id) {
-    core::FlatInfosetStore store(3);
+    texas::FlatInfosetStore store(3);
     const auto a = store.intern("foo", 2);
     const auto b = store.intern("foo", 2);
     const auto c = store.intern("bar", 3);
@@ -18,7 +18,7 @@ TEST_CASE(layout_intern_returns_stable_id) {
 }
 
 TEST_CASE(layout_row_mut_yields_rw_access) {
-    core::FlatInfosetStore store(3);
+    texas::FlatInfosetStore store(3);
     const auto id = store.intern("foo", 3);
 
     auto [regret, strategy, meta] = store.row_mut(id);
@@ -33,26 +33,26 @@ TEST_CASE(layout_row_mut_yields_rw_access) {
 }
 
 TEST_CASE(layout_arena_grows_in_block_increments) {
-    core::FlatInfosetStore store(8);
-    for (std::size_t i = 0; i < core::BLOCK_SIZE + 1; ++i) {
+    texas::FlatInfosetStore store(8);
+    for (std::size_t i = 0; i < texas::BLOCK_SIZE + 1; ++i) {
         store.intern("k" + std::to_string(i), 8);
     }
 
-    EXPECT_TRUE(store.regret_arena_size() >= 2 * core::BLOCK_SIZE * 8);
-    EXPECT_EQ(store.regret_arena_size() % (core::BLOCK_SIZE * 8), 0U);
+    EXPECT_TRUE(store.regret_arena_size() >= 2 * texas::BLOCK_SIZE * 8);
+    EXPECT_EQ(store.regret_arena_size() % (texas::BLOCK_SIZE * 8), 0U);
     EXPECT_EQ(store.regret_arena_size(), store.strategy_arena_size());
 }
 
 TEST_CASE(layout_offsets_use_size_t_and_remain_exact_across_twenty_widths) {
     static_assert(
         std::is_same_v<
-            decltype(core::RowMeta{}.offset),
+            decltype(texas::RowMeta{}.offset),
             std::size_t>,
         "row offsets must use the host address width");
 
     for (std::size_t width = 1; width <= 20; ++width) {
-        core::FlatInfosetStore store(width);
-        for (std::size_t row = 0; row <= core::BLOCK_SIZE; ++row) {
+        texas::FlatInfosetStore store(width);
+        for (std::size_t row = 0; row <= texas::BLOCK_SIZE; ++row) {
             const auto id = store.intern(
                 "w" + std::to_string(width) + "-r" + std::to_string(row),
                 1U + row % width);
@@ -61,7 +61,7 @@ TEST_CASE(layout_offsets_use_size_t_and_remain_exact_across_twenty_widths) {
                 row * width);
         }
         EXPECT_EQ(
-            store.regret_arena_size() % (core::BLOCK_SIZE * width),
+            store.regret_arena_size() % (texas::BLOCK_SIZE * width),
             0U);
         EXPECT_EQ(
             store.regret_arena_size(),
@@ -71,7 +71,7 @@ TEST_CASE(layout_offsets_use_size_t_and_remain_exact_across_twenty_widths) {
 
 TEST_CASE(layout_rejects_twenty_reused_key_action_shape_mismatches) {
     for (std::size_t actions = 1; actions <= 20; ++actions) {
-        core::FlatInfosetStore store(21);
+        texas::FlatInfosetStore store(21);
         const auto id = store.intern("same-key", actions);
         EXPECT_THROW(
             store.intern("same-key", actions + 1U),
@@ -83,14 +83,14 @@ TEST_CASE(layout_rejects_twenty_reused_key_action_shape_mismatches) {
 }
 
 TEST_CASE(layout_rejects_unrepresentable_row_widths_and_action_counts) {
-    EXPECT_THROW(core::FlatInfosetStore(0), std::invalid_argument);
+    EXPECT_THROW(texas::FlatInfosetStore(0), std::invalid_argument);
     EXPECT_THROW(
-        core::FlatInfosetStore(
+        texas::FlatInfosetStore(
             static_cast<std::size_t>(
                 std::numeric_limits<std::uint16_t>::max()) + 1U),
         std::invalid_argument);
 
-    core::FlatInfosetStore store(20);
+    texas::FlatInfosetStore store(20);
     EXPECT_THROW(store.intern("zero", 0), std::invalid_argument);
     EXPECT_THROW(store.intern("too-wide", 21), std::invalid_argument);
     EXPECT_TRUE(store.is_empty());

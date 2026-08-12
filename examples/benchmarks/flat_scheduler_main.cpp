@@ -30,7 +30,7 @@ struct BenchConfig {
 
     std::uint32_t iterations = 100;
     std::vector<std::size_t> workers;
-    core::HUNLFlatValueLayout layout = core::HUNLFlatValueLayout::InfosetActionHand;
+    texas::HUNLFlatValueLayout layout = texas::HUNLFlatValueLayout::InfosetActionHand;
     Preset preset = Preset::None;
 };
 
@@ -91,9 +91,9 @@ std::optional<BenchConfig> parse_args(int argc, char* argv[]) {
     for (int i = 3; i < argc; ++i) {
         const std::string_view arg = argv[i];
         if (arg == "hand-action") {
-            cfg.layout = core::HUNLFlatValueLayout::InfosetHandAction;
+            cfg.layout = texas::HUNLFlatValueLayout::InfosetHandAction;
         } else if (arg == "action-hand") {
-            cfg.layout = core::HUNLFlatValueLayout::InfosetActionHand;
+            cfg.layout = texas::HUNLFlatValueLayout::InfosetActionHand;
         } else if (const auto preset = preset_from_text(arg); preset.has_value()) {
             cfg.preset = *preset;
         } else {
@@ -141,7 +141,7 @@ std::string format_bytes(std::uint64_t bytes) {
     return oss.str();
 }
 
-std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
+std::size_t max_backward_row_width(const texas::HUNLFlatSolveGraph& graph) {
     std::size_t max_width = 0;
     for (const auto& meta : graph.node_meta) {
         max_width = std::max<std::size_t>(
@@ -151,7 +151,7 @@ std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
     return max_width;
 }
 
-std::size_t max_bucket_width(const core::HUNLFlatInfosetTable& table) {
+std::size_t max_bucket_width(const texas::HUNLFlatInfosetTable& table) {
     std::size_t max_width = 0;
     for (const auto& meta : table.meta()) {
         max_width = std::max<std::size_t>(max_width, meta.bucket_count);
@@ -159,7 +159,7 @@ std::size_t max_bucket_width(const core::HUNLFlatInfosetTable& table) {
     return max_width;
 }
 
-void print_memory_estimate(const core::HUNLFlatMemoryEstimate& estimate) {
+void print_memory_estimate(const texas::HUNLFlatMemoryEstimate& estimate) {
     std::cout << "  memory estimate\n";
     std::cout << "    " << std::setw(18) << std::left << "graph"
               << format_bytes(estimate.graph_bytes) << "\n";
@@ -177,7 +177,7 @@ void print_memory_estimate(const core::HUNLFlatMemoryEstimate& estimate) {
               << format_bytes(estimate.total_bytes()) << "\n";
 }
 
-bool enforce_memory_guardrails(const core::HUNLFlatMemoryEstimate& estimate) {
+bool enforce_memory_guardrails(const texas::HUNLFlatMemoryEstimate& estimate) {
     if (estimate.total_bytes() > kMemoryFailBytes) {
         std::cerr << "fatal: estimated memory " << format_bytes(estimate.total_bytes())
                   << " exceeds hard limit of " << format_bytes(kMemoryFailBytes)
@@ -191,11 +191,11 @@ bool enforce_memory_guardrails(const core::HUNLFlatMemoryEstimate& estimate) {
     return true;
 }
 
-std::string layout_name(core::HUNLFlatValueLayout layout) {
+std::string layout_name(texas::HUNLFlatValueLayout layout) {
     switch (layout) {
-        case core::HUNLFlatValueLayout::InfosetHandAction:
+        case texas::HUNLFlatValueLayout::InfosetHandAction:
             return "hand-action";
-        case core::HUNLFlatValueLayout::InfosetActionHand:
+        case texas::HUNLFlatValueLayout::InfosetActionHand:
             return "action-hand";
     }
     return "unknown";
@@ -213,55 +213,55 @@ std::string preset_name(BenchConfig::Preset preset) {
     return "unknown";
 }
 
-double stage_value(const core::HUNLFlatStageProfile& profile, core::HUNLFlatStageKind stage) {
+double stage_value(const texas::HUNLFlatStageProfile& profile, texas::HUNLFlatStageKind stage) {
     switch (stage) {
-        case core::HUNLFlatStageKind::Discount:
+        case texas::HUNLFlatStageKind::Discount:
             return profile.discount_seconds;
-        case core::HUNLFlatStageKind::Strategy:
+        case texas::HUNLFlatStageKind::Strategy:
             return profile.strategy_seconds;
-        case core::HUNLFlatStageKind::Reach:
+        case texas::HUNLFlatStageKind::Reach:
             return profile.reach_seconds;
-        case core::HUNLFlatStageKind::Terminal:
+        case texas::HUNLFlatStageKind::Terminal:
             return profile.terminal_seconds;
-        case core::HUNLFlatStageKind::Backward:
+        case texas::HUNLFlatStageKind::Backward:
             return profile.backward_seconds;
-        case core::HUNLFlatStageKind::Regret:
+        case texas::HUNLFlatStageKind::Regret:
             return profile.regret_seconds;
-        case core::HUNLFlatStageKind::AverageStrategy:
+        case texas::HUNLFlatStageKind::AverageStrategy:
             return profile.average_strategy_seconds;
     }
     return 0.0;
 }
 
-const char* stage_name(core::HUNLFlatStageKind stage) {
+const char* stage_name(texas::HUNLFlatStageKind stage) {
     switch (stage) {
-        case core::HUNLFlatStageKind::Discount:
+        case texas::HUNLFlatStageKind::Discount:
             return "discount";
-        case core::HUNLFlatStageKind::Strategy:
+        case texas::HUNLFlatStageKind::Strategy:
             return "strategy";
-        case core::HUNLFlatStageKind::Reach:
+        case texas::HUNLFlatStageKind::Reach:
             return "reach";
-        case core::HUNLFlatStageKind::Terminal:
+        case texas::HUNLFlatStageKind::Terminal:
             return "terminal";
-        case core::HUNLFlatStageKind::Backward:
+        case texas::HUNLFlatStageKind::Backward:
             return "backward";
-        case core::HUNLFlatStageKind::Regret:
+        case texas::HUNLFlatStageKind::Regret:
             return "regret";
-        case core::HUNLFlatStageKind::AverageStrategy:
+        case texas::HUNLFlatStageKind::AverageStrategy:
             return "avg-strategy";
     }
     return "unknown";
 }
 
-void print_stage_summary(const core::HUNLFlatStageProfile& profile) {
-    const std::array<core::HUNLFlatStageKind, 7> stages = {{
-        core::HUNLFlatStageKind::Discount,
-        core::HUNLFlatStageKind::Strategy,
-        core::HUNLFlatStageKind::Reach,
-        core::HUNLFlatStageKind::Terminal,
-        core::HUNLFlatStageKind::Backward,
-        core::HUNLFlatStageKind::Regret,
-        core::HUNLFlatStageKind::AverageStrategy,
+void print_stage_summary(const texas::HUNLFlatStageProfile& profile) {
+    const std::array<texas::HUNLFlatStageKind, 7> stages = {{
+        texas::HUNLFlatStageKind::Discount,
+        texas::HUNLFlatStageKind::Strategy,
+        texas::HUNLFlatStageKind::Reach,
+        texas::HUNLFlatStageKind::Terminal,
+        texas::HUNLFlatStageKind::Backward,
+        texas::HUNLFlatStageKind::Regret,
+        texas::HUNLFlatStageKind::AverageStrategy,
     }};
 
     std::cout << "  stage breakdown\n";
@@ -271,15 +271,15 @@ void print_stage_summary(const core::HUNLFlatStageProfile& profile) {
     }
 }
 
-void print_worker_diagnostics(const core::HUNLFlatSchedulerDiagnostics& diagnostics, std::uint32_t iterations) {
-    const std::array<core::HUNLFlatStageKind, 7> stages = {{
-        core::HUNLFlatStageKind::Discount,
-        core::HUNLFlatStageKind::Strategy,
-        core::HUNLFlatStageKind::Reach,
-        core::HUNLFlatStageKind::Terminal,
-        core::HUNLFlatStageKind::Backward,
-        core::HUNLFlatStageKind::Regret,
-        core::HUNLFlatStageKind::AverageStrategy,
+void print_worker_diagnostics(const texas::HUNLFlatSchedulerDiagnostics& diagnostics, std::uint32_t iterations) {
+    const std::array<texas::HUNLFlatStageKind, 7> stages = {{
+        texas::HUNLFlatStageKind::Discount,
+        texas::HUNLFlatStageKind::Strategy,
+        texas::HUNLFlatStageKind::Reach,
+        texas::HUNLFlatStageKind::Terminal,
+        texas::HUNLFlatStageKind::Backward,
+        texas::HUNLFlatStageKind::Regret,
+        texas::HUNLFlatStageKind::AverageStrategy,
     }};
 
     std::cout << "  per-worker stage times\n";
@@ -314,7 +314,7 @@ void print_worker_diagnostics(const core::HUNLFlatSchedulerDiagnostics& diagnost
     }
 }
 
-void print_expected_backward_costs(const core::HUNLFlatParallelPlan& plan) {
+void print_expected_backward_costs(const texas::HUNLFlatParallelPlan& plan) {
     std::cout << "  expected backward cost by worker/depth\n";
     for (std::size_t worker = 0; worker < plan.workers.size(); ++worker) {
         std::cout << "    worker[" << worker << "]";
@@ -336,14 +336,14 @@ int main(int argc, char* argv[]) {
 
     const auto cfg = *parsed;
     const auto base_config =
-        cfg.preset == BenchConfig::Preset::RTAFlopConservative ? core::rta_flop_conservative() :
-        cfg.preset == BenchConfig::Preset::RTAFlopBalanced ? core::rta_flop_balanced() :
-        core::benchmark_turn_subgame();
-    const auto config = std::make_shared<const core::HUNLConfig>(base_config);
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+        cfg.preset == BenchConfig::Preset::RTAFlopConservative ? texas::rta_flop_conservative() :
+        cfg.preset == BenchConfig::Preset::RTAFlopBalanced ? texas::rta_flop_balanced() :
+        texas::benchmark_turn_subgame();
+    const auto config = std::make_shared<const texas::HUNLConfig>(base_config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const auto bucket_count = cfg.preset == BenchConfig::Preset::None
         ? 1326U
-        : static_cast<std::uint32_t>(core::configured_bucket_count(*config, config->starting_street));
+        : static_cast<std::uint32_t>(texas::configured_bucket_count(*config, config->starting_street));
     const std::array<std::size_t, 2> hand_count_per_player = {bucket_count, bucket_count};
 
     std::cout << "Flat HUNL scheduler benchmark"
@@ -354,12 +354,12 @@ int main(int argc, char* argv[]) {
               << " nodes=" << graph.node_meta.size() << "\n";
 
     for (const auto workers : cfg.workers) {
-        const auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player, cfg.layout);
-        const auto plan = core::HUNLFlatParallelPlan::build(graph, table, workers);
-        core::HUNLFlatMemoryEstimateOptions memory_options;
+        const auto table = texas::HUNLFlatInfosetTable::build(graph, hand_count_per_player, cfg.layout);
+        const auto plan = texas::HUNLFlatParallelPlan::build(graph, table, workers);
+        texas::HUNLFlatMemoryEstimateOptions memory_options;
         memory_options.max_child_count = max_backward_row_width(graph);
         memory_options.max_bucket_count = max_bucket_width(table);
-        const auto memory = core::estimate_memory(graph, table, workers, memory_options);
+        const auto memory = texas::estimate_memory(graph, table, workers, memory_options);
 
         std::cout << "\nworkers=" << workers << "\n";
         print_memory_estimate(memory);
@@ -367,7 +367,7 @@ int main(int argc, char* argv[]) {
             return 2;
         }
 
-        core::HUNLFlatDCFR solver(graph, hand_count_per_player, cfg.layout, workers);
+        texas::HUNLFlatDCFR solver(graph, hand_count_per_player, cfg.layout, workers);
         const auto start = std::chrono::steady_clock::now();
         solver.run_iterations(cfg.iterations);
         const auto finish = std::chrono::steady_clock::now();

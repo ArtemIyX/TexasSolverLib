@@ -17,7 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core::profiling {
+namespace texas::util::profiling {
 namespace {
 
 using clock = std::chrono::steady_clock;
@@ -321,4 +321,4 @@ void print_profiler_report() {
     print_group("Flat Worker Detail", totals, "hunl_flat.worker.");
 }
 
-}  // namespace core::profiling
+}  // namespace texas::util::profiling

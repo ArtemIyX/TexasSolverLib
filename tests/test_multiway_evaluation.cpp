@@ -12,8 +12,8 @@ struct EvaluationContext {
 };
 
 bool evaluate_match(
-    const core::MultiwayEvaluationMatchRequest& request,
-    core::MultiwayEvaluationSample* output,
+    const texas::MultiwayEvaluationMatchRequest& request,
+    texas::MultiwayEvaluationSample* output,
     const void* context) noexcept {
     if (request.deal == nullptr || request.candidate_ids_by_seat == nullptr || output == nullptr) return false;
     auto* state = static_cast<EvaluationContext*>(const_cast<void*>(context));
@@ -22,9 +22,9 @@ bool evaluate_match(
     output->best_response_values.seat_count = request.seat_count;
     for (std::size_t seat = 0; seat < request.seat_count; ++seat) {
         output->profile_values.values[seat] =
-            static_cast<core::Value>(request.candidate_ids_by_seat[seat]) / 100.0;
+            static_cast<texas::Value>(request.candidate_ids_by_seat[seat]) / 100.0;
         output->best_response_values.values[seat] = output->profile_values.values[seat] +
-            static_cast<core::Value>(request.deal->duplicate_index + 1U);
+            static_cast<texas::Value>(request.deal->duplicate_index + 1U);
     }
     output->elapsed_nanoseconds = 100U + request.rotation;
     output->resident_memory_bytes = 4096U;
@@ -36,8 +36,8 @@ bool evaluate_match(
 }
 
 bool evaluate_local_best_response(
-    const core::MultiwayLocalBestResponseRequest&,
-    core::MultiwayLocalBestResponseResult* output,
+    const texas::MultiwayLocalBestResponseRequest&,
+    texas::MultiwayLocalBestResponseResult* output,
     const void*) noexcept {
     output->profile_value = 4.0;
     output->response_value = 5.0;
@@ -45,8 +45,8 @@ bool evaluate_local_best_response(
 }
 
 bool evaluate_legal_off_tree(
-    const core::MultiwayOffTreeGauntlet& request,
-    core::MultiwayOffTreeGauntletResult* output,
+    const texas::MultiwayOffTreeGauntlet& request,
+    texas::MultiwayOffTreeGauntletResult* output,
     const void*) noexcept {
     output->sampled_action = request.observed_action;
     output->has_sampled_action = true;
@@ -55,26 +55,26 @@ bool evaluate_legal_off_tree(
 }
 
 bool evaluate_illegal_off_tree(
-    const core::MultiwayOffTreeGauntlet&,
-    core::MultiwayOffTreeGauntletResult* output,
+    const texas::MultiwayOffTreeGauntlet&,
+    texas::MultiwayOffTreeGauntletResult* output,
     const void*) noexcept {
-    output->sampled_action = {core::MultiwayAction::Fold, 1U, 0, 71U};
+    output->sampled_action = {texas::MultiwayAction::Fold, 1U, 0, 71U};
     output->has_sampled_action = true;
     output->policy_total = 1.0;
     return true;
 }
 
-core::MultiwayOffTreeGauntlet make_gauntlet() {
-    const core::MultiwayActionDescriptor check = {core::MultiwayAction::Check, 0U, 0, 71U};
-    core::MultiwayOffTreeGauntlet gauntlet;
+texas::MultiwayOffTreeGauntlet make_gauntlet() {
+    const texas::MultiwayActionDescriptor check = {texas::MultiwayAction::Check, 0U, 0, 71U};
+    texas::MultiwayOffTreeGauntlet gauntlet;
     gauntlet.id = 7U;
     gauntlet.public_state.legal_actions = {check};
     gauntlet.observed_action = check;
     return gauntlet;
 }
 
-core::MultiwayEvaluationConfig make_config(EvaluationContext* context) {
-    core::MultiwayEvaluationConfig config;
+texas::MultiwayEvaluationConfig make_config(EvaluationContext* context) {
+    texas::MultiwayEvaluationConfig config;
     config.seat_count = 3U;
     config.duplicate_deals = 2U;
     config.seed = 91U;
@@ -92,7 +92,7 @@ core::MultiwayEvaluationConfig make_config(EvaluationContext* context) {
 
 TEST_CASE(multiway_evaluation_rotates_duplicate_deals_and_aggregates_cross_play) {
     EvaluationContext context;
-    const auto result = core::evaluate_multiway_candidates(make_config(&context));
+    const auto result = texas::evaluate_multiway_candidates(make_config(&context));
 
     EXPECT_TRUE(result.passed());
     EXPECT_EQ(result.cross_play.size(), 4U);
@@ -109,7 +109,7 @@ TEST_CASE(multiway_evaluation_rotates_duplicate_deals_and_aggregates_cross_play)
 
 TEST_CASE(multiway_evaluation_reports_reduced_game_nashconv_and_confidence) {
     EvaluationContext context;
-    const auto result = core::evaluate_multiway_candidates(make_config(&context));
+    const auto result = texas::evaluate_multiway_candidates(make_config(&context));
 
     EXPECT_EQ(result.reduced_game_nash_conv.profile_values.size(), 3U);
     EXPECT_NEAR(result.reduced_game_nash_conv.value, 4.5, 1e-12);
@@ -122,24 +122,24 @@ TEST_CASE(multiway_evaluation_rejects_unsupported_confidence_contracts) {
     EvaluationContext context;
     auto config = make_config(&context);
     config.confidence_level = 0.87;
-    EXPECT_THROW(core::evaluate_multiway_candidates(config), std::invalid_argument);
+    EXPECT_THROW(texas::evaluate_multiway_candidates(config), std::invalid_argument);
 }
 
 TEST_CASE(multiway_evaluation_rejects_illegal_off_tree_boundary_actions) {
     EvaluationContext context;
     auto config = make_config(&context);
     config.evaluate_off_tree = &evaluate_illegal_off_tree;
-    const auto result = core::evaluate_multiway_candidates(config);
+    const auto result = texas::evaluate_multiway_candidates(config);
 
     EXPECT_TRUE(!result.passed());
-    EXPECT_EQ(result.off_tree_gauntlets.front().failure, core::MultiwayEvaluationFailure::OffTreeIllegalAction);
+    EXPECT_EQ(result.off_tree_gauntlets.front().failure, texas::MultiwayEvaluationFailure::OffTreeIllegalAction);
 }
 
 TEST_CASE(multiway_evaluation_is_reproducible_and_exposes_failure_fixtures) {
     EvaluationContext first_context;
     EvaluationContext second_context;
-    const auto first = core::evaluate_multiway_candidates(make_config(&first_context));
-    const auto second = core::evaluate_multiway_candidates(make_config(&second_context));
+    const auto first = texas::evaluate_multiway_candidates(make_config(&first_context));
+    const auto second = texas::evaluate_multiway_candidates(make_config(&second_context));
 
     EXPECT_EQ(first.cross_play.size(), second.cross_play.size());
     for (std::size_t index = 0; index < first.cross_play.size(); ++index) {
@@ -148,5 +148,5 @@ TEST_CASE(multiway_evaluation_is_reproducible_and_exposes_failure_fixtures) {
         EXPECT_NEAR(first.cross_play[index].mean_focal_value, second.cross_play[index].mean_focal_value, 0.0);
     }
     EXPECT_NEAR(first.reduced_game_nash_conv.value, second.reduced_game_nash_conv.value, 0.0);
-    EXPECT_EQ(core::multiway_evaluation_failure_fixtures().size(), 10U);
+    EXPECT_EQ(texas::multiway_evaluation_failure_fixtures().size(), 10U);
 }

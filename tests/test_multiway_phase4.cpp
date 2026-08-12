@@ -11,16 +11,16 @@
 namespace {
 
 constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit) {
-    return core::card_to_int(rank, suit);
+    return texas::card_to_int(rank, suit);
 }
 
 std::vector<std::uint32_t> assignments(const std::vector<std::uint8_t>& board) {
-    std::vector<std::uint32_t> result(core::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
+    std::vector<std::uint32_t> result(texas::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
     for (std::uint8_t first = 0U; first < 52U; ++first) {
         for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
             for (const auto board_card : board) {
                 if (first == board_card || second == board_card) {
-                    result[core::MultiwayBucketTable::hole_index({first, second})] = core::MULTIWAY_INVALID_BUCKET;
+                    result[texas::MultiwayBucketTable::hole_index({first, second})] = texas::MULTIWAY_INVALID_BUCKET;
                 }
             }
         }
@@ -28,19 +28,19 @@ std::vector<std::uint32_t> assignments(const std::vector<std::uint8_t>& board) {
     return result;
 }
 
-core::MultiwayRootSnapshot root() {
-    core::MultiwayGameConfig game;
+texas::MultiwayRootSnapshot root() {
+    texas::MultiwayGameConfig game;
     game.starting_stacks = {1000, 1000};
     game.initial_contributions = {0, 0};
     game.initial_street_contributions = {0, 0};
     game.first_player = 0;
     game.big_blind = 100;
-    game.street = core::Street::Flop;
-    const auto betting = core::MultiwayState::initial(game).snapshot();
+    game.street = texas::Street::Flop;
+    const auto betting = texas::MultiwayState::initial(game).snapshot();
     const auto board = std::vector<std::uint8_t>{card(2U, 0U), card(7U, 1U), card(9U, 2U)};
-    const core::MultiwayActionAbstraction abstraction;
-    core::MultiwayRootSnapshot result;
-    result.public_state = core::MultiwayPublicBuilder::make_root(
+    const texas::MultiwayActionAbstraction abstraction;
+    texas::MultiwayRootSnapshot result;
+    result.public_state = texas::MultiwayPublicBuilder::make_root(
         betting, board, abstraction.make_legal_actions(betting, 7001U));
     result.root_infoset = {result.public_state.id, 0};
     result.root_bucket = 0U;
@@ -57,31 +57,31 @@ core::MultiwayRootSnapshot root() {
     return result;
 }
 
-core::MultiwaySolverLimits limits() {
+texas::MultiwaySolverLimits limits() {
     return {1U, 1U, 1U, 8U, 8U, 32U, 8U};
 }
 
-core::MultiwaySolveRequest request(const core::MultiwayRootSnapshot& value) {
-    core::MultiwayCFRConfig cfr;
+texas::MultiwaySolveRequest request(const texas::MultiwayRootSnapshot& value) {
+    texas::MultiwayCFRConfig cfr;
     cfr.player_count = 2U;
-    return core::MultiwaySolveRequest(value, cfr, limits());
+    return texas::MultiwaySolveRequest(value, cfr, limits());
 }
 
-core::MultiwayBucketRegistry buckets(const core::MultiwayRootSnapshot& value) {
+texas::MultiwayBucketRegistry buckets(const texas::MultiwayRootSnapshot& value) {
     std::vector<std::uint8_t> compact;
-    for (const auto value_card : value.public_state.board) compact.push_back(value_card - core::HUNL_CARD_FIRST);
-    core::MultiwayBlueprintConfig config;
+    for (const auto value_card : value.public_state.board) compact.push_back(value_card);
+    texas::MultiwayBlueprintConfig config;
     config.player_count = 2U;
-    return core::MultiwayBucketRegistry({core::MultiwayBucketTable(
-        core::make_multiway_model_identity(config), core::Street::Flop, compact, 1U, assignments(compact))});
+    return texas::MultiwayBucketRegistry({texas::MultiwayBucketTable(
+        texas::make_multiway_model_identity(config), texas::Street::Flop, compact, 1U, assignments(compact))});
 }
 
 void exercise(std::uint32_t contract) {
     const auto initial = root();
     const auto registry = buckets(initial);
     const auto solve_request = request(initial);
-    core::MultiwayRuntimeSession runtime(solve_request, {&registry});
-    const auto actual = core::canonical_combos().id(initial.private_ranges.ranges[0][0].hole);
+    texas::MultiwayRuntimeSession runtime(solve_request, {&registry});
+    const auto actual = texas::canonical_combos().id(initial.private_ranges.ranges[0][0].hole);
     const auto policy = runtime.round().export_hero_policy(0, actual);
     EXPECT_EQ(runtime.root_revision(), 1U);
     EXPECT_EQ(policy.root_revision, 1U);

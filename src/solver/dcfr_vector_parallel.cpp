@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace core {
+namespace texas::solver::dcfr {
 
 std::vector<ParallelChanceRange> derive_parallel_chance_ranges(
     const BettingTree& tree,
@@ -57,6 +57,6 @@ bool parallel_chance_enabled() {
     return !(value == "0" || value == "false" || value == "off");
 }
 
-}  // namespace core
+}  // namespace texas::solver::dcfr
 
 

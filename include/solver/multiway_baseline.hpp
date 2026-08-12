@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_resolver.hpp"
 #include "solver/multiway_traversal.hpp"
 
@@ -7,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // P0.1 fixture categories. They tag reports only; callers own the matching
 // public request and must not persist its private inputs in the report.
@@ -147,4 +149,4 @@ private:
 [[nodiscard]] std::string serialize_multiway_traversal_baseline(
     const MultiwayTraversalBaselineReport& report);
 
-}  // namespace core
+}  // namespace texas::solver::multiway

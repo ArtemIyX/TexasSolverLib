@@ -22,9 +22,9 @@
 namespace {
 
 struct AppConfig {
-    core::Street street = core::Street::Flop;
-    core::HUNLFlatSamplingMode mode = core::HUNLFlatSamplingMode::External;
-    core::HUNLFlatStoragePrecision precision = core::HUNLFlatStoragePrecision::Float64;
+    texas::Street street = texas::Street::Flop;
+    texas::HUNLFlatSamplingMode mode = texas::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatStoragePrecision precision = texas::HUNLFlatStoragePrecision::Float64;
     std::uint64_t seed = 1;
     std::uint32_t iterations = 200;
     std::uint32_t traversals = 4096;
@@ -48,8 +48,8 @@ struct AppConfig {
 };
 
 struct RandomScenario {
-    core::HUNLConfig config;
-    core::HUNLState state;
+    texas::HUNLConfig config;
+    texas::HUNLState state;
 };
 
 bool parse_u64(std::string_view text, std::uint64_t& out) {
@@ -102,49 +102,49 @@ bool parse_double(std::string_view text, double& out) {
     }
 }
 
-std::optional<core::Street> street_from_text(std::string_view text) {
-    if (text == "flop") return core::Street::Flop;
-    if (text == "turn") return core::Street::Turn;
-    if (text == "river") return core::Street::River;
+std::optional<texas::Street> street_from_text(std::string_view text) {
+    if (text == "flop") return texas::Street::Flop;
+    if (text == "turn") return texas::Street::Turn;
+    if (text == "river") return texas::Street::River;
     return std::nullopt;
 }
 
-std::optional<core::HUNLFlatSamplingMode> mode_from_text(std::string_view text) {
-    if (text == "exact") return core::HUNLFlatSamplingMode::Exact;
-    if (text == "public-chance") return core::HUNLFlatSamplingMode::PublicChance;
-    if (text == "external") return core::HUNLFlatSamplingMode::External;
-    if (text == "average-strategy") return core::HUNLFlatSamplingMode::AverageStrategy;
+std::optional<texas::HUNLFlatSamplingMode> mode_from_text(std::string_view text) {
+    if (text == "exact") return texas::HUNLFlatSamplingMode::Exact;
+    if (text == "public-chance") return texas::HUNLFlatSamplingMode::PublicChance;
+    if (text == "external") return texas::HUNLFlatSamplingMode::External;
+    if (text == "average-strategy") return texas::HUNLFlatSamplingMode::AverageStrategy;
     return std::nullopt;
 }
 
-std::optional<core::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
-    if (text == "double" || text == "float64") return core::HUNLFlatStoragePrecision::Float64;
-    if (text == "float" || text == "float32") return core::HUNLFlatStoragePrecision::Float32;
-    if (text == "compressed16" || text == "fp16") return core::HUNLFlatStoragePrecision::Compressed16;
+std::optional<texas::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
+    if (text == "double" || text == "float64") return texas::HUNLFlatStoragePrecision::Float64;
+    if (text == "float" || text == "float32") return texas::HUNLFlatStoragePrecision::Float32;
+    if (text == "compressed16" || text == "fp16") return texas::HUNLFlatStoragePrecision::Compressed16;
     return std::nullopt;
 }
 
-const char* mode_name(core::HUNLFlatSamplingMode mode) {
+const char* mode_name(texas::HUNLFlatSamplingMode mode) {
     switch (mode) {
-        case core::HUNLFlatSamplingMode::Exact: return "exact";
-        case core::HUNLFlatSamplingMode::PublicChance: return "public-chance";
-        case core::HUNLFlatSamplingMode::External: return "external";
-        case core::HUNLFlatSamplingMode::AverageStrategy: return "average-strategy";
+        case texas::HUNLFlatSamplingMode::Exact: return "exact";
+        case texas::HUNLFlatSamplingMode::PublicChance: return "public-chance";
+        case texas::HUNLFlatSamplingMode::External: return "external";
+        case texas::HUNLFlatSamplingMode::AverageStrategy: return "average-strategy";
     }
     return "unknown";
 }
 
-const char* precision_name(core::HUNLFlatStoragePrecision precision) {
+const char* precision_name(texas::HUNLFlatStoragePrecision precision) {
     switch (precision) {
-        case core::HUNLFlatStoragePrecision::Float64: return "float64";
-        case core::HUNLFlatStoragePrecision::Float32: return "float32";
-        case core::HUNLFlatStoragePrecision::Compressed16: return "compressed16";
+        case texas::HUNLFlatStoragePrecision::Float64: return "float64";
+        case texas::HUNLFlatStoragePrecision::Float32: return "float32";
+        case texas::HUNLFlatStoragePrecision::Compressed16: return "compressed16";
     }
     return "unknown";
 }
 
 std::string cards_to_string(const std::array<std::uint8_t, 2>& cards) {
-    return core::card_to_string(cards[0]) + core::card_to_string(cards[1]);
+    return texas::card_to_string(cards[0]) + texas::card_to_string(cards[1]);
 }
 
 std::string board_to_string(const std::vector<std::uint8_t>& board) {
@@ -153,31 +153,31 @@ std::string board_to_string(const std::vector<std::uint8_t>& board) {
         if (i > 0) {
             oss << ' ';
         }
-        oss << core::card_to_string(board[i]);
+        oss << texas::card_to_string(board[i]);
     }
     return oss.str();
 }
 
-std::string action_description(core::ActionId action, const core::ActionContext& ctx) {
+std::string action_description(texas::ActionId action, const texas::ActionContext& ctx) {
     switch (action) {
-        case core::ACTION_FOLD:
+        case texas::ACTION_FOLD:
             return "fold";
-        case core::ACTION_CHECK:
+        case texas::ACTION_CHECK:
             return "check";
-        case core::ACTION_CALL:
+        case texas::ACTION_CALL:
             return "call";
-        case core::ACTION_ALL_IN:
+        case texas::ACTION_ALL_IN:
             return "all-in";
         default:
             break;
     }
 
     try {
-        if (core::is_opening_bet(action)) {
-            return "bet-to-" + std::to_string(core::compute_bet_amount(action, ctx));
+        if (texas::is_opening_bet(action)) {
+            return "bet-to-" + std::to_string(texas::compute_bet_amount(action, ctx));
         }
-        if (core::is_raise(action)) {
-            return "raise-to-" + std::to_string(core::compute_raise_to(action, ctx));
+        if (texas::is_raise(action)) {
+            return "raise-to-" + std::to_string(texas::compute_raise_to(action, ctx));
         }
     } catch (...) {
     }
@@ -325,7 +325,7 @@ std::vector<std::array<std::uint8_t, 2>> enumerate_legal_holes(const std::vector
     deck.reserve(52);
     for (std::uint8_t rank = 2; rank <= 14; ++rank) {
         for (std::uint8_t suit = 0; suit < 4; ++suit) {
-            const auto card = core::card_to_int(rank, suit);
+            const auto card = texas::card_to_int(rank, suit);
             if (!blocked[card]) {
                 deck.push_back(card);
             }
@@ -339,7 +339,7 @@ std::vector<std::array<std::uint8_t, 2>> enumerate_legal_holes(const std::vector
     return combos;
 }
 
-core::HUNLRangeInput make_random_range_input(
+texas::HUNLRangeInput make_random_range_input(
     std::mt19937_64& rng,
     const std::vector<std::uint8_t>& blocked_cards,
     std::size_t max_hands) {
@@ -347,14 +347,14 @@ core::HUNLRangeInput make_random_range_input(
     std::shuffle(combos.begin(), combos.end(), rng);
     const auto count = std::min(max_hands, combos.size());
 
-    core::HUNLRangeInput range;
+    texas::HUNLRangeInput range;
     range.hand_weights.reserve(count);
     std::uniform_real_distribution<double> weight_dist(0.05, 1.0);
     double weight_sum = 0.0;
     for (std::size_t i = 0; i < count; ++i) {
         const auto weight = weight_dist(rng);
         weight_sum += weight;
-        range.hand_weights.push_back(core::HUNLWeightedHand{combos[i], weight});
+        range.hand_weights.push_back(texas::HUNLWeightedHand{combos[i], weight});
     }
 
     if (weight_sum > 0.0) {
@@ -367,27 +367,27 @@ core::HUNLRangeInput make_random_range_input(
 
 RandomScenario make_random_scenario(const AppConfig& cfg) {
     std::mt19937_64 rng(cfg.seed == 0U ? std::random_device{}() : cfg.seed);
-    const auto board_count = cfg.street == core::Street::Flop
+    const auto board_count = cfg.street == texas::Street::Flop
         ? std::size_t{3}
-        : (cfg.street == core::Street::Turn ? std::size_t{4} : std::size_t{5});
+        : (cfg.street == texas::Street::Turn ? std::size_t{4} : std::size_t{5});
 
     std::vector<std::uint8_t> deck;
     deck.reserve(52);
     for (std::uint8_t rank = 2; rank <= 14; ++rank) {
         for (std::uint8_t suit = 0; suit < 4; ++suit) {
-            deck.push_back(core::card_to_int(rank, suit));
+            deck.push_back(texas::card_to_int(rank, suit));
         }
     }
     std::shuffle(deck.begin(), deck.end(), rng);
 
-    core::HUNLConfig config;
+    texas::HUNLConfig config;
     config.starting_stack = cfg.starting_stack;
     config.small_blind = 50;
     config.big_blind = 100;
     config.starting_street = cfg.street;
     config.initial_board.assign(deck.begin(), deck.begin() + static_cast<std::ptrdiff_t>(board_count));
-    config.flat_solve_mode = core::HUNLFlatSolveMode::Bucketed;
-    config.range_policy = core::HUNLRangePolicy::UseInitialRanges;
+    config.flat_solve_mode = texas::HUNLFlatSolveMode::Bucketed;
+    config.range_policy = texas::HUNLRangePolicy::UseInitialRanges;
     config.bucket_counts_by_street = {
         static_cast<std::uint16_t>(cfg.flop_buckets),
         static_cast<std::uint16_t>(cfg.turn_buckets),
@@ -422,11 +422,11 @@ RandomScenario make_random_scenario(const AppConfig& cfg) {
         config.player_ranges[player] = std::move(range);
     }
 
-    auto state = core::HUNLState::initial(std::make_shared<const core::HUNLConfig>(config));
+    auto state = texas::HUNLState::initial(std::make_shared<const texas::HUNLConfig>(config));
     return RandomScenario{std::move(config), std::move(state)};
 }
 
-void print_range_summary(const core::HUNLRangeInput& range, std::size_t player) {
+void print_range_summary(const texas::HUNLRangeInput& range, std::size_t player) {
     std::cout << "player" << player << "_range:\n";
     std::cout << "  hands=" << range.hand_weights.size() << "\n";
     const auto preview = std::min<std::size_t>(range.hand_weights.size(), 8U);
@@ -441,7 +441,7 @@ void print_config(const AppConfig& cfg, const RandomScenario& scenario) {
     std::cout << "solve_config:\n";
     std::cout << "  mode=" << mode_name(cfg.mode) << "\n";
     std::cout << "  precision=" << precision_name(cfg.precision) << "\n";
-    std::cout << "  street=" << core::street_token(cfg.street) << "\n";
+    std::cout << "  street=" << texas::street_token(cfg.street) << "\n";
     std::cout << "  seed=" << cfg.seed << "\n";
     std::cout << "  iterations=" << cfg.iterations << "\n";
     std::cout << "  traversals_per_iteration=" << cfg.traversals << "\n";
@@ -482,12 +482,12 @@ int main(int argc, char* argv[]) {
         const auto scenario = make_random_scenario(*cfg);
         print_config(*cfg, scenario);
 
-        auto shared = std::make_shared<const core::HUNLConfig>(scenario.config);
-        const auto graph = core::HUNLFlatSolveGraph::build(shared);
-        const auto bucket_count = core::configured_bucket_count(scenario.config, cfg->street);
+        auto shared = std::make_shared<const texas::HUNLConfig>(scenario.config);
+        const auto graph = texas::HUNLFlatSolveGraph::build(shared);
+        const auto bucket_count = texas::configured_bucket_count(scenario.config, cfg->street);
         const std::array<std::size_t, 2> buckets = {bucket_count, bucket_count};
 
-        core::HUNLFlatMCCFRConfig solver_config;
+        texas::HUNLFlatMCCFRConfig solver_config;
         solver_config.mode = cfg->mode;
         solver_config.seed = cfg->seed;
         solver_config.traversals_per_iteration = cfg->traversals;
@@ -501,14 +501,14 @@ int main(int argc, char* argv[]) {
         solver_config.keep_dense_validation_backend = cfg->keep_dense_validation_backend;
         solver_config.use_iterative_external_dense_traversal = cfg->use_iterative_external_dense_traversal;
         if (cfg->use_variance_reduction) {
-            solver_config.baseline_mode = core::HUNLFlatBaselineMode::MovingAverage;
+            solver_config.baseline_mode = texas::HUNLFlatBaselineMode::MovingAverage;
         }
 
-        core::HUNLFlatMCCFR solver(
+        texas::HUNLFlatMCCFR solver(
             graph,
             buckets,
             solver_config,
-            core::HUNLFlatValueLayout::InfosetActionHand,
+            texas::HUNLFlatValueLayout::InfosetActionHand,
             cfg->workers,
             cfg->precision);
 

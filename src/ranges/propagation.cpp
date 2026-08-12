@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::ranges {
 
 namespace {
 
@@ -208,4 +208,4 @@ std::vector<ChanceRangeTransition> propagate_range_to_chance_outcomes(
     return out;
 }
 
-}  // namespace core
+}  // namespace texas::ranges

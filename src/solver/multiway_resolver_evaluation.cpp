@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 std::uint64_t mix_seed(std::uint64_t value) noexcept {
@@ -86,4 +86,4 @@ MultiwayResolverEvaluationDecision MultiwayResolverEvaluationAdapter::resolve(
     return decision;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

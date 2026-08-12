@@ -6,7 +6,7 @@
 
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver {
 
 void validate_dcfr_parameters(double alpha, double beta, double gamma) {
     TEXASSOLVER_PROFILE_SCOPE("solver.validate_dcfr_parameters");
@@ -37,6 +37,6 @@ SolveOutput solve_leduc(
         iterations, alpha, beta, gamma, workers, {}, frontier_multiplier);
 }
 
-}  // namespace core
+}  // namespace texas::solver
 
 

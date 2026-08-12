@@ -13,7 +13,7 @@
 #include <utility>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::dcfr {
 
 namespace {
 
@@ -414,6 +414,6 @@ VectorSolveOutput solve_vector_dcfr(
     return solver.solve_to_output(tree, iterations, hole_pairs.size(), skip_mask, terminal_eval);
 }
 
-}  // namespace core
+}  // namespace texas::solver::dcfr
 
 

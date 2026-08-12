@@ -1,6 +1,6 @@
 #include "core/types.hpp"
 
-namespace core {
+namespace texas::core {
 // Top-level namespace anchor for the C++ port.
 // The public solver surface lives in the module headers:
 // - solver/solver.hpp

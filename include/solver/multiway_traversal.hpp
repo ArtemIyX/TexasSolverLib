@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_cfr.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
@@ -15,7 +17,7 @@
 #include <thread>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 class MultiwayBlueprintPolicyProvider;
 class MultiwayFixedContinuationSelector;
@@ -170,4 +172,4 @@ private:
     std::int32_t test_worker_failure_index_ = -1;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

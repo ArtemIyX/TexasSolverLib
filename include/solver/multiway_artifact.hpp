@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_blueprint_store.hpp"
@@ -9,7 +11,7 @@
 #include <filesystem>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 3U;
 inline constexpr std::uint32_t MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION = 3U;
@@ -124,4 +126,4 @@ struct MultiwayProtectedReplayRecord {
     void validate() const;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

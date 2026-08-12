@@ -1,6 +1,6 @@
 #include "solver/hunl_sampled_scheduler.hpp"
 
-namespace core {
+namespace texas::solver::hunl {
 
 std::vector<HUNLSampledWorkerBatch> HUNLSampledScheduler::partition_deterministic(
     std::uint64_t trajectory_count,
@@ -32,4 +32,4 @@ std::vector<HUNLSampledWorkerBatch> HUNLSampledScheduler::partition_deterministi
     return batches;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

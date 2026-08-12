@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/exploit.hpp"
 #include "games/hunl.hpp"
 
@@ -9,7 +11,7 @@
 #include <optional>
 #include <vector>
 
-namespace core {
+namespace texas::util {
 
 using SuitPerm = std::array<std::uint8_t, 4>;
 
@@ -73,6 +75,6 @@ SuitIsoCache build_suit_iso_cache(
 
 std::vector<bool> member_skip_mask(const std::vector<FlatNode>& nodes, const SuitIsoCache& cache);
 
-}  // namespace core
+}  // namespace texas::util
 
 

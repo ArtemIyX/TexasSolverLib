@@ -7,7 +7,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace core {
+namespace texas::games::multiway {
 
 namespace {
 
@@ -268,4 +268,4 @@ MultiwayTerminalResult evaluate_multiway_showdown(const MultiwayShowdownInput& i
     return settle_multiway_terminal(terminal);
 }
 
-}  // namespace core
+}  // namespace texas::games::multiway

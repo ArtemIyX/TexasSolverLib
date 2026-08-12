@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 bool is_aggressive(MultiwayAction action) noexcept {
@@ -453,4 +453,4 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::insert_exact_ob
     return menu;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace core {
+namespace texas::games {
 
 namespace {
 inline constexpr std::array<int, 3> KUHN_DECK = {11, 12, 13};
@@ -125,6 +125,6 @@ std::unique_ptr<Game> KuhnState::apply(ActionId action) const {
     return std::make_unique<KuhnState>(next_state(action));
 }
 
-}  // namespace core
+}  // namespace texas::games
 
 

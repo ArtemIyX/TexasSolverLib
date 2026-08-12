@@ -78,7 +78,7 @@ cmake --build build --config Release
 
 On multi-config generators, `Release` is the default verification configuration used in this repository.
 
-The top-level CMake project adds `external/pokerHandEvaluator/cpp` as a subdirectory and links `texas_core` to the `pheval` target. If you touch build files, keep that submodule wiring in mind so the fixed-size evaluator continues to build cleanly.
+The top-level CMake project adds `external/pokerHandEvaluator/cpp` as a subdirectory and links `texas` to the `pheval` target. If you touch build files, keep that submodule wiring in mind so the fixed-size evaluator continues to build cleanly.
 
 ## Testing
 
@@ -142,7 +142,7 @@ When adding a new class or function:
 - keep the declaration in the most relevant public header
 - keep the implementation in the matching `src/` module
 - follow the existing naming style
-- prefer `core::` namespace usage unless there is a strong reason to do otherwise
+- use the owning `texas::{core,games,ranges,preflop,solver,util}` namespace
 - add Doxygen comments for any public-facing symbol
 
 When adding a new solver path, try to keep the structure close to the existing `solve_kuhn` and `solve_leduc` flow so the code stays easy to reason about.

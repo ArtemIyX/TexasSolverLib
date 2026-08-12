@@ -7,7 +7,7 @@
 #include <intrin.h>
 #endif
 
-namespace core {
+namespace texas::util {
 
 namespace {
 
@@ -131,6 +131,6 @@ std::pair<std::size_t, double> sample_uniform_outcome(PcsRng& rng, std::size_t k
     return {idx, static_cast<double>(k_outcomes)};
 }
 
-}  // namespace core
+}  // namespace texas::util
 
 

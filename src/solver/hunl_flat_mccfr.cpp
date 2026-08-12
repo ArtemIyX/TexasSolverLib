@@ -15,7 +15,7 @@
 #include <utility>
 #include <limits>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -2848,4 +2848,4 @@ double HUNLFlatMCCFR::action_probability_delta(
     return delta;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

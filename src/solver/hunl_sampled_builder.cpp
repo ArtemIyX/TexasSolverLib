@@ -5,7 +5,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -493,4 +493,4 @@ std::uint64_t HUNLSampledBuilder::estimate_state_bytes(const HUNLState& state) n
     return bytes;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

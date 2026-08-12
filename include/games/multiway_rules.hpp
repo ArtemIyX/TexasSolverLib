@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_state.hpp"
 
 #include <cstdint>
 
-namespace core {
+namespace texas::games::multiway {
 
 // Versioned supported cash-game rules profile. Chip values are exact integers.
 // The current multiway engine supports the no-ante/no-straddle/no-rebuy profile
@@ -29,4 +31,4 @@ struct MultiwayGameRules {
     [[nodiscard]] MultiwayGameConfig make_initial_game_config(PlayerId first_player = 0) const;
 };
 
-}  // namespace core
+}  // namespace texas::games::multiway

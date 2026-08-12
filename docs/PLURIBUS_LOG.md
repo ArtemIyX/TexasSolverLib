@@ -4,6 +4,56 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Full namespace migration
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Moved first-party APIs from `core::` into the `texas` subsystem hierarchy.
+- Renamed the installed CMake target and binary from `texas_core` to `texas`.
+
+### Files
+
+- `include/core/namespaces.hpp`
+- `include/`, `src/`, `tests/`, `examples/`, and project documentation
+- `CMakeLists.txt`
+
+### Validation
+
+- Static namespace, source/header pairing, and legacy-reference checks completed.
+- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- This intentionally breaks consumers using `core::` or `TexasSolver::texas_core`.
+
+## Card encoding consolidation
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Standardized runtime, evaluator, canonical-combo, rollout, and multiway bucket cards on compact `[0, 51]` indices.
+- Removed HUNL offset constants and all multiway compact/HUNL adapter APIs.
+- Added a checked byte-sized `Card` construction API and versioned bucket artifacts to schema 3.
+
+### Files
+
+- `include/core/card.hpp`
+- `include/core/canonical_combo.hpp`
+- `include/solver/multiway_bucket_model.hpp`
+- `src/games/hunl.cpp`
+- `src/solver/multiway_bucket_model.cpp`
+- `tests/test_card.cpp`
+
+### Validation
+
+- Static diff review completed.
+- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Existing public containers retain byte storage while consuming the single compact encoding.
+
 ## P8.5-P8.6 Follow-up - Expose AIVAT record facade declarations
 
 **Status:** Complete

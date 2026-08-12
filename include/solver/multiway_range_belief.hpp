@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/canonical_combo.hpp"
 #include "solver/multiway_range_update.hpp"
 
@@ -7,7 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 inline constexpr std::size_t MULTIWAY_RANGE_BELIEF_MAX_SEATS = 6U;
 
@@ -161,4 +163,4 @@ private:
     std::uint64_t revision_ = 0U;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

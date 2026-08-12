@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 std::size_t expected_board_count(Street street) {
@@ -30,13 +30,6 @@ bool are_valid_compact_cards(const std::uint8_t* cards, std::size_t count) noexc
     return true;
 }
 
-std::uint8_t compact_card_from_hunl(std::uint8_t card) {
-    if (!is_hunl_card(card)) {
-        throw std::invalid_argument("multiway bucket HUNL adapter requires encoded HUNL cards");
-    }
-    return static_cast<std::uint8_t>(card - HUNL_CARD_FIRST);
-}
-
 std::uint64_t stable_table_identity(
     const MultiwayModelIdentity& identity,
     Street street,
@@ -57,51 +50,6 @@ std::uint64_t stable_table_identity(
     append(bucket_count);
     for (const auto assignment : assignments) append(assignment);
     return hash;
-}
-
-std::array<std::uint8_t, 2> compact_hole_from_hunl(const std::array<std::uint8_t, 2>& hole) {
-    const std::array<std::uint8_t, 2> compact = {
-        compact_card_from_hunl(hole[0]), compact_card_from_hunl(hole[1])};
-    if (compact[0] == compact[1]) {
-        throw std::invalid_argument("multiway bucket HUNL adapter requires distinct hole cards");
-    }
-    return compact;
-}
-
-std::size_t compact_hole_index_unchecked(const std::array<std::uint8_t, 2>& hole) noexcept {
-    const auto low = std::min(hole[0], hole[1]);
-    const auto high = std::max(hole[0], hole[1]);
-    return static_cast<std::size_t>(low) * (103U - low) / 2U + (high - low - 1U);
-}
-
-struct CompactBoardKey {
-    Street street = Street::Preflop;
-    std::array<std::uint8_t, 5> cards = {};
-    std::size_t size = 0U;
-};
-
-CompactBoardKey compact_board_key_from_hunl(Street street, const std::vector<std::uint8_t>& board) {
-    CompactBoardKey key;
-    key.street = street;
-    key.size = board.size();
-    if (key.size > key.cards.size()) {
-        throw std::invalid_argument("multiway bucket HUNL adapter has an oversized board");
-    }
-    for (std::size_t index = 0U; index < key.size; ++index) {
-        key.cards[index] = compact_card_from_hunl(board[index]);
-    }
-    std::sort(key.cards.begin(), key.cards.begin() + static_cast<std::ptrdiff_t>(key.size));
-    if (!are_valid_compact_cards(key.cards.data(), key.size)) {
-        throw std::invalid_argument("multiway bucket HUNL adapter requires distinct board cards");
-    }
-    return key;
-}
-
-bool table_less_than_key(const MultiwayBucketTable& candidate, const CompactBoardKey& key) {
-    if (candidate.street() != key.street) return candidate.street() < key.street;
-    return std::lexicographical_compare(
-        candidate.canonical_board().begin(), candidate.canonical_board().end(),
-        key.cards.begin(), key.cards.begin() + static_cast<std::ptrdiff_t>(key.size));
 }
 
 bool is_live_hole(const std::vector<std::uint8_t>& board, const std::array<std::uint8_t, 2>& hole) {
@@ -157,18 +105,6 @@ std::uint32_t MultiwayBucketTable::lookup(const std::array<std::uint8_t, 2>& hol
     return bucket;
 }
 
-std::uint32_t MultiwayBucketTable::lookup_hunl(const std::array<std::uint8_t, 2>& hole) const {
-    const auto compact = compact_hole_from_hunl(hole);
-    if (!is_live_hole(canonical_board_, compact)) {
-        throw std::invalid_argument("multiway bucket lookup requires a live distinct HUNL hole-card pair");
-    }
-    const auto bucket = assignments_[compact_hole_index_unchecked(compact)];
-    if (bucket >= bucket_count_) {
-        throw std::logic_error("multiway bucket table has no assignment for a live HUNL hole-card pair");
-    }
-    return bucket;
-}
-
 std::size_t MultiwayBucketTable::hole_index(const std::array<std::uint8_t, 2>& hole) {
     if (!are_valid_compact_cards(hole.data(), hole.size())) {
         throw std::invalid_argument("multiway bucket hole index requires distinct valid cards");
@@ -176,10 +112,6 @@ std::size_t MultiwayBucketTable::hole_index(const std::array<std::uint8_t, 2>& h
     const auto low = std::min(hole[0], hole[1]);
     const auto high = std::max(hole[0], hole[1]);
     return static_cast<std::size_t>(low) * (103U - low) / 2U + (high - low - 1U);
-}
-
-std::size_t MultiwayBucketTable::hole_index_hunl(const std::array<std::uint8_t, 2>& hole) {
-    return canonical_combos().id(hole);
 }
 
 MultiwayBucketRegistry::MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables)
@@ -223,21 +155,6 @@ const MultiwayBucketTable& MultiwayBucketRegistry::table(
     throw std::out_of_range("multiway bucket registry has no table for the canonical compact board");
 }
 
-const MultiwayBucketTable& MultiwayBucketRegistry::table_hunl(
-    Street street,
-    const std::vector<std::uint8_t>& canonical_board) const {
-    const auto compact_board = compact_board_key_from_hunl(street, canonical_board);
-    const auto compact_found = std::lower_bound(
-        tables_.begin(), tables_.end(), compact_board, table_less_than_key);
-    if (compact_found == tables_.end() || compact_found->street() != street ||
-        compact_found->canonical_board().size() != compact_board.size ||
-        !std::equal(compact_found->canonical_board().begin(), compact_found->canonical_board().end(),
-                    compact_board.cards.begin())) {
-        throw std::out_of_range("multiway bucket registry has no table for the canonical HUNL board");
-    }
-    return *compact_found;
-}
-
 std::uint32_t MultiwayBucketRegistry::lookup(
     Street street,
     const std::vector<std::uint8_t>& canonical_board,
@@ -245,11 +162,4 @@ std::uint32_t MultiwayBucketRegistry::lookup(
     return table(street, canonical_board).lookup(hole);
 }
 
-std::uint32_t MultiwayBucketRegistry::lookup_hunl(
-    Street street,
-    const std::vector<std::uint8_t>& canonical_board,
-    const std::array<std::uint8_t, 2>& hole) const {
-    return table_hunl(street, canonical_board).lookup_hunl(hole);
-}
-
-}  // namespace core
+}  // namespace texas::solver::multiway

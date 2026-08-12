@@ -6,7 +6,7 @@
 #include <set>
 #include <unordered_map>
 
-namespace core {
+namespace texas::util {
 
 const ChanceCollapse* SuitIsoCache::get(std::size_t node_idx) const {
     if (node_idx >= nodes.size()) return nullptr;
@@ -295,6 +295,6 @@ std::vector<bool> member_skip_mask(const std::vector<FlatNode>& nodes, const Sui
     return skip;
 }
 
-}  // namespace core
+}  // namespace texas::util
 
 

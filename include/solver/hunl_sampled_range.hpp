@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_solver.hpp"
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/hunl_sampled_export.hpp"
@@ -11,7 +13,7 @@
 #include <memory>
 #include <optional>
 
-namespace core {
+namespace texas::solver::hunl {
 
 // Structured ranges use a private-state traversal rather than the fixed-deal
 // public-node cache. The coordinator owns this object and advances it through
@@ -76,4 +78,4 @@ HUNLSampledRangeRunResult run_hunl_sampled_structured_range_batches(
     const HUNLLeafEvaluator* leaf_evaluator = nullptr,
     std::uint64_t memory_limit_bytes = 0U);
 
-}  // namespace core
+}  // namespace texas::solver::hunl

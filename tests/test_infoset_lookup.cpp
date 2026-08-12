@@ -3,19 +3,19 @@
 #include "util/infoset_lookup.hpp"
 
 TEST_CASE(infoset_lookup_interns_once_and_caches_locked_strategy) {
-    core::InfosetRegistry registry;
-    auto state = core::KuhnState::initial();
+    texas::InfosetRegistry registry;
+    auto state = texas::KuhnState::initial();
     state = state.next_state(11);
     state = state.next_state(12);
 
-    std::unordered_map<core::InfosetKey, std::vector<core::Probability>> locked = {
+    std::unordered_map<texas::InfosetKey, std::vector<texas::Probability>> locked = {
         {state.infoset_key(0), {0.25, 0.75}},
     };
-    std::unordered_map<core::InfosetId, std::vector<core::Probability>> locked_by_id;
+    std::unordered_map<texas::InfosetId, std::vector<texas::Probability>> locked_by_id;
 
-    const auto id0 = core::lookup_infoset_id(
+    const auto id0 = texas::lookup_infoset_id(
         state, 0, registry, state.legal_actions().size(), &locked, &locked_by_id);
-    const auto id1 = core::lookup_infoset_id(
+    const auto id1 = texas::lookup_infoset_id(
         state, 0, registry, state.legal_actions().size(), &locked, &locked_by_id);
 
     EXPECT_EQ(id0, id1);

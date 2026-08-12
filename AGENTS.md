@@ -50,7 +50,7 @@ TexasSolver is a C++17 poker-solving library. It contains Kuhn, Leduc, Hold'em/H
 
 Main CMake target:
 
-- `TexasSolver::texas_core`
+- `TexasSolver::texas`
 
 
 Read that document before making major HUNL solver changes.
@@ -175,7 +175,7 @@ Keep subsystem interfaces narrow. Traversal should receive views/references, not
 ## Style
 
 - Use C++17.
-- Match existing namespace/style patterns, especially `core::`.
+- Match the `texas::` namespace hierarchy.
 - Keep comments short and useful.
 - Prefer clear structured APIs over ad hoc strings.
 - Use integer ids and explicit metadata for states, rows, actions, buckets, and trajectories.

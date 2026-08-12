@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_export.hpp"
 
 #include <cstddef>
 
-namespace core {
+namespace texas::solver::multiway {
 
 class MultiwayBlueprintQuery {
 public:
@@ -19,4 +21,4 @@ public:
         std::size_t action_index);
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

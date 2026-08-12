@@ -3,7 +3,7 @@
 #include <cmath>
 #include <limits>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 bool is_target(
@@ -125,4 +125,4 @@ MultiwayLeafEvaluator make_multiway_fixed_continuation_leaf_evaluator(
     return {evaluate_multiway_fixed_continuation_leaf, context};
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

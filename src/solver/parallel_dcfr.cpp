@@ -20,7 +20,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace core {
+namespace texas::solver::dcfr {
 
 namespace detail {
 
@@ -477,7 +477,7 @@ std::pair<InfosetId, std::vector<Probability>> ParallelDCFRSolver<G>::resolve_in
     PlayerId player,
     std::size_t action_count) {
     std::lock_guard<std::mutex> lock(infoset_mutex_);
-    const auto id = core::lookup_infoset_id(
+    const auto id = texas::lookup_infoset_id(
         state, player, registry_, action_count, &locked_, &locked_by_id_);
 
     std::vector<Probability> locked_strategy;
@@ -894,4 +894,4 @@ template class ParallelDCFRSolver<KuhnState>;
 template class ParallelDCFRSolver<LeducState>;
 template class ParallelDCFRSolver<HUNLState>;
 
-}  // namespace core
+}  // namespace texas::solver::dcfr

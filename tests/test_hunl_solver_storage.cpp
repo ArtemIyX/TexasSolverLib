@@ -13,18 +13,18 @@
 
 namespace {
 
-std::shared_ptr<const core::HUNLConfig> river_config() {
-    return std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
+std::shared_ptr<const texas::HUNLConfig> river_config() {
+    return std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
 }
 
 TEST_CASE(hunl_solver_storage_infoset_table_allocates_expected_value_count) {
     const auto config = river_config();
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> bucket_count_per_player = {2, 3};
-    const auto table = core::HUNLFlatInfosetTable::build(
+    const auto table = texas::HUNLFlatInfosetTable::build(
         graph,
         bucket_count_per_player,
-        core::HUNLFlatValueLayout::InfosetHandAction);
+        texas::HUNLFlatValueLayout::InfosetHandAction);
 
     std::size_t expected_total = 0;
     for (std::size_t i = 0; i < graph.infosets.size(); ++i) {
@@ -42,16 +42,16 @@ TEST_CASE(hunl_solver_storage_infoset_table_allocates_expected_value_count) {
 
 TEST_CASE(hunl_solver_storage_bucketed_row_indexing_is_correct_for_both_layouts) {
     const auto config = river_config();
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> bucket_count_per_player = {2, 2};
-    const auto hand_action = core::HUNLFlatInfosetTable::build(
+    const auto hand_action = texas::HUNLFlatInfosetTable::build(
         graph,
         bucket_count_per_player,
-        core::HUNLFlatValueLayout::InfosetHandAction);
-    const auto action_hand = core::HUNLFlatInfosetTable::build(
+        texas::HUNLFlatValueLayout::InfosetHandAction);
+    const auto action_hand = texas::HUNLFlatInfosetTable::build(
         graph,
         bucket_count_per_player,
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     const auto id = graph.infosets.front().id;
     const auto& meta = hand_action.meta()[id.value];
@@ -63,12 +63,12 @@ TEST_CASE(hunl_solver_storage_bucketed_row_indexing_is_correct_for_both_layouts)
 
 TEST_CASE(hunl_solver_storage_strategy_and_regret_buffers_scale_with_bucket_count_not_hand_count) {
     const auto config = river_config();
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> bucket_count_per_player = {4, 5};
-    const auto table = core::HUNLFlatInfosetTable::build(
+    const auto table = texas::HUNLFlatInfosetTable::build(
         graph,
         bucket_count_per_player,
-        core::HUNLFlatValueLayout::InfosetActionHand);
+        texas::HUNLFlatValueLayout::InfosetActionHand);
 
     for (const auto& meta : table.meta()) {
         EXPECT_EQ(meta.hand_count, meta.bucket_count);
@@ -81,12 +81,12 @@ TEST_CASE(hunl_solver_storage_strategy_and_regret_buffers_scale_with_bucket_coun
 
 TEST_CASE(hunl_solver_storage_worker_partitioning_covers_all_infosets_and_nodes) {
     const auto config = river_config();
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    const auto table = core::HUNLFlatInfosetTable::build(
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    const auto table = texas::HUNLFlatInfosetTable::build(
         graph,
         {2, 3},
-        core::HUNLFlatValueLayout::InfosetHandAction);
-    const auto plan = core::HUNLFlatParallelPlan::build(graph, table, 4);
+        texas::HUNLFlatValueLayout::InfosetHandAction);
+    const auto plan = texas::HUNLFlatParallelPlan::build(graph, table, 4);
 
     std::uint32_t infoset_cursor = 0;
     std::uint32_t node_cursor = 0;
@@ -105,12 +105,12 @@ TEST_CASE(hunl_solver_storage_worker_partitioning_covers_all_infosets_and_nodes)
 
 TEST_CASE(hunl_solver_storage_small_bucket_counts_keep_stage_buffers_in_bounds) {
     const auto config = river_config();
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    const auto table = core::HUNLFlatInfosetTable::build(
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    const auto table = texas::HUNLFlatInfosetTable::build(
         graph,
         {1, 1},
-        core::HUNLFlatValueLayout::InfosetHandAction);
-    core::HUNLFlatWorkerScratch scratch;
+        texas::HUNLFlatValueLayout::InfosetHandAction);
+    texas::HUNLFlatWorkerScratch scratch;
     scratch.ensure_capacity(graph.node_meta.size(), graph.children.size(), table.total_bucket_count());
 
     EXPECT_EQ(scratch.bucket_reach.size(), table.total_bucket_count());
@@ -130,21 +130,21 @@ TEST_CASE(hunl_solver_storage_infoset_table_uses_bucket_map_bucket_counts) {
         std::nullopt,
         std::nullopt,
         config->initial_board,
-        [](core::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
+        [](texas::Street, std::size_t index, const std::array<std::uint8_t, 2>&) {
             return static_cast<std::uint8_t>(index % 3U);
         },
-        test_support::AbstractionFixtureOptions{{1, 1, 3}, core::ABSTRACTION_SCHEMA_VERSION, "river-3", std::nullopt});
+        test_support::AbstractionFixtureOptions{{1, 1, 3}, texas::ABSTRACTION_SCHEMA_VERSION, "river-3", std::nullopt});
 
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    const auto map = core::HUNLFlatBucketMap::from_abstraction(graph, core::load_abstraction(path));
-    const auto table = core::HUNLFlatInfosetTable::build(
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    const auto map = texas::HUNLFlatBucketMap::from_abstraction(graph, texas::load_abstraction(path));
+    const auto table = texas::HUNLFlatInfosetTable::build(
         graph,
         {99, 99},
         &map,
-        core::HUNLFlatValueLayout::InfosetHandAction);
+        texas::HUNLFlatValueLayout::InfosetHandAction);
 
     for (const auto& infoset : graph.infosets) {
-        if (infoset.street != core::Street::River) {
+        if (infoset.street != texas::Street::River) {
             continue;
         }
         const auto& meta = table.meta()[infoset.id.value];

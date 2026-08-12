@@ -6,17 +6,17 @@
 
 namespace {
 
-core::MultiwayState vector_state() {
-    core::MultiwayGameConfig config;
+texas::MultiwayState vector_state() {
+    texas::MultiwayGameConfig config;
     config.starting_stacks = {1000, 1000, 1000};
     config.initial_contributions = {0, 0, 0};
     config.initial_street_contributions = {0, 0, 0};
     config.first_player = 0;
-    config.street = core::Street::Flop;
-    return core::MultiwayState::initial(config);
+    config.street = texas::Street::Flop;
+    return texas::MultiwayState::initial(config);
 }
 
-void expect_state_parity(const core::MultiwayState& oracle, const core::MultiwayFixedState& fixed) {
+void expect_state_parity(const texas::MultiwayState& oracle, const texas::MultiwayFixedState& fixed) {
     const auto snapshot = oracle.snapshot();
     EXPECT_EQ(fixed.seat_count, snapshot.stacks.size());
     EXPECT_EQ(fixed.current_player, snapshot.current_player);
@@ -35,7 +35,7 @@ void expect_state_parity(const core::MultiwayState& oracle, const core::Multiway
 
 TEST_CASE(multiway_fixed_state_action_menu_and_apply_match_vector_oracle) {
     auto oracle = vector_state();
-    auto fixed = core::make_multiway_fixed_state(oracle.snapshot());
+    auto fixed = texas::make_multiway_fixed_state(oracle.snapshot());
     expect_state_parity(oracle, fixed);
 
     const auto oracle_actions = oracle.legal_actions();
@@ -45,22 +45,22 @@ TEST_CASE(multiway_fixed_state_action_menu_and_apply_match_vector_oracle) {
         EXPECT_EQ(fixed_actions.actions[action], oracle_actions[action]);
     }
 
-    oracle = oracle.apply(core::MultiwayAction::Bet, 200);
-    fixed = fixed.apply(core::MultiwayAction::Bet, 200);
+    oracle = oracle.apply(texas::MultiwayAction::Bet, 200);
+    fixed = fixed.apply(texas::MultiwayAction::Bet, 200);
     expect_state_parity(oracle, fixed);
 }
 
 TEST_CASE(multiway_fixed_terminal_matches_vector_oracle_with_side_pots_and_rake) {
-    core::MultiwayTerminalInput oracle_input;
+    texas::MultiwayTerminalInput oracle_input;
     oracle_input.contributions = {100, 300, 300};
     oracle_input.folded = {false, false, false};
-    oracle_input.strengths = {core::Strength{10}, core::Strength{5}, core::Strength{8}};
-    oracle_input.rake_policy.mode = core::MultiwayRakeMode::PercentageOfContestedPot;
+    oracle_input.strengths = {texas::Strength{10}, texas::Strength{5}, texas::Strength{8}};
+    oracle_input.rake_policy.mode = texas::MultiwayRakeMode::PercentageOfContestedPot;
     oracle_input.rake_policy.basis_points = 500U;
     oracle_input.rake_policy.cap = 20;
-    const auto oracle = core::settle_multiway_terminal(oracle_input);
+    const auto oracle = texas::settle_multiway_terminal(oracle_input);
 
-    core::MultiwayFixedTerminalInput fixed_input;
+    texas::MultiwayFixedTerminalInput fixed_input;
     fixed_input.seat_count = 3U;
     fixed_input.rake_policy = oracle_input.rake_policy;
     for (std::size_t seat = 0; seat < fixed_input.seat_count; ++seat) {
@@ -68,9 +68,9 @@ TEST_CASE(multiway_fixed_terminal_matches_vector_oracle_with_side_pots_and_rake)
         fixed_input.folded[seat] = oracle_input.folded[seat];
         fixed_input.strengths[seat] = oracle_input.strengths[seat];
     }
-    core::MultiwayFixedTerminalScratch scratch;
-    core::MultiwayFixedTerminalResult fixed;
-    core::settle_multiway_terminal_fixed(fixed_input, scratch, fixed);
+    texas::MultiwayFixedTerminalScratch scratch;
+    texas::MultiwayFixedTerminalResult fixed;
+    texas::settle_multiway_terminal_fixed(fixed_input, scratch, fixed);
 
     EXPECT_EQ(fixed.pot_count, oracle.pots.size());
     EXPECT_EQ(fixed.rake_taken, oracle.rake_taken);
@@ -87,19 +87,19 @@ TEST_CASE(multiway_fixed_terminal_matches_vector_oracle_with_side_pots_and_rake)
 
 TEST_CASE(multiway_fixed_two_and_three_seat_raked_terminal_toys_match_the_oracle) {
     for (const std::size_t seats : {std::size_t{2}, std::size_t{3}}) {
-        core::MultiwayTerminalInput oracle_input;
+        texas::MultiwayTerminalInput oracle_input;
         oracle_input.contributions.assign(seats, 100);
         oracle_input.folded.assign(seats, false);
         oracle_input.strengths.reserve(seats);
         for (std::size_t seat = 0; seat < seats; ++seat) {
-            oracle_input.strengths.push_back(core::Strength{static_cast<std::uint64_t>(seats - seat)});
+            oracle_input.strengths.push_back(texas::Strength{static_cast<std::uint64_t>(seats - seat)});
         }
-        oracle_input.rake_policy.mode = core::MultiwayRakeMode::PercentageOfContestedPot;
+        oracle_input.rake_policy.mode = texas::MultiwayRakeMode::PercentageOfContestedPot;
         oracle_input.rake_policy.basis_points = 500U;
         oracle_input.rake_policy.cap = 100;
-        const auto oracle = core::settle_multiway_terminal(oracle_input);
+        const auto oracle = texas::settle_multiway_terminal(oracle_input);
 
-        core::MultiwayFixedTerminalInput fixed_input;
+        texas::MultiwayFixedTerminalInput fixed_input;
         fixed_input.seat_count = static_cast<std::uint8_t>(seats);
         fixed_input.rake_policy = oracle_input.rake_policy;
         for (std::size_t seat = 0; seat < seats; ++seat) {
@@ -107,9 +107,9 @@ TEST_CASE(multiway_fixed_two_and_three_seat_raked_terminal_toys_match_the_oracle
             fixed_input.folded[seat] = oracle_input.folded[seat];
             fixed_input.strengths[seat] = oracle_input.strengths[seat];
         }
-        core::MultiwayFixedTerminalScratch scratch;
-        core::MultiwayFixedTerminalResult fixed;
-        core::settle_multiway_terminal_fixed(fixed_input, scratch, fixed);
+        texas::MultiwayFixedTerminalScratch scratch;
+        texas::MultiwayFixedTerminalResult fixed;
+        texas::settle_multiway_terminal_fixed(fixed_input, scratch, fixed);
 
         EXPECT_EQ(fixed.rake_taken, oracle.rake_taken);
         int settled_chips = fixed.rake_taken;

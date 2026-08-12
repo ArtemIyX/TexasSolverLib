@@ -8,7 +8,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -521,4 +521,4 @@ void prepare_hunl_sampled_trajectory(
     throw std::runtime_error("sampled traversal coordinator preparation exceeded limit");
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

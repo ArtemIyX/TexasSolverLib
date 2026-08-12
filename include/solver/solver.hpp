@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "solver/dcfr.hpp"
 #include "solver/parallel_dcfr.hpp"
@@ -11,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::solver {
 
 /**
  * @brief Validate DCFR parameters before solving.
@@ -292,6 +294,6 @@ SolveOutput solve_generic(
 
 }  // namespace detail
 
-}  // namespace core
+}  // namespace texas::solver
 
 

@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstddef>
 #include <string_view>
 
-namespace core {
+namespace texas::util {
 
 enum class SimdBackend {
     Scalar = 0,
@@ -108,6 +110,6 @@ void compute_strategy_row_small(const double* regrets, double* out, std::size_t 
 void discount_regrets_f32(float* regrets, std::size_t len, double pos_scale, double neg_scale) noexcept;
 void discount_strategy_sum_f32(float* strategy, std::size_t len, double strat_scale) noexcept;
 
-}  // namespace core
+}  // namespace texas::util
 
 

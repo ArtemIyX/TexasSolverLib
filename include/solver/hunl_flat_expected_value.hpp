@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_flat_state.hpp"
 
@@ -8,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLFlatAverageStrategyView {
     std::vector<const double*> rows_by_infoset;
@@ -50,4 +52,4 @@ std::array<double, 2> compute_flat_expected_value(
     const HUNLFlatSolveGraph& graph,
     const std::unordered_map<std::string, std::vector<double>>& average_strategy);
 
-}  // namespace core
+}  // namespace texas::solver::hunl

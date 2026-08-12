@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway_continuation_policy_kind.hpp"
@@ -9,7 +11,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 class MultiwaySamplerDealToken;
 class MultiwayTerminalAdapter;
@@ -54,4 +56,4 @@ struct MultiwayLeafEvaluator {
     }
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl_tree.hpp"
@@ -14,7 +16,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLSampledBuilderConfig {
     // Kept for forward compatibility; public chance collapse is disabled until
@@ -148,4 +150,4 @@ private:
     std::vector<HUNLSampledEdge> edges_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

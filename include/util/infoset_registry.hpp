@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "games/hunl.hpp"
 
@@ -8,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::util {
 
 struct InfosetMeta {
     std::size_t action_count = 0;
@@ -36,4 +38,4 @@ private:
     std::vector<InfosetMeta> meta_;
 };
 
-}  // namespace core
+}  // namespace texas::util

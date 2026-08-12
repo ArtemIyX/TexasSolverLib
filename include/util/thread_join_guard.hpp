@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <thread>
 #include <utility>
 #include <vector>
 
-namespace core::detail {
+namespace texas::util::detail {
 
 template <class StopFunction>
 class ThreadJoinGuard {
@@ -59,4 +61,4 @@ ThreadJoinGuard<StopFunction> make_thread_join_guard(
         std::move(stop_function));
 }
 
-}  // namespace core::detail
+}  // namespace texas::util::detail

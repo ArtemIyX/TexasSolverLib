@@ -9,35 +9,35 @@
 
 namespace {
 
-core::MultiwayState expansion_state() {
-    core::MultiwayGameConfig config;
+texas::MultiwayState expansion_state() {
+    texas::MultiwayGameConfig config;
     config.starting_stacks = {10'000, 10'000, 10'000};
     config.initial_contributions = {100, 100, 100};
     config.initial_street_contributions = {0, 0, 0};
     config.first_player = 0;
     config.big_blind = 100;
-    config.street = core::Street::Flop;
-    return core::MultiwayState::initial(config);
+    config.street = texas::Street::Flop;
+    return texas::MultiwayState::initial(config);
 }
 
-core::MultiwayActionAbstraction expansion_abstraction() {
-    core::MultiwayActionAbstractionConfig config;
+texas::MultiwayActionAbstraction expansion_abstraction() {
+    texas::MultiwayActionAbstractionConfig config;
     config.translation_max_pseudo_harmonic_distance_basis_points = 1U;
-    return core::MultiwayActionAbstraction(config);
+    return texas::MultiwayActionAbstraction(config);
 }
 
-core::MultiwayDeviationExpansionConfig expansion_config() {
-    core::MultiwayDeviationExpansionConfig config;
+texas::MultiwayDeviationExpansionConfig expansion_config() {
+    texas::MultiwayDeviationExpansionConfig config;
     config.minimum_pseudo_harmonic_distance_basis_points = 1U;
     return config;
 }
 
-core::MultiwayModelIdentity future_identity() {
-    return core::make_multiway_model_identity(core::MultiwayBlueprintConfig{});
+texas::MultiwayModelIdentity future_identity() {
+    return texas::make_multiway_model_identity(texas::MultiwayBlueprintConfig{});
 }
 
-core::MultiwayFutureBucketProfile small_profile() {
-    core::MultiwayFutureBucketProfile profile;
+texas::MultiwayFutureBucketProfile small_profile() {
+    texas::MultiwayFutureBucketProfile profile;
     profile.lloyd_iterations = 1U;
     profile.flop_bucket_count = 2U;
     profile.turn_bucket_count = 2U;
@@ -45,33 +45,33 @@ core::MultiwayFutureBucketProfile small_profile() {
     return profile;
 }
 
-std::vector<core::MultiwayBucketBoardRequest> flop_boards() {
-    return {{core::Street::Flop, {0U, 5U, 10U}}};
+std::vector<texas::MultiwayBucketBoardRequest> flop_boards() {
+    return {{texas::Street::Flop, {0U, 5U, 10U}}};
 }
 
 struct FutureFeatureFixture {
-    core::Street street;
+    texas::Street street;
     std::vector<std::uint8_t> board;
     std::array<std::uint8_t, 2> hole;
 };
 
 FutureFeatureFixture future_feature_fixture(std::uint8_t index) {
     static const std::array<FutureFeatureFixture, 15U> fixtures = {{
-        {core::Street::Flop, {0U, 5U, 10U}, {1U, 2U}},
-        {core::Street::Flop, {0U, 5U, 10U}, {3U, 4U}},
-        {core::Street::Flop, {0U, 5U, 10U}, {6U, 7U}},
-        {core::Street::Flop, {0U, 5U, 10U}, {11U, 12U}},
-        {core::Street::Flop, {0U, 5U, 10U}, {20U, 21U}},
-        {core::Street::Flop, {0U, 5U, 10U}, {30U, 31U}},
-        {core::Street::Flop, {0U, 5U, 10U}, {40U, 41U}},
-        {core::Street::Turn, {0U, 5U, 10U, 15U}, {1U, 2U}},
-        {core::Street::Turn, {0U, 5U, 10U, 15U}, {3U, 4U}},
-        {core::Street::Turn, {0U, 5U, 10U, 15U}, {6U, 7U}},
-        {core::Street::Turn, {0U, 5U, 10U, 15U}, {20U, 21U}},
-        {core::Street::River, {0U, 5U, 10U, 15U, 20U}, {1U, 2U}},
-        {core::Street::River, {0U, 5U, 10U, 15U, 20U}, {3U, 4U}},
-        {core::Street::River, {0U, 5U, 10U, 15U, 20U}, {6U, 7U}},
-        {core::Street::River, {0U, 5U, 10U, 15U, 20U}, {30U, 31U}},
+        {texas::Street::Flop, {0U, 5U, 10U}, {1U, 2U}},
+        {texas::Street::Flop, {0U, 5U, 10U}, {3U, 4U}},
+        {texas::Street::Flop, {0U, 5U, 10U}, {6U, 7U}},
+        {texas::Street::Flop, {0U, 5U, 10U}, {11U, 12U}},
+        {texas::Street::Flop, {0U, 5U, 10U}, {20U, 21U}},
+        {texas::Street::Flop, {0U, 5U, 10U}, {30U, 31U}},
+        {texas::Street::Flop, {0U, 5U, 10U}, {40U, 41U}},
+        {texas::Street::Turn, {0U, 5U, 10U, 15U}, {1U, 2U}},
+        {texas::Street::Turn, {0U, 5U, 10U, 15U}, {3U, 4U}},
+        {texas::Street::Turn, {0U, 5U, 10U, 15U}, {6U, 7U}},
+        {texas::Street::Turn, {0U, 5U, 10U, 15U}, {20U, 21U}},
+        {texas::Street::River, {0U, 5U, 10U, 15U, 20U}, {1U, 2U}},
+        {texas::Street::River, {0U, 5U, 10U, 15U, 20U}, {3U, 4U}},
+        {texas::Street::River, {0U, 5U, 10U, 15U, 20U}, {6U, 7U}},
+        {texas::Street::River, {0U, 5U, 10U, 15U, 20U}, {30U, 31U}},
     }};
     return fixtures[index];
 }
@@ -84,8 +84,8 @@ FutureFeatureFixture future_feature_fixture(std::uint8_t index) {
         const auto abstraction = expansion_abstraction(); \
         const auto menu = abstraction.make_legal_actions(state.snapshot(), 0U); \
         EXPECT_EQ(abstraction.classify_observed_action( \
-            state.snapshot(), menu, core::MultiwayAction::Bet, target, expansion_config()), \
-            core::MultiwayDeviationDisposition::Expand); \
+            state.snapshot(), menu, texas::MultiwayAction::Bet, target, expansion_config()), \
+            texas::MultiwayDeviationDisposition::Expand); \
     }
 
 P53_EXPANSION_CASE(target_500, 500)
@@ -111,7 +111,7 @@ TEST_CASE(multiway_phase5_p53_exact_menu_action_translates) {
     const auto exact = menu.front();
     EXPECT_EQ(abstraction.classify_observed_action(
         state.snapshot(), menu, exact.action, exact.target_street_contribution, expansion_config()),
-        core::MultiwayDeviationDisposition::Translate);
+        texas::MultiwayDeviationDisposition::Translate);
 }
 
 TEST_CASE(multiway_phase5_p53_rejects_expansion_below_active_seat_limit) {
@@ -121,7 +121,7 @@ TEST_CASE(multiway_phase5_p53_rejects_expansion_below_active_seat_limit) {
     config.minimum_active_seats = 4U;
     EXPECT_EQ(abstraction.classify_observed_action(
         state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
-        core::MultiwayAction::Bet, 2500, config), core::MultiwayDeviationDisposition::Translate);
+        texas::MultiwayAction::Bet, 2500, config), texas::MultiwayDeviationDisposition::Translate);
 }
 
 TEST_CASE(multiway_phase5_p53_rejects_expansion_for_disabled_flop) {
@@ -131,7 +131,7 @@ TEST_CASE(multiway_phase5_p53_rejects_expansion_for_disabled_flop) {
     config.enabled_postflop_street_mask = 0x02U;
     EXPECT_EQ(abstraction.classify_observed_action(
         state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
-        core::MultiwayAction::Bet, 2500, config), core::MultiwayDeviationDisposition::Translate);
+        texas::MultiwayAction::Bet, 2500, config), texas::MultiwayDeviationDisposition::Translate);
 }
 
 TEST_CASE(multiway_phase5_p53_rejects_expansion_at_menu_capacity) {
@@ -141,8 +141,8 @@ TEST_CASE(multiway_phase5_p53_rejects_expansion_at_menu_capacity) {
     auto config = expansion_config();
     config.maximum_menu_actions = static_cast<std::uint8_t>(menu.size());
     EXPECT_EQ(abstraction.classify_observed_action(
-        state.snapshot(), menu, core::MultiwayAction::Bet, 2500, config),
-        core::MultiwayDeviationDisposition::Translate);
+        state.snapshot(), menu, texas::MultiwayAction::Bet, 2500, config),
+        texas::MultiwayDeviationDisposition::Translate);
 }
 
 TEST_CASE(multiway_phase5_p53_non_aggressive_action_translates) {
@@ -150,7 +150,7 @@ TEST_CASE(multiway_phase5_p53_non_aggressive_action_translates) {
     const auto abstraction = expansion_abstraction();
     EXPECT_EQ(abstraction.classify_observed_action(
         state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
-        core::MultiwayAction::Check, 0, expansion_config()), core::MultiwayDeviationDisposition::Translate);
+        texas::MultiwayAction::Check, 0, expansion_config()), texas::MultiwayDeviationDisposition::Translate);
 }
 
 TEST_CASE(multiway_phase5_p53_invalid_target_is_rejected) {
@@ -158,7 +158,7 @@ TEST_CASE(multiway_phase5_p53_invalid_target_is_rejected) {
     const auto abstraction = expansion_abstraction();
     EXPECT_THROW(abstraction.classify_observed_action(
         state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
-        core::MultiwayAction::Bet, -1, expansion_config()), std::invalid_argument);
+        texas::MultiwayAction::Bet, -1, expansion_config()), std::invalid_argument);
 }
 
 #define P53_INVALID_CONFIG_CASE(label, mutation) \
@@ -180,9 +180,9 @@ P53_INVALID_CONFIG_CASE(excess_menu_capacity, config.maximum_menu_actions = 9U)
 #define P56_FEATURE_CASE(label, index) \
     TEST_CASE(multiway_phase5_p56_feature_determinism_##label) { \
         const auto fixture = future_feature_fixture(index); \
-        const auto first = core::make_multiway_future_bucket_features( \
+        const auto first = texas::make_multiway_future_bucket_features( \
             fixture.street, fixture.board, fixture.hole); \
-        const auto second = core::make_multiway_future_bucket_features( \
+        const auto second = texas::make_multiway_future_bucket_features( \
             fixture.street, fixture.board, fixture.hole); \
         EXPECT_EQ(first.feature_version, second.feature_version); \
         EXPECT_EQ(first.values, second.values); \
@@ -207,40 +207,40 @@ P56_FEATURE_CASE(river_04, 14U)
 #undef P56_FEATURE_CASE
 
 TEST_CASE(multiway_phase5_p56_feature_rejects_zero_version) {
-    EXPECT_THROW(core::make_multiway_future_bucket_features(
-        core::Street::Flop, {0U, 5U, 10U}, {1U, 2U}, 0U), std::invalid_argument);
+    EXPECT_THROW(texas::make_multiway_future_bucket_features(
+        texas::Street::Flop, {0U, 5U, 10U}, {1U, 2U}, 0U), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_feature_rejects_blocked_first_card) {
-    EXPECT_THROW(core::make_multiway_future_bucket_features(
-        core::Street::Flop, {0U, 5U, 10U}, {0U, 2U}), std::invalid_argument);
+    EXPECT_THROW(texas::make_multiway_future_bucket_features(
+        texas::Street::Flop, {0U, 5U, 10U}, {0U, 2U}), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_feature_rejects_blocked_second_card) {
-    EXPECT_THROW(core::make_multiway_future_bucket_features(
-        core::Street::Flop, {0U, 5U, 10U}, {1U, 5U}), std::invalid_argument);
+    EXPECT_THROW(texas::make_multiway_future_bucket_features(
+        texas::Street::Flop, {0U, 5U, 10U}, {1U, 5U}), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_feature_rejects_duplicate_hole) {
-    EXPECT_THROW(core::make_multiway_future_bucket_features(
-        core::Street::Flop, {0U, 5U, 10U}, {1U, 1U}), std::invalid_argument);
+    EXPECT_THROW(texas::make_multiway_future_bucket_features(
+        texas::Street::Flop, {0U, 5U, 10U}, {1U, 1U}), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_feature_rejects_noncanonical_board) {
-    EXPECT_THROW(core::make_multiway_future_bucket_features(
-        core::Street::Flop, {10U, 0U, 5U}, {1U, 2U}), std::invalid_argument);
+    EXPECT_THROW(texas::make_multiway_future_bucket_features(
+        texas::Street::Flop, {10U, 0U, 5U}, {1U, 2U}), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_profile_selects_flop_count) {
-    EXPECT_EQ(small_profile().bucket_count(core::Street::Flop), 2U);
+    EXPECT_EQ(small_profile().bucket_count(texas::Street::Flop), 2U);
 }
 
 TEST_CASE(multiway_phase5_p56_profile_selects_turn_count) {
-    EXPECT_EQ(small_profile().bucket_count(core::Street::Turn), 2U);
+    EXPECT_EQ(small_profile().bucket_count(texas::Street::Turn), 2U);
 }
 
 TEST_CASE(multiway_phase5_p56_profile_selects_river_count) {
-    EXPECT_EQ(small_profile().bucket_count(core::Street::River), 2U);
+    EXPECT_EQ(small_profile().bucket_count(texas::Street::River), 2U);
 }
 
 #define P56_INVALID_PROFILE_CASE(label, mutation) \
@@ -260,63 +260,63 @@ P56_INVALID_PROFILE_CASE(zero_river_count, profile.river_bucket_count = 0U)
 #undef P56_INVALID_PROFILE_CASE
 
 TEST_CASE(multiway_phase5_p56_artifact_producer_is_repeatable) {
-    const auto first = core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
-    const auto second = core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
-    EXPECT_EQ(core::serialize_multiway_future_bucket_artifact(first),
-              core::serialize_multiway_future_bucket_artifact(second));
+    const auto first = texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
+    const auto second = texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
+    EXPECT_EQ(texas::serialize_multiway_future_bucket_artifact(first),
+              texas::serialize_multiway_future_bucket_artifact(second));
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_uses_configured_flop_count) {
-    const auto artifact = core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
+    const auto artifact = texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
     EXPECT_EQ(artifact.registry().tables().front().bucket_count(), 2U);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_lookup_is_in_range) {
-    const auto artifact = core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
-    EXPECT_TRUE(artifact.lookup_hunl(core::Street::Flop, {8U, 13U, 18U}, {9U, 10U}) < 2U);
+    const auto artifact = texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
+    EXPECT_TRUE(artifact.lookup(texas::Street::Flop, {8U, 13U, 18U}, {9U, 10U}) < 2U);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_round_trips_profile) {
-    const auto artifact = core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
-    const auto restored = core::deserialize_multiway_future_bucket_artifact(
-        core::serialize_multiway_future_bucket_artifact(artifact));
+    const auto artifact = texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
+    const auto restored = texas::deserialize_multiway_future_bucket_artifact(
+        texas::serialize_multiway_future_bucket_artifact(artifact));
     EXPECT_EQ(restored.profile().seed, artifact.profile().seed);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_round_trips_identity) {
-    const auto artifact = core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
-    const auto restored = core::deserialize_multiway_future_bucket_artifact(
-        core::serialize_multiway_future_bucket_artifact(artifact));
+    const auto artifact = texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
+    const auto restored = texas::deserialize_multiway_future_bucket_artifact(
+        texas::serialize_multiway_future_bucket_artifact(artifact));
     EXPECT_EQ(restored.registry().identity(), artifact.registry().identity());
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_rejects_empty_board_set) {
-    EXPECT_THROW(core::build_multiway_future_bucket_artifact(
+    EXPECT_THROW(texas::build_multiway_future_bucket_artifact(
         future_identity(), {}, small_profile()), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_rejects_noncanonical_board) {
-    EXPECT_THROW(core::build_multiway_future_bucket_artifact(
-        future_identity(), {{core::Street::Flop, {10U, 0U, 5U}}}, small_profile()), std::invalid_argument);
+    EXPECT_THROW(texas::build_multiway_future_bucket_artifact(
+        future_identity(), {{texas::Street::Flop, {10U, 0U, 5U}}}, small_profile()), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_rejects_corrupt_magic) {
-    auto bytes = core::serialize_multiway_future_bucket_artifact(
-        core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile()));
+    auto bytes = texas::serialize_multiway_future_bucket_artifact(
+        texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile()));
     bytes[0] = 0U;
-    EXPECT_THROW(core::deserialize_multiway_future_bucket_artifact(bytes), std::invalid_argument);
+    EXPECT_THROW(texas::deserialize_multiway_future_bucket_artifact(bytes), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_rejects_corrupt_schema) {
-    auto bytes = core::serialize_multiway_future_bucket_artifact(
-        core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile()));
-    bytes[4] = static_cast<std::uint8_t>(core::MULTIWAY_FUTURE_BUCKET_ARTIFACT_SCHEMA_VERSION + 1U);
-    EXPECT_THROW(core::deserialize_multiway_future_bucket_artifact(bytes), std::invalid_argument);
+    auto bytes = texas::serialize_multiway_future_bucket_artifact(
+        texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile()));
+    bytes[4] = static_cast<std::uint8_t>(texas::MULTIWAY_FUTURE_BUCKET_ARTIFACT_SCHEMA_VERSION + 1U);
+    EXPECT_THROW(texas::deserialize_multiway_future_bucket_artifact(bytes), std::invalid_argument);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_rejects_truncated_payload) {
-    auto bytes = core::serialize_multiway_future_bucket_artifact(
-        core::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile()));
+    auto bytes = texas::serialize_multiway_future_bucket_artifact(
+        texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile()));
     bytes.resize(47U);
-    EXPECT_THROW(core::deserialize_multiway_future_bucket_artifact(bytes), std::invalid_argument);
+    EXPECT_THROW(texas::deserialize_multiway_future_bucket_artifact(bytes), std::invalid_argument);
 }

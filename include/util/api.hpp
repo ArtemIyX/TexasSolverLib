@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "util/abstraction.hpp"
 #include "solver/dcfr.hpp"
 #include "solver/dcfr_vector.hpp"

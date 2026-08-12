@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "util/simd.hpp"
 
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::hunl {
 
 enum class HUNLSampledSimdBackend : std::uint8_t {
     Scalar = 0,
@@ -109,4 +111,4 @@ void saxpy_f32(std::uint32_t n, float alpha, const float* x, float* y);
 double dot_f32_f64_accum(std::uint32_t n, const float* x, const float* y);
 double weighted_sum_f32_f64_accum(std::uint32_t n, const float* values, const float* weights);
 
-}  // namespace core
+}  // namespace texas::solver::hunl

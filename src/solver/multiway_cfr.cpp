@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 
 namespace {
 
@@ -347,4 +347,4 @@ MultiwayNashConv compute_multiway_nash_conv(
     return result;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

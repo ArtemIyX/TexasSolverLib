@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/hunl_sampled_builder.hpp"
 #include "solver/hunl_sampled_storage.hpp"
 #include "solver/hunl_sampled_terminal.hpp"
@@ -11,7 +13,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLSampledTraversalRequest {
     PlayerId traversing_player = 0;
@@ -108,4 +110,4 @@ void prepare_hunl_sampled_trajectory(
     const HUNLSampledTerminalEvaluator& terminal_evaluator,
     const HUNLSampledTraversalRequest& request);
 
-}  // namespace core
+}  // namespace texas::solver::hunl

@@ -43,9 +43,9 @@ struct RandomConfig {
     std::uint32_t time_budget_ms = 0;
     std::uint32_t depth_limit_plies = 0;
     std::size_t hand_buckets = 1326;
-    core::Street street = core::Street::River;
-    core::HUNLFlatStoragePrecision precision = core::HUNLFlatStoragePrecision::Float64;
-    core::HUNLFlatSamplingMode sampling_mode = core::HUNLFlatSamplingMode::Exact;
+    texas::Street street = texas::Street::River;
+    texas::HUNLFlatStoragePrecision precision = texas::HUNLFlatStoragePrecision::Float64;
+    texas::HUNLFlatSamplingMode sampling_mode = texas::HUNLFlatSamplingMode::Exact;
     std::uint64_t seed = 0;
     bool debug = false;
     Preset preset = Preset::None;
@@ -91,17 +91,17 @@ bool parse_workers(std::string_view text, std::size_t& out) {
     }
 }
 
-std::optional<core::Street> street_from_text(std::string_view text) {
-    if (text == "flop") return core::Street::Flop;
-    if (text == "turn") return core::Street::Turn;
-    if (text == "river") return core::Street::River;
+std::optional<texas::Street> street_from_text(std::string_view text) {
+    if (text == "flop") return texas::Street::Flop;
+    if (text == "turn") return texas::Street::Turn;
+    if (text == "river") return texas::Street::River;
     return std::nullopt;
 }
 
-std::optional<core::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
-    if (text == "double" || text == "float64") return core::HUNLFlatStoragePrecision::Float64;
-    if (text == "float" || text == "float32") return core::HUNLFlatStoragePrecision::Float32;
-    if (text == "compressed16" || text == "fp16") return core::HUNLFlatStoragePrecision::Compressed16;
+std::optional<texas::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
+    if (text == "double" || text == "float64") return texas::HUNLFlatStoragePrecision::Float64;
+    if (text == "float" || text == "float32") return texas::HUNLFlatStoragePrecision::Float32;
+    if (text == "compressed16" || text == "fp16") return texas::HUNLFlatStoragePrecision::Compressed16;
     return std::nullopt;
 }
 
@@ -111,11 +111,11 @@ std::optional<RandomConfig::Preset> preset_from_text(std::string_view text) {
     return std::nullopt;
 }
 
-std::optional<core::HUNLFlatSamplingMode> sampling_mode_from_text(std::string_view text) {
-    if (text == "exact") return core::HUNLFlatSamplingMode::Exact;
-    if (text == "public-chance") return core::HUNLFlatSamplingMode::PublicChance;
-    if (text == "external") return core::HUNLFlatSamplingMode::External;
-    if (text == "average-strategy") return core::HUNLFlatSamplingMode::AverageStrategy;
+std::optional<texas::HUNLFlatSamplingMode> sampling_mode_from_text(std::string_view text) {
+    if (text == "exact") return texas::HUNLFlatSamplingMode::Exact;
+    if (text == "public-chance") return texas::HUNLFlatSamplingMode::PublicChance;
+    if (text == "external") return texas::HUNLFlatSamplingMode::External;
+    if (text == "average-strategy") return texas::HUNLFlatSamplingMode::AverageStrategy;
     return std::nullopt;
 }
 
@@ -210,19 +210,19 @@ std::optional<RandomConfig> parse_args(int argc, char* argv[]) {
     if (cfg.preset != RandomConfig::Preset::None) {
         const auto preset_config =
             cfg.preset == RandomConfig::Preset::RTAFlopConservative
-            ? core::rta_flop_conservative()
-            : core::rta_flop_balanced();
+            ? texas::rta_flop_conservative()
+            : texas::rta_flop_balanced();
         if (!cfg.workers_overridden) {
             cfg.workers = 8;
         }
         if (!cfg.street_overridden) {
-            cfg.street = core::Street::Flop;
+            cfg.street = texas::Street::Flop;
         }
         if (!cfg.buckets_overridden) {
-            cfg.hand_buckets = core::configured_bucket_count(preset_config, cfg.street);
+            cfg.hand_buckets = texas::configured_bucket_count(preset_config, cfg.street);
         }
         if (!cfg.precision_overridden) {
-            cfg.precision = core::HUNLFlatStoragePrecision::Float32;
+            cfg.precision = texas::HUNLFlatStoragePrecision::Float32;
         }
     }
     return cfg;
@@ -248,11 +248,11 @@ std::string format_seconds(double seconds) {
     return oss.str();
 }
 
-std::string street_name(core::Street street) {
+std::string street_name(texas::Street street) {
     switch (street) {
-        case core::Street::Flop: return "flop";
-        case core::Street::Turn: return "turn";
-        case core::Street::River: return "river";
+        case texas::Street::Flop: return "flop";
+        case texas::Street::Turn: return "turn";
+        case texas::Street::River: return "river";
         default: return "unknown";
     }
 }
@@ -266,12 +266,12 @@ std::string preset_name(RandomConfig::Preset preset) {
     return "unknown";
 }
 
-std::string sampling_mode_name(core::HUNLFlatSamplingMode mode) {
+std::string sampling_mode_name(texas::HUNLFlatSamplingMode mode) {
     switch (mode) {
-        case core::HUNLFlatSamplingMode::Exact: return "exact";
-        case core::HUNLFlatSamplingMode::PublicChance: return "public-chance";
-        case core::HUNLFlatSamplingMode::External: return "external";
-        case core::HUNLFlatSamplingMode::AverageStrategy: return "average-strategy";
+        case texas::HUNLFlatSamplingMode::Exact: return "exact";
+        case texas::HUNLFlatSamplingMode::PublicChance: return "public-chance";
+        case texas::HUNLFlatSamplingMode::External: return "external";
+        case texas::HUNLFlatSamplingMode::AverageStrategy: return "average-strategy";
     }
     return "unknown";
 }
@@ -279,13 +279,13 @@ std::string sampling_mode_name(core::HUNLFlatSamplingMode mode) {
 
 
 std::string cards_to_string(const std::array<std::uint8_t, 2>& cards) {
-    return core::card_to_string(cards[0]) + core::card_to_string(cards[1]);
+    return texas::card_to_string(cards[0]) + texas::card_to_string(cards[1]);
 }
 
 std::string board_to_string(const std::vector<std::uint8_t>& cards) {
     std::string out;
     for (const auto card : cards) {
-        out += core::card_to_string(card);
+        out += texas::card_to_string(card);
     }
     return out;
 }
@@ -302,15 +302,15 @@ StrategyMap to_strategy_map(const std::unordered_map<std::string, std::vector<do
 }
 
 struct RandomState {
-    core::HUNLConfig config;
-    core::HUNLState state;
+    texas::HUNLConfig config;
+    texas::HUNLState state;
 };
 
 struct TimedBenchmarkResult {
-    core::HUNLFlatAverageStrategyTable strategy_table;
+    texas::HUNLFlatAverageStrategyTable strategy_table;
     std::unordered_map<std::string, std::vector<double>> exported_strategy;
     StrategyMap strategy;
-    core::HUNLFlatMCCFR::RootStrategySnapshot sampled_root_snapshot{};
+    texas::HUNLFlatMCCFR::RootStrategySnapshot sampled_root_snapshot{};
     std::uint64_t sampled_public_states_cached = 0;
     std::uint64_t sampled_infoset_rows_allocated = 0;
     std::uint64_t sampled_sparse_values_allocated = 0;
@@ -329,28 +329,28 @@ struct TimedBenchmarkResult {
     double exploit_seconds = 0.0;
     bool sampled = false;
     bool root_only_export = false;
-    core::HUNLFlatStageProfile profile{};
-    core::HUNLFlatMCCFR::Profile sampled_profile{};
-    core::HUNLFlatMCCFR::Counters sampled_counters{};
+    texas::HUNLFlatStageProfile profile{};
+    texas::HUNLFlatMCCFR::Profile sampled_profile{};
+    texas::HUNLFlatMCCFR::Counters sampled_counters{};
 };
 
 RandomState make_random_state(const RandomConfig& cfg) {
     std::mt19937_64 rng(cfg.seed == 0 ? std::random_device{}() : cfg.seed);
-    const std::size_t board_count = cfg.street == core::Street::Flop ? 3 : cfg.street == core::Street::Turn ? 4 : 5;
+    const std::size_t board_count = cfg.street == texas::Street::Flop ? 3 : cfg.street == texas::Street::Turn ? 4 : 5;
 
     std::vector<std::uint8_t> deck;
     deck.reserve(52);
     for (std::uint8_t rank = 2; rank <= 14; ++rank) {
         for (std::uint8_t suit = 0; suit < 4; ++suit) {
-            deck.push_back(core::card_to_int(rank, suit));
+            deck.push_back(texas::card_to_int(rank, suit));
         }
     }
     std::shuffle(deck.begin(), deck.end(), rng);
 
-    core::HUNLConfig config =
-        cfg.preset == RandomConfig::Preset::RTAFlopConservative ? core::rta_flop_conservative() :
-        cfg.preset == RandomConfig::Preset::RTAFlopBalanced ? core::rta_flop_balanced() :
-        core::HUNLConfig{};
+    texas::HUNLConfig config =
+        cfg.preset == RandomConfig::Preset::RTAFlopConservative ? texas::rta_flop_conservative() :
+        cfg.preset == RandomConfig::Preset::RTAFlopBalanced ? texas::rta_flop_balanced() :
+        texas::HUNLConfig{};
     config.starting_street = cfg.street;
     if (cfg.preset == RandomConfig::Preset::None) {
         config.starting_stack = 1000;
@@ -377,11 +377,11 @@ RandomState make_random_state(const RandomConfig& cfg) {
     config.initial_contributions[1] = std::clamp(config.initial_contributions[1], 1, config.starting_stack - 1);
     config.initial_pot = config.initial_contributions[0] + config.initial_contributions[1];
 
-    auto state = core::HUNLState::initial(std::make_shared<const core::HUNLConfig>(config));
+    auto state = texas::HUNLState::initial(std::make_shared<const texas::HUNLConfig>(config));
     return RandomState{std::move(config), std::move(state)};
 }
 
-void print_state(const core::HUNLConfig& config, const core::HUNLState& state) {
+void print_state(const texas::HUNLConfig& config, const texas::HUNLState& state) {
     std::cout << "config:\n";
     std::cout << "  street=" << street_name(config.starting_street) << "\n";
     std::cout << "  stacks=" << config.starting_stack << "," << config.starting_stack << "\n";
@@ -439,13 +439,13 @@ std::string format_bytes(std::uint64_t bytes) {
     return oss.str();
 }
 
-std::string precision_name(core::HUNLFlatStoragePrecision precision) {
+std::string precision_name(texas::HUNLFlatStoragePrecision precision) {
     switch (precision) {
-        case core::HUNLFlatStoragePrecision::Float64:
+        case texas::HUNLFlatStoragePrecision::Float64:
             return "double";
-        case core::HUNLFlatStoragePrecision::Float32:
+        case texas::HUNLFlatStoragePrecision::Float32:
             return "float";
-        case core::HUNLFlatStoragePrecision::Compressed16:
+        case texas::HUNLFlatStoragePrecision::Compressed16:
             return "compressed16";
     }
     return "unknown";
@@ -468,7 +468,7 @@ std::uint64_t estimate_strategy_map_bytes(const std::unordered_map<std::string, 
     return bytes;
 }
 
-std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
+std::size_t max_backward_row_width(const texas::HUNLFlatSolveGraph& graph) {
     std::size_t max_width = 0;
     for (const auto& meta : graph.node_meta) {
         max_width = std::max<std::size_t>(
@@ -478,7 +478,7 @@ std::size_t max_backward_row_width(const core::HUNLFlatSolveGraph& graph) {
     return max_width;
 }
 
-std::size_t max_bucket_width(const core::HUNLFlatInfosetTable& table) {
+std::size_t max_bucket_width(const texas::HUNLFlatInfosetTable& table) {
     std::size_t max_width = 0;
     for (const auto& meta : table.meta()) {
         max_width = std::max<std::size_t>(max_width, meta.bucket_count);
@@ -486,7 +486,7 @@ std::size_t max_bucket_width(const core::HUNLFlatInfosetTable& table) {
     return max_width;
 }
 
-void print_memory_estimate(const core::HUNLFlatMemoryEstimate& estimate) {
+void print_memory_estimate(const texas::HUNLFlatMemoryEstimate& estimate) {
     std::cout << "memory_preflight:\n";
     std::cout << "  graph=" << format_bytes(estimate.graph_bytes) << "\n";
     std::cout << "  infoset_table=" << format_bytes(estimate.infoset_table_bytes) << "\n";
@@ -497,7 +497,7 @@ void print_memory_estimate(const core::HUNLFlatMemoryEstimate& estimate) {
     std::cout << "  total=" << format_bytes(estimate.total_bytes()) << "\n";
 }
 
-bool enforce_memory_guardrails(const core::HUNLFlatMemoryEstimate& estimate) {
+bool enforce_memory_guardrails(const texas::HUNLFlatMemoryEstimate& estimate) {
     if (estimate.total_bytes() > kMemoryFailBytes) {
         std::cerr << "fatal: estimated memory " << format_bytes(estimate.total_bytes())
                   << " exceeds hard limit of " << format_bytes(kMemoryFailBytes)
@@ -532,47 +532,47 @@ TimedBenchmarkResult run_timed_flat_benchmark(
     std::uint32_t iterations,
     std::size_t workers,
     std::size_t hand_buckets,
-    core::HUNLFlatStoragePrecision precision,
+    texas::HUNLFlatStoragePrecision precision,
     double alpha,
     double beta,
     double gamma) {
     using clock = std::chrono::steady_clock;
 
     const auto setup_start = clock::now();
-    auto shared = std::make_shared<const core::HUNLConfig>(random_state.config);
-    const auto graph = core::HUNLFlatSolveGraph::build(shared);
+    auto shared = std::make_shared<const texas::HUNLConfig>(random_state.config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(shared);
     const std::array<std::size_t, 2> buckets = {hand_buckets, hand_buckets};
-    const auto table = core::HUNLFlatInfosetTable::build(
+    const auto table = texas::HUNLFlatInfosetTable::build(
         graph,
         buckets,
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatValueLayout::InfosetHandAction,
         precision);
-    core::HUNLFlatMemoryEstimateOptions memory_options;
+    texas::HUNLFlatMemoryEstimateOptions memory_options;
     memory_options.max_child_count = max_backward_row_width(graph);
     memory_options.max_bucket_count = max_bucket_width(table);
-    const auto memory = core::estimate_memory(graph, table, workers, memory_options);
+    const auto memory = texas::estimate_memory(graph, table, workers, memory_options);
     print_memory_estimate(memory);
     if (!enforce_memory_guardrails(memory)) {
         throw std::runtime_error("estimated memory exceeds configured benchmark limit");
     }
-    core::HUNLFlatDCFR solver(
+    texas::HUNLFlatDCFR solver(
         graph,
         buckets,
-        core::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatValueLayout::InfosetHandAction,
         workers,
         alpha,
         beta,
         gamma,
         precision);
     const auto setup_end = clock::now();
-    core::profiling::mark(
+    texas::profiling::mark(
         "hunl.bench.setup",
         std::chrono::duration<double>(setup_end - setup_start).count());
 
     const auto solve_start = setup_end;
     solver.run_iterations(iterations);
     const auto solve_end = clock::now();
-    core::profiling::mark(
+    texas::profiling::mark(
         "hunl.bench.solve",
         std::chrono::duration<double>(solve_end - solve_start).count());
 
@@ -585,29 +585,29 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         strategy.emplace(key, probs);
     }
     const auto export_end = clock::now();
-    core::profiling::mark(
+    texas::profiling::mark(
         "hunl.bench.export",
         std::chrono::duration<double>(export_end - export_start).count());
 
     const auto ev_start = export_end;
-    const auto terminal_values_p0 = core::build_flat_terminal_value_table_p0_for_benchmark(graph);
-    const auto game_value = core::compute_flat_expected_value_p0_benchmark(
+    const auto terminal_values_p0 = texas::build_flat_terminal_value_table_p0_for_benchmark(graph);
+    const auto game_value = texas::compute_flat_expected_value_p0_benchmark(
         graph,
         strategy_table.view(),
         terminal_values_p0);
     const std::array<double, 2> expected_value = {game_value, -game_value};
     const auto ev_end = clock::now();
-    core::profiling::mark(
+    texas::profiling::mark(
         "hunl.bench.expected_value",
         std::chrono::duration<double>(ev_end - ev_start).count());
 
     const auto exploit_start = ev_end;
-    const auto exploitability = core::detail::exploitability<core::HUNLState>(strategy);
+    const auto exploitability = texas::detail::exploitability<texas::HUNLState>(strategy);
     const auto exploit_end = clock::now();
-    core::profiling::mark(
+    texas::profiling::mark(
         "hunl.bench.exploitability",
         std::chrono::duration<double>(exploit_end - exploit_start).count());
-    core::profiling::mark(
+    texas::profiling::mark(
         "hunl.bench.total",
         std::chrono::duration<double>(exploit_end - setup_start).count());
 
@@ -651,34 +651,34 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
     }
 
     const auto setup_start = clock::now();
-    auto shared = std::make_shared<const core::HUNLConfig>(random_state.config);
-    const auto graph = core::HUNLFlatSolveGraph::build(shared);
+    auto shared = std::make_shared<const texas::HUNLConfig>(random_state.config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(shared);
     const std::array<std::size_t, 2> buckets = {cfg.hand_buckets, cfg.hand_buckets};
-    const auto table = core::HUNLFlatInfosetTable::build(
+    const auto table = texas::HUNLFlatInfosetTable::build(
         graph,
         buckets,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         cfg.precision);
-    core::HUNLFlatMemoryEstimateOptions memory_options;
+    texas::HUNLFlatMemoryEstimateOptions memory_options;
     memory_options.max_child_count = max_backward_row_width(graph);
     memory_options.max_bucket_count = max_bucket_width(table);
-    const auto memory = core::estimate_memory(graph, table, cfg.workers, memory_options);
+    const auto memory = texas::estimate_memory(graph, table, cfg.workers, memory_options);
     print_memory_estimate(memory);
     if (!enforce_memory_guardrails(memory)) {
         throw std::runtime_error("estimated memory exceeds configured benchmark limit");
     }
 
-    core::HUNLFlatMCCFRConfig sampled_config;
+    texas::HUNLFlatMCCFRConfig sampled_config;
     sampled_config.mode = cfg.sampling_mode;
     sampled_config.seed = cfg.seed;
     sampled_config.traversals_per_iteration = cfg.sample_traversals;
     sampled_config.batch_size = std::max<std::uint32_t>(1U, cfg.sample_traversals / std::max<std::size_t>(1, cfg.workers));
 
-    core::HUNLFlatMCCFR solver(
+    texas::HUNLFlatMCCFR solver(
         graph,
         buckets,
         sampled_config,
-        core::HUNLFlatValueLayout::InfosetActionHand,
+        texas::HUNLFlatValueLayout::InfosetActionHand,
         cfg.workers,
         cfg.precision);
     const auto setup_end = clock::now();
@@ -758,8 +758,8 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
     const auto export_end = clock::now();
 
     const auto ev_start = export_end;
-    const auto terminal_values_p0 = core::build_flat_terminal_value_table_p0_for_benchmark(graph);
-    const auto game_value = core::compute_flat_expected_value_p0_benchmark(
+    const auto terminal_values_p0 = texas::build_flat_terminal_value_table_p0_for_benchmark(graph);
+    const auto game_value = texas::compute_flat_expected_value_p0_benchmark(
         graph,
         strategy_table.view(),
         terminal_values_p0);
@@ -767,7 +767,7 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
     const auto ev_end = clock::now();
 
     const auto exploit_start = ev_end;
-    const auto exploitability = core::detail::exploitability<core::HUNLState>(strategy);
+    const auto exploitability = texas::detail::exploitability<texas::HUNLState>(strategy);
     const auto exploit_end = clock::now();
 
     TimedBenchmarkResult result{
@@ -854,7 +854,7 @@ int main(int argc, char* argv[]) {
         auto solve_config = random_state.config;
         solve_config.depth_limit_plies = cfg.depth_limit_plies;
         TimedBenchmarkResult timed;
-        if (cfg.sampling_mode == core::HUNLFlatSamplingMode::Exact &&
+        if (cfg.sampling_mode == texas::HUNLFlatSamplingMode::Exact &&
             cfg.sample_traversals == 0 &&
             cfg.time_budget_ms == 0) {
             timed = run_timed_flat_benchmark(
@@ -923,7 +923,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  baseline_node_rows=" << timed.sampled_profile.baseline_node_rows << "\n";
             std::cout << "  baseline_bytes=" << format_bytes(timed.sampled_profile.baseline_bytes) << "\n";
             std::cout << "  sampled_simd_backend="
-                      << core::hunl_sampled_simd_backend_name(timed.sampled_profile.sampled_simd_backend) << "\n";
+                      << texas::hunl_sampled_simd_backend_name(timed.sampled_profile.sampled_simd_backend) << "\n";
             std::cout << "  sampled_kernel_scalar_calls=" << timed.sampled_profile.sampled_kernel_scalar_calls << "\n";
             std::cout << "  sampled_kernel_simd_calls=" << timed.sampled_profile.sampled_kernel_simd_calls << "\n";
             std::cout << "  root_action_entropy=" << std::fixed << std::setprecision(9)
@@ -947,8 +947,8 @@ int main(int argc, char* argv[]) {
         std::cout << "  strategy_root:\n";
 
         const auto root_key = random_state.state.infoset_key(static_cast<std::uint8_t>(random_state.state.cur_player)) +
-            "|board:" + core::sorted_card_string(random_state.state.board) +
-            "|street:" + core::street_token(random_state.state.street);
+            "|board:" + texas::sorted_card_string(random_state.state.board) +
+            "|street:" + texas::street_token(random_state.state.street);
         const auto it = std::find_if(timed.exported_strategy.begin(), timed.exported_strategy.end(), [&](const auto& item) {
             return item.first == root_key;
         });
@@ -1009,7 +1009,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "  baseline_node_rows=" << timed.sampled_profile.baseline_node_rows << "\n";
                 std::cout << "  baseline_bytes=" << format_bytes(timed.sampled_profile.baseline_bytes) << "\n";
                 std::cout << "  sampled_simd_backend="
-                          << core::hunl_sampled_simd_backend_name(timed.sampled_profile.sampled_simd_backend) << "\n";
+                          << texas::hunl_sampled_simd_backend_name(timed.sampled_profile.sampled_simd_backend) << "\n";
                 std::cout << "  sampled_kernel_scalar_calls=" << timed.sampled_profile.sampled_kernel_scalar_calls << "\n";
                 std::cout << "  sampled_kernel_scalar_seconds="
                           << format_seconds(timed.sampled_profile.sampled_kernel_scalar_seconds) << "\n";
@@ -1039,7 +1039,7 @@ int main(int argc, char* argv[]) {
                               << "\n";
                 }
             }
-            core::profiling::print_profiler_report();
+            texas::profiling::print_profiler_report();
         }
 
         return 0;

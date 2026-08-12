@@ -4,7 +4,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 
 void MultiwayBlueprintSnapshot::validate() const {
     identity.validate();
@@ -62,4 +62,4 @@ MultiwayBlueprintSnapshot export_multiway_root_snapshot(
     return snapshot;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

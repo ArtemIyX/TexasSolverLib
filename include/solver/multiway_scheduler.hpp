@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 enum class MultiwayRunMode : std::uint8_t {
     Deterministic = 0U,
@@ -69,4 +71,4 @@ public:
         std::size_t requested_workers);
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

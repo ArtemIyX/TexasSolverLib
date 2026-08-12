@@ -4,7 +4,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 bool row_less(const MultiwayBlueprintRow& left, const MultiwayBlueprintRow& right) noexcept {
@@ -81,4 +81,4 @@ std::uint64_t MultiwayBlueprintStore::memory_bytes() const noexcept {
     return bytes;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_bucket_map.hpp"
 #include "solver/hunl_bucket_terminal.hpp"
@@ -19,7 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 #if defined(_MSC_VER)
 #pragma warning(push)
@@ -215,4 +217,4 @@ private:
     std::uint32_t iterations_ = 0;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

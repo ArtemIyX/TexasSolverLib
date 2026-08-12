@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <stdexcept>
 
-namespace core {
+namespace texas::util {
 
 InfosetId InfosetRegistry::intern(const InfosetKey& key, std::size_t action_count) {
     if (action_count == 0) {
@@ -91,4 +91,4 @@ void InfosetRegistry::clear() noexcept {
     meta_.clear();
 }
 
-}  // namespace core
+}  // namespace texas::util

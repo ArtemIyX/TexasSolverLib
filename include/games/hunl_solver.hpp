@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 #include "core/types.hpp"
 #include "solver/parallel_dcfr.hpp"
@@ -12,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 enum class HUNLQualityMetric : std::uint8_t {
     PerPlayerExploitability,
@@ -107,6 +109,6 @@ HUNLSolveOutput solve_hunl_postflop(
 void validate_config(const HUNLConfig& config);
 void validate_structured_root_request(const HUNLStructuredRootRequest& request);
 
-}  // namespace core
+}  // namespace texas::solver::hunl
 
 

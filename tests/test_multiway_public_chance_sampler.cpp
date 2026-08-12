@@ -14,7 +14,7 @@
 namespace {
 
 constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit) {
-    return core::card_to_int(rank, suit);
+    return texas::card_to_int(rank, suit);
 }
 
 const std::array<std::array<std::uint8_t, 2>, 3> kHoles = {{
@@ -27,21 +27,21 @@ const std::vector<std::uint8_t> kTurn = {
     card(2, 0), card(7, 1), card(9, 2), card(4, 3),
 };
 
-core::MultiwayRootSnapshot make_root(
-    core::Street street,
+texas::MultiwayRootSnapshot make_root(
+    texas::Street street,
     const std::vector<std::uint8_t>& board,
-    const core::MultiwayActionAbstraction& abstraction) {
-    core::MultiwayGameConfig game;
+    const texas::MultiwayActionAbstraction& abstraction) {
+    texas::MultiwayGameConfig game;
     game.starting_stacks = {1000, 1000, 1000};
     game.initial_contributions = {0, 0, 0};
     game.initial_street_contributions = {0, 0, 0};
     game.first_player = 0;
     game.big_blind = 100;
     game.street = street;
-    const auto betting = core::MultiwayState::initial(game).snapshot();
+    const auto betting = texas::MultiwayState::initial(game).snapshot();
 
-    core::MultiwayRootSnapshot root;
-    root.public_state = core::MultiwayPublicBuilder::make_root(
+    texas::MultiwayRootSnapshot root;
+    root.public_state = texas::MultiwayPublicBuilder::make_root(
         betting, board, abstraction.make_legal_actions(betting, 71U));
     root.root_infoset = {root.public_state.id, 0};
     root.seat_order = {0, 1, 2};
@@ -56,8 +56,8 @@ core::MultiwayRootSnapshot make_root(
     return root;
 }
 
-core::MultiwaySolverLimits limits() {
-    core::MultiwaySolverLimits result;
+texas::MultiwaySolverLimits limits() {
+    texas::MultiwaySolverLimits result;
     result.max_public_states = 32U;
     result.max_sparse_rows = 8U;
     result.max_sparse_values = 64U;
@@ -65,54 +65,54 @@ core::MultiwaySolverLimits limits() {
     return result;
 }
 
-core::MultiwayCFRConfig cfr() {
-    core::MultiwayCFRConfig result;
+texas::MultiwayCFRConfig cfr() {
+    texas::MultiwayCFRConfig result;
     result.player_count = 3U;
     return result;
 }
 
 struct SamplerFixture {
-    SamplerFixture(core::Street street, const std::vector<std::uint8_t>& board)
+    SamplerFixture(texas::Street street, const std::vector<std::uint8_t>& board)
         : root(make_root(street, board, abstraction)),
           request(root, cfr(), limits()),
           coordinator(request),
           adapter(coordinator) {}
 
-    core::MultiwayPublicStateDescriptor close_street_with_checks() {
+    texas::MultiwayPublicStateDescriptor close_street_with_checks() {
         auto state = request.root().public_state;
         for (std::size_t seat = 0; seat < kHoles.size(); ++seat) {
             const auto found = std::find_if(
                 state.legal_actions.begin(), state.legal_actions.end(),
-                [](const core::MultiwayActionDescriptor& action) {
-                    return action.action == core::MultiwayAction::Check;
+                [](const texas::MultiwayActionDescriptor& action) {
+                    return action.action == texas::MultiwayAction::Check;
                 });
             EXPECT_TRUE(found != state.legal_actions.end());
             const auto action_index = static_cast<std::uint32_t>(
                 std::distance(state.legal_actions.begin(), found));
-            const auto next = core::MultiwayState::from_snapshot(state.betting).apply(
+            const auto next = texas::MultiwayState::from_snapshot(state.betting).apply(
                 found->action, found->target_street_contribution);
-            std::vector<core::MultiwayActionDescriptor> child_actions;
+            std::vector<texas::MultiwayActionDescriptor> child_actions;
             if (next.current_player() >= 0) {
                 child_actions = abstraction.make_legal_actions(next.snapshot(), 71U);
             }
-            state = core::MultiwayPublicBuilder::make_action_child(
+            state = texas::MultiwayPublicBuilder::make_action_child(
                 state, action_index, std::move(child_actions));
             coordinator.admit_public_state(state);
         }
-        EXPECT_TRUE(core::MultiwayState::from_snapshot(state.betting).requires_street_transition());
+        EXPECT_TRUE(texas::MultiwayState::from_snapshot(state.betting).requires_street_transition());
         return state;
     }
 
-    core::MultiwayActionAbstraction abstraction;
-    core::MultiwayRootSnapshot root;
-    core::MultiwaySolveRequest request;
-    core::MultiwaySolverCoordinator coordinator;
-    core::MultiwayTerminalAdapter adapter;
+    texas::MultiwayActionAbstraction abstraction;
+    texas::MultiwayRootSnapshot root;
+    texas::MultiwaySolveRequest request;
+    texas::MultiwaySolverCoordinator coordinator;
+    texas::MultiwayTerminalAdapter adapter;
 };
 
 bool same_edge(
-    const core::MultiwaySampledPublicBoardChance& left,
-    const core::MultiwaySampledPublicBoardChance& right) {
+    const texas::MultiwaySampledPublicBoardChance& left,
+    const texas::MultiwaySampledPublicBoardChance& right) {
     return left.parent_id == right.parent_id &&
            left.dealt_cards == right.dealt_cards &&
            left.dealt_card_count == right.dealt_card_count &&
@@ -121,7 +121,7 @@ bool same_edge(
 }
 
 void expect_no_collision(
-    const core::MultiwaySampledPublicBoardChance& edge,
+    const texas::MultiwaySampledPublicBoardChance& edge,
     const std::vector<std::uint8_t>& original_board) {
     // Card ids use the shared rank/suit encoding (8..59), not compact deck
     // offsets. Keep this guard large enough for every valid encoded card.
@@ -140,7 +140,7 @@ void expect_no_collision(
 }  // namespace
 
 TEST_CASE(multiway_public_chance_sampler_is_deterministic_and_does_not_admit_edges) {
-    SamplerFixture fixture(core::Street::Preflop, {});
+    SamplerFixture fixture(texas::Street::Preflop, {});
     const auto parent = fixture.close_street_with_checks();
     const auto deal = fixture.adapter.sample_private_deal(17U);
     const auto admitted_before = fixture.coordinator.diagnostics().public_states_admitted;
@@ -158,7 +158,7 @@ TEST_CASE(multiway_public_chance_sampler_is_deterministic_and_does_not_admit_edg
 }
 
 TEST_CASE(multiway_public_chance_sampler_flop_is_sorted_collision_free_and_exactly_weighted) {
-    SamplerFixture fixture(core::Street::Preflop, {});
+    SamplerFixture fixture(texas::Street::Preflop, {});
     const auto parent = fixture.close_street_with_checks();
     const auto deal = fixture.adapter.sample_private_deal(1U);
     std::uint64_t random_state = 123U;
@@ -173,7 +173,7 @@ TEST_CASE(multiway_public_chance_sampler_flop_is_sorted_collision_free_and_exact
 }
 
 TEST_CASE(multiway_public_chance_sampler_changes_path_for_a_different_seed) {
-    SamplerFixture fixture(core::Street::Preflop, {});
+    SamplerFixture fixture(texas::Street::Preflop, {});
     const auto parent = fixture.close_street_with_checks();
     const auto deal = fixture.adapter.sample_private_deal(1U);
     std::uint64_t baseline_state = 1U;
@@ -190,7 +190,7 @@ TEST_CASE(multiway_public_chance_sampler_changes_path_for_a_different_seed) {
 }
 
 TEST_CASE(multiway_public_chance_sampler_turn_and_river_are_single_card_edges) {
-    SamplerFixture flop_fixture(core::Street::Flop, kFlop);
+    SamplerFixture flop_fixture(texas::Street::Flop, kFlop);
     const auto flop_parent = flop_fixture.close_street_with_checks();
     const auto flop_deal = flop_fixture.adapter.sample_private_deal(1U);
     std::uint64_t turn_state = 77U;
@@ -201,7 +201,7 @@ TEST_CASE(multiway_public_chance_sampler_turn_and_river_are_single_card_edges) {
     EXPECT_NEAR(turn.probability, 1.0 / 43.0, 1e-15);
     expect_no_collision(turn, kFlop);
 
-    SamplerFixture turn_fixture(core::Street::Turn, kTurn);
+    SamplerFixture turn_fixture(texas::Street::Turn, kTurn);
     const auto turn_parent = turn_fixture.close_street_with_checks();
     const auto turn_deal = turn_fixture.adapter.sample_private_deal(1U);
     std::uint64_t river_state = 77U;

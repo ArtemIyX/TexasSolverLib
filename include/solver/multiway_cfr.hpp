@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "games/multiway_private.hpp"
 
@@ -8,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Multiway solving is evaluated with NashConv. Unlike heads-up exploitability,
 // it is the sum of each seat's unilateral best-response improvement.
@@ -139,4 +141,4 @@ MultiwayNashConv compute_multiway_nash_conv(
     const std::vector<Value>& best_response_values,
     const MultiwayQualityDiagnostics& diagnostics = {});
 
-}  // namespace core
+}  // namespace texas::solver::multiway

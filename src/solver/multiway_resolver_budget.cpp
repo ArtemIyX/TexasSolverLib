@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 
 namespace {
 
@@ -66,4 +66,4 @@ bool MultiwayResolverBudget::deadline_reached() const noexcept {
     return std::chrono::steady_clock::now() >= internal_deadline_;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

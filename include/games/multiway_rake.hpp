@@ -1,8 +1,10 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstdint>
 
-namespace core {
+namespace texas::games::multiway {
 
 enum class MultiwayRakeMode : std::uint8_t {
     ExplicitZero,
@@ -26,4 +28,4 @@ struct MultiwayRakePolicy {
     [[nodiscard]] std::uint64_t identity() const noexcept;
 };
 
-}  // namespace core
+}  // namespace texas::games::multiway

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_export.hpp"
 
 #include <filesystem>
 
-namespace core {
+namespace texas::solver::multiway {
 
 class MultiwayCheckpoint {
 public:
@@ -20,4 +22,4 @@ public:
         const MultiwayModelIdentity& expected_identity);
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

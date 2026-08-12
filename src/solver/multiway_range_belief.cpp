@@ -7,7 +7,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 void validate_dead_cards(const MultiwayRangeBeliefSeatInput& input) {
@@ -262,4 +262,4 @@ MultiwayRangeBeliefView MultiwayRangeBeliefs::view(std::size_t seat) const {
     return MultiwayRangeBeliefView(row.weights.data(), &row.legal_mask, &row.metadata);
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

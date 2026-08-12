@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 TEST_CASE(multiway_standard_rules_match_the_six_max_playbook_profile) {
-    const auto rules = core::MultiwayGameRules::standard_6max();
+    const auto rules = texas::MultiwayGameRules::standard_6max();
 
     EXPECT_EQ(rules.profile_version, 1U);
     EXPECT_EQ(rules.player_count, 6U);
@@ -15,7 +15,7 @@ TEST_CASE(multiway_standard_rules_match_the_six_max_playbook_profile) {
     EXPECT_EQ(rules.big_blind_chips, 100);
     EXPECT_EQ(rules.ante_chips, 0);
     EXPECT_EQ(rules.straddle_chips, 0);
-    EXPECT_EQ(rules.rake_policy.identity(), core::MultiwayRakePolicy::explicit_zero().identity());
+    EXPECT_EQ(rules.rake_policy.identity(), texas::MultiwayRakePolicy::explicit_zero().identity());
     EXPECT_TRUE(!rules.rebuys_enabled);
 
     const auto game = rules.make_initial_game_config(0);
@@ -24,38 +24,38 @@ TEST_CASE(multiway_standard_rules_match_the_six_max_playbook_profile) {
 }
 
 TEST_CASE(multiway_rules_reject_unsupported_forced_money_or_rebuys) {
-    auto rules = core::MultiwayGameRules::standard_6max();
+    auto rules = texas::MultiwayGameRules::standard_6max();
     rules.ante_chips = 1;
     EXPECT_THROW(rules.validate(), std::invalid_argument);
 
-    rules = core::MultiwayGameRules::standard_6max();
+    rules = texas::MultiwayGameRules::standard_6max();
     rules.straddle_chips = 200;
     EXPECT_THROW(rules.validate(), std::invalid_argument);
 
-    rules = core::MultiwayGameRules::standard_6max();
+    rules = texas::MultiwayGameRules::standard_6max();
     rules.rebuys_enabled = true;
     EXPECT_THROW(rules.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_identity_binds_rules_and_resolver_schemas) {
-    core::MultiwayBlueprintConfig config;
-    const auto identity = core::make_multiway_model_identity(config);
+    texas::MultiwayBlueprintConfig config;
+    const auto identity = texas::make_multiway_model_identity(config);
 
     ++config.rules_profile_version;
-    const auto changed_rules = core::make_multiway_model_identity(config);
+    const auto changed_rules = texas::make_multiway_model_identity(config);
     EXPECT_TRUE(changed_rules != identity);
     EXPECT_TRUE(changed_rules.rules_schema_hash != identity.rules_schema_hash);
 
     config = {};
     ++config.resolver_schema_version;
-    const auto changed_resolver = core::make_multiway_model_identity(config);
+    const auto changed_resolver = texas::make_multiway_model_identity(config);
     EXPECT_TRUE(changed_resolver != identity);
     EXPECT_TRUE(changed_resolver.resolver_schema_hash != identity.resolver_schema_hash);
 }
 
 TEST_CASE(multiway_resolver_contract_defaults_to_anonymous_inference) {
-    core::MultiwayResolverRequest request;
-    EXPECT_EQ(request.inference_mode, core::MultiwayInferenceMode::AnonymousWithinHand);
+    texas::MultiwayResolverRequest request;
+    EXPECT_EQ(request.inference_mode, texas::MultiwayInferenceMode::AnonymousWithinHand);
     EXPECT_EQ(request.sampling_seed, 1U);
-    EXPECT_TRUE(!core::MultiwayResolverResult{}.has_sampled_action);
+    EXPECT_TRUE(!texas::MultiwayResolverResult{}.has_sampled_action);
 }

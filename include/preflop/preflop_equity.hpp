@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 
 #include <array>
@@ -11,7 +13,7 @@
 #include <tuple>
 #include <vector>
 
-namespace core {
+namespace texas::preflop {
 
 inline constexpr std::size_t PREFLOP_NUM_CLASSES = 169;
 inline constexpr std::size_t PREFLOP_NUM_VARIANTS = 3;
@@ -56,6 +58,6 @@ private:
     std::vector<double> table_;
 };
 
-}  // namespace core
+}  // namespace texas::preflop
 
 

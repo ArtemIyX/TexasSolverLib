@@ -11,7 +11,7 @@
 namespace {
 
 constexpr std::uint8_t c(std::uint8_t rank, std::uint8_t suit) {
-    return core::card_to_int(rank, suit);
+    return texas::card_to_int(rank, suit);
 }
 
 std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b) {
@@ -140,8 +140,8 @@ std::filesystem::path make_tmp_path(const std::string& name) {
 TEST_CASE(abstraction_canonicalize_board_and_hole) {
     std::vector<std::uint8_t> board = {c(14, 0), c(13, 1), c(7, 2)};
     const std::array<std::uint8_t, 2> hole = {c(12, 0), c(11, 3)};
-    const auto [board_key, hand_key] = core::canonicalize(board, hole);
-    const auto [board_key_again, hand_key_again] = core::canonicalize(board, hole);
+    const auto [board_key, hand_key] = texas::canonicalize(board, hole);
+    const auto [board_key_again, hand_key_again] = texas::canonicalize(board, hole);
     EXPECT_EQ(board_key, board_key_again);
     EXPECT_EQ(hand_key, hand_key_again);
     EXPECT_TRUE(!board_key.empty());
@@ -158,7 +158,7 @@ TEST_CASE(abstraction_loads_minimal_npz_layout) {
 
     const std::vector<std::uint8_t> board = {c(14, 0), c(13, 1), c(7, 2)};
     const std::array<std::uint8_t, 2> hole = {c(12, 0), c(11, 3)};
-    const auto [board_key, hand_key] = core::canonicalize(board, hole);
+    const auto [board_key, hand_key] = texas::canonicalize(board, hole);
     const std::string board_index = "{\"" + board_key + "\":0}";
     const std::string hand_index = "{\"" + board_key + "\":{\"" + hand_key + "\":0}}";
     const std::string metadata =
@@ -181,10 +181,10 @@ TEST_CASE(abstraction_loads_minimal_npz_layout) {
         out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
 
-    const auto tables = core::load_abstraction(tmp);
+    const auto tables = texas::load_abstraction(tmp);
     EXPECT_EQ(tables.metadata.schema_version, 1U);
     EXPECT_EQ(tables.metadata.version, "v1");
-    EXPECT_EQ(core::lookup_bucket(tables, board, hole, core::Street::Flop), 7);
+    EXPECT_EQ(texas::lookup_bucket(tables, board, hole, texas::Street::Flop), 7);
     std::filesystem::remove(tmp);
 }
 

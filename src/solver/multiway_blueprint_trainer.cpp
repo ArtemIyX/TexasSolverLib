@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
@@ -339,4 +339,4 @@ MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint
     return trainer_->checkpoint();
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

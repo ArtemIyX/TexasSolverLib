@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +10,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace core {
+namespace texas::core {
 
 class Arena {
 public:
@@ -69,6 +71,6 @@ T* Arena::allocate(std::size_t count) {
     }
 }
 
-}  // namespace core
+}  // namespace texas::core
 
 

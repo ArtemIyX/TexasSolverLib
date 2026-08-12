@@ -1,6 +1,6 @@
 #include "core/lib.hpp"
 
-namespace core::lib {
+namespace texas::core::lib {
 // Facade-only translation unit.
 }
 

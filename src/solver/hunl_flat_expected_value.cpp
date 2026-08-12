@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -337,4 +337,4 @@ std::array<double, 2> compute_flat_expected_value(
     return compute_flat_expected_value(graph, table.view(), &terminal_values);
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

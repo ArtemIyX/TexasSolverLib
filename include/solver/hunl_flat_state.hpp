@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_bucket_map.hpp"
 #include "util/aligned_allocator.hpp"
@@ -11,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 inline constexpr std::size_t HUNL_CACHELINE_BYTES = 64;
 
@@ -230,4 +232,4 @@ private:
     HUNLAlignedVector<float> current_strategy_f32_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

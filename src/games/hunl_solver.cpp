@@ -12,7 +12,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -434,4 +434,4 @@ HUNLSolveOutput solve_hunl_postflop(
     return out;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

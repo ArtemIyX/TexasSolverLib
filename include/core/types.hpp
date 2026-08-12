@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <array>
@@ -10,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::core {
 
 /**
  * @brief Player index used by game-state interfaces.
@@ -100,11 +102,11 @@ struct SolveOutput {
     SolveProfile profile;
 };
 
-}  // namespace core
+}  // namespace texas::core
 
 template <>
-struct std::hash<core::InfosetId> {
-    std::size_t operator()(const core::InfosetId& id) const noexcept {
+struct std::hash<texas::InfosetId> {
+    std::size_t operator()(const texas::InfosetId& id) const noexcept {
         return std::hash<std::uint32_t>{}(id.value);
     }
 };

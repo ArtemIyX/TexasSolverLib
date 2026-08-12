@@ -14,7 +14,7 @@ Inspection snapshot:
 - Working tree: no pre-existing changes at inspection time; this report is the
   new untracked documentation file
 - Language: C++17
-- Namespace: `core::`
+- Namespace: `texas::`
 - Test directories were intentionally excluded from inspection and from this
   report.
 
@@ -38,7 +38,7 @@ Status terms used below:
 TexasSolver is a reusable CMake C++17 library for poker subgame solving and
 strategy analysis. It is a port of the Rust
 `amaster97/poker_solver` implementation. The main target is
-`TexasSolver::texas_core`.
+`TexasSolver::texas`.
 
 The project contains two related solver families:
 
@@ -56,8 +56,8 @@ logging, and deployment policy.
 
 ### 3.1 CMake library
 
-`CMakeLists.txt` defines a static `texas_core` target and the alias
-`TexasSolver::texas_core`. It recursively includes public headers and C++
+`CMakeLists.txt` defines a static `texas` target and the alias
+`TexasSolver::texas`. It recursively includes public headers and C++
 sources from `include/` and `src/`, publishes the include directory, and
 requires C++17.
 
@@ -72,7 +72,7 @@ The build supports:
 
 The vendored `external/pokerHandEvaluator/cpp` project is added when the hand
 evaluator option is enabled. Its 5-card, 6-card, and 7-card evaluator target
-is linked privately to `texas_core`.
+is linked privately to `texas`.
 
 ### 3.2 Installation and consumption
 
@@ -159,9 +159,9 @@ walk modes and a restricted-game value helper.
 - Terminal fold and showdown utility.
 - Current-player and legal-action queries.
 - Infoset-key generation from private card and public action history.
-- Polymorphic cloning and action application through `core::Game`.
+- Polymorphic cloning and action application through `texas::Game`.
 
-`core::solve_kuhn(...)` runs generic or parallel DCFR and returns average
+`texas::solve_kuhn(...)` runs generic or parallel DCFR and returns average
 strategy, game value, exploitability, and solve metadata.
 
 ### 5.2 Leduc
@@ -177,7 +177,7 @@ strategy, game value, exploitability, and solve metadata.
 - Infoset keys containing the private card, public card where available, and
   betting histories.
 
-`core::solve_leduc(...)` uses the same generic DCFR interface.
+`texas::solve_leduc(...)` uses the same generic DCFR interface.
 
 ## 6. Heads-up no-limit Hold'em engine
 

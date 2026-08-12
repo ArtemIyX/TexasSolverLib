@@ -9,7 +9,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::games::hunl {
 
 namespace {
 
@@ -244,16 +244,15 @@ bool is_raise(ActionId action) {
 }
 
 std::uint8_t rank_of(std::uint8_t card) {
-    return static_cast<std::uint8_t>(card >> 2);
+    return static_cast<std::uint8_t>(card / 4U + 2U);
 }
 
 std::uint8_t suit_of(std::uint8_t card) {
-    return static_cast<std::uint8_t>(card & 3U);
+    return static_cast<std::uint8_t>(card % 4U);
 }
 
 bool is_valid_card(std::uint8_t card) noexcept {
-    const auto rank = rank_of(card);
-    return rank >= 2U && rank <= 14U;
+    return card < Card::COUNT;
 }
 
 bool are_valid_and_distinct_cards(const std::uint8_t* cards, std::size_t count) noexcept {
@@ -994,7 +993,9 @@ HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const {
     return encoding;
 }
 
-std::string HUNLState::infoset_key(PlayerId player, const AbstractionTables* abstraction) const {
+std::string HUNLState::infoset_key(
+    PlayerId player,
+    const texas::util::AbstractionTables* abstraction) const {
     if (player < 0 || player > 1) {
         throw std::invalid_argument("HUNLState::infoset_key requires player 0 or 1");
     }
@@ -1535,6 +1536,6 @@ HUNLConfig rta_flop_balanced() {
     return cfg;
 }
 
-}  // namespace core
+}  // namespace texas::games::hunl
 
 

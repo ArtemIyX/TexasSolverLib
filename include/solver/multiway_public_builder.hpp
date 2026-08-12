@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 class MultiwayResolver;
 
@@ -83,4 +85,4 @@ private:
     friend class MultiwayResolver;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

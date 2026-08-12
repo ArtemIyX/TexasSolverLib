@@ -6,8 +6,8 @@
 
 namespace {
 
-core::MultiwayContinuationCacheKey make_key() {
-    core::MultiwayContinuationCacheKey key;
+texas::MultiwayContinuationCacheKey make_key() {
+    texas::MultiwayContinuationCacheKey key;
     key.public_state = {11U};
     key.traverser = 2;
     key.actor = 3;
@@ -24,11 +24,11 @@ core::MultiwayContinuationCacheKey make_key() {
     return key;
 }
 
-core::MultiwayRolloutProfileResult make_result() {
-    core::MultiwayRolloutProfileResult result;
+texas::MultiwayRolloutProfileResult make_result() {
+    texas::MultiwayRolloutProfileResult result;
     result.values = {1.0, 2.0, 3.0, 4.0};
-    result.status = core::MultiwayRolloutStatus::Complete;
-    result.runout_mode = core::MultiwayRolloutRunoutMode::None;
+    result.status = texas::MultiwayRolloutStatus::Complete;
+    result.runout_mode = texas::MultiwayRolloutRunoutMode::None;
     result.seed_count = 3U;
     return result;
 }
@@ -220,141 +220,141 @@ TEST_CASE(multiway_continuation_cache_order_uses_exact_runout_limit) {
 }
 
 TEST_CASE(multiway_continuation_cache_zero_entry_cap_rejects_admission) {
-    core::MultiwayContinuationCache cache(0U); EXPECT_TRUE(!cache.try_insert(make_key(), make_result()));
+    texas::MultiwayContinuationCache cache(0U); EXPECT_TRUE(!cache.try_insert(make_key(), make_result()));
 }
 
 TEST_CASE(multiway_continuation_cache_subentry_byte_cap_rejects_admission) {
-    core::MultiwayContinuationCache cache(1U, core::MultiwayContinuationCache::entry_bytes() - 1U);
+    texas::MultiwayContinuationCache cache(1U, texas::MultiwayContinuationCache::entry_bytes() - 1U);
     EXPECT_EQ(cache.capacity(), std::size_t{0});
 }
 
 TEST_CASE(multiway_continuation_cache_entry_cap_limits_capacity) {
-    core::MultiwayContinuationCache cache(2U); EXPECT_EQ(cache.capacity(), std::size_t{2});
+    texas::MultiwayContinuationCache cache(2U); EXPECT_EQ(cache.capacity(), std::size_t{2});
 }
 
 TEST_CASE(multiway_continuation_cache_byte_cap_limits_capacity) {
-    core::MultiwayContinuationCache cache(4U, 2U * core::MultiwayContinuationCache::entry_bytes());
+    texas::MultiwayContinuationCache cache(4U, 2U * texas::MultiwayContinuationCache::entry_bytes());
     EXPECT_EQ(cache.capacity(), std::size_t{2});
 }
 
 TEST_CASE(multiway_continuation_cache_complete_result_round_trips) {
-    core::MultiwayContinuationCache cache(1U); core::MultiwayRolloutProfileResult found;
+    texas::MultiwayContinuationCache cache(1U); texas::MultiwayRolloutProfileResult found;
     EXPECT_TRUE(cache.try_insert(make_key(), make_result())); EXPECT_TRUE(cache.find(make_key(), &found));
     EXPECT_NEAR(found.values[3], 4.0, 1e-12);
 }
 
 TEST_CASE(multiway_continuation_cache_accepts_capped_result) {
-    auto result = make_result(); result.status = core::MultiwayRolloutStatus::CappedFallback;
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
+    auto result = make_result(); result.status = texas::MultiwayRolloutStatus::CappedFallback;
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_accepts_exact_runout_mode) {
-    auto result = make_result(); result.runout_mode = core::MultiwayRolloutRunoutMode::Exact;
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
+    auto result = make_result(); result.runout_mode = texas::MultiwayRolloutRunoutMode::Exact;
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_accepts_seeded_runout_mode) {
-    auto result = make_result(); result.runout_mode = core::MultiwayRolloutRunoutMode::Seeded;
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
+    auto result = make_result(); result.runout_mode = texas::MultiwayRolloutRunoutMode::Seeded;
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_accepts_mixed_runout_mode) {
-    auto result = make_result(); result.runout_mode = core::MultiwayRolloutRunoutMode::Mixed;
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
+    auto result = make_result(); result.runout_mode = texas::MultiwayRolloutRunoutMode::Mixed;
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_duplicate_insert_preserves_size) {
-    core::MultiwayContinuationCache cache(2U); EXPECT_TRUE(cache.try_insert(make_key(), make_result()));
+    texas::MultiwayContinuationCache cache(2U); EXPECT_TRUE(cache.try_insert(make_key(), make_result()));
     EXPECT_TRUE(cache.try_insert(make_key(), make_result())); EXPECT_EQ(cache.size(), std::size_t{1});
 }
 
 TEST_CASE(multiway_continuation_cache_rejects_invalid_key_insert) {
-    auto key = make_key(); key.public_state = {}; core::MultiwayContinuationCache cache(1U);
+    auto key = make_key(); key.public_state = {}; texas::MultiwayContinuationCache cache(1U);
     EXPECT_TRUE(!cache.try_insert(key, make_result()));
 }
 
 TEST_CASE(multiway_continuation_cache_rejects_invalid_status) {
-    auto result = make_result(); result.status = core::MultiwayRolloutStatus::InvalidContext;
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
+    auto result = make_result(); result.status = texas::MultiwayRolloutStatus::InvalidContext;
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_rejects_invalid_runout_mode) {
-    auto result = make_result(); result.runout_mode = static_cast<core::MultiwayRolloutRunoutMode>(255U);
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
+    auto result = make_result(); result.runout_mode = static_cast<texas::MultiwayRolloutRunoutMode>(255U);
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_rejects_seed_count_mismatch) {
-    auto result = make_result(); ++result.seed_count; core::MultiwayContinuationCache cache(1U);
+    auto result = make_result(); ++result.seed_count; texas::MultiwayContinuationCache cache(1U);
     EXPECT_TRUE(!cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_rejects_nan_policy_value) {
     auto result = make_result(); result.values[0] = std::numeric_limits<double>::quiet_NaN();
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_rejects_positive_infinite_policy_value) {
     auto result = make_result(); result.values[1] = std::numeric_limits<double>::infinity();
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_rejects_negative_infinite_policy_value) {
     auto result = make_result(); result.values[2] = -std::numeric_limits<double>::infinity();
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.try_insert(make_key(), result));
 }
 
 TEST_CASE(multiway_continuation_cache_find_rejects_null_output) {
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), make_result()));
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(cache.try_insert(make_key(), make_result()));
     EXPECT_TRUE(!cache.find(make_key(), nullptr));
 }
 
 TEST_CASE(multiway_continuation_cache_find_rejects_invalid_key) {
-    auto key = make_key(); key.actor = -1; core::MultiwayRolloutProfileResult found;
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.find(key, &found));
+    auto key = make_key(); key.actor = -1; texas::MultiwayRolloutProfileResult found;
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.find(key, &found));
 }
 
 TEST_CASE(multiway_continuation_cache_find_reports_valid_miss) {
-    auto missing = make_key(); ++missing.seed_batch_identity; core::MultiwayRolloutProfileResult found;
-    core::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.find(missing, &found));
+    auto missing = make_key(); ++missing.seed_batch_identity; texas::MultiwayRolloutProfileResult found;
+    texas::MultiwayContinuationCache cache(1U); EXPECT_TRUE(!cache.find(missing, &found));
 }
 
 TEST_CASE(multiway_continuation_cache_full_admission_preserves_existing_entry) {
-    core::MultiwayContinuationCache cache(1U); auto other = make_key(); ++other.public_state.value;
-    core::MultiwayRolloutProfileResult found; EXPECT_TRUE(cache.try_insert(make_key(), make_result()));
+    texas::MultiwayContinuationCache cache(1U); auto other = make_key(); ++other.public_state.value;
+    texas::MultiwayRolloutProfileResult found; EXPECT_TRUE(cache.try_insert(make_key(), make_result()));
     EXPECT_TRUE(!cache.try_insert(other, make_result())); EXPECT_TRUE(cache.find(make_key(), &found));
 }
 
 TEST_CASE(multiway_continuation_cache_sorted_insertion_preserves_all_lookup_values) {
     auto low = make_key(); --low.seed_batch_identity; auto high = make_key(); ++high.seed_batch_identity;
     auto low_value = make_result(); low_value.values[0] = -1.0; auto high_value = make_result(); high_value.values[0] = 9.0;
-    core::MultiwayContinuationCache cache(3U); core::MultiwayRolloutProfileResult found;
+    texas::MultiwayContinuationCache cache(3U); texas::MultiwayRolloutProfileResult found;
     EXPECT_TRUE(cache.try_insert(high, high_value)); EXPECT_TRUE(cache.try_insert(low, low_value));
     EXPECT_TRUE(cache.try_insert(make_key(), make_result())); EXPECT_TRUE(cache.find(low, &found));
     EXPECT_NEAR(found.values[0], -1.0, 1e-12); EXPECT_TRUE(cache.find(high, &found)); EXPECT_NEAR(found.values[0], 9.0, 1e-12);
 }
 
 TEST_CASE(multiway_continuation_cache_memory_bytes_matches_reserved_payload) {
-    core::MultiwayContinuationCache cache(2U); EXPECT_EQ(cache.memory_bytes(), 2U * core::MultiwayContinuationCache::entry_bytes());
+    texas::MultiwayContinuationCache cache(2U); EXPECT_EQ(cache.memory_bytes(), 2U * texas::MultiwayContinuationCache::entry_bytes());
 }
 
 TEST_CASE(multiway_continuation_cache_zero_capacity_has_zero_payload_bytes) {
-    core::MultiwayContinuationCache cache(0U); EXPECT_EQ(cache.memory_bytes(), std::uint64_t{0});
+    texas::MultiwayContinuationCache cache(0U); EXPECT_EQ(cache.memory_bytes(), std::uint64_t{0});
 }
 
 TEST_CASE(multiway_continuation_cache_variance_ignores_same_seed_identity) {
-    core::MultiwayContinuationCache cache(1U); core::MultiwayContinuationDiagnostics diagnostics;
+    texas::MultiwayContinuationCache cache(1U); texas::MultiwayContinuationDiagnostics diagnostics;
     EXPECT_TRUE(cache.try_insert(make_key(), make_result())); cache.record_repeated_seed_variance(make_key(), make_result(), &diagnostics);
     EXPECT_EQ(diagnostics.repeated_seed_pairs, std::uint64_t{0});
 }
 
 TEST_CASE(multiway_continuation_cache_variance_records_zero_for_equal_values) {
-    core::MultiwayContinuationCache cache(1U); core::MultiwayContinuationDiagnostics diagnostics; auto other = make_key(); ++other.seed_batch_identity;
+    texas::MultiwayContinuationCache cache(1U); texas::MultiwayContinuationDiagnostics diagnostics; auto other = make_key(); ++other.seed_batch_identity;
     EXPECT_TRUE(cache.try_insert(make_key(), make_result())); cache.record_repeated_seed_variance(other, make_result(), &diagnostics);
     EXPECT_EQ(diagnostics.repeated_seed_pairs, std::uint64_t{1}); EXPECT_NEAR(diagnostics.repeated_seed_variance[0], 0.0, 1e-12);
 }
 
 TEST_CASE(multiway_continuation_cache_variance_uses_pairwise_unbiased_estimate) {
-    core::MultiwayContinuationCache cache(1U); core::MultiwayContinuationDiagnostics diagnostics; auto other = make_key(); ++other.seed_batch_identity;
+    texas::MultiwayContinuationCache cache(1U); texas::MultiwayContinuationDiagnostics diagnostics; auto other = make_key(); ++other.seed_batch_identity;
     auto result = make_result(); result.values = {3.0, 1.0, 3.0, 8.0}; EXPECT_TRUE(cache.try_insert(make_key(), make_result()));
     cache.record_repeated_seed_variance(other, result, &diagnostics); EXPECT_NEAR(diagnostics.repeated_seed_variance[0], 2.0, 1e-12);
     EXPECT_NEAR(diagnostics.repeated_seed_variance[1], 0.5, 1e-12); EXPECT_NEAR(diagnostics.repeated_seed_variance[2], 0.0, 1e-12);
@@ -362,24 +362,24 @@ TEST_CASE(multiway_continuation_cache_variance_uses_pairwise_unbiased_estimate) 
 }
 
 TEST_CASE(multiway_continuation_cache_variance_ignores_different_context) {
-    core::MultiwayContinuationCache cache(1U); core::MultiwayContinuationDiagnostics diagnostics; auto other = make_key(); ++other.public_state.value;
+    texas::MultiwayContinuationCache cache(1U); texas::MultiwayContinuationDiagnostics diagnostics; auto other = make_key(); ++other.public_state.value;
     EXPECT_TRUE(cache.try_insert(make_key(), make_result())); cache.record_repeated_seed_variance(other, make_result(), &diagnostics);
     EXPECT_EQ(diagnostics.repeated_seed_pairs, std::uint64_t{0});
 }
 
 TEST_CASE(multiway_continuation_cache_variance_ignores_invalid_key) {
-    core::MultiwayContinuationCache cache(1U); core::MultiwayContinuationDiagnostics diagnostics; auto invalid = make_key(); invalid.actor = -1;
+    texas::MultiwayContinuationCache cache(1U); texas::MultiwayContinuationDiagnostics diagnostics; auto invalid = make_key(); invalid.actor = -1;
     cache.record_repeated_seed_variance(invalid, make_result(), &diagnostics); EXPECT_EQ(diagnostics.repeated_seed_pairs, std::uint64_t{0});
 }
 
 TEST_CASE(multiway_continuation_cache_variance_accepts_null_diagnostics) {
-    core::MultiwayContinuationCache cache(1U); auto other = make_key(); ++other.seed_batch_identity;
+    texas::MultiwayContinuationCache cache(1U); auto other = make_key(); ++other.seed_batch_identity;
     EXPECT_TRUE(cache.try_insert(make_key(), make_result())); cache.record_repeated_seed_variance(other, make_result(), nullptr);
     EXPECT_EQ(cache.size(), std::size_t{1});
 }
 
 TEST_CASE(multiway_continuation_cache_variance_averages_multiple_seed_pairs) {
-    core::MultiwayContinuationCache cache(2U); core::MultiwayContinuationDiagnostics diagnostics;
+    texas::MultiwayContinuationCache cache(2U); texas::MultiwayContinuationDiagnostics diagnostics;
     auto second = make_key(); ++second.seed_batch_identity; auto third = second; ++third.seed_batch_identity;
     auto zero = make_result(); zero.values.fill(0.0); auto two = make_result(); two.values.fill(2.0); auto four = make_result(); four.values.fill(4.0);
     EXPECT_TRUE(cache.try_insert(make_key(), zero)); EXPECT_TRUE(cache.try_insert(second, two));

@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 
 #include <array>
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::games::hunl {
 
 struct Strength {
     std::uint64_t value = 0;
@@ -36,6 +38,6 @@ int compare_7(
     const std::array<std::uint8_t, 7>& lhs,
     const std::array<std::uint8_t, 7>& rhs) noexcept;
 
-}  // namespace core
+}  // namespace texas::games::hunl
 
 

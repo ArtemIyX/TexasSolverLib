@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/arena.hpp"
 #include "solver/dcfr.hpp"
 
@@ -9,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::dcfr {
 
 bool parallel_dcfr_enabled();
 std::size_t parallel_dcfr_worker_count();
@@ -101,4 +103,4 @@ private:
     mutable std::mutex infoset_mutex_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::dcfr

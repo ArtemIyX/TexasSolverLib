@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_flat_graph.hpp"
 
 #include <array>
@@ -7,7 +9,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace core {
+namespace texas::games::hunl {
 
 struct HUNLFlatBuilderMemoKey {
     PlayerId cur_player = -1;
@@ -43,13 +45,13 @@ public:
     static HUNLFlatSolveGraph build(std::shared_ptr<const HUNLConfig> config);
 };
 
-}  // namespace core
+}  // namespace texas::games::hunl
 
 namespace std {
 
 template <>
-struct hash<core::HUNLFlatBuilderMemoKey> {
-    std::size_t operator()(const core::HUNLFlatBuilderMemoKey& key) const noexcept;
+struct hash<texas::HUNLFlatBuilderMemoKey> {
+    std::size_t operator()(const texas::HUNLFlatBuilderMemoKey& key) const noexcept;
 };
 
 }  // namespace std

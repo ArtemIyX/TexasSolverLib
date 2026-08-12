@@ -1,7 +1,7 @@
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/hunl_sampled_storage.hpp"
 
-namespace core {
+namespace texas::solver::hunl {
 
 HUNLSampledConfigValidation validate_sampled_config(
     const HUNLSampledSolverConfig& config) noexcept {
@@ -37,4 +37,4 @@ void validate_sampled_config_or_throw(const HUNLSampledSolverConfig& config) {
     }
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

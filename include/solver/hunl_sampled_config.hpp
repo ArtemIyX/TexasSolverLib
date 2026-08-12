@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/hunl_flat_state.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 enum class HUNLFlatSamplingMode : std::uint8_t {
     Exact = 0,
@@ -75,4 +77,4 @@ struct HUNLSampledConfigValidation {
     const HUNLSampledSolverConfig& config) noexcept;
 void validate_sampled_config_or_throw(const HUNLSampledSolverConfig& config);
 
-}  // namespace core
+}  // namespace texas::solver::hunl

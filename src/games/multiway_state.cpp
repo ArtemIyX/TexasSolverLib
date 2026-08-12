@@ -6,7 +6,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::games::multiway {
 
 namespace {
 
@@ -460,4 +460,4 @@ MultiwayState MultiwayState::begin_next_street(Street next_street, PlayerId firs
     return next;
 }
 
-}  // namespace core
+}  // namespace texas::games::multiway

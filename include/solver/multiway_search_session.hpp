@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
@@ -10,7 +12,7 @@
 #include <optional>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Borrowed immutable, caller-owned artifact input. A bucket registry is
 // required for postflop roots and optional for preflop roots. This P1.4
@@ -149,4 +151,4 @@ private:
     std::optional<ActualHandFreeze> actual_hand_freeze_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

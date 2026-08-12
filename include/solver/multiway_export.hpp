@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_solver.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 struct MultiwayQuantizedRootAction {
     MultiwayActionDescriptor action{};
@@ -56,4 +58,4 @@ struct MultiwayBlueprintSnapshot {
     MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage,
     const MultiwayBlueprintTrainingMetadata& training = {});
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -2,7 +2,7 @@
 #include "test_harness.hpp"
 
 TEST_CASE(arena_mark_release_reuses_storage) {
-    core::Arena arena;
+    texas::Arena arena;
     auto* first = arena.allocate<int>(4);
     for (int i = 0; i < 4; ++i) {
         first[i] = 10 + i;
@@ -21,7 +21,7 @@ TEST_CASE(arena_mark_release_reuses_storage) {
 }
 
 TEST_CASE(arena_reset_rewinds_to_zero) {
-    core::Arena arena;
+    texas::Arena arena;
     (void)arena.allocate<double>(3);
     EXPECT_TRUE(arena.mark() > 0);
     arena.reset();

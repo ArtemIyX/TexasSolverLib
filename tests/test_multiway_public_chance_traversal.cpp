@@ -18,7 +18,7 @@
 namespace {
 
 constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit) {
-    return core::card_to_int(rank, suit);
+    return texas::card_to_int(rank, suit);
 }
 
 const std::vector<std::uint8_t> kFlop = {card(2, 0), card(7, 1), card(9, 2)};
@@ -33,57 +33,57 @@ const std::array<std::array<std::uint8_t, 2>, 2> kHoles = {{
 std::vector<std::uint8_t> compact_bucket_board(const std::vector<std::uint8_t>& hunl_board) {
     std::vector<std::uint8_t> compact;
     compact.reserve(hunl_board.size());
-    for (const auto card : hunl_board) compact.push_back(card - core::HUNL_CARD_FIRST);
+    for (const auto card : hunl_board) compact.push_back(card);
     return compact;
 }
 
 std::vector<std::uint32_t> assignments_for(const std::vector<std::uint8_t>& compact_board) {
-    std::vector<std::uint32_t> assignments(core::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
+    std::vector<std::uint32_t> assignments(texas::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
     for (std::uint8_t first = 0; first < 52U; ++first) {
         for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
             const std::array<std::uint8_t, 2> hole = {first, second};
             if (std::find(compact_board.begin(), compact_board.end(), first) != compact_board.end() ||
                 std::find(compact_board.begin(), compact_board.end(), second) != compact_board.end()) {
-                assignments[core::MultiwayBucketTable::hole_index(hole)] =
-                    core::MULTIWAY_INVALID_BUCKET;
+                assignments[texas::MultiwayBucketTable::hole_index(hole)] =
+                    texas::MULTIWAY_INVALID_BUCKET;
             }
         }
     }
     return assignments;
 }
 
-core::MultiwayBucketRegistry make_flop_turn_buckets(bool include_turns) {
-    core::MultiwayBlueprintConfig config;
+texas::MultiwayBucketRegistry make_flop_turn_buckets(bool include_turns) {
+    texas::MultiwayBlueprintConfig config;
     config.player_count = 2U;
-    const auto identity = core::make_multiway_model_identity(config);
-    std::vector<core::MultiwayBucketTable> tables;
+    const auto identity = texas::make_multiway_model_identity(config);
+    std::vector<texas::MultiwayBucketTable> tables;
     const auto compact_flop = compact_bucket_board(kFlop);
-    tables.emplace_back(identity, core::Street::Flop, compact_flop, 1U, assignments_for(compact_flop));
+    tables.emplace_back(identity, texas::Street::Flop, compact_flop, 1U, assignments_for(compact_flop));
     if (include_turns) {
         for (std::uint8_t candidate = 0; candidate < 52U; ++candidate) {
             if (std::find(compact_flop.begin(), compact_flop.end(), candidate) != compact_flop.end()) continue;
             auto board = compact_flop;
             board.push_back(candidate);
             tables.emplace_back(
-                identity, core::Street::Turn, board, 1U, assignments_for(board));
+                identity, texas::Street::Turn, board, 1U, assignments_for(board));
         }
     }
-    return core::MultiwayBucketRegistry(std::move(tables));
+    return texas::MultiwayBucketRegistry(std::move(tables));
 }
 
-core::MultiwayBucketRegistry make_root_buckets(
-    core::Street street,
+texas::MultiwayBucketRegistry make_root_buckets(
+    texas::Street street,
     const std::vector<std::uint8_t>& board) {
-    core::MultiwayBlueprintConfig config;
+    texas::MultiwayBlueprintConfig config;
     config.player_count = 2U;
     const auto compact_board = compact_bucket_board(board);
-    return core::MultiwayBucketRegistry({core::MultiwayBucketTable(
-        core::make_multiway_model_identity(config), street, compact_board, 1U,
+    return texas::MultiwayBucketRegistry({texas::MultiwayBucketTable(
+        texas::make_multiway_model_identity(config), street, compact_board, 1U,
         assignments_for(compact_board))});
 }
 
-core::MultiwaySolverLimits limits(std::size_t delta_capacity = 256U) {
-    core::MultiwaySolverLimits result;
+texas::MultiwaySolverLimits limits(std::size_t delta_capacity = 256U) {
+    texas::MultiwaySolverLimits result;
     result.max_public_states = 512U;
     result.max_sparse_rows = 128U;
     result.max_sparse_values = 1024U;
@@ -91,18 +91,18 @@ core::MultiwaySolverLimits limits(std::size_t delta_capacity = 256U) {
     return result;
 }
 
-core::MultiwayCFRConfig cfr() {
-    core::MultiwayCFRConfig result;
+texas::MultiwayCFRConfig cfr() {
+    texas::MultiwayCFRConfig result;
     result.player_count = 2U;
     return result;
 }
 
-core::MultiwayRootSnapshot make_root(
-    const core::MultiwayState& state,
+texas::MultiwayRootSnapshot make_root(
+    const texas::MultiwayState& state,
     const std::vector<std::uint8_t>& board,
-    const core::MultiwayActionAbstraction& abstraction) {
-    core::MultiwayRootSnapshot root;
-    root.public_state = core::MultiwayPublicBuilder::make_root(
+    const texas::MultiwayActionAbstraction& abstraction) {
+    texas::MultiwayRootSnapshot root;
+    root.public_state = texas::MultiwayPublicBuilder::make_root(
         state.snapshot(), board, abstraction.make_legal_actions(state.snapshot(), 83U));
     root.root_infoset = {root.public_state.id, state.current_player()};
     root.seat_order = {0, 1};
@@ -115,25 +115,25 @@ core::MultiwayRootSnapshot make_root(
     return root;
 }
 
-core::MultiwayState fresh_state(core::Street street, core::PlayerId first_player = 0) {
-    core::MultiwayGameConfig game;
+texas::MultiwayState fresh_state(texas::Street street, texas::PlayerId first_player = 0) {
+    texas::MultiwayGameConfig game;
     game.starting_stacks = {1000, 1000};
     game.initial_contributions = {0, 0};
     game.initial_street_contributions = {0, 0};
     game.first_player = first_player;
     game.big_blind = 100;
     game.street = street;
-    return core::MultiwayState::initial(game);
+    return texas::MultiwayState::initial(game);
 }
 
 struct LeafProbe {
     std::size_t calls = 0U;
-    std::array<core::Street, 256> streets{};
+    std::array<texas::Street, 256> streets{};
     std::array<std::size_t, 256> board_sizes{};
 };
 
-core::Value probe_leaf(
-    const core::MultiwayLeafEvaluationRequest& request,
+texas::Value probe_leaf(
+    const texas::MultiwayLeafEvaluationRequest& request,
     const void* context) noexcept {
     auto& probe = *const_cast<LeafProbe*>(static_cast<const LeafProbe*>(context));
     if (probe.calls < probe.streets.size()) {
@@ -142,13 +142,13 @@ core::Value probe_leaf(
     }
     ++probe.calls;
     const auto traverser = static_cast<std::size_t>(request.traverser);
-    return static_cast<core::Value>(request.betting->street_contributions[traverser]);
+    return static_cast<texas::Value>(request.betting->street_contributions[traverser]);
 }
 
 bool saw_turn(const LeafProbe& probe) {
     const auto count = std::min(probe.calls, probe.streets.size());
     for (std::size_t index = 0; index < count; ++index) {
-        if (probe.streets[index] == core::Street::Turn && probe.board_sizes[index] == 4U) {
+        if (probe.streets[index] == texas::Street::Turn && probe.board_sizes[index] == 4U) {
             return true;
         }
     }
@@ -161,7 +161,7 @@ struct ChanceTraversalFixture {
         std::uint32_t max_public_chance_depth,
         bool include_turn_buckets,
         std::size_t delta_capacity = 256U)
-        : root(make_root(fresh_state(core::Street::Flop), kFlop, abstraction)),
+        : root(make_root(fresh_state(texas::Street::Flop), kFlop, abstraction)),
           request(root, cfr(), limits(delta_capacity)),
           coordinator(request),
           buckets(make_flop_turn_buckets(include_turn_buckets)),
@@ -170,22 +170,22 @@ struct ChanceTraversalFixture {
               coordinator, request.root(), abstraction, buckets, &evaluator,
               max_decision_depth, max_public_chance_depth) {}
 
-    core::MultiwayActionAbstraction abstraction;
-    core::MultiwayRootSnapshot root;
-    core::MultiwaySolveRequest request;
-    core::MultiwaySolverCoordinator coordinator;
-    core::MultiwayBucketRegistry buckets;
+    texas::MultiwayActionAbstraction abstraction;
+    texas::MultiwayRootSnapshot root;
+    texas::MultiwaySolveRequest request;
+    texas::MultiwaySolverCoordinator coordinator;
+    texas::MultiwayBucketRegistry buckets;
     LeafProbe probe;
-    core::MultiwayLeafEvaluator evaluator;
-    core::MultiwayRootExternalSamplingTraversal traversal;
+    texas::MultiwayLeafEvaluator evaluator;
+    texas::MultiwayRootExternalSamplingTraversal traversal;
 };
 
 struct AllInRunoutFixture {
     AllInRunoutFixture(
-        core::Street street,
+        texas::Street street,
         const std::vector<std::uint8_t>& board,
         std::size_t delta_capacity = 256U)
-        : facing_all_in(fresh_state(street, 1).apply(core::MultiwayAction::AllIn, 1000)),
+        : facing_all_in(fresh_state(street, 1).apply(texas::MultiwayAction::AllIn, 1000)),
           root(make_root(facing_all_in, board, abstraction)),
           request(root, cfr(), limits(delta_capacity)),
           coordinator(request),
@@ -193,20 +193,20 @@ struct AllInRunoutFixture {
           evaluator{probe_leaf, &probe},
           traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U, 0U) {}
 
-    core::MultiwayActionAbstraction abstraction;
-    core::MultiwayState facing_all_in;
-    core::MultiwayRootSnapshot root;
-    core::MultiwaySolveRequest request;
-    core::MultiwaySolverCoordinator coordinator;
-    core::MultiwayBucketRegistry buckets;
+    texas::MultiwayActionAbstraction abstraction;
+    texas::MultiwayState facing_all_in;
+    texas::MultiwayRootSnapshot root;
+    texas::MultiwaySolveRequest request;
+    texas::MultiwaySolverCoordinator coordinator;
+    texas::MultiwayBucketRegistry buckets;
     LeafProbe probe;
-    core::MultiwayLeafEvaluator evaluator;
-    core::MultiwayRootExternalSamplingTraversal traversal;
+    texas::MultiwayLeafEvaluator evaluator;
+    texas::MultiwayRootExternalSamplingTraversal traversal;
 };
 
 bool same_deltas(
-    const core::MultiwayWorkerDeltaStream& left,
-    const core::MultiwayWorkerDeltaStream& right) {
+    const texas::MultiwayWorkerDeltaStream& left,
+    const texas::MultiwayWorkerDeltaStream& right) {
     if (left.size() != right.size()) return false;
     for (std::size_t index = 0; index < left.size(); ++index) {
         const auto& a = left.deltas()[index];
@@ -223,54 +223,54 @@ bool same_deltas(
 }  // namespace
 
 TEST_CASE(multiway_public_chance_traversal_rejects_excessive_chance_depth) {
-    core::MultiwayActionAbstraction abstraction;
-    const auto root = make_root(fresh_state(core::Street::Flop), kFlop, abstraction);
-    const core::MultiwaySolveRequest request(root, cfr(), limits());
-    core::MultiwaySolverCoordinator coordinator(request);
+    texas::MultiwayActionAbstraction abstraction;
+    const auto root = make_root(fresh_state(texas::Street::Flop), kFlop, abstraction);
+    const texas::MultiwaySolveRequest request(root, cfr(), limits());
+    texas::MultiwaySolverCoordinator coordinator(request);
     const auto buckets = make_flop_turn_buckets(false);
     LeafProbe probe;
-    const core::MultiwayLeafEvaluator evaluator = {probe_leaf, &probe};
+    const texas::MultiwayLeafEvaluator evaluator = {probe_leaf, &probe};
     EXPECT_THROW(
-        core::MultiwayRootExternalSamplingTraversal(
+        texas::MultiwayRootExternalSamplingTraversal(
             coordinator, request.root(), abstraction, buckets, &evaluator,
-            1U, core::MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH + 1U),
+            1U, texas::MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH + 1U),
         std::invalid_argument);
 }
 
 TEST_CASE(multiway_public_chance_traversal_rejects_oversized_root_action_menu) {
-    core::MultiwayActionAbstraction abstraction;
-    const auto state = fresh_state(core::Street::Flop);
+    texas::MultiwayActionAbstraction abstraction;
+    const auto state = fresh_state(texas::Street::Flop);
     auto root = make_root(state, kFlop, abstraction);
     root.public_state.legal_actions.clear();
-    root.public_state.legal_actions.push_back({core::MultiwayAction::Check, 0U, 0, 83U});
+    root.public_state.legal_actions.push_back({texas::MultiwayAction::Check, 0U, 0, 83U});
     for (int target = 100; target <= 700; target += 100) {
         root.public_state.legal_actions.push_back({
-            core::MultiwayAction::Bet,
+            texas::MultiwayAction::Bet,
             static_cast<std::uint32_t>(root.public_state.legal_actions.size()),
             target,
             83U,
         });
     }
     root.public_state.legal_actions.push_back({
-        core::MultiwayAction::AllIn,
+        texas::MultiwayAction::AllIn,
         static_cast<std::uint32_t>(root.public_state.legal_actions.size()),
         1000,
         83U,
     });
-    root.public_state = core::MultiwayPublicBuilder::make_root(
+    root.public_state = texas::MultiwayPublicBuilder::make_root(
         state.snapshot(), kFlop, std::move(root.public_state.legal_actions));
     root.root_infoset = {root.public_state.id, state.current_player()};
     EXPECT_EQ(
         root.public_state.legal_actions.size(),
-        core::MULTIWAY_MAX_TRAVERSAL_ACTIONS + 1U);
+        texas::MULTIWAY_MAX_TRAVERSAL_ACTIONS + 1U);
 
-    const core::MultiwaySolveRequest request(root, cfr(), limits());
-    core::MultiwaySolverCoordinator coordinator(request);
+    const texas::MultiwaySolveRequest request(root, cfr(), limits());
+    texas::MultiwaySolverCoordinator coordinator(request);
     const auto buckets = make_flop_turn_buckets(false);
     LeafProbe probe;
-    const core::MultiwayLeafEvaluator evaluator = {probe_leaf, &probe};
+    const texas::MultiwayLeafEvaluator evaluator = {probe_leaf, &probe};
     EXPECT_THROW(
-        core::MultiwayRootExternalSamplingTraversal(
+        texas::MultiwayRootExternalSamplingTraversal(
             coordinator, request.root(), abstraction, buckets, &evaluator, 1U, 0U),
         std::invalid_argument);
     EXPECT_EQ(coordinator.storage().row_count(), std::size_t{0});
@@ -281,7 +281,7 @@ TEST_CASE(multiway_public_chance_traversal_same_seed_has_the_same_path_and_delta
     std::uint64_t transition_seed = 0U;
     for (std::uint64_t seed = 1U; seed <= 32U && transition_seed == 0U; ++seed) {
         ChanceTraversalFixture scout(2U, 1U, true);
-        core::MultiwayWorkerDeltaStream scout_stream(0U, 256U);
+        texas::MultiwayWorkerDeltaStream scout_stream(0U, 256U);
         EXPECT_TRUE(scout.traversal.run(0, 91U, seed, scout_stream));
         if (saw_turn(scout.probe)) transition_seed = seed;
     }
@@ -289,8 +289,8 @@ TEST_CASE(multiway_public_chance_traversal_same_seed_has_the_same_path_and_delta
 
     ChanceTraversalFixture first(2U, 1U, true);
     ChanceTraversalFixture second(2U, 1U, true);
-    core::MultiwayWorkerDeltaStream first_stream(0U, 256U);
-    core::MultiwayWorkerDeltaStream second_stream(0U, 256U);
+    texas::MultiwayWorkerDeltaStream first_stream(0U, 256U);
+    texas::MultiwayWorkerDeltaStream second_stream(0U, 256U);
     EXPECT_TRUE(first.traversal.run(0, 91U, transition_seed, first_stream));
     EXPECT_TRUE(second.traversal.run(0, 91U, transition_seed, second_stream));
     EXPECT_TRUE(saw_turn(first.probe));
@@ -306,7 +306,7 @@ TEST_CASE(multiway_public_chance_traversal_lazily_admits_transition_and_calls_tu
     bool reached_turn = false;
     for (std::uint64_t seed = 1U; seed <= 32U && !reached_turn; ++seed) {
         fixture.probe = {};
-        core::MultiwayWorkerDeltaStream stream(0U, 256U);
+        texas::MultiwayWorkerDeltaStream stream(0U, 256U);
         EXPECT_TRUE(fixture.traversal.run(0, seed, seed, stream));
         reached_turn = saw_turn(fixture.probe);
     }
@@ -321,7 +321,7 @@ TEST_CASE(multiway_public_chance_traversal_enters_next_street_bucket_and_counts_
     bool found_turn_row = false;
     for (std::uint64_t seed = 1U; seed <= 32U && !found_turn_row; ++seed) {
         fixture.probe = {};
-        core::MultiwayWorkerDeltaStream stream(0U, 256U);
+        texas::MultiwayWorkerDeltaStream stream(0U, 256U);
         EXPECT_TRUE(fixture.traversal.run(0, seed, seed, stream));
         for (std::size_t begin = 0; begin < stream.size(); ++begin) {
             if (stream.deltas()[begin].infoset.public_state ==
@@ -349,16 +349,16 @@ TEST_CASE(multiway_public_chance_traversal_enters_next_street_bucket_and_counts_
 }
 
 TEST_CASE(multiway_public_chance_traversal_all_in_flop_and_turn_run_to_exact_river_terminal) {
-    AllInRunoutFixture flop(core::Street::Flop, kFlop);
-    core::MultiwayWorkerDeltaStream flop_stream(0U, 256U);
+    AllInRunoutFixture flop(texas::Street::Flop, kFlop);
+    texas::MultiwayWorkerDeltaStream flop_stream(0U, 256U);
     EXPECT_TRUE(flop.traversal.run(0, 1U, 77U, flop_stream));
     EXPECT_EQ(flop.probe.calls, std::size_t{0});
     EXPECT_TRUE(
         flop.coordinator.diagnostics().public_states_admitted >
         1U + flop.request.root().public_state.legal_actions.size());
 
-    AllInRunoutFixture turn(core::Street::Turn, kTurn);
-    core::MultiwayWorkerDeltaStream turn_stream(0U, 256U);
+    AllInRunoutFixture turn(texas::Street::Turn, kTurn);
+    texas::MultiwayWorkerDeltaStream turn_stream(0U, 256U);
     EXPECT_TRUE(turn.traversal.run(0, 2U, 88U, turn_stream));
     EXPECT_EQ(turn.probe.calls, std::size_t{0});
     EXPECT_TRUE(
@@ -367,9 +367,9 @@ TEST_CASE(multiway_public_chance_traversal_all_in_flop_and_turn_run_to_exact_riv
 }
 
 TEST_CASE(multiway_public_chance_traversal_rolls_back_capacity_failure_after_runout) {
-    AllInRunoutFixture fixture(core::Street::Flop, kFlop, 1U);
-    core::MultiwayWorkerDeltaStream stream(0U, 1U);
-    core::MultiwayWorkerDelta sentinel;
+    AllInRunoutFixture fixture(texas::Street::Flop, kFlop, 1U);
+    texas::MultiwayWorkerDeltaStream stream(0U, 1U);
+    texas::MultiwayWorkerDelta sentinel;
     sentinel.infoset = fixture.request.root().root_infoset;
     sentinel.trajectory_id = 9U;
     EXPECT_TRUE(stream.try_append(sentinel));

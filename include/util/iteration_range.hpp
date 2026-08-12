@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::util {
 
 template <class Callback>
 inline void for_each_u32_after(
@@ -30,4 +32,4 @@ inline void for_each_u32_after(
     return current + 1U;
 }
 
-}  // namespace core
+}  // namespace texas::util

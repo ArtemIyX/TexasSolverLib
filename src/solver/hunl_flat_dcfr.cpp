@@ -16,7 +16,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -1293,4 +1293,4 @@ void HUNLFlatDCFR::worker_average_strategy_stage(std::size_t worker_index) {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - worker_start).count());
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

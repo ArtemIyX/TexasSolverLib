@@ -42,8 +42,8 @@ std::optional<std::string> get_env(const char* name) {
     return std::string(value);
 }
 
-core::HUNLState river_state() {
-    return core::HUNLState::initial(std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame()));
+texas::HUNLState river_state() {
+    return texas::HUNLState::initial(std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame()));
 }
 
 }  // namespace
@@ -55,7 +55,7 @@ TEST_CASE(hunl_regression_infoset_key_format_is_stable) {
 }
 
 TEST_CASE(hunl_regression_flat_backend_populates_value_metrics) {
-    auto config = core::default_tiny_subgame();
+    auto config = texas::default_tiny_subgame();
     const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
     EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
 #if defined(_MSC_VER)
@@ -64,7 +64,7 @@ TEST_CASE(hunl_regression_flat_backend_populates_value_metrics) {
     setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
 #endif
 
-    const auto output = core::lib::solve_hunl_postflop(config, 10, 1.5, 0.0, 2.0, 4, 8, true);
+    const auto output = texas::lib::solve_hunl_postflop(config, 10, 1.5, 0.0, 2.0, 4, 8, true);
 
     EXPECT_TRUE(std::isfinite(output.game_value));
     EXPECT_TRUE(std::isfinite(output.exploitability));
@@ -74,8 +74,8 @@ TEST_CASE(hunl_regression_flat_backend_populates_value_metrics) {
 }
 
 TEST_CASE(hunl_regression_explicit_hand_flat_mode_runs_without_abstraction) {
-    auto config = core::default_tiny_subgame();
-    config.flat_solve_mode = core::HUNLFlatSolveMode::ExplicitHand;
+    auto config = texas::default_tiny_subgame();
+    config.flat_solve_mode = texas::HUNLFlatSolveMode::ExplicitHand;
 
     const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
     EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
@@ -85,14 +85,14 @@ TEST_CASE(hunl_regression_explicit_hand_flat_mode_runs_without_abstraction) {
     setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
 #endif
 
-    const auto output = core::lib::solve_hunl_postflop(config, 2, 1.5, 0.0, 2.0, 1, 8, true);
+    const auto output = texas::lib::solve_hunl_postflop(config, 2, 1.5, 0.0, 2.0, 1, 8, true);
     EXPECT_TRUE(std::isfinite(output.game_value));
     EXPECT_TRUE(std::isfinite(output.exploitability));
 }
 
 TEST_CASE(hunl_regression_bucketed_flat_mode_requires_abstraction) {
-    auto config = core::default_tiny_subgame();
-    config.flat_solve_mode = core::HUNLFlatSolveMode::Bucketed;
+    auto config = texas::default_tiny_subgame();
+    config.flat_solve_mode = texas::HUNLFlatSolveMode::Bucketed;
     config.abstraction_path = std::nullopt;
 
     const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
@@ -104,7 +104,7 @@ TEST_CASE(hunl_regression_bucketed_flat_mode_requires_abstraction) {
 #endif
 
     EXPECT_THROW(
-        static_cast<void>(core::lib::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 1, 8, true)),
+        static_cast<void>(texas::lib::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 1, 8, true)),
         std::invalid_argument);
 }
 

@@ -1,6 +1,6 @@
 #include "solver/multiway_continuation_selector.hpp"
 
-namespace core {
+namespace texas::solver::multiway {
 
 bool MultiwayContinuationSelectionKey::valid() const noexcept {
     return public_state.value != 0U && actor >= 0 && street >= Street::Flop &&
@@ -18,4 +18,4 @@ MultiwayContinuationPolicyKind MultiwayFixedContinuationSelector::select(
     return policy_;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -4,7 +4,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 // MultiwayModelIdentity gained Phase 0 semantic identity components.
@@ -98,4 +98,4 @@ void MultiwayCheckpoint::validate_resume_identity(
     }
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

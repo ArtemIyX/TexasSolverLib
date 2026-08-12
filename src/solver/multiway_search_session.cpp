@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 MultiwaySearchSession::MultiwaySearchSession(
     const MultiwaySolveRequest& request,
@@ -46,7 +46,7 @@ void MultiwaySearchSession::validate_dependencies() const {
     if (buckets_ == nullptr) {
         throw std::invalid_argument("multiway postflop search session requires a bucket registry");
     }
-    const auto& table = buckets_->table_hunl(
+    const auto& table = buckets_->table(
         root.public_state.betting.street, root.public_state.board);
     if (root.root_bucket >= table.bucket_count()) {
         throw std::invalid_argument("multiway search session root bucket is unavailable");
@@ -190,8 +190,8 @@ MultiwaySearchSessionHeroPolicy MultiwaySearchSession::export_hero_policy(
         if (!actual_view.legal(combo) || actual_view.weight(combo) <= 0.0) continue;
         std::uint32_t bucket = root.root_bucket;
         if (root.public_state.betting.street != Street::Preflop) {
-            bucket = buckets_->table_hunl(root.public_state.betting.street, root.public_state.board)
-                .lookup_hunl(combos.cards(combo));
+            bucket = buckets_->table(root.public_state.betting.street, root.public_state.board)
+                .lookup(combos.cards(combo));
         }
         std::vector<Probability> probabilities;
         if (coordinator_.storage().has_row(infoset)) {
@@ -321,4 +321,4 @@ void MultiwaySearchSession::initialize_beliefs() {
     beliefs_.reset_supplied(seat_count, inputs.data());
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

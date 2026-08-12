@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/game.hpp"
 
 #include <array>
 #include <memory>
 
-namespace core {
+namespace texas::games {
 
 inline constexpr ActionId PASS = 0;
 inline constexpr ActionId BET = 1;
@@ -40,6 +42,6 @@ public:
     std::unique_ptr<Game> apply(ActionId action) const override;
 };
 
-}  // namespace core
+}  // namespace texas::games
 
 

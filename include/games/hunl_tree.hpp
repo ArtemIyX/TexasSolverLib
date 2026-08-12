@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 
 #include <cstdint>
@@ -8,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::games::hunl {
 
 struct MemoKey;
 
@@ -94,13 +96,13 @@ struct MemoKey {
 
 TerminalKind classify_terminal_kind(const HUNLState& state);
 
-}  // namespace core
+}  // namespace texas::games::hunl
 
 namespace std {
 
 template <>
-struct hash<core::MemoKey> {
-    std::size_t operator()(const core::MemoKey& key) const noexcept;
+struct hash<texas::MemoKey> {
+    std::size_t operator()(const texas::MemoKey& key) const noexcept;
 };
 
 }  // namespace std

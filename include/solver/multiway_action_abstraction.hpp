@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_state.hpp"
 #include "solver/multiway_solver.hpp"
 
@@ -8,7 +10,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Keep this synchronized with the traversal's fixed-size action scratch.
 inline constexpr std::size_t MULTIWAY_MAX_ABSTRACTED_ACTIONS = 8U;
@@ -157,4 +159,4 @@ private:
     MultiwayActionAbstractionConfig config_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

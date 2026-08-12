@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/hunl_flat_state.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 class HUNLFlatDCFR;
 
@@ -72,4 +74,4 @@ private:
     HUNLFlatPipelinePlan plan_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

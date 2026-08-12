@@ -73,21 +73,21 @@ void expect_strategy_close(
     }
 }
 
-core::HUNLConfig tiny_postflop_config() {
-    core::HUNLConfig cfg;
+texas::HUNLConfig tiny_postflop_config() {
+    texas::HUNLConfig cfg;
     cfg.starting_stack = 1000;
-    cfg.starting_street = core::Street::River;
+    cfg.starting_street = texas::Street::River;
     cfg.initial_board = {
-        core::card_to_int(14, 0),
-        core::card_to_int(7, 3),
-        core::card_to_int(2, 2),
-        core::card_to_int(13, 1),
-        core::card_to_int(5, 0)};
+        texas::card_to_int(14, 0),
+        texas::card_to_int(7, 3),
+        texas::card_to_int(2, 2),
+        texas::card_to_int(13, 1),
+        texas::card_to_int(5, 0)};
     cfg.initial_pot = 1000;
     cfg.initial_contributions = {500, 500};
     cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {core::card_to_int(14, 1), core::card_to_int(13, 3)},
-        {core::card_to_int(12, 2), core::card_to_int(12, 1)},
+        {texas::card_to_int(14, 1), texas::card_to_int(13, 3)},
+        {texas::card_to_int(12, 2), texas::card_to_int(12, 1)},
     }};
     return cfg;
 }
@@ -96,10 +96,10 @@ core::HUNLConfig tiny_postflop_config() {
 
 TEST_CASE(parallel_dcfr_matches_sequential_kuhn_output) {
     const auto sequential = solve_with_parallel_flag(false, [] {
-        return core::lib::solve_kuhn(20, 1.5, 0.0, 2.0);
+        return texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0);
     });
     const auto parallel = solve_with_parallel_flag(true, [] {
-        return core::lib::solve_kuhn(20, 1.5, 0.0, 2.0);
+        return texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0);
     });
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
@@ -110,10 +110,10 @@ TEST_CASE(parallel_dcfr_matches_sequential_kuhn_output) {
 
 TEST_CASE(parallel_dcfr_matches_sequential_leduc_output) {
     const auto sequential = solve_with_parallel_flag(false, [] {
-        return core::lib::solve_leduc(10, 1.5, 0.0, 2.0);
+        return texas::lib::solve_leduc(10, 1.5, 0.0, 2.0);
     });
     const auto parallel = solve_with_parallel_flag(true, [] {
-        return core::lib::solve_leduc(10, 1.5, 0.0, 2.0);
+        return texas::lib::solve_leduc(10, 1.5, 0.0, 2.0);
     });
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
@@ -125,10 +125,10 @@ TEST_CASE(parallel_dcfr_matches_sequential_leduc_output) {
 TEST_CASE(parallel_dcfr_matches_sequential_hunl_output) {
     const auto cfg = tiny_postflop_config();
     const auto sequential = solve_with_parallel_flag(false, [&] {
-        return core::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0);
+        return texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0);
     });
     const auto parallel = solve_with_parallel_flag(true, [&] {
-        return core::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0);
+        return texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0);
     });
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);

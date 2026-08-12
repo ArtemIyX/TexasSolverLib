@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -440,12 +440,12 @@ double heuristic_depth_limited_value_p0(const HUNLFlatNodeMeta& node, const HUNL
     return pot_share + board_term + pressure_term + street_term;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl
 
 namespace std {
 
-std::size_t hash<core::HUNLBucketTerminalCacheKey>::operator()(
-    const core::HUNLBucketTerminalCacheKey& key) const noexcept {
+std::size_t hash<texas::HUNLBucketTerminalCacheKey>::operator()(
+    const texas::HUNLBucketTerminalCacheKey& key) const noexcept {
     std::size_t seed = 0;
     for (const auto card : key.board.cards) {
         seed ^= static_cast<std::size_t>(card) + 0x9e3779b9U + (seed << 6U) + (seed >> 2U);

@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <unordered_set>
 
-namespace core {
+namespace texas::preflop {
 
 PreflopRvrNotReady::PreflopRvrNotReady()
     : std::logic_error(
@@ -779,6 +779,6 @@ VectorSolveOutput solve_hunl_vector_dcfr(
     return solve_vector_dcfr(tree, hole_pairs, iterations, alpha, beta, gamma);
 }
 
-}  // namespace core
+}  // namespace texas::preflop
 
 

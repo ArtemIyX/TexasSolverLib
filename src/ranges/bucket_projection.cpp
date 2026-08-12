@@ -3,7 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace core {
+namespace texas::ranges {
 
 namespace {
 
@@ -125,4 +125,4 @@ std::vector<double> combo_weights_to_bucket_weights(
     return projection.bucket_range.range.weights;
 }
 
-}  // namespace core
+}  // namespace texas::ranges

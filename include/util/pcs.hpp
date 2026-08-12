@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::util {
 
 enum class SamplingStrategy : std::uint8_t {
     Full = 0,
@@ -41,6 +43,6 @@ private:
 
 std::pair<std::size_t, double> sample_uniform_outcome(PcsRng& rng, std::size_t k_outcomes);
 
-}  // namespace core
+}  // namespace texas::util
 
 

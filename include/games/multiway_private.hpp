@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_terminal.hpp"
 
 #include <array>
@@ -7,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace core {
+namespace texas::games::multiway {
 
 namespace detail {
 
@@ -132,4 +134,4 @@ struct MultiwayShowdownInput {
 // utility settlement to the precomputed multiway terminal layer.
 MultiwayTerminalResult evaluate_multiway_showdown(const MultiwayShowdownInput& input);
 
-}  // namespace core
+}  // namespace texas::games::multiway

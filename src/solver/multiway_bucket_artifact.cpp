@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr std::uint8_t kMagic[] = {'M', 'W', 'B', 'K'};
@@ -329,4 +329,4 @@ MultiwayBucketRegistry deserialize_multiway_bucket_registry(const std::vector<st
     return MultiwayBucketRegistry(std::move(tables));
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

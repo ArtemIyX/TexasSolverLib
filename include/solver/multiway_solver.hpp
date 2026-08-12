@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_private.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway_cfr.hpp"
@@ -11,7 +13,7 @@
 #include <optional>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 class MultiwayTerminalAdapter;
 
@@ -420,4 +422,4 @@ private:
     mutable std::mutex traversal_mutex_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

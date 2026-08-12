@@ -151,22 +151,22 @@ std::string format_duration(std::chrono::steady_clock::duration elapsed) {
     return oss.str();
 }
 
-core::HUNLConfig make_benchmark_hunl_config() {
-    return core::benchmark_turn_subgame();
+texas::HUNLConfig make_benchmark_hunl_config() {
+    return texas::benchmark_turn_subgame();
 }
 
-std::string layout_name(core::HUNLFlatValueLayout layout) {
+std::string layout_name(texas::HUNLFlatValueLayout layout) {
     switch (layout) {
-        case core::HUNLFlatValueLayout::InfosetHandAction:
+        case texas::HUNLFlatValueLayout::InfosetHandAction:
             return "infoset-hand-action";
-        case core::HUNLFlatValueLayout::InfosetActionHand:
+        case texas::HUNLFlatValueLayout::InfosetActionHand:
             return "infoset-action-hand";
     }
     return "unknown";
 }
 
 struct LayoutBenchResult {
-    core::HUNLFlatValueLayout layout = core::HUNLFlatValueLayout::InfosetHandAction;
+    texas::HUNLFlatValueLayout layout = texas::HUNLFlatValueLayout::InfosetHandAction;
     double total_ms = 0.0;
     double strategy_ms = 0.0;
     double strategy_sum_ms = 0.0;
@@ -175,13 +175,13 @@ struct LayoutBenchResult {
 };
 
 LayoutBenchResult run_layout_benchmark_variant(
-    const core::HUNLFlatSolveGraph& graph,
+    const texas::HUNLFlatSolveGraph& graph,
     const std::array<std::size_t, 2>& hand_count_per_player,
     std::uint32_t iterations,
-    core::HUNLFlatValueLayout layout) {
+    texas::HUNLFlatValueLayout layout) {
     using clock = std::chrono::steady_clock;
 
-    auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player, layout);
+    auto table = texas::HUNLFlatInfosetTable::build(graph, hand_count_per_player, layout);
     const auto& meta = table.meta();
     for (const auto& row : meta) {
         auto* regret = table.regret_mut(row.id);
@@ -210,10 +210,10 @@ LayoutBenchResult run_layout_benchmark_variant(
             auto* regret = table.regret_mut(row.id);
             auto* strategy = table.current_strategy_mut(row.id);
             auto* positive = positive_buffer.data() + row.offset;
-            if (layout == core::HUNLFlatValueLayout::InfosetHandAction) {
+            if (layout == texas::HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t h = 0; h < row.hand_count; ++h) {
                     const auto hand_offset = h * static_cast<std::size_t>(row.action_count);
-                    const double total = core::positive_regrets_and_total(
+                    const double total = texas::positive_regrets_and_total(
                         regret + hand_offset,
                         positive + hand_offset,
                         row.action_count);
@@ -256,10 +256,10 @@ LayoutBenchResult run_layout_benchmark_variant(
         for (const auto& row : meta) {
             auto* strategy_sum = table.strategy_sum_mut(row.id);
             const auto* strategy = table.current_strategy(row.id);
-            if (layout == core::HUNLFlatValueLayout::InfosetHandAction) {
+            if (layout == texas::HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t h = 0; h < row.hand_count; ++h) {
                     const auto hand_offset = h * static_cast<std::size_t>(row.action_count);
-                    core::update_strategy_sum(
+                    texas::update_strategy_sum(
                         strategy_sum + hand_offset,
                         strategy + hand_offset,
                         row.action_count,
@@ -280,10 +280,10 @@ LayoutBenchResult run_layout_benchmark_variant(
         const auto regret_start = clock::now();
         for (const auto& row : meta) {
             auto* regret = table.regret_mut(row.id);
-            if (layout == core::HUNLFlatValueLayout::InfosetHandAction) {
+            if (layout == texas::HUNLFlatValueLayout::InfosetHandAction) {
                 for (std::size_t h = 0; h < row.hand_count; ++h) {
                     const auto hand_offset = h * static_cast<std::size_t>(row.action_count);
-                    core::update_regret_sum(
+                    texas::update_regret_sum(
                         regret + hand_offset,
                         action_values.data() + row.offset + hand_offset,
                         row.action_count,
@@ -319,14 +319,14 @@ LayoutBenchResult run_layout_benchmark_variant(
 }
 
 void run_layout_benchmark(std::uint32_t iterations) {
-    const auto config = std::make_shared<const core::HUNLConfig>(make_benchmark_hunl_config());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(make_benchmark_hunl_config());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> hand_count_per_player = {1326, 1326};
 
     const auto hand_action = run_layout_benchmark_variant(
-        graph, hand_count_per_player, iterations, core::HUNLFlatValueLayout::InfosetHandAction);
+        graph, hand_count_per_player, iterations, texas::HUNLFlatValueLayout::InfosetHandAction);
     const auto action_hand = run_layout_benchmark_variant(
-        graph, hand_count_per_player, iterations, core::HUNLFlatValueLayout::InfosetActionHand);
+        graph, hand_count_per_player, iterations, texas::HUNLFlatValueLayout::InfosetActionHand);
 
     std::cout << std::left
               << std::setw(22) << "Layout"
@@ -356,7 +356,7 @@ void run_layout_benchmark(std::uint32_t iterations) {
     std::cout << "\nAdvice: select `" << layout_name(better.layout) << "`";
     std::cout << " because it is " << std::fixed << std::setprecision(3) << speedup
               << "x faster on this CPU microbenchmark.\n";
-    if (better.layout == core::HUNLFlatValueLayout::InfosetHandAction) {
+    if (better.layout == texas::HUNLFlatValueLayout::InfosetHandAction) {
         std::cout << "This is also the simpler layout for regret matching and row-wise SIMD over actions.\n";
     } else {
         std::cout << "Use this only if repeated runs keep it ahead on your target CPU.\n";
@@ -382,7 +382,7 @@ void run_benchmark_rows(const BenchmarkConfig& cfg, SolveFn&& solve) {
         std::string finalize = "-";
         std::string post = "-";
 
-        if constexpr (std::is_same_v<std::decay_t<decltype(output)>, core::SolveOutput>) {
+        if constexpr (std::is_same_v<std::decay_t<decltype(output)>, texas::SolveOutput>) {
             solver_kind = output.used_parallel ? "parallel" : "sequential";
             traverse = format_duration(
                 std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -391,7 +391,7 @@ void run_benchmark_rows(const BenchmarkConfig& cfg, SolveFn&& solve) {
                 std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                     std::chrono::duration<double>(output.finalize_seconds)));
             post = "0 us";
-        } else if constexpr (std::is_same_v<std::decay_t<decltype(output)>, core::HUNLSolveOutput>) {
+        } else if constexpr (std::is_same_v<std::decay_t<decltype(output)>, texas::HUNLSolveOutput>) {
             solver_kind = output.used_parallel ? "parallel" : "sequential";
             traverse = format_duration(
                 std::chrono::duration_cast<std::chrono::steady_clock::duration>(
@@ -416,10 +416,10 @@ void run_benchmark_rows(const BenchmarkConfig& cfg, SolveFn&& solve) {
             continue;
         }
 
-        const core::SolveProfile* profile = nullptr;
-        if constexpr (std::is_same_v<std::decay_t<decltype(output)>, core::SolveOutput>) {
+        const texas::SolveProfile* profile = nullptr;
+        if constexpr (std::is_same_v<std::decay_t<decltype(output)>, texas::SolveOutput>) {
             profile = &output.profile;
-        } else if constexpr (std::is_same_v<std::decay_t<decltype(output)>, core::HUNLSolveOutput>) {
+        } else if constexpr (std::is_same_v<std::decay_t<decltype(output)>, texas::HUNLSolveOutput>) {
             profile = &output.profile;
         }
 
@@ -521,7 +521,7 @@ int main(int argc, char* argv[]) {
 
     if (cfg.game == "kuhn") {
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return core::lib::solve_kuhn(
+            return texas::lib::solve_kuhn(
                 cfg.iterations, alpha, beta, gamma, workers, cfg.frontier_multiplier);
         });
         return 0;
@@ -529,7 +529,7 @@ int main(int argc, char* argv[]) {
 
     if (cfg.game == "leduc") {
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return core::lib::solve_leduc(
+            return texas::lib::solve_leduc(
                 cfg.iterations, alpha, beta, gamma, workers, cfg.frontier_multiplier);
         });
         return 0;
@@ -538,7 +538,7 @@ int main(int argc, char* argv[]) {
     if (cfg.game == "hunl") {
         const auto hunl_config = make_benchmark_hunl_config();
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return core::lib::solve_hunl_postflop(
+            return texas::lib::solve_hunl_postflop(
                 hunl_config,
                 cfg.iterations,
                 alpha,

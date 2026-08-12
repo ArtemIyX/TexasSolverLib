@@ -15,7 +15,7 @@
 namespace test_support {
 
 inline std::uint8_t c(std::uint8_t rank, std::uint8_t suit) {
-    return core::card_to_int(rank, suit);
+    return texas::card_to_int(rank, suit);
 }
 
 inline std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b) {
@@ -148,7 +148,7 @@ inline std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::
     std::vector<std::uint8_t> live_cards;
     for (std::uint8_t rank = 2; rank <= 14; ++rank) {
         for (std::uint8_t suit = 0; suit < 4; ++suit) {
-            const auto card = core::card_to_int(rank, suit);
+            const auto card = texas::card_to_int(rank, suit);
             if (!blocked[card]) {
                 live_cards.push_back(card);
             }
@@ -170,7 +170,7 @@ inline std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::
 
 struct AbstractionFixtureOptions {
     std::vector<std::uint16_t> bucket_counts = {1, 1, 1};
-    std::uint8_t schema_version = core::ABSTRACTION_SCHEMA_VERSION;
+    std::uint8_t schema_version = texas::ABSTRACTION_SCHEMA_VERSION;
     std::string version = "v1";
     std::optional<std::string> omit_entry = std::nullopt;
 };
@@ -182,22 +182,22 @@ struct StreetFixtureData {
 };
 
 inline StreetFixtureData make_street_fixture_data(
-    core::Street street,
+    texas::Street street,
     const std::optional<std::vector<std::uint8_t>>& board,
-    const std::function<std::uint8_t(core::Street, std::size_t, const std::array<std::uint8_t, 2>&)>& bucket_for) {
+    const std::function<std::uint8_t(texas::Street, std::size_t, const std::array<std::uint8_t, 2>&)>& bucket_for) {
     StreetFixtureData data;
     if (!board.has_value()) {
         return data;
     }
 
-    const auto board_key = core::canonicalize_board(*board);
+    const auto board_key = texas::canonicalize_board(*board);
     const auto live_hands = enumerate_live_hands(*board);
     data.board_index_json = "{\"" + board_key + "\":0}";
     data.hand_index_json = "{\"" + board_key + "\":{";
     data.assignments.reserve(live_hands.size());
 
     for (std::size_t i = 0; i < live_hands.size(); ++i) {
-        const auto [canonical_board_key, hand_key] = core::canonicalize(*board, live_hands[i]);
+        const auto [canonical_board_key, hand_key] = texas::canonicalize(*board, live_hands[i]);
         (void)canonical_board_key;
         if (i > 0) {
             data.hand_index_json += ",";
@@ -214,12 +214,12 @@ inline std::filesystem::path write_abstraction_fixture(
     const std::optional<std::vector<std::uint8_t>>& flop_board,
     const std::optional<std::vector<std::uint8_t>>& turn_board,
     const std::optional<std::vector<std::uint8_t>>& river_board,
-    const std::function<std::uint8_t(core::Street, std::size_t, const std::array<std::uint8_t, 2>&)>& bucket_for,
+    const std::function<std::uint8_t(texas::Street, std::size_t, const std::array<std::uint8_t, 2>&)>& bucket_for,
     const AbstractionFixtureOptions& options = {}) {
     const auto tmp = make_tmp_path(name);
-    const auto flop = make_street_fixture_data(core::Street::Flop, flop_board, bucket_for);
-    const auto turn = make_street_fixture_data(core::Street::Turn, turn_board, bucket_for);
-    const auto river = make_street_fixture_data(core::Street::River, river_board, bucket_for);
+    const auto flop = make_street_fixture_data(texas::Street::Flop, flop_board, bucket_for);
+    const auto turn = make_street_fixture_data(texas::Street::Turn, turn_board, bucket_for);
+    const auto river = make_street_fixture_data(texas::Street::River, river_board, bucket_for);
 
     std::string metadata = "{\"bucket_counts\":[";
     for (std::size_t i = 0; i < options.bucket_counts.size(); ++i) {

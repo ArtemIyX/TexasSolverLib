@@ -4,7 +4,7 @@
 #include <stdexcept>
 
 TEST_CASE(infoset_registry_returns_stable_ids) {
-    core::InfosetRegistry registry;
+    texas::InfosetRegistry registry;
     const auto a = registry.intern("foo", 2);
     const auto b = registry.intern("foo", 2);
     const auto c = registry.intern("bar", 3);
@@ -16,7 +16,7 @@ TEST_CASE(infoset_registry_returns_stable_ids) {
 }
 
 TEST_CASE(infoset_registry_supports_round_trip_lookup) {
-    core::InfosetRegistry registry;
+    texas::InfosetRegistry registry;
     const auto foo = registry.intern("foo", 2);
     const auto bar = registry.intern("bar", 3);
 
@@ -30,7 +30,7 @@ TEST_CASE(infoset_registry_supports_round_trip_lookup) {
 }
 
 TEST_CASE(infoset_registry_clear_resets_mapping) {
-    core::InfosetRegistry registry;
+    texas::InfosetRegistry registry;
     (void)registry.intern("foo", 2);
     registry.clear();
 
@@ -40,14 +40,14 @@ TEST_CASE(infoset_registry_clear_resets_mapping) {
 }
 
 TEST_CASE(infoset_registry_rejects_invalid_ids) {
-    core::InfosetRegistry registry;
+    texas::InfosetRegistry registry;
     (void)registry.intern("foo", 2);
 
-    EXPECT_THROW(static_cast<void>(registry.key_for(core::InfosetId{99})), std::out_of_range);
+    EXPECT_THROW(static_cast<void>(registry.key_for(texas::InfosetId{99})), std::out_of_range);
 }
 
 TEST_CASE(infoset_registry_rejects_mismatched_action_count) {
-    core::InfosetRegistry registry;
+    texas::InfosetRegistry registry;
     (void)registry.intern("foo", 2);
 
     EXPECT_THROW(static_cast<void>(registry.intern("foo", 3)), std::logic_error);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 
 #include <array>
@@ -10,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace core {
+namespace texas::ranges {
 
 inline constexpr std::uint64_t MAX_SERIALIZED_RANGE_VALUES = 1'000'000ULL;
 
@@ -72,4 +74,4 @@ bool deserialize(std::istream& in, RangeMask& mask);
 bool save_range_file(const std::filesystem::path& path, const RangeVector& range);
 bool load_range_file(const std::filesystem::path& path, RangeVector& range);
 
-}  // namespace core
+}  // namespace texas::ranges

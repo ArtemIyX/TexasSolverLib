@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 struct MultiwayResolverBudgetConfig {
     std::chrono::steady_clock::time_point external_deadline{};
@@ -59,4 +61,4 @@ private:
     bool deadline_expired_ = false;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

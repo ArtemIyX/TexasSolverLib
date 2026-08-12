@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_solver.hpp"
 
 #include <array>
@@ -7,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // One canonical public chance outcome. The board is complete through this
 // edge, so consumers never need to reconstruct a runout from a card label.
@@ -177,4 +179,4 @@ private:
     MultiwayRootSnapshot root_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

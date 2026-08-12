@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_solver.hpp"
 #include "solver/hunl_sampled_builder.hpp"
 #include "solver/hunl_sampled_config.hpp"
@@ -16,7 +18,7 @@
 #include <optional>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLSampledSolveRequest {
     std::uint8_t root_action_count = 0;
@@ -156,4 +158,4 @@ private:
     std::unique_ptr<HUNLSampledRangeSession> structured_session_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

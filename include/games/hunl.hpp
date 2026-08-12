@@ -1,5 +1,8 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
+#include "core/card.hpp"
 #include "core/types.hpp"
 
 #include <array>
@@ -10,9 +13,11 @@
 #include <string>
 #include <vector>
 
-namespace core {
-
+namespace texas::util {
 struct AbstractionTables;
+}
+
+namespace texas::games::hunl {
 struct HUNLConfig;
 inline constexpr std::size_t HUNL_MAX_HISTORY_CODES = 48;
 
@@ -93,7 +98,7 @@ bool is_opening_bet(ActionId action);
 bool is_raise(ActionId action);
 
 constexpr std::uint8_t card_to_int(std::uint8_t rank, std::uint8_t suit) {
-    return static_cast<std::uint8_t>(rank * 4 + suit);
+    return static_cast<std::uint8_t>((rank - 2U) * 4U + suit);
 }
 
 std::uint8_t rank_of(std::uint8_t card);
@@ -243,7 +248,7 @@ struct HUNLState {
     HUNLState next_state(ActionId action) const;
     HUNLInfosetEncoding infoset_encoding(PlayerId player) const;
     std::string infoset_key(PlayerId player) const;
-    std::string infoset_key(PlayerId player, const AbstractionTables* abstraction) const;
+    std::string infoset_key(PlayerId player, const texas::util::AbstractionTables* abstraction) const;
     std::string format_history() const;
 
 private:
@@ -279,6 +284,6 @@ HUNLConfig benchmark_turn_subgame();
 HUNLConfig rta_flop_conservative();
 HUNLConfig rta_flop_balanced();
 
-}  // namespace core
+}  // namespace texas::games::hunl
 
 

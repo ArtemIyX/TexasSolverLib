@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 bool valid_action(MultiwayAction action) noexcept {
@@ -980,4 +980,4 @@ void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorChec
     }
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_search_session.hpp"
 
 #include <memory>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // User-owned live-hand lifecycle. It owns each round's mutable search state
 // and replaces it on a street transition or qualifying same-street reroot.
@@ -33,4 +35,4 @@ private:
     std::unique_ptr<MultiwaySearchSession> round_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

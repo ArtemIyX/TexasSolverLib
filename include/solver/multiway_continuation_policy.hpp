@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_continuation_policy_kind.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_solver.hpp"
@@ -8,7 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Allocation-free fixed-policy kernel. Input and output may alias. The base
 // probabilities are the anonymous blueprint continuation for this infoset.
@@ -67,4 +69,4 @@ struct MultiwayContinuationLeafContext {
 [[nodiscard]] MultiwayLeafEvaluator make_multiway_fixed_continuation_leaf_evaluator(
     const MultiwayContinuationLeafContext* context) noexcept;
 
-}  // namespace core
+}  // namespace texas::solver::multiway

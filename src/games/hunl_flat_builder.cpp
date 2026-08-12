@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::games::hunl {
 
 namespace detail {
 
@@ -519,34 +519,34 @@ HUNLFlatSolveGraph HUNLFlatBuilder::build(std::shared_ptr<const HUNLConfig> conf
     return graph;
 }
 
-}  // namespace core
+}  // namespace texas::games::hunl
 
 namespace std {
 
-std::size_t hash<core::HUNLFlatBuilderMemoKey>::operator()(
-    const core::HUNLFlatBuilderMemoKey& key) const noexcept {
+std::size_t hash<texas::HUNLFlatBuilderMemoKey>::operator()(
+    const texas::HUNLFlatBuilderMemoKey& key) const noexcept {
     std::size_t seed = 0;
-    core::detail::hash_combine(seed, key.cur_player);
-    core::detail::hash_combine_range(seed, key.contributions);
-    core::detail::hash_combine_range(seed, key.stacks);
-    core::detail::hash_combine_range(seed, key.street_history);
-    core::detail::hash_combine_range(seed, key.folded);
-    core::detail::hash_combine_range(seed, key.all_in);
-    core::detail::hash_combine_range(seed, key.board);
+    texas::detail::hash_combine(seed, key.cur_player);
+    texas::detail::hash_combine_range(seed, key.contributions);
+    texas::detail::hash_combine_range(seed, key.stacks);
+    texas::detail::hash_combine_range(seed, key.street_history);
+    texas::detail::hash_combine_range(seed, key.folded);
+    texas::detail::hash_combine_range(seed, key.all_in);
+    texas::detail::hash_combine_range(seed, key.board);
     for (const auto& hand : key.hole_cards) {
-        core::detail::hash_combine_range(seed, hand);
+        texas::detail::hash_combine_range(seed, hand);
     }
-    core::detail::hash_combine_range(seed, key.street_lengths);
-    core::detail::hash_combine_range(seed, key.history_codes);
-    core::detail::hash_combine(seed, static_cast<std::uint8_t>(key.street));
-    core::detail::hash_combine(seed, key.board_count);
-    core::detail::hash_combine(seed, key.history_count);
-    core::detail::hash_combine(seed, key.street_history_count);
-    core::detail::hash_combine(seed, key.pending_board_deals);
-    core::detail::hash_combine(seed, key.street_num_raises);
-    core::detail::hash_combine(seed, key.has_hole_cards);
-    core::detail::hash_combine(seed, key.to_call);
-    core::detail::hash_combine(seed, key.street_aggressor);
+    texas::detail::hash_combine_range(seed, key.street_lengths);
+    texas::detail::hash_combine_range(seed, key.history_codes);
+    texas::detail::hash_combine(seed, static_cast<std::uint8_t>(key.street));
+    texas::detail::hash_combine(seed, key.board_count);
+    texas::detail::hash_combine(seed, key.history_count);
+    texas::detail::hash_combine(seed, key.street_history_count);
+    texas::detail::hash_combine(seed, key.pending_board_deals);
+    texas::detail::hash_combine(seed, key.street_num_raises);
+    texas::detail::hash_combine(seed, key.has_hole_cards);
+    texas::detail::hash_combine(seed, key.to_call);
+    texas::detail::hash_combine(seed, key.street_aggressor);
     return seed;
 }
 

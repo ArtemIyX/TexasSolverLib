@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_solver.hpp"
 
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 struct MultiwayMemoryBudget {
     std::uint64_t warning_bytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
@@ -86,4 +88,4 @@ struct MultiwayMemoryPreflight {
     MultiwayMemoryBudget budget,
     const MultiwayMemoryInputs& inputs);
 
-}  // namespace core
+}  // namespace texas::solver::multiway

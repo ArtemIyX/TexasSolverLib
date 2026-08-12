@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::solver::multiway {
 
 MultiwayRuntimeSession::MultiwayRuntimeSession(
     MultiwaySolveRequest initial_request,
@@ -33,4 +33,4 @@ void MultiwayRuntimeSession::reroot(
     round_ = std::make_unique<MultiwaySearchSession>(request, dependencies_, ++root_revision_);
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

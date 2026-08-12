@@ -7,7 +7,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -871,4 +871,4 @@ HUNLFlatInfosetTableMeta& HUNLFlatInfosetTable::meta_for(InfosetId id) {
     return meta_[id.value];
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

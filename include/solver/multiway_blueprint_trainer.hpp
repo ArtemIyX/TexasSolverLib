@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_traversal.hpp"
@@ -10,7 +12,7 @@
 #include <memory>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 struct MultiwayBlueprintIterationSchedule {
     bool linear_iteration_weighting = true;
@@ -150,4 +152,4 @@ private:
     std::unique_ptr<MultiwayBlueprintTrainer> trainer_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

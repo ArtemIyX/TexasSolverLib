@@ -20,7 +20,7 @@ The code and layout here are organized so the project can be consumed as a norma
 
 The main library target is:
 
-- `TexasSolver::texas_core`
+- `TexasSolver::texas`
 
 When installed, the package exports a CMake config file so another project can use `find_package(TexasSolver CONFIG REQUIRED)`.
 
@@ -32,7 +32,7 @@ When installed, the package exports a CMake config file so another project can u
 
 On Windows the project builds with Visual Studio/MSBuild. On other platforms a normal CMake generator is fine.
 
-The repository includes `external/pokerHandEvaluator` as a Git submodule. The top-level CMake build wires that vendored library into `texas_core` so fixed-size hand evaluation can use the faster `evaluate_5cards`, `evaluate_6cards`, and `evaluate_7cards` paths.
+The repository includes `external/pokerHandEvaluator` as a Git submodule. The top-level CMake build wires that vendored library into `texas` so fixed-size hand evaluation can use the faster `evaluate_5cards`, `evaluate_6cards`, and `evaluate_7cards` paths.
 
 ## Build the project
 
@@ -85,7 +85,7 @@ Then in your top-level `CMakeLists.txt`:
 
 ```cmake
 add_subdirectory(external/TexasSolver)
-target_link_libraries(your_target PRIVATE TexasSolver::texas_core)
+target_link_libraries(your_target PRIVATE TexasSolver::texas)
 ```
 
 ## Use as an installed package
@@ -96,7 +96,7 @@ If the library has been installed to a prefix, consume it from another project l
 find_package(TexasSolver CONFIG REQUIRED)
 
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE TexasSolver::texas_core)
+target_link_libraries(my_app PRIVATE TexasSolver::texas)
 ```
 
 If CMake cannot find the package automatically, set one of:
@@ -120,7 +120,7 @@ CMAKE_PREFIX_PATH=<prefix>
 #include <iostream>
 
 int main() {
-    const auto out = core::solve_kuhn(200, 1.5, 0.0, 2.0);
+    const auto out = texas::solve_kuhn(200, 1.5, 0.0, 2.0);
     std::cout << "iterations: " << out.iterations << '\n';
     std::cout << "game value: " << out.game_value << '\n';
     std::cout << "exploitability: " << out.exploitability << '\n';
@@ -133,7 +133,7 @@ int main() {
 #include "solver/solver.hpp"
 
 int main() {
-    const auto out = core::solve_leduc(50, 1.5, 0.0, 2.0);
+    const auto out = texas::solve_leduc(50, 1.5, 0.0, 2.0);
     return out.average_strategy.empty() ? 1 : 0;
 }
 ```
@@ -144,14 +144,14 @@ int main() {
 #include "core/lib.hpp"
 
 int main() {
-    const auto out = core::lib::solve_kuhn(200, 1.5, 0.0, 2.0);
+    const auto out = texas::lib::solve_kuhn(200, 1.5, 0.0, 2.0);
     return out.iterations == 200 ? 0 : 1;
 }
 ```
 
 ## Notes
 
-- The namespace used by the C++ code is still `core::`.
+- The namespace used by the C++ code is still `texas::`.
 - The repository structure has been grouped by module so the include paths stay readable.
 
 ## License

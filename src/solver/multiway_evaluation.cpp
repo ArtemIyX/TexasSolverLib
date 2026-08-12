@@ -5,7 +5,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr double kProbabilityTolerance = 1e-12;
@@ -471,4 +471,4 @@ std::vector<MultiwayEvaluationFailureFixture> multiway_evaluation_failure_fixtur
     };
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

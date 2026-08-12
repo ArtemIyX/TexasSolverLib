@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_blueprint_config.hpp"
 
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // A checkpoint and its queries must agree on every abstraction and settlement
 // input. Hashes are stable FNV-1a fingerprints, not security hashes.
@@ -48,4 +50,4 @@ struct MultiwayModelIdentity {
 [[nodiscard]] MultiwayModelIdentity make_multiway_model_identity(
     const MultiwayBlueprintConfig& config);
 
-}  // namespace core
+}  // namespace texas::solver::multiway

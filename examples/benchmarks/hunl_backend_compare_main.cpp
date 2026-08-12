@@ -86,38 +86,38 @@ struct ResultRow {
     double game_value = 0.0;
 };
 
-ResultRow solve_old_sequential(const core::HUNLConfig& config, std::uint32_t iterations) {
-    auto shared = std::make_shared<const core::HUNLConfig>(config);
-    const auto root = core::HUNLState::initial(shared);
-    core::DCFRSolver<core::HUNLState> solver(core::DCFRConfig{1.5, 0.0, 2.0}, root);
+ResultRow solve_old_sequential(const texas::HUNLConfig& config, std::uint32_t iterations) {
+    auto shared = std::make_shared<const texas::HUNLConfig>(config);
+    const auto root = texas::HUNLState::initial(shared);
+    texas::DCFRSolver<texas::HUNLState> solver(texas::DCFRConfig{1.5, 0.0, 2.0}, root);
     const auto start = std::chrono::steady_clock::now();
     const auto out = solver.solve(iterations);
     const auto finish = std::chrono::steady_clock::now();
     return ResultRow{"old", 1, false, std::chrono::duration<double>(finish - start).count(), out.traversal_seconds, out.finalize_seconds, 0.0, out.exploitability, out.game_value};
 }
 
-ResultRow solve_old_parallel(const core::HUNLConfig& config, std::size_t workers, std::uint32_t iterations) {
-    auto shared = std::make_shared<const core::HUNLConfig>(config);
-    const auto root = core::HUNLState::initial(shared);
-    core::ParallelDCFRSolver<core::HUNLState> solver(core::DCFRConfig{1.5, 0.0, 2.0}, root, workers, 8);
+ResultRow solve_old_parallel(const texas::HUNLConfig& config, std::size_t workers, std::uint32_t iterations) {
+    auto shared = std::make_shared<const texas::HUNLConfig>(config);
+    const auto root = texas::HUNLState::initial(shared);
+    texas::ParallelDCFRSolver<texas::HUNLState> solver(texas::DCFRConfig{1.5, 0.0, 2.0}, root, workers, 8);
     const auto start = std::chrono::steady_clock::now();
     const auto out = solver.solve(iterations);
     const auto finish = std::chrono::steady_clock::now();
     return ResultRow{"old", workers, true, std::chrono::duration<double>(finish - start).count(), out.traversal_seconds, out.finalize_seconds, 0.0, out.exploitability, out.game_value};
 }
 
-ResultRow solve_flat_sequential(const core::HUNLConfig& config, std::uint32_t iterations) {
-    auto graph = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
-    core::HUNLFlatDCFR solver(std::move(graph), {1326, 1326}, core::HUNLFlatValueLayout::InfosetActionHand, 1, 1.5, 0.0, 2.0);
+ResultRow solve_flat_sequential(const texas::HUNLConfig& config, std::uint32_t iterations) {
+    auto graph = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
+    texas::HUNLFlatDCFR solver(std::move(graph), {1326, 1326}, texas::HUNLFlatValueLayout::InfosetActionHand, 1, 1.5, 0.0, 2.0);
     const auto start = std::chrono::steady_clock::now();
     solver.run_iterations(iterations);
     const auto finish = std::chrono::steady_clock::now();
     return ResultRow{"flat", 1, false, std::chrono::duration<double>(finish - start).count(), solver.profile().strategy_seconds + solver.profile().reach_seconds + solver.profile().terminal_seconds + solver.profile().backward_seconds + solver.profile().regret_seconds + solver.profile().average_strategy_seconds + solver.profile().discount_seconds, 0.0, 0.0, 0.0, 0.0};
 }
 
-ResultRow solve_flat_parallel(const core::HUNLConfig& config, std::size_t workers, std::uint32_t iterations) {
-    auto graph = core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(config));
-    core::HUNLFlatDCFR solver(std::move(graph), {1326, 1326}, core::HUNLFlatValueLayout::InfosetActionHand, workers, 1.5, 0.0, 2.0);
+ResultRow solve_flat_parallel(const texas::HUNLConfig& config, std::size_t workers, std::uint32_t iterations) {
+    auto graph = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
+    texas::HUNLFlatDCFR solver(std::move(graph), {1326, 1326}, texas::HUNLFlatValueLayout::InfosetActionHand, workers, 1.5, 0.0, 2.0);
     const auto start = std::chrono::steady_clock::now();
     solver.run_iterations(iterations);
     const auto finish = std::chrono::steady_clock::now();
@@ -159,7 +159,7 @@ int main(int argc, char* argv[]) {
     }
 
     const auto cfg = *parsed;
-    const auto config = core::benchmark_turn_subgame();
+    const auto config = texas::benchmark_turn_subgame();
     const std::array<std::size_t, 5> workers = {1, 2, 4, 8, 16};
 
     std::cout << "HUNL backend comparison benchmark"

@@ -1,9 +1,11 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <array>
 #include <cstdint>
 
-namespace core {
+namespace texas::solver::multiway {
 
 enum class MultiwayContinuationPolicyKind : std::uint8_t {
     Blueprint,
@@ -28,4 +30,4 @@ inline constexpr std::array<MultiwayContinuationPolicyKind, 4>
            policy == MultiwayContinuationPolicyKind::RaiseBiased;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

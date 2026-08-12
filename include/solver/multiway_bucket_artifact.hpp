@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_bucket_model.hpp"
 
 #include <array>
@@ -7,9 +9,9 @@
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
-inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 2U;
+inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 3U;
 
 // Versioned deterministic baseline used until trained clustering artifacts are
 // introduced. The counts are part of the model identity through blueprint config.
@@ -78,4 +80,4 @@ void validate_multiway_bucket_coverage(
 [[nodiscard]] MultiwayBucketRegistry deserialize_multiway_bucket_registry(
     const std::vector<std::uint8_t>& bytes);
 
-}  // namespace core
+}  // namespace texas::solver::multiway

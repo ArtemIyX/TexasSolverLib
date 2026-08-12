@@ -7,18 +7,18 @@
 
 namespace {
 
-core::HUNLFlatSolveGraph make_cost_skew_graph() {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_cost_skew_graph() {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 1;
     graph.max_actions = 4;
 
     graph.node_meta.resize(4);
     graph.infosets = {
-        core::HUNLFlatInfoset{core::InfosetId{0}, 0, 1, {}, 0, 0, core::Street::Flop, 4},
-        core::HUNLFlatInfoset{core::InfosetId{1}, 1, 1, {}, 1, 0, core::Street::Flop, 4},
-        core::HUNLFlatInfoset{core::InfosetId{2}, 2, 1, {}, 2, 0, core::Street::Flop, 1},
-        core::HUNLFlatInfoset{core::InfosetId{3}, 3, 1, {}, 3, 0, core::Street::Flop, 1},
+        texas::HUNLFlatInfoset{texas::InfosetId{0}, 0, 1, {}, 0, 0, texas::Street::Flop, 4},
+        texas::HUNLFlatInfoset{texas::InfosetId{1}, 1, 1, {}, 1, 0, texas::Street::Flop, 4},
+        texas::HUNLFlatInfoset{texas::InfosetId{2}, 2, 1, {}, 2, 0, texas::Street::Flop, 1},
+        texas::HUNLFlatInfoset{texas::InfosetId{3}, 3, 1, {}, 3, 0, texas::Street::Flop, 1},
     };
     graph.infoset_debug_keys = {"a", "b", "c", "d"};
     graph.infoset_nodes = {0, 1, 2, 3};
@@ -26,34 +26,34 @@ core::HUNLFlatSolveGraph make_cost_skew_graph() {
     graph.forward_order = graph.depth_order;
     graph.reverse_order = {3, 2, 1, 0};
     graph.street_order = graph.depth_order;
-    graph.depth_slices = {core::HUNLFlatSlice{0, 4}};
+    graph.depth_slices = {texas::HUNLFlatSlice{0, 4}};
     graph.node_depths = {0, 0, 0, 0};
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] = core::HUNLFlatSlice{0, 4};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] = texas::HUNLFlatSlice{0, 4};
 
-    auto set_decision = [&](std::size_t node_idx, core::InfosetId infoset_id, std::uint8_t action_count) {
+    auto set_decision = [&](std::size_t node_idx, texas::InfosetId infoset_id, std::uint8_t action_count) {
         graph.node_meta[node_idx].infoset_id = infoset_id;
-        graph.node_meta[node_idx].type = core::HUNLFlatNodeType::Decision;
+        graph.node_meta[node_idx].type = texas::HUNLFlatNodeType::Decision;
         graph.node_meta[node_idx].player = 0;
         graph.node_meta[node_idx].action_count = action_count;
         graph.node_meta[node_idx].has_infoset = true;
-        graph.node_meta[node_idx].street = core::Street::Flop;
+        graph.node_meta[node_idx].street = texas::Street::Flop;
     };
 
-    set_decision(0, core::InfosetId{0}, 4);
-    set_decision(1, core::InfosetId{1}, 4);
-    set_decision(2, core::InfosetId{2}, 1);
-    set_decision(3, core::InfosetId{3}, 1);
+    set_decision(0, texas::InfosetId{0}, 4);
+    set_decision(1, texas::InfosetId{1}, 4);
+    set_decision(2, texas::InfosetId{2}, 1);
+    set_decision(3, texas::InfosetId{3}, 1);
     return graph;
 }
 
 }  // namespace
 
 TEST_CASE(hunl_flat_infoset_table_builds_contiguous_arenas_from_graph) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> hand_count_per_player = {3, 5};
 
-    const auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player);
+    const auto table = texas::HUNLFlatInfosetTable::build(graph, hand_count_per_player);
 
     EXPECT_EQ(table.infoset_count(), graph.infosets.size());
 
@@ -78,21 +78,21 @@ TEST_CASE(hunl_flat_infoset_table_builds_contiguous_arenas_from_graph) {
 }
 
 TEST_CASE(hunl_flat_infoset_table_rejects_value_offset_overflow_before_allocation) {
-    core::HUNLFlatSolveGraph graph;
-    graph.infosets.push_back(core::HUNLFlatInfoset{
-        core::InfosetId{0}, 0, 1, {}, 0, 0, core::Street::Flop, 255});
+    texas::HUNLFlatSolveGraph graph;
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
+        texas::InfosetId{0}, 0, 1, {}, 0, 0, texas::Street::Flop, 255});
     const auto overflowing_buckets = std::numeric_limits<std::size_t>::max() / 255U + 1U;
     EXPECT_THROW(
-        core::HUNLFlatInfosetTable::build(graph, {overflowing_buckets, std::size_t{1}}),
+        texas::HUNLFlatInfosetTable::build(graph, {overflowing_buckets, std::size_t{1}}),
         std::length_error);
 }
 
 TEST_CASE(hunl_flat_infoset_table_exposes_rw_rows_for_all_three_arenas) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> hand_count_per_player = {2, 4};
 
-    auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player);
+    auto table = texas::HUNLFlatInfosetTable::build(graph, hand_count_per_player);
     const auto id = graph.infosets.front().id;
     const auto count = table.row_value_count(id);
 
@@ -112,42 +112,42 @@ TEST_CASE(hunl_flat_infoset_table_exposes_rw_rows_for_all_three_arenas) {
 }
 
 TEST_CASE(hunl_flat_infoset_table_float32_precision_halves_dense_storage) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> hand_count_per_player = {16, 16};
 
-    const auto table_f64 = core::HUNLFlatInfosetTable::build(
+    const auto table_f64 = texas::HUNLFlatInfosetTable::build(
         graph,
         hand_count_per_player,
-        core::HUNLFlatValueLayout::InfosetHandAction,
-        core::HUNLFlatStoragePrecision::Float64);
-    const auto table_f32 = core::HUNLFlatInfosetTable::build(
+        texas::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatStoragePrecision::Float64);
+    const auto table_f32 = texas::HUNLFlatInfosetTable::build(
         graph,
         hand_count_per_player,
-        core::HUNLFlatValueLayout::InfosetHandAction,
-        core::HUNLFlatStoragePrecision::Float32);
+        texas::HUNLFlatValueLayout::InfosetHandAction,
+        texas::HUNLFlatStoragePrecision::Float32);
 
-    EXPECT_EQ(table_f64.precision(), core::HUNLFlatStoragePrecision::Float64);
-    EXPECT_EQ(table_f32.precision(), core::HUNLFlatStoragePrecision::Float32);
+    EXPECT_EQ(table_f64.precision(), texas::HUNLFlatStoragePrecision::Float64);
+    EXPECT_EQ(table_f32.precision(), texas::HUNLFlatStoragePrecision::Float32);
     EXPECT_EQ(table_f32.regret_storage_bytes() * 2ULL, table_f64.regret_storage_bytes());
     EXPECT_EQ(table_f32.strategy_sum_storage_bytes() * 2ULL, table_f64.strategy_sum_storage_bytes());
     EXPECT_EQ(table_f32.current_strategy_storage_bytes() * 2ULL, table_f64.current_strategy_storage_bytes());
 }
 
 TEST_CASE(hunl_flat_infoset_table_value_index_matches_selected_layout) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> hand_count_per_player = {2, 3};
 
-    const auto hand_action = core::HUNLFlatInfosetTable::build(
-        graph, hand_count_per_player, core::HUNLFlatValueLayout::InfosetHandAction);
-    const auto action_hand = core::HUNLFlatInfosetTable::build(
-        graph, hand_count_per_player, core::HUNLFlatValueLayout::InfosetActionHand);
+    const auto hand_action = texas::HUNLFlatInfosetTable::build(
+        graph, hand_count_per_player, texas::HUNLFlatValueLayout::InfosetHandAction);
+    const auto action_hand = texas::HUNLFlatInfosetTable::build(
+        graph, hand_count_per_player, texas::HUNLFlatValueLayout::InfosetActionHand);
 
     const auto id = graph.infosets.front().id;
     const auto& meta0 = hand_action.meta()[id.value];
-    EXPECT_EQ(hand_action.layout(), core::HUNLFlatValueLayout::InfosetHandAction);
-    EXPECT_EQ(action_hand.layout(), core::HUNLFlatValueLayout::InfosetActionHand);
+    EXPECT_EQ(hand_action.layout(), texas::HUNLFlatValueLayout::InfosetHandAction);
+    EXPECT_EQ(action_hand.layout(), texas::HUNLFlatValueLayout::InfosetActionHand);
 
     EXPECT_EQ(hand_action.value_index(id, 0, 0), meta0.offset);
     EXPECT_EQ(hand_action.value_index(id, 1, 0), meta0.offset + meta0.action_count);
@@ -159,12 +159,12 @@ TEST_CASE(hunl_flat_infoset_table_value_index_matches_selected_layout) {
 }
 
 TEST_CASE(hunl_flat_infoset_table_maps_infoset_ranges_to_contiguous_value_ranges) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> hand_count_per_player = {2, 3};
-    const auto table = core::HUNLFlatInfosetTable::build(graph, hand_count_per_player);
+    const auto table = texas::HUNLFlatInfosetTable::build(graph, hand_count_per_player);
 
-    const core::HUNLFlatRange infoset_range{0, static_cast<std::uint32_t>(std::min<std::size_t>(2, graph.infosets.size()))};
+    const texas::HUNLFlatRange infoset_range{0, static_cast<std::uint32_t>(std::min<std::size_t>(2, graph.infosets.size()))};
     const auto value_range = table.infoset_value_range(infoset_range);
 
     if (infoset_range.begin < infoset_range.end) {
@@ -179,9 +179,9 @@ TEST_CASE(hunl_flat_infoset_table_maps_infoset_ranges_to_contiguous_value_ranges
 }
 
 TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
-    const auto plan = core::HUNLFlatParallelPlan::build(graph, 4);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
+    const auto plan = texas::HUNLFlatParallelPlan::build(graph, 4);
 
     EXPECT_EQ(plan.workers.size(), 4U);
 
@@ -237,11 +237,11 @@ TEST_CASE(hunl_flat_parallel_plan_assigns_disjoint_infoset_and_depth_ranges) {
 }
 
 TEST_CASE(hunl_flat_parallel_plan_derives_contiguous_bucket_and_value_ranges_from_infosets) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
     const std::array<std::size_t, 2> bucket_count_per_player = {2, 3};
-    const auto table = core::HUNLFlatInfosetTable::build(graph, bucket_count_per_player);
-    const auto plan = core::HUNLFlatParallelPlan::build(graph, table, 4);
+    const auto table = texas::HUNLFlatInfosetTable::build(graph, bucket_count_per_player);
+    const auto plan = texas::HUNLFlatParallelPlan::build(graph, table, 4);
 
     EXPECT_EQ(plan.workers.size(), 4U);
 
@@ -269,8 +269,8 @@ TEST_CASE(hunl_flat_parallel_plan_derives_contiguous_bucket_and_value_ranges_fro
 
 TEST_CASE(hunl_flat_parallel_plan_weights_depth_ranges_by_estimated_backward_cost) {
     const auto graph = make_cost_skew_graph();
-    const auto table = core::HUNLFlatInfosetTable::build(graph, {16, 16}, core::HUNLFlatValueLayout::InfosetActionHand);
-    const auto plan = core::HUNLFlatParallelPlan::build(graph, table, 2);
+    const auto table = texas::HUNLFlatInfosetTable::build(graph, {16, 16}, texas::HUNLFlatValueLayout::InfosetActionHand);
+    const auto plan = texas::HUNLFlatParallelPlan::build(graph, table, 2);
 
     EXPECT_EQ(plan.workers.size(), 2U);
     EXPECT_EQ(plan.workers[0].depth_node_ranges.size(), 1U);
@@ -294,42 +294,42 @@ TEST_CASE(hunl_flat_parallel_plan_weights_depth_ranges_by_estimated_backward_cos
 
 TEST_CASE(hunl_flat_parallel_plan_estimated_backward_cost_matches_node_types) {
     const auto graph = make_cost_skew_graph();
-    const auto table = core::HUNLFlatInfosetTable::build(graph, {16, 16}, core::HUNLFlatValueLayout::InfosetActionHand);
+    const auto table = texas::HUNLFlatInfosetTable::build(graph, {16, 16}, texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[0], table), 64U);
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[1], table), 64U);
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[2], table), 16U);
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[3], table), 16U);
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[0], table), 64U);
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[1], table), 64U);
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[2], table), 16U);
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[3], table), 16U);
 
-    core::HUNLFlatNodeMeta chance_meta;
-    chance_meta.type = core::HUNLFlatNodeType::Chance;
+    texas::HUNLFlatNodeMeta chance_meta;
+    chance_meta.type = texas::HUNLFlatNodeType::Chance;
     chance_meta.chance_count = 5;
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(chance_meta, table), 5U);
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(chance_meta, table), 5U);
 
-    core::HUNLFlatNodeMeta fold_meta;
-    fold_meta.type = core::HUNLFlatNodeType::TerminalFold;
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(fold_meta, table), 1U);
+    texas::HUNLFlatNodeMeta fold_meta;
+    fold_meta.type = texas::HUNLFlatNodeType::TerminalFold;
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(fold_meta, table), 1U);
 
-    core::HUNLFlatNodeMeta showdown_meta;
-    showdown_meta.type = core::HUNLFlatNodeType::TerminalShowdown;
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(showdown_meta, table), 1U);
+    texas::HUNLFlatNodeMeta showdown_meta;
+    showdown_meta.type = texas::HUNLFlatNodeType::TerminalShowdown;
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(showdown_meta, table), 1U);
 
-    core::HUNLFlatNodeMeta depth_limited_meta;
-    depth_limited_meta.type = core::HUNLFlatNodeType::DepthLimited;
-    EXPECT_EQ(core::HUNLFlatParallelPlan::estimated_backward_cost(depth_limited_meta, table), 1U);
+    texas::HUNLFlatNodeMeta depth_limited_meta;
+    depth_limited_meta.type = texas::HUNLFlatNodeType::DepthLimited;
+    EXPECT_EQ(texas::HUNLFlatParallelPlan::estimated_backward_cost(depth_limited_meta, table), 1U);
 }
 
 TEST_CASE(hunl_flat_parallel_plan_depth_backward_costs_cover_full_depth_cost) {
     const auto graph = make_cost_skew_graph();
-    const auto table = core::HUNLFlatInfosetTable::build(graph, {16, 16}, core::HUNLFlatValueLayout::InfosetActionHand);
-    const auto plan = core::HUNLFlatParallelPlan::build(graph, table, 3);
+    const auto table = texas::HUNLFlatInfosetTable::build(graph, {16, 16}, texas::HUNLFlatValueLayout::InfosetActionHand);
+    const auto plan = texas::HUNLFlatParallelPlan::build(graph, table, 3);
 
     EXPECT_EQ(plan.workers.size(), 3U);
     EXPECT_EQ(graph.depth_slices.size(), 1U);
 
     std::uint64_t total_expected_cost = 0;
     for (const auto node_idx : graph.depth_order) {
-        total_expected_cost += core::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[node_idx], table);
+        total_expected_cost += texas::HUNLFlatParallelPlan::estimated_backward_cost(graph.node_meta[node_idx], table);
     }
 
     std::uint64_t total_planned_cost = 0;
@@ -347,7 +347,7 @@ TEST_CASE(hunl_flat_parallel_plan_depth_backward_costs_cover_full_depth_cost) {
 }
 
 TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
-    core::HUNLFlatWorkerScratch scratch;
+    texas::HUNLFlatWorkerScratch scratch;
     scratch.ensure_capacity(6, 5, 4, 3, 2);
 
     scratch.player0_reach[3] = 1.0;
@@ -375,7 +375,7 @@ TEST_CASE(hunl_flat_worker_scratch_reuses_and_zeros_temporary_buffers) {
 }
 
 TEST_CASE(hunl_flat_worker_scratch_ensure_capacity_sizes_row_buffers_and_resets_dirty_tracking) {
-    core::HUNLFlatWorkerScratch scratch;
+    texas::HUNLFlatWorkerScratch scratch;
     scratch.ensure_capacity(2, 1, 3, 2, 2);
     scratch.dirty_nodes.push_back(1);
     scratch.dirty_buckets.push_back(2);

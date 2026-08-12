@@ -7,7 +7,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr std::array<std::uint8_t, 4U> kMagic = {'M', 'F', 'B', '1'};
@@ -90,9 +90,9 @@ MultiwayFutureBucketFeatures make_multiway_future_bucket_features(
     if (board.size() >= 3U) {
         std::vector<std::uint8_t> cards;
         cards.reserve(board.size() + 2U);
-        for (const auto card : board) cards.push_back(static_cast<std::uint8_t>(card + HUNL_CARD_FIRST));
-        cards.push_back(static_cast<std::uint8_t>(hole[0] + HUNL_CARD_FIRST));
-        cards.push_back(static_cast<std::uint8_t>(hole[1] + HUNL_CARD_FIRST));
+        cards.insert(cards.end(), board.begin(), board.end());
+        cards.push_back(hole[0]);
+        cards.push_back(hole[1]);
         result.values[9] = static_cast<double>(evaluate_n(cards).value >> 56U) / 8.0;
     }
     return result;
@@ -109,10 +109,10 @@ MultiwayFutureBucketArtifact::MultiwayFutureBucketArtifact(
     }
 }
 
-std::uint32_t MultiwayFutureBucketArtifact::lookup_hunl(
+std::uint32_t MultiwayFutureBucketArtifact::lookup(
     Street street, const std::vector<std::uint8_t>& board,
     const std::array<std::uint8_t, 2>& hole) const {
-    return registry_.lookup_hunl(street, board, hole);
+    return registry_.lookup(street, board, hole);
 }
 
 MultiwayFutureBucketArtifact build_multiway_future_bucket_artifact(
@@ -187,4 +187,4 @@ MultiwayFutureBucketArtifact deserialize_multiway_future_bucket_artifact(const s
     return {profile, deserialize_multiway_bucket_registry(registry)};
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

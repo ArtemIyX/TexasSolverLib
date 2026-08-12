@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '3'};
@@ -451,4 +451,4 @@ void MultiwayProtectedReplayRecord::validate() const {
     }
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

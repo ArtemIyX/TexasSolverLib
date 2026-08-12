@@ -50,36 +50,36 @@ if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
     add_subdirectory(external/pokerHandEvaluator/cpp EXCLUDE_FROM_ALL)
 endif()
 
-add_library(texas_core STATIC)
-add_library(TexasSolver::texas_core ALIAS texas_core)
+add_library(texas STATIC)
+add_library(TexasSolver::texas ALIAS texas)
 
-target_sources(texas_core PRIVATE ${TEXASSOLVER_SOURCES})
-target_sources(texas_core PRIVATE ${TEXASSOLVER_PUBLIC_HEADERS})
+target_sources(texas PRIVATE ${TEXASSOLVER_SOURCES})
+target_sources(texas PRIVATE ${TEXASSOLVER_PUBLIC_HEADERS})
 if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
-    target_link_libraries(texas_core PRIVATE pheval)
+    target_link_libraries(texas PRIVATE pheval)
 endif()
-target_link_libraries(texas_core PRIVATE Threads::Threads)
+target_link_libraries(texas PRIVATE Threads::Threads)
 
-target_include_directories(texas_core
+target_include_directories(texas
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-target_compile_features(texas_core PUBLIC cxx_std_17)
+target_compile_features(texas PUBLIC cxx_std_17)
 
-set_target_properties(texas_core PROPERTIES
-    EXPORT_NAME texas_core
-    OUTPUT_NAME texas_core
+set_target_properties(texas PROPERTIES
+    EXPORT_NAME texas
+    OUTPUT_NAME texas
 )
 
 if (MSVC)
-    target_compile_options(texas_core PRIVATE /W4)
+    target_compile_options(texas PRIVATE /W4)
 else()
-    target_compile_options(texas_core PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(texas PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-install(TARGETS texas_core
+install(TARGETS texas
     EXPORT TexasSolverTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -130,54 +130,54 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     target_include_directories(texas_solver_gperftools_example PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
-    target_link_libraries(texas_solver_gperftools_example PRIVATE texas_core)
+    target_link_libraries(texas_solver_gperftools_example PRIVATE texas)
 
     add_executable(texas_solver_example
         examples/solve_kuhn.cpp
     )
-    target_link_libraries(texas_solver_example PRIVATE texas_core)
+    target_link_libraries(texas_solver_example PRIVATE texas)
     target_include_directories(texas_solver_example PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_executable(texas_solver_benchmark
         examples/benchmarks/main.cpp
     )
-    target_link_libraries(texas_solver_benchmark PRIVATE texas_core)
+    target_link_libraries(texas_solver_benchmark PRIVATE texas)
     target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_executable(texas_solver_flat_scheduler_benchmark
         examples/benchmarks/flat_scheduler_main.cpp
     )
-    target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas_core)
+    target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas)
     target_include_directories(texas_solver_flat_scheduler_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_executable(texas_solver_hunl_backend_compare
         examples/benchmarks/hunl_backend_compare_main.cpp
     )
-    target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas_core)
+    target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
     target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_executable(texas_solver_hunl_random_flat
         examples/benchmarks/hunl_random_flat_main.cpp
     )
-    target_link_libraries(texas_solver_hunl_random_flat PRIVATE texas_core)
+    target_link_libraries(texas_solver_hunl_random_flat PRIVATE texas)
     target_include_directories(texas_solver_hunl_random_flat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_executable(texas_solver_hunl_mccfr_scaling
         examples/benchmarks/hunl_mccfr_scaling_main.cpp
     )
-    target_link_libraries(texas_solver_hunl_mccfr_scaling PRIVATE texas_core)
+    target_link_libraries(texas_solver_hunl_mccfr_scaling PRIVATE texas)
     target_include_directories(texas_solver_hunl_mccfr_scaling PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_executable(texas_solver_hunl_mccfr_postflop
         examples/hunl_mccfr_postflop_main.cpp
     )
-    target_link_libraries(texas_solver_hunl_mccfr_postflop PRIVATE texas_core)
+    target_link_libraries(texas_solver_hunl_mccfr_postflop PRIVATE texas)
     target_include_directories(texas_solver_hunl_mccfr_postflop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
     add_executable(texas_solver_range_cache
         examples/benchmarks/range_cache_main.cpp
     )
-    target_link_libraries(texas_solver_range_cache PRIVATE texas_core)
+    target_link_libraries(texas_solver_range_cache PRIVATE texas)
     target_include_directories(texas_solver_range_cache PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
 
@@ -201,7 +201,7 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_SOURCE_DIR}/tests
         )
-        target_link_libraries(${test_name} PRIVATE texas_core)
+        target_link_libraries(${test_name} PRIVATE texas)
 
         add_test(NAME ${test_name} COMMAND ${test_name})
     endforeach()

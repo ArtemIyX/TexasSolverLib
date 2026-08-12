@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_state.hpp"
 #include "games/multiway_terminal.hpp"
 
@@ -7,7 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::games::multiway {
 
 struct MultiwayGameRules;
 
@@ -102,4 +104,4 @@ void settle_multiway_terminal_fixed(
     MultiwayFixedTerminalScratch& scratch,
     MultiwayFixedTerminalResult& result);
 
-}  // namespace core
+}  // namespace texas::games::multiway

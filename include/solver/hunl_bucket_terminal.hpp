@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_eval.hpp"
 #include "solver/hunl_bucket_map.hpp"
 
@@ -8,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 struct HUNLBucketShowdownMatrix {
     std::uint32_t bucket_count_p0 = 0;
@@ -64,13 +66,13 @@ double heuristic_depth_limited_value_p0(
     const HUNLFlatNodeMeta& node,
     const HUNLConfig& config);
 
-}  // namespace core
+}  // namespace texas::solver::hunl
 
 namespace std {
 
 template <>
-struct hash<core::HUNLBucketTerminalCacheKey> {
-    std::size_t operator()(const core::HUNLBucketTerminalCacheKey& key) const noexcept;
+struct hash<texas::HUNLBucketTerminalCacheKey> {
+    std::size_t operator()(const texas::HUNLBucketTerminalCacheKey& key) const noexcept;
 };
 
 }  // namespace std

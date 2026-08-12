@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 
 #include <cstddef>
@@ -8,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::util {
 
 inline constexpr std::size_t BLOCK_SIZE = 64;
 
@@ -55,6 +57,6 @@ private:
     std::size_t row_width_ = 1;
 };
 
-}  // namespace core
+}  // namespace texas::util
 
 

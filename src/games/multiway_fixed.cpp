@@ -7,7 +7,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::games::multiway {
 namespace {
 
 bool valid_street(Street street) noexcept {
@@ -418,4 +418,4 @@ void settle_multiway_terminal_fixed(
     settle_multiway_terminal_fixed(ruled_input, scratch, result);
 }
 
-}  // namespace core
+}  // namespace texas::games::multiway

@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include <cstddef>
 #include <limits>
 #include <memory>
 #include <new>
 #include <type_traits>
 
-namespace core {
+namespace texas::util {
 
 template <class T, std::size_t Alignment>
 class AlignedAllocator {
@@ -46,4 +48,4 @@ constexpr bool operator!=(const AlignedAllocator<T, Alignment>&, const AlignedAl
     return false;
 }
 
-}  // namespace core
+}  // namespace texas::util

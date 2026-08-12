@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 
 #include <memory>
 #include <vector>
 
-namespace core {
+namespace texas::core {
 
 /**
  * @brief Common game-tree interface used by DCFR and exploitability walks.
@@ -34,6 +36,6 @@ public:
     virtual std::vector<Value> utility() const = 0;
 };
 
-}  // namespace core
+}  // namespace texas::core
 
 

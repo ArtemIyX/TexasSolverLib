@@ -7,9 +7,9 @@
 #include <unordered_map>
 
 TEST_CASE(hunl_flat_graph_builds_from_tree_with_stable_indices) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto tree = core::HUNLTree::build(config);
-    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto tree = texas::HUNLTree::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(tree);
 
     EXPECT_EQ(graph.root, tree.root);
     EXPECT_EQ(graph.max_depth, tree.max_depth);
@@ -20,9 +20,9 @@ TEST_CASE(hunl_flat_graph_builds_from_tree_with_stable_indices) {
 }
 
 TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto tree = core::HUNLTree::build(config);
-    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto tree = texas::HUNLTree::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(tree);
 
     bool saw_decision = false;
     bool saw_fold = false;
@@ -36,18 +36,18 @@ TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
         EXPECT_EQ(flat_node.street, tree_node.street);
         EXPECT_EQ(flat_node.contributions, tree_node.contrib);
 
-        if (tree_node.terminal_kind.tag == core::TerminalKindTag::Fold) {
-            EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::TerminalFold);
+        if (tree_node.terminal_kind.tag == texas::TerminalKindTag::Fold) {
+            EXPECT_EQ(flat_node.type, texas::HUNLFlatNodeType::TerminalFold);
             saw_fold = true;
             continue;
         }
-        if (tree_node.terminal_kind.tag == core::TerminalKindTag::Showdown) {
-            EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::TerminalShowdown);
+        if (tree_node.terminal_kind.tag == texas::TerminalKindTag::Showdown) {
+            EXPECT_EQ(flat_node.type, texas::HUNLFlatNodeType::TerminalShowdown);
             saw_showdown = true;
             continue;
         }
         if (!tree_node.chance_children.empty()) {
-            EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::Chance);
+            EXPECT_EQ(flat_node.type, texas::HUNLFlatNodeType::Chance);
             EXPECT_EQ(static_cast<std::size_t>(flat_node.child_count), static_cast<std::size_t>(tree_node.chance_children.size()));
             EXPECT_EQ(static_cast<std::size_t>(flat_node.chance_count), static_cast<std::size_t>(tree_node.chance_outcomes.size()));
             for (std::size_t i = 0; i < tree_node.chance_children.size(); ++i) {
@@ -60,7 +60,7 @@ TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
             continue;
         }
 
-        EXPECT_EQ(flat_node.type, core::HUNLFlatNodeType::Decision);
+        EXPECT_EQ(flat_node.type, texas::HUNLFlatNodeType::Decision);
         EXPECT_EQ(static_cast<std::size_t>(flat_node.child_count), static_cast<std::size_t>(tree_node.children.size()));
         EXPECT_EQ(static_cast<std::size_t>(flat_node.action_count), static_cast<std::size_t>(tree_node.legal_actions.size()));
         saw_decision = true;
@@ -77,16 +77,16 @@ TEST_CASE(hunl_flat_graph_preserves_decision_and_chance_layout) {
 }
 
 TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto tree = core::HUNLTree::build(config);
-    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto tree = texas::HUNLTree::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(tree);
 
     std::unordered_map<std::string, std::uint32_t> expected_ids_by_key;
     std::uint32_t expected_next_id = 0;
 
     for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& node = graph.node_meta[node_idx];
-        if (node.type != core::HUNLFlatNodeType::Decision) {
+        if (node.type != texas::HUNLFlatNodeType::Decision) {
             EXPECT_TRUE(!node.has_infoset);
             continue;
         }
@@ -122,9 +122,9 @@ TEST_CASE(hunl_flat_graph_assigns_stable_infoset_ids_and_groups) {
 }
 
 TEST_CASE(hunl_flat_graph_precomputes_compact_node_metadata) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto tree = core::HUNLTree::build(config);
-    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto tree = texas::HUNLTree::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(tree);
 
     for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
         const auto& node = graph.node_meta[node_idx];
@@ -156,7 +156,7 @@ TEST_CASE(hunl_flat_graph_precomputes_compact_node_metadata) {
             EXPECT_TRUE(meta.chance_begin + i < graph.chance_outcomes.size());
         }
 
-        if (meta.type == core::HUNLFlatNodeType::Decision) {
+        if (meta.type == texas::HUNLFlatNodeType::Decision) {
             EXPECT_TRUE(meta.has_infoset);
             EXPECT_TRUE(meta.infoset_id.value < graph.infosets.size());
         } else {
@@ -166,9 +166,9 @@ TEST_CASE(hunl_flat_graph_precomputes_compact_node_metadata) {
 }
 
 TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto tree = core::HUNLTree::build(config);
-    const auto graph = core::HUNLFlatSolveGraph::build(tree);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto tree = texas::HUNLTree::build(config);
+    const auto graph = texas::HUNLFlatSolveGraph::build(tree);
 
     EXPECT_EQ(graph.forward_order.size(), graph.node_meta.size());
     EXPECT_EQ(graph.reverse_order.size(), graph.node_meta.size());
@@ -242,8 +242,8 @@ TEST_CASE(hunl_flat_graph_precomputes_stage_friendly_traversal_orders) {
 }
 
 TEST_CASE(hunl_flat_graph_precomputes_compact_terminal_tables) {
-    const auto config = std::make_shared<const core::HUNLConfig>(core::default_tiny_subgame());
-    const auto graph = core::HUNLFlatSolveGraph::build(config);
+    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+    const auto graph = texas::HUNLFlatSolveGraph::build(config);
 
     EXPECT_EQ(graph.terminal_nodes.size(), graph.terminal_node_values.size());
     EXPECT_EQ(graph.fold_terminal_nodes.size(), graph.fold_terminal_values.size());
@@ -254,20 +254,20 @@ TEST_CASE(hunl_flat_graph_precomputes_compact_terminal_tables) {
         EXPECT_TRUE(node_idx < graph.node_meta.size());
         const auto& meta = graph.node_meta[node_idx];
         EXPECT_TRUE(
-            meta.type == core::HUNLFlatNodeType::TerminalFold ||
-            meta.type == core::HUNLFlatNodeType::TerminalShowdown);
+            meta.type == texas::HUNLFlatNodeType::TerminalFold ||
+            meta.type == texas::HUNLFlatNodeType::TerminalShowdown);
         EXPECT_NEAR(graph.terminal_node_values[i], meta.terminal_utility[0], 1e-12);
     }
 }
 
 TEST_CASE(hunl_flat_graph_direct_builder_matches_tree_builder_on_small_graphs) {
-    auto config_value = core::default_tiny_subgame();
+    auto config_value = texas::default_tiny_subgame();
     config_value.depth_limit_plies = 3;
-    const auto config = std::make_shared<const core::HUNLConfig>(config_value);
+    const auto config = std::make_shared<const texas::HUNLConfig>(config_value);
 
-    const auto tree = core::HUNLTree::build(config);
-    const auto expected = core::HUNLFlatSolveGraph::build(tree);
-    const auto actual = core::HUNLFlatSolveGraph::build(config);
+    const auto tree = texas::HUNLTree::build(config);
+    const auto expected = texas::HUNLFlatSolveGraph::build(tree);
+    const auto actual = texas::HUNLFlatSolveGraph::build(config);
 
     EXPECT_EQ(actual.root, expected.root);
     EXPECT_EQ(actual.max_depth, expected.max_depth);
@@ -360,35 +360,35 @@ TEST_CASE(hunl_flat_graph_direct_builder_matches_tree_builder_on_small_graphs) {
 }
 
 TEST_CASE(hunl_flat_graph_collapses_bucketed_public_chance_but_preserves_exact_expansion) {
-    core::HUNLConfig explicit_cfg;
+    texas::HUNLConfig explicit_cfg;
     explicit_cfg.starting_stack = 1000;
-    explicit_cfg.starting_street = core::Street::Flop;
+    explicit_cfg.starting_street = texas::Street::Flop;
     explicit_cfg.initial_board = {
-        core::card_to_int(14, 0), core::card_to_int(13, 0), core::card_to_int(7, 0)};
+        texas::card_to_int(14, 0), texas::card_to_int(13, 0), texas::card_to_int(7, 0)};
     explicit_cfg.initial_pot = 2000;
     explicit_cfg.initial_contributions = {1000, 1000};
     explicit_cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {core::card_to_int(12, 1), core::card_to_int(11, 2)},
-        {core::card_to_int(10, 1), core::card_to_int(9, 2)},
+        {texas::card_to_int(12, 1), texas::card_to_int(11, 2)},
+        {texas::card_to_int(10, 1), texas::card_to_int(9, 2)},
     }};
-    explicit_cfg.flat_solve_mode = core::HUNLFlatSolveMode::ExplicitHand;
+    explicit_cfg.flat_solve_mode = texas::HUNLFlatSolveMode::ExplicitHand;
 
     auto bucketed_cfg = explicit_cfg;
-    bucketed_cfg.flat_solve_mode = core::HUNLFlatSolveMode::Auto;
+    bucketed_cfg.flat_solve_mode = texas::HUNLFlatSolveMode::Auto;
     bucketed_cfg.abstraction_path = "test-abstraction.bin";
 
     const auto explicit_graph =
-        core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(explicit_cfg));
+        texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(explicit_cfg));
     const auto bucketed_graph =
-        core::HUNLFlatSolveGraph::build(std::make_shared<const core::HUNLConfig>(bucketed_cfg));
+        texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(bucketed_cfg));
 
-    const auto find_turn_public_chance = [](const core::HUNLFlatSolveGraph& graph) -> std::uint32_t {
+    const auto find_turn_public_chance = [](const texas::HUNLFlatSolveGraph& graph) -> std::uint32_t {
         for (std::uint32_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
             const auto& meta = graph.node_meta[node_idx];
-            if (meta.type != core::HUNLFlatNodeType::Chance) {
+            if (meta.type != texas::HUNLFlatNodeType::Chance) {
                 continue;
             }
-            if (meta.street != core::Street::Turn) {
+            if (meta.street != texas::Street::Turn) {
                 continue;
             }
             if (meta.board.count != 3 || meta.chance_count <= 1) {
@@ -406,8 +406,8 @@ TEST_CASE(hunl_flat_graph_collapses_bucketed_public_chance_but_preserves_exact_e
 
     const auto& explicit_chance = explicit_graph.node_meta[explicit_chance_idx];
     const auto& bucketed_chance = bucketed_graph.node_meta[bucketed_chance_idx];
-    EXPECT_EQ(explicit_chance.type, core::HUNLFlatNodeType::Chance);
-    EXPECT_EQ(bucketed_chance.type, core::HUNLFlatNodeType::Chance);
+    EXPECT_EQ(explicit_chance.type, texas::HUNLFlatNodeType::Chance);
+    EXPECT_EQ(bucketed_chance.type, texas::HUNLFlatNodeType::Chance);
     EXPECT_EQ(explicit_chance.child_count, explicit_chance.chance_count);
     EXPECT_TRUE(bucketed_chance.chance_count < explicit_chance.chance_count);
     EXPECT_EQ(bucketed_chance.child_count, bucketed_chance.chance_count);

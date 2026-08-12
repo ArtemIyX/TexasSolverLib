@@ -1,28 +1,28 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
+#include "core/card.hpp"
+
 #include <array>
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
 
-namespace core {
+namespace texas::core {
 
-// HUNL cards use rank * 4 + suit, so the valid deck is the contiguous range
-// [8, 59]. This module deliberately does not accept compact artifact cards.
-inline constexpr std::uint8_t HUNL_CARD_FIRST = 8U;
-inline constexpr std::uint8_t HUNL_CARD_LAST = 59U;
-inline constexpr std::size_t HUNL_CARD_COUNT = 52U;
+inline constexpr std::size_t DECK_CARD_COUNT = Card::COUNT;
 inline constexpr std::size_t CANONICAL_HOLE_COMBINATION_COUNT = 1326U;
 
 using CanonicalComboId = std::uint16_t;
 using CanonicalComboCards = std::array<std::uint8_t, 2>;
 using CanonicalComboLegalMask = std::bitset<CANONICAL_HOLE_COMBINATION_COUNT>;
 
-[[nodiscard]] constexpr bool is_hunl_card(std::uint8_t card) noexcept {
-    return card >= HUNL_CARD_FIRST && card <= HUNL_CARD_LAST;
+[[nodiscard]] constexpr bool is_card_index(std::uint8_t card) noexcept {
+    return card < DECK_CARD_COUNT;
 }
 
-// Immutable, non-owning view over all unordered HUNL hole-card pairs. IDs are
+// Immutable, non-owning view over all unordered hole-card pairs. IDs are
 // contiguous and independent of a public board.
 class CanonicalComboView {
 public:
@@ -39,4 +39,4 @@ private:
 
 [[nodiscard]] const CanonicalComboView& canonical_combos() noexcept;
 
-}  // namespace core
+}  // namespace texas::core

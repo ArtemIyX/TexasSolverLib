@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_blueprint_store.hpp"
 
 #include <cstddef>
 
-namespace core {
+namespace texas::solver::multiway {
 
 enum class MultiwayBlueprintLookupStatus : std::uint8_t {
     Hit,
@@ -29,4 +31,4 @@ private:
     const MultiwayBlueprintStore* store_ = nullptr;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

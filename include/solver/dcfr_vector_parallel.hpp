@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/dcfr_vector.hpp"
 
 #include <cstddef>
 #include <vector>
 
-namespace core {
+namespace texas::solver::dcfr {
 
 struct ParallelChanceRange {
     std::size_t start = 0;
@@ -19,6 +21,6 @@ std::vector<ParallelChanceRange> derive_parallel_chance_ranges(
 
 bool parallel_chance_enabled();
 
-}  // namespace core
+}  // namespace texas::solver::dcfr
 
 

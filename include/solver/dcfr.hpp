@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "util/checked_numeric.hpp"
 #include "core/game.hpp"
@@ -20,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::solver::dcfr {
 
 /**
  * @brief Discounted Counterfactual Regret Minimization parameters.
@@ -170,7 +172,7 @@ public:
 
         auto& row = rows_[id.value];
         if (!row.active) {
-            const auto new_size = checked_size_add(
+            const auto new_size = texas::util::detail::checked_size_add(
                 regret_arena_.size(), action_count, "infoset accumulation arena size overflow");
             if (strategy_arena_.size() != regret_arena_.size()) {
                 throw std::logic_error("infoset accumulation arenas are misaligned");
@@ -578,7 +580,7 @@ double DCFRSolver<G>::cfr(
     }
 
     const auto actions = state.legal_actions();
-    const auto id = core::lookup_infoset_id(
+    const auto id = texas::lookup_infoset_id(
         state, player, registry_, actions.size(), &locked_, &locked_by_id_);
     auto accum = infosets_.ensure(id, actions.size());
 
@@ -682,6 +684,6 @@ SolveOutput DCFRSolver<G>::solve(std::uint32_t iterations) {
     return out;
 }
 
-}  // namespace core
+}  // namespace texas::solver::dcfr
 
 

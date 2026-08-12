@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 #include "games/multiway_rake.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::games::multiway {
 
 struct MultiwayGameRules;
 
@@ -128,4 +130,4 @@ private:
     void refresh_raise_rights_after_short_raise(PlayerId aggressor);
 };
 
-}  // namespace core
+}  // namespace texas::games::multiway

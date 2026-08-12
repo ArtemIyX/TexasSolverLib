@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 namespace {
 
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
@@ -116,4 +116,4 @@ MultiwayModelIdentity make_multiway_model_identity(const MultiwayBlueprintConfig
     return identity;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

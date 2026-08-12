@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -719,4 +719,4 @@ std::uint64_t HUNLSampledSolver::estimate_terminal_cache_bytes(
         kDefaultTerminalCachePerStateBytes);
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

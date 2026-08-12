@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-namespace core {
+namespace texas::games {
 
 namespace {
 
@@ -272,6 +272,6 @@ PlayerId LeducState::next_player(PlayerId player, const std::array<bool, 2>& fol
     return -1;
 }
 
-}  // namespace core
+}  // namespace texas::games
 
 

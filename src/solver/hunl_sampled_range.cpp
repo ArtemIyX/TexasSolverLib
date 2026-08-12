@@ -21,7 +21,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 namespace {
 
 constexpr std::size_t kMaxDecisionActions = 16U;
@@ -1097,4 +1097,4 @@ HUNLSampledRangeRunResult run_hunl_sampled_structured_range_batches(
     return session.resume_batches(batch_count, deadline);
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

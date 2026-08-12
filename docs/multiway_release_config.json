@@ -2,10 +2,10 @@
   "profile": "multiway_6max_release_v1",
   "config_schema_version": 1,
   "library_mapping": {
-    "rules": "core::MultiwayGameRules",
-    "blueprint": "core::MultiwayBlueprintConfig",
-    "memory": "core::MultiwayMemoryBudget",
-    "resolver": "core::MultiwayResolverConfig"
+    "rules": "texas::MultiwayGameRules",
+    "blueprint": "texas::MultiwayBlueprintConfig",
+    "memory": "texas::MultiwayMemoryBudget",
+    "resolver": "texas::MultiwayResolverConfig"
   },
   "rules": {
     "profile_version": 1,

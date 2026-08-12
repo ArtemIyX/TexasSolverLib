@@ -6,7 +6,7 @@
 #include <memory>
 #include <stdexcept>
 
-namespace core {
+namespace texas::preflop {
 
 PreflopSolveOutput solve_hunl_preflop(
     const HUNLConfig& config,
@@ -39,6 +39,6 @@ PreflopSolveOutput solve_hunl_preflop(
     return out;
 }
 
-}  // namespace core
+}  // namespace texas::preflop
 
 

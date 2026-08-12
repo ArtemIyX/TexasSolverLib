@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::games::hunl {
 
 namespace {
 
@@ -362,4 +362,4 @@ std::vector<std::uint8_t> HUNLFlatSolveGraph::unpack_board(const HUNLFlatPackedB
     return std::vector<std::uint8_t>(board.cards.begin(), board.cards.begin() + board.count);
 }
 
-}  // namespace core
+}  // namespace texas::games::hunl

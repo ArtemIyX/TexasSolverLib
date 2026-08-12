@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/game.hpp"
 
 #include <array>
@@ -7,7 +9,7 @@
 #include <memory>
 #include <optional>
 
-namespace core {
+namespace texas::games {
 
 inline constexpr ActionId LEDUC_FOLD = 0;
 inline constexpr ActionId LEDUC_CALL = 1;
@@ -62,6 +64,6 @@ private:
     static PlayerId next_player(PlayerId player, const std::array<bool, 2>& folded);
 };
 
-}  // namespace core
+}  // namespace texas::games
 
 

@@ -5,7 +5,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::hunl {
 
 namespace {
 
@@ -332,4 +332,4 @@ std::size_t HUNLSampledStorage::row_index(InfosetId id) const {
     return it == row_lookup_.end() ? meta_.size() : it->second;
 }
 
-}  // namespace core
+}  // namespace texas::solver::hunl

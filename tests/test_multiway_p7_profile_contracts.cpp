@@ -5,11 +5,11 @@
 
 namespace {
 
-using Mode = core::MultiwaySearchProfileMode;
-using Stage = core::MultiwaySearchProfileStage;
+using Mode = texas::MultiwaySearchProfileMode;
+using Stage = texas::MultiwaySearchProfileStage;
 
 void expect_single_checkpoint(Stage stage, std::uint64_t elapsed, std::uint64_t calls) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(stage, elapsed, calls);
     const auto snapshot = profile.snapshot();
     EXPECT_EQ(snapshot.checkpoint(stage).elapsed_nanoseconds, elapsed);
@@ -19,19 +19,19 @@ void expect_single_checkpoint(Stage stage, std::uint64_t elapsed, std::uint64_t 
 }  // namespace
 
 TEST_CASE(multiway_p7_profile_defaults_to_disabled) {
-    const core::MultiwaySearchProfile profile;
+    const texas::MultiwaySearchProfile profile;
     EXPECT_TRUE(!profile.enabled());
     EXPECT_TRUE(!profile.snapshot().profiled());
 }
 
 TEST_CASE(multiway_p7_profile_checkpoints_mode_is_enabled) {
-    const core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    const texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     EXPECT_TRUE(profile.enabled());
     EXPECT_TRUE(profile.snapshot().profiled());
 }
 
 TEST_CASE(multiway_p7_profile_disabled_add_is_ignored) {
-    core::MultiwaySearchProfile profile;
+    texas::MultiwaySearchProfile profile;
     profile.add(Stage::RowLookup, 41U, 3U);
     const auto checkpoint = profile.snapshot().checkpoint(Stage::RowLookup);
     EXPECT_EQ(checkpoint.elapsed_nanoseconds, 0U);
@@ -39,7 +39,7 @@ TEST_CASE(multiway_p7_profile_disabled_add_is_ignored) {
 }
 
 TEST_CASE(multiway_p7_profile_reset_enables_and_clears) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::DeltaMerge, 99U, 4U);
     profile.reset(Mode::Checkpoints);
     EXPECT_TRUE(profile.enabled());
@@ -47,7 +47,7 @@ TEST_CASE(multiway_p7_profile_reset_enables_and_clears) {
 }
 
 TEST_CASE(multiway_p7_profile_reset_disables_and_clears) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::RootExport, 99U, 4U);
     profile.reset(Mode::Disabled);
     EXPECT_TRUE(!profile.enabled());
@@ -55,42 +55,42 @@ TEST_CASE(multiway_p7_profile_reset_disables_and_clears) {
 }
 
 TEST_CASE(multiway_p7_profile_merge_ignores_disabled_snapshot) {
-    core::MultiwaySearchProfile source;
-    core::MultiwaySearchProfile target(Mode::Checkpoints);
+    texas::MultiwaySearchProfile source;
+    texas::MultiwaySearchProfile target(Mode::Checkpoints);
     target.add(Stage::RegretMatching, 7U, 1U);
     target.merge(source.snapshot());
     EXPECT_EQ(target.snapshot().checkpoint(Stage::RegretMatching).elapsed_nanoseconds, 7U);
 }
 
 TEST_CASE(multiway_p7_profile_merge_enables_disabled_target) {
-    core::MultiwaySearchProfile source(Mode::Checkpoints);
+    texas::MultiwaySearchProfile source(Mode::Checkpoints);
     source.add(Stage::TerminalSettlement, 13U, 2U);
-    core::MultiwaySearchProfile target;
+    texas::MultiwaySearchProfile target;
     target.merge(source.snapshot());
     EXPECT_TRUE(target.enabled());
     EXPECT_EQ(target.snapshot().checkpoint(Stage::TerminalSettlement).calls, 2U);
 }
 
 TEST_CASE(multiway_p7_profile_merge_accumulates_elapsed_time) {
-    core::MultiwaySearchProfile source(Mode::Checkpoints);
+    texas::MultiwaySearchProfile source(Mode::Checkpoints);
     source.add(Stage::ContinuationLeaf, 23U, 1U);
-    core::MultiwaySearchProfile target(Mode::Checkpoints);
+    texas::MultiwaySearchProfile target(Mode::Checkpoints);
     target.add(Stage::ContinuationLeaf, 19U, 1U);
     target.merge(source.snapshot());
     EXPECT_EQ(target.snapshot().checkpoint(Stage::ContinuationLeaf).elapsed_nanoseconds, 42U);
 }
 
 TEST_CASE(multiway_p7_profile_merge_accumulates_calls) {
-    core::MultiwaySearchProfile source(Mode::Checkpoints);
+    texas::MultiwaySearchProfile source(Mode::Checkpoints);
     source.add(Stage::ActionMenuGeneration, 1U, 5U);
-    core::MultiwaySearchProfile target(Mode::Checkpoints);
+    texas::MultiwaySearchProfile target(Mode::Checkpoints);
     target.add(Stage::ActionMenuGeneration, 1U, 7U);
     target.merge(source.snapshot());
     EXPECT_EQ(target.snapshot().checkpoint(Stage::ActionMenuGeneration).calls, 12U);
 }
 
 TEST_CASE(multiway_p7_profile_repeated_add_accumulates) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::PublicGraphAdmission, 8U, 2U);
     profile.add(Stage::PublicGraphAdmission, 9U, 3U);
     const auto checkpoint = profile.snapshot().checkpoint(Stage::PublicGraphAdmission);
@@ -99,7 +99,7 @@ TEST_CASE(multiway_p7_profile_repeated_add_accumulates) {
 }
 
 TEST_CASE(multiway_p7_profile_zero_call_add_preserves_call_count) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::PrivateDealSampling, 15U, 0U);
     const auto checkpoint = profile.snapshot().checkpoint(Stage::PrivateDealSampling);
     EXPECT_EQ(checkpoint.elapsed_nanoseconds, 15U);
@@ -107,7 +107,7 @@ TEST_CASE(multiway_p7_profile_zero_call_add_preserves_call_count) {
 }
 
 TEST_CASE(multiway_p7_profile_snapshot_is_value_copy) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::RowLookup, 3U, 1U);
     const auto first = profile.snapshot();
     profile.add(Stage::RowLookup, 4U, 1U);
@@ -115,67 +115,67 @@ TEST_CASE(multiway_p7_profile_snapshot_is_value_copy) {
 }
 
 TEST_CASE(multiway_p7_profile_ranking_orders_descending_elapsed_time) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::RowLookup, 20U);
     profile.add(Stage::DeltaMerge, 90U);
     profile.add(Stage::ContinuationLeaf, 40U);
-    const auto ranking = core::rank_multiway_search_profile(profile.snapshot());
+    const auto ranking = texas::rank_multiway_search_profile(profile.snapshot());
     EXPECT_EQ(ranking[0].stage, Stage::DeltaMerge);
     EXPECT_EQ(ranking[1].stage, Stage::ContinuationLeaf);
     EXPECT_EQ(ranking[2].stage, Stage::RowLookup);
 }
 
 TEST_CASE(multiway_p7_profile_ranking_retains_time_values) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::RootExport, 73U);
-    const auto ranking = core::rank_multiway_search_profile(profile.snapshot());
+    const auto ranking = texas::rank_multiway_search_profile(profile.snapshot());
     EXPECT_EQ(ranking[0].elapsed_nanoseconds, 73U);
 }
 
 TEST_CASE(multiway_p7_profile_ranking_is_stable_for_ties) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     profile.add(Stage::PrivateDealSampling, 5U);
     profile.add(Stage::PublicChanceSampling, 5U);
-    const auto ranking = core::rank_multiway_search_profile(profile.snapshot());
+    const auto ranking = texas::rank_multiway_search_profile(profile.snapshot());
     EXPECT_EQ(ranking[0].stage, Stage::PrivateDealSampling);
     EXPECT_EQ(ranking[1].stage, Stage::PublicChanceSampling);
 }
 
 TEST_CASE(multiway_p7_profile_zero_ranking_uses_numeric_stage_order) {
-    const auto ranking = core::rank_multiway_search_profile({});
+    const auto ranking = texas::rank_multiway_search_profile({});
     for (std::size_t index = 0U; index < ranking.size(); ++index) {
         EXPECT_EQ(ranking[index].stage, static_cast<Stage>(index));
     }
 }
 
 TEST_CASE(multiway_p7_profile_null_scope_is_safe) {
-    { core::MultiwaySearchProfileScope scope(nullptr, Stage::RowLookup); }
+    { texas::MultiwaySearchProfileScope scope(nullptr, Stage::RowLookup); }
     EXPECT_TRUE(true);
 }
 
 TEST_CASE(multiway_p7_profile_disabled_scope_records_nothing) {
-    core::MultiwaySearchProfile profile;
-    { core::MultiwaySearchProfileScope scope(&profile, Stage::RegretMatching); }
+    texas::MultiwaySearchProfile profile;
+    { texas::MultiwaySearchProfileScope scope(&profile, Stage::RegretMatching); }
     EXPECT_EQ(profile.snapshot().checkpoint(Stage::RegretMatching).calls, 0U);
 }
 
 TEST_CASE(multiway_p7_profile_enabled_scope_records_one_call) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
-    { core::MultiwaySearchProfileScope scope(&profile, Stage::TerminalSettlement); }
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
+    { texas::MultiwaySearchProfileScope scope(&profile, Stage::TerminalSettlement); }
     EXPECT_EQ(profile.snapshot().checkpoint(Stage::TerminalSettlement).calls, 1U);
 }
 
 TEST_CASE(multiway_p7_profile_scope_respects_disable_before_destruction) {
-    core::MultiwaySearchProfile profile(Mode::Checkpoints);
+    texas::MultiwaySearchProfile profile(Mode::Checkpoints);
     {
-        core::MultiwaySearchProfileScope scope(&profile, Stage::RootExport);
+        texas::MultiwaySearchProfileScope scope(&profile, Stage::RootExport);
         profile.reset(Mode::Disabled);
     }
     EXPECT_EQ(profile.snapshot().checkpoint(Stage::RootExport).calls, 0U);
 }
 
 TEST_CASE(multiway_p7_profile_stage_count_matches_public_enum) {
-    EXPECT_EQ(core::MULTIWAY_SEARCH_PROFILE_STAGE_COUNT, std::size_t{10U});
+    EXPECT_EQ(texas::MULTIWAY_SEARCH_PROFILE_STAGE_COUNT, std::size_t{10U});
     EXPECT_EQ(static_cast<std::size_t>(Stage::Count), std::size_t{10U});
 }
 

@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace core {
+namespace texas::ranges {
 
 namespace {
 
@@ -297,4 +297,4 @@ bool load_range_file(const std::filesystem::path& path, RangeVector& range) {
     return true;
 }
 
-}  // namespace core
+}  // namespace texas::ranges

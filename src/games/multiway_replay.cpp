@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace core {
+namespace texas::games::multiway {
 
 MultiwayHandHistory MultiwayHandHistory::from_rules(
     const MultiwayGameRules& rules,
@@ -66,4 +66,4 @@ MultiwayState replay_multiway_hand(const MultiwayHandHistory& history) {
     return state;
 }
 
-}  // namespace core
+}  // namespace texas::games::multiway

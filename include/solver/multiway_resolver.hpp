@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/multiway_private.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
@@ -18,7 +20,7 @@
 #include <memory>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 struct MultiwayVerifiedBlueprintArtifact;
 class MultiwayBlueprintStore;
@@ -225,4 +227,4 @@ private:
     mutable StableRootPolicy stable_policy_{};
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

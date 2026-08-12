@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "games/hunl.hpp"
 #include "util/infoset_registry.hpp"
@@ -7,7 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::util {
 
 namespace detail {
 
@@ -67,4 +69,4 @@ InfosetId lookup_infoset_id(
     return id;
 }
 
-}  // namespace core
+}  // namespace texas::util

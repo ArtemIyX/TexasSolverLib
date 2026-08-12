@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/exploit.hpp"
 #include "games/hunl.hpp"
 
@@ -11,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::dcfr {
 
 struct VectorInfosetData {
     std::size_t action_count = 0;
@@ -150,6 +152,6 @@ VectorSolveOutput solve_vector_dcfr(
     double gamma,
     const std::vector<bool>& skip_mask);
 
-}  // namespace core
+}  // namespace texas::solver::dcfr
 
 

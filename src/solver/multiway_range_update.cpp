@@ -4,7 +4,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace core {
+namespace texas::solver::multiway {
 
 void MultiwayBucketActionPolicy::validate() const {
     identity.validate();
@@ -51,7 +51,7 @@ std::vector<MultiwayWeightedHole> update_anonymous_multiway_range(
             throw std::invalid_argument("multiway anonymous range has invalid prior weight");
         }
         const auto likelihood = std::max(likelihood_floor,
-            policy.likelihood(table.lookup_hunl(weighted.hole), observed_action));
+            policy.likelihood(table.lookup(weighted.hole), observed_action));
         const auto posterior = weighted.weight * likelihood;
         if (!std::isfinite(posterior)) throw std::overflow_error("multiway anonymous range update overflowed");
         result.push_back({weighted.hole, posterior});
@@ -64,4 +64,4 @@ std::vector<MultiwayWeightedHole> update_anonymous_multiway_range(
     return result;
 }
 
-}  // namespace core
+}  // namespace texas::solver::multiway

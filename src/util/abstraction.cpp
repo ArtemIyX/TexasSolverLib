@@ -22,7 +22,7 @@
 #define COMPRESS_ALGORITHM_DEFLATE 4
 #endif
 
-namespace core {
+namespace texas::util {
 
 namespace {
 
@@ -348,8 +348,8 @@ AbstractionMetadata parse_metadata(const std::vector<std::uint8_t>& raw) {
 
 std::string permuted_hole_key(const std::array<std::uint8_t, 2>& hole, std::size_t perm_index) {
     std::array<std::uint8_t, 2> cards = {
-        static_cast<std::uint8_t>(rank_of(hole[0]) * 4U + SUIT_PERMUTATIONS[perm_index][suit_of(hole[0])]),
-        static_cast<std::uint8_t>(rank_of(hole[1]) * 4U + SUIT_PERMUTATIONS[perm_index][suit_of(hole[1])]),
+        card_to_int(rank_of(hole[0]), SUIT_PERMUTATIONS[perm_index][suit_of(hole[0])]),
+        card_to_int(rank_of(hole[1]), SUIT_PERMUTATIONS[perm_index][suit_of(hole[1])]),
     };
     if (cards[1] < cards[0]) std::swap(cards[0], cards[1]);
     return std::string(card_to_string(cards[0])) + card_to_string(cards[1]);
@@ -453,6 +453,6 @@ std::int32_t lookup_bucket(
     return static_cast<std::int32_t>(assignments.at(board_offset + within));
 }
 
-}  // namespace core
+}  // namespace texas::util
 
 

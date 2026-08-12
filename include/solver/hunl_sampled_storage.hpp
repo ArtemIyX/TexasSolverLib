@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 #include "core/types.hpp"
 #include "solver/hunl_flat_state.hpp"
@@ -12,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 inline constexpr std::uint32_t HUNL_SAMPLED_MAX_BUCKET_COUNT = 1'000'000U;
 inline constexpr std::uint8_t HUNL_SAMPLED_MAX_ACTION_COUNT =
@@ -150,4 +152,4 @@ private:
     std::uint64_t memory_limit_bytes_ = 0;
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

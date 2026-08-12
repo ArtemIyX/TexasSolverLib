@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "core/types.hpp"
 #include "games/hunl_tree.hpp"
 
@@ -13,7 +15,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace core {
+namespace texas::games::hunl {
 
 enum class HUNLFlatNodeType : std::uint8_t {
     TerminalFold = 0,
@@ -125,4 +127,4 @@ struct HUNLFlatSolveGraph {
     static HUNLFlatSolveGraph build(std::shared_ptr<const HUNLConfig> config);
 };
 
-}  // namespace core
+}  // namespace texas::games::hunl

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl.hpp"
 
 #include <array>
@@ -10,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace core {
+namespace texas::solver::hunl {
 
 enum class HUNLLeafValueUnits : std::uint8_t { Chips, BigBlinds, PotFraction, NormalizedStackFraction };
 enum class HUNLLeafEvaluationScope : std::uint8_t { DealConditional };
@@ -63,4 +65,4 @@ struct HUNLLeafEvaluator {
     }
 };
 
-}  // namespace core
+}  // namespace texas::solver::hunl

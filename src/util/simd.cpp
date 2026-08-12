@@ -9,7 +9,7 @@
 #include <immintrin.h>
 #endif
 
-namespace core {
+namespace texas::util {
 
 namespace {
 
@@ -894,6 +894,6 @@ void discount_strategy_sum_f32(float* strategy, std::size_t len, double strat_sc
     discount_strategy_sum_f32_scalar(strategy, len, strat_scale);
 }
 
-}  // namespace core
+}  // namespace texas::util
 
 

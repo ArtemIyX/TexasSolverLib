@@ -27,9 +27,9 @@ struct BenchmarkConfig {
     std::vector<std::uint32_t> batch_sizes;
     std::uint64_t seed = 1;
     std::vector<std::size_t> workers = {1, 2, 4, 8, 16};
-    core::HUNLFlatSamplingMode mode = core::HUNLFlatSamplingMode::External;
-    core::HUNLFlatValueLayout layout = core::HUNLFlatValueLayout::InfosetActionHand;
-    core::HUNLFlatStoragePrecision precision = core::HUNLFlatStoragePrecision::Float64;
+    texas::HUNLFlatSamplingMode mode = texas::HUNLFlatSamplingMode::External;
+    texas::HUNLFlatValueLayout layout = texas::HUNLFlatValueLayout::InfosetActionHand;
+    texas::HUNLFlatStoragePrecision precision = texas::HUNLFlatStoragePrecision::Float64;
     bool update_both_players = true;
     bool use_sparse_storage = false;
     bool use_discounting = false;
@@ -140,31 +140,31 @@ bool parse_workers_csv(std::string_view text, std::vector<std::size_t>& out) {
     return true;
 }
 
-std::optional<core::HUNLFlatSamplingMode> parse_sampling_mode(std::string_view text) {
+std::optional<texas::HUNLFlatSamplingMode> parse_sampling_mode(std::string_view text) {
     if (text == "exact") {
-        return core::HUNLFlatSamplingMode::Exact;
+        return texas::HUNLFlatSamplingMode::Exact;
     }
     if (text == "public-chance") {
-        return core::HUNLFlatSamplingMode::PublicChance;
+        return texas::HUNLFlatSamplingMode::PublicChance;
     }
     if (text == "external") {
-        return core::HUNLFlatSamplingMode::External;
+        return texas::HUNLFlatSamplingMode::External;
     }
     if (text == "average-strategy") {
-        return core::HUNLFlatSamplingMode::AverageStrategy;
+        return texas::HUNLFlatSamplingMode::AverageStrategy;
     }
     return std::nullopt;
 }
 
-std::string sampling_mode_name(core::HUNLFlatSamplingMode mode) {
+std::string sampling_mode_name(texas::HUNLFlatSamplingMode mode) {
     switch (mode) {
-        case core::HUNLFlatSamplingMode::Exact:
+        case texas::HUNLFlatSamplingMode::Exact:
             return "exact";
-        case core::HUNLFlatSamplingMode::PublicChance:
+        case texas::HUNLFlatSamplingMode::PublicChance:
             return "public-chance";
-        case core::HUNLFlatSamplingMode::External:
+        case texas::HUNLFlatSamplingMode::External:
             return "external";
-        case core::HUNLFlatSamplingMode::AverageStrategy:
+        case texas::HUNLFlatSamplingMode::AverageStrategy:
             return "average-strategy";
     }
     return "unknown";
@@ -309,54 +309,54 @@ std::optional<BenchmarkConfig> parse_args(int argc, char* argv[]) {
     return config;
 }
 
-core::HUNLFlatNodeMeta make_terminal_meta(double value) {
-    core::HUNLFlatNodeMeta meta;
-    meta.type = core::HUNLFlatNodeType::TerminalFold;
+texas::HUNLFlatNodeMeta make_terminal_meta(double value) {
+    texas::HUNLFlatNodeMeta meta;
+    meta.type = texas::HUNLFlatNodeType::TerminalFold;
     meta.terminal_utility = {value, -value};
-    meta.terminal_kind = core::TerminalKind::fold(1, 1);
-    meta.street = core::Street::Flop;
+    meta.terminal_kind = texas::TerminalKind::fold(1, 1);
+    meta.street = texas::Street::Flop;
     return meta;
 }
 
-core::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec) {
-    core::HUNLFlatSolveGraph graph;
+texas::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec) {
+    texas::HUNLFlatSolveGraph graph;
     graph.root = 0;
     graph.max_depth = 4;
     graph.max_actions = static_cast<std::uint8_t>(
         std::max({spec.root_actions, spec.opponent_actions, spec.reply_actions}));
 
-    const auto root_infoset = core::InfosetId{0};
-    const auto opponent_infoset = core::InfosetId{1};
-    const auto reply_infoset = core::InfosetId{2};
+    const auto root_infoset = texas::InfosetId{0};
+    const auto opponent_infoset = texas::InfosetId{1};
+    const auto reply_infoset = texas::InfosetId{2};
 
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         root_infoset,
         0,
         1,
         {},
         0,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         static_cast<std::uint8_t>(spec.root_actions),
     });
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         opponent_infoset,
         1U,
         spec.root_actions * spec.chance_outcomes,
         {},
         1,
         1,
-        core::Street::Flop,
+        texas::Street::Flop,
         static_cast<std::uint8_t>(spec.opponent_actions),
     });
-    graph.infosets.push_back(core::HUNLFlatInfoset{
+    graph.infosets.push_back(texas::HUNLFlatInfoset{
         reply_infoset,
         1U + spec.root_actions * spec.chance_outcomes,
         spec.root_actions * spec.chance_outcomes * spec.opponent_actions,
         {},
         2,
         0,
-        core::Street::Flop,
+        texas::Street::Flop,
         static_cast<std::uint8_t>(spec.reply_actions),
     });
     graph.infoset_debug_keys = {"root-p0", "opp-p1", "reply-p0"};
@@ -384,8 +384,8 @@ core::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec) {
     graph.node_meta[0].child_count = spec.root_actions;
     graph.node_meta[0].infoset_id = root_infoset;
     graph.node_meta[0].player = 0;
-    graph.node_meta[0].type = core::HUNLFlatNodeType::Decision;
-    graph.node_meta[0].street = core::Street::Flop;
+    graph.node_meta[0].type = texas::HUNLFlatNodeType::Decision;
+    graph.node_meta[0].street = texas::Street::Flop;
     graph.node_meta[0].action_count = static_cast<std::uint8_t>(spec.root_actions);
     graph.node_meta[0].has_infoset = true;
     graph.infoset_nodes.push_back(0);
@@ -395,14 +395,14 @@ core::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec) {
         graph.children.push_back(chance_node);
         graph.node_meta[chance_node].chance_begin = static_cast<std::uint32_t>(graph.chance_outcomes.size());
         graph.node_meta[chance_node].chance_count = spec.chance_outcomes;
-        graph.node_meta[chance_node].type = core::HUNLFlatNodeType::Chance;
-        graph.node_meta[chance_node].street = core::Street::Flop;
+        graph.node_meta[chance_node].type = texas::HUNLFlatNodeType::Chance;
+        graph.node_meta[chance_node].street = texas::Street::Flop;
         graph.node_depths[chance_node] = 1;
 
         for (std::uint32_t outcome = 0; outcome < spec.chance_outcomes; ++outcome) {
             const auto opponent_index = root_action * spec.chance_outcomes + outcome;
             const auto opponent_node = opponent_begin + opponent_index;
-            graph.chance_outcomes.push_back(core::HUNLFlatChanceOutcome{
+            graph.chance_outcomes.push_back(texas::HUNLFlatChanceOutcome{
                 static_cast<std::uint8_t>(outcome),
                 1.0 / static_cast<double>(spec.chance_outcomes),
                 opponent_node,
@@ -413,8 +413,8 @@ core::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec) {
             graph.node_meta[opponent_node].child_count = spec.opponent_actions;
             graph.node_meta[opponent_node].infoset_id = opponent_infoset;
             graph.node_meta[opponent_node].player = 1;
-            graph.node_meta[opponent_node].type = core::HUNLFlatNodeType::Decision;
-            graph.node_meta[opponent_node].street = core::Street::Flop;
+            graph.node_meta[opponent_node].type = texas::HUNLFlatNodeType::Decision;
+            graph.node_meta[opponent_node].street = texas::Street::Flop;
             graph.node_meta[opponent_node].action_count = static_cast<std::uint8_t>(spec.opponent_actions);
             graph.node_meta[opponent_node].has_infoset = true;
             graph.node_depths[opponent_node] = 2;
@@ -429,8 +429,8 @@ core::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec) {
                 graph.node_meta[reply_node].child_count = spec.reply_actions;
                 graph.node_meta[reply_node].infoset_id = reply_infoset;
                 graph.node_meta[reply_node].player = 0;
-                graph.node_meta[reply_node].type = core::HUNLFlatNodeType::Decision;
-                graph.node_meta[reply_node].street = core::Street::Flop;
+                graph.node_meta[reply_node].type = texas::HUNLFlatNodeType::Decision;
+                graph.node_meta[reply_node].street = texas::Street::Flop;
                 graph.node_meta[reply_node].action_count = static_cast<std::uint8_t>(spec.reply_actions);
                 graph.node_meta[reply_node].has_infoset = true;
                 graph.node_depths[reply_node] = 3;
@@ -470,17 +470,17 @@ core::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec) {
     }
 
     graph.depth_slices = {
-        core::HUNLFlatSlice{0, 1},
-        core::HUNLFlatSlice{1, spec.root_actions},
-        core::HUNLFlatSlice{opponent_begin, spec.root_actions * spec.chance_outcomes},
-        core::HUNLFlatSlice{reply_begin, spec.root_actions * spec.chance_outcomes * spec.opponent_actions},
-        core::HUNLFlatSlice{
+        texas::HUNLFlatSlice{0, 1},
+        texas::HUNLFlatSlice{1, spec.root_actions},
+        texas::HUNLFlatSlice{opponent_begin, spec.root_actions * spec.chance_outcomes},
+        texas::HUNLFlatSlice{reply_begin, spec.root_actions * spec.chance_outcomes * spec.opponent_actions},
+        texas::HUNLFlatSlice{
             terminal_begin,
             spec.root_actions * spec.chance_outcomes * spec.opponent_actions * spec.reply_actions,
         },
     };
-    graph.street_slices[static_cast<std::size_t>(core::Street::Flop)] =
-        core::HUNLFlatSlice{0, total_nodes};
+    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+        texas::HUNLFlatSlice{0, total_nodes};
     return graph;
 }
 
@@ -491,7 +491,7 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
     }
     auto graph = make_benchmark_graph(*preset);
 
-    core::HUNLFlatMCCFRConfig solver_config;
+    texas::HUNLFlatMCCFRConfig solver_config;
     solver_config.mode = config.mode;
     solver_config.seed = config.seed;
     solver_config.traversals_per_iteration = config.traversals_per_iteration;
@@ -500,7 +500,7 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
     solver_config.use_sparse_storage = config.use_sparse_storage;
     solver_config.use_discounting = config.use_discounting;
 
-    core::HUNLFlatMCCFR solver(
+    texas::HUNLFlatMCCFR solver(
         std::move(graph),
         {1, 1},
         solver_config,
@@ -514,9 +514,9 @@ BenchmarkResult run_benchmark_for_workers(const BenchmarkConfig& config, std::si
         std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
 
     const auto strategy_table = solver.export_average_strategy_table();
-    const auto terminal_values = core::build_flat_terminal_value_table(solver.graph());
+    const auto terminal_values = texas::build_flat_terminal_value_table(solver.graph());
     const auto expected_value =
-        core::compute_flat_expected_value(solver.graph(), strategy_table.view(), &terminal_values);
+        texas::compute_flat_expected_value(solver.graph(), strategy_table.view(), &terminal_values);
 
     BenchmarkResult result;
     result.graph_name = preset->name;

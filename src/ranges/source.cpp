@@ -4,7 +4,7 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace core {
+namespace texas::ranges {
 
 namespace {
 
@@ -96,4 +96,4 @@ CanonicalRange make_canonical_range_from_values(
     return out;
 }
 
-}  // namespace core
+}  // namespace texas::ranges

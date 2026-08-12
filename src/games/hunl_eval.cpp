@@ -6,7 +6,7 @@
 #include <array>
 #include <stdexcept>
 
-namespace core {
+namespace texas::games::hunl {
 
 namespace {
 
@@ -21,7 +21,7 @@ constexpr std::uint64_t HAND_FOUR_OF_A_KIND = 7;
 constexpr std::uint64_t HAND_STRAIGHT_FLUSH = 8;
 
 std::uint8_t to_phevaluator_card(std::uint8_t card) {
-    return static_cast<std::uint8_t>((rank_of(card) - 2) * 4 + suit_of(card));
+    return card;
 }
 
 Strength from_phevaluator_rank(int rank) {
@@ -267,6 +267,6 @@ int compare_7(
     return 0;
 }
 
-}  // namespace core
+}  // namespace texas::games::hunl
 
 

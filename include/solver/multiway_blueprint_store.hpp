@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "solver/multiway_export.hpp"
 
 #include <cstdint>
 #include <utility>
 #include <vector>
 
-namespace core {
+namespace texas::solver::multiway {
 
 // Compact immutable runtime blueprint. Rows are sorted by public state, seat,
 // and bucket; action probabilities are quantized and action-menu bound.
@@ -36,4 +38,4 @@ private:
     std::vector<MultiwayBlueprintRow> rows_;
 };
 
-}  // namespace core
+}  // namespace texas::solver::multiway

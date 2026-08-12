@@ -1,12 +1,14 @@
 #pragma once
 
+#include "core/namespaces.hpp"
+
 #include "games/hunl_eval.hpp"
 #include "games/multiway_rake.hpp"
 
 #include <cstdint>
 #include <vector>
 
-namespace core {
+namespace texas::games::multiway {
 
 struct MultiwayGameRules;
 
@@ -69,4 +71,4 @@ MultiwayTerminalResult settle_multiway_terminal(
     const MultiwayTerminalInput& input,
     const MultiwayGameRules& rules);
 
-}  // namespace core
+}  // namespace texas::games::multiway
