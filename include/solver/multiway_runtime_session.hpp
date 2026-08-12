@@ -29,8 +29,8 @@ public:
 
 private:
     MultiwaySearchSessionDependencies dependencies_{};
-    std::unique_ptr<MultiwaySearchSession> round_;
     std::uint64_t root_revision_ = 1U;
+    std::unique_ptr<MultiwaySearchSession> round_;
 };
 
 }  // namespace core
