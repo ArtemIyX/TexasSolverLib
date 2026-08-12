@@ -85,16 +85,20 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
   limits, and batch partition. This is the bitwise replay contract. Comparisons
   across different worker counts use normalized-policy tolerance and must not be
   claimed bitwise equivalent by default.
-- Keep `search_mode` at `LegacyStatic` outside controlled evaluation. Use
-  `SearchShadow` to retain the legacy delivered policy while recording only
+- Keep `search_mode` at `DefaultSearch` for a complete release profile. It
+  activates runtime search only when the full blueprint, bucket registry,
+  terminal leaf, deterministic limits, memory preflight, and request budget
+  checks pass. Otherwise it uses the normal fallback chain.
+- Use `SearchShadow` to retain the legacy delivered policy while recording only
   policy L1 divergence, completed search counters, elapsed time, and observed
-  process memory. Shadow diagnostics never contain cards, ranges, raw deltas,
-  or seeds.
-- Use `SearchActive` only with explicit seat and root-menu limits through
-  `active_search_min_seats`, `active_search_max_seats`, and
-  `active_search_max_menu_actions`. Active search requires a supported
-  postflop root, complete live ranges for every non-hero seat, and a clean
-  batch. Ineligible or unsuccessful requests use the normal fallback chain.
+  process memory. `LegacyStatic` remains rollback and differential-test mode.
+  Shadow diagnostics never contain cards, ranges, raw deltas, or seeds.
+- Use `SearchActive` only for explicitly controlled configuration with seat and
+  root-menu limits through `active_search_min_seats`,
+  `active_search_max_seats`, and `active_search_max_menu_actions`. Active
+  search requires a supported postflop root, complete live ranges for every
+  non-hero seat, and a clean batch. Ineligible or unsuccessful requests use
+  the normal fallback chain.
 - Treat `off_tree_mode`, `continuation_mode`, the search-budget fields, and
   deterministic-mode fields as compatibility inputs. A change to any of them
   invalidates the expected model identity and requires rebuilding and

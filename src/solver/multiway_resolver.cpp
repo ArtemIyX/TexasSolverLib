@@ -4,6 +4,7 @@
 #include "solver/multiway_baseline.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_legacy_resolver.hpp"
+#include "solver/multiway_resolver_policy.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
@@ -76,18 +77,6 @@ bool contains_card(const std::vector<std::uint8_t>& board, std::uint8_t card) no
     return std::find(board.begin(), board.end(), card) != board.end();
 }
 
-bool normalize(std::vector<MultiwayResolverActionProbability>& policy) noexcept {
-    if (policy.empty()) return false;
-    double total = 0.0;
-    for (const auto& entry : policy) {
-        if (!std::isfinite(entry.probability) || entry.probability < 0.0) return false;
-        total += entry.probability;
-    }
-    if (!std::isfinite(total) || total <= 0.0) return false;
-    for (auto& entry : policy) entry.probability /= total;
-    return true;
-}
-
 double policy_l1_distance(
     const std::vector<MultiwayResolverActionProbability>& left,
     const std::vector<MultiwayResolverActionProbability>& right) noexcept {
@@ -131,7 +120,9 @@ std::vector<MultiwayResolverActionProbability> static_policy(
         }
         result.push_back({action, weight});
     }
-    if (!normalize(result)) throw std::logic_error("multiway resolver has no static legal policy");
+    if (!normalize_multiway_resolver_policy(&result)) {
+        throw std::logic_error("multiway resolver has no static legal policy");
+    }
     return result;
 }
 
@@ -174,7 +165,7 @@ bool apply_blueprint_policy(
         const auto prior = std::max(blueprint_probability[index], kMinimumProbability);
         policy->push_back({menu[index], std::sqrt(fallback[index].probability * prior)});
     }
-    return normalize(*policy);
+    return normalize_multiway_resolver_policy(policy);
 }
 
 bool try_apply_blueprint_policy(
@@ -582,7 +573,7 @@ RuntimeSearchOutcome run_search(
         for (const auto& action : root_policy.actions) {
             policy->push_back({action.action, action.probability});
         }
-        if (!normalize(*policy)) return RuntimeSearchOutcome::Failed;
+        if (!normalize_multiway_resolver_policy(policy)) return RuntimeSearchOutcome::Failed;
         diagnostics->deadline_expired = budget.deadline_expired() || budget.deadline_reached();
         diagnostics->search_profile = search_profile.snapshot();
         return RuntimeSearchOutcome::Completed;
@@ -793,7 +784,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 set_policy_provenance(
                     &result.diagnostics, MultiwayPolicyProvenance::StaticLegalFallback);
             }
-            result.diagnostics.policy_normalized = normalize(result.policy);
+            result.diagnostics.policy_normalized = normalize_multiway_resolver_policy(&result.policy);
             sample_policy(&result, request.sampling_seed, reconstructed_id);
         };
 

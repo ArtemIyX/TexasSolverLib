@@ -4,6 +4,39 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P9.3-P9.4 - Consolidate duplicated hot-path logic and publish implementation and operations documentation
+
+**Status:** Complete
+**Completed:** 2026-08-13
+
+- Consolidated runtime and legacy resolver policy normalization behind one
+  scalar reference kernel with focused invalid-mass coverage.
+- Published the multiway runtime architecture, release-mode operations,
+  model-identity fields, fallback statuses, and ownership boundaries.
+
+### Files
+
+- `README.md`
+- `docs/implementation_roadmap.md`
+- `docs/multiway_release_config.json`
+- `docs/multiway_release_runbook.md`
+- `docs/multiway_runtime_architecture.md`
+- `docs/project_state_report.md`
+- `include/solver/multiway_resolver_policy.hpp`
+- `src/solver/multiway_legacy_resolver.cpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_resolver_policy.cpp`
+- `tests/test_multiway_resolver_policy.cpp`
+
+### Validation
+
+- Static diff, duplicate-kernel, documentation-reference, and whitespace checks completed.
+- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Runtime validation remains pending user authorization.
+
 ## P9.1-P9.2 - Migrate default resolver mode and isolate superseded perturbation logic
 
 **Status:** Complete

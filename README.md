@@ -113,6 +113,23 @@ CMAKE_PREFIX_PATH=<prefix>
 
 ## C++ examples
 
+## Multiway runtime resolver
+
+The six-max postflop resolver accepts structured public state and ranges and
+returns a legal action policy with diagnostics. `DefaultSearch` is the default
+mode: it runs deterministic root external-sampling search only after the full
+release profile is present, otherwise it returns the documented legal fallback.
+
+Deployment hosts must load verified full and compact blueprint artifacts, a
+matching bucket registry, a typed terminal leaf, bounded solver limits, and a
+memory budget before enabling live search. The library does not parse the JSON
+release profile or provide poker-client automation.
+
+See [runtime architecture](docs/multiway_runtime_architecture.md) for model
+identity fields, fallback statuses, ownership boundaries, and diagnostics; see
+the [release runbook](docs/multiway_release_runbook.md) for startup, promotion,
+rollback, and deterministic-fixture operations.
+
 ### Solve Kuhn poker
 
 ```cpp

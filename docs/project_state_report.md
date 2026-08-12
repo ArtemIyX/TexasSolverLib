@@ -836,9 +836,9 @@ release operation after validation and evaluation.
    schema all contribute to identity.
 6. **The baseline multiway bucket model is deterministic feature hashing.** It
    is not a trained clustering or neural bucket model.
-7. **The multiway resolver is not currently the full traversal runner.** The
-   root traversal/trainer components exist independently and should be wired
-   into resolver inference only as a deliberate integration change.
+7. **The multiway resolver runs the root traversal for complete release
+   profiles.** Explicit legacy and shadow modes retain the isolated
+   deterministic adjustment for rollback and differential comparison.
 8. **Public chance isomorphism is not active in sampled HUNL.** The existing
    suit-isomorphism utilities belong to the older flat/public graph support.
 9. **The intended production interface remains structured game state in and
@@ -861,5 +861,5 @@ release operation after validation and evaluation.
 | Multiway traversal/storage | `include/solver/multiway_solver.hpp`, `include/solver/multiway_traversal.hpp`, `include/solver/multiway_terminal_adapter.hpp` |
 | Multiway abstraction/buckets | `include/solver/multiway_action_abstraction.hpp`, `include/solver/multiway_bucket_model.hpp`, `include/solver/multiway_bucket_artifact.hpp` |
 | Multiway training/artifacts | `include/solver/multiway_blueprint_trainer.hpp`, `include/solver/multiway_export.hpp`, `include/solver/multiway_checkpoint.hpp`, `include/solver/multiway_artifact.hpp` |
-| Multiway resolver/evaluation | `include/solver/multiway_resolver.hpp`, `include/solver/multiway_evaluation.hpp` |
-| Release contract | `docs/multiway_release_config.json`, `docs/multiway_release_runbook.md` |
+| Multiway resolver/evaluation | `include/solver/multiway_resolver.hpp`, `include/solver/multiway_resolver_policy.hpp`, `include/solver/multiway_evaluation.hpp` |
+| Release contract | `docs/multiway_release_config.json`, `docs/multiway_release_runbook.md`, `docs/multiway_runtime_architecture.md` |

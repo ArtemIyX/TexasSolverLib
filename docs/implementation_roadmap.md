@@ -2070,8 +2070,8 @@ resource exhaustion. Isolate rather than delete if release safety depends on it.
 
 **Goal:** Reduce maintenance risk after the migration.
 
-**Current behavior:** Rules, fixed kernels, row operations, and artifact paths
-may have parallel implementations introduced during integration.
+**Current behavior:** Completed. Runtime and legacy resolver policy paths share
+one scalar normalization reference kernel; ownership boundaries are documented.
 
 **Implementation:** Keep one terminal settlement path, one canonical combo map,
 one action legality path, one row normalization reference kernel, and one
@@ -2094,8 +2094,8 @@ reduce file count.
 
 **Goal:** Make the architecture usable by future engineers and coding agents.
 
-**Current behavior:** README, project state, Pluribus report, runbook, and
-release config exist.
+**Current behavior:** Completed. README, project state, runbook, release
+profile, and runtime architecture documentation describe the supported flow.
 
 **Implementation:** Update README with the supported multiway runtime flow,
 artifact roles, build options, validation profiles, and non-goals. Update the

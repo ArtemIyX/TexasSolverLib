@@ -38,6 +38,7 @@
     "external_deadline_ms": 20000,
     "internal_deadline_ms": 15000,
     "deadline_reserve_ms": 100,
+    "search_mode": "DefaultSearch",
     "trajectories_per_batch": 32,
     "max_batches": 64,
     "inference_mode": "AnonymousWithinHand",
