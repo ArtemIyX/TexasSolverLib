@@ -154,6 +154,21 @@ TEST_CASE(multiway_action_abstraction_deduplicates_and_compacts_exact_insertions
     }
 }
 
+namespace {
+
+bool has_exact_legal_targets(
+    const core::MultiwayState& state,
+    const std::vector<core::MultiwayActionDescriptor>& actions) {
+    const auto actor = static_cast<std::size_t>(state.current_player());
+    for (const auto& action : actions) {
+        const auto successor = state.apply(action.action, action.target_street_contribution);
+        if (successor.street_contributions()[actor] != action.target_street_contribution) return false;
+    }
+    return true;
+}
+
+}  // namespace
+
 TEST_CASE(multiway_action_abstraction_profiles_context_and_translates_small_off_tree_bets) {
     const auto state = flop_root(3U, 2000, 100);
     const core::MultiwayActionAbstraction abstraction;
@@ -183,4 +198,72 @@ TEST_CASE(multiway_action_abstraction_profiles_context_and_translates_small_off_
     EXPECT_EQ(all_in.status, core::MultiwayActionTranslationStatus::ExactMenuAction);
     EXPECT_THROW(abstraction.translate_observed_action(
         state.snapshot(), contextual, core::MultiwayAction::Raise, 100), std::invalid_argument);
+}
+
+TEST_CASE(multiway_action_abstraction_profile_is_deterministic_and_legal_by_context) {
+    const core::MultiwayActionAbstraction abstraction;
+    const auto unopened = preflop_root();
+    const auto facing_open = unopened.apply(core::MultiwayAction::Bet, 300);
+    const auto three_way = flop_root(3U, 2000, 100);
+    const std::array<core::MultiwayActionAbstractionContext, 4> contexts = {{
+        {core::MultiwayPreflopSituation::Unopened, core::MultiwayRelativePosition::Unknown},
+        {core::MultiwayPreflopSituation::FacingSingleOpen, core::MultiwayRelativePosition::InPosition},
+        {core::MultiwayPreflopSituation::FacingSingleOpen, core::MultiwayRelativePosition::OutOfPosition},
+        {core::MultiwayPreflopSituation::Auto, core::MultiwayRelativePosition::Unknown,
+            core::MultiwayPostflopSizingMode::Contextual},
+    }};
+    const std::array<core::MultiwayState, 4> states = {{unopened, facing_open, facing_open, three_way}};
+
+    for (std::size_t index = 0U; index < contexts.size(); ++index) {
+        const auto first = abstraction.make_legal_actions(states[index].snapshot(), 41U + index, contexts[index]);
+        const auto second = abstraction.make_legal_actions(states[index].snapshot(), 91U + index, contexts[index]);
+        EXPECT_EQ(first, second);
+        EXPECT_TRUE(!first.empty());
+        EXPECT_TRUE(has_exact_legal_targets(states[index], first));
+        EXPECT_TRUE(first.size() <= core::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+    }
+
+    core::MultiwayActionAbstractionConfig changed = {};
+    ++changed.menu_profile_version;
+    const core::MultiwayActionAbstraction changed_profile(changed);
+    EXPECT_TRUE(abstraction.menu_profile_identity(contexts[3]) !=
+        changed_profile.menu_profile_identity(contexts[3]));
+}
+
+TEST_CASE(multiway_action_abstraction_translation_respects_pseudo_harmonic_boundaries) {
+    const auto state = flop_root(3U, 2000, 100);
+    const core::MultiwayActionAbstraction abstraction;
+    const auto menu = abstraction.make_legal_actions(state.snapshot(), 45U);
+
+    const auto lower_inside = abstraction.translate_observed_action(
+        state.snapshot(), menu, core::MultiwayAction::Bet, 110);
+    const auto lower_outside = abstraction.translate_observed_action(
+        state.snapshot(), menu, core::MultiwayAction::Bet, 111);
+    const auto upper_inside = abstraction.translate_observed_action(
+        state.snapshot(), menu, core::MultiwayAction::Bet, 215);
+    const auto upper_outside = abstraction.translate_observed_action(
+        state.snapshot(), menu, core::MultiwayAction::Bet, 214);
+    EXPECT_EQ(lower_inside.status, core::MultiwayActionTranslationStatus::Translated);
+    EXPECT_EQ(lower_inside.translated_action.target_street_contribution, 100);
+    EXPECT_EQ(lower_outside.status, core::MultiwayActionTranslationStatus::DeviationTooLarge);
+    EXPECT_EQ(upper_inside.status, core::MultiwayActionTranslationStatus::Translated);
+    EXPECT_EQ(upper_inside.translated_action.target_street_contribution, 225);
+    EXPECT_EQ(upper_outside.status, core::MultiwayActionTranslationStatus::DeviationTooLarge);
+
+    core::MultiwayActionAbstractionConfig relaxed_config = {};
+    relaxed_config.translation_max_pseudo_harmonic_distance_basis_points = 2223U;
+    const core::MultiwayActionAbstraction relaxed(relaxed_config);
+    const auto relaxed_translation = relaxed.translate_observed_action(
+        state.snapshot(), menu, core::MultiwayAction::Bet, 125);
+    EXPECT_EQ(relaxed_translation.status, core::MultiwayActionTranslationStatus::Translated);
+    EXPECT_EQ(relaxed_translation.translated_action.target_street_contribution, 100);
+    EXPECT_TRUE(relaxed_translation.policy_identity !=
+        abstraction.translate_observed_action(state.snapshot(), menu, core::MultiwayAction::Bet, 125).policy_identity);
+
+    core::MultiwayActionAbstractionConfig invalid_version = {};
+    invalid_version.translation_policy_version = 0U;
+    EXPECT_THROW(core::MultiwayActionAbstraction(invalid_version), std::invalid_argument);
+    core::MultiwayActionAbstractionConfig invalid_threshold = {};
+    invalid_threshold.translation_max_pseudo_harmonic_distance_basis_points = 20001U;
+    EXPECT_THROW(core::MultiwayActionAbstraction(invalid_threshold), std::invalid_argument);
 }

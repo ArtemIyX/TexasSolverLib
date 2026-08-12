@@ -4,6 +4,26 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P5.1-P5.2 Test Coverage - Menu profiles and translation boundaries
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added deterministic context-profile reproducibility and exact legal-target checks.
+- Added pseudo-harmonic lower and upper boundary fixtures, policy-identity threshold coverage, and invalid translation-configuration checks.
+
+### Files
+
+- `tests/test_multiway_action_abstraction.cpp`
+
+### Validation
+
+- Tests were added but not run because repository instructions prohibit test commands unless explicitly requested.
+
+### Limitations
+
+- No runtime policy-quality calibration is covered by these unit tests.
+
 ## P5.1-P5.2 - Contextual action menu profiles and pseudo-harmonic translation
 
 **Status:** Complete
