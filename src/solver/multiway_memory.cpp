@@ -82,7 +82,7 @@ MultiwayMemoryPreflight preflight_multiway_memory(
         limits.worker_count, limits.max_worker_delta_entries);
     result.estimate.merge_scratch_bytes = checked_multiply(
         aggregate_delta_entries,
-        static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t))));
+        static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t)));
     result.estimate.export_bytes = checked_multiply(
         inputs.export_action_capacity,
         2U * static_cast<std::uint64_t>(sizeof(MultiwayRootActionProbability)));
