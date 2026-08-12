@@ -1,4 +1,5 @@
 #include "core/lib.hpp"
+#include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "test_harness.hpp"
 
@@ -46,6 +47,8 @@ core::MultiwayRootSnapshot make_root(core::Street street) {
     std::vector<std::uint8_t> board;
     if (street != core::Street::Preflop) {
         board = {card(2U, 0U), card(7U, 1U), card(9U, 2U)};
+        if (street == core::Street::Turn || street == core::Street::River) board.push_back(card(11U, 3U));
+        if (street == core::Street::River) board.push_back(card(13U, 1U));
     }
     root.public_state = core::MultiwayPublicBuilder::make_root(
         betting, board, abstraction.make_legal_actions(betting, 9'001U));
@@ -318,6 +321,63 @@ TEST_CASE(multiway_search_session_rejects_invalid_clean_snapshot_metadata) {
     EXPECT_TRUE(session.clean_snapshot() == nullptr);
 }
 
+TEST_CASE(multiway_coordinator_checkpoint_restores_canonical_sparse_rows) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession original(request, {&buckets}, 1U);
+    const auto infoset = request.root().root_infoset;
+    const auto action_count = static_cast<std::uint8_t>(request.root().public_state.legal_actions.size());
+    original.coordinator().admit_infoset_row({infoset, 1U, action_count});
+    core::MultiwayWorkerDeltaStream stream(0U, action_count);
+    for (std::uint8_t action = 0U; action < action_count; ++action) {
+        EXPECT_TRUE(stream.try_append({infoset, 0U, action, static_cast<double>(action + 1U),
+            static_cast<double>(action + 2U), 17U}));
+    }
+    stream.sort_fixed_order();
+    original.coordinator().merge_worker_streams(std::vector<core::MultiwayWorkerDeltaStream>{stream});
+    const auto expected = original.coordinator().storage().average_strategy(infoset, 0U);
+    const auto checkpoint = original.coordinator().checkpoint();
+
+    core::MultiwaySearchSession resumed(request, {&buckets}, 1U);
+    resumed.coordinator().restore_checkpoint(checkpoint);
+    const auto actual = resumed.coordinator().storage().average_strategy(infoset, 0U);
+    EXPECT_EQ(actual.size(), expected.size());
+    for (std::size_t action = 0U; action < expected.size(); ++action) {
+        EXPECT_NEAR(actual[action], expected[action], 0.0);
+    }
+}
+
+TEST_CASE(multiway_blueprint_training_checkpoint_resumes_sparse_state) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySolverCoordinator original_coordinator(request);
+    const core::MultiwayActionAbstraction abstraction;
+    const core::MultiwayLeafEvaluator evaluator = {session_leaf, nullptr};
+    core::MultiwayRootExternalSamplingTraversal original_traversal(
+        original_coordinator, request.root(), abstraction, buckets, &evaluator, 1U);
+    core::MultiwayRootBatchRunner original_runner(original_traversal, original_coordinator, 1U, 8U);
+    core::MultiwayBlueprintConfig config;
+    config.player_count = 2U;
+    const auto identity = core::make_multiway_model_identity(config);
+    core::MultiwayBlueprintTrainer original(identity, original_runner, original_coordinator, {}, 0x77U);
+    original.run_batches(1U, 1U, 0x77U);
+    const auto checkpoint = original.checkpoint();
+    const auto expected = original.export_full_policy();
+
+    core::MultiwaySolverCoordinator resumed_coordinator(request);
+    core::MultiwayRootExternalSamplingTraversal resumed_traversal(
+        resumed_coordinator, request.root(), abstraction, buckets, &evaluator, 1U);
+    core::MultiwayRootBatchRunner resumed_runner(resumed_traversal, resumed_coordinator, 1U, 8U);
+    core::MultiwayBlueprintTrainer resumed(identity, resumed_runner, resumed_coordinator, {}, 0x77U);
+    resumed.resume_from(checkpoint);
+    const auto actual = resumed.export_full_policy();
+
+    EXPECT_EQ(actual.rows.size(), expected.rows.size());
+    EXPECT_EQ(actual.payload_hash, expected.payload_hash);
+}
+
 TEST_CASE(multiway_search_session_replays_clean_snapshots_for_identical_inputs) {
     const auto root = make_root(core::Street::Flop);
     const auto buckets = make_buckets(root);
@@ -368,6 +428,23 @@ TEST_CASE(multiway_search_session_exports_and_freezes_only_actual_hero_hand_poli
 
     session.clear_actual_hand_freeze();
     EXPECT_TRUE(!session.export_hero_policy(0, actual).actual_hand_frozen);
+}
+
+TEST_CASE(multiway_search_session_carries_posteriors_into_reroots) {
+    const auto root = make_root(core::Street::Flop);
+    const auto buckets = make_buckets(root);
+    const auto request = make_request(root);
+    core::MultiwaySearchSession session(request, {&buckets}, 1U);
+
+    const auto next = session.make_next_round_root(make_root(core::Street::Turn));
+    EXPECT_EQ(next.public_state.betting.street, core::Street::Turn);
+    EXPECT_EQ(next.private_ranges.board, next.public_state.board);
+    EXPECT_EQ(next.private_ranges.ranges[0].size(), std::size_t{1});
+    EXPECT_EQ(next.private_ranges.ranges[1].size(), std::size_t{1});
+
+    const auto reroot = session.make_reroot_root(make_root(core::Street::Flop));
+    EXPECT_EQ(reroot.public_state.betting.street, core::Street::Flop);
+    EXPECT_THROW(session.make_next_round_root(make_root(core::Street::Flop)), std::invalid_argument);
 }
 
 TEST_CASE(multiway_search_session_rejects_absent_hero_hand_and_invalid_freeze) {

@@ -145,6 +145,7 @@ using ::core::MultiwayBlueprintTrainer;
 using ::core::MultiwayBlueprintTrainingConfig;
 using ::core::MultiwayBlueprintTrainingSession;
 using ::core::MultiwayBlueprintTrainingStatus;
+using ::core::MultiwayBlueprintTrainingCheckpoint;
 using ::core::MultiwayBlueprintIterationSchedule;
 using ::core::MultiwayBlueprintCoverageManifest;
 using ::core::MultiwayBlueprintRow;

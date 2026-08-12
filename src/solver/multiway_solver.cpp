@@ -866,4 +866,69 @@ const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::find_public_stat
     return public_state(id);
 }
 
+MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    MultiwayCoordinatorCheckpoint result;
+    result.public_states = public_states_;
+    result.storage.shapes.reserve(storage_.metadata_.size());
+    result.storage.regrets.reserve(storage_.regret_.size());
+    result.storage.strategy_sums.reserve(storage_.strategy_sum_.size());
+    for (const auto& row : storage_.metadata_) {
+        result.storage.shapes.push_back(row.shape);
+        const auto values = row.value_count();
+        result.storage.regrets.insert(
+            result.storage.regrets.end(),
+            storage_.regret_.begin() + static_cast<std::ptrdiff_t>(row.regret_offset),
+            storage_.regret_.begin() + static_cast<std::ptrdiff_t>(row.regret_offset + values));
+        result.storage.strategy_sums.insert(
+            result.storage.strategy_sums.end(),
+            storage_.strategy_sum_.begin() + static_cast<std::ptrdiff_t>(row.strategy_sum_offset),
+            storage_.strategy_sum_.begin() + static_cast<std::ptrdiff_t>(row.strategy_sum_offset + values));
+    }
+    return result;
+}
+
+void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorCheckpoint& checkpoint) {
+    if (checkpoint.public_states.empty() ||
+        !same_public_state_descriptor(checkpoint.public_states.front(), request_.root().public_state) ||
+        checkpoint.storage.regrets.size() != checkpoint.storage.strategy_sums.size()) {
+        throw std::invalid_argument("multiway coordinator checkpoint is incomplete");
+    }
+    std::size_t expected_values = 0U;
+    for (const auto& shape : checkpoint.storage.shapes) {
+        if (shape.bucket_count == 0U || shape.action_count == 0U ||
+            expected_values > std::numeric_limits<std::size_t>::max() -
+                static_cast<std::size_t>(shape.bucket_count) * shape.action_count) {
+            throw std::invalid_argument("multiway coordinator checkpoint has invalid row shapes");
+        }
+        expected_values += static_cast<std::size_t>(shape.bucket_count) * shape.action_count;
+    }
+    if (expected_values != checkpoint.storage.regrets.size()) {
+        throw std::invalid_argument("multiway coordinator checkpoint row values do not match shapes");
+    }
+    for (const auto value : checkpoint.storage.regrets) {
+        if (!std::isfinite(value)) throw std::invalid_argument("multiway coordinator checkpoint has non-finite regrets");
+    }
+    for (const auto value : checkpoint.storage.strategy_sums) {
+        if (!std::isfinite(value) || value < 0.0) {
+            throw std::invalid_argument("multiway coordinator checkpoint has invalid strategy sums");
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(traversal_mutex_);
+        public_states_.clear();
+        storage_.metadata_.clear();
+        storage_.regret_.clear();
+        storage_.strategy_sum_.clear();
+        diagnostics_ = {};
+    }
+    for (const auto& state : checkpoint.public_states) admit_public_state(state);
+    for (const auto& shape : checkpoint.storage.shapes) admit_infoset_row(shape);
+    {
+        std::lock_guard<std::mutex> lock(traversal_mutex_);
+        storage_.regret_ = checkpoint.storage.regrets;
+        storage_.strategy_sum_ = checkpoint.storage.strategy_sums;
+    }
+}
+
 }  // namespace core

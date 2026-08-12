@@ -4,6 +4,35 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P3.5, P4.4-P4.5 - Resumable blueprints and posterior rerooting
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added deterministic offline checkpoints for admitted public descriptors and canonical sparse regret/strategy rows.
+- Restored compatible trainer state before exporting the same full blueprint artifact.
+- Added posterior-belief transfer to next-street and same-street reroot roots; the new session owns fresh rows and no prior actual-hand freeze.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway_search_session.hpp`
+- `include/solver/multiway_solver.hpp`
+- `src/solver/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway_search_session.cpp`
+- `src/solver/multiway_solver.cpp`
+- `tests/test_multiway_search_session.cpp`
+
+### Validation
+
+- Added focused sparse checkpoint, full-artifact resume, and posterior-reroot coverage.
+- Build and tests were not run because the task explicitly prohibited them.
+
+### Limitations
+
+- Checkpoints are an in-memory offline training boundary; persistence remains a future artifact-format extension.
+
 ## P3.4, P4.2-P4.3 - Runtime blueprint prior and hero policy lifecycle
 
 **Status:** Complete

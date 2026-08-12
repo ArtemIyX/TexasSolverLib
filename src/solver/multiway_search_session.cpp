@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace core {
@@ -186,6 +187,53 @@ void MultiwaySearchSession::freeze_actual_hand_policy(
 
 void MultiwaySearchSession::clear_actual_hand_freeze() noexcept {
     actual_hand_freeze_.reset();
+}
+
+MultiwayRootSnapshot MultiwaySearchSession::make_next_round_root(MultiwayRootSnapshot next_root) const {
+    if (next_root.public_state.board.size() <= coordinator_.root().public_state.board.size()) {
+        throw std::invalid_argument("multiway next round root must advance the public board");
+    }
+    return make_reroot_root(std::move(next_root));
+}
+
+MultiwayRootSnapshot MultiwaySearchSession::make_reroot_root(MultiwayRootSnapshot next_root) const {
+    const auto seat_count = beliefs_.seat_count();
+    if (next_root.seat_order.size() != seat_count ||
+        next_root.private_ranges.ranges.size() != seat_count ||
+        next_root.public_state.board.size() < coordinator_.root().public_state.board.size()) {
+        throw std::invalid_argument("multiway next round root is incompatible with the current session");
+    }
+    for (const auto card : coordinator_.root().public_state.board) {
+        if (std::find(next_root.public_state.board.begin(), next_root.public_state.board.end(), card) ==
+            next_root.public_state.board.end()) {
+            throw std::invalid_argument("multiway reroot removes known public cards");
+        }
+    }
+    next_root.private_ranges.board = next_root.public_state.board;
+    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+        auto& range = next_root.private_ranges.ranges[seat];
+        range.clear();
+        const auto prior = belief(static_cast<PlayerId>(seat));
+        range.reserve(MULTIWAY_HOLE_COMBINATION_COUNT);
+        for (std::uint32_t value = 0U; value < MULTIWAY_HOLE_COMBINATION_COUNT; ++value) {
+            const auto combo = static_cast<CanonicalComboId>(value);
+            const auto weight = prior.weight(combo);
+            const auto cards = canonical_combos().cards(combo);
+            if (weight <= 0.0 ||
+                std::find(next_root.public_state.board.begin(), next_root.public_state.board.end(), cards[0]) !=
+                    next_root.public_state.board.end() ||
+                std::find(next_root.public_state.board.begin(), next_root.public_state.board.end(), cards[1]) !=
+                    next_root.public_state.board.end()) {
+                continue;
+            }
+            range.push_back({cards, weight});
+        }
+        if (range.empty()) {
+            throw std::invalid_argument("multiway next round root has no legal posterior range");
+        }
+    }
+    next_root.validate();
+    return next_root;
 }
 
 void MultiwaySearchSession::initialize_beliefs() {

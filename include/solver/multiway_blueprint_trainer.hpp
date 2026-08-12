@@ -55,6 +55,13 @@ struct MultiwayBlueprintCoverageManifest {
     std::uint64_t missing_lookup_requests = 0;
 };
 
+struct MultiwayBlueprintTrainingCheckpoint {
+    MultiwayModelIdentity identity{};
+    MultiwayBlueprintTrainingMetadata training{};
+    MultiwayCoordinatorCheckpoint coordinator{};
+    std::vector<double> late_window_baseline;
+};
+
 // Production composition boundary. Artifact inputs are non-owning and must
 // outlive a training session; their model identity is validated on creation.
 struct MultiwayBlueprintTrainingConfig {
@@ -95,9 +102,11 @@ public:
     [[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept { return status_; }
     [[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
     [[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+    [[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
     [[nodiscard]] MultiwayBlueprintSnapshot publish(
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
     void resume_from(const MultiwayBlueprintSnapshot& checkpoint);
+    void resume_from(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
 
 private:
     MultiwayModelIdentity identity_{};
@@ -121,12 +130,14 @@ public:
 
     void run_batches(std::uint64_t batch_count);
     void resume_from_checkpoint(const MultiwayBlueprintSnapshot& checkpoint);
+    void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
     [[nodiscard]] MultiwayBlueprintSnapshot export_policy(
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
     [[nodiscard]] const MultiwayBlueprintTrainingConfig& config() const noexcept { return config_; }
     [[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept;
     [[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
     [[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+    [[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
 
 private:
     MultiwayBlueprintTrainingConfig config_{};

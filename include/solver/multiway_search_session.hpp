@@ -106,6 +106,10 @@ public:
         CanonicalComboId actual_hand,
         const std::vector<MultiwayRootActionProbability>& actions);
     void clear_actual_hand_freeze() noexcept;
+    [[nodiscard]] MultiwayRootSnapshot make_next_round_root(
+        MultiwayRootSnapshot next_root) const;
+    [[nodiscard]] MultiwayRootSnapshot make_reroot_root(
+        MultiwayRootSnapshot next_root) const;
 
 private:
     void initialize_beliefs();

@@ -223,6 +223,17 @@ struct MultiwaySparseRowMetadata {
     [[nodiscard]] std::size_t value_count() const noexcept;
 };
 
+struct MultiwaySparseStorageCheckpoint {
+    std::vector<MultiwaySparseRowShape> shapes;
+    std::vector<double> regrets;
+    std::vector<double> strategy_sums;
+};
+
+struct MultiwayCoordinatorCheckpoint {
+    std::vector<MultiwayPublicStateDescriptor> public_states;
+    MultiwaySparseStorageCheckpoint storage;
+};
+
 // Coordinator-owned sparse rows. Values are action-major: [action][bucket].
 // Persistent accumulators are Float64. Merges use fixed global delta order and
 // reject a nonzero delta that a Float64 accumulator cannot represent, rather
@@ -377,6 +388,8 @@ public:
     [[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
     [[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
         MultiwayPublicStateId id) const noexcept;
+    [[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;
+    void restore_checkpoint(const MultiwayCoordinatorCheckpoint& checkpoint);
 
 private:
     friend class MultiwayTerminalAdapter;

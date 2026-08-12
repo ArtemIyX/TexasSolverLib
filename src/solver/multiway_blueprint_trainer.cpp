@@ -200,6 +200,15 @@ MultiwayFullBlueprintArtifact MultiwayBlueprintTrainer::export_full_policy() con
     return artifact;
 }
 
+MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const {
+    MultiwayBlueprintTrainingCheckpoint result;
+    result.identity = identity_;
+    result.training = make_metadata(status_, schedule_, deterministic_seed_);
+    result.coordinator = coordinator_->checkpoint();
+    result.late_window_baseline = late_window_baseline_;
+    return result;
+}
+
 MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPolicyKind policy_kind) const {
     auto metadata = make_metadata(status_, schedule_, deterministic_seed_);
     if (policy_kind == MultiwayBlueprintPolicyKind::LateWindowAverage) {
@@ -243,6 +252,29 @@ void MultiwayBlueprintTrainer::resume_from(const MultiwayBlueprintSnapshot& chec
     }
 }
 
+void MultiwayBlueprintTrainer::resume_from(const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
+    checkpoint.identity.validate();
+    if (checkpoint.identity != identity_ || checkpoint.training.schedule_hash != schedule_.identity() ||
+        checkpoint.training.deterministic_seed != deterministic_seed_ ||
+        checkpoint.training.trajectories < checkpoint.training.batches ||
+        checkpoint.training.linear_iteration_weighting != (schedule_.linear_iteration_weighting ? 1U : 0U) ||
+        checkpoint.training.discounting_enabled != (schedule_.discount_regrets ? 1U : 0U) ||
+        checkpoint.training.negative_regret_pruning_enabled != (schedule_.prune_negative_regrets ? 1U : 0U)) {
+        throw std::invalid_argument("multiway full checkpoint identity or schedule does not match the trainer");
+    }
+    coordinator_->restore_checkpoint(checkpoint.coordinator);
+    status_.batches = checkpoint.training.batches;
+    status_.trajectories = checkpoint.training.trajectories;
+    status_.pruned_negative_regrets = checkpoint.training.pruned_negative_regrets;
+    status_.late_window_start_batch = checkpoint.training.late_window_start_batch;
+    status_.late_window_active = !checkpoint.late_window_baseline.empty();
+    late_window_baseline_ = checkpoint.late_window_baseline;
+    const auto& diagnostics = coordinator_->diagnostics();
+    status_.visited_public_descriptors = diagnostics.public_states_admitted;
+    status_.admitted_rows = diagnostics.sparse_rows_admitted;
+    status_.admitted_action_cells = coordinator_->storage().value_count();
+}
+
 MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
     MultiwayBlueprintTrainingConfig config,
     MultiwayRootSnapshot root,
@@ -281,6 +313,11 @@ void MultiwayBlueprintTrainingSession::resume_from_checkpoint(const MultiwayBlue
     trainer_->resume_from(checkpoint);
 }
 
+void MultiwayBlueprintTrainingSession::resume_from_checkpoint(
+    const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
+    trainer_->resume_from(checkpoint);
+}
+
 MultiwayBlueprintSnapshot MultiwayBlueprintTrainingSession::export_policy(
     MultiwayBlueprintPolicyKind policy_kind) const {
     return trainer_->publish(policy_kind);
@@ -296,6 +333,10 @@ MultiwayBlueprintCoverageManifest MultiwayBlueprintTrainingSession::coverage_man
 
 MultiwayFullBlueprintArtifact MultiwayBlueprintTrainingSession::export_full_policy() const {
     return trainer_->export_full_policy();
+}
+
+MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint() const {
+    return trainer_->checkpoint();
 }
 
 }  // namespace core
