@@ -1,6 +1,4 @@
-#include "games/multiway_replay.hpp"
-#include "solver/multiway_evaluation.hpp"
-#include "solver/multiway_model_identity.hpp"
+#include "core/lib.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

@@ -37,6 +37,7 @@
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_resolver.hpp"
 #include "solver/multiway_resolver_evaluation.hpp"
+#include "solver/multiway_evaluation.hpp"
 #include "solver/multiway_baseline.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"

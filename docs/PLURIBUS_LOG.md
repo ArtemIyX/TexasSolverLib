@@ -4,6 +4,29 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P8.5-P8.6 Follow-up - Expose AIVAT record facade declarations
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Included the AIVAT evaluation-record declaration header before re-exporting its types from `core/lib.hpp`.
+- Changed the focused record test to include the public facade, preventing stale facade exports.
+
+### Files
+
+- `include/core/lib.hpp`
+- `tests/test_multiway_aivat_record.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static code review completed with no actionable findings.
+- Debug build attempted twice but blocked before compilation by duplicate `Path`/`PATH` environment keys in MSBuild.
+
+### Limitations
+
+- CTest was not run because the required build did not complete.
+
 ## P8.5-P8.6 - Produce AIVAT-compatible evaluation records and update release runbook and configuration
 
 **Status:** Complete
