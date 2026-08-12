@@ -4,6 +4,29 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P7.5 Follow-up - Guard SIMD row dispatch inputs
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Restored scalar-equivalent null and empty-row guards before Float32 and Float64 SIMD dispatch.
+- Prevents null input or output pointers from reaching vector loads and stores.
+
+### Files
+
+- `src/solver/hunl_sampled_simd.cpp`
+- `tests/test_hunl_p75_row_math.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Built and ran `test_hunl_p75_row_math`: 56 tests passed.
+- Completed static code review with no actionable findings.
+
+### Limitations
+
+- No further crash reports or reproducer were supplied.
+
 ## P7.5 - Optimize row math only after profile evidence
 
 **Status:** Complete

@@ -162,4 +162,26 @@ TEST_CASE(hunl_p75_f64_nan_row_preserves_scalar_fallback) {
     }
 }
 
+TEST_CASE(hunl_p75_f32_dispatch_rejects_null_or_empty_rows_without_writing) {
+    std::vector<float> strategy = {3.0f, 5.0f};
+    const std::vector<float> regret = {1.0f, 2.0f};
+    core::regret_matching_action_major_f32(nullptr, 2U, 1U, strategy.data());
+    core::regret_matching_action_major_f32(regret.data(), 2U, 1U, nullptr);
+    core::regret_matching_action_major_f32(regret.data(), 0U, 1U, strategy.data());
+    core::regret_matching_action_major_f32(regret.data(), 2U, 0U, strategy.data());
+    EXPECT_NEAR(strategy[0], 3.0, 1e-5);
+    EXPECT_NEAR(strategy[1], 5.0, 1e-5);
+}
+
+TEST_CASE(hunl_p75_f64_dispatch_rejects_null_or_empty_rows_without_writing) {
+    std::vector<double> strategy = {3.0, 5.0};
+    const std::vector<double> regret = {1.0, 2.0};
+    core::regret_matching_action_major_f64(nullptr, 2U, 1U, strategy.data());
+    core::regret_matching_action_major_f64(regret.data(), 2U, 1U, nullptr);
+    core::regret_matching_action_major_f64(regret.data(), 0U, 1U, strategy.data());
+    core::regret_matching_action_major_f64(regret.data(), 2U, 0U, strategy.data());
+    EXPECT_NEAR(strategy[0], 3.0, 1e-12);
+    EXPECT_NEAR(strategy[1], 5.0, 1e-12);
+}
+
 }  // namespace

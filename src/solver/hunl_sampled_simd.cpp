@@ -302,6 +302,9 @@ void regret_matching_action_major_f32(
     std::uint32_t action_count,
     std::uint32_t bucket_count,
     float* strategy) {
+    if (regret == nullptr || strategy == nullptr || action_count == 0U || bucket_count == 0U) {
+        return;
+    }
 #if defined(__AVX2__)
     if (use_sampled_avx2()) {
         regret_matching_action_major_f32_avx2(regret, action_count, bucket_count, strategy);
@@ -349,6 +352,9 @@ void regret_matching_action_major_f64(
     std::uint32_t action_count,
     std::uint32_t bucket_count,
     double* strategy) {
+    if (regret == nullptr || strategy == nullptr || action_count == 0U || bucket_count == 0U) {
+        return;
+    }
 #if defined(__AVX2__)
     if (use_sampled_avx2()) {
         regret_matching_action_major_f64_avx2(regret, action_count, bucket_count, strategy);
