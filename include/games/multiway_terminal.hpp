@@ -8,11 +8,13 @@
 #include <cstdint>
 #include <vector>
 
+namespace texas::solver::multiway {
+enum class MultiwayValueUnits : std::uint8_t;
+}
+
 namespace texas::games::multiway {
 
 struct MultiwayGameRules;
-
-enum class MultiwayValueUnits : std::uint8_t;
 
 // Input to terminal settlement after betting progression has completed.
 // Contributions are total chips committed by each seat, including folded seats.
@@ -51,7 +53,7 @@ struct MultiwayTerminalResult {
     int rake_taken = 0;
     // Payouts and refunds always remain chips. Utilities use this explicit
     // unit so an adapter cannot label raw chip results as normalized values.
-    MultiwayValueUnits utility_units{};
+    texas::solver::multiway::MultiwayValueUnits utility_units{};
 };
 
 MultiwayPotLayout build_multiway_pot_layout(

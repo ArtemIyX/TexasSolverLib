@@ -333,7 +333,7 @@ std::vector<double> build_equity_table_flat_parallel(std::size_t n_threads) {
     }
 
     std::vector<std::thread> threads;
-    auto thread_guard = detail::make_thread_join_guard(
+    auto thread_guard = texas::util::detail::make_thread_join_guard(
         threads,
         [&cancel] { cancel.store(true, std::memory_order_release); });
     threads.reserve(n_threads);

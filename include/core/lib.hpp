@@ -331,7 +331,7 @@ using ::texas::MultiwaySolverLimits;
 using ::texas::MultiwaySparseRowMetadata;
 using ::texas::MultiwaySparseRowShape;
 using ::texas::MultiwaySparseRowStorage;
-using ::texas::MultiwayValueUnits;
+using ::texas::solver::multiway::MultiwayValueUnits;
 using ::texas::MultiwayWorkerDelta;
 using ::texas::MultiwayWorkerDeltaStream;
 using ::texas::MultiwayWeightedHole;

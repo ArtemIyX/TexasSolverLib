@@ -652,7 +652,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     };
 
     threads_.clear();
-    auto thread_guard = detail::make_thread_join_guard(
+    auto thread_guard = texas::util::detail::make_thread_join_guard(
         threads_,
         [&cancelled] { cancelled.store(true, std::memory_order_release); });
     for (std::size_t worker = 1U; worker < batch_count; ++worker) {

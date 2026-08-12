@@ -602,7 +602,7 @@ TimedBenchmarkResult run_timed_flat_benchmark(
         std::chrono::duration<double>(ev_end - ev_start).count());
 
     const auto exploit_start = ev_end;
-    const auto exploitability = texas::detail::exploitability<texas::HUNLState>(strategy);
+    const auto exploitability = texas::solver::detail::exploitability<texas::HUNLState>(strategy);
     const auto exploit_end = clock::now();
     texas::profiling::mark(
         "hunl.bench.exploitability",
@@ -767,7 +767,7 @@ TimedBenchmarkResult run_timed_sampled_flat_benchmark(
     const auto ev_end = clock::now();
 
     const auto exploit_start = ev_end;
-    const auto exploitability = texas::detail::exploitability<texas::HUNLState>(strategy);
+    const auto exploitability = texas::solver::detail::exploitability<texas::HUNLState>(strategy);
     const auto exploit_end = clock::now();
 
     TimedBenchmarkResult result{

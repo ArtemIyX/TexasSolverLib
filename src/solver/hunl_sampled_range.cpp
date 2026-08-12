@@ -910,7 +910,7 @@ struct HUNLSampledRangeSession::Impl {
                 std::vector<std::thread> threads;
                 threads.reserve(worker_batches.size() > 0U ? worker_batches.size() - 1U : 0U);
                 std::atomic<bool> cancelled{false};
-                auto thread_guard = detail::make_thread_join_guard(
+                auto thread_guard = texas::util::detail::make_thread_join_guard(
                     threads,
                     [&cancelled] { cancelled.store(true, std::memory_order_release); });
                 std::exception_ptr worker_error;

@@ -116,7 +116,7 @@ TEST_CASE(hunl_flat_expected_value_matches_generic_recursive_path_for_action_row
     const auto strategy_table = texas::build_flat_average_strategy_table(graph, flat_strategy);
     const auto terminal_values = texas::build_flat_terminal_value_table(graph);
     const auto flat_value = texas::compute_flat_expected_value(graph, strategy_table.view(), &terminal_values);
-    const auto generic_value = texas::detail::expected_value(texas::HUNLState::initial(config), generic_strategy);
+    const auto generic_value = texas::solver::detail::expected_value(texas::HUNLState::initial(config), generic_strategy);
 
     EXPECT_NEAR(flat_value[0], generic_value[0], 1e-12);
     EXPECT_NEAR(flat_value[1], generic_value[1], 1e-12);

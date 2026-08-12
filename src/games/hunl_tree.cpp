@@ -204,29 +204,29 @@ namespace std {
 
 std::size_t hash<texas::MemoKey>::operator()(const texas::MemoKey& key) const noexcept {
     std::size_t seed = 0;
-    texas::detail::hash_combine(seed, key.cur_player);
-    texas::detail::hash_combine_range(seed, key.contributions);
-    texas::detail::hash_combine_range(seed, key.stacks);
-    texas::detail::hash_combine(seed, static_cast<std::uint8_t>(key.street));
-    texas::detail::hash_combine_range(seed, key.street_history);
+    texas::games::hunl::detail::hash_combine(seed, key.cur_player);
+    texas::games::hunl::detail::hash_combine_range(seed, key.contributions);
+    texas::games::hunl::detail::hash_combine_range(seed, key.stacks);
+    texas::games::hunl::detail::hash_combine(seed, static_cast<std::uint8_t>(key.street));
+    texas::games::hunl::detail::hash_combine_range(seed, key.street_history);
     for (const auto& street : key.completed_streets) {
-        texas::detail::hash_combine_range(seed, street);
+        texas::games::hunl::detail::hash_combine_range(seed, street);
     }
     for (const auto& token : key.current_street_tokens) {
-        texas::detail::hash_combine_range(seed, std::vector<char>(token.begin(), token.end()));
+        texas::games::hunl::detail::hash_combine_range(seed, std::vector<char>(token.begin(), token.end()));
     }
-    texas::detail::hash_combine_range(seed, key.folded);
-    texas::detail::hash_combine_range(seed, key.all_in);
-    texas::detail::hash_combine_range(seed, key.board);
+    texas::games::hunl::detail::hash_combine_range(seed, key.folded);
+    texas::games::hunl::detail::hash_combine_range(seed, key.all_in);
+    texas::games::hunl::detail::hash_combine_range(seed, key.board);
     if (key.hole_cards.has_value()) {
         for (const auto& hand : *key.hole_cards) {
-            texas::detail::hash_combine_range(seed, hand);
+            texas::games::hunl::detail::hash_combine_range(seed, hand);
         }
     }
-    texas::detail::hash_combine(seed, key.pending_board_deals);
-    texas::detail::hash_combine(seed, key.to_call);
-    texas::detail::hash_combine(seed, key.street_num_raises);
-    texas::detail::hash_combine(seed, key.street_aggressor);
+    texas::games::hunl::detail::hash_combine(seed, key.pending_board_deals);
+    texas::games::hunl::detail::hash_combine(seed, key.to_call);
+    texas::games::hunl::detail::hash_combine(seed, key.street_num_raises);
+    texas::games::hunl::detail::hash_combine(seed, key.street_aggressor);
     return seed;
 }
 

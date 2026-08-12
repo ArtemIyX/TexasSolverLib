@@ -375,9 +375,9 @@ HUNLSolveOutput solve_hunl_postflop(
             strategy.emplace(key, probs);
         }
         const auto state = HUNLState::initial(shared);
-        const auto value = detail::expected_value(state, strategy);
+        const auto value = texas::solver::detail::expected_value(state, strategy);
         solve_output.game_value = value[0];
-        solve_output.exploitability = detail::exploitability<HUNLState>(strategy);
+        solve_output.exploitability = texas::solver::detail::exploitability<HUNLState>(strategy);
 
         solve_output.profile.enabled = true;
         solve_output.profile.discount_seconds = solver.profile().discount_seconds;
@@ -394,7 +394,7 @@ HUNLSolveOutput solve_hunl_postflop(
         const bool use_parallel =
             selection != HUNLBackendSelection::Recursive &&
             (force_parallel ||
-             detail::should_use_parallel_solver(workers, frontier_multiplier, detail::estimated_root_branch_count(root)));
+             texas::solver::detail::should_use_parallel_solver(workers, frontier_multiplier, texas::solver::detail::estimated_root_branch_count(root)));
 
         if (use_parallel) {
             ParallelDCFRSolver<HUNLState> solver(
@@ -416,7 +416,7 @@ HUNLSolveOutput solve_hunl_postflop(
     }
     // Compute the named metric once at the wrapper boundary so recursive and
     // flat backends cannot report different scaling or constant-sum offsets.
-    out.exploitability = detail::exploitability<HUNLState>(normalized_strategy);
+    out.exploitability = texas::solver::detail::exploitability<HUNLState>(normalized_strategy);
     out.total_nash_conv = out.exploitability * 2.0;
     out.quality_metric = HUNLQualityMetric::PerPlayerExploitability;
     out.game_value = solve_output.game_value;

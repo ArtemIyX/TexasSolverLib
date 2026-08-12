@@ -15,11 +15,11 @@ namespace {
 
 constexpr double TOL = 1e-12;
 
-texas::detail::InfosetAccumTable table_with_values(
+texas::solver::dcfr::detail::InfosetAccumTable table_with_values(
     double positive,
     double negative,
     double strategy) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     table.begin_dcfr_iteration(1U, texas::DCFRConfig{});
     auto row = table.ensure(texas::InfosetId{0U}, 3U);
     row.regret_sum[0] = positive;
@@ -113,7 +113,7 @@ TEST_CASE(dcfr_scales_reject_iteration_zero) {
 }
 
 TEST_CASE(dcfr_new_row_skips_nonexistent_past_discounts) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     table.begin_dcfr_iteration(8U, texas::DCFRConfig{});
     auto row = table.ensure(texas::InfosetId{0U}, 1U);
     row.regret_sum[0] = 12.0;
@@ -180,7 +180,7 @@ TEST_CASE(dcfr_same_iteration_does_not_discount_twice) {
 }
 
 TEST_CASE(dcfr_table_rejects_backwards_iteration) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     table.begin_dcfr_iteration(3U, texas::DCFRConfig{});
     EXPECT_THROW(
         table.begin_dcfr_iteration(2U, texas::DCFRConfig{}),
@@ -188,7 +188,7 @@ TEST_CASE(dcfr_table_rejects_backwards_iteration) {
 }
 
 TEST_CASE(dcfr_table_rejects_changed_action_count_on_ensure) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     (void)table.ensure(texas::InfosetId{0U}, 2U);
     EXPECT_THROW(
         table.ensure(texas::InfosetId{0U}, 3U),
@@ -196,7 +196,7 @@ TEST_CASE(dcfr_table_rejects_changed_action_count_on_ensure) {
 }
 
 TEST_CASE(dcfr_table_rejects_changed_action_count_on_view) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     (void)table.ensure(texas::InfosetId{0U}, 2U);
     EXPECT_THROW(
         table.view(texas::InfosetId{0U}, 3U),
@@ -204,7 +204,7 @@ TEST_CASE(dcfr_table_rejects_changed_action_count_on_view) {
 }
 
 TEST_CASE(dcfr_table_clear_resets_discount_cursor) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     table.begin_dcfr_iteration(9U, texas::DCFRConfig{});
     table.clear();
     table.begin_dcfr_iteration(1U, texas::DCFRConfig{});
@@ -212,7 +212,7 @@ TEST_CASE(dcfr_table_clear_resets_discount_cursor) {
 }
 
 TEST_CASE(dcfr_table_discounts_all_active_rows) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     table.begin_dcfr_iteration(1U, texas::DCFRConfig{});
     table.ensure(texas::InfosetId{0U}, 1U).regret_sum[0] = 6.0;
     table.ensure(texas::InfosetId{3U}, 1U).regret_sum[0] = 9.0;
@@ -222,7 +222,7 @@ TEST_CASE(dcfr_table_discounts_all_active_rows) {
 }
 
 TEST_CASE(dcfr_late_row_receives_only_future_discount) {
-    texas::detail::InfosetAccumTable table;
+    texas::solver::dcfr::detail::InfosetAccumTable table;
     const texas::DCFRConfig config{1.0, 0.0, 0.0};
     table.begin_dcfr_iteration(3U, config);
     table.ensure(texas::InfosetId{0U}, 1U).regret_sum[0] = 10.0;

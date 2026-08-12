@@ -186,7 +186,7 @@ HUNLFlatDCFR::WorkerPool::WorkerPool(HUNLFlatDCFR& owner, std::size_t worker_cou
         throw std::invalid_argument("HUNLFlatDCFR worker_count must be at least 1");
     }
     threads_.reserve(worker_count);
-    auto thread_guard = detail::make_thread_join_guard(
+    auto thread_guard = texas::util::detail::make_thread_join_guard(
         threads_,
         [this] {
             {

@@ -4,6 +4,29 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Namespace migration qualification fixes
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Qualified utility helpers and private implementation namespaces after the `texas` namespace split.
+- Centralized `MultiwayValueUnits` in `texas::solver::multiway` and updated terminal result typing.
+
+### Files
+
+- `include/games/multiway_terminal.hpp`
+- `include/core/lib.hpp`
+- Solver, game, preflop, example, and test references using migrated private namespaces
+
+### Validation
+
+- Static reference and whitespace checks completed.
+- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Full compiler verification remains pending user authorization.
+
 ## Full namespace migration
 
 **Status:** Complete

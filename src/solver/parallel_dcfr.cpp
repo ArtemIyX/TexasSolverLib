@@ -780,7 +780,7 @@ SolveOutput ParallelDCFRSolver<G>::solve(std::uint32_t iterations) {
     };
 
     std::vector<std::thread> workers;
-    auto thread_guard = detail::make_thread_join_guard(
+    auto thread_guard = texas::util::detail::make_thread_join_guard(
         workers,
         [&pool] {
             {

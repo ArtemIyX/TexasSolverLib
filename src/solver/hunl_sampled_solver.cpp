@@ -394,7 +394,7 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
             std::vector<HUNLSampledTraversalResult> worker_results(worker_batches.size());
             std::vector<std::thread> threads;
             std::atomic<bool> launch_cancelled{false};
-            auto thread_guard = detail::make_thread_join_guard(
+            auto thread_guard = texas::util::detail::make_thread_join_guard(
                 threads,
                 [&launch_cancelled] {
                     launch_cancelled.store(true, std::memory_order_release);
