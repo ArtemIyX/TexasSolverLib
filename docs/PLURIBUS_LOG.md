@@ -4,6 +4,26 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P5.2 Test Fixture Correction - Upper pseudo-harmonic boundary
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Corrected the upper-size boundary fixture: 214 is within the 10% pseudo-harmonic threshold for a 225 target; 203 translates and 202 rejects.
+
+### Files
+
+- `tests/test_multiway_action_abstraction.cpp`
+
+### Validation
+
+- Compact CTest reproduced the original incorrect 214 rejection expectation.
+- The post-fix Debug build was blocked before compilation by duplicate `Path` and `PATH` environment variables.
+
+### Limitations
+
+- The corrected fixture has not been rerun in a clean build environment.
+
 ## P5.1-P5.2 Test Coverage - Menu profiles and translation boundaries
 
 **Status:** Complete
