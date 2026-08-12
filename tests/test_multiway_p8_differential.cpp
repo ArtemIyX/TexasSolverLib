@@ -87,11 +87,23 @@ void run_terminal_differential_case(std::uint8_t index) {
     core::MultiwayFixedTerminalScratch scratch;
     core::MultiwayFixedTerminalResult fixed;
     core::settle_multiway_terminal_fixed(fixed_input(input), scratch, fixed);
+    EXPECT_EQ(direct.utilities.size(), input.contributions.size());
+    EXPECT_EQ(direct.payouts.size(), input.contributions.size());
+    EXPECT_EQ(direct.refunds.size(), input.contributions.size());
+    EXPECT_EQ(fixed.seat_count, input.contributions.size());
+    EXPECT_EQ(fixed.pot_count, direct.pots.size());
+    int committed = 0;
+    int returned = direct.rake_taken;
     for (std::size_t seat = 0U; seat < input.contributions.size(); ++seat) {
         EXPECT_EQ(fixed.refunds[seat], direct.refunds[seat]);
         EXPECT_EQ(fixed.payouts[seat], direct.payouts[seat]);
         EXPECT_EQ(fixed.utilities[seat], direct.utilities[seat]);
+        EXPECT_EQ(direct.utilities[seat],
+            static_cast<core::Value>(direct.payouts[seat] + direct.refunds[seat] - input.contributions[seat]));
+        committed += input.contributions[seat];
+        returned += direct.payouts[seat] + direct.refunds[seat];
     }
+    EXPECT_EQ(returned, committed);
 }
 
 void run_range_differential_case(std::uint8_t index) {
@@ -116,6 +128,9 @@ void run_range_differential_case(std::uint8_t index) {
     EXPECT_NEAR(view.weight(core::canonical_combos().id({second, alternate})),
         static_cast<double>(index + 3U) / total, 1e-15);
     EXPECT_NEAR(view.metadata().input_mass, total, 1e-15);
+    EXPECT_EQ(view.metadata().source, core::MultiwayRangeBeliefSource::Supplied);
+    EXPECT_TRUE(view.legal(core::canonical_combos().id({first, second})));
+    EXPECT_NEAR(view.metadata().normalized_mass, 1.0, 0.0);
 }
 
 void run_artifact_hash_differential_case(std::uint8_t index) {
@@ -134,6 +149,8 @@ void run_artifact_hash_differential_case(std::uint8_t index) {
         core::MultiwayBlueprintArtifacts::snapshot_hash(baseline));
     EXPECT_TRUE(core::MultiwayBlueprintArtifacts::snapshot_hash(baseline) !=
         core::MultiwayBlueprintArtifacts::snapshot_hash(changed));
+    EXPECT_EQ(baseline.identity, changed.identity);
+    EXPECT_TRUE(!(baseline.public_state == changed.public_state));
 }
 
 void run_adapter_differential_case(std::uint8_t index) {
@@ -146,8 +163,10 @@ void run_adapter_differential_case(std::uint8_t index) {
     const auto first = adapter.resolve(1U, request, index);
     const auto second = adapter.resolve(1U, request, index);
     EXPECT_EQ(first.sampling_seed, second.sampling_seed);
+    EXPECT_EQ(first.candidate_id, 1U);
     EXPECT_EQ(first.result.diagnostics.policy_provenance, core::MultiwayPolicyProvenance::StaticLegalFallback);
     EXPECT_TRUE(first.result.has_sampled_action);
+    EXPECT_TRUE(first.result.diagnostics.policy_normalized);
 }
 
 }  // namespace
@@ -246,6 +265,22 @@ TEST_CASE(multiway_p84_evaluation_adapter_selects_deterministic_request_local_ca
     EXPECT_EQ(disabled.result.diagnostics.policy_provenance,
         core::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
     EXPECT_THROW(adapter.resolve(99U, fixture.request(), 7U), std::invalid_argument);
+}
+
+TEST_CASE(multiway_p84_evaluation_adapter_rejects_unsafe_candidate_configuration) {
+    core::MultiwayResolverEvaluationAdapterConfig empty;
+    EXPECT_THROW(core::MultiwayResolverEvaluationAdapter(empty), std::invalid_argument);
+
+    core::MultiwayResolverEvaluationAdapterConfig blueprint_only;
+    blueprint_only.candidates = {{1U, core::MultiwayResolverEvaluationCandidateKind::BlueprintOnly}};
+    EXPECT_THROW(core::MultiwayResolverEvaluationAdapter(blueprint_only), std::invalid_argument);
+
+    core::MultiwayResolverEvaluationAdapterConfig duplicate;
+    duplicate.candidates = {
+        {1U, core::MultiwayResolverEvaluationCandidateKind::StaticLegal},
+        {1U, core::MultiwayResolverEvaluationCandidateKind::SearchDisabled},
+    };
+    EXPECT_THROW(core::MultiwayResolverEvaluationAdapter(duplicate), std::invalid_argument);
 }
 
 #define P8_DIFFERENTIAL_CASE(name, helper, index) TEST_CASE(name) { helper(index); }
