@@ -4,6 +4,27 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P6.4 Regression - Public-chance turn leaf bucket fixtures
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Updated public-chance traversal fixtures that intentionally reach turn leaves to include canonical turn bucket tables.
+- Preserved deterministic path, delta, lazy-admission, and continuation-bucket assertions without changing production traversal behavior.
+
+### Files
+
+- `tests/test_multiway_public_chance_traversal.cpp`
+
+### Validation
+
+- Diagnosed the two reported failures against the leaf bucket lookup and fixture registry contents.
+- Build and tests were not rerun because the repository instructions prohibit execution unless explicitly requested.
+
+### Limitations
+
+- Runtime confirmation of the two corrected cases remains pending an explicit test-run request.
+
 ## P6.4 Test Coverage - Continuation cache contracts
 
 **Status:** Complete

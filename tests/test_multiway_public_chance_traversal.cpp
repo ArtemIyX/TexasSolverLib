@@ -280,15 +280,15 @@ TEST_CASE(multiway_public_chance_traversal_rejects_oversized_root_action_menu) {
 TEST_CASE(multiway_public_chance_traversal_same_seed_has_the_same_path_and_deltas) {
     std::uint64_t transition_seed = 0U;
     for (std::uint64_t seed = 1U; seed <= 32U && transition_seed == 0U; ++seed) {
-        ChanceTraversalFixture scout(2U, 1U, false);
+        ChanceTraversalFixture scout(2U, 1U, true);
         core::MultiwayWorkerDeltaStream scout_stream(0U, 256U);
         EXPECT_TRUE(scout.traversal.run(0, 91U, seed, scout_stream));
         if (saw_turn(scout.probe)) transition_seed = seed;
     }
     EXPECT_TRUE(transition_seed != 0U);
 
-    ChanceTraversalFixture first(2U, 1U, false);
-    ChanceTraversalFixture second(2U, 1U, false);
+    ChanceTraversalFixture first(2U, 1U, true);
+    ChanceTraversalFixture second(2U, 1U, true);
     core::MultiwayWorkerDeltaStream first_stream(0U, 256U);
     core::MultiwayWorkerDeltaStream second_stream(0U, 256U);
     EXPECT_TRUE(first.traversal.run(0, 91U, transition_seed, first_stream));
@@ -302,7 +302,7 @@ TEST_CASE(multiway_public_chance_traversal_same_seed_has_the_same_path_and_delta
 }
 
 TEST_CASE(multiway_public_chance_traversal_lazily_admits_transition_and_calls_turn_leaf) {
-    ChanceTraversalFixture fixture(2U, 1U, false);
+    ChanceTraversalFixture fixture(2U, 1U, true);
     bool reached_turn = false;
     for (std::uint64_t seed = 1U; seed <= 32U && !reached_turn; ++seed) {
         fixture.probe = {};
