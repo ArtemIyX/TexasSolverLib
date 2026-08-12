@@ -4,6 +4,137 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P7.4 - Validate deterministic worker scheduling and merge
+
+**Status:** Complete
+**Completed:** 2026-08-12
+**Implementation commit:** `d2dd8d9 feat(multiway): expose deterministic run identity`
+
+- Added versioned deterministic run metadata for worker count, trajectory partition, per-trajectory seed derivation, action sampling, public chance order, and merge order.
+- Added canonical merged-stream fingerprints and exact 1-, 2-, and 4-worker replay coverage.
+- Kept worker output local until the fixed-order coordinator merge and rejected unimplemented relaxed run modes.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `include/solver/multiway_scheduler.hpp`
+- `include/solver/multiway_solver.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_scheduler.cpp`
+- `src/solver/multiway_solver.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_recursive_traversal.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `tests/test_multiway_scheduler.cpp`
+
+### Validation
+
+- Added deterministic same-run, cross-worker, seed, schedule, merged-stream, policy, and worker-local mutation coverage.
+- Completed static code review with no remaining actionable findings.
+- Build and tests were not run because repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- No relaxed throughput mode is exposed. Deterministic mode remains the only accepted runtime mode.
+
+## P7.3 - Complete memory preflight and staged admission
+
+**Status:** Complete
+**Completed:** 2026-08-12
+**Implementation commits:** `51544ec feat(multiway): enforce staged memory admission`, `aa8977e fix(multiway): preflight before root allocation`
+
+- Extended preflight to full-blueprint storage, six range rows and compiled copies, future-bucket reservations, off-tree menus, continuation scratch/cache, worker and merge buffers, sparse rows, and root export.
+- Added staged root, row, worker-delta, and optional-continuation-cache admission using 48 GiB warning, 56 GiB operating, and 60 GiB hard-cap defaults.
+- Moved active-search and runtime-session rejection before request-local root/range construction and disabled typed rollout caching when its optional stage is not admitted.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_blueprint_store.hpp`
+- `include/solver/multiway_memory.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `src/solver/multiway_blueprint_store.cpp`
+- `src/solver/multiway_memory.cpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_blueprint_store.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_resolver.cpp`
+
+### Validation
+
+- Added component accounting, optional-cache degradation, staged rejection, synthetic maximum, blueprint-memory, resolver rejection, and runtime-session rejection coverage.
+- Reviewed the preflight-order fix with no remaining actionable findings.
+- Build and tests were not run because repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Host-owned future bucket and non-rollout continuation capacities must be supplied through the resolver configuration when nonzero.
+
+## P7.2 - Remove hot-path dynamic allocation and textual lookup
+
+**Status:** Complete
+**Completed:** 2026-08-12
+**Implementation commit:** `1085c76 perf(multiway): preallocate batch merge scratch`
+
+- Added caller-owned deterministic scheduler output and retained partition/thread buffers across root batches.
+- Preallocated coordinator merge-stream views, globally ordered delta storage, and transactional pending cells at construction.
+- Preserved stable integer identities, contiguous row spans, fixed action arrays, and allocation-free per-cell CFR updates.
+
+### Files
+
+- `include/solver/multiway_scheduler.hpp`
+- `include/solver/multiway_solver.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_scheduler.cpp`
+- `src/solver/multiway_solver.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_scheduler.cpp`
+- `tests/test_multiway_solver.cpp`
+
+### Validation
+
+- Added reusable partition-storage and stable merge-capacity coverage.
+- Completed static hot-path review with no remaining actionable findings.
+- Build and tests were not run because repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Lazy public-state admission remains a cold coordinator boundary and retains the existing descriptor ownership model.
+
+## P7.1 - Establish end-to-end search profile checkpoints
+
+**Status:** Complete
+**Completed:** 2026-08-12
+**Implementation commit:** `e291976 feat(multiway): add search profile checkpoints`
+
+- Added opt-in numeric checkpoints for private deal sampling, public chance, action menus, graph admission, row lookup, regret matching, terminals, continuation leaves, merge, and root export.
+- Aggregated worker-local checkpoints after join and added deterministic numeric bottleneck ranking.
+- Kept profiling disabled by default so ordinary runs perform no checkpoint clock reads.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_baseline.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `include/solver/multiway_search_profile.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_baseline.cpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_baseline.cpp`
+
+### Validation
+
+- Added checkpoint activation, call-count, aggregation, and bottleneck-ranking coverage.
+- Existing baseline surfaces continue to supply wall time, process CPU time, resident memory, peak RSS, and worker imbalance.
+- Build and tests were not run because repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Allocation bytes and hardware cache/branch counters remain unavailable without host allocator or platform profiler integration.
+
 ## P6.4 Regression - Public-chance turn leaf bucket fixtures
 
 **Status:** Complete
