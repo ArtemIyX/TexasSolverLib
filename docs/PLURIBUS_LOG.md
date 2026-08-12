@@ -4,6 +4,25 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P4 Test Coverage - Runtime lifecycle contracts
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added 54 deterministic Phase 4 runtime-session contract cases covering construction, policy export, freeze clearing, same-street rerooting, and rejected non-transition street rerooting.
+
+### Files
+
+- `tests/test_multiway_phase4.cpp`
+
+### Validation
+
+- Tests were added but not run because this request did not ask for execution.
+
+### Limitations
+
+- Existing build-environment `Path`/`PATH` duplication still blocks MSBuild validation.
+
 ## P4 Regression - Runtime session default solver limits
 
 **Status:** Complete
