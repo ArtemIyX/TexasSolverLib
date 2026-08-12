@@ -4,6 +4,35 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P6.4 - Add continuation cache and variance diagnostics
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added a fixed-capacity request-local continuation cache keyed by canonical public/future context, model versions, range/reach identity, opaque sampled-deal identity, rollout limits, and seed batch.
+- Added private-safe diagnostics for seed, runout mode, samples, selected policy, leaf outcomes, cache activity, per-policy means, and repeated-seed variance.
+- Added traversal-generated range and sampled-deal identities so cached values cannot cross incompatible private contexts.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_leaf_evaluator.hpp`
+- `include/solver/multiway_rollout_leaf.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_rollout_leaf.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_rollout_leaf.cpp`
+
+### Validation
+
+- Added focused same-seed equality, different-seed variance, cache identity, hit/miss, invalid/capped, runout-mode, and memory-cap coverage.
+- Build and tests were not run because the repository instructions prohibit them unless explicitly requested.
+- Reviewed the task diff with `git diff --check` on task files.
+
+### Limitations
+
+- Overall resolver memory-preflight accounting for the optional continuation cache remains P7.3 work; this cache enforces its own configured entry-payload cap.
+
 ## P6.1-P6.3 - Continuation policy transformation, selection, and rollout leaf integration
 
 **Status:** Complete

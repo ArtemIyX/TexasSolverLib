@@ -34,6 +34,10 @@ struct MultiwayLeafEvaluationRequest {
     const MultiwayTerminalAdapter* terminal_adapter = nullptr;
     const Probability* player_reaches = nullptr;
     std::size_t player_count = 0;
+    // Opaque request-local identities used only to prevent continuation-cache
+    // reuse across different ranges/reaches or sampled private deals.
+    std::uint64_t range_context_identity = 0;
+    std::uint64_t private_context_identity = 0;
 };
 
 using MultiwayLeafEvaluateFn = Value (*)(

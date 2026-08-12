@@ -6,6 +6,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
+#include <vector>
 
 namespace core {
 
@@ -19,6 +21,13 @@ enum class MultiwayRolloutStatus : std::uint8_t {
     Complete,
     CappedFallback,
     InvalidContext,
+};
+
+enum class MultiwayRolloutRunoutMode : std::uint8_t {
+    None,
+    Exact,
+    Seeded,
+    Mixed,
 };
 
 struct MultiwayRolloutLimits {
@@ -75,10 +84,89 @@ struct MultiwayRolloutScratch {
 struct MultiwayRolloutProfileResult {
     std::array<Value, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> values{};
     MultiwayRolloutStatus status = MultiwayRolloutStatus::InvalidContext;
+    MultiwayRolloutRunoutMode runout_mode = MultiwayRolloutRunoutMode::None;
     std::uint32_t seed_count = 0;
     std::uint32_t exact_runouts = 0;
     std::uint32_t betting_actions = 0;
 };
+
+// Internal cache keys remain request-local and contain opaque identities, not
+// private cards or range rows. Public-state identity already binds the exact
+// betting history and legal action menu.
+struct MultiwayContinuationCacheKey {
+    MultiwayPublicStateId public_state{};
+    PlayerId traverser = -1;
+    PlayerId actor = -1;
+    std::uint32_t future_bucket = 0;
+    std::uint64_t action_abstraction_version = 0;
+    std::uint64_t leaf_model_version = 0;
+    std::uint64_t range_context_identity = 0;
+    std::uint64_t private_context_identity = 0;
+    std::uint64_t seed_batch_identity = 0;
+    std::uint64_t bias_factor_bits = 0;
+    std::uint32_t seed_count = 0;
+    std::uint32_t max_betting_actions = 0;
+    std::uint32_t max_exact_runouts = 0;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] bool same_context(const MultiwayContinuationCacheKey& other) const noexcept;
+    [[nodiscard]] bool operator<(const MultiwayContinuationCacheKey& other) const noexcept;
+};
+
+struct MultiwayContinuationDiagnostics {
+    std::uint64_t seed = 0;
+    MultiwayRolloutRunoutMode runout_mode = MultiwayRolloutRunoutMode::None;
+    std::uint64_t sample_count = 0;
+    MultiwayContinuationPolicyKind policy_mode = MultiwayContinuationPolicyKind::Blueprint;
+    std::uint64_t leaf_count = 0;
+    std::uint64_t invalid_count = 0;
+    std::uint64_t capped_count = 0;
+    std::uint64_t cache_hits = 0;
+    std::uint64_t cache_misses = 0;
+    std::uint64_t cache_bypasses = 0;
+    std::uint64_t cache_admission_rejections = 0;
+    std::uint64_t repeated_seed_pairs = 0;
+    std::array<Value, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> mean_policy_values{};
+    std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> repeated_seed_variance{};
+};
+
+// Fixed-capacity, request-local cache. Construction performs the only reserve;
+// lookup and admission never grow storage beyond the configured byte cap.
+class MultiwayContinuationCache {
+public:
+    explicit MultiwayContinuationCache(
+        std::size_t max_entries,
+        std::uint64_t max_bytes = std::numeric_limits<std::uint64_t>::max());
+
+    [[nodiscard]] bool find(
+        const MultiwayContinuationCacheKey& key,
+        MultiwayRolloutProfileResult* output) const noexcept;
+    [[nodiscard]] bool try_insert(
+        const MultiwayContinuationCacheKey& key,
+        const MultiwayRolloutProfileResult& value) noexcept;
+    void record_repeated_seed_variance(
+        const MultiwayContinuationCacheKey& key,
+        const MultiwayRolloutProfileResult& value,
+        MultiwayContinuationDiagnostics* diagnostics) const noexcept;
+
+    [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
+    [[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
+    [[nodiscard]] std::uint64_t memory_bytes() const noexcept;
+    [[nodiscard]] static constexpr std::uint64_t entry_bytes() noexcept;
+
+private:
+    struct Entry {
+        MultiwayContinuationCacheKey key{};
+        MultiwayRolloutProfileResult value{};
+    };
+
+    std::size_t capacity_ = 0;
+    std::vector<Entry> entries_;
+};
+
+constexpr std::uint64_t MultiwayContinuationCache::entry_bytes() noexcept {
+    return sizeof(Entry);
+}
 
 struct MultiwayRolloutLeafContext {
     MultiwayRolloutInputProviderFn provide_input = nullptr;
@@ -92,6 +180,10 @@ struct MultiwayRolloutLeafContext {
     // Used by direct callers without traversal provenance. Traversal supplies
     // the information-set-selected mode in MultiwayLeafEvaluationRequest.
     MultiwayContinuationPolicyKind selected_policy = MultiwayContinuationPolicyKind::Blueprint;
+    // Cache and diagnostics are caller-owned and request-local. Use one pair
+    // per concurrent caller; neither object performs internal synchronization.
+    MultiwayContinuationCache* cache = nullptr;
+    MultiwayContinuationDiagnostics* diagnostics = nullptr;
     // One scratch instance per concurrent caller. It is overwritten during
     // evaluation and must outlive the synchronous evaluator invocation.
     MultiwayRolloutScratch* scratch = nullptr;

@@ -97,6 +97,7 @@ private:
     std::uint32_t max_public_chance_depth_ = 0U;
     const MultiwayBlueprintPolicyProvider* blueprint_policy_ = nullptr;
     const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
+    std::uint64_t range_model_identity_ = 0;
     MultiwayTerminalAdapter terminal_;
 };
 

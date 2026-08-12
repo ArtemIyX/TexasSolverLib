@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <exception>
 #include <mutex>
 #include <stdexcept>
@@ -15,6 +16,65 @@
 #include <utility>
 
 namespace core {
+namespace {
+
+void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
+    for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
+        hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
+        hash *= 1099511628211ULL;
+    }
+}
+
+std::uint64_t private_range_identity(const MultiwayPrivateConfig& ranges) noexcept {
+    std::uint64_t hash = 1469598103934665603ULL;
+    hash_u64(ranges.board.size(), hash);
+    for (const auto card : ranges.board) hash_u64(card, hash);
+    hash_u64(ranges.ranges.size(), hash);
+    for (const auto& seat : ranges.ranges) {
+        hash_u64(seat.size(), hash);
+        for (const auto& entry : seat) {
+            hash_u64(entry.hole[0], hash);
+            hash_u64(entry.hole[1], hash);
+            std::uint64_t weight_bits = 0;
+            static_assert(sizeof(weight_bits) == sizeof(entry.weight));
+            std::memcpy(&weight_bits, &entry.weight, sizeof(weight_bits));
+            hash_u64(weight_bits, hash);
+        }
+    }
+    return hash == 0U ? 1U : hash;
+}
+
+std::uint64_t range_context_identity(
+    std::uint64_t range_model_identity,
+    const Probability* reaches,
+    std::size_t count) noexcept {
+    auto hash = range_model_identity;
+    hash_u64(count, hash);
+    for (std::size_t player = 0; player < count; ++player) {
+        std::uint64_t reach_bits = 0;
+        static_assert(sizeof(reach_bits) == sizeof(reaches[player]));
+        std::memcpy(&reach_bits, reaches + player, sizeof(reach_bits));
+        hash_u64(reach_bits, hash);
+    }
+    return hash == 0U ? 1U : hash;
+}
+
+std::uint64_t private_deal_identity(
+    const MultiwayTerminalAdapter& terminal,
+    const MultiwaySamplerDealToken& deal,
+    std::size_t player_count) {
+    std::uint64_t hash = 1469598103934665603ULL;
+    hash_u64(player_count, hash);
+    for (std::size_t player = 0; player < player_count; ++player) {
+        auto hole = terminal.sampled_hole(deal, static_cast<PlayerId>(player));
+        if (hole[1] < hole[0]) std::swap(hole[0], hole[1]);
+        hash_u64(hole[0], hash);
+        hash_u64(hole[1], hash);
+    }
+    return hash == 0U ? 1U : hash;
+}
+
+}  // namespace
 
 bool MultiwayExternalSamplingTraversal::append_infoset_update(
     MultiwayWorkerDeltaStream& stream,
@@ -68,6 +128,7 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
       max_public_chance_depth_(max_public_chance_depth),
       blueprint_policy_(blueprint_policy),
       continuation_selector_(continuation_selector),
+      range_model_identity_(private_range_identity(root.private_ranges)),
       terminal_(coordinator) {
     root.validate();
     if (root.public_state.betting.street < Street::Flop ||
@@ -239,6 +300,9 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         context.terminal,
         context.player_reaches.data(),
         context.player_count,
+        range_context_identity(
+            range_model_identity_, context.player_reaches.data(), context.player_count),
+        private_deal_identity(*context.terminal, *context.deal, context.player_count),
     });
     if (!std::isfinite(value)) {
         throw std::logic_error("multiway leaf evaluator returned a non-finite value");

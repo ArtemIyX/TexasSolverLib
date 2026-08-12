@@ -3,8 +3,11 @@
 #include "games/hunl_eval.hpp"
 #include "util/pcs.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
+#include <tuple>
 
 namespace core {
 namespace {
@@ -13,6 +16,93 @@ constexpr Value kInvalid = std::numeric_limits<Value>::quiet_NaN();
 
 bool valid_policy(MultiwayContinuationPolicyKind policy) noexcept {
     return is_valid_multiway_continuation_policy(policy);
+}
+
+MultiwayContinuationPolicyKind selected_policy(
+    const MultiwayLeafEvaluationRequest& request,
+    const MultiwayRolloutLeafContext& context) noexcept {
+    return request.public_state.value == 0U ? context.selected_policy : request.continuation_policy;
+}
+
+std::uint64_t hash_seed_batch(const std::uint64_t* seeds, std::size_t count) noexcept {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (std::size_t index = 0; index < count; ++index) {
+        auto value = seeds[index];
+        for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
+            hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
+            hash *= 1099511628211ULL;
+        }
+    }
+    hash ^= count;
+    hash *= 1099511628211ULL;
+    return hash == 0U ? 1U : hash;
+}
+
+bool make_cache_key(
+    const MultiwayLeafEvaluationRequest& request,
+    const MultiwayRolloutLeafContext& context,
+    MultiwayContinuationCacheKey* output) noexcept {
+    if (output == nullptr || context.seeds == nullptr || context.seed_count == 0U ||
+        context.seed_count > std::numeric_limits<std::uint32_t>::max()) return false;
+    std::uint64_t bias_factor_bits = 0;
+    static_assert(sizeof(bias_factor_bits) == sizeof(context.bias_factor));
+    std::memcpy(&bias_factor_bits, &context.bias_factor, sizeof(bias_factor_bits));
+    *output = {
+        request.public_state,
+        request.traverser,
+        request.continuation_actor,
+        request.future_bucket,
+        request.action_abstraction_version,
+        request.leaf_model_version,
+        request.range_context_identity,
+        request.private_context_identity,
+        hash_seed_batch(context.seeds, context.seed_count),
+        bias_factor_bits,
+        static_cast<std::uint32_t>(context.seed_count),
+        context.limits.max_betting_actions,
+        context.limits.max_exact_runouts,
+    };
+    return output->valid();
+}
+
+MultiwayRolloutRunoutMode merge_runout_mode(
+    MultiwayRolloutRunoutMode left,
+    MultiwayRolloutRunoutMode right) noexcept {
+    return left == right ? left : MultiwayRolloutRunoutMode::Mixed;
+}
+
+void record_invalid(MultiwayContinuationDiagnostics* diagnostics) noexcept {
+    if (diagnostics != nullptr) ++diagnostics->invalid_count;
+}
+
+void record_success(
+    MultiwayContinuationDiagnostics* diagnostics,
+    const MultiwayRolloutProfileResult& result) noexcept {
+    if (diagnostics == nullptr) return;
+    const auto completed = diagnostics->leaf_count - diagnostics->invalid_count;
+    diagnostics->sample_count += result.seed_count;
+    diagnostics->runout_mode = completed == 1U
+        ? result.runout_mode
+        : merge_runout_mode(diagnostics->runout_mode, result.runout_mode);
+    if (result.status == MultiwayRolloutStatus::CappedFallback) ++diagnostics->capped_count;
+    const auto count = static_cast<Value>(completed);
+    for (std::size_t policy = 0; policy < result.values.size(); ++policy) {
+        diagnostics->mean_policy_values[policy] +=
+            (result.values[policy] - diagnostics->mean_policy_values[policy]) / count;
+    }
+}
+
+bool valid_cached_result(
+    const MultiwayContinuationCacheKey& key,
+    const MultiwayRolloutProfileResult& value) noexcept {
+    if (value.seed_count != key.seed_count ||
+        (value.status != MultiwayRolloutStatus::Complete &&
+         value.status != MultiwayRolloutStatus::CappedFallback) ||
+        value.runout_mode > MultiwayRolloutRunoutMode::Mixed) return false;
+    for (const auto policy_value : value.values) {
+        if (!std::isfinite(policy_value)) return false;
+    }
+    return true;
 }
 
 std::uint8_t compact_to_hunl_card(std::uint8_t card) noexcept {
@@ -189,7 +279,7 @@ Value exact_all_in_value(MultiwayRolloutScratch& scratch, std::uint8_t board_cou
 Value one_rollout(MultiwayRolloutScratch& scratch, const MultiwayRolloutInput& input,
                   const MultiwayRolloutLeafContext& context, MultiwayContinuationPolicyKind policy,
                   PlayerId traverser, std::uint64_t seed, std::uint32_t* action_count, std::uint32_t* exact_runouts,
-                  bool* capped) noexcept {
+                  bool* capped, bool* used_exact_runout, bool* used_seeded_runout) noexcept {
     auto board_count = input.board_count;
     std::uint64_t random_state = seed;
     for (;;) {
@@ -210,6 +300,7 @@ Value one_rollout(MultiwayRolloutScratch& scratch, const MultiwayRolloutInput& i
                 std::uint8_t card = 0;
                 if (!next_unused_card(scratch, random_state, &card)) return kInvalid;
                 scratch.board[board_count++] = card;
+                *used_seeded_runout = true;
             }
             return settle(scratch, board_count, traverser, input.odd_chip_first_seat, input.rake_policy);
         }
@@ -217,12 +308,16 @@ Value one_rollout(MultiwayRolloutScratch& scratch, const MultiwayRolloutInput& i
             const auto exact = exact_all_in_value(
                 scratch, board_count, traverser, input.odd_chip_first_seat, input.rake_policy,
                 context.limits.max_exact_runouts, exact_runouts);
-            if (std::isfinite(exact)) return exact;
+            if (std::isfinite(exact)) {
+                *used_exact_runout = true;
+                return exact;
+            }
             *capped = true;
             while (board_count < 5U) {
                 std::uint8_t card = 0;
                 if (!next_unused_card(scratch, random_state, &card)) return kInvalid;
                 scratch.board[board_count++] = card;
+                *used_seeded_runout = true;
             }
             return settle(scratch, board_count, traverser, input.odd_chip_first_seat, input.rake_policy);
         }
@@ -234,6 +329,7 @@ Value one_rollout(MultiwayRolloutScratch& scratch, const MultiwayRolloutInput& i
                 std::uint8_t card = 0;
                 if (!next_unused_card(scratch, random_state, &card)) return kInvalid;
                 scratch.board[board_count++] = card;
+                *used_seeded_runout = true;
             }
             scratch.state = scratch.state.begin_next_street(next, input.next_street_first_player);
             continue;
@@ -244,6 +340,7 @@ Value one_rollout(MultiwayRolloutScratch& scratch, const MultiwayRolloutInput& i
                 std::uint8_t card = 0;
                 if (!next_unused_card(scratch, random_state, &card)) return kInvalid;
                 scratch.board[board_count++] = card;
+                *used_seeded_runout = true;
             }
             return settle(scratch, board_count, traverser, input.odd_chip_first_seat, input.rake_policy);
         }
@@ -271,18 +368,147 @@ Value one_rollout(MultiwayRolloutScratch& scratch, const MultiwayRolloutInput& i
 
 }  // namespace
 
+bool MultiwayContinuationCacheKey::valid() const noexcept {
+    return public_state.value != 0U && traverser >= 0 && actor >= 0 &&
+           static_cast<std::size_t>(traverser) < kMultiwayFixedMaxSeats &&
+           static_cast<std::size_t>(actor) < kMultiwayFixedMaxSeats &&
+           action_abstraction_version != 0U && leaf_model_version != 0U &&
+           range_context_identity != 0U && private_context_identity != 0U &&
+           seed_batch_identity != 0U && seed_count != 0U &&
+           max_betting_actions != 0U && max_exact_runouts != 0U;
+}
+
+bool MultiwayContinuationCacheKey::same_context(
+    const MultiwayContinuationCacheKey& other) const noexcept {
+    return public_state == other.public_state && traverser == other.traverser && actor == other.actor &&
+           future_bucket == other.future_bucket &&
+           action_abstraction_version == other.action_abstraction_version &&
+           leaf_model_version == other.leaf_model_version &&
+           range_context_identity == other.range_context_identity &&
+           private_context_identity == other.private_context_identity &&
+           bias_factor_bits == other.bias_factor_bits && seed_count == other.seed_count &&
+           max_betting_actions == other.max_betting_actions &&
+           max_exact_runouts == other.max_exact_runouts;
+}
+
+bool MultiwayContinuationCacheKey::operator<(
+    const MultiwayContinuationCacheKey& other) const noexcept {
+    return std::tie(public_state, traverser, actor, future_bucket, action_abstraction_version,
+                    leaf_model_version, range_context_identity, private_context_identity,
+                    seed_batch_identity, bias_factor_bits, seed_count, max_betting_actions,
+                    max_exact_runouts) <
+           std::tie(other.public_state, other.traverser, other.actor, other.future_bucket,
+                    other.action_abstraction_version, other.leaf_model_version,
+                    other.range_context_identity, other.private_context_identity,
+                    other.seed_batch_identity, other.bias_factor_bits, other.seed_count,
+                    other.max_betting_actions, other.max_exact_runouts);
+}
+
+MultiwayContinuationCache::MultiwayContinuationCache(
+    std::size_t max_entries,
+    std::uint64_t max_bytes) {
+    const auto byte_capacity = max_bytes / entry_bytes();
+    const auto size_capacity = byte_capacity > std::numeric_limits<std::size_t>::max()
+        ? std::numeric_limits<std::size_t>::max()
+        : static_cast<std::size_t>(byte_capacity);
+    capacity_ = std::min(max_entries, size_capacity);
+    entries_.reserve(capacity_);
+}
+
+bool MultiwayContinuationCache::find(
+    const MultiwayContinuationCacheKey& key,
+    MultiwayRolloutProfileResult* output) const noexcept {
+    if (output == nullptr || !key.valid()) return false;
+    const auto found = std::lower_bound(
+        entries_.begin(), entries_.end(), key,
+        [](const Entry& entry, const MultiwayContinuationCacheKey& candidate) {
+            return entry.key < candidate;
+        });
+    if (found == entries_.end() || found->key < key || key < found->key) return false;
+    *output = found->value;
+    return true;
+}
+
+bool MultiwayContinuationCache::try_insert(
+    const MultiwayContinuationCacheKey& key,
+    const MultiwayRolloutProfileResult& value) noexcept {
+    if (!key.valid() || !valid_cached_result(key, value)) return false;
+    const auto found = std::lower_bound(
+        entries_.begin(), entries_.end(), key,
+        [](const Entry& entry, const MultiwayContinuationCacheKey& candidate) {
+            return entry.key < candidate;
+        });
+    if (found != entries_.end() && !(found->key < key) && !(key < found->key)) return true;
+    if (entries_.size() >= capacity_) return false;
+    entries_.insert(found, Entry{key, value});
+    return true;
+}
+
+void MultiwayContinuationCache::record_repeated_seed_variance(
+    const MultiwayContinuationCacheKey& key,
+    const MultiwayRolloutProfileResult& value,
+    MultiwayContinuationDiagnostics* diagnostics) const noexcept {
+    if (diagnostics == nullptr || !key.valid()) return;
+    for (const auto& entry : entries_) {
+        if (!entry.key.same_context(key) || entry.key.seed_batch_identity == key.seed_batch_identity) continue;
+        ++diagnostics->repeated_seed_pairs;
+        const auto pairs = static_cast<double>(diagnostics->repeated_seed_pairs);
+        for (std::size_t policy = 0; policy < value.values.size(); ++policy) {
+            const auto difference = value.values[policy] - entry.value.values[policy];
+            const auto estimate = 0.5 * difference * difference;
+            diagnostics->repeated_seed_variance[policy] +=
+                (estimate - diagnostics->repeated_seed_variance[policy]) / pairs;
+        }
+    }
+}
+
+std::uint64_t MultiwayContinuationCache::memory_bytes() const noexcept {
+    return static_cast<std::uint64_t>(entries_.capacity()) * entry_bytes();
+}
+
 bool evaluate_multiway_rollout_profiles(const MultiwayLeafEvaluationRequest& request,
                                         const MultiwayRolloutLeafContext& context,
                                         MultiwayRolloutProfileResult* output) noexcept {
-    if (output == nullptr) return false;
+    if (context.diagnostics != nullptr) {
+        ++context.diagnostics->leaf_count;
+        context.diagnostics->policy_mode = selected_policy(request, context);
+        if (context.seeds != nullptr && context.seed_count != 0U) {
+            context.diagnostics->seed = context.seeds[0];
+        }
+    }
+    if (output == nullptr) {
+        record_invalid(context.diagnostics);
+        return false;
+    }
     *output = {};
     if (context.provide_input == nullptr || context.provide_actions == nullptr || context.scratch == nullptr ||
         context.seeds == nullptr || context.seed_count == 0U ||
         context.limits.max_betting_actions == 0U || context.limits.max_exact_runouts == 0U ||
-        !std::isfinite(context.bias_factor) || context.bias_factor <= 0.0) return false;
+        !std::isfinite(context.bias_factor) || context.bias_factor <= 0.0 ||
+        !valid_policy(selected_policy(request, context))) {
+        record_invalid(context.diagnostics);
+        return false;
+    }
+    MultiwayContinuationCacheKey cache_key;
+    const auto cacheable = context.cache != nullptr && make_cache_key(request, context, &cache_key);
+    if (cacheable) {
+        if (context.cache->find(cache_key, output)) {
+            if (context.diagnostics != nullptr) ++context.diagnostics->cache_hits;
+            record_success(context.diagnostics, *output);
+            return true;
+        }
+        if (context.diagnostics != nullptr) ++context.diagnostics->cache_misses;
+    } else if (context.diagnostics != nullptr) {
+        ++context.diagnostics->cache_bypasses;
+    }
     MultiwayRolloutInput input;
-    if (!context.provide_input(request, &input, context.input_context) || !valid_input(input)) return false;
+    if (!context.provide_input(request, &input, context.input_context) || !valid_input(input)) {
+        record_invalid(context.diagnostics);
+        return false;
+    }
     const auto rollout_count = context.seed_count;
+    bool used_exact_runout = false;
+    bool used_seeded_runout = false;
     for (std::size_t policy_index = 0; policy_index < MULTIWAY_FIXED_CONTINUATION_POLICIES.size(); ++policy_index) {
         Value total = 0.0;
         std::uint32_t actions = 0;
@@ -295,8 +521,12 @@ bool evaluate_multiway_rollout_profiles(const MultiwayLeafEvaluationRequest& req
             for (std::size_t card = 0; card < input.board_count; ++card) scratch.board[card] = input.board[card];
             mark_used(scratch, input.board_count);
             const auto value = one_rollout(scratch, input, context, MULTIWAY_FIXED_CONTINUATION_POLICIES[policy_index],
-                                           request.traverser, context.seeds[seed], &actions, &exact_runouts, &capped);
-            if (!std::isfinite(value)) return false;
+                                           request.traverser, context.seeds[seed], &actions, &exact_runouts, &capped,
+                                           &used_exact_runout, &used_seeded_runout);
+            if (!std::isfinite(value)) {
+                record_invalid(context.diagnostics);
+                return false;
+            }
             total += value;
         }
         output->values[policy_index] = total / static_cast<Value>(rollout_count);
@@ -306,6 +536,18 @@ bool evaluate_multiway_rollout_profiles(const MultiwayLeafEvaluationRequest& req
     }
     if (output->status != MultiwayRolloutStatus::CappedFallback) output->status = MultiwayRolloutStatus::Complete;
     output->seed_count = static_cast<std::uint32_t>(context.seed_count);
+    output->runout_mode = used_exact_runout && used_seeded_runout
+        ? MultiwayRolloutRunoutMode::Mixed
+        : (used_exact_runout ? MultiwayRolloutRunoutMode::Exact
+                             : (used_seeded_runout ? MultiwayRolloutRunoutMode::Seeded
+                                                   : MultiwayRolloutRunoutMode::None));
+    if (cacheable) {
+        context.cache->record_repeated_seed_variance(cache_key, *output, context.diagnostics);
+        if (!context.cache->try_insert(cache_key, *output) && context.diagnostics != nullptr) {
+            ++context.diagnostics->cache_admission_rejections;
+        }
+    }
+    record_success(context.diagnostics, *output);
     return true;
 }
 
@@ -314,7 +556,7 @@ Value evaluate_multiway_rollout_leaf(const MultiwayLeafEvaluationRequest& reques
     const auto& leaf = *static_cast<const MultiwayRolloutLeafContext*>(context);
     MultiwayRolloutProfileResult result;
     if (!evaluate_multiway_rollout_profiles(request, leaf, &result)) return kInvalid;
-    const auto policy = request.public_state.value == 0U ? leaf.selected_policy : request.continuation_policy;
+    const auto policy = selected_policy(request, leaf);
     for (std::size_t index = 0; index < MULTIWAY_FIXED_CONTINUATION_POLICIES.size(); ++index) {
         if (policy == MULTIWAY_FIXED_CONTINUATION_POLICIES[index]) return result.values[index];
     }
