@@ -91,6 +91,7 @@ MultiwayModelIdentity make_multiway_model_identity(const MultiwayBlueprintConfig
 
     auto continuation_hash = kFnvOffset;
     append_u64(continuation_hash, config.continuation_policy_version);
+    append_u64(continuation_hash, static_cast<std::uint64_t>(config.continuation_policy));
     identity.continuation_policy_hash = finish(continuation_hash);
 
     auto runtime_search_hash = kFnvOffset;

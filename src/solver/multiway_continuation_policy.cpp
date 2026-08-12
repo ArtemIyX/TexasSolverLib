@@ -24,10 +24,13 @@ bool is_target(
 }
 
 bool valid_kind(MultiwayContinuationPolicyKind kind) noexcept {
-    return kind == MultiwayContinuationPolicyKind::Blueprint ||
-           kind == MultiwayContinuationPolicyKind::FoldBiased ||
-           kind == MultiwayContinuationPolicyKind::CallBiased ||
-           kind == MultiwayContinuationPolicyKind::RaiseBiased;
+    return is_valid_multiway_continuation_policy(kind);
+}
+
+bool valid_action(MultiwayAction action) noexcept {
+    return action == MultiwayAction::Fold || action == MultiwayAction::Check ||
+           action == MultiwayAction::Call || action == MultiwayAction::Bet ||
+           action == MultiwayAction::Raise || action == MultiwayAction::AllIn;
 }
 
 }  // namespace
@@ -46,7 +49,7 @@ bool MultiwayFixedContinuationPolicy::apply(
     Probability total = 0.0;
     for (std::size_t action = 0; action < action_count; ++action) {
         const auto base = blueprint[action];
-        if (!std::isfinite(base) || base < 0.0 || base > 1.0) return false;
+        if (!valid_action(actions[action].action) || !std::isfinite(base) || base < 0.0 || base > 1.0) return false;
         const auto weight = is_target(kind, actions[action].action) ? bias_factor : 1.0;
         output[action] = base * weight;
         total += output[action];
@@ -78,7 +81,7 @@ bool MultiwayFixedContinuationPolicy::evaluate_leaf(
     Probability total = 0.0;
     Value weighted_value = 0.0;
     for (std::size_t action = 0; action < action_count; ++action) {
-        if (!std::isfinite(blueprint[action]) || blueprint[action] < 0.0 ||
+        if (!valid_action(actions[action].action) || !std::isfinite(blueprint[action]) || blueprint[action] < 0.0 ||
             blueprint[action] > 1.0 || !std::isfinite(action_values[action])) {
             return false;
         }
@@ -102,8 +105,9 @@ Value evaluate_multiway_fixed_continuation_leaf(
     MultiwayContinuationLeafData data;
     if (!leaf.provide(request, &data, leaf.provider_context)) return invalid;
     Value value = invalid;
+    const auto policy = request.public_state.value == 0U ? leaf.policy : request.continuation_policy;
     if (!MultiwayFixedContinuationPolicy::evaluate_leaf(
-            leaf.policy,
+            policy,
             data.actions,
             data.blueprint,
             data.action_values,

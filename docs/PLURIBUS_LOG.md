@@ -4,6 +4,45 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P6.1-P6.3 - Continuation policy transformation, selection, and rollout leaf integration
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Formalized validated scalar continuation-row transforms for fold, check/call, and bet/raise/all-in classes.
+- Added a fixed continuation selector keyed only by public state, acting seat, street, future bucket, and model versions.
+- Passed selected policy, opaque sampled deal, terminal adapter, reaches, buckets, and model provenance through typed traversal leaf requests.
+- Recorded the configured fixed continuation mode in blueprint model identity while preserving direct leaf-callback compatibility.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_blueprint_config.hpp`
+- `include/solver/multiway_continuation_policy.hpp`
+- `include/solver/multiway_continuation_policy_kind.hpp`
+- `include/solver/multiway_continuation_selector.hpp`
+- `include/solver/multiway_leaf_evaluator.hpp`
+- `include/solver/multiway_rollout_leaf.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_blueprint_config.cpp`
+- `src/solver/multiway_continuation_policy.cpp`
+- `src/solver/multiway_continuation_selector.cpp`
+- `src/solver/multiway_model_identity.cpp`
+- `src/solver/multiway_rollout_leaf.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_continuation_policy.cpp`
+- `tests/test_multiway_continuation_selector.cpp`
+- `tests/test_multiway_model_identity.cpp`
+- `tests/test_multiway_recursive_traversal.cpp`
+
+### Validation
+
+- Tests were added but not run because this request did not ask for command execution.
+
+### Limitations
+
+- Deadline and clean-batch fallback integration remains P7 runtime-budget work.
+
 ## P5.3-P5.6 Test Coverage - Local expansion and future bucket artifacts
 
 **Status:** Complete

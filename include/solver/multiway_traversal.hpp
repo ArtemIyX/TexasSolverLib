@@ -15,6 +15,7 @@
 namespace core {
 
 class MultiwayBlueprintPolicyProvider;
+class MultiwayFixedContinuationSelector;
 
 inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
 inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
@@ -49,7 +50,8 @@ public:
         const MultiwayLeafEvaluator* leaf_evaluator = nullptr,
         std::uint32_t max_decision_depth = 1U,
         std::uint32_t max_public_chance_depth = 0U,
-        const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr);
+        const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr,
+        const MultiwayFixedContinuationSelector* continuation_selector = nullptr);
 
     [[nodiscard]] bool run(
         PlayerId traverser,
@@ -84,7 +86,7 @@ private:
 
     [[nodiscard]] Value evaluate_leaf(
         const MultiwayPublicStateDescriptor& state,
-        PlayerId traverser) const;
+        const TraversalContext& context) const;
 
     MultiwaySolverCoordinator* coordinator_ = nullptr;
     const MultiwayRootSnapshot* root_ = nullptr;
@@ -94,6 +96,7 @@ private:
     std::uint32_t max_decision_depth_ = 1U;
     std::uint32_t max_public_chance_depth_ = 0U;
     const MultiwayBlueprintPolicyProvider* blueprint_policy_ = nullptr;
+    const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
     MultiwayTerminalAdapter terminal_;
 };
 

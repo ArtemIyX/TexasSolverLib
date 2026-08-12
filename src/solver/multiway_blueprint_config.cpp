@@ -22,7 +22,8 @@ void MultiwayBlueprintConfig::validate() const {
         resolver_schema_version == 0U || code_schema_version == 0U ||
         range_semantics_version == 0U || future_bucket_model_version == 0U ||
         off_tree_policy_version == 0U || continuation_policy_version == 0U ||
-        runtime_search_schema_version == 0U) {
+        runtime_search_schema_version == 0U ||
+        !is_valid_multiway_continuation_policy(continuation_policy)) {
         throw std::invalid_argument("multiway blueprint requires non-zero model versions");
     }
 }

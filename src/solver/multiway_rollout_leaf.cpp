@@ -12,10 +12,7 @@ namespace {
 constexpr Value kInvalid = std::numeric_limits<Value>::quiet_NaN();
 
 bool valid_policy(MultiwayContinuationPolicyKind policy) noexcept {
-    return policy == MultiwayContinuationPolicyKind::Blueprint ||
-           policy == MultiwayContinuationPolicyKind::FoldBiased ||
-           policy == MultiwayContinuationPolicyKind::CallBiased ||
-           policy == MultiwayContinuationPolicyKind::RaiseBiased;
+    return is_valid_multiway_continuation_policy(policy);
 }
 
 std::uint8_t compact_to_hunl_card(std::uint8_t card) noexcept {
@@ -317,8 +314,9 @@ Value evaluate_multiway_rollout_leaf(const MultiwayLeafEvaluationRequest& reques
     const auto& leaf = *static_cast<const MultiwayRolloutLeafContext*>(context);
     MultiwayRolloutProfileResult result;
     if (!evaluate_multiway_rollout_profiles(request, leaf, &result)) return kInvalid;
+    const auto policy = request.public_state.value == 0U ? leaf.selected_policy : request.continuation_policy;
     for (std::size_t index = 0; index < MULTIWAY_FIXED_CONTINUATION_POLICIES.size(); ++index) {
-        if (leaf.selected_policy == MULTIWAY_FIXED_CONTINUATION_POLICIES[index]) return result.values[index];
+        if (policy == MULTIWAY_FIXED_CONTINUATION_POLICIES[index]) return result.values[index];
     }
     return kInvalid;
 }

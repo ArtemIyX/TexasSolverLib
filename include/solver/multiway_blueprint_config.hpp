@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/multiway_rake.hpp"
+#include "solver/multiway_continuation_policy_kind.hpp"
 
 #include <cstdint>
 
@@ -34,6 +35,8 @@ struct MultiwayBlueprintConfig {
     std::uint64_t future_bucket_model_version = 1;
     std::uint64_t off_tree_policy_version = 1;
     std::uint64_t continuation_policy_version = 1;
+    MultiwayContinuationPolicyKind continuation_policy =
+        MultiwayContinuationPolicyKind::Blueprint;
     std::uint64_t runtime_search_schema_version = 1;
 
     void validate() const;

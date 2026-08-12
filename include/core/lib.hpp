@@ -20,6 +20,7 @@
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_continuation_policy.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "solver/multiway_rollout_leaf.hpp"
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_blueprint_trainer.hpp"
@@ -135,6 +136,8 @@ using ::core::MultiwayLeafEvaluationRequest;
 using ::core::MultiwayLeafEvaluator;
 using ::core::MultiwayContinuationPolicyKind;
 using ::core::MultiwayFixedContinuationPolicy;
+using ::core::MultiwayFixedContinuationSelector;
+using ::core::MultiwayContinuationSelectionKey;
 using ::core::MultiwayContinuationLeafContext;
 using ::core::MultiwayContinuationLeafData;
 using ::core::make_multiway_fixed_continuation_leaf_evaluator;

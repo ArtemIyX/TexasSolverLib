@@ -89,6 +89,8 @@ struct MultiwayRolloutLeafContext {
     std::size_t seed_count = 0;
     MultiwayRolloutLimits limits{};
     Probability bias_factor = 5.0;
+    // Used by direct callers without traversal provenance. Traversal supplies
+    // the information-set-selected mode in MultiwayLeafEvaluationRequest.
     MultiwayContinuationPolicyKind selected_policy = MultiwayContinuationPolicyKind::Blueprint;
     // One scratch instance per concurrent caller. It is overwritten during
     // evaluation and must outlive the synchronous evaluator invocation.
@@ -103,8 +105,8 @@ struct MultiwayRolloutLeafContext {
     MultiwayRolloutProfileResult* output) noexcept;
 
 // Adapter retaining the existing MultiwayLeafEvaluator callback boundary.
-// It returns NaN for invalid contexts and otherwise selects `policy` from the
-// common-random-number profile result.
+// It returns NaN for invalid contexts and otherwise selects the request's
+// information-set-consistent policy from the common-random-number profile.
 [[nodiscard]] Value evaluate_multiway_rollout_leaf(
     const MultiwayLeafEvaluationRequest& request,
     const void* context) noexcept;

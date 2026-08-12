@@ -42,6 +42,10 @@ TEST_CASE(multiway_blueprint_config_rejects_invalid_rules_and_versions) {
     config = {};
     config.code_schema_version = 0;
     EXPECT_THROW(config.validate(), std::invalid_argument);
+
+    config = {};
+    config.continuation_policy = static_cast<core::MultiwayContinuationPolicyKind>(255U);
+    EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_model_identity_changes_for_every_semantic_configuration_input) {
@@ -78,5 +82,8 @@ TEST_CASE(multiway_model_identity_changes_for_every_semantic_configuration_input
     expect_changed([](auto& config) { ++config.future_bucket_model_version; });
     expect_changed([](auto& config) { ++config.off_tree_policy_version; });
     expect_changed([](auto& config) { ++config.continuation_policy_version; });
+    expect_changed([](auto& config) {
+        config.continuation_policy = core::MultiwayContinuationPolicyKind::RaiseBiased;
+    });
     expect_changed([](auto& config) { ++config.runtime_search_schema_version; });
 }

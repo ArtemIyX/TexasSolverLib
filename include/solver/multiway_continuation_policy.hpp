@@ -1,5 +1,6 @@
 #pragma once
 
+#include "solver/multiway_continuation_policy_kind.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_solver.hpp"
 
@@ -8,21 +9,6 @@
 #include <cstdint>
 
 namespace core {
-
-enum class MultiwayContinuationPolicyKind : std::uint8_t {
-    Blueprint,
-    FoldBiased,
-    CallBiased,
-    RaiseBiased,
-};
-
-inline constexpr std::array<MultiwayContinuationPolicyKind, 4>
-    MULTIWAY_FIXED_CONTINUATION_POLICIES = {
-        MultiwayContinuationPolicyKind::Blueprint,
-        MultiwayContinuationPolicyKind::FoldBiased,
-        MultiwayContinuationPolicyKind::CallBiased,
-        MultiwayContinuationPolicyKind::RaiseBiased,
-    };
 
 // Allocation-free fixed-policy kernel. Input and output may alias. The base
 // probabilities are the anonymous blueprint continuation for this infoset.
@@ -61,6 +47,8 @@ using MultiwayContinuationLeafProviderFn = bool (*)(
     const void* context) noexcept;
 
 struct MultiwayContinuationLeafContext {
+    // Used by direct callers without traversal provenance. Traversal supplies
+    // the information-set-selected mode in MultiwayLeafEvaluationRequest.
     MultiwayContinuationPolicyKind policy = MultiwayContinuationPolicyKind::Blueprint;
     MultiwayContinuationLeafProviderFn provide = nullptr;
     const void* provider_context = nullptr;

@@ -89,6 +89,25 @@ TEST_CASE(multiway_continuation_policy_groups_check_call_and_aggressive_actions)
     EXPECT_NEAR(output[4], 5.0 / 17.0, 1e-12);
 }
 
+TEST_CASE(multiway_continuation_policy_leaves_an_absent_class_unchanged_and_rejects_zero_rows) {
+    const std::array<core::MultiwayActionDescriptor, 2> actions = {{
+        {core::MultiwayAction::Check, 0U, 0, 17U},
+        {core::MultiwayAction::Call, 1U, 100, 17U},
+    }};
+    const std::array<core::Probability, 2> blueprint = {0.25, 0.75};
+    const std::array<core::Probability, 2> zero = {0.0, 0.0};
+    std::array<core::Probability, 2> output{};
+
+    EXPECT_TRUE(core::MultiwayFixedContinuationPolicy::apply(
+        core::MultiwayContinuationPolicyKind::RaiseBiased,
+        actions.data(), blueprint.data(), actions.size(), output.data()));
+    EXPECT_NEAR(output[0], blueprint[0], 1e-12);
+    EXPECT_NEAR(output[1], blueprint[1], 1e-12);
+    EXPECT_TRUE(!core::MultiwayFixedContinuationPolicy::apply(
+        core::MultiwayContinuationPolicyKind::Blueprint,
+        actions.data(), zero.data(), zero.size(), output.data()));
+}
+
 TEST_CASE(multiway_continuation_policy_normalizes_in_place_and_evaluates_the_same_expectation) {
     std::array<core::Probability, 3> aliased = kBlueprint;
     EXPECT_TRUE(core::MultiwayFixedContinuationPolicy::apply(
@@ -109,6 +128,8 @@ TEST_CASE(multiway_continuation_policy_rejects_invalid_inputs_without_throwing) 
     std::array<core::Probability, 3> output{};
     auto invalid_blueprint = kBlueprint;
     invalid_blueprint[1] = -0.1;
+    auto invalid_actions = kActions;
+    invalid_actions[1].action = static_cast<core::MultiwayAction>(255U);
     const auto invalid_kind = static_cast<core::MultiwayContinuationPolicyKind>(255U);
     const auto nan = std::numeric_limits<core::Probability>::quiet_NaN();
     const std::array<core::Value, 3> values = {1.0, 2.0, 3.0};
@@ -122,6 +143,9 @@ TEST_CASE(multiway_continuation_policy_rejects_invalid_inputs_without_throwing) 
     EXPECT_TRUE(!core::MultiwayFixedContinuationPolicy::apply(
         core::MultiwayContinuationPolicyKind::Blueprint,
         kActions.data(), invalid_blueprint.data(), invalid_blueprint.size(), output.data()));
+    EXPECT_TRUE(!core::MultiwayFixedContinuationPolicy::apply(
+        core::MultiwayContinuationPolicyKind::Blueprint,
+        invalid_actions.data(), kBlueprint.data(), invalid_actions.size(), output.data()));
     EXPECT_TRUE(!core::MultiwayFixedContinuationPolicy::apply(
         core::MultiwayContinuationPolicyKind::Blueprint,
         kActions.data(), kBlueprint.data(), 0U, output.data()));

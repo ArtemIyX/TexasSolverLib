@@ -1,5 +1,6 @@
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "util/thread_join_guard.hpp"
 #include "util/profiling.hpp"
 
@@ -56,7 +57,8 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     const MultiwayLeafEvaluator* leaf_evaluator,
     std::uint32_t max_decision_depth,
     std::uint32_t max_public_chance_depth,
-    const MultiwayBlueprintPolicyProvider* blueprint_policy)
+    const MultiwayBlueprintPolicyProvider* blueprint_policy,
+    const MultiwayFixedContinuationSelector* continuation_selector)
     : coordinator_(&coordinator),
       root_(&root),
       action_abstraction_(&action_abstraction),
@@ -65,6 +67,7 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
       max_decision_depth_(max_decision_depth),
       max_public_chance_depth_(max_public_chance_depth),
       blueprint_policy_(blueprint_policy),
+      continuation_selector_(continuation_selector),
       terminal_(coordinator) {
     root.validate();
     if (root.public_state.betting.street < Street::Flop ||
@@ -204,11 +207,39 @@ bool append_infoset_update_noalloc(
 
 Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
     const MultiwayPublicStateDescriptor& state,
-    PlayerId traverser) const {
+    const TraversalContext& context) const {
     if (leaf_evaluator_ == nullptr || !leaf_evaluator_->valid()) {
         throw std::logic_error("multiway recursive traversal requires a leaf evaluator at its boundary");
     }
-    const auto value = (*leaf_evaluator_)({&state.betting, &state.board, traverser});
+    const auto actor = state.betting.current_player >= 0 ? state.betting.current_player : context.traverser;
+    const auto& table = buckets_->table_hunl(state.betting.street, state.board);
+    const auto bucket = table.lookup_hunl(context.terminal->sampled_hole(*context.deal, actor));
+    MultiwayContinuationPolicyKind policy = MultiwayContinuationPolicyKind::Blueprint;
+    if (continuation_selector_ != nullptr) {
+        policy = continuation_selector_->select({
+            state.id,
+            actor,
+            state.betting.street,
+            bucket,
+            root_->action_abstraction_version,
+            root_->leaf_model_version,
+        });
+    }
+    const auto value = (*leaf_evaluator_)({
+        &state.betting,
+        &state.board,
+        context.traverser,
+        state.id,
+        actor,
+        bucket,
+        root_->action_abstraction_version,
+        root_->leaf_model_version,
+        policy,
+        context.deal,
+        context.terminal,
+        context.player_reaches.data(),
+        context.player_count,
+    });
     if (!std::isfinite(value)) {
         throw std::logic_error("multiway leaf evaluator returned a non-finite value");
     }
@@ -280,7 +311,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             public_chance_depth < max_public_chance_depth_) {
             return traverse_public_chance(child, next_depth, public_chance_depth, context);
         }
-        return evaluate_leaf(child, context.traverser);
+        return evaluate_leaf(child, context);
     };
 
     if (actor != context.traverser) {
@@ -377,7 +408,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
             value = traverse_decision(
                 transition_child, decision_depth, next_chance_depth, context);
         } else {
-            value = evaluate_leaf(transition_child, context.traverser);
+            value = evaluate_leaf(transition_child, context);
         }
     }
 

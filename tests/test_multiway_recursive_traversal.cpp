@@ -1,6 +1,7 @@
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_blueprint_config.hpp"
 #include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_traversal.hpp"
@@ -107,6 +108,8 @@ struct LeafProbe {
     std::size_t calls = 0U;
     std::vector<core::PlayerId> actors;
     std::vector<int> current_bets;
+    std::vector<core::MultiwayContinuationPolicyKind> policies;
+    std::size_t requests_with_private_context = 0U;
 };
 
 core::Value probe_leaf(
@@ -116,6 +119,13 @@ core::Value probe_leaf(
     ++probe.calls;
     probe.actors.push_back(request.betting->current_player);
     probe.current_bets.push_back(request.betting->current_bet);
+    probe.policies.push_back(request.continuation_policy);
+    if (request.private_deal != nullptr && request.terminal_adapter != nullptr &&
+        request.player_reaches != nullptr && request.player_count > 0U &&
+        request.public_state.value != 0U && request.continuation_actor >= 0 &&
+        request.action_abstraction_version != 0U && request.leaf_model_version != 0U) {
+        ++probe.requests_with_private_context;
+    }
     const auto traverser = static_cast<std::size_t>(request.traverser);
     return static_cast<core::Value>(request.betting->contributions[traverser] -
                                     request.betting->current_bet);
@@ -231,6 +241,23 @@ TEST_CASE(multiway_recursive_traversal_depth_one_cuts_off_at_typed_leaves) {
         fixture.coordinator.diagnostics().public_states_admitted,
         1U + fixture.request.root().public_state.legal_actions.size());
     EXPECT_EQ(stream.size(), fixture.request.root().public_state.legal_actions.size());
+}
+
+TEST_CASE(multiway_recursive_traversal_selects_a_public_information_set_continuation_policy) {
+    TraversalFixture fixture(1U);
+    const core::MultiwayFixedContinuationSelector selector(
+        core::MultiwayContinuationPolicyKind::CallBiased);
+    fixture.traversal = core::MultiwayRootExternalSamplingTraversal(
+        fixture.coordinator, fixture.request.root(), fixture.abstraction, fixture.buckets,
+        &fixture.evaluator, 1U, 0U, nullptr, &selector);
+    core::MultiwayWorkerDeltaStream stream(0U, 128U);
+
+    EXPECT_TRUE(fixture.traversal.run(0, 14U, 0x55U, stream));
+    EXPECT_EQ(fixture.probe.policies.size(), fixture.request.root().public_state.legal_actions.size());
+    EXPECT_EQ(fixture.probe.requests_with_private_context, fixture.probe.policies.size());
+    for (const auto policy : fixture.probe.policies) {
+        EXPECT_EQ(policy, core::MultiwayContinuationPolicyKind::CallBiased);
+    }
 }
 
 TEST_CASE(multiway_recursive_traversal_lazily_admits_sampled_opponent_children_and_rows) {
