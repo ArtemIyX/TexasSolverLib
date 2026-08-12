@@ -1,4 +1,5 @@
 #include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "test_harness.hpp"
 
