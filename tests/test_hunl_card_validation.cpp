@@ -153,7 +153,7 @@ TEST_CASE(hunl_range_validation_rejects_invalid_cards_and_nonfinite_or_zero_mass
         texas::card_to_int(2, 0), texas::card_to_int(3, 1)};
 
     auto invalid_card = valid_range_config();
-    invalid_card.initial_ranges[0] = single_hand_range(0, valid_hole[1], 1.0);
+    invalid_card.initial_ranges[0] = single_hand_range(52U, valid_hole[1], 1.0);
     EXPECT_THROW(invalid_card.validate(), std::invalid_argument);
 
     auto board_blocked = valid_range_config();
@@ -198,7 +198,7 @@ TEST_CASE(hunl_range_validation_rejects_invalid_cards_and_nonfinite_or_zero_mass
 }
 
 TEST_CASE(hunl_card_validation_protects_combo_masks_and_mutable_state_chance_paths) {
-    EXPECT_THROW(texas::enumerate_combos({0}), std::invalid_argument);
+    EXPECT_THROW(texas::enumerate_combos({52U}), std::invalid_argument);
     EXPECT_THROW(texas::enumerate_combos({texas::card_to_int(2, 0), texas::card_to_int(2, 0)}),
                  std::invalid_argument);
 

@@ -273,7 +273,7 @@ TEST_CASE(multiway_phase5_p56_artifact_uses_configured_flop_count) {
 
 TEST_CASE(multiway_phase5_p56_artifact_lookup_is_in_range) {
     const auto artifact = texas::build_multiway_future_bucket_artifact(future_identity(), flop_boards(), small_profile());
-    EXPECT_TRUE(artifact.lookup(texas::Street::Flop, {8U, 13U, 18U}, {9U, 10U}) < 2U);
+    EXPECT_TRUE(artifact.lookup(texas::Street::Flop, {0U, 5U, 10U}, {1U, 2U}) < 2U);
 }
 
 TEST_CASE(multiway_phase5_p56_artifact_round_trips_profile) {

@@ -255,7 +255,7 @@ Value best_response_value(const StrategyMap& strategy, std::size_t br_player) {
 
 template <class G>
 Value exploitability(const StrategyMap& strategy) {
-    return mean_unilateral_improvement(G::initial(), strategy);
+    return texas::solver::dcfr::detail::mean_unilateral_improvement(G::initial(), strategy);
 }
 
 template <class G>

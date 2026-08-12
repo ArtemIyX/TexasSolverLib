@@ -42,7 +42,7 @@ texas::MultiwayFixedTerminalInput fixed_input(const texas::MultiwayTerminalInput
 struct ResolverFixture {
     texas::MultiwayModelIdentity identity = texas::make_multiway_model_identity(texas::MultiwayBlueprintConfig{});
     texas::MultiwayBucketRegistry buckets = texas::build_multiway_baseline_bucket_registry(
-        identity, {{texas::Street::Flop, {0U, 5U, 9U}}});
+        identity, {{texas::Street::Flop, {8U, 13U, 17U}}});
     texas::MultiwayPublicStateDescriptor root = make_root();
 
     static texas::MultiwayPublicStateDescriptor make_root() {

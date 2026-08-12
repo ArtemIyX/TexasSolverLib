@@ -140,7 +140,7 @@ TEST_CASE(hunl_apply_rejects_twenty_invalid_or_blocked_chance_actions) {
                             .apply(texas::ACTION_CHECK);
     EXPECT_EQ(chance.cur_player, -1);
     const std::array<int, 20> invalid = {
-        -1, 0, 1, 2, 3, 4, 5, 6, 7,
+        -1, 52, 53, 54, 55, 56, 57, 58, 59,
         texas::card_to_int(14, 0),
         texas::card_to_int(7, 3),
         texas::card_to_int(2, 2),
@@ -202,7 +202,7 @@ TEST_CASE(hunl_infoset_validator_rejects_more_than_twenty_malformed_fixed_encodi
         encoding.history_codes.back() = code;
         invalid.push_back(encoding);
     }
-    for (std::uint8_t card = 0; card < 5; ++card) {
+    for (std::uint8_t card = 52; card < 57; ++card) {
         auto encoding = base;
         encoding.hole[0] = card;
         invalid.push_back(encoding);

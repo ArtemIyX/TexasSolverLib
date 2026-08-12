@@ -24,7 +24,7 @@ struct ResolverBaselineFixture {
         : identity(texas::make_multiway_model_identity(texas::MultiwayBlueprintConfig{})),
           root(make_root()),
           buckets(texas::build_multiway_baseline_bucket_registry(
-              identity, {{texas::Street::Flop, {0U, 5U, 9U}}})) {}
+              identity, {{texas::Street::Flop, {8U, 13U, 17U}}})) {}
 
     static texas::MultiwayPublicStateDescriptor make_root() {
         texas::MultiwayGameConfig config;

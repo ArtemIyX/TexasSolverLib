@@ -4,6 +4,38 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Compact card test-fixture corrections
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Updated invalid-card assertions to use values outside the compact `[0, 51]` encoding.
+- Aligned multiway resolver and artifact fixture boards with their lookup and root boards.
+- Qualified DCFR exploitability helpers after the namespace migration.
+
+### Files
+
+- `include/solver/solver.hpp`
+- `tests/test_hunl_card_validation.cpp`
+- `tests/test_hunl_state.cpp`
+- `tests/test_preflop_equity_validation.cpp`
+- `tests/test_solver_exploitability_contract.cpp`
+- `tests/test_multiway_baseline.cpp`
+- `tests/test_multiway_future_bucket.cpp`
+- `tests/test_multiway_p8_differential.cpp`
+- `tests/test_multiway_phase5_p53_p56.cpp`
+- `tests/test_multiway_range_belief.cpp`
+- `tests/test_multiway_resolver.cpp`
+
+### Validation
+
+- Static diff, fixture identity, and whitespace checks completed.
+- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Runtime validation remains pending user authorization.
+
 ## Namespace migration qualification fixes
 
 **Status:** Complete

@@ -46,8 +46,8 @@ TEST_CASE(multiway_future_bucket_artifact_producer_is_deterministic_and_round_tr
 
     EXPECT_EQ(bytes, texas::serialize_multiway_future_bucket_artifact(second));
     EXPECT_EQ(restored.profile().feature_version, first.profile().feature_version);
-    EXPECT_EQ(restored.lookup(texas::Street::Flop, {8U, 13U, 18U}, {9U, 10U}),
-              first.lookup(texas::Street::Flop, {8U, 13U, 18U}, {9U, 10U}));
+    EXPECT_EQ(restored.lookup(texas::Street::Flop, {0U, 5U, 10U}, {1U, 2U}),
+              first.lookup(texas::Street::Flop, {0U, 5U, 10U}, {1U, 2U}));
 }
 
 TEST_CASE(multiway_future_bucket_artifact_rejects_invalid_bucket_metadata) {

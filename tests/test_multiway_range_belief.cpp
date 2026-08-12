@@ -113,7 +113,7 @@ struct ObservationFixture {
 }  // namespace
 
 TEST_CASE(multiway_range_beliefs_uniform_initialization_tracks_masks_and_metadata) {
-    const std::array<std::uint8_t, 3> flop = {8U, 33U, 58U};
+    const std::array<std::uint8_t, 3> flop = {8U, 33U, 48U};
     const std::array<texas::MultiwayRangeBeliefSeatInput, 2> seats = {{
         {},
         {nullptr, 0U, flop.data(), flop.size()},
@@ -297,7 +297,7 @@ TEST_CASE(multiway_range_beliefs_observation_zero_mass_and_validation_are_transa
 TEST_CASE(multiway_range_beliefs_observation_prunes_table_blockers_and_updates_repeatedly) {
     ObservationFixture fixture;
     const std::array<texas::MultiwayRangeBeliefSuppliedEntry, 2> entries = {{
-        {{8U, 11U}, 0.4},
+        {{0U, 11U}, 0.4},
         {{11U, 12U}, 0.6},
     }};
     const std::array<texas::MultiwayRangeBeliefSeatInput, 2> seats = {{
@@ -312,8 +312,8 @@ TEST_CASE(multiway_range_beliefs_observation_prunes_table_blockers_and_updates_r
         beliefs.apply_observation(0U, first_observation),
         texas::MultiwayRangeBeliefUpdateResult::Applied);
     auto first = beliefs.view(0U);
-    EXPECT_TRUE(!first.legal(combo_id(8U, 11U)));
-    EXPECT_NEAR(first.weight(combo_id(8U, 11U)), 0.0, 0.0);
+    EXPECT_TRUE(!first.legal(combo_id(0U, 11U)));
+    EXPECT_NEAR(first.weight(combo_id(0U, 11U)), 0.0, 0.0);
     EXPECT_NEAR(first.weight(combo_id(11U, 12U)), 1.0, 1e-15);
     EXPECT_EQ(first.metadata().observation.source, texas::MultiwayRangeBeliefSource::Translated);
     EXPECT_EQ(first.metadata().observation.source_revision, 5U);
@@ -413,7 +413,7 @@ TEST_CASE(multiway_range_beliefs_reject_invalid_supplied_rows_transactionally) {
     supplied[1] = {blocked_entries.data(), blocked_entries.size(), dead.data(), dead.size()};
     EXPECT_THROW(beliefs.reset_supplied(supplied.size(), supplied.data()), std::invalid_argument);
 
-    const std::array<texas::MultiwayRangeBeliefSuppliedEntry, 1> invalid_hole_entries = {{{{0U, 9U}, 1.0}}};
+    const std::array<texas::MultiwayRangeBeliefSuppliedEntry, 1> invalid_hole_entries = {{{{52U, 9U}, 1.0}}};
     supplied[1] = {invalid_hole_entries.data(), invalid_hole_entries.size(), nullptr, 0U};
     EXPECT_THROW(beliefs.reset_supplied(supplied.size(), supplied.data()), std::invalid_argument);
     EXPECT_EQ(beliefs.revision(), prior_revision);

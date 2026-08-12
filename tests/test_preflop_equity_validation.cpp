@@ -51,7 +51,7 @@ TEST_CASE(preflop_class_decode_rejects_max_class_id) {
 }
 
 TEST_CASE(preflop_hole_to_class_rejects_low_invalid_card) {
-    EXPECT_THROW(texas::hole_to_class({0U, HERO[1]}), std::invalid_argument);
+    EXPECT_THROW(texas::hole_to_class({52U, HERO[1]}), std::invalid_argument);
 }
 
 TEST_CASE(preflop_hole_to_class_rejects_high_invalid_card) {
@@ -90,7 +90,7 @@ TEST_CASE(preflop_exact_equity_rejects_invalid_hero_first_card) {
 
 TEST_CASE(preflop_exact_equity_rejects_invalid_hero_second_card) {
     EXPECT_THROW(
-        texas::enumerate_pair_equity({HERO[0], 7U}, VILLAIN),
+        texas::enumerate_pair_equity({HERO[0], 52U}, VILLAIN),
         std::invalid_argument);
 }
 
