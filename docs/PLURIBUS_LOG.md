@@ -4,6 +4,34 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P7.1-P7.4 - Dedicated contract test expansion
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added 139 independently registered tests in four dedicated P7 contract suites.
+- Covered numeric profile checkpoints, allocation-free partition and delta-stream boundaries, staged memory admission, and versioned deterministic run identity.
+- Kept all fixtures small, deterministic, and separately selectable by test name.
+
+### Files
+
+- `tests/test_multiway_p7_profile_contracts.cpp`
+- `tests/test_multiway_p7_hot_path_contracts.cpp`
+- `tests/test_multiway_p7_memory_contracts.cpp`
+- `tests/test_multiway_p7_determinism_contracts.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Counted 139 unique `TEST_CASE` registrations across the four files.
+- Confirmed the top-level files match the existing CMake `tests/test_*.cpp` discovery rule.
+- Completed static code review with no actionable findings.
+- Build and tests were not run because repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Runtime compilation and execution remain unverified until explicitly requested.
+
 ## P7.4 - Validate deterministic worker scheduling and merge
 
 **Status:** Complete
