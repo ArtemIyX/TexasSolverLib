@@ -22,7 +22,7 @@ core::MultiwayTerminalInput terminal_input() {
     core::MultiwayTerminalInput input;
     input.contributions = {101, 300, 300};
     input.folded = {false, false, false};
-    input.strengths = {3U, 9U, 9U};
+    input.strengths = {{3U}, {9U}, {9U}};
     input.odd_chip_first_seat = 2;
     return input;
 }
