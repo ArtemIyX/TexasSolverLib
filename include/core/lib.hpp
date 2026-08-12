@@ -36,6 +36,7 @@
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_resolver.hpp"
+#include "solver/multiway_resolver_evaluation.hpp"
 #include "solver/multiway_baseline.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_solver.hpp"
@@ -217,6 +218,11 @@ using ::core::make_multiway_public_decision_log;
 using ::core::MultiwayBlueprintConfig;
 using ::core::MultiwayModelIdentity;
 using ::core::MultiwayResolver;
+using ::core::MultiwayResolverEvaluationAdapter;
+using ::core::MultiwayResolverEvaluationAdapterConfig;
+using ::core::MultiwayResolverEvaluationCandidate;
+using ::core::MultiwayResolverEvaluationCandidateKind;
+using ::core::MultiwayResolverEvaluationDecision;
 using ::core::MultiwayBaselineFixtureKind;
 using ::core::MultiwayBaselineMeasurements;
 using ::core::MultiwayResolverBaselineFixture;

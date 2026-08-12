@@ -4,6 +4,32 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P8.1-P8.4 - Differential suites and resolver evaluation adapter
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added chip-exact fixed-versus-dynamic terminal settlement coverage, canonical range duplicate coverage, and artifact identity/hash round-trip coverage.
+- Added request-local resolver evaluation candidates for static legal, blueprint-only, search-disabled, and search-enabled policies.
+- Each adapter decision derives a deterministic seed and returns resolver policy, status, and provenance to the host-owned evaluation callback.
+
+### Files
+
+- `include/core/lib.hpp`
+- `include/solver/multiway_resolver_evaluation.hpp`
+- `src/solver/multiway_resolver_evaluation.cpp`
+- `tests/test_multiway_p8_differential.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Not run. Repository instructions prohibit build and test commands unless explicitly requested.
+- Static code review completed with no remaining actionable findings.
+
+### Limitations
+
+- Cross-play, NashConv, and off-tree orchestration remain callback-owned by the existing evaluation harness.
+
 ## P7.5 Follow-up - Guard SIMD row dispatch inputs
 
 **Status:** Complete
