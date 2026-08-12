@@ -3,6 +3,7 @@
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_baseline.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
+#include "solver/multiway_legacy_resolver.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
@@ -201,7 +202,8 @@ bool valid_inference_mode(MultiwayInferenceMode mode) noexcept {
 }
 
 bool valid_search_mode(MultiwayResolverSearchMode mode) noexcept {
-    return mode == MultiwayResolverSearchMode::LegacyStatic ||
+    return mode == MultiwayResolverSearchMode::DefaultSearch ||
+        mode == MultiwayResolverSearchMode::LegacyStatic ||
         mode == MultiwayResolverSearchMode::SearchShadow ||
         mode == MultiwayResolverSearchMode::SearchActive ||
         mode == MultiwayResolverSearchMode::ForcedFallback;
@@ -375,6 +377,23 @@ bool make_search_root(
     root->action_abstraction_version = request.blueprint_identity.action_abstraction_hash;
     root->leaf_model_version = request.blueprint_identity.terminal_model_hash;
     return true;
+}
+
+bool has_release_search_profile(const MultiwayResolverConfig& config) noexcept {
+    return config.buckets != nullptr && config.full_blueprint != nullptr &&
+        config.leaf_evaluator != nullptr && config.leaf_evaluator->valid() &&
+        config.search_limits.worker_count != 0U &&
+        config.search_limits.trajectories_per_batch == config.trajectories_per_batch &&
+        config.search_limits.max_public_states != 0U &&
+        config.search_limits.max_sparse_rows != 0U &&
+        config.search_limits.max_sparse_values != 0U &&
+        config.search_limits.max_worker_delta_entries != 0U &&
+        config.search_limits.max_worker_delta_entries <=
+            std::numeric_limits<std::size_t>::max() / config.search_limits.worker_count &&
+        config.search_limits.run_mode == MultiwayRunMode::Deterministic &&
+        config.search_max_decision_depth != 0U &&
+        config.search_max_decision_depth <= MULTIWAY_MAX_DECISION_DEPTH &&
+        config.search_max_public_chance_depth <= MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH;
 }
 
 std::uint64_t saturating_add(std::uint64_t left, std::uint64_t right) noexcept {
@@ -803,11 +822,20 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
         }
 
         const auto runtime_search_requested =
+            config_.search_mode == MultiwayResolverSearchMode::DefaultSearch ||
             config_.search_mode == MultiwayResolverSearchMode::SearchShadow ||
             config_.search_mode == MultiwayResolverSearchMode::SearchActive;
+        const auto runtime_search_active =
+            config_.search_mode == MultiwayResolverSearchMode::DefaultSearch ||
+            config_.search_mode == MultiwayResolverSearchMode::SearchActive;
         if (runtime_search_requested) {
+            if (config_.search_mode == MultiwayResolverSearchMode::DefaultSearch &&
+                !has_release_search_profile(config_)) {
+                use_fallback(MultiwayResolverStatus::RejectedByBudget);
+                return result;
+            }
             result.diagnostics.search_eligibility = search_eligibility(request, state, menu, config_);
-            if (config_.search_mode == MultiwayResolverSearchMode::SearchActive &&
+            if (runtime_search_active &&
                 result.diagnostics.search_eligibility != MultiwayResolverSearchEligibility::Eligible) {
                 use_fallback(MultiwayResolverStatus::RejectedByBudget);
                 return result;
@@ -828,7 +856,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 search_diagnostics.search_admitted_memory_bytes;
             result.diagnostics.search_memory_degraded = search_diagnostics.search_memory_degraded;
             if (search_outcome == RuntimeSearchOutcome::Completed &&
-                config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+                runtime_search_active) {
                 result.policy = std::move(search_policy);
                 result.diagnostics = search_diagnostics;
                 result.diagnostics.status = result.diagnostics.deadline_expired
@@ -846,7 +874,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 }
                 return result;
             }
-            if (config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+            if (runtime_search_active) {
                 const auto fallback_status = deadline_reached(request.deadline, config_.deadline_reserve)
                     ? MultiwayResolverStatus::DeadlineFallback
                     : (search_outcome == RuntimeSearchOutcome::NoRoot ||
@@ -873,14 +901,8 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
         result.policy = static_policy(menu);
         (void)try_apply_blueprint_policy(blueprint, request.blueprint_identity, menu, &result.policy);
         for (std::uint32_t batch = 0U; batch < config_.max_batches; ++batch) {
-            for (std::size_t action = 0; action < result.policy.size(); ++action) {
-                const auto perturbation = 0.75 + 0.5 * unit_random(
-                    request.sampling_seed ^ range_hash ^ reconstructed_id ^
-                    (static_cast<std::uint64_t>(batch) << 32U) ^ action ^ bucket);
-                result.policy[action].probability = 0.9 * result.policy[action].probability +
-                    0.1 * perturbation;
-            }
-            if (!normalize(result.policy)) throw std::logic_error("multiway resolver produced a non-finite policy");
+            apply_legacy_deterministic_adjustment(
+                &result.policy, request.sampling_seed, range_hash, reconstructed_id, bucket, batch);
             ++result.diagnostics.completed_batches;
             result.diagnostics.completed_trajectories += config_.trajectories_per_batch;
             if (deadline_reached(request.deadline, config_.deadline_reserve)) {

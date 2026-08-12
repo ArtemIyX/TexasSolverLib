@@ -742,18 +742,12 @@ following:
    cards and ranges are not retained.
 8. Enforces the configured deadline reserve and reports status and diagnostics.
 
-The current `resolve(...)` implementation does not instantiate or invoke the
-full `MultiwayRootBatchRunner` traversal for each request. When a request is
-eligible for a solve, it starts from the static/blueprint policy and applies a
-bounded deterministic perturbation/normalization loop for the configured batch
-count. Therefore the resolver API, artifact checks, bucket checks, and
-fallback chain are present, but production inference is not yet the same as
-running a live root external-sampling solve through the trainer/traversal
-stack.
-
-This distinction is important for future agents: the multiway traversal and
-trainer are implemented as separate library components, while the resolver is
-currently a narrower orchestration and fallback surface.
+Default resolver mode invokes `MultiwayRootBatchRunner` for requests that pass
+the complete release profile: full blueprint, bucket registry, terminal leaf,
+bounded deterministic limits, memory preflight, and request budget checks.
+Unsafe or incompatible requests return the documented fallback. The old
+deterministic adjustment is isolated to explicit legacy and shadow modes, so
+its provenance cannot be mistaken for runtime search.
 
 ## 9. Utility and performance infrastructure
 

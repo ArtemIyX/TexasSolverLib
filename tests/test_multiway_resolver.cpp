@@ -1,5 +1,6 @@
 #include "solver/multiway_bucket_artifact.hpp"
 #include "solver/multiway_blueprint_config.hpp"
+#include "solver/multiway_blueprint_store.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver.hpp"
 #include "solver/multiway_runtime_session.hpp"
@@ -52,6 +53,7 @@ struct ResolverFixture {
         config.buckets = &buckets;
         config.max_batches = 2U;
         config.trajectories_per_batch = 5U;
+        config.search_mode = texas::MultiwayResolverSearchMode::LegacyStatic;
         return texas::MultiwayResolver(config);
     }
 };
@@ -393,6 +395,36 @@ TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
     EXPECT_EQ(result.diagnostics.completed_batches, 0U);
     EXPECT_EQ(result.diagnostics.completed_trajectories, 0U);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_default_mode_falls_back_without_a_release_profile) {
+    ResolverFixture fixture;
+    texas::MultiwayResolverConfig config;
+    config.buckets = &fixture.buckets;
+    texas::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(fixture.request());
+
+    EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::RejectedByBudget);
+    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_TRUE(result.diagnostics.used_fallback);
+}
+
+TEST_CASE(multiway_resolver_default_mode_runs_search_for_a_release_profile) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto config = search_config(fixture);
+    config.search_mode = texas::MultiwayResolverSearchMode::DefaultSearch;
+    texas::MultiwayBlueprintStore full_blueprint(fixture.identity, {});
+    config.full_blueprint = &full_blueprint;
+    texas::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::Solved);
+    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::RuntimeSearch);
+    EXPECT_EQ(result.diagnostics.search_engine, texas::MultiwayResolverEngine::RootExternalSamplingMCCFR);
 }
 
 TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {

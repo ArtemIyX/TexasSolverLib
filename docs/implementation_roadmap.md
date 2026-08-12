@@ -2025,7 +2025,8 @@ evaluation record.
 
 **Goal:** Make real search the default only for the validated release profile.
 
-**Current behavior:** Static/perturbation behavior is the established path.
+**Current behavior:** Completed. Default mode uses runtime search only for a
+complete release profile and otherwise returns the documented legal fallback.
 
 **Implementation:** Change the default only when full blueprint, bucket,
 continuation, terminal, memory, and budget checks pass. Keep explicit legacy
@@ -2047,7 +2048,8 @@ release-candidate evaluation and artifact rollback test passes.
 **Goal:** Prevent the old bounded perturbation loop from being mistaken for
 search.
 
-**Current behavior:** It is part of current resolver inference.
+**Current behavior:** Completed. The deterministic adjustment is isolated in a
+legacy-only module and runs only in explicit legacy or shadow modes.
 
 **Implementation:** Move it to an explicitly named legacy fallback/test module
 or delete it only if the new search path provides an equivalent compatible
@@ -2832,4 +2834,3 @@ contracts -> fixed beliefs/session -> traversal adapter -> clean batches
 8. P2.1: write the resolver-to-traversal adapter.
 9. P2.2: enforce clean-batch deadline semantics.
 10. P2.4: run real search in shadow mode before changing default output.
-

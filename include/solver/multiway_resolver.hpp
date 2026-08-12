@@ -95,6 +95,10 @@ inline constexpr std::uint64_t MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION = 1U;
 inline constexpr std::uint64_t MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION = 1U;
 
 enum class MultiwayResolverSearchMode : std::uint8_t {
+    // The production default. Runtime search runs only with the full release
+    // profile; otherwise resolve returns the legal fallback.
+    DefaultSearch,
+    // Retained for rollback and differential tests only.
     LegacyStatic,
     SearchShadow,
     SearchActive,
@@ -186,7 +190,7 @@ struct MultiwayResolverConfig {
     std::uint32_t trajectories_per_batch = 32U;
     std::uint32_t max_batches = 64U;
     std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
-    MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::LegacyStatic;
+    MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::DefaultSearch;
     MultiwaySolverLimits search_limits{};
     const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
     std::uint32_t search_max_decision_depth = 1U;

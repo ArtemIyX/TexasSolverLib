@@ -4,6 +4,37 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P9.1-P9.2 - Migrate default resolver mode and isolate superseded perturbation logic
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Made `DefaultSearch` the resolver default. It runs runtime search only when
+  the full blueprint, bucket registry, valid terminal leaf, deterministic
+  bounded limits, memory preflight, and request checks are available.
+- Preserved explicit legacy and shadow modes for rollback and differential
+  comparison, and moved the old deterministic adjustment into a legacy-only
+  module with distinct provenance.
+
+### Files
+
+- `docs/implementation_roadmap.md`
+- `docs/project_state_report.md`
+- `include/solver/multiway_legacy_resolver.hpp`
+- `include/solver/multiway_resolver.hpp`
+- `src/solver/multiway_legacy_resolver.cpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
+
+### Validation
+
+- Static diff, reference, and whitespace checks completed.
+- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Runtime validation remains pending user authorization.
+
 ## Compact card test-fixture corrections
 
 **Status:** Complete
