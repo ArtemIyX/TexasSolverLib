@@ -9,7 +9,7 @@ until its implementation and required validation are finished.
 **Status:** Complete
 **Completed:** 2026-08-12
 
-- Corrected the upper-size boundary fixture: 214 is within the 10% pseudo-harmonic threshold for a 225 target; 203 translates and 202 rejects.
+- Corrected the upper-size boundary fixture: 214 is within the 10% pseudo-harmonic threshold for a 225 target; 204 translates and 203 rejects.
 
 ### Files
 

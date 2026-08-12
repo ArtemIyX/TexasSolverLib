@@ -240,9 +240,9 @@ TEST_CASE(multiway_action_abstraction_translation_respects_pseudo_harmonic_bound
     const auto lower_outside = abstraction.translate_observed_action(
         state.snapshot(), menu, core::MultiwayAction::Bet, 111);
     const auto upper_inside = abstraction.translate_observed_action(
-        state.snapshot(), menu, core::MultiwayAction::Bet, 203);
+        state.snapshot(), menu, core::MultiwayAction::Bet, 204);
     const auto upper_outside = abstraction.translate_observed_action(
-        state.snapshot(), menu, core::MultiwayAction::Bet, 202);
+        state.snapshot(), menu, core::MultiwayAction::Bet, 203);
     EXPECT_EQ(lower_inside.status, core::MultiwayActionTranslationStatus::Translated);
     EXPECT_EQ(lower_inside.translated_action.target_street_contribution, 100);
     EXPECT_EQ(lower_outside.status, core::MultiwayActionTranslationStatus::DeviationTooLarge);
