@@ -414,6 +414,17 @@ TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
     EXPECT_TRUE(result.diagnostics.used_fallback);
 }
 
+TEST_CASE(multiway_runtime_session_rejects_memory_before_constructing_the_round) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto config = search_config(fixture);
+    config.search_memory_budget = core::MultiwayMemoryBudget{1U, 3U, 2U};
+    core::MultiwayResolver resolver(config);
+
+    EXPECT_THROW(resolver.begin_runtime_session(request), std::length_error);
+}
+
 TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
     ResolverFixture fixture;
     auto request = fixture.request();

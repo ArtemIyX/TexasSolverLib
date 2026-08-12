@@ -390,15 +390,18 @@ std::uint64_t saturating_multiply(std::uint64_t left, std::uint64_t right) noexc
 }
 
 MultiwayMemoryInputs search_memory_inputs(
-    const MultiwayRootSnapshot& root,
+    const MultiwayResolverRequest& request,
+    const MultiwayState& state,
+    std::size_t root_action_count,
     const MultiwayResolverConfig& config,
     const MultiwaySolverLimits& limits) noexcept {
     MultiwayMemoryInputs inputs;
     inputs.blueprint_index_bytes = config.full_blueprint == nullptr
         ? 0U : config.full_blueprint->memory_bytes();
-    inputs.range_row_count = root.private_ranges.ranges.size();
-    for (const auto& range : root.private_ranges.ranges) {
-        inputs.range_entry_count = saturating_add(inputs.range_entry_count, range.size());
+    inputs.range_row_count = state.stacks().size();
+    inputs.range_entry_count = request.hero_range.empty() ? 1U : request.hero_range.size();
+    for (const auto& range : request.opponent_ranges) {
+        inputs.range_entry_count = saturating_add(inputs.range_entry_count, range.hands.size());
     }
     inputs.future_bucket_cache_bytes = config.search_future_bucket_cache_bytes;
     inputs.off_tree_menu_entries = saturating_multiply(
@@ -419,7 +422,7 @@ MultiwayMemoryInputs search_memory_inputs(
             inputs.continuation_cache_bytes = rollout->cache->memory_bytes();
         }
     }
-    inputs.export_action_capacity = root.public_state.legal_actions.size();
+    inputs.export_action_capacity = root_action_count;
     return inputs;
 }
 
@@ -443,19 +446,18 @@ RuntimeSearchOutcome run_search(
     std::uint64_t public_state_id,
     std::vector<MultiwayResolverActionProbability>* policy,
     MultiwayResolverDiagnostics* diagnostics) {
-    MultiwayRootSnapshot root;
-    if (!make_search_root(request, state, board, menu, bucket, &root)) {
-        return RuntimeSearchOutcome::NoRoot;
-    }
-
     try {
         const auto memory_preflight = preflight_multiway_memory(
             config.search_limits,
             config.search_memory_budget,
-            search_memory_inputs(root, config, config.search_limits));
+            search_memory_inputs(request, state, menu.size(), config, config.search_limits));
         record_memory_preflight(memory_preflight, diagnostics);
         if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
             return RuntimeSearchOutcome::MemoryRejected;
+        }
+        MultiwayRootSnapshot root;
+        if (!make_search_root(request, state, board, menu, bucket, &root)) {
+            return RuntimeSearchOutcome::NoRoot;
         }
         MultiwayCFRConfig cfr;
         cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
@@ -668,12 +670,6 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     std::sort(board.begin(), board.end());
     const auto menu = reconstruct_root_menu(request, state, config_);
     const auto bucket = config_.buckets->lookup_hunl(state.street(), board, request.hero_cards);
-    MultiwayRootSnapshot root;
-    if (!make_search_root(request, state, board, menu, bucket, &root)) {
-        throw std::invalid_argument("multiway runtime session could not construct a search root");
-    }
-    MultiwayCFRConfig cfr;
-    cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
     auto limits = config_.search_limits;
     if (limits.worker_count == 0U) limits.worker_count = 1U;
     if (limits.trajectories_per_batch == 0U) limits.trajectories_per_batch = config_.trajectories_per_batch;
@@ -685,10 +681,16 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     const auto memory_preflight = preflight_multiway_memory(
         limits,
         config_.search_memory_budget,
-        search_memory_inputs(root, config_, limits));
+        search_memory_inputs(request, state, menu.size(), config_, limits));
     if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
         throw std::length_error("multiway runtime session memory preflight rejected the request");
     }
+    MultiwayRootSnapshot root;
+    if (!make_search_root(request, state, board, menu, bucket, &root)) {
+        throw std::invalid_argument("multiway runtime session could not construct a search root");
+    }
+    MultiwayCFRConfig cfr;
+    cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
     return std::make_unique<MultiwayRuntimeSession>(
         MultiwaySolveRequest(std::move(root), cfr, limits),
         MultiwaySearchSessionDependencies{config_.buckets});
