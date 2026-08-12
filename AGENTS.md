@@ -206,3 +206,16 @@ structured game state in -> strategy/diagnostics out
 
 Do not expand the repository toward poker-client automation.
 
+## Skills
+
+Use $cpp-worker to implement
+
+Use $git-commit-hygiene to make commit for each small problem fixed
+
+Use $cpp-code-review to review what have done
+
+Use $cpp-unit-tests to make unit tests for new code
+
+Use $update-project-log to update [PLURIBUS_LOG.md](docs/PLURIBUS_LOG.md) 
+
+DO not run build or test cmds, just write code
