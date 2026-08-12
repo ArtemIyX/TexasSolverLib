@@ -4,6 +4,28 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P6.4 Test Coverage - Continuation cache contracts
+
+**Status:** Complete
+**Completed:** 2026-08-12
+
+- Added 77 deterministic continuation-cache contract cases with 92 assertions.
+- Covered every cache-key validity, context-equivalence, and ordering field; entry and byte caps; deterministic lookup; malformed result rejection; and repeated-seed variance aggregation.
+- Kept the suite allocation-bounded and independent of rollout execution fixtures.
+
+### Files
+
+- `tests/test_multiway_continuation_cache.cpp`
+
+### Validation
+
+- Confirmed 77 unique registered test names and reviewed the test diff with `git diff --check`.
+- Build and tests were not run because the repository instructions prohibit them unless explicitly requested.
+
+### Limitations
+
+- Runtime execution remains pending an explicit request to run the test suite.
+
 ## P6.4 - Add continuation cache and variance diagnostics
 
 **Status:** Complete
