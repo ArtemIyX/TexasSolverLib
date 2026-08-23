@@ -202,7 +202,6 @@ using ::texas::MultiwaySearchSessionRowView;
 using ::texas::MultiwaySearchSessionHeroRow;
 using ::texas::MultiwaySearchSessionHeroPolicy;
 using ::texas::MultiwayRuntimeSession;
-using ::texas::update_anonymous_multiway_range;
 using ::texas::MultiwayCheckpoint;
 using ::texas::MultiwayArtifactSource;
 using ::texas::MultiwayBlueprintArtifacts;
