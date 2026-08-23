@@ -7,26 +7,8 @@ include(CMakePackageConfigHelpers)
 include(CTest)
 find_package(Threads REQUIRED)
 
-set(GPERFTOOLS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}")
-if (NOT VCPKG_TARGET_TRIPLET)
-    set(GPERFTOOLS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows")
-endif()
-
-find_path(GPERFTOOLS_INCLUDE_DIR
-    NAMES gperftools/profiler.h
-    PATHS "${GPERFTOOLS_ROOT}/include"
-    NO_DEFAULT_PATH
-)
-
-find_library(GPERFTOOLS_PROFILER_LIBRARY
-    NAMES tcmalloc_minimal profiler libprofiler
-    PATHS "${GPERFTOOLS_ROOT}/lib"
-    NO_DEFAULT_PATH
-)
-
-option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" ON)
-option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" ON)
-option(TEXASSOLVER_USE_POKER_HAND_EVALUATOR "Build vendored PokerHandEvaluator" ON)
+option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
+option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 
 file(GLOB_RECURSE TEXASSOLVER_PUBLIC_HEADERS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
@@ -37,27 +19,50 @@ file(GLOB_RECURSE TEXASSOLVER_SOURCES CONFIGURE_DEPENDS
 )
 
 list(FILTER TEXASSOLVER_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
-
-if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
-    set(BUILD_TESTS OFF CACHE BOOL "Disable PokerHandEvaluator tests" FORCE)
-    set(BUILD_EXAMPLES OFF CACHE BOOL "Disable PokerHandEvaluator examples" FORCE)
-    set(BUILD_PLO4 OFF CACHE BOOL "Disable PokerHandEvaluator PLO4" FORCE)
-    set(BUILD_PLO5 OFF CACHE BOOL "Disable PokerHandEvaluator PLO5" FORCE)
-    set(BUILD_PLO6 OFF CACHE BOOL "Disable PokerHandEvaluator PLO6" FORCE)
-    set(BUILD_CARD5 ON CACHE BOOL "Enable PokerHandEvaluator 5-card" FORCE)
-    set(BUILD_CARD6 ON CACHE BOOL "Enable PokerHandEvaluator 6-card" FORCE)
-    set(BUILD_CARD7 ON CACHE BOOL "Enable PokerHandEvaluator 7-card" FORCE)
-    add_subdirectory(external/pokerHandEvaluator/cpp EXCLUDE_FROM_ALL)
+if (NOT WIN32)
+    list(FILTER TEXASSOLVER_SOURCES EXCLUDE REGEX ".*/util/abstraction\\.cpp$")
 endif()
+
+set(_texas_saved_build_tests "${BUILD_TESTS}")
+set(_texas_saved_build_examples "${BUILD_EXAMPLES}")
+set(_texas_saved_build_plo4 "${BUILD_PLO4}")
+set(_texas_saved_build_plo5 "${BUILD_PLO5}")
+set(_texas_saved_build_plo6 "${BUILD_PLO6}")
+set(_texas_saved_build_card5 "${BUILD_CARD5}")
+set(_texas_saved_build_card6 "${BUILD_CARD6}")
+set(_texas_saved_build_card7 "${BUILD_CARD7}")
+set(BUILD_TESTS OFF CACHE BOOL "Disable PokerHandEvaluator tests" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "Disable PokerHandEvaluator examples" FORCE)
+set(BUILD_PLO4 OFF CACHE BOOL "Disable PokerHandEvaluator PLO4" FORCE)
+set(BUILD_PLO5 OFF CACHE BOOL "Disable PokerHandEvaluator PLO5" FORCE)
+set(BUILD_PLO6 OFF CACHE BOOL "Disable PokerHandEvaluator PLO6" FORCE)
+set(BUILD_CARD5 ON CACHE BOOL "Enable PokerHandEvaluator 5-card" FORCE)
+set(BUILD_CARD6 ON CACHE BOOL "Enable PokerHandEvaluator 6-card" FORCE)
+set(BUILD_CARD7 ON CACHE BOOL "Enable PokerHandEvaluator 7-card" FORCE)
+add_subdirectory(external/pokerHandEvaluator/cpp EXCLUDE_FROM_ALL)
+set(BUILD_TESTS "${_texas_saved_build_tests}" CACHE BOOL "Parent BUILD_TESTS" FORCE)
+set(BUILD_EXAMPLES "${_texas_saved_build_examples}" CACHE BOOL "Parent BUILD_EXAMPLES" FORCE)
+set(BUILD_PLO4 "${_texas_saved_build_plo4}" CACHE BOOL "Parent BUILD_PLO4" FORCE)
+set(BUILD_PLO5 "${_texas_saved_build_plo5}" CACHE BOOL "Parent BUILD_PLO5" FORCE)
+set(BUILD_PLO6 "${_texas_saved_build_plo6}" CACHE BOOL "Parent BUILD_PLO6" FORCE)
+set(BUILD_CARD5 "${_texas_saved_build_card5}" CACHE BOOL "Parent BUILD_CARD5" FORCE)
+set(BUILD_CARD6 "${_texas_saved_build_card6}" CACHE BOOL "Parent BUILD_CARD6" FORCE)
+set(BUILD_CARD7 "${_texas_saved_build_card7}" CACHE BOOL "Parent BUILD_CARD7" FORCE)
+unset(_texas_saved_build_tests)
+unset(_texas_saved_build_examples)
+unset(_texas_saved_build_plo4)
+unset(_texas_saved_build_plo5)
+unset(_texas_saved_build_plo6)
+unset(_texas_saved_build_card5)
+unset(_texas_saved_build_card6)
+unset(_texas_saved_build_card7)
 
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
 
 target_sources(texas PRIVATE ${TEXASSOLVER_SOURCES})
 target_sources(texas PRIVATE ${TEXASSOLVER_PUBLIC_HEADERS})
-if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
-    target_link_libraries(texas PRIVATE pheval)
-endif()
+target_link_libraries(texas PRIVATE pheval)
 target_link_libraries(texas PRIVATE Threads::Threads)
 if (WIN32)
     target_link_libraries(texas PRIVATE Cabinet)
@@ -89,15 +94,13 @@ install(TARGETS texas
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
-    install(TARGETS pheval
-        EXPORT TexasSolverTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/phevaluator
-    )
-endif()
+install(TARGETS pheval
+    EXPORT TexasSolverTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/phevaluator
+)
 
 install(DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
@@ -127,14 +130,6 @@ install(FILES
 )
 
 if (TEXASSOLVER_BUILD_EXAMPLES)
-    add_executable(texas_solver_gperftools_example
-        examples/gperftools_profile_demo.cpp
-    )
-    target_include_directories(texas_solver_gperftools_example PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-    target_link_libraries(texas_solver_gperftools_example PRIVATE texas)
-
     add_executable(texas_solver_example
         examples/solve_kuhn.cpp
     )

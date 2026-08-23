@@ -56,6 +56,7 @@ public:
 
 private:
     std::vector<double> table_;
+    bool valid_ = false;
 };
 
 }  // namespace texas::preflop

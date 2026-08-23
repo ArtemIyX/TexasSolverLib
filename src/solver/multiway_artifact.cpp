@@ -16,6 +16,7 @@ constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0
 constexpr std::array<char, 8> kFullBlueprintMagic = {'M', 'W', 'F', 'B', '0', '0', '0', '1'};
 constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+constexpr std::uint64_t kFullBlueprintOperatingBytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
 
 void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
     for (std::uint8_t byte = 0; byte < 8U; ++byte) {
@@ -239,6 +240,12 @@ MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(
     const std::filesystem::path& path,
     const MultiwayModelIdentity& expected_identity) {
     expected_identity.validate();
+    std::error_code file_error;
+    const auto file_bytes = std::filesystem::file_size(path, file_error);
+    if (file_error) throw std::runtime_error("multiway full blueprint size cannot be determined");
+    if (file_bytes > kFullBlueprintOperatingBytes) {
+        throw std::length_error("multiway full blueprint exceeds the operating memory guardrail");
+    }
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("multiway full blueprint cannot be opened");
     std::array<char, kFullBlueprintMagic.size()> magic{};
@@ -250,6 +257,12 @@ MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(
     artifact.training = read_value<MultiwayBlueprintTrainingMetadata>(in);
     const auto row_count = read_value<std::uint64_t>(in);
     if (row_count > 100000000U) throw std::runtime_error("multiway full blueprint row count is invalid");
+    const auto row_storage_bytes = static_cast<std::uint64_t>(sizeof(MultiwayBlueprintRow));
+    const auto action_storage_bytes = static_cast<std::uint64_t>(sizeof(MultiwayQuantizedRootAction));
+    if (row_count > (kFullBlueprintOperatingBytes - file_bytes) /
+            std::max<std::uint64_t>(1U, row_storage_bytes + action_storage_bytes)) {
+        throw std::length_error("multiway full blueprint rows exceed the operating memory guardrail");
+    }
     artifact.rows.resize(static_cast<std::size_t>(row_count));
     for (auto& row : artifact.rows) {
         row.infoset = read_value<MultiwayInfosetId>(in);

@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <exception>
 #include <fstream>
 #include <limits>
@@ -383,7 +384,7 @@ double& PreflopEquityTable::at(std::size_t h, std::size_t v, std::size_t var) {
 }
 
 bool PreflopEquityTable::empty() const {
-    return table_.empty();
+    return !valid_;
 }
 
 const std::vector<double>& PreflopEquityTable::data() const {
@@ -397,12 +398,14 @@ std::vector<double>& PreflopEquityTable::data() {
 PreflopEquityTable PreflopEquityTable::build() {
     PreflopEquityTable out;
     out.table_ = build_equity_table_flat();
+    out.valid_ = true;
     return out;
 }
 
 PreflopEquityTable PreflopEquityTable::build_parallel(std::size_t n_threads) {
     PreflopEquityTable out;
     out.table_ = build_equity_table_flat_parallel(n_threads);
+    out.valid_ = true;
     return out;
 }
 
@@ -410,13 +413,37 @@ namespace {
 constexpr std::array<char, 8> MAGIC = {'T', 'S', 'P', 'E', 'Q', '0', '0', '1'};
 
 void write_u64(std::ostream& out, std::uint64_t value) {
-    out.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    std::array<char, sizeof(value)> bytes{};
+    for (std::size_t index = 0; index < bytes.size(); ++index) {
+        bytes[index] = static_cast<char>((value >> (index * 8U)) & 0xffU);
+    }
+    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 }
 
-std::uint64_t read_u64(std::istream& in) {
-    std::uint64_t value = 0;
-    in.read(reinterpret_cast<char*>(&value), sizeof(value));
-    return value;
+bool read_u64(std::istream& in, std::uint64_t& value) {
+    std::array<unsigned char, sizeof(value)> bytes{};
+    if (!in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) {
+        return false;
+    }
+    value = 0;
+    for (std::size_t index = 0; index < bytes.size(); ++index) {
+        value |= static_cast<std::uint64_t>(bytes[index]) << (index * 8U);
+    }
+    return true;
+}
+
+void write_double(std::ostream& out, double value) {
+    std::uint64_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(value), "double must be 64-bit");
+    std::memcpy(&bits, &value, sizeof(bits));
+    write_u64(out, bits);
+}
+
+bool read_double(std::istream& in, double& value) {
+    std::uint64_t bits = 0;
+    if (!read_u64(in, bits)) return false;
+    std::memcpy(&value, &bits, sizeof(value));
+    return std::isfinite(value);
 }
 }  // namespace
 
@@ -431,41 +458,53 @@ PreflopEquityTable PreflopEquityTable::load(const std::filesystem::path& path) {
     if (magic != MAGIC) {
         return load_csv(path.string());
     }
-    const auto n = read_u64(in);
-    if (n != out.table_.size()) {
+    std::uint64_t n = 0;
+    if (!read_u64(in, n) || n != out.table_.size()) {
         return out;
     }
-    in.read(reinterpret_cast<char*>(out.table_.data()), static_cast<std::streamsize>(out.table_.size() * sizeof(double)));
+    for (auto& value : out.table_) {
+        if (!read_double(in, value)) return PreflopEquityTable{};
+    }
+    if (in.peek() != std::char_traits<char>::eof()) return PreflopEquityTable{};
+    out.valid_ = true;
     return out;
 }
 
 void PreflopEquityTable::save(const std::filesystem::path& path) const {
     std::ofstream out(path, std::ios::binary);
-    if (!out) {
-        return;
+    if (!out) throw std::runtime_error("PreflopEquityTable output cannot be opened");
+    if (!std::all_of(table_.begin(), table_.end(), [](double value) { return std::isfinite(value); })) {
+        throw std::invalid_argument("PreflopEquityTable cannot save non-finite values");
     }
     out.write(MAGIC.data(), static_cast<std::streamsize>(MAGIC.size()));
     write_u64(out, static_cast<std::uint64_t>(table_.size()));
-    out.write(reinterpret_cast<const char*>(table_.data()), static_cast<std::streamsize>(table_.size() * sizeof(double)));
+    for (const auto value : table_) write_double(out, value);
+    if (!out) throw std::runtime_error("PreflopEquityTable write failed");
 }
 
 PreflopEquityTable PreflopEquityTable::load_csv(const std::string& path) {
     std::ifstream in(path);
     PreflopEquityTable out;
-    if (!in) {
-        return out;
-    }
+    if (!in) return out;
     for (double& cell : out.table_) {
-        in >> cell;
+        if (!(in >> cell) || !std::isfinite(cell)) return PreflopEquityTable{};
     }
+    std::string trailing;
+    if (in >> trailing) return PreflopEquityTable{};
+    out.valid_ = true;
     return out;
 }
 
 void PreflopEquityTable::save_csv(const std::string& path) const {
     std::ofstream out(path);
+    if (!out) throw std::runtime_error("PreflopEquityTable CSV output cannot be opened");
+    if (!std::all_of(table_.begin(), table_.end(), [](double value) { return std::isfinite(value); })) {
+        throw std::invalid_argument("PreflopEquityTable cannot save non-finite values");
+    }
     for (const double cell : table_) {
         out << cell << '\n';
     }
+    if (!out) throw std::runtime_error("PreflopEquityTable CSV write failed");
 }
 
 }  // namespace texas::preflop
