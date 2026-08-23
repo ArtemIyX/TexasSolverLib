@@ -21,7 +21,6 @@
 namespace texas::solver::hunl {
 
 struct HUNLSampledSolveRequest {
-    std::uint8_t root_action_count = 0;
     std::optional<HUNLState> root_state = std::nullopt;
     std::optional<HUNLStructuredRootRequest> structured_root = std::nullopt;
     // Non-owning. Required when the selected root has a non-zero depth limit.

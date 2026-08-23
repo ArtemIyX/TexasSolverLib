@@ -47,7 +47,7 @@ std::uint64_t saturating_size(std::size_t value) noexcept {
 std::uint8_t infer_root_action_count(const HUNLSampledSolveRequest& request) noexcept {
     return request.root_state.has_value()
         ? static_cast<std::uint8_t>(request.root_state->legal_actions().size())
-        : request.root_action_count;
+        : 0U;
 }
 
 std::uint64_t infer_bucket_count(const HUNLSampledSolveRequest& request, const HUNLSampledSolverConfig& config) noexcept {
