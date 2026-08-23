@@ -481,7 +481,8 @@ RuntimeSearchOutcome run_search(
             session.coordinator(), session.coordinator().root(), abstraction, *config.buckets,
             &effective_leaf, config.search_max_decision_depth,
             config.search_max_public_chance_depth,
-            blueprint_provider ? &*blueprint_provider : nullptr);
+            blueprint_provider ? &*blueprint_provider : nullptr,
+            config.continuation_selector ? config.continuation_selector.get() : nullptr);
         MultiwayRootBatchRunner runner(
             traversal, session.coordinator(), config.search_limits.worker_count,
             config.search_limits.max_worker_delta_entries,
@@ -622,6 +623,9 @@ void MultiwayResolverConfig::validate() const {
         }
     }
     if (full_blueprint != nullptr) full_blueprint->identity().validate();
+    if (continuation_selector != nullptr && !continuation_selector->valid()) {
+        throw std::invalid_argument("multiway resolver continuation selector is invalid");
+    }
     if (verified_blueprint != nullptr) {
         verified_blueprint->snapshot.validate();
         verified_blueprint->manifest.validate();

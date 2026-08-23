@@ -89,6 +89,8 @@ texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     config.trajectories_per_batch = 2U;
     config.max_batches = 1U;
     config.search_mode = texas::MultiwayResolverSearchMode::SearchActive;
+    config.continuation_selector = std::make_shared<texas::MultiwayFixedContinuationSelector>(
+        texas::MultiwayContinuationPolicyKind::Blueprint);
     config.search_limits.worker_count = 1U;
     config.search_limits.trajectories_per_batch = config.trajectories_per_batch;
     config.search_limits.max_public_states = 32U;

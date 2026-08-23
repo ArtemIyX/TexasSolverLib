@@ -9,6 +9,7 @@
 #include "solver/multiway_leaf_evaluator.hpp"
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_memory.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_search_profile.hpp"
 
@@ -178,6 +179,7 @@ struct MultiwayResolverConfig {
     MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::ReleaseDefault;
     // Stable-root reuse is an explicit deployment policy, not hidden resolver state.
     bool retain_stable_root_fallback = true;
+    std::shared_ptr<const MultiwayFixedContinuationSelector> continuation_selector;
     MultiwaySolverLimits search_limits{};
     const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
     std::uint32_t search_max_decision_depth = 1U;

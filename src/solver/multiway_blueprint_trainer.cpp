@@ -295,9 +295,11 @@ MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
     MultiwaySolveRequest request(root_, config_.cfr, config_.limits);
     coordinator_ = std::make_unique<MultiwaySolverCoordinator>(request);
     action_abstraction_ = std::make_unique<MultiwayActionAbstraction>(config_.action_abstraction);
+    continuation_selector_ = std::make_unique<MultiwayFixedContinuationSelector>(
+        config_.blueprint.continuation_policy);
     MultiwayRootExternalSamplingTraversal traversal(
         *coordinator_, root_, *action_abstraction_, *buckets_, leaf_evaluator == nullptr ? nullptr : &leaf_evaluator_,
-        config_.max_decision_depth, config_.max_public_chance_depth);
+        config_.max_decision_depth, config_.max_public_chance_depth, nullptr, continuation_selector_.get());
     batch_runner_ = std::make_unique<MultiwayRootBatchRunner>(
         std::move(traversal), *coordinator_, config_.limits.worker_count,
         config_.limits.max_worker_delta_entries);

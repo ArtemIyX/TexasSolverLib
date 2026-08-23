@@ -6,6 +6,7 @@
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_bucket_artifact.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "games/multiway_rules.hpp"
 
 #include <cstdint>
@@ -146,6 +147,7 @@ private:
     const MultiwayBucketRegistry* buckets_ = nullptr;
     MultiwayLeafEvaluator leaf_evaluator_{};
     std::unique_ptr<MultiwayActionAbstraction> action_abstraction_;
+    std::unique_ptr<MultiwayFixedContinuationSelector> continuation_selector_;
     std::unique_ptr<MultiwaySolverCoordinator> coordinator_;
     std::unique_ptr<MultiwayRootBatchRunner> batch_runner_;
     std::unique_ptr<MultiwayBlueprintTrainer> trainer_;
