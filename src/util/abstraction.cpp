@@ -37,11 +37,23 @@ bool fits(std::size_t offset, std::size_t length, std::size_t size) noexcept {
 
 struct ZipEntry {
     std::string name;
+    std::uint32_t crc32 = 0;
     std::uint16_t method = 0;
     std::uint32_t compressed_size = 0;
     std::uint32_t uncompressed_size = 0;
     std::uint32_t local_header_offset = 0;
 };
+
+std::uint32_t crc32_bytes(const std::uint8_t* data, std::size_t size) noexcept {
+    std::uint32_t crc = 0xFFFFFFFFU;
+    for (std::size_t index = 0U; index < size; ++index) {
+        crc ^= data[index];
+        for (int bit = 0; bit < 8; ++bit) {
+            crc = (crc & 1U) != 0U ? 0xEDB88320U ^ (crc >> 1U) : crc >> 1U;
+        }
+    }
+    return ~crc;
+}
 
 std::string read_file_bytes(const std::filesystem::path& path) {
     std::error_code error;
@@ -112,6 +124,7 @@ std::vector<ZipEntry> parse_zip_entries(const std::string& zip) {
             throw std::runtime_error("npz central directory corruption");
         }
         ZipEntry e;
+        e.crc32 = read_u32(zip.data() + pos + 16);
         e.method = read_u16(zip.data() + pos + 10);
         e.compressed_size = read_u32(zip.data() + pos + 20);
         e.uncompressed_size = read_u32(zip.data() + pos + 24);
@@ -147,6 +160,9 @@ std::vector<std::uint8_t> decompress_deflate(const std::uint8_t* input, std::siz
         throw std::runtime_error("Decompress failed");
     }
     CloseDecompressor(handle);
+    if (produced > output_size) {
+        throw std::runtime_error("npz deflate output exceeds the declared size");
+    }
     output.resize(produced);
     return output;
 }
@@ -177,10 +193,18 @@ std::vector<std::uint8_t> read_zip_entry(const std::string& zip, const ZipEntry&
         if (entry.compressed_size != entry.uncompressed_size) {
             throw std::runtime_error("npz stored entry size metadata is inconsistent");
         }
-        return std::vector<std::uint8_t>(data, data + entry.uncompressed_size);
+        std::vector<std::uint8_t> output(data, data + entry.uncompressed_size);
+        if (crc32_bytes(output.data(), output.size()) != entry.crc32) {
+            throw std::runtime_error("npz stored entry CRC mismatch");
+        }
+        return output;
     }
     if (entry.method == 8) {
-        return decompress_deflate(data, entry.compressed_size, entry.uncompressed_size);
+        auto output = decompress_deflate(data, entry.compressed_size, entry.uncompressed_size);
+        if (crc32_bytes(output.data(), output.size()) != entry.crc32) {
+            throw std::runtime_error("npz deflated entry CRC mismatch");
+        }
+        return output;
     }
     throw std::runtime_error("unsupported zip compression method");
 }
@@ -498,7 +522,10 @@ std::int32_t lookup_bucket(
     const auto board_offset = board_index.at(board_key);
     const auto& per_board = hand_index.at(board_key);
     const auto within = per_board.at(hand_key);
-    return static_cast<std::int32_t>(assignments.at(board_offset + within));
+    if (board_offset >= assignments.size() || within >= assignments.size() - board_offset) {
+        throw std::out_of_range("abstraction assignment index is outside the table");
+    }
+    return static_cast<std::int32_t>(assignments[board_offset + within]);
 }
 
 }  // namespace texas::util
