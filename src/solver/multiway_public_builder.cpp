@@ -312,6 +312,23 @@ MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_action_child(
     return child;
 }
 
+MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_action_child(
+    const MultiwayPublicStateDescriptor& parent,
+    std::uint32_t action_index,
+    MultiwayBettingSnapshot child_betting,
+    const MultiwayActionDescriptor* child_legal_actions,
+    std::size_t child_action_count) {
+    if (child_action_count != 0U && child_legal_actions == nullptr) {
+        throw std::invalid_argument("multiway public builder received a null action scratch view");
+    }
+    std::vector<MultiwayActionDescriptor> actions;
+    actions.reserve(child_action_count);
+    if (child_action_count != 0U) {
+        actions.assign(child_legal_actions, child_legal_actions + child_action_count);
+    }
+    return make_action_child(parent, action_index, std::move(child_betting), std::move(actions));
+}
+
 MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_board_chance_child(
     const MultiwayPublicStateDescriptor& parent,
     const MultiwayPublicBoardChanceEdge& edge,

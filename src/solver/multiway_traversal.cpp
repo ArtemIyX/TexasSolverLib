@@ -334,16 +334,19 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         const auto next = betting_state.apply(
             state.legal_actions[action].action,
             state.legal_actions[action].target_street_contribution);
-        std::vector<MultiwayActionDescriptor> child_actions;
+        std::array<MultiwayActionDescriptor, MULTIWAY_MAX_TRAVERSAL_ACTIONS> child_actions{};
+        std::size_t child_action_count = 0U;
         if (next.current_player >= 0) {
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
-            child_actions = action_abstraction_->make_legal_actions(
+            const auto generated_actions = action_abstraction_->make_legal_actions(
                 make_multiway_betting_snapshot(next));
-            if (child_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
+            if (generated_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
                 throw std::length_error(
                     "multiway generated action menu exceeds the compact traversal limit");
             }
+            child_action_count = generated_actions.size();
+            std::copy(generated_actions.begin(), generated_actions.end(), child_actions.begin());
         }
         MultiwayPublicStateDescriptor child;
         {
@@ -353,7 +356,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
                 state,
                 static_cast<std::uint32_t>(action),
                 make_multiway_betting_snapshot(next),
-                std::move(child_actions));
+                child_actions.data(),
+                child_action_count);
             coordinator_->admit_public_state(child);
         }
         if (next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal ||

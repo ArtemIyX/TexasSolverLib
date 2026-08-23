@@ -11,7 +11,7 @@ option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research component" OFF)
 option(TEXASSOLVER_BUILD_RESEARCH_EXAMPLES "Build benchmark and backend-comparison examples" OFF)
-option(TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH "Build fixed-private sampled HUNL reference tests" OFF)
+option(TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH "Build fixed-private sampled HUNL reference kernels" OFF)
 
 set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
@@ -428,5 +428,11 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_hunl_sampled_boundary.cmake
+    )
+    add_test(
+        NAME test_multiway_traversal_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_multiway_traversal_boundary.cmake
     )
 endif()
