@@ -19,6 +19,60 @@ void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
     }
 }
 
+template <class Range>
+void append_range(std::uint64_t& hash, const Range& values) noexcept {
+    for (const auto value : values) append_u64(hash, value);
+}
+
+std::uint64_t hash_action_abstraction(const MultiwayActionAbstractionConfig& config) noexcept {
+    auto hash = kFnvOffset;
+    append_u64(hash, config.menu_profile_version);
+    append_u64(hash, config.translation_policy_version);
+    append_u64(hash, config.translation_max_pseudo_harmonic_distance_basis_points);
+    append_range(hash, config.first_bet_basis_points);
+    append_range(hash, config.raise_basis_points);
+    append_u64(hash, config.multiway_first_bet_count);
+    append_u64(hash, config.three_way_first_bet_count);
+    append_u64(hash, config.heads_up_first_bet_count);
+    append_range(hash, config.unopened_raise_to_big_blind_basis_points);
+    append_u64(hash, config.single_open_in_position_basis_points);
+    append_u64(hash, config.single_open_out_of_position_basis_points);
+    append_u64(hash, config.open_caller_increment_big_blind_basis_points);
+    append_u64(hash, config.three_bet_or_more_basis_points);
+    append_range(hash, config.contextual_multiway_first_bet_basis_points);
+    append_range(hash, config.contextual_three_way_first_bet_basis_points);
+    append_range(hash, config.contextual_heads_up_first_bet_basis_points);
+    append_range(hash, config.contextual_raise_basis_points);
+    return hash == 0U ? 1U : hash;
+}
+
+std::uint64_t hash_bucket_profile(const MultiwayBucketBaselineProfile& profile) noexcept {
+    auto hash = kFnvOffset;
+    append_u64(hash, profile.schema_version);
+    append_u64(hash, profile.feature_version);
+    append_u64(hash, profile.flop_bucket_count);
+    append_u64(hash, profile.turn_bucket_count);
+    append_u64(hash, profile.river_bucket_count);
+    return hash == 0U ? 1U : hash;
+}
+
+std::uint64_t combine_identity(const MultiwayModelIdentity& identity) noexcept {
+    auto hash = kFnvOffset;
+    append_u64(hash, identity.rules_hash);
+    append_u64(hash, identity.rules_schema_hash);
+    append_u64(hash, identity.action_abstraction_hash);
+    append_u64(hash, identity.bucket_model_hash);
+    append_u64(hash, identity.terminal_model_hash);
+    append_u64(hash, identity.resolver_schema_hash);
+    append_u64(hash, identity.code_schema_hash);
+    append_u64(hash, identity.range_semantics_hash);
+    append_u64(hash, identity.future_bucket_model_hash);
+    append_u64(hash, identity.off_tree_policy_hash);
+    append_u64(hash, identity.continuation_policy_hash);
+    append_u64(hash, identity.runtime_search_schema_hash);
+    return hash == 0U ? 1U : hash;
+}
+
 bool due(std::uint64_t batch, std::uint64_t interval) noexcept {
     return interval != 0U && batch % interval == 0U;
 }
@@ -96,7 +150,28 @@ void MultiwayBlueprintTrainingConfig::validate() const {
 
 MultiwayModelIdentity MultiwayBlueprintTrainingConfig::identity() const {
     validate();
-    return make_multiway_model_identity(blueprint);
+    auto identity = make_multiway_model_identity(blueprint);
+    identity.action_abstraction_hash = hash_action_abstraction(action_abstraction);
+    identity.bucket_model_hash = hash_bucket_profile(bucket_profile);
+    auto runtime_hash = kFnvOffset;
+    append_u64(runtime_hash, blueprint.runtime_search_schema_version);
+    append_u64(runtime_hash, max_decision_depth);
+    append_u64(runtime_hash, max_public_chance_depth);
+    append_u64(runtime_hash, cfr.player_count);
+    append_u64(runtime_hash, cfr.update_both_players ? 1U : 0U);
+    append_u64(runtime_hash, limits.worker_count);
+    append_u64(runtime_hash, limits.trajectories_per_batch);
+    append_u64(runtime_hash, limits.max_public_states);
+    append_u64(runtime_hash, limits.max_sparse_rows);
+    append_u64(runtime_hash, limits.max_sparse_values);
+    append_u64(runtime_hash, limits.max_worker_delta_entries);
+    append_u64(runtime_hash, limits.max_batches);
+    append_u64(runtime_hash, schedule.identity());
+    append_u64(runtime_hash, deterministic_seed);
+    identity.runtime_search_schema_hash = runtime_hash == 0U ? 1U : runtime_hash;
+    identity.combined_hash = combine_identity(identity);
+    identity.validate();
+    return identity;
 }
 
 MultiwayBlueprintTrainer::MultiwayBlueprintTrainer(

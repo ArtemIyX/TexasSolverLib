@@ -10,6 +10,9 @@ TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts) {
     const auto identity = config.identity();
     EXPECT_TRUE(identity.combined_hash != 0U);
 
+    config.action_abstraction.first_bet_basis_points[0] = 3400U;
+    EXPECT_TRUE(config.identity() != identity);
+
     config.blueprint.turn_bucket_count = 127U;
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
