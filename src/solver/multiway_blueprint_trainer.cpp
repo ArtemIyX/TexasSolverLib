@@ -1,5 +1,6 @@
 #include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_checkpoint.hpp"
+#include "core/fingerprint.hpp"
 
 #include <cmath>
 #include <limits>
@@ -9,15 +10,7 @@
 namespace texas::solver::multiway {
 namespace {
 
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
-
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t byte = 0; byte < 8U; ++byte) {
-        hash ^= (value >> (byte * 8U)) & 0xffU;
-        hash *= kFnvPrime;
-    }
-}
+using texas::core::fingerprint::append_u64;
 
 template <class Range>
 void append_range(std::uint64_t& hash, const Range& values) noexcept {
@@ -25,7 +18,7 @@ void append_range(std::uint64_t& hash, const Range& values) noexcept {
 }
 
 std::uint64_t hash_action_abstraction(const MultiwayActionAbstractionConfig& config) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, config.menu_profile_version);
     append_u64(hash, config.translation_policy_version);
     append_u64(hash, config.translation_max_pseudo_harmonic_distance_basis_points);
@@ -47,7 +40,7 @@ std::uint64_t hash_action_abstraction(const MultiwayActionAbstractionConfig& con
 }
 
 std::uint64_t hash_bucket_profile(const MultiwayBucketBaselineProfile& profile) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, profile.schema_version);
     append_u64(hash, profile.feature_version);
     append_u64(hash, profile.flop_bucket_count);
@@ -57,7 +50,7 @@ std::uint64_t hash_bucket_profile(const MultiwayBucketBaselineProfile& profile) 
 }
 
 std::uint64_t combine_identity(const MultiwayModelIdentity& identity) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, identity.rules_hash);
     append_u64(hash, identity.rules_schema_hash);
     append_u64(hash, identity.action_abstraction_hash);
@@ -112,7 +105,7 @@ double MultiwayBlueprintIterationSchedule::strategy_weight(std::uint64_t one_bas
 }
 
 std::uint64_t MultiwayBlueprintIterationSchedule::identity() const noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, linear_iteration_weighting ? 1U : 0U);
     append_u64(hash, discount_regrets ? 1U : 0U);
     append_u64(hash, static_cast<std::uint64_t>(regret_discount_factor * 1000000000.0));
@@ -153,7 +146,7 @@ MultiwayModelIdentity MultiwayBlueprintTrainingConfig::identity() const {
     auto identity = make_multiway_model_identity(blueprint);
     identity.action_abstraction_hash = hash_action_abstraction(action_abstraction);
     identity.bucket_model_hash = hash_bucket_profile(bucket_profile);
-    auto runtime_hash = kFnvOffset;
+    auto runtime_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(runtime_hash, blueprint.runtime_search_schema_version);
     append_u64(runtime_hash, max_decision_depth);
     append_u64(runtime_hash, max_public_chance_depth);

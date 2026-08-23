@@ -1,26 +1,16 @@
 #include "solver/multiway_model_identity.hpp"
+#include "core/fingerprint.hpp"
 
 #include <stdexcept>
 
 namespace texas::solver::multiway {
 namespace {
 
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
-
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t byte = 0; byte < 8U; ++byte) {
-        hash ^= (value >> (byte * 8U)) & 0xffU;
-        hash *= kFnvPrime;
-    }
-}
-
-std::uint64_t finish(std::uint64_t hash) noexcept {
-    return hash == 0U ? 1U : hash;
-}
+using texas::core::fingerprint::append_u64;
+using texas::core::fingerprint::finish;
 
 std::uint64_t rules_hash(const MultiwayBlueprintConfig& config) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, config.player_count);
     append_u64(hash, static_cast<std::uint64_t>(config.initial_stack_chips));
     append_u64(hash, static_cast<std::uint64_t>(config.small_blind_chips));
@@ -49,56 +39,56 @@ MultiwayModelIdentity make_multiway_model_identity(const MultiwayBlueprintConfig
     MultiwayModelIdentity identity;
     identity.rules_hash = rules_hash(config);
 
-    auto rules_schema_hash = kFnvOffset;
+    auto rules_schema_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(rules_schema_hash, config.rules_profile_version);
     identity.rules_schema_hash = finish(rules_schema_hash);
 
-    auto action_hash = kFnvOffset;
+    auto action_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(action_hash, config.action_abstraction_version);
     identity.action_abstraction_hash = finish(action_hash);
 
-    auto bucket_hash = kFnvOffset;
+    auto bucket_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(bucket_hash, config.bucket_model_version);
     append_u64(bucket_hash, config.flop_bucket_count);
     append_u64(bucket_hash, config.turn_bucket_count);
     append_u64(bucket_hash, config.river_bucket_count);
     identity.bucket_model_hash = finish(bucket_hash);
 
-    auto terminal_hash = kFnvOffset;
+    auto terminal_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(terminal_hash, config.terminal_model_version);
     append_u64(terminal_hash, config.rake_policy.identity());
     identity.terminal_model_hash = finish(terminal_hash);
 
-    auto resolver_schema_hash = kFnvOffset;
+    auto resolver_schema_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(resolver_schema_hash, config.resolver_schema_version);
     identity.resolver_schema_hash = finish(resolver_schema_hash);
 
-    auto schema_hash = kFnvOffset;
+    auto schema_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(schema_hash, config.code_schema_version);
     identity.code_schema_hash = finish(schema_hash);
 
-    auto range_hash = kFnvOffset;
+    auto range_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(range_hash, config.range_semantics_version);
     identity.range_semantics_hash = finish(range_hash);
 
-    auto future_bucket_hash = kFnvOffset;
+    auto future_bucket_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(future_bucket_hash, config.future_bucket_model_version);
     identity.future_bucket_model_hash = finish(future_bucket_hash);
 
-    auto off_tree_hash = kFnvOffset;
+    auto off_tree_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(off_tree_hash, config.off_tree_policy_version);
     identity.off_tree_policy_hash = finish(off_tree_hash);
 
-    auto continuation_hash = kFnvOffset;
+    auto continuation_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(continuation_hash, config.continuation_policy_version);
     append_u64(continuation_hash, static_cast<std::uint64_t>(config.continuation_policy));
     identity.continuation_policy_hash = finish(continuation_hash);
 
-    auto runtime_search_hash = kFnvOffset;
+    auto runtime_search_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(runtime_search_hash, config.runtime_search_schema_version);
     identity.runtime_search_schema_hash = finish(runtime_search_hash);
 
-    auto combined_hash = kFnvOffset;
+    auto combined_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(combined_hash, identity.rules_hash);
     append_u64(combined_hash, identity.rules_schema_hash);
     append_u64(combined_hash, identity.action_abstraction_hash);

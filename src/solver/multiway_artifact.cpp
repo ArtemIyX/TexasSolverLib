@@ -1,6 +1,7 @@
 #include "solver/multiway_artifact.hpp"
 
 #include "core/atomic_publish.hpp"
+#include "core/fingerprint.hpp"
 #include "core/portable_binary.hpp"
 #include "solver/multiway_checkpoint.hpp"
 
@@ -18,18 +19,9 @@ namespace portable = texas::core::portable;
 
 constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '4'};
 constexpr std::array<char, 8> kFullBlueprintMagic = {'M', 'W', 'F', 'B', '0', '0', '0', '2'};
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 constexpr std::uint64_t kFullBlueprintOperatingBytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
-
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t byte = 0; byte < 8U; ++byte) {
-        hash ^= (value >> (byte * 8U)) & 0xffU;
-        hash *= kFnvPrime;
-    }
-}
-
-std::uint64_t finish(std::uint64_t hash) noexcept { return hash == 0U ? 1U : hash; }
+using texas::core::fingerprint::append_u64;
+using texas::core::fingerprint::finish;
 
 void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity) {
     portable::write_u64(out, identity.rules_hash);
@@ -209,7 +201,7 @@ std::uint16_t quantize_probability(double probability) {
 }
 
 std::uint64_t replay_hash(const MultiwayProtectedReplayRecord& record) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, record.schema_version);
     append_identity(hash, record.identity);
     append_u64(hash, record.public_history.schema_version);
@@ -246,7 +238,7 @@ void MultiwayFullBlueprintArtifact::validate() const {
 
 std::uint64_t MultiwayFullBlueprintArtifacts::payload_hash(
     const MultiwayFullBlueprintArtifact& artifact) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, artifact.schema_version);
     append_identity(hash, artifact.identity);
     append_u64(hash, artifact.training.batches);
@@ -378,7 +370,7 @@ void MultiwayVerifiedBlueprintArtifact::validate(const MultiwayModelIdentity& ex
 }
 
 std::uint64_t MultiwayBlueprintArtifacts::snapshot_hash(const MultiwayBlueprintSnapshot& snapshot) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_identity(hash, snapshot.identity);
     append_u64(hash, snapshot.public_state.value);
     append_u64(hash, snapshot.infoset.public_state.value);

@@ -1,4 +1,5 @@
 #include "games/multiway_rules.hpp"
+#include "core/fingerprint.hpp"
 
 #include <stdexcept>
 #include <vector>
@@ -6,15 +7,7 @@
 namespace texas::games::multiway {
 namespace {
 
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
-
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t byte = 0; byte < 8U; ++byte) {
-        hash ^= (value >> (byte * 8U)) & 0xffU;
-        hash *= kFnvPrime;
-    }
-}
+using texas::core::fingerprint::append_u64;
 
 }  // namespace
 
@@ -29,7 +22,7 @@ void MultiwayGameRules::validate() const {
 }
 
 std::uint64_t MultiwayGameRules::identity() const noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, profile_version);
     append_u64(hash, player_count);
     append_u64(hash, static_cast<std::uint64_t>(initial_stack_chips));

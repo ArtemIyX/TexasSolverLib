@@ -1,4 +1,5 @@
 #include "solver/multiway_evaluation.hpp"
+#include "core/fingerprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -9,16 +10,7 @@ namespace texas::solver::multiway {
 namespace {
 
 constexpr double kProbabilityTolerance = 1e-12;
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
-
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t index = 0U; index < 8U; ++index) {
-        hash ^= static_cast<std::uint8_t>(value & 0xffU);
-        hash *= kFnvPrime;
-        value >>= 8U;
-    }
-}
+using texas::core::fingerprint::append_u64;
 
 void append_double(std::uint64_t& hash, double value) noexcept {
     std::uint64_t bits = 0U;
@@ -76,7 +68,7 @@ void append_history(std::uint64_t& hash, const MultiwayHandHistory& history) noe
 }
 
 std::uint64_t aivat_record_hash(const MultiwayAivatEvaluationRecord& record) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, record.schema_version);
     append_identity(hash, record.identity);
     append_history(hash, record.public_history);
