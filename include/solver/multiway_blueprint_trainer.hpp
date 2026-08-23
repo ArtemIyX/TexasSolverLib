@@ -107,8 +107,8 @@ public:
     [[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
     [[nodiscard]] MultiwayBlueprintSnapshot publish(
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
-    void resume_from(const MultiwayBlueprintSnapshot& checkpoint);
-    void resume_from(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+    void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
+    void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
 
 private:
     MultiwayModelIdentity identity_{};
@@ -131,7 +131,7 @@ public:
         const MultiwayLeafEvaluator* leaf_evaluator = nullptr);
 
     void run_batches(std::uint64_t batch_count);
-    void resume_from_checkpoint(const MultiwayBlueprintSnapshot& checkpoint);
+    void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
     void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
     [[nodiscard]] MultiwayBlueprintSnapshot export_policy(
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;

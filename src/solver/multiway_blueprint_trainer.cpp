@@ -308,19 +308,20 @@ MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPol
     return export_multiway_root_snapshot(identity_, *coordinator_, status_.trajectories, policy_kind, metadata);
 }
 
-void MultiwayBlueprintTrainer::resume_from(const MultiwayBlueprintSnapshot& checkpoint) {
-    MultiwayRootPolicyArtifact::validate_resume_identity(checkpoint, identity_);
-    if (checkpoint.training.schedule_hash != schedule_.identity() ||
-        checkpoint.training.deterministic_seed != deterministic_seed_) {
+void MultiwayBlueprintTrainer::resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot) {
+    MultiwayRootPolicyArtifact::validate_resume_identity(snapshot, identity_);
+    if (snapshot.training.schedule_hash != schedule_.identity() ||
+        snapshot.training.deterministic_seed != deterministic_seed_) {
         throw std::invalid_argument("multiway checkpoint schedule or seed does not match the live trainer");
     }
-    if (checkpoint.training.trajectories != checkpoint.trajectories ||
-        checkpoint.training.batches != status_.batches || checkpoint.trajectories != status_.trajectories) {
+    if (snapshot.training.trajectories != snapshot.trajectories ||
+        snapshot.training.batches != status_.batches || snapshot.trajectories != status_.trajectories) {
         throw std::invalid_argument("multiway compact checkpoint requires matching live training state");
     }
 }
 
-void MultiwayBlueprintTrainer::resume_from(const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
+void MultiwayBlueprintTrainer::resume_from_checkpoint(
+    const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
     checkpoint.identity.validate();
     if (checkpoint.identity != identity_ || checkpoint.training.schedule_hash != schedule_.identity() ||
         checkpoint.training.deterministic_seed != deterministic_seed_ ||
@@ -379,13 +380,13 @@ void MultiwayBlueprintTrainingSession::run_batches(std::uint64_t batch_count) {
     trainer_->run_batches(batch_count, config_.limits.trajectories_per_batch, config_.deterministic_seed);
 }
 
-void MultiwayBlueprintTrainingSession::resume_from_checkpoint(const MultiwayBlueprintSnapshot& checkpoint) {
-    trainer_->resume_from(checkpoint);
+void MultiwayBlueprintTrainingSession::resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot) {
+    trainer_->resume_from_root_policy(snapshot);
 }
 
 void MultiwayBlueprintTrainingSession::resume_from_checkpoint(
     const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
-    trainer_->resume_from(checkpoint);
+    trainer_->resume_from_checkpoint(checkpoint);
 }
 
 MultiwayBlueprintSnapshot MultiwayBlueprintTrainingSession::export_policy(

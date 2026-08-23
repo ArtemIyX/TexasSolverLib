@@ -412,7 +412,7 @@ TEST_CASE(multiway_blueprint_training_checkpoint_resumes_sparse_state) {
         resumed_coordinator, request.root(), abstraction, buckets, &evaluator, 1U);
     texas::MultiwayRootBatchRunner resumed_runner(resumed_traversal, resumed_coordinator, 1U, 8U);
     texas::MultiwayBlueprintTrainer resumed(identity, resumed_runner, resumed_coordinator, {}, 0x77U);
-    resumed.resume_from(checkpoint);
+    resumed.resume_from_checkpoint(checkpoint);
     const auto actual = resumed.export_full_policy();
 
     EXPECT_EQ(actual.rows.size(), expected.rows.size());
