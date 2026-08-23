@@ -479,7 +479,13 @@ RuntimeSearchOutcome run_search(
         MultiwayCFRConfig cfr;
         cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
         MultiwaySolveRequest solve_request(std::move(root), cfr, config.runtime_limits.solver);
-        MultiwaySearchSession session(solve_request, {config.buckets}, 1U);
+        // The release search uses the same live owner exposed to hosts. This
+        // keeps beliefs, reroot metadata, freeze state, and clean snapshots
+        // on one lifecycle object instead of maintaining a parallel search
+        // session implementation inside the resolver.
+        MultiwayDecisionSession session(
+            std::move(solve_request),
+            MultiwaySearchSessionDependencies{config.buckets, config.continuation_selector});
         RuntimeSearchMeasurement measurement(diagnostics);
         MultiwayActionAbstraction abstraction(config.action_abstraction);
         std::optional<MultiwayRolloutLeafContext> rollout_context;
@@ -496,14 +502,14 @@ RuntimeSearchOutcome run_search(
         std::optional<MultiwayBlueprintPolicyProvider> blueprint_provider;
         if (config.full_blueprint != nullptr) blueprint_provider.emplace(*config.full_blueprint);
         MultiwayRootExternalSamplingTraversal traversal(
-            session.coordinator(), session.coordinator().root(), abstraction, *config.buckets,
+            session.round().coordinator(), session.round().coordinator().root(), abstraction, *config.buckets,
             &effective_leaf, config.runtime_limits.max_decision_depth,
             config.runtime_limits.max_public_chance_depth,
             blueprint_provider ? &*blueprint_provider : nullptr,
             config.continuation_selector ? config.continuation_selector.get() : nullptr,
             config.future_bucket_artifact.get());
         MultiwayRootBatchRunner runner(
-            traversal, session.coordinator(), config.runtime_limits.solver.worker_count,
+            traversal, session.round().coordinator(), config.runtime_limits.solver.worker_count,
             config.runtime_limits.solver.max_worker_delta_entries,
             config.search_profile_mode);
         MultiwaySearchProfile search_profile(config.search_profile_mode);
@@ -532,14 +538,14 @@ RuntimeSearchOutcome run_search(
                     batch_result.clean,
                     batch_result.trajectories_accepted,
                     batch_result.delta_entries_merged,
-                    session.coordinator().storage().row_count(),
-                    session.coordinator().storage().value_count())) {
+                    session.round().coordinator().storage().row_count(),
+                    session.round().coordinator().storage().value_count())) {
                 return RuntimeSearchOutcome::NoCleanBatch;
             }
             {
                 MultiwaySearchProfileScope profile_scope(
                     &search_profile, MultiwaySearchProfileStage::RootExport);
-                if (!session.capture_clean_snapshot(
+                if (!session.round().capture_clean_snapshot(
                         batch_result.clean,
                         static_cast<std::uint64_t>(batch) + 1U,
                         batch_first_trajectory,
@@ -551,7 +557,7 @@ RuntimeSearchOutcome run_search(
                     return RuntimeSearchOutcome::NoCleanBatch;
                 }
             }
-            const auto* snapshot = session.clean_snapshot();
+            const auto* snapshot = session.round().clean_snapshot();
             if (snapshot == nullptr) return RuntimeSearchOutcome::NoCleanBatch;
             ++diagnostics->completed_batches;
             diagnostics->completed_trajectories += batch_result.trajectories_accepted;
@@ -574,7 +580,7 @@ RuntimeSearchOutcome run_search(
             return RuntimeSearchOutcome::NoCleanBatch;
         }
 
-        const auto* snapshot = session.clean_snapshot();
+        const auto* snapshot = session.round().clean_snapshot();
         if (snapshot == nullptr) return RuntimeSearchOutcome::NoCleanBatch;
         const auto& root_policy = snapshot->root_policy;
         policy->clear();
@@ -703,7 +709,7 @@ std::unique_ptr<MultiwayDecisionSession> MultiwayResolver::begin_decision_sessio
         !are_valid_and_distinct_cards(request.public_state.board.data(), request.public_state.board.size()) ||
         contains_card(request.public_state.board, request.hero_cards[0]) ||
         contains_card(request.public_state.board, request.hero_cards[1])) {
-        throw std::invalid_argument("multiway runtime session request has invalid hero cards");
+        throw std::invalid_argument("multiway decision session request has invalid hero cards");
     }
     const auto state = MultiwayState::from_snapshot(request.public_state.betting);
     if (state.current_player() != request.hero_seat ||
@@ -711,7 +717,7 @@ std::unique_ptr<MultiwayDecisionSession> MultiwayResolver::begin_decision_sessio
         state.folded()[static_cast<std::size_t>(request.hero_seat)] || state.legal_actions().empty() ||
         !is_postflop(state.street()) ||
         config_.buckets == nullptr || config_.buckets->identity() != request.blueprint_identity) {
-        throw std::invalid_argument("multiway runtime session has incompatible public state or buckets");
+        throw std::invalid_argument("multiway decision session has incompatible public state or buckets");
     }
     MultiwayResolverDiagnostics diagnostics;
     validate_ranges(request, state, &diagnostics);
@@ -731,11 +737,11 @@ std::unique_ptr<MultiwayDecisionSession> MultiwayResolver::begin_decision_sessio
         config_.runtime_limits.memory,
         search_memory_inputs(request, state, menu.size(), config_, limits));
     if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
-        throw std::length_error("multiway runtime session memory preflight rejected the request");
+        throw std::length_error("multiway decision session memory preflight rejected the request");
     }
     MultiwayRootSnapshot root;
     if (!make_search_root(request, state, board, menu, bucket, &root)) {
-        throw std::invalid_argument("multiway runtime session could not construct a search root");
+        throw std::invalid_argument("multiway decision session could not construct a search root");
     }
     MultiwayCFRConfig cfr;
     cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
