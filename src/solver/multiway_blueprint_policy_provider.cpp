@@ -14,17 +14,17 @@ MultiwayBlueprintLookupStatus MultiwayBlueprintPolicyProvider::strategy_into(
         return MultiwayBlueprintLookupStatus::Missing;
     }
     const auto menu_id = legal_actions[0].action_menu_id;
-    const auto* row = store_->find(infoset, bucket, menu_id);
-    if (row == nullptr) return MultiwayBlueprintLookupStatus::Missing;
-    if (row->actions.size() != action_count) return MultiwayBlueprintLookupStatus::IncompatibleMenu;
+    const auto row = store_->find(infoset, bucket, menu_id);
+    if (!row.valid()) return MultiwayBlueprintLookupStatus::Missing;
+    if (row.action_count != action_count) return MultiwayBlueprintLookupStatus::IncompatibleMenu;
     for (std::size_t index = 0U; index < action_count; ++index) {
-        if (row->actions[index].action != legal_actions[index]) {
+        if (row.actions[index].action != legal_actions[index]) {
             return MultiwayBlueprintLookupStatus::IncompatibleMenu;
         }
     }
     constexpr auto total = static_cast<Probability>(std::numeric_limits<std::uint16_t>::max());
     for (std::size_t index = 0U; index < action_count; ++index) {
-        output[index] = static_cast<Probability>(row->actions[index].probability) / total;
+        output[index] = static_cast<Probability>(row.actions[index].probability) / total;
     }
     return MultiwayBlueprintLookupStatus::Hit;
 }
