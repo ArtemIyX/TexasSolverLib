@@ -30,12 +30,18 @@ texas::HUNLConfig valid_range_config() {
 }  // namespace
 
 TEST_CASE(hunl_card_validation_recognizes_compact_encoding_bounds) {
+    EXPECT_EQ(texas::DECK_CARD_COUNT, 52U);
     EXPECT_TRUE(texas::is_valid_card(0));
     EXPECT_TRUE(!texas::is_valid_card(texas::card_to_int(1, 3)));
     EXPECT_TRUE(texas::is_valid_card(texas::card_to_int(2, 0)));
     EXPECT_TRUE(texas::is_valid_card(texas::card_to_int(14, 3)));
     EXPECT_TRUE(!texas::is_valid_card(texas::card_to_int(15, 0)));
     EXPECT_TRUE(!texas::is_valid_card(std::numeric_limits<std::uint8_t>::max()));
+}
+
+TEST_CASE(hunl_card_validation_uses_explicit_deck_count_boundary) {
+    EXPECT_TRUE(texas::is_valid_card(static_cast<std::uint8_t>(texas::DECK_CARD_COUNT - 1U)));
+    EXPECT_TRUE(!texas::is_valid_card(static_cast<std::uint8_t>(texas::DECK_CARD_COUNT)));
 }
 
 TEST_CASE(hunl_config_rejects_invalid_and_duplicate_board_cards) {

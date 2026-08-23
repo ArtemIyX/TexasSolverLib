@@ -29,7 +29,6 @@
 #include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_blueprint_store.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
-#include "solver/multiway_blueprint_query.hpp"
 #include "solver/multiway_range_update.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_search_session.hpp"
@@ -45,7 +44,6 @@
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
 #include "solver/dcfr_vector.hpp"
-#include "solver/dcfr_vector_parallel.hpp"
 #include "solver/exploit.hpp"
 #include "games/hunl.hpp"
 #include "games/hunl_eval.hpp"
@@ -58,7 +56,6 @@
 #include "games/hunl_solver.hpp"
 #include "games/hunl_tree.hpp"
 #include "games/kuhn.hpp"
-#include "util/layout.hpp"
 #include "games/leduc.hpp"
 #include "util/pcs.hpp"
 #include "preflop/preflop.hpp"
@@ -188,7 +185,6 @@ using ::texas::MultiwayBlueprintRow;
 using ::texas::MultiwayBlueprintStore;
 using ::texas::MultiwayBlueprintPolicyProvider;
 using ::texas::MultiwayBlueprintLookupStatus;
-using ::texas::MultiwayBlueprintQuery;
 using ::texas::MultiwayBucketActionPolicy;
 using ::texas::MultiwayRangeBeliefMetadata;
 using ::texas::MultiwayRangeBeliefObservation;

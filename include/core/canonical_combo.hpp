@@ -2,8 +2,6 @@
 
 #include "core/namespaces.hpp"
 
-#include "core/card.hpp"
-
 #include <array>
 #include <bitset>
 #include <cstddef>
@@ -11,7 +9,6 @@
 
 namespace texas::core {
 
-inline constexpr std::size_t DECK_CARD_COUNT = Card::COUNT;
 inline constexpr std::size_t CANONICAL_HOLE_COMBINATION_COUNT = 1326U;
 
 using CanonicalComboId = std::uint16_t;

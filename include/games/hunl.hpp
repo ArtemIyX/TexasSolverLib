@@ -2,7 +2,6 @@
 
 #include "core/namespaces.hpp"
 
-#include "core/card.hpp"
 #include "core/types.hpp"
 
 #include <array>

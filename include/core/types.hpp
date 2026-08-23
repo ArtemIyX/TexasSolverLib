@@ -14,6 +14,8 @@
 
 namespace texas::core {
 
+inline constexpr std::size_t DECK_CARD_COUNT = 52U;
+
 /**
  * @brief Player index used by game-state interfaces.
  *

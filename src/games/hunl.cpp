@@ -252,7 +252,7 @@ std::uint8_t suit_of(std::uint8_t card) {
 }
 
 bool is_valid_card(std::uint8_t card) noexcept {
-    return card < Card::COUNT;
+    return card < DECK_CARD_COUNT;
 }
 
 bool are_valid_and_distinct_cards(const std::uint8_t* cards, std::size_t count) noexcept {
