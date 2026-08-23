@@ -91,7 +91,7 @@ TEST_CASE(multiway_p7_determinism_schedule_fingerprint_changes_with_trajectory_c
 
 TEST_CASE(multiway_p7_determinism_metadata_defaults_to_deterministic_mode) {
     const texas::MultiwayRunMetadata metadata;
-    EXPECT_EQ(metadata.mode, texas::MultiwayRunMode::Deterministic);
+    EXPECT_TRUE(metadata.bitwise_deterministic);
 }
 
 TEST_CASE(multiway_p7_determinism_metadata_defaults_to_bitwise_deterministic) {

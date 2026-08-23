@@ -63,5 +63,5 @@ TEST_CASE(multiway_scheduler_reports_deterministic_run_metadata) {
     limits.max_sparse_values = 1U;
     limits.max_worker_delta_entries = 1U;
     limits.validate();
-    EXPECT_EQ(texas::MultiwayRunMetadata{}.mode, texas::MultiwayRunMode::Deterministic);
+    EXPECT_TRUE(texas::MultiwayRunMetadata{}.bitwise_deterministic);
 }

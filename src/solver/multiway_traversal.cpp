@@ -623,7 +623,6 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     if (worker_error != nullptr) std::rethrow_exception(worker_error);
 
     MultiwayRootBatchResult result;
-    result.run.mode = MultiwayRunMode::Deterministic;
     result.run.worker_count = worker_count_;
     result.run.base_seed = seed;
     result.run.first_trajectory_id = first_trajectory_id;

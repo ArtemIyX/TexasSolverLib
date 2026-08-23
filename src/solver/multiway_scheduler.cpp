@@ -29,7 +29,6 @@ std::uint64_t multiway_deterministic_schedule_fingerprint(
     std::uint64_t first_trajectory_id,
     std::uint64_t trajectory_count) noexcept {
     std::uint64_t hash = 1469598103934665603ULL;
-    hash_u64(static_cast<std::uint64_t>(MultiwayRunMode::Deterministic), hash);
     hash_u64(worker_count, hash);
     hash_u64(base_seed, hash);
     hash_u64(first_trajectory_id, hash);

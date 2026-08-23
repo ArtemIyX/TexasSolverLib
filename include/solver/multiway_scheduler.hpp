@@ -8,10 +8,6 @@
 
 namespace texas::solver::multiway {
 
-enum class MultiwayRunMode : std::uint8_t {
-    Deterministic = 0U,
-};
-
 inline constexpr std::uint32_t MULTIWAY_PARTITION_VERSION = 1U;
 inline constexpr std::uint32_t MULTIWAY_TRAJECTORY_SEED_VERSION = 1U;
 inline constexpr std::uint32_t MULTIWAY_ACTION_SAMPLING_VERSION = 1U;
@@ -19,7 +15,6 @@ inline constexpr std::uint32_t MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION = 1U;
 inline constexpr std::uint32_t MULTIWAY_MERGE_ORDER_VERSION = 1U;
 
 struct MultiwayRunMetadata {
-    MultiwayRunMode mode = MultiwayRunMode::Deterministic;
     std::uint32_t worker_count = 0U;
     std::uint64_t base_seed = 0U;
     std::uint64_t first_trajectory_id = 0U;
