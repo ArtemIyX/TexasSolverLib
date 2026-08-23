@@ -412,17 +412,6 @@ void merge_delta_streams(
 
 }  // namespace
 
-void HUNLSampledWorkerScratch::clear_keep_capacity() noexcept {
-    action_values.clear();
-    strategy.clear();
-    deltas.clear();
-    merge_cursor = 0;
-}
-
-void HUNLSampledWorkerScratch::reserve_deltas(std::size_t count) {
-    deltas.reserve(count);
-}
-
 HUNLSampledTraversal::HUNLSampledTraversal(
     HUNLSampledBuilder& builder,
     HUNLSampledStorage& storage,
@@ -473,18 +462,6 @@ HUNLSampledTraversalResult HUNLSampledTraversal::run_unmerged(
         TraversalReach{},
         result);
     return result;
-}
-
-void merge_hunl_sampled_worker_deltas(
-    HUNLSampledStorage& storage,
-    HUNLSampledWorkerScratch& scratch) {
-    merge_delta_streams(storage, &scratch, 1U);
-}
-
-void merge_hunl_sampled_worker_streams(
-    HUNLSampledStorage& storage,
-    std::vector<HUNLSampledWorkerScratch>& streams) {
-    merge_delta_streams(storage, streams.data(), streams.size());
 }
 
 void prepare_hunl_sampled_trajectory(

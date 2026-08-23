@@ -3,13 +3,11 @@
 #include "core/namespaces.hpp"
 
 #include "games/hunl_solver.hpp"
-#include "solver/hunl_sampled_builder.hpp"
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/hunl_sampled_export.hpp"
 #include "solver/hunl_sampled_profile.hpp"
 #include "solver/hunl_sampled_range.hpp"
 #include "solver/hunl_sampled_storage.hpp"
-#include "solver/hunl_sampled_terminal.hpp"
 
 #include <chrono>
 #include <array>
@@ -21,9 +19,10 @@
 namespace texas::solver::hunl {
 
 struct HUNLSampledSolveRequest {
-    std::optional<HUNLState> root_state = std::nullopt;
-    std::optional<HUNLStructuredRootRequest> structured_root = std::nullopt;
-    // Non-owning. Required when the selected root has a non-zero depth limit.
+    // Production sampled solving requires one explicit structured public
+    // root. Fixed-private reference roots use a separate adapter.
+    HUNLStructuredRootRequest structured_root;
+    // Non-owning. Required when the structured root has a non-zero depth limit.
     const HUNLLeafEvaluator* leaf_evaluator = nullptr;
 };
 
@@ -94,8 +93,7 @@ public:
     [[nodiscard]] HUNLSampledSolveResult solve_for(
         const HUNLSampledSolveRequest& request,
         std::chrono::milliseconds budget);
-    // Starts a fresh deterministic solve. Structured roots use the private
-    // range traversal; explicit roots remain the fixed-hand oracle path.
+    // Starts a fresh deterministic structured-range solve.
     [[nodiscard]] HUNLSampledSolveResult run_batches(
         const HUNLSampledSolveRequest& request,
         std::uint32_t batches);
@@ -115,8 +113,6 @@ public:
     [[nodiscard]] HUNLSampledMemoryPreflight preflight(
         const HUNLSampledSolveRequest& request) const noexcept;
     [[nodiscard]] const HUNLSampledSolverConfig& config() const noexcept;
-    [[nodiscard]] HUNLSampledBuilder& builder() noexcept;
-    [[nodiscard]] const HUNLSampledBuilder& builder() const noexcept;
     [[nodiscard]] HUNLSampledStorage& storage() noexcept;
     [[nodiscard]] const HUNLSampledStorage& storage() const noexcept;
 
@@ -144,9 +140,7 @@ private:
         const HUNLSampledSolverConfig& config) noexcept;
 
     HUNLSampledSolverConfig config_;
-    HUNLSampledBuilder builder_;
     HUNLSampledStorage storage_;
-    HUNLSampledTerminalEvaluator terminal_evaluator_;
     HUNLSampledProfile profile_;
     HUNLSampledRootStrategy root_strategy_;
     std::unique_ptr<HUNLSampledRangeSession> structured_session_;

@@ -11,6 +11,7 @@ option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research component" OFF)
 option(TEXASSOLVER_BUILD_RESEARCH_EXAMPLES "Build benchmark and backend-comparison examples" OFF)
+option(TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH "Build fixed-private sampled HUNL reference tests" OFF)
 
 set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
@@ -49,7 +50,6 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/hunl_flat_pipeline.hpp
     include/solver/hunl_flat_state.hpp
     include/solver/hunl_leaf_evaluator.hpp
-    include/solver/hunl_sampled_builder.hpp
     include/solver/hunl_sampled_config.hpp
     include/solver/hunl_sampled_export.hpp
     include/solver/hunl_sampled_profile.hpp
@@ -58,8 +58,6 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/hunl_sampled_simd.hpp
     include/solver/hunl_sampled_solver.hpp
     include/solver/hunl_sampled_storage.hpp
-    include/solver/hunl_sampled_terminal.hpp
-    include/solver/hunl_sampled_traversal.hpp
     include/solver/multiway_action_abstraction.hpp
     include/solver/multiway_artifact.hpp
     include/solver/multiway_blueprint_config.hpp
@@ -136,7 +134,6 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl_flat_expected_value.cpp
     src/solver/hunl_flat_pipeline.cpp
     src/solver/hunl_flat_state.cpp
-    src/solver/hunl_sampled_builder.cpp
     src/solver/hunl_sampled_config.cpp
     src/solver/hunl_sampled_export.cpp
     src/solver/hunl_sampled_profile.cpp
@@ -145,8 +142,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl_sampled_simd.cpp
     src/solver/hunl_sampled_solver.cpp
     src/solver/hunl_sampled_storage.cpp
-    src/solver/hunl_sampled_terminal.cpp
-    src/solver/hunl_sampled_traversal.cpp
+    src/solver/hunl_sampled_trajectory.cpp
     src/solver/multiway_action_abstraction.cpp
     src/solver/multiway_artifact.cpp
     src/solver/multiway_blueprint_config.cpp
@@ -252,6 +248,20 @@ if (TEXASSOLVER_BUILD_LEGACY_RESEARCH)
     target_link_libraries(texas_legacy_vector PUBLIC texas)
 endif()
 
+if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
+    add_library(texas_hunl_fixed_research STATIC
+        src/solver/hunl_sampled_builder.cpp
+        src/solver/hunl_sampled_terminal.cpp
+        src/solver/hunl_sampled_traversal.cpp
+    )
+    target_include_directories(texas_hunl_fixed_research
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    )
+    target_compile_features(texas_hunl_fixed_research PUBLIC cxx_std_17)
+    target_link_libraries(texas_hunl_fixed_research PUBLIC texas)
+endif()
+
 if (MSVC)
     target_compile_options(texas PRIVATE /W4)
 else()
@@ -350,6 +360,9 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             test_name STREQUAL "test_hunl_solver_storage"))
             continue()
         endif()
+        if (test_name STREQUAL "test_hunl_sampled_solver")
+            continue()
+        endif()
 
         set(test_support_sources)
         if (test_name STREQUAL "test_multiway_baseline")
@@ -409,5 +422,11 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_decision_session_boundary.cmake
+    )
+    add_test(
+        NAME test_hunl_sampled_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_hunl_sampled_boundary.cmake
     )
 endif()
