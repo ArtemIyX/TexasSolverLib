@@ -22,7 +22,7 @@ std::size_t expected_board_count(Street street) {
 bool are_valid_compact_cards(const std::uint8_t* cards, std::size_t count) noexcept {
     if (cards == nullptr && count != 0U) return false;
     for (std::size_t index = 0U; index < count; ++index) {
-        if (cards[index] >= 52U) return false;
+        if (!is_card_index(cards[index])) return false;
         for (std::size_t prior = 0U; prior < index; ++prior) {
             if (cards[index] == cards[prior]) return false;
         }
@@ -77,17 +77,15 @@ MultiwayBucketTable::MultiwayBucketTable(
         bucket_count_ == 0U || assignments_.size() != MULTIWAY_HOLE_COMBINATION_COUNT) {
         throw std::invalid_argument("multiway bucket table has invalid metadata");
     }
-    for (std::uint8_t first = 0; first < 52U; ++first) {
-        for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
-            const std::array<std::uint8_t, 2> hole = {first, second};
-            const auto assignment = assignments_[hole_index(hole)];
-            if (is_live_hole(canonical_board_, hole)) {
-                if (assignment >= bucket_count_) {
-                    throw std::invalid_argument("multiway bucket table omits a live hole-card pair");
-                }
-            } else if (assignment != MULTIWAY_INVALID_BUCKET) {
-                throw std::invalid_argument("multiway bucket table assigns a board-blocked hole-card pair");
+    for (CanonicalComboId id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id) {
+        const auto& hole = canonical_combos().cards(id);
+        const auto assignment = assignments_[id];
+        if (is_live_hole(canonical_board_, hole)) {
+            if (assignment >= bucket_count_) {
+                throw std::invalid_argument("multiway bucket table omits a live hole-card pair");
             }
+        } else if (assignment != MULTIWAY_INVALID_BUCKET) {
+            throw std::invalid_argument("multiway bucket table assigns a board-blocked hole-card pair");
         }
     }
     table_identity_ = stable_table_identity(
@@ -109,9 +107,7 @@ std::size_t MultiwayBucketTable::hole_index(const std::array<std::uint8_t, 2>& h
     if (!are_valid_compact_cards(hole.data(), hole.size())) {
         throw std::invalid_argument("multiway bucket hole index requires distinct valid cards");
     }
-    const auto low = std::min(hole[0], hole[1]);
-    const auto high = std::max(hole[0], hole[1]);
-    return static_cast<std::size_t>(low) * (103U - low) / 2U + (high - low - 1U);
+    return canonical_combos().id(hole);
 }
 
 MultiwayBucketRegistry::MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables)

@@ -115,7 +115,7 @@ bool request_less(const MultiwayBucketBoardRequest& left, const MultiwayBucketBo
 bool are_valid_compact_cards(const std::uint8_t* cards, std::size_t count) noexcept {
     if (cards == nullptr && count != 0U) return false;
     for (std::size_t index = 0U; index < count; ++index) {
-        if (cards[index] >= 52U) return false;
+        if (!is_card_index(cards[index])) return false;
         for (std::size_t prior = 0U; prior < index; ++prior) {
             if (cards[index] == cards[prior]) return false;
         }
@@ -210,16 +210,14 @@ MultiwayBucketTable build_multiway_baseline_bucket_table(
     }
     const auto count = profile.bucket_count(street);
     std::vector<std::uint32_t> assignments(MULTIWAY_HOLE_COMBINATION_COUNT, MULTIWAY_INVALID_BUCKET);
-    for (std::uint8_t first = 0U; first < 52U; ++first) {
-        for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
-            const std::array<std::uint8_t, 2> hole = {first, second};
-            if (std::find(canonical_board.begin(), canonical_board.end(), first) != canonical_board.end() ||
-                std::find(canonical_board.begin(), canonical_board.end(), second) != canonical_board.end()) {
-                continue;
-            }
-            assignments[MultiwayBucketTable::hole_index(hole)] =
-                assign_multiway_baseline_bucket(make_multiway_bucket_features(street, canonical_board, hole), profile, street);
+    for (CanonicalComboId id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id) {
+        const auto& hole = canonical_combos().cards(id);
+        if (std::find(canonical_board.begin(), canonical_board.end(), hole[0]) != canonical_board.end() ||
+            std::find(canonical_board.begin(), canonical_board.end(), hole[1]) != canonical_board.end()) {
+            continue;
         }
+        assignments[id] = assign_multiway_baseline_bucket(
+            make_multiway_bucket_features(street, canonical_board, hole), profile, street);
     }
     return {identity, street, std::move(canonical_board), count, std::move(assignments)};
 }
