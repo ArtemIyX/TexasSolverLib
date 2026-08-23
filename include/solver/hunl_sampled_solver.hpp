@@ -36,11 +36,6 @@ struct HUNLSampledSolveResult {
     bool timed_out = false;
 };
 
-class HUNLSampledSolverNotReady final : public std::logic_error {
-public:
-    HUNLSampledSolverNotReady();
-};
-
 struct HUNLSampledMemoryEstimate {
     std::uint64_t public_state_cache_bytes = 0;
     std::uint64_t public_states_cached = 0;

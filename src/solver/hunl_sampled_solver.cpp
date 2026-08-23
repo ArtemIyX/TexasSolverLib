@@ -100,11 +100,6 @@ std::size_t sample_joint_deal(const std::vector<HUNLJointRangeDeal>& deals, std:
 
 }  // namespace
 
-HUNLSampledSolverNotReady::HUNLSampledSolverNotReady()
-    : std::logic_error(
-          "positive sampled batches require an explicit fixed-private-card or structured range root") {
-}
-
 std::uint64_t delta_entries_bytes(std::uint64_t entries) noexcept {
     return saturating_multiply(entries, sizeof(HUNLSampledValueDelta));
 }
@@ -288,7 +283,8 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
     }
     HUNLSampledSolveRequest effective_request = request;
     if (batches > 0 && !effective_request.root_state.has_value()) {
-        throw HUNLSampledSolverNotReady{};
+        throw std::invalid_argument(
+            "positive sampled batches require an explicit fixed-private-card or structured range root");
     }
     if (effective_request.root_state.has_value() && effective_request.root_state->config != nullptr &&
         effective_request.root_state->config->depth_limit_plies != 0U) {

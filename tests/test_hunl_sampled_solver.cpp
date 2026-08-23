@@ -832,7 +832,7 @@ TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_wor
     const auto profile_before = solver.profile().snapshot();
     const auto strategy_before = solver.export_root_strategy();
 
-    EXPECT_THROW(solver.run_batches(request, 1), texas::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.run_batches(request, 1), std::invalid_argument);
 
     EXPECT_EQ(root_id, 0U);
     EXPECT_EQ(initialized.batches_completed, 0U);
@@ -858,8 +858,8 @@ TEST_CASE(hunl_sampled_solver_positive_time_budgets_require_a_root) {
     texas::HUNLSampledSolveRequest request;
     request.root_action_count = 3;
 
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), texas::HUNLSampledSolverNotReady);
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{15'000}), texas::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), std::invalid_argument);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{15'000}), std::invalid_argument);
     EXPECT_EQ(solver.profile().snapshot().traversals, 0U);
     EXPECT_EQ(solver.export_root_strategy().actions.size(), 0U);
 }
@@ -946,8 +946,8 @@ TEST_CASE(hunl_sampled_solver_reports_distinct_missing_root_and_timed_contracts)
     for (std::uint32_t batches = 1; batches <= 20; ++batches) {
         texas::HUNLSampledSolver solver;
         texas::HUNLSampledSolveRequest request;
-        EXPECT_THROW(solver.run_batches(request, batches), texas::HUNLSampledSolverNotReady);
-        EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), texas::HUNLSampledSolverNotReady);
+        EXPECT_THROW(solver.run_batches(request, batches), std::invalid_argument);
+        EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), std::invalid_argument);
     }
 }
 
