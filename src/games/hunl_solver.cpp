@@ -61,9 +61,7 @@ bool should_use_flat_hunl_backend(
 
 bool has_range_inputs(const HUNLConfig& config) {
     return config.initial_ranges[0].has_value() ||
-           config.initial_ranges[1].has_value() ||
-           config.player_ranges[0].has_value() ||
-           config.player_ranges[1].has_value();
+           config.initial_ranges[1].has_value();
 }
 
 HUNLConfig range_config_for_root(const HUNLStructuredRootRequest& request) {

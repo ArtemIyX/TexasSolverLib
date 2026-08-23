@@ -38,16 +38,6 @@ std::uint64_t mul_high_u64(std::uint64_t lhs, std::uint64_t rhs) {
 
 }  // namespace
 
-double effective_beta(SamplingStrategy strategy, double requested_beta) {
-    switch (strategy) {
-        case SamplingStrategy::Full:
-            return requested_beta;
-        case SamplingStrategy::PublicChance:
-            return 0.5;
-    }
-    return requested_beta;
-}
-
 std::uint64_t PcsRng::mix_seed_word(std::uint64_t value) noexcept {
     auto z = value + 0x9E3779B97F4A7C15ULL;
     z = (z ^ (z >> 30U)) * 0xBF58476D1CE4E5B9ULL;

@@ -1,5 +1,4 @@
 #include "games/hunl.hpp"
-#include "ranges/propagation.hpp"
 #include "test_harness.hpp"
 
 #include <limits>

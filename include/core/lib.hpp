@@ -332,7 +332,6 @@ using ::texas::MultiwayWorkerDelta;
 using ::texas::MultiwayWorkerDeltaStream;
 using ::texas::MultiwayWeightedHole;
 using ::texas::PlayerId;
-using ::texas::PreflopRvrOutput;
 using ::texas::PreflopSolveOutput;
 using ::texas::Probability;
 using ::texas::SolveOutput;
@@ -431,16 +430,6 @@ inline VectorSolveOutput solve_range_vs_range_rust(
         alpha,
         beta,
         gamma);
-}
-
-inline PreflopRvrOutput solve_hunl_preflop_rvr(
-    const HUNLConfig& config,
-    const PreflopEquityTable& table,
-    std::uint32_t iterations,
-    double alpha,
-    double beta,
-    double gamma) {
-    return ::texas::solve_hunl_preflop_rvr(config, table, iterations, alpha, beta, gamma);
 }
 
 inline Class169RvrOutput solve_hunl_preflop_rvr_class169(

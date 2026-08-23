@@ -519,10 +519,6 @@ HUNLFlatInfosetTable HUNLFlatInfosetTable::build(
     table.precision_ = precision;
     table.meta_.reserve(graph.infosets.size());
 
-    if (precision == HUNLFlatStoragePrecision::Compressed16) {
-        throw std::invalid_argument("HUNLFlatInfosetTable Compressed16 precision is not implemented yet");
-    }
-
     std::size_t running_offset = 0;
     std::size_t running_bucket_offset = 0;
     for (const auto& infoset : graph.infosets) {

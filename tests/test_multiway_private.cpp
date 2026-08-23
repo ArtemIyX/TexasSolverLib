@@ -107,7 +107,6 @@ TEST_CASE(multiway_private_joint_sampling_never_returns_a_board_card) {
 TEST_CASE(multiway_private_rejects_impossible_joint_ranges_without_cartesian_expansion) {
     auto config = ranges();
     config.ranges[1] = config.ranges[0];
-    config.max_rejection_attempts = 3;
     EXPECT_THROW(texas::sample_multiway_private_hands(config, 7), std::runtime_error);
 }
 
@@ -225,7 +224,6 @@ TEST_CASE(multiway_compiled_private_ranges_offer_nonthrowing_worker_sampling) {
 TEST_CASE(multiway_private_compiled_sampler_exposes_direct_one_shot_proposal_reach) {
     texas::MultiwayPrivateConfig config;
     config.board = {c(2, 0), c(3, 1), c(4, 2)};
-    config.max_rejection_attempts = 1;
     config.ranges = {
         {hand(14, 0, 13, 0), hand(12, 0, 11, 0)},
         {hand(14, 0, 10, 0), hand(9, 0, 8, 0)},
@@ -267,7 +265,6 @@ TEST_CASE(multiway_private_proposal_contract_is_identity_for_always_compatible_r
 TEST_CASE(multiway_private_proposal_does_not_retry_after_a_collision) {
     texas::MultiwayPrivateConfig config;
     config.board = {c(2, 0), c(3, 1), c(4, 2)};
-    config.max_rejection_attempts = 2;
     config.ranges = {
         {hand(14, 0, 13, 0), hand(12, 0, 11, 0)},
         {hand(14, 0, 10, 0), hand(9, 0, 8, 0)},
@@ -290,7 +287,6 @@ TEST_CASE(multiway_private_proposal_does_not_retry_after_a_collision) {
 
 TEST_CASE(multiway_private_proposal_contract_never_records_retries) {
     auto config = ranges();
-    config.max_rejection_attempts = 2;
     config.ranges[0] = {hand(14, 0, 13, 0)};
     config.ranges[1] = {hand(14, 0, 13, 0), hand(10, 0, 8, 0)};
     texas::MultiwayCompiledPrivateRanges compiled(config);
@@ -311,7 +307,6 @@ TEST_CASE(multiway_private_proposal_contract_never_records_retries) {
 
 TEST_CASE(multiway_private_proposal_contract_marks_bounded_rejection_exhaustion) {
     auto config = ranges();
-    config.max_rejection_attempts = 1;
     config.ranges[0] = {hand(14, 0, 13, 0)};
     config.ranges[1] = {hand(14, 0, 13, 0), hand(10, 0, 8, 0)};
     texas::MultiwayCompiledPrivateRanges compiled(config);
@@ -346,7 +341,6 @@ TEST_CASE(multiway_private_standalone_sample_preserves_compiled_proposal_fields)
 
 TEST_CASE(multiway_private_proposal_contract_is_seed_deterministic_including_reach_fields) {
     auto config = ranges();
-    config.max_rejection_attempts = 2;
     texas::MultiwayCompiledPrivateRanges compiled(config);
     texas::MultiwayPrivateWorkerScratch first;
     texas::MultiwayPrivateWorkerScratch second;
@@ -359,53 +353,8 @@ TEST_CASE(multiway_private_proposal_contract_is_seed_deterministic_including_rea
     EXPECT_NEAR(first.inclusion_reach, second.inclusion_reach, 1e-12);
 }
 
-TEST_CASE(multiway_private_rejection_budget_accepts_the_full_uint32_domain_without_loop_wrap) {
-    auto config = ranges();
-    config.max_rejection_attempts = std::numeric_limits<std::uint32_t>::max();
-    config.validate();
-    texas::MultiwayCompiledPrivateRanges compiled(config);
-    for (std::uint64_t seed = 1; seed <= 20; ++seed) {
-        texas::MultiwayPrivateWorkerScratch scratch;
-        EXPECT_TRUE(compiled.try_sample_into(seed, scratch));
-        EXPECT_TRUE(scratch.attempts > 0U);
-    }
-}
-
-TEST_CASE(multiway_private_attempt_cursor_covers_the_last_twenty_uint32_attempts_once) {
-    const auto maximum = std::numeric_limits<std::uint32_t>::max();
-    std::uint64_t cursor = static_cast<std::uint64_t>(maximum) - 20U;
-    for (std::uint32_t offset = 1; offset <= 20; ++offset) {
-        std::uint32_t attempt = 0;
-        EXPECT_TRUE(texas::games::multiway::detail::next_multiway_rejection_attempt(
-            cursor, maximum, attempt));
-        EXPECT_EQ(attempt, maximum - 20U + offset);
-    }
-    std::uint32_t exhausted_attempt = 99;
-    EXPECT_TRUE(!texas::games::multiway::detail::next_multiway_rejection_attempt(
-        cursor, maximum, exhausted_attempt));
-    EXPECT_EQ(exhausted_attempt, 99U);
-    EXPECT_EQ(cursor, static_cast<std::uint64_t>(maximum));
-}
-
-TEST_CASE(multiway_private_attempt_cursor_exhausts_twenty_small_budgets_exactly) {
-    for (std::uint32_t limit = 1; limit <= 20; ++limit) {
-        std::uint64_t cursor = 0;
-        for (std::uint32_t expected = 1; expected <= limit; ++expected) {
-            std::uint32_t attempt = 0;
-            EXPECT_TRUE(texas::games::multiway::detail::next_multiway_rejection_attempt(
-                cursor, limit, attempt));
-            EXPECT_EQ(attempt, expected);
-        }
-        std::uint32_t exhausted_attempt = 0;
-        EXPECT_TRUE(!texas::games::multiway::detail::next_multiway_rejection_attempt(
-            cursor, limit, exhausted_attempt));
-        EXPECT_EQ(cursor, static_cast<std::uint64_t>(limit));
-    }
-}
-
 TEST_CASE(multiway_private_failed_try_sample_clears_reused_worker_scratch) {
     auto config = ranges();
-    config.max_rejection_attempts = 1;
     config.ranges[0] = {hand(14, 0, 13, 0)};
     config.ranges[1] = {hand(14, 0, 13, 0), hand(10, 0, 8, 0)};
     texas::MultiwayCompiledPrivateRanges compiled(config);

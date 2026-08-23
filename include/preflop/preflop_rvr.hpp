@@ -13,16 +13,6 @@
 
 namespace texas::preflop {
 
-class PreflopRvrNotReady final : public std::logic_error {
-public:
-    PreflopRvrNotReady();
-};
-
-struct PreflopRvrOutput {
-    SolveOutput base;
-    std::uint32_t decision_node_count = 0;
-};
-
 struct Class169Combos {
     std::array<std::vector<std::array<std::uint8_t, 2>>, PREFLOP_NUM_CLASSES> combos;
 
@@ -113,12 +103,6 @@ public:
         const std::vector<double>& root_reach_p0,
         const std::vector<double>& root_reach_p1);
 
-    void solve(
-        std::size_t decision_node_count,
-        std::uint32_t iterations,
-        const std::vector<double>& root_reach_p0,
-        const std::vector<double>& root_reach_p1);
-
     std::unordered_map<std::string, std::vector<double>> average_strategy() const;
     std::uint32_t iteration() const;
 
@@ -142,14 +126,6 @@ private:
         const std::vector<double>& reach_p,
         const std::vector<double>& reach_opp);
 };
-
-PreflopRvrOutput solve_hunl_preflop_rvr(
-    const HUNLConfig& config,
-    const PreflopEquityTable& table,
-    std::uint32_t iterations,
-    double alpha,
-    double beta,
-    double gamma);
 
 Class169RvrOutput solve_hunl_preflop_rvr_class169(
     const HUNLConfig& config,

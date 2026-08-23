@@ -11,22 +11,6 @@
 
 namespace texas::games::multiway {
 
-namespace detail {
-
-// Keeps the public uint32 attempt domain bounded even when the configured
-// limit is UINT32_MAX. The 64-bit cursor is also directly boundary-testable.
-inline bool next_multiway_rejection_attempt(
-    std::uint64_t& cursor,
-    std::uint32_t limit,
-    std::uint32_t& attempt) noexcept {
-    if (cursor >= static_cast<std::uint64_t>(limit)) return false;
-    ++cursor;
-    attempt = static_cast<std::uint32_t>(cursor);
-    return true;
-}
-
-}  // namespace detail
-
 struct MultiwayWeightedHole {
     std::array<std::uint8_t, 2> hole = {0, 0};
     double weight = 0.0;
@@ -35,10 +19,6 @@ struct MultiwayWeightedHole {
 struct MultiwayPrivateConfig {
     std::vector<std::uint8_t> board;
     std::vector<std::vector<MultiwayWeightedHole>> ranges;
-    // Retained for source compatibility. Compiled sampling makes one proposal
-    // per trajectory and never retries.
-    std::uint32_t max_rejection_attempts = 1;
-
     void validate() const;
 };
 

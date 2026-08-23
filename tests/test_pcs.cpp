@@ -4,13 +4,6 @@
 #include <array>
 #include <cmath>
 
-TEST_CASE(pcs_effective_beta_overrides_for_public_chance) {
-    EXPECT_EQ(texas::effective_beta(texas::SamplingStrategy::Full, 0.0), 0.0);
-    EXPECT_EQ(texas::effective_beta(texas::SamplingStrategy::Full, 0.7), 0.7);
-    EXPECT_EQ(texas::effective_beta(texas::SamplingStrategy::PublicChance, 0.0), 0.5);
-    EXPECT_EQ(texas::effective_beta(texas::SamplingStrategy::PublicChance, 0.9), 0.5);
-}
-
 TEST_CASE(pcs_rng_is_deterministic_for_seed) {
     texas::PcsRng a(7);
     texas::PcsRng b(7);

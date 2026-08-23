@@ -26,9 +26,6 @@ enum class MultiwayRangeBeliefSource : std::uint8_t {
 struct MultiwayRangeBeliefMetadata {
     MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
     std::uint64_t last_update_revision = 0U;
-    // Legacy compact action diagnostics retained for source compatibility.
-    std::uint64_t last_action_id = 0U;
-    bool has_last_action = false;
     struct Observation {
         MultiwayRangeBeliefSource source = MultiwayRangeBeliefSource::None;
         std::uint64_t public_state_id = 0U;

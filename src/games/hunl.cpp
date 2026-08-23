@@ -618,11 +618,6 @@ void HUNLConfig::validate() const {
         throw std::invalid_argument(
             "HUNLConfig.validate: initial_ranges require UseInitialRanges or RequireExplicit policy");
     }
-    if (player_ranges[0].has_value() || player_ranges[1].has_value()) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: player_ranges is retired; use initial_ranges for range solving");
-    }
-
     for (std::size_t player = 0; player < initial_ranges.size(); ++player) {
         if (initial_ranges[player].has_value()) {
             validate_range_input(

@@ -111,7 +111,7 @@ std::uint64_t delta_entries_bytes(std::uint64_t entries) noexcept {
 
 HUNLSampledSolver::HUNLSampledSolver(HUNLSampledSolverConfig config)
     : config_(config),
-      builder_(HUNLSampledBuilderConfig{config.use_public_chance_isomorphism, effective_public_state_cap(config), 0U}),
+      builder_(HUNLSampledBuilderConfig{effective_public_state_cap(config), 0U}),
       storage_(make_sampled_storage(config)) {
     validate_sampled_config_or_throw(config_);
 }
@@ -406,9 +406,6 @@ HUNLSampledSolveResult HUNLSampledSolver::run_batches_impl(
                 try {
                     if (launch_cancelled.load(std::memory_order_acquire)) {
                         return;
-                    }
-                    if (config_.test_throw_worker_index == static_cast<std::int32_t>(worker_index)) {
-                        throw std::runtime_error("sampled solver regression worker failure");
                     }
                     auto& aggregate = worker_scratch[worker_index];
                     const auto range = worker_batches[worker_index].trajectories;

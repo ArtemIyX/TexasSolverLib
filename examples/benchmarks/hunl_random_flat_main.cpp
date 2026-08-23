@@ -101,7 +101,6 @@ std::optional<texas::Street> street_from_text(std::string_view text) {
 std::optional<texas::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
     if (text == "double" || text == "float64") return texas::HUNLFlatStoragePrecision::Float64;
     if (text == "float" || text == "float32") return texas::HUNLFlatStoragePrecision::Float32;
-    if (text == "compressed16" || text == "fp16") return texas::HUNLFlatStoragePrecision::Compressed16;
     return std::nullopt;
 }
 
@@ -445,8 +444,6 @@ std::string precision_name(texas::HUNLFlatStoragePrecision precision) {
             return "double";
         case texas::HUNLFlatStoragePrecision::Float32:
             return "float";
-        case texas::HUNLFlatStoragePrecision::Compressed16:
-            return "compressed16";
     }
     return "unknown";
 }

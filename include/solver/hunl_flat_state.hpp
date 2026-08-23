@@ -30,7 +30,6 @@ enum class HUNLFlatValueLayout : std::uint8_t {
 enum class HUNLFlatStoragePrecision : std::uint8_t {
     Float64 = 0,
     Float32 = 1,
-    Compressed16 = 2,
 };
 
 struct HUNLFlatInfosetTableMeta {

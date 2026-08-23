@@ -50,9 +50,9 @@ MultiwayPrivateRangeFeasibilityStatus find_compatible_deal(
 }  // namespace
 
 void MultiwayPrivateConfig::validate() const {
-    if (ranges.size() < 2U || ranges.size() > 6U || board.size() > 5U || max_rejection_attempts == 0U ||
+    if (ranges.size() < 2U || ranges.size() > 6U || board.size() > 5U ||
         !are_valid_and_distinct_cards(board.data(), board.size())) {
-        throw std::invalid_argument("MultiwayPrivateConfig has invalid seats, board, or sampling limit");
+        throw std::invalid_argument("MultiwayPrivateConfig has invalid seats or board");
     }
     std::array<bool, 64> board_used = {};
     for (const auto card : board) board_used[card] = true;

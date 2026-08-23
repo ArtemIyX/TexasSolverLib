@@ -20,8 +20,6 @@ enum class HUNLFlatSamplingMode : std::uint8_t {
 enum class HUNLFlatBaselineMode : std::uint8_t {
     None = 0,
     MovingAverage = 1,
-    DepthLimitedValueTable = 2,
-    TerminalBoardCache = 3,
 };
 
 struct HUNLSampledSolverConfig {
@@ -29,20 +27,13 @@ struct HUNLSampledSolverConfig {
     std::uint32_t minibatch_size = 64;
     std::uint32_t max_cached_public_states = 0;
     std::uint32_t bucket_count_hint = 0;
-    // Optional preflight hint. The structured root remains authoritative; a
-    // non-zero selected cutoff requires HUNLSampledSolveRequest::leaf_evaluator.
-    std::uint32_t depth_limit_plies_hint = 0;
     HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float32;
     HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand;
-    // Disabled until private-hand/range suit remapping proves closure and equal reach.
-    bool use_public_chance_isomorphism = false;
     bool enable_memory_guardrails = true;
     bool adaptive_memory_fallback = true;
     std::size_t workers = 1;
     std::uint64_t memory_warning_bytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
     std::uint64_t memory_fail_bytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
-    // Regression-only worker failure injection for transactional session tests.
-    std::int32_t test_throw_worker_index = -1;
 };
 
 struct HUNLFlatMCCFRConfig {
@@ -62,10 +53,6 @@ struct HUNLFlatMCCFRConfig {
     bool keep_dense_validation_backend = false;
     HUNLFlatBaselineMode baseline_mode = HUNLFlatBaselineMode::None;
     bool use_iterative_external_dense_traversal = false;
-    // Regression-only fault injection. A non-negative worker index throws at
-    // the start of that worker's batch so thread exception propagation can be
-    // tested without corrupting a game graph.
-    std::int32_t test_throw_worker_index = -1;
 };
 
 struct HUNLSampledConfigValidation {

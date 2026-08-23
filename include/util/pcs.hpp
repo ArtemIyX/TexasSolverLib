@@ -9,13 +9,6 @@
 
 namespace texas::util {
 
-enum class SamplingStrategy : std::uint8_t {
-    Full = 0,
-    PublicChance = 1,
-};
-
-double effective_beta(SamplingStrategy strategy, double requested_beta);
-
 class PcsRng {
 public:
     explicit PcsRng(std::uint64_t seed);

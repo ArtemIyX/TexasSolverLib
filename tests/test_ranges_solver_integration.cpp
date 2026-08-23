@@ -25,7 +25,6 @@ texas::HUNLRangeInput single_hand_range(std::uint8_t first, std::uint8_t second,
     range.hand_weights.push_back({{first, second}, weight});
     return range;
 }
-
 texas::HUNLConfig range_contract_config() {
     auto config = texas::default_tiny_subgame();
     config.initial_hole_cards = std::nullopt;
@@ -803,13 +802,6 @@ TEST_CASE(ranges_uniform_policy_rejects_initial_ranges) {
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
-TEST_CASE(ranges_legacy_player_ranges_are_rejected_by_config_validation) {
-    auto config = texas::default_tiny_subgame();
-    config.player_ranges[0] = single_hand_range(texas::card_to_int(2, 0), texas::card_to_int(3, 1));
-
-    EXPECT_THROW(config.validate(), std::invalid_argument);
-}
-
 TEST_CASE(ranges_recursive_postflop_entrypoint_rejects_range_contract_before_solving) {
     const auto config = range_contract_config();
 
@@ -822,25 +814,4 @@ TEST_CASE(ranges_flat_postflop_entrypoint_rejects_range_contract_before_solving)
     config.initial_board.pop_back();
 
     EXPECT_THROW(texas::solve_hunl_postflop(config, 0, 1.5, 0.0, 2.0, 2, 8, true), std::invalid_argument);
-}
-
-TEST_CASE(ranges_direct_flat_backend_rejects_legacy_bucket_priors) {
-    auto valid = texas::default_tiny_subgame();
-    auto graph = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(valid));
-    valid.player_ranges[0] = single_hand_range(texas::card_to_int(2, 0), texas::card_to_int(3, 1));
-    // Install the invalid solve contract after graph construction so this test
-    // reaches the flat backend's own fail-closed guard.
-    graph.config = std::make_shared<const texas::HUNLConfig>(valid);
-
-    EXPECT_THROW(
-        texas::HUNLFlatDCFR(
-            graph,
-            {1, 1},
-            texas::HUNLFlatSolveMode::ExplicitHand,
-            texas::HUNLFlatValueLayout::InfosetHandAction,
-            1,
-            1.5,
-            0.0,
-            2.0),
-        std::invalid_argument);
 }
