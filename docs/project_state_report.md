@@ -773,13 +773,10 @@ flag is set.
 The CMake example set includes:
 
 - `examples/solve_kuhn.cpp`: minimal Kuhn solve.
-- `examples/hunl_mccfr_postflop_main.cpp`: sampled HUNL postflop path.
 - `examples/benchmarks/main.cpp`: general benchmark entry point.
 - `examples/benchmarks/flat_scheduler_main.cpp`: flat scheduler benchmark.
 - `examples/benchmarks/hunl_backend_compare_main.cpp`: recursive/flat backend
   comparison.
-- `examples/benchmarks/hunl_random_flat_main.cpp`: random flat subgame path.
-- `examples/benchmarks/hunl_mccfr_scaling_main.cpp`: sampled scaling path.
 
 These examples demonstrate library consumption and benchmarking. They are not
 the deployment host or a poker client integration.

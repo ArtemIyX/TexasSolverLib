@@ -44,7 +44,6 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/hunl_bucket_terminal.hpp
     include/solver/hunl_flat_dcfr.hpp
     include/solver/hunl_flat_expected_value.hpp
-    include/solver/hunl_flat_mccfr.hpp
     include/solver/hunl_flat_pipeline.hpp
     include/solver/hunl_flat_state.hpp
     include/solver/hunl_leaf_evaluator.hpp
@@ -134,7 +133,6 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl_bucket_terminal.cpp
     src/solver/hunl_flat_dcfr.cpp
     src/solver/hunl_flat_expected_value.cpp
-    src/solver/hunl_flat_mccfr.cpp
     src/solver/hunl_flat_pipeline.cpp
     src/solver/hunl_flat_state.cpp
     src/solver/hunl_sampled_builder.cpp
@@ -261,6 +259,7 @@ install(TARGETS pheval
 install(DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     PATTERN "solver/multiway_baseline.hpp" EXCLUDE
+    PATTERN "solver/hunl_flat_mccfr.hpp" EXCLUDE
 )
 
 install(EXPORT TexasSolverTargets
@@ -311,24 +310,6 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
     target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    add_executable(texas_solver_hunl_random_flat
-        examples/benchmarks/hunl_random_flat_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_random_flat PRIVATE texas)
-    target_include_directories(texas_solver_hunl_random_flat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-    add_executable(texas_solver_hunl_mccfr_scaling
-        examples/benchmarks/hunl_mccfr_scaling_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_mccfr_scaling PRIVATE texas)
-    target_include_directories(texas_solver_hunl_mccfr_scaling PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-    add_executable(texas_solver_hunl_mccfr_postflop
-        examples/hunl_mccfr_postflop_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_mccfr_postflop PRIVATE texas)
-    target_include_directories(texas_solver_hunl_mccfr_postflop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
 endif()
 
 if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
@@ -345,6 +326,9 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         set(test_support_sources)
         if (test_name STREQUAL "test_multiway_baseline")
             list(APPEND test_support_sources src/solver/multiway_baseline.cpp)
+        endif()
+        if (test_name STREQUAL "test_hunl_flat_mccfr")
+            list(APPEND test_support_sources src/solver/hunl_flat_mccfr.cpp)
         endif()
 
         add_executable(${test_name}
