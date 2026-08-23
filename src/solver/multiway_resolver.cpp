@@ -233,7 +233,10 @@ void validate_ranges(
     const MultiwayState& state,
     MultiwayResolverDiagnostics* diagnostics) {
     std::array<bool, 6U> seen = {};
-    bool hero_present = request.hero_range.empty();
+    if (request.hero_range.empty()) {
+        throw std::invalid_argument("multiway resolver requires an explicit hero range");
+    }
+    bool hero_present = false;
     for (const auto& hand : request.hero_range) {
         if (!are_valid_and_distinct_cards(hand.hole.data(), hand.hole.size()) ||
             contains_card(request.public_state.board, hand.hole[0]) ||
@@ -364,9 +367,6 @@ bool make_search_root(
     for (std::size_t seat = 0U; seat < seat_count; ++seat) {
         if (static_cast<PlayerId>(seat) == request.hero_seat) {
             root->private_ranges.ranges[seat] = request.hero_range;
-            if (root->private_ranges.ranges[seat].empty()) {
-                root->private_ranges.ranges[seat].push_back({request.hero_cards, 1.0});
-            }
         } else {
             root->private_ranges.ranges[seat] = ranges[seat]->hands;
         }
@@ -398,7 +398,7 @@ MultiwayMemoryInputs search_memory_inputs(
     inputs.blueprint_index_bytes = config.full_blueprint == nullptr
         ? 0U : config.full_blueprint->memory_bytes();
     inputs.range_row_count = state.stacks().size();
-    inputs.range_entry_count = request.hero_range.empty() ? 1U : request.hero_range.size();
+    inputs.range_entry_count = request.hero_range.size();
     for (const auto& range : request.opponent_ranges) {
         inputs.range_entry_count = saturating_add(inputs.range_entry_count, range.hands.size());
     }

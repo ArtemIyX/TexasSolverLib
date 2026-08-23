@@ -45,6 +45,7 @@ struct ResolverBaselineFixture {
         request.public_state = root;
         request.hero_seat = 0;
         request.hero_cards = {24U, 31U};
+        request.hero_range = {{{24U, 31U}, 1.0}};
         request.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         request.sampling_seed = 73U;
         return request;

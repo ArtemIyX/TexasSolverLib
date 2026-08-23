@@ -43,6 +43,7 @@ struct ResolverFixture {
         request.public_state = root;
         request.hero_seat = 0;
         request.hero_cards = {24U, 31U};
+        request.hero_range = {{{24U, 31U}, 1.0}};
         request.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         request.sampling_seed = 73U;
         return request;
@@ -171,7 +172,7 @@ TEST_CASE(multiway_resolver_uses_the_same_range_contract_for_multiple_opponents)
     request.opponent_ranges[1].hands.push_back({{40U, 41U}, 1.0});
     auto resolver = fixture.resolver();
     const auto result = resolver.resolve(request);
-    EXPECT_EQ(result.diagnostics.admitted_range_entries, 2U);
+    EXPECT_EQ(result.diagnostics.admitted_range_entries, 3U);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 
@@ -210,6 +211,11 @@ TEST_CASE(multiway_resolver_rejects_malformed_requests_and_missing_buckets) {
     const auto invalid = resolver.resolve(malformed);
     EXPECT_EQ(invalid.diagnostics.status, texas::MultiwayResolverStatus::InvalidRequest);
     EXPECT_TRUE(!invalid.has_sampled_action);
+
+    auto missing_hero_range = fixture.request();
+    missing_hero_range.hero_range.clear();
+    const auto missing_range = resolver.resolve(missing_hero_range);
+    EXPECT_EQ(missing_range.diagnostics.status, texas::MultiwayResolverStatus::InvalidRequest);
 
     texas::MultiwayResolver no_bucket;
     const auto missing_bucket = no_bucket.resolve(fixture.request());

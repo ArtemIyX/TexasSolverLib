@@ -41,8 +41,8 @@ struct MultiwayResolverRequest {
     MultiwayPublicStateDescriptor public_state{};
     PlayerId hero_seat = -1;
     std::array<std::uint8_t, 2> hero_cards = {0, 0};
-    // Optional full hero belief. When omitted, the resolver uses the known
-    // actual hand as a singleton belief for backward compatibility.
+    // Explicit hero belief. The known hero cards must be present in this
+    // range, but do not implicitly create a singleton range.
     std::vector<MultiwayWeightedHole> hero_range;
     std::vector<MultiwayResolverSeatRange> opponent_ranges;
     std::chrono::steady_clock::time_point deadline{};

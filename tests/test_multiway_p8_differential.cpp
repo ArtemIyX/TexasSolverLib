@@ -63,6 +63,7 @@ struct ResolverFixture {
         result.public_state = root;
         result.hero_seat = 0;
         result.hero_cards = {24U, 31U};
+        result.hero_range = {{{24U, 31U}, 1.0}};
         result.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         result.sampling_seed = 73U;
         return result;
