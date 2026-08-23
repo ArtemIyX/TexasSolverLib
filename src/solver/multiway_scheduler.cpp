@@ -1,4 +1,5 @@
 #include "solver/multiway_scheduler.hpp"
+#include "core/fingerprint.hpp"
 
 #include <algorithm>
 
@@ -6,10 +7,7 @@ namespace texas::solver::multiway {
 namespace {
 
 void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
-    for (std::size_t byte = 0U; byte < sizeof(value); ++byte) {
-        hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
-        hash *= 1099511628211ULL;
-    }
+    texas::core::fingerprint::append_u64(hash, value);
 }
 
 }  // namespace

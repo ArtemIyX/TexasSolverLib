@@ -1,6 +1,7 @@
 #include "solver/multiway_bucket_model.hpp"
 
 #include "core/canonical_combo.hpp"
+#include "core/fingerprint.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -36,12 +37,9 @@ std::uint64_t stable_table_identity(
     const std::vector<std::uint8_t>& canonical_board,
     std::uint32_t bucket_count,
     const std::vector<std::uint32_t>& assignments) noexcept {
-    std::uint64_t hash = 14695981039346656037ULL;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     const auto append = [&hash](std::uint64_t value) noexcept {
-        for (std::uint8_t byte = 0U; byte < 8U; ++byte) {
-            hash ^= (value >> (byte * 8U)) & 0xffU;
-            hash *= 1099511628211ULL;
-        }
+        texas::core::fingerprint::append_u64(hash, value);
     };
     append(identity.combined_hash);
     append(static_cast<std::uint8_t>(street));

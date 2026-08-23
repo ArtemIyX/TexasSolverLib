@@ -156,8 +156,7 @@ void MultiwayDeviationExpansionConfig::validate() const {
 
 std::uint64_t MultiwayActionAbstraction::menu_profile_identity(
     MultiwayActionAbstractionContext context) const noexcept {
-    constexpr std::uint64_t kOffset = 14695981039346656037ULL;
-    auto hash = kOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, config_.menu_profile_version);
     append_u64(hash, config_.multiway_first_bet_count);
     append_u64(hash, config_.three_way_first_bet_count);

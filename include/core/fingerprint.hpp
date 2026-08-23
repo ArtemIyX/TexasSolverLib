@@ -9,10 +9,14 @@ namespace texas::core::fingerprint {
 inline constexpr std::uint64_t FNV1A_OFFSET = 14695981039346656037ULL;
 inline constexpr std::uint64_t FNV1A_PRIME = 1099511628211ULL;
 
+inline void append_u8(std::uint64_t& hash, std::uint8_t value) noexcept {
+    hash ^= value;
+    hash *= FNV1A_PRIME;
+}
+
 inline void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
     for (std::uint8_t byte = 0U; byte < 8U; ++byte) {
-        hash ^= (value >> (byte * 8U)) & 0xffU;
-        hash *= FNV1A_PRIME;
+        append_u8(hash, static_cast<std::uint8_t>(value >> (byte * 8U)));
     }
 }
 

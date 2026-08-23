@@ -1,4 +1,5 @@
 #include "solver/multiway_traversal.hpp"
+#include "core/fingerprint.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_continuation_selector.hpp"
 #include "util/thread_join_guard.hpp"
@@ -19,10 +20,7 @@ namespace texas::solver::multiway {
 namespace {
 
 void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
-    for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
-        hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
-        hash *= 1099511628211ULL;
-    }
+    texas::core::fingerprint::append_u64(hash, value);
 }
 
 std::uint64_t private_range_identity(const MultiwayPrivateConfig& ranges) noexcept {
