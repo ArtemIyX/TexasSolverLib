@@ -174,7 +174,6 @@ struct MultiwayResolverConfig {
     std::shared_ptr<const MultiwayBlueprintStore> full_blueprint;
     MultiwayActionAbstractionConfig action_abstraction{};
     std::uint32_t trajectories_per_batch = 32U;
-    std::uint32_t max_batches = 64U;
     std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
     MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::ReleaseDefault;
     // Stable-root reuse is an explicit deployment policy, not hidden resolver state.

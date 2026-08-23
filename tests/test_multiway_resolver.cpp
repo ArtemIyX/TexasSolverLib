@@ -52,7 +52,7 @@ struct ResolverFixture {
     texas::MultiwayResolver resolver() {
         texas::MultiwayResolverConfig config;
         config.buckets = &buckets;
-        config.max_batches = 2U;
+        config.search_limits.max_batches = 2U;
         config.trajectories_per_batch = 5U;
         config.search_mode = texas::MultiwayResolverSearchMode::FallbackOnly;
         return texas::MultiwayResolver(config);
@@ -87,7 +87,7 @@ texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
     config.trajectories_per_batch = 2U;
-    config.max_batches = 1U;
+    config.search_limits.max_batches = 1U;
     config.search_mode = texas::MultiwayResolverSearchMode::SearchActive;
     config.continuation_selector = std::make_shared<texas::MultiwayFixedContinuationSelector>(
         texas::MultiwayContinuationPolicyKind::Blueprint);
@@ -236,7 +236,7 @@ TEST_CASE(multiway_resolver_never_exports_an_illegal_blueprint_action) {
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
     config.verified_blueprint = std::move(blueprint);
-    config.max_batches = 1U;
+    config.search_limits.max_batches = 1U;
     texas::MultiwayResolver resolver(config);
     const auto result = resolver.resolve(fixture.request());
 

@@ -397,6 +397,9 @@ void MultiwaySolverLimits::validate() const {
     if (run_mode != MultiwayRunMode::Deterministic) {
         throw std::invalid_argument("multiway solver supports only deterministic run mode");
     }
+    if (max_batches == 0U) {
+        throw std::invalid_argument("multiway solver limits require a non-zero batch budget");
+    }
 }
 
 MultiwaySolveRequest::MultiwaySolveRequest(

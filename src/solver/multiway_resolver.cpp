@@ -492,13 +492,13 @@ RuntimeSearchOutcome run_search(
         MultiwayResolverBudget budget({
             request.deadline,
             config.deadline_reserve,
-            config.max_batches,
+            config.search_limits.max_batches,
             config.trajectories_per_batch,
             config.search_limits.max_sparse_rows,
             config.search_limits.max_sparse_values,
         });
         std::uint64_t first_trajectory = 0U;
-        for (std::uint32_t batch = 0U; batch < config.max_batches; ++batch) {
+        for (std::uint32_t batch = 0U; batch < config.search_limits.max_batches; ++batch) {
             if (budget.checkpoint(batch, first_trajectory) !=
                 MultiwayResolverBudgetCheckpoint::Ready) {
                 break;
@@ -598,7 +598,7 @@ void sample_policy(
 void MultiwayResolverConfig::validate() const {
     action_abstraction.validate();
     search_memory_budget.validate();
-    if (trajectories_per_batch == 0U || max_batches == 0U || deadline_reserve.count() < 0) {
+    if (trajectories_per_batch == 0U || deadline_reserve.count() < 0) {
         throw std::invalid_argument("multiway resolver has invalid batch or deadline limits");
     }
     if (!valid_search_mode(search_mode)) {
