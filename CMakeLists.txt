@@ -192,6 +192,14 @@ list(APPEND TEXASSOLVER_SOURCES
     src/util/suit_iso.cpp
 )
 
+set(_texassolver_evaluator_options
+    BUILD_TESTS BUILD_EXAMPLES BUILD_PLO4 BUILD_PLO5 BUILD_PLO6 BUILD_CARD5 BUILD_CARD6 BUILD_CARD7)
+foreach(_texassolver_option IN LISTS _texassolver_evaluator_options)
+    if (DEFINED ${_texassolver_option})
+        set(_texassolver_saved_defined_${_texassolver_option} TRUE)
+        set(_texassolver_saved_value_${_texassolver_option} "${${_texassolver_option}}")
+    endif()
+endforeach()
 set(BUILD_TESTS OFF)
 set(BUILD_EXAMPLES OFF)
 set(BUILD_PLO4 OFF)
@@ -201,14 +209,14 @@ set(BUILD_CARD5 ON)
 set(BUILD_CARD6 ON)
 set(BUILD_CARD7 ON)
 add_subdirectory(external/pokerHandEvaluator/cpp EXCLUDE_FROM_ALL)
-unset(BUILD_TESTS)
-unset(BUILD_EXAMPLES)
-unset(BUILD_PLO4)
-unset(BUILD_PLO5)
-unset(BUILD_PLO6)
-unset(BUILD_CARD5)
-unset(BUILD_CARD6)
-unset(BUILD_CARD7)
+foreach(_texassolver_option IN LISTS _texassolver_evaluator_options)
+    if (_texassolver_saved_defined_${_texassolver_option})
+        set(${_texassolver_option} "${_texassolver_saved_value_${_texassolver_option}}")
+    else()
+        unset(${_texassolver_option})
+    endif()
+endforeach()
+unset(_texassolver_evaluator_options)
 
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
@@ -434,5 +442,11 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_multiway_traversal_boundary.cmake
+    )
+    add_test(
+        NAME test_evaluator_options_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_evaluator_options_boundary.cmake
     )
 endif()
