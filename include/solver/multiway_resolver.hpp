@@ -26,7 +26,7 @@ namespace texas::solver::multiway {
 
 struct MultiwayVerifiedBlueprintArtifact;
 class MultiwayBlueprintStore;
-class MultiwayRuntimeSession;
+class MultiwayDecisionSession;
 
 // Single validated owner for all bounded release-search admission and
 // execution limits. Resolver budget state is derived from this snapshot.
@@ -249,7 +249,7 @@ class MultiwayResolver {
 public:
     explicit MultiwayResolver(MultiwayResolverConfig config = {});
     [[nodiscard]] MultiwayResolverResult resolve(const MultiwayResolverRequest& request) const;
-    [[nodiscard]] std::unique_ptr<MultiwayRuntimeSession> begin_runtime_session(
+    [[nodiscard]] std::unique_ptr<MultiwayDecisionSession> begin_decision_session(
         const MultiwayResolverRequest& request) const;
 
 private:

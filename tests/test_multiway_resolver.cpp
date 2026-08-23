@@ -3,7 +3,7 @@
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver.hpp"
-#include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_decision_session.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -168,13 +168,13 @@ TEST_CASE(multiway_resolver_returns_a_normalized_legal_deadline_safe_decision) {
     EXPECT_NEAR(total, 1.0, 1e-12);
 }
 
-TEST_CASE(multiway_resolver_begins_a_request_local_runtime_session) {
+TEST_CASE(multiway_resolver_begins_a_request_local_decision_session) {
     ResolverFixture fixture;
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto resolver = fixture.resolver();
 
-    const auto runtime = resolver.begin_runtime_session(request);
+    const auto runtime = resolver.begin_decision_session(request);
     EXPECT_TRUE(runtime != nullptr);
     EXPECT_EQ(runtime->root_revision(), 1U);
     EXPECT_EQ(runtime->round().root_metadata().public_state, fixture.root.id);
@@ -501,7 +501,7 @@ TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
     EXPECT_TRUE(result.diagnostics.used_fallback);
 }
 
-TEST_CASE(multiway_runtime_session_rejects_memory_before_constructing_the_round) {
+TEST_CASE(multiway_decision_session_rejects_memory_before_constructing_the_round) {
     ResolverFixture fixture;
     auto request = fixture.request();
     add_complete_search_ranges(&request);
@@ -509,7 +509,7 @@ TEST_CASE(multiway_runtime_session_rejects_memory_before_constructing_the_round)
     config.runtime_limits.memory = texas::MultiwayMemoryBudget{1U, 3U, 2U};
     texas::MultiwayResolver resolver(config);
 
-    EXPECT_THROW(resolver.begin_runtime_session(request), std::length_error);
+    EXPECT_THROW(resolver.begin_decision_session(request), std::length_error);
 }
 
 TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {

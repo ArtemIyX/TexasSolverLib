@@ -1,4 +1,4 @@
-#include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_decision_session.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "test_harness.hpp"
@@ -80,7 +80,7 @@ void exercise(std::uint32_t contract) {
     const auto initial = root();
     const auto registry = buckets(initial);
     const auto solve_request = request(initial);
-    texas::MultiwayRuntimeSession runtime(solve_request, {&registry});
+    texas::MultiwayDecisionSession runtime(solve_request, {&registry});
     const auto actual = texas::canonical_combos().id(initial.private_ranges.ranges[0][0].hole);
     const auto policy = runtime.round().export_hero_policy(0, actual);
     EXPECT_EQ(runtime.root_revision(), 1U);

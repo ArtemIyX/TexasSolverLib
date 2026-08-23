@@ -5,7 +5,7 @@
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver_budget.hpp"
 #include "solver/multiway_search_session.hpp"
-#include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_decision_session.hpp"
 #include "solver/multiway_rollout_leaf.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "util/profiling.hpp"
@@ -692,7 +692,7 @@ MultiwayResolver::MultiwayResolver(MultiwayResolverConfig config) : config_(conf
     config_.validate();
 }
 
-std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
+std::unique_ptr<MultiwayDecisionSession> MultiwayResolver::begin_decision_session(
     const MultiwayResolverRequest& request) const {
     config_.validate();
     request.blueprint_identity.validate();
@@ -739,7 +739,7 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     }
     MultiwayCFRConfig cfr;
     cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
-    return std::make_unique<MultiwayRuntimeSession>(
+    return std::make_unique<MultiwayDecisionSession>(
         MultiwaySolveRequest(std::move(root), cfr, limits),
         MultiwaySearchSessionDependencies{
             config_.buckets,

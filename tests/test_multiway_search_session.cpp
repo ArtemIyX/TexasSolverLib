@@ -488,11 +488,11 @@ TEST_CASE(multiway_search_session_carries_posteriors_into_reroots) {
     EXPECT_THROW(session.make_next_round_root(make_root(texas::Street::Flop)), std::invalid_argument);
 }
 
-TEST_CASE(multiway_runtime_session_replaces_round_state_on_reroot) {
+TEST_CASE(multiway_decision_session_replaces_round_state_on_reroot) {
     const auto root = make_root(texas::Street::Flop);
     const auto buckets = make_buckets(root);
     const auto request = make_request(root);
-    texas::MultiwayRuntimeSession runtime(request, {&buckets});
+    texas::MultiwayDecisionSession runtime(request, {&buckets});
     const auto actual = combo_id(root.private_ranges.ranges[0][0].hole);
     const auto policy = runtime.round().export_hero_policy(0, actual);
     runtime.round().freeze_actual_hand_policy(0, actual, policy.actual_hand_actions);
