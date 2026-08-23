@@ -76,39 +76,6 @@ std::uint64_t private_deal_identity(
 
 }  // namespace
 
-bool MultiwayExternalSamplingTraversal::append_infoset_update(
-    MultiwayWorkerDeltaStream& stream,
-    MultiwayInfosetId infoset,
-    std::uint32_t bucket,
-    std::uint64_t trajectory_id,
-    const MultiwayExternalSamplingRequest& request,
-    double iteration_weight) {
-    if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
-        throw std::invalid_argument("multiway iteration weight must be finite and positive");
-    }
-    if (infoset.public_state.value == 0U || infoset.seat != request.traverser) {
-        throw std::invalid_argument("multiway traversal update infoset must identify the traverser");
-    }
-    const auto update = make_multiway_external_sampling_cfr_update(request);
-    if (update.regret_deltas.size() != update.strategy_deltas.size()) {
-        throw std::logic_error("multiway traversal produced mismatched action deltas");
-    }
-    if (stream.capacity() - stream.size() < update.regret_deltas.size()) return false;
-    for (std::size_t action = 0; action < update.regret_deltas.size(); ++action) {
-        if (!stream.try_append({
-                infoset,
-                bucket,
-                static_cast<std::uint8_t>(action),
-                update.regret_deltas[action],
-                update.strategy_deltas[action] * iteration_weight,
-                trajectory_id,
-            })) {
-            throw std::logic_error("multiway traversal delta capacity changed during append");
-        }
-    }
-    return true;
-}
-
 MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     MultiwaySolverCoordinator& coordinator,
     const MultiwayRootSnapshot& root,

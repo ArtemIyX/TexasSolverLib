@@ -141,7 +141,6 @@ using ::texas::MultiwayTrajectoryRange;
 using ::texas::MultiwayWorkerBatch;
 using ::texas::multiway_deterministic_schedule_fingerprint;
 using ::texas::multiway_deterministic_trajectory_seed;
-using ::texas::MultiwayExternalSamplingTraversal;
 using ::texas::MultiwayRootBatchResult;
 using ::texas::MultiwayRootBatchRunner;
 using ::texas::MultiwayLeafEvaluationRequest;

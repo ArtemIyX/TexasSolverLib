@@ -28,20 +28,6 @@ inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
 // insertion needs six. Two spare entries keep the boundary explicit.
 inline constexpr std::size_t MULTIWAY_MAX_TRAVERSAL_ACTIONS = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
 
-// Allocation-free after the caller has prepared the external-sampling request.
-// Recursive game traversal owns action-value estimation; this kernel owns only
-// the mathematically shared CFR-to-worker-delta conversion.
-class MultiwayExternalSamplingTraversal {
-public:
-    [[nodiscard]] static bool append_infoset_update(
-        MultiwayWorkerDeltaStream& stream,
-        MultiwayInfosetId infoset,
-        std::uint32_t bucket,
-        std::uint64_t trajectory_id,
-        const MultiwayExternalSamplingRequest& request,
-        double iteration_weight = 1.0);
-};
-
 // Bounded lazy traversal. It samples opponent and public-chance nodes,
 // enumerates traverser decisions, and stops at exact terminals or the typed
 // strategic leaf boundary.
