@@ -1,5 +1,6 @@
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_public_builder.hpp"
+#include "core/fingerprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,14 +17,7 @@ bool is_aggressive(MultiwayAction action) noexcept {
     return action == MultiwayAction::Bet || action == MultiwayAction::Raise;
 }
 
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    constexpr std::uint64_t kPrime = 1099511628211ULL;
-    for (std::size_t index = 0U; index < sizeof(value); ++index) {
-        hash ^= static_cast<std::uint8_t>(value & 0xffU);
-        hash *= kPrime;
-        value >>= 8U;
-    }
-}
+using texas::core::fingerprint::append_u64;
 
 double action_scale(const MultiwayState& state, const MultiwayActionDescriptor& action) noexcept {
     const auto actor = static_cast<std::size_t>(state.current_player());
