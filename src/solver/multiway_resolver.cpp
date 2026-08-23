@@ -621,9 +621,6 @@ void MultiwayResolverConfig::validate() const {
             throw std::invalid_argument("multiway resolver search configuration is invalid");
         }
     }
-    if (verified_blueprint != nullptr && blueprint != nullptr) {
-        throw std::invalid_argument("multiway resolver accepts either a verified or legacy blueprint");
-    }
     if (full_blueprint != nullptr) full_blueprint->identity().validate();
     if (verified_blueprint != nullptr) {
         verified_blueprint->snapshot.validate();
@@ -719,7 +716,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
         auto canonical_board = request.public_state.board;
         std::sort(canonical_board.begin(), canonical_board.end());
         const auto* blueprint = config_.verified_blueprint == nullptr
-            ? config_.blueprint : &config_.verified_blueprint->snapshot;
+            ? nullptr : &config_.verified_blueprint->snapshot;
         if (config_.verified_blueprint != nullptr &&
             config_.verified_blueprint->snapshot.identity != request.blueprint_identity) {
             throw std::invalid_argument("multiway resolver verified blueprint identity does not match request");

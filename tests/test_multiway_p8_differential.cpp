@@ -244,7 +244,11 @@ TEST_CASE(multiway_p84_evaluation_adapter_selects_deterministic_request_local_ca
     blueprint.actions = {{fixture.root.legal_actions.front(), 65535U}};
     texas::MultiwayResolverEvaluationAdapterConfig config;
     config.resolver.buckets = &fixture.buckets;
-    config.resolver.blueprint = &blueprint;
+    auto verified = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>();
+    verified->snapshot = blueprint;
+    verified->manifest.identity = blueprint.identity;
+    verified->manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(blueprint);
+    config.resolver.verified_blueprint = std::move(verified);
     config.candidates = {
         {11U, texas::MultiwayResolverEvaluationCandidateKind::StaticLegal},
         {12U, texas::MultiwayResolverEvaluationCandidateKind::BlueprintOnly},

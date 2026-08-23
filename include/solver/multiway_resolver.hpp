@@ -166,14 +166,11 @@ struct MultiwayResolverResult {
 // a validated static fallback with BucketUnavailable diagnostics.
 struct MultiwayResolverConfig {
     const MultiwayBucketRegistry* buckets = nullptr;
-    // Verified artifacts are preferred over the legacy raw snapshot pointer.
-    // Passing both is rejected so resolver deployment cannot silently bypass
-    // manifest verification.
-    const MultiwayVerifiedBlueprintArtifact* verified_blueprint = nullptr;
-    const MultiwayBlueprintSnapshot* blueprint = nullptr;
+    // Artifacts are owned by the resolver configuration. Unverified raw
+    // snapshots cannot bypass manifest validation.
+    std::shared_ptr<const MultiwayVerifiedBlueprintArtifact> verified_blueprint;
     // Immutable arbitrary-state prior used only by request-local traversal.
-    // The compact root snapshot above remains the fallback artifact.
-    const MultiwayBlueprintStore* full_blueprint = nullptr;
+    std::shared_ptr<const MultiwayBlueprintStore> full_blueprint;
     MultiwayActionAbstractionConfig action_abstraction{};
     std::uint32_t trajectories_per_batch = 32U;
     std::uint32_t max_batches = 64U;

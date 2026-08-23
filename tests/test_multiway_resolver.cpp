@@ -220,18 +220,14 @@ TEST_CASE(multiway_resolver_rejects_malformed_requests_and_missing_buckets) {
 
 TEST_CASE(multiway_resolver_never_exports_an_illegal_blueprint_action) {
     ResolverFixture fixture;
-    texas::MultiwayBlueprintSnapshot blueprint;
-    blueprint.identity = fixture.identity;
-    blueprint.public_state = fixture.root.id;
-    blueprint.infoset = {fixture.root.id, 0};
-    blueprint.trajectories = 1U;
-    blueprint.training.trajectories = 1U;
-    blueprint.actions = {{{texas::MultiwayAction::Raise, 0U, 1'999, 91U}, 65535U}};
-    blueprint.validate();
+    auto blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(verified_root_artifact(fixture));
+    blueprint->snapshot.actions = {{{texas::MultiwayAction::Raise, 0U, 1'999, 91U}, 65535U}};
+    blueprint->snapshot.validate();
+    blueprint->manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(blueprint->snapshot);
 
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
-    config.blueprint = &blueprint;
+    config.verified_blueprint = std::move(blueprint);
     config.max_batches = 1U;
     texas::MultiwayResolver resolver(config);
     const auto result = resolver.resolve(fixture.request());
@@ -294,17 +290,13 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
         texas::MultiwayPolicyProvenance::StableRootFallback);
     EXPECT_TRUE(stable_fallback.diagnostics.used_latest_stable_root);
 
-    texas::MultiwayBlueprintSnapshot blueprint;
-    blueprint.identity = fixture.identity;
-    blueprint.public_state = fixture.root.id;
-    blueprint.infoset = {fixture.root.id, 0};
-    blueprint.trajectories = 1U;
-    blueprint.training.trajectories = 1U;
-    blueprint.actions = {{fixture.root.legal_actions.front(), 65535U}};
-    blueprint.validate();
+    auto blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(verified_root_artifact(fixture));
+    blueprint->snapshot.actions = {{fixture.root.legal_actions.front(), 65535U}};
+    blueprint->snapshot.validate();
+    blueprint->manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(blueprint->snapshot);
     texas::MultiwayResolverConfig blueprint_config;
     blueprint_config.buckets = &fixture.buckets;
-    blueprint_config.blueprint = &blueprint;
+    blueprint_config.verified_blueprint = std::move(blueprint);
     texas::MultiwayResolver blueprint_resolver(blueprint_config);
     const auto blueprint_fallback = blueprint_resolver.resolve(expired_request);
     EXPECT_EQ(blueprint_fallback.diagnostics.status, texas::MultiwayResolverStatus::DeadlineFallback);
@@ -319,11 +311,11 @@ TEST_CASE(multiway_resolver_default_mode_runs_a_clean_root_search_when_configure
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     const auto artifact = verified_root_artifact(fixture);
-    const texas::MultiwayBlueprintStore full_blueprint(fixture.identity, {});
+    const auto full_blueprint = std::make_shared<texas::MultiwayBlueprintStore>(fixture.identity, std::vector<texas::MultiwayBlueprintRow>{});
     auto config = search_config(fixture);
     config.search_mode = texas::MultiwayResolverSearchMode::ReleaseDefault;
-    config.verified_blueprint = &artifact;
-    config.full_blueprint = &full_blueprint;
+    config.verified_blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(artifact);
+    config.full_blueprint = full_blueprint;
     texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
