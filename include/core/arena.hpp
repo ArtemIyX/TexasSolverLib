@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/namespaces.hpp"
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>

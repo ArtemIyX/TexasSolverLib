@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/namespaces.hpp"
-
 #include <cstdint>
 
 namespace texas::core::fingerprint {

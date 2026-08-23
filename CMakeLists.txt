@@ -398,4 +398,10 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_example_boundary.cmake
     )
+    add_test(
+        NAME test_core_namespace_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_core_namespace_boundary.cmake
+    )
 endif()

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/namespaces.hpp"
 #include "core/types.hpp"
 
 #include <array>
