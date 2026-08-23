@@ -40,6 +40,7 @@
     "deadline_reserve_ms": 100,
     "trajectories_per_batch": 32,
     "max_batches": 64,
+    "search_mode": "ReleaseDefault",
     "inference_mode": "AnonymousWithinHand",
     "sampling_seed_source": "protected_per_decision_seed",
     "off_tree_mode": "continuation_policy",

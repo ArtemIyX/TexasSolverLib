@@ -99,6 +99,9 @@ enum class MultiwayResolverSearchMode : std::uint8_t {
     SearchShadow,
     SearchActive,
     ForcedFallback,
+    // Prefer runtime search when a complete release search configuration is
+    // supplied. Otherwise use the normal safe fallback chain.
+    ReleaseDefault,
 };
 
 // Explains whether the request may enter runtime search. It is diagnostic-only
@@ -186,7 +189,7 @@ struct MultiwayResolverConfig {
     std::uint32_t trajectories_per_batch = 32U;
     std::uint32_t max_batches = 64U;
     std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
-    MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::LegacyStatic;
+    MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::ReleaseDefault;
     MultiwaySolverLimits search_limits{};
     const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
     std::uint32_t search_max_decision_depth = 1U;

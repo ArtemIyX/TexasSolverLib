@@ -201,10 +201,24 @@ bool valid_inference_mode(MultiwayInferenceMode mode) noexcept {
 }
 
 bool valid_search_mode(MultiwayResolverSearchMode mode) noexcept {
-    return mode == MultiwayResolverSearchMode::LegacyStatic ||
+    return mode == MultiwayResolverSearchMode::ReleaseDefault ||
+        mode == MultiwayResolverSearchMode::LegacyStatic ||
         mode == MultiwayResolverSearchMode::SearchShadow ||
         mode == MultiwayResolverSearchMode::SearchActive ||
         mode == MultiwayResolverSearchMode::ForcedFallback;
+}
+
+bool has_runtime_search_configuration(const MultiwayResolverConfig& config) noexcept {
+    return config.leaf_evaluator != nullptr && config.leaf_evaluator->valid() &&
+        config.search_limits.trajectories_per_batch == config.trajectories_per_batch &&
+        config.search_max_decision_depth != 0U &&
+        config.search_max_decision_depth <= MULTIWAY_MAX_DECISION_DEPTH &&
+        config.search_max_public_chance_depth <= MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH;
+}
+
+bool has_release_search_configuration(const MultiwayResolverConfig& config) noexcept {
+    return has_runtime_search_configuration(config) && config.buckets != nullptr &&
+        config.verified_blueprint != nullptr && config.full_blueprint != nullptr;
 }
 
 void set_policy_provenance(
@@ -613,14 +627,12 @@ void MultiwayResolverConfig::validate() const {
         active_search_max_menu_actions > MULTIWAY_MAX_ABSTRACTED_ACTIONS) {
         throw std::invalid_argument("multiway resolver has invalid active-search eligibility limits");
     }
-    if (search_mode == MultiwayResolverSearchMode::SearchShadow ||
-        search_mode == MultiwayResolverSearchMode::SearchActive) {
+    const auto explicitly_requests_search =
+        search_mode == MultiwayResolverSearchMode::SearchShadow ||
+        search_mode == MultiwayResolverSearchMode::SearchActive;
+    if (explicitly_requests_search || leaf_evaluator != nullptr) {
         search_limits.validate();
-        if (leaf_evaluator == nullptr || !leaf_evaluator->valid() ||
-            search_limits.trajectories_per_batch != trajectories_per_batch ||
-            search_max_decision_depth == 0U ||
-            search_max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH ||
-            search_max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH) {
+        if (!has_runtime_search_configuration(*this)) {
             throw std::invalid_argument("multiway resolver search configuration is invalid");
         }
     }
@@ -804,14 +816,22 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
 
         const auto runtime_search_requested =
             config_.search_mode == MultiwayResolverSearchMode::SearchShadow ||
-            config_.search_mode == MultiwayResolverSearchMode::SearchActive;
+            config_.search_mode == MultiwayResolverSearchMode::SearchActive ||
+            (config_.search_mode == MultiwayResolverSearchMode::ReleaseDefault &&
+             has_release_search_configuration(config_));
+        const auto runtime_search_delivers_policy =
+            config_.search_mode == MultiwayResolverSearchMode::SearchActive ||
+            config_.search_mode == MultiwayResolverSearchMode::ReleaseDefault;
         if (runtime_search_requested) {
             result.diagnostics.search_eligibility = search_eligibility(request, state, menu, config_);
-            if (config_.search_mode == MultiwayResolverSearchMode::SearchActive &&
+            if (runtime_search_delivers_policy &&
                 result.diagnostics.search_eligibility != MultiwayResolverSearchEligibility::Eligible) {
                 use_fallback(MultiwayResolverStatus::RejectedByBudget);
                 return result;
             }
+        } else if (config_.search_mode == MultiwayResolverSearchMode::ReleaseDefault) {
+            use_fallback(MultiwayResolverStatus::RejectedByBudget);
+            return result;
         }
 
         std::vector<MultiwayResolverActionProbability> search_policy;
@@ -828,7 +848,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 search_diagnostics.search_admitted_memory_bytes;
             result.diagnostics.search_memory_degraded = search_diagnostics.search_memory_degraded;
             if (search_outcome == RuntimeSearchOutcome::Completed &&
-                config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+                runtime_search_delivers_policy) {
                 result.policy = std::move(search_policy);
                 result.diagnostics = search_diagnostics;
                 result.diagnostics.status = result.diagnostics.deadline_expired
@@ -846,7 +866,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 }
                 return result;
             }
-            if (config_.search_mode == MultiwayResolverSearchMode::SearchActive) {
+            if (runtime_search_delivers_policy) {
                 const auto fallback_status = deadline_reached(request.deadline, config_.deadline_reserve)
                     ? MultiwayResolverStatus::DeadlineFallback
                     : (search_outcome == RuntimeSearchOutcome::NoRoot ||

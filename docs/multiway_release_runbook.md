@@ -85,12 +85,15 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
   limits, and batch partition. This is the bitwise replay contract. Comparisons
   across different worker counts use normalized-policy tolerance and must not be
   claimed bitwise equivalent by default.
-- Keep `search_mode` at `LegacyStatic` outside controlled evaluation. Use
-  `SearchShadow` to retain the legacy delivered policy while recording only
-  policy L1 divergence, completed search counters, elapsed time, and observed
-  process memory. Shadow diagnostics never contain cards, ranges, raw deltas,
-  or seeds.
-- Use `SearchActive` only with explicit seat and root-menu limits through
+- Use `ReleaseDefault` for a validated release configuration. It delivers
+  active search only when verified root and full-blueprint artifacts, buckets,
+  and complete runtime-search configuration are present; otherwise it uses the
+  normal safe fallback chain. Use `LegacyStatic` only for rollback and
+  differential comparison. Use `SearchShadow` to retain the legacy delivered
+  policy while recording only policy L1 divergence, completed search counters,
+  elapsed time, and observed process memory. Shadow diagnostics never contain
+  cards, ranges, raw deltas, or seeds.
+- `ReleaseDefault` and `SearchActive` require explicit seat and root-menu limits through
   `active_search_min_seats`, `active_search_max_seats`, and
   `active_search_max_menu_actions`. Active search requires a supported
   postflop root, complete live ranges for every non-hero seat, and a clean

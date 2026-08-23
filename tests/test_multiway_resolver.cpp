@@ -1,5 +1,6 @@
 #include "solver/multiway_bucket_artifact.hpp"
 #include "solver/multiway_blueprint_config.hpp"
+#include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver.hpp"
 #include "solver/multiway_runtime_session.hpp"
@@ -52,6 +53,7 @@ struct ResolverFixture {
         config.buckets = &buckets;
         config.max_batches = 2U;
         config.trajectories_per_batch = 5U;
+        config.search_mode = texas::MultiwayResolverSearchMode::LegacyStatic;
         return texas::MultiwayResolver(config);
     }
 };
@@ -95,6 +97,21 @@ texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     static const texas::MultiwayLeafEvaluator evaluator = {resolver_search_leaf, nullptr};
     config.leaf_evaluator = &evaluator;
     return config;
+}
+
+texas::MultiwayVerifiedBlueprintArtifact verified_root_artifact(const ResolverFixture& fixture) {
+    texas::MultiwayVerifiedBlueprintArtifact artifact;
+    artifact.snapshot.identity = fixture.identity;
+    artifact.snapshot.public_state = fixture.root.id;
+    artifact.snapshot.infoset = {fixture.root.id, 0};
+    artifact.snapshot.trajectories = 1U;
+    artifact.snapshot.training.trajectories = 1U;
+    artifact.snapshot.actions = {{fixture.root.legal_actions.front(), 65535U}};
+    artifact.snapshot.validate();
+    artifact.manifest.identity = fixture.identity;
+    artifact.manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(artifact.snapshot);
+    artifact.manifest.validate();
+    return artifact;
 }
 
 void add_complete_search_ranges(texas::MultiwayResolverRequest* request) {
@@ -293,11 +310,17 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
     EXPECT_TRUE(blueprint_fallback.diagnostics.used_blueprint_fallback);
 }
 
-TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
+TEST_CASE(multiway_resolver_default_mode_runs_a_clean_root_search_when_configured) {
     ResolverFixture fixture;
     auto request = fixture.request();
     add_complete_search_ranges(&request);
-    texas::MultiwayResolver resolver(search_config(fixture));
+    const auto artifact = verified_root_artifact(fixture);
+    const texas::MultiwayBlueprintStore full_blueprint(fixture.identity, {});
+    auto config = search_config(fixture);
+    config.search_mode = texas::MultiwayResolverSearchMode::ReleaseDefault;
+    config.verified_blueprint = &artifact;
+    config.full_blueprint = &full_blueprint;
+    texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
 
@@ -319,6 +342,23 @@ TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
     EXPECT_TRUE(result.diagnostics.search_merged_stream_fingerprint != 0U);
     EXPECT_TRUE(result.diagnostics.search_bitwise_deterministic);
     EXPECT_TRUE(result.diagnostics.policy_normalized);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_default_mode_uses_fallback_without_release_search_configuration) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    texas::MultiwayResolverConfig config;
+    config.buckets = &fixture.buckets;
+    texas::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::RejectedByBudget);
+    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_EQ(result.diagnostics.search_eligibility, texas::MultiwayResolverSearchEligibility::NotRequested);
+    EXPECT_TRUE(result.diagnostics.used_static_fallback);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 

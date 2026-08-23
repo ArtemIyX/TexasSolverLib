@@ -4,6 +4,32 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P9.1 - Migrate default resolver mode
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Added `ReleaseDefault` as the resolver default. It delivers root external-sampling search only with verified root and full-blueprint artifacts, matching buckets, and a complete runtime-search configuration.
+- Incomplete release configuration and ineligible requests use the established fallback chain. `LegacyStatic`, `SearchShadow`, and explicit `SearchActive` remain available for rollback and evaluation.
+
+### Files
+
+- `include/solver/multiway_resolver.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `docs/multiway_release_config.json`
+- `docs/multiway_release_runbook.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed source and focused test changes; JSON release configuration parsed successfully.
+- Build and tests not run at user request.
+
+### Limitations
+
+- Release-profile fixture matrix and rollback comparison remain pending authorization.
+
 ## MinGW Windows Cabinet linkage
 
 **Status:** Complete
