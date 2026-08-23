@@ -53,7 +53,7 @@ struct ResolverFixture {
         texas::MultiwayResolverConfig config;
         config.buckets = &buckets;
         config.search_limits.max_batches = 2U;
-        config.trajectories_per_batch = 5U;
+        config.search_limits.trajectories_per_batch = 5U;
         config.search_mode = texas::MultiwayResolverSearchMode::FallbackOnly;
         return texas::MultiwayResolver(config);
     }
@@ -86,13 +86,12 @@ texas::Value resolver_search_leaf(
 texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
-    config.trajectories_per_batch = 2U;
+    config.search_limits.trajectories_per_batch = 2U;
     config.search_limits.max_batches = 1U;
     config.search_mode = texas::MultiwayResolverSearchMode::SearchActive;
     config.continuation_selector = std::make_shared<texas::MultiwayFixedContinuationSelector>(
         texas::MultiwayContinuationPolicyKind::Blueprint);
     config.search_limits.worker_count = 1U;
-    config.search_limits.trajectories_per_batch = config.trajectories_per_batch;
     config.search_limits.max_public_states = 32U;
     config.search_limits.max_sparse_rows = 16U;
     config.search_limits.max_sparse_values = 2'048U;

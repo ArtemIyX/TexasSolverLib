@@ -218,7 +218,6 @@ bool valid_search_mode(MultiwayResolverSearchMode mode) noexcept {
 
 bool has_runtime_search_configuration(const MultiwayResolverConfig& config) noexcept {
     return config.leaf_evaluator != nullptr && config.leaf_evaluator->valid() &&
-        config.search_limits.trajectories_per_batch == config.trajectories_per_batch &&
         config.search_max_decision_depth != 0U &&
         config.search_max_decision_depth <= MULTIWAY_MAX_DECISION_DEPTH &&
         config.search_max_public_chance_depth <= MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH;
@@ -506,7 +505,7 @@ RuntimeSearchOutcome run_search(
             request.deadline,
             config.deadline_reserve,
             config.search_limits.max_batches,
-            config.trajectories_per_batch,
+            config.search_limits.trajectories_per_batch,
             config.search_limits.max_sparse_rows,
             config.search_limits.max_sparse_values,
         });
@@ -518,7 +517,7 @@ RuntimeSearchOutcome run_search(
             }
             const auto batch_first_trajectory = first_trajectory;
             const auto batch_result = runner.run(
-                batch_first_trajectory, config.trajectories_per_batch,
+                batch_first_trajectory, config.search_limits.trajectories_per_batch,
                 request.sampling_seed ^ public_state_id);
             search_profile.merge(batch_result.profile);
             first_trajectory += batch_result.trajectories_attempted;
@@ -611,8 +610,8 @@ void sample_policy(
 void MultiwayResolverConfig::validate() const {
     action_abstraction.validate();
     search_memory_budget.validate();
-    if (trajectories_per_batch == 0U || deadline_reserve.count() < 0) {
-        throw std::invalid_argument("multiway resolver has invalid batch or deadline limits");
+    if (deadline_reserve.count() < 0) {
+        throw std::invalid_argument("multiway resolver has invalid deadline reserve");
     }
     if (!valid_search_mode(search_mode)) {
         throw std::invalid_argument("multiway resolver has an invalid search mode");
@@ -683,7 +682,6 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     const auto bucket = config_.buckets->lookup(state.street(), board, request.hero_cards);
     auto limits = config_.search_limits;
     if (limits.worker_count == 0U) limits.worker_count = 1U;
-    if (limits.trajectories_per_batch == 0U) limits.trajectories_per_batch = config_.trajectories_per_batch;
     if (limits.max_public_states == 0U) limits.max_public_states = 1'024U;
     if (limits.max_sparse_rows == 0U) limits.max_sparse_rows = 1'024U;
     if (limits.max_sparse_values == 0U) limits.max_sparse_values = 65'536U;
