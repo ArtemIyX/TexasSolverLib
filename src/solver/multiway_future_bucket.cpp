@@ -93,7 +93,16 @@ MultiwayFutureBucketFeatures make_multiway_future_bucket_features(
         cards.insert(cards.end(), board.begin(), board.end());
         cards.push_back(hole[0]);
         cards.push_back(hole[1]);
-        result.values[9] = static_cast<double>(evaluate_n(cards).value >> 56U) / 8.0;
+        const auto category = [&cards]() {
+            if (cards.size() == 5U) {
+                return Strength::evaluate_5({cards[0], cards[1], cards[2], cards[3], cards[4]}).value;
+            }
+            if (cards.size() == 6U) {
+                return Strength::evaluate_6({cards[0], cards[1], cards[2], cards[3], cards[4], cards[5]}).value;
+            }
+            return Strength::evaluate_7({cards[0], cards[1], cards[2], cards[3], cards[4], cards[5], cards[6]}).value;
+        }();
+        result.values[9] = static_cast<double>(category >> 56U) / 8.0;
     }
     return result;
 }
