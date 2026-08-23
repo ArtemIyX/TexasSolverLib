@@ -4,6 +4,51 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## MinGW Windows Cabinet linkage
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Linked the Windows Compression API import library through the `texas` CMake target.
+- The dependency is restricted to Windows builds; existing non-Windows linkage is unchanged.
+
+### Files
+
+- `CMakeLists.txt`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static CMake and source review completed.
+- CMake configuration, build, and tests not run. The task did not authorize them.
+
+### Limitations
+
+- MinGW UCRT64, MSVC, and non-Windows build validation remains pending authorization.
+
+## MinGW Windows portability audit
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Audited first-party platform branches, CMake linkage, examples, tests, scripts, and vendored evaluator configuration for MinGW UCRT64 assumptions.
+- Identified the missing CMake Cabinet link required by the Windows Compression API.
+
+### Files
+
+- `docs/mingw_windows_portability_audit.md`
+- `docs/mingw_windows_verification_checklist.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source, CMake, and diff checks completed.
+- CMake configuration, build, and tests not run. The task did not authorize them.
+
+### Limitations
+
+- R1 remains unimplemented and runtime/compiler validation remains pending.
+
 ## MinGW Windows environment API portability
 
 **Status:** Complete
