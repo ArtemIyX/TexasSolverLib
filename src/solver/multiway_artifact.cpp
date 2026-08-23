@@ -1,5 +1,6 @@
 #include "solver/multiway_artifact.hpp"
 
+#include "core/atomic_publish.hpp"
 #include "core/portable_binary.hpp"
 #include "solver/multiway_checkpoint.hpp"
 
@@ -134,14 +135,7 @@ void save_manifest_atomic(const std::filesystem::path& path, const MultiwayBluep
     portable::write_u64(out, manifest.snapshot_hash);
     out.close();
     if (!out) throw std::runtime_error("multiway manifest write failed");
-    std::error_code error;
-    std::filesystem::rename(temp, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp, path, error);
-        if (error) throw std::runtime_error("multiway manifest publish failed");
-    }
+    texas::core::publish_atomic_replace(temp, path, "multiway manifest publish failed");
 }
 
 MultiwayBlueprintManifest load_manifest(const std::filesystem::path& path) {
@@ -305,14 +299,7 @@ void MultiwayFullBlueprintArtifacts::save_atomic(
     portable::write_u64(out, sealed.payload_hash);
     out.close();
     if (!out) throw std::runtime_error("multiway full blueprint write failed");
-    std::error_code error;
-    std::filesystem::rename(temporary, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temporary, path, error);
-        if (error) throw std::runtime_error("multiway full blueprint publish failed");
-    }
+    texas::core::publish_atomic_replace(temporary, path, "multiway full blueprint publish failed");
 }
 
 MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(

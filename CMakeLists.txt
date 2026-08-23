@@ -12,6 +12,7 @@ option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 
 set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
+    include/core/atomic_publish.hpp
     include/core/canonical_combo.hpp
     include/core/game.hpp
     include/core/lib.hpp
@@ -109,6 +110,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
 
 set(TEXASSOLVER_SOURCES
     src/core/arena.cpp
+    src/core/atomic_publish.cpp
     src/core/canonical_combo.cpp
     src/games/hunl.cpp
     src/games/hunl_eval.cpp

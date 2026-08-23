@@ -1,5 +1,6 @@
 #include "solver/multiway_checkpoint.hpp"
 
+#include "core/atomic_publish.hpp"
 #include "core/portable_binary.hpp"
 
 #include <array>
@@ -99,14 +100,7 @@ void MultiwayCheckpoint::save_atomic(
     portable::write_u32(out, count);
     for (const auto& action : snapshot.actions) write_action(out, action);
     out.close();
-    std::error_code error;
-    std::filesystem::rename(temp, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp, path, error);
-        if (error) throw std::runtime_error("multiway checkpoint publish failed");
-    }
+    texas::core::publish_atomic_replace(temp, path, "multiway checkpoint publish failed");
 }
 
 MultiwayBlueprintSnapshot MultiwayCheckpoint::load(const std::filesystem::path& path) {
