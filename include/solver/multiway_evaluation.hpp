@@ -160,11 +160,6 @@ enum class MultiwayEvaluationFailure : std::uint8_t {
     OffTreeNonNormalizedPolicy,
 };
 
-struct MultiwayEvaluationFailureFixture {
-    MultiwayEvaluationFailure failure = MultiwayEvaluationFailure::None;
-    std::uint64_t scenario_id = 0;
-};
-
 struct MultiwayEvaluationMetrics {
     std::uint64_t samples = 0;
     double confidence_level = 0.95;
@@ -221,7 +216,7 @@ struct MultiwayEvaluationResult {
     std::vector<MultiwayLocalBestResponseReport> local_best_response;
     std::vector<MultiwayOffTreeGauntletReport> off_tree_gauntlets;
     MultiwayEvaluationMetrics metrics{};
-    std::vector<MultiwayEvaluationFailureFixture> failures;
+    std::vector<MultiwayEvaluationFailure> failures;
 
     [[nodiscard]] bool passed() const noexcept { return failures.empty(); }
 };
@@ -231,9 +226,5 @@ struct MultiwayEvaluationResult {
 // matrix stable for two through six players without inventing team semantics.
 [[nodiscard]] MultiwayEvaluationResult evaluate_multiway_candidates(
     const MultiwayEvaluationConfig& config);
-
-// Stable regression labels for failure injection and replay fixtures.
-[[nodiscard]] std::vector<MultiwayEvaluationFailureFixture>
-multiway_evaluation_failure_fixtures();
 
 }  // namespace texas::solver::multiway

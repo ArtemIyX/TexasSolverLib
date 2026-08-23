@@ -119,11 +119,8 @@ std::uint64_t mix_seed(std::uint64_t seed, std::uint64_t duplicate) noexcept {
     return value ^ (value >> 31U);
 }
 
-void append_failure(
-    MultiwayEvaluationResult& result,
-    MultiwayEvaluationFailure failure,
-    std::uint64_t scenario_id) {
-    result.failures.push_back({failure, scenario_id});
+void append_failure(MultiwayEvaluationResult& result, MultiwayEvaluationFailure failure) {
+    result.failures.push_back(failure);
 }
 
 void add_metrics(MultiwayEvaluationMetrics& metrics, const MultiwayEvaluationSample& sample) {
@@ -311,7 +308,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
                     const MultiwayEvaluationMatchRequest request = {
                         &deal, seat_candidates.data(), config.seat_count, rotation};
                     if (!config.evaluate_match(request, &sample, config.callback_context)) {
-                        append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected, deal.duplicate_index);
+                        append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected);
                         seat_candidates[focal_seat] = opponent.id;
                         continue;
                     }
@@ -321,7 +318,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
                             throw std::invalid_argument("multiway evaluation callback returned a different seat count");
                         }
                     } catch (const std::exception&) {
-                        append_failure(result, MultiwayEvaluationFailure::InvalidSample, deal.duplicate_index);
+                        append_failure(result, MultiwayEvaluationFailure::InvalidSample);
                         seat_candidates[focal_seat] = opponent.id;
                         continue;
                     }
@@ -332,7 +329,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
                 }
             }
             if (cell.samples != expected_samples) {
-                append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected, focal.id ^ opponent.id);
+                append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected);
             }
             cell.mean_focal_value = cell.samples == 0U ? 0.0 : total / static_cast<Value>(cell.samples);
             result.cross_play.push_back(cell);
@@ -352,7 +349,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
             const MultiwayEvaluationMatchRequest request = {
                 &deal, reference_seats.data(), config.seat_count, rotation};
             if (!config.evaluate_match(request, &sample, config.callback_context)) {
-                append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected, deal.duplicate_index);
+                append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected);
                 continue;
             }
             try {
@@ -361,7 +358,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
                     throw std::invalid_argument("multiway evaluation callback returned a different seat count");
                 }
             } catch (const std::exception&) {
-                append_failure(result, MultiwayEvaluationFailure::InvalidSample, deal.duplicate_index);
+                append_failure(result, MultiwayEvaluationFailure::InvalidSample);
                 continue;
             }
             add_metrics(result.metrics, sample);
@@ -380,7 +377,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
         }
     }
     if (nash_samples == 0U) {
-        append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected, reference.id);
+        append_failure(result, MultiwayEvaluationFailure::MatchCallbackRejected);
     } else {
         for (std::size_t seat = 0; seat < seat_count; ++seat) {
             nash_profile_sum[seat] /= static_cast<Value>(nash_samples);
@@ -396,7 +393,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
             result.reduced_game_nash_conv = compute_multiway_nash_conv(
                 nash_profile_sum, nash_response_sum, make_diagnostics(config, result.metrics, nash_samples));
         } catch (const std::exception&) {
-            append_failure(result, MultiwayEvaluationFailure::InvalidConfidence, reference.id);
+            append_failure(result, MultiwayEvaluationFailure::InvalidConfidence);
         }
     }
 
@@ -404,7 +401,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
         MultiwayLocalBestResponseReport report;
         report.scenario_id = scenario.id;
         if (config.evaluate_local_best_response == nullptr) {
-            append_failure(result, MultiwayEvaluationFailure::LocalBestResponseRejected, scenario.id);
+            append_failure(result, MultiwayEvaluationFailure::LocalBestResponseRejected);
             result.local_best_response.push_back(report);
             continue;
         }
@@ -415,7 +412,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
                 {duplicate, mix_seed(config.seed, duplicate)}, scenario};
             if (!config.evaluate_local_best_response(request, &sample, config.callback_context) ||
                 !std::isfinite(sample.profile_value) || !std::isfinite(sample.response_value)) {
-                append_failure(result, MultiwayEvaluationFailure::LocalBestResponseRejected, scenario.id);
+                append_failure(result, MultiwayEvaluationFailure::LocalBestResponseRejected);
                 continue;
             }
             total += sample.response_value - sample.profile_value;
@@ -425,7 +422,7 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
         report.passed = report.samples == config.duplicate_deals &&
             report.mean_improvement + kProbabilityTolerance >= scenario.minimum_improvement;
         if (!report.passed) {
-            append_failure(result, MultiwayEvaluationFailure::LocalBestResponseRegression, scenario.id);
+            append_failure(result, MultiwayEvaluationFailure::LocalBestResponseRegression);
         }
         result.local_best_response.push_back(report);
     }
@@ -450,25 +447,10 @@ MultiwayEvaluationResult evaluate_multiway_candidates(const MultiwayEvaluationCo
             }
         }
         report.passed = report.failure == MultiwayEvaluationFailure::None;
-        if (!report.passed) append_failure(result, report.failure, gauntlet.id);
+        if (!report.passed) append_failure(result, report.failure);
         result.off_tree_gauntlets.push_back(report);
     }
     return result;
-}
-
-std::vector<MultiwayEvaluationFailureFixture> multiway_evaluation_failure_fixtures() {
-    return {
-        {MultiwayEvaluationFailure::InvalidConfiguration, 1U},
-        {MultiwayEvaluationFailure::MatchCallbackRejected, 2U},
-        {MultiwayEvaluationFailure::InvalidSample, 3U},
-        {MultiwayEvaluationFailure::InvalidConfidence, 4U},
-        {MultiwayEvaluationFailure::LocalBestResponseRejected, 5U},
-        {MultiwayEvaluationFailure::LocalBestResponseRegression, 6U},
-        {MultiwayEvaluationFailure::OffTreeCallbackRejected, 7U},
-        {MultiwayEvaluationFailure::OffTreeObservedActionMissing, 8U},
-        {MultiwayEvaluationFailure::OffTreeIllegalAction, 9U},
-        {MultiwayEvaluationFailure::OffTreeNonNormalizedPolicy, 10U},
-    };
 }
 
 }  // namespace texas::solver::multiway
