@@ -4,6 +4,30 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## MinGW Windows portability fixes
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Passed the immutable deflate input through the Windows Compression API's mutable pointer declaration without changing ownership or cleanup.
+- Used `localtime_s` on all Windows compilers while retaining `localtime_r` on POSIX.
+- Guarded `NOMINMAX` against redefinition.
+
+### Files
+
+- `src/util/abstraction.cpp`
+- `src/util/profiling.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source and diff checks completed.
+- Build and tests not run. The task explicitly prohibited them.
+
+### Limitations
+
+- MinGW, MSVC, and non-Windows runtime validation remains pending authorization.
+
 ## Compact card test-fixture corrections
 
 **Status:** Complete

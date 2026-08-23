@@ -10,7 +10,9 @@
 #include <string_view>
 #include <vector>
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <compressapi.h>
 
@@ -109,7 +111,7 @@ std::vector<std::uint8_t> decompress_deflate(const std::uint8_t* input, std::siz
 
     std::vector<std::uint8_t> output(output_size);
     std::size_t produced = output_size;
-    if (!Decompress(handle, input, input_size, output.data(), output_size, &produced)) {
+    if (!Decompress(handle, const_cast<void*>(static_cast<const void*>(input)), input_size, output.data(), output_size, &produced)) {
         CloseDecompressor(handle);
         throw std::runtime_error("Decompress failed");
     }
