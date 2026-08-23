@@ -50,6 +50,25 @@ TEST_CASE(multiway_fixed_state_action_menu_and_apply_match_vector_oracle) {
     expect_state_parity(oracle, fixed);
 }
 
+TEST_CASE(multiway_fixed_state_preserves_opening_preflop_bet_semantics) {
+    texas::MultiwayGameConfig config;
+    config.starting_stacks = {1000, 1000, 1000};
+    config.initial_contributions = {0, 0, 100};
+    config.initial_street_contributions = {0, 0, 100};
+    config.first_player = 0;
+    config.street = texas::Street::Preflop;
+    const auto vector = texas::MultiwayState::initial(config);
+    const auto fixed = texas::make_multiway_fixed_state(vector.snapshot());
+    const auto vector_actions = vector.legal_actions();
+    const auto fixed_actions = fixed.legal_actions();
+
+    EXPECT_EQ(fixed_actions.count, vector_actions.size());
+    for (std::size_t index = 0; index < fixed_actions.count; ++index) {
+        EXPECT_EQ(fixed_actions.actions[index], vector_actions[index]);
+    }
+    EXPECT_TRUE(vector_actions[2] == texas::MultiwayAction::Bet);
+}
+
 TEST_CASE(multiway_fixed_terminal_matches_vector_oracle_with_side_pots_and_rake) {
     texas::MultiwayTerminalInput oracle_input;
     oracle_input.contributions = {100, 300, 300};

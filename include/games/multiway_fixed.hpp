@@ -55,6 +55,8 @@ struct MultiwayFixedState {
     const MultiwayGameRules& rules,
     PlayerId first_player = 0);
 [[nodiscard]] MultiwayFixedState make_multiway_fixed_state(const MultiwayBettingSnapshot& snapshot);
+[[nodiscard]] MultiwayBettingSnapshot make_multiway_betting_snapshot(
+    const MultiwayFixedState& state);
 
 struct MultiwayFixedTerminalInput {
     std::uint8_t seat_count = 0;
