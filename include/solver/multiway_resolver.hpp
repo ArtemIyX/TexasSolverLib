@@ -79,6 +79,7 @@ enum class MultiwayResolverStatus : std::uint8_t {
 // partial search cannot be mislabeled as a completed solve.
 enum class MultiwayPolicyProvenance : std::uint8_t {
     None,
+    // Retained for historical artifacts. The resolver no longer emits it.
     LegacyDeterministicAdjustment,
     RuntimeSearch,
     StableRootFallback,
@@ -87,14 +88,18 @@ enum class MultiwayPolicyProvenance : std::uint8_t {
 };
 
 enum class MultiwayResolverEngine : std::uint8_t {
+    // Retained for historical artifacts. The resolver no longer emits it.
     LegacyDeterministicAdjustment,
     RootExternalSamplingMCCFR,
+    NoRuntimeSearch,
 };
 
 inline constexpr std::uint64_t MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION = 1U;
 inline constexpr std::uint64_t MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION = 1U;
+inline constexpr std::uint64_t MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION = 1U;
 
 enum class MultiwayResolverSearchMode : std::uint8_t {
+    // Delivers only the stable-root, blueprint, or static-legal fallback chain.
     LegacyStatic,
     SearchShadow,
     SearchActive,
@@ -119,8 +124,8 @@ enum class MultiwayResolverSearchEligibility : std::uint8_t {
 struct MultiwayResolverDiagnostics {
     MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
     MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
-    MultiwayResolverEngine search_engine = MultiwayResolverEngine::LegacyDeterministicAdjustment;
-    std::uint64_t search_engine_version = MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
+    MultiwayResolverEngine search_engine = MultiwayResolverEngine::NoRuntimeSearch;
+    std::uint64_t search_engine_version = MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION;
     MultiwayModelIdentity artifact_identity{};
     bool has_artifact_identity = false;
     std::uint64_t completed_batches = 0;

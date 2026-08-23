@@ -233,12 +233,11 @@ void set_policy_provenance(
         provenance == MultiwayPolicyProvenance::StaticLegalFallback;
 }
 
-std::uint64_t validate_ranges(
+void validate_ranges(
     const MultiwayResolverRequest& request,
     const MultiwayState& state,
     MultiwayResolverDiagnostics* diagnostics) {
     std::array<bool, 6U> seen = {};
-    std::uint64_t range_hash = 14695981039346656037ULL;
     bool hero_present = request.hero_range.empty();
     for (const auto& hand : request.hero_range) {
         if (!are_valid_and_distinct_cards(hand.hole.data(), hand.hole.size()) ||
@@ -250,7 +249,6 @@ std::uint64_t validate_ranges(
         }
         hero_present = hero_present || hand.hole == request.hero_cards;
         ++diagnostics->admitted_range_entries;
-        range_hash = mix_seed(range_hash ^ (static_cast<std::uint64_t>(hand.hole[0]) << 8U) ^ hand.hole[1]);
     }
     if (!hero_present) throw std::invalid_argument("multiway resolver hero range excludes the actual hand");
     for (const auto& range : request.opponent_ranges) {
@@ -273,10 +271,6 @@ std::uint64_t validate_ranges(
             }
             total += hand.weight;
             ++diagnostics->admitted_range_entries;
-            const auto seat_component = request.inference_mode == MultiwayInferenceMode::AnonymousWithinHand
-                ? 0U : static_cast<std::uint64_t>(range.seat);
-            range_hash = mix_seed(range_hash ^ seat_component ^
-                (static_cast<std::uint64_t>(hand.hole[0]) << 8U) ^ hand.hole[1]);
         }
         if (!std::isfinite(total) || total <= 0.0) {
             throw std::invalid_argument("multiway resolver opponent range has no mass");
@@ -285,7 +279,6 @@ std::uint64_t validate_ranges(
     diagnostics->anonymous_ranges_merged =
         request.inference_mode == MultiwayInferenceMode::AnonymousWithinHand &&
         request.opponent_ranges.size() > 1U;
-    return range_hash;
 }
 
 std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
@@ -677,7 +670,7 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
         throw std::invalid_argument("multiway runtime session has incompatible public state or buckets");
     }
     MultiwayResolverDiagnostics diagnostics;
-    (void)validate_ranges(request, state, &diagnostics);
+    validate_ranges(request, state, &diagnostics);
     auto board = request.public_state.board;
     std::sort(board.begin(), board.end());
     const auto menu = reconstruct_root_menu(request, state, config_);
@@ -739,7 +732,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             config_.verified_blueprint->snapshot.identity != request.blueprint_identity) {
             throw std::invalid_argument("multiway resolver verified blueprint identity does not match request");
         }
-        const auto range_hash = validate_ranges(request, state, &result.diagnostics);
+        validate_ranges(request, state, &result.diagnostics);
         auto menu = reconstruct_root_menu(request, state, config_);
         if (menu.empty() || menu.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS) {
             throw std::invalid_argument("multiway resolver reconstructed an invalid root menu");
@@ -890,39 +883,10 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             }
         }
 
-        result.policy = static_policy(menu);
-        (void)try_apply_blueprint_policy(blueprint, request.blueprint_identity, menu, &result.policy);
-        for (std::uint32_t batch = 0U; batch < config_.max_batches; ++batch) {
-            for (std::size_t action = 0; action < result.policy.size(); ++action) {
-                const auto perturbation = 0.75 + 0.5 * unit_random(
-                    request.sampling_seed ^ range_hash ^ reconstructed_id ^
-                    (static_cast<std::uint64_t>(batch) << 32U) ^ action ^ bucket);
-                result.policy[action].probability = 0.9 * result.policy[action].probability +
-                    0.1 * perturbation;
-            }
-            if (!normalize(result.policy)) throw std::logic_error("multiway resolver produced a non-finite policy");
-            ++result.diagnostics.completed_batches;
-            result.diagnostics.completed_trajectories += config_.trajectories_per_batch;
-            if (deadline_reached(request.deadline, config_.deadline_reserve)) {
-                result.diagnostics.deadline_expired = true;
-                use_fallback(MultiwayResolverStatus::DeadlineFallback);
-                return result;
-            }
-        }
-        result.diagnostics.status = MultiwayResolverStatus::Solved;
-        set_policy_provenance(
-            &result.diagnostics, MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
-        result.diagnostics.policy_normalized = true;
+        use_fallback(MultiwayResolverStatus::Solved);
         if (result.diagnostics.shadow_search_completed) {
             result.diagnostics.shadow_policy_l1_distance =
                 policy_l1_distance(search_policy, result.policy);
-        }
-        sample_policy(&result, request.sampling_seed, reconstructed_id);
-        {
-            std::lock_guard<std::mutex> lock(stable_policy_mutex_);
-            stable_policy_.identity = request.blueprint_identity;
-            stable_policy_.public_state_id = reconstructed_id;
-            stable_policy_.policy = result.policy;
         }
         return result;
     } catch (const std::exception&) {

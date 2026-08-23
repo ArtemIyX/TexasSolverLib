@@ -97,8 +97,8 @@ struct MultiwayPublicDecisionLog {
     MultiwayActionDescriptor sampled_action{};
     MultiwayResolverStatus resolver_status = MultiwayResolverStatus::InvalidRequest;
     MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
-    MultiwayResolverEngine search_engine = MultiwayResolverEngine::LegacyDeterministicAdjustment;
-    std::uint64_t search_engine_version = 0;
+    MultiwayResolverEngine search_engine = MultiwayResolverEngine::NoRuntimeSearch;
+    std::uint64_t search_engine_version = MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION;
     bool used_fallback = false;
     std::vector<MultiwayPublicDecisionPolicy> policy;
 

@@ -129,8 +129,17 @@ TEST_CASE(multiway_resolver_returns_a_normalized_legal_deadline_safe_decision) {
     const auto result = resolver.resolve(fixture.request());
 
     EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::Solved);
-    EXPECT_EQ(result.diagnostics.completed_batches, 2U);
-    EXPECT_EQ(result.diagnostics.completed_trajectories, 10U);
+    EXPECT_EQ(result.diagnostics.completed_batches, 0U);
+    EXPECT_EQ(result.diagnostics.completed_trajectories, 0U);
+    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_EQ(result.diagnostics.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(
+        result.diagnostics.search_engine_version,
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
+    const auto log = texas::make_multiway_public_decision_log(fixture.request(), result, 1U);
+    log.validate();
+    EXPECT_EQ(log.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(log.search_engine_version, texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_TRUE(result.diagnostics.policy_normalized);
     EXPECT_TRUE(is_legal_output(result, result.policy.empty() ? std::vector<texas::MultiwayActionDescriptor>{} :
         fixture.root.legal_actions));
@@ -241,7 +250,7 @@ TEST_CASE(multiway_resolver_never_exports_an_illegal_blueprint_action) {
     }
 }
 
-TEST_CASE(multiway_resolver_reports_provenance_engine_and_safe_invalid_identity) {
+TEST_CASE(multiway_resolver_reports_static_provenance_and_safe_invalid_identity) {
     ResolverFixture fixture;
     auto resolver = fixture.resolver();
     const auto solved = resolver.resolve(fixture.request());
@@ -249,13 +258,13 @@ TEST_CASE(multiway_resolver_reports_provenance_engine_and_safe_invalid_identity)
     EXPECT_EQ(solved.diagnostics.status, texas::MultiwayResolverStatus::Solved);
     EXPECT_EQ(
         solved.diagnostics.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::StaticLegalFallback);
     EXPECT_EQ(
         solved.diagnostics.search_engine,
-        texas::MultiwayResolverEngine::LegacyDeterministicAdjustment);
+        texas::MultiwayResolverEngine::NoRuntimeSearch);
     EXPECT_EQ(
         solved.diagnostics.search_engine_version,
-        texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION);
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_TRUE(solved.diagnostics.has_artifact_identity);
     EXPECT_EQ(solved.diagnostics.artifact_identity, fixture.identity);
 
@@ -281,8 +290,10 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
         texas::MultiwayPolicyProvenance::StaticLegalFallback);
     EXPECT_TRUE(static_fallback.diagnostics.used_static_fallback);
 
-    auto stable_resolver = fixture.resolver();
-    (void)stable_resolver.resolve(fixture.request());
+    auto stable_request = fixture.request();
+    add_complete_search_ranges(&stable_request);
+    texas::MultiwayResolver stable_resolver(search_config(fixture));
+    (void)stable_resolver.resolve(stable_request);
     const auto stable_fallback = stable_resolver.resolve(expired_request);
     EXPECT_EQ(stable_fallback.diagnostics.status, texas::MultiwayResolverStatus::DeadlineFallback);
     EXPECT_EQ(
@@ -478,7 +489,11 @@ TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
     EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::Solved);
     EXPECT_EQ(
         result.diagnostics.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_EQ(result.diagnostics.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(
+        result.diagnostics.search_engine_version,
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_EQ(result.diagnostics.search_eligibility, texas::MultiwayResolverSearchEligibility::Eligible);
     EXPECT_TRUE(result.diagnostics.shadow_search_completed);
     EXPECT_EQ(result.diagnostics.shadow_completed_batches, 1U);

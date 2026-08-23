@@ -88,9 +88,10 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
 - Use `ReleaseDefault` for a validated release configuration. It delivers
   active search only when verified root and full-blueprint artifacts, buckets,
   and complete runtime-search configuration are present; otherwise it uses the
-  normal safe fallback chain. Use `LegacyStatic` only for rollback and
-  differential comparison. Use `SearchShadow` to retain the legacy delivered
-  policy while recording only policy L1 divergence, completed search counters,
+  normal safe fallback chain. `LegacyStatic` delivers that same fallback chain
+  without runtime search and is retained for rollback and differential
+  comparison. Use `SearchShadow` to retain the fallback-delivered policy while
+  recording only policy L1 divergence, completed search counters,
   elapsed time, and observed process memory. Shadow diagnostics never contain
   cards, ranges, raw deltas, or seeds.
 - `ReleaseDefault` and `SearchActive` require explicit seat and root-menu limits through

@@ -263,7 +263,11 @@ TEST_CASE(multiway_p84_evaluation_adapter_selects_deterministic_request_local_ca
     EXPECT_TRUE(first.result.has_sampled_action);
     EXPECT_EQ(blueprint_only.result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::BlueprintFallback);
     EXPECT_EQ(disabled.result.diagnostics.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::BlueprintFallback);
+    EXPECT_EQ(disabled.result.diagnostics.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(
+        disabled.result.diagnostics.search_engine_version,
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_THROW(adapter.resolve(99U, fixture.request(), 7U), std::invalid_argument);
 }
 

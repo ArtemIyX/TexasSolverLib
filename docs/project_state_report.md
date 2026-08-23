@@ -742,18 +742,12 @@ following:
    cards and ranges are not retained.
 8. Enforces the configured deadline reserve and reports status and diagnostics.
 
-The current `resolve(...)` implementation does not instantiate or invoke the
-full `MultiwayRootBatchRunner` traversal for each request. When a request is
-eligible for a solve, it starts from the static/blueprint policy and applies a
-bounded deterministic perturbation/normalization loop for the configured batch
-count. Therefore the resolver API, artifact checks, bucket checks, and
-fallback chain are present, but production inference is not yet the same as
-running a live root external-sampling solve through the trainer/traversal
-stack.
-
-This distinction is important for future agents: the multiway traversal and
-trainer are implemented as separate library components, while the resolver is
-currently a narrower orchestration and fallback surface.
+`ReleaseDefault` delivers a live root external-sampling search only when the
+request is eligible and the resolver has verified root and full-blueprint
+artifacts, matching buckets, a valid leaf evaluator, and bounded search
+limits. It otherwise uses the stable-root, blueprint, and static-legal
+fallback chain. `LegacyStatic` uses that fallback chain without search; the
+former perturbation loop has been removed.
 
 ## 9. Utility and performance infrastructure
 

@@ -4,6 +4,35 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P9.2 - Remove or isolate superseded perturbation logic
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Removed the resolver's bounded deterministic perturbation loop and its synthetic batch counters.
+- `LegacyStatic` and `SearchShadow` now deliver only stable-root, blueprint, or static-legal fallback policies. They report `NoRuntimeSearch`; legacy provenance and engine values remain readable for historical artifacts only.
+
+### Files
+
+- `include/solver/multiway_resolver.hpp`
+- `include/solver/multiway_baseline.hpp`
+- `include/solver/multiway_artifact.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `tests/test_multiway_p8_differential.cpp`
+- `docs/multiway_release_runbook.md`
+- `docs/project_state_report.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed source and focused test changes; static diff checks completed.
+- Build and tests not run at user request.
+
+### Limitations
+
+- Release-profile fixture matrix and rollback comparison remain pending authorization.
+
 ## P9.1 - Migrate default resolver mode
 
 **Status:** Complete
