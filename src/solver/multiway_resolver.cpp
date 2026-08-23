@@ -749,7 +749,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
 
         const auto use_fallback = [&](MultiwayResolverStatus status) {
             result.diagnostics.status = status;
-            {
+            if (config_.retain_stable_root_fallback) {
                 std::lock_guard<std::mutex> lock(stable_policy_mutex_);
                 if (stable_policy_.identity == request.blueprint_identity &&
                     stable_policy_.public_state_id == reconstructed_id && same_menu(stable_policy_.policy, menu)) {
@@ -840,7 +840,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 set_policy_provenance(&result.diagnostics, MultiwayPolicyProvenance::RuntimeSearch);
                 result.diagnostics.policy_normalized = true;
                 sample_policy(&result, request.sampling_seed, reconstructed_id);
-                {
+                if (config_.retain_stable_root_fallback) {
                     std::lock_guard<std::mutex> lock(stable_policy_mutex_);
                     stable_policy_.identity = request.blueprint_identity;
                     stable_policy_.public_state_id = reconstructed_id;

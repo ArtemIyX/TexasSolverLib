@@ -296,6 +296,14 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
         texas::MultiwayPolicyProvenance::StableRootFallback);
     EXPECT_TRUE(stable_fallback.diagnostics.used_latest_stable_root);
 
+    auto uncached_config = search_config(fixture);
+    uncached_config.retain_stable_root_fallback = false;
+    texas::MultiwayResolver uncached_resolver(uncached_config);
+    (void)uncached_resolver.resolve(stable_request);
+    const auto uncached_fallback = uncached_resolver.resolve(expired_request);
+    EXPECT_TRUE(uncached_fallback.diagnostics.policy_provenance !=
+        texas::MultiwayPolicyProvenance::StableRootFallback);
+
     auto blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(verified_root_artifact(fixture));
     blueprint->snapshot.actions = {{fixture.root.legal_actions.front(), 65535U}};
     blueprint->snapshot.validate();

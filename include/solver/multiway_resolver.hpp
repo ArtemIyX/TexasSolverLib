@@ -176,6 +176,8 @@ struct MultiwayResolverConfig {
     std::uint32_t max_batches = 64U;
     std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
     MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::ReleaseDefault;
+    // Stable-root reuse is an explicit deployment policy, not hidden resolver state.
+    bool retain_stable_root_fallback = true;
     MultiwaySolverLimits search_limits{};
     const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
     std::uint32_t search_max_decision_depth = 1U;
