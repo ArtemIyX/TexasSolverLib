@@ -4,6 +4,31 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## P9.3 - Consolidate duplicated hot-path logic
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Consolidated standalone and sparse action-major regret matching behind one scalar reference kernel with caller-owned output.
+- Preserved action-major row layout, uniform fallback, finite-value checks, scaled normalization, and residual-probability closure without traversal allocation.
+
+### Files
+
+- `include/solver/multiway_cfr.hpp`
+- `src/solver/multiway_cfr.cpp`
+- `src/solver/multiway_solver.cpp`
+- `tests/test_multiway_cfr.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed shared-kernel and sparse-row call sites; static diff checks completed.
+- Build and tests not run at user request.
+
+### Limitations
+
+- No performance claim is made without an authorized profile run.
+
 ## P9.2 - Remove or isolate superseded perturbation logic
 
 **Status:** Complete

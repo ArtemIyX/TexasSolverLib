@@ -124,42 +124,58 @@ double multiway_counterfactual_reach(
 
 std::vector<Probability> multiway_regret_matching(const std::vector<double>& regrets) {
     if (regrets.empty()) throw std::invalid_argument("regret matching requires at least one action");
+    std::vector<Probability> strategy(regrets.size(), 0.0);
+    multiway_regret_matching_action_major_into(
+        regrets.data(), regrets.size(), regrets.size(), 1U, strategy.data());
+    return strategy;
+}
+
+void multiway_regret_matching_action_major_into(
+    const double* regrets,
+    std::size_t regret_value_count,
+    std::size_t action_count,
+    std::size_t regret_stride,
+    Probability* output) {
+    if (regrets == nullptr || output == nullptr || action_count == 0U || regret_stride == 0U ||
+        regret_value_count == 0U ||
+        (action_count > 1U && (action_count - 1U) > (regret_value_count - 1U) / regret_stride)) {
+        throw std::invalid_argument("regret matching requires valid action-major rows");
+    }
     double positive_scale = 0.0;
-    for (const auto regret : regrets) {
+    for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto regret = regrets[action * regret_stride];
         if (!std::isfinite(regret)) throw std::invalid_argument("regrets must be finite");
         if (regret > positive_scale) positive_scale = regret;
+        output[action] = 0.0;
     }
-    std::vector<Probability> strategy(regrets.size(), 0.0);
     if (positive_scale == 0.0) {
-        std::fill(strategy.begin(), strategy.end(), 1.0 / static_cast<double>(strategy.size()));
-        return strategy;
+        std::fill(output, output + action_count, 1.0 / static_cast<double>(action_count));
+        return;
     }
     double scaled_sum = 0.0;
-    for (const auto regret : regrets) {
+    std::size_t last_positive = 0U;
+    for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto regret = regrets[action * regret_stride];
         // Terms too small to affect the normalization must not receive a
         // rounded-up residual probability below.
         if (regret > 0.0 && regret / positive_scale >= std::numeric_limits<double>::epsilon()) {
             scaled_sum += regret / positive_scale;
+            last_positive = action;
         }
     }
     if (!std::isfinite(scaled_sum) || scaled_sum <= 0.0) {
         throw std::overflow_error("regret matching produced a non-finite normalization");
     }
     double assigned = 0.0;
-    std::size_t last_positive = 0;
-    for (std::size_t action = 0; action < regrets.size(); ++action) {
-        if (regrets[action] > 0.0 && regrets[action] / positive_scale >= std::numeric_limits<double>::epsilon()) {
-            last_positive = action;
+    for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto regret = regrets[action * regret_stride];
+        if (regret > 0.0 && regret / positive_scale >= std::numeric_limits<double>::epsilon() &&
+            action != last_positive) {
+            output[action] = (regret / positive_scale) / scaled_sum;
+            assigned += output[action];
         }
     }
-    for (std::size_t action = 0; action < regrets.size(); ++action) {
-        if (regrets[action] > 0.0 && regrets[action] / positive_scale >= std::numeric_limits<double>::epsilon() && action != last_positive) {
-            strategy[action] = (regrets[action] / positive_scale) / scaled_sum;
-            assigned += strategy[action];
-        }
-    }
-    strategy[last_positive] = 1.0 - assigned;
-    return strategy;
+    output[last_positive] = 1.0 - assigned;
 }
 
 MultiwayCFRUpdate make_multiway_full_tree_cfr_update(

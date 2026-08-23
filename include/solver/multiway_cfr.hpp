@@ -108,6 +108,16 @@ double multiway_counterfactual_reach(
 
 std::vector<Probability> multiway_regret_matching(const std::vector<double>& regrets);
 
+// Scalar reference kernel for action-major regret rows. `regret_value_count`
+// bounds the input span; `regret_stride` is the distance between actions for
+// one bucket. Callers own output.
+void multiway_regret_matching_action_major_into(
+    const double* regrets,
+    std::size_t regret_value_count,
+    std::size_t action_count,
+    std::size_t regret_stride,
+    Probability* output);
+
 // Produces the full-tree CFR update for one traverser's infoset. The strategy
 // sum uses only the traverser's own reach; regret uses all other
 // seats' reach and chance reach.

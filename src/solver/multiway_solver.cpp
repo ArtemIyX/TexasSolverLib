@@ -490,41 +490,12 @@ void MultiwaySparseRowStorage::regret_matched_strategy_into(
         output_size != row->shape.action_count) {
         throw std::out_of_range("multiway regret strategy output does not match its row");
     }
-    double positive_scale = 0.0;
-    std::size_t last_positive = 0;
-    for (std::size_t action = 0; action < output_size; ++action) {
-        const auto value = regret_[row->regret_offset + action * row->shape.bucket_count + bucket];
-        if (!std::isfinite(value)) {
-            throw std::logic_error("multiway sparse row contains a non-finite regret");
-        }
-        if (value > positive_scale) positive_scale = value;
-        output[action] = 0.0;
-    }
-    if (positive_scale == 0.0) {
-        std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
-        return;
-    }
-    double scaled_sum = 0.0;
-    for (std::size_t action = 0; action < output_size; ++action) {
-        const auto value = regret_[row->regret_offset + action * row->shape.bucket_count + bucket];
-        if (value > 0.0 && value / positive_scale >= std::numeric_limits<double>::epsilon()) {
-            scaled_sum += value / positive_scale;
-            last_positive = action;
-        }
-    }
-    if (!std::isfinite(scaled_sum) || scaled_sum <= 0.0) {
-        throw std::overflow_error("regret matching produced a non-finite normalization");
-    }
-    double assigned = 0.0;
-    for (std::size_t action = 0; action < output_size; ++action) {
-        const auto value = regret_[row->regret_offset + action * row->shape.bucket_count + bucket];
-        if (action != last_positive && value > 0.0 &&
-            value / positive_scale >= std::numeric_limits<double>::epsilon()) {
-            output[action] = (value / positive_scale) / scaled_sum;
-            assigned += output[action];
-        }
-    }
-    output[last_positive] = 1.0 - assigned;
+    multiway_regret_matching_action_major_into(
+        regret_.data() + row->regret_offset + bucket,
+        (output_size - 1U) * row->shape.bucket_count + 1U,
+        output_size,
+        row->shape.bucket_count,
+        output);
 }
 
 std::vector<double> MultiwaySparseRowStorage::strategy_sums(
