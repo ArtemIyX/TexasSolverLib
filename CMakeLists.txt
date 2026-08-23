@@ -9,6 +9,7 @@ find_package(Threads REQUIRED)
 
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
+option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research component" OFF)
 
 set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
@@ -38,9 +39,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/games/multiway_terminal.hpp
     include/preflop/preflop.hpp
     include/preflop/preflop_equity.hpp
-    include/preflop/preflop_rvr.hpp
     include/solver/dcfr.hpp
-    include/solver/dcfr_vector.hpp
     include/solver/exploit.hpp
     include/solver/hunl_bucket_map.hpp
     include/solver/hunl_bucket_terminal.hpp
@@ -129,8 +128,6 @@ set(TEXASSOLVER_SOURCES
     src/games/multiway_terminal.cpp
     src/preflop/preflop.cpp
     src/preflop/preflop_equity.cpp
-    src/preflop/preflop_rvr.cpp
-    src/solver/dcfr_vector.cpp
     src/solver/exploit.cpp
     src/solver/hunl_bucket_map.cpp
     src/solver/hunl_bucket_terminal.cpp
@@ -240,6 +237,20 @@ set_target_properties(texas PROPERTIES
     OUTPUT_NAME texas
 )
 
+if (TEXASSOLVER_BUILD_LEGACY_RESEARCH)
+    add_library(texas_legacy_vector STATIC
+        src/preflop/preflop_rvr.cpp
+        src/solver/dcfr_vector.cpp
+    )
+    add_library(TexasSolver::legacy_vector ALIAS texas_legacy_vector)
+    target_include_directories(texas_legacy_vector
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    )
+    target_compile_features(texas_legacy_vector PUBLIC cxx_std_17)
+    target_link_libraries(texas_legacy_vector PUBLIC texas)
+endif()
+
 if (MSVC)
     target_compile_options(texas PRIVATE /W4)
 else()
@@ -344,6 +355,12 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         if (test_name STREQUAL "test_hunl_flat_mccfr")
             list(APPEND test_support_sources src/solver/hunl_flat_mccfr.cpp)
         endif()
+        if (test_name STREQUAL "test_class169_solver_contract" OR
+            test_name STREQUAL "test_dcfr_discount_contract")
+            list(APPEND test_support_sources
+                src/preflop/preflop_rvr.cpp
+                src/solver/dcfr_vector.cpp)
+        endif()
 
         add_executable(${test_name}
             tests/test_main.cpp
@@ -365,5 +382,11 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_package_config_contract.cmake
+    )
+    add_test(
+        NAME test_legacy_vector_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_legacy_vector_boundary.cmake
     )
 endif()

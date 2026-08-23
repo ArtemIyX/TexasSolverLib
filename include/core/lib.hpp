@@ -4,7 +4,6 @@
 // scheduler types must be included from their owning subsystem headers.
 #include "games/hunl_solver.hpp"
 #include "preflop/preflop.hpp"
-#include "preflop/preflop_rvr.hpp"
 #include "solver/exploit.hpp"
 #include "solver/hunl_sampled_solver.hpp"
 #include "solver/solver.hpp"
@@ -19,7 +18,6 @@
 
 namespace texas::core::lib {
 
-using ::texas::Class169RvrOutput;
 using ::texas::ExploitOutput;
 using ::texas::HUNLBackendSelection;
 using ::texas::HUNLConfig;
@@ -102,26 +100,6 @@ inline double compute_restricted_game_value(
     const std::vector<std::array<std::uint8_t, 2>>& p0_holes,
     const std::vector<std::array<std::uint8_t, 2>>& p1_holes) {
     return ::texas::compute_restricted_game_value(config, strategy, p0_holes, p1_holes);
-}
-
-inline Class169RvrOutput solve_hunl_preflop_rvr_class169(
-    const HUNLConfig& config,
-    const PreflopEquityTable& table,
-    std::vector<double> root_reach_p0,
-    std::vector<double> root_reach_p1,
-    std::uint32_t iterations,
-    double alpha,
-    double beta,
-    double gamma) {
-    return ::texas::solve_hunl_preflop_rvr_class169(
-        config,
-        table,
-        std::move(root_reach_p0),
-        std::move(root_reach_p1),
-        iterations,
-        alpha,
-        beta,
-        gamma);
 }
 
 }  // namespace texas::core::lib
