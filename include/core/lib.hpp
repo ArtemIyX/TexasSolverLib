@@ -410,22 +410,6 @@ inline double compute_restricted_game_value(
     return ::texas::compute_restricted_game_value(config, strategy, p0_holes, p1_holes);
 }
 
-inline VectorSolveOutput solve_range_vs_range_rust(
-    const HUNLConfig& config,
-    const std::vector<std::array<std::array<std::uint8_t, 2>, 2>>& hole_pairs,
-    std::uint32_t iterations,
-    double alpha,
-    double beta,
-    double gamma) {
-    return ::texas::solve_vector_dcfr(
-        ::texas::BettingTree::build_from(::texas::HUNLState::initial(std::make_shared<const HUNLConfig>(config))),
-        hole_pairs,
-        iterations,
-        alpha,
-        beta,
-        gamma);
-}
-
 inline Class169RvrOutput solve_hunl_preflop_rvr_class169(
     const HUNLConfig& config,
     const PreflopEquityTable& table,
