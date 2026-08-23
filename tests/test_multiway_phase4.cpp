@@ -41,7 +41,7 @@ texas::MultiwayRootSnapshot root() {
     const texas::MultiwayActionAbstraction abstraction;
     texas::MultiwayRootSnapshot result;
     result.public_state = texas::MultiwayPublicBuilder::make_root(
-        betting, board, abstraction.make_legal_actions(betting, 7001U));
+        betting, board, abstraction.make_legal_actions(betting));
     result.root_infoset = {result.public_state.id, 0};
     result.root_bucket = 0U;
     result.seat_order = {0, 1};

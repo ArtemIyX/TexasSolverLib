@@ -53,7 +53,7 @@ struct ResolverFixture {
         config.big_blind = 100;
         config.street = texas::Street::Flop;
         const auto state = texas::MultiwayState::initial(config);
-        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot(), 91U);
+        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot());
         return texas::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     }
 

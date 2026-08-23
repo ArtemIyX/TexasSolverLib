@@ -191,9 +191,8 @@ MultiwayActionAbstraction::MultiwayActionAbstraction(MultiwayActionAbstractionCo
 }
 
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_actions(
-    const MultiwayBettingSnapshot& betting,
-    std::uint64_t action_menu_id) const {
-    return make_legal_actions(betting, action_menu_id, {});
+    const MultiwayBettingSnapshot& betting) const {
+    return make_legal_actions(betting, {});
 }
 
 MultiwayActionTranslation MultiwayActionAbstraction::translate_observed_action(
@@ -282,9 +281,7 @@ MultiwayDeviationDisposition MultiwayActionAbstraction::classify_observed_action
 
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_actions(
     const MultiwayBettingSnapshot& betting,
-    std::uint64_t action_menu_id,
     MultiwayActionAbstractionContext context) const {
-    (void)action_menu_id;
     const auto state = MultiwayState::from_snapshot(betting);
     const auto base_actions = state.legal_actions();
     const auto actor = static_cast<std::size_t>(state.current_player());
@@ -436,9 +433,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::insert_exact_ob
     const MultiwayBettingSnapshot& betting,
     std::vector<MultiwayActionDescriptor> menu,
     MultiwayAction observed_action,
-    int target_street_contribution,
-    std::uint64_t action_menu_id) {
-    (void)action_menu_id;
+    int target_street_contribution) {
     const auto state = MultiwayState::from_snapshot(betting);
     const auto legal = state.legal_actions();
     if (std::find(legal.begin(), legal.end(), observed_action) == legal.end()) {

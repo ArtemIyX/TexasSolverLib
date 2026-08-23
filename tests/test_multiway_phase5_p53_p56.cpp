@@ -82,7 +82,7 @@ FutureFeatureFixture future_feature_fixture(std::uint8_t index) {
     TEST_CASE(multiway_phase5_p53_expands_##label) { \
         const auto state = expansion_state(); \
         const auto abstraction = expansion_abstraction(); \
-        const auto menu = abstraction.make_legal_actions(state.snapshot(), 0U); \
+        const auto menu = abstraction.make_legal_actions(state.snapshot()); \
         EXPECT_EQ(abstraction.classify_observed_action( \
             state.snapshot(), menu, texas::MultiwayAction::Bet, target, expansion_config()), \
             texas::MultiwayDeviationDisposition::Expand); \
@@ -107,7 +107,7 @@ P53_EXPANSION_CASE(target_6000, 6000)
 TEST_CASE(multiway_phase5_p53_exact_menu_action_translates) {
     const auto state = expansion_state();
     const auto abstraction = expansion_abstraction();
-    const auto menu = abstraction.make_legal_actions(state.snapshot(), 0U);
+    const auto menu = abstraction.make_legal_actions(state.snapshot());
     const auto exact = menu.front();
     EXPECT_EQ(abstraction.classify_observed_action(
         state.snapshot(), menu, exact.action, exact.target_street_contribution, expansion_config()),
@@ -120,7 +120,7 @@ TEST_CASE(multiway_phase5_p53_rejects_expansion_below_active_seat_limit) {
     auto config = expansion_config();
     config.minimum_active_seats = 4U;
     EXPECT_EQ(abstraction.classify_observed_action(
-        state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
+        state.snapshot(), abstraction.make_legal_actions(state.snapshot()),
         texas::MultiwayAction::Bet, 2500, config), texas::MultiwayDeviationDisposition::Translate);
 }
 
@@ -130,14 +130,14 @@ TEST_CASE(multiway_phase5_p53_rejects_expansion_for_disabled_flop) {
     auto config = expansion_config();
     config.enabled_postflop_street_mask = 0x02U;
     EXPECT_EQ(abstraction.classify_observed_action(
-        state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
+        state.snapshot(), abstraction.make_legal_actions(state.snapshot()),
         texas::MultiwayAction::Bet, 2500, config), texas::MultiwayDeviationDisposition::Translate);
 }
 
 TEST_CASE(multiway_phase5_p53_rejects_expansion_at_menu_capacity) {
     const auto state = expansion_state();
     const auto abstraction = expansion_abstraction();
-    const auto menu = abstraction.make_legal_actions(state.snapshot(), 0U);
+    const auto menu = abstraction.make_legal_actions(state.snapshot());
     auto config = expansion_config();
     config.maximum_menu_actions = static_cast<std::uint8_t>(menu.size());
     EXPECT_EQ(abstraction.classify_observed_action(
@@ -149,7 +149,7 @@ TEST_CASE(multiway_phase5_p53_non_aggressive_action_translates) {
     const auto state = expansion_state();
     const auto abstraction = expansion_abstraction();
     EXPECT_EQ(abstraction.classify_observed_action(
-        state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
+        state.snapshot(), abstraction.make_legal_actions(state.snapshot()),
         texas::MultiwayAction::Check, 0, expansion_config()), texas::MultiwayDeviationDisposition::Translate);
 }
 
@@ -157,7 +157,7 @@ TEST_CASE(multiway_phase5_p53_invalid_target_is_rejected) {
     const auto state = expansion_state();
     const auto abstraction = expansion_abstraction();
     EXPECT_THROW(abstraction.classify_observed_action(
-        state.snapshot(), abstraction.make_legal_actions(state.snapshot(), 0U),
+        state.snapshot(), abstraction.make_legal_actions(state.snapshot()),
         texas::MultiwayAction::Bet, -1, expansion_config()), std::invalid_argument);
 }
 

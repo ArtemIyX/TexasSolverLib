@@ -33,7 +33,7 @@ struct ResolverFixture {
         config.big_blind = 100;
         config.street = texas::Street::Flop;
         const auto state = texas::MultiwayState::initial(config);
-        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot(), 91U);
+        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot());
         return texas::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     }
 
@@ -179,7 +179,7 @@ TEST_CASE(multiway_resolver_preserves_an_exact_off_tree_root_action) {
     ResolverFixture fixture;
     const auto state = texas::MultiwayState::from_snapshot(fixture.root.betting);
     const auto menu = texas::MultiwayActionAbstraction::insert_exact_observed_action(
-        state.snapshot(), fixture.root.legal_actions, texas::MultiwayAction::Bet, 650, 91U);
+        state.snapshot(), fixture.root.legal_actions, texas::MultiwayAction::Bet, 650);
     fixture.root = texas::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     auto resolver = fixture.resolver();
     const auto result = resolver.resolve(fixture.request());

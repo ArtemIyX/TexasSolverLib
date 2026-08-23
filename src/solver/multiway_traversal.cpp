@@ -368,7 +368,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
             child_actions = action_abstraction_->make_legal_actions(
-                next.snapshot(), root_->action_menu_id());
+                next.snapshot());
             if (child_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
                 throw std::length_error(
                     "multiway generated action menu exceeds the compact traversal limit");
@@ -500,7 +500,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
             return action_abstraction_->make_legal_actions(
-                transition.transition.betting, root_->action_menu_id());
+                transition.transition.betting);
         }();
         if (next_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
             throw std::length_error(

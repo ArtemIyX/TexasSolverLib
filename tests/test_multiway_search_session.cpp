@@ -51,7 +51,7 @@ texas::MultiwayRootSnapshot make_root(texas::Street street) {
         if (street == texas::Street::River) board.push_back(card(13U, 1U));
     }
     root.public_state = texas::MultiwayPublicBuilder::make_root(
-        betting, board, abstraction.make_legal_actions(betting, 9'001U));
+        betting, board, abstraction.make_legal_actions(betting));
     root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
     root.seat_order = {0, 1};

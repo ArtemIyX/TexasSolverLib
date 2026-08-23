@@ -35,7 +35,7 @@ struct ResolverBaselineFixture {
         config.big_blind = 100;
         config.street = texas::Street::Flop;
         const auto state = texas::MultiwayState::initial(config);
-        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot(), 91U);
+        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot());
         return texas::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     }
 
@@ -111,7 +111,7 @@ texas::MultiwayRootSnapshot traversal_root(const texas::MultiwayActionAbstractio
 
     texas::MultiwayRootSnapshot root;
     root.public_state = texas::MultiwayPublicBuilder::make_root(
-        betting, kTraversalBoard, abstraction.make_legal_actions(betting, 77U));
+        betting, kTraversalBoard, abstraction.make_legal_actions(betting));
     root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
     root.seat_order = {0, 1, 2};
@@ -212,7 +212,7 @@ TEST_CASE(multiway_baseline_fixture_harness_covers_required_resolver_categories)
     auto off_tree_request = fixture.request();
     const auto state = texas::MultiwayState::from_snapshot(fixture.root.betting);
     const auto off_tree_menu = texas::MultiwayActionAbstraction::insert_exact_observed_action(
-        state.snapshot(), fixture.root.legal_actions, texas::MultiwayAction::Bet, 650, 91U);
+        state.snapshot(), fixture.root.legal_actions, texas::MultiwayAction::Bet, 650);
     off_tree_request.public_state = texas::MultiwayPublicBuilder::make_root(
         state.snapshot(), {8U, 13U, 17U}, off_tree_menu);
     const auto off_tree = harness.run({texas::MultiwayBaselineFixtureKind::OffTree, off_tree_request, {}});

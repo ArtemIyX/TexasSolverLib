@@ -279,7 +279,7 @@ std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
     const MultiwayResolverConfig& config) {
     const auto supplied = &request.public_state.legal_actions;
     MultiwayActionAbstraction abstraction(config.action_abstraction);
-    auto menu = abstraction.make_legal_actions(state.snapshot(), 0U);
+    auto menu = abstraction.make_legal_actions(state.snapshot());
     for (std::size_t index = 0; index < supplied->size(); ++index) {
         const auto& observed = supplied->at(index);
         if (observed.action_index != index) {
@@ -292,7 +292,7 @@ std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
         }
         menu = MultiwayActionAbstraction::insert_exact_observed_action(
             state.snapshot(), std::move(menu), observed.action,
-            observed.target_street_contribution, 0U);
+            observed.target_street_contribution);
     }
     return menu;
 }

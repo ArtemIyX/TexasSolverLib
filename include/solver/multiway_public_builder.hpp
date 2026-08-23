@@ -29,9 +29,6 @@ public:
 
     [[nodiscard]] static std::vector<MultiwayActionDescriptor> make_legal_actions(
         const MultiwayBettingSnapshot& betting,
-        // Retained for source compatibility. Schema-v2 derives the id from
-        // canonical action/target entries.
-        std::uint64_t action_menu_id,
         const std::vector<int>& target_street_contributions);
 
     [[nodiscard]] static MultiwayPublicStateDescriptor make_root(

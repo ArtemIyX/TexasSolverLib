@@ -218,9 +218,7 @@ std::uint64_t MultiwayPublicBuilder::stable_action_menu_id(
 
 std::vector<MultiwayActionDescriptor> MultiwayPublicBuilder::make_legal_actions(
     const MultiwayBettingSnapshot& betting,
-    std::uint64_t action_menu_id,
     const std::vector<int>& target_street_contributions) {
-    (void)action_menu_id;
     const auto state = MultiwayState::from_snapshot(betting);
     const auto actions = state.legal_actions();
     if (actions.size() != target_street_contributions.size()) {

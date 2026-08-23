@@ -42,7 +42,7 @@ texas::MultiwayRootSnapshot make_root(
 
     texas::MultiwayRootSnapshot root;
     root.public_state = texas::MultiwayPublicBuilder::make_root(
-        betting, board, abstraction.make_legal_actions(betting, 71U));
+        betting, board, abstraction.make_legal_actions(betting));
     root.root_infoset = {root.public_state.id, 0};
     root.seat_order = {0, 1, 2};
     root.next_street_first_seat = 0;
@@ -93,7 +93,7 @@ struct SamplerFixture {
                 found->action, found->target_street_contribution);
             std::vector<texas::MultiwayActionDescriptor> child_actions;
             if (next.current_player() >= 0) {
-                child_actions = abstraction.make_legal_actions(next.snapshot(), 71U);
+                child_actions = abstraction.make_legal_actions(next.snapshot());
             }
             state = texas::MultiwayPublicBuilder::make_action_child(
                 state, action_index, std::move(child_actions));
