@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "core/canonical_combo.hpp"
 #include "solver/multiway_range_update.hpp"

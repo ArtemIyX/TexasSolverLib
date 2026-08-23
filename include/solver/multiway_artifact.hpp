@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_export.hpp"

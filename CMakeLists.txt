@@ -19,6 +19,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/canonical_combo.hpp
     include/core/game.hpp
     include/core/fingerprint.hpp
+    include/core/legacy_namespace_compat.hpp
     include/core/lib.hpp
     include/core/namespaces.hpp
     include/core/poker.hpp

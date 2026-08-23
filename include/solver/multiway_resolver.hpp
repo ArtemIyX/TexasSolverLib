@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/multiway_private.hpp"
 #include "solver/multiway_action_abstraction.hpp"

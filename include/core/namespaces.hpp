@@ -21,15 +21,4 @@ namespace detail {}
 namespace profiling {}
 }
 
-using namespace core;
-using namespace games;
-using namespace games::hunl;
-using namespace games::multiway;
-using namespace ranges;
-using namespace preflop;
-using namespace solver;
-using namespace solver::dcfr;
-using namespace solver::hunl;
-using namespace solver::multiway;
-using namespace util;
 }  // namespace texas
