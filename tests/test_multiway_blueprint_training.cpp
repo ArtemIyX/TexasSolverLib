@@ -39,10 +39,10 @@ TEST_CASE(multiway_checkpoint_resume_identity_rejects_different_artifacts) {
     snapshot.training.trajectories = 3U;
     snapshot.actions = {{{texas::MultiwayAction::Check, 0U, 0, 11U}, 65535U}};
 
-    texas::MultiwayCheckpoint::validate_resume_identity(snapshot, expected);
+    texas::MultiwayRootPolicyArtifact::validate_resume_identity(snapshot, expected);
     ++config.blueprint.bucket_model_version;
     EXPECT_THROW(
-        texas::MultiwayCheckpoint::validate_resume_identity(snapshot, config.identity()),
+        texas::MultiwayRootPolicyArtifact::validate_resume_identity(snapshot, config.identity()),
         std::invalid_argument);
 }
 

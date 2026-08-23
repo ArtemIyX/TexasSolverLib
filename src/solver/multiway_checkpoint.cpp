@@ -71,7 +71,7 @@ MultiwayQuantizedRootAction read_action(std::ifstream& in) {
 
 }  // namespace
 
-void MultiwayCheckpoint::save_atomic(
+void MultiwayRootPolicyArtifact::save_atomic(
     const std::filesystem::path& path,
     const MultiwayBlueprintSnapshot& snapshot) {
     snapshot.validate();
@@ -103,7 +103,7 @@ void MultiwayCheckpoint::save_atomic(
     texas::core::publish_atomic_replace(temp, path, "multiway checkpoint publish failed");
 }
 
-MultiwayBlueprintSnapshot MultiwayCheckpoint::load(const std::filesystem::path& path) {
+MultiwayBlueprintSnapshot MultiwayRootPolicyArtifact::load(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("multiway checkpoint cannot be opened");
     std::array<char, kMagic.size()> magic{};
@@ -145,7 +145,7 @@ MultiwayBlueprintSnapshot MultiwayCheckpoint::load(const std::filesystem::path& 
     return snapshot;
 }
 
-MultiwayBlueprintSnapshot MultiwayCheckpoint::load_for_resume(
+MultiwayBlueprintSnapshot MultiwayRootPolicyArtifact::load_for_resume(
     const std::filesystem::path& path,
     const MultiwayModelIdentity& expected_identity) {
     const auto snapshot = load(path);
@@ -153,7 +153,7 @@ MultiwayBlueprintSnapshot MultiwayCheckpoint::load_for_resume(
     return snapshot;
 }
 
-void MultiwayCheckpoint::validate_resume_identity(
+void MultiwayRootPolicyArtifact::validate_resume_identity(
     const MultiwayBlueprintSnapshot& snapshot,
     const MultiwayModelIdentity& expected_identity) {
     snapshot.validate();

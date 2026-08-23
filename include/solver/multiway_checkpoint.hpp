@@ -8,7 +8,7 @@
 
 namespace texas::solver::multiway {
 
-class MultiwayCheckpoint {
+class MultiwayRootPolicyArtifact {
 public:
     static void save_atomic(
         const std::filesystem::path& path,

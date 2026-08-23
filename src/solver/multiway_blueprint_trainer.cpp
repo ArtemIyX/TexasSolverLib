@@ -241,7 +241,7 @@ MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPol
 }
 
 void MultiwayBlueprintTrainer::resume_from(const MultiwayBlueprintSnapshot& checkpoint) {
-    MultiwayCheckpoint::validate_resume_identity(checkpoint, identity_);
+    MultiwayRootPolicyArtifact::validate_resume_identity(checkpoint, identity_);
     if (checkpoint.training.schedule_hash != schedule_.identity() ||
         checkpoint.training.deterministic_seed != deterministic_seed_) {
         throw std::invalid_argument("multiway checkpoint schedule or seed does not match the live trainer");

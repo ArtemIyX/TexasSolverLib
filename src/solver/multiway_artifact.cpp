@@ -402,7 +402,7 @@ void MultiwayBlueprintArtifacts::save_atomic(
     manifest.identity = snapshot.identity;
     manifest.snapshot_hash = snapshot_hash(snapshot);
     manifest.validate();
-    MultiwayCheckpoint::save_atomic(checkpoint_path, snapshot);
+    MultiwayRootPolicyArtifact::save_atomic(checkpoint_path, snapshot);
     save_manifest_atomic(manifest_path(checkpoint_path), manifest);
 }
 
@@ -410,7 +410,7 @@ MultiwayVerifiedBlueprintArtifact MultiwayBlueprintArtifacts::load_verified(
     const std::filesystem::path& checkpoint_path,
     const MultiwayModelIdentity& expected_identity) {
     MultiwayVerifiedBlueprintArtifact artifact;
-    artifact.snapshot = MultiwayCheckpoint::load(checkpoint_path);
+    artifact.snapshot = MultiwayRootPolicyArtifact::load(checkpoint_path);
     artifact.manifest = load_manifest(manifest_path(checkpoint_path));
     artifact.validate(expected_identity);
     return artifact;

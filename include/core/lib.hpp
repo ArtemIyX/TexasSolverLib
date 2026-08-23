@@ -200,7 +200,7 @@ using ::texas::MultiwaySearchSessionRowView;
 using ::texas::MultiwaySearchSessionHeroRow;
 using ::texas::MultiwaySearchSessionHeroPolicy;
 using ::texas::MultiwayRuntimeSession;
-using ::texas::MultiwayCheckpoint;
+using ::texas::MultiwayRootPolicyArtifact;
 using ::texas::MultiwayArtifactSource;
 using ::texas::MultiwayBlueprintArtifacts;
 using ::texas::MultiwayFullBlueprintArtifact;

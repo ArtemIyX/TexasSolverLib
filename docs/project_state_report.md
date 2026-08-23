@@ -682,7 +682,7 @@ global rows, reach tables, or worker scratch.
 
 ### 7.12 Checkpoints, manifests, and audit records
 
-`MultiwayCheckpoint` provides atomic snapshot save/load and resume-identity
+`MultiwayRootPolicyArtifact` provides atomic snapshot save/load and resume-identity
 validation.
 
 `MultiwayBlueprintArtifacts` adds the release artifact boundary:
