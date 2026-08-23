@@ -1,5 +1,6 @@
 #include "games/multiway_terminal.hpp"
 
+#include "games/multiway_fixed.hpp"
 #include "games/multiway_rules.hpp"
 
 #include <algorithm>
@@ -107,7 +108,36 @@ MultiwayPotLayout build_multiway_pot_layout(
 
 MultiwayTerminalResult settle_multiway_terminal(const MultiwayTerminalInput& input) {
     input.validate();
-    return settle_multiway_terminal(input, build_multiway_pot_layout(input.contributions, input.folded));
+    MultiwayFixedTerminalInput fixed_input;
+    fixed_input.seat_count = static_cast<std::uint8_t>(input.contributions.size());
+    fixed_input.odd_chip_first_seat = input.odd_chip_first_seat;
+    fixed_input.rake_policy = input.rake_policy;
+    fixed_input.flop_seen = input.flop_seen;
+    for (std::size_t seat = 0; seat < input.contributions.size(); ++seat) {
+        fixed_input.contributions[seat] = input.contributions[seat];
+        fixed_input.folded[seat] = input.folded[seat];
+        fixed_input.strengths[seat] = input.strengths[seat];
+    }
+    MultiwayFixedTerminalScratch scratch;
+    MultiwayFixedTerminalResult fixed_result;
+    settle_multiway_terminal_fixed(fixed_input, scratch, fixed_result);
+
+    MultiwayTerminalResult result;
+    result.refunds.assign(fixed_result.refunds.begin(), fixed_result.refunds.begin() + fixed_result.seat_count);
+    result.payouts.assign(fixed_result.payouts.begin(), fixed_result.payouts.begin() + fixed_result.seat_count);
+    result.utilities.assign(fixed_result.utilities.begin(), fixed_result.utilities.begin() + fixed_result.seat_count);
+    result.rake_taken = fixed_result.rake_taken;
+    for (std::size_t index = 0; index < fixed_result.pot_count; ++index) {
+        const auto& fixed_pot = fixed_result.pots[index];
+        MultiwaySidePot pot;
+        pot.amount = fixed_pot.amount;
+        pot.contribution_cap = fixed_pot.contribution_cap;
+        pot.eligible_players.assign(
+            fixed_pot.eligible_players.begin(),
+            fixed_pot.eligible_players.begin() + fixed_pot.eligible_count);
+        result.pots.push_back(std::move(pot));
+    }
+    return result;
 }
 
 MultiwayTerminalResult settle_multiway_terminal(
@@ -151,66 +181,7 @@ MultiwayTerminalResult settle_multiway_terminal(
     if (layout_total != input_total) {
         throw std::invalid_argument("multiway pot layout does not conserve contributions");
     }
-    MultiwayTerminalResult result;
-    const auto count = input.contributions.size();
-    result.pots = layout.pots;
-    result.refunds = layout.refunds;
-    result.payouts.assign(count, 0);
-    result.utilities.assign(count, 0.0);
-
-    const auto contested_total = std::accumulate(
-        result.pots.begin(), result.pots.end(), std::int64_t{0},
-        [](std::int64_t total, const MultiwaySidePot& pot) { return total + pot.amount; });
-    if (contested_total > std::numeric_limits<int>::max()) {
-        throw std::invalid_argument("multiway contested pot exceeds supported chip range");
-    }
-    result.rake_taken = input.rake_policy.rake_for_contested_pot(
-        static_cast<int>(contested_total), input.flop_seen);
-    auto remaining_rake = result.rake_taken;
-    for (auto& pot : result.pots) {
-        const auto taken = std::min(pot.amount, remaining_rake);
-        pot.amount -= taken;
-        remaining_rake -= taken;
-        if (remaining_rake == 0) break;
-    }
-    if (remaining_rake != 0) {
-        throw std::logic_error("multiway rake exceeds contested pot");
-    }
-
-    for (const auto& pot : result.pots) {
-        if (pot.amount == 0) continue;
-        Strength best = input.strengths[static_cast<std::size_t>(pot.eligible_players.front())];
-        for (const auto player : pot.eligible_players) {
-            best = std::max(best, input.strengths[static_cast<std::size_t>(player)]);
-        }
-        std::vector<PlayerId> winners;
-        for (const auto player : pot.eligible_players) {
-            if (input.strengths[static_cast<std::size_t>(player)] == best) winners.push_back(player);
-        }
-        const auto share = pot.amount / static_cast<int>(winners.size());
-        auto remainder = pot.amount % static_cast<int>(winners.size());
-        std::sort(winners.begin(), winners.end(), [&input, count](PlayerId lhs, PlayerId rhs) {
-            const auto seat_count = static_cast<PlayerId>(count);
-            const auto lhs_order = static_cast<std::size_t>(
-                (lhs - input.odd_chip_first_seat + seat_count) % seat_count);
-            const auto rhs_order = static_cast<std::size_t>(
-                (rhs - input.odd_chip_first_seat + seat_count) % seat_count);
-            return lhs_order < rhs_order;
-        });
-        for (const auto winner : winners) {
-            result.payouts[static_cast<std::size_t>(winner)] += share;
-            if (remainder > 0) {
-                ++result.payouts[static_cast<std::size_t>(winner)];
-                --remainder;
-            }
-        }
-    }
-
-    for (std::size_t seat = 0; seat < count; ++seat) {
-        result.utilities[seat] = static_cast<Value>(
-            result.payouts[seat] + result.refunds[seat] - input.contributions[seat]);
-    }
-    return result;
+    return settle_multiway_terminal(input);
 }
 
 MultiwayTerminalResult settle_multiway_terminal(

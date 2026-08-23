@@ -1,4 +1,5 @@
 #include "games/multiway_terminal.hpp"
+#include "games/multiway_fixed.hpp"
 #include "test_harness.hpp"
 
 #include <numeric>
@@ -221,4 +222,33 @@ TEST_CASE(multiway_terminal_rejects_invalid_odd_chip_order) {
     auto terminal_input = input({100, 100}, {false, false}, {1, 2});
     terminal_input.odd_chip_first_seat = 2;
     EXPECT_THROW(texas::settle_multiway_terminal(terminal_input), std::invalid_argument);
+}
+
+TEST_CASE(multiway_terminal_vector_adapter_matches_fixed_settlement_kernel) {
+    auto terminal_input = input({100, 300, 300}, {false, false, false}, {10, 5, 8});
+    terminal_input.rake_policy.mode = texas::MultiwayRakeMode::PercentageOfContestedPot;
+    terminal_input.rake_policy.basis_points = 500U;
+    terminal_input.rake_policy.cap = 20;
+
+    texas::MultiwayFixedTerminalInput fixed_input;
+    fixed_input.seat_count = 3U;
+    fixed_input.odd_chip_first_seat = terminal_input.odd_chip_first_seat;
+    fixed_input.rake_policy = terminal_input.rake_policy;
+    fixed_input.flop_seen = terminal_input.flop_seen;
+    for (std::size_t seat = 0; seat < 3U; ++seat) {
+        fixed_input.contributions[seat] = terminal_input.contributions[seat];
+        fixed_input.folded[seat] = terminal_input.folded[seat];
+        fixed_input.strengths[seat] = terminal_input.strengths[seat];
+    }
+    texas::MultiwayFixedTerminalScratch scratch;
+    texas::MultiwayFixedTerminalResult fixed_result;
+    texas::settle_multiway_terminal_fixed(fixed_input, scratch, fixed_result);
+    const auto adapted = texas::settle_multiway_terminal(terminal_input);
+
+    EXPECT_EQ(adapted.payouts[0], fixed_result.payouts[0]);
+    EXPECT_EQ(adapted.payouts[1], fixed_result.payouts[1]);
+    EXPECT_EQ(adapted.payouts[2], fixed_result.payouts[2]);
+    EXPECT_EQ(adapted.refunds[0], fixed_result.refunds[0]);
+    EXPECT_EQ(adapted.rake_taken, fixed_result.rake_taken);
+    EXPECT_EQ(adapted.pots.size(), static_cast<std::size_t>(fixed_result.pot_count));
 }
