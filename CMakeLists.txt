@@ -59,6 +59,9 @@ if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
     target_link_libraries(texas PRIVATE pheval)
 endif()
 target_link_libraries(texas PRIVATE Threads::Threads)
+if (WIN32)
+    target_link_libraries(texas PRIVATE Cabinet)
+endif()
 
 target_include_directories(texas
     PUBLIC
