@@ -1,5 +1,6 @@
 #include "solver/multiway_future_bucket.hpp"
 
+#include "core/canonical_combo.hpp"
 #include "games/hunl_eval.hpp"
 
 #include <algorithm>
@@ -140,11 +141,11 @@ MultiwayFutureBucketArtifact build_multiway_future_bucket_artifact(
         std::vector<std::size_t> indices;
         features.reserve(MULTIWAY_HOLE_COMBINATION_COUNT); indices.reserve(MULTIWAY_HOLE_COMBINATION_COUNT);
         std::vector<std::uint32_t> assignments(MULTIWAY_HOLE_COMBINATION_COUNT, MULTIWAY_INVALID_BUCKET);
-        for (std::uint8_t a = 0U; a < 52U; ++a) for (std::uint8_t b = static_cast<std::uint8_t>(a + 1U); b < 52U; ++b) {
-            const std::array<std::uint8_t, 2> hole = {a, b};
-            if (std::find(request.canonical_board.begin(), request.canonical_board.end(), a) != request.canonical_board.end() ||
-                std::find(request.canonical_board.begin(), request.canonical_board.end(), b) != request.canonical_board.end()) continue;
-            indices.push_back(MultiwayBucketTable::hole_index(hole));
+        for (CanonicalComboId id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id) {
+            const auto& hole = canonical_combos().cards(id);
+            if (std::find(request.canonical_board.begin(), request.canonical_board.end(), hole[0]) != request.canonical_board.end() ||
+                std::find(request.canonical_board.begin(), request.canonical_board.end(), hole[1]) != request.canonical_board.end()) continue;
+            indices.push_back(id);
             features.push_back(make_multiway_future_bucket_features(request.street, request.canonical_board, hole, profile.feature_version));
         }
         if (count > features.size()) throw std::invalid_argument("future bucket count exceeds live combinations");
