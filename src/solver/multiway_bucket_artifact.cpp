@@ -1,4 +1,5 @@
 #include "solver/multiway_bucket_artifact.hpp"
+#include "core/fingerprint.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -87,12 +88,9 @@ MultiwayModelIdentity read_identity(const std::vector<std::uint8_t>& input, std:
 }
 
 std::uint64_t feature_hash(const MultiwayBucketFeatures& features, Street street) noexcept {
-    std::uint64_t hash = 14695981039346656037ULL;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     const auto append = [&hash](std::uint64_t value) noexcept {
-        for (std::uint8_t byte = 0U; byte < 8U; ++byte) {
-            hash ^= (value >> (byte * 8U)) & 0xffU;
-            hash *= 1099511628211ULL;
-        }
+        texas::core::fingerprint::append_u64(hash, value);
     };
     append(static_cast<std::uint8_t>(street));
     append(features.board_rank_mask);
