@@ -14,6 +14,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
+#include <condition_variable>
+#include <exception>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -119,6 +123,10 @@ public:
         std::uint32_t worker_count,
         std::size_t worker_delta_capacity,
         MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled);
+    ~MultiwayRootBatchRunner();
+
+    MultiwayRootBatchRunner(const MultiwayRootBatchRunner&) = delete;
+    MultiwayRootBatchRunner& operator=(const MultiwayRootBatchRunner&) = delete;
 
     [[nodiscard]] MultiwayRootBatchResult run(
         std::uint64_t first_trajectory_id,
@@ -127,6 +135,8 @@ public:
         double iteration_weight = 1.0);
 
 private:
+    void worker_loop(std::size_t worker_index);
+
     struct WorkerScratch {
         explicit WorkerScratch(std::size_t worker_index, std::size_t delta_capacity)
             : stream(worker_index, delta_capacity) {}
@@ -155,6 +165,19 @@ private:
     std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
     std::vector<MultiwayWorkerBatch> worker_batches_;
     std::vector<std::thread> threads_;
+    std::mutex pool_mutex_;
+    std::condition_variable work_cv_;
+    std::condition_variable completion_cv_;
+    bool stop_workers_ = false;
+    bool batch_active_ = false;
+    std::uint64_t batch_generation_ = 0U;
+    std::size_t completed_workers_ = 0U;
+    std::size_t active_batch_count_ = 0U;
+    std::uint64_t active_first_trajectory_id_ = 0U;
+    std::uint64_t active_seed_ = 0U;
+    double active_iteration_weight_ = 1.0;
+    std::atomic<bool> cancelled_{false};
+    std::exception_ptr worker_error_;
 };
 
 }  // namespace texas::solver::multiway

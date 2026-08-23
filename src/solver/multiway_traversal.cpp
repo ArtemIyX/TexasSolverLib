@@ -4,7 +4,6 @@
 #include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_continuation_selector.hpp"
 #include "solver/multiway_future_bucket.hpp"
-#include "util/thread_join_guard.hpp"
 #include "util/profiling.hpp"
 
 #include <algorithm>
@@ -565,10 +564,80 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     worker_scratch_.reserve(worker_count_);
     worker_stream_views_.reserve(worker_count_);
     worker_batches_.resize(worker_count_);
-    threads_.reserve(worker_count_ > 0U ? worker_count_ - 1U : 0U);
+    threads_.reserve(worker_count_);
     for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
         worker_scratch_.emplace_back(worker, worker_delta_capacity_);
         worker_stream_views_.push_back(&worker_scratch_.back().stream);
+        threads_.emplace_back(&MultiwayRootBatchRunner::worker_loop, this, worker);
+    }
+}
+
+MultiwayRootBatchRunner::~MultiwayRootBatchRunner() {
+    {
+        std::lock_guard<std::mutex> lock(pool_mutex_);
+        stop_workers_ = true;
+    }
+    work_cv_.notify_all();
+    for (auto& thread : threads_) {
+        if (thread.joinable()) thread.join();
+    }
+}
+
+void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
+    std::uint64_t observed_generation = 0U;
+    while (true) {
+        std::size_t batch_count = 0U;
+        std::uint64_t first_trajectory_id = 0U;
+        std::uint64_t seed = 0U;
+        double iteration_weight = 1.0;
+        {
+            std::unique_lock<std::mutex> lock(pool_mutex_);
+            work_cv_.wait(lock, [this, observed_generation] {
+                return stop_workers_ || (batch_active_ && batch_generation_ != observed_generation);
+            });
+            if (stop_workers_) return;
+            observed_generation = batch_generation_;
+            batch_count = active_batch_count_;
+            first_trajectory_id = active_first_trajectory_id_;
+            seed = active_seed_;
+            iteration_weight = active_iteration_weight_;
+        }
+
+        try {
+            if (worker_index < batch_count) {
+                const auto& batch = worker_batches_[worker_index];
+                auto& scratch = worker_scratch_[worker_index];
+                for (auto local_id = batch.trajectories.begin;
+                     local_id < batch.trajectories.end;
+                     ++local_id) {
+                    if (cancelled_.load(std::memory_order_acquire)) break;
+                    const auto trajectory_id = first_trajectory_id + local_id;
+                    ++scratch.attempted;
+                    if (traversal_.run(
+                            traversal_.traverser_for_trajectory(trajectory_id),
+                            trajectory_id,
+                            multiway_deterministic_trajectory_seed(seed, trajectory_id),
+                            scratch.stream,
+                            iteration_weight,
+                            &scratch.profile)) {
+                        ++scratch.accepted;
+                    } else {
+                        ++scratch.discarded;
+                    }
+                }
+                scratch.stream.sort_fixed_order();
+            }
+        } catch (...) {
+            cancelled_.store(true, std::memory_order_release);
+            std::lock_guard<std::mutex> lock(pool_mutex_);
+            if (worker_error_ == nullptr) worker_error_ = std::current_exception();
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(pool_mutex_);
+            ++completed_workers_;
+            if (completed_workers_ == worker_count_) completion_cv_.notify_one();
+        }
     }
 }
 
@@ -588,51 +657,28 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         worker_batches_.size());
     for (auto& scratch : worker_scratch_) scratch.reset(profile_mode_);
 
-    std::atomic<bool> cancelled{false};
-    std::exception_ptr worker_error;
-    std::mutex worker_error_mutex;
-    const auto execute_worker = [&](std::size_t worker_index) {
-        try {
-            if (cancelled.load(std::memory_order_acquire)) return;
-            const auto& batch = worker_batches_[worker_index];
-            auto& scratch = worker_scratch_[worker_index];
-            for (auto local_id = batch.trajectories.begin;
-                 local_id < batch.trajectories.end;
-                 ++local_id) {
-                if (cancelled.load(std::memory_order_acquire)) return;
-                const auto trajectory_id = first_trajectory_id + local_id;
-                ++scratch.attempted;
-                if (traversal_.run(
-                        traversal_.traverser_for_trajectory(trajectory_id),
-                        trajectory_id,
-                        multiway_deterministic_trajectory_seed(seed, trajectory_id),
-                        scratch.stream,
-                        iteration_weight,
-                        &scratch.profile)) {
-                    ++scratch.accepted;
-                } else {
-                    ++scratch.discarded;
-                }
-            }
-            scratch.stream.sort_fixed_order();
-        } catch (...) {
-            cancelled.store(true, std::memory_order_release);
-            std::lock_guard<std::mutex> lock(worker_error_mutex);
-            if (worker_error == nullptr) worker_error = std::current_exception();
+    {
+        std::lock_guard<std::mutex> lock(pool_mutex_);
+        if (batch_active_) {
+            throw std::logic_error("multiway root batch runner does not support concurrent batches");
         }
-    };
-
-    threads_.clear();
-    auto thread_guard = texas::util::detail::make_thread_join_guard(
-        threads_,
-        [&cancelled] { cancelled.store(true, std::memory_order_release); });
-    for (std::size_t worker = 1U; worker < batch_count; ++worker) {
-        threads_.emplace_back(execute_worker, worker);
+        batch_active_ = true;
+        ++batch_generation_;
+        completed_workers_ = 0U;
+        active_batch_count_ = batch_count;
+        active_first_trajectory_id_ = first_trajectory_id;
+        active_seed_ = seed;
+        active_iteration_weight_ = iteration_weight;
+        worker_error_ = nullptr;
+        cancelled_.store(false, std::memory_order_release);
     }
-    if (batch_count != 0U) execute_worker(0U);
-    for (auto& thread : threads_) thread.join();
-    thread_guard.release();
-    if (worker_error != nullptr) std::rethrow_exception(worker_error);
+    work_cv_.notify_all();
+    {
+        std::unique_lock<std::mutex> lock(pool_mutex_);
+        completion_cv_.wait(lock, [this] { return completed_workers_ == worker_count_; });
+        batch_active_ = false;
+        if (worker_error_ != nullptr) std::rethrow_exception(worker_error_);
+    }
 
     MultiwayRootBatchResult result;
     result.run.worker_count = worker_count_;
