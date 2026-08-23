@@ -394,9 +394,6 @@ void MultiwaySolverLimits::validate() const {
         std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)) {
         throw std::overflow_error("multiway aggregate worker delta capacity overflows size_t");
     }
-    if (run_mode != MultiwayRunMode::Deterministic) {
-        throw std::invalid_argument("multiway solver supports only deterministic run mode");
-    }
     if (max_batches == 0U) {
         throw std::invalid_argument("multiway solver limits require a non-zero batch budget");
     }

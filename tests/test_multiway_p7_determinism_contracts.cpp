@@ -147,7 +147,6 @@ TEST_CASE(multiway_p7_determinism_merge_order_version_is_published) {
 TEST_CASE(multiway_p7_determinism_limits_accept_complete_deterministic_configuration) {
     const auto limits = valid_limits();
     limits.validate();
-    EXPECT_EQ(limits.run_mode, texas::MultiwayRunMode::Deterministic);
 }
 
 TEST_CASE(multiway_p7_determinism_limits_reject_zero_workers) {
@@ -191,12 +190,6 @@ TEST_CASE(multiway_p7_determinism_limits_reject_aggregate_worker_delta_overflow)
     limits.worker_count = 2U;
     limits.max_worker_delta_entries = std::numeric_limits<std::size_t>::max();
     EXPECT_THROW(limits.validate(), std::overflow_error);
-}
-
-TEST_CASE(multiway_p7_determinism_limits_reject_unimplemented_run_mode) {
-    auto limits = valid_limits();
-    limits.run_mode = static_cast<texas::MultiwayRunMode>(255U);
-    EXPECT_THROW(limits.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_p7_determinism_seed_does_not_change_limit_validity) {

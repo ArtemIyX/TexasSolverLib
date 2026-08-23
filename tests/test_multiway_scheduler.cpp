@@ -54,7 +54,7 @@ TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity) 
     EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(4U, 8U, 9U, 32U));
 }
 
-TEST_CASE(multiway_solver_limits_reject_unimplemented_relaxed_run_modes) {
+TEST_CASE(multiway_scheduler_reports_deterministic_run_metadata) {
     texas::MultiwaySolverLimits limits;
     limits.worker_count = 1U;
     limits.trajectories_per_batch = 1U;
@@ -62,6 +62,6 @@ TEST_CASE(multiway_solver_limits_reject_unimplemented_relaxed_run_modes) {
     limits.max_sparse_rows = 1U;
     limits.max_sparse_values = 1U;
     limits.max_worker_delta_entries = 1U;
-    limits.run_mode = static_cast<texas::MultiwayRunMode>(255U);
-    EXPECT_THROW(limits.validate(), std::invalid_argument);
+    limits.validate();
+    EXPECT_EQ(texas::MultiwayRunMetadata{}.mode, texas::MultiwayRunMode::Deterministic);
 }

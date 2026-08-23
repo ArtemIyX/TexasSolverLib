@@ -181,7 +181,6 @@ struct MultiwaySolverLimits {
     std::size_t max_sparse_rows = 0;
     std::size_t max_sparse_values = 0;
     std::size_t max_worker_delta_entries = 0;
-    MultiwayRunMode run_mode = MultiwayRunMode::Deterministic;
     std::uint32_t max_batches = 64;
 
     void validate() const;
