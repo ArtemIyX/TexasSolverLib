@@ -2,8 +2,10 @@
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_blueprint_config.hpp"
 #include "solver/multiway_model_identity.hpp"
+#include "solver/multiway_resolver.hpp"
 #include "test_harness.hpp"
 
+#include <memory>
 #include <stdexcept>
 
 namespace {
@@ -55,4 +57,14 @@ TEST_CASE(multiway_future_bucket_artifact_rejects_invalid_bucket_metadata) {
         texas::build_multiway_future_bucket_artifact(identity(), boards(), profile()));
     bytes[4] = static_cast<std::uint8_t>(texas::MULTIWAY_FUTURE_BUCKET_ARTIFACT_SCHEMA_VERSION + 1U);
     EXPECT_THROW(texas::deserialize_multiway_future_bucket_artifact(bytes), std::invalid_argument);
+}
+
+TEST_CASE(multiway_future_bucket_artifact_can_be_injected_into_resolver_config) {
+    auto artifact = std::make_shared<texas::MultiwayFutureBucketArtifact>(
+        texas::build_multiway_future_bucket_artifact(identity(), boards(), profile()));
+    texas::MultiwayResolverConfig config;
+    config.future_bucket_artifact = std::move(artifact);
+    const texas::MultiwayResolver resolver(config);
+    (void)resolver;
+    EXPECT_TRUE(true);
 }

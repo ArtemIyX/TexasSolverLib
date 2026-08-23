@@ -3,6 +3,7 @@
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_continuation_selector.hpp"
+#include "solver/multiway_future_bucket.hpp"
 #include "util/thread_join_guard.hpp"
 #include "util/profiling.hpp"
 
@@ -84,7 +85,8 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     std::uint32_t max_decision_depth,
     std::uint32_t max_public_chance_depth,
     const MultiwayBlueprintPolicyProvider* blueprint_policy,
-    const MultiwayFixedContinuationSelector* continuation_selector)
+    const MultiwayFixedContinuationSelector* continuation_selector,
+    const MultiwayFutureBucketArtifact* future_bucket_artifact)
     : coordinator_(&coordinator),
       root_(&root),
       action_abstraction_(&action_abstraction),
@@ -94,6 +96,7 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
       max_public_chance_depth_(max_public_chance_depth),
       blueprint_policy_(blueprint_policy),
       continuation_selector_(continuation_selector),
+      future_bucket_artifact_(future_bucket_artifact),
       range_model_identity_(private_range_identity(root.private_ranges)),
       terminal_(coordinator) {
     root.validate();
@@ -240,8 +243,10 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         throw std::logic_error("multiway recursive traversal requires a leaf evaluator at its boundary");
     }
     const auto actor = state.betting.current_player >= 0 ? state.betting.current_player : context.traverser;
-    const auto& table = buckets_->table(state.betting.street, state.board);
-    const auto bucket = table.lookup(context.terminal->sampled_hole(*context.deal, actor));
+    const auto hole = context.terminal->sampled_hole(*context.deal, actor);
+    const auto bucket = future_bucket_artifact_ != nullptr
+        ? future_bucket_artifact_->lookup(state.betting.street, state.board, hole)
+        : buckets_->lookup(state.betting.street, state.board, hole);
     MultiwayContinuationPolicyKind policy = MultiwayContinuationPolicyKind::Blueprint;
     if (continuation_selector_ != nullptr) {
         policy = continuation_selector_->select({

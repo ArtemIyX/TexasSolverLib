@@ -21,6 +21,7 @@ namespace texas::solver::multiway {
 
 class MultiwayBlueprintPolicyProvider;
 class MultiwayFixedContinuationSelector;
+class MultiwayFutureBucketArtifact;
 
 inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
 inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
@@ -42,7 +43,8 @@ public:
         std::uint32_t max_decision_depth = 1U,
         std::uint32_t max_public_chance_depth = 0U,
         const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr,
-        const MultiwayFixedContinuationSelector* continuation_selector = nullptr);
+        const MultiwayFixedContinuationSelector* continuation_selector = nullptr,
+        const MultiwayFutureBucketArtifact* future_bucket_artifact = nullptr);
 
     [[nodiscard]] bool run(
         PlayerId traverser,
@@ -89,6 +91,7 @@ private:
     std::uint32_t max_public_chance_depth_ = 0U;
     const MultiwayBlueprintPolicyProvider* blueprint_policy_ = nullptr;
     const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
+    const MultiwayFutureBucketArtifact* future_bucket_artifact_ = nullptr;
     std::uint64_t range_model_identity_ = 0;
     MultiwayTerminalAdapter terminal_;
 };

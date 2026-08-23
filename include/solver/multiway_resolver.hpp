@@ -10,6 +10,7 @@
 #include "solver/multiway_model_identity.hpp"
 #include "solver/multiway_memory.hpp"
 #include "solver/multiway_continuation_selector.hpp"
+#include "solver/multiway_future_bucket.hpp"
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_search_profile.hpp"
 
@@ -208,6 +209,9 @@ struct MultiwayResolverConfig {
     std::shared_ptr<const MultiwayVerifiedBlueprintArtifact> verified_blueprint;
     // Immutable arbitrary-state prior used only by request-local traversal.
     std::shared_ptr<const MultiwayBlueprintStore> full_blueprint;
+    // Optional future-bucket artifact used by continuation leaves. Its
+    // registry identity must match the request model identity.
+    std::shared_ptr<const MultiwayFutureBucketArtifact> future_bucket_artifact;
     MultiwayActionAbstractionConfig action_abstraction{};
     std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
     MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::ReleaseDefault;

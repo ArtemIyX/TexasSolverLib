@@ -467,6 +467,10 @@ RuntimeSearchOutcome run_search(
         if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
             return RuntimeSearchOutcome::MemoryRejected;
         }
+        if (config.future_bucket_artifact != nullptr &&
+            config.future_bucket_artifact->registry().identity() != request.blueprint_identity) {
+            throw std::invalid_argument("multiway future bucket artifact identity does not match the request");
+        }
         MultiwayRootSnapshot root;
         if (!make_search_root(request, state, board, menu, bucket, &root)) {
             return RuntimeSearchOutcome::NoRoot;
@@ -495,7 +499,8 @@ RuntimeSearchOutcome run_search(
             &effective_leaf, config.search_max_decision_depth,
             config.search_max_public_chance_depth,
             blueprint_provider ? &*blueprint_provider : nullptr,
-            config.continuation_selector ? config.continuation_selector.get() : nullptr);
+            config.continuation_selector ? config.continuation_selector.get() : nullptr,
+            config.future_bucket_artifact.get());
         MultiwayRootBatchRunner runner(
             traversal, session.coordinator(), config.search_limits.worker_count,
             config.search_limits.max_worker_delta_entries,
