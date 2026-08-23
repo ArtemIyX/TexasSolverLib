@@ -1,5 +1,6 @@
 #include "solver/multiway_public_builder.hpp"
 #include "core/fingerprint.hpp"
+#include "games/multiway_fixed.hpp"
 
 #include <algorithm>
 #include <array>
@@ -263,19 +264,42 @@ MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_action_child(
         throw std::invalid_argument("multiway public builder action indices must be contiguous");
     }
 
+    return make_action_child(
+        parent,
+        action_index,
+        parent_state.apply(action.action, action.target_street_contribution).snapshot(),
+        std::move(child_legal_actions));
+}
+
+MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_action_child(
+    const MultiwayPublicStateDescriptor& parent,
+    std::uint32_t action_index,
+    MultiwayBettingSnapshot child_betting,
+    std::vector<MultiwayActionDescriptor> child_legal_actions) {
+    const auto parent_state = MultiwayState::from_snapshot(parent.betting);
+    if (parent_state.current_player() < 0 || action_index >= parent.legal_actions.size()) {
+        throw std::invalid_argument("multiway public builder action child has no selected legal action");
+    }
+    const auto& action = parent.legal_actions[action_index];
+    if (action.action_index != action_index) {
+        throw std::invalid_argument("multiway public builder action indices must be contiguous");
+    }
+
     MultiwayPublicStateDescriptor child;
     child.parent_id = parent.id;
     child.incoming_edge.kind = MultiwayPublicParentEdgeKind::BettingAction;
     child.incoming_edge.action = action;
-    child.betting = parent_state.apply(action.action, action.target_street_contribution).snapshot();
+    child.betting = std::move(child_betting);
     child.board = parent.board;
     canonicalize_board(child.board);
     child.history = parent.history;
     canonicalize_history(child.history);
     child.history.push_back({parent_state.current_player(), action});
     child.history.back().action.action_index = 0U;
-    const auto child_state = MultiwayState::from_snapshot(child.betting);
-    child.board_runout = runout_state(child_state, child.board.size());
+    const auto child_state = make_multiway_fixed_state(child.betting);
+    child.board_runout = {
+        static_cast<std::uint8_t>(5U - child.board.size()),
+        child_state.next_node_kind() == MultiwayNextNodeKind::BoardRunout};
     child.legal_actions = canonicalize_action_menu(child.betting, std::move(child_legal_actions));
     child.canonical_history_id = stable_history_id(child.history);
     child.id = {stable_public_state_id(child.betting, child.board, child.history, child.legal_actions)};

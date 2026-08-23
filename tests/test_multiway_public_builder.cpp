@@ -34,6 +34,8 @@ TEST_CASE(multiway_public_builder_creates_replayable_action_child) {
     const auto child_actions = texas::MultiwayPublicBuilder::make_legal_actions(
         child_snapshot, {0, 0, 500, 0});
     const auto child = texas::MultiwayPublicBuilder::make_action_child(root, 1, child_actions);
+    const auto fixed_child = texas::MultiwayPublicBuilder::make_action_child(
+        root, 1, child_snapshot, child_actions);
 
     EXPECT_EQ(child.parent_id, root.id);
     EXPECT_EQ(child.history.size(), 1U);
@@ -41,6 +43,8 @@ TEST_CASE(multiway_public_builder_creates_replayable_action_child) {
     EXPECT_EQ(child.betting.current_bet, 250);
     EXPECT_TRUE(child.id != root.id);
     EXPECT_TRUE(child.canonical_history_id != root.canonical_history_id);
+    EXPECT_EQ(fixed_child.id, child.id);
+    EXPECT_EQ(fixed_child.betting.current_bet, child.betting.current_bet);
 }
 
 TEST_CASE(multiway_public_builder_schema_v2_canonicalizes_menu_and_root_identity) {

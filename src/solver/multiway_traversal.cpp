@@ -1,5 +1,6 @@
 #include "solver/multiway_traversal.hpp"
 #include "core/fingerprint.hpp"
+#include "games/multiway_fixed.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_continuation_selector.hpp"
 #include "util/thread_join_guard.hpp"
@@ -322,18 +323,18 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         coordinator_->regret_matched_strategy_into(
             infoset, bucket, strategy.data(), action_count);
     }
-    const auto betting_state = MultiwayState::from_snapshot(state.betting);
+    const auto betting_state = make_multiway_fixed_state(state.betting);
 
     const auto evaluate_action = [&](std::size_t action) {
         const auto next = betting_state.apply(
             state.legal_actions[action].action,
             state.legal_actions[action].target_street_contribution);
         std::vector<MultiwayActionDescriptor> child_actions;
-        if (next.current_player() >= 0) {
+        if (next.current_player >= 0) {
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
             child_actions = action_abstraction_->make_legal_actions(
-                next.snapshot());
+                make_multiway_betting_snapshot(next));
             if (child_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
                 throw std::length_error(
                     "multiway generated action menu exceeds the compact traversal limit");
@@ -344,24 +345,28 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
             child = MultiwayPublicBuilder::make_action_child(
-                state, static_cast<std::uint32_t>(action), std::move(child_actions));
+                state,
+                static_cast<std::uint32_t>(action),
+                make_multiway_betting_snapshot(next),
+                std::move(child_actions));
             coordinator_->admit_public_state(child);
         }
-        if (next.is_terminal()) {
+        if (next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal ||
+            next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal) {
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::TerminalSettlement);
             return context.terminal->resolve_admitted_terminal(child, *context.deal)
                 .utilities[static_cast<std::size_t>(context.traverser)];
         }
         const auto next_depth = decision_depth + 1U;
-        if (next.current_player() >= 0 && next.street() == state.betting.street &&
+        if (next.current_player >= 0 && next.street == state.betting.street &&
             next_depth < max_decision_depth_) {
             return traverse_decision(child, next_depth, public_chance_depth, context);
         }
-        if (next.requires_board_runout()) {
+        if (next.next_node_kind() == MultiwayNextNodeKind::BoardRunout) {
             return traverse_public_chance(child, next_depth, public_chance_depth, context);
         }
-        if (next.requires_street_transition() &&
+        if (next.next_node_kind() == MultiwayNextNodeKind::StreetTransition &&
             public_chance_depth < max_public_chance_depth_) {
             return traverse_public_chance(child, next_depth, public_chance_depth, context);
         }
