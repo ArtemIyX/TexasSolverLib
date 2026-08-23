@@ -28,6 +28,24 @@ struct MultiwayVerifiedBlueprintArtifact;
 class MultiwayBlueprintStore;
 class MultiwayRuntimeSession;
 
+// Single validated owner for all bounded release-search admission and
+// execution limits. Resolver budget state is derived from this snapshot.
+struct MultiwayRuntimeSearchLimits {
+    MultiwaySolverLimits solver{1U, 1U, 1U, 1'024U, 1'024U, 8'192U, 8'192U, 64U};
+    MultiwayMemoryBudget memory{};
+    std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
+    std::uint32_t max_decision_depth = 1U;
+    std::uint32_t max_public_chance_depth = 0U;
+    std::uint8_t active_min_seats = 2U;
+    std::uint8_t active_max_seats = 6U;
+    std::uint32_t active_max_menu_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
+    std::uint64_t future_bucket_cache_bytes = 0U;
+    std::uint64_t continuation_scratch_bytes_per_worker = 0U;
+    std::uint64_t continuation_cache_bytes = 0U;
+
+    void validate() const;
+};
+
 // A range supplied by a resolver caller for one non-hero seat. Seat ids are
 // explicit so the request remains valid after players have folded.
 struct MultiwayResolverSeatRange {
@@ -213,25 +231,13 @@ struct MultiwayResolverConfig {
     // registry identity must match the request model identity.
     std::shared_ptr<const MultiwayFutureBucketArtifact> future_bucket_artifact;
     MultiwayActionAbstractionConfig action_abstraction{};
-    std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
     MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::ReleaseDefault;
     // Stable-root reuse is explicit host-owned state, not resolver state.
     std::shared_ptr<MultiwayStableRootPolicyCache> stable_root_cache;
     std::shared_ptr<const MultiwayFixedContinuationSelector> continuation_selector;
-    MultiwaySolverLimits search_limits{};
+    MultiwayRuntimeSearchLimits runtime_limits{};
     const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
-    std::uint32_t search_max_decision_depth = 1U;
-    std::uint32_t search_max_public_chance_depth = 0U;
-    std::uint8_t active_search_min_seats = 2U;
-    std::uint8_t active_search_max_seats = 6U;
-    std::uint32_t active_search_max_menu_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
     MultiwaySearchProfileMode search_profile_mode = MultiwaySearchProfileMode::Disabled;
-    MultiwayMemoryBudget search_memory_budget{};
-    // Optional request-local capacities owned by a typed or host leaf path.
-    // A typed rollout cache is measured automatically when these remain zero.
-    std::uint64_t search_future_bucket_cache_bytes = 0U;
-    std::uint64_t search_continuation_scratch_bytes_per_worker = 0U;
-    std::uint64_t search_continuation_cache_bytes = 0U;
 
     void validate() const;
 };

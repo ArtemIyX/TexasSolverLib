@@ -52,8 +52,8 @@ struct ResolverFixture {
     texas::MultiwayResolver resolver() {
         texas::MultiwayResolverConfig config;
         config.buckets = &buckets;
-        config.search_limits.max_batches = 2U;
-        config.search_limits.trajectories_per_batch = 5U;
+        config.runtime_limits.solver.max_batches = 2U;
+        config.runtime_limits.solver.trajectories_per_batch = 5U;
         config.search_mode = texas::MultiwayResolverSearchMode::FallbackOnly;
         return texas::MultiwayResolver(config);
     }
@@ -87,16 +87,16 @@ texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
     config.stable_root_cache = std::make_shared<texas::MultiwayStableRootPolicyCache>();
-    config.search_limits.trajectories_per_batch = 2U;
-    config.search_limits.max_batches = 1U;
+    config.runtime_limits.solver.trajectories_per_batch = 2U;
+    config.runtime_limits.solver.max_batches = 1U;
     config.search_mode = texas::MultiwayResolverSearchMode::SearchActive;
     config.continuation_selector = std::make_shared<texas::MultiwayFixedContinuationSelector>(
         texas::MultiwayContinuationPolicyKind::Blueprint);
-    config.search_limits.worker_count = 1U;
-    config.search_limits.max_public_states = 32U;
-    config.search_limits.max_sparse_rows = 16U;
-    config.search_limits.max_sparse_values = 2'048U;
-    config.search_limits.max_worker_delta_entries = 128U;
+    config.runtime_limits.solver.worker_count = 1U;
+    config.runtime_limits.solver.max_public_states = 32U;
+    config.runtime_limits.solver.max_sparse_rows = 16U;
+    config.runtime_limits.solver.max_sparse_values = 2'048U;
+    config.runtime_limits.solver.max_worker_delta_entries = 128U;
     static const texas::MultiwayLeafEvaluator evaluator = {resolver_search_leaf, nullptr};
     config.leaf_evaluator = &evaluator;
     return config;
@@ -253,7 +253,7 @@ TEST_CASE(multiway_resolver_never_exports_an_illegal_blueprint_action) {
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
     config.verified_blueprint = std::move(blueprint);
-    config.search_limits.max_batches = 1U;
+    config.runtime_limits.solver.max_batches = 1U;
     texas::MultiwayResolver resolver(config);
     const auto result = resolver.resolve(fixture.request());
 
@@ -410,7 +410,7 @@ TEST_CASE(multiway_resolver_active_search_respects_controlled_seat_eligibility) 
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.active_search_max_seats = 2U;
+    config.runtime_limits.active_max_seats = 2U;
     texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
@@ -424,10 +424,22 @@ TEST_CASE(multiway_resolver_active_search_respects_controlled_seat_eligibility) 
 TEST_CASE(multiway_resolver_rejects_invalid_active_search_eligibility_limits) {
     ResolverFixture fixture;
     auto config = search_config(fixture);
-    config.active_search_min_seats = 4U;
-    config.active_search_max_seats = 3U;
+    config.runtime_limits.active_min_seats = 4U;
+    config.runtime_limits.active_max_seats = 3U;
 
     EXPECT_THROW(texas::MultiwayResolver(config), std::invalid_argument);
+}
+
+TEST_CASE(multiway_resolver_validates_all_runtime_limits_as_one_snapshot) {
+    ResolverFixture fixture;
+    auto config = search_config(fixture);
+    auto invalid_depth = config;
+    invalid_depth.runtime_limits.max_decision_depth = 65U;
+    EXPECT_THROW(texas::MultiwayResolver(invalid_depth), std::invalid_argument);
+
+    auto invalid_budget = config;
+    invalid_budget.runtime_limits.solver.max_batches = 0U;
+    EXPECT_THROW(texas::MultiwayResolver(invalid_budget), std::invalid_argument);
 }
 
 TEST_CASE(multiway_resolver_search_budget_rejects_an_expired_request_before_batch_start) {
@@ -452,7 +464,7 @@ TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.search_limits.max_worker_delta_entries = 1U;
+    config.runtime_limits.solver.max_worker_delta_entries = 1U;
     texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
@@ -472,7 +484,7 @@ TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.search_memory_budget = texas::MultiwayMemoryBudget{1U, 3U, 2U};
+    config.runtime_limits.memory = texas::MultiwayMemoryBudget{1U, 3U, 2U};
     texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
@@ -494,7 +506,7 @@ TEST_CASE(multiway_runtime_session_rejects_memory_before_constructing_the_round)
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.search_memory_budget = texas::MultiwayMemoryBudget{1U, 3U, 2U};
+    config.runtime_limits.memory = texas::MultiwayMemoryBudget{1U, 3U, 2U};
     texas::MultiwayResolver resolver(config);
 
     EXPECT_THROW(resolver.begin_runtime_session(request), std::length_error);
