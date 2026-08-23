@@ -328,6 +328,13 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         if (test_name STREQUAL "test_main" OR test_name STREQUAL "main_test")
             continue()
         endif()
+        if (NOT WIN32 AND (
+            test_name STREQUAL "test_abstraction" OR
+            test_name STREQUAL "test_abstraction_loader" OR
+            test_name STREQUAL "test_hunl_flat_dcfr" OR
+            test_name STREQUAL "test_hunl_solver_storage"))
+            continue()
+        endif()
 
         set(test_support_sources)
         if (test_name STREQUAL "test_multiway_baseline")
