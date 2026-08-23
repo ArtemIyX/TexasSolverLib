@@ -1,4 +1,5 @@
 #include "solver/multiway_public_builder.hpp"
+#include "core/fingerprint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -11,8 +12,6 @@
 namespace texas::solver::multiway {
 namespace {
 
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 constexpr std::uint64_t kPublicFingerprintSchemaVersion = 2U;
 
 enum class FingerprintField : std::uint8_t {
@@ -43,13 +42,11 @@ enum class FingerprintField : std::uint8_t {
 
 void append_byte(std::uint64_t& hash, std::uint8_t byte) noexcept {
     hash ^= byte;
-    hash *= kFnvPrime;
+    hash *= texas::core::fingerprint::FNV1A_PRIME;
 }
 
 void append_u64_bytes(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t byte = 0U; byte < 8U; ++byte) {
-        append_byte(hash, static_cast<std::uint8_t>((value >> (byte * 8U)) & 0xffU));
-    }
+    texas::core::fingerprint::append_u64(hash, value);
 }
 
 void append_field_prefix(std::uint64_t& hash, FingerprintField field, std::size_t bytes) noexcept {
@@ -95,7 +92,7 @@ std::uint64_t non_zero(std::uint64_t value) noexcept {
 }
 
 void begin_fingerprint(std::uint64_t& hash) noexcept {
-    hash = kFnvOffset;
+    hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64_field(hash, FingerprintField::Schema, kPublicFingerprintSchemaVersion);
 }
 
