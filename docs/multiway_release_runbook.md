@@ -88,7 +88,7 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
 - Use `ReleaseDefault` for a validated release configuration. It delivers
   active search only when verified root and full-blueprint artifacts, buckets,
   and complete runtime-search configuration are present; otherwise it uses the
-  normal safe fallback chain. `LegacyStatic` delivers that same fallback chain
+  normal safe fallback chain. `FallbackOnly` delivers that same fallback chain
   without runtime search and is retained for rollback and differential
   comparison. Use `SearchShadow` to retain the fallback-delivered policy while
   recording only policy L1 divergence, completed search counters,

@@ -57,22 +57,18 @@ logging, and deployment policy.
 ### 3.1 CMake library
 
 `CMakeLists.txt` defines a static `texas` target and the alias
-`TexasSolver::texas`. It recursively includes public headers and C++
-sources from `include/` and `src/`, publishes the include directory, and
-requires C++17.
+`TexasSolver::texas`. It lists the production headers and C++ sources
+explicitly, publishes the include directory, and requires C++17.
 
 The build supports:
 
 - CMake 3.20 or newer.
 - `TEXASSOLVER_BUILD_TESTS` option.
 - `TEXASSOLVER_BUILD_EXAMPLES` option.
-- `TEXASSOLVER_USE_POKER_HAND_EVALUATOR` option.
 - `Threads::Threads`.
-- Optional gperftools discovery for the profiling example.
 
-The vendored `external/pokerHandEvaluator/cpp` project is added when the hand
-evaluator option is enabled. Its 5-card, 6-card, and 7-card evaluator target
-is linked privately to `texas`.
+The vendored `external/pokerHandEvaluator/cpp` project is always added as the
+private 5-card, 6-card, and 7-card evaluator dependency of `texas`.
 
 ### 3.2 Installation and consumption
 
@@ -784,8 +780,6 @@ The CMake example set includes:
   comparison.
 - `examples/benchmarks/hunl_random_flat_main.cpp`: random flat subgame path.
 - `examples/benchmarks/hunl_mccfr_scaling_main.cpp`: sampled scaling path.
-- `examples/benchmarks/range_cache_main.cpp`: range-cache path.
-- `examples/gperftools_profile_demo.cpp`: profiling integration example.
 
 These examples demonstrate library consumption and benchmarking. They are not
 the deployment host or a poker client integration.
@@ -836,9 +830,9 @@ release operation after validation and evaluation.
    schema all contribute to identity.
 6. **The baseline multiway bucket model is deterministic feature hashing.** It
    is not a trained clustering or neural bucket model.
-7. **The multiway resolver is not currently the full traversal runner.** The
-   root traversal/trainer components exist independently and should be wired
-   into resolver inference only as a deliberate integration change.
+7. **The multiway resolver owns the release traversal path.** One-shot resolve
+   requests use the external-sampling runner, while runtime sessions retain
+   beliefs, reroot state, and the configured continuation selector.
 8. **Public chance isomorphism is not active in sampled HUNL.** The existing
    suit-isomorphism utilities belong to the older flat/public graph support.
 9. **The intended production interface remains structured game state in and
