@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research component" OFF)
+option(TEXASSOLVER_BUILD_RESEARCH_EXAMPLES "Build benchmark and backend-comparison examples" OFF)
 
 set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
@@ -310,23 +311,25 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     target_link_libraries(texas_solver_example PRIVATE texas)
     target_include_directories(texas_solver_example PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    add_executable(texas_solver_benchmark
-        examples/benchmarks/main.cpp
-    )
-    target_link_libraries(texas_solver_benchmark PRIVATE texas)
-    target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
+        add_executable(texas_solver_benchmark
+            examples/benchmarks/main.cpp
+        )
+        target_link_libraries(texas_solver_benchmark PRIVATE texas)
+        target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    add_executable(texas_solver_flat_scheduler_benchmark
-        examples/benchmarks/flat_scheduler_main.cpp
-    )
-    target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas)
-    target_include_directories(texas_solver_flat_scheduler_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        add_executable(texas_solver_flat_scheduler_benchmark
+            examples/benchmarks/flat_scheduler_main.cpp
+        )
+        target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas)
+        target_include_directories(texas_solver_flat_scheduler_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    add_executable(texas_solver_hunl_backend_compare
-        examples/benchmarks/hunl_backend_compare_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
-    target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        add_executable(texas_solver_hunl_backend_compare
+            examples/benchmarks/hunl_backend_compare_main.cpp
+        )
+        target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
+        target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    endif()
 
 endif()
 
@@ -388,5 +391,11 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_legacy_vector_boundary.cmake
+    )
+    add_test(
+        NAME test_example_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_example_boundary.cmake
     )
 endif()
