@@ -17,6 +17,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/game.hpp
     include/core/lib.hpp
     include/core/namespaces.hpp
+    include/core/poker.hpp
     include/core/portable_binary.hpp
     include/core/types.hpp
     include/games/hunl.hpp
@@ -110,6 +111,7 @@ set(TEXASSOLVER_SOURCES
     src/core/arena.cpp
     src/core/atomic_publish.cpp
     src/core/canonical_combo.cpp
+    src/core/poker.cpp
     src/games/hunl.cpp
     src/games/hunl_eval.cpp
     src/games/hunl_flat_builder.cpp

@@ -190,111 +190,12 @@ void validate_range_input(
 
 }
 
-std::optional<Street> street_from_u8(std::uint8_t value) {
-    switch (value) {
-        case 0:
-            return Street::Preflop;
-        case 1:
-            return Street::Flop;
-        case 2:
-            return Street::Turn;
-        case 3:
-            return Street::River;
-        case 4:
-            return Street::Showdown;
-        default:
-            return std::nullopt;
-    }
-}
-
-const char* street_token(Street street) {
-    switch (street) {
-        case Street::Preflop:
-            return "p";
-        case Street::Flop:
-            return "f";
-        case Street::Turn:
-            return "t";
-        case Street::River:
-            return "r";
-        case Street::Showdown:
-            return "s";
-    }
-    throw std::logic_error("invalid Street");
-}
-
-std::uint8_t cards_to_deal(Street street) {
-    switch (street) {
-        case Street::Flop:
-            return 3;
-        case Street::Turn:
-        case Street::River:
-            return 1;
-        default:
-            return 0;
-    }
-}
-
 bool is_opening_bet(ActionId action) {
     return std::find(BET_ACTION_IDS.begin(), BET_ACTION_IDS.end(), action) != BET_ACTION_IDS.end();
 }
 
 bool is_raise(ActionId action) {
     return std::find(RAISE_ACTION_IDS.begin(), RAISE_ACTION_IDS.end(), action) != RAISE_ACTION_IDS.end();
-}
-
-std::uint8_t rank_of(std::uint8_t card) {
-    return static_cast<std::uint8_t>(card / 4U + 2U);
-}
-
-std::uint8_t suit_of(std::uint8_t card) {
-    return static_cast<std::uint8_t>(card % 4U);
-}
-
-bool is_valid_card(std::uint8_t card) noexcept {
-    return card < DECK_CARD_COUNT;
-}
-
-bool are_valid_and_distinct_cards(const std::uint8_t* cards, std::size_t count) noexcept {
-    if (cards == nullptr && count != 0U) {
-        return false;
-    }
-    std::array<bool, 64> seen = {};
-    for (std::size_t i = 0; i < count; ++i) {
-        const auto card = cards[i];
-        if (!is_valid_card(card) || seen[card]) {
-            return false;
-        }
-        seen[card] = true;
-    }
-    return true;
-}
-
-std::string card_to_string(std::uint8_t card) {
-    static constexpr char RANKS[] = "23456789TJQKA";
-    static constexpr char SUITS[] = "shdc";
-
-    const auto rank = rank_of(card);
-    const auto suit = suit_of(card);
-    if (rank < 2 || rank > 14 || suit > 3) {
-        throw std::invalid_argument("card_to_string received invalid encoded card");
-    }
-
-    std::string out;
-    out.push_back(RANKS[rank - 2]);
-    out.push_back(SUITS[suit]);
-    return out;
-}
-
-std::string sorted_card_string(const std::vector<std::uint8_t>& cards) {
-    std::vector<std::uint8_t> sorted = cards;
-    std::sort(sorted.begin(), sorted.end());
-    std::string out;
-    out.reserve(sorted.size() * 2);
-    for (const auto card : sorted) {
-        out += card_to_string(card);
-    }
-    return out;
 }
 
 void validate_hunl_infoset_encoding(const HUNLInfosetEncoding& encoding) {

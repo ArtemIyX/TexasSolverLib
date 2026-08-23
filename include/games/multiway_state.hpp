@@ -1,8 +1,8 @@
 #pragma once
 
 #include "core/namespaces.hpp"
+#include "core/poker.hpp"
 
-#include "games/hunl.hpp"
 #include "games/multiway_rake.hpp"
 
 #include <cstdint>
