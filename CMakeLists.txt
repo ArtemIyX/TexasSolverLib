@@ -256,11 +256,13 @@ install(TARGETS pheval
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/phevaluator
 )
 
-install(DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    PATTERN "solver/multiway_baseline.hpp" EXCLUDE
-    PATTERN "solver/hunl_flat_mccfr.hpp" EXCLUDE
-)
+foreach(public_header IN LISTS TEXASSOLVER_PUBLIC_HEADERS)
+    file(RELATIVE_PATH public_header_relative ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/${public_header})
+    get_filename_component(public_header_directory ${public_header_relative} DIRECTORY)
+    install(
+        FILES ${public_header}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${public_header_directory})
+endforeach()
 
 install(EXPORT TexasSolverTargets
     NAMESPACE TexasSolver::
