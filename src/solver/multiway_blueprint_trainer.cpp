@@ -51,18 +51,9 @@ std::uint64_t hash_bucket_profile(const MultiwayBucketBaselineProfile& profile) 
 
 std::uint64_t combine_identity(const MultiwayModelIdentity& identity) noexcept {
     auto hash = texas::core::fingerprint::FNV1A_OFFSET;
-    append_u64(hash, identity.rules_hash);
-    append_u64(hash, identity.rules_schema_hash);
-    append_u64(hash, identity.action_abstraction_hash);
-    append_u64(hash, identity.bucket_model_hash);
-    append_u64(hash, identity.terminal_model_hash);
-    append_u64(hash, identity.resolver_schema_hash);
-    append_u64(hash, identity.code_schema_hash);
-    append_u64(hash, identity.range_semantics_hash);
-    append_u64(hash, identity.future_bucket_model_hash);
-    append_u64(hash, identity.off_tree_policy_hash);
-    append_u64(hash, identity.continuation_policy_hash);
-    append_u64(hash, identity.runtime_search_schema_hash);
+    visit_multiway_model_identity_components(identity, [&](std::uint64_t field) {
+        append_u64(hash, field);
+    });
     return hash == 0U ? 1U : hash;
 }
 

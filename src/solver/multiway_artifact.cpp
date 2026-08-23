@@ -24,30 +24,18 @@ using texas::core::fingerprint::append_u64;
 using texas::core::fingerprint::finish;
 
 void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity) {
-    portable::write_u64(out, identity.rules_hash);
-    portable::write_u64(out, identity.rules_schema_hash);
-    portable::write_u64(out, identity.action_abstraction_hash);
-    portable::write_u64(out, identity.bucket_model_hash);
-    portable::write_u64(out, identity.terminal_model_hash);
-    portable::write_u64(out, identity.resolver_schema_hash);
-    portable::write_u64(out, identity.code_schema_hash);
-    portable::write_u64(out, identity.range_semantics_hash);
-    portable::write_u64(out, identity.future_bucket_model_hash);
-    portable::write_u64(out, identity.off_tree_policy_hash);
-    portable::write_u64(out, identity.continuation_policy_hash);
-    portable::write_u64(out, identity.runtime_search_schema_hash);
-    portable::write_u64(out, identity.combined_hash);
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+        portable::write_u64(out, field);
+    });
 }
 
 MultiwayModelIdentity read_identity(std::ifstream& in) {
     MultiwayModelIdentity identity;
-    if (!portable::read_u64(in, identity.rules_hash) || !portable::read_u64(in, identity.rules_schema_hash) ||
-        !portable::read_u64(in, identity.action_abstraction_hash) || !portable::read_u64(in, identity.bucket_model_hash) ||
-        !portable::read_u64(in, identity.terminal_model_hash) || !portable::read_u64(in, identity.resolver_schema_hash) ||
-        !portable::read_u64(in, identity.code_schema_hash) || !portable::read_u64(in, identity.range_semantics_hash) ||
-        !portable::read_u64(in, identity.future_bucket_model_hash) || !portable::read_u64(in, identity.off_tree_policy_hash) ||
-        !portable::read_u64(in, identity.continuation_policy_hash) || !portable::read_u64(in, identity.runtime_search_schema_hash) ||
-        !portable::read_u64(in, identity.combined_hash)) {
+    bool valid = true;
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) {
+        if (valid) valid = portable::read_u64(in, field);
+    });
+    if (!valid) {
         throw std::runtime_error("multiway artifact is truncated");
     }
     return identity;
@@ -148,19 +136,9 @@ MultiwayBlueprintManifest load_manifest(const std::filesystem::path& path) {
 }
 
 void append_identity(std::uint64_t& hash, const MultiwayModelIdentity& identity) noexcept {
-    append_u64(hash, identity.rules_hash);
-    append_u64(hash, identity.rules_schema_hash);
-    append_u64(hash, identity.action_abstraction_hash);
-    append_u64(hash, identity.bucket_model_hash);
-    append_u64(hash, identity.terminal_model_hash);
-    append_u64(hash, identity.resolver_schema_hash);
-    append_u64(hash, identity.code_schema_hash);
-    append_u64(hash, identity.range_semantics_hash);
-    append_u64(hash, identity.future_bucket_model_hash);
-    append_u64(hash, identity.off_tree_policy_hash);
-    append_u64(hash, identity.continuation_policy_hash);
-    append_u64(hash, identity.runtime_search_schema_hash);
-    append_u64(hash, identity.combined_hash);
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+        append_u64(hash, field);
+    });
 }
 
 void append_action(std::uint64_t& hash, const MultiwayActionDescriptor& action) noexcept {

@@ -47,6 +47,56 @@ struct MultiwayModelIdentity {
     }
 };
 
+template <typename Function>
+void visit_multiway_model_identity_components(
+    MultiwayModelIdentity& identity,
+    Function&& function) {
+    function(identity.rules_hash);
+    function(identity.rules_schema_hash);
+    function(identity.action_abstraction_hash);
+    function(identity.bucket_model_hash);
+    function(identity.terminal_model_hash);
+    function(identity.resolver_schema_hash);
+    function(identity.code_schema_hash);
+    function(identity.range_semantics_hash);
+    function(identity.future_bucket_model_hash);
+    function(identity.off_tree_policy_hash);
+    function(identity.continuation_policy_hash);
+    function(identity.runtime_search_schema_hash);
+}
+
+template <typename Function>
+void visit_multiway_model_identity_components(
+    const MultiwayModelIdentity& identity,
+    Function&& function) {
+    function(identity.rules_hash);
+    function(identity.rules_schema_hash);
+    function(identity.action_abstraction_hash);
+    function(identity.bucket_model_hash);
+    function(identity.terminal_model_hash);
+    function(identity.resolver_schema_hash);
+    function(identity.code_schema_hash);
+    function(identity.range_semantics_hash);
+    function(identity.future_bucket_model_hash);
+    function(identity.off_tree_policy_hash);
+    function(identity.continuation_policy_hash);
+    function(identity.runtime_search_schema_hash);
+}
+
+template <typename Function>
+void visit_multiway_model_identity_fields(MultiwayModelIdentity& identity, Function&& function) {
+    visit_multiway_model_identity_components(identity, function);
+    function(identity.combined_hash);
+}
+
+template <typename Function>
+void visit_multiway_model_identity_fields(
+    const MultiwayModelIdentity& identity,
+    Function&& function) {
+    visit_multiway_model_identity_components(identity, function);
+    function(identity.combined_hash);
+}
+
 [[nodiscard]] MultiwayModelIdentity make_multiway_model_identity(
     const MultiwayBlueprintConfig& config);
 

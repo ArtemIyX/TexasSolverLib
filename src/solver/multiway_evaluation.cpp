@@ -27,19 +27,9 @@ void append_action(std::uint64_t& hash, const MultiwayActionDescriptor& action) 
 }
 
 void append_identity(std::uint64_t& hash, const MultiwayModelIdentity& identity) noexcept {
-    append_u64(hash, identity.rules_hash);
-    append_u64(hash, identity.rules_schema_hash);
-    append_u64(hash, identity.action_abstraction_hash);
-    append_u64(hash, identity.bucket_model_hash);
-    append_u64(hash, identity.terminal_model_hash);
-    append_u64(hash, identity.resolver_schema_hash);
-    append_u64(hash, identity.code_schema_hash);
-    append_u64(hash, identity.range_semantics_hash);
-    append_u64(hash, identity.future_bucket_model_hash);
-    append_u64(hash, identity.off_tree_policy_hash);
-    append_u64(hash, identity.continuation_policy_hash);
-    append_u64(hash, identity.runtime_search_schema_hash);
-    append_u64(hash, identity.combined_hash);
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+        append_u64(hash, field);
+    });
 }
 
 void append_history(std::uint64_t& hash, const MultiwayHandHistory& history) noexcept {

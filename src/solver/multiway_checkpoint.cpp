@@ -17,31 +17,19 @@ constexpr std::array<char, 8> kMagic = {'M', 'W', 'B', 'P', '0', '0', '0', '5'};
 
 void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity) {
     using namespace texas::core::portable;
-    write_u64(out, identity.rules_hash);
-    write_u64(out, identity.rules_schema_hash);
-    write_u64(out, identity.action_abstraction_hash);
-    write_u64(out, identity.bucket_model_hash);
-    write_u64(out, identity.terminal_model_hash);
-    write_u64(out, identity.resolver_schema_hash);
-    write_u64(out, identity.code_schema_hash);
-    write_u64(out, identity.range_semantics_hash);
-    write_u64(out, identity.future_bucket_model_hash);
-    write_u64(out, identity.off_tree_policy_hash);
-    write_u64(out, identity.continuation_policy_hash);
-    write_u64(out, identity.runtime_search_schema_hash);
-    write_u64(out, identity.combined_hash);
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+        write_u64(out, field);
+    });
 }
 
 MultiwayModelIdentity read_identity(std::ifstream& in) {
     using namespace texas::core::portable;
     MultiwayModelIdentity identity;
-    if (!read_u64(in, identity.rules_hash) || !read_u64(in, identity.rules_schema_hash) ||
-        !read_u64(in, identity.action_abstraction_hash) || !read_u64(in, identity.bucket_model_hash) ||
-        !read_u64(in, identity.terminal_model_hash) || !read_u64(in, identity.resolver_schema_hash) ||
-        !read_u64(in, identity.code_schema_hash) || !read_u64(in, identity.range_semantics_hash) ||
-        !read_u64(in, identity.future_bucket_model_hash) || !read_u64(in, identity.off_tree_policy_hash) ||
-        !read_u64(in, identity.continuation_policy_hash) || !read_u64(in, identity.runtime_search_schema_hash) ||
-        !read_u64(in, identity.combined_hash)) {
+    bool valid = true;
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) {
+        if (valid) valid = read_u64(in, field);
+    });
+    if (!valid) {
         throw std::runtime_error("multiway checkpoint is truncated");
     }
     return identity;

@@ -53,36 +53,16 @@ std::uint64_t read_u64(const std::vector<std::uint8_t>& input, std::size_t& curs
 }
 
 void append_identity(std::vector<std::uint8_t>& output, const MultiwayModelIdentity& identity) {
-    append_u64(output, identity.rules_hash);
-    append_u64(output, identity.rules_schema_hash);
-    append_u64(output, identity.action_abstraction_hash);
-    append_u64(output, identity.bucket_model_hash);
-    append_u64(output, identity.terminal_model_hash);
-    append_u64(output, identity.resolver_schema_hash);
-    append_u64(output, identity.code_schema_hash);
-    append_u64(output, identity.range_semantics_hash);
-    append_u64(output, identity.future_bucket_model_hash);
-    append_u64(output, identity.off_tree_policy_hash);
-    append_u64(output, identity.continuation_policy_hash);
-    append_u64(output, identity.runtime_search_schema_hash);
-    append_u64(output, identity.combined_hash);
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+        append_u64(output, field);
+    });
 }
 
 MultiwayModelIdentity read_identity(const std::vector<std::uint8_t>& input, std::size_t& cursor) {
     MultiwayModelIdentity identity;
-    identity.rules_hash = read_u64(input, cursor);
-    identity.rules_schema_hash = read_u64(input, cursor);
-    identity.action_abstraction_hash = read_u64(input, cursor);
-    identity.bucket_model_hash = read_u64(input, cursor);
-    identity.terminal_model_hash = read_u64(input, cursor);
-    identity.resolver_schema_hash = read_u64(input, cursor);
-    identity.code_schema_hash = read_u64(input, cursor);
-    identity.range_semantics_hash = read_u64(input, cursor);
-    identity.future_bucket_model_hash = read_u64(input, cursor);
-    identity.off_tree_policy_hash = read_u64(input, cursor);
-    identity.continuation_policy_hash = read_u64(input, cursor);
-    identity.runtime_search_schema_hash = read_u64(input, cursor);
-    identity.combined_hash = read_u64(input, cursor);
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) {
+        field = read_u64(input, cursor);
+    });
     identity.validate();
     return identity;
 }

@@ -89,18 +89,9 @@ MultiwayModelIdentity make_multiway_model_identity(const MultiwayBlueprintConfig
     identity.runtime_search_schema_hash = finish(runtime_search_hash);
 
     auto combined_hash = texas::core::fingerprint::FNV1A_OFFSET;
-    append_u64(combined_hash, identity.rules_hash);
-    append_u64(combined_hash, identity.rules_schema_hash);
-    append_u64(combined_hash, identity.action_abstraction_hash);
-    append_u64(combined_hash, identity.bucket_model_hash);
-    append_u64(combined_hash, identity.terminal_model_hash);
-    append_u64(combined_hash, identity.resolver_schema_hash);
-    append_u64(combined_hash, identity.code_schema_hash);
-    append_u64(combined_hash, identity.range_semantics_hash);
-    append_u64(combined_hash, identity.future_bucket_model_hash);
-    append_u64(combined_hash, identity.off_tree_policy_hash);
-    append_u64(combined_hash, identity.continuation_policy_hash);
-    append_u64(combined_hash, identity.runtime_search_schema_hash);
+    visit_multiway_model_identity_components(identity, [&](std::uint64_t field) {
+        append_u64(combined_hash, field);
+    });
     identity.combined_hash = finish(combined_hash);
     identity.validate();
     return identity;
