@@ -39,7 +39,7 @@ parse it. The host maps it to `MultiwayGameRules`, `MultiwayBlueprintConfig`,
    but retain static legal fallback for valid requests.
 5. Build a `MultiwayBlueprintStore` from the verified full artifact and pass it
    through `MultiwayResolverConfig::full_blueprint`; pass the compact artifact
-   through `verified_blueprint`. Do not set the legacy `blueprint` pointer.
+   through `verified_blueprint`. Both are owned immutable shared artifacts.
    Require the bucket registry, full blueprint, and root fallback identities to
    match.
 6. Package both primary and known-good variants of the full blueprint and root

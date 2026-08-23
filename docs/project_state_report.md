@@ -242,8 +242,8 @@ The flat layer supports:
 - Fold, showdown, chance, and decision node tags.
 - Packed board/state metadata.
 - Infoset rows with configurable hand/bucket and action layout.
-- `Float64`, `Float32`, and `Compressed16` storage modes at the flat-table
-  API.
+- `Float64` and `Float32` storage modes at the flat-table API. Unsupported
+  compressed modes are not part of the public contract.
 - Cache-line-aligned worker scratch buffers.
 - Memory estimation for graph, infosets, solver buffers, worker scratch,
   parallel plan, and auxiliary allocations.
@@ -266,14 +266,12 @@ average-strategy export, and stage-level profiling.
 `HUNLFlatExpectedValue` evaluates a flat graph against an average strategy and
 can use precomputed terminal-value tables.
 
-Backend selection is controlled by `HUNLBackendSelection` and the
-`TEXASSOLVER_HUNL_BACKEND` environment setting. Automatic selection chooses
-the flat path for configurations that benefit from it, including parallel and
-turn-subgame cases.
+Backend selection is controlled explicitly by `HUNLBackendSelection` in the
+solve request. Profiling environment variables remain observability-only.
 
 ### 6.4 Flat MCCFR and sampled kernels
 
-`HUNLFlatMCCFR` implements sampled traversal over a flat graph. The exposed
+`HUNLFlatMCCFR` is retained as test-only research support. Its exposed
 sampling modes are:
 
 - Exact.
@@ -281,21 +279,19 @@ sampling modes are:
 - External sampling.
 - Average-strategy traversal.
 
-The implementation includes optional variance-reduction baselines:
+The research configuration retains these baseline modes:
 
 - No baseline.
 - Moving-average baseline.
-- Depth-limited value-table baseline.
-- Terminal-board cache baseline.
+- Depth-limited value-table and terminal-board-cache modes are not shipped.
 
 It also exposes batch size, traversals per iteration, strategy-sampling
 parameters, optional DCFR discounting, dense validation retention, iterative
 external traversal, sparse storage, worker execution, and detailed sampled
 profile counters.
 
-`HUNLFlatMCCFR` has both dense and sparse storage paths. The sparse path uses
-the sampled storage structures described below while retaining the flat graph
-as the traversal topology.
+The research flat path has both dense and sparse storage paths. It is not part
+of the stable aggregate target.
 
 ### 6.5 HUNL bucket abstraction
 
@@ -317,23 +313,11 @@ matrix stores valid pair counts, net win counts, tie counts, and hand counts.
 It can produce expected showdown value for supplied bucket weights and provides
 a heuristic depth-limited value helper for the legacy flat path.
 
-### 6.6 Generic range utilities
+### 6.6 Structured range ownership
 
-The `include/ranges/` layer is solver-independent and provides:
-
-- `RangeVector` and `RangeMask` containers.
-- Binary range/mask serialization and file loading.
-- Uniform, file-backed, and reserved chart range sources.
-- Canonical combo enumeration for a board.
-- Board, card, and dead-card masks.
-- Action-range propagation with masks and per-combo multipliers.
-- Chance-card range propagation with updated probability mass.
-- Combo-to-bucket projection and mass accounting.
-- Range-cache keys containing board, stack, blind, ante, abstraction, range
-  kind, and solve-contract identity data.
-
-`ChartRangeSource` is a fail-closed source boundary until chart labels have an
-explicit combo or bucket mapping.
+Structured sampled HUNL and multiway own their range representations directly.
+The detached `ranges/` experiment and range-cache benchmark are not part of
+the stable target or installed headers.
 
 ### 6.7 Preflop equity and preflop solving
 
@@ -734,15 +718,15 @@ following:
 5. Uses fallback priority of compatible latest stable root, compatible blueprint
    policy, and static legal policy.
 6. Normalizes the result and samples an action from the normalized policy.
-7. Retains only the latest compatible root policy for later fallback; request
-   cards and ranges are not retained.
+7. Uses an optional host-owned stable-root cache for later fallback; request
+   cards and ranges are not retained by the resolver.
 8. Enforces the configured deadline reserve and reports status and diagnostics.
 
 `ReleaseDefault` delivers a live root external-sampling search only when the
 request is eligible and the resolver has verified root and full-blueprint
 artifacts, matching buckets, a valid leaf evaluator, and bounded search
 limits. It otherwise uses the stable-root, blueprint, and static-legal
-fallback chain. `LegacyStatic` uses that fallback chain without search; the
+fallback chain. `FallbackOnly` uses that fallback chain without search; the
 former perturbation loop has been removed.
 
 ## 9. Utility and performance infrastructure
@@ -763,10 +747,8 @@ The `util/` module contains:
   console output, and report-file output.
 
 Suit-isomorphism support exists for flat graph/chance utilities. The sampled
-HUNL configuration explicitly keeps public-chance isomorphism disabled until
-private-hand/range suit remapping and equal-reach closure are established. The
-sampled builder therefore retains complete chance expansion when that legacy
-flag is set.
+HUNL configuration does not expose a public-chance-isomorphism compatibility
+flag. The stable structured range path retains complete chance expansion.
 
 ## 10. Examples and executable surfaces
 
@@ -845,7 +827,7 @@ release operation after validation and evaluation.
 | HUNL state | `include/games/hunl.hpp`, `include/games/hunl_solver.hpp`, `src/games/hunl.cpp` |
 | HUNL exact/flat | `include/games/hunl_tree.hpp`, `include/games/hunl_flat_graph.hpp`, `include/solver/hunl_flat_state.hpp`, `include/solver/hunl_flat_dcfr.hpp` |
 | HUNL sampled | `include/solver/hunl_sampled_solver.hpp`, `include/solver/hunl_sampled_range.hpp`, `include/solver/hunl_sampled_traversal.hpp`, `src/solver/hunl_sampled_range.cpp` |
-| HUNL abstraction/ranges | `include/util/abstraction.hpp`, `include/solver/hunl_bucket_map.hpp`, `include/ranges/propagation.hpp`, `include/ranges/cache.hpp` |
+| HUNL abstraction | `include/util/abstraction.hpp`, `include/solver/hunl_bucket_map.hpp` |
 | Preflop | `include/preflop/preflop.hpp`, `include/preflop/preflop_equity.hpp`, `include/preflop/preflop_rvr.hpp` |
 | Multiway game | `include/games/multiway_rules.hpp`, `include/games/multiway_state.hpp`, `include/games/multiway_fixed.hpp`, `include/games/multiway_terminal.hpp` |
 | Multiway private/showdown | `include/games/multiway_private.hpp` |
