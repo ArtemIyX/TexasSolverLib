@@ -3,6 +3,7 @@ if (NOT DEFINED SOURCE_DIR)
 endif()
 
 file(READ "${SOURCE_DIR}/include/solver/hunl_sampled_solver.hpp" SOLVER_HEADER)
+file(READ "${SOURCE_DIR}/include/solver/hunl_sampled_config.hpp" CONFIG_HEADER)
 file(READ "${SOURCE_DIR}/src/solver/hunl_sampled_solver.cpp" SOLVER_SOURCE)
 file(READ "${SOURCE_DIR}/CMakeLists.txt" PROJECT_CMAKE)
 
@@ -11,6 +12,9 @@ if (SOLVER_HEADER MATCHES "root_state")
 endif()
 if (SOLVER_SOURCE MATCHES "root_state")
     message(FATAL_ERROR "production sampled implementation still dispatches fixed-private roots")
+endif()
+if (CONFIG_HEADER MATCHES "max_cached_public_states|bucket_count_hint|depth_limit_plies_hint|use_public_chance_isomorphism")
+    message(FATAL_ERROR "production sampled config still exposes inactive fixed-engine hints")
 endif()
 if (PROJECT_CMAKE MATCHES "include/solver/hunl_sampled_builder.hpp" OR
     PROJECT_CMAKE MATCHES "include/solver/hunl_sampled_terminal.hpp" OR

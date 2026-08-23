@@ -313,7 +313,6 @@ TEST_CASE(ranges_structured_root_sampled_positive_work_uses_private_range_trajec
     texas::HUNLSampledSolverConfig config;
     config.minibatch_size = 1;
     config.workers = 1;
-    config.max_cached_public_states = 1024;
     config.seed = 0xB10EULL;
     const auto result = texas::lib::solve_hunl_postflop_sampled(root, config, 1);
     EXPECT_EQ(result.batches_completed, 1U);
@@ -366,7 +365,6 @@ TEST_CASE(ranges_structured_memory_preflight_and_session_guard_count_retained_ra
     root.model_version = "value-v1";
     texas::HUNLSampledSolverConfig config;
     config.minibatch_size = 1U;
-    config.max_cached_public_states = 1U;
 
     const auto range_memory = texas::estimate_hunl_sampled_range_memory(root, config);
     EXPECT_TRUE(range_memory.joint_deal_bytes >= sizeof(texas::HUNLJointRangeDeal));

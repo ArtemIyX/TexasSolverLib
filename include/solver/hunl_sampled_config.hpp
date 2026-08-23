@@ -25,8 +25,6 @@ enum class HUNLFlatBaselineMode : std::uint8_t {
 struct HUNLSampledSolverConfig {
     std::uint64_t seed = 1;
     std::uint32_t minibatch_size = 64;
-    std::uint32_t max_cached_public_states = 0;
-    std::uint32_t bucket_count_hint = 0;
     HUNLFlatStoragePrecision precision = HUNLFlatStoragePrecision::Float32;
     HUNLFlatValueLayout layout = HUNLFlatValueLayout::InfosetActionHand;
     bool enable_memory_guardrails = true;

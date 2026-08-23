@@ -13,7 +13,6 @@
 namespace texas::solver::hunl {
 namespace {
 
-constexpr std::uint64_t kDefaultPublicStateBytes = 512ULL;
 constexpr std::size_t kDeltaEntriesPerTrajectory = 4096U;
 constexpr std::uint64_t kSaturatedMemoryEstimate = std::numeric_limits<std::uint64_t>::max();
 
@@ -50,20 +49,6 @@ const char* message_for_status(HUNLSampledMemoryStatus status) noexcept {
 HUNLSampledStorage make_sampled_storage(const HUNLSampledSolverConfig& config) {
     validate_sampled_config_or_throw(config);
     return HUNLSampledStorage(config.layout, config.precision);
-}
-
-std::size_t effective_public_state_cap(const HUNLSampledSolverConfig& config) noexcept {
-    if (config.max_cached_public_states > 0U) return config.max_cached_public_states;
-    const auto workers = std::max<std::size_t>(1U, config.workers);
-    const auto minibatch = static_cast<std::size_t>(config.minibatch_size);
-    if (minibatch != 0U && workers > std::numeric_limits<std::size_t>::max() / minibatch) {
-        return std::numeric_limits<std::size_t>::max();
-    }
-    return std::max<std::size_t>(128U, minibatch * workers);
-}
-
-std::uint64_t infer_bucket_count(const HUNLSampledSolverConfig& config) noexcept {
-    return config.bucket_count_hint > 0U ? config.bucket_count_hint : 128U;
 }
 
 }  // namespace
@@ -289,15 +274,11 @@ HUNLSampledMemoryEstimate HUNLSampledSolver::estimate_memory_for(
     const HUNLSampledSolveRequest& request,
     const HUNLSampledSolverConfig& config) const noexcept {
     HUNLSampledMemoryEstimate estimate;
-    const auto public_states = static_cast<std::uint64_t>(effective_public_state_cap(config));
-    estimate.public_states_cached = public_states;
-    estimate.public_state_cache_bytes = saturating_multiply(public_states, kDefaultPublicStateBytes);
-
-    const auto bucket_count = infer_bucket_count(config);
-    const auto infoset_rows = std::max<std::uint64_t>(1U, public_states);
+    const auto infoset_rows = std::max<std::uint64_t>(
+        1'024U, saturating_multiply(static_cast<std::uint64_t>(config.minibatch_size), 4'096U));
     estimate.infoset_rows_allocated = infoset_rows;
     estimate.sparse_values_allocated = saturating_multiply(
-        saturating_multiply(infoset_rows, bucket_count), 16U);
+        saturating_multiply(infoset_rows, 1U), 16U);
     estimate.infoset_row_bytes = saturating_multiply(
         estimate.sparse_values_allocated, sizeof(float) * 2ULL);
     const auto range_memory = estimate_hunl_sampled_range_memory(request.structured_root, config);
@@ -337,8 +318,7 @@ HUNLSampledMemoryPreflight HUNLSampledSolver::build_preflight_result(
             auto candidate = before;
             auto candidate_adjustments = result.adjustments;
             apply_adaptive_fallback(candidate, candidate_adjustments);
-            if (candidate.minibatch_size == before.minibatch_size &&
-                candidate.bucket_count_hint == before.bucket_count_hint) break;
+            if (candidate.minibatch_size == before.minibatch_size) break;
             const auto old_estimate = result.estimate.total_bytes();
             const auto new_estimate = estimate_memory_for(request, candidate);
             if (new_estimate.total_bytes() >= old_estimate) break;
@@ -368,10 +348,6 @@ void HUNLSampledSolver::apply_adaptive_fallback(
         config.minibatch_size = std::max<std::uint32_t>(1U, config.minibatch_size / 2U);
         adjustments.reduced_minibatch = true;
         return;
-    }
-    if (config.bucket_count_hint > 32U) {
-        config.bucket_count_hint = std::max<std::uint32_t>(32U, config.bucket_count_hint / 2U);
-        adjustments.reduced_bucket_hint = true;
     }
 }
 
