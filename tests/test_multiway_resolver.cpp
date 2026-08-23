@@ -102,6 +102,23 @@ texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     return config;
 }
 
+TEST_CASE(multiway_stable_root_policy_cache_is_host_owned_and_menu_scoped) {
+    ResolverFixture fixture;
+    auto cache = std::make_shared<texas::MultiwayStableRootPolicyCache>();
+    const auto& menu = fixture.root.legal_actions;
+    std::vector<texas::MultiwayResolverActionProbability> stored = {{menu.front(), 1.0}};
+    cache->store(fixture.identity, fixture.root.id.value, stored);
+
+    std::vector<texas::MultiwayResolverActionProbability> loaded;
+    EXPECT_TRUE(cache->find(fixture.identity, fixture.root.id.value, menu, &loaded));
+    EXPECT_EQ(loaded.size(), stored.size());
+    EXPECT_EQ(loaded.front().action, stored.front().action);
+    EXPECT_EQ(loaded.front().probability, stored.front().probability);
+    auto changed_menu = menu;
+    changed_menu.front().target_street_contribution += 1;
+    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, changed_menu, &loaded));
+}
+
 texas::MultiwayVerifiedBlueprintArtifact verified_root_artifact(const ResolverFixture& fixture) {
     texas::MultiwayVerifiedBlueprintArtifact artifact;
     artifact.snapshot.identity = fixture.identity;
