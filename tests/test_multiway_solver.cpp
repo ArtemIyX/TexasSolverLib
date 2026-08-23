@@ -155,13 +155,9 @@ TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot) {
     EXPECT_EQ(request.root().next_street_first_seat, 0);
 }
 
-TEST_CASE(multiway_solver_request_rejects_non_external_or_wrong_seat_count_cfr) {
+TEST_CASE(multiway_solver_request_rejects_wrong_seat_count_cfr) {
     auto cfr = texas::MultiwayCFRConfig{};
     cfr.player_count = 2;
-    cfr.algorithm = texas::MultiwayCFRAlgorithm::FullTreeCFR;
-    EXPECT_THROW(texas::MultiwaySolveRequest(valid_root(), cfr, valid_limits()), std::invalid_argument);
-
-    cfr.algorithm = texas::MultiwayCFRAlgorithm::ExternalSamplingMCCFR;
     cfr.player_count = 3;
     EXPECT_THROW(texas::MultiwaySolveRequest(valid_root(), cfr, valid_limits()), std::invalid_argument);
 }

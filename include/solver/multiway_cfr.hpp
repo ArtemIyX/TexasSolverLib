@@ -12,21 +12,8 @@
 
 namespace texas::solver::multiway {
 
-// Multiway solving is evaluated with NashConv. Unlike heads-up exploitability,
-// it is the sum of each seat's unilateral best-response improvement.
-enum class MultiwayQualityMetric : std::uint8_t {
-    NashConv,
-};
-
-enum class MultiwayCFRAlgorithm : std::uint8_t {
-    FullTreeCFR,
-    ExternalSamplingMCCFR,
-};
-
 struct MultiwayCFRConfig {
     std::uint8_t player_count = 2;
-    MultiwayCFRAlgorithm algorithm = MultiwayCFRAlgorithm::ExternalSamplingMCCFR;
-    MultiwayQualityMetric quality_metric = MultiwayQualityMetric::NashConv;
     bool deterministic_trajectory_merges = true;
 
     void validate() const;
@@ -117,26 +104,6 @@ void multiway_regret_matching_action_major_into(
     std::size_t action_count,
     std::size_t regret_stride,
     Probability* output);
-
-// Produces the full-tree CFR update for one traverser's infoset. The strategy
-// sum uses only the traverser's own reach; regret uses all other
-// seats' reach and chance reach.
-MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values);
-
-// Compatibility spelling for callers that already use this standalone
-// full-tree helper.  New traversal code must choose the named full-tree or
-// external-sampling API explicitly.
-MultiwayCFRUpdate make_multiway_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values);
 
 MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
     const MultiwayExternalSamplingRequest& request);

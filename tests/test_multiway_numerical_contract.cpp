@@ -30,12 +30,19 @@ TEST_CASE(multiway_numerical_contract_handles_mixed_regret_scales) {
     EXPECT_EQ(strategy[3], 0.0);
 }
 
-TEST_CASE(multiway_numerical_contract_rejects_nonfinite_full_tree_updates_before_publication) {
+TEST_CASE(multiway_numerical_contract_rejects_nonfinite_sampled_updates_before_publication) {
     const auto maximum = std::numeric_limits<double>::max();
     for (const auto sign : {-1.0, 1.0}) {
+        texas::MultiwayExternalSamplingRequest request;
+        request.player_reaches = {1.0, 1.0};
+        request.traverser = 0;
+        request.chance_reach = 1.0;
+        request.sampling_reach = 1.0;
+        request.traverser_reach = 1.0;
+        request.strategy = {1.0, 0.0};
+        request.sampled_action_values = {sign * maximum, -sign * maximum};
         EXPECT_THROW(
-            texas::make_multiway_full_tree_cfr_update(
-                {1.0, 1.0}, 0, 1.0, {1.0, 0.0}, {sign * maximum, -sign * maximum}),
+            texas::make_multiway_external_sampling_cfr_update(request),
             std::overflow_error);
     }
 }

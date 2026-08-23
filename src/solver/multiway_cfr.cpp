@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -97,15 +96,8 @@ void MultiwayCFRConfig::validate() const {
     if (player_count < 2U || player_count > 6U) {
         throw std::invalid_argument("MultiwayCFRConfig supports two through six players");
     }
-    if (algorithm != MultiwayCFRAlgorithm::FullTreeCFR &&
-        algorithm != MultiwayCFRAlgorithm::ExternalSamplingMCCFR) {
-        throw std::invalid_argument("MultiwayCFRConfig has an unsupported algorithm");
-    }
     if (!deterministic_trajectory_merges) {
         throw std::invalid_argument("MultiwayCFRConfig requires deterministic trajectory merges");
-    }
-    if (quality_metric != MultiwayQualityMetric::NashConv) {
-        throw std::invalid_argument("MultiwayCFRConfig has an unsupported quality metric");
     }
 }
 
@@ -176,48 +168,6 @@ void multiway_regret_matching_action_major_into(
         }
     }
     output[last_positive] = 1.0 - assigned;
-}
-
-MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values) {
-    validate_reaches(player_reaches, traverser);
-    validate_probability(chance_reach, "chance reach");
-    validate_strategy_and_values(strategy, action_values);
-
-    MultiwayCFRUpdate update;
-    update.counterfactual_reach = multiway_counterfactual_reach(player_reaches, traverser, chance_reach);
-    update.average_strategy_weight = player_reaches[static_cast<std::size_t>(traverser)];
-    update.regret_deltas.resize(strategy.size());
-    update.strategy_deltas.resize(strategy.size());
-    for (std::size_t action = 0; action < strategy.size(); ++action) {
-        update.node_value += strategy[action] * action_values[action];
-    }
-    if (!std::isfinite(update.node_value)) {
-        throw std::overflow_error("full-tree CFR update has a non-finite node value");
-    }
-    for (std::size_t action = 0; action < strategy.size(); ++action) {
-        update.regret_deltas[action] =
-            update.counterfactual_reach * (action_values[action] - update.node_value);
-        update.strategy_deltas[action] = update.average_strategy_weight * strategy[action];
-        if (!std::isfinite(update.regret_deltas[action]) || !std::isfinite(update.strategy_deltas[action])) {
-            throw std::overflow_error("full-tree CFR update contains a non-finite delta");
-        }
-    }
-    return update;
-}
-
-MultiwayCFRUpdate make_multiway_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values) {
-    return make_multiway_full_tree_cfr_update(
-        player_reaches, traverser, chance_reach, strategy, action_values);
 }
 
 MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(

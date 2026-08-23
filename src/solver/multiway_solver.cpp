@@ -416,9 +416,8 @@ MultiwaySolveRequest::MultiwaySolveRequest(
     }
     cfr_config_.validate();
     limits_.validate();
-    if (cfr_config_.algorithm != MultiwayCFRAlgorithm::ExternalSamplingMCCFR ||
-        cfr_config_.player_count != root_.seat_order.size()) {
-        throw std::invalid_argument("multiway boundary requires external sampling with the root seat count");
+    if (cfr_config_.player_count != root_.seat_order.size()) {
+        throw std::invalid_argument("multiway CFR configuration must match the root seat count");
     }
     compiled_private_ranges_.emplace(root_.private_ranges);
 }

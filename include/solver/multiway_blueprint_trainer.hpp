@@ -71,8 +71,7 @@ struct MultiwayBlueprintTrainingConfig {
     MultiwayBlueprintConfig blueprint{};
     MultiwayBucketBaselineProfile bucket_profile = MultiwayBucketBaselineProfile::standard();
     MultiwayActionAbstractionConfig action_abstraction{};
-    MultiwayCFRConfig cfr{6, MultiwayCFRAlgorithm::ExternalSamplingMCCFR,
-        MultiwayQualityMetric::NashConv, true};
+    MultiwayCFRConfig cfr{6, true};
     MultiwaySolverLimits limits{1, 1, 1024, 1024, 8192, 8192, 8192};
     MultiwayBlueprintIterationSchedule schedule{};
     std::uint64_t deterministic_seed = 1;
