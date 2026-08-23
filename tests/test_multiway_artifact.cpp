@@ -149,8 +149,8 @@ TEST_CASE(multiway_public_decision_log_redacts_private_resolver_inputs) {
     result.has_sampled_action = true;
     result.policy = {{result.sampled_action, 1.0}};
     result.diagnostics.status = texas::MultiwayResolverStatus::Solved;
-    result.diagnostics.policy_provenance = texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment;
-    result.diagnostics.search_engine_version = texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
+    result.diagnostics.policy_provenance = texas::MultiwayPolicyProvenance::RuntimeSearch;
+    result.diagnostics.search_engine_version = texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
     result.diagnostics.policy_normalized = true;
     result.diagnostics.resolved_public_state_id = 71U;
     const auto log = texas::make_multiway_public_decision_log(request, result, 1U);
@@ -161,11 +161,11 @@ TEST_CASE(multiway_public_decision_log_redacts_private_resolver_inputs) {
     EXPECT_EQ(log.policy.front().probability, 65535U);
     EXPECT_EQ(
         log.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::RuntimeSearch);
     EXPECT_EQ(
         log.search_engine,
-        texas::MultiwayResolverEngine::LegacyDeterministicAdjustment);
-    EXPECT_EQ(log.search_engine_version, texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION);
+        texas::MultiwayResolverEngine::RootExternalSamplingMCCFR);
+    EXPECT_EQ(log.search_engine_version, texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION);
 
     auto malformed = log;
     malformed.policy.front().probability = 0U;
@@ -187,8 +187,8 @@ TEST_CASE(multiway_public_decision_log_accepts_forward_compatible_delivery_statu
     log.acting_seat = 0;
     log.sampled_action = expected.actions.front().action;
     log.policy_provenance = texas::MultiwayPolicyProvenance::StaticLegalFallback;
-    log.search_engine = texas::MultiwayResolverEngine::LegacyDeterministicAdjustment;
-    log.search_engine_version = texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
+    log.search_engine = texas::MultiwayResolverEngine::RootExternalSamplingMCCFR;
+    log.search_engine_version = texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
     log.used_fallback = true;
     log.policy = {{log.sampled_action, 65535U}};
 

@@ -195,14 +195,9 @@ bool deadline_reached(
     return std::chrono::steady_clock::now() + reserve >= deadline;
 }
 
-bool valid_inference_mode(MultiwayInferenceMode mode) noexcept {
-    return mode == MultiwayInferenceMode::AnonymousWithinHand ||
-        mode == MultiwayInferenceMode::BlockersOnly;
-}
-
 bool valid_search_mode(MultiwayResolverSearchMode mode) noexcept {
     return mode == MultiwayResolverSearchMode::ReleaseDefault ||
-        mode == MultiwayResolverSearchMode::LegacyStatic ||
+        mode == MultiwayResolverSearchMode::FallbackOnly ||
         mode == MultiwayResolverSearchMode::SearchShadow ||
         mode == MultiwayResolverSearchMode::SearchActive ||
         mode == MultiwayResolverSearchMode::ForcedFallback;
@@ -276,9 +271,6 @@ void validate_ranges(
             throw std::invalid_argument("multiway resolver opponent range has no mass");
         }
     }
-    diagnostics->anonymous_ranges_merged =
-        request.inference_mode == MultiwayInferenceMode::AnonymousWithinHand &&
-        request.opponent_ranges.size() > 1U;
 }
 
 std::vector<MultiwayActionDescriptor> reconstruct_root_menu(
@@ -652,7 +644,7 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     const MultiwayResolverRequest& request) const {
     config_.validate();
     request.blueprint_identity.validate();
-    if (!valid_inference_mode(request.inference_mode) || request.public_state.id.value == 0U ||
+    if (request.public_state.id.value == 0U ||
         request.public_state.canonical_history_id == 0U || request.hero_seat < 0 ||
         !are_valid_and_distinct_cards(request.hero_cards.data(), request.hero_cards.size()) ||
         request.public_state.board.size() != board_count_for(request.public_state.betting.street) ||
@@ -709,7 +701,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
         request.blueprint_identity.validate();
         result.diagnostics.artifact_identity = request.blueprint_identity;
         result.diagnostics.has_artifact_identity = true;
-        if (!valid_inference_mode(request.inference_mode) || request.public_state.id.value == 0U ||
+        if (request.public_state.id.value == 0U ||
             request.public_state.canonical_history_id == 0U || request.hero_seat < 0 ||
             !are_valid_and_distinct_cards(request.hero_cards.data(), request.hero_cards.size()) ||
             request.public_state.board.size() != board_count_for(request.public_state.betting.street) ||

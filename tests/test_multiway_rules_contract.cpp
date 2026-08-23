@@ -53,9 +53,8 @@ TEST_CASE(multiway_identity_binds_rules_and_resolver_schemas) {
     EXPECT_TRUE(changed_resolver.resolver_schema_hash != identity.resolver_schema_hash);
 }
 
-TEST_CASE(multiway_resolver_contract_defaults_to_anonymous_inference) {
+TEST_CASE(multiway_resolver_contract_defaults_to_a_single_sampling_seed) {
     texas::MultiwayResolverRequest request;
-    EXPECT_EQ(request.inference_mode, texas::MultiwayInferenceMode::AnonymousWithinHand);
     EXPECT_EQ(request.sampling_seed, 1U);
     EXPECT_TRUE(!texas::MultiwayResolverResult{}.has_sampled_action);
 }

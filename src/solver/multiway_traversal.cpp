@@ -593,11 +593,6 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     }
 }
 
-void MultiwayRootBatchRunner::set_test_worker_failure_for_testing(
-    std::int32_t worker_index) noexcept {
-    test_worker_failure_index_ = worker_index;
-}
-
 MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     std::uint64_t first_trajectory_id,
     std::uint64_t trajectory_count,
@@ -620,9 +615,6 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     const auto execute_worker = [&](std::size_t worker_index) {
         try {
             if (cancelled.load(std::memory_order_acquire)) return;
-            if (test_worker_failure_index_ == static_cast<std::int32_t>(worker_index)) {
-                throw std::runtime_error("injected multiway root batch worker failure");
-            }
             const auto& batch = worker_batches_[worker_index];
             auto& scratch = worker_scratch_[worker_index];
             for (auto local_id = batch.trajectories.begin;

@@ -53,7 +53,7 @@ struct ResolverFixture {
         config.buckets = &buckets;
         config.max_batches = 2U;
         config.trajectories_per_batch = 5U;
-        config.search_mode = texas::MultiwayResolverSearchMode::LegacyStatic;
+        config.search_mode = texas::MultiwayResolverSearchMode::FallbackOnly;
         return texas::MultiwayResolver(config);
     }
 };
@@ -161,7 +161,7 @@ TEST_CASE(multiway_resolver_begins_a_request_local_runtime_session) {
     EXPECT_EQ(runtime->round().belief(0).metadata().source, texas::MultiwayRangeBeliefSource::Supplied);
 }
 
-TEST_CASE(multiway_resolver_distinguishes_anonymous_and_blockers_only_ranges) {
+TEST_CASE(multiway_resolver_uses_the_same_range_contract_for_multiple_opponents) {
     ResolverFixture fixture;
     auto request = fixture.request();
     request.opponent_ranges.resize(2U);
@@ -170,16 +170,9 @@ TEST_CASE(multiway_resolver_distinguishes_anonymous_and_blockers_only_ranges) {
     request.opponent_ranges[1].seat = 2;
     request.opponent_ranges[1].hands.push_back({{40U, 41U}, 1.0});
     auto resolver = fixture.resolver();
-    const auto anonymous = resolver.resolve(request);
-    request.inference_mode = texas::MultiwayInferenceMode::BlockersOnly;
-    const auto blockers_only = resolver.resolve(request);
-
-    EXPECT_TRUE(anonymous.diagnostics.anonymous_ranges_merged);
-    EXPECT_TRUE(!blockers_only.diagnostics.anonymous_ranges_merged);
-    EXPECT_EQ(anonymous.diagnostics.admitted_range_entries, 2U);
-    EXPECT_EQ(blockers_only.diagnostics.admitted_range_entries, 2U);
-    EXPECT_TRUE(is_legal_output(anonymous, fixture.root.legal_actions));
-    EXPECT_TRUE(is_legal_output(blockers_only, fixture.root.legal_actions));
+    const auto result = resolver.resolve(request);
+    EXPECT_EQ(result.diagnostics.admitted_range_entries, 2U);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 
 TEST_CASE(multiway_resolver_preserves_an_exact_off_tree_root_action) {

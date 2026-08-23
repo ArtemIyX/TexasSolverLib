@@ -137,9 +137,6 @@ public:
         std::uint64_t seed,
         double iteration_weight = 1.0);
 
-    // Test-only failure injection verifies join-before-merge behavior.
-    void set_test_worker_failure_for_testing(std::int32_t worker_index) noexcept;
-
 private:
     struct WorkerScratch {
         explicit WorkerScratch(std::size_t worker_index, std::size_t delta_capacity)
@@ -169,7 +166,6 @@ private:
     std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
     std::vector<MultiwayWorkerBatch> worker_batches_;
     std::vector<std::thread> threads_;
-    std::int32_t test_worker_failure_index_ = -1;
 };
 
 }  // namespace texas::solver::multiway

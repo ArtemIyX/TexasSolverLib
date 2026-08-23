@@ -254,8 +254,6 @@ using ::texas::MultiwayResolverSeatRange;
 using ::texas::MultiwayResolverStatus;
 using ::texas::MultiwayPolicyProvenance;
 using ::texas::MultiwayResolverEngine;
-using ::texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
-using ::texas::MultiwayInferenceMode;
 using ::texas::MultiwayPublicBuilder;
 using ::texas::make_multiway_model_identity;
 using ::texas::MultiwayActionAbstractionIdentity;

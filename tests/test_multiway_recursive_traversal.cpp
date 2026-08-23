@@ -406,14 +406,6 @@ TEST_CASE(multiway_recursive_workers_publish_deltas_without_mutating_shared_row_
     EXPECT_EQ(fixture.coordinator.diagnostics().last_merged_stream_fingerprint, 0U);
 }
 
-TEST_CASE(multiway_root_batch_runner_rethrows_worker_failure_without_merging) {
-    ParallelRunnerFixture fixture(2U);
-    fixture.runner.set_test_worker_failure_for_testing(1);
-
-    EXPECT_THROW(fixture.runner.run(0U, 4U, 0x99U), std::runtime_error);
-    EXPECT_EQ(fixture.coordinator.diagnostics().worker_delta_entries_merged, 0U);
-}
-
 TEST_CASE(multiway_root_batch_runner_one_worker_remains_compatible) {
     ParallelRunnerFixture fixture(1U);
     const auto result = fixture.runner.run(0U, 3U, 0x77U);

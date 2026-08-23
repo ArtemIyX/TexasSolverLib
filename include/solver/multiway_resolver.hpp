@@ -26,11 +26,6 @@ struct MultiwayVerifiedBlueprintArtifact;
 class MultiwayBlueprintStore;
 class MultiwayRuntimeSession;
 
-enum class MultiwayInferenceMode : std::uint8_t {
-    AnonymousWithinHand,
-    BlockersOnly,
-};
-
 // A range supplied by a resolver caller for one non-hero seat. Seat ids are
 // explicit so the request remains valid after players have folded.
 struct MultiwayResolverSeatRange {
@@ -51,7 +46,6 @@ struct MultiwayResolverRequest {
     std::vector<MultiwayWeightedHole> hero_range;
     std::vector<MultiwayResolverSeatRange> opponent_ranges;
     std::chrono::steady_clock::time_point deadline{};
-    MultiwayInferenceMode inference_mode = MultiwayInferenceMode::AnonymousWithinHand;
     std::uint64_t sampling_seed = 1;
 };
 
@@ -62,16 +56,12 @@ struct MultiwayResolverActionProbability {
 
 enum class MultiwayResolverStatus : std::uint8_t {
     Solved,
-    // Reserved for the runtime-search path. The legacy resolver does not emit
-    // this value until it can export a clean partial search result.
     Partial,
     DeadlineFallback,
     InvalidRequest,
     ArtifactMismatch,
     BucketUnavailable,
     ResourceExhausted,
-    // Reserved for future request preflight; legacy resolver limits do not
-    // currently reject a request by this status.
     RejectedByBudget,
 };
 
@@ -79,8 +69,6 @@ enum class MultiwayResolverStatus : std::uint8_t {
 // partial search cannot be mislabeled as a completed solve.
 enum class MultiwayPolicyProvenance : std::uint8_t {
     None,
-    // Retained for historical artifacts. The resolver no longer emits it.
-    LegacyDeterministicAdjustment,
     RuntimeSearch,
     StableRootFallback,
     BlueprintFallback,
@@ -88,19 +76,16 @@ enum class MultiwayPolicyProvenance : std::uint8_t {
 };
 
 enum class MultiwayResolverEngine : std::uint8_t {
-    // Retained for historical artifacts. The resolver no longer emits it.
-    LegacyDeterministicAdjustment,
     RootExternalSamplingMCCFR,
     NoRuntimeSearch,
 };
 
-inline constexpr std::uint64_t MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION = 1U;
 inline constexpr std::uint64_t MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION = 1U;
 inline constexpr std::uint64_t MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION = 1U;
 
 enum class MultiwayResolverSearchMode : std::uint8_t {
     // Delivers only the stable-root, blueprint, or static-legal fallback chain.
-    LegacyStatic,
+    FallbackOnly,
     SearchShadow,
     SearchActive,
     ForcedFallback,
@@ -154,7 +139,6 @@ struct MultiwayResolverDiagnostics {
     bool used_latest_stable_root = false;
     bool used_blueprint_fallback = false;
     bool used_static_fallback = false;
-    bool anonymous_ranges_merged = false;
     bool shadow_search_completed = false;
     std::uint64_t shadow_completed_batches = 0;
     std::uint64_t shadow_completed_trajectories = 0;
