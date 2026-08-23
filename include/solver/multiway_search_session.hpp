@@ -5,10 +5,12 @@
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_solver.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -19,6 +21,7 @@ namespace texas::solver::multiway {
 // session does not traverse postflop states.
 struct MultiwaySearchSessionDependencies {
     const MultiwayBucketRegistry* buckets = nullptr;
+    std::shared_ptr<const MultiwayFixedContinuationSelector> continuation_selector;
     bool lossless_current_round_keys = true;
 };
 
@@ -92,6 +95,9 @@ public:
         PlayerId seat,
         const MultiwayRangeBeliefObservation& observation);
     [[nodiscard]] const MultiwayBucketRegistry* buckets() const noexcept { return buckets_; }
+    [[nodiscard]] const MultiwayFixedContinuationSelector* continuation_selector() const noexcept {
+        return dependencies_.continuation_selector.get();
+    }
     [[nodiscard]] const std::vector<MultiwayActionDescriptor>& action_menu() const noexcept {
         return action_menu_;
     }

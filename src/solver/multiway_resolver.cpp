@@ -691,7 +691,9 @@ std::unique_ptr<MultiwayRuntimeSession> MultiwayResolver::begin_runtime_session(
     cfr.player_count = static_cast<std::uint8_t>(root.seat_order.size());
     return std::make_unique<MultiwayRuntimeSession>(
         MultiwaySolveRequest(std::move(root), cfr, limits),
-        MultiwaySearchSessionDependencies{config_.buckets});
+        MultiwaySearchSessionDependencies{
+            config_.buckets,
+            config_.continuation_selector});
 }
 
 MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& request) const {

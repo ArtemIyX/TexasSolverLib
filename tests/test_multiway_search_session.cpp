@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -527,4 +528,14 @@ TEST_CASE(multiway_search_session_is_exposed_by_core_lib) {
     const texas::lib::MultiwaySearchSessionRowView rows = session.row_view();
     EXPECT_EQ(metadata.revision, 3U);
     EXPECT_EQ(rows.row_count, std::size_t{0});
+}
+
+TEST_CASE(multiway_search_session_owns_continuation_selector_dependency) {
+    const auto root = make_root(texas::Street::Preflop);
+    const auto selector = std::make_shared<const texas::MultiwayFixedContinuationSelector>(
+        texas::MultiwayContinuationPolicyKind::Blueprint);
+    const texas::MultiwaySearchSessionDependencies dependencies{nullptr, selector};
+    texas::MultiwaySearchSession session(make_request(root), dependencies, 1U);
+
+    EXPECT_EQ(session.continuation_selector(), selector.get());
 }
