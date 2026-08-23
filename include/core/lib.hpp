@@ -219,6 +219,7 @@ using ::texas::publish_multiway_aivat_evaluation_record;
 using ::texas::MultiwayBlueprintConfig;
 using ::texas::MultiwayModelIdentity;
 using ::texas::MultiwayResolver;
+using ::texas::MultiwayResolverSearchFailure;
 using ::texas::MultiwayResolverEvaluationAdapter;
 using ::texas::MultiwayResolverEvaluationAdapterConfig;
 using ::texas::MultiwayResolverEvaluationCandidate;

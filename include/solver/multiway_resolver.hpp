@@ -66,6 +66,15 @@ enum class MultiwayResolverStatus : std::uint8_t {
     RejectedByBudget,
 };
 
+enum class MultiwayResolverSearchFailure : std::uint8_t {
+    None,
+    NoRoot,
+    MemoryRejected,
+    NoCleanBatch,
+    NormalizationFailed,
+    Exception,
+};
+
 // The producing policy path. This remains separate from status so a future
 // partial search cannot be mislabeled as a completed solve.
 enum class MultiwayPolicyProvenance : std::uint8_t {
@@ -128,6 +137,7 @@ struct MultiwayResolverDiagnostics {
     MultiwaySearchProfileSnapshot search_profile{};
     MultiwayMemoryStatus search_memory_status = MultiwayMemoryStatus::Ok;
     MultiwayMemoryAdmissionStage search_memory_stage = MultiwayMemoryAdmissionStage::None;
+    MultiwayResolverSearchFailure search_failure = MultiwayResolverSearchFailure::None;
     std::uint64_t search_estimated_memory_bytes = 0U;
     std::uint64_t search_admitted_memory_bytes = 0U;
     bool search_memory_degraded = false;

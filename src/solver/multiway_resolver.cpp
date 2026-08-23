@@ -41,9 +41,23 @@ enum class RuntimeSearchOutcome : std::uint8_t {
     NoRoot,
     MemoryRejected,
     NoCleanBatch,
-    Failed,
+    NormalizationFailed,
+    Exception,
     Completed,
 };
+
+MultiwayResolverSearchFailure search_failure(RuntimeSearchOutcome outcome) noexcept {
+    switch (outcome) {
+        case RuntimeSearchOutcome::NoRoot: return MultiwayResolverSearchFailure::NoRoot;
+        case RuntimeSearchOutcome::MemoryRejected: return MultiwayResolverSearchFailure::MemoryRejected;
+        case RuntimeSearchOutcome::NoCleanBatch: return MultiwayResolverSearchFailure::NoCleanBatch;
+        case RuntimeSearchOutcome::NormalizationFailed:
+            return MultiwayResolverSearchFailure::NormalizationFailed;
+        case RuntimeSearchOutcome::Exception: return MultiwayResolverSearchFailure::Exception;
+        case RuntimeSearchOutcome::Completed: return MultiwayResolverSearchFailure::None;
+    }
+    return MultiwayResolverSearchFailure::Exception;
+}
 
 std::uint64_t mix_seed(std::uint64_t value) noexcept {
     value += 0x9e3779b97f4a7c15ULL;
@@ -562,13 +576,13 @@ RuntimeSearchOutcome run_search(
         for (const auto& action : root_policy.actions) {
             policy->push_back({action.action, action.probability});
         }
-        if (!normalize(*policy)) return RuntimeSearchOutcome::Failed;
+        if (!normalize(*policy)) return RuntimeSearchOutcome::NormalizationFailed;
         diagnostics->deadline_expired = budget.deadline_expired() || budget.deadline_reached();
         diagnostics->search_profile = search_profile.snapshot();
         return RuntimeSearchOutcome::Completed;
     } catch (const std::exception&) {
         policy->clear();
-        return RuntimeSearchOutcome::Failed;
+        return RuntimeSearchOutcome::Exception;
     }
 }
 
@@ -827,6 +841,7 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             const auto search_outcome = run_search(
                 request, state, config_, canonical_board, menu, bucket, reconstructed_id,
                 &search_policy, &search_diagnostics);
+            result.diagnostics.search_failure = search_failure(search_outcome);
             result.diagnostics.search_memory_status = search_diagnostics.search_memory_status;
             result.diagnostics.search_memory_stage = search_diagnostics.search_memory_stage;
             result.diagnostics.search_estimated_memory_bytes =

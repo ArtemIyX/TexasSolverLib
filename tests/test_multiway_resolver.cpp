@@ -444,6 +444,9 @@ TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
     EXPECT_TRUE(result.diagnostics.used_fallback);
     EXPECT_EQ(result.diagnostics.completed_batches, 0U);
     EXPECT_EQ(result.diagnostics.completed_trajectories, 0U);
+    EXPECT_EQ(
+        result.diagnostics.search_failure,
+        texas::MultiwayResolverSearchFailure::NoCleanBatch);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 
@@ -460,6 +463,9 @@ TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
     EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::RejectedByBudget);
     EXPECT_EQ(result.diagnostics.search_memory_status, texas::MultiwayMemoryStatus::Rejected);
     EXPECT_EQ(result.diagnostics.search_memory_stage, texas::MultiwayMemoryAdmissionStage::None);
+    EXPECT_EQ(
+        result.diagnostics.search_failure,
+        texas::MultiwayResolverSearchFailure::MemoryRejected);
     EXPECT_EQ(result.diagnostics.search_admitted_memory_bytes, 0U);
     EXPECT_TRUE(result.diagnostics.search_estimated_memory_bytes > 0U);
     EXPECT_EQ(result.diagnostics.completed_batches, 0U);
