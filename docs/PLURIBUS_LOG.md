@@ -4,6 +4,32 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## MinGW Windows environment API portability
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Used `_putenv_s` for Windows benchmark and environment-dependent test paths.
+- Retained POSIX `setenv` and `unsetenv` paths on non-Windows platforms.
+
+### Files
+
+- `examples/benchmarks/main.cpp`
+- `examples/benchmarks/hunl_random_flat_main.cpp`
+- `tests/test_hunl_regressions.cpp`
+- `tests/test_hunl_state.cpp`
+- `tests/test_parallel_dcfr.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source and diff checks completed.
+- Build and tests not run. The task did not authorize them.
+
+### Limitations
+
+- MinGW, MSVC, and non-Windows runtime validation remains pending authorization.
+
 ## MinGW Windows portability fixes
 
 **Status:** Complete

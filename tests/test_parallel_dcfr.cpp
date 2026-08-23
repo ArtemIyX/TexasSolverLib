@@ -20,7 +20,7 @@ struct EnvGuard {
     EnvGuard(std::string n, std::optional<std::string> prev) : name(std::move(n)), previous(std::move(prev)) {}
 
     ~EnvGuard() {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
         if (previous.has_value()) {
             _putenv_s(name.c_str(), previous->c_str());
         } else {
@@ -48,7 +48,7 @@ template <class SolverFn>
 auto solve_with_parallel_flag(bool enabled, SolverFn&& fn) -> decltype(fn()) {
     const auto prev = get_env("TEXASSOLVER_PARALLEL_CFR");
     EnvGuard guard("TEXASSOLVER_PARALLEL_CFR", prev);
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("TEXASSOLVER_PARALLEL_CFR", enabled ? "1" : "0");
 #else
     setenv("TEXASSOLVER_PARALLEL_CFR", enabled ? "1" : "0", 1);

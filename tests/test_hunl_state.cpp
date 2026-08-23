@@ -40,7 +40,7 @@ struct EnvGuard {
         : name(std::move(env_name)), previous(std::move(prev)) {}
 
     ~EnvGuard() {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
         if (previous.has_value()) {
             _putenv_s(name.c_str(), previous->c_str());
         } else {
@@ -256,7 +256,7 @@ TEST_CASE(hunl_flat_backend_populates_value_and_exploitability) {
     auto config = texas::default_tiny_subgame();
     const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
     EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
 #else
     setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);

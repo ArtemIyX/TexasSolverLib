@@ -415,7 +415,7 @@ double seconds_per_iteration(double seconds, std::uint32_t iterations) {
 }
 
 void set_flat_backend_env() {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
 #else
     setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
@@ -512,7 +512,7 @@ bool enforce_memory_guardrails(const texas::HUNLFlatMemoryEstimate& estimate) {
 }
 
 void set_profile_env(bool enabled) {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("TEXASSOLVER_PROFILE", enabled ? "1" : "0");
 #else
     setenv("TEXASSOLVER_PROFILE", enabled ? "1" : "0", 1);
@@ -520,7 +520,7 @@ void set_profile_env(bool enabled) {
 }
 
 void set_profile_dir_env() {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("TEXASSOLVER_PROFILE_DIR", "artifacts/prof");
 #else
     setenv("TEXASSOLVER_PROFILE_DIR", "artifacts/prof", 1);
