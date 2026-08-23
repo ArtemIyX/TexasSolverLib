@@ -105,8 +105,8 @@ struct SolveOutput {
 }  // namespace texas::core
 
 template <>
-struct std::hash<texas::InfosetId> {
-    std::size_t operator()(const texas::InfosetId& id) const noexcept {
+struct std::hash<texas::core::InfosetId> {
+    std::size_t operator()(const texas::core::InfosetId& id) const noexcept {
         return std::hash<std::uint32_t>{}(id.value);
     }
 };

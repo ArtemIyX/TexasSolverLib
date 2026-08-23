@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/namespaces.hpp"
-
 #include "solver/multiway_search_session.hpp"
 
 #include <memory>
@@ -21,7 +19,7 @@ public:
     [[nodiscard]] std::uint64_t root_revision() const noexcept { return root_revision_; }
 
     [[nodiscard]] MultiwayRangeBeliefUpdateResult observe_action(
-        PlayerId seat,
+        core::PlayerId seat,
         const MultiwayRangeBeliefObservation& observation);
     void reroot(
         MultiwayRootSnapshot next_root,

@@ -13,7 +13,7 @@ MultiwayDecisionSession::MultiwayDecisionSession(
       round_(std::make_unique<MultiwaySearchSession>(initial_request, dependencies_, root_revision_)) {}
 
 MultiwayRangeBeliefUpdateResult MultiwayDecisionSession::observe_action(
-    PlayerId seat,
+    core::PlayerId seat,
     const MultiwayRangeBeliefObservation& observation) {
     return round_->apply_observation(seat, observation);
 }

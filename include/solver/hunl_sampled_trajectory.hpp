@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/types.hpp"
 
 #include <array>
 #include <cstdint>
@@ -29,7 +29,7 @@ struct HUNLSampledTraversalResult {
 };
 
 struct HUNLSampledValueDelta {
-    InfosetId infoset_id{};
+    core::InfosetId infoset_id{};
     std::uint32_t bucket = 0;
     std::uint8_t action = 0;
     double regret = 0.0;

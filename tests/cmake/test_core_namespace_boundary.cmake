@@ -15,3 +15,8 @@ foreach(header IN ITEMS
         message(FATAL_ERROR "core header imports namespace flattening: ${header}")
     endif()
 endforeach()
+
+file(READ "${SOURCE_DIR}/include/core/types.hpp" types_text)
+if (types_text MATCHES "std::hash<texas::InfosetId>")
+    message(FATAL_ERROR "core type hash specialization still depends on a flattened root alias")
+endif()
