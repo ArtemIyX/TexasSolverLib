@@ -6,6 +6,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -66,6 +67,30 @@ TEST_CASE(multiway_full_blueprint_artifact_round_trips_and_rejects_corruption) {
         out.put('\0');
     }
     EXPECT_THROW(texas::MultiwayFullBlueprintArtifacts::load_verified(path, expected.identity), std::invalid_argument);
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_full_blueprint_rejects_unsafe_row_capacity_before_resize) {
+    const auto expected = snapshot();
+    const auto path = artifact_path("full_blueprint_row_budget");
+    texas::MultiwayFullBlueprintArtifact artifact;
+    artifact.identity = expected.identity;
+    artifact.training = expected.training;
+    texas::MultiwayFullBlueprintArtifacts::save_atomic(path, artifact);
+
+    // The row count follows the fixed magic, schema, identity, and training
+    // fields. A large count must fail the memory preflight before rows.resize.
+    std::fstream out(path, std::ios::binary | std::ios::in | std::ios::out);
+    out.seekp(168, std::ios::beg);
+    const std::uint64_t row_count = 100'000'000U;
+    for (std::uint32_t byte = 0U; byte < sizeof(row_count); ++byte) {
+        out.put(static_cast<char>((row_count >> (byte * 8U)) & 0xffU));
+    }
+    out.close();
+
+    EXPECT_THROW(
+        texas::MultiwayFullBlueprintArtifacts::load_verified(path, expected.identity),
+        std::length_error);
     std::filesystem::remove(path);
 }
 

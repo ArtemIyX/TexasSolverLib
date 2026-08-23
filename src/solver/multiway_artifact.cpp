@@ -326,8 +326,17 @@ MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(
     if (row_count > 100000000U) throw std::runtime_error("multiway full blueprint row count is invalid");
     const auto row_storage_bytes = static_cast<std::uint64_t>(sizeof(MultiwayBlueprintRow));
     const auto action_storage_bytes = static_cast<std::uint64_t>(sizeof(MultiwayQuantizedRootAction));
-    if (row_count > (kFullBlueprintOperatingBytes - file_bytes) /
-            std::max<std::uint64_t>(1U, row_storage_bytes + action_storage_bytes)) {
+    constexpr std::uint64_t max_actions_per_row = 64U;
+    const auto action_payload_bytes = action_storage_bytes >
+            std::numeric_limits<std::uint64_t>::max() / max_actions_per_row
+        ? std::numeric_limits<std::uint64_t>::max()
+        : action_storage_bytes * max_actions_per_row;
+    const auto estimated_row_bytes = row_storage_bytes >
+            std::numeric_limits<std::uint64_t>::max() - action_payload_bytes
+        ? std::numeric_limits<std::uint64_t>::max()
+        : row_storage_bytes + action_payload_bytes;
+    if (estimated_row_bytes == 0U ||
+        row_count > (kFullBlueprintOperatingBytes - file_bytes) / estimated_row_bytes) {
         throw std::length_error("multiway full blueprint rows exceed the operating memory guardrail");
     }
     artifact.rows.resize(static_cast<std::size_t>(row_count));
