@@ -185,6 +185,8 @@ set(TEXASSOLVER_SOURCES
 
 if (WIN32)
     list(APPEND TEXASSOLVER_SOURCES src/util/abstraction.cpp)
+else()
+    list(APPEND TEXASSOLVER_SOURCES src/util/abstraction_stub.cpp)
 endif()
 
 list(APPEND TEXASSOLVER_SOURCES
