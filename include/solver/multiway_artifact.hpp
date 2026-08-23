@@ -13,7 +13,7 @@
 
 namespace texas::solver::multiway {
 
-inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 3U;
+inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 4U;
 inline constexpr std::uint32_t MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION = 3U;
 inline constexpr std::uint32_t MULTIWAY_PROTECTED_REPLAY_SCHEMA_VERSION = 1U;
 
@@ -40,7 +40,7 @@ struct MultiwayVerifiedBlueprintArtifact {
     void validate(const MultiwayModelIdentity& expected_identity) const;
 };
 
-inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 1U;
+inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 2U;
 
 // Full runtime lookup payload. It is independent of the compact root
 // snapshot so hosts can retain the latter as a compatible fallback.

@@ -1,5 +1,7 @@
 #include "solver/multiway_checkpoint.hpp"
 
+#include "core/portable_binary.hpp"
+
 #include <array>
 #include <fstream>
 #include <stdexcept>
@@ -7,21 +9,63 @@
 namespace texas::solver::multiway {
 namespace {
 
-// MultiwayModelIdentity gained Phase 0 semantic identity components.
-constexpr std::array<char, 8> kMagic = {'M', 'W', 'B', 'P', '0', '0', '0', '4'};
+namespace portable = texas::core::portable;
 
-template <class T>
-void write_value(std::ofstream& out, const T& value) {
-    out.write(reinterpret_cast<const char*>(&value), sizeof(value));
-    if (!out) throw std::runtime_error("multiway checkpoint write failed");
+// MultiwayModelIdentity gained Phase 0 semantic identity components.
+constexpr std::array<char, 8> kMagic = {'M', 'W', 'B', 'P', '0', '0', '0', '5'};
+
+void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity) {
+    using namespace texas::core::portable;
+    write_u64(out, identity.rules_hash);
+    write_u64(out, identity.rules_schema_hash);
+    write_u64(out, identity.action_abstraction_hash);
+    write_u64(out, identity.bucket_model_hash);
+    write_u64(out, identity.terminal_model_hash);
+    write_u64(out, identity.resolver_schema_hash);
+    write_u64(out, identity.code_schema_hash);
+    write_u64(out, identity.range_semantics_hash);
+    write_u64(out, identity.future_bucket_model_hash);
+    write_u64(out, identity.off_tree_policy_hash);
+    write_u64(out, identity.continuation_policy_hash);
+    write_u64(out, identity.runtime_search_schema_hash);
+    write_u64(out, identity.combined_hash);
 }
 
-template <class T>
-T read_value(std::ifstream& in) {
-    T value{};
-    in.read(reinterpret_cast<char*>(&value), sizeof(value));
-    if (!in) throw std::runtime_error("multiway checkpoint is truncated");
-    return value;
+MultiwayModelIdentity read_identity(std::ifstream& in) {
+    using namespace texas::core::portable;
+    MultiwayModelIdentity identity;
+    if (!read_u64(in, identity.rules_hash) || !read_u64(in, identity.rules_schema_hash) ||
+        !read_u64(in, identity.action_abstraction_hash) || !read_u64(in, identity.bucket_model_hash) ||
+        !read_u64(in, identity.terminal_model_hash) || !read_u64(in, identity.resolver_schema_hash) ||
+        !read_u64(in, identity.code_schema_hash) || !read_u64(in, identity.range_semantics_hash) ||
+        !read_u64(in, identity.future_bucket_model_hash) || !read_u64(in, identity.off_tree_policy_hash) ||
+        !read_u64(in, identity.continuation_policy_hash) || !read_u64(in, identity.runtime_search_schema_hash) ||
+        !read_u64(in, identity.combined_hash)) {
+        throw std::runtime_error("multiway checkpoint is truncated");
+    }
+    return identity;
+}
+
+void write_action(std::ofstream& out, const MultiwayQuantizedRootAction& action) {
+    using namespace texas::core::portable;
+    write_u8(out, static_cast<std::uint8_t>(action.action.action));
+    write_u32(out, action.action.action_index);
+    write_i32(out, action.action.target_street_contribution);
+    write_u64(out, action.action.action_menu_id);
+    write_u16(out, action.probability);
+}
+
+MultiwayQuantizedRootAction read_action(std::ifstream& in) {
+    using namespace texas::core::portable;
+    MultiwayQuantizedRootAction action;
+    std::uint8_t kind = 0;
+    if (!read_u8(in, kind) || !read_u32(in, action.action.action_index) ||
+        !read_i32(in, action.action.target_street_contribution) ||
+        !read_u64(in, action.action.action_menu_id) || !read_u16(in, action.probability)) {
+        throw std::runtime_error("multiway checkpoint is truncated");
+    }
+    action.action.action = static_cast<MultiwayAction>(kind);
+    return action;
 }
 
 }  // namespace
@@ -34,16 +78,26 @@ void MultiwayCheckpoint::save_atomic(
     std::ofstream out(temp, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("multiway checkpoint temporary file cannot be opened");
     out.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
-    write_value(out, snapshot.identity);
-    write_value(out, snapshot.public_state);
-    write_value(out, snapshot.infoset);
-    write_value(out, snapshot.bucket);
-    write_value(out, snapshot.trajectories);
-    write_value(out, snapshot.policy_kind);
-    write_value(out, snapshot.training);
+    write_identity(out, snapshot.identity);
+    portable::write_u64(out, snapshot.public_state.value);
+    portable::write_u64(out, snapshot.infoset.public_state.value);
+    portable::write_i32(out, snapshot.infoset.seat);
+    portable::write_u32(out, snapshot.bucket);
+    portable::write_u64(out, snapshot.trajectories);
+    portable::write_u8(out, static_cast<std::uint8_t>(snapshot.policy_kind));
+    portable::write_u64(out, snapshot.training.batches);
+    portable::write_u64(out, snapshot.training.trajectories);
+    portable::write_u64(out, snapshot.training.deterministic_seed);
+    portable::write_u64(out, snapshot.training.late_window_start_batch);
+    portable::write_u64(out, snapshot.training.schedule_hash);
+    portable::write_u64(out, snapshot.training.pruned_negative_regrets);
+    portable::write_u8(out, snapshot.training.linear_iteration_weighting);
+    portable::write_u8(out, snapshot.training.discounting_enabled);
+    portable::write_u8(out, snapshot.training.negative_regret_pruning_enabled);
+    portable::write_u8(out, snapshot.training.reserved);
     const auto count = static_cast<std::uint32_t>(snapshot.actions.size());
-    write_value(out, count);
-    for (const auto& action : snapshot.actions) write_value(out, action);
+    portable::write_u32(out, count);
+    for (const auto& action : snapshot.actions) write_action(out, action);
     out.close();
     std::error_code error;
     std::filesystem::rename(temp, path, error);
@@ -62,17 +116,34 @@ MultiwayBlueprintSnapshot MultiwayCheckpoint::load(const std::filesystem::path& 
     in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
     if (!in || magic != kMagic) throw std::runtime_error("multiway checkpoint schema is invalid");
     MultiwayBlueprintSnapshot snapshot;
-    snapshot.identity = read_value<MultiwayModelIdentity>(in);
-    snapshot.public_state = read_value<MultiwayPublicStateId>(in);
-    snapshot.infoset = read_value<MultiwayInfosetId>(in);
-    snapshot.bucket = read_value<std::uint32_t>(in);
-    snapshot.trajectories = read_value<std::uint64_t>(in);
-    snapshot.policy_kind = read_value<MultiwayBlueprintPolicyKind>(in);
-    snapshot.training = read_value<MultiwayBlueprintTrainingMetadata>(in);
-    const auto count = read_value<std::uint32_t>(in);
+    snapshot.identity = read_identity(in);
+    if (!portable::read_u64(in, snapshot.public_state.value) ||
+        !portable::read_u64(in, snapshot.infoset.public_state.value) ||
+        !portable::read_i32(in, snapshot.infoset.seat) ||
+        !portable::read_u32(in, snapshot.bucket) ||
+        !portable::read_u64(in, snapshot.trajectories)) {
+        throw std::runtime_error("multiway checkpoint is truncated");
+    }
+    std::uint8_t policy_kind = 0;
+    if (!portable::read_u8(in, policy_kind) ||
+        !portable::read_u64(in, snapshot.training.batches) ||
+        !portable::read_u64(in, snapshot.training.trajectories) ||
+        !portable::read_u64(in, snapshot.training.deterministic_seed) ||
+        !portable::read_u64(in, snapshot.training.late_window_start_batch) ||
+        !portable::read_u64(in, snapshot.training.schedule_hash) ||
+        !portable::read_u64(in, snapshot.training.pruned_negative_regrets) ||
+        !portable::read_u8(in, snapshot.training.linear_iteration_weighting) ||
+        !portable::read_u8(in, snapshot.training.discounting_enabled) ||
+        !portable::read_u8(in, snapshot.training.negative_regret_pruning_enabled) ||
+        !portable::read_u8(in, snapshot.training.reserved)) {
+        throw std::runtime_error("multiway checkpoint is truncated");
+    }
+    snapshot.policy_kind = static_cast<MultiwayBlueprintPolicyKind>(policy_kind);
+    std::uint32_t count = 0;
+    if (!portable::read_u32(in, count)) throw std::runtime_error("multiway checkpoint is truncated");
     if (count == 0U || count > 64U) throw std::runtime_error("multiway checkpoint action count is invalid");
     snapshot.actions.resize(count);
-    for (auto& action : snapshot.actions) action = read_value<MultiwayQuantizedRootAction>(in);
+    for (auto& action : snapshot.actions) action = read_action(in);
     if (in.peek() != std::char_traits<char>::eof()) {
         throw std::runtime_error("multiway checkpoint has trailing data");
     }
