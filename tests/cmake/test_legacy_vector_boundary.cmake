@@ -36,4 +36,3 @@ require_absent(
 require_absent(
     "src/preflop/preflop_equity.cpp\n    src/preflop/preflop_rvr.cpp"
     "legacy RVR source from stable sources")
-

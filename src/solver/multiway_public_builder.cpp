@@ -292,6 +292,9 @@ MultiwayPublicStateDescriptor MultiwayPublicBuilder::make_action_child(
     child.betting = std::move(child_betting);
     child.board = parent.board;
     canonicalize_board(child.board);
+    if (child.board.size() > 5U) {
+        throw std::invalid_argument("multiway public builder has an oversized board");
+    }
     child.history = parent.history;
     canonicalize_history(child.history);
     child.history.push_back({parent_state.current_player(), action});

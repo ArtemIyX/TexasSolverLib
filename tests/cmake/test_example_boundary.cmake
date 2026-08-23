@@ -20,4 +20,3 @@ require_present(
 require_present(
     "examples/solve_kuhn.cpp"
     "stable example")
-
