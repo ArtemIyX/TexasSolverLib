@@ -86,6 +86,7 @@ texas::Value resolver_search_leaf(
 texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
+    config.stable_root_cache = std::make_shared<texas::MultiwayStableRootPolicyCache>();
     config.search_limits.trajectories_per_batch = 2U;
     config.search_limits.max_batches = 1U;
     config.search_mode = texas::MultiwayResolverSearchMode::SearchActive;
@@ -298,7 +299,7 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
     EXPECT_TRUE(stable_fallback.diagnostics.used_latest_stable_root);
 
     auto uncached_config = search_config(fixture);
-    uncached_config.retain_stable_root_fallback = false;
+    uncached_config.stable_root_cache.reset();
     texas::MultiwayResolver uncached_resolver(uncached_config);
     (void)uncached_resolver.resolve(stable_request);
     const auto uncached_fallback = uncached_resolver.resolve(expired_request);

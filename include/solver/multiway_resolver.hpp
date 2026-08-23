@@ -172,6 +172,32 @@ struct MultiwayResolverResult {
     MultiwayResolverDiagnostics diagnostics{};
 };
 
+// Host-owned fallback storage. The resolver never keeps a private cache, so
+// cache lifetime and sharing policy remain explicit at the service boundary.
+class MultiwayStableRootPolicyCache {
+public:
+    [[nodiscard]] bool find(
+        const MultiwayModelIdentity& identity,
+        std::uint64_t public_state_id,
+        const std::vector<MultiwayActionDescriptor>& menu,
+        std::vector<MultiwayResolverActionProbability>* policy) const;
+
+    void store(
+        const MultiwayModelIdentity& identity,
+        std::uint64_t public_state_id,
+        std::vector<MultiwayResolverActionProbability> policy);
+
+private:
+    struct Entry {
+        MultiwayModelIdentity identity{};
+        std::uint64_t public_state_id = 0U;
+        std::vector<MultiwayResolverActionProbability> policy;
+    };
+
+    mutable std::mutex mutex_;
+    Entry entry_;
+};
+
 // Artifact dependencies are borrowed and must outlive the resolver. A null
 // bucket registry is valid only for preflop roots; postflop roots then return
 // a validated static fallback with BucketUnavailable diagnostics.
@@ -185,8 +211,8 @@ struct MultiwayResolverConfig {
     MultiwayActionAbstractionConfig action_abstraction{};
     std::chrono::milliseconds deadline_reserve = std::chrono::milliseconds(1);
     MultiwayResolverSearchMode search_mode = MultiwayResolverSearchMode::ReleaseDefault;
-    // Stable-root reuse is an explicit deployment policy, not hidden resolver state.
-    bool retain_stable_root_fallback = true;
+    // Stable-root reuse is explicit host-owned state, not resolver state.
+    std::shared_ptr<MultiwayStableRootPolicyCache> stable_root_cache;
     std::shared_ptr<const MultiwayFixedContinuationSelector> continuation_selector;
     MultiwaySolverLimits search_limits{};
     const MultiwayLeafEvaluator* leaf_evaluator = nullptr;
@@ -217,15 +243,7 @@ public:
         const MultiwayResolverRequest& request) const;
 
 private:
-    struct StableRootPolicy {
-        MultiwayModelIdentity identity{};
-        std::uint64_t public_state_id = 0;
-        std::vector<MultiwayResolverActionProbability> policy;
-    };
-
     MultiwayResolverConfig config_{};
-    mutable std::mutex stable_policy_mutex_;
-    mutable StableRootPolicy stable_policy_{};
 };
 
 }  // namespace texas::solver::multiway

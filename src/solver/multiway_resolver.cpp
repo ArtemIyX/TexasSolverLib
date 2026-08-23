@@ -16,6 +16,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 
 namespace texas::solver::multiway {
 namespace {
@@ -607,6 +608,34 @@ void sample_policy(
 
 }  // namespace
 
+bool MultiwayStableRootPolicyCache::find(
+    const MultiwayModelIdentity& identity,
+    std::uint64_t public_state_id,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    std::vector<MultiwayResolverActionProbability>* policy) const {
+    if (policy == nullptr) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (entry_.identity != identity || entry_.public_state_id != public_state_id ||
+        entry_.policy.size() != menu.size()) {
+        return false;
+    }
+    for (std::size_t index = 0U; index < menu.size(); ++index) {
+        if (entry_.policy[index].action != menu[index]) return false;
+    }
+    *policy = entry_.policy;
+    return true;
+}
+
+void MultiwayStableRootPolicyCache::store(
+    const MultiwayModelIdentity& identity,
+    std::uint64_t public_state_id,
+    std::vector<MultiwayResolverActionProbability> policy) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    entry_.identity = identity;
+    entry_.public_state_id = public_state_id;
+    entry_.policy = std::move(policy);
+}
+
 void MultiwayResolverConfig::validate() const {
     action_abstraction.validate();
     search_memory_budget.validate();
@@ -766,14 +795,11 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
 
         const auto use_fallback = [&](MultiwayResolverStatus status) {
             result.diagnostics.status = status;
-            if (config_.retain_stable_root_fallback) {
-                std::lock_guard<std::mutex> lock(stable_policy_mutex_);
-                if (stable_policy_.identity == request.blueprint_identity &&
-                    stable_policy_.public_state_id == reconstructed_id && same_menu(stable_policy_.policy, menu)) {
-                    result.policy = stable_policy_.policy;
-                    set_policy_provenance(
-                        &result.diagnostics, MultiwayPolicyProvenance::StableRootFallback);
-                }
+            if (config_.stable_root_cache != nullptr &&
+                config_.stable_root_cache->find(
+                    request.blueprint_identity, reconstructed_id, menu, &result.policy)) {
+                set_policy_provenance(
+                    &result.diagnostics, MultiwayPolicyProvenance::StableRootFallback);
             }
             if (result.policy.empty() && try_apply_blueprint_policy(
                     blueprint, request.blueprint_identity, menu, &result.policy)) {
@@ -858,11 +884,9 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 set_policy_provenance(&result.diagnostics, MultiwayPolicyProvenance::RuntimeSearch);
                 result.diagnostics.policy_normalized = true;
                 sample_policy(&result, request.sampling_seed, reconstructed_id);
-                if (config_.retain_stable_root_fallback) {
-                    std::lock_guard<std::mutex> lock(stable_policy_mutex_);
-                    stable_policy_.identity = request.blueprint_identity;
-                    stable_policy_.public_state_id = reconstructed_id;
-                    stable_policy_.policy = result.policy;
+                if (config_.stable_root_cache != nullptr) {
+                    config_.stable_root_cache->store(
+                        request.blueprint_identity, reconstructed_id, result.policy);
                 }
                 return result;
             }
