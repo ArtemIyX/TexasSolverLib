@@ -94,8 +94,6 @@ enum class HUNLBackendSelection {
     Flat = 2,
 };
 
-HUNLBackendSelection hunl_backend_selection_from_env();
-
 HUNLSolveOutput solve_hunl_postflop(
     const HUNLConfig& config,
     std::uint32_t iterations,
@@ -104,7 +102,8 @@ HUNLSolveOutput solve_hunl_postflop(
     double gamma,
     std::size_t workers = 1,
     std::size_t frontier_multiplier = 8,
-    bool force_parallel = false);
+    bool force_parallel = false,
+    HUNLBackendSelection backend = HUNLBackendSelection::Auto);
 
 void validate_config(const HUNLConfig& config);
 void validate_structured_root_request(const HUNLStructuredRootRequest& request);

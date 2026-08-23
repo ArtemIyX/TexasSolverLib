@@ -413,14 +413,6 @@ double seconds_per_iteration(double seconds, std::uint32_t iterations) {
     return iterations > 0 ? seconds / static_cast<double>(iterations) : 0.0;
 }
 
-void set_flat_backend_env() {
-#if defined(_WIN32)
-    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
-#else
-    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
-#endif
-}
-
 std::string format_bytes(std::uint64_t bytes) {
     constexpr double kib = 1024.0;
     constexpr double mib = kib * 1024.0;
@@ -818,7 +810,6 @@ int main(int argc, char* argv[]) {
         }
 
         const auto cfg = *parsed;
-        set_flat_backend_env();
         set_profile_env(cfg.debug);
         if (cfg.debug) {
             set_profile_dir_env();

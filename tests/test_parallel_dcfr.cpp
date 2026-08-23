@@ -5,56 +5,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdlib>
 #include <memory>
-#include <optional>
-#include <string>
-#include <utility>
 
 namespace {
-
-struct EnvGuard {
-    std::string name;
-    std::optional<std::string> previous;
-
-    EnvGuard(std::string n, std::optional<std::string> prev) : name(std::move(n)), previous(std::move(prev)) {}
-
-    ~EnvGuard() {
-#if defined(_WIN32)
-        if (previous.has_value()) {
-            _putenv_s(name.c_str(), previous->c_str());
-        } else {
-            _putenv_s(name.c_str(), "");
-        }
-#else
-        if (previous.has_value()) {
-            setenv(name.c_str(), previous->c_str(), 1);
-        } else {
-            unsetenv(name.c_str());
-        }
-#endif
-    }
-};
-
-std::optional<std::string> get_env(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr) {
-        return std::nullopt;
-    }
-    return std::string(value);
-}
-
-template <class SolverFn>
-auto solve_with_parallel_flag(bool enabled, SolverFn&& fn) -> decltype(fn()) {
-    const auto prev = get_env("TEXASSOLVER_PARALLEL_CFR");
-    EnvGuard guard("TEXASSOLVER_PARALLEL_CFR", prev);
-#if defined(_WIN32)
-    _putenv_s("TEXASSOLVER_PARALLEL_CFR", enabled ? "1" : "0");
-#else
-    setenv("TEXASSOLVER_PARALLEL_CFR", enabled ? "1" : "0", 1);
-#endif
-    return fn();
-}
 
 void expect_strategy_close(
     const std::vector<std::pair<std::string, std::vector<double>>>& lhs,
@@ -95,12 +48,8 @@ texas::HUNLConfig tiny_postflop_config() {
 }  // namespace
 
 TEST_CASE(parallel_dcfr_matches_sequential_kuhn_output) {
-    const auto sequential = solve_with_parallel_flag(false, [] {
-        return texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0);
-    });
-    const auto parallel = solve_with_parallel_flag(true, [] {
-        return texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0);
-    });
+    const auto sequential = texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0, 1);
+    const auto parallel = texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0, 2);
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
     EXPECT_NEAR(sequential.game_value, parallel.game_value, 1e-12);
@@ -109,12 +58,8 @@ TEST_CASE(parallel_dcfr_matches_sequential_kuhn_output) {
 }
 
 TEST_CASE(parallel_dcfr_matches_sequential_leduc_output) {
-    const auto sequential = solve_with_parallel_flag(false, [] {
-        return texas::lib::solve_leduc(10, 1.5, 0.0, 2.0);
-    });
-    const auto parallel = solve_with_parallel_flag(true, [] {
-        return texas::lib::solve_leduc(10, 1.5, 0.0, 2.0);
-    });
+    const auto sequential = texas::lib::solve_leduc(10, 1.5, 0.0, 2.0, 1);
+    const auto parallel = texas::lib::solve_leduc(10, 1.5, 0.0, 2.0, 2);
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
     EXPECT_NEAR(sequential.game_value, parallel.game_value, 1e-12);
@@ -124,12 +69,8 @@ TEST_CASE(parallel_dcfr_matches_sequential_leduc_output) {
 
 TEST_CASE(parallel_dcfr_matches_sequential_hunl_output) {
     const auto cfg = tiny_postflop_config();
-    const auto sequential = solve_with_parallel_flag(false, [&] {
-        return texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0);
-    });
-    const auto parallel = solve_with_parallel_flag(true, [&] {
-        return texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0);
-    });
+    const auto sequential = texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0, 1);
+    const auto parallel = texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0, 2);
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
     EXPECT_EQ(static_cast<std::size_t>(sequential.infoset_count), static_cast<std::size_t>(parallel.infoset_count));

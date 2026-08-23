@@ -4,9 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <memory>
-#include <optional>
 
 namespace {
 
@@ -30,38 +28,6 @@ texas::HUNLState flop_state(int starting_stack, int pot) {
         {texas::card_to_int(12, 2), texas::card_to_int(12, 1)},
     }};
     return texas::HUNLState::initial(std::make_shared<const texas::HUNLConfig>(cfg));
-}
-
-struct EnvGuard {
-    std::string name;
-    std::optional<std::string> previous;
-
-    EnvGuard(std::string env_name, std::optional<std::string> prev)
-        : name(std::move(env_name)), previous(std::move(prev)) {}
-
-    ~EnvGuard() {
-#if defined(_WIN32)
-        if (previous.has_value()) {
-            _putenv_s(name.c_str(), previous->c_str());
-        } else {
-            _putenv_s(name.c_str(), "");
-        }
-#else
-        if (previous.has_value()) {
-            setenv(name.c_str(), previous->c_str(), 1);
-        } else {
-            unsetenv(name.c_str());
-        }
-#endif
-    }
-};
-
-std::optional<std::string> get_env(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr) {
-        return std::nullopt;
-    }
-    return std::string(value);
 }
 
 }
@@ -254,15 +220,8 @@ TEST_CASE(hunl_infoset_history_keeps_large_opening_bets_distinct_from_raises) {
 
 TEST_CASE(hunl_flat_backend_populates_value_and_exploitability) {
     auto config = texas::default_tiny_subgame();
-    const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
-    EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
-#if defined(_WIN32)
-    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
-#else
-    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
-#endif
-
-    const auto output = texas::lib::solve_hunl_postflop(config, 10, 1.5, 0.0, 2.0, 4, 8, true);
+    const auto output = texas::lib::solve_hunl_postflop(
+        config, 10, 1.5, 0.0, 2.0, 4, 8, true, texas::HUNLBackendSelection::Flat);
 
     EXPECT_TRUE(std::isfinite(output.game_value));
     EXPECT_TRUE(std::isfinite(output.exploitability));

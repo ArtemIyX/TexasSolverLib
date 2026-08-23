@@ -366,9 +366,10 @@ inline HUNLSolveOutput solve_hunl_postflop(
     double gamma,
     std::size_t workers = 1,
     std::size_t frontier_multiplier = 8,
-    bool force_parallel = false) {
+    bool force_parallel = false,
+    HUNLBackendSelection backend = HUNLBackendSelection::Auto) {
     return ::texas::solve_hunl_postflop(
-        config, iterations, alpha, beta, gamma, workers, frontier_multiplier, force_parallel);
+        config, iterations, alpha, beta, gamma, workers, frontier_multiplier, force_parallel, backend);
 }
 
 inline PreflopSolveOutput solve_hunl_preflop(

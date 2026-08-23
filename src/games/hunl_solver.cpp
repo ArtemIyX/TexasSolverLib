@@ -7,24 +7,12 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cctype>
 #include <cmath>
-#include <cstdlib>
 #include <stdexcept>
 
 namespace texas::solver::hunl {
 
 namespace {
-
-std::string trim_copy(std::string value) {
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }));
-    value.erase(std::find_if(value.rbegin(), value.rend(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }).base(), value.end());
-    return value;
-}
 
 std::unordered_map<std::string, std::vector<double>> to_strategy_map(
     const std::vector<std::pair<InfosetKey, std::vector<Probability>>>& average_strategy) {
@@ -112,38 +100,6 @@ std::vector<WorkerProfile> to_worker_profiles(
 }
 
 }  // namespace
-
-HUNLBackendSelection hunl_backend_selection_from_env() {
-    char* raw_value = nullptr;
-#if defined(_MSC_VER)
-    std::size_t len = 0;
-    if (_dupenv_s(&raw_value, &len, "TEXASSOLVER_HUNL_FLAT_BACKEND") != 0) {
-        raw_value = nullptr;
-    }
-#else
-    raw_value = std::getenv("TEXASSOLVER_HUNL_FLAT_BACKEND");
-#endif
-    if (raw_value == nullptr) {
-        return HUNLBackendSelection::Auto;
-    }
-
-    std::string value(raw_value);
-#if defined(_MSC_VER)
-    free(raw_value);
-#endif
-    value = trim_copy(std::move(value));
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
-    });
-
-    if (value == "flat" || value == "1" || value == "true" || value == "on") {
-        return HUNLBackendSelection::Flat;
-    }
-    if (value == "recursive" || value == "legacy" || value == "0" || value == "false" || value == "off") {
-        return HUNLBackendSelection::Recursive;
-    }
-    return HUNLBackendSelection::Auto;
-}
 
 void validate_config(const HUNLConfig& config) {
     if (config.starting_street == Street::Preflop) {
@@ -323,12 +279,13 @@ HUNLSolveOutput solve_hunl_postflop(
     double gamma,
     std::size_t workers,
     std::size_t frontier_multiplier,
-    bool force_parallel) {
+    bool force_parallel,
+    HUNLBackendSelection backend) {
     validate_config(config);
 
     const auto start = std::chrono::steady_clock::now();
     SolveOutput solve_output;
-    const auto selection = hunl_backend_selection_from_env();
+    const auto selection = backend;
     const bool use_flat_backend =
         selection == HUNLBackendSelection::Flat ||
         (selection == HUNLBackendSelection::Auto &&
