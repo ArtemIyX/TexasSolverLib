@@ -1,3 +1,4 @@
+#include "core/atomic_publish.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_blueprint_store.hpp"
 #include "solver/multiway_blueprint_config.hpp"
@@ -240,6 +241,40 @@ TEST_CASE(multiway_artifact_fails_closed_for_malformed_manifest) {
     EXPECT_THROW(texas::MultiwayBlueprintArtifacts::load_verified(path, expected.identity), std::runtime_error);
     std::filesystem::remove(path);
     std::filesystem::remove(path.string() + ".manifest");
+}
+
+TEST_CASE(multiway_atomic_publish_replaces_destination_without_leaving_temporary_files) {
+    const auto destination = artifact_path("atomic_destination");
+    const auto temporary = artifact_path("atomic_temporary");
+    {
+        std::ofstream old_value(destination, std::ios::binary);
+        old_value << "old";
+        std::ofstream new_value(temporary, std::ios::binary);
+        new_value << "new";
+    }
+
+    texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed");
+
+    std::ifstream published(destination, std::ios::binary);
+    std::string value;
+    published >> value;
+    EXPECT_EQ(value, "new");
+    EXPECT_TRUE(!std::filesystem::exists(temporary));
+    EXPECT_TRUE(!std::filesystem::exists(destination.string() + ".previous"));
+    std::filesystem::remove(destination);
+
+    {
+        std::ofstream existing(destination, std::ios::binary);
+        existing << "preserved";
+    }
+    EXPECT_THROW(
+        texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed"),
+        std::runtime_error);
+    std::ifstream restored(destination, std::ios::binary);
+    restored >> value;
+    EXPECT_EQ(value, "preserved");
+    EXPECT_TRUE(!std::filesystem::exists(destination.string() + ".previous"));
+    std::filesystem::remove(destination);
 }
 
 TEST_CASE(multiway_artifact_rejects_schema_v2_manifest_magic) {
