@@ -61,7 +61,6 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/hunl_sampled_traversal.hpp
     include/solver/multiway_action_abstraction.hpp
     include/solver/multiway_artifact.hpp
-    include/solver/multiway_baseline.hpp
     include/solver/multiway_blueprint_config.hpp
     include/solver/multiway_blueprint_policy_provider.hpp
     include/solver/multiway_blueprint_store.hpp
@@ -151,7 +150,6 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl_sampled_traversal.cpp
     src/solver/multiway_action_abstraction.cpp
     src/solver/multiway_artifact.cpp
-    src/solver/multiway_baseline.cpp
     src/solver/multiway_blueprint_config.cpp
     src/solver/multiway_blueprint_policy_provider.cpp
     src/solver/multiway_blueprint_store.cpp
@@ -262,6 +260,7 @@ install(TARGETS pheval
 
 install(DIRECTORY include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    PATTERN "solver/multiway_baseline.hpp" EXCLUDE
 )
 
 install(EXPORT TexasSolverTargets
@@ -343,9 +342,15 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             continue()
         endif()
 
+        set(test_support_sources)
+        if (test_name STREQUAL "test_multiway_baseline")
+            list(APPEND test_support_sources src/solver/multiway_baseline.cpp)
+        endif()
+
         add_executable(${test_name}
             tests/test_main.cpp
             ${test_source}
+            ${test_support_sources}
         )
 
         target_include_directories(${test_name} PRIVATE
