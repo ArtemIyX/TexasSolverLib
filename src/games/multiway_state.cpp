@@ -122,32 +122,7 @@ void MultiwayBettingSnapshot::validate() const {
 }
 
 MultiwayState MultiwayState::initial(const MultiwayGameConfig& config) {
-    config.validate();
-    MultiwayState state;
-    state.big_blind_ = config.big_blind;
-    state.street_ = config.street;
-    state.contributions_ = config.initial_contributions;
-    state.street_contributions_ = config.initial_street_contributions.empty()
-        ? std::vector<int>(config.starting_stacks.size(), 0)
-        : config.initial_street_contributions;
-    state.stacks_.resize(config.starting_stacks.size());
-    state.folded_.assign(config.starting_stacks.size(), false);
-    state.all_in_.resize(config.starting_stacks.size());
-    state.may_raise_.resize(config.starting_stacks.size());
-    state.pending_.resize(config.starting_stacks.size());
-    state.has_acted_.assign(config.starting_stacks.size(), false);
-    state.bet_faced_when_acted_.assign(config.starting_stacks.size(), 0);
-    for (std::size_t seat = 0; seat < config.starting_stacks.size(); ++seat) {
-        state.stacks_[seat] = config.starting_stacks[seat] - config.initial_contributions[seat];
-        state.all_in_[seat] = state.stacks_[seat] == 0;
-        state.may_raise_[seat] = !state.all_in_[seat];
-        state.pending_[seat] = !state.all_in_[seat];
-        state.current_bet_ = std::max(state.current_bet_, state.street_contributions_[seat]);
-    }
-    state.last_full_raise_size_ = config.big_blind;
-    state.current_player_ = state.next_pending_after(config.first_player - 1);
-    state.refresh_round_completion();
-    return state;
+    return from_snapshot(make_multiway_betting_snapshot(make_multiway_fixed_state(config)));
 }
 
 MultiwayState MultiwayState::initial(const MultiwayGameRules& rules, PlayerId first_player) {
