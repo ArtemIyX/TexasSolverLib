@@ -10,18 +10,190 @@ find_package(Threads REQUIRED)
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 
-file(GLOB_RECURSE TEXASSOLVER_PUBLIC_HEADERS CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
+set(TEXASSOLVER_PUBLIC_HEADERS
+    include/core/arena.hpp
+    include/core/canonical_combo.hpp
+    include/core/game.hpp
+    include/core/lib.hpp
+    include/core/namespaces.hpp
+    include/core/portable_binary.hpp
+    include/core/types.hpp
+    include/games/hunl.hpp
+    include/games/hunl_eval.hpp
+    include/games/hunl_flat_builder.hpp
+    include/games/hunl_flat_graph.hpp
+    include/games/hunl_solver.hpp
+    include/games/hunl_tree.hpp
+    include/games/kuhn.hpp
+    include/games/leduc.hpp
+    include/games/multiway_fixed.hpp
+    include/games/multiway_private.hpp
+    include/games/multiway_rake.hpp
+    include/games/multiway_replay.hpp
+    include/games/multiway_rules.hpp
+    include/games/multiway_state.hpp
+    include/games/multiway_terminal.hpp
+    include/preflop/preflop.hpp
+    include/preflop/preflop_equity.hpp
+    include/preflop/preflop_rvr.hpp
+    include/solver/dcfr.hpp
+    include/solver/dcfr_vector.hpp
+    include/solver/exploit.hpp
+    include/solver/hunl_bucket_map.hpp
+    include/solver/hunl_bucket_terminal.hpp
+    include/solver/hunl_flat_dcfr.hpp
+    include/solver/hunl_flat_expected_value.hpp
+    include/solver/hunl_flat_mccfr.hpp
+    include/solver/hunl_flat_pipeline.hpp
+    include/solver/hunl_flat_state.hpp
+    include/solver/hunl_leaf_evaluator.hpp
+    include/solver/hunl_sampled_builder.hpp
+    include/solver/hunl_sampled_config.hpp
+    include/solver/hunl_sampled_export.hpp
+    include/solver/hunl_sampled_profile.hpp
+    include/solver/hunl_sampled_range.hpp
+    include/solver/hunl_sampled_scheduler.hpp
+    include/solver/hunl_sampled_simd.hpp
+    include/solver/hunl_sampled_solver.hpp
+    include/solver/hunl_sampled_storage.hpp
+    include/solver/hunl_sampled_terminal.hpp
+    include/solver/hunl_sampled_traversal.hpp
+    include/solver/multiway_action_abstraction.hpp
+    include/solver/multiway_artifact.hpp
+    include/solver/multiway_baseline.hpp
+    include/solver/multiway_blueprint_config.hpp
+    include/solver/multiway_blueprint_policy_provider.hpp
+    include/solver/multiway_blueprint_store.hpp
+    include/solver/multiway_blueprint_trainer.hpp
+    include/solver/multiway_bucket_artifact.hpp
+    include/solver/multiway_bucket_model.hpp
+    include/solver/multiway_cfr.hpp
+    include/solver/multiway_checkpoint.hpp
+    include/solver/multiway_continuation_policy.hpp
+    include/solver/multiway_continuation_policy_kind.hpp
+    include/solver/multiway_continuation_selector.hpp
+    include/solver/multiway_evaluation.hpp
+    include/solver/multiway_export.hpp
+    include/solver/multiway_future_bucket.hpp
+    include/solver/multiway_leaf_evaluator.hpp
+    include/solver/multiway_memory.hpp
+    include/solver/multiway_model_identity.hpp
+    include/solver/multiway_public_builder.hpp
+    include/solver/multiway_range_belief.hpp
+    include/solver/multiway_range_update.hpp
+    include/solver/multiway_resolver.hpp
+    include/solver/multiway_resolver_budget.hpp
+    include/solver/multiway_resolver_evaluation.hpp
+    include/solver/multiway_rollout_leaf.hpp
+    include/solver/multiway_runtime_session.hpp
+    include/solver/multiway_scheduler.hpp
+    include/solver/multiway_search_profile.hpp
+    include/solver/multiway_search_session.hpp
+    include/solver/multiway_solver.hpp
+    include/solver/multiway_terminal_adapter.hpp
+    include/solver/multiway_traversal.hpp
+    include/solver/parallel_dcfr.hpp
+    include/solver/solver.hpp
+    include/util/abstraction.hpp
+    include/util/aligned_allocator.hpp
+    include/util/checked_numeric.hpp
+    include/util/infoset_lookup.hpp
+    include/util/infoset_registry.hpp
+    include/util/iteration_range.hpp
+    include/util/pcs.hpp
+    include/util/profiling.hpp
+    include/util/simd.hpp
+    include/util/suit_iso.hpp
+    include/util/thread_join_guard.hpp
 )
 
-file(GLOB_RECURSE TEXASSOLVER_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+set(TEXASSOLVER_SOURCES
+    src/core/arena.cpp
+    src/core/canonical_combo.cpp
+    src/games/hunl.cpp
+    src/games/hunl_eval.cpp
+    src/games/hunl_flat_builder.cpp
+    src/games/hunl_flat_graph.cpp
+    src/games/hunl_solver.cpp
+    src/games/hunl_tree.cpp
+    src/games/kuhn.cpp
+    src/games/leduc.cpp
+    src/games/multiway_fixed.cpp
+    src/games/multiway_private.cpp
+    src/games/multiway_replay.cpp
+    src/games/multiway_rules.cpp
+    src/games/multiway_state.cpp
+    src/games/multiway_terminal.cpp
+    src/preflop/preflop.cpp
+    src/preflop/preflop_equity.cpp
+    src/preflop/preflop_rvr.cpp
+    src/solver/dcfr_vector.cpp
+    src/solver/exploit.cpp
+    src/solver/hunl_bucket_map.cpp
+    src/solver/hunl_bucket_terminal.cpp
+    src/solver/hunl_flat_dcfr.cpp
+    src/solver/hunl_flat_expected_value.cpp
+    src/solver/hunl_flat_mccfr.cpp
+    src/solver/hunl_flat_pipeline.cpp
+    src/solver/hunl_flat_state.cpp
+    src/solver/hunl_sampled_builder.cpp
+    src/solver/hunl_sampled_config.cpp
+    src/solver/hunl_sampled_export.cpp
+    src/solver/hunl_sampled_profile.cpp
+    src/solver/hunl_sampled_range.cpp
+    src/solver/hunl_sampled_scheduler.cpp
+    src/solver/hunl_sampled_simd.cpp
+    src/solver/hunl_sampled_solver.cpp
+    src/solver/hunl_sampled_storage.cpp
+    src/solver/hunl_sampled_terminal.cpp
+    src/solver/hunl_sampled_traversal.cpp
+    src/solver/multiway_action_abstraction.cpp
+    src/solver/multiway_artifact.cpp
+    src/solver/multiway_baseline.cpp
+    src/solver/multiway_blueprint_config.cpp
+    src/solver/multiway_blueprint_policy_provider.cpp
+    src/solver/multiway_blueprint_store.cpp
+    src/solver/multiway_blueprint_trainer.cpp
+    src/solver/multiway_bucket_artifact.cpp
+    src/solver/multiway_bucket_model.cpp
+    src/solver/multiway_cfr.cpp
+    src/solver/multiway_checkpoint.cpp
+    src/solver/multiway_continuation_policy.cpp
+    src/solver/multiway_continuation_selector.cpp
+    src/solver/multiway_evaluation.cpp
+    src/solver/multiway_export.cpp
+    src/solver/multiway_future_bucket.cpp
+    src/solver/multiway_memory.cpp
+    src/solver/multiway_model_identity.cpp
+    src/solver/multiway_public_builder.cpp
+    src/solver/multiway_range_belief.cpp
+    src/solver/multiway_range_update.cpp
+    src/solver/multiway_resolver.cpp
+    src/solver/multiway_resolver_budget.cpp
+    src/solver/multiway_resolver_evaluation.cpp
+    src/solver/multiway_rollout_leaf.cpp
+    src/solver/multiway_runtime_session.cpp
+    src/solver/multiway_scheduler.cpp
+    src/solver/multiway_search_profile.cpp
+    src/solver/multiway_search_session.cpp
+    src/solver/multiway_solver.cpp
+    src/solver/multiway_terminal_adapter.cpp
+    src/solver/multiway_traversal.cpp
+    src/solver/parallel_dcfr.cpp
+    src/solver/solver.cpp
 )
 
-list(FILTER TEXASSOLVER_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
-if (NOT WIN32)
-    list(FILTER TEXASSOLVER_SOURCES EXCLUDE REGEX ".*/util/abstraction\\.cpp$")
+if (WIN32)
+    list(APPEND TEXASSOLVER_SOURCES src/util/abstraction.cpp)
 endif()
+
+list(APPEND TEXASSOLVER_SOURCES
+    src/util/infoset_registry.cpp
+    src/util/pcs.cpp
+    src/util/profiling.cpp
+    src/util/simd.cpp
+    src/util/suit_iso.cpp
+)
 
 set(_texas_saved_build_tests "${BUILD_TESTS}")
 set(_texas_saved_build_examples "${BUILD_EXAMPLES}")
