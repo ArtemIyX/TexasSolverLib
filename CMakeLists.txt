@@ -576,4 +576,10 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_legacy_namespace_boundary.cmake
     )
+    add_test(
+        NAME test_public_header_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_public_header_boundary.cmake
+    )
 endif()
