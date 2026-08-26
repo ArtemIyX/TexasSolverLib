@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/types.hpp"
+
 #include <array>
 #include <bitset>
 #include <cstddef>
