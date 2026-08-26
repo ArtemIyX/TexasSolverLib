@@ -521,7 +521,7 @@ int main(int argc, char* argv[]) {
 
     if (cfg.game == "kuhn") {
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return texas::lib::solve_kuhn(
+            return texas::core::lib::solve_kuhn(
                 cfg.iterations, alpha, beta, gamma, workers, cfg.frontier_multiplier);
         });
         return 0;
@@ -529,7 +529,7 @@ int main(int argc, char* argv[]) {
 
     if (cfg.game == "leduc") {
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return texas::lib::solve_leduc(
+            return texas::core::lib::solve_leduc(
                 cfg.iterations, alpha, beta, gamma, workers, cfg.frontier_multiplier);
         });
         return 0;
@@ -538,7 +538,7 @@ int main(int argc, char* argv[]) {
     if (cfg.game == "hunl") {
         const auto hunl_config = make_benchmark_hunl_config();
         run_benchmark_rows(cfg, [&](std::size_t workers) {
-            return texas::lib::solve_hunl_postflop(
+            return texas::core::lib::solve_hunl_postflop(
                 hunl_config,
                 cfg.iterations,
                 alpha,
