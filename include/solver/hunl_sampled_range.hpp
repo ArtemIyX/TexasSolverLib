@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "games/hunl_solver.hpp"
 #include "solver/hunl_sampled_config.hpp"
 #include "solver/hunl_sampled_export.hpp"

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "solver/hunl_flat_state.hpp"
 
 #include <cstddef>
