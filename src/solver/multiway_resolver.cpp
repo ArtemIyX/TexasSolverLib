@@ -460,9 +460,14 @@ RuntimeSearchOutcome run_search(
         auto budget_limits = config.runtime_limits.solver;
         // The live resolver root is indexed by canonical private hand. Its
         // dense row is intentionally larger than a continuation bucket row.
-        budget_limits.max_sparse_values = std::max(
-            budget_limits.max_sparse_values,
-            static_cast<std::size_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * menu.size());
+        const auto exact_root_values = saturating_multiply(
+            MULTIWAY_HOLE_COMBINATION_COUNT, menu.size());
+        const auto admitted_sparse_values = saturating_add(
+            budget_limits.max_sparse_values, exact_root_values);
+        budget_limits.max_sparse_values = admitted_sparse_values >
+                static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())
+            ? std::numeric_limits<std::size_t>::max()
+            : static_cast<std::size_t>(admitted_sparse_values);
         const auto memory_preflight = preflight_multiway_memory(
             budget_limits,
             config.runtime_limits.memory,

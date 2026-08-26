@@ -399,6 +399,29 @@ TEST_CASE(multiway_solver_live_root_uses_distinct_exact_private_hand_rows) {
     EXPECT_EQ(second_coordinator.export_root_policy().bucket, static_cast<std::uint32_t>(second_id));
 }
 
+TEST_CASE(multiway_solver_same_street_exact_descendants_cannot_raise_the_value_cap) {
+    auto root = valid_root();
+    root.root_uses_exact_private_hand = true;
+    auto limits = valid_limits();
+    limits.max_sparse_values = 1U;
+    texas::MultiwayCFRConfig cfr;
+    cfr.player_count = 2;
+    texas::MultiwaySolverCoordinator coordinator(
+        texas::MultiwaySolveRequest(root, cfr, limits));
+    coordinator.admit_infoset_row(root_row(
+        static_cast<std::uint32_t>(texas::MULTIWAY_HOLE_COMBINATION_COUNT)));
+
+    const auto child = checked_action_child_public_state();
+    coordinator.admit_public_state(child);
+    const texas::MultiwaySparseRowShape child_row = {
+        {child.id, child.betting.current_player},
+        static_cast<std::uint32_t>(texas::MULTIWAY_HOLE_COMBINATION_COUNT),
+        static_cast<std::uint8_t>(child.legal_actions.size()),
+    };
+    EXPECT_THROW(coordinator.admit_infoset_row(child_row), std::length_error);
+    EXPECT_EQ(coordinator.storage().row_count(), std::size_t{1U});
+}
+
 TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {
     texas::MultiwaySolverCoordinator coordinator(valid_request());
     const auto root_shape = root_row();

@@ -333,6 +333,20 @@ std::size_t checked_value_count(const MultiwaySparseRowShape& shape) {
     return static_cast<std::size_t>(shape.bucket_count) * actions;
 }
 
+std::size_t checked_sparse_value_capacity(const MultiwaySolveRequest& request) {
+    if (!request.root().root_uses_exact_private_hand) return request.limits().max_sparse_values;
+    const auto exact_root_values = checked_value_count({
+        request.root().root_infoset,
+        static_cast<std::uint32_t>(MULTIWAY_HOLE_COMBINATION_COUNT),
+        static_cast<std::uint8_t>(request.root().public_state.legal_actions.size()),
+    });
+    if (exact_root_values > std::numeric_limits<std::size_t>::max() -
+            request.limits().max_sparse_values) {
+        throw std::overflow_error("multiway sparse value capacity overflows size_t");
+    }
+    return exact_root_values + request.limits().max_sparse_values;
+}
+
 }  // namespace
 
 void MultiwayRootSnapshot::validate() const {
@@ -567,10 +581,6 @@ void MultiwaySparseRowStorage::admit_row(const MultiwaySparseRowShape& shape) {
     }
 }
 
-void MultiwaySparseRowStorage::allow_exact_root_capacity(std::size_t required_values) noexcept {
-    if (required_values > max_values_) max_values_ = required_values;
-}
-
 void MultiwaySparseRowStorage::apply_delta(
     MultiwayInfosetId infoset,
     std::uint32_t bucket,
@@ -627,12 +637,7 @@ MultiwaySolveResult::MultiwaySolveResult(
 
 MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest& request)
     : request_(request),
-      storage_(request.limits().max_sparse_rows,
-          request.root().root_uses_exact_private_hand
-              ? std::max(request.limits().max_sparse_values,
-                  static_cast<std::size_t>(MULTIWAY_HOLE_COMBINATION_COUNT) *
-                      request.root().public_state.legal_actions.size())
-              : request.limits().max_sparse_values) {
+      storage_(request.limits().max_sparse_rows, checked_sparse_value_capacity(request)) {
     public_states_.reserve(request.limits().max_public_states);
     merge_stream_views_.reserve(request.limits().worker_count);
     const auto merge_capacity = static_cast<std::size_t>(request.limits().worker_count) *
@@ -690,13 +695,6 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
     if (shape.infoset == request_.root().root_infoset &&
         request_.root().root_bucket >= shape.bucket_count) {
         throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
-    }
-    if (shape.bucket_count == MULTIWAY_HOLE_COMBINATION_COUNT) {
-        const auto row_values = checked_value_count(shape);
-        if (storage_.value_count() > std::numeric_limits<std::size_t>::max() - row_values) {
-            throw std::overflow_error("multiway exact private-hand row capacity overflows size_t");
-        }
-        storage_.allow_exact_root_capacity(storage_.value_count() + row_values);
     }
     const auto existed = storage_.has_row(shape.infoset);
     storage_.admit_row(shape);

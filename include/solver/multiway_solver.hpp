@@ -275,7 +275,6 @@ public:
 private:
     friend class MultiwaySolverCoordinator;
 
-    void allow_exact_root_capacity(std::size_t required_values) noexcept;
     void admit_row(const MultiwaySparseRowShape& shape);
     void apply_delta(
         MultiwayInfosetId infoset,
