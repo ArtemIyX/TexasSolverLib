@@ -478,7 +478,8 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             test_name STREQUAL "test_hunl_solver_storage_loader"))
             continue()
         endif()
-        if (test_name STREQUAL "test_hunl_sampled_solver")
+        if (test_name STREQUAL "test_hunl_sampled_solver" AND
+            NOT TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
             continue()
         endif()
 
@@ -507,6 +508,9 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         if (test_name STREQUAL "test_hunl_flat_mccfr" OR
             test_name STREQUAL "test_dcfr_discount_contract")
             target_link_libraries(${test_name} PRIVATE texas_hunl_flat_mccfr_research)
+        endif()
+        if (test_name STREQUAL "test_hunl_sampled_solver")
+            target_link_libraries(${test_name} PRIVATE texas_hunl_fixed_research)
         endif()
 
         add_test(NAME ${test_name} COMMAND ${test_name})
