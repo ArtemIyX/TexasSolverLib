@@ -1,6 +1,0 @@
-Change Dir: 'C:/Users/Alesja/repos/TexasSolverLib/build-ucrt64'
-
-Run Build Command(s): C:/msys64/ucrt64/bin/ninja.exe -v
-[0/2] C:\msys64\ucrt64\bin\cmake.exe -P C:\Users\Alesja\repos\TexasSolverLib\build-ucrt64\CMakeFiles\VerifyGlobs.cmake
-ninja: no work to do.
-
