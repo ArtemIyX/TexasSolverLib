@@ -13,7 +13,7 @@
 namespace texas::solver::multiway {
 
 inline constexpr std::uint32_t MULTIWAY_INVALID_BUCKET = 0xffffffffU;
-inline constexpr std::size_t MULTIWAY_HOLE_COMBINATION_COUNT = CANONICAL_HOLE_COMBINATION_COUNT;
+inline constexpr std::size_t MULTIWAY_HOLE_COMBINATION_COUNT = core::CANONICAL_HOLE_COMBINATION_COUNT;
 
 // Immutable bucket assignments for one canonical postflop board. Entries use
 // the fixed unordered-card index; board-blocked hands retain INVALID_BUCKET.
@@ -21,13 +21,13 @@ class MultiwayBucketTable {
 public:
     MultiwayBucketTable(
         MultiwayModelIdentity identity,
-        Street street,
+        core::Street street,
         std::vector<std::uint8_t> canonical_board,
         std::uint32_t bucket_count,
         std::vector<std::uint32_t> assignments);
 
     [[nodiscard]] const MultiwayModelIdentity& identity() const noexcept { return identity_; }
-    [[nodiscard]] Street street() const noexcept { return street_; }
+    [[nodiscard]] core::Street street() const noexcept { return street_; }
     [[nodiscard]] const std::vector<std::uint8_t>& canonical_board() const noexcept {
         return canonical_board_;
     }
@@ -44,7 +44,7 @@ public:
 
 private:
     MultiwayModelIdentity identity_{};
-    Street street_ = Street::Preflop;
+    core::Street street_ = core::Street::Preflop;
     std::vector<std::uint8_t> canonical_board_;
     std::uint32_t bucket_count_ = 0;
     std::uint64_t table_identity_ = 0U;
@@ -63,10 +63,10 @@ public:
     }
     // Cards are always compact deck indices in [0, 51].
     [[nodiscard]] const MultiwayBucketTable& table(
-        Street street,
+        core::Street street,
         const std::vector<std::uint8_t>& canonical_board) const;
     [[nodiscard]] std::uint32_t lookup(
-        Street street,
+        core::Street street,
         const std::vector<std::uint8_t>& canonical_board,
         const std::array<std::uint8_t, 2>& hole) const;
 

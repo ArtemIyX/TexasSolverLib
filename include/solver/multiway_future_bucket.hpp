@@ -26,11 +26,11 @@ struct MultiwayFutureBucketProfile {
     std::uint32_t river_bucket_count = 192U;
 
     void validate() const;
-    [[nodiscard]] std::uint32_t bucket_count(Street street) const;
+    [[nodiscard]] std::uint32_t bucket_count(core::Street street) const;
 };
 
 [[nodiscard]] MultiwayFutureBucketFeatures make_multiway_future_bucket_features(
-    Street street,
+    core::Street street,
     const std::vector<std::uint8_t>& canonical_board,
     const std::array<std::uint8_t, 2>& compact_hole,
     std::uint64_t feature_version = 1U);
@@ -44,7 +44,7 @@ public:
     [[nodiscard]] const MultiwayFutureBucketProfile& profile() const noexcept { return profile_; }
     [[nodiscard]] const MultiwayBucketRegistry& registry() const noexcept { return registry_; }
     [[nodiscard]] std::uint32_t lookup(
-        Street street, const std::vector<std::uint8_t>& board,
+        core::Street street, const std::vector<std::uint8_t>& board,
         const std::array<std::uint8_t, 2>& hole) const;
 
 private:

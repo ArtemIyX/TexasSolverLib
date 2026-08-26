@@ -8,6 +8,11 @@
 #include <utility>
 
 namespace texas::solver::multiway {
+
+using core::CanonicalComboId;
+using core::Street;
+using core::canonical_combos;
+using core::is_card_index;
 namespace {
 
 std::size_t expected_board_count(Street street) {

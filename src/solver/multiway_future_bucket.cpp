@@ -9,6 +9,9 @@
 #include <stdexcept>
 
 namespace texas::solver::multiway {
+
+using core::CanonicalComboId;
+using core::Street;
 namespace {
 
 constexpr std::array<std::uint8_t, 4U> kMagic = {'M', 'F', 'B', '1'};

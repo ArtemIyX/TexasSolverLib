@@ -22,7 +22,7 @@ struct MultiwayBucketBaselineProfile {
 
     [[nodiscard]] static MultiwayBucketBaselineProfile standard() noexcept;
     void validate() const;
-    [[nodiscard]] std::uint32_t bucket_count(Street street) const;
+    [[nodiscard]] std::uint32_t bucket_count(core::Street street) const;
 };
 
 // Compact, allocation-free features calculated for a live hole pair on a
@@ -40,25 +40,25 @@ struct MultiwayBucketFeatures {
 };
 
 struct MultiwayBucketBoardRequest {
-    Street street = Street::Preflop;
+    core::Street street = core::Street::Preflop;
     std::vector<std::uint8_t> canonical_board;
 };
 
 [[nodiscard]] bool is_multiway_canonical_board(
-    Street street,
+    core::Street street,
     const std::vector<std::uint8_t>& board) noexcept;
 [[nodiscard]] MultiwayBucketFeatures make_multiway_bucket_features(
-    Street street,
+    core::Street street,
     const std::vector<std::uint8_t>& canonical_board,
     const std::array<std::uint8_t, 2>& hole);
 [[nodiscard]] std::uint32_t assign_multiway_baseline_bucket(
     const MultiwayBucketFeatures& features,
     const MultiwayBucketBaselineProfile& profile,
-    Street street);
+    core::Street street);
 
 [[nodiscard]] MultiwayBucketTable build_multiway_baseline_bucket_table(
     const MultiwayModelIdentity& identity,
-    Street street,
+    core::Street street,
     std::vector<std::uint8_t> canonical_board,
     const MultiwayBucketBaselineProfile& profile = MultiwayBucketBaselineProfile::standard());
 [[nodiscard]] MultiwayBucketRegistry build_multiway_baseline_bucket_registry(

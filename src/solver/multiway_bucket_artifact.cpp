@@ -8,6 +8,10 @@
 #include <utility>
 
 namespace texas::solver::multiway {
+
+using core::CanonicalComboId;
+using core::Street;
+using core::is_card_index;
 namespace {
 
 constexpr std::uint8_t kMagic[] = {'M', 'W', 'B', 'K'};
