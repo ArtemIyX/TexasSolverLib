@@ -16,7 +16,7 @@ struct MultiwayBlueprintConfig {
     int small_blind_chips = 50;
     int big_blind_chips = 100;
     int ante_chips = 0;
-    MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
+    games::multiway::MultiwayRakePolicy rake_policy = games::multiway::MultiwayRakePolicy::explicit_zero();
 
     std::uint32_t flop_bucket_count = 96;
     std::uint32_t turn_bucket_count = 128;

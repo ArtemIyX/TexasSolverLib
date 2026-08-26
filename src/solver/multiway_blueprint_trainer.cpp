@@ -142,7 +142,7 @@ MultiwayModelIdentity MultiwayBlueprintTrainingConfig::identity() const {
     append_u64(runtime_hash, max_decision_depth);
     append_u64(runtime_hash, max_public_chance_depth);
     append_u64(runtime_hash, cfr.player_count);
-    append_u64(runtime_hash, cfr.update_both_players ? 1U : 0U);
+    append_u64(runtime_hash, cfr.deterministic_trajectory_merges ? 1U : 0U);
     append_u64(runtime_hash, limits.worker_count);
     append_u64(runtime_hash, limits.trajectories_per_batch);
     append_u64(runtime_hash, limits.max_public_states);
