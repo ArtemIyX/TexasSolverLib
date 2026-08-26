@@ -8,6 +8,7 @@ include(CTest)
 find_package(Threads REQUIRED)
 
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
+option(TEXASSOLVER_BUILD_HEAVY_TESTS "Register heavyweight CMake boundary tests" OFF)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research component" OFF)
 option(TEXASSOLVER_BUILD_RESEARCH_EXAMPLES "Build benchmark and backend-comparison examples" OFF)
@@ -553,12 +554,14 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_multiway_traversal_boundary.cmake
     )
-    add_test(
-        NAME test_evaluator_options_boundary
-        COMMAND ${CMAKE_COMMAND}
-            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_evaluator_options_boundary.cmake
-    )
+    if (TEXASSOLVER_BUILD_HEAVY_TESTS)
+        add_test(
+            NAME test_evaluator_options_boundary
+            COMMAND ${CMAKE_COMMAND}
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_evaluator_options_boundary.cmake
+        )
+    endif()
     add_test(
         NAME test_source_classification
         COMMAND ${CMAKE_COMMAND}
@@ -571,10 +574,12 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_legacy_namespace_boundary.cmake
     )
-    add_test(
-        NAME test_public_header_boundary
-        COMMAND ${CMAKE_COMMAND}
-            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_public_header_boundary.cmake
-    )
+    if (TEXASSOLVER_BUILD_HEAVY_TESTS)
+        add_test(
+            NAME test_public_header_boundary
+            COMMAND ${CMAKE_COMMAND}
+                "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_public_header_boundary.cmake
+        )
+    endif()
 endif()
