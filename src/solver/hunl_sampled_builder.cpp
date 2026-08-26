@@ -130,7 +130,6 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
     const auto state = states_.at(node_id);
     const auto edge_begin = static_cast<std::uint32_t>(edges_.size());
     std::uint16_t edge_count = 0;
-    bool chance_isomorphic = false;
 
     if (current_snapshot.type == HUNLFlatNodeType::Chance) {
         const auto outcomes = state.chance_outcomes();
@@ -141,7 +140,6 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
         // Public-board suit symmetry alone is insufficient: fixed holes and
         // asymmetric ranges can change blockers, buckets, and reach. Until the
         // relative suit permutation is carried through private state, always
-        // retain the complete chance expansion, even if the legacy flag is set.
         for (const auto& outcome : outcomes) {
             const auto child = find_or_create(state.apply(outcome.action));
             edges_.push_back(HUNLSampledEdge{
@@ -155,7 +153,6 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
         auto& updated = nodes_.at(node_id);
         updated.edge_begin = edge_begin;
         updated.edge_count = edge_count;
-        updated.chance_isomorphic = chance_isomorphic;
         updated.expanded = true;
         return;
     }
@@ -178,7 +175,6 @@ void HUNLSampledBuilder::ensure_expanded(std::uint32_t node_id) {
     auto& updated = nodes_.at(node_id);
     updated.edge_begin = edge_begin;
     updated.edge_count = edge_count;
-    updated.chance_isomorphic = false;
     updated.expanded = true;
 }
 

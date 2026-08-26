@@ -82,7 +82,6 @@ struct HUNLSampledNode {
     std::uint32_t edge_begin = 0;
     std::uint16_t edge_count = 0;
     bool expanded = false;
-    bool chance_isomorphic = false;
 };
 
 struct HUNLSampledBuilderMemoryEstimate {

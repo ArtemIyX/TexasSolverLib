@@ -441,7 +441,6 @@ TEST_CASE(hunl_sampled_builder_public_chance_isomorphism_is_disabled_for_private
     EXPECT_TRUE(raw_outcomes > 0U);
     EXPECT_EQ(raw_builder.node(raw_root).edge_count, raw_outcomes);
     EXPECT_EQ(requested_builder.node(requested_root).edge_count, raw_outcomes);
-    EXPECT_TRUE(!requested_builder.node(requested_root).chance_isomorphic);
     EXPECT_EQ(requested_builder.node(requested_root).edge_count, raw_builder.node(raw_root).edge_count);
 }
 
@@ -1244,7 +1243,6 @@ TEST_CASE(hunl_sampled_external_traversal_samples_chance_edges_by_probability) {
     EXPECT_TRUE(root.edge_count > 1U);
     // Public-board symmetry is intentionally disabled until private-state
     // suit remapping is implemented; all chance outcomes remain explicit.
-    EXPECT_TRUE(!root.chance_isomorphic);
 
     bool probabilities_are_uniform = true;
     const auto first_probability = builder.edge(root.edge_begin).probability;
