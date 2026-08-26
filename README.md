@@ -39,7 +39,7 @@ The repository includes `external/pokerHandEvaluator` as a Git submodule. The to
 ### Configure
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON
 ```
 
 ### Build
@@ -70,7 +70,7 @@ This installs:
 - the library archive / import library under `<prefix>/lib` or the platform equivalent
 - CMake package files under `<prefix>/lib/cmake/TexasSolver`
 
-The vendored PokerHandEvaluator is a required library dependency. Tests and examples are disabled by default for consumers; enable `TEXASSOLVER_BUILD_TESTS` or `TEXASSOLVER_BUILD_EXAMPLES` when developing from the repository.
+The vendored PokerHandEvaluator is a required library dependency. Tests and examples are disabled by default for consumers. CTest entries are created only when both `BUILD_TESTING` and `TEXASSOLVER_BUILD_TESTS` are enabled.
 
 ## Use as a submodule
 

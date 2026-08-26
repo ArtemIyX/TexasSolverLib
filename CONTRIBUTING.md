@@ -72,7 +72,7 @@ Avoid reintroducing the old nested `include/core/...` or `src/core/...` style.
 From the repository root:
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON
 cmake --build build --config Release
 ```
 
@@ -82,7 +82,7 @@ The top-level CMake project adds `external/pokerHandEvaluator/cpp` as a subdirec
 
 ## Testing
 
-Run the test suite with:
+Run the test suite with `BUILD_TESTING` and `TEXASSOLVER_BUILD_TESTS` enabled:
 
 ```bash
 ctest --test-dir build -C Release --output-on-failure

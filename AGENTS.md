@@ -39,7 +39,7 @@ DO NOT RUN BUILD or test commands unless the user explicitly asks.
 When asked to test, typical commands from `README.md` are:
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON
 cmake --build build --config Debug -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"
 ctest --test-dir build -C Debug --output-on-failure
 ```
