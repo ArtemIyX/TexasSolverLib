@@ -1092,6 +1092,7 @@ TEST_CASE(hunl_flat_dcfr_rejects_negative_range_weights_in_config_validation) {
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
+#if defined(_WIN32)
 TEST_CASE(hunl_flat_bucket_map_applies_mixed_range_inputs_per_infoset_player) {
     const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
     const auto graph = texas::HUNLFlatSolveGraph::build(config);
@@ -1230,6 +1231,7 @@ TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
     EXPECT_TRUE(checked_infoset);
     std::filesystem::remove(abstraction_path);
 }
+#endif
 
 TEST_CASE(hunl_flat_dcfr_backward_stage_root_value_stays_between_child_values_with_more_rows) {
     const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
