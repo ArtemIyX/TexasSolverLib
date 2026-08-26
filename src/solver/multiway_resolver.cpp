@@ -365,6 +365,7 @@ bool make_search_root(
     // private-hand id so blockers and draws cannot share regrets.
     root->root_bucket = static_cast<std::uint32_t>(
         MultiwayBucketTable::hole_index(request.hero_cards));
+    root->root_uses_exact_private_hand = true;
     root->seat_order.clear();
     root->seat_order.reserve(seat_count);
     for (std::size_t seat = 0U; seat < seat_count; ++seat) {
@@ -456,10 +457,16 @@ RuntimeSearchOutcome run_search(
     std::vector<MultiwayResolverActionProbability>* policy,
     MultiwayResolverDiagnostics* diagnostics) {
     try {
+        auto budget_limits = config.runtime_limits.solver;
+        // The live resolver root is indexed by canonical private hand. Its
+        // dense row is intentionally larger than a continuation bucket row.
+        budget_limits.max_sparse_values = std::max(
+            budget_limits.max_sparse_values,
+            static_cast<std::size_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * menu.size());
         const auto memory_preflight = preflight_multiway_memory(
-            config.runtime_limits.solver,
+            budget_limits,
             config.runtime_limits.memory,
-            search_memory_inputs(request, state, menu.size(), config, config.runtime_limits.solver));
+            search_memory_inputs(request, state, menu.size(), config, budget_limits));
         record_memory_preflight(memory_preflight, diagnostics);
         if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
             return RuntimeSearchOutcome::MemoryRejected;
@@ -522,8 +529,8 @@ RuntimeSearchOutcome run_search(
             config.runtime_limits.deadline_reserve,
             config.runtime_limits.solver.max_batches,
             config.runtime_limits.solver.trajectories_per_batch,
-            config.runtime_limits.solver.max_sparse_rows,
-            config.runtime_limits.solver.max_sparse_values,
+            budget_limits.max_sparse_rows,
+            budget_limits.max_sparse_values,
         });
         std::uint64_t first_trajectory = 0U;
         for (std::uint32_t batch = 0U; batch < config.runtime_limits.solver.max_batches; ++batch) {

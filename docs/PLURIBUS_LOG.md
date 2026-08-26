@@ -4,6 +4,32 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Error-log multiway admission and resolver remediation
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Added explicit exact-private-hand root metadata so resolver roots do not use continuation bucket validation.
+- Accounted for exact root storage in resolver memory and sparse-value budgets.
+- Preserved bucketed continuation rows and made sparse-row allocation rollback-safe.
+
+### Files
+
+- `include/solver/multiway_solver.hpp`
+- `src/solver/multiway_solver.cpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_search_session.cpp`
+- `src/solver/multiway_traversal.cpp`
+
+### Validation
+
+- `git diff --check` completed successfully.
+- Builds and tests were not run per repository instructions.
+
+### Limitations
+
+- The listed regression suite remains unexecuted.
+
 ## Pluribus audit round 1 remediation
 
 **Status:** Complete

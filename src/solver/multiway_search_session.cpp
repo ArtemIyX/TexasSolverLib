@@ -48,7 +48,8 @@ void MultiwaySearchSession::validate_dependencies() const {
     }
     const auto& table = buckets_->table(
         root.public_state.betting.street, root.public_state.board);
-    if (root.root_bucket >= MULTIWAY_HOLE_COMBINATION_COUNT) {
+    if ((!root.root_uses_exact_private_hand && root.root_bucket >= table.bucket_count()) ||
+        (root.root_uses_exact_private_hand && root.root_bucket >= MULTIWAY_HOLE_COMBINATION_COUNT)) {
         throw std::invalid_argument("multiway search session root bucket is unavailable");
     }
 }
@@ -189,7 +190,8 @@ MultiwaySearchSessionHeroPolicy MultiwaySearchSession::export_hero_policy(
         const auto combo = static_cast<CanonicalComboId>(value);
         if (!actual_view.legal(combo) || actual_view.weight(combo) <= 0.0) continue;
         std::uint32_t bucket = root.root_bucket;
-        if (root.public_state.betting.street != Street::Preflop) {
+        if (root.public_state.betting.street != Street::Preflop &&
+            !root.root_uses_exact_private_hand) {
             bucket = buckets_->table(root.public_state.betting.street, root.public_state.board)
                 .lookup(combos.cards(combo));
         }

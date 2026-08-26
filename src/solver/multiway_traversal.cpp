@@ -314,7 +314,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
         coordinator_->admit_infoset_row({
             infoset,
-            state.id == root_->public_state.id
+            state.id == root_->public_state.id && root_->root_uses_exact_private_hand
                 ? static_cast<std::uint32_t>(MULTIWAY_HOLE_COMBINATION_COUNT)
                 : table.bucket_count(),
             static_cast<std::uint8_t>(action_count),

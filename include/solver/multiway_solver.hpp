@@ -146,6 +146,8 @@ struct MultiwayRootSnapshot {
     MultiwayPublicStateDescriptor public_state;
     MultiwayInfosetId root_infoset{};
     std::uint32_t root_bucket = 0;
+    // Resolver roots use the canonical private-hand id instead of a model bucket.
+    bool root_uses_exact_private_hand = false;
     std::vector<core::PlayerId> seat_order;
     // First actionable seat after a non-runout street transition.  This makes
     // future transition ownership deterministic instead of caller-selected.
@@ -273,6 +275,7 @@ public:
 private:
     friend class MultiwaySolverCoordinator;
 
+    void allow_exact_root_capacity(std::size_t required_values) noexcept;
     void admit_row(const MultiwaySparseRowShape& shape);
     void apply_delta(
         MultiwayInfosetId infoset,
