@@ -167,6 +167,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway_resolver.cpp
     src/solver/multiway_resolver_budget.cpp
     src/solver/multiway_resolver_evaluation.cpp
+    src/solver/multiway_resolver_policy.cpp
     src/solver/multiway_rollout_leaf.cpp
     src/solver/multiway_decision_session.cpp
     src/solver/multiway_scheduler.cpp
