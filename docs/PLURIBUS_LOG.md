@@ -4,6 +4,76 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## HUNL Flat DCFR NPZ CRC mismatch repair
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Corrected the HUNL Flat DCFR fixture to retain the full 32-bit CRC-32 state.
+- Added local-header and central-directory metadata consistency validation.
+- Added entry names and expected/calculated values to CRC mismatch diagnostics.
+
+### Files
+
+- `src/util/abstraction.cpp`
+- `tests/test_hunl_flat_dcfr.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static diff and whitespace checks completed.
+- Build and tests were not run because they were not requested.
+
+### Limitations
+
+- No runtime validation was performed.
+
+## Sampled boundary classification check repair
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Scoped the sampled boundary check to the installed public-header list.
+- Preserved research-only sampled headers without treating their classification as installation.
+
+### Files
+
+- `tests/cmake/test_hunl_sampled_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static diff and whitespace checks completed.
+- Build and tests were not run because they were not requested.
+
+### Limitations
+
+- No runtime validation was performed.
+
+## HUNL Flat DCFR NPZ CRC mismatch analysis
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Documented the fixture-side CRC-32 truncation that prevents HUNL bucket-map
+  range tests from reaching production range logic.
+- Recorded production-side integrity-preserving remediation steps.
+
+### Files
+
+- `docs/hunl_flat_dcfr_crc_mismatch_analysis.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source-path and CRC implementation review completed.
+- Build and tests were not run because they were not requested.
+
+### Limitations
+
+- The malformed fixture remains unchanged; the documented direct repair is a
+  separate test change.
+
 ## Test failure repair plan
 
 **Status:** Complete

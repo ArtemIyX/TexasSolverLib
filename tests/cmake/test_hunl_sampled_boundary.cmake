@@ -16,9 +16,10 @@ endif()
 if (CONFIG_HEADER MATCHES "max_cached_public_states|bucket_count_hint|depth_limit_plies_hint|use_public_chance_isomorphism")
     message(FATAL_ERROR "production sampled config still exposes inactive fixed-engine hints")
 endif()
-if (PROJECT_CMAKE MATCHES "include/solver/hunl_sampled_builder.hpp" OR
-    PROJECT_CMAKE MATCHES "include/solver/hunl_sampled_terminal.hpp" OR
-    PROJECT_CMAKE MATCHES "include/solver/hunl_sampled_traversal.hpp")
+string(REGEX MATCH "set\\(TEXASSOLVER_PUBLIC_HEADERS([^)]*)\\)" PUBLIC_HEADERS_BLOCK "${PROJECT_CMAKE}")
+if (PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl_sampled_builder.hpp" OR
+    PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl_sampled_terminal.hpp" OR
+    PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl_sampled_traversal.hpp")
     message(FATAL_ERROR "fixed-private sampled implementation remains an installed stable header")
 endif()
 if (NOT SOLVER_HEADER MATCHES "HUNLStructuredRootRequest structured_root")

@@ -178,6 +178,16 @@ std::vector<std::uint8_t> read_zip_entry(const std::string& zip, const ZipEntry&
     if (read_u32(p) != LOC_SIG) {
         throw std::runtime_error("npz local header corruption");
     }
+    const auto local_method = read_u16(p + 8);
+    const auto local_crc32 = read_u32(p + 14);
+    const auto local_compressed_size = read_u32(p + 18);
+    const auto local_uncompressed_size = read_u32(p + 22);
+    if (local_method != entry.method || local_crc32 != entry.crc32 ||
+        local_compressed_size != entry.compressed_size ||
+        local_uncompressed_size != entry.uncompressed_size) {
+        throw std::runtime_error("npz local and central directory metadata disagree for entry '" +
+                                 entry.name + "'");
+    }
     const auto name_len = read_u16(p + 26);
     const auto extra_len = read_u16(p + 28);
     const auto data_prefix = static_cast<std::size_t>(30U) + name_len + extra_len;
@@ -194,15 +204,21 @@ std::vector<std::uint8_t> read_zip_entry(const std::string& zip, const ZipEntry&
             throw std::runtime_error("npz stored entry size metadata is inconsistent");
         }
         std::vector<std::uint8_t> output(data, data + entry.uncompressed_size);
-        if (crc32_bytes(output.data(), output.size()) != entry.crc32) {
-            throw std::runtime_error("npz stored entry CRC mismatch");
+        const auto calculated_crc32 = crc32_bytes(output.data(), output.size());
+        if (calculated_crc32 != entry.crc32) {
+            throw std::runtime_error("npz stored entry CRC mismatch for entry '" + entry.name +
+                                     "' (expected " + std::to_string(entry.crc32) + ", calculated " +
+                                     std::to_string(calculated_crc32) + ")");
         }
         return output;
     }
     if (entry.method == 8) {
         auto output = decompress_deflate(data, entry.compressed_size, entry.uncompressed_size);
-        if (crc32_bytes(output.data(), output.size()) != entry.crc32) {
-            throw std::runtime_error("npz deflated entry CRC mismatch");
+        const auto calculated_crc32 = crc32_bytes(output.data(), output.size());
+        if (calculated_crc32 != entry.crc32) {
+            throw std::runtime_error("npz deflated entry CRC mismatch for entry '" + entry.name +
+                                     "' (expected " + std::to_string(entry.crc32) + ", calculated " +
+                                     std::to_string(calculated_crc32) + ")");
         }
         return output;
     }
