@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
 #include "core/poker.hpp"
 
 #include "games/multiway_rake.hpp"
