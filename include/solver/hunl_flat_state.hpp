@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_bucket_map.hpp"
 #include "util/aligned_allocator.hpp"
