@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "solver/multiway_resolver.hpp"
 
 #include <cstddef>

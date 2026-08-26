@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"

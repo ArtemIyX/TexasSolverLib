@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway_continuation_policy.hpp"
 
