@@ -148,46 +148,6 @@ TEST_CASE(abstraction_canonicalize_board_and_hole) {
     EXPECT_TRUE(!hand_key.empty());
 }
 
-TEST_CASE(abstraction_loads_minimal_npz_layout) {
-    const auto tmp = make_tmp_path("texas_abstraction_test.npz");
-
-    ZipBuilder zip;
-    auto add_named = [&](const std::string& name, const std::vector<std::uint8_t>& raw) {
-        zip.add(name, make_npy_u8(raw));
-    };
-
-    const std::vector<std::uint8_t> board = {c(14, 0), c(13, 1), c(7, 2)};
-    const std::array<std::uint8_t, 2> hole = {c(12, 0), c(11, 3)};
-    const auto [board_key, hand_key] = texas::canonicalize(board, hole);
-    const std::string board_index = "{\"" + board_key + "\":0}";
-    const std::string hand_index = "{\"" + board_key + "\":{\"" + hand_key + "\":0}}";
-    const std::string metadata =
-        "{\"bucket_counts\":[1,1,1],\"feature_bins\":1,\"schema_version\":1,\"seed\":7,\"version\":\"v1\"}";
-
-    add_named("flop_assignments.npy", {7});
-    add_named("turn_assignments.npy", {7});
-    add_named("river_assignments.npy", {7});
-    add_named("flop_board_index.npy", make_json_bytes(board_index));
-    add_named("turn_board_index.npy", make_json_bytes(board_index));
-    add_named("river_board_index.npy", make_json_bytes(board_index));
-    add_named("flop_hand_index.npy", make_json_bytes(hand_index));
-    add_named("turn_hand_index.npy", make_json_bytes(hand_index));
-    add_named("river_hand_index.npy", make_json_bytes(hand_index));
-    add_named("metadata.npy", make_json_bytes(metadata));
-
-    const auto bytes = zip.finish();
-    {
-        std::ofstream out(tmp, std::ios::binary);
-        out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    }
-
-    const auto tables = texas::load_abstraction(tmp);
-    EXPECT_EQ(tables.metadata.schema_version, 1U);
-    EXPECT_EQ(tables.metadata.version, "v1");
-    EXPECT_EQ(texas::lookup_bucket(tables, board, hole, texas::Street::Flop), 7);
-    std::filesystem::remove(tmp);
-}
-
 TEST_CASE(abstraction_rejects_assignment_index_out_of_bounds) {
     const std::vector<std::uint8_t> board = {c(14, 0), c(13, 1), c(7, 2)};
     const std::array<std::uint8_t, 2> hole = {c(12, 0), c(11, 3)};

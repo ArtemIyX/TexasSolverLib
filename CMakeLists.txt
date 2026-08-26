@@ -473,7 +473,6 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             continue()
         endif()
         if (NOT WIN32 AND (
-            test_name STREQUAL "test_abstraction" OR
             test_name STREQUAL "test_abstraction_loader" OR
             test_name STREQUAL "test_hunl_flat_dcfr" OR
             test_name STREQUAL "test_hunl_solver_storage_loader"))
