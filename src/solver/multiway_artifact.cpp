@@ -423,6 +423,16 @@ void MultiwayPublicDecisionLog::validate() const {
          resolver_status != MultiwayResolverStatus::RejectedByBudget)) {
         throw std::invalid_argument("multiway public decision log has invalid metadata");
     }
+    const bool runtime_search = policy_provenance == MultiwayPolicyProvenance::RuntimeSearch;
+    const bool fallback = policy_provenance == MultiwayPolicyProvenance::StableRootFallback ||
+        policy_provenance == MultiwayPolicyProvenance::BlueprintFallback ||
+        policy_provenance == MultiwayPolicyProvenance::StaticLegalFallback;
+    if ((runtime_search && (search_engine != MultiwayResolverEngine::RootExternalSamplingMCCFR ||
+                            search_engine_version != MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION)) ||
+        (fallback && (search_engine != MultiwayResolverEngine::NoRuntimeSearch ||
+                      search_engine_version != MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION))) {
+        throw std::invalid_argument("multiway public decision log has inconsistent provenance");
+    }
     std::uint64_t total = 0;
     bool found_sample = false;
     for (std::size_t index = 0; index < policy.size(); ++index) {

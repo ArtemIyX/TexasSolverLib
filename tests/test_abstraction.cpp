@@ -19,7 +19,7 @@ std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b) {
     for (int i = 0; i < 8; ++i) {
         crc = (crc & 1U) ? (0xEDB88320U ^ (crc >> 1U)) : (crc >> 1U);
     }
-    return static_cast<std::uint16_t>(crc);
+    return crc;
 }
 
 std::uint32_t crc32(const std::vector<std::uint8_t>& data) {
@@ -28,6 +28,11 @@ std::uint32_t crc32(const std::vector<std::uint8_t>& data) {
         crc = crc32_byte(crc, b);
     }
     return ~crc;
+}
+
+TEST_CASE(abstraction_fixture_crc32_preserves_full_width_values) {
+    const std::vector<std::uint8_t> data = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+    EXPECT_EQ(crc32(data), 0xCBF43926U);
 }
 
 void append_u16(std::vector<std::uint8_t>& out, std::uint16_t v) {

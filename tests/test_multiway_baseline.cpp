@@ -3,6 +3,7 @@
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_blueprint_config.hpp"
 #include "solver/multiway_public_builder.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -12,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace {
 
@@ -46,6 +48,10 @@ struct ResolverBaselineFixture {
         request.hero_seat = 0;
         request.hero_cards = {24U, 31U};
         request.hero_range = {{{24U, 31U}, 1.0}};
+        request.opponent_ranges = {
+            {1, {{{36U, 37U}, 1.0}}},
+            {2, {{{40U, 41U}, 1.0}}},
+        };
         request.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         request.sampling_seed = 73U;
         return request;
@@ -54,6 +60,16 @@ struct ResolverBaselineFixture {
     texas::MultiwayResolverConfig resolver_config() const {
         texas::MultiwayResolverConfig config;
         config.buckets = &buckets;
+        config.search_mode = texas::MultiwayResolverSearchMode::SearchActive;
+        config.continuation_selector = std::make_shared<texas::MultiwayFixedContinuationSelector>(
+            texas::MultiwayContinuationPolicyKind::Blueprint);
+        static const texas::MultiwayLeafEvaluator evaluator = {
+            [](const texas::MultiwayLeafEvaluationRequest& request, const void*) noexcept -> texas::Value {
+                const auto seat = static_cast<std::size_t>(request.traverser);
+                return static_cast<texas::Value>(
+                    request.betting->contributions[seat] - request.betting->current_bet);
+            }, nullptr};
+        config.leaf_evaluator = &evaluator;
         config.runtime_limits.solver.max_batches = 2U;
         config.runtime_limits.solver.trajectories_per_batch = 5U;
         return config;

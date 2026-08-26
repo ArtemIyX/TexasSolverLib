@@ -106,7 +106,9 @@ TEST_CASE(multiway_stable_root_policy_cache_is_host_owned_and_menu_scoped) {
     ResolverFixture fixture;
     auto cache = std::make_shared<texas::MultiwayStableRootPolicyCache>();
     const auto& menu = fixture.root.legal_actions;
-    std::vector<texas::MultiwayResolverActionProbability> stored = {{menu.front(), 1.0}};
+    std::vector<texas::MultiwayResolverActionProbability> stored;
+    stored.reserve(menu.size());
+    for (const auto& action : menu) stored.push_back({action, 1.0 / menu.size()});
     cache->store(fixture.identity, fixture.root.id.value, stored);
 
     std::vector<texas::MultiwayResolverActionProbability> loaded;
@@ -117,6 +119,11 @@ TEST_CASE(multiway_stable_root_policy_cache_is_host_owned_and_menu_scoped) {
     auto changed_menu = menu;
     changed_menu.front().target_street_contribution += 1;
     EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, changed_menu, &loaded));
+
+    auto incomplete = stored;
+    incomplete.pop_back();
+    cache->store(fixture.identity, fixture.root.id.value, incomplete);
+    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, menu, &loaded));
 }
 
 texas::MultiwayVerifiedBlueprintArtifact verified_root_artifact(const ResolverFixture& fixture) {

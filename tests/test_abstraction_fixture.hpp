@@ -23,7 +23,7 @@ inline std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b) {
     for (int i = 0; i < 8; ++i) {
         crc = (crc & 1U) ? (0xEDB88320U ^ (crc >> 1U)) : (crc >> 1U);
     }
-    return static_cast<std::uint16_t>(crc);
+    return crc;
 }
 
 inline std::uint32_t crc32(const std::vector<std::uint8_t>& data) {

@@ -753,14 +753,16 @@ TEST_CASE(ranges_structured_live_root_accepts_an_off_tree_facing_bet_and_preserv
 }
 
 TEST_CASE(ranges_sampled_request_requires_a_structured_root_contract) {
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest invalid;
+    EXPECT_THROW(solver.run_batches(invalid, 0), std::invalid_argument);
+
     texas::HUNLStructuredRootRequest root;
     root.config = range_contract_config();
     root.blueprint_version = "blueprint-v1";
 
     texas::HUNLSampledSolveRequest request{root, nullptr};
-
-    texas::HUNLSampledSolver solver;
-    EXPECT_THROW(solver.run_batches(request, 0), std::invalid_argument);
+    EXPECT_EQ(solver.run_batches(request, 0).batches_completed, 0U);
 }
 
 TEST_CASE(ranges_uniform_policy_rejects_initial_ranges) {

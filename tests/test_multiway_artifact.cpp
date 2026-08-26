@@ -176,6 +176,7 @@ TEST_CASE(multiway_public_decision_log_redacts_private_resolver_inputs) {
     result.policy = {{result.sampled_action, 1.0}};
     result.diagnostics.status = texas::MultiwayResolverStatus::Solved;
     result.diagnostics.policy_provenance = texas::MultiwayPolicyProvenance::RuntimeSearch;
+    result.diagnostics.search_engine = texas::MultiwayResolverEngine::RootExternalSamplingMCCFR;
     result.diagnostics.search_engine_version = texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
     result.diagnostics.policy_normalized = true;
     result.diagnostics.resolved_public_state_id = 71U;
@@ -213,8 +214,8 @@ TEST_CASE(multiway_public_decision_log_accepts_forward_compatible_delivery_statu
     log.acting_seat = 0;
     log.sampled_action = expected.actions.front().action;
     log.policy_provenance = texas::MultiwayPolicyProvenance::StaticLegalFallback;
-    log.search_engine = texas::MultiwayResolverEngine::RootExternalSamplingMCCFR;
-    log.search_engine_version = texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
+    log.search_engine = texas::MultiwayResolverEngine::NoRuntimeSearch;
+    log.search_engine_version = texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION;
     log.used_fallback = true;
     log.policy = {{log.sampled_action, 65535U}};
 
@@ -280,10 +281,12 @@ TEST_CASE(multiway_atomic_publish_replaces_destination_without_leaving_temporary
 
     texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed");
 
-    std::ifstream published(destination, std::ios::binary);
     std::string value;
-    published >> value;
-    EXPECT_EQ(value, "new");
+    {
+        std::ifstream published(destination, std::ios::binary);
+        published >> value;
+        EXPECT_EQ(value, "new");
+    }
     EXPECT_TRUE(!std::filesystem::exists(temporary));
     EXPECT_TRUE(!std::filesystem::exists(destination.string() + ".previous"));
     std::filesystem::remove(destination);
@@ -295,16 +298,18 @@ TEST_CASE(multiway_atomic_publish_replaces_destination_without_leaving_temporary
     EXPECT_THROW(
         texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed"),
         std::runtime_error);
-    std::ifstream restored(destination, std::ios::binary);
-    restored >> value;
-    EXPECT_EQ(value, "preserved");
+    {
+        std::ifstream restored(destination, std::ios::binary);
+        restored >> value;
+        EXPECT_EQ(value, "preserved");
+    }
     EXPECT_TRUE(!std::filesystem::exists(destination.string() + ".previous"));
     std::filesystem::remove(destination);
 }
 
-TEST_CASE(multiway_artifact_rejects_schema_v2_manifest_magic) {
+TEST_CASE(multiway_artifact_rejects_schema_v3_manifest_magic) {
     const auto expected = snapshot();
-    const auto path = artifact_path("schema_v2_manifest");
+    const auto path = artifact_path("schema_v3_manifest");
     const auto manifest = path.string() + ".manifest";
     texas::MultiwayBlueprintArtifacts::save_atomic(path, expected);
     {
@@ -312,12 +317,12 @@ TEST_CASE(multiway_artifact_rejects_schema_v2_manifest_magic) {
         std::array<char, 8> magic = {};
         in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
         EXPECT_TRUE(static_cast<bool>(in));
-        EXPECT_EQ(magic[7], '3');
+        EXPECT_EQ(magic[7], '4');
     }
     {
         std::fstream out(manifest, std::ios::binary | std::ios::in | std::ios::out);
         out.seekp(7);
-        out.put('2');
+        out.put('3');
     }
     EXPECT_THROW(texas::MultiwayBlueprintArtifacts::load_verified(path, expected.identity), std::runtime_error);
     std::filesystem::remove(path);

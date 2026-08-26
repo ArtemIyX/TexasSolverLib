@@ -4,6 +4,36 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Test failure repair plan
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Repaired CRC32 fixture generation and added a full-width CRC regression check.
+- Enforced public decision-log provenance and engine consistency.
+- Fixed Windows test stream lifetimes, manifest-version expectations, baseline runtime-search setup, bucket identity hashing, cache menu coverage, sampled-root contract coverage, and the sampled research-header classification.
+
+### Files
+
+- `CMakeLists.txt`
+- `src/solver/multiway_artifact.cpp`
+- `src/solver/multiway_blueprint_trainer.cpp`
+- `tests/test_abstraction.cpp`
+- `tests/test_abstraction_fixture.hpp`
+- `tests/test_multiway_artifact.cpp`
+- `tests/test_multiway_baseline.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `tests/test_ranges_solver_integration.cpp`
+
+### Validation
+
+- `git diff --check` completed.
+- Build and tests were not run per user instruction.
+
+### Limitations
+
+- Compiler and test confirmation remain deferred.
+
 ## Compile error namespace and resolver repair
 
 **Status:** Complete

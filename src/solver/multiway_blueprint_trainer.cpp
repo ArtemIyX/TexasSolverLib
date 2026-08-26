@@ -39,8 +39,11 @@ std::uint64_t hash_action_abstraction(const MultiwayActionAbstractionConfig& con
     return hash == 0U ? 1U : hash;
 }
 
-std::uint64_t hash_bucket_profile(const MultiwayBucketBaselineProfile& profile) noexcept {
+std::uint64_t hash_bucket_profile(
+    std::uint64_t bucket_model_version,
+    const MultiwayBucketBaselineProfile& profile) noexcept {
     auto hash = texas::core::fingerprint::FNV1A_OFFSET;
+    append_u64(hash, bucket_model_version);
     append_u64(hash, profile.schema_version);
     append_u64(hash, profile.feature_version);
     append_u64(hash, profile.flop_bucket_count);
@@ -136,7 +139,7 @@ MultiwayModelIdentity MultiwayBlueprintTrainingConfig::identity() const {
     validate();
     auto identity = make_multiway_model_identity(blueprint);
     identity.action_abstraction_hash = hash_action_abstraction(action_abstraction);
-    identity.bucket_model_hash = hash_bucket_profile(bucket_profile);
+    identity.bucket_model_hash = hash_bucket_profile(blueprint.bucket_model_version, bucket_profile);
     auto runtime_hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(runtime_hash, blueprint.runtime_search_schema_version);
     append_u64(runtime_hash, max_decision_depth);
