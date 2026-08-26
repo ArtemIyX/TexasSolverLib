@@ -483,7 +483,8 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             list(APPEND test_support_sources ${TEXASSOLVER_TEST_SUPPORT_SOURCES})
         endif()
         if (test_name STREQUAL "test_class169_solver_contract" OR
-            test_name STREQUAL "test_dcfr_discount_contract")
+            test_name STREQUAL "test_dcfr_discount_contract" OR
+            test_name STREQUAL "test_preflop_tree_action_contract")
             list(APPEND test_support_sources
                 ${TEXASSOLVER_LEGACY_RESEARCH_SOURCES})
         endif()
