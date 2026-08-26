@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "solver/multiway_continuation_policy_kind.hpp"
 #include "solver/multiway_solver.hpp"
 

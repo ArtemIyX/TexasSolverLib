@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_cfr.hpp"
 #include "solver/multiway_model_identity.hpp"
