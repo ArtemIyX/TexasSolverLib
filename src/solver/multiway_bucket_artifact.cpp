@@ -1,5 +1,7 @@
 #include "solver/multiway_bucket_artifact.hpp"
+#include "core/canonical_combo.hpp"
 #include "core/fingerprint.hpp"
+#include "core/poker.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -11,7 +13,10 @@ namespace texas::solver::multiway {
 
 using core::CanonicalComboId;
 using core::Street;
+using core::canonical_combos;
 using core::is_card_index;
+using core::rank_of;
+using core::suit_of;
 namespace {
 
 constexpr std::uint8_t kMagic[] = {'M', 'W', 'B', 'K'};

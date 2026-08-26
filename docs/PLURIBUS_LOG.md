@@ -4,6 +4,29 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Multiway bucket artifact compile-name fix
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Added direct poker and canonical-combo dependencies.
+- Restored explicit lookup for `canonical_combos`, `rank_of`, and `suit_of` in the multiway artifact implementation.
+- Preserved artifact behavior and avoided broad legacy namespace imports.
+
+### Files
+
+- `src/solver/multiway_bucket_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static diff review and `git diff --check` completed.
+- Build and tests were not run per repository instructions.
+
+### Limitations
+
+- Compiler and test confirmation remain deferred until explicitly authorized.
+
 ## CMake configure source-list fix
 
 **Status:** Complete
