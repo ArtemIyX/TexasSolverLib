@@ -270,6 +270,7 @@ public:
     [[nodiscard]] std::size_t prune_negative_regrets() noexcept;
     [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
     [[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
+    [[nodiscard]] std::size_t value_capacity_limit() const noexcept { return max_values_; }
     [[nodiscard]] const std::vector<MultiwaySparseRowMetadata>& rows() const noexcept { return metadata_; }
 
 private:

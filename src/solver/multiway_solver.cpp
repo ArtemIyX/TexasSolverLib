@@ -1,5 +1,6 @@
 #include "solver/multiway_solver.hpp"
 #include "core/fingerprint.hpp"
+#include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_public_builder.hpp"
 
@@ -335,16 +336,21 @@ std::size_t checked_value_count(const MultiwaySparseRowShape& shape) {
 
 std::size_t checked_sparse_value_capacity(const MultiwaySolveRequest& request) {
     if (!request.root().root_uses_exact_private_hand) return request.limits().max_sparse_values;
-    const auto exact_root_values = checked_value_count({
-        request.root().root_infoset,
-        static_cast<std::uint32_t>(MULTIWAY_HOLE_COMBINATION_COUNT),
-        static_cast<std::uint8_t>(request.root().public_state.legal_actions.size()),
-    });
-    if (exact_root_values > std::numeric_limits<std::size_t>::max() -
+    const auto exact_row_count = std::min(
+        request.limits().max_sparse_rows,
+        request.limits().max_public_states);
+    if (exact_row_count > std::numeric_limits<std::size_t>::max() /
+            MULTIWAY_HOLE_COMBINATION_COUNT /
+            MULTIWAY_MAX_ABSTRACTED_ACTIONS) {
+        throw std::overflow_error("multiway sparse value capacity overflows size_t");
+    }
+    const auto exact_values = exact_row_count * MULTIWAY_HOLE_COMBINATION_COUNT *
+        MULTIWAY_MAX_ABSTRACTED_ACTIONS;
+    if (exact_values > std::numeric_limits<std::size_t>::max() -
             request.limits().max_sparse_values) {
         throw std::overflow_error("multiway sparse value capacity overflows size_t");
     }
-    return exact_root_values + request.limits().max_sparse_values;
+    return exact_values + request.limits().max_sparse_values;
 }
 
 }  // namespace
