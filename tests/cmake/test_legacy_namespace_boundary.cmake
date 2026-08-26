@@ -3,7 +3,7 @@ if (NOT DEFINED SOURCE_DIR)
 endif()
 
 file(READ "${SOURCE_DIR}/CMakeLists.txt" project_cmake)
-if (project_cmake MATCHES "TEXASSOLVER_PUBLIC_HEADERS[\\s\\S]*legacy_namespace_compat")
+if (project_cmake MATCHES "set\\(TEXASSOLVER_PUBLIC_HEADERS[^)]*legacy_namespace_compat")
     message(FATAL_ERROR "legacy namespace compatibility is installed automatically")
 endif()
 if (NOT project_cmake MATCHES "TEXASSOLVER_COMPATIBILITY_HEADERS")
