@@ -4,6 +4,38 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Pluribus audit round 1 remediation
+
+**Status:** Complete
+**Completed:** 2026-08-26
+**Implementation commits:** `da61dcf`, `308b93b`, `28611f3`
+
+- Indexed live current-round root rows by exact canonical private-hand ID.
+- Rejected parallel rollout evaluation when its mutable context would be shared.
+- Added keyed continuation regret rows with deterministic regret-matched selection.
+- Added one focused regression test for each audit finding.
+
+### Files
+
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_search_session.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `include/solver/multiway_continuation_selector.hpp`
+- `src/solver/multiway_continuation_selector.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `tests/test_multiway_continuation_selector.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` completed for each commit.
+- Builds and tests were not run because the user explicitly prohibited them.
+
+### Limitations
+
+- Parallel rollout remains unsupported until worker-local context construction is added.
+
 ## HUNL Flat DCFR NPZ CRC mismatch repair
 
 **Status:** Complete
