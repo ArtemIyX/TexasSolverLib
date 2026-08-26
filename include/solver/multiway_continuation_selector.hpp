@@ -4,6 +4,8 @@
 #include "solver/multiway_solver.hpp"
 
 #include <cstdint>
+#include <array>
+#include <vector>
 
 namespace texas::solver::multiway {
 
@@ -32,8 +34,19 @@ public:
     [[nodiscard]] MultiwayContinuationPolicyKind select(
         const MultiwayContinuationSelectionKey& key) const noexcept;
 
+    // Installs the regret row for one abstract continuation information set.
+    // Rows are request-owned and remain private-card independent.
+    void set_regrets(
+        const MultiwayContinuationSelectionKey& key,
+        const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& regrets);
+
 private:
     MultiwayContinuationPolicyKind policy_ = MultiwayContinuationPolicyKind::Blueprint;
+    struct Row {
+        MultiwayContinuationSelectionKey key{};
+        std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> regrets{};
+    };
+    std::vector<Row> rows_;
 };
 
 }  // namespace texas::solver::multiway

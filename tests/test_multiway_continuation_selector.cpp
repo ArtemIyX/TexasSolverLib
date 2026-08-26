@@ -30,3 +30,20 @@ TEST_CASE(multiway_fixed_continuation_selector_rejects_invalid_public_keys) {
     EXPECT_EQ(selector.select(invalid), texas::MultiwayContinuationPolicyKind::Blueprint);
     EXPECT_TRUE(!invalid_selector.valid());
 }
+
+TEST_CASE(multiway_continuation_selector_regret_matches_each_information_set) {
+    texas::MultiwayFixedContinuationSelector selector(
+        texas::MultiwayContinuationPolicyKind::Blueprint);
+    const texas::MultiwayContinuationSelectionKey key = {
+        {29U}, 1, texas::Street::River, 7U, 3U, 9U,
+    };
+    const texas::MultiwayContinuationSelectionKey other = {
+        {30U}, 1, texas::Street::River, 7U, 3U, 9U,
+    };
+    selector.set_regrets(key, {0.0, 1.0, 4.0, 0.0});
+    selector.set_regrets(other, {0.0, 0.0, 0.0, 2.0});
+    EXPECT_EQ(selector.select(key), texas::MultiwayContinuationPolicyKind::CallBiased);
+    EXPECT_EQ(selector.select(other), texas::MultiwayContinuationPolicyKind::RaiseBiased);
+    EXPECT_EQ(selector.select({{31U}, 1, texas::Street::River, 7U, 3U, 9U}),
+        texas::MultiwayContinuationPolicyKind::Blueprint);
+}
