@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "core/canonical_combo.hpp"
 #include "solver/multiway_range_update.hpp"
 

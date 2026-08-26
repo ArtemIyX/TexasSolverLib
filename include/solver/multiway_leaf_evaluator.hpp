@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "core/types.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway_continuation_policy_kind.hpp"
