@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <array>
+#include <mutex>
 #include <vector>
 
 namespace texas::solver::multiway {
@@ -32,7 +33,19 @@ public:
 
     [[nodiscard]] bool valid() const noexcept;
     [[nodiscard]] MultiwayContinuationPolicyKind select(
-        const MultiwayContinuationSelectionKey& key) const noexcept;
+        const MultiwayContinuationSelectionKey& key) const;
+
+    // Returns the regret-matched policy mixture for one public continuation
+    // information set. Rows without positive regret use the configured prior.
+    [[nodiscard]] std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>
+    strategy(const MultiwayContinuationSelectionKey& key) const;
+
+    // Adds one complete continuation-policy value vector to the owning row.
+    // The update is serialized because traversal workers share this solver state.
+    void update_regrets(
+        const MultiwayContinuationSelectionKey& key,
+        const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& mixture,
+        const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& values) const;
 
     // Installs the regret row for one abstract continuation information set.
     // Rows are request-owned and remain private-card independent.
@@ -46,7 +59,8 @@ private:
         MultiwayContinuationSelectionKey key{};
         std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> regrets{};
     };
-    std::vector<Row> rows_;
+    mutable std::vector<Row> rows_;
+    mutable std::mutex mutex_;
 };
 
 }  // namespace texas::solver::multiway

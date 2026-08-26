@@ -246,20 +246,13 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
     const auto bucket = future_bucket_artifact_ != nullptr
         ? future_bucket_artifact_->lookup(state.betting.street, state.board, hole)
         : buckets_->lookup(state.betting.street, state.board, hole);
-    MultiwayContinuationPolicyKind policy = MultiwayContinuationPolicyKind::Blueprint;
-    if (continuation_selector_ != nullptr) {
-        policy = continuation_selector_->select({
-            state.id,
-            actor,
-            state.betting.street,
-            bucket,
-            root_->action_abstraction_version,
-            root_->leaf_model_version,
-        });
-    }
+    const MultiwayContinuationSelectionKey continuation_key = {
+        state.id, actor, state.betting.street, bucket,
+        root_->action_abstraction_version, root_->leaf_model_version,
+    };
     MultiwaySearchProfileScope profile_scope(
         context.profile, MultiwaySearchProfileStage::ContinuationLeaf);
-    const auto value = (*leaf_evaluator_)({
+    const MultiwayLeafEvaluationRequest request = {
         &state.betting,
         &state.board,
         context.traverser,
@@ -268,7 +261,7 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         bucket,
         root_->action_abstraction_version,
         root_->leaf_model_version,
-        policy,
+        MultiwayContinuationPolicyKind::Blueprint,
         context.deal,
         context.terminal,
         context.player_reaches.data(),
@@ -276,7 +269,27 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         range_context_identity(
             range_model_identity_, context.player_reaches.data(), context.player_count),
         private_deal_identity(*context.terminal, *context.deal, context.player_count),
-    });
+    };
+    if (continuation_selector_ == nullptr) {
+        const auto value = (*leaf_evaluator_)(request);
+        if (!std::isfinite(value)) {
+            throw std::logic_error("multiway leaf evaluator returned a non-finite value");
+        }
+        return value;
+    }
+    const auto mixture = continuation_selector_->strategy(continuation_key);
+    std::array<Value, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> values{};
+    Value value = 0.0;
+    for (std::size_t index = 0U; index < values.size(); ++index) {
+        auto policy_request = request;
+        policy_request.continuation_policy = MULTIWAY_FIXED_CONTINUATION_POLICIES[index];
+        values[index] = (*leaf_evaluator_)(policy_request);
+        if (!std::isfinite(values[index])) {
+            throw std::logic_error("multiway leaf evaluator returned a non-finite value");
+        }
+        value += mixture[index] * values[index];
+    }
+    continuation_selector_->update_regrets(continuation_key, mixture, values);
     if (!std::isfinite(value)) {
         throw std::logic_error("multiway leaf evaluator returned a non-finite value");
     }
@@ -303,9 +316,13 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         MultiwaySearchProfileScope profile_scope(
             context.profile, MultiwaySearchProfileStage::RowLookup);
         table_ptr = &buckets_->table(state.betting.street, state.board);
-        bucket = state.id == root_->public_state.id
-            ? root_->root_bucket
-            : table_ptr->lookup(context.terminal->sampled_hole(*context.deal, actor));
+        const auto same_root_street = state.betting.street == root_->public_state.betting.street;
+        bucket = root_->root_uses_exact_private_hand && same_root_street
+            ? static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(
+                context.terminal->sampled_hole(*context.deal, actor)))
+            : (state.id == root_->public_state.id
+                ? root_->root_bucket
+                : table_ptr->lookup(context.terminal->sampled_hole(*context.deal, actor)));
     }
     const auto& table = *table_ptr;
     const MultiwayInfosetId infoset = {state.id, actor};
@@ -314,7 +331,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
         coordinator_->admit_infoset_row({
             infoset,
-            state.id == root_->public_state.id && root_->root_uses_exact_private_hand
+            root_->root_uses_exact_private_hand &&
+                state.betting.street == root_->public_state.betting.street
                 ? static_cast<std::uint32_t>(MULTIWAY_HOLE_COMBINATION_COUNT)
                 : table.bucket_count(),
             static_cast<std::uint8_t>(action_count),

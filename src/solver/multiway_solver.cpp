@@ -691,9 +691,12 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
         request_.root().root_bucket >= shape.bucket_count) {
         throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
     }
-    if (shape.infoset == request_.root().root_infoset &&
-        shape.bucket_count == MULTIWAY_HOLE_COMBINATION_COUNT) {
-        storage_.allow_exact_root_capacity(checked_value_count(shape));
+    if (shape.bucket_count == MULTIWAY_HOLE_COMBINATION_COUNT) {
+        const auto row_values = checked_value_count(shape);
+        if (storage_.value_count() > std::numeric_limits<std::size_t>::max() - row_values) {
+            throw std::overflow_error("multiway exact private-hand row capacity overflows size_t");
+        }
+        storage_.allow_exact_root_capacity(storage_.value_count() + row_values);
     }
     const auto existed = storage_.has_row(shape.infoset);
     storage_.admit_row(shape);

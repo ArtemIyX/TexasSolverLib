@@ -4,6 +4,34 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Pluribus audit round 2 remediation
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Kept canonical private-hand rows for every decision on the root street.
+- Learned and regret-mixed all four continuation policies at typed leaf boundaries.
+- Extended exact-row capacity admission to same-street descendants.
+
+### Files
+
+- `include/solver/multiway_continuation_selector.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_continuation_selector.cpp`
+- `src/solver/multiway_solver.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_continuation_selector.cpp`
+- `tests/test_multiway_recursive_traversal.cpp`
+
+### Validation
+
+- `cmake --build build --config Debug --parallel -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"` passed.
+- `python .agents/skills/cpp-build-test-fixer/scripts/ctest_compact.py --build-dir build --configuration Debug` passed.
+
+### Limitations
+
+- Continuation-row updates are serialized while worker-local continuation delta merging is deferred.
+
 ## Error-log multiway admission and resolver remediation
 
 **Status:** Complete

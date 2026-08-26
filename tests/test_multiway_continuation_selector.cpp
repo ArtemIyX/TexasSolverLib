@@ -47,3 +47,20 @@ TEST_CASE(multiway_continuation_selector_regret_matches_each_information_set) {
     EXPECT_EQ(selector.select({{31U}, 1, texas::Street::River, 7U, 3U, 9U}),
         texas::MultiwayContinuationPolicyKind::Blueprint);
 }
+
+TEST_CASE(multiway_continuation_selector_learns_a_regret_matched_policy_mixture) {
+    texas::MultiwayFixedContinuationSelector selector(
+        texas::MultiwayContinuationPolicyKind::Blueprint);
+    const texas::MultiwayContinuationSelectionKey key = {
+        {41U}, 0, texas::Street::Turn, 2U, 3U, 9U,
+    };
+
+    selector.update_regrets(key, {1.0, 0.0, 0.0, 0.0}, {0.0, 1.0, 2.0, 3.0});
+    const auto mixture = selector.strategy(key);
+
+    EXPECT_NEAR(mixture[0], 0.0, 1e-12);
+    EXPECT_NEAR(mixture[1], 1.0 / 6.0, 1e-12);
+    EXPECT_NEAR(mixture[2], 1.0 / 3.0, 1e-12);
+    EXPECT_NEAR(mixture[3], 0.5, 1e-12);
+    EXPECT_EQ(selector.select(key), texas::MultiwayContinuationPolicyKind::RaiseBiased);
+}

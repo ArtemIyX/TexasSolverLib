@@ -47,7 +47,9 @@ std::vector<std::uint32_t> one_bucket_assignments(const std::vector<std::uint8_t
     return assignments;
 }
 
-texas::MultiwayRootSnapshot make_root(const texas::MultiwayActionAbstraction& abstraction) {
+texas::MultiwayRootSnapshot make_root(
+    const texas::MultiwayActionAbstraction& abstraction,
+    bool use_exact_private_hand = false) {
     texas::MultiwayGameConfig game;
     game.starting_stacks = {1000, 1000, 1000};
     game.initial_contributions = {0, 0, 0};
@@ -62,6 +64,11 @@ texas::MultiwayRootSnapshot make_root(const texas::MultiwayActionAbstraction& ab
         betting, kBoard, abstraction.make_legal_actions(betting));
     root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
+    root.root_uses_exact_private_hand = use_exact_private_hand;
+    if (use_exact_private_hand) {
+        root.root_bucket = static_cast<std::uint32_t>(
+            texas::MultiwayBucketTable::hole_index({card(14, 0), card(13, 0)}));
+    }
     root.seat_order = {0, 1, 2};
     root.next_street_first_seat = 0;
     root.odd_chip_first_seat = 0;
@@ -139,6 +146,12 @@ texas::Value deterministic_leaf(
         request.betting->contributions[traverser] - request.betting->current_bet);
 }
 
+texas::Value policy_value_leaf(
+    const texas::MultiwayLeafEvaluationRequest& request,
+    const void*) noexcept {
+    return static_cast<texas::Value>(request.continuation_policy);
+}
+
 struct ParallelRunnerFixture {
     explicit ParallelRunnerFixture(std::uint32_t worker_count)
         : root(make_root(abstraction)),
@@ -162,8 +175,9 @@ struct ParallelRunnerFixture {
 struct TraversalFixture {
     explicit TraversalFixture(
         std::uint32_t max_depth,
-        std::size_t delta_capacity = 128U)
-        : root(make_root(abstraction)),
+        std::size_t delta_capacity = 128U,
+        bool use_exact_private_hand = false)
+        : root(make_root(abstraction, use_exact_private_hand)),
           request(root, make_cfr(), make_limits(delta_capacity)),
           coordinator(request),
           buckets(make_buckets()),
@@ -253,11 +267,43 @@ TEST_CASE(multiway_recursive_traversal_selects_a_public_information_set_continua
     texas::MultiwayWorkerDeltaStream stream(0U, 128U);
 
     EXPECT_TRUE(fixture.traversal.run(0, 14U, 0x55U, stream));
-    EXPECT_EQ(fixture.probe.policies.size(), fixture.request.root().public_state.legal_actions.size());
+    EXPECT_EQ(fixture.probe.policies.size(),
+        fixture.request.root().public_state.legal_actions.size() *
+            texas::MULTIWAY_FIXED_CONTINUATION_POLICIES.size());
     EXPECT_EQ(fixture.probe.requests_with_private_context, fixture.probe.policies.size());
-    for (const auto policy : fixture.probe.policies) {
-        EXPECT_EQ(policy, texas::MultiwayContinuationPolicyKind::CallBiased);
+    for (std::size_t policy = 0U;
+         policy < texas::MULTIWAY_FIXED_CONTINUATION_POLICIES.size(); ++policy) {
+        std::size_t count = 0U;
+        for (const auto observed : fixture.probe.policies) {
+            if (observed == texas::MULTIWAY_FIXED_CONTINUATION_POLICIES[policy]) ++count;
+        }
+        EXPECT_EQ(count, fixture.request.root().public_state.legal_actions.size());
     }
+}
+
+TEST_CASE(multiway_recursive_traversal_mixes_and_learns_all_continuation_policies) {
+    TraversalFixture fixture(1U);
+    fixture.evaluator = {policy_value_leaf, nullptr};
+    texas::MultiwayFixedContinuationSelector selector(
+        texas::MultiwayContinuationPolicyKind::Blueprint);
+    fixture.traversal = texas::MultiwayRootExternalSamplingTraversal(
+        fixture.coordinator, fixture.request.root(), fixture.abstraction, fixture.buckets,
+        &fixture.evaluator, 1U, 0U, nullptr, &selector);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
+
+    EXPECT_TRUE(fixture.traversal.run(0, 15U, 0x66U, stream));
+    EXPECT_EQ(stream.size(), fixture.request.root().public_state.legal_actions.size());
+}
+
+TEST_CASE(multiway_recursive_traversal_keeps_exact_private_hand_ids_on_root_street) {
+    TraversalFixture fixture(2U, 128U, true);
+    texas::MultiwayWorkerDeltaStream stream(0U, 128U);
+
+    EXPECT_TRUE(fixture.traversal.run(1, 16U, 0x77U, stream));
+    const auto exact_bucket = static_cast<std::uint32_t>(
+        texas::MultiwayBucketTable::hole_index({card(12, 0), card(11, 0)}));
+    EXPECT_TRUE(stream.size() > 0U);
+    for (const auto& delta : stream.deltas()) EXPECT_EQ(delta.bucket, exact_bucket);
 }
 
 TEST_CASE(multiway_recursive_traversal_lazily_admits_sampled_opponent_children_and_rows) {
