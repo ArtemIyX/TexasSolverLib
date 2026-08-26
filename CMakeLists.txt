@@ -24,7 +24,6 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/canonical_combo.hpp
     include/core/game.hpp
     include/core/fingerprint.hpp
-    include/core/legacy_namespace_compat.hpp
     include/core/lib.hpp
     include/core/namespaces.hpp
     include/core/poker.hpp
@@ -112,6 +111,23 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/util/thread_join_guard.hpp
 )
 
+set(TEXASSOLVER_COMPATIBILITY_HEADERS
+    include/core/legacy_namespace_compat.hpp
+)
+set(TEXASSOLVER_STABLE_INTERNAL_HEADERS
+    include/solver/hunl_sampled_trajectory.hpp
+    include/solver/multiway_resolver_policy.hpp
+)
+set(TEXASSOLVER_RESEARCH_HEADERS
+    include/preflop/preflop_rvr.hpp
+    include/solver/dcfr_vector.hpp
+    include/solver/hunl_flat_mccfr.hpp
+    include/solver/hunl_sampled_builder.hpp
+    include/solver/hunl_sampled_terminal.hpp
+    include/solver/hunl_sampled_traversal.hpp
+    include/solver/multiway_baseline.hpp
+)
+
 set(TEXASSOLVER_SOURCES
     src/core/arena.cpp
     src/core/atomic_publish.cpp
@@ -184,6 +200,65 @@ set(TEXASSOLVER_SOURCES
     src/solver/parallel_dcfr.cpp
     src/solver/solver.cpp
 )
+
+set(TEXASSOLVER_PLATFORM_SOURCES
+    src/util/abstraction.cpp
+    src/util/abstraction_stub.cpp
+)
+set(TEXASSOLVER_TEST_SUPPORT_SOURCES
+    src/solver/multiway_baseline.cpp
+)
+set(TEXASSOLVER_LEGACY_RESEARCH_SOURCES
+    src/preflop/preflop_rvr.cpp
+    src/solver/dcfr_vector.cpp
+)
+set(TEXASSOLVER_FIXED_RESEARCH_SOURCES
+    src/solver/hunl_sampled_builder.cpp
+    src/solver/hunl_sampled_terminal.cpp
+    src/solver/hunl_sampled_traversal.cpp
+)
+set(TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES
+    src/solver/hunl_flat_mccfr.cpp
+)
+
+function(texassolver_verify_source_classification)
+    file(GLOB_RECURSE sources RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "src/*.cpp")
+    set(source_categories
+        TEXASSOLVER_SOURCES TEXASSOLVER_PLATFORM_SOURCES TEXASSOLVER_TEST_SUPPORT_SOURCES
+        TEXASSOLVER_LEGACY_RESEARCH_SOURCES TEXASSOLVER_FIXED_RESEARCH_SOURCES
+        TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES)
+    foreach(source IN LISTS sources)
+        set(matches 0)
+        foreach(category IN LISTS source_categories)
+            list(FIND ${category} "${source}" index)
+            if (NOT index EQUAL -1)
+                math(EXPR matches "${matches} + 1")
+            endif()
+        endforeach()
+        if (NOT matches EQUAL 1)
+            message(FATAL_ERROR "source classification requires exactly one category: ${source}")
+        endif()
+    endforeach()
+
+    file(GLOB_RECURSE headers RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "include/*.hpp")
+    set(header_categories
+        TEXASSOLVER_PUBLIC_HEADERS TEXASSOLVER_STABLE_INTERNAL_HEADERS
+        TEXASSOLVER_COMPATIBILITY_HEADERS TEXASSOLVER_RESEARCH_HEADERS)
+    foreach(header IN LISTS headers)
+        set(matches 0)
+        foreach(category IN LISTS header_categories)
+            list(FIND ${category} "${header}" index)
+            if (NOT index EQUAL -1)
+                math(EXPR matches "${matches} + 1")
+            endif()
+        endforeach()
+        if (NOT matches EQUAL 1)
+            message(FATAL_ERROR "header classification requires exactly one category: ${header}")
+        endif()
+    endforeach()
+endfunction()
+
+texassolver_verify_source_classification()
 
 if (WIN32)
     list(APPEND TEXASSOLVER_SOURCES src/util/abstraction.cpp)
@@ -485,5 +560,11 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_evaluator_options_boundary.cmake
+    )
+    add_test(
+        NAME test_source_classification
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_source_classification.cmake
     )
 endif()
