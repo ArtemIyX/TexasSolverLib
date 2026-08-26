@@ -1,5 +1,19 @@
 #include "solver/multiway_memory.hpp"
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef PSAPI_VERSION
+#define PSAPI_VERSION 2
+#endif
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__linux__)
+#include <fstream>
+#include <unistd.h>
+#endif
+
 #include <limits>
 #include <stdexcept>
 #include <thread>
@@ -22,6 +36,31 @@ std::uint64_t checked_add(std::uint64_t left, std::uint64_t right) noexcept {
 }
 
 }  // namespace
+
+std::uint64_t observed_multiway_process_memory_bytes() noexcept {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof(counters);
+    if (K32GetProcessMemoryInfo(
+            GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) == 0) {
+        return 0U;
+    }
+    return static_cast<std::uint64_t>(counters.WorkingSetSize);
+#elif defined(__linux__)
+    std::ifstream input("/proc/self/statm");
+    std::uint64_t ignored_pages = 0;
+    std::uint64_t resident_pages = 0;
+    if (!(input >> ignored_pages >> resident_pages)) return 0U;
+    const auto page_size = sysconf(_SC_PAGESIZE);
+    if (page_size <= 0 || resident_pages >
+            std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(page_size)) {
+        return 0U;
+    }
+    return resident_pages * static_cast<std::uint64_t>(page_size);
+#else
+    return 0U;
+#endif
+}
 
 void MultiwayMemoryBudget::validate() const {
     if (warning_bytes == 0U || operating_bytes == 0U || reject_bytes == 0U ||

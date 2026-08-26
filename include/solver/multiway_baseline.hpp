@@ -106,9 +106,7 @@ private:
     MultiwayResolverConfig config_{};
 };
 
-// Returns the current process resident set when the platform exposes a safe
-// source. Zero means the metric is unavailable. This is reporting-only.
-[[nodiscard]] std::uint64_t observed_multiway_process_memory_bytes() noexcept;
+// Reporting-only process measurements. Zero means the metric is unavailable.
 [[nodiscard]] std::uint64_t observed_multiway_process_peak_memory_bytes() noexcept;
 [[nodiscard]] std::uint64_t observed_multiway_process_cpu_nanoseconds() noexcept;
 

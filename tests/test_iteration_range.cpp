@@ -12,7 +12,7 @@ TEST_CASE(iteration_range_covers_twenty_low_closed_ranges) {
         const auto width = target % 5U;
         const auto last = target - width;
         std::vector<std::uint32_t> visited;
-        texas::for_each_u32_after(
+        texas::util::for_each_u32_after(
             last,
             target,
             [&](std::uint32_t value) { visited.push_back(value); });
@@ -34,7 +34,7 @@ TEST_CASE(iteration_range_covers_twenty_maximum_boundary_ranges) {
         const auto width = scenario % 5U;
         const auto last = target - width;
         std::vector<std::uint32_t> visited;
-        texas::for_each_u32_after(
+        texas::util::for_each_u32_after(
             last,
             target,
             [&](std::uint32_t value) { visited.push_back(value); });
@@ -55,14 +55,14 @@ TEST_CASE(iteration_range_covers_twenty_maximum_boundary_ranges) {
 TEST_CASE(iteration_range_processes_uint32_max_once_and_then_saturates) {
     constexpr auto maximum = std::numeric_limits<std::uint32_t>::max();
     std::vector<std::uint32_t> visited;
-    texas::for_each_u32_after(
+    texas::util::for_each_u32_after(
         maximum - 1U,
         maximum,
         [&](std::uint32_t value) { visited.push_back(value); });
     EXPECT_EQ(visited, std::vector<std::uint32_t>({maximum}));
 
     visited.clear();
-    texas::for_each_u32_after(
+    texas::util::for_each_u32_after(
         maximum,
         maximum,
         [&](std::uint32_t value) { visited.push_back(value); });
@@ -73,11 +73,11 @@ TEST_CASE(iteration_counter_accepts_twenty_premaximum_values_and_rejects_exhaust
     constexpr auto maximum = std::numeric_limits<std::uint32_t>::max();
     for (std::uint32_t distance = 1U; distance <= 20U; ++distance) {
         EXPECT_EQ(
-            texas::checked_next_u32_iteration(maximum - distance),
+            texas::util::checked_next_u32_iteration(maximum - distance),
             maximum - distance + 1U);
     }
     EXPECT_THROW(
-        texas::checked_next_u32_iteration(maximum),
+        texas::util::checked_next_u32_iteration(maximum),
         std::overflow_error);
 }
 

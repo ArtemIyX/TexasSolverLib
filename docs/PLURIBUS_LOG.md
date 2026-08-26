@@ -4,6 +4,24 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Compile error namespace and resolver repair
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Moved process-memory observation into the production multiway memory module.
+- Updated affected tests to owning namespaces and active canonical-combo and resolver-limit APIs.
+- Restored the preflop research test boundary and source classification.
+
+### Validation
+
+- Static namespace/API/source-list checks and `git diff --check` completed.
+- Build and tests were not run per repository instructions.
+
+### Limitations
+
+- Compiler and test confirmation remain deferred.
+
 ## Multiway bucket artifact compile-name fix
 
 **Status:** Complete

@@ -1,6 +1,8 @@
+#include "core/canonical_combo.hpp"
 #include "games/hunl.hpp"
 #include "test_harness.hpp"
 
+#include <array>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -203,15 +205,17 @@ TEST_CASE(hunl_range_validation_rejects_invalid_cards_and_nonfinite_or_zero_mass
 }
 
 TEST_CASE(hunl_card_validation_protects_combo_masks_and_mutable_state_chance_paths) {
-    EXPECT_THROW(texas::enumerate_combos({52U}), std::invalid_argument);
-    EXPECT_THROW(texas::enumerate_combos({texas::card_to_int(2, 0), texas::card_to_int(2, 0)}),
-                 std::invalid_argument);
-
-    const auto combos = texas::enumerate_combos({texas::card_to_int(2, 0)});
-    EXPECT_THROW(texas::dead_card_mask(combos, {std::numeric_limits<std::uint8_t>::max()}),
-                 std::invalid_argument);
-    EXPECT_THROW(texas::dead_card_mask(combos, {texas::card_to_int(3, 0), texas::card_to_int(3, 0)}),
-                 std::invalid_argument);
+    const auto& combos = texas::core::canonical_combos();
+    const std::array<std::uint8_t, 1> invalid_card = {
+        std::numeric_limits<std::uint8_t>::max()};
+    const std::array<std::uint8_t, 2> duplicate_cards = {
+        texas::card_to_int(3, 0), texas::card_to_int(3, 0)};
+    EXPECT_THROW(
+        combos.legal_mask(invalid_card.data(), invalid_card.size()),
+        std::invalid_argument);
+    EXPECT_THROW(
+        combos.legal_mask(duplicate_cards.data(), duplicate_cards.size()),
+        std::invalid_argument);
 
     auto state = texas::HUNLState::initial(std::make_shared<const texas::HUNLConfig>(valid_config()));
     auto invalid_holes = *state.hole_cards;

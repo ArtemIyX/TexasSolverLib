@@ -54,8 +54,8 @@ struct ResolverBaselineFixture {
     texas::MultiwayResolverConfig resolver_config() const {
         texas::MultiwayResolverConfig config;
         config.buckets = &buckets;
-        config.max_batches = 2U;
-        config.trajectories_per_batch = 5U;
+        config.runtime_limits.solver.max_batches = 2U;
+        config.runtime_limits.solver.trajectories_per_batch = 5U;
         return config;
     }
 };
