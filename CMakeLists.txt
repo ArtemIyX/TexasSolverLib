@@ -13,6 +13,11 @@ option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research 
 option(TEXASSOLVER_BUILD_RESEARCH_EXAMPLES "Build benchmark and backend-comparison examples" OFF)
 option(TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH "Build fixed-private sampled HUNL reference kernels" OFF)
 
+if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES AND NOT TEXASSOLVER_BUILD_EXAMPLES)
+    message(FATAL_ERROR
+        "TEXASSOLVER_BUILD_RESEARCH_EXAMPLES requires TEXASSOLVER_BUILD_EXAMPLES=ON")
+endif()
+
 set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
     include/core/atomic_publish.hpp
@@ -283,6 +288,7 @@ if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
     )
     target_compile_features(texas_hunl_fixed_research PUBLIC cxx_std_17)
     target_link_libraries(texas_hunl_fixed_research PUBLIC texas)
+    add_library(TexasSolver::hunl_fixed_research ALIAS texas_hunl_fixed_research)
 endif()
 
 if (MSVC)

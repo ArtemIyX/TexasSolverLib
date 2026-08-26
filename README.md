@@ -72,6 +72,10 @@ This installs:
 
 The vendored PokerHandEvaluator is a required library dependency. Tests and examples are disabled by default for consumers. CTest entries are created only when both `BUILD_TESTING` and `TEXASSOLVER_BUILD_TESTS` are enabled.
 
+`TEXASSOLVER_BUILD_LEGACY_RESEARCH` creates `TexasSolver::legacy_vector`.
+`TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH` creates `TexasSolver::hunl_fixed_research`.
+`TEXASSOLVER_BUILD_RESEARCH_EXAMPLES` requires `TEXASSOLVER_BUILD_EXAMPLES=ON`.
+
 ## Use as a submodule
 
 Add this repository as a Git submodule inside your own project:
