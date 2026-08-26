@@ -9,7 +9,7 @@
 
 TEST_CASE(hunl_sampled_stable_config_and_storage_contract) {
     texas::HUNLSampledSolverConfig config;
-    config.validate();
+    texas::validate_sampled_config_or_throw(config);
 
     texas::HUNLSampledStorage storage;
     storage.ensure_row({texas::InfosetId{1}, 0, texas::Street::Flop, 3, 2});
