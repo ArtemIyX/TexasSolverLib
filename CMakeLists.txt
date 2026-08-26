@@ -326,8 +326,7 @@ set_target_properties(texas PROPERTIES
 
 if (TEXASSOLVER_BUILD_LEGACY_RESEARCH)
     add_library(texas_legacy_vector STATIC
-        src/preflop/preflop_rvr.cpp
-        src/solver/dcfr_vector.cpp
+        ${TEXASSOLVER_LEGACY_RESEARCH_SOURCES}
     )
     add_library(TexasSolver::legacy_vector ALIAS texas_legacy_vector)
     target_include_directories(texas_legacy_vector
@@ -340,7 +339,7 @@ endif()
 
 if (TEXASSOLVER_BUILD_TESTS OR TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
     add_library(texas_hunl_flat_mccfr_research STATIC
-        src/solver/hunl_flat_mccfr.cpp
+        ${TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES}
     )
     add_library(TexasSolver::hunl_flat_mccfr_research ALIAS texas_hunl_flat_mccfr_research)
     target_include_directories(texas_hunl_flat_mccfr_research
@@ -353,9 +352,7 @@ endif()
 
 if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
     add_library(texas_hunl_fixed_research STATIC
-        src/solver/hunl_sampled_builder.cpp
-        src/solver/hunl_sampled_terminal.cpp
-        src/solver/hunl_sampled_traversal.cpp
+        ${TEXASSOLVER_FIXED_RESEARCH_SOURCES}
     )
     target_include_directories(texas_hunl_fixed_research
         PUBLIC
@@ -485,13 +482,12 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
 
         set(test_support_sources)
         if (test_name STREQUAL "test_multiway_baseline")
-            list(APPEND test_support_sources src/solver/multiway_baseline.cpp)
+            list(APPEND test_support_sources ${TEXASSOLVER_TEST_SUPPORT_SOURCES})
         endif()
         if (test_name STREQUAL "test_class169_solver_contract" OR
             test_name STREQUAL "test_dcfr_discount_contract")
             list(APPEND test_support_sources
-                src/preflop/preflop_rvr.cpp
-                src/solver/dcfr_vector.cpp)
+                ${TEXASSOLVER_LEGACY_RESEARCH_SOURCES})
         endif()
 
         add_executable(${test_name}
