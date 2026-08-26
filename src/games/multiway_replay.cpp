@@ -4,6 +4,9 @@
 
 namespace texas::games::multiway {
 
+using core::PlayerId;
+using core::Street;
+
 MultiwayHandHistory MultiwayHandHistory::from_rules(
     const MultiwayGameRules& rules,
     PlayerId first_player,

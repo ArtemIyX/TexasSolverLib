@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/multiway_rules.hpp"
+#include "core/poker.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -11,7 +12,7 @@ namespace texas::games::multiway {
 // engine action application itself is deterministic, so policy sampling can be
 // reproduced without exposing private cards or implementation-specific state.
 struct MultiwayReplayDecision {
-    PlayerId acting_seat = -1;
+    core::PlayerId acting_seat = -1;
     MultiwayAction action = MultiwayAction::Fold;
     int target_street_contribution = 0;
     std::uint64_t decision_seed = 0;
@@ -25,8 +26,8 @@ enum class MultiwayReplayEventKind : std::uint8_t {
 struct MultiwayReplayEvent {
     MultiwayReplayEventKind kind = MultiwayReplayEventKind::Decision;
     MultiwayReplayDecision decision{};
-    Street next_street = Street::Flop;
-    PlayerId first_player = -1;
+    core::Street next_street = core::Street::Flop;
+    core::PlayerId first_player = -1;
 };
 
 struct MultiwayHandHistory {
@@ -37,7 +38,7 @@ struct MultiwayHandHistory {
 
     [[nodiscard]] static MultiwayHandHistory from_rules(
         const MultiwayGameRules& rules,
-        PlayerId first_player = 0,
+        core::PlayerId first_player = 0,
         std::uint64_t hand_seed = 0);
     void validate() const;
 };

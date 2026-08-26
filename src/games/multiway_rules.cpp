@@ -5,6 +5,9 @@
 #include <vector>
 
 namespace texas::games::multiway {
+
+using core::PlayerId;
+using core::Street;
 namespace {
 
 using texas::core::fingerprint::append_u64;

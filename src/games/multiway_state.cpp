@@ -9,6 +9,9 @@
 
 namespace texas::games::multiway {
 
+using core::PlayerId;
+using core::Street;
+
 namespace {
 
 bool valid_street(Street street) {

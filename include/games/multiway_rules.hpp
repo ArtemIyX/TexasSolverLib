@@ -1,6 +1,7 @@
 #pragma once
 
 #include "games/multiway_state.hpp"
+#include "core/types.hpp"
 
 #include <cstdint>
 
@@ -26,7 +27,7 @@ struct MultiwayGameRules {
 
     void validate() const;
     [[nodiscard]] std::uint64_t identity() const noexcept;
-    [[nodiscard]] MultiwayGameConfig make_initial_game_config(PlayerId first_player = 0) const;
+    [[nodiscard]] MultiwayGameConfig make_initial_game_config(core::PlayerId first_player = 0) const;
 };
 
 }  // namespace texas::games::multiway
