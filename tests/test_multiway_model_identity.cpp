@@ -1,6 +1,8 @@
 #include "solver/multiway_model_identity.hpp"
 #include "test_harness.hpp"
 
+#include <array>
+
 #include <stdexcept>
 
 TEST_CASE(multiway_model_identity_is_deterministic_and_versioned) {
@@ -28,6 +30,20 @@ TEST_CASE(multiway_model_identity_defaults_to_resolver_schema_v2) {
 
     EXPECT_TRUE(current.resolver_schema_hash != legacy.resolver_schema_hash);
     EXPECT_TRUE(current.combined_hash != legacy.combined_hash);
+}
+
+TEST_CASE(multiway_model_identity_field_visitor_has_stable_component_order) {
+    const auto identity = texas::make_multiway_model_identity(texas::MultiwayBlueprintConfig{});
+    std::array<std::uint64_t, 12U> fields{};
+    std::size_t count = 0U;
+    texas::visit_multiway_model_identity_components(identity, [&](std::uint64_t field) {
+        fields[count++] = field;
+    });
+
+    EXPECT_EQ(count, fields.size());
+    EXPECT_EQ(fields[0], identity.rules_hash);
+    EXPECT_EQ(fields[5], identity.resolver_schema_hash);
+    EXPECT_EQ(fields[11], identity.runtime_search_schema_hash);
 }
 
 TEST_CASE(multiway_blueprint_config_rejects_invalid_rules_and_versions) {

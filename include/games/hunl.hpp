@@ -1,8 +1,8 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
+#include "core/poker.hpp"
 
-#include "core/card.hpp"
 #include "core/types.hpp"
 
 #include <array>
@@ -20,17 +20,6 @@ struct AbstractionTables;
 namespace texas::games::hunl {
 struct HUNLConfig;
 inline constexpr std::size_t HUNL_MAX_HISTORY_CODES = 48;
-
-/**
- * @brief Street in the Hold'em game tree.
- */
-enum class Street : std::uint8_t {
-    Preflop = 0,
-    Flop = 1,
-    Turn = 2,
-    River = 3,
-    Showdown = 4,
-};
 
 enum class HUNLFlatSolveMode : std::uint8_t {
     Auto = 0,
@@ -75,10 +64,6 @@ std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(
 // Performs bounded canonical range validation without constructing joint deals.
 void validate_hunl_joint_range_feasibility(const HUNLConfig& config);
 
-std::optional<Street> street_from_u8(std::uint8_t value);
-const char* street_token(Street street);
-std::uint8_t cards_to_deal(Street street);
-
 inline constexpr ActionId ACTION_FOLD = 0;
 inline constexpr ActionId ACTION_CHECK = 1;
 inline constexpr ActionId ACTION_CALL = 2;
@@ -96,17 +81,6 @@ inline constexpr ActionId ACTION_ALL_IN = 13;
 
 bool is_opening_bet(ActionId action);
 bool is_raise(ActionId action);
-
-constexpr std::uint8_t card_to_int(std::uint8_t rank, std::uint8_t suit) {
-    return static_cast<std::uint8_t>((rank - 2U) * 4U + suit);
-}
-
-std::uint8_t rank_of(std::uint8_t card);
-std::uint8_t suit_of(std::uint8_t card);
-[[nodiscard]] bool is_valid_card(std::uint8_t card) noexcept;
-[[nodiscard]] bool are_valid_and_distinct_cards(const std::uint8_t* cards, std::size_t count) noexcept;
-std::string card_to_string(std::uint8_t card);
-std::string sorted_card_string(const std::vector<std::uint8_t>& cards);
 
 struct HUNLInfosetEncoding {
     std::array<std::uint8_t, 2> hole = {0, 0};
@@ -172,11 +146,6 @@ struct HUNLConfig {
     // and terminal-value pipeline is implemented.
     HUNLRangePolicy range_policy = HUNLRangePolicy::Unspecified;
     std::array<std::optional<HUNLRangeInput>, 2> initial_ranges = {std::nullopt, std::nullopt};
-    // Legacy bucket-prior input. It is deliberately rejected by postflop solving;
-    // use initial_ranges for the future range/bucket solve contract.
-    std::array<std::optional<HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    bool use_pcs = false;
-
     void validate() const;
 };
 

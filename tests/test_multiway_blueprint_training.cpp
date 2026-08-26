@@ -10,6 +10,9 @@ TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts) {
     const auto identity = config.identity();
     EXPECT_TRUE(identity.combined_hash != 0U);
 
+    config.action_abstraction.first_bet_basis_points[0] = 3400U;
+    EXPECT_TRUE(config.identity() != identity);
+
     config.blueprint.turn_bucket_count = 127U;
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
@@ -39,10 +42,10 @@ TEST_CASE(multiway_checkpoint_resume_identity_rejects_different_artifacts) {
     snapshot.training.trajectories = 3U;
     snapshot.actions = {{{texas::MultiwayAction::Check, 0U, 0, 11U}, 65535U}};
 
-    texas::MultiwayCheckpoint::validate_resume_identity(snapshot, expected);
+    texas::MultiwayRootPolicyArtifact::validate_resume_identity(snapshot, expected);
     ++config.blueprint.bucket_model_version;
     EXPECT_THROW(
-        texas::MultiwayCheckpoint::validate_resume_identity(snapshot, config.identity()),
+        texas::MultiwayRootPolicyArtifact::validate_resume_identity(snapshot, config.identity()),
         std::invalid_argument);
 }
 

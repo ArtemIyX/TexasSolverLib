@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway_solver.hpp"
 #include "solver/multiway_terminal_adapter.hpp"
@@ -29,9 +29,6 @@ public:
 
     [[nodiscard]] static std::vector<MultiwayActionDescriptor> make_legal_actions(
         const MultiwayBettingSnapshot& betting,
-        // Retained for source compatibility. Schema-v2 derives the id from
-        // canonical action/target entries.
-        std::uint64_t action_menu_id,
         const std::vector<int>& target_street_contributions);
 
     [[nodiscard]] static MultiwayPublicStateDescriptor make_root(
@@ -43,6 +40,19 @@ public:
         const MultiwayPublicStateDescriptor& parent,
         std::uint32_t action_index,
         std::vector<MultiwayActionDescriptor> child_legal_actions);
+
+    [[nodiscard]] static MultiwayPublicStateDescriptor make_action_child(
+        const MultiwayPublicStateDescriptor& parent,
+        std::uint32_t action_index,
+        MultiwayBettingSnapshot child_betting,
+        std::vector<MultiwayActionDescriptor> child_legal_actions);
+
+    [[nodiscard]] static MultiwayPublicStateDescriptor make_action_child(
+        const MultiwayPublicStateDescriptor& parent,
+        std::uint32_t action_index,
+        MultiwayBettingSnapshot child_betting,
+        const MultiwayActionDescriptor* child_legal_actions,
+        std::size_t child_action_count);
 
     [[nodiscard]] static MultiwayPublicStateDescriptor make_board_chance_child(
         const MultiwayPublicStateDescriptor& parent,

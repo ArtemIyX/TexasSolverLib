@@ -1,9 +1,10 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway_export.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -21,6 +22,16 @@ struct MultiwayBlueprintRow {
     void validate() const;
 };
 
+struct MultiwayBlueprintRowView {
+    MultiwayInfosetId infoset{};
+    std::uint32_t bucket = 0U;
+    std::uint64_t action_menu_id = 0U;
+    const MultiwayQuantizedRootAction* actions = nullptr;
+    std::size_t action_count = 0U;
+
+    [[nodiscard]] bool valid() const noexcept { return actions != nullptr && action_count != 0U; }
+};
+
 class MultiwayBlueprintStore {
 public:
     MultiwayBlueprintStore(MultiwayModelIdentity identity, std::vector<MultiwayBlueprintRow> rows);
@@ -28,14 +39,23 @@ public:
     [[nodiscard]] const MultiwayModelIdentity& identity() const noexcept { return identity_; }
     [[nodiscard]] std::size_t row_count() const noexcept { return rows_.size(); }
     [[nodiscard]] std::uint64_t memory_bytes() const noexcept;
-    [[nodiscard]] const MultiwayBlueprintRow* find(
+    [[nodiscard]] MultiwayBlueprintRowView find(
         MultiwayInfosetId infoset,
         std::uint32_t bucket,
         std::uint64_t action_menu_id) const noexcept;
 
 private:
+    struct RuntimeRow {
+        MultiwayInfosetId infoset{};
+        std::uint32_t bucket = 0U;
+        std::uint64_t action_menu_id = 0U;
+        std::size_t action_offset = 0U;
+        std::size_t action_count = 0U;
+    };
+
     MultiwayModelIdentity identity_{};
-    std::vector<MultiwayBlueprintRow> rows_;
+    std::vector<RuntimeRow> rows_;
+    std::vector<MultiwayQuantizedRootAction> actions_;
 };
 
 }  // namespace texas::solver::multiway

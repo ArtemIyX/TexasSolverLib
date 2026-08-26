@@ -140,8 +140,6 @@ void reject_unimplemented_range_solving(const HUNLFlatSolveGraph& graph) {
     const auto range_policy = resolve_range_policy(*graph.config);
     if (graph.config->initial_ranges[0].has_value() ||
         graph.config->initial_ranges[1].has_value() ||
-        graph.config->player_ranges[0].has_value() ||
-        graph.config->player_ranges[1].has_value() ||
         range_policy == HUNLRangePolicy::UseInitialRanges ||
         range_policy == HUNLRangePolicy::RequireExplicit) {
         throw std::invalid_argument(

@@ -188,4 +188,16 @@ TEST_CASE(abstraction_loads_minimal_npz_layout) {
     std::filesystem::remove(tmp);
 }
 
+TEST_CASE(abstraction_rejects_assignment_index_out_of_bounds) {
+    const std::vector<std::uint8_t> board = {c(14, 0), c(13, 1), c(7, 2)};
+    const std::array<std::uint8_t, 2> hole = {c(12, 0), c(11, 3)};
+    const auto [board_key, hand_key] = texas::canonicalize(board, hole);
+
+    texas::AbstractionTables tables;
+    tables.flop_assignments = {7U};
+    tables.flop_board_index.emplace(board_key, 1U);
+    tables.flop_hand_index[board_key].emplace(hand_key, 0U);
+    EXPECT_THROW(texas::lookup_bucket(tables, board, hole, texas::Street::Flop), std::out_of_range);
+}
+
 

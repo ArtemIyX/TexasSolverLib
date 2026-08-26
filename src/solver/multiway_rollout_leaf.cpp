@@ -1,6 +1,7 @@
 #include "solver/multiway_rollout_leaf.hpp"
 
 #include "games/hunl_eval.hpp"
+#include "core/fingerprint.hpp"
 #include "util/pcs.hpp"
 
 #include <algorithm>
@@ -28,13 +29,10 @@ std::uint64_t hash_seed_batch(const std::uint64_t* seeds, std::size_t count) noe
     std::uint64_t hash = 1469598103934665603ULL;
     for (std::size_t index = 0; index < count; ++index) {
         auto value = seeds[index];
-        for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
-            hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
-            hash *= 1099511628211ULL;
-        }
+        texas::core::fingerprint::append_u64(hash, value);
     }
     hash ^= count;
-    hash *= 1099511628211ULL;
+    hash *= texas::core::fingerprint::FNV1A_PRIME;
     return hash == 0U ? 1U : hash;
 }
 

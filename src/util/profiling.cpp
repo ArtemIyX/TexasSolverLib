@@ -99,7 +99,7 @@ std::string timestamp_name() {
     const auto now = std::chrono::system_clock::now();
     const auto t = std::chrono::system_clock::to_time_t(now);
     std::tm tm{};
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     localtime_s(&tm, &t);
 #else
     localtime_r(&t, &tm);

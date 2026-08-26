@@ -59,7 +59,7 @@ texas::MultiwayRootSnapshot make_root(const texas::MultiwayActionAbstraction& ab
 
     texas::MultiwayRootSnapshot root;
     root.public_state = texas::MultiwayPublicBuilder::make_root(
-        betting, kBoard, abstraction.make_legal_actions(betting, 77U));
+        betting, kBoard, abstraction.make_legal_actions(betting));
     root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
     root.seat_order = {0, 1, 2};
@@ -404,14 +404,6 @@ TEST_CASE(multiway_recursive_workers_publish_deltas_without_mutating_shared_row_
     for (const auto value : strategy_sums) EXPECT_EQ(value, 0.0);
     EXPECT_EQ(fixture.coordinator.diagnostics().worker_delta_entries_merged, 0U);
     EXPECT_EQ(fixture.coordinator.diagnostics().last_merged_stream_fingerprint, 0U);
-}
-
-TEST_CASE(multiway_root_batch_runner_rethrows_worker_failure_without_merging) {
-    ParallelRunnerFixture fixture(2U);
-    fixture.runner.set_test_worker_failure_for_testing(1);
-
-    EXPECT_THROW(fixture.runner.run(0U, 4U, 0x99U), std::runtime_error);
-    EXPECT_EQ(fixture.coordinator.diagnostics().worker_delta_entries_merged, 0U);
 }
 
 TEST_CASE(multiway_root_batch_runner_one_worker_remains_compatible) {

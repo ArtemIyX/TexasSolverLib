@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl.hpp"
 
@@ -56,6 +56,7 @@ public:
 
 private:
     std::vector<double> table_;
+    bool valid_ = false;
 };
 
 }  // namespace texas::preflop

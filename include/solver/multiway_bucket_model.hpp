@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
+#include "core/poker.hpp"
 
 #include "core/canonical_combo.hpp"
-#include "games/hunl.hpp"
 #include "solver/multiway_model_identity.hpp"
 
 #include <array>

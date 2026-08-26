@@ -509,7 +509,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
     if (cfg.profile) {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
         _putenv_s("TEXASSOLVER_PROFILE", "1");
 #else
         setenv("TEXASSOLVER_PROFILE", "1", 1);

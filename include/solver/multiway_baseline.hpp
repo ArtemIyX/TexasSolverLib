@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway_resolver.hpp"
 #include "solver/multiway_traversal.hpp"
@@ -61,8 +61,8 @@ struct MultiwayResolverBaselineReport {
     MultiwayBaselineFixtureKind fixture = MultiwayBaselineFixtureKind::Valid;
     MultiwayResolverStatus status = MultiwayResolverStatus::InvalidRequest;
     MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
-    MultiwayResolverEngine search_engine = MultiwayResolverEngine::LegacyDeterministicAdjustment;
-    std::uint64_t search_engine_version = 0;
+    MultiwayResolverEngine search_engine = MultiwayResolverEngine::NoRuntimeSearch;
+    std::uint64_t search_engine_version = MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION;
     MultiwayModelIdentity artifact_identity{};
     bool has_artifact_identity = false;
     MultiwayResolverFallbackKind fallback = MultiwayResolverFallbackKind::None;

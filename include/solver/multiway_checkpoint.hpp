@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway_export.hpp"
 
@@ -8,7 +8,7 @@
 
 namespace texas::solver::multiway {
 
-class MultiwayCheckpoint {
+class MultiwayRootPolicyArtifact {
 public:
     static void save_atomic(
         const std::filesystem::path& path,

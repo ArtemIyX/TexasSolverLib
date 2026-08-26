@@ -107,8 +107,6 @@ void MultiwayRangeBeliefs::apply_observation_metadata(
     double input_mass) noexcept {
     row.metadata.source = observation.source();
     row.metadata.last_update_revision = revision;
-    row.metadata.last_action_id = observation.observed_action();
-    row.metadata.has_last_action = true;
     row.metadata.observation.source = observation.source();
     row.metadata.observation.public_state_id = observation.policy().public_state.value;
     row.metadata.observation.action_menu_id = observation.policy().action_menu_id;
@@ -128,8 +126,6 @@ MultiwayRangeBeliefs::Row MultiwayRangeBeliefs::make_uniform_row(
     row.legal_mask = canonical_combos().legal_mask(input.dead_cards, input.dead_card_count);
     row.metadata.source = MultiwayRangeBeliefSource::Uniform;
     row.metadata.last_update_revision = revision;
-    row.metadata.last_action_id = 0U;
-    row.metadata.has_last_action = false;
     row.metadata.observation = {};
     for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
         row.weights[id] = row.legal_mask.test(id) ? 1.0 : 0.0;
@@ -150,8 +146,6 @@ MultiwayRangeBeliefs::Row MultiwayRangeBeliefs::make_supplied_row(
     row.legal_mask = canonical_combos().legal_mask(input.dead_cards, input.dead_card_count);
     row.metadata.source = MultiwayRangeBeliefSource::Supplied;
     row.metadata.last_update_revision = revision;
-    row.metadata.last_action_id = 0U;
-    row.metadata.has_last_action = false;
     row.metadata.observation = {};
     for (std::size_t index = 0U; index < input.entry_count; ++index) {
         const auto& entry = input.entries[index];

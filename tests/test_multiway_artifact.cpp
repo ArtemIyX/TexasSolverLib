@@ -1,3 +1,4 @@
+#include "core/atomic_publish.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_blueprint_store.hpp"
 #include "solver/multiway_blueprint_config.hpp"
@@ -5,6 +6,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -65,6 +67,30 @@ TEST_CASE(multiway_full_blueprint_artifact_round_trips_and_rejects_corruption) {
         out.put('\0');
     }
     EXPECT_THROW(texas::MultiwayFullBlueprintArtifacts::load_verified(path, expected.identity), std::invalid_argument);
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_full_blueprint_rejects_unsafe_row_capacity_before_resize) {
+    const auto expected = snapshot();
+    const auto path = artifact_path("full_blueprint_row_budget");
+    texas::MultiwayFullBlueprintArtifact artifact;
+    artifact.identity = expected.identity;
+    artifact.training = expected.training;
+    texas::MultiwayFullBlueprintArtifacts::save_atomic(path, artifact);
+
+    // The row count follows the fixed magic, schema, identity, and training
+    // fields. A large count must fail the memory preflight before rows.resize.
+    std::fstream out(path, std::ios::binary | std::ios::in | std::ios::out);
+    out.seekp(168, std::ios::beg);
+    const std::uint64_t row_count = 100'000'000U;
+    for (std::uint32_t byte = 0U; byte < sizeof(row_count); ++byte) {
+        out.put(static_cast<char>((row_count >> (byte * 8U)) & 0xffU));
+    }
+    out.close();
+
+    EXPECT_THROW(
+        texas::MultiwayFullBlueprintArtifacts::load_verified(path, expected.identity),
+        std::length_error);
     std::filesystem::remove(path);
 }
 
@@ -149,8 +175,8 @@ TEST_CASE(multiway_public_decision_log_redacts_private_resolver_inputs) {
     result.has_sampled_action = true;
     result.policy = {{result.sampled_action, 1.0}};
     result.diagnostics.status = texas::MultiwayResolverStatus::Solved;
-    result.diagnostics.policy_provenance = texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment;
-    result.diagnostics.search_engine_version = texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
+    result.diagnostics.policy_provenance = texas::MultiwayPolicyProvenance::RuntimeSearch;
+    result.diagnostics.search_engine_version = texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
     result.diagnostics.policy_normalized = true;
     result.diagnostics.resolved_public_state_id = 71U;
     const auto log = texas::make_multiway_public_decision_log(request, result, 1U);
@@ -161,11 +187,11 @@ TEST_CASE(multiway_public_decision_log_redacts_private_resolver_inputs) {
     EXPECT_EQ(log.policy.front().probability, 65535U);
     EXPECT_EQ(
         log.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::RuntimeSearch);
     EXPECT_EQ(
         log.search_engine,
-        texas::MultiwayResolverEngine::LegacyDeterministicAdjustment);
-    EXPECT_EQ(log.search_engine_version, texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION);
+        texas::MultiwayResolverEngine::RootExternalSamplingMCCFR);
+    EXPECT_EQ(log.search_engine_version, texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION);
 
     auto malformed = log;
     malformed.policy.front().probability = 0U;
@@ -187,8 +213,8 @@ TEST_CASE(multiway_public_decision_log_accepts_forward_compatible_delivery_statu
     log.acting_seat = 0;
     log.sampled_action = expected.actions.front().action;
     log.policy_provenance = texas::MultiwayPolicyProvenance::StaticLegalFallback;
-    log.search_engine = texas::MultiwayResolverEngine::LegacyDeterministicAdjustment;
-    log.search_engine_version = texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION;
+    log.search_engine = texas::MultiwayResolverEngine::RootExternalSamplingMCCFR;
+    log.search_engine_version = texas::MULTIWAY_ROOT_SEARCH_RESOLVER_ENGINE_VERSION;
     log.used_fallback = true;
     log.policy = {{log.sampled_action, 65535U}};
 
@@ -240,6 +266,40 @@ TEST_CASE(multiway_artifact_fails_closed_for_malformed_manifest) {
     EXPECT_THROW(texas::MultiwayBlueprintArtifacts::load_verified(path, expected.identity), std::runtime_error);
     std::filesystem::remove(path);
     std::filesystem::remove(path.string() + ".manifest");
+}
+
+TEST_CASE(multiway_atomic_publish_replaces_destination_without_leaving_temporary_files) {
+    const auto destination = artifact_path("atomic_destination");
+    const auto temporary = artifact_path("atomic_temporary");
+    {
+        std::ofstream old_value(destination, std::ios::binary);
+        old_value << "old";
+        std::ofstream new_value(temporary, std::ios::binary);
+        new_value << "new";
+    }
+
+    texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed");
+
+    std::ifstream published(destination, std::ios::binary);
+    std::string value;
+    published >> value;
+    EXPECT_EQ(value, "new");
+    EXPECT_TRUE(!std::filesystem::exists(temporary));
+    EXPECT_TRUE(!std::filesystem::exists(destination.string() + ".previous"));
+    std::filesystem::remove(destination);
+
+    {
+        std::ofstream existing(destination, std::ios::binary);
+        existing << "preserved";
+    }
+    EXPECT_THROW(
+        texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed"),
+        std::runtime_error);
+    std::ifstream restored(destination, std::ios::binary);
+    restored >> value;
+    EXPECT_EQ(value, "preserved");
+    EXPECT_TRUE(!std::filesystem::exists(destination.string() + ".previous"));
+    std::filesystem::remove(destination);
 }
 
 TEST_CASE(multiway_artifact_rejects_schema_v2_manifest_magic) {

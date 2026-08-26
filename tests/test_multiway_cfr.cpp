@@ -7,6 +7,28 @@
 #include <limits>
 #include <numeric>
 #include <stdexcept>
+#include <utility>
+
+namespace {
+
+texas::MultiwayCFRUpdate external_update(
+    std::vector<texas::Probability> player_reaches,
+    texas::PlayerId traverser,
+    texas::Probability chance_reach,
+    std::vector<texas::Probability> strategy,
+    std::vector<texas::Value> action_values) {
+    texas::MultiwayExternalSamplingRequest request;
+    request.player_reaches = std::move(player_reaches);
+    request.traverser = traverser;
+    request.chance_reach = chance_reach;
+    request.sampling_reach = 1.0;
+    request.traverser_reach = request.player_reaches[static_cast<std::size_t>(traverser)];
+    request.strategy = std::move(strategy);
+    request.sampled_action_values = std::move(action_values);
+    return texas::make_multiway_external_sampling_cfr_update(request);
+}
+
+}  // namespace
 
 TEST_CASE(multiway_cfr_config_accepts_two_through_six_players) {
     for (std::uint8_t players = 2; players <= 6; ++players) {
@@ -24,24 +46,10 @@ TEST_CASE(multiway_cfr_config_rejects_unsupported_player_counts) {
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
-TEST_CASE(multiway_cfr_config_rejects_unknown_algorithm_and_metric) {
+TEST_CASE(multiway_cfr_config_requires_deterministic_merges) {
     texas::MultiwayCFRConfig config;
-    config.algorithm = static_cast<texas::MultiwayCFRAlgorithm>(99);
-    EXPECT_THROW(config.validate(), std::invalid_argument);
-    config.algorithm = texas::MultiwayCFRAlgorithm::ExternalSamplingMCCFR;
-    config.quality_metric = static_cast<texas::MultiwayQualityMetric>(99);
-    EXPECT_THROW(config.validate(), std::invalid_argument);
-    config.quality_metric = texas::MultiwayQualityMetric::NashConv;
     config.deterministic_trajectory_merges = false;
     EXPECT_THROW(config.validate(), std::invalid_argument);
-}
-
-TEST_CASE(multiway_cfr_config_accepts_named_full_tree_and_external_sampling_modes) {
-    texas::MultiwayCFRConfig config;
-    config.algorithm = texas::MultiwayCFRAlgorithm::FullTreeCFR;
-    config.validate();
-    config.algorithm = texas::MultiwayCFRAlgorithm::ExternalSamplingMCCFR;
-    config.validate();
 }
 
 TEST_CASE(multiway_cfr_counterfactual_reach_multiplies_every_opponent) {
@@ -76,8 +84,38 @@ TEST_CASE(multiway_cfr_regret_matching_is_uniform_without_positive_regret) {
     EXPECT_NEAR(strategy[2], 1.0 / 3.0, 1e-12);
 }
 
+TEST_CASE(multiway_cfr_action_major_regret_matching_matches_contiguous_reference) {
+    const std::vector<double> action_major_regrets = {
+        3.0, -99.0,
+        -2.0, 99.0,
+        1.0, 99.0,
+    };
+    std::array<texas::Probability, 3U> strategy = {};
+    texas::multiway_regret_matching_action_major_into(
+        action_major_regrets.data(), action_major_regrets.size(), strategy.size(), 2U, strategy.data());
+    const auto reference = texas::multiway_regret_matching({3.0, -2.0, 1.0});
+
+    for (std::size_t action = 0U; action < strategy.size(); ++action) {
+        EXPECT_NEAR(strategy[action], reference[action], 1e-12);
+    }
+}
+
+TEST_CASE(multiway_cfr_action_major_regret_matching_rejects_invalid_views) {
+    std::array<texas::Probability, 2U> strategy = {};
+    const double regrets[] = {1.0, 2.0};
+    EXPECT_THROW(
+        texas::multiway_regret_matching_action_major_into(nullptr, 2U, 2U, 1U, strategy.data()),
+        std::invalid_argument);
+    EXPECT_THROW(
+        texas::multiway_regret_matching_action_major_into(regrets, 2U, 2U, 0U, strategy.data()),
+        std::invalid_argument);
+    EXPECT_THROW(
+        texas::multiway_regret_matching_action_major_into(regrets, 2U, 2U, 2U, strategy.data()),
+        std::invalid_argument);
+}
+
 TEST_CASE(multiway_cfr_update_uses_opponent_product_for_regret) {
-    const auto update = texas::make_multiway_cfr_update(
+    const auto update = external_update(
         {0.5, 0.25, 0.8}, 1, 0.5, {0.25, 0.75}, {4.0, 0.0});
     EXPECT_NEAR(update.node_value, 1.0, 1e-12);
     EXPECT_NEAR(update.counterfactual_reach, 0.2, 1e-12);
@@ -86,7 +124,7 @@ TEST_CASE(multiway_cfr_update_uses_opponent_product_for_regret) {
 }
 
 TEST_CASE(multiway_cfr_update_uses_own_reach_for_average_strategy) {
-    const auto update = texas::make_multiway_cfr_update(
+    const auto update = external_update(
         {0.5, 0.25, 0.8}, 1, 0.5, {0.25, 0.75}, {4.0, 0.0});
     EXPECT_NEAR(update.average_strategy_weight, 0.25, 1e-12);
     EXPECT_NEAR(update.strategy_deltas[0], 0.0625, 1e-12);
@@ -143,7 +181,7 @@ TEST_CASE(multiway_external_sampling_update_rejects_nonfinite_importance_weights
 }
 
 TEST_CASE(multiway_cfr_update_applies_to_matching_row_shapes) {
-    const auto update = texas::make_multiway_cfr_update(
+    const auto update = external_update(
         {1.0, 0.5, 0.5}, 0, 1.0, {0.5, 0.5}, {3.0, 1.0});
     std::vector<double> regrets = {1.0, 2.0};
     std::vector<double> strategy_sum = {4.0, 5.0};
@@ -156,9 +194,9 @@ TEST_CASE(multiway_cfr_update_applies_to_matching_row_shapes) {
 
 TEST_CASE(multiway_cfr_update_rejects_invalid_strategy_and_row_shapes) {
     EXPECT_THROW(
-        texas::make_multiway_cfr_update({1.0, 1.0}, 0, 1.0, {0.4, 0.4}, {1.0, 2.0}),
+        external_update({1.0, 1.0}, 0, 1.0, {0.4, 0.4}, {1.0, 2.0}),
         std::invalid_argument);
-    const auto update = texas::make_multiway_cfr_update(
+    const auto update = external_update(
         {1.0, 1.0}, 0, 1.0, {0.5, 0.5}, {1.0, 2.0});
     std::vector<double> regrets = {0.0};
     std::vector<double> strategies = {0.0};

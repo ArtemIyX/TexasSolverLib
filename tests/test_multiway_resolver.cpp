@@ -1,9 +1,9 @@
 #include "solver/multiway_bucket_artifact.hpp"
 #include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_blueprint_store.hpp"
+#include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver.hpp"
-#include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_decision_session.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -33,7 +33,7 @@ struct ResolverFixture {
         config.big_blind = 100;
         config.street = texas::Street::Flop;
         const auto state = texas::MultiwayState::initial(config);
-        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot(), 91U);
+        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot());
         return texas::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     }
 
@@ -43,6 +43,7 @@ struct ResolverFixture {
         request.public_state = root;
         request.hero_seat = 0;
         request.hero_cards = {24U, 31U};
+        request.hero_range = {{{24U, 31U}, 1.0}};
         request.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         request.sampling_seed = 73U;
         return request;
@@ -51,9 +52,9 @@ struct ResolverFixture {
     texas::MultiwayResolver resolver() {
         texas::MultiwayResolverConfig config;
         config.buckets = &buckets;
-        config.max_batches = 2U;
-        config.trajectories_per_batch = 5U;
-        config.search_mode = texas::MultiwayResolverSearchMode::LegacyStatic;
+        config.runtime_limits.solver.max_batches = 2U;
+        config.runtime_limits.solver.trajectories_per_batch = 5U;
+        config.search_mode = texas::MultiwayResolverSearchMode::FallbackOnly;
         return texas::MultiwayResolver(config);
     }
 };
@@ -85,18 +86,52 @@ texas::Value resolver_search_leaf(
 texas::MultiwayResolverConfig search_config(const ResolverFixture& fixture) {
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
-    config.trajectories_per_batch = 2U;
-    config.max_batches = 1U;
+    config.stable_root_cache = std::make_shared<texas::MultiwayStableRootPolicyCache>();
+    config.runtime_limits.solver.trajectories_per_batch = 2U;
+    config.runtime_limits.solver.max_batches = 1U;
     config.search_mode = texas::MultiwayResolverSearchMode::SearchActive;
-    config.search_limits.worker_count = 1U;
-    config.search_limits.trajectories_per_batch = config.trajectories_per_batch;
-    config.search_limits.max_public_states = 32U;
-    config.search_limits.max_sparse_rows = 16U;
-    config.search_limits.max_sparse_values = 2'048U;
-    config.search_limits.max_worker_delta_entries = 128U;
+    config.continuation_selector = std::make_shared<texas::MultiwayFixedContinuationSelector>(
+        texas::MultiwayContinuationPolicyKind::Blueprint);
+    config.runtime_limits.solver.worker_count = 1U;
+    config.runtime_limits.solver.max_public_states = 32U;
+    config.runtime_limits.solver.max_sparse_rows = 16U;
+    config.runtime_limits.solver.max_sparse_values = 2'048U;
+    config.runtime_limits.solver.max_worker_delta_entries = 128U;
     static const texas::MultiwayLeafEvaluator evaluator = {resolver_search_leaf, nullptr};
     config.leaf_evaluator = &evaluator;
     return config;
+}
+
+TEST_CASE(multiway_stable_root_policy_cache_is_host_owned_and_menu_scoped) {
+    ResolverFixture fixture;
+    auto cache = std::make_shared<texas::MultiwayStableRootPolicyCache>();
+    const auto& menu = fixture.root.legal_actions;
+    std::vector<texas::MultiwayResolverActionProbability> stored = {{menu.front(), 1.0}};
+    cache->store(fixture.identity, fixture.root.id.value, stored);
+
+    std::vector<texas::MultiwayResolverActionProbability> loaded;
+    EXPECT_TRUE(cache->find(fixture.identity, fixture.root.id.value, menu, &loaded));
+    EXPECT_EQ(loaded.size(), stored.size());
+    EXPECT_EQ(loaded.front().action, stored.front().action);
+    EXPECT_EQ(loaded.front().probability, stored.front().probability);
+    auto changed_menu = menu;
+    changed_menu.front().target_street_contribution += 1;
+    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, changed_menu, &loaded));
+}
+
+texas::MultiwayVerifiedBlueprintArtifact verified_root_artifact(const ResolverFixture& fixture) {
+    texas::MultiwayVerifiedBlueprintArtifact artifact;
+    artifact.snapshot.identity = fixture.identity;
+    artifact.snapshot.public_state = fixture.root.id;
+    artifact.snapshot.infoset = {fixture.root.id, 0};
+    artifact.snapshot.trajectories = 1U;
+    artifact.snapshot.training.trajectories = 1U;
+    artifact.snapshot.actions = {{fixture.root.legal_actions.front(), 65535U}};
+    artifact.snapshot.validate();
+    artifact.manifest.identity = fixture.identity;
+    artifact.manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(artifact.snapshot);
+    artifact.manifest.validate();
+    return artifact;
 }
 
 void add_complete_search_ranges(texas::MultiwayResolverRequest* request) {
@@ -114,8 +149,17 @@ TEST_CASE(multiway_resolver_returns_a_normalized_legal_deadline_safe_decision) {
     const auto result = resolver.resolve(fixture.request());
 
     EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::Solved);
-    EXPECT_EQ(result.diagnostics.completed_batches, 2U);
-    EXPECT_EQ(result.diagnostics.completed_trajectories, 10U);
+    EXPECT_EQ(result.diagnostics.completed_batches, 0U);
+    EXPECT_EQ(result.diagnostics.completed_trajectories, 0U);
+    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_EQ(result.diagnostics.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(
+        result.diagnostics.search_engine_version,
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
+    const auto log = texas::make_multiway_public_decision_log(fixture.request(), result, 1U);
+    log.validate();
+    EXPECT_EQ(log.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(log.search_engine_version, texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_TRUE(result.diagnostics.policy_normalized);
     EXPECT_TRUE(is_legal_output(result, result.policy.empty() ? std::vector<texas::MultiwayActionDescriptor>{} :
         fixture.root.legal_actions));
@@ -124,20 +168,20 @@ TEST_CASE(multiway_resolver_returns_a_normalized_legal_deadline_safe_decision) {
     EXPECT_NEAR(total, 1.0, 1e-12);
 }
 
-TEST_CASE(multiway_resolver_begins_a_request_local_runtime_session) {
+TEST_CASE(multiway_resolver_begins_a_request_local_decision_session) {
     ResolverFixture fixture;
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto resolver = fixture.resolver();
 
-    const auto runtime = resolver.begin_runtime_session(request);
+    const auto runtime = resolver.begin_decision_session(request);
     EXPECT_TRUE(runtime != nullptr);
     EXPECT_EQ(runtime->root_revision(), 1U);
     EXPECT_EQ(runtime->round().root_metadata().public_state, fixture.root.id);
     EXPECT_EQ(runtime->round().belief(0).metadata().source, texas::MultiwayRangeBeliefSource::Supplied);
 }
 
-TEST_CASE(multiway_resolver_distinguishes_anonymous_and_blockers_only_ranges) {
+TEST_CASE(multiway_resolver_uses_the_same_range_contract_for_multiple_opponents) {
     ResolverFixture fixture;
     auto request = fixture.request();
     request.opponent_ranges.resize(2U);
@@ -146,23 +190,16 @@ TEST_CASE(multiway_resolver_distinguishes_anonymous_and_blockers_only_ranges) {
     request.opponent_ranges[1].seat = 2;
     request.opponent_ranges[1].hands.push_back({{40U, 41U}, 1.0});
     auto resolver = fixture.resolver();
-    const auto anonymous = resolver.resolve(request);
-    request.inference_mode = texas::MultiwayInferenceMode::BlockersOnly;
-    const auto blockers_only = resolver.resolve(request);
-
-    EXPECT_TRUE(anonymous.diagnostics.anonymous_ranges_merged);
-    EXPECT_TRUE(!blockers_only.diagnostics.anonymous_ranges_merged);
-    EXPECT_EQ(anonymous.diagnostics.admitted_range_entries, 2U);
-    EXPECT_EQ(blockers_only.diagnostics.admitted_range_entries, 2U);
-    EXPECT_TRUE(is_legal_output(anonymous, fixture.root.legal_actions));
-    EXPECT_TRUE(is_legal_output(blockers_only, fixture.root.legal_actions));
+    const auto result = resolver.resolve(request);
+    EXPECT_EQ(result.diagnostics.admitted_range_entries, 3U);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 
 TEST_CASE(multiway_resolver_preserves_an_exact_off_tree_root_action) {
     ResolverFixture fixture;
     const auto state = texas::MultiwayState::from_snapshot(fixture.root.betting);
     const auto menu = texas::MultiwayActionAbstraction::insert_exact_observed_action(
-        state.snapshot(), fixture.root.legal_actions, texas::MultiwayAction::Bet, 650, 91U);
+        state.snapshot(), fixture.root.legal_actions, texas::MultiwayAction::Bet, 650);
     fixture.root = texas::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     auto resolver = fixture.resolver();
     const auto result = resolver.resolve(fixture.request());
@@ -194,6 +231,11 @@ TEST_CASE(multiway_resolver_rejects_malformed_requests_and_missing_buckets) {
     EXPECT_EQ(invalid.diagnostics.status, texas::MultiwayResolverStatus::InvalidRequest);
     EXPECT_TRUE(!invalid.has_sampled_action);
 
+    auto missing_hero_range = fixture.request();
+    missing_hero_range.hero_range.clear();
+    const auto missing_range = resolver.resolve(missing_hero_range);
+    EXPECT_EQ(missing_range.diagnostics.status, texas::MultiwayResolverStatus::InvalidRequest);
+
     texas::MultiwayResolver no_bucket;
     const auto missing_bucket = no_bucket.resolve(fixture.request());
     EXPECT_EQ(missing_bucket.diagnostics.status, texas::MultiwayResolverStatus::BucketUnavailable);
@@ -203,19 +245,15 @@ TEST_CASE(multiway_resolver_rejects_malformed_requests_and_missing_buckets) {
 
 TEST_CASE(multiway_resolver_never_exports_an_illegal_blueprint_action) {
     ResolverFixture fixture;
-    texas::MultiwayBlueprintSnapshot blueprint;
-    blueprint.identity = fixture.identity;
-    blueprint.public_state = fixture.root.id;
-    blueprint.infoset = {fixture.root.id, 0};
-    blueprint.trajectories = 1U;
-    blueprint.training.trajectories = 1U;
-    blueprint.actions = {{{texas::MultiwayAction::Raise, 0U, 1'999, 91U}, 65535U}};
-    blueprint.validate();
+    auto blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(verified_root_artifact(fixture));
+    blueprint->snapshot.actions = {{{texas::MultiwayAction::Raise, 0U, 1'999, 91U}, 65535U}};
+    blueprint->snapshot.validate();
+    blueprint->manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(blueprint->snapshot);
 
     texas::MultiwayResolverConfig config;
     config.buckets = &fixture.buckets;
-    config.blueprint = &blueprint;
-    config.max_batches = 1U;
+    config.verified_blueprint = std::move(blueprint);
+    config.runtime_limits.solver.max_batches = 1U;
     texas::MultiwayResolver resolver(config);
     const auto result = resolver.resolve(fixture.request());
 
@@ -226,7 +264,7 @@ TEST_CASE(multiway_resolver_never_exports_an_illegal_blueprint_action) {
     }
 }
 
-TEST_CASE(multiway_resolver_reports_provenance_engine_and_safe_invalid_identity) {
+TEST_CASE(multiway_resolver_reports_static_provenance_and_safe_invalid_identity) {
     ResolverFixture fixture;
     auto resolver = fixture.resolver();
     const auto solved = resolver.resolve(fixture.request());
@@ -234,13 +272,13 @@ TEST_CASE(multiway_resolver_reports_provenance_engine_and_safe_invalid_identity)
     EXPECT_EQ(solved.diagnostics.status, texas::MultiwayResolverStatus::Solved);
     EXPECT_EQ(
         solved.diagnostics.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::StaticLegalFallback);
     EXPECT_EQ(
         solved.diagnostics.search_engine,
-        texas::MultiwayResolverEngine::LegacyDeterministicAdjustment);
+        texas::MultiwayResolverEngine::NoRuntimeSearch);
     EXPECT_EQ(
         solved.diagnostics.search_engine_version,
-        texas::MULTIWAY_LEGACY_RESOLVER_ENGINE_VERSION);
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_TRUE(solved.diagnostics.has_artifact_identity);
     EXPECT_EQ(solved.diagnostics.artifact_identity, fixture.identity);
 
@@ -266,8 +304,10 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
         texas::MultiwayPolicyProvenance::StaticLegalFallback);
     EXPECT_TRUE(static_fallback.diagnostics.used_static_fallback);
 
-    auto stable_resolver = fixture.resolver();
-    (void)stable_resolver.resolve(fixture.request());
+    auto stable_request = fixture.request();
+    add_complete_search_ranges(&stable_request);
+    texas::MultiwayResolver stable_resolver(search_config(fixture));
+    (void)stable_resolver.resolve(stable_request);
     const auto stable_fallback = stable_resolver.resolve(expired_request);
     EXPECT_EQ(stable_fallback.diagnostics.status, texas::MultiwayResolverStatus::DeadlineFallback);
     EXPECT_EQ(
@@ -275,17 +315,21 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
         texas::MultiwayPolicyProvenance::StableRootFallback);
     EXPECT_TRUE(stable_fallback.diagnostics.used_latest_stable_root);
 
-    texas::MultiwayBlueprintSnapshot blueprint;
-    blueprint.identity = fixture.identity;
-    blueprint.public_state = fixture.root.id;
-    blueprint.infoset = {fixture.root.id, 0};
-    blueprint.trajectories = 1U;
-    blueprint.training.trajectories = 1U;
-    blueprint.actions = {{fixture.root.legal_actions.front(), 65535U}};
-    blueprint.validate();
+    auto uncached_config = search_config(fixture);
+    uncached_config.stable_root_cache.reset();
+    texas::MultiwayResolver uncached_resolver(uncached_config);
+    (void)uncached_resolver.resolve(stable_request);
+    const auto uncached_fallback = uncached_resolver.resolve(expired_request);
+    EXPECT_TRUE(uncached_fallback.diagnostics.policy_provenance !=
+        texas::MultiwayPolicyProvenance::StableRootFallback);
+
+    auto blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(verified_root_artifact(fixture));
+    blueprint->snapshot.actions = {{fixture.root.legal_actions.front(), 65535U}};
+    blueprint->snapshot.validate();
+    blueprint->manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(blueprint->snapshot);
     texas::MultiwayResolverConfig blueprint_config;
     blueprint_config.buckets = &fixture.buckets;
-    blueprint_config.blueprint = &blueprint;
+    blueprint_config.verified_blueprint = std::move(blueprint);
     texas::MultiwayResolver blueprint_resolver(blueprint_config);
     const auto blueprint_fallback = blueprint_resolver.resolve(expired_request);
     EXPECT_EQ(blueprint_fallback.diagnostics.status, texas::MultiwayResolverStatus::DeadlineFallback);
@@ -295,11 +339,17 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
     EXPECT_TRUE(blueprint_fallback.diagnostics.used_blueprint_fallback);
 }
 
-TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
+TEST_CASE(multiway_resolver_default_mode_runs_a_clean_root_search_when_configured) {
     ResolverFixture fixture;
     auto request = fixture.request();
     add_complete_search_ranges(&request);
-    texas::MultiwayResolver resolver(search_config(fixture));
+    const auto artifact = verified_root_artifact(fixture);
+    const auto full_blueprint = std::make_shared<texas::MultiwayBlueprintStore>(fixture.identity, std::vector<texas::MultiwayBlueprintRow>{});
+    auto config = search_config(fixture);
+    config.search_mode = texas::MultiwayResolverSearchMode::ReleaseDefault;
+    config.verified_blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(artifact);
+    config.full_blueprint = full_blueprint;
+    texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
 
@@ -324,6 +374,23 @@ TEST_CASE(multiway_resolver_runs_a_clean_root_search_when_enabled) {
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
 }
 
+TEST_CASE(multiway_resolver_default_mode_uses_fallback_without_release_search_configuration) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    texas::MultiwayResolverConfig config;
+    config.buckets = &fixture.buckets;
+    texas::MultiwayResolver resolver(config);
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::RejectedByBudget);
+    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_EQ(result.diagnostics.search_eligibility, texas::MultiwayResolverSearchEligibility::NotRequested);
+    EXPECT_TRUE(result.diagnostics.used_static_fallback);
+    EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
 TEST_CASE(multiway_resolver_search_mode_falls_back_without_complete_live_ranges) {
     ResolverFixture fixture;
     texas::MultiwayResolver resolver(search_config(fixture));
@@ -343,7 +410,7 @@ TEST_CASE(multiway_resolver_active_search_respects_controlled_seat_eligibility) 
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.active_search_max_seats = 2U;
+    config.runtime_limits.active_max_seats = 2U;
     texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
@@ -357,10 +424,22 @@ TEST_CASE(multiway_resolver_active_search_respects_controlled_seat_eligibility) 
 TEST_CASE(multiway_resolver_rejects_invalid_active_search_eligibility_limits) {
     ResolverFixture fixture;
     auto config = search_config(fixture);
-    config.active_search_min_seats = 4U;
-    config.active_search_max_seats = 3U;
+    config.runtime_limits.active_min_seats = 4U;
+    config.runtime_limits.active_max_seats = 3U;
 
     EXPECT_THROW(texas::MultiwayResolver(config), std::invalid_argument);
+}
+
+TEST_CASE(multiway_resolver_validates_all_runtime_limits_as_one_snapshot) {
+    ResolverFixture fixture;
+    auto config = search_config(fixture);
+    auto invalid_depth = config;
+    invalid_depth.runtime_limits.max_decision_depth = 65U;
+    EXPECT_THROW(texas::MultiwayResolver(invalid_depth), std::invalid_argument);
+
+    auto invalid_budget = config;
+    invalid_budget.runtime_limits.solver.max_batches = 0U;
+    EXPECT_THROW(texas::MultiwayResolver(invalid_budget), std::invalid_argument);
 }
 
 TEST_CASE(multiway_resolver_search_budget_rejects_an_expired_request_before_batch_start) {
@@ -385,7 +464,7 @@ TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.search_limits.max_worker_delta_entries = 1U;
+    config.runtime_limits.solver.max_worker_delta_entries = 1U;
     texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
@@ -394,37 +473,10 @@ TEST_CASE(multiway_resolver_rejects_a_root_search_without_a_clean_batch) {
     EXPECT_TRUE(result.diagnostics.used_fallback);
     EXPECT_EQ(result.diagnostics.completed_batches, 0U);
     EXPECT_EQ(result.diagnostics.completed_trajectories, 0U);
+    EXPECT_EQ(
+        result.diagnostics.search_failure,
+        texas::MultiwayResolverSearchFailure::NoCleanBatch);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
-}
-
-TEST_CASE(multiway_resolver_default_mode_falls_back_without_a_release_profile) {
-    ResolverFixture fixture;
-    texas::MultiwayResolverConfig config;
-    config.buckets = &fixture.buckets;
-    texas::MultiwayResolver resolver(config);
-
-    const auto result = resolver.resolve(fixture.request());
-
-    EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::RejectedByBudget);
-    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::StaticLegalFallback);
-    EXPECT_TRUE(result.diagnostics.used_fallback);
-}
-
-TEST_CASE(multiway_resolver_default_mode_runs_search_for_a_release_profile) {
-    ResolverFixture fixture;
-    auto request = fixture.request();
-    add_complete_search_ranges(&request);
-    auto config = search_config(fixture);
-    config.search_mode = texas::MultiwayResolverSearchMode::DefaultSearch;
-    texas::MultiwayBlueprintStore full_blueprint(fixture.identity, {});
-    config.full_blueprint = &full_blueprint;
-    texas::MultiwayResolver resolver(config);
-
-    const auto result = resolver.resolve(request);
-
-    EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::Solved);
-    EXPECT_EQ(result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::RuntimeSearch);
-    EXPECT_EQ(result.diagnostics.search_engine, texas::MultiwayResolverEngine::RootExternalSamplingMCCFR);
 }
 
 TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
@@ -432,7 +484,7 @@ TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.search_memory_budget = texas::MultiwayMemoryBudget{1U, 3U, 2U};
+    config.runtime_limits.memory = texas::MultiwayMemoryBudget{1U, 3U, 2U};
     texas::MultiwayResolver resolver(config);
 
     const auto result = resolver.resolve(request);
@@ -440,21 +492,24 @@ TEST_CASE(multiway_resolver_rejects_memory_before_runtime_search_allocation) {
     EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::RejectedByBudget);
     EXPECT_EQ(result.diagnostics.search_memory_status, texas::MultiwayMemoryStatus::Rejected);
     EXPECT_EQ(result.diagnostics.search_memory_stage, texas::MultiwayMemoryAdmissionStage::None);
+    EXPECT_EQ(
+        result.diagnostics.search_failure,
+        texas::MultiwayResolverSearchFailure::MemoryRejected);
     EXPECT_EQ(result.diagnostics.search_admitted_memory_bytes, 0U);
     EXPECT_TRUE(result.diagnostics.search_estimated_memory_bytes > 0U);
     EXPECT_EQ(result.diagnostics.completed_batches, 0U);
     EXPECT_TRUE(result.diagnostics.used_fallback);
 }
 
-TEST_CASE(multiway_runtime_session_rejects_memory_before_constructing_the_round) {
+TEST_CASE(multiway_decision_session_rejects_memory_before_constructing_the_round) {
     ResolverFixture fixture;
     auto request = fixture.request();
     add_complete_search_ranges(&request);
     auto config = search_config(fixture);
-    config.search_memory_budget = texas::MultiwayMemoryBudget{1U, 3U, 2U};
+    config.runtime_limits.memory = texas::MultiwayMemoryBudget{1U, 3U, 2U};
     texas::MultiwayResolver resolver(config);
 
-    EXPECT_THROW(resolver.begin_runtime_session(request), std::length_error);
+    EXPECT_THROW(resolver.begin_decision_session(request), std::length_error);
 }
 
 TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
@@ -470,7 +525,11 @@ TEST_CASE(multiway_resolver_shadow_mode_reports_clean_search_comparison) {
     EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::Solved);
     EXPECT_EQ(
         result.diagnostics.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::StaticLegalFallback);
+    EXPECT_EQ(result.diagnostics.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(
+        result.diagnostics.search_engine_version,
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_EQ(result.diagnostics.search_eligibility, texas::MultiwayResolverSearchEligibility::Eligible);
     EXPECT_TRUE(result.diagnostics.shadow_search_completed);
     EXPECT_EQ(result.diagnostics.shadow_completed_batches, 1U);

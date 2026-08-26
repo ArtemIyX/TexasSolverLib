@@ -7,58 +7,228 @@ include(CMakePackageConfigHelpers)
 include(CTest)
 find_package(Threads REQUIRED)
 
-set(GPERFTOOLS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}")
-if (NOT VCPKG_TARGET_TRIPLET)
-    set(GPERFTOOLS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows")
+option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
+option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
+option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research component" OFF)
+option(TEXASSOLVER_BUILD_RESEARCH_EXAMPLES "Build benchmark and backend-comparison examples" OFF)
+option(TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH "Build fixed-private sampled HUNL reference kernels" OFF)
+
+set(TEXASSOLVER_PUBLIC_HEADERS
+    include/core/arena.hpp
+    include/core/atomic_publish.hpp
+    include/core/canonical_combo.hpp
+    include/core/game.hpp
+    include/core/fingerprint.hpp
+    include/core/legacy_namespace_compat.hpp
+    include/core/lib.hpp
+    include/core/namespaces.hpp
+    include/core/poker.hpp
+    include/core/portable_binary.hpp
+    include/core/types.hpp
+    include/games/hunl.hpp
+    include/games/hunl_eval.hpp
+    include/games/hunl_flat_builder.hpp
+    include/games/hunl_flat_graph.hpp
+    include/games/hunl_solver.hpp
+    include/games/hunl_tree.hpp
+    include/games/kuhn.hpp
+    include/games/leduc.hpp
+    include/games/multiway_fixed.hpp
+    include/games/multiway_private.hpp
+    include/games/multiway_rake.hpp
+    include/games/multiway_replay.hpp
+    include/games/multiway_rules.hpp
+    include/games/multiway_state.hpp
+    include/games/multiway_terminal.hpp
+    include/preflop/preflop.hpp
+    include/preflop/preflop_equity.hpp
+    include/solver/dcfr.hpp
+    include/solver/exploit.hpp
+    include/solver/hunl_bucket_map.hpp
+    include/solver/hunl_bucket_terminal.hpp
+    include/solver/hunl_flat_dcfr.hpp
+    include/solver/hunl_flat_expected_value.hpp
+    include/solver/hunl_flat_pipeline.hpp
+    include/solver/hunl_flat_state.hpp
+    include/solver/hunl_leaf_evaluator.hpp
+    include/solver/hunl_sampled_config.hpp
+    include/solver/hunl_sampled_export.hpp
+    include/solver/hunl_sampled_profile.hpp
+    include/solver/hunl_sampled_range.hpp
+    include/solver/hunl_sampled_scheduler.hpp
+    include/solver/hunl_sampled_simd.hpp
+    include/solver/hunl_sampled_solver.hpp
+    include/solver/hunl_sampled_storage.hpp
+    include/solver/multiway_action_abstraction.hpp
+    include/solver/multiway_artifact.hpp
+    include/solver/multiway_blueprint_config.hpp
+    include/solver/multiway_blueprint_policy_provider.hpp
+    include/solver/multiway_blueprint_store.hpp
+    include/solver/multiway_blueprint_trainer.hpp
+    include/solver/multiway_bucket_artifact.hpp
+    include/solver/multiway_bucket_model.hpp
+    include/solver/multiway_cfr.hpp
+    include/solver/multiway_checkpoint.hpp
+    include/solver/multiway_continuation_policy.hpp
+    include/solver/multiway_continuation_policy_kind.hpp
+    include/solver/multiway_continuation_selector.hpp
+    include/solver/multiway_evaluation.hpp
+    include/solver/multiway_export.hpp
+    include/solver/multiway_future_bucket.hpp
+    include/solver/multiway_leaf_evaluator.hpp
+    include/solver/multiway_memory.hpp
+    include/solver/multiway_model_identity.hpp
+    include/solver/multiway_public_builder.hpp
+    include/solver/multiway_range_belief.hpp
+    include/solver/multiway_range_update.hpp
+    include/solver/multiway_resolver.hpp
+    include/solver/multiway_resolver_budget.hpp
+    include/solver/multiway_resolver_evaluation.hpp
+    include/solver/multiway_rollout_leaf.hpp
+    include/solver/multiway_decision_session.hpp
+    include/solver/multiway_scheduler.hpp
+    include/solver/multiway_search_profile.hpp
+    include/solver/multiway_search_session.hpp
+    include/solver/multiway_solver.hpp
+    include/solver/multiway_terminal_adapter.hpp
+    include/solver/multiway_traversal.hpp
+    include/solver/parallel_dcfr.hpp
+    include/solver/solver.hpp
+    include/util/abstraction.hpp
+    include/util/aligned_allocator.hpp
+    include/util/checked_numeric.hpp
+    include/util/infoset_lookup.hpp
+    include/util/infoset_registry.hpp
+    include/util/iteration_range.hpp
+    include/util/pcs.hpp
+    include/util/profiling.hpp
+    include/util/simd.hpp
+    include/util/suit_iso.hpp
+    include/util/thread_join_guard.hpp
+)
+
+set(TEXASSOLVER_SOURCES
+    src/core/arena.cpp
+    src/core/atomic_publish.cpp
+    src/core/canonical_combo.cpp
+    src/core/poker.cpp
+    src/games/hunl.cpp
+    src/games/hunl_eval.cpp
+    src/games/hunl_flat_builder.cpp
+    src/games/hunl_flat_graph.cpp
+    src/games/hunl_solver.cpp
+    src/games/hunl_tree.cpp
+    src/games/kuhn.cpp
+    src/games/leduc.cpp
+    src/games/multiway_fixed.cpp
+    src/games/multiway_private.cpp
+    src/games/multiway_replay.cpp
+    src/games/multiway_rules.cpp
+    src/games/multiway_state.cpp
+    src/games/multiway_terminal.cpp
+    src/preflop/preflop.cpp
+    src/preflop/preflop_equity.cpp
+    src/solver/exploit.cpp
+    src/solver/hunl_bucket_map.cpp
+    src/solver/hunl_bucket_terminal.cpp
+    src/solver/hunl_flat_dcfr.cpp
+    src/solver/hunl_flat_expected_value.cpp
+    src/solver/hunl_flat_pipeline.cpp
+    src/solver/hunl_flat_state.cpp
+    src/solver/hunl_sampled_config.cpp
+    src/solver/hunl_sampled_export.cpp
+    src/solver/hunl_sampled_profile.cpp
+    src/solver/hunl_sampled_range.cpp
+    src/solver/hunl_sampled_scheduler.cpp
+    src/solver/hunl_sampled_simd.cpp
+    src/solver/hunl_sampled_solver.cpp
+    src/solver/hunl_sampled_storage.cpp
+    src/solver/hunl_sampled_trajectory.cpp
+    src/solver/multiway_action_abstraction.cpp
+    src/solver/multiway_artifact.cpp
+    src/solver/multiway_blueprint_config.cpp
+    src/solver/multiway_blueprint_policy_provider.cpp
+    src/solver/multiway_blueprint_store.cpp
+    src/solver/multiway_blueprint_trainer.cpp
+    src/solver/multiway_bucket_artifact.cpp
+    src/solver/multiway_bucket_model.cpp
+    src/solver/multiway_cfr.cpp
+    src/solver/multiway_checkpoint.cpp
+    src/solver/multiway_continuation_policy.cpp
+    src/solver/multiway_continuation_selector.cpp
+    src/solver/multiway_evaluation.cpp
+    src/solver/multiway_export.cpp
+    src/solver/multiway_future_bucket.cpp
+    src/solver/multiway_memory.cpp
+    src/solver/multiway_model_identity.cpp
+    src/solver/multiway_public_builder.cpp
+    src/solver/multiway_range_belief.cpp
+    src/solver/multiway_range_update.cpp
+    src/solver/multiway_resolver.cpp
+    src/solver/multiway_resolver_budget.cpp
+    src/solver/multiway_resolver_evaluation.cpp
+    src/solver/multiway_rollout_leaf.cpp
+    src/solver/multiway_decision_session.cpp
+    src/solver/multiway_scheduler.cpp
+    src/solver/multiway_search_profile.cpp
+    src/solver/multiway_search_session.cpp
+    src/solver/multiway_solver.cpp
+    src/solver/multiway_terminal_adapter.cpp
+    src/solver/multiway_traversal.cpp
+    src/solver/parallel_dcfr.cpp
+    src/solver/solver.cpp
+)
+
+if (WIN32)
+    list(APPEND TEXASSOLVER_SOURCES src/util/abstraction.cpp)
+else()
+    list(APPEND TEXASSOLVER_SOURCES src/util/abstraction_stub.cpp)
 endif()
 
-find_path(GPERFTOOLS_INCLUDE_DIR
-    NAMES gperftools/profiler.h
-    PATHS "${GPERFTOOLS_ROOT}/include"
-    NO_DEFAULT_PATH
+list(APPEND TEXASSOLVER_SOURCES
+    src/util/infoset_registry.cpp
+    src/util/pcs.cpp
+    src/util/profiling.cpp
+    src/util/simd.cpp
+    src/util/suit_iso.cpp
 )
 
-find_library(GPERFTOOLS_PROFILER_LIBRARY
-    NAMES tcmalloc_minimal profiler libprofiler
-    PATHS "${GPERFTOOLS_ROOT}/lib"
-    NO_DEFAULT_PATH
-)
-
-option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" ON)
-option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" ON)
-option(TEXASSOLVER_USE_POKER_HAND_EVALUATOR "Build vendored PokerHandEvaluator" ON)
-
-file(GLOB_RECURSE TEXASSOLVER_PUBLIC_HEADERS CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp
-)
-
-file(GLOB_RECURSE TEXASSOLVER_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-)
-
-list(FILTER TEXASSOLVER_SOURCES EXCLUDE REGEX ".*/main\\.cpp$")
-
-if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
-    set(BUILD_TESTS OFF CACHE BOOL "Disable PokerHandEvaluator tests" FORCE)
-    set(BUILD_EXAMPLES OFF CACHE BOOL "Disable PokerHandEvaluator examples" FORCE)
-    set(BUILD_PLO4 OFF CACHE BOOL "Disable PokerHandEvaluator PLO4" FORCE)
-    set(BUILD_PLO5 OFF CACHE BOOL "Disable PokerHandEvaluator PLO5" FORCE)
-    set(BUILD_PLO6 OFF CACHE BOOL "Disable PokerHandEvaluator PLO6" FORCE)
-    set(BUILD_CARD5 ON CACHE BOOL "Enable PokerHandEvaluator 5-card" FORCE)
-    set(BUILD_CARD6 ON CACHE BOOL "Enable PokerHandEvaluator 6-card" FORCE)
-    set(BUILD_CARD7 ON CACHE BOOL "Enable PokerHandEvaluator 7-card" FORCE)
-    add_subdirectory(external/pokerHandEvaluator/cpp EXCLUDE_FROM_ALL)
-endif()
+set(_texassolver_evaluator_options
+    BUILD_TESTS BUILD_EXAMPLES BUILD_PLO4 BUILD_PLO5 BUILD_PLO6 BUILD_CARD5 BUILD_CARD6 BUILD_CARD7)
+foreach(_texassolver_option IN LISTS _texassolver_evaluator_options)
+    if (DEFINED ${_texassolver_option})
+        set(_texassolver_saved_defined_${_texassolver_option} TRUE)
+        set(_texassolver_saved_value_${_texassolver_option} "${${_texassolver_option}}")
+    endif()
+endforeach()
+set(BUILD_TESTS OFF)
+set(BUILD_EXAMPLES OFF)
+set(BUILD_PLO4 OFF)
+set(BUILD_PLO5 OFF)
+set(BUILD_PLO6 OFF)
+set(BUILD_CARD5 ON)
+set(BUILD_CARD6 ON)
+set(BUILD_CARD7 ON)
+add_subdirectory(external/pokerHandEvaluator/cpp EXCLUDE_FROM_ALL)
+foreach(_texassolver_option IN LISTS _texassolver_evaluator_options)
+    if (_texassolver_saved_defined_${_texassolver_option})
+        set(${_texassolver_option} "${_texassolver_saved_value_${_texassolver_option}}")
+    else()
+        unset(${_texassolver_option})
+    endif()
+endforeach()
+unset(_texassolver_evaluator_options)
 
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
 
 target_sources(texas PRIVATE ${TEXASSOLVER_SOURCES})
 target_sources(texas PRIVATE ${TEXASSOLVER_PUBLIC_HEADERS})
-if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
-    target_link_libraries(texas PRIVATE pheval)
-endif()
+target_link_libraries(texas PRIVATE pheval)
 target_link_libraries(texas PRIVATE Threads::Threads)
+if (WIN32)
+    target_link_libraries(texas PRIVATE Cabinet)
+endif()
 
 target_include_directories(texas
     PUBLIC
@@ -73,6 +243,34 @@ set_target_properties(texas PROPERTIES
     OUTPUT_NAME texas
 )
 
+if (TEXASSOLVER_BUILD_LEGACY_RESEARCH)
+    add_library(texas_legacy_vector STATIC
+        src/preflop/preflop_rvr.cpp
+        src/solver/dcfr_vector.cpp
+    )
+    add_library(TexasSolver::legacy_vector ALIAS texas_legacy_vector)
+    target_include_directories(texas_legacy_vector
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    )
+    target_compile_features(texas_legacy_vector PUBLIC cxx_std_17)
+    target_link_libraries(texas_legacy_vector PUBLIC texas)
+endif()
+
+if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
+    add_library(texas_hunl_fixed_research STATIC
+        src/solver/hunl_sampled_builder.cpp
+        src/solver/hunl_sampled_terminal.cpp
+        src/solver/hunl_sampled_traversal.cpp
+    )
+    target_include_directories(texas_hunl_fixed_research
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    )
+    target_compile_features(texas_hunl_fixed_research PUBLIC cxx_std_17)
+    target_link_libraries(texas_hunl_fixed_research PUBLIC texas)
+endif()
+
 if (MSVC)
     target_compile_options(texas PRIVATE /W4)
 else()
@@ -86,19 +284,21 @@ install(TARGETS texas
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-if (TEXASSOLVER_USE_POKER_HAND_EVALUATOR)
-    install(TARGETS pheval
-        EXPORT TexasSolverTargets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/phevaluator
-    )
-endif()
-
-install(DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+install(TARGETS pheval
+    EXPORT TexasSolverTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/phevaluator
 )
+
+foreach(public_header IN LISTS TEXASSOLVER_PUBLIC_HEADERS)
+    file(RELATIVE_PATH public_header_relative ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/${public_header})
+    get_filename_component(public_header_directory ${public_header_relative} DIRECTORY)
+    install(
+        FILES ${public_header}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${public_header_directory})
+endforeach()
 
 install(EXPORT TexasSolverTargets
     NAMESPACE TexasSolver::
@@ -124,61 +324,32 @@ install(FILES
 )
 
 if (TEXASSOLVER_BUILD_EXAMPLES)
-    add_executable(texas_solver_gperftools_example
-        examples/gperftools_profile_demo.cpp
-    )
-    target_include_directories(texas_solver_gperftools_example PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-    )
-    target_link_libraries(texas_solver_gperftools_example PRIVATE texas)
-
     add_executable(texas_solver_example
         examples/solve_kuhn.cpp
     )
     target_link_libraries(texas_solver_example PRIVATE texas)
     target_include_directories(texas_solver_example PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    add_executable(texas_solver_benchmark
-        examples/benchmarks/main.cpp
-    )
-    target_link_libraries(texas_solver_benchmark PRIVATE texas)
-    target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
+        add_executable(texas_solver_benchmark
+            examples/benchmarks/main.cpp
+        )
+        target_link_libraries(texas_solver_benchmark PRIVATE texas)
+        target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    add_executable(texas_solver_flat_scheduler_benchmark
-        examples/benchmarks/flat_scheduler_main.cpp
-    )
-    target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas)
-    target_include_directories(texas_solver_flat_scheduler_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        add_executable(texas_solver_flat_scheduler_benchmark
+            examples/benchmarks/flat_scheduler_main.cpp
+        )
+        target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas)
+        target_include_directories(texas_solver_flat_scheduler_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-    add_executable(texas_solver_hunl_backend_compare
-        examples/benchmarks/hunl_backend_compare_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
-    target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        add_executable(texas_solver_hunl_backend_compare
+            examples/benchmarks/hunl_backend_compare_main.cpp
+        )
+        target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
+        target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    endif()
 
-    add_executable(texas_solver_hunl_random_flat
-        examples/benchmarks/hunl_random_flat_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_random_flat PRIVATE texas)
-    target_include_directories(texas_solver_hunl_random_flat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-    add_executable(texas_solver_hunl_mccfr_scaling
-        examples/benchmarks/hunl_mccfr_scaling_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_mccfr_scaling PRIVATE texas)
-    target_include_directories(texas_solver_hunl_mccfr_scaling PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-    add_executable(texas_solver_hunl_mccfr_postflop
-        examples/hunl_mccfr_postflop_main.cpp
-    )
-    target_link_libraries(texas_solver_hunl_mccfr_postflop PRIVATE texas)
-    target_include_directories(texas_solver_hunl_mccfr_postflop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-    add_executable(texas_solver_range_cache
-        examples/benchmarks/range_cache_main.cpp
-    )
-    target_link_libraries(texas_solver_range_cache PRIVATE texas)
-    target_include_directories(texas_solver_range_cache PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
 
 if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
@@ -191,10 +362,35 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         if (test_name STREQUAL "test_main" OR test_name STREQUAL "main_test")
             continue()
         endif()
+        if (NOT WIN32 AND (
+            test_name STREQUAL "test_abstraction" OR
+            test_name STREQUAL "test_abstraction_loader" OR
+            test_name STREQUAL "test_hunl_flat_dcfr" OR
+            test_name STREQUAL "test_hunl_solver_storage"))
+            continue()
+        endif()
+        if (test_name STREQUAL "test_hunl_sampled_solver")
+            continue()
+        endif()
+
+        set(test_support_sources)
+        if (test_name STREQUAL "test_multiway_baseline")
+            list(APPEND test_support_sources src/solver/multiway_baseline.cpp)
+        endif()
+        if (test_name STREQUAL "test_hunl_flat_mccfr")
+            list(APPEND test_support_sources src/solver/hunl_flat_mccfr.cpp)
+        endif()
+        if (test_name STREQUAL "test_class169_solver_contract" OR
+            test_name STREQUAL "test_dcfr_discount_contract")
+            list(APPEND test_support_sources
+                src/preflop/preflop_rvr.cpp
+                src/solver/dcfr_vector.cpp)
+        endif()
 
         add_executable(${test_name}
             tests/test_main.cpp
             ${test_source}
+            ${test_support_sources}
         )
 
         target_include_directories(${test_name} PRIVATE
@@ -211,5 +407,47 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_package_config_contract.cmake
+    )
+    add_test(
+        NAME test_legacy_vector_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_legacy_vector_boundary.cmake
+    )
+    add_test(
+        NAME test_example_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_example_boundary.cmake
+    )
+    add_test(
+        NAME test_core_namespace_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_core_namespace_boundary.cmake
+    )
+    add_test(
+        NAME test_decision_session_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_decision_session_boundary.cmake
+    )
+    add_test(
+        NAME test_hunl_sampled_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_hunl_sampled_boundary.cmake
+    )
+    add_test(
+        NAME test_multiway_traversal_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_multiway_traversal_boundary.cmake
+    )
+    add_test(
+        NAME test_evaluator_options_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_evaluator_options_boundary.cmake
     )
 endif()

@@ -103,7 +103,7 @@ texas::MultiwayRootSnapshot make_root(
     const texas::MultiwayActionAbstraction& abstraction) {
     texas::MultiwayRootSnapshot root;
     root.public_state = texas::MultiwayPublicBuilder::make_root(
-        state.snapshot(), board, abstraction.make_legal_actions(state.snapshot(), 83U));
+        state.snapshot(), board, abstraction.make_legal_actions(state.snapshot()));
     root.root_infoset = {root.public_state.id, state.current_player()};
     root.seat_order = {0, 1};
     root.next_street_first_seat = 0;

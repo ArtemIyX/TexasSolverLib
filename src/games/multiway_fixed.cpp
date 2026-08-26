@@ -130,8 +130,13 @@ MultiwayFixedActionMenu MultiwayFixedState::legal_actions() const noexcept {
     const auto all_in_target = static_cast<std::int64_t>(street_contributions[seat]) + stacks[seat];
     const auto minimum_full_raise = static_cast<std::int64_t>(current_bet) + last_full_raise_size;
     const auto has_opponent = actionable_count(*this) > 1U;
+    const auto opening_preflop_action = street == Street::Preflop &&
+        std::none_of(
+            has_acted.begin(), has_acted.begin() + seat_count,
+            [](bool acted) { return acted; });
     if (has_opponent && may_raise[seat] && all_in_target > minimum_full_raise) {
-        menu.actions[menu.count++] = to_call > 0 ? MultiwayAction::Raise : MultiwayAction::Bet;
+        menu.actions[menu.count++] = to_call > 0 && !opening_preflop_action
+            ? MultiwayAction::Raise : MultiwayAction::Bet;
     }
     if (has_opponent && may_raise[seat] && all_in_target > current_bet) {
         menu.actions[menu.count++] = MultiwayAction::AllIn;
@@ -298,6 +303,30 @@ MultiwayFixedState make_multiway_fixed_state(const MultiwayBettingSnapshot& snap
         state.bet_faced_when_acted[seat] = snapshot.bet_faced_when_acted[seat];
     }
     return state;
+}
+
+MultiwayBettingSnapshot make_multiway_betting_snapshot(const MultiwayFixedState& state) {
+    state.validate();
+    MultiwayBettingSnapshot snapshot;
+    snapshot.stacks.assign(state.stacks.begin(), state.stacks.begin() + state.seat_count);
+    snapshot.contributions.assign(
+        state.contributions.begin(), state.contributions.begin() + state.seat_count);
+    snapshot.street_contributions.assign(
+        state.street_contributions.begin(), state.street_contributions.begin() + state.seat_count);
+    snapshot.folded.assign(state.folded.begin(), state.folded.begin() + state.seat_count);
+    snapshot.all_in.assign(state.all_in.begin(), state.all_in.begin() + state.seat_count);
+    snapshot.may_raise.assign(state.may_raise.begin(), state.may_raise.begin() + state.seat_count);
+    snapshot.pending.assign(state.pending.begin(), state.pending.begin() + state.seat_count);
+    snapshot.has_acted.assign(state.has_acted.begin(), state.has_acted.begin() + state.seat_count);
+    snapshot.bet_faced_when_acted.assign(
+        state.bet_faced_when_acted.begin(), state.bet_faced_when_acted.begin() + state.seat_count);
+    snapshot.current_player = state.current_player;
+    snapshot.last_aggressor = state.last_aggressor;
+    snapshot.current_bet = state.current_bet;
+    snapshot.last_full_raise_size = state.last_full_raise_size;
+    snapshot.big_blind = state.big_blind;
+    snapshot.street = state.street;
+    return snapshot;
 }
 
 void MultiwayFixedTerminalInput::validate() const {

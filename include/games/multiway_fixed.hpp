@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/multiway_state.hpp"
 #include "games/multiway_terminal.hpp"
@@ -55,6 +55,8 @@ struct MultiwayFixedState {
     const MultiwayGameRules& rules,
     PlayerId first_player = 0);
 [[nodiscard]] MultiwayFixedState make_multiway_fixed_state(const MultiwayBettingSnapshot& snapshot);
+[[nodiscard]] MultiwayBettingSnapshot make_multiway_betting_snapshot(
+    const MultiwayFixedState& state);
 
 struct MultiwayFixedTerminalInput {
     std::uint8_t seat_count = 0;

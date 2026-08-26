@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl_eval.hpp"
 #include "solver/hunl_bucket_map.hpp"

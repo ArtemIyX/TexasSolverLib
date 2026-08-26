@@ -107,7 +107,7 @@ MultiwayLocalExpansion MultiwaySearchSession::plan_local_expansion(
         throw std::invalid_argument("multiway local expansion was not admitted by policy");
     }
     const auto menu = MultiwayActionAbstraction::insert_exact_observed_action(
-        current.public_state.betting, action_menu_, observed_action, target_street_contribution, 0U);
+        current.public_state.betting, action_menu_, observed_action, target_street_contribution);
     MultiwayLocalExpansion result;
     result.root = current;
     result.root.public_state.legal_actions = menu;

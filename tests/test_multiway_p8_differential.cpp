@@ -53,7 +53,7 @@ struct ResolverFixture {
         config.big_blind = 100;
         config.street = texas::Street::Flop;
         const auto state = texas::MultiwayState::initial(config);
-        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot(), 91U);
+        const auto menu = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot());
         return texas::MultiwayPublicBuilder::make_root(state.snapshot(), {8U, 13U, 17U}, menu);
     }
 
@@ -63,6 +63,7 @@ struct ResolverFixture {
         result.public_state = root;
         result.hero_seat = 0;
         result.hero_cards = {24U, 31U};
+        result.hero_range = {{{24U, 31U}, 1.0}};
         result.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
         result.sampling_seed = 73U;
         return result;
@@ -107,7 +108,7 @@ void run_terminal_differential_case(std::uint8_t index) {
 }
 
 void run_range_differential_case(std::uint8_t index) {
-    const auto first = texas::Card::from_index(index).index();
+    const auto first = index;
     const auto second = static_cast<std::uint8_t>(first + 1U);
     const auto alternate = static_cast<std::uint8_t>(first + 2U);
     const std::array<texas::MultiwayRangeBeliefSuppliedEntry, 3> entries = {{
@@ -244,7 +245,11 @@ TEST_CASE(multiway_p84_evaluation_adapter_selects_deterministic_request_local_ca
     blueprint.actions = {{fixture.root.legal_actions.front(), 65535U}};
     texas::MultiwayResolverEvaluationAdapterConfig config;
     config.resolver.buckets = &fixture.buckets;
-    config.resolver.blueprint = &blueprint;
+    auto verified = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>();
+    verified->snapshot = blueprint;
+    verified->manifest.identity = blueprint.identity;
+    verified->manifest.snapshot_hash = texas::MultiwayBlueprintArtifacts::snapshot_hash(blueprint);
+    config.resolver.verified_blueprint = std::move(verified);
     config.candidates = {
         {11U, texas::MultiwayResolverEvaluationCandidateKind::StaticLegal},
         {12U, texas::MultiwayResolverEvaluationCandidateKind::BlueprintOnly},
@@ -263,7 +268,11 @@ TEST_CASE(multiway_p84_evaluation_adapter_selects_deterministic_request_local_ca
     EXPECT_TRUE(first.result.has_sampled_action);
     EXPECT_EQ(blueprint_only.result.diagnostics.policy_provenance, texas::MultiwayPolicyProvenance::BlueprintFallback);
     EXPECT_EQ(disabled.result.diagnostics.policy_provenance,
-        texas::MultiwayPolicyProvenance::LegacyDeterministicAdjustment);
+        texas::MultiwayPolicyProvenance::BlueprintFallback);
+    EXPECT_EQ(disabled.result.diagnostics.search_engine, texas::MultiwayResolverEngine::NoRuntimeSearch);
+    EXPECT_EQ(
+        disabled.result.diagnostics.search_engine_version,
+        texas::MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION);
     EXPECT_THROW(adapter.resolve(99U, fixture.request(), 7U), std::invalid_argument);
 }
 

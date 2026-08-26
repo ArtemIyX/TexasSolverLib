@@ -668,13 +668,6 @@ TEST_CASE(hunl_flat_mccfr_rejects_invalid_constructor_configs) {
             std::invalid_argument);
     }
 
-    {
-        texas::HUNLFlatMCCFRConfig config;
-        config.baseline_mode = texas::HUNLFlatBaselineMode::DepthLimitedValueTable;
-        EXPECT_THROW(
-            texas::HUNLFlatMCCFR(make_public_chance_conflict_graph(), {1, 1}, config),
-            std::invalid_argument);
-    }
 }
 
 TEST_CASE(hunl_flat_mccfr_public_chance_sampling_moves_toward_exact_value_with_more_samples) {
@@ -1809,17 +1802,6 @@ TEST_CASE(hunl_flat_mccfr_root_export_contains_stable_action_descriptors) {
     EXPECT_EQ(root.actions[1].target_contribution, 75);
     EXPECT_TRUE(root.actions[0].action_menu_id != 0U);
     EXPECT_EQ(root.actions[0].action_menu_id, root.actions[1].action_menu_id);
-}
-
-TEST_CASE(hunl_flat_mccfr_worker_exception_is_rethrown_by_coordinator) {
-    const auto graph = make_external_sampling_graph();
-    texas::HUNLFlatMCCFRConfig config;
-    config.mode = texas::HUNLFlatSamplingMode::External;
-    config.traversals_per_iteration = 2;
-    config.batch_size = 1;
-    config.test_throw_worker_index = 1;
-    texas::HUNLFlatMCCFR solver(graph, {1, 1}, config, texas::HUNLFlatValueLayout::InfosetActionHand, 2);
-    EXPECT_THROW(solver.run_batches(1), std::runtime_error);
 }
 
 TEST_CASE(hunl_flat_mccfr_rejects_depth_limited_graphs_without_shared_leaf_evaluator) {

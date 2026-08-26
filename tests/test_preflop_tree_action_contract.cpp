@@ -1,4 +1,4 @@
-#include "preflop/preflop_rvr.hpp"
+#include "preflop/preflop.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

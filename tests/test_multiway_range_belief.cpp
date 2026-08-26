@@ -48,8 +48,6 @@ void expect_same_row(
     EXPECT_EQ(actual.legal_mask(), expected.legal_mask);
     EXPECT_EQ(actual.metadata().source, expected.metadata.source);
     EXPECT_EQ(actual.metadata().last_update_revision, expected.metadata.last_update_revision);
-    EXPECT_EQ(actual.metadata().last_action_id, expected.metadata.last_action_id);
-    EXPECT_EQ(actual.metadata().has_last_action, expected.metadata.has_last_action);
     EXPECT_EQ(actual.metadata().observation.source, expected.metadata.observation.source);
     EXPECT_EQ(actual.metadata().observation.public_state_id, expected.metadata.observation.public_state_id);
     EXPECT_EQ(actual.metadata().observation.action_menu_id, expected.metadata.observation.action_menu_id);
@@ -138,7 +136,6 @@ TEST_CASE(multiway_range_beliefs_uniform_initialization_tracks_masks_and_metadat
     EXPECT_NEAR(total_weight(second), 1.0, 1e-12);
     EXPECT_EQ(first.metadata().source, texas::MultiwayRangeBeliefSource::Uniform);
     EXPECT_EQ(second.metadata().last_update_revision, 1U);
-    EXPECT_TRUE(!second.metadata().has_last_action);
     EXPECT_TRUE(!second.metadata().observation.applied);
     EXPECT_NEAR(second.metadata().input_mass, 1176.0, 0.0);
     EXPECT_NEAR(second.metadata().normalized_mass, 1.0, 0.0);
@@ -185,8 +182,6 @@ TEST_CASE(multiway_range_beliefs_apply_exact_observation_posterior_and_metadata)
     EXPECT_EQ(beliefs.revision(), 2U);
     EXPECT_EQ(updated.metadata().source, texas::MultiwayRangeBeliefSource::Search);
     EXPECT_EQ(updated.metadata().last_update_revision, 2U);
-    EXPECT_EQ(updated.metadata().last_action_id, 0U);
-    EXPECT_TRUE(updated.metadata().has_last_action);
     EXPECT_EQ(updated.metadata().observation.source, texas::MultiwayRangeBeliefSource::Search);
     EXPECT_EQ(updated.metadata().observation.public_state_id, 91U);
     EXPECT_EQ(updated.metadata().observation.action_menu_id, 53U);
@@ -327,7 +322,6 @@ TEST_CASE(multiway_range_beliefs_observation_prunes_table_blockers_and_updates_r
     EXPECT_NEAR(second.weight(combo_id(11U, 12U)), 1.0, 1e-15);
     EXPECT_EQ(beliefs.revision(), 3U);
     EXPECT_EQ(second.metadata().last_update_revision, 3U);
-    EXPECT_EQ(second.metadata().last_action_id, 1U);
     EXPECT_EQ(second.metadata().observation.source, texas::MultiwayRangeBeliefSource::Fallback);
     EXPECT_EQ(second.metadata().observation.source_revision, 6U);
     EXPECT_EQ(second.metadata().observation.observed_action, 1U);

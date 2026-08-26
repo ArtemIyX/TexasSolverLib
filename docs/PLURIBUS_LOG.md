@@ -4,69 +4,180 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
-## P9.3-P9.4 - Consolidate duplicated hot-path logic and publish implementation and operations documentation
+## P9.3 - Consolidate duplicated hot-path logic
 
 **Status:** Complete
-**Completed:** 2026-08-13
+**Completed:** 2026-08-23
 
-- Consolidated runtime and legacy resolver policy normalization behind one
-  scalar reference kernel with focused invalid-mass coverage.
-- Published the multiway runtime architecture, release-mode operations,
-  model-identity fields, fallback statuses, and ownership boundaries.
+- Consolidated standalone and sparse action-major regret matching behind one scalar reference kernel with caller-owned output.
+- Preserved action-major row layout, uniform fallback, finite-value checks, scaled normalization, and residual-probability closure without traversal allocation.
 
 ### Files
 
-- `README.md`
-- `docs/implementation_roadmap.md`
-- `docs/multiway_release_config.json`
-- `docs/multiway_release_runbook.md`
-- `docs/multiway_runtime_architecture.md`
-- `docs/project_state_report.md`
-- `include/solver/multiway_resolver_policy.hpp`
-- `src/solver/multiway_legacy_resolver.cpp`
-- `src/solver/multiway_resolver.cpp`
-- `src/solver/multiway_resolver_policy.cpp`
-- `tests/test_multiway_resolver_policy.cpp`
+- `include/solver/multiway_cfr.hpp`
+- `src/solver/multiway_cfr.cpp`
+- `src/solver/multiway_solver.cpp`
+- `tests/test_multiway_cfr.cpp`
+- `docs/PLURIBUS_LOG.md`
 
 ### Validation
 
-- Static diff, duplicate-kernel, documentation-reference, and whitespace checks completed.
-- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+- Reviewed shared-kernel and sparse-row call sites; static diff checks completed.
+- Build and tests not run at user request.
 
 ### Limitations
 
-- Runtime validation remains pending user authorization.
+- No performance claim is made without an authorized profile run.
 
-## P9.1-P9.2 - Migrate default resolver mode and isolate superseded perturbation logic
+## P9.2 - Remove or isolate superseded perturbation logic
 
 **Status:** Complete
-**Completed:** 2026-08-12
+**Completed:** 2026-08-23
 
-- Made `DefaultSearch` the resolver default. It runs runtime search only when
-  the full blueprint, bucket registry, valid terminal leaf, deterministic
-  bounded limits, memory preflight, and request checks are available.
-- Preserved explicit legacy and shadow modes for rollback and differential
-  comparison, and moved the old deterministic adjustment into a legacy-only
-  module with distinct provenance.
+- Removed the resolver's bounded deterministic perturbation loop and its synthetic batch counters.
+- `LegacyStatic` and `SearchShadow` now deliver only stable-root, blueprint, or static-legal fallback policies. They report `NoRuntimeSearch`; legacy provenance and engine values remain readable for historical artifacts only.
 
 ### Files
 
-- `docs/implementation_roadmap.md`
-- `docs/project_state_report.md`
-- `include/solver/multiway_legacy_resolver.hpp`
 - `include/solver/multiway_resolver.hpp`
-- `src/solver/multiway_legacy_resolver.cpp`
+- `include/solver/multiway_baseline.hpp`
+- `include/solver/multiway_artifact.hpp`
 - `src/solver/multiway_resolver.cpp`
 - `tests/test_multiway_resolver.cpp`
+- `tests/test_multiway_p8_differential.cpp`
+- `docs/multiway_release_runbook.md`
+- `docs/project_state_report.md`
+- `docs/PLURIBUS_LOG.md`
 
 ### Validation
 
-- Static diff, reference, and whitespace checks completed.
-- Build and tests not run. Repository instructions prohibit them unless explicitly requested.
+- Reviewed source and focused test changes; static diff checks completed.
+- Build and tests not run at user request.
 
 ### Limitations
 
-- Runtime validation remains pending user authorization.
+- Release-profile fixture matrix and rollback comparison remain pending authorization.
+
+## P9.1 - Migrate default resolver mode
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Added `ReleaseDefault` as the resolver default. It delivers root external-sampling search only with verified root and full-blueprint artifacts, matching buckets, and a complete runtime-search configuration.
+- Incomplete release configuration and ineligible requests use the established fallback chain. `LegacyStatic`, `SearchShadow`, and explicit `SearchActive` remain available for rollback and evaluation.
+
+### Files
+
+- `include/solver/multiway_resolver.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `docs/multiway_release_config.json`
+- `docs/multiway_release_runbook.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed source and focused test changes; JSON release configuration parsed successfully.
+- Build and tests not run at user request.
+
+### Limitations
+
+- Release-profile fixture matrix and rollback comparison remain pending authorization.
+
+## MinGW Windows Cabinet linkage
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Linked the Windows Compression API import library through the `texas` CMake target.
+- The dependency is restricted to Windows builds; existing non-Windows linkage is unchanged.
+
+### Files
+
+- `CMakeLists.txt`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static CMake and source review completed.
+- CMake configuration, build, and tests not run. The task did not authorize them.
+
+### Limitations
+
+- MinGW UCRT64, MSVC, and non-Windows build validation remains pending authorization.
+
+## MinGW Windows portability audit
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Audited first-party platform branches, CMake linkage, examples, tests, scripts, and vendored evaluator configuration for MinGW UCRT64 assumptions.
+- Identified the missing CMake Cabinet link required by the Windows Compression API.
+
+### Files
+
+- `docs/mingw_windows_portability_audit.md`
+- `docs/mingw_windows_verification_checklist.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source, CMake, and diff checks completed.
+- CMake configuration, build, and tests not run. The task did not authorize them.
+
+### Limitations
+
+- R1 remains unimplemented and runtime/compiler validation remains pending.
+
+## MinGW Windows environment API portability
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Used `_putenv_s` for Windows benchmark and environment-dependent test paths.
+- Retained POSIX `setenv` and `unsetenv` paths on non-Windows platforms.
+
+### Files
+
+- `examples/benchmarks/main.cpp`
+- `examples/benchmarks/hunl_random_flat_main.cpp`
+- `tests/test_hunl_regressions.cpp`
+- `tests/test_hunl_state.cpp`
+- `tests/test_parallel_dcfr.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source and diff checks completed.
+- Build and tests not run. The task did not authorize them.
+
+### Limitations
+
+- MinGW, MSVC, and non-Windows runtime validation remains pending authorization.
+
+## MinGW Windows portability fixes
+
+**Status:** Complete
+**Completed:** 2026-08-23
+
+- Passed the immutable deflate input through the Windows Compression API's mutable pointer declaration without changing ownership or cleanup.
+- Used `localtime_s` on all Windows compilers while retaining `localtime_r` on POSIX.
+- Guarded `NOMINMAX` against redefinition.
+
+### Files
+
+- `src/util/abstraction.cpp`
+- `src/util/profiling.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source and diff checks completed.
+- Build and tests not run. The task explicitly prohibited them.
+
+### Limitations
+
+- MinGW, MSVC, and non-Windows runtime validation remains pending authorization.
 
 ## Compact card test-fixture corrections
 

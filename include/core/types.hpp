@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/namespaces.hpp"
-
 #include <cstddef>
 #include <cstdint>
 #include <array>
@@ -13,6 +11,8 @@
 #include <vector>
 
 namespace texas::core {
+
+inline constexpr std::size_t DECK_CARD_COUNT = 52U;
 
 /**
  * @brief Player index used by game-state interfaces.
@@ -105,8 +105,8 @@ struct SolveOutput {
 }  // namespace texas::core
 
 template <>
-struct std::hash<texas::InfosetId> {
-    std::size_t operator()(const texas::InfosetId& id) const noexcept {
+struct std::hash<texas::core::InfosetId> {
+    std::size_t operator()(const texas::core::InfosetId& id) const noexcept {
         return std::hash<std::uint32_t>{}(id.value);
     }
 };

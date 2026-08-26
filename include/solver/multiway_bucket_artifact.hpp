@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway_bucket_model.hpp"
 
@@ -11,7 +11,7 @@
 
 namespace texas::solver::multiway {
 
-inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 3U;
+inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 4U;
 
 // Versioned deterministic baseline used until trained clustering artifacts are
 // introduced. The counts are part of the model identity through blueprint config.
@@ -39,7 +39,6 @@ struct MultiwayBucketFeatures {
     std::uint8_t hole_suited = 0U;
     std::uint8_t hole_pairs_board = 0U;
     std::uint8_t hole_suit_matches_board = 0U;
-    std::uint8_t unused = 0U;
 };
 
 struct MultiwayBucketBoardRequest {

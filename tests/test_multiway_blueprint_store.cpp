@@ -31,13 +31,31 @@ TEST_CASE(multiway_blueprint_store_finds_128_sorted_rows) {
     const texas::MultiwayBlueprintStore store(identity(), std::move(rows));
 
     EXPECT_EQ(store.row_count(), std::size_t{128U});
-    EXPECT_TRUE(store.memory_bytes() >= 128U * sizeof(texas::MultiwayBlueprintRow));
+    EXPECT_TRUE(store.memory_bytes() >= 128U * sizeof(texas::MultiwayBlueprintRowView));
     for (std::uint64_t index = 1U; index <= 128U; ++index) {
-        const auto* found = store.find({{index}, 0}, 0U, 77U);
-        EXPECT_TRUE(found != nullptr);
-        EXPECT_EQ(found->infoset.public_state.value, index);
-        EXPECT_EQ(found->actions.size(), std::size_t{1U});
+        const auto found = store.find({{index}, 0}, 0U, 77U);
+        EXPECT_TRUE(found.valid());
+        EXPECT_EQ(found.infoset.public_state.value, index);
+        EXPECT_EQ(found.action_count, std::size_t{1U});
     }
+}
+
+TEST_CASE(multiway_blueprint_store_flattens_runtime_actions) {
+    auto first = row(1U, 0, 0U);
+    auto second = row(2U, 0, 0U);
+    second.actions.push_back({{texas::MultiwayAction::Fold, 1U, 0, 77U}, 1U});
+    second.actions[0].probability = 65534U;
+    const texas::MultiwayBlueprintStore store(identity(), {first, second});
+
+    const auto found = store.find({{2U}, 0}, 0U, 77U);
+    EXPECT_TRUE(found.valid());
+    EXPECT_EQ(found.action_count, std::size_t{2U});
+    EXPECT_EQ(found.actions[0].probability, std::uint16_t{65534U});
+    EXPECT_EQ(found.actions[1].probability, std::uint16_t{1U});
+
+    const auto first_view = store.find({{1U}, 0}, 0U, 77U);
+    EXPECT_TRUE(first_view.valid());
+    EXPECT_TRUE(first_view.actions + first_view.action_count == found.actions);
 }
 
 TEST_CASE(multiway_blueprint_store_rejects_duplicate_and_malformed_rows) {

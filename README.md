@@ -70,7 +70,7 @@ This installs:
 - the library archive / import library under `<prefix>/lib` or the platform equivalent
 - CMake package files under `<prefix>/lib/cmake/TexasSolver`
 
-When building from the repository, the vendored hand evaluator is also configured through CMake. If you need to turn it off for debugging or portability work, set `TEXASSOLVER_USE_POKER_HAND_EVALUATOR=OFF` during configuration.
+The vendored PokerHandEvaluator is a required library dependency. Tests and examples are disabled by default for consumers; enable `TEXASSOLVER_BUILD_TESTS` or `TEXASSOLVER_BUILD_EXAMPLES` when developing from the repository.
 
 ## Use as a submodule
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl_flat_graph.hpp"
 #include "solver/hunl_bucket_map.hpp"
@@ -30,7 +30,6 @@ enum class HUNLFlatValueLayout : std::uint8_t {
 enum class HUNLFlatStoragePrecision : std::uint8_t {
     Float64 = 0,
     Float32 = 1,
-    Compressed16 = 2,
 };
 
 struct HUNLFlatInfosetTableMeta {

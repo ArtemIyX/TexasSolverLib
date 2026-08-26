@@ -1,4 +1,4 @@
-#include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_decision_session.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "test_harness.hpp"
@@ -41,7 +41,7 @@ texas::MultiwayRootSnapshot root() {
     const texas::MultiwayActionAbstraction abstraction;
     texas::MultiwayRootSnapshot result;
     result.public_state = texas::MultiwayPublicBuilder::make_root(
-        betting, board, abstraction.make_legal_actions(betting, 7001U));
+        betting, board, abstraction.make_legal_actions(betting));
     result.root_infoset = {result.public_state.id, 0};
     result.root_bucket = 0U;
     result.seat_order = {0, 1};
@@ -80,7 +80,7 @@ void exercise(std::uint32_t contract) {
     const auto initial = root();
     const auto registry = buckets(initial);
     const auto solve_request = request(initial);
-    texas::MultiwayRuntimeSession runtime(solve_request, {&registry});
+    texas::MultiwayDecisionSession runtime(solve_request, {&registry});
     const auto actual = texas::canonical_combos().id(initial.private_ranges.ranges[0][0].hole);
     const auto policy = runtime.round().export_hero_policy(0, actual);
     EXPECT_EQ(runtime.root_revision(), 1U);

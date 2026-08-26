@@ -41,7 +41,7 @@
     "search_mode": "DefaultSearch",
     "trajectories_per_batch": 32,
     "max_batches": 64,
-    "inference_mode": "AnonymousWithinHand",
+    "search_mode": "ReleaseDefault",
     "sampling_seed_source": "protected_per_decision_seed",
     "off_tree_mode": "continuation_policy",
     "continuation_mode": "rollout_or_baseline",

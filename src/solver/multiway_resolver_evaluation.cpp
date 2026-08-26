@@ -20,7 +20,6 @@ MultiwayResolverConfig config_for(
         case MultiwayResolverEvaluationCandidateKind::StaticLegal:
             config.buckets = nullptr;
             config.verified_blueprint = nullptr;
-            config.blueprint = nullptr;
             config.full_blueprint = nullptr;
             config.search_mode = MultiwayResolverSearchMode::ForcedFallback;
             break;
@@ -28,7 +27,7 @@ MultiwayResolverConfig config_for(
             config.search_mode = MultiwayResolverSearchMode::ForcedFallback;
             break;
         case MultiwayResolverEvaluationCandidateKind::SearchDisabled:
-            config.search_mode = MultiwayResolverSearchMode::LegacyStatic;
+            config.search_mode = MultiwayResolverSearchMode::FallbackOnly;
             break;
         case MultiwayResolverEvaluationCandidateKind::SearchEnabled:
             config.search_mode = MultiwayResolverSearchMode::SearchActive;
@@ -45,7 +44,7 @@ void MultiwayResolverEvaluationAdapterConfig::validate() const {
     }
     for (std::size_t index = 0U; index < candidates.size(); ++index) {
         if (candidates[index].kind == MultiwayResolverEvaluationCandidateKind::BlueprintOnly &&
-            resolver.verified_blueprint == nullptr && resolver.blueprint == nullptr) {
+            resolver.verified_blueprint == nullptr) {
             throw std::invalid_argument("multiway blueprint-only candidate requires a blueprint artifact");
         }
         for (std::size_t prior = 0U; prior < index; ++prior) {

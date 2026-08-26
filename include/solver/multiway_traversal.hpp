@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway_cfr.hpp"
 #include "solver/multiway_action_abstraction.hpp"
@@ -14,6 +14,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <atomic>
+#include <condition_variable>
+#include <exception>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -21,26 +25,13 @@ namespace texas::solver::multiway {
 
 class MultiwayBlueprintPolicyProvider;
 class MultiwayFixedContinuationSelector;
+class MultiwayFutureBucketArtifact;
 
 inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
 inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
 // The production abstraction emits at most five entries; one exact off-tree
 // insertion needs six. Two spare entries keep the boundary explicit.
 inline constexpr std::size_t MULTIWAY_MAX_TRAVERSAL_ACTIONS = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
-
-// Allocation-free after the caller has prepared the external-sampling request.
-// Recursive game traversal owns action-value estimation; this kernel owns only
-// the mathematically shared CFR-to-worker-delta conversion.
-class MultiwayExternalSamplingTraversal {
-public:
-    [[nodiscard]] static bool append_infoset_update(
-        MultiwayWorkerDeltaStream& stream,
-        MultiwayInfosetId infoset,
-        std::uint32_t bucket,
-        std::uint64_t trajectory_id,
-        const MultiwayExternalSamplingRequest& request,
-        double iteration_weight = 1.0);
-};
 
 // Bounded lazy traversal. It samples opponent and public-chance nodes,
 // enumerates traverser decisions, and stops at exact terminals or the typed
@@ -56,7 +47,8 @@ public:
         std::uint32_t max_decision_depth = 1U,
         std::uint32_t max_public_chance_depth = 0U,
         const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr,
-        const MultiwayFixedContinuationSelector* continuation_selector = nullptr);
+        const MultiwayFixedContinuationSelector* continuation_selector = nullptr,
+        const MultiwayFutureBucketArtifact* future_bucket_artifact = nullptr);
 
     [[nodiscard]] bool run(
         PlayerId traverser,
@@ -103,6 +95,7 @@ private:
     std::uint32_t max_public_chance_depth_ = 0U;
     const MultiwayBlueprintPolicyProvider* blueprint_policy_ = nullptr;
     const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
+    const MultiwayFutureBucketArtifact* future_bucket_artifact_ = nullptr;
     std::uint64_t range_model_identity_ = 0;
     MultiwayTerminalAdapter terminal_;
 };
@@ -130,6 +123,10 @@ public:
         std::uint32_t worker_count,
         std::size_t worker_delta_capacity,
         MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled);
+    ~MultiwayRootBatchRunner();
+
+    MultiwayRootBatchRunner(const MultiwayRootBatchRunner&) = delete;
+    MultiwayRootBatchRunner& operator=(const MultiwayRootBatchRunner&) = delete;
 
     [[nodiscard]] MultiwayRootBatchResult run(
         std::uint64_t first_trajectory_id,
@@ -137,10 +134,9 @@ public:
         std::uint64_t seed,
         double iteration_weight = 1.0);
 
-    // Test-only failure injection verifies join-before-merge behavior.
-    void set_test_worker_failure_for_testing(std::int32_t worker_index) noexcept;
-
 private:
+    void worker_loop(std::size_t worker_index);
+
     struct WorkerScratch {
         explicit WorkerScratch(std::size_t worker_index, std::size_t delta_capacity)
             : stream(worker_index, delta_capacity) {}
@@ -169,7 +165,19 @@ private:
     std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
     std::vector<MultiwayWorkerBatch> worker_batches_;
     std::vector<std::thread> threads_;
-    std::int32_t test_worker_failure_index_ = -1;
+    std::mutex pool_mutex_;
+    std::condition_variable work_cv_;
+    std::condition_variable completion_cv_;
+    bool stop_workers_ = false;
+    bool batch_active_ = false;
+    std::uint64_t batch_generation_ = 0U;
+    std::size_t completed_workers_ = 0U;
+    std::size_t active_batch_count_ = 0U;
+    std::uint64_t active_first_trajectory_id_ = 0U;
+    std::uint64_t active_seed_ = 0U;
+    double active_iteration_weight_ = 1.0;
+    std::atomic<bool> cancelled_{false};
+    std::exception_ptr worker_error_;
 };
 
 }  // namespace texas::solver::multiway

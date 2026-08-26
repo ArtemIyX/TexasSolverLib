@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_export.hpp"
@@ -13,7 +13,7 @@
 
 namespace texas::solver::multiway {
 
-inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 3U;
+inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 4U;
 inline constexpr std::uint32_t MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION = 3U;
 inline constexpr std::uint32_t MULTIWAY_PROTECTED_REPLAY_SCHEMA_VERSION = 1U;
 
@@ -40,7 +40,7 @@ struct MultiwayVerifiedBlueprintArtifact {
     void validate(const MultiwayModelIdentity& expected_identity) const;
 };
 
-inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 1U;
+inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 2U;
 
 // Full runtime lookup payload. It is independent of the compact root
 // snapshot so hosts can retain the latter as a compatible fallback.
@@ -97,8 +97,8 @@ struct MultiwayPublicDecisionLog {
     MultiwayActionDescriptor sampled_action{};
     MultiwayResolverStatus resolver_status = MultiwayResolverStatus::InvalidRequest;
     MultiwayPolicyProvenance policy_provenance = MultiwayPolicyProvenance::None;
-    MultiwayResolverEngine search_engine = MultiwayResolverEngine::LegacyDeterministicAdjustment;
-    std::uint64_t search_engine_version = 0;
+    MultiwayResolverEngine search_engine = MultiwayResolverEngine::NoRuntimeSearch;
+    std::uint64_t search_engine_version = MULTIWAY_NO_RUNTIME_SEARCH_ENGINE_VERSION;
     bool used_fallback = false;
     std::vector<MultiwayPublicDecisionPolicy> policy;
 

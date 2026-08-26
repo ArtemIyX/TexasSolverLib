@@ -1,5 +1,6 @@
 #include "solver/multiway_blueprint_trainer.hpp"
 #include "solver/multiway_checkpoint.hpp"
+#include "core/fingerprint.hpp"
 
 #include <cmath>
 #include <limits>
@@ -9,14 +10,51 @@
 namespace texas::solver::multiway {
 namespace {
 
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+using texas::core::fingerprint::append_u64;
 
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t byte = 0; byte < 8U; ++byte) {
-        hash ^= (value >> (byte * 8U)) & 0xffU;
-        hash *= kFnvPrime;
-    }
+template <class Range>
+void append_range(std::uint64_t& hash, const Range& values) noexcept {
+    for (const auto value : values) append_u64(hash, value);
+}
+
+std::uint64_t hash_action_abstraction(const MultiwayActionAbstractionConfig& config) noexcept {
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
+    append_u64(hash, config.menu_profile_version);
+    append_u64(hash, config.translation_policy_version);
+    append_u64(hash, config.translation_max_pseudo_harmonic_distance_basis_points);
+    append_range(hash, config.first_bet_basis_points);
+    append_range(hash, config.raise_basis_points);
+    append_u64(hash, config.multiway_first_bet_count);
+    append_u64(hash, config.three_way_first_bet_count);
+    append_u64(hash, config.heads_up_first_bet_count);
+    append_range(hash, config.unopened_raise_to_big_blind_basis_points);
+    append_u64(hash, config.single_open_in_position_basis_points);
+    append_u64(hash, config.single_open_out_of_position_basis_points);
+    append_u64(hash, config.open_caller_increment_big_blind_basis_points);
+    append_u64(hash, config.three_bet_or_more_basis_points);
+    append_range(hash, config.contextual_multiway_first_bet_basis_points);
+    append_range(hash, config.contextual_three_way_first_bet_basis_points);
+    append_range(hash, config.contextual_heads_up_first_bet_basis_points);
+    append_range(hash, config.contextual_raise_basis_points);
+    return hash == 0U ? 1U : hash;
+}
+
+std::uint64_t hash_bucket_profile(const MultiwayBucketBaselineProfile& profile) noexcept {
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
+    append_u64(hash, profile.schema_version);
+    append_u64(hash, profile.feature_version);
+    append_u64(hash, profile.flop_bucket_count);
+    append_u64(hash, profile.turn_bucket_count);
+    append_u64(hash, profile.river_bucket_count);
+    return hash == 0U ? 1U : hash;
+}
+
+std::uint64_t combine_identity(const MultiwayModelIdentity& identity) noexcept {
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
+    visit_multiway_model_identity_components(identity, [&](std::uint64_t field) {
+        append_u64(hash, field);
+    });
+    return hash == 0U ? 1U : hash;
 }
 
 bool due(std::uint64_t batch, std::uint64_t interval) noexcept {
@@ -58,7 +96,7 @@ double MultiwayBlueprintIterationSchedule::strategy_weight(std::uint64_t one_bas
 }
 
 std::uint64_t MultiwayBlueprintIterationSchedule::identity() const noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, linear_iteration_weighting ? 1U : 0U);
     append_u64(hash, discount_regrets ? 1U : 0U);
     append_u64(hash, static_cast<std::uint64_t>(regret_discount_factor * 1000000000.0));
@@ -96,7 +134,28 @@ void MultiwayBlueprintTrainingConfig::validate() const {
 
 MultiwayModelIdentity MultiwayBlueprintTrainingConfig::identity() const {
     validate();
-    return make_multiway_model_identity(blueprint);
+    auto identity = make_multiway_model_identity(blueprint);
+    identity.action_abstraction_hash = hash_action_abstraction(action_abstraction);
+    identity.bucket_model_hash = hash_bucket_profile(bucket_profile);
+    auto runtime_hash = texas::core::fingerprint::FNV1A_OFFSET;
+    append_u64(runtime_hash, blueprint.runtime_search_schema_version);
+    append_u64(runtime_hash, max_decision_depth);
+    append_u64(runtime_hash, max_public_chance_depth);
+    append_u64(runtime_hash, cfr.player_count);
+    append_u64(runtime_hash, cfr.update_both_players ? 1U : 0U);
+    append_u64(runtime_hash, limits.worker_count);
+    append_u64(runtime_hash, limits.trajectories_per_batch);
+    append_u64(runtime_hash, limits.max_public_states);
+    append_u64(runtime_hash, limits.max_sparse_rows);
+    append_u64(runtime_hash, limits.max_sparse_values);
+    append_u64(runtime_hash, limits.max_worker_delta_entries);
+    append_u64(runtime_hash, limits.max_batches);
+    append_u64(runtime_hash, schedule.identity());
+    append_u64(runtime_hash, deterministic_seed);
+    identity.runtime_search_schema_hash = runtime_hash == 0U ? 1U : runtime_hash;
+    identity.combined_hash = combine_identity(identity);
+    identity.validate();
+    return identity;
 }
 
 MultiwayBlueprintTrainer::MultiwayBlueprintTrainer(
@@ -240,19 +299,20 @@ MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPol
     return export_multiway_root_snapshot(identity_, *coordinator_, status_.trajectories, policy_kind, metadata);
 }
 
-void MultiwayBlueprintTrainer::resume_from(const MultiwayBlueprintSnapshot& checkpoint) {
-    MultiwayCheckpoint::validate_resume_identity(checkpoint, identity_);
-    if (checkpoint.training.schedule_hash != schedule_.identity() ||
-        checkpoint.training.deterministic_seed != deterministic_seed_) {
+void MultiwayBlueprintTrainer::resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot) {
+    MultiwayRootPolicyArtifact::validate_resume_identity(snapshot, identity_);
+    if (snapshot.training.schedule_hash != schedule_.identity() ||
+        snapshot.training.deterministic_seed != deterministic_seed_) {
         throw std::invalid_argument("multiway checkpoint schedule or seed does not match the live trainer");
     }
-    if (checkpoint.training.trajectories != checkpoint.trajectories ||
-        checkpoint.training.batches != status_.batches || checkpoint.trajectories != status_.trajectories) {
+    if (snapshot.training.trajectories != snapshot.trajectories ||
+        snapshot.training.batches != status_.batches || snapshot.trajectories != status_.trajectories) {
         throw std::invalid_argument("multiway compact checkpoint requires matching live training state");
     }
 }
 
-void MultiwayBlueprintTrainer::resume_from(const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
+void MultiwayBlueprintTrainer::resume_from_checkpoint(
+    const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
     checkpoint.identity.validate();
     if (checkpoint.identity != identity_ || checkpoint.training.schedule_hash != schedule_.identity() ||
         checkpoint.training.deterministic_seed != deterministic_seed_ ||
@@ -295,9 +355,11 @@ MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
     MultiwaySolveRequest request(root_, config_.cfr, config_.limits);
     coordinator_ = std::make_unique<MultiwaySolverCoordinator>(request);
     action_abstraction_ = std::make_unique<MultiwayActionAbstraction>(config_.action_abstraction);
+    continuation_selector_ = std::make_unique<MultiwayFixedContinuationSelector>(
+        config_.blueprint.continuation_policy);
     MultiwayRootExternalSamplingTraversal traversal(
         *coordinator_, root_, *action_abstraction_, *buckets_, leaf_evaluator == nullptr ? nullptr : &leaf_evaluator_,
-        config_.max_decision_depth, config_.max_public_chance_depth);
+        config_.max_decision_depth, config_.max_public_chance_depth, nullptr, continuation_selector_.get());
     batch_runner_ = std::make_unique<MultiwayRootBatchRunner>(
         std::move(traversal), *coordinator_, config_.limits.worker_count,
         config_.limits.max_worker_delta_entries);
@@ -309,13 +371,13 @@ void MultiwayBlueprintTrainingSession::run_batches(std::uint64_t batch_count) {
     trainer_->run_batches(batch_count, config_.limits.trajectories_per_batch, config_.deterministic_seed);
 }
 
-void MultiwayBlueprintTrainingSession::resume_from_checkpoint(const MultiwayBlueprintSnapshot& checkpoint) {
-    trainer_->resume_from(checkpoint);
+void MultiwayBlueprintTrainingSession::resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot) {
+    trainer_->resume_from_root_policy(snapshot);
 }
 
 void MultiwayBlueprintTrainingSession::resume_from_checkpoint(
     const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
-    trainer_->resume_from(checkpoint);
+    trainer_->resume_from_checkpoint(checkpoint);
 }
 
 MultiwayBlueprintSnapshot MultiwayBlueprintTrainingSession::export_policy(

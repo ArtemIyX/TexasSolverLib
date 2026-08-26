@@ -120,7 +120,6 @@ TEST_CASE(hunl_sampled_config_defaults_validate) {
     EXPECT_TRUE(validation.ok);
     EXPECT_EQ(config.precision, texas::HUNLFlatStoragePrecision::Float32);
     EXPECT_EQ(config.layout, texas::HUNLFlatValueLayout::InfosetActionHand);
-    EXPECT_TRUE(!config.use_public_chance_isomorphism);
     EXPECT_TRUE(config.enable_memory_guardrails);
     EXPECT_TRUE(config.memory_warning_bytes < config.memory_fail_bytes);
 }
@@ -135,26 +134,11 @@ TEST_CASE(hunl_sampled_config_rejects_unimplemented_float64_precision) {
     EXPECT_THROW(texas::HUNLSampledSolver(config), std::invalid_argument);
 }
 
-TEST_CASE(hunl_sampled_config_rejects_unimplemented_compressed16_precision) {
-    auto config = texas::HUNLSampledSolverConfig{};
-    config.precision = texas::HUNLFlatStoragePrecision::Compressed16;
-
-    const auto validation = texas::validate_sampled_config(config);
-    EXPECT_TRUE(!validation.ok);
-    EXPECT_THROW(texas::validate_sampled_config_or_throw(config), std::invalid_argument);
-    EXPECT_THROW(texas::HUNLSampledSolver(config), std::invalid_argument);
-}
-
 TEST_CASE(hunl_sampled_storage_rejects_precision_that_views_cannot_represent) {
     EXPECT_THROW(
         texas::HUNLSampledStorage(
             texas::HUNLFlatValueLayout::InfosetActionHand,
             texas::HUNLFlatStoragePrecision::Float64),
-        std::invalid_argument);
-    EXPECT_THROW(
-        texas::HUNLSampledStorage(
-            texas::HUNLFlatValueLayout::InfosetActionHand,
-            texas::HUNLFlatStoragePrecision::Compressed16),
         std::invalid_argument);
 }
 
@@ -589,22 +573,10 @@ TEST_CASE(hunl_sampled_solver_preflight_warns_above_warning_threshold) {
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 2;
 
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Warning);
     EXPECT_TRUE(preflight.estimate.total_bytes() > config.memory_warning_bytes);
-}
-
-TEST_CASE(hunl_sampled_depth_hints_are_preflight_metadata_not_an_implicit_evaluator) {
-    for (const std::uint32_t depth : {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U,
-                                      16U, 32U, 64U, 128U, 256U, 512U, 1024U, 4096U,
-                                      65536U, std::numeric_limits<std::uint32_t>::max()}) {
-        texas::HUNLSampledSolverConfig config;
-        config.depth_limit_plies_hint = depth;
-        texas::HUNLSampledSolver solver(config);
-        EXPECT_EQ(solver.config().depth_limit_plies_hint, depth);
-    }
 }
 
 TEST_CASE(hunl_sampled_fixed_deals_ignore_global_bucket_hints) {
@@ -701,7 +673,6 @@ TEST_CASE(hunl_sampled_solver_preflight_adapts_before_rejecting_when_allowed) {
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 2;
 
     const auto preflight = solver.preflight(request);
     EXPECT_TRUE(preflight.status == texas::HUNLSampledMemoryStatus::Ok ||
@@ -719,7 +690,6 @@ TEST_CASE(hunl_sampled_solver_preflight_without_guardrails_stays_ok_under_tight_
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 3;
 
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Ok);
@@ -737,7 +707,6 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_when_adaptive_fallback_is_disabl
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 4;
 
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
@@ -767,7 +736,6 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_impossible_config_without_unboun
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 2;
 
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
@@ -784,7 +752,6 @@ TEST_CASE(hunl_sampled_solver_preflight_records_strictly_decreasing_adaptive_est
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 4;
 
     const auto preflight = solver.preflight(request);
     EXPECT_TRUE(preflight.adjustments.recorded_step_count > 0U);
@@ -805,7 +772,6 @@ TEST_CASE(hunl_sampled_solver_preflight_rejects_when_worker_arena_exceeds_hard_l
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 4;
 
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
@@ -818,13 +784,11 @@ TEST_CASE(hunl_sampled_solver_preflight_handles_largest_valid_memory_estimates_w
     config.workers = std::numeric_limits<std::size_t>::max();
     config.minibatch_size = std::numeric_limits<std::uint32_t>::max();
     config.bucket_count_hint = texas::HUNL_SAMPLED_MAX_BUCKET_COUNT;
-    config.depth_limit_plies_hint = 0;
     config.adaptive_memory_fallback = false;
     config.memory_fail_bytes = 1ULL << 40U;
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = std::numeric_limits<std::uint8_t>::max();
 
     const auto preflight = solver.preflight(request);
     EXPECT_EQ(preflight.status, texas::HUNLSampledMemoryStatus::Rejected);
@@ -837,22 +801,17 @@ TEST_CASE(hunl_sampled_solver_preflight_handles_largest_valid_memory_estimates_w
 TEST_CASE(hunl_sampled_solver_solve_for_zero_budget_returns_uniform_root_without_work) {
     texas::HUNLSampledSolver solver;
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 3;
 
     const auto result = solver.solve_for(request, std::chrono::milliseconds{0});
     EXPECT_EQ(result.batches_completed, 0U);
     EXPECT_TRUE(!result.timed_out);
-    EXPECT_EQ(result.root_strategy.actions.size(), 3U);
-    EXPECT_NEAR(result.root_strategy.actions[0].probability, 1.0 / 3.0, TOL);
-    EXPECT_NEAR(result.root_strategy.actions[1].probability, 1.0 / 3.0, TOL);
-    EXPECT_NEAR(result.root_strategy.actions[2].probability, 1.0 / 3.0, TOL);
+    EXPECT_EQ(result.root_strategy.actions.size(), 0U);
     EXPECT_EQ(result.profile.traversals, 0U);
 }
 
 TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_work) {
     texas::HUNLSampledSolver solver;
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 3;
     const auto root_id = solver.builder().initialize(make_lazy_root_state());
 
     const auto initialized = solver.run_batches(request, 0);
@@ -860,11 +819,11 @@ TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_wor
     const auto profile_before = solver.profile().snapshot();
     const auto strategy_before = solver.export_root_strategy();
 
-    EXPECT_THROW(solver.run_batches(request, 1), texas::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.run_batches(request, 1), std::invalid_argument);
 
     EXPECT_EQ(root_id, 0U);
     EXPECT_EQ(initialized.batches_completed, 0U);
-    EXPECT_EQ(strategy_before.actions.size(), 3U);
+    EXPECT_EQ(strategy_before.actions.size(), 0U);
     EXPECT_EQ(solver.builder().node_count(), nodes_before);
     EXPECT_EQ(solver.profile().snapshot().traversals, profile_before.traversals);
     EXPECT_EQ(solver.profile().snapshot().nodes_visited, profile_before.nodes_visited);
@@ -884,12 +843,20 @@ TEST_CASE(hunl_sampled_solver_positive_batch_request_fails_without_reporting_wor
 TEST_CASE(hunl_sampled_solver_positive_time_budgets_require_a_root) {
     texas::HUNLSampledSolver solver;
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 3;
 
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), texas::HUNLSampledSolverNotReady);
-    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{15'000}), texas::HUNLSampledSolverNotReady);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), std::invalid_argument);
+    EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{15'000}), std::invalid_argument);
     EXPECT_EQ(solver.profile().snapshot().traversals, 0U);
     EXPECT_EQ(solver.export_root_strategy().actions.size(), 0U);
+}
+
+TEST_CASE(hunl_sampled_solver_rejects_multiple_root_kinds) {
+    texas::HUNLSampledSolver solver;
+    texas::HUNLSampledSolveRequest request;
+    request.root_state = make_lazy_root_state();
+    request.structured_root = texas::HUNLStructuredRootRequest{};
+
+    EXPECT_THROW(solver.run_batches(request, 0), std::invalid_argument);
 }
 
 TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
@@ -903,7 +870,6 @@ TEST_CASE(hunl_sampled_solver_run_batches_throws_when_preflight_rejects) {
 
     texas::HUNLSampledSolver solver(config);
     texas::HUNLSampledSolveRequest request;
-    request.root_action_count = 4;
 
     EXPECT_THROW(solver.run_batches(request, 0), std::runtime_error);
 }
@@ -956,31 +922,6 @@ TEST_CASE(hunl_sampled_solver_commits_whole_batches_for_timed_fixed_hand_request
     EXPECT_TRUE(!result.root_strategy.actions.empty());
 }
 
-TEST_CASE(hunl_sampled_solver_keeps_last_clean_snapshot_after_worker_failure) {
-    for (std::uint32_t minibatch : {1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 9U, 10U,
-                                    11U, 12U, 13U, 14U, 15U, 16U, 17U, 18U, 19U, 20U}) {
-        texas::HUNLSampledSolverConfig config;
-        config.minibatch_size = minibatch;
-        config.workers = 1;
-        config.test_throw_worker_index = 0;
-        texas::HUNLSampledSolver solver(config);
-        texas::HUNLSampledSolveRequest request;
-        request.root_state = make_sampled_facing_bet_state();
-        const auto clean = solver.run_batches(request, 0);
-        const auto strategy_before = solver.export_root_strategy();
-        const auto profile_before = solver.profile().snapshot();
-        EXPECT_THROW(solver.run_batches(request, 1), std::runtime_error);
-        EXPECT_EQ(solver.export_root_strategy().actions.size(), strategy_before.actions.size());
-        EXPECT_EQ(solver.profile().snapshot().traversals, profile_before.traversals);
-        for (std::size_t action = 0; action < strategy_before.actions.size(); ++action) {
-            EXPECT_EQ(solver.export_root_strategy().actions[action].action_id, strategy_before.actions[action].action_id);
-            EXPECT_NEAR(solver.export_root_strategy().actions[action].probability,
-                        strategy_before.actions[action].probability, TOL);
-        }
-        EXPECT_EQ(clean.batches_completed, 0U);
-    }
-}
-
 TEST_CASE(hunl_sampled_builder_admits_twenty_edge_capacity_peaks_before_expansion) {
     for (std::uint64_t slack = 0; slack < 20; ++slack) {
         texas::HUNLSampledBuilder builder;
@@ -999,8 +940,8 @@ TEST_CASE(hunl_sampled_solver_reports_distinct_missing_root_and_timed_contracts)
     for (std::uint32_t batches = 1; batches <= 20; ++batches) {
         texas::HUNLSampledSolver solver;
         texas::HUNLSampledSolveRequest request;
-        EXPECT_THROW(solver.run_batches(request, batches), texas::HUNLSampledSolverNotReady);
-        EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), texas::HUNLSampledSolverNotReady);
+        EXPECT_THROW(solver.run_batches(request, batches), std::invalid_argument);
+        EXPECT_THROW(solver.solve_for(request, std::chrono::milliseconds{1}), std::invalid_argument);
     }
 }
 

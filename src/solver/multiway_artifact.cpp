@@ -1,5 +1,8 @@
 #include "solver/multiway_artifact.hpp"
 
+#include "core/atomic_publish.hpp"
+#include "core/fingerprint.hpp"
+#include "core/portable_binary.hpp"
 #include "solver/multiway_checkpoint.hpp"
 
 #include <array>
@@ -12,32 +15,90 @@
 namespace texas::solver::multiway {
 namespace {
 
-constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '3'};
-constexpr std::array<char, 8> kFullBlueprintMagic = {'M', 'W', 'F', 'B', '0', '0', '0', '1'};
-constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+namespace portable = texas::core::portable;
 
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    for (std::uint8_t byte = 0; byte < 8U; ++byte) {
-        hash ^= (value >> (byte * 8U)) & 0xffU;
-        hash *= kFnvPrime;
+constexpr std::array<char, 8> kManifestMagic = {'M', 'W', 'M', 'F', '0', '0', '0', '4'};
+constexpr std::array<char, 8> kFullBlueprintMagic = {'M', 'W', 'F', 'B', '0', '0', '0', '2'};
+constexpr std::uint64_t kFullBlueprintOperatingBytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
+using texas::core::fingerprint::append_u64;
+using texas::core::fingerprint::finish;
+
+void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity) {
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+        portable::write_u64(out, field);
+    });
+}
+
+MultiwayModelIdentity read_identity(std::ifstream& in) {
+    MultiwayModelIdentity identity;
+    bool valid = true;
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) {
+        if (valid) valid = portable::read_u64(in, field);
+    });
+    if (!valid) {
+        throw std::runtime_error("multiway artifact is truncated");
     }
+    return identity;
 }
 
-std::uint64_t finish(std::uint64_t hash) noexcept { return hash == 0U ? 1U : hash; }
-
-template <class T>
-void write_value(std::ofstream& out, const T& value) {
-    out.write(reinterpret_cast<const char*>(&value), sizeof(value));
-    if (!out) throw std::runtime_error("multiway manifest write failed");
+void write_training(std::ofstream& out, const MultiwayBlueprintTrainingMetadata& training) {
+    portable::write_u64(out, training.batches);
+    portable::write_u64(out, training.trajectories);
+    portable::write_u64(out, training.deterministic_seed);
+    portable::write_u64(out, training.late_window_start_batch);
+    portable::write_u64(out, training.schedule_hash);
+    portable::write_u64(out, training.pruned_negative_regrets);
+    portable::write_u8(out, training.linear_iteration_weighting);
+    portable::write_u8(out, training.discounting_enabled);
+    portable::write_u8(out, training.negative_regret_pruning_enabled);
+    portable::write_u8(out, training.reserved);
 }
 
-template <class T>
-T read_value(std::ifstream& in) {
-    T value{};
-    in.read(reinterpret_cast<char*>(&value), sizeof(value));
-    if (!in) throw std::runtime_error("multiway manifest is truncated");
-    return value;
+MultiwayBlueprintTrainingMetadata read_training(std::ifstream& in) {
+    MultiwayBlueprintTrainingMetadata training;
+    if (!portable::read_u64(in, training.batches) || !portable::read_u64(in, training.trajectories) ||
+        !portable::read_u64(in, training.deterministic_seed) || !portable::read_u64(in, training.late_window_start_batch) ||
+        !portable::read_u64(in, training.schedule_hash) || !portable::read_u64(in, training.pruned_negative_regrets) ||
+        !portable::read_u8(in, training.linear_iteration_weighting) ||
+        !portable::read_u8(in, training.discounting_enabled) ||
+        !portable::read_u8(in, training.negative_regret_pruning_enabled) ||
+        !portable::read_u8(in, training.reserved)) {
+        throw std::runtime_error("multiway artifact is truncated");
+    }
+    return training;
+}
+
+void write_infoset(std::ofstream& out, const MultiwayInfosetId& infoset) {
+    portable::write_u64(out, infoset.public_state.value);
+    portable::write_i32(out, infoset.seat);
+}
+
+MultiwayInfosetId read_infoset(std::ifstream& in) {
+    MultiwayInfosetId infoset;
+    if (!portable::read_u64(in, infoset.public_state.value) || !portable::read_i32(in, infoset.seat)) {
+        throw std::runtime_error("multiway artifact is truncated");
+    }
+    return infoset;
+}
+
+void write_action(std::ofstream& out, const MultiwayQuantizedRootAction& action) {
+    portable::write_u8(out, static_cast<std::uint8_t>(action.action.action));
+    portable::write_u32(out, action.action.action_index);
+    portable::write_i32(out, action.action.target_street_contribution);
+    portable::write_u64(out, action.action.action_menu_id);
+    portable::write_u16(out, action.probability);
+}
+
+MultiwayQuantizedRootAction read_action(std::ifstream& in) {
+    MultiwayQuantizedRootAction action;
+    std::uint8_t kind = 0;
+    if (!portable::read_u8(in, kind) || !portable::read_u32(in, action.action.action_index) ||
+        !portable::read_i32(in, action.action.target_street_contribution) ||
+        !portable::read_u64(in, action.action.action_menu_id) || !portable::read_u16(in, action.probability)) {
+        throw std::runtime_error("multiway artifact is truncated");
+    }
+    action.action.action = static_cast<MultiwayAction>(kind);
+    return action;
 }
 
 std::filesystem::path manifest_path(const std::filesystem::path& checkpoint_path) {
@@ -49,19 +110,12 @@ void save_manifest_atomic(const std::filesystem::path& path, const MultiwayBluep
     std::ofstream out(temp, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("multiway manifest temporary file cannot be opened");
     out.write(kManifestMagic.data(), static_cast<std::streamsize>(kManifestMagic.size()));
-    write_value(out, manifest.schema_version);
-    write_value(out, manifest.identity);
-    write_value(out, manifest.snapshot_hash);
+    portable::write_u32(out, manifest.schema_version);
+    write_identity(out, manifest.identity);
+    portable::write_u64(out, manifest.snapshot_hash);
     out.close();
     if (!out) throw std::runtime_error("multiway manifest write failed");
-    std::error_code error;
-    std::filesystem::rename(temp, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp, path, error);
-        if (error) throw std::runtime_error("multiway manifest publish failed");
-    }
+    texas::core::publish_atomic_replace(temp, path, "multiway manifest publish failed");
 }
 
 MultiwayBlueprintManifest load_manifest(const std::filesystem::path& path) {
@@ -71,9 +125,9 @@ MultiwayBlueprintManifest load_manifest(const std::filesystem::path& path) {
     in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
     if (!in || magic != kManifestMagic) throw std::runtime_error("multiway manifest schema is invalid");
     MultiwayBlueprintManifest manifest;
-    manifest.schema_version = read_value<std::uint32_t>(in);
-    manifest.identity = read_value<MultiwayModelIdentity>(in);
-    manifest.snapshot_hash = read_value<std::uint64_t>(in);
+    if (!portable::read_u32(in, manifest.schema_version)) throw std::runtime_error("multiway manifest is truncated");
+    manifest.identity = read_identity(in);
+    if (!portable::read_u64(in, manifest.snapshot_hash)) throw std::runtime_error("multiway manifest is truncated");
     if (in.peek() != std::char_traits<char>::eof()) {
         throw std::runtime_error("multiway manifest has trailing data");
     }
@@ -82,19 +136,9 @@ MultiwayBlueprintManifest load_manifest(const std::filesystem::path& path) {
 }
 
 void append_identity(std::uint64_t& hash, const MultiwayModelIdentity& identity) noexcept {
-    append_u64(hash, identity.rules_hash);
-    append_u64(hash, identity.rules_schema_hash);
-    append_u64(hash, identity.action_abstraction_hash);
-    append_u64(hash, identity.bucket_model_hash);
-    append_u64(hash, identity.terminal_model_hash);
-    append_u64(hash, identity.resolver_schema_hash);
-    append_u64(hash, identity.code_schema_hash);
-    append_u64(hash, identity.range_semantics_hash);
-    append_u64(hash, identity.future_bucket_model_hash);
-    append_u64(hash, identity.off_tree_policy_hash);
-    append_u64(hash, identity.continuation_policy_hash);
-    append_u64(hash, identity.runtime_search_schema_hash);
-    append_u64(hash, identity.combined_hash);
+    visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
+        append_u64(hash, field);
+    });
 }
 
 void append_action(std::uint64_t& hash, const MultiwayActionDescriptor& action) noexcept {
@@ -135,7 +179,7 @@ std::uint16_t quantize_probability(double probability) {
 }
 
 std::uint64_t replay_hash(const MultiwayProtectedReplayRecord& record) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, record.schema_version);
     append_identity(hash, record.identity);
     append_u64(hash, record.public_history.schema_version);
@@ -172,7 +216,7 @@ void MultiwayFullBlueprintArtifact::validate() const {
 
 std::uint64_t MultiwayFullBlueprintArtifacts::payload_hash(
     const MultiwayFullBlueprintArtifact& artifact) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, artifact.schema_version);
     append_identity(hash, artifact.identity);
     append_u64(hash, artifact.training.batches);
@@ -209,58 +253,75 @@ void MultiwayFullBlueprintArtifacts::save_atomic(
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     if (!out) throw std::runtime_error("multiway full blueprint temporary file cannot be opened");
     out.write(kFullBlueprintMagic.data(), static_cast<std::streamsize>(kFullBlueprintMagic.size()));
-    write_value(out, sealed.schema_version);
-    write_value(out, sealed.identity);
-    write_value(out, sealed.training);
+    portable::write_u32(out, sealed.schema_version);
+    write_identity(out, sealed.identity);
+    write_training(out, sealed.training);
     const auto rows = static_cast<std::uint64_t>(sealed.rows.size());
-    write_value(out, rows);
+    portable::write_u64(out, rows);
     for (const auto& row : sealed.rows) {
-        write_value(out, row.infoset);
-        write_value(out, row.bucket);
-        write_value(out, row.action_menu_id);
+        write_infoset(out, row.infoset);
+        portable::write_u32(out, row.bucket);
+        portable::write_u64(out, row.action_menu_id);
         const auto actions = static_cast<std::uint32_t>(row.actions.size());
-        write_value(out, actions);
-        for (const auto& action : row.actions) write_value(out, action);
+        portable::write_u32(out, actions);
+        for (const auto& action : row.actions) write_action(out, action);
     }
-    write_value(out, sealed.payload_hash);
+    portable::write_u64(out, sealed.payload_hash);
     out.close();
     if (!out) throw std::runtime_error("multiway full blueprint write failed");
-    std::error_code error;
-    std::filesystem::rename(temporary, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temporary, path, error);
-        if (error) throw std::runtime_error("multiway full blueprint publish failed");
-    }
+    texas::core::publish_atomic_replace(temporary, path, "multiway full blueprint publish failed");
 }
 
 MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(
     const std::filesystem::path& path,
     const MultiwayModelIdentity& expected_identity) {
     expected_identity.validate();
+    std::error_code file_error;
+    const auto file_bytes = std::filesystem::file_size(path, file_error);
+    if (file_error) throw std::runtime_error("multiway full blueprint size cannot be determined");
+    if (file_bytes > kFullBlueprintOperatingBytes) {
+        throw std::length_error("multiway full blueprint exceeds the operating memory guardrail");
+    }
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error("multiway full blueprint cannot be opened");
     std::array<char, kFullBlueprintMagic.size()> magic{};
     in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
     if (!in || magic != kFullBlueprintMagic) throw std::runtime_error("multiway full blueprint schema is invalid");
     MultiwayFullBlueprintArtifact artifact;
-    artifact.schema_version = read_value<std::uint32_t>(in);
-    artifact.identity = read_value<MultiwayModelIdentity>(in);
-    artifact.training = read_value<MultiwayBlueprintTrainingMetadata>(in);
-    const auto row_count = read_value<std::uint64_t>(in);
+    if (!portable::read_u32(in, artifact.schema_version)) throw std::runtime_error("multiway full blueprint is truncated");
+    artifact.identity = read_identity(in);
+    artifact.training = read_training(in);
+    std::uint64_t row_count = 0;
+    if (!portable::read_u64(in, row_count)) throw std::runtime_error("multiway full blueprint is truncated");
     if (row_count > 100000000U) throw std::runtime_error("multiway full blueprint row count is invalid");
+    const auto row_storage_bytes = static_cast<std::uint64_t>(sizeof(MultiwayBlueprintRow));
+    const auto action_storage_bytes = static_cast<std::uint64_t>(sizeof(MultiwayQuantizedRootAction));
+    constexpr std::uint64_t max_actions_per_row = 64U;
+    const auto action_payload_bytes = action_storage_bytes >
+            std::numeric_limits<std::uint64_t>::max() / max_actions_per_row
+        ? std::numeric_limits<std::uint64_t>::max()
+        : action_storage_bytes * max_actions_per_row;
+    const auto estimated_row_bytes = row_storage_bytes >
+            std::numeric_limits<std::uint64_t>::max() - action_payload_bytes
+        ? std::numeric_limits<std::uint64_t>::max()
+        : row_storage_bytes + action_payload_bytes;
+    if (estimated_row_bytes == 0U ||
+        row_count > (kFullBlueprintOperatingBytes - file_bytes) / estimated_row_bytes) {
+        throw std::length_error("multiway full blueprint rows exceed the operating memory guardrail");
+    }
     artifact.rows.resize(static_cast<std::size_t>(row_count));
     for (auto& row : artifact.rows) {
-        row.infoset = read_value<MultiwayInfosetId>(in);
-        row.bucket = read_value<std::uint32_t>(in);
-        row.action_menu_id = read_value<std::uint64_t>(in);
-        const auto action_count = read_value<std::uint32_t>(in);
+        row.infoset = read_infoset(in);
+        if (!portable::read_u32(in, row.bucket) || !portable::read_u64(in, row.action_menu_id)) {
+            throw std::runtime_error("multiway full blueprint is truncated");
+        }
+        std::uint32_t action_count = 0;
+        if (!portable::read_u32(in, action_count)) throw std::runtime_error("multiway full blueprint is truncated");
         if (action_count == 0U || action_count > 64U) throw std::runtime_error("multiway full blueprint action count is invalid");
         row.actions.resize(action_count);
-        for (auto& action : row.actions) action = read_value<MultiwayQuantizedRootAction>(in);
+        for (auto& action : row.actions) action = read_action(in);
     }
-    artifact.payload_hash = read_value<std::uint64_t>(in);
+    if (!portable::read_u64(in, artifact.payload_hash)) throw std::runtime_error("multiway full blueprint is truncated");
     if (in.peek() != std::char_traits<char>::eof()) throw std::runtime_error("multiway full blueprint has trailing data");
     artifact.validate();
     if (artifact.identity != expected_identity) {
@@ -287,7 +348,7 @@ void MultiwayVerifiedBlueprintArtifact::validate(const MultiwayModelIdentity& ex
 }
 
 std::uint64_t MultiwayBlueprintArtifacts::snapshot_hash(const MultiwayBlueprintSnapshot& snapshot) noexcept {
-    auto hash = kFnvOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_identity(hash, snapshot.identity);
     append_u64(hash, snapshot.public_state.value);
     append_u64(hash, snapshot.infoset.public_state.value);
@@ -320,7 +381,7 @@ void MultiwayBlueprintArtifacts::save_atomic(
     manifest.identity = snapshot.identity;
     manifest.snapshot_hash = snapshot_hash(snapshot);
     manifest.validate();
-    MultiwayCheckpoint::save_atomic(checkpoint_path, snapshot);
+    MultiwayRootPolicyArtifact::save_atomic(checkpoint_path, snapshot);
     save_manifest_atomic(manifest_path(checkpoint_path), manifest);
 }
 
@@ -328,7 +389,7 @@ MultiwayVerifiedBlueprintArtifact MultiwayBlueprintArtifacts::load_verified(
     const std::filesystem::path& checkpoint_path,
     const MultiwayModelIdentity& expected_identity) {
     MultiwayVerifiedBlueprintArtifact artifact;
-    artifact.snapshot = MultiwayCheckpoint::load(checkpoint_path);
+    artifact.snapshot = MultiwayRootPolicyArtifact::load(checkpoint_path);
     artifact.manifest = load_manifest(manifest_path(checkpoint_path));
     artifact.validate(expected_identity);
     return artifact;

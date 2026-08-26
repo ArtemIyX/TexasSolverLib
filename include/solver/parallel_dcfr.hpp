@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "core/arena.hpp"
 #include "solver/dcfr.hpp"
@@ -12,9 +12,6 @@
 #include <vector>
 
 namespace texas::solver::dcfr {
-
-bool parallel_dcfr_enabled();
-std::size_t parallel_dcfr_worker_count();
 
 struct ParallelWorkItem {
     std::size_t root_node = 0;

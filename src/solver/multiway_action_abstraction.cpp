@@ -1,5 +1,6 @@
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_public_builder.hpp"
+#include "core/fingerprint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -16,14 +17,7 @@ bool is_aggressive(MultiwayAction action) noexcept {
     return action == MultiwayAction::Bet || action == MultiwayAction::Raise;
 }
 
-void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
-    constexpr std::uint64_t kPrime = 1099511628211ULL;
-    for (std::size_t index = 0U; index < sizeof(value); ++index) {
-        hash ^= static_cast<std::uint8_t>(value & 0xffU);
-        hash *= kPrime;
-        value >>= 8U;
-    }
-}
+using texas::core::fingerprint::append_u64;
 
 double action_scale(const MultiwayState& state, const MultiwayActionDescriptor& action) noexcept {
     const auto actor = static_cast<std::size_t>(state.current_player());
@@ -162,8 +156,7 @@ void MultiwayDeviationExpansionConfig::validate() const {
 
 std::uint64_t MultiwayActionAbstraction::menu_profile_identity(
     MultiwayActionAbstractionContext context) const noexcept {
-    constexpr std::uint64_t kOffset = 14695981039346656037ULL;
-    auto hash = kOffset;
+    auto hash = texas::core::fingerprint::FNV1A_OFFSET;
     append_u64(hash, config_.menu_profile_version);
     append_u64(hash, config_.multiway_first_bet_count);
     append_u64(hash, config_.three_way_first_bet_count);
@@ -191,9 +184,8 @@ MultiwayActionAbstraction::MultiwayActionAbstraction(MultiwayActionAbstractionCo
 }
 
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_actions(
-    const MultiwayBettingSnapshot& betting,
-    std::uint64_t action_menu_id) const {
-    return make_legal_actions(betting, action_menu_id, {});
+    const MultiwayBettingSnapshot& betting) const {
+    return make_legal_actions(betting, {});
 }
 
 MultiwayActionTranslation MultiwayActionAbstraction::translate_observed_action(
@@ -282,9 +274,7 @@ MultiwayDeviationDisposition MultiwayActionAbstraction::classify_observed_action
 
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_actions(
     const MultiwayBettingSnapshot& betting,
-    std::uint64_t action_menu_id,
     MultiwayActionAbstractionContext context) const {
-    (void)action_menu_id;
     const auto state = MultiwayState::from_snapshot(betting);
     const auto base_actions = state.legal_actions();
     const auto actor = static_cast<std::size_t>(state.current_player());
@@ -436,9 +426,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::insert_exact_ob
     const MultiwayBettingSnapshot& betting,
     std::vector<MultiwayActionDescriptor> menu,
     MultiwayAction observed_action,
-    int target_street_contribution,
-    std::uint64_t action_menu_id) {
-    (void)action_menu_id;
+    int target_street_contribution) {
     const auto state = MultiwayState::from_snapshot(betting);
     const auto legal = state.legal_actions();
     if (std::find(legal.begin(), legal.end(), observed_action) == legal.end()) {

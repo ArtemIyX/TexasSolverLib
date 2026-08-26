@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,13 +8,6 @@
 #include <vector>
 
 namespace texas::util {
-
-enum class SamplingStrategy : std::uint8_t {
-    Full = 0,
-    PublicChance = 1,
-};
-
-double effective_beta(SamplingStrategy strategy, double requested_beta);
 
 class PcsRng {
 public:

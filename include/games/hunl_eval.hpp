@@ -1,12 +1,11 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "games/hunl.hpp"
 
 #include <array>
 #include <cstdint>
-#include <vector>
 
 namespace texas::games::hunl {
 
@@ -30,10 +29,9 @@ struct Strength {
     }
 
     static Strength evaluate_5(const std::array<std::uint8_t, 5>& cards);
+    static Strength evaluate_6(const std::array<std::uint8_t, 6>& cards);
     static Strength evaluate_7(const std::array<std::uint8_t, 7>& cards);
 };
-
-Strength evaluate_n(const std::vector<std::uint8_t>& cards);
 int compare_7(
     const std::array<std::uint8_t, 7>& lhs,
     const std::array<std::uint8_t, 7>& rhs) noexcept;

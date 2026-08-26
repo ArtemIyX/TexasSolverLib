@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -97,15 +96,8 @@ void MultiwayCFRConfig::validate() const {
     if (player_count < 2U || player_count > 6U) {
         throw std::invalid_argument("MultiwayCFRConfig supports two through six players");
     }
-    if (algorithm != MultiwayCFRAlgorithm::FullTreeCFR &&
-        algorithm != MultiwayCFRAlgorithm::ExternalSamplingMCCFR) {
-        throw std::invalid_argument("MultiwayCFRConfig has an unsupported algorithm");
-    }
     if (!deterministic_trajectory_merges) {
         throw std::invalid_argument("MultiwayCFRConfig requires deterministic trajectory merges");
-    }
-    if (quality_metric != MultiwayQualityMetric::NashConv) {
-        throw std::invalid_argument("MultiwayCFRConfig has an unsupported quality metric");
     }
 }
 
@@ -124,84 +116,58 @@ double multiway_counterfactual_reach(
 
 std::vector<Probability> multiway_regret_matching(const std::vector<double>& regrets) {
     if (regrets.empty()) throw std::invalid_argument("regret matching requires at least one action");
+    std::vector<Probability> strategy(regrets.size(), 0.0);
+    multiway_regret_matching_action_major_into(
+        regrets.data(), regrets.size(), regrets.size(), 1U, strategy.data());
+    return strategy;
+}
+
+void multiway_regret_matching_action_major_into(
+    const double* regrets,
+    std::size_t regret_value_count,
+    std::size_t action_count,
+    std::size_t regret_stride,
+    Probability* output) {
+    if (regrets == nullptr || output == nullptr || action_count == 0U || regret_stride == 0U ||
+        regret_value_count == 0U ||
+        (action_count > 1U && (action_count - 1U) > (regret_value_count - 1U) / regret_stride)) {
+        throw std::invalid_argument("regret matching requires valid action-major rows");
+    }
     double positive_scale = 0.0;
-    for (const auto regret : regrets) {
+    for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto regret = regrets[action * regret_stride];
         if (!std::isfinite(regret)) throw std::invalid_argument("regrets must be finite");
         if (regret > positive_scale) positive_scale = regret;
+        output[action] = 0.0;
     }
-    std::vector<Probability> strategy(regrets.size(), 0.0);
     if (positive_scale == 0.0) {
-        std::fill(strategy.begin(), strategy.end(), 1.0 / static_cast<double>(strategy.size()));
-        return strategy;
+        std::fill(output, output + action_count, 1.0 / static_cast<double>(action_count));
+        return;
     }
     double scaled_sum = 0.0;
-    for (const auto regret : regrets) {
+    std::size_t last_positive = 0U;
+    for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto regret = regrets[action * regret_stride];
         // Terms too small to affect the normalization must not receive a
         // rounded-up residual probability below.
         if (regret > 0.0 && regret / positive_scale >= std::numeric_limits<double>::epsilon()) {
             scaled_sum += regret / positive_scale;
+            last_positive = action;
         }
     }
     if (!std::isfinite(scaled_sum) || scaled_sum <= 0.0) {
         throw std::overflow_error("regret matching produced a non-finite normalization");
     }
     double assigned = 0.0;
-    std::size_t last_positive = 0;
-    for (std::size_t action = 0; action < regrets.size(); ++action) {
-        if (regrets[action] > 0.0 && regrets[action] / positive_scale >= std::numeric_limits<double>::epsilon()) {
-            last_positive = action;
+    for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto regret = regrets[action * regret_stride];
+        if (regret > 0.0 && regret / positive_scale >= std::numeric_limits<double>::epsilon() &&
+            action != last_positive) {
+            output[action] = (regret / positive_scale) / scaled_sum;
+            assigned += output[action];
         }
     }
-    for (std::size_t action = 0; action < regrets.size(); ++action) {
-        if (regrets[action] > 0.0 && regrets[action] / positive_scale >= std::numeric_limits<double>::epsilon() && action != last_positive) {
-            strategy[action] = (regrets[action] / positive_scale) / scaled_sum;
-            assigned += strategy[action];
-        }
-    }
-    strategy[last_positive] = 1.0 - assigned;
-    return strategy;
-}
-
-MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values) {
-    validate_reaches(player_reaches, traverser);
-    validate_probability(chance_reach, "chance reach");
-    validate_strategy_and_values(strategy, action_values);
-
-    MultiwayCFRUpdate update;
-    update.counterfactual_reach = multiway_counterfactual_reach(player_reaches, traverser, chance_reach);
-    update.average_strategy_weight = player_reaches[static_cast<std::size_t>(traverser)];
-    update.regret_deltas.resize(strategy.size());
-    update.strategy_deltas.resize(strategy.size());
-    for (std::size_t action = 0; action < strategy.size(); ++action) {
-        update.node_value += strategy[action] * action_values[action];
-    }
-    if (!std::isfinite(update.node_value)) {
-        throw std::overflow_error("full-tree CFR update has a non-finite node value");
-    }
-    for (std::size_t action = 0; action < strategy.size(); ++action) {
-        update.regret_deltas[action] =
-            update.counterfactual_reach * (action_values[action] - update.node_value);
-        update.strategy_deltas[action] = update.average_strategy_weight * strategy[action];
-        if (!std::isfinite(update.regret_deltas[action]) || !std::isfinite(update.strategy_deltas[action])) {
-            throw std::overflow_error("full-tree CFR update contains a non-finite delta");
-        }
-    }
-    return update;
-}
-
-MultiwayCFRUpdate make_multiway_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values) {
-    return make_multiway_full_tree_cfr_update(
-        player_reaches, traverser, chance_reach, strategy, action_values);
+    output[last_positive] = 1.0 - assigned;
 }
 
 MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(

@@ -1,11 +1,12 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "solver/multiway_export.hpp"
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_traversal.hpp"
 #include "solver/multiway_bucket_artifact.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "games/multiway_rules.hpp"
 
 #include <cstdint>
@@ -71,8 +72,7 @@ struct MultiwayBlueprintTrainingConfig {
     MultiwayBlueprintConfig blueprint{};
     MultiwayBucketBaselineProfile bucket_profile = MultiwayBucketBaselineProfile::standard();
     MultiwayActionAbstractionConfig action_abstraction{};
-    MultiwayCFRConfig cfr{6, MultiwayCFRAlgorithm::ExternalSamplingMCCFR,
-        MultiwayQualityMetric::NashConv, true};
+    MultiwayCFRConfig cfr{6, true};
     MultiwaySolverLimits limits{1, 1, 1024, 1024, 8192, 8192, 8192};
     MultiwayBlueprintIterationSchedule schedule{};
     std::uint64_t deterministic_seed = 1;
@@ -107,8 +107,8 @@ public:
     [[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
     [[nodiscard]] MultiwayBlueprintSnapshot publish(
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
-    void resume_from(const MultiwayBlueprintSnapshot& checkpoint);
-    void resume_from(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+    void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
+    void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
 
 private:
     MultiwayModelIdentity identity_{};
@@ -131,7 +131,7 @@ public:
         const MultiwayLeafEvaluator* leaf_evaluator = nullptr);
 
     void run_batches(std::uint64_t batch_count);
-    void resume_from_checkpoint(const MultiwayBlueprintSnapshot& checkpoint);
+    void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
     void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
     [[nodiscard]] MultiwayBlueprintSnapshot export_policy(
         MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
@@ -147,6 +147,7 @@ private:
     const MultiwayBucketRegistry* buckets_ = nullptr;
     MultiwayLeafEvaluator leaf_evaluator_{};
     std::unique_ptr<MultiwayActionAbstraction> action_abstraction_;
+    std::unique_ptr<MultiwayFixedContinuationSelector> continuation_selector_;
     std::unique_ptr<MultiwaySolverCoordinator> coordinator_;
     std::unique_ptr<MultiwayRootBatchRunner> batch_runner_;
     std::unique_ptr<MultiwayBlueprintTrainer> trainer_;

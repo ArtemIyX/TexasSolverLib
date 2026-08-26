@@ -1,4 +1,5 @@
 #include "solver/hunl_sampled_export.hpp"
+#include "core/fingerprint.hpp"
 
 #include <stdexcept>
 
@@ -9,10 +10,9 @@ namespace {
 std::uint64_t action_menu_id(const std::vector<ActionId>& actions, const std::vector<int>& targets) noexcept {
     std::uint64_t hash = 1469598103934665603ULL;
     for (std::size_t index = 0; index < actions.size(); ++index) {
-        hash ^= static_cast<std::uint64_t>(actions[index]);
-        hash *= 1099511628211ULL;
-        hash ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(targets[index]));
-        hash *= 1099511628211ULL;
+        texas::core::fingerprint::append_u8(hash, actions[index]);
+        texas::core::fingerprint::append_u8(
+            hash, static_cast<std::uint8_t>(static_cast<std::uint32_t>(targets[index])));
     }
     return hash;
 }

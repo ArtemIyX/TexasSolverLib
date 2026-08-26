@@ -56,7 +56,7 @@ TEST_CASE(multiway_action_abstraction_expands_multiway_bet_sizes) {
     config.big_blind = 100;
     config.street = texas::Street::Flop;
     const auto actions = texas::MultiwayActionAbstraction().make_legal_actions(
-        texas::MultiwayState::initial(config).snapshot(), 21);
+        texas::MultiwayState::initial(config).snapshot());
 
     std::size_t bets = 0;
     for (const auto& action : actions) {
@@ -68,7 +68,7 @@ TEST_CASE(multiway_action_abstraction_expands_multiway_bet_sizes) {
 
 TEST_CASE(multiway_action_abstraction_uses_default_preflop_templates) {
     const auto state = preflop_root();
-    const auto actions = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot(), 31U);
+    const auto actions = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot());
 
     EXPECT_TRUE(contains(actions, texas::MultiwayAction::Fold, 0));
     EXPECT_TRUE(contains(actions, texas::MultiwayAction::Call, 100));
@@ -83,13 +83,13 @@ TEST_CASE(multiway_action_abstraction_uses_position_and_squeeze_templates) {
     const auto opened = preflop_root().apply(texas::MultiwayAction::Bet, 300);
     const texas::MultiwayActionAbstraction abstraction;
     const auto out_of_position = abstraction.make_legal_actions(
-        opened.snapshot(), 32U,
+        opened.snapshot(),
         {texas::MultiwayPreflopSituation::FacingSingleOpen,
             texas::MultiwayRelativePosition::OutOfPosition});
     EXPECT_TRUE(contains(out_of_position, texas::MultiwayAction::Raise, 1050));
 
     const auto squeeze = abstraction.make_legal_actions(
-        opened.snapshot(), 33U,
+        opened.snapshot(),
         {texas::MultiwayPreflopSituation::FacingOpenAndCallers,
             texas::MultiwayRelativePosition::Unknown});
     EXPECT_TRUE(contains(squeeze, texas::MultiwayAction::Raise, 500));
@@ -103,9 +103,9 @@ TEST_CASE(multiway_action_abstraction_prunes_contextual_postflop_menus) {
         texas::MultiwayRelativePosition::Unknown,
         texas::MultiwayPostflopSizingMode::Contextual,
     };
-    const auto heads_up = abstraction.make_legal_actions(flop_root(2U, 10000, 700).snapshot(), 34U, contextual);
-    const auto multiway = abstraction.make_legal_actions(flop_root(4U, 10000, 700).snapshot(), 35U, contextual);
-    const auto short_stack = abstraction.make_legal_actions(flop_root(3U, 1000, 700).snapshot(), 36U, contextual);
+    const auto heads_up = abstraction.make_legal_actions(flop_root(2U, 10000, 700).snapshot(), contextual);
+    const auto multiway = abstraction.make_legal_actions(flop_root(4U, 10000, 700).snapshot(), contextual);
+    const auto short_stack = abstraction.make_legal_actions(flop_root(3U, 1000, 700).snapshot(), contextual);
 
     EXPECT_EQ(count_action(heads_up, texas::MultiwayAction::Bet), 4U);
     EXPECT_EQ(count_action(multiway, texas::MultiwayAction::Bet), 2U);
@@ -117,9 +117,9 @@ TEST_CASE(multiway_action_abstraction_prunes_contextual_postflop_menus) {
 TEST_CASE(multiway_action_abstraction_preserves_facing_bet_basics_and_exact_raise) {
     const auto facing_bet = flop_root(3U, 2000, 100).apply(texas::MultiwayAction::Bet, 300);
     const texas::MultiwayActionAbstraction abstraction;
-    const auto menu = abstraction.make_legal_actions(facing_bet.snapshot(), 37U);
+    const auto menu = abstraction.make_legal_actions(facing_bet.snapshot());
     const auto inserted = texas::MultiwayActionAbstraction::insert_exact_observed_action(
-        facing_bet.snapshot(), menu, texas::MultiwayAction::Raise, 600, 37U);
+        facing_bet.snapshot(), menu, texas::MultiwayAction::Raise, 600);
 
     EXPECT_TRUE(contains(inserted, texas::MultiwayAction::Fold, 0));
     EXPECT_TRUE(contains(inserted, texas::MultiwayAction::Call, 300));
@@ -140,7 +140,7 @@ TEST_CASE(multiway_action_abstraction_deduplicates_and_compacts_exact_insertions
         {texas::MultiwayAction::AllIn, 7U, 1900, 38U},
     };
     const auto inserted = texas::MultiwayActionAbstraction::insert_exact_observed_action(
-        state.snapshot(), std::move(menu), texas::MultiwayAction::Bet, 650, 38U);
+        state.snapshot(), std::move(menu), texas::MultiwayAction::Bet, 650);
 
     EXPECT_EQ(inserted.size(), texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
     EXPECT_TRUE(contains(inserted, texas::MultiwayAction::Bet, 650));
@@ -159,7 +159,7 @@ TEST_CASE(multiway_action_abstraction_classifies_large_off_tree_bets_for_local_e
     texas::MultiwayActionAbstractionConfig action_config;
     action_config.translation_max_pseudo_harmonic_distance_basis_points = 1U;
     const texas::MultiwayActionAbstraction abstraction(action_config);
-    const auto menu = abstraction.make_legal_actions(state.snapshot(), 0U);
+    const auto menu = abstraction.make_legal_actions(state.snapshot());
     texas::MultiwayDeviationExpansionConfig expansion;
     expansion.minimum_pseudo_harmonic_distance_basis_points = 1U;
 
@@ -168,7 +168,7 @@ TEST_CASE(multiway_action_abstraction_classifies_large_off_tree_bets_for_local_e
             state.snapshot(), menu, texas::MultiwayAction::Bet, 2500, expansion),
         texas::MultiwayDeviationDisposition::Expand);
     const auto expanded = texas::MultiwayActionAbstraction::insert_exact_observed_action(
-        state.snapshot(), menu, texas::MultiwayAction::Bet, 2500, 0U);
+        state.snapshot(), menu, texas::MultiwayAction::Bet, 2500);
     EXPECT_TRUE(contains(expanded, texas::MultiwayAction::Bet, 2500));
     EXPECT_TRUE(expanded.size() <= texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
 }
@@ -191,9 +191,9 @@ bool has_exact_legal_targets(
 TEST_CASE(multiway_action_abstraction_profiles_context_and_translates_small_off_tree_bets) {
     const auto state = flop_root(3U, 2000, 100);
     const texas::MultiwayActionAbstraction abstraction;
-    const auto compatibility = abstraction.make_legal_actions(state.snapshot(), 39U);
+    const auto compatibility = abstraction.make_legal_actions(state.snapshot());
     const auto contextual = abstraction.make_legal_actions(
-        state.snapshot(), 40U, {texas::MultiwayPreflopSituation::Auto,
+        state.snapshot(), {texas::MultiwayPreflopSituation::Auto,
             texas::MultiwayRelativePosition::Unknown, texas::MultiwayPostflopSizingMode::Contextual});
 
     EXPECT_TRUE(abstraction.menu_profile_identity() != abstraction.menu_profile_identity(
@@ -234,8 +234,8 @@ TEST_CASE(multiway_action_abstraction_profile_is_deterministic_and_legal_by_cont
     const std::array<texas::MultiwayState, 4> states = {{unopened, facing_open, facing_open, three_way}};
 
     for (std::size_t index = 0U; index < contexts.size(); ++index) {
-        const auto first = abstraction.make_legal_actions(states[index].snapshot(), 41U + index, contexts[index]);
-        const auto second = abstraction.make_legal_actions(states[index].snapshot(), 91U + index, contexts[index]);
+        const auto first = abstraction.make_legal_actions(states[index].snapshot(), contexts[index]);
+        const auto second = abstraction.make_legal_actions(states[index].snapshot(), contexts[index]);
         EXPECT_EQ(first, second);
         EXPECT_TRUE(!first.empty());
         EXPECT_TRUE(has_exact_legal_targets(states[index], first));
@@ -252,7 +252,7 @@ TEST_CASE(multiway_action_abstraction_profile_is_deterministic_and_legal_by_cont
 TEST_CASE(multiway_action_abstraction_translation_respects_pseudo_harmonic_boundaries) {
     const auto state = flop_root(3U, 2000, 100);
     const texas::MultiwayActionAbstraction abstraction;
-    const auto menu = abstraction.make_legal_actions(state.snapshot(), 45U);
+    const auto menu = abstraction.make_legal_actions(state.snapshot());
 
     const auto lower_inside = abstraction.translate_observed_action(
         state.snapshot(), menu, texas::MultiwayAction::Bet, 110);

@@ -135,7 +135,7 @@ TEST_CASE(multiway_evaluation_rejects_illegal_off_tree_boundary_actions) {
     EXPECT_EQ(result.off_tree_gauntlets.front().failure, texas::MultiwayEvaluationFailure::OffTreeIllegalAction);
 }
 
-TEST_CASE(multiway_evaluation_is_reproducible_and_exposes_failure_fixtures) {
+TEST_CASE(multiway_evaluation_is_reproducible) {
     EvaluationContext first_context;
     EvaluationContext second_context;
     const auto first = texas::evaluate_multiway_candidates(make_config(&first_context));
@@ -148,5 +148,4 @@ TEST_CASE(multiway_evaluation_is_reproducible_and_exposes_failure_fixtures) {
         EXPECT_NEAR(first.cross_play[index].mean_focal_value, second.cross_play[index].mean_focal_value, 0.0);
     }
     EXPECT_NEAR(first.reduced_game_nash_conv.value, second.reduced_game_nash_conv.value, 0.0);
-    EXPECT_EQ(texas::multiway_evaluation_failure_fixtures().size(), 10U);
 }

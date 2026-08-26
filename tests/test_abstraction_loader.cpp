@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <vector>
 
@@ -56,6 +57,26 @@ TEST_CASE(abstraction_loader_rejects_missing_npz_entry) {
         std::nullopt,
         [](texas::Street, std::size_t, const std::array<std::uint8_t, 2>&) { return static_cast<std::uint8_t>(0); },
         options);
+
+    EXPECT_THROW(texas::load_abstraction(path), std::runtime_error);
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(abstraction_loader_rejects_out_of_bounds_zip_directory) {
+    const auto path = std::filesystem::temp_directory_path() / "texas_abstraction_loader_bad_directory.npz";
+    std::vector<std::uint8_t> bytes(22U, 0U);
+    bytes[0] = 0x50U;
+    bytes[1] = 0x4bU;
+    bytes[2] = 0x05U;
+    bytes[3] = 0x06U;
+    bytes[10] = 1U;
+    bytes[16] = 0xffU;
+    bytes[17] = 0xffU;
+    bytes[18] = 0xffU;
+    bytes[19] = 0xffU;
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    out.close();
 
     EXPECT_THROW(texas::load_abstraction(path), std::runtime_error);
     std::filesystem::remove(path);

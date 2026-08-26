@@ -4,43 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
 #include <memory>
-#include <optional>
 
 namespace {
-
-struct EnvGuard {
-    std::string name;
-    std::optional<std::string> previous;
-
-    EnvGuard(std::string env_name, std::optional<std::string> prev)
-        : name(std::move(env_name)), previous(std::move(prev)) {}
-
-    ~EnvGuard() {
-#if defined(_MSC_VER)
-        if (previous.has_value()) {
-            _putenv_s(name.c_str(), previous->c_str());
-        } else {
-            _putenv_s(name.c_str(), "");
-        }
-#else
-        if (previous.has_value()) {
-            setenv(name.c_str(), previous->c_str(), 1);
-        } else {
-            unsetenv(name.c_str());
-        }
-#endif
-    }
-};
-
-std::optional<std::string> get_env(const char* name) {
-    const char* value = std::getenv(name);
-    if (value == nullptr) {
-        return std::nullopt;
-    }
-    return std::string(value);
-}
 
 texas::HUNLState river_state() {
     return texas::HUNLState::initial(std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame()));
@@ -56,15 +22,8 @@ TEST_CASE(hunl_regression_infoset_key_format_is_stable) {
 
 TEST_CASE(hunl_regression_flat_backend_populates_value_metrics) {
     auto config = texas::default_tiny_subgame();
-    const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
-    EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
-#if defined(_MSC_VER)
-    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
-#else
-    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
-#endif
-
-    const auto output = texas::lib::solve_hunl_postflop(config, 10, 1.5, 0.0, 2.0, 4, 8, true);
+    const auto output = texas::lib::solve_hunl_postflop(
+        config, 10, 1.5, 0.0, 2.0, 4, 8, true, texas::HUNLBackendSelection::Flat);
 
     EXPECT_TRUE(std::isfinite(output.game_value));
     EXPECT_TRUE(std::isfinite(output.exploitability));
@@ -77,15 +36,8 @@ TEST_CASE(hunl_regression_explicit_hand_flat_mode_runs_without_abstraction) {
     auto config = texas::default_tiny_subgame();
     config.flat_solve_mode = texas::HUNLFlatSolveMode::ExplicitHand;
 
-    const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
-    EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
-#if defined(_MSC_VER)
-    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
-#else
-    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
-#endif
-
-    const auto output = texas::lib::solve_hunl_postflop(config, 2, 1.5, 0.0, 2.0, 1, 8, true);
+    const auto output = texas::lib::solve_hunl_postflop(
+        config, 2, 1.5, 0.0, 2.0, 1, 8, true, texas::HUNLBackendSelection::Flat);
     EXPECT_TRUE(std::isfinite(output.game_value));
     EXPECT_TRUE(std::isfinite(output.exploitability));
 }
@@ -95,16 +47,9 @@ TEST_CASE(hunl_regression_bucketed_flat_mode_requires_abstraction) {
     config.flat_solve_mode = texas::HUNLFlatSolveMode::Bucketed;
     config.abstraction_path = std::nullopt;
 
-    const auto prev = get_env("TEXASSOLVER_HUNL_FLAT_BACKEND");
-    EnvGuard guard("TEXASSOLVER_HUNL_FLAT_BACKEND", prev);
-#if defined(_MSC_VER)
-    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
-#else
-    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
-#endif
-
     EXPECT_THROW(
-        static_cast<void>(texas::lib::solve_hunl_postflop(config, 1, 1.5, 0.0, 2.0, 1, 8, true)),
+        static_cast<void>(texas::lib::solve_hunl_postflop(
+            config, 1, 1.5, 0.0, 2.0, 1, 8, true, texas::HUNLBackendSelection::Flat)),
         std::invalid_argument);
 }
 

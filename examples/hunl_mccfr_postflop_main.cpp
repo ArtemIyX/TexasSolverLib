@@ -120,7 +120,6 @@ std::optional<texas::HUNLFlatSamplingMode> mode_from_text(std::string_view text)
 std::optional<texas::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
     if (text == "double" || text == "float64") return texas::HUNLFlatStoragePrecision::Float64;
     if (text == "float" || text == "float32") return texas::HUNLFlatStoragePrecision::Float32;
-    if (text == "compressed16" || text == "fp16") return texas::HUNLFlatStoragePrecision::Compressed16;
     return std::nullopt;
 }
 
@@ -138,7 +137,6 @@ const char* precision_name(texas::HUNLFlatStoragePrecision precision) {
     switch (precision) {
         case texas::HUNLFlatStoragePrecision::Float64: return "float64";
         case texas::HUNLFlatStoragePrecision::Float32: return "float32";
-        case texas::HUNLFlatStoragePrecision::Compressed16: return "compressed16";
     }
     return "unknown";
 }
@@ -419,7 +417,6 @@ RandomScenario make_random_scenario(const AppConfig& cfg) {
     for (std::size_t player = 0; player < 2; ++player) {
         auto range = make_random_range_input(rng, config.initial_board, cfg.range_hands_per_player);
         config.initial_ranges[player] = range;
-        config.player_ranges[player] = std::move(range);
     }
 
     auto state = texas::HUNLState::initial(std::make_shared<const texas::HUNLConfig>(config));

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/namespaces.hpp"
+#include "core/legacy_namespace_compat.hpp"
 
 #include "core/types.hpp"
 #include "games/multiway_private.hpp"
@@ -12,21 +12,8 @@
 
 namespace texas::solver::multiway {
 
-// Multiway solving is evaluated with NashConv. Unlike heads-up exploitability,
-// it is the sum of each seat's unilateral best-response improvement.
-enum class MultiwayQualityMetric : std::uint8_t {
-    NashConv,
-};
-
-enum class MultiwayCFRAlgorithm : std::uint8_t {
-    FullTreeCFR,
-    ExternalSamplingMCCFR,
-};
-
 struct MultiwayCFRConfig {
     std::uint8_t player_count = 2;
-    MultiwayCFRAlgorithm algorithm = MultiwayCFRAlgorithm::ExternalSamplingMCCFR;
-    MultiwayQualityMetric quality_metric = MultiwayQualityMetric::NashConv;
     bool deterministic_trajectory_merges = true;
 
     void validate() const;
@@ -108,25 +95,15 @@ double multiway_counterfactual_reach(
 
 std::vector<Probability> multiway_regret_matching(const std::vector<double>& regrets);
 
-// Produces the full-tree CFR update for one traverser's infoset. The strategy
-// sum uses only the traverser's own reach; regret uses all other
-// seats' reach and chance reach.
-MultiwayCFRUpdate make_multiway_full_tree_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values);
-
-// Compatibility spelling for callers that already use this standalone
-// full-tree helper.  New traversal code must choose the named full-tree or
-// external-sampling API explicitly.
-MultiwayCFRUpdate make_multiway_cfr_update(
-    const std::vector<Probability>& player_reaches,
-    PlayerId traverser,
-    Probability chance_reach,
-    const std::vector<Probability>& strategy,
-    const std::vector<Value>& action_values);
+// Scalar reference kernel for action-major regret rows. `regret_value_count`
+// bounds the input span; `regret_stride` is the distance between actions for
+// one bucket. Callers own output.
+void multiway_regret_matching_action_major_into(
+    const double* regrets,
+    std::size_t regret_value_count,
+    std::size_t action_count,
+    std::size_t regret_stride,
+    Probability* output);
 
 MultiwayCFRUpdate make_multiway_external_sampling_cfr_update(
     const MultiwayExternalSamplingRequest& request);

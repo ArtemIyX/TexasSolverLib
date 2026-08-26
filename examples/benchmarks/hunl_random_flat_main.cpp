@@ -101,7 +101,6 @@ std::optional<texas::Street> street_from_text(std::string_view text) {
 std::optional<texas::HUNLFlatStoragePrecision> precision_from_text(std::string_view text) {
     if (text == "double" || text == "float64") return texas::HUNLFlatStoragePrecision::Float64;
     if (text == "float" || text == "float32") return texas::HUNLFlatStoragePrecision::Float32;
-    if (text == "compressed16" || text == "fp16") return texas::HUNLFlatStoragePrecision::Compressed16;
     return std::nullopt;
 }
 
@@ -414,14 +413,6 @@ double seconds_per_iteration(double seconds, std::uint32_t iterations) {
     return iterations > 0 ? seconds / static_cast<double>(iterations) : 0.0;
 }
 
-void set_flat_backend_env() {
-#if defined(_MSC_VER)
-    _putenv_s("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat");
-#else
-    setenv("TEXASSOLVER_HUNL_FLAT_BACKEND", "flat", 1);
-#endif
-}
-
 std::string format_bytes(std::uint64_t bytes) {
     constexpr double kib = 1024.0;
     constexpr double mib = kib * 1024.0;
@@ -445,8 +436,6 @@ std::string precision_name(texas::HUNLFlatStoragePrecision precision) {
             return "double";
         case texas::HUNLFlatStoragePrecision::Float32:
             return "float";
-        case texas::HUNLFlatStoragePrecision::Compressed16:
-            return "compressed16";
     }
     return "unknown";
 }
@@ -512,7 +501,7 @@ bool enforce_memory_guardrails(const texas::HUNLFlatMemoryEstimate& estimate) {
 }
 
 void set_profile_env(bool enabled) {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("TEXASSOLVER_PROFILE", enabled ? "1" : "0");
 #else
     setenv("TEXASSOLVER_PROFILE", enabled ? "1" : "0", 1);
@@ -520,7 +509,7 @@ void set_profile_env(bool enabled) {
 }
 
 void set_profile_dir_env() {
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     _putenv_s("TEXASSOLVER_PROFILE_DIR", "artifacts/prof");
 #else
     setenv("TEXASSOLVER_PROFILE_DIR", "artifacts/prof", 1);
@@ -821,7 +810,6 @@ int main(int argc, char* argv[]) {
         }
 
         const auto cfg = *parsed;
-        set_flat_backend_env();
         set_profile_env(cfg.debug);
         if (cfg.debug) {
             set_profile_dir_env();

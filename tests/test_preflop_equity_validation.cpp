@@ -2,6 +2,7 @@
 #include "test_harness.hpp"
 
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <stdexcept>
 
@@ -178,4 +179,14 @@ TEST_CASE(preflop_equity_table_rejects_extended_backing_storage) {
     texas::PreflopEquityTable table;
     table.data().push_back(0.5);
     EXPECT_THROW(table.at(0U, 0U, 0U), std::logic_error);
+}
+
+TEST_CASE(preflop_equity_table_default_and_missing_load_are_invalid) {
+    const texas::PreflopEquityTable default_table;
+    EXPECT_TRUE(default_table.empty());
+
+    const auto missing = std::filesystem::temp_directory_path() / "texassolver_missing_equity_table.bin";
+    std::filesystem::remove(missing);
+    const auto loaded = texas::PreflopEquityTable::load(missing);
+    EXPECT_TRUE(loaded.empty());
 }

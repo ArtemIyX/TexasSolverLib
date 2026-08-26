@@ -1,4 +1,4 @@
-#include "solver/multiway_runtime_session.hpp"
+#include "solver/multiway_decision_session.hpp"
 
 #include <limits>
 #include <stdexcept>
@@ -6,25 +6,25 @@
 
 namespace texas::solver::multiway {
 
-MultiwayRuntimeSession::MultiwayRuntimeSession(
+MultiwayDecisionSession::MultiwayDecisionSession(
     MultiwaySolveRequest initial_request,
     MultiwaySearchSessionDependencies dependencies)
     : dependencies_(dependencies),
       round_(std::make_unique<MultiwaySearchSession>(initial_request, dependencies_, root_revision_)) {}
 
-MultiwayRangeBeliefUpdateResult MultiwayRuntimeSession::observe_action(
-    PlayerId seat,
+MultiwayRangeBeliefUpdateResult MultiwayDecisionSession::observe_action(
+    core::PlayerId seat,
     const MultiwayRangeBeliefObservation& observation) {
     return round_->apply_observation(seat, observation);
 }
 
-void MultiwayRuntimeSession::reroot(
+void MultiwayDecisionSession::reroot(
     MultiwayRootSnapshot next_root,
     MultiwayCFRConfig cfr,
     MultiwaySolverLimits limits,
     bool street_transition) {
     if (root_revision_ == std::numeric_limits<std::uint64_t>::max()) {
-        throw std::overflow_error("multiway runtime root revision overflow");
+        throw std::overflow_error("multiway decision root revision overflow");
     }
     const auto root = street_transition
         ? round_->make_next_round_root(std::move(next_root))

@@ -13,11 +13,6 @@
 
 namespace texas::preflop {
 
-PreflopRvrNotReady::PreflopRvrNotReady()
-    : std::logic_error(
-          "the legacy preflop RVR facade is unavailable; use the tree/cache-aware class-169 solver") {
-}
-
 namespace {
 
 bool disjoint(const std::array<std::uint8_t, 2>& a, const std::array<std::uint8_t, 2>& b) {
@@ -629,18 +624,6 @@ void Class169VectorDCFR::solve(
     }
 }
 
-void Class169VectorDCFR::solve(
-    std::size_t decision_node_count,
-    std::uint32_t iterations,
-    const std::vector<double>& root_reach_p0,
-    const std::vector<double>& root_reach_p1) {
-    (void)decision_node_count;
-    (void)iterations;
-    (void)root_reach_p0;
-    (void)root_reach_p1;
-    throw PreflopRvrNotReady{};
-}
-
 std::unordered_map<std::string, std::vector<double>> Class169VectorDCFR::average_strategy() const {
     std::unordered_map<std::string, std::vector<double>> out;
     for (std::size_t node_index = 0;
@@ -674,16 +657,6 @@ std::unordered_map<std::string, std::vector<double>> Class169VectorDCFR::average
 
 std::uint32_t Class169VectorDCFR::iteration() const {
     return iteration_;
-}
-
-PreflopRvrOutput solve_hunl_preflop_rvr(const HUNLConfig& config, const PreflopEquityTable& table, std::uint32_t iterations, double alpha, double beta, double gamma) {
-    (void)config;
-    (void)table;
-    (void)iterations;
-    (void)alpha;
-    (void)beta;
-    (void)gamma;
-    throw PreflopRvrNotReady{};
 }
 
 Class169RvrOutput solve_hunl_preflop_rvr_class169(

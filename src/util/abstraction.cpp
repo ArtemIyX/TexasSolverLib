@@ -5,12 +5,14 @@
 #include <cctype>
 #include <cstring>
 #include <fstream>
-#include <sstream>
+#include <limits>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #include <compressapi.h>
 
@@ -26,22 +28,48 @@ namespace texas::util {
 
 namespace {
 
+constexpr std::size_t kMaxAbstractionArtifactBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+constexpr std::size_t kMaxAbstractionEntryBytes = 512ULL * 1024ULL * 1024ULL;
+
+bool fits(std::size_t offset, std::size_t length, std::size_t size) noexcept {
+    return offset <= size && length <= size - offset;
+}
+
 struct ZipEntry {
     std::string name;
+    std::uint32_t crc32 = 0;
     std::uint16_t method = 0;
     std::uint32_t compressed_size = 0;
     std::uint32_t uncompressed_size = 0;
     std::uint32_t local_header_offset = 0;
 };
 
+std::uint32_t crc32_bytes(const std::uint8_t* data, std::size_t size) noexcept {
+    std::uint32_t crc = 0xFFFFFFFFU;
+    for (std::size_t index = 0U; index < size; ++index) {
+        crc ^= data[index];
+        for (int bit = 0; bit < 8; ++bit) {
+            crc = (crc & 1U) != 0U ? 0xEDB88320U ^ (crc >> 1U) : crc >> 1U;
+        }
+    }
+    return ~crc;
+}
+
 std::string read_file_bytes(const std::filesystem::path& path) {
+    std::error_code error;
+    const auto file_size = std::filesystem::file_size(path, error);
+    if (error || file_size > kMaxAbstractionArtifactBytes ||
+        file_size > std::numeric_limits<std::size_t>::max()) {
+        throw std::runtime_error("abstraction artifact is missing or exceeds the input budget");
+    }
     std::ifstream f(path, std::ios::binary);
     if (!f) {
         throw std::runtime_error("abstraction artifact not found: " + path.string());
     }
-    std::ostringstream oss;
-    oss << f.rdbuf();
-    return oss.str();
+    std::string bytes(static_cast<std::size_t>(file_size), '\0');
+    f.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    if (!f && !f.eof()) throw std::runtime_error("abstraction artifact read failed");
+    return bytes;
 }
 
 std::uint16_t read_u16(const char* p) {
@@ -76,17 +104,27 @@ std::vector<ZipEntry> parse_zip_entries(const std::string& zip) {
         throw std::runtime_error("npz missing EOCD");
     }
 
+    if (!fits(static_cast<std::size_t>(eocd_pos), 22U, zip.size())) {
+        throw std::runtime_error("npz EOCD is truncated");
+    }
     const auto cd_offset = read_u32(zip.data() + eocd_pos + 16);
     const auto cd_entries = read_u16(zip.data() + eocd_pos + 10);
+    if (cd_offset > zip.size() || cd_offset > static_cast<std::size_t>(eocd_pos)) {
+        throw std::runtime_error("npz central directory offset is invalid");
+    }
     std::vector<ZipEntry> out;
     out.reserve(cd_entries);
 
     std::size_t pos = cd_offset;
     for (std::uint16_t n = 0; n < cd_entries; ++n) {
+        if (!fits(pos, 46U, zip.size()) || pos > static_cast<std::size_t>(eocd_pos)) {
+            throw std::runtime_error("npz central directory entry is truncated");
+        }
         if (read_u32(zip.data() + pos) != CEN_SIG) {
             throw std::runtime_error("npz central directory corruption");
         }
         ZipEntry e;
+        e.crc32 = read_u32(zip.data() + pos + 16);
         e.method = read_u16(zip.data() + pos + 10);
         e.compressed_size = read_u32(zip.data() + pos + 20);
         e.uncompressed_size = read_u32(zip.data() + pos + 24);
@@ -94,14 +132,22 @@ std::vector<ZipEntry> parse_zip_entries(const std::string& zip) {
         const auto extra_len = read_u16(zip.data() + pos + 30);
         const auto comment_len = read_u16(zip.data() + pos + 32);
         e.local_header_offset = read_u32(zip.data() + pos + 42);
+        const auto record_size = static_cast<std::size_t>(46U) + name_len + extra_len + comment_len;
+        if (!fits(pos, record_size, zip.size()) || pos + record_size > static_cast<std::size_t>(eocd_pos) ||
+            e.local_header_offset >= zip.size()) {
+            throw std::runtime_error("npz central directory entry bounds are invalid");
+        }
         e.name.assign(zip.data() + pos + 46, zip.data() + pos + 46 + name_len);
         out.push_back(std::move(e));
-        pos += 46 + name_len + extra_len + comment_len;
+        pos += record_size;
     }
     return out;
 }
 
 std::vector<std::uint8_t> decompress_deflate(const std::uint8_t* input, std::size_t input_size, std::size_t output_size) {
+    if (input == nullptr || input_size == 0U || output_size > kMaxAbstractionEntryBytes) {
+        throw std::runtime_error("npz deflate entry exceeds the output budget");
+    }
     DECOMPRESSOR_HANDLE handle = nullptr;
     if (!CreateDecompressor(COMPRESS_ALGORITHM_DEFLATE, nullptr, &handle)) {
         throw std::runtime_error("CreateDecompressor(COMPRESS_ALGORITHM_DEFLATE) failed");
@@ -109,30 +155,56 @@ std::vector<std::uint8_t> decompress_deflate(const std::uint8_t* input, std::siz
 
     std::vector<std::uint8_t> output(output_size);
     std::size_t produced = output_size;
-    if (!Decompress(handle, input, input_size, output.data(), output_size, &produced)) {
+    if (!Decompress(handle, const_cast<void*>(static_cast<const void*>(input)), input_size, output.data(), output_size, &produced)) {
         CloseDecompressor(handle);
         throw std::runtime_error("Decompress failed");
     }
     CloseDecompressor(handle);
+    if (produced > output_size) {
+        throw std::runtime_error("npz deflate output exceeds the declared size");
+    }
     output.resize(produced);
     return output;
 }
 
 std::vector<std::uint8_t> read_zip_entry(const std::string& zip, const ZipEntry& entry) {
     constexpr std::uint32_t LOC_SIG = 0x04034b50;
+    if (entry.compressed_size > kMaxAbstractionEntryBytes ||
+        entry.uncompressed_size > kMaxAbstractionEntryBytes ||
+        !fits(entry.local_header_offset, 30U, zip.size())) {
+        throw std::runtime_error("npz local entry exceeds the input or output budget");
+    }
     const auto* p = zip.data() + entry.local_header_offset;
     if (read_u32(p) != LOC_SIG) {
         throw std::runtime_error("npz local header corruption");
     }
     const auto name_len = read_u16(p + 26);
     const auto extra_len = read_u16(p + 28);
-    const auto data_offset = entry.local_header_offset + 30 + name_len + extra_len;
+    const auto data_prefix = static_cast<std::size_t>(30U) + name_len + extra_len;
+    if (!fits(entry.local_header_offset, data_prefix, zip.size())) {
+        throw std::runtime_error("npz local entry header bounds are invalid");
+    }
+    const auto data_offset = entry.local_header_offset + data_prefix;
+    if (!fits(data_offset, entry.compressed_size, zip.size())) {
+        throw std::runtime_error("npz local entry data bounds are invalid");
+    }
     const auto* data = reinterpret_cast<const std::uint8_t*>(zip.data() + data_offset);
     if (entry.method == 0) {
-        return std::vector<std::uint8_t>(data, data + entry.uncompressed_size);
+        if (entry.compressed_size != entry.uncompressed_size) {
+            throw std::runtime_error("npz stored entry size metadata is inconsistent");
+        }
+        std::vector<std::uint8_t> output(data, data + entry.uncompressed_size);
+        if (crc32_bytes(output.data(), output.size()) != entry.crc32) {
+            throw std::runtime_error("npz stored entry CRC mismatch");
+        }
+        return output;
     }
     if (entry.method == 8) {
-        return decompress_deflate(data, entry.compressed_size, entry.uncompressed_size);
+        auto output = decompress_deflate(data, entry.compressed_size, entry.uncompressed_size);
+        if (crc32_bytes(output.data(), output.size()) != entry.crc32) {
+            throw std::runtime_error("npz deflated entry CRC mismatch");
+        }
+        return output;
     }
     throw std::runtime_error("unsupported zip compression method");
 }
@@ -155,10 +227,10 @@ std::vector<std::uint8_t> parse_npy_u8(const std::vector<std::uint8_t>& raw) {
         throw std::runtime_error("unsupported npy version");
     }
     const auto header_start = offset;
-    const auto header_end = header_start + header_len;
-    if (header_end > raw.size()) {
+    if (!fits(header_start, header_len, raw.size())) {
         throw std::runtime_error("truncated npy header");
     }
+    const auto header_end = header_start + header_len;
     const std::string header(reinterpret_cast<const char*>(raw.data() + header_start), header_len);
     if (header.find("'descr': '|u1'") == std::string::npos && header.find("\"descr\": \"|u1\"") == std::string::npos) {
         throw std::runtime_error("npy dtype must be |u1");
@@ -450,7 +522,10 @@ std::int32_t lookup_bucket(
     const auto board_offset = board_index.at(board_key);
     const auto& per_board = hand_index.at(board_key);
     const auto within = per_board.at(hand_key);
-    return static_cast<std::int32_t>(assignments.at(board_offset + within));
+    if (board_offset >= assignments.size() || within >= assignments.size() - board_offset) {
+        throw std::out_of_range("abstraction assignment index is outside the table");
+    }
+    return static_cast<std::int32_t>(assignments[board_offset + within]);
 }
 
 }  // namespace texas::util

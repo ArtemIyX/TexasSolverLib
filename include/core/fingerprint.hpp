@@ -1,0 +1,25 @@
+#pragma once
+
+#include <cstdint>
+
+namespace texas::core::fingerprint {
+
+inline constexpr std::uint64_t FNV1A_OFFSET = 14695981039346656037ULL;
+inline constexpr std::uint64_t FNV1A_PRIME = 1099511628211ULL;
+
+inline void append_u8(std::uint64_t& hash, std::uint8_t value) noexcept {
+    hash ^= value;
+    hash *= FNV1A_PRIME;
+}
+
+inline void append_u64(std::uint64_t& hash, std::uint64_t value) noexcept {
+    for (std::uint8_t byte = 0U; byte < 8U; ++byte) {
+        append_u8(hash, static_cast<std::uint8_t>(value >> (byte * 8U)));
+    }
+}
+
+[[nodiscard]] inline std::uint64_t finish(std::uint64_t hash) noexcept {
+    return hash == 0U ? 1U : hash;
+}
+
+}  // namespace texas::core::fingerprint

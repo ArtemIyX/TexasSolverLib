@@ -1,5 +1,4 @@
 # Document C - Implementation Roadmap
-
 ## Pluribus-like multiway poker solver for TexasSolver
 
 **Date:** 2026-08-09  
@@ -120,7 +119,7 @@ target. These systems should be treated as foundations, not rewritten.
 | Terminal adapter | `MultiwayTerminalAdapter` | Reuse opaque deal tokens, public chance, street transitions, and terminal dispatch. |
 | Continuation | `MultiwayFixedContinuationPolicy`, `multiway_rollout_leaf.hpp` | Integrate into search leaves and preserve fixed scratch ownership. |
 | Training | `MultiwayBlueprintTrainingSession`, `MultiwayBlueprintTrainer` | Extend from root-only export toward a compact full blueprint artifact. Keep root export for fallback. |
-| Persistence | `MultiwayCheckpoint`, `MultiwayBlueprintArtifacts`, manifests, hashes | Extend identity and storage contracts, not replace atomic writes and verification. |
+| Persistence | `MultiwayRootPolicyArtifact`, `MultiwayBlueprintArtifacts`, manifests, hashes | Extend identity and storage contracts, not replace atomic writes and verification. |
 | Resolver | `MultiwayResolver` validation, fallback, deadline reserve, public audit behavior | Preserve validation and fallback protections. Replace only its static perturbation inference path. |
 | Evaluation | `evaluate_multiway_candidates` callback harness | Add runtime-search candidates and policy diagnostics to the existing harness. |
 | Profiling | Environment-controlled timers, counters, report files, memory metrics | Instrument each new boundary before optimizing. |
@@ -1049,7 +1048,7 @@ the blueprint-plus-search architecture in Document B.
 ### Current relevant implementation
 
 `MultiwayBlueprintTrainingSession`, `MultiwayBlueprintTrainer`,
-`MultiwayBlueprintSnapshot`, `MultiwayCheckpoint`, and
+`MultiwayBlueprintSnapshot`, `MultiwayRootPolicyArtifact`, and
 `MultiwayBlueprintArtifacts` already provide training composition, root export,
 atomic writes, manifest/hash verification, and resume identity checks.
 

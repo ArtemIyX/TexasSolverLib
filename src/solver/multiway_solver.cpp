@@ -1,4 +1,5 @@
 #include "solver/multiway_solver.hpp"
+#include "core/fingerprint.hpp"
 #include "solver/multiway_public_builder.hpp"
 
 #include <algorithm>
@@ -216,10 +217,7 @@ bool delta_is_finite(const MultiwayWorkerDelta& delta) noexcept {
 }
 
 void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
-    for (std::size_t byte = 0U; byte < sizeof(value); ++byte) {
-        hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
-        hash *= 1099511628211ULL;
-    }
+    texas::core::fingerprint::append_u64(hash, value);
 }
 
 std::uint64_t delta_stream_fingerprint(
@@ -394,8 +392,8 @@ void MultiwaySolverLimits::validate() const {
         std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)) {
         throw std::overflow_error("multiway aggregate worker delta capacity overflows size_t");
     }
-    if (run_mode != MultiwayRunMode::Deterministic) {
-        throw std::invalid_argument("multiway solver supports only deterministic run mode");
+    if (max_batches == 0U) {
+        throw std::invalid_argument("multiway solver limits require a non-zero batch budget");
     }
 }
 
@@ -416,9 +414,8 @@ MultiwaySolveRequest::MultiwaySolveRequest(
     }
     cfr_config_.validate();
     limits_.validate();
-    if (cfr_config_.algorithm != MultiwayCFRAlgorithm::ExternalSamplingMCCFR ||
-        cfr_config_.player_count != root_.seat_order.size()) {
-        throw std::invalid_argument("multiway boundary requires external sampling with the root seat count");
+    if (cfr_config_.player_count != root_.seat_order.size()) {
+        throw std::invalid_argument("multiway CFR configuration must match the root seat count");
     }
     compiled_private_ranges_.emplace(root_.private_ranges);
 }
@@ -490,41 +487,12 @@ void MultiwaySparseRowStorage::regret_matched_strategy_into(
         output_size != row->shape.action_count) {
         throw std::out_of_range("multiway regret strategy output does not match its row");
     }
-    double positive_scale = 0.0;
-    std::size_t last_positive = 0;
-    for (std::size_t action = 0; action < output_size; ++action) {
-        const auto value = regret_[row->regret_offset + action * row->shape.bucket_count + bucket];
-        if (!std::isfinite(value)) {
-            throw std::logic_error("multiway sparse row contains a non-finite regret");
-        }
-        if (value > positive_scale) positive_scale = value;
-        output[action] = 0.0;
-    }
-    if (positive_scale == 0.0) {
-        std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
-        return;
-    }
-    double scaled_sum = 0.0;
-    for (std::size_t action = 0; action < output_size; ++action) {
-        const auto value = regret_[row->regret_offset + action * row->shape.bucket_count + bucket];
-        if (value > 0.0 && value / positive_scale >= std::numeric_limits<double>::epsilon()) {
-            scaled_sum += value / positive_scale;
-            last_positive = action;
-        }
-    }
-    if (!std::isfinite(scaled_sum) || scaled_sum <= 0.0) {
-        throw std::overflow_error("regret matching produced a non-finite normalization");
-    }
-    double assigned = 0.0;
-    for (std::size_t action = 0; action < output_size; ++action) {
-        const auto value = regret_[row->regret_offset + action * row->shape.bucket_count + bucket];
-        if (action != last_positive && value > 0.0 &&
-            value / positive_scale >= std::numeric_limits<double>::epsilon()) {
-            output[action] = (value / positive_scale) / scaled_sum;
-            assigned += output[action];
-        }
-    }
-    output[last_positive] = 1.0 - assigned;
+    multiway_regret_matching_action_major_into(
+        regret_.data() + row->regret_offset + bucket,
+        (output_size - 1U) * row->shape.bucket_count + 1U,
+        output_size,
+        row->shape.bucket_count,
+        output);
 }
 
 std::vector<double> MultiwaySparseRowStorage::strategy_sums(

@@ -1,7 +1,7 @@
 #include "solver/hunl_sampled_range.hpp"
 
 #include "solver/hunl_sampled_scheduler.hpp"
-#include "solver/hunl_sampled_traversal.hpp"
+#include "solver/hunl_sampled_trajectory.hpp"
 #include "util/pcs.hpp"
 #include "util/thread_join_guard.hpp"
 

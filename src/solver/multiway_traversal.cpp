@@ -1,7 +1,9 @@
 #include "solver/multiway_traversal.hpp"
+#include "core/fingerprint.hpp"
+#include "games/multiway_fixed.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway_continuation_selector.hpp"
-#include "util/thread_join_guard.hpp"
+#include "solver/multiway_future_bucket.hpp"
 #include "util/profiling.hpp"
 
 #include <algorithm>
@@ -19,10 +21,7 @@ namespace texas::solver::multiway {
 namespace {
 
 void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept {
-    for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
-        hash ^= static_cast<std::uint8_t>(value >> (byte * 8U));
-        hash *= 1099511628211ULL;
-    }
+    texas::core::fingerprint::append_u64(hash, value);
 }
 
 std::uint64_t private_range_identity(const MultiwayPrivateConfig& ranges) noexcept {
@@ -76,39 +75,6 @@ std::uint64_t private_deal_identity(
 
 }  // namespace
 
-bool MultiwayExternalSamplingTraversal::append_infoset_update(
-    MultiwayWorkerDeltaStream& stream,
-    MultiwayInfosetId infoset,
-    std::uint32_t bucket,
-    std::uint64_t trajectory_id,
-    const MultiwayExternalSamplingRequest& request,
-    double iteration_weight) {
-    if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
-        throw std::invalid_argument("multiway iteration weight must be finite and positive");
-    }
-    if (infoset.public_state.value == 0U || infoset.seat != request.traverser) {
-        throw std::invalid_argument("multiway traversal update infoset must identify the traverser");
-    }
-    const auto update = make_multiway_external_sampling_cfr_update(request);
-    if (update.regret_deltas.size() != update.strategy_deltas.size()) {
-        throw std::logic_error("multiway traversal produced mismatched action deltas");
-    }
-    if (stream.capacity() - stream.size() < update.regret_deltas.size()) return false;
-    for (std::size_t action = 0; action < update.regret_deltas.size(); ++action) {
-        if (!stream.try_append({
-                infoset,
-                bucket,
-                static_cast<std::uint8_t>(action),
-                update.regret_deltas[action],
-                update.strategy_deltas[action] * iteration_weight,
-                trajectory_id,
-            })) {
-            throw std::logic_error("multiway traversal delta capacity changed during append");
-        }
-    }
-    return true;
-}
-
 MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     MultiwaySolverCoordinator& coordinator,
     const MultiwayRootSnapshot& root,
@@ -118,7 +84,8 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     std::uint32_t max_decision_depth,
     std::uint32_t max_public_chance_depth,
     const MultiwayBlueprintPolicyProvider* blueprint_policy,
-    const MultiwayFixedContinuationSelector* continuation_selector)
+    const MultiwayFixedContinuationSelector* continuation_selector,
+    const MultiwayFutureBucketArtifact* future_bucket_artifact)
     : coordinator_(&coordinator),
       root_(&root),
       action_abstraction_(&action_abstraction),
@@ -128,6 +95,7 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
       max_public_chance_depth_(max_public_chance_depth),
       blueprint_policy_(blueprint_policy),
       continuation_selector_(continuation_selector),
+      future_bucket_artifact_(future_bucket_artifact),
       range_model_identity_(private_range_identity(root.private_ranges)),
       terminal_(coordinator) {
     root.validate();
@@ -274,8 +242,10 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         throw std::logic_error("multiway recursive traversal requires a leaf evaluator at its boundary");
     }
     const auto actor = state.betting.current_player >= 0 ? state.betting.current_player : context.traverser;
-    const auto& table = buckets_->table(state.betting.street, state.board);
-    const auto bucket = table.lookup(context.terminal->sampled_hole(*context.deal, actor));
+    const auto hole = context.terminal->sampled_hole(*context.deal, actor);
+    const auto bucket = future_bucket_artifact_ != nullptr
+        ? future_bucket_artifact_->lookup(state.betting.street, state.board, hole)
+        : buckets_->lookup(state.betting.street, state.board, hole);
     MultiwayContinuationPolicyKind policy = MultiwayContinuationPolicyKind::Blueprint;
     if (continuation_selector_ != nullptr) {
         policy = continuation_selector_->select({
@@ -357,46 +327,54 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         coordinator_->regret_matched_strategy_into(
             infoset, bucket, strategy.data(), action_count);
     }
-    const auto betting_state = MultiwayState::from_snapshot(state.betting);
+    const auto betting_state = make_multiway_fixed_state(state.betting);
 
     const auto evaluate_action = [&](std::size_t action) {
         const auto next = betting_state.apply(
             state.legal_actions[action].action,
             state.legal_actions[action].target_street_contribution);
-        std::vector<MultiwayActionDescriptor> child_actions;
-        if (next.current_player() >= 0) {
+        std::array<MultiwayActionDescriptor, MULTIWAY_MAX_TRAVERSAL_ACTIONS> child_actions{};
+        std::size_t child_action_count = 0U;
+        if (next.current_player >= 0) {
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
-            child_actions = action_abstraction_->make_legal_actions(
-                next.snapshot(), root_->action_menu_id());
-            if (child_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
+            const auto generated_actions = action_abstraction_->make_legal_actions(
+                make_multiway_betting_snapshot(next));
+            if (generated_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
                 throw std::length_error(
                     "multiway generated action menu exceeds the compact traversal limit");
             }
+            child_action_count = generated_actions.size();
+            std::copy(generated_actions.begin(), generated_actions.end(), child_actions.begin());
         }
         MultiwayPublicStateDescriptor child;
         {
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
             child = MultiwayPublicBuilder::make_action_child(
-                state, static_cast<std::uint32_t>(action), std::move(child_actions));
+                state,
+                static_cast<std::uint32_t>(action),
+                make_multiway_betting_snapshot(next),
+                child_actions.data(),
+                child_action_count);
             coordinator_->admit_public_state(child);
         }
-        if (next.is_terminal()) {
+        if (next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal ||
+            next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal) {
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::TerminalSettlement);
             return context.terminal->resolve_admitted_terminal(child, *context.deal)
                 .utilities[static_cast<std::size_t>(context.traverser)];
         }
         const auto next_depth = decision_depth + 1U;
-        if (next.current_player() >= 0 && next.street() == state.betting.street &&
+        if (next.current_player >= 0 && next.street == state.betting.street &&
             next_depth < max_decision_depth_) {
             return traverse_decision(child, next_depth, public_chance_depth, context);
         }
-        if (next.requires_board_runout()) {
+        if (next.next_node_kind() == MultiwayNextNodeKind::BoardRunout) {
             return traverse_public_chance(child, next_depth, public_chance_depth, context);
         }
-        if (next.requires_street_transition() &&
+        if (next.next_node_kind() == MultiwayNextNodeKind::StreetTransition &&
             public_chance_depth < max_public_chance_depth_) {
             return traverse_public_chance(child, next_depth, public_chance_depth, context);
         }
@@ -500,7 +478,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
             return action_abstraction_->make_legal_actions(
-                transition.transition.betting, root_->action_menu_id());
+                transition.transition.betting);
         }();
         if (next_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
             throw std::length_error(
@@ -586,16 +564,81 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     worker_scratch_.reserve(worker_count_);
     worker_stream_views_.reserve(worker_count_);
     worker_batches_.resize(worker_count_);
-    threads_.reserve(worker_count_ > 0U ? worker_count_ - 1U : 0U);
+    threads_.reserve(worker_count_);
     for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
         worker_scratch_.emplace_back(worker, worker_delta_capacity_);
         worker_stream_views_.push_back(&worker_scratch_.back().stream);
+        threads_.emplace_back(&MultiwayRootBatchRunner::worker_loop, this, worker);
     }
 }
 
-void MultiwayRootBatchRunner::set_test_worker_failure_for_testing(
-    std::int32_t worker_index) noexcept {
-    test_worker_failure_index_ = worker_index;
+MultiwayRootBatchRunner::~MultiwayRootBatchRunner() {
+    {
+        std::lock_guard<std::mutex> lock(pool_mutex_);
+        stop_workers_ = true;
+    }
+    work_cv_.notify_all();
+    for (auto& thread : threads_) {
+        if (thread.joinable()) thread.join();
+    }
+}
+
+void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
+    std::uint64_t observed_generation = 0U;
+    while (true) {
+        std::size_t batch_count = 0U;
+        std::uint64_t first_trajectory_id = 0U;
+        std::uint64_t seed = 0U;
+        double iteration_weight = 1.0;
+        {
+            std::unique_lock<std::mutex> lock(pool_mutex_);
+            work_cv_.wait(lock, [this, observed_generation] {
+                return stop_workers_ || (batch_active_ && batch_generation_ != observed_generation);
+            });
+            if (stop_workers_) return;
+            observed_generation = batch_generation_;
+            batch_count = active_batch_count_;
+            first_trajectory_id = active_first_trajectory_id_;
+            seed = active_seed_;
+            iteration_weight = active_iteration_weight_;
+        }
+
+        try {
+            if (worker_index < batch_count) {
+                const auto& batch = worker_batches_[worker_index];
+                auto& scratch = worker_scratch_[worker_index];
+                for (auto local_id = batch.trajectories.begin;
+                     local_id < batch.trajectories.end;
+                     ++local_id) {
+                    if (cancelled_.load(std::memory_order_acquire)) break;
+                    const auto trajectory_id = first_trajectory_id + local_id;
+                    ++scratch.attempted;
+                    if (traversal_.run(
+                            traversal_.traverser_for_trajectory(trajectory_id),
+                            trajectory_id,
+                            multiway_deterministic_trajectory_seed(seed, trajectory_id),
+                            scratch.stream,
+                            iteration_weight,
+                            &scratch.profile)) {
+                        ++scratch.accepted;
+                    } else {
+                        ++scratch.discarded;
+                    }
+                }
+                scratch.stream.sort_fixed_order();
+            }
+        } catch (...) {
+            cancelled_.store(true, std::memory_order_release);
+            std::lock_guard<std::mutex> lock(pool_mutex_);
+            if (worker_error_ == nullptr) worker_error_ = std::current_exception();
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(pool_mutex_);
+            ++completed_workers_;
+            if (completed_workers_ == worker_count_) completion_cv_.notify_one();
+        }
+    }
 }
 
 MultiwayRootBatchResult MultiwayRootBatchRunner::run(
@@ -614,57 +657,30 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         worker_batches_.size());
     for (auto& scratch : worker_scratch_) scratch.reset(profile_mode_);
 
-    std::atomic<bool> cancelled{false};
-    std::exception_ptr worker_error;
-    std::mutex worker_error_mutex;
-    const auto execute_worker = [&](std::size_t worker_index) {
-        try {
-            if (cancelled.load(std::memory_order_acquire)) return;
-            if (test_worker_failure_index_ == static_cast<std::int32_t>(worker_index)) {
-                throw std::runtime_error("injected multiway root batch worker failure");
-            }
-            const auto& batch = worker_batches_[worker_index];
-            auto& scratch = worker_scratch_[worker_index];
-            for (auto local_id = batch.trajectories.begin;
-                 local_id < batch.trajectories.end;
-                 ++local_id) {
-                if (cancelled.load(std::memory_order_acquire)) return;
-                const auto trajectory_id = first_trajectory_id + local_id;
-                ++scratch.attempted;
-                if (traversal_.run(
-                        traversal_.traverser_for_trajectory(trajectory_id),
-                        trajectory_id,
-                        multiway_deterministic_trajectory_seed(seed, trajectory_id),
-                        scratch.stream,
-                        iteration_weight,
-                        &scratch.profile)) {
-                    ++scratch.accepted;
-                } else {
-                    ++scratch.discarded;
-                }
-            }
-            scratch.stream.sort_fixed_order();
-        } catch (...) {
-            cancelled.store(true, std::memory_order_release);
-            std::lock_guard<std::mutex> lock(worker_error_mutex);
-            if (worker_error == nullptr) worker_error = std::current_exception();
+    {
+        std::lock_guard<std::mutex> lock(pool_mutex_);
+        if (batch_active_) {
+            throw std::logic_error("multiway root batch runner does not support concurrent batches");
         }
-    };
-
-    threads_.clear();
-    auto thread_guard = texas::util::detail::make_thread_join_guard(
-        threads_,
-        [&cancelled] { cancelled.store(true, std::memory_order_release); });
-    for (std::size_t worker = 1U; worker < batch_count; ++worker) {
-        threads_.emplace_back(execute_worker, worker);
+        batch_active_ = true;
+        ++batch_generation_;
+        completed_workers_ = 0U;
+        active_batch_count_ = batch_count;
+        active_first_trajectory_id_ = first_trajectory_id;
+        active_seed_ = seed;
+        active_iteration_weight_ = iteration_weight;
+        worker_error_ = nullptr;
+        cancelled_.store(false, std::memory_order_release);
     }
-    if (batch_count != 0U) execute_worker(0U);
-    for (auto& thread : threads_) thread.join();
-    thread_guard.release();
-    if (worker_error != nullptr) std::rethrow_exception(worker_error);
+    work_cv_.notify_all();
+    {
+        std::unique_lock<std::mutex> lock(pool_mutex_);
+        completion_cv_.wait(lock, [this] { return completed_workers_ == worker_count_; });
+        batch_active_ = false;
+        if (worker_error_ != nullptr) std::rethrow_exception(worker_error_);
+    }
 
     MultiwayRootBatchResult result;
-    result.run.mode = MultiwayRunMode::Deterministic;
     result.run.worker_count = worker_count_;
     result.run.base_seed = seed;
     result.run.first_trajectory_id = first_trajectory_id;

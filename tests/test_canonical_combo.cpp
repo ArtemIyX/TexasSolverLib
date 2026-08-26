@@ -1,5 +1,4 @@
 #include "core/canonical_combo.hpp"
-#include "ranges/propagation.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

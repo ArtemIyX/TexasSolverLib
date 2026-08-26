@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
@@ -51,7 +52,7 @@ texas::MultiwayRootSnapshot make_root(texas::Street street) {
         if (street == texas::Street::River) board.push_back(card(13U, 1U));
     }
     root.public_state = texas::MultiwayPublicBuilder::make_root(
-        betting, board, abstraction.make_legal_actions(betting, 9'001U));
+        betting, board, abstraction.make_legal_actions(betting));
     root.root_infoset = {root.public_state.id, 0};
     root.root_bucket = 0U;
     root.seat_order = {0, 1};
@@ -411,7 +412,7 @@ TEST_CASE(multiway_blueprint_training_checkpoint_resumes_sparse_state) {
         resumed_coordinator, request.root(), abstraction, buckets, &evaluator, 1U);
     texas::MultiwayRootBatchRunner resumed_runner(resumed_traversal, resumed_coordinator, 1U, 8U);
     texas::MultiwayBlueprintTrainer resumed(identity, resumed_runner, resumed_coordinator, {}, 0x77U);
-    resumed.resume_from(checkpoint);
+    resumed.resume_from_checkpoint(checkpoint);
     const auto actual = resumed.export_full_policy();
 
     EXPECT_EQ(actual.rows.size(), expected.rows.size());
@@ -487,11 +488,11 @@ TEST_CASE(multiway_search_session_carries_posteriors_into_reroots) {
     EXPECT_THROW(session.make_next_round_root(make_root(texas::Street::Flop)), std::invalid_argument);
 }
 
-TEST_CASE(multiway_runtime_session_replaces_round_state_on_reroot) {
+TEST_CASE(multiway_decision_session_replaces_round_state_on_reroot) {
     const auto root = make_root(texas::Street::Flop);
     const auto buckets = make_buckets(root);
     const auto request = make_request(root);
-    texas::MultiwayRuntimeSession runtime(request, {&buckets});
+    texas::MultiwayDecisionSession runtime(request, {&buckets});
     const auto actual = combo_id(root.private_ranges.ranges[0][0].hole);
     const auto policy = runtime.round().export_hero_policy(0, actual);
     runtime.round().freeze_actual_hand_policy(0, actual, policy.actual_hand_actions);
@@ -527,4 +528,14 @@ TEST_CASE(multiway_search_session_is_exposed_by_core_lib) {
     const texas::lib::MultiwaySearchSessionRowView rows = session.row_view();
     EXPECT_EQ(metadata.revision, 3U);
     EXPECT_EQ(rows.row_count, std::size_t{0});
+}
+
+TEST_CASE(multiway_search_session_owns_continuation_selector_dependency) {
+    const auto root = make_root(texas::Street::Preflop);
+    const auto selector = std::make_shared<const texas::MultiwayFixedContinuationSelector>(
+        texas::MultiwayContinuationPolicyKind::Blueprint);
+    const texas::MultiwaySearchSessionDependencies dependencies{nullptr, selector};
+    texas::MultiwaySearchSession session(make_request(root), dependencies, 1U);
+
+    EXPECT_EQ(session.continuation_selector(), selector.get());
 }
