@@ -239,7 +239,7 @@ bool append_infoset_update_noalloc(
 
 Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
     const MultiwayPublicStateDescriptor& state,
-    const TraversalContext& context) const {
+    TraversalContext& context) const {
     if (leaf_evaluator_ == nullptr || !leaf_evaluator_->valid()) {
         throw std::logic_error("multiway recursive traversal requires a leaf evaluator at its boundary");
     }

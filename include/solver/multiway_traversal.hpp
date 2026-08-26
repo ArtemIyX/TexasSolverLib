@@ -87,7 +87,7 @@ private:
 
     [[nodiscard]] Value evaluate_leaf(
         const MultiwayPublicStateDescriptor& state,
-        const TraversalContext& context) const;
+        TraversalContext& context) const;
 
     MultiwaySolverCoordinator* coordinator_ = nullptr;
     const MultiwayRootSnapshot* root_ = nullptr;
