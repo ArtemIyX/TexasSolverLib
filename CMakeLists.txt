@@ -258,6 +258,19 @@ if (TEXASSOLVER_BUILD_LEGACY_RESEARCH)
     target_link_libraries(texas_legacy_vector PUBLIC texas)
 endif()
 
+if (TEXASSOLVER_BUILD_TESTS OR TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
+    add_library(texas_hunl_flat_mccfr_research STATIC
+        src/solver/hunl_flat_mccfr.cpp
+    )
+    add_library(TexasSolver::hunl_flat_mccfr_research ALIAS texas_hunl_flat_mccfr_research)
+    target_include_directories(texas_hunl_flat_mccfr_research
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    )
+    target_compile_features(texas_hunl_flat_mccfr_research PUBLIC cxx_std_17)
+    target_link_libraries(texas_hunl_flat_mccfr_research PUBLIC texas)
+endif()
+
 if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
     add_library(texas_hunl_fixed_research STATIC
         src/solver/hunl_sampled_builder.cpp
@@ -378,9 +391,6 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         if (test_name STREQUAL "test_multiway_baseline")
             list(APPEND test_support_sources src/solver/multiway_baseline.cpp)
         endif()
-        if (test_name STREQUAL "test_hunl_flat_mccfr")
-            list(APPEND test_support_sources src/solver/hunl_flat_mccfr.cpp)
-        endif()
         if (test_name STREQUAL "test_class169_solver_contract" OR
             test_name STREQUAL "test_dcfr_discount_contract")
             list(APPEND test_support_sources
@@ -399,6 +409,10 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests
         )
         target_link_libraries(${test_name} PRIVATE texas)
+        if (test_name STREQUAL "test_hunl_flat_mccfr" OR
+            test_name STREQUAL "test_dcfr_discount_contract")
+            target_link_libraries(${test_name} PRIVATE texas_hunl_flat_mccfr_research)
+        endif()
 
         add_test(NAME ${test_name} COMMAND ${test_name})
     endforeach()
