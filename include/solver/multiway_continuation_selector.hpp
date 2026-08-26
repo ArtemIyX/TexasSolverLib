@@ -23,6 +23,32 @@ struct MultiwayContinuationSelectionKey {
     [[nodiscard]] bool valid() const noexcept;
 };
 
+struct MultiwayContinuationDelta {
+    MultiwayContinuationSelectionKey key{};
+    std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> mixture{};
+    std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> values{};
+    std::uint64_t trajectory_id = 0U;
+    std::uint32_t sequence = 0U;
+};
+
+class MultiwayContinuationDeltaStream {
+public:
+    MultiwayContinuationDeltaStream(std::size_t worker_index, std::size_t capacity);
+
+    [[nodiscard]] std::size_t worker_index() const noexcept { return worker_index_; }
+    [[nodiscard]] std::size_t size() const noexcept { return deltas_.size(); }
+    [[nodiscard]] const std::vector<MultiwayContinuationDelta>& deltas() const noexcept { return deltas_; }
+    [[nodiscard]] bool try_append(const MultiwayContinuationDelta& delta) noexcept;
+    void rewind(std::size_t size) noexcept;
+    void sort_fixed_order() noexcept;
+    [[nodiscard]] bool is_fixed_order() const noexcept;
+
+private:
+    std::size_t worker_index_ = 0U;
+    std::size_t capacity_ = 0U;
+    std::vector<MultiwayContinuationDelta> deltas_;
+};
+
 // First-phase selector: a versioned fixed policy for every matching abstract
 // information set. The structured key keeps later learned selection rows in
 // the same information-set namespace without permitting private-card leakage.
@@ -52,6 +78,9 @@ public:
     void set_regrets(
         const MultiwayContinuationSelectionKey& key,
         const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& regrets);
+
+    void merge_worker_streams(
+        const std::vector<const MultiwayContinuationDeltaStream*>& streams) const;
 
 private:
     MultiwayContinuationPolicyKind policy_ = MultiwayContinuationPolicyKind::Blueprint;

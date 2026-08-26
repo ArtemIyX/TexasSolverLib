@@ -122,6 +122,8 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     std::size_t player_count = 0;
     PlayerId traverser = -1;
     std::uint64_t trajectory_id = 0;
+    std::uint32_t continuation_sequence = 0U;
+    MultiwayContinuationDeltaStream* continuation_stream = nullptr;
     std::uint64_t random_state = 0;
     Probability private_chance_reach = 0.0;
     Probability private_sampling_reach = 0.0;
@@ -289,7 +291,16 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         }
         value += mixture[index] * values[index];
     }
-    continuation_selector_->update_regrets(continuation_key, mixture, values);
+    if (context.continuation_stream != nullptr) {
+        if (!context.continuation_stream->try_append({
+                continuation_key, mixture, values, context.trajectory_id,
+                context.continuation_sequence++})) {
+            context.accepted = false;
+            return 0.0;
+        }
+    } else {
+        continuation_selector_->update_regrets(continuation_key, mixture, values);
+    }
     if (!std::isfinite(value)) {
         throw std::logic_error("multiway leaf evaluator returned a non-finite value");
     }
@@ -533,7 +544,8 @@ bool MultiwayRootExternalSamplingTraversal::run(
     std::uint64_t seed,
     MultiwayWorkerDeltaStream& stream,
     double iteration_weight,
-    MultiwaySearchProfile* profile) const {
+    MultiwaySearchProfile* profile,
+    MultiwayContinuationDeltaStream* continuation_stream) const {
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -560,8 +572,13 @@ bool MultiwayRootExternalSamplingTraversal::run(
     context.iteration_weight = iteration_weight;
     context.profile = profile;
     const auto initial_size = stream.size();
+    const auto initial_continuation_size = continuation_stream == nullptr ? 0U : continuation_stream->size();
+    context.continuation_stream = continuation_stream;
     (void)traverse_decision(root_state, 0U, 0U, context);
-    if (!context.accepted) stream.rewind(initial_size);
+    if (!context.accepted) {
+        stream.rewind(initial_size);
+        if (continuation_stream != nullptr) continuation_stream->rewind(initial_continuation_size);
+    }
     return context.accepted;
 }
 
@@ -585,11 +602,13 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     }
     worker_scratch_.reserve(worker_count_);
     worker_stream_views_.reserve(worker_count_);
+    continuation_stream_views_.reserve(worker_count_);
     worker_batches_.resize(worker_count_);
     threads_.reserve(worker_count_);
     for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
         worker_scratch_.emplace_back(worker, worker_delta_capacity_);
         worker_stream_views_.push_back(&worker_scratch_.back().stream);
+        continuation_stream_views_.push_back(&worker_scratch_.back().continuation_stream);
         threads_.emplace_back(&MultiwayRootBatchRunner::worker_loop, this, worker);
     }
 }
@@ -641,13 +660,15 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                             multiway_deterministic_trajectory_seed(seed, trajectory_id),
                             scratch.stream,
                             iteration_weight,
-                            &scratch.profile)) {
+                            &scratch.profile,
+                            &scratch.continuation_stream)) {
                         ++scratch.accepted;
                     } else {
                         ++scratch.discarded;
                     }
                 }
                 scratch.stream.sort_fixed_order();
+                scratch.continuation_stream.sort_fixed_order();
             }
         } catch (...) {
             cancelled_.store(true, std::memory_order_release);
@@ -727,6 +748,9 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         MultiwaySearchProfileScope profile_scope(
             &batch_profile, MultiwaySearchProfileStage::DeltaMerge);
         coordinator_->merge_worker_streams(worker_stream_views_);
+        if (const auto* selector = traversal_.continuation_selector()) {
+            selector->merge_worker_streams(continuation_stream_views_);
+        }
     }
     result.run.merged_stream_fingerprint =
         coordinator_->diagnostics().last_merged_stream_fingerprint;

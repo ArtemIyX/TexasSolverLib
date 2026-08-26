@@ -64,3 +64,40 @@ TEST_CASE(multiway_continuation_selector_learns_a_regret_matched_policy_mixture)
     EXPECT_NEAR(mixture[3], 0.5, 1e-12);
     EXPECT_EQ(selector.select(key), texas::MultiwayContinuationPolicyKind::RaiseBiased);
 }
+
+TEST_CASE(multiway_continuation_selector_merges_worker_deltas_in_trajectory_order) {
+    const texas::MultiwayContinuationSelectionKey key = {
+        {51U}, 0, texas::Street::Turn, 3U, 3U, 9U,
+    };
+    const auto merged_strategy = [&](std::size_t worker_count) {
+        texas::MultiwayFixedContinuationSelector selector(
+            texas::MultiwayContinuationPolicyKind::Blueprint);
+        std::vector<texas::MultiwayContinuationDeltaStream> streams;
+        std::vector<const texas::MultiwayContinuationDeltaStream*> views;
+        streams.reserve(worker_count);
+        views.reserve(worker_count);
+        for (std::size_t worker = 0U; worker < worker_count; ++worker) {
+            streams.emplace_back(worker, 4U);
+        }
+        for (std::uint64_t trajectory = 0U; trajectory < 4U; ++trajectory) {
+            const auto worker = static_cast<std::size_t>(trajectory % worker_count);
+            EXPECT_TRUE(streams[worker].try_append({
+                key,
+                {1.0, 0.0, 0.0, 0.0},
+                {0.0, static_cast<double>(trajectory + 1U), 2.0, 3.0},
+                trajectory,
+                0U,
+            }));
+        }
+        for (auto& stream : streams) stream.sort_fixed_order();
+        for (const auto& stream : streams) views.push_back(&stream);
+        selector.merge_worker_streams(views);
+        return selector.strategy(key);
+    };
+
+    const auto one_worker = merged_strategy(1U);
+    const auto two_workers = merged_strategy(2U);
+    for (std::size_t policy = 0U; policy < one_worker.size(); ++policy) {
+        EXPECT_EQ(one_worker[policy], two_workers[policy]);
+    }
+}

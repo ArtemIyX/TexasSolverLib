@@ -5,6 +5,61 @@
 #include <stdexcept>
 
 namespace texas::solver::multiway {
+namespace {
+
+bool same_key(
+    const MultiwayContinuationSelectionKey& left,
+    const MultiwayContinuationSelectionKey& right) noexcept {
+    return left.public_state == right.public_state && left.actor == right.actor &&
+        left.street == right.street && left.future_bucket == right.future_bucket &&
+        left.action_abstraction_version == right.action_abstraction_version &&
+        left.leaf_model_version == right.leaf_model_version;
+}
+
+bool delta_less(const MultiwayContinuationDelta& left, const MultiwayContinuationDelta& right) noexcept {
+    if (left.trajectory_id != right.trajectory_id) return left.trajectory_id < right.trajectory_id;
+    return left.sequence < right.sequence;
+}
+
+bool delta_valid(const MultiwayContinuationDelta& delta) noexcept {
+    if (!delta.key.valid()) return false;
+    double total = 0.0;
+    for (const auto probability : delta.mixture) {
+        if (!std::isfinite(probability) || probability < 0.0 || probability > 1.0) return false;
+        total += probability;
+    }
+    if (std::fabs(total - 1.0) > 1e-12) return false;
+    return std::all_of(delta.values.begin(), delta.values.end(), [](double value) {
+        return std::isfinite(value);
+    });
+}
+
+}  // namespace
+
+MultiwayContinuationDeltaStream::MultiwayContinuationDeltaStream(
+    std::size_t worker_index,
+    std::size_t capacity)
+    : worker_index_(worker_index), capacity_(capacity) {
+    deltas_.reserve(capacity_);
+}
+
+bool MultiwayContinuationDeltaStream::try_append(const MultiwayContinuationDelta& delta) noexcept {
+    if (deltas_.size() >= capacity_ || !delta_valid(delta)) return false;
+    deltas_.push_back(delta);
+    return true;
+}
+
+void MultiwayContinuationDeltaStream::rewind(std::size_t size) noexcept {
+    if (size < deltas_.size()) deltas_.resize(size);
+}
+
+void MultiwayContinuationDeltaStream::sort_fixed_order() noexcept {
+    std::sort(deltas_.begin(), deltas_.end(), delta_less);
+}
+
+bool MultiwayContinuationDeltaStream::is_fixed_order() const noexcept {
+    return std::is_sorted(deltas_.begin(), deltas_.end(), delta_less);
+}
 
 bool MultiwayContinuationSelectionKey::valid() const noexcept {
     return public_state.value != 0U && actor >= 0 && street >= Street::Flop &&
@@ -25,10 +80,7 @@ MultiwayFixedContinuationSelector::strategy(const MultiwayContinuationSelectionK
     }
     std::lock_guard<std::mutex> lock(mutex_);
     const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
-        return row.key.public_state == key.public_state && row.key.actor == key.actor &&
-            row.key.street == key.street && row.key.future_bucket == key.future_bucket &&
-            row.key.action_abstraction_version == key.action_abstraction_version &&
-            row.key.leaf_model_version == key.leaf_model_version;
+        return same_key(row.key, key);
     });
     if (found != rows_.end()) {
         double total = 0.0;
@@ -80,10 +132,7 @@ void MultiwayFixedContinuationSelector::update_regrets(
     if (!std::isfinite(node_value)) throw std::overflow_error("multiway continuation value is non-finite");
     std::lock_guard<std::mutex> lock(mutex_);
     const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
-        return row.key.public_state == key.public_state && row.key.actor == key.actor &&
-            row.key.street == key.street && row.key.future_bucket == key.future_bucket &&
-            row.key.action_abstraction_version == key.action_abstraction_version &&
-            row.key.leaf_model_version == key.leaf_model_version;
+        return same_key(row.key, key);
     });
     auto& row = found == rows_.end() ? rows_.emplace_back(Row{key, {}}) : *found;
     for (std::size_t index = 0U; index < values.size(); ++index) {
@@ -102,13 +151,31 @@ void MultiwayFixedContinuationSelector::set_regrets(
     }
     std::lock_guard<std::mutex> lock(mutex_);
     const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
-        return row.key.public_state == key.public_state && row.key.actor == key.actor &&
-            row.key.street == key.street && row.key.future_bucket == key.future_bucket &&
-            row.key.action_abstraction_version == key.action_abstraction_version &&
-            row.key.leaf_model_version == key.leaf_model_version;
+        return same_key(row.key, key);
     });
     if (found == rows_.end()) rows_.push_back({key, regrets});
     else found->regrets = regrets;
+}
+
+void MultiwayFixedContinuationSelector::merge_worker_streams(
+    const std::vector<const MultiwayContinuationDeltaStream*>& streams) const {
+    std::vector<const MultiwayContinuationDelta*> ordered;
+    std::size_t count = 0U;
+    for (std::size_t worker = 0U; worker < streams.size(); ++worker) {
+        const auto* stream = streams[worker];
+        if (stream == nullptr || stream->worker_index() != worker || !stream->is_fixed_order()) {
+            throw std::invalid_argument("multiway continuation streams must be in fixed worker order");
+        }
+        count += stream->size();
+    }
+    ordered.reserve(count);
+    for (const auto* stream : streams) {
+        for (const auto& delta : stream->deltas()) ordered.push_back(&delta);
+    }
+    std::sort(ordered.begin(), ordered.end(), [](const auto* left, const auto* right) {
+        return delta_less(*left, *right);
+    });
+    for (const auto* delta : ordered) update_regrets(delta->key, delta->mixture, delta->values);
 }
 
 }  // namespace texas::solver::multiway

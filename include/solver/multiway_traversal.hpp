@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/multiway_cfr.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 #include "solver/multiway_action_abstraction.hpp"
 #include "solver/multiway_bucket_model.hpp"
 #include "solver/multiway_leaf_evaluator.hpp"
@@ -22,7 +23,6 @@
 namespace texas::solver::multiway {
 
 class MultiwayBlueprintPolicyProvider;
-class MultiwayFixedContinuationSelector;
 class MultiwayFutureBucketArtifact;
 
 inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
@@ -54,7 +54,12 @@ public:
         std::uint64_t seed,
         MultiwayWorkerDeltaStream& stream,
         double iteration_weight = 1.0,
-        MultiwaySearchProfile* profile = nullptr) const;
+        MultiwaySearchProfile* profile = nullptr,
+        MultiwayContinuationDeltaStream* continuation_stream = nullptr) const;
+
+    [[nodiscard]] const MultiwayFixedContinuationSelector* continuation_selector() const noexcept {
+        return continuation_selector_;
+    }
 
     [[nodiscard]] PlayerId root_traverser() const noexcept {
         return root_->public_state.betting.current_player;
@@ -137,9 +142,10 @@ private:
 
     struct WorkerScratch {
         explicit WorkerScratch(std::size_t worker_index, std::size_t delta_capacity)
-            : stream(worker_index, delta_capacity) {}
+            : stream(worker_index, delta_capacity), continuation_stream(worker_index, delta_capacity) {}
 
         MultiwayWorkerDeltaStream stream;
+        MultiwayContinuationDeltaStream continuation_stream;
         std::uint64_t attempted = 0;
         std::uint64_t accepted = 0;
         std::uint64_t discarded = 0;
@@ -147,6 +153,7 @@ private:
 
         void reset(MultiwaySearchProfileMode profile_mode) noexcept {
             stream.rewind(0U);
+            continuation_stream.rewind(0U);
             attempted = 0;
             accepted = 0;
             discarded = 0;
@@ -161,6 +168,7 @@ private:
     MultiwaySearchProfileMode profile_mode_ = MultiwaySearchProfileMode::Disabled;
     std::vector<WorkerScratch> worker_scratch_;
     std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
+    std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;
     std::vector<MultiwayWorkerBatch> worker_batches_;
     std::vector<std::thread> threads_;
     std::mutex pool_mutex_;
