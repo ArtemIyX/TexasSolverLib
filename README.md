@@ -76,6 +76,12 @@ The vendored PokerHandEvaluator is a required library dependency. Tests and exam
 `TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH` creates `TexasSolver::hunl_fixed_research`.
 `TEXASSOLVER_BUILD_RESEARCH_EXAMPLES` requires `TEXASSOLVER_BUILD_EXAMPLES=ON`.
 
+## Namespace compatibility
+
+Public headers use their owning `texas::{core,games,preflop,solver,util}`
+namespaces. `core/legacy_namespace_compat.hpp` is source-only, explicit opt-in
+compatibility for legacy code and is not installed with `TexasSolver::texas`.
+
 ## Use as a submodule
 
 Add this repository as a Git submodule inside your own project:

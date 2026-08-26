@@ -1,0 +1,16 @@
+if (NOT DEFINED SOURCE_DIR)
+    message(FATAL_ERROR "SOURCE_DIR is required")
+endif()
+
+file(READ "${SOURCE_DIR}/CMakeLists.txt" project_cmake)
+if (project_cmake MATCHES "TEXASSOLVER_PUBLIC_HEADERS[\\s\\S]*legacy_namespace_compat")
+    message(FATAL_ERROR "legacy namespace compatibility is installed automatically")
+endif()
+if (NOT project_cmake MATCHES "TEXASSOLVER_COMPATIBILITY_HEADERS")
+    message(FATAL_ERROR "compatibility headers do not have an explicit classification")
+endif()
+
+file(READ "${SOURCE_DIR}/include/core/legacy_namespace_compat.hpp" compatibility_header)
+if (NOT compatibility_header MATCHES "Transitional source-compatibility import")
+    message(FATAL_ERROR "compatibility header does not state its opt-in boundary")
+endif()
