@@ -360,7 +360,11 @@ bool make_search_root(
 
     root->public_state = MultiwayPublicBuilder::make_root(state.snapshot(), board, menu);
     root->root_infoset = {root->public_state.id, request.hero_seat};
-    root->root_bucket = bucket;
+    // The live root is the lossless current-round boundary.  Keep future
+    // continuation rows bucketed, but index this row by the canonical exact
+    // private-hand id so blockers and draws cannot share regrets.
+    root->root_bucket = static_cast<std::uint32_t>(
+        MultiwayBucketTable::hole_index(request.hero_cards));
     root->seat_order.clear();
     root->seat_order.reserve(seat_count);
     for (std::size_t seat = 0U; seat < seat_count; ++seat) {

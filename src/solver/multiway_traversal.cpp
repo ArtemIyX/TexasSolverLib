@@ -303,7 +303,9 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         MultiwaySearchProfileScope profile_scope(
             context.profile, MultiwaySearchProfileStage::RowLookup);
         table_ptr = &buckets_->table(state.betting.street, state.board);
-        bucket = table_ptr->lookup(context.terminal->sampled_hole(*context.deal, actor));
+        bucket = state.id == root_->public_state.id
+            ? root_->root_bucket
+            : table_ptr->lookup(context.terminal->sampled_hole(*context.deal, actor));
     }
     const auto& table = *table_ptr;
     const MultiwayInfosetId infoset = {state.id, actor};
@@ -312,7 +314,9 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
         coordinator_->admit_infoset_row({
             infoset,
-            table.bucket_count(),
+            state.id == root_->public_state.id
+                ? static_cast<std::uint32_t>(MULTIWAY_HOLE_COMBINATION_COUNT)
+                : table.bucket_count(),
             static_cast<std::uint8_t>(action_count),
         });
     }

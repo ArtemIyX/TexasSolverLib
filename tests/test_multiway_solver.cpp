@@ -2,6 +2,7 @@
 #include "solver/multiway_public_builder.hpp"
 #include "test_harness.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -368,6 +369,33 @@ TEST_CASE(multiway_solver_root_bucket_must_fit_its_admitted_sparse_row) {
     for (const auto& action : policy.actions) {
         EXPECT_NEAR(action.probability, 1.0 / 3.0, 1e-12);
     }
+}
+
+TEST_CASE(multiway_solver_live_root_uses_distinct_exact_private_hand_rows) {
+    const auto first = std::array<std::uint8_t, 2>{card(14, 0), card(13, 0)};
+    const auto second = std::array<std::uint8_t, 2>{card(12, 0), card(11, 0)};
+    const auto first_id = texas::MultiwayBucketTable::hole_index(first);
+    const auto second_id = texas::MultiwayBucketTable::hole_index(second);
+    EXPECT_TRUE(first_id != second_id);
+    EXPECT_TRUE(first_id < texas::MULTIWAY_HOLE_COMBINATION_COUNT);
+    EXPECT_TRUE(second_id < texas::MULTIWAY_HOLE_COMBINATION_COUNT);
+
+    auto root = valid_root();
+    root.root_bucket = static_cast<std::uint32_t>(first_id);
+    texas::MultiwayCFRConfig cfr;
+    cfr.player_count = 2;
+    texas::MultiwaySolverCoordinator coordinator(
+        texas::MultiwaySolveRequest(root, cfr, valid_limits()));
+    coordinator.admit_infoset_row(root_row(
+        static_cast<std::uint32_t>(texas::MULTIWAY_HOLE_COMBINATION_COUNT)));
+    EXPECT_EQ(coordinator.export_root_policy().bucket, static_cast<std::uint32_t>(first_id));
+
+    root.root_bucket = static_cast<std::uint32_t>(second_id);
+    texas::MultiwaySolverCoordinator second_coordinator(
+        texas::MultiwaySolveRequest(root, cfr, valid_limits()));
+    second_coordinator.admit_infoset_row(root_row(
+        static_cast<std::uint32_t>(texas::MULTIWAY_HOLE_COMBINATION_COUNT)));
+    EXPECT_EQ(second_coordinator.export_root_policy().bucket, static_cast<std::uint32_t>(second_id));
 }
 
 TEST_CASE(multiway_solver_sparse_rows_require_matching_public_state_shapes) {

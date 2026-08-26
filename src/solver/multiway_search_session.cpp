@@ -48,7 +48,7 @@ void MultiwaySearchSession::validate_dependencies() const {
     }
     const auto& table = buckets_->table(
         root.public_state.betting.street, root.public_state.board);
-    if (root.root_bucket >= table.bucket_count()) {
+    if (root.root_bucket >= MULTIWAY_HOLE_COMBINATION_COUNT) {
         throw std::invalid_argument("multiway search session root bucket is unavailable");
     }
 }
