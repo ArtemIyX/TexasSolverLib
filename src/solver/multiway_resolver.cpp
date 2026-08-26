@@ -488,6 +488,13 @@ RuntimeSearchOutcome run_search(
         MultiwayLeafEvaluator effective_leaf = *config.leaf_evaluator;
         if (config.leaf_evaluator->evaluate == &evaluate_multiway_rollout_leaf &&
             config.leaf_evaluator->context != nullptr) {
+            if (config.runtime_limits.solver.worker_count > 1U) {
+                // Rollout contexts own mutable scratch, cache, and diagnostics.
+                // A shallow copy would make concurrent workers race on all
+                // three, so reject this configuration until worker-local
+                // context construction is available at the public boundary.
+                return RuntimeSearchOutcome::Exception;
+            }
             rollout_context = *static_cast<const MultiwayRolloutLeafContext*>(
                 config.leaf_evaluator->context);
             if (!memory_preflight.optional_continuation_cache_admitted) {

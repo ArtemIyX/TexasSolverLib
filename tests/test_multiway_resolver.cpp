@@ -3,6 +3,7 @@
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_resolver.hpp"
+#include "solver/multiway_rollout_leaf.hpp"
 #include "solver/multiway_decision_session.hpp"
 #include "test_harness.hpp"
 
@@ -173,6 +174,23 @@ TEST_CASE(multiway_resolver_returns_a_normalized_legal_deadline_safe_decision) {
     double total = 0.0;
     for (const auto& entry : result.policy) total += entry.probability;
     EXPECT_NEAR(total, 1.0, 1e-12);
+}
+
+TEST_CASE(multiway_resolver_rejects_shared_rollout_context_for_parallel_workers) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    auto config = search_config(fixture);
+    config.runtime_limits.solver.worker_count = 2U;
+    static texas::MultiwayRolloutLeafContext shared_context;
+    static const texas::MultiwayLeafEvaluator rollout_evaluator =
+        texas::make_multiway_rollout_leaf_evaluator(&shared_context);
+    config.leaf_evaluator = &rollout_evaluator;
+    auto resolver = texas::MultiwayResolver(config);
+
+    const auto result = resolver.resolve(request);
+    EXPECT_EQ(result.diagnostics.search_failure, texas::MultiwayResolverSearchFailure::Exception);
+    EXPECT_TRUE(result.diagnostics.policy_provenance != texas::MultiwayPolicyProvenance::RuntimeSearch);
 }
 
 TEST_CASE(multiway_resolver_begins_a_request_local_decision_session) {
