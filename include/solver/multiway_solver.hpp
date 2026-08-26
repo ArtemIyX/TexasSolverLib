@@ -33,10 +33,13 @@ struct MultiwayPublicStateId {
 
 struct MultiwayInfosetId {
     MultiwayPublicStateId public_state{};
-    PlayerId seat = -1;
+    core::PlayerId seat = -1;
 
     constexpr bool operator==(const MultiwayInfosetId& other) const noexcept {
         return public_state == other.public_state && seat == other.seat;
+    }
+    constexpr bool operator!=(const MultiwayInfosetId& other) const noexcept {
+        return !(*this == other);
     }
     constexpr bool operator<(const MultiwayInfosetId& other) const noexcept {
         if (seat != other.seat) return seat < other.seat;
@@ -63,7 +66,7 @@ struct MultiwayActionDescriptor {
 };
 
 struct MultiwayPublicHistoryEntry {
-    PlayerId actor = -1;
+    core::PlayerId actor = -1;
     MultiwayActionDescriptor action{};
 
     constexpr bool operator==(const MultiwayPublicHistoryEntry& other) const noexcept {
@@ -143,14 +146,14 @@ struct MultiwayRootSnapshot {
     MultiwayPublicStateDescriptor public_state;
     MultiwayInfosetId root_infoset{};
     std::uint32_t root_bucket = 0;
-    std::vector<PlayerId> seat_order;
+    std::vector<core::PlayerId> seat_order;
     // First actionable seat after a non-runout street transition.  This makes
     // future transition ownership deterministic instead of caller-selected.
-    PlayerId next_street_first_seat = 0;
-    PlayerId odd_chip_first_seat = -1;
+    core::PlayerId next_street_first_seat = 0;
+    core::PlayerId odd_chip_first_seat = -1;
     MultiwayOddChipRule odd_chip_rule = MultiwayOddChipRule::AscendingSeatIdFromFirstSeat;
     // Rake is immutable root/model metadata, including explicit zero rake.
-    MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
+    games::multiway::MultiwayRakePolicy rake_policy = games::multiway::MultiwayRakePolicy::explicit_zero();
     MultiwayPrivateConfig private_ranges{};
     std::uint64_t action_abstraction_version = 0;
     std::uint64_t leaf_model_version = 0;

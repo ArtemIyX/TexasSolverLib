@@ -1,4 +1,5 @@
 #include "solver/multiway_resolver.hpp"
+#include "solver/multiway_baseline.hpp"
 
 #include "solver/multiway_artifact.hpp"
 #include "solver/multiway_blueprint_policy_provider.hpp"
