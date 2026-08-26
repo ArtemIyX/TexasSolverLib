@@ -120,7 +120,7 @@ CMAKE_PREFIX_PATH=<prefix>
 ## Multiway runtime resolver
 
 The six-max postflop resolver accepts structured public state and ranges and
-returns a legal action policy with diagnostics. `DefaultSearch` is the default
+returns a legal action policy with diagnostics. `ReleaseDefault` is the default
 mode: it runs deterministic root external-sampling search only after the full
 release profile is present, otherwise it returns the documented legal fallback.
 
@@ -129,10 +129,9 @@ matching bucket registry, a typed terminal leaf, bounded solver limits, and a
 memory budget before enabling live search. The library does not parse the JSON
 release profile or provide poker-client automation.
 
-See [runtime architecture](docs/multiway_runtime_architecture.md) for model
-identity fields, fallback statuses, ownership boundaries, and diagnostics; see
-the [release runbook](docs/multiway_release_runbook.md) for startup, promotion,
-rollback, and deterministic-fixture operations.
+See the [runtime contract](docs/multiway_runtime_contract.md) for model identity,
+fallback statuses, ownership boundaries, and diagnostics. See
+[project state](docs/project_state.md) for target and validation boundaries.
 
 ### Solve Kuhn poker
 
@@ -165,7 +164,7 @@ int main() {
 #include "core/lib.hpp"
 
 int main() {
-    const auto out = texas::lib::solve_kuhn(200, 1.5, 0.0, 2.0);
+    const auto out = texas::core::lib::solve_kuhn(200, 1.5, 0.0, 2.0);
     return out.iterations == 200 ? 0 : 1;
 }
 ```
