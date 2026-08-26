@@ -4,6 +4,97 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## CMake configure source-list fix
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Removed the nonexistent `multiway_search_profile.cpp` entry from the stable source list.
+- Preserved the header-only search-profile API and successful source classification.
+
+### Files
+
+- `CMakeLists.txt`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `cmake -S . -B build` completed successfully.
+- `git diff --check` completed.
+
+### Limitations
+
+- Build and tests were not run.
+
+## CMake source classification ordering fix
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Moved the stable utility source list before the source-classification check so all first-party `.cpp` files are classified before validation.
+
+### Files
+
+- `CMakeLists.txt`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static diff review and `git diff --check` completed.
+- Configure, build, and tests were not run per repository instructions.
+
+### Limitations
+
+- CMake configure remains to be rerun by the user.
+
+## CMake and legacy remediation
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Restored resolver policy linkage, explicit source classification, research-target ownership, stable sampled coverage, portable non-loader coverage, evaluator isolation, and public-header fixture coverage.
+- Removed retired resolver perturbation code, the tracked machine log, and dead fixed-research state.
+- Defined the compatibility-sizing decision and narrowed legacy namespace imports behind an explicit allowlist.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/`, `src/`, `tests/`, `docs/`, and evaluator CMake integration
+
+### Validation
+
+- Static diff, source/header classification, symbol, option, target, and documentation-link review completed.
+- Configure, build, test, benchmark, install, and solver commands were not run at user request.
+
+### Limitations
+
+- T24 validation matrix remains deferred until explicit authorization.
+
+## CMake and legacy-code static audit
+
+**Status:** Complete
+**Completed:** 2026-08-26
+
+- Audited stable, internal, research, legacy, platform, test, install, and documentation boundaries without running build or test commands.
+- Recorded ten confirmed build/validation findings and twelve legacy-migration debts.
+- Produced a dependency-ordered remediation plan with 24 short tasks for future agents.
+
+### Files
+
+- `docs/cmake_legacy_audit.md`
+- `docs/cmake_legacy_remediation_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static CMake, source/header inventory, caller, test-registration, history, documentation-link, and diff checks completed.
+- Markdown structure, finding IDs, task IDs, and whitespace checked.
+- Configure, build, tests, benchmarks, install, and solver commands were not run at user request.
+
+### Limitations
+
+- Build, link, package-consumer, cross-platform, runtime performance, and solver-quality conclusions remain unverified until their corresponding commands are explicitly authorized.
+
 ## P9.3 - Consolidate duplicated hot-path logic
 
 **Status:** Complete

@@ -192,7 +192,6 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway_rollout_leaf.cpp
     src/solver/multiway_decision_session.cpp
     src/solver/multiway_scheduler.cpp
-    src/solver/multiway_search_profile.cpp
     src/solver/multiway_search_session.cpp
     src/solver/multiway_solver.cpp
     src/solver/multiway_terminal_adapter.cpp
@@ -219,6 +218,14 @@ set(TEXASSOLVER_FIXED_RESEARCH_SOURCES
 )
 set(TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES
     src/solver/hunl_flat_mccfr.cpp
+)
+
+list(APPEND TEXASSOLVER_SOURCES
+    src/util/infoset_registry.cpp
+    src/util/pcs.cpp
+    src/util/profiling.cpp
+    src/util/simd.cpp
+    src/util/suit_iso.cpp
 )
 
 function(texassolver_verify_source_classification)
@@ -265,14 +272,6 @@ if (WIN32)
 else()
     list(APPEND TEXASSOLVER_SOURCES src/util/abstraction_stub.cpp)
 endif()
-
-list(APPEND TEXASSOLVER_SOURCES
-    src/util/infoset_registry.cpp
-    src/util/pcs.cpp
-    src/util/profiling.cpp
-    src/util/simd.cpp
-    src/util/suit_iso.cpp
-)
 
 set(_texassolver_evaluator_options
     BUILD_TESTS BUILD_EXAMPLES BUILD_PLO4 BUILD_PLO5 BUILD_PLO6 BUILD_CARD5 BUILD_CARD6 BUILD_CARD7)
