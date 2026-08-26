@@ -1,7 +1,5 @@
 #pragma once
 
-#include "core/legacy_namespace_compat.hpp"
-
 #include "core/types.hpp"
 #include "solver/dcfr.hpp"
 #include "solver/parallel_dcfr.hpp"
