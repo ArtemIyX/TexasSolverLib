@@ -65,7 +65,9 @@ Use the grouped include style already in the repository, such as:
 #include "preflop/preflop.hpp"
 ```
 
-Avoid reintroducing the old nested `include/core/...` or `src/core/...` style.
+Use the existing top-level module paths such as `include/core/...` and
+`src/core/...`. Production sources and installed headers are explicit CMake
+lists. Research and compatibility files remain outside the installed target.
 
 ## Build Instructions
 

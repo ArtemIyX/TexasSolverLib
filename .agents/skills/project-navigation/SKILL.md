@@ -30,7 +30,9 @@ rg --files include src tests examples | rg "hunl|multiway|range"
 | `external/pokerHandEvaluator` | Vendored hand evaluator | CMake subproject |
 | `cfr_core` | Rust reference/legacy source tree | Do not modify unless explicitly requested |
 
-`CMakeLists.txt` globs `include/**/*.hpp` and `src/**/*.cpp`; a normal paired module needs no CMake source-list change. It builds static `TexasSolver::texas_core`.
+`CMakeLists.txt` uses explicit stable source and installed-header lists. Classify
+new files before adding them. It builds static `TexasSolver::texas`; research
+and compatibility sources must not enter the installed target accidentally.
 
 ## Architecture routes
 
