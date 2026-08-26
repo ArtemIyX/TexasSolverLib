@@ -48,8 +48,8 @@ texas::HUNLConfig tiny_postflop_config() {
 }  // namespace
 
 TEST_CASE(parallel_dcfr_matches_sequential_kuhn_output) {
-    const auto sequential = texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0, 1);
-    const auto parallel = texas::lib::solve_kuhn(20, 1.5, 0.0, 2.0, 2);
+    const auto sequential = texas::core::lib::solve_kuhn(20, 1.5, 0.0, 2.0, 1);
+    const auto parallel = texas::core::lib::solve_kuhn(20, 1.5, 0.0, 2.0, 2);
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
     EXPECT_NEAR(sequential.game_value, parallel.game_value, 1e-12);
@@ -58,8 +58,8 @@ TEST_CASE(parallel_dcfr_matches_sequential_kuhn_output) {
 }
 
 TEST_CASE(parallel_dcfr_matches_sequential_leduc_output) {
-    const auto sequential = texas::lib::solve_leduc(10, 1.5, 0.0, 2.0, 1);
-    const auto parallel = texas::lib::solve_leduc(10, 1.5, 0.0, 2.0, 2);
+    const auto sequential = texas::core::lib::solve_leduc(10, 1.5, 0.0, 2.0, 1);
+    const auto parallel = texas::core::lib::solve_leduc(10, 1.5, 0.0, 2.0, 2);
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
     EXPECT_NEAR(sequential.game_value, parallel.game_value, 1e-12);
@@ -69,8 +69,8 @@ TEST_CASE(parallel_dcfr_matches_sequential_leduc_output) {
 
 TEST_CASE(parallel_dcfr_matches_sequential_hunl_output) {
     const auto cfg = tiny_postflop_config();
-    const auto sequential = texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0, 1);
-    const auto parallel = texas::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0, 2);
+    const auto sequential = texas::core::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0, 1);
+    const auto parallel = texas::core::lib::solve_hunl_postflop(cfg, 5, 1.5, 0.0, 2.0, 2);
 
     EXPECT_EQ(sequential.iterations, parallel.iterations);
     EXPECT_EQ(static_cast<std::size_t>(sequential.infoset_count), static_cast<std::size_t>(parallel.infoset_count));

@@ -220,7 +220,7 @@ TEST_CASE(hunl_infoset_history_keeps_large_opening_bets_distinct_from_raises) {
 
 TEST_CASE(hunl_flat_backend_populates_value_and_exploitability) {
     auto config = texas::default_tiny_subgame();
-    const auto output = texas::lib::solve_hunl_postflop(
+    const auto output = texas::core::lib::solve_hunl_postflop(
         config, 10, 1.5, 0.0, 2.0, 4, 8, true, texas::HUNLBackendSelection::Flat);
 
     EXPECT_TRUE(std::isfinite(output.game_value));
