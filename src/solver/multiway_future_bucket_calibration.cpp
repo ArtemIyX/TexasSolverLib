@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <stdexcept>
 
 namespace texas::solver::multiway {
@@ -53,16 +54,56 @@ MultiwayFutureBucketCalibrationResult calibrate_multiway_future_bucket_profile(
     MultiwayFutureBucketCalibrationResult result;
     result.samples = samples.size(); result.artifact_bytes = bytes.size();
     result.profile_identity = profile.feature_version ^ (profile.clustering_version << 21U) ^ profile.seed;
-    double squared_error = 0.0; std::size_t error_count = 0U;
+    struct BucketStats { std::size_t board = 0U; std::uint32_t bucket = 0U; std::size_t count = 0U; double sum = 0.0; double sum_squared = 0.0; };
+    std::vector<BucketStats> stats;
+    std::vector<std::size_t> sample_boards;
+    sample_boards.reserve(samples.size());
+    for (const auto& sample : samples) {
+        const auto board = std::find_if(boards.begin(), boards.end(), [&sample](const auto& candidate) {
+            return candidate.street == sample.board.street && candidate.canonical_board == sample.board.canonical_board;
+        });
+        sample_boards.push_back(static_cast<std::size_t>(board - boards.begin()));
+    }
     for (const auto& sample : samples) {
         const auto bucket = artifact.lookup(sample.board.street, sample.board.canonical_board, sample.hole);
         if (bucket == MULTIWAY_INVALID_BUCKET) { ++result.missing_buckets; continue; }
-        if (sample.held_out) { ++result.held_out_samples; }
-        squared_error += sample.target_value * sample.target_value;
-        ++error_count;
+        const auto board_index = sample_boards[&sample - samples.data()];
+        auto stat = std::find_if(stats.begin(), stats.end(), [board_index, bucket](const auto& entry) {
+            return entry.board == board_index && entry.bucket == bucket;
+        });
+        if (stat == stats.end()) {
+            stats.push_back({board_index, bucket, 0U, 0.0, 0.0});
+            stat = std::prev(stats.end());
+        }
+        if (!sample.held_out) {
+            ++stat->count; stat->sum += sample.target_value;
+            stat->sum_squared += sample.target_value * sample.target_value;
+        }
     }
-    result.held_out_policy_loss = result.held_out_samples == 0U ? 0.0 : squared_error / error_count;
-    result.within_bucket_variance = result.samples == 0U ? 0.0 : squared_error / result.samples;
+    double variance_sum = 0.0;
+    for (const auto& stat : stats) {
+        if (stat.count != 0U) {
+            variance_sum += std::max(0.0, stat.sum_squared / stat.count -
+                (stat.sum / stat.count) * (stat.sum / stat.count)) * stat.count;
+        }
+    }
+    double heldout_loss = 0.0; std::size_t heldout_count = 0U;
+    for (std::size_t index = 0U; index < samples.size(); ++index) {
+        if (!samples[index].held_out) continue;
+        ++result.held_out_samples;
+        const auto bucket = artifact.lookup(samples[index].board.street, samples[index].board.canonical_board, samples[index].hole);
+        const auto board_index = sample_boards[index];
+        const auto stat = std::find_if(stats.begin(), stats.end(), [board_index, bucket](const auto& entry) {
+            return entry.board == board_index && entry.bucket == bucket;
+        });
+        if (bucket == MULTIWAY_INVALID_BUCKET || stat == stats.end() || stat->count == 0U) {
+            ++result.missing_buckets; continue;
+        }
+        const auto error = samples[index].target_value - stat->sum / stat->count;
+        heldout_loss += error * error; ++heldout_count;
+    }
+    result.held_out_policy_loss = heldout_count == 0U ? 0.0 : heldout_loss / heldout_count;
+    result.within_bucket_variance = result.samples == 0U ? 0.0 : variance_sum / result.samples;
     result.within_limits = (limits.maximum_artifact_bytes == 0U || result.artifact_bytes <= limits.maximum_artifact_bytes) &&
         result.held_out_policy_loss <= limits.maximum_held_out_policy_loss &&
         result.within_bucket_variance <= limits.maximum_within_bucket_variance &&
