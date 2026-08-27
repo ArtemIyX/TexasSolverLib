@@ -13,6 +13,9 @@ TEST = re.compile(r"(?:FAILED|Failure|FAIL)\s*(?:Test|test)?\s*[:=]?\s*([A-Za-z0
 ERROR = re.compile(r"\b(?:error|fatal error|exception|assert(?:ion)? failed|segmentation fault|access violation|undefined reference|FAILED|FAIL)\b", re.I)
 WARNING = re.compile(r"\bwarning\b", re.I)
 NOISE = re.compile(r"^(?:\s*(?:Build (?:started|finished)|Done Building|Target .* up-to-date|\d+>\s*(?:Checking|Building|Linking)|\s*\[={2,}.*))", re.I)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT_TEXT = str(PROJECT_ROOT).replace("/", "\\")
+VCXPROJ_PATH = re.compile(r"\[[^\]\r\n]*[\\/]([^\\/\]]+\.vcxproj)\]", re.I)
 
 
 def normalize(text: str) -> str:
@@ -20,6 +23,20 @@ def normalize(text: str) -> str:
     text = re.sub(r"0x[0-9a-f]+", "<addr>", text, flags=re.I)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def display_line(line: str, location: str) -> str:
+    """Make compiler output paths concise and avoid printing the source twice."""
+    line = VCXPROJ_PATH.sub(r"[\1]", line)
+    line = line.replace(PROJECT_ROOT_TEXT, "")
+    line = line.replace(PROJECT_ROOT_TEXT.replace("\\", "/"), "")
+    if location:
+        relative_location = location.replace(PROJECT_ROOT_TEXT, "")
+        relative_location = relative_location.replace(PROJECT_ROOT_TEXT.replace("\\", "/"), "")
+        line = re.sub(rf"^\s*{re.escape(relative_location)}\s+", "", line)
+    line = re.sub(r"^\s*(?:[A-Za-z]:)?[\\/]Users[\\/][^\s]+\.(?:cpp|cc|cxx|h|hpp)\s+",
+                  "", line, count=1, flags=re.I)
+    return line.strip()
 
 
 def main() -> int:
@@ -42,18 +59,20 @@ def main() -> int:
             continue
         kind = "warning" if WARNING.search(line) and not ERROR.search(line) else "failure"
         match = LOCATION.search(line)
-        location = f"{match.group('file')}:{match.group('line')}" if match and match.group("line") else (match.group("file") if match else "")
+        location = f"{match.group('file')}:{match.group('line')}" if match and match.group("line") else ""
+        location = location.replace(PROJECT_ROOT_TEXT, "")
+        location = location.replace(PROJECT_ROOT_TEXT.replace("\\", "/"), "")
         test = TEST.search(line)
         key = normalize(re.sub(r"\s+", " ", line))
         if key not in records:
-            records[key] = {"kind": kind, "line": line.strip(), "location": location,
+            records[key] = {"kind": kind, "line": display_line(line, location), "location": location,
                             "test": test.group(1) if test else "", "count": 0,
                             "index": index, "context": []}
             order.append(key)
         record = records[key]
         record["count"] += 1
         if len(record["context"]) < args.context:
-            record["context"].append(line.strip())
+            record["context"].append(display_line(line, location))
     failures = [records[key] for key in order if records[key]["kind"] == "failure"]
     warnings = [records[key] for key in order if records[key]["kind"] == "warning"]
     failures.sort(key=lambda record: record["index"])

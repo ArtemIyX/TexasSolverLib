@@ -214,6 +214,8 @@ If large raw data must be inspected repeatedly, create or use a small helper scr
 Suitable script/ helpers include:
 
 ```text
+full_build.py
+
 repo_summary.py
 cmake_summary.py
 cpp_file_summary.py
