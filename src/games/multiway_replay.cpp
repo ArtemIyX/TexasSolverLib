@@ -1,11 +1,19 @@
 #include "games/multiway_replay.hpp"
 
 #include <stdexcept>
+#include <algorithm>
 
 namespace texas::games::multiway {
 
 using core::PlayerId;
 using core::Street;
+
+bool valid_board(Street street, const std::vector<std::uint8_t>& board) {
+    const auto expected = street == Street::Flop ? 3U : street == Street::Turn ? 4U : street == Street::River ? 5U : 0U;
+    if (board.size() != expected || !std::is_sorted(board.begin(), board.end())) return false;
+    return std::adjacent_find(board.begin(), board.end()) == board.end() &&
+        std::all_of(board.begin(), board.end(), [](std::uint8_t card) { return card < 52U; });
+}
 
 MultiwayHandHistory MultiwayHandHistory::from_rules(
     const MultiwayGameRules& rules,
@@ -34,6 +42,9 @@ void MultiwayHandHistory::validate() const {
             if (event.first_player < 0 ||
                 event.first_player >= static_cast<PlayerId>(initial_config.starting_stacks.size())) {
                 throw std::invalid_argument("multiway replay transition has an invalid first player");
+            }
+            if (!event.board.empty() && !valid_board(event.next_street, event.board)) {
+                throw std::invalid_argument("multiway replay transition has an invalid board");
             }
             continue;
         }

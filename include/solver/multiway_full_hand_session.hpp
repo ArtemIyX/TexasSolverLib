@@ -3,6 +3,7 @@
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_resolver.hpp"
+#include "solver/multiway_action_abstraction.hpp"
 #include "games/multiway_terminal.hpp"
 
 #include <array>
@@ -31,6 +32,10 @@ public:
         std::array<std::uint8_t, 2> hero_cards,
         const MultiwayResolverConfig& config,
         std::chrono::steady_clock::time_point deadline = {}) const;
+    [[nodiscard]] MultiwayActionTranslation translate_preflop_action(
+        const MultiwayActionDescriptor& observed,
+        const std::vector<MultiwayActionDescriptor>& menu,
+        const MultiwayActionAbstractionConfig& abstraction = {}) const;
     [[nodiscard]] games::multiway::MultiwayTerminalResult settle(
         const std::vector<std::array<std::uint8_t, 2>>& holes) const;
     void clear_actual_hand_policy() noexcept { actual_hand_frozen_ = false; frozen_policy_.reset(); }

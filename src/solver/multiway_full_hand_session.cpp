@@ -24,6 +24,7 @@ MultiwayFullHandSession::MultiwayFullHandSession(
 const games::multiway::MultiwayState& MultiwayFullHandSession::observe(
     const games::multiway::MultiwayReplayEvent& event,
     const MultiwayRangeBeliefObservation* observation) {
+    const auto next_state = games::multiway::apply_multiway_replay_event(state_, event);
     if (event.kind == games::multiway::MultiwayReplayEventKind::Decision && observation != nullptr) {
         if (beliefs_.apply_observation(
                 static_cast<std::size_t>(event.decision.acting_seat), *observation) ==
@@ -31,7 +32,7 @@ const games::multiway::MultiwayState& MultiwayFullHandSession::observe(
             throw std::invalid_argument("full-hand observation has no posterior mass");
         }
     }
-    state_ = games::multiway::apply_multiway_replay_event(state_, event);
+    state_ = next_state;
     history_.events.push_back(event);
     if (event.kind == games::multiway::MultiwayReplayEventKind::StreetTransition) {
         board_ = event.board;
@@ -79,6 +80,17 @@ MultiwayResolverResult MultiwayFullHandSession::decide(
     return result;
 }
 
+MultiwayActionTranslation MultiwayFullHandSession::translate_preflop_action(
+    const MultiwayActionDescriptor& observed,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    const MultiwayActionAbstractionConfig& abstraction) const {
+    if (state_.street() != core::Street::Preflop) {
+        throw std::invalid_argument("preflop translation requested outside preflop");
+    }
+    return MultiwayActionAbstraction(abstraction).translate_observed_action(
+        state_.snapshot(), menu, observed.action, observed.target_street_contribution);
+}
+
 games::multiway::MultiwayTerminalResult MultiwayFullHandSession::settle(
     const std::vector<std::array<std::uint8_t, 2>>& holes) const {
     if (board_.size() != 5U || holes.size() != state_.stacks().size()) {
@@ -88,6 +100,7 @@ games::multiway::MultiwayTerminalResult MultiwayFullHandSession::settle(
     input.contributions = state_.contributions();
     input.folded = state_.folded();
     input.odd_chip_first_seat = 0;
+    input.rake_policy = history_.initial_config.rake_policy;
     input.strengths.reserve(holes.size());
     for (const auto& hole : holes) {
         std::array<std::uint8_t, 7> cards{};
