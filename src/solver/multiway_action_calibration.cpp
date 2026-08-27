@@ -5,12 +5,22 @@
 
 namespace texas::solver::multiway {
 
+void MultiwayActionCalibrationLimits::validate() const {
+    if (maximum_actions == 0U || maximum_actions > MULTIWAY_MAX_ABSTRACTED_ACTIONS ||
+        maximum_translation_rejection_rate < 0.0 || maximum_translation_rejection_rate > 1.0 ||
+        maximum_estimated_menu_bytes == 0U) {
+        throw std::invalid_argument("action calibration limits are invalid");
+    }
+}
+
 MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
     const std::vector<MultiwayActionCalibrationCase>& cases,
     MultiwayActionAbstractionConfig abstraction,
-    MultiwayDeviationExpansionConfig expansion) {
+    MultiwayDeviationExpansionConfig expansion,
+    MultiwayActionCalibrationLimits limits) {
     if (cases.empty()) throw std::invalid_argument("action calibration requires representative cases");
     expansion.validate();
+    limits.validate();
     const MultiwayActionAbstraction evaluator(abstraction);
     MultiwayActionCalibrationResult result;
     result.cases = cases.size();
@@ -23,6 +33,7 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
             0x9e3779b97f4a7c15ULL + (result.profile_identity << 6U) + (result.profile_identity >> 2U);
         result.total_actions += menu.size();
         result.max_actions = std::max(result.max_actions, menu.size());
+        result.estimated_menu_bytes += static_cast<std::uint64_t>(menu.size()) * sizeof(MultiwayActionDescriptor);
         const auto translation = evaluator.translate_observed_action(
             test_case.betting, menu, test_case.observed_action, test_case.observed_target, test_case.context);
         switch (translation.status) {
@@ -36,6 +47,9 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
             ++result.expanded_actions;
         }
     }
+    result.within_limits = result.max_actions <= limits.maximum_actions &&
+        result.translation_rejection_rate() <= limits.maximum_translation_rejection_rate &&
+        result.estimated_menu_bytes <= limits.maximum_estimated_menu_bytes;
     return result;
 }
 

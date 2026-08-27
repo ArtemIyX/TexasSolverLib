@@ -41,3 +41,27 @@ TEST_CASE(multiway_action_calibration_threshold_sweep_changes_rejection_result) 
     const auto rejected = texas::calibrate_multiway_action_abstraction(cases, strict);
     EXPECT_TRUE(accepted.rejected_translations <= rejected.rejected_translations);
 }
+
+TEST_CASE(multiway_action_calibration_covers_short_stack_and_multiway_profiles) {
+    const auto short_stack = state(texas::Street::Flop, 3U, 200);
+    const auto multiway = state(texas::Street::Flop, 6U, 10000);
+    const std::vector<texas::MultiwayActionCalibrationCase> cases = {
+        {short_stack, texas::MultiwayAction::Check, 0, {texas::MultiwayPreflopSituation::Auto,
+            texas::MultiwayRelativePosition::Unknown, texas::MultiwayPostflopSizingMode::Contextual}},
+        {multiway, texas::MultiwayAction::Check, 0, {texas::MultiwayPreflopSituation::Auto,
+            texas::MultiwayRelativePosition::Unknown, texas::MultiwayPostflopSizingMode::Contextual}}};
+    const auto result = texas::calibrate_multiway_action_abstraction(cases);
+    EXPECT_TRUE(result.within_limits);
+    EXPECT_TRUE(result.max_actions <= texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+    EXPECT_TRUE(result.estimated_menu_bytes > 0U);
+}
+
+TEST_CASE(multiway_action_calibration_rejects_excessive_menu_budget) {
+    const auto betting = state(texas::Street::Flop, 6U, 10000);
+    const std::vector<texas::MultiwayActionCalibrationCase> cases = {
+        {betting, texas::MultiwayAction::Check, 0, {}}};
+    texas::MultiwayActionCalibrationLimits limits;
+    limits.maximum_estimated_menu_bytes = sizeof(texas::MultiwayActionDescriptor);
+    const auto result = texas::calibrate_multiway_action_abstraction(cases, {}, {}, limits);
+    EXPECT_TRUE(!result.within_limits);
+}
