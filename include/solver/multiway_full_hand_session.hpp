@@ -9,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <optional>
+#include <utility>
 
 namespace texas::solver::multiway {
 
@@ -17,6 +18,10 @@ public:
     explicit MultiwayFullHandSession(
         games::multiway::MultiwayGameRules rules,
         core::PlayerId first_player = 0,
+        std::uint64_t hand_seed = 0);
+    MultiwayFullHandSession(
+        games::multiway::MultiwayGameConfig config,
+        std::vector<std::uint8_t> board,
         std::uint64_t hand_seed = 0);
 
     [[nodiscard]] const games::multiway::MultiwayHandHistory& history() const noexcept { return history_; }
@@ -41,6 +46,10 @@ public:
     void clear_actual_hand_policy() noexcept { actual_hand_frozen_ = false; frozen_policy_.reset(); }
     [[nodiscard]] bool actual_hand_policy_frozen() const noexcept { return actual_hand_frozen_; }
     void freeze_actual_hand_policy() noexcept { actual_hand_frozen_ = true; }
+    void freeze_actual_hand_policy(MultiwayResolverResult policy) {
+        frozen_policy_ = std::move(policy);
+        actual_hand_frozen_ = true;
+    }
 
 private:
     games::multiway::MultiwayHandHistory history_;

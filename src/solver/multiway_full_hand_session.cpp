@@ -21,6 +21,18 @@ MultiwayFullHandSession::MultiwayFullHandSession(
     beliefs_.reset_uniform(rules.player_count, inputs.data());
 }
 
+MultiwayFullHandSession::MultiwayFullHandSession(
+    games::multiway::MultiwayGameConfig config,
+    std::vector<std::uint8_t> board,
+    std::uint64_t hand_seed)
+    : history_{1U, hand_seed, config, {}},
+      state_(games::multiway::MultiwayState::initial(config)),
+      board_(std::move(board)) {
+    config.validate();
+    std::array<MultiwayRangeBeliefSeatInput, MULTIWAY_RANGE_BELIEF_MAX_SEATS> inputs{};
+    beliefs_.reset_uniform(config.starting_stacks.size(), inputs.data());
+}
+
 const games::multiway::MultiwayState& MultiwayFullHandSession::observe(
     const games::multiway::MultiwayReplayEvent& event,
     const MultiwayRangeBeliefObservation* observation) {
@@ -96,6 +108,15 @@ games::multiway::MultiwayTerminalResult MultiwayFullHandSession::settle(
     if (board_.size() != 5U || holes.size() != state_.stacks().size()) {
         throw std::invalid_argument("full-hand settlement requires a five-card board and every hole hand");
     }
+    if (!std::is_sorted(board_.begin(), board_.end()) ||
+        std::adjacent_find(board_.begin(), board_.end()) != board_.end()) {
+        throw std::invalid_argument("full-hand settlement requires a canonical board");
+    }
+    std::array<bool, 52U> used{};
+    for (const auto card : board_) {
+        if (card >= 52U || used[card]) throw std::invalid_argument("full-hand settlement has duplicate board cards");
+        used[card] = true;
+    }
     games::multiway::MultiwayTerminalInput input;
     input.contributions = state_.contributions();
     input.folded = state_.folded();
@@ -103,6 +124,11 @@ games::multiway::MultiwayTerminalResult MultiwayFullHandSession::settle(
     input.rake_policy = history_.initial_config.rake_policy;
     input.strengths.reserve(holes.size());
     for (const auto& hole : holes) {
+        if (hole[0] >= 52U || hole[1] >= 52U || hole[0] == hole[1] || used[hole[0]] || used[hole[1]]) {
+            throw std::invalid_argument("full-hand settlement has invalid or blocked hole cards");
+        }
+        used[hole[0]] = true;
+        used[hole[1]] = true;
         std::array<std::uint8_t, 7> cards{};
         std::copy(board_.begin(), board_.end(), cards.begin());
         cards[5] = hole[0]; cards[6] = hole[1];
