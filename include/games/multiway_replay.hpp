@@ -28,6 +28,9 @@ struct MultiwayReplayEvent {
     MultiwayReplayDecision decision{};
     core::Street next_street = core::Street::Flop;
     core::PlayerId first_player = -1;
+    // Cards dealt at a street transition. Empty is permitted for legacy
+    // callers, but full-hand hosts should provide the canonical board.
+    std::vector<std::uint8_t> board;
 };
 
 struct MultiwayHandHistory {

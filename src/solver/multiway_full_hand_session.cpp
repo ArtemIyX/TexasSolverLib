@@ -4,8 +4,10 @@
 #include "core/canonical_combo.hpp"
 
 #include <array>
+#include <algorithm>
 #include <stdexcept>
 #include <chrono>
+#include "games/hunl_eval.hpp"
 
 namespace texas::solver::multiway {
 
@@ -31,7 +33,10 @@ const games::multiway::MultiwayState& MultiwayFullHandSession::observe(
     }
     state_ = games::multiway::apply_multiway_replay_event(state_, event);
     history_.events.push_back(event);
-    if (event.kind == games::multiway::MultiwayReplayEventKind::StreetTransition) clear_actual_hand_policy();
+    if (event.kind == games::multiway::MultiwayReplayEventKind::StreetTransition) {
+        board_ = event.board;
+        clear_actual_hand_policy();
+    }
     return state_;
 }
 
@@ -39,6 +44,7 @@ MultiwayResolverResult MultiwayFullHandSession::decide(
     PlayerId hero_seat, std::array<std::uint8_t, 2> hero_cards,
     const MultiwayResolverConfig& config,
     std::chrono::steady_clock::time_point deadline) const {
+    if (frozen_policy_.has_value()) return *frozen_policy_;
     if (hero_seat < 0 || static_cast<std::size_t>(hero_seat) >= beliefs_.seat_count()) {
         throw std::invalid_argument("full-hand hero seat is invalid");
     }
@@ -49,7 +55,7 @@ MultiwayResolverResult MultiwayFullHandSession::decide(
     request.blueprint_identity = config.verified_blueprint == nullptr
         ? MultiwayModelIdentity{} : config.verified_blueprint->snapshot.identity;
     request.public_state = MultiwayPublicBuilder::make_root(
-        state_.snapshot(), {}, MultiwayPublicBuilder::make_legal_actions(state_.snapshot(), {}));
+        state_.snapshot(), board_, MultiwayPublicBuilder::make_legal_actions(state_.snapshot(), {}));
     request.hero_range.reserve(CANONICAL_HOLE_COMBINATION_COUNT);
     for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
         const auto view = beliefs_.view(static_cast<std::size_t>(hero_seat));
@@ -68,7 +74,28 @@ MultiwayResolverResult MultiwayFullHandSession::decide(
         }
         request.opponent_ranges.push_back(std::move(range));
     }
-    return MultiwayResolver(config).resolve(request);
+    auto result = MultiwayResolver(config).resolve(request);
+    if (actual_hand_frozen_) frozen_policy_ = result;
+    return result;
+}
+
+games::multiway::MultiwayTerminalResult MultiwayFullHandSession::settle(
+    const std::vector<std::array<std::uint8_t, 2>>& holes) const {
+    if (board_.size() != 5U || holes.size() != state_.stacks().size()) {
+        throw std::invalid_argument("full-hand settlement requires a five-card board and every hole hand");
+    }
+    games::multiway::MultiwayTerminalInput input;
+    input.contributions = state_.contributions();
+    input.folded = state_.folded();
+    input.odd_chip_first_seat = 0;
+    input.strengths.reserve(holes.size());
+    for (const auto& hole : holes) {
+        std::array<std::uint8_t, 7> cards{};
+        std::copy(board_.begin(), board_.end(), cards.begin());
+        cards[5] = hole[0]; cards[6] = hole[1];
+        input.strengths.push_back(Strength::evaluate_7(cards));
+    }
+    return games::multiway::settle_multiway_terminal(input);
 }
 
 }  // namespace texas::solver::multiway

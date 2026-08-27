@@ -3,9 +3,11 @@
 #include "games/multiway_replay.hpp"
 #include "solver/multiway_range_belief.hpp"
 #include "solver/multiway_resolver.hpp"
+#include "games/multiway_terminal.hpp"
 
 #include <array>
 #include <chrono>
+#include <optional>
 
 namespace texas::solver::multiway {
 
@@ -19,6 +21,7 @@ public:
     [[nodiscard]] const games::multiway::MultiwayHandHistory& history() const noexcept { return history_; }
     [[nodiscard]] const games::multiway::MultiwayState& state() const noexcept { return state_; }
     [[nodiscard]] const MultiwayRangeBeliefs& beliefs() const noexcept { return beliefs_; }
+    [[nodiscard]] const std::vector<std::uint8_t>& board() const noexcept { return board_; }
     const games::multiway::MultiwayState& observe(
         const games::multiway::MultiwayReplayEvent& event,
         const MultiwayRangeBeliefObservation* observation = nullptr);
@@ -28,7 +31,9 @@ public:
         std::array<std::uint8_t, 2> hero_cards,
         const MultiwayResolverConfig& config,
         std::chrono::steady_clock::time_point deadline = {}) const;
-    void clear_actual_hand_policy() noexcept { actual_hand_frozen_ = false; }
+    [[nodiscard]] games::multiway::MultiwayTerminalResult settle(
+        const std::vector<std::array<std::uint8_t, 2>>& holes) const;
+    void clear_actual_hand_policy() noexcept { actual_hand_frozen_ = false; frozen_policy_.reset(); }
     [[nodiscard]] bool actual_hand_policy_frozen() const noexcept { return actual_hand_frozen_; }
     void freeze_actual_hand_policy() noexcept { actual_hand_frozen_ = true; }
 
@@ -36,6 +41,8 @@ private:
     games::multiway::MultiwayHandHistory history_;
     games::multiway::MultiwayState state_;
     MultiwayRangeBeliefs beliefs_;
+    std::vector<std::uint8_t> board_;
+    mutable std::optional<MultiwayResolverResult> frozen_policy_;
     bool actual_hand_frozen_ = false;
 };
 
