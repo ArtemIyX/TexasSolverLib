@@ -38,7 +38,7 @@ When asked to test, typical commands are:
 ```bash
 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON
 cmake --build build --config Debug -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"
-ctest --test-dir build -C Debug --output-on-failure
+python .agents\\skills\\cpp-build-test-fixer\\scripts\\ctest_compact.py
 ```
 
 ## Hard Rules
