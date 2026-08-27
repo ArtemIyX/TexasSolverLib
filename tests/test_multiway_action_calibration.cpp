@@ -1,5 +1,6 @@
 #include "solver/multiway_action_calibration.hpp"
 #include "solver/multiway_action_abstraction.hpp"
+#include "solver/multiway_evaluation.hpp"
 #include "test_harness.hpp"
 
 namespace {
@@ -36,6 +37,15 @@ TEST_CASE(multiway_action_calibration_reports_representative_branching_and_ident
     EXPECT_TRUE(result.max_actions <= texas::MULTIWAY_MAX_ABSTRACTED_ACTIONS);
     EXPECT_TRUE(result.profile_identity != 0U);
     EXPECT_TRUE(result.translated_actions + result.exact_translations + result.rejected_translations == 2U);
+}
+
+TEST_CASE(multiway_action_calibration_adapts_f4_evaluation_quality) {
+    texas::MultiwayEvaluationResult evaluation;
+    evaluation.reduced_game_nash_conv.value = 1.25;
+    evaluation.metrics.confidence_interval_half_width = 0.2;
+    const auto quality = texas::multiway_action_quality_from_evaluation(evaluation);
+    EXPECT_NEAR(quality.value, -1.25, 1e-12);
+    EXPECT_NEAR(quality.standard_error, 0.2, 1e-12);
 }
 
 TEST_CASE(multiway_action_calibration_threshold_sweep_changes_rejection_result) {

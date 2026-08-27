@@ -1,4 +1,5 @@
 #include "solver/multiway_action_calibration.hpp"
+#include "solver/multiway_evaluation.hpp"
 
 #include <stdexcept>
 #include <algorithm>
@@ -6,6 +7,12 @@
 #include <limits>
 
 namespace texas::solver::multiway {
+
+MultiwayActionCalibrationQuality multiway_action_quality_from_evaluation(
+    const MultiwayEvaluationResult& evaluation) noexcept {
+    return {-evaluation.reduced_game_nash_conv.value,
+            evaluation.metrics.confidence_interval_half_width};
+}
 
 double calibration_z(double confidence_level) noexcept {
     if (confidence_level == 0.90) return 1.6448536269514722;

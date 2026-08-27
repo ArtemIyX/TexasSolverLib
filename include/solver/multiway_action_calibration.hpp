@@ -8,6 +8,8 @@
 
 namespace texas::solver::multiway {
 
+struct MultiwayEvaluationResult;
+
 struct MultiwayActionCalibrationCase {
     MultiwayBettingSnapshot betting{};
     MultiwayAction observed_action = MultiwayAction::Check;
@@ -51,6 +53,11 @@ struct MultiwayActionCalibrationQuality {
     double value = 0.0;
     double standard_error = 0.0;
 };
+
+// Nash-convergence is a lower-is-better metric; calibration selection uses
+// higher-is-better quality, so this adapter negates its estimate.
+[[nodiscard]] MultiwayActionCalibrationQuality multiway_action_quality_from_evaluation(
+    const MultiwayEvaluationResult& evaluation) noexcept;
 using MultiwayActionCalibrationQualityFn = MultiwayActionCalibrationQuality (*) (
     const MultiwayActionCalibrationResult& result,
     const void* context) noexcept;
