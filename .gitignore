@@ -60,6 +60,7 @@ Thumbs.db
 # Logs and temporary files
 *.log
 *.tmp
+tmp/
 
 # Documentation / generated content
 docs/_build/

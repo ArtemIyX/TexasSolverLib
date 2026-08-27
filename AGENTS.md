@@ -41,6 +41,20 @@ cmake --build build --config Debug -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"
 python .agents\\skills\\cpp-build-test-fixer\\scripts\\ctest_compact.py
 ```
 
+## Suitable script/ helpers
+
+```text
+repo_summary.py
+scan_errors.py
+compact_logs.py
+summarize_json.py
+extract_symbols.py
+extract_imports.py
+find_large_files.py
+list_recent_changes.py
+summarize_tests.py
+```
+
 ## Hard Rules
 
 - Do not run build, test, benchmark, install, or long-running solver commands unless the user explicitly asks.
