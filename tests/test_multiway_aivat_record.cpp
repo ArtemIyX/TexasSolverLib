@@ -71,3 +71,20 @@ TEST_CASE(multiway_aivat_record_rejects_missing_protected_sink) {
         texas::solver::multiway::publish_multiway_aivat_evaluation_record(record, nullptr, nullptr),
         std::invalid_argument);
 }
+
+TEST_CASE(multiway_aivat_estimator_applies_action_value_correction) {
+    const auto estimate = texas::solver::multiway::estimate_multiway_aivat({record_fixture()});
+    EXPECT_EQ(estimate.samples, 1U);
+    EXPECT_NEAR(estimate.means[0], -6.25, 1e-12);
+    EXPECT_NEAR(estimate.means[1], 100.0, 1e-12);
+    EXPECT_NEAR(estimate.standard_errors[0], 0.0, 1e-12);
+}
+
+TEST_CASE(multiway_aivat_estimator_rejects_mixed_model_identities) {
+    auto other = record_fixture();
+    ++other.identity.code_schema_hash;
+    other.seal();
+    EXPECT_THROW(
+        texas::solver::multiway::estimate_multiway_aivat({record_fixture(), other}),
+        std::invalid_argument);
+}

@@ -80,6 +80,17 @@ struct MultiwayAivatEvaluationRecord {
     void validate() const;
 };
 
+struct MultiwayAivatEstimate {
+    std::uint64_t samples = 0U;
+    std::uint8_t seat_count = 0U;
+    std::array<Value, kMultiwayEvaluationMaxSeats> means = {};
+    std::array<Value, kMultiwayEvaluationMaxSeats> standard_errors = {};
+    double confidence_level = 0.95;
+    std::array<Value, kMultiwayEvaluationMaxSeats> confidence_interval_half_widths = {};
+
+    void validate() const;
+};
+
 // Callback boundary for host-owned protected storage and external AIVAT
 // tooling. False means the host rejected the record; no estimator is invoked.
 using MultiwayAivatEvaluationRecordSinkFn = bool (*) (
@@ -90,6 +101,13 @@ using MultiwayAivatEvaluationRecordSinkFn = bool (*) (
     const MultiwayAivatEvaluationRecord& record,
     MultiwayAivatEvaluationRecordSinkFn sink,
     const void* context);
+
+// Independent cold-path AIVAT consumer. Records are validated before use and
+// all records must share one model identity and seat count. The returned
+// means are corrected raw chip outcomes in the original value units.
+[[nodiscard]] MultiwayAivatEstimate estimate_multiway_aivat(
+    const std::vector<MultiwayAivatEvaluationRecord>& records,
+    double confidence_level = 0.95);
 
 struct MultiwayEvaluationMatchRequest {
     const MultiwayEvaluationDeal* deal = nullptr;

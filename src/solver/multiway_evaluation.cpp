@@ -217,6 +217,72 @@ void MultiwayAivatEvaluationRecord::validate() const {
     }
 }
 
+void MultiwayAivatEstimate::validate() const {
+    if (seat_count < 2U || seat_count > kMultiwayEvaluationMaxSeats ||
+        (confidence_level != 0.90 && confidence_level != 0.95 && confidence_level != 0.99)) {
+        throw std::invalid_argument("multiway AIVAT estimate is invalid");
+    }
+    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+        if (!std::isfinite(means[seat]) || !std::isfinite(standard_errors[seat]) ||
+            !std::isfinite(confidence_interval_half_widths[seat]) ||
+            standard_errors[seat] < 0.0 || confidence_interval_half_widths[seat] < 0.0) {
+            throw std::invalid_argument("multiway AIVAT estimate contains invalid values");
+        }
+    }
+}
+
+MultiwayAivatEstimate estimate_multiway_aivat(
+    const std::vector<MultiwayAivatEvaluationRecord>& records,
+    double confidence_level) {
+    if (records.empty() || (confidence_level != 0.90 && confidence_level != 0.95 && confidence_level != 0.99)) {
+        throw std::invalid_argument("multiway AIVAT estimator requires records and supported confidence");
+    }
+    records.front().validate();
+    const auto identity = records.front().identity;
+    const auto seats = static_cast<std::size_t>(records.front().raw_chip_outcome.seat_count);
+    std::array<Value, kMultiwayEvaluationMaxSeats> mean{};
+    std::array<Value, kMultiwayEvaluationMaxSeats> m2{};
+    std::uint64_t result_count = 0U;
+    for (const auto& record : records) {
+        record.validate();
+        if (record.identity != identity || record.raw_chip_outcome.seat_count != seats) {
+            throw std::invalid_argument("multiway AIVAT records have incompatible identities");
+        }
+        std::array<Value, kMultiwayEvaluationMaxSeats> adjusted = record.raw_chip_outcome.values;
+        for (const auto& decision : record.decisions) {
+            Value expected = 0.0;
+            Value sampled = 0.0;
+            bool found = false;
+            for (const auto& value : decision.action_values) {
+                expected += value.probability * value.estimated_value;
+                if (value.action == decision.sampled_action) {
+                    sampled = value.estimated_value;
+                    found = true;
+                }
+            }
+            if (!found) throw std::invalid_argument("multiway AIVAT sampled action is missing");
+            adjusted[static_cast<std::size_t>(decision.acting_seat)] -= sampled - expected;
+        }
+        const auto count = static_cast<Value>(++result_count);
+        for (std::size_t seat = 0U; seat < seats; ++seat) {
+            const auto delta = adjusted[seat] - mean[seat];
+            mean[seat] += delta / count;
+            m2[seat] += delta * (adjusted[seat] - mean[seat]);
+        }
+    }
+    MultiwayAivatEstimate result;
+    result.samples = records.size();
+    result.seat_count = static_cast<std::uint8_t>(seats);
+    result.confidence_level = confidence_level;
+    for (std::size_t seat = 0U; seat < seats; ++seat) {
+        result.means[seat] = mean[seat];
+        if (result.samples > 1U) result.standard_errors[seat] = std::sqrt(m2[seat] / (result.samples - 1U) / result.samples);
+        result.confidence_interval_half_widths[seat] = confidence_z_score(confidence_level) * result.standard_errors[seat];
+    }
+    result.validate();
+    return result;
+}
+
 bool publish_multiway_aivat_evaluation_record(
     const MultiwayAivatEvaluationRecord& record,
     MultiwayAivatEvaluationRecordSinkFn sink,

@@ -15,6 +15,7 @@ enum class MultiwayResolverEvaluationCandidateKind : std::uint8_t {
     BlueprintOnly,
     SearchDisabled,
     SearchEnabled,
+    FrozenPrior,
 };
 
 struct MultiwayResolverEvaluationCandidate {

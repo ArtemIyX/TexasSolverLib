@@ -29,6 +29,9 @@ MultiwayResolverConfig config_for(
         case MultiwayResolverEvaluationCandidateKind::SearchDisabled:
             config.search_mode = MultiwayResolverSearchMode::FallbackOnly;
             break;
+        case MultiwayResolverEvaluationCandidateKind::FrozenPrior:
+            config.search_mode = MultiwayResolverSearchMode::FallbackOnly;
+            break;
         case MultiwayResolverEvaluationCandidateKind::SearchEnabled:
             config.search_mode = MultiwayResolverSearchMode::SearchActive;
             break;
