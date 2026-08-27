@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## Pluribus solver finish audit
+
+**Status:** Complete
+**Completed:** 2026-08-27
+
+- Compared the declared project state and Pluribus technical requirements with the current multiway implementation.
+- Recorded fourteen prioritized implementation gaps with dependencies, acceptance conditions, finish criteria, and scope boundaries.
+- Identified global preflop-to-river training, pruning fidelity, compact storage, dual online policies, production card abstraction, and executable workflows as the primary blockers.
+
+### Files
+
+- `docs/pluribus_solver_finish_audit.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the relevant multiway headers, implementations, workflow entry points, documentation, and resulting Markdown diff.
+- Build and tests were not run because this task only creates audit documentation and execution was not requested.
+
+### Limitations
+
+- The audit is based on static inspection. Runtime performance, convergence, and policy strength remain unverified.
+
 ## Project README expansion
 
 **Status:** Complete
