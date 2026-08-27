@@ -752,6 +752,13 @@ std::unique_ptr<MultiwayDecisionSession> MultiwayResolver::begin_decision_sessio
     if (limits.max_sparse_rows == 0U) limits.max_sparse_rows = 1'024U;
     if (limits.max_sparse_values == 0U) limits.max_sparse_values = 65'536U;
     if (limits.max_worker_delta_entries == 0U) limits.max_worker_delta_entries = 8'192U;
+    const auto exact_rows = std::min(limits.max_sparse_rows, limits.max_public_states);
+    const auto exact_values = saturating_multiply(
+        saturating_multiply(exact_rows, MULTIWAY_HOLE_COMBINATION_COUNT),
+        MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+    const auto admitted_values = saturating_add(limits.max_sparse_values, exact_values);
+    limits.max_sparse_values = admitted_values > std::numeric_limits<std::size_t>::max()
+        ? std::numeric_limits<std::size_t>::max() : static_cast<std::size_t>(admitted_values);
     limits.validate();
     const auto memory_preflight = preflight_multiway_memory(
         limits,
