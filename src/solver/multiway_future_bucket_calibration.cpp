@@ -96,8 +96,10 @@ MultiwayFutureBucketCalibrationResult calibrate_multiway_future_bucket_profile(
         const auto stat = std::find_if(stats.begin(), stats.end(), [board_index, bucket](const auto& entry) {
             return entry.board == board_index && entry.bucket == bucket;
         });
-        if (bucket == MULTIWAY_INVALID_BUCKET || stat == stats.end() || stat->count == 0U) {
-            ++result.missing_buckets; continue;
+        if (bucket == MULTIWAY_INVALID_BUCKET) continue;
+        if (stat == stats.end() || stat->count == 0U) {
+            ++result.missing_buckets;
+            continue;
         }
         const auto error = samples[index].target_value - stat->sum / stat->count;
         heldout_loss += error * error; ++heldout_count;
