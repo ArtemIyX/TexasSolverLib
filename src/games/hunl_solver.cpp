@@ -1,8 +1,8 @@
 #include "games/hunl_solver.hpp"
 
-#include "solver/exploit.hpp"
-#include "solver/hunl_flat_dcfr.hpp"
-#include "solver/solver.hpp"
+#include "solver/generic/exploit.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
+#include "solver/generic/solver.hpp"
 #include "util/profiling.hpp"
 
 #include <algorithm>

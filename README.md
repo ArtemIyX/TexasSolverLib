@@ -1,4 +1,4 @@
-# TexasSolver
+# Texas Solver - Pluribus project
 
 TexasSolver is a free open-source C++17 library for solving poker subgames and computing exploitability/value metrics with DCFR-style algorithms.<br>
 This repository is a C++ port of the Rust implementation from **[amaster97/poker_solver](https://github.com/amaster97/poker_solver)** <br>
@@ -142,7 +142,7 @@ fallback statuses, ownership boundaries, and diagnostics. See
 ### Solve Kuhn poker
 
 ```cpp
-#include "solver/solver.hpp"
+#include "solver/generic/solver.hpp"
 #include <iostream>
 
 int main() {
@@ -156,7 +156,7 @@ int main() {
 ### Solve Leduc poker
 
 ```cpp
-#include "solver/solver.hpp"
+#include "solver/generic/solver.hpp"
 
 int main() {
     const auto out = texas::solve_leduc(50, 1.5, 0.0, 2.0);

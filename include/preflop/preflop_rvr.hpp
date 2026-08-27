@@ -5,8 +5,8 @@
 #include "core/types.hpp"
 #include "games/hunl.hpp"
 #include "preflop/preflop_equity.hpp"
-#include "solver/dcfr_vector.hpp"
-#include "solver/solver.hpp"
+#include "solver/generic/dcfr_vector.hpp"
+#include "solver/generic/solver.hpp"
 
 #include <stdexcept>
 #include <unordered_map>

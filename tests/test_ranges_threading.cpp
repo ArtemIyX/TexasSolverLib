@@ -1,5 +1,5 @@
 #include "games/hunl_solver.hpp"
-#include "solver/hunl_flat_dcfr.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
 #include "test_harness.hpp"
 
 #include <cmath>

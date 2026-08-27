@@ -1,10 +1,10 @@
 #include "games/kuhn.hpp"
 #include "preflop/preflop_rvr.hpp"
-#include "solver/dcfr.hpp"
-#include "solver/dcfr_vector.hpp"
-#include "solver/hunl_flat_dcfr.hpp"
-#include "solver/hunl_flat_mccfr.hpp"
-#include "solver/parallel_dcfr.hpp"
+#include "solver/generic/dcfr.hpp"
+#include "solver/generic/dcfr_vector.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
+#include "solver/hunl/flat/hunl_flat_mccfr.hpp"
+#include "solver/generic/parallel_dcfr.hpp"
 #include "test_harness.hpp"
 
 #include <cmath>

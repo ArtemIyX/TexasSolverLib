@@ -2,9 +2,9 @@ if (NOT DEFINED SOURCE_DIR)
     message(FATAL_ERROR "SOURCE_DIR is required")
 endif()
 
-file(READ "${SOURCE_DIR}/include/solver/hunl_sampled_solver.hpp" SOLVER_HEADER)
-file(READ "${SOURCE_DIR}/include/solver/hunl_sampled_config.hpp" CONFIG_HEADER)
-file(READ "${SOURCE_DIR}/src/solver/hunl_sampled_solver.cpp" SOLVER_SOURCE)
+file(READ "${SOURCE_DIR}/include/solver/hunl/sampled/hunl_sampled_solver.hpp" SOLVER_HEADER)
+file(READ "${SOURCE_DIR}/include/solver/hunl/sampled/hunl_sampled_config.hpp" CONFIG_HEADER)
+file(READ "${SOURCE_DIR}/src/solver/hunl/sampled/hunl_sampled_solver.cpp" SOLVER_SOURCE)
 file(READ "${SOURCE_DIR}/CMakeLists.txt" PROJECT_CMAKE)
 
 if (SOLVER_HEADER MATCHES "root_state")
@@ -17,9 +17,9 @@ if (CONFIG_HEADER MATCHES "max_cached_public_states|bucket_count_hint|depth_limi
     message(FATAL_ERROR "production sampled config still exposes inactive fixed-engine hints")
 endif()
 string(REGEX MATCH "set\\(TEXASSOLVER_PUBLIC_HEADERS([^)]*)\\)" PUBLIC_HEADERS_BLOCK "${PROJECT_CMAKE}")
-if (PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl_sampled_builder.hpp" OR
-    PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl_sampled_terminal.hpp" OR
-    PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl_sampled_traversal.hpp")
+if (PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl/sampled/hunl_sampled_builder.hpp" OR
+    PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl/sampled/hunl_sampled_terminal.hpp" OR
+    PUBLIC_HEADERS_BLOCK MATCHES "include/solver/hunl/sampled/hunl_sampled_traversal.hpp")
     message(FATAL_ERROR "fixed-private sampled implementation remains an installed stable header")
 endif()
 if (NOT SOLVER_HEADER MATCHES "HUNLStructuredRootRequest structured_root")

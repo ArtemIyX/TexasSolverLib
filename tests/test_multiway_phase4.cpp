@@ -1,6 +1,6 @@
-#include "solver/multiway_decision_session.hpp"
-#include "solver/multiway_action_abstraction.hpp"
-#include "solver/multiway_public_builder.hpp"
+#include "solver/multiway/session/multiway_decision_session.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "test_harness.hpp"
 
 #include <array>

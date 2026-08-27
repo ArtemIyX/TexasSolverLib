@@ -27,12 +27,12 @@ set(allowed_headers
     preflop/preflop.hpp
     preflop/preflop_equity.hpp
     preflop/preflop_rvr.hpp
-    solver/dcfr_vector.hpp
-    solver/hunl_flat_mccfr.hpp
-    solver/hunl_sampled_builder.hpp
-    solver/hunl_sampled_terminal.hpp
-    solver/hunl_sampled_traversal.hpp
-    solver/multiway_baseline.hpp
+    solver/generic/dcfr_vector.hpp
+    solver/hunl/flat/hunl_flat_mccfr.hpp
+    solver/hunl/sampled/hunl_sampled_builder.hpp
+    solver/hunl/sampled/hunl_sampled_terminal.hpp
+    solver/hunl/sampled/hunl_sampled_traversal.hpp
+    solver/multiway/evaluation/multiway_baseline.hpp
     util/abstraction.hpp
     util/infoset_lookup.hpp
     util/infoset_registry.hpp)

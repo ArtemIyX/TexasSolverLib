@@ -1,12 +1,12 @@
 #include "games/multiway_fixed.hpp"
 #include "games/multiway_private.hpp"
 #include "games/multiway_terminal.hpp"
-#include "solver/multiway_artifact.hpp"
-#include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_bucket_artifact.hpp"
-#include "solver/multiway_public_builder.hpp"
-#include "solver/multiway_range_belief.hpp"
-#include "solver/multiway_resolver_evaluation.hpp"
+#include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
+#include "solver/multiway/session/multiway_range_belief.hpp"
+#include "solver/multiway/resolver/multiway_resolver_evaluation.hpp"
 #include "test_harness.hpp"
 
 #include <array>

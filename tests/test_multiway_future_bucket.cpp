@@ -1,10 +1,10 @@
-#include "solver/multiway_future_bucket.hpp"
-#include "solver/multiway_future_bucket_calibration.hpp"
+#include "solver/multiway/abstraction/multiway_future_bucket.hpp"
+#include "solver/multiway/abstraction/multiway_future_bucket_calibration.hpp"
 #include "core/canonical_combo.hpp"
-#include "solver/multiway_public_builder.hpp"
-#include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_model_identity.hpp"
-#include "solver/multiway_resolver.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/abstraction/multiway_model_identity.hpp"
+#include "solver/multiway/resolver/multiway_resolver.hpp"
 #include "test_harness.hpp"
 
 #include <memory>

@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## Solver layout migration
+
+**Status:** Complete
+**Completed:** 2026-08-27
+
+- Moved all solver headers and implementations into mirrored ownership subdirectories.
+- Updated repository includes, CMake classifications, boundary fixtures, examples, README, and project-state paths.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/`
+- `src/solver/`
+- `include/`, `src/`, `tests/`, `examples/`
+- `README.md`
+- `docs/project_state.md`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- None identified.
+
 Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.

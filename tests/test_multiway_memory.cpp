@@ -1,4 +1,4 @@
-#include "solver/multiway_memory.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

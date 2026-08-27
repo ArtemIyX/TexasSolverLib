@@ -1,4 +1,4 @@
-#include "solver/multiway_model_identity.hpp"
+#include "solver/multiway/abstraction/multiway_model_identity.hpp"
 #include "test_harness.hpp"
 
 #include <array>

@@ -1,6 +1,6 @@
-#include "solver/hunl_flat_expected_value.hpp"
-#include "solver/hunl_flat_mccfr.hpp"
-#include "solver/hunl_sampled_scheduler.hpp"
+#include "solver/hunl/flat/hunl_flat_expected_value.hpp"
+#include "solver/hunl/flat/hunl_flat_mccfr.hpp"
+#include "solver/hunl/sampled/hunl_sampled_scheduler.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

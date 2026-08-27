@@ -1,10 +1,10 @@
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl_solver.hpp"
 #include "core/lib.hpp"
-#include "solver/hunl_flat_dcfr.hpp"
-#include "solver/hunl_sampled_solver.hpp"
-#include "solver/hunl_sampled_range.hpp"
-#include "solver/hunl_sampled_storage.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
+#include "solver/hunl/sampled/hunl_sampled_solver.hpp"
+#include "solver/hunl/sampled/hunl_sampled_range.hpp"
+#include "solver/hunl/sampled/hunl_sampled_storage.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

@@ -1,7 +1,7 @@
 #include "games/hunl.hpp"
 #include "games/hunl_flat_graph.hpp"
-#include "solver/hunl_bucket_map.hpp"
-#include "solver/hunl_flat_state.hpp"
+#include "solver/hunl/bucket/hunl_bucket_map.hpp"
+#include "solver/hunl/flat/hunl_flat_state.hpp"
 #include "test_abstraction_fixture.hpp"
 #include "test_harness.hpp"
 

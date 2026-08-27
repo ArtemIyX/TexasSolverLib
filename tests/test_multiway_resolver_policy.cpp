@@ -1,4 +1,4 @@
-#include "solver/multiway_resolver_policy.hpp"
+#include "solver/multiway/resolver/multiway_resolver_policy.hpp"
 #include "test_harness.hpp"
 
 #include <limits>

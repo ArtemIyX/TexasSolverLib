@@ -1,7 +1,7 @@
 #include "games/hunl.hpp"
 #include "games/hunl_flat_graph.hpp"
-#include "solver/hunl_flat_mccfr.hpp"
-#include "solver/hunl_sampled_config.hpp"
+#include "solver/hunl/flat/hunl_flat_mccfr.hpp"
+#include "solver/hunl/sampled/hunl_sampled_config.hpp"
 
 #include <algorithm>
 #include <array>

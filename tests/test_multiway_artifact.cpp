@@ -1,7 +1,7 @@
 #include "core/atomic_publish.hpp"
-#include "solver/multiway_artifact.hpp"
-#include "solver/multiway_blueprint_store.hpp"
-#include "solver/multiway_blueprint_config.hpp"
+#include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_store.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "test_harness.hpp"
 
 #include <array>

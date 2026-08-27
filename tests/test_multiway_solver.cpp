@@ -1,6 +1,6 @@
-#include "solver/multiway_solver.hpp"
-#include "solver/multiway_public_builder.hpp"
-#include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "test_harness.hpp"
 
 #include <array>

@@ -1,5 +1,5 @@
-#include "solver/hunl_flat_dcfr.hpp"
-#include "solver/hunl_bucket_map.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
+#include "solver/hunl/bucket/hunl_bucket_map.hpp"
 #include "test_harness.hpp"
 #include "util/abstraction.hpp"
 

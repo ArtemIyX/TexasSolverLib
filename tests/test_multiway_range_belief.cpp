@@ -1,5 +1,5 @@
-#include "solver/multiway_range_belief.hpp"
-#include "solver/multiway_blueprint_config.hpp"
+#include "solver/multiway/session/multiway_range_belief.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

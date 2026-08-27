@@ -1,6 +1,6 @@
 #include "games/multiway_replay.hpp"
 #include "games/multiway_terminal.hpp"
-#include "solver/multiway_action_abstraction.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "test_harness.hpp"
 
 #include <numeric>

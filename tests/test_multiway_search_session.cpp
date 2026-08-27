@@ -1,7 +1,7 @@
-#include "solver/multiway_search_session.hpp"
-#include "solver/multiway_blueprint_trainer.hpp"
-#include "solver/multiway_decision_session.hpp"
-#include "solver/multiway_traversal.hpp"
+#include "solver/multiway/session/multiway_search_session.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
+#include "solver/multiway/session/multiway_decision_session.hpp"
+#include "solver/multiway/engine/multiway_traversal.hpp"
 #include "test_harness.hpp"
 
 #include <array>

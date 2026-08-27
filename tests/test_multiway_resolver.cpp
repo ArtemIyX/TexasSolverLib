@@ -1,10 +1,10 @@
-#include "solver/multiway_bucket_artifact.hpp"
-#include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_artifact.hpp"
-#include "solver/multiway_public_builder.hpp"
-#include "solver/multiway_resolver.hpp"
-#include "solver/multiway_rollout_leaf.hpp"
-#include "solver/multiway_decision_session.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
+#include "solver/multiway/resolver/multiway_resolver.hpp"
+#include "solver/multiway/continuation/multiway_rollout_leaf.hpp"
+#include "solver/multiway/session/multiway_decision_session.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

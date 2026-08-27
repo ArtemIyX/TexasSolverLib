@@ -1,9 +1,9 @@
 #include "games/hunl.hpp"
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl_tree.hpp"
-#include "solver/hunl_flat_dcfr.hpp"
-#include "solver/hunl_flat_expected_value.hpp"
-#include "solver/solver.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
+#include "solver/hunl/flat/hunl_flat_expected_value.hpp"
+#include "solver/generic/solver.hpp"
 #include "test_harness.hpp"
 
 #include <array>

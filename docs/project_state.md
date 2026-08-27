@@ -211,5 +211,5 @@ rollback procedure.
 
 - [Pluribus technical report](pluribus_technical_report.md)
 - [Pluribus roadmap progress log](PLURIBUS_LOG.md)
-- Current `include/games/multiway_*`, `include/solver/multiway_*`, matching
+- Current `include/games/multiway_*`, `include/solver/multiway/*`, matching
   implementations, tests, `CMakeLists.txt`, and recent Git history

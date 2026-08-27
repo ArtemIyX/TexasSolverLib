@@ -1,4 +1,4 @@
-#include "solver/multiway_search_profile.hpp"
+#include "solver/multiway/session/multiway_search_profile.hpp"
 #include "test_harness.hpp"
 
 #include <cstddef>

@@ -1,6 +1,6 @@
-#include "solver/multiway_action_abstraction.hpp"
-#include "solver/multiway_public_builder.hpp"
-#include "solver/multiway_terminal_adapter.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
+#include "solver/multiway/abstraction/multiway_terminal_adapter.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

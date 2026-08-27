@@ -1,5 +1,5 @@
-#include "solver/multiway_continuation_policy.hpp"
-#include "solver/multiway_continuation_calibration.hpp"
+#include "solver/multiway/continuation/multiway_continuation_policy.hpp"
+#include "solver/multiway/continuation/multiway_continuation_calibration.hpp"
 #include "test_harness.hpp"
 
 #include <array>

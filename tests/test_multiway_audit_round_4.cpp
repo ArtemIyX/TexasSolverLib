@@ -1,5 +1,5 @@
-#include "solver/multiway_continuation_selector.hpp"
-#include "solver/multiway_memory.hpp"
+#include "solver/multiway/continuation/multiway_continuation_selector.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "test_harness.hpp"
 
 #include <limits>

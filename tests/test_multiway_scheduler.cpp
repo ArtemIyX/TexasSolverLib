@@ -1,5 +1,5 @@
-#include "solver/multiway_scheduler.hpp"
-#include "solver/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_scheduler.hpp"
+#include "solver/multiway/engine/multiway_solver.hpp"
 #include "test_harness.hpp"
 
 TEST_CASE(multiway_scheduler_partitions_trajectories_in_fixed_order) {

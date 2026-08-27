@@ -1,5 +1,5 @@
-#include "solver/multiway_scheduler.hpp"
-#include "solver/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_scheduler.hpp"
+#include "solver/multiway/engine/multiway_solver.hpp"
 #include "test_harness.hpp"
 
 #include <cstdint>

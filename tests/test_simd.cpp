@@ -1,5 +1,5 @@
 #include "util/simd.hpp"
-#include "solver/solver.hpp"
+#include "solver/generic/solver.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

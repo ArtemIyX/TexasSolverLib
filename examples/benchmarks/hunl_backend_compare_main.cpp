@@ -1,8 +1,8 @@
 #include "games/hunl_solver.hpp"
-#include "solver/dcfr.hpp"
-#include "solver/hunl_flat_dcfr.hpp"
-#include "solver/parallel_dcfr.hpp"
-#include "solver/solver.hpp"
+#include "solver/generic/dcfr.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
+#include "solver/generic/parallel_dcfr.hpp"
+#include "solver/generic/solver.hpp"
 
 #include <array>
 #include <chrono>

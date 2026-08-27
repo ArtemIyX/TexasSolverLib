@@ -1,9 +1,9 @@
-#include "solver/multiway_baseline.hpp"
-#include "solver/multiway_bucket_artifact.hpp"
-#include "solver/multiway_bucket_model.hpp"
-#include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_public_builder.hpp"
-#include "solver/multiway_continuation_selector.hpp"
+#include "solver/multiway/evaluation/multiway_baseline.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_model.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
+#include "solver/multiway/continuation/multiway_continuation_selector.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>

@@ -1,6 +1,6 @@
 #include "preflop/preflop.hpp"
 
-#include "solver/dcfr.hpp"
+#include "solver/generic/dcfr.hpp"
 
 #include <chrono>
 #include <memory>

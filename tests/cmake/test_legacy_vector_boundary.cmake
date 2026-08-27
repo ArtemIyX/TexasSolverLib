@@ -28,10 +28,10 @@ require_present(
     "src/preflop/preflop_rvr.cpp"
     "legacy vector source ownership")
 require_present(
-    "src/solver/dcfr_vector.cpp"
+    "src/solver/generic/dcfr_vector.cpp"
     "vector DCFR source ownership")
 require_absent(
-    "include/preflop/preflop_rvr.hpp\n    include/solver/dcfr.hpp"
+    "include/preflop/preflop_rvr.hpp\n    include/solver/generic/dcfr.hpp"
     "legacy RVR header from stable public headers")
 require_absent(
     "src/preflop/preflop_equity.cpp\n    src/preflop/preflop_rvr.cpp"

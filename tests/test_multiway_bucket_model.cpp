@@ -1,4 +1,4 @@
-#include "solver/multiway_bucket_model.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

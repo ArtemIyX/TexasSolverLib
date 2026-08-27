@@ -1,7 +1,7 @@
-#include "solver/hunl_sampled_config.hpp"
-#include "solver/hunl_sampled_profile.hpp"
-#include "solver/hunl_sampled_scheduler.hpp"
-#include "solver/hunl_sampled_storage.hpp"
+#include "solver/hunl/sampled/hunl_sampled_config.hpp"
+#include "solver/hunl/sampled/hunl_sampled_profile.hpp"
+#include "solver/hunl/sampled/hunl_sampled_scheduler.hpp"
+#include "solver/hunl/sampled/hunl_sampled_storage.hpp"
 #include "test_harness.hpp"
 
 #include <array>

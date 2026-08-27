@@ -1,6 +1,6 @@
 #pragma once
 
-#include "solver/exploit.hpp"
+#include "solver/generic/exploit.hpp"
 #include "games/hunl.hpp"
 
 #include <array>

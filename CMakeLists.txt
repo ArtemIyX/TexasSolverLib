@@ -47,62 +47,62 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/games/multiway_terminal.hpp
     include/preflop/preflop.hpp
     include/preflop/preflop_equity.hpp
-    include/solver/dcfr.hpp
-    include/solver/exploit.hpp
-    include/solver/hunl_bucket_map.hpp
-    include/solver/hunl_bucket_terminal.hpp
-    include/solver/hunl_flat_dcfr.hpp
-    include/solver/hunl_flat_expected_value.hpp
-    include/solver/hunl_flat_pipeline.hpp
-    include/solver/hunl_flat_state.hpp
-    include/solver/hunl_leaf_evaluator.hpp
-    include/solver/hunl_sampled_config.hpp
-    include/solver/hunl_sampled_export.hpp
-    include/solver/hunl_sampled_profile.hpp
-    include/solver/hunl_sampled_range.hpp
-    include/solver/hunl_sampled_scheduler.hpp
-    include/solver/hunl_sampled_simd.hpp
-    include/solver/hunl_sampled_solver.hpp
-    include/solver/hunl_sampled_storage.hpp
-    include/solver/multiway_action_abstraction.hpp
-    include/solver/multiway_artifact.hpp
-    include/solver/multiway_blueprint_config.hpp
-    include/solver/multiway_blueprint_policy_provider.hpp
-    include/solver/multiway_blueprint_store.hpp
-    include/solver/multiway_blueprint_trainer.hpp
-    include/solver/multiway_bucket_artifact.hpp
-    include/solver/multiway_bucket_model.hpp
-    include/solver/multiway_cfr.hpp
-    include/solver/multiway_checkpoint.hpp
-    include/solver/multiway_continuation_policy.hpp
-    include/solver/multiway_continuation_policy_kind.hpp
-    include/solver/multiway_continuation_selector.hpp
-    include/solver/multiway_evaluation.hpp
-    include/solver/multiway_export.hpp
-    include/solver/multiway_future_bucket.hpp
-    include/solver/multiway_leaf_evaluator.hpp
-    include/solver/multiway_memory.hpp
-    include/solver/multiway_model_identity.hpp
-    include/solver/multiway_public_builder.hpp
-    include/solver/multiway_range_belief.hpp
-    include/solver/multiway_range_update.hpp
-    include/solver/multiway_resolver.hpp
-    include/solver/multiway_resolver_budget.hpp
-    include/solver/multiway_resolver_evaluation.hpp
-    include/solver/multiway_rollout_leaf.hpp
-    include/solver/multiway_decision_session.hpp
-    include/solver/multiway_action_calibration.hpp
-    include/solver/multiway_future_bucket_calibration.hpp
-    include/solver/multiway_continuation_calibration.hpp
-    include/solver/multiway_full_hand_session.hpp
-    include/solver/multiway_scheduler.hpp
-    include/solver/multiway_search_profile.hpp
-    include/solver/multiway_search_session.hpp
-    include/solver/multiway_solver.hpp
-    include/solver/multiway_terminal_adapter.hpp
-    include/solver/multiway_traversal.hpp
-    include/solver/parallel_dcfr.hpp
-    include/solver/solver.hpp
+    include/solver/generic/dcfr.hpp
+    include/solver/generic/exploit.hpp
+    include/solver/hunl/bucket/hunl_bucket_map.hpp
+    include/solver/hunl/bucket/hunl_bucket_terminal.hpp
+    include/solver/hunl/flat/hunl_flat_dcfr.hpp
+    include/solver/hunl/flat/hunl_flat_expected_value.hpp
+    include/solver/hunl/flat/hunl_flat_pipeline.hpp
+    include/solver/hunl/flat/hunl_flat_state.hpp
+    include/solver/hunl/hunl_leaf_evaluator.hpp
+    include/solver/hunl/sampled/hunl_sampled_config.hpp
+    include/solver/hunl/sampled/hunl_sampled_export.hpp
+    include/solver/hunl/sampled/hunl_sampled_profile.hpp
+    include/solver/hunl/sampled/hunl_sampled_range.hpp
+    include/solver/hunl/sampled/hunl_sampled_scheduler.hpp
+    include/solver/hunl/sampled/hunl_sampled_simd.hpp
+    include/solver/hunl/sampled/hunl_sampled_solver.hpp
+    include/solver/hunl/sampled/hunl_sampled_storage.hpp
+    include/solver/multiway/abstraction/multiway_action_abstraction.hpp
+    include/solver/multiway/blueprint/multiway_artifact.hpp
+    include/solver/multiway/blueprint/multiway_blueprint_config.hpp
+    include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp
+    include/solver/multiway/blueprint/multiway_blueprint_store.hpp
+    include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp
+    include/solver/multiway/abstraction/multiway_bucket_artifact.hpp
+    include/solver/multiway/abstraction/multiway_bucket_model.hpp
+    include/solver/multiway/engine/multiway_cfr.hpp
+    include/solver/multiway/blueprint/multiway_checkpoint.hpp
+    include/solver/multiway/continuation/multiway_continuation_policy.hpp
+    include/solver/multiway/continuation/multiway_continuation_policy_kind.hpp
+    include/solver/multiway/continuation/multiway_continuation_selector.hpp
+    include/solver/multiway/evaluation/multiway_evaluation.hpp
+    include/solver/multiway/blueprint/multiway_export.hpp
+    include/solver/multiway/abstraction/multiway_future_bucket.hpp
+    include/solver/multiway/continuation/multiway_leaf_evaluator.hpp
+    include/solver/multiway/engine/multiway_memory.hpp
+    include/solver/multiway/abstraction/multiway_model_identity.hpp
+    include/solver/multiway/abstraction/multiway_public_builder.hpp
+    include/solver/multiway/session/multiway_range_belief.hpp
+    include/solver/multiway/session/multiway_range_update.hpp
+    include/solver/multiway/resolver/multiway_resolver.hpp
+    include/solver/multiway/resolver/multiway_resolver_budget.hpp
+    include/solver/multiway/resolver/multiway_resolver_evaluation.hpp
+    include/solver/multiway/continuation/multiway_rollout_leaf.hpp
+    include/solver/multiway/session/multiway_decision_session.hpp
+    include/solver/multiway/abstraction/multiway_action_calibration.hpp
+    include/solver/multiway/abstraction/multiway_future_bucket_calibration.hpp
+    include/solver/multiway/continuation/multiway_continuation_calibration.hpp
+    include/solver/multiway/session/multiway_full_hand_session.hpp
+    include/solver/multiway/engine/multiway_scheduler.hpp
+    include/solver/multiway/session/multiway_search_profile.hpp
+    include/solver/multiway/session/multiway_search_session.hpp
+    include/solver/multiway/engine/multiway_solver.hpp
+    include/solver/multiway/abstraction/multiway_terminal_adapter.hpp
+    include/solver/multiway/engine/multiway_traversal.hpp
+    include/solver/generic/parallel_dcfr.hpp
+    include/solver/generic/solver.hpp
     include/util/abstraction.hpp
     include/util/aligned_allocator.hpp
     include/util/checked_numeric.hpp
@@ -120,17 +120,17 @@ set(TEXASSOLVER_COMPATIBILITY_HEADERS
     include/core/legacy_namespace_compat.hpp
 )
 set(TEXASSOLVER_STABLE_INTERNAL_HEADERS
-    include/solver/hunl_sampled_trajectory.hpp
-    include/solver/multiway_resolver_policy.hpp
+    include/solver/hunl/sampled/hunl_sampled_trajectory.hpp
+    include/solver/multiway/resolver/multiway_resolver_policy.hpp
 )
 set(TEXASSOLVER_RESEARCH_HEADERS
     include/preflop/preflop_rvr.hpp
-    include/solver/dcfr_vector.hpp
-    include/solver/hunl_flat_mccfr.hpp
-    include/solver/hunl_sampled_builder.hpp
-    include/solver/hunl_sampled_terminal.hpp
-    include/solver/hunl_sampled_traversal.hpp
-    include/solver/multiway_baseline.hpp
+    include/solver/generic/dcfr_vector.hpp
+    include/solver/hunl/flat/hunl_flat_mccfr.hpp
+    include/solver/hunl/sampled/hunl_sampled_builder.hpp
+    include/solver/hunl/sampled/hunl_sampled_terminal.hpp
+    include/solver/hunl/sampled/hunl_sampled_traversal.hpp
+    include/solver/multiway/evaluation/multiway_baseline.hpp
 )
 
 set(TEXASSOLVER_SOURCES
@@ -154,59 +154,59 @@ set(TEXASSOLVER_SOURCES
     src/games/multiway_terminal.cpp
     src/preflop/preflop.cpp
     src/preflop/preflop_equity.cpp
-    src/solver/exploit.cpp
-    src/solver/hunl_bucket_map.cpp
-    src/solver/hunl_bucket_terminal.cpp
-    src/solver/hunl_flat_dcfr.cpp
-    src/solver/hunl_flat_expected_value.cpp
-    src/solver/hunl_flat_pipeline.cpp
-    src/solver/hunl_flat_state.cpp
-    src/solver/hunl_sampled_config.cpp
-    src/solver/hunl_sampled_export.cpp
-    src/solver/hunl_sampled_profile.cpp
-    src/solver/hunl_sampled_range.cpp
-    src/solver/hunl_sampled_scheduler.cpp
-    src/solver/hunl_sampled_simd.cpp
-    src/solver/hunl_sampled_solver.cpp
-    src/solver/hunl_sampled_storage.cpp
-    src/solver/hunl_sampled_trajectory.cpp
-    src/solver/multiway_action_abstraction.cpp
-    src/solver/multiway_artifact.cpp
-    src/solver/multiway_blueprint_config.cpp
-    src/solver/multiway_blueprint_policy_provider.cpp
-    src/solver/multiway_blueprint_store.cpp
-    src/solver/multiway_blueprint_trainer.cpp
-    src/solver/multiway_bucket_artifact.cpp
-    src/solver/multiway_bucket_model.cpp
-    src/solver/multiway_cfr.cpp
-    src/solver/multiway_checkpoint.cpp
-    src/solver/multiway_continuation_policy.cpp
-    src/solver/multiway_continuation_selector.cpp
-    src/solver/multiway_evaluation.cpp
-    src/solver/multiway_export.cpp
-    src/solver/multiway_future_bucket.cpp
-    src/solver/multiway_memory.cpp
-    src/solver/multiway_model_identity.cpp
-    src/solver/multiway_public_builder.cpp
-    src/solver/multiway_range_belief.cpp
-    src/solver/multiway_range_update.cpp
-    src/solver/multiway_resolver.cpp
-    src/solver/multiway_resolver_budget.cpp
-    src/solver/multiway_resolver_evaluation.cpp
-    src/solver/multiway_resolver_policy.cpp
-    src/solver/multiway_rollout_leaf.cpp
-    src/solver/multiway_decision_session.cpp
-    src/solver/multiway_action_calibration.cpp
-    src/solver/multiway_future_bucket_calibration.cpp
-    src/solver/multiway_continuation_calibration.cpp
-    src/solver/multiway_full_hand_session.cpp
-    src/solver/multiway_scheduler.cpp
-    src/solver/multiway_search_session.cpp
-    src/solver/multiway_solver.cpp
-    src/solver/multiway_terminal_adapter.cpp
-    src/solver/multiway_traversal.cpp
-    src/solver/parallel_dcfr.cpp
-    src/solver/solver.cpp
+    src/solver/generic/exploit.cpp
+    src/solver/hunl/bucket/hunl_bucket_map.cpp
+    src/solver/hunl/bucket/hunl_bucket_terminal.cpp
+    src/solver/hunl/flat/hunl_flat_dcfr.cpp
+    src/solver/hunl/flat/hunl_flat_expected_value.cpp
+    src/solver/hunl/flat/hunl_flat_pipeline.cpp
+    src/solver/hunl/flat/hunl_flat_state.cpp
+    src/solver/hunl/sampled/hunl_sampled_config.cpp
+    src/solver/hunl/sampled/hunl_sampled_export.cpp
+    src/solver/hunl/sampled/hunl_sampled_profile.cpp
+    src/solver/hunl/sampled/hunl_sampled_range.cpp
+    src/solver/hunl/sampled/hunl_sampled_scheduler.cpp
+    src/solver/hunl/sampled/hunl_sampled_simd.cpp
+    src/solver/hunl/sampled/hunl_sampled_solver.cpp
+    src/solver/hunl/sampled/hunl_sampled_storage.cpp
+    src/solver/hunl/sampled/hunl_sampled_trajectory.cpp
+    src/solver/multiway/abstraction/multiway_action_abstraction.cpp
+    src/solver/multiway/blueprint/multiway_artifact.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_config.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_store.cpp
+    src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp
+    src/solver/multiway/abstraction/multiway_bucket_artifact.cpp
+    src/solver/multiway/abstraction/multiway_bucket_model.cpp
+    src/solver/multiway/engine/multiway_cfr.cpp
+    src/solver/multiway/blueprint/multiway_checkpoint.cpp
+    src/solver/multiway/continuation/multiway_continuation_policy.cpp
+    src/solver/multiway/continuation/multiway_continuation_selector.cpp
+    src/solver/multiway/evaluation/multiway_evaluation.cpp
+    src/solver/multiway/blueprint/multiway_export.cpp
+    src/solver/multiway/abstraction/multiway_future_bucket.cpp
+    src/solver/multiway/engine/multiway_memory.cpp
+    src/solver/multiway/abstraction/multiway_model_identity.cpp
+    src/solver/multiway/abstraction/multiway_public_builder.cpp
+    src/solver/multiway/session/multiway_range_belief.cpp
+    src/solver/multiway/session/multiway_range_update.cpp
+    src/solver/multiway/resolver/multiway_resolver.cpp
+    src/solver/multiway/resolver/multiway_resolver_budget.cpp
+    src/solver/multiway/resolver/multiway_resolver_evaluation.cpp
+    src/solver/multiway/resolver/multiway_resolver_policy.cpp
+    src/solver/multiway/continuation/multiway_rollout_leaf.cpp
+    src/solver/multiway/session/multiway_decision_session.cpp
+    src/solver/multiway/abstraction/multiway_action_calibration.cpp
+    src/solver/multiway/abstraction/multiway_future_bucket_calibration.cpp
+    src/solver/multiway/continuation/multiway_continuation_calibration.cpp
+    src/solver/multiway/session/multiway_full_hand_session.cpp
+    src/solver/multiway/engine/multiway_scheduler.cpp
+    src/solver/multiway/session/multiway_search_session.cpp
+    src/solver/multiway/engine/multiway_solver.cpp
+    src/solver/multiway/abstraction/multiway_terminal_adapter.cpp
+    src/solver/multiway/engine/multiway_traversal.cpp
+    src/solver/generic/parallel_dcfr.cpp
+    src/solver/generic/solver.cpp
 )
 
 set(TEXASSOLVER_PLATFORM_SOURCES
@@ -214,19 +214,19 @@ set(TEXASSOLVER_PLATFORM_SOURCES
     src/util/abstraction_stub.cpp
 )
 set(TEXASSOLVER_TEST_SUPPORT_SOURCES
-    src/solver/multiway_baseline.cpp
+    src/solver/multiway/evaluation/multiway_baseline.cpp
 )
 set(TEXASSOLVER_LEGACY_RESEARCH_SOURCES
     src/preflop/preflop_rvr.cpp
-    src/solver/dcfr_vector.cpp
+    src/solver/generic/dcfr_vector.cpp
 )
 set(TEXASSOLVER_FIXED_RESEARCH_SOURCES
-    src/solver/hunl_sampled_builder.cpp
-    src/solver/hunl_sampled_terminal.cpp
-    src/solver/hunl_sampled_traversal.cpp
+    src/solver/hunl/sampled/hunl_sampled_builder.cpp
+    src/solver/hunl/sampled/hunl_sampled_terminal.cpp
+    src/solver/hunl/sampled/hunl_sampled_traversal.cpp
 )
 set(TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES
-    src/solver/hunl_flat_mccfr.cpp
+    src/solver/hunl/flat/hunl_flat_mccfr.cpp
 )
 
 list(APPEND TEXASSOLVER_SOURCES

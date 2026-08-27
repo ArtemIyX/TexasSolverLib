@@ -2,8 +2,8 @@ if (NOT DEFINED SOURCE_DIR)
     message(FATAL_ERROR "SOURCE_DIR is required")
 endif()
 
-file(READ "${SOURCE_DIR}/src/solver/multiway_traversal.cpp" TRAVERSAL_SOURCE)
-file(READ "${SOURCE_DIR}/include/solver/multiway_public_builder.hpp" BUILDER_HEADER)
+file(READ "${SOURCE_DIR}/src/solver/multiway/engine/multiway_traversal.cpp" TRAVERSAL_SOURCE)
+file(READ "${SOURCE_DIR}/include/solver/multiway/abstraction/multiway_public_builder.hpp" BUILDER_HEADER)
 
 if (TRAVERSAL_SOURCE MATCHES "std::vector<MultiwayActionDescriptor> child_actions")
     message(FATAL_ERROR "multiway traversal still allocates a dynamic child action menu")

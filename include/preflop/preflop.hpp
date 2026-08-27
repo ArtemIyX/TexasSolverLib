@@ -5,7 +5,7 @@
 #include "core/types.hpp"
 #include "games/hunl.hpp"
 #include "preflop/preflop_equity.hpp"
-#include "solver/solver.hpp"
+#include "solver/generic/solver.hpp"
 
 namespace texas::preflop {
 

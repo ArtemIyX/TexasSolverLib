@@ -2,9 +2,9 @@ if (NOT DEFINED SOURCE_DIR)
     message(FATAL_ERROR "SOURCE_DIR is required")
 endif()
 
-file(READ "${SOURCE_DIR}/include/solver/multiway_resolver.hpp" RESOLVER_HEADER)
-file(READ "${SOURCE_DIR}/src/solver/multiway_resolver.cpp" RESOLVER_SOURCE)
-file(READ "${SOURCE_DIR}/include/solver/multiway_decision_session.hpp" SESSION_HEADER)
+file(READ "${SOURCE_DIR}/include/solver/multiway/resolver/multiway_resolver.hpp" RESOLVER_HEADER)
+file(READ "${SOURCE_DIR}/src/solver/multiway/resolver/multiway_resolver.cpp" RESOLVER_SOURCE)
+file(READ "${SOURCE_DIR}/include/solver/multiway/session/multiway_decision_session.hpp" SESSION_HEADER)
 
 if (RESOLVER_HEADER MATCHES "MultiwayRuntimeSession|begin_runtime_session")
     message(FATAL_ERROR "the retired runtime-session API remains public")

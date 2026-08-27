@@ -1,4 +1,4 @@
-#include "solver/multiway_full_hand_session.hpp"
+#include "solver/multiway/session/multiway_full_hand_session.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

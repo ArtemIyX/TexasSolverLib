@@ -1,4 +1,4 @@
-#include "solver/multiway_leaf_evaluator.hpp"
+#include "solver/multiway/continuation/multiway_leaf_evaluator.hpp"
 #include "test_harness.hpp"
 
 namespace {

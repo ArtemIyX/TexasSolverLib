@@ -1,6 +1,6 @@
 #include "games/multiway_rules.hpp"
-#include "solver/multiway_model_identity.hpp"
-#include "solver/multiway_resolver.hpp"
+#include "solver/multiway/abstraction/multiway_model_identity.hpp"
+#include "solver/multiway/resolver/multiway_resolver.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

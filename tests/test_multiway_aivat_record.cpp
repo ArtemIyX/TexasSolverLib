@@ -1,4 +1,4 @@
-#include "solver/multiway_evaluation.hpp"
+#include "solver/multiway/evaluation/multiway_evaluation.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

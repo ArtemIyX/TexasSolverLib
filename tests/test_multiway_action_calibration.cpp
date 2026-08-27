@@ -1,6 +1,6 @@
-#include "solver/multiway_action_calibration.hpp"
-#include "solver/multiway_action_abstraction.hpp"
-#include "solver/multiway_evaluation.hpp"
+#include "solver/multiway/abstraction/multiway_action_calibration.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
+#include "solver/multiway/evaluation/multiway_evaluation.hpp"
 #include "test_harness.hpp"
 
 namespace {

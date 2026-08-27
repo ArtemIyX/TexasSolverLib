@@ -1,4 +1,4 @@
-#include "solver/dcfr.hpp"
+#include "solver/generic/dcfr.hpp"
 #include "games/kuhn.hpp"
 #include "test_harness.hpp"
 

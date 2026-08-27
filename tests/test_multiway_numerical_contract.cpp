@@ -1,4 +1,4 @@
-#include "solver/multiway_cfr.hpp"
+#include "solver/multiway/engine/multiway_cfr.hpp"
 #include "test_harness.hpp"
 
 #include <cmath>

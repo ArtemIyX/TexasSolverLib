@@ -1,8 +1,8 @@
 #include <cstdlib>
 #include <exception>
-#include "solver/multiway_artifact.hpp"
-#include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_future_bucket.hpp"
+#include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/abstraction/multiway_future_bucket.hpp"
 
 #include <filesystem>
 #include <fstream>

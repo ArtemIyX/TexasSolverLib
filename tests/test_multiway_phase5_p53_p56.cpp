@@ -1,7 +1,7 @@
-#include "solver/multiway_action_abstraction.hpp"
-#include "solver/multiway_future_bucket.hpp"
-#include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_model_identity.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
+#include "solver/multiway/abstraction/multiway_future_bucket.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/abstraction/multiway_model_identity.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

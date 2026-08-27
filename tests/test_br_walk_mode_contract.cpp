@@ -1,5 +1,5 @@
 #include "games/hunl.hpp"
-#include "solver/exploit.hpp"
+#include "solver/generic/exploit.hpp"
 #include "test_harness.hpp"
 
 #include <cmath>

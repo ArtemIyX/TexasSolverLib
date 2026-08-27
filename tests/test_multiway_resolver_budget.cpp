@@ -1,4 +1,4 @@
-#include "solver/multiway_resolver_budget.hpp"
+#include "solver/multiway/resolver/multiway_resolver_budget.hpp"
 #include "test_harness.hpp"
 
 #include <chrono>

@@ -1,5 +1,5 @@
-#include "solver/multiway_blueprint_trainer.hpp"
-#include "solver/multiway_checkpoint.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
+#include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>

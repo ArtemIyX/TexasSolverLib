@@ -4,9 +4,9 @@
 // scheduler types must be included from their owning subsystem headers.
 #include "games/hunl_solver.hpp"
 #include "preflop/preflop.hpp"
-#include "solver/exploit.hpp"
-#include "solver/hunl_sampled_solver.hpp"
-#include "solver/solver.hpp"
+#include "solver/generic/exploit.hpp"
+#include "solver/hunl/sampled/hunl_sampled_solver.hpp"
+#include "solver/generic/solver.hpp"
 
 #include <array>
 #include <cstddef>

@@ -1,4 +1,4 @@
-#include "solver/hunl_sampled_simd.hpp"
+#include "solver/hunl/sampled/hunl_sampled_simd.hpp"
 #include "test_harness.hpp"
 
 #include <cmath>

@@ -1,5 +1,5 @@
-#include "solver/hunl_bucket_map.hpp"
-#include "solver/hunl_bucket_terminal.hpp"
+#include "solver/hunl/bucket/hunl_bucket_map.hpp"
+#include "solver/hunl/bucket/hunl_bucket_terminal.hpp"
 #include "games/hunl_flat_graph.hpp"
 #include "games/hunl.hpp"
 #include "test_abstraction_fixture.hpp"

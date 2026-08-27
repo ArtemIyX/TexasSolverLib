@@ -1,4 +1,4 @@
-#include "solver/multiway_continuation_selector.hpp"
+#include "solver/multiway/continuation/multiway_continuation_selector.hpp"
 #include "test_harness.hpp"
 
 TEST_CASE(multiway_fixed_continuation_selector_uses_only_the_public_information_set_key) {

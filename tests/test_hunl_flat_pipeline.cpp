@@ -1,5 +1,5 @@
-#include "solver/hunl_flat_dcfr.hpp"
-#include "solver/hunl_flat_pipeline.hpp"
+#include "solver/hunl/flat/hunl_flat_dcfr.hpp"
+#include "solver/hunl/flat/hunl_flat_pipeline.hpp"
 #include "test_harness.hpp"
 
 #include <array>

@@ -1,6 +1,6 @@
-#include "solver/multiway_bucket_artifact.hpp"
-#include "solver/multiway_blueprint_config.hpp"
-#include "solver/multiway_model_identity.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/abstraction/multiway_model_identity.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>
