@@ -110,21 +110,23 @@ TEST_CASE(multiway_stable_root_policy_cache_is_host_owned_and_menu_scoped) {
     std::vector<texas::MultiwayResolverActionProbability> stored;
     stored.reserve(menu.size());
     for (const auto& action : menu) stored.push_back({action, 1.0 / menu.size()});
-    cache->store(fixture.identity, fixture.root.id.value, stored);
+    cache->store(fixture.identity, fixture.root.id.value, 0, 17U, stored);
 
     std::vector<texas::MultiwayResolverActionProbability> loaded;
-    EXPECT_TRUE(cache->find(fixture.identity, fixture.root.id.value, menu, &loaded));
+    EXPECT_TRUE(cache->find(fixture.identity, fixture.root.id.value, 0, 17U, menu, &loaded));
     EXPECT_EQ(loaded.size(), stored.size());
     EXPECT_EQ(loaded.front().action, stored.front().action);
     EXPECT_EQ(loaded.front().probability, stored.front().probability);
     auto changed_menu = menu;
     changed_menu.front().target_street_contribution += 1;
-    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, changed_menu, &loaded));
+    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, 0, 17U, changed_menu, &loaded));
+    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, 1, 17U, menu, &loaded));
+    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, 0, 18U, menu, &loaded));
 
     auto incomplete = stored;
     incomplete.pop_back();
-    cache->store(fixture.identity, fixture.root.id.value, incomplete);
-    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, menu, &loaded));
+    cache->store(fixture.identity, fixture.root.id.value, 0, 17U, incomplete);
+    EXPECT_TRUE(!cache->find(fixture.identity, fixture.root.id.value, 0, 17U, menu, &loaded));
 }
 
 texas::MultiwayVerifiedBlueprintArtifact verified_root_artifact(const ResolverFixture& fixture) {
@@ -132,6 +134,8 @@ texas::MultiwayVerifiedBlueprintArtifact verified_root_artifact(const ResolverFi
     artifact.snapshot.identity = fixture.identity;
     artifact.snapshot.public_state = fixture.root.id;
     artifact.snapshot.infoset = {fixture.root.id, 0};
+    artifact.snapshot.bucket = fixture.buckets.lookup(
+        texas::Street::Flop, fixture.root.board, {24U, 31U});
     artifact.snapshot.trajectories = 1U;
     artifact.snapshot.training.trajectories = 1U;
     artifact.snapshot.actions = {{fixture.root.legal_actions.front(), 65535U}};
@@ -364,6 +368,42 @@ TEST_CASE(multiway_resolver_reports_static_stable_and_blueprint_fallback_provena
     EXPECT_TRUE(blueprint_fallback.diagnostics.used_blueprint_fallback);
 }
 
+TEST_CASE(multiway_resolver_blueprint_fallback_requires_complete_root_key) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    request.deadline = std::chrono::steady_clock::now() - std::chrono::milliseconds(1);
+    auto artifact = verified_root_artifact(fixture);
+    ++artifact.snapshot.bucket;
+    artifact.manifest.snapshot_hash =
+        texas::MultiwayBlueprintArtifacts::snapshot_hash(artifact.snapshot);
+    texas::MultiwayResolverConfig config;
+    config.buckets = &fixture.buckets;
+    config.verified_blueprint =
+        std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(artifact);
+
+    const auto result = texas::MultiwayResolver(config).resolve(request);
+
+    EXPECT_EQ(result.diagnostics.policy_provenance,
+        texas::MultiwayPolicyProvenance::StaticLegalFallback);
+}
+
+TEST_CASE(multiway_decision_session_preserves_nonzero_cyclic_seat_metadata) {
+    ResolverFixture fixture;
+    auto request = fixture.request();
+    add_complete_search_ranges(&request);
+    request.seat_order = {1, 2, 0};
+    request.next_street_first_seat = 1;
+    request.odd_chip_first_seat = 2;
+    auto config = search_config(fixture);
+    texas::MultiwayResolver resolver(config);
+
+    const auto session = resolver.begin_decision_session(request);
+    const auto& root = session->round().coordinator().root();
+    EXPECT_EQ(root.seat_order, request.seat_order);
+    EXPECT_EQ(root.next_street_first_seat, 1);
+    EXPECT_EQ(root.odd_chip_first_seat, 2);
+}
+
 TEST_CASE(multiway_resolver_default_mode_runs_a_clean_root_search_when_configured) {
     ResolverFixture fixture;
     auto request = fixture.request();
@@ -428,6 +468,32 @@ TEST_CASE(multiway_resolver_search_mode_falls_back_without_complete_live_ranges)
         texas::MultiwayResolverSearchEligibility::IncompleteRanges);
     EXPECT_TRUE(result.diagnostics.used_fallback);
     EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_search_allows_an_omitted_folded_seat_range) {
+    ResolverFixture fixture;
+    auto state = texas::MultiwayState::from_snapshot(fixture.root.betting);
+    const texas::MultiwayActionAbstraction abstraction;
+    const auto opening_menu = abstraction.make_legal_actions(state.snapshot());
+    const auto bet = std::find_if(opening_menu.begin(), opening_menu.end(), [](const auto& action) {
+        return action.action == texas::MultiwayAction::Bet;
+    });
+    EXPECT_TRUE(bet != opening_menu.end());
+    state = state.apply(bet->action, bet->target_street_contribution);
+    state = state.apply(texas::MultiwayAction::Fold, 0);
+    auto request = fixture.request();
+    request.public_state = texas::MultiwayPublicBuilder::make_root(
+        state.snapshot(), fixture.root.board, abstraction.make_legal_actions(state.snapshot()));
+    request.hero_seat = 2;
+    request.hero_cards = {24U, 31U};
+    request.hero_range = {{{24U, 31U}, 1.0}};
+    request.opponent_ranges = {{0, {{{40U, 41U}, 1.0}}}};
+    texas::MultiwayResolver resolver(search_config(fixture));
+
+    const auto result = resolver.resolve(request);
+
+    EXPECT_EQ(result.diagnostics.search_eligibility,
+        texas::MultiwayResolverSearchEligibility::Eligible);
 }
 
 TEST_CASE(multiway_resolver_active_search_respects_controlled_seat_eligibility) {

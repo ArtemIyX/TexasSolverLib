@@ -335,17 +335,20 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     }
     const MultiwayBucketTable* table_ptr = nullptr;
     std::uint32_t bucket = 0U;
+    std::uint32_t blueprint_bucket = 0U;
     {
         MultiwaySearchProfileScope profile_scope(
             context.profile, MultiwaySearchProfileStage::RowLookup);
         table_ptr = &buckets_->table(state.betting.street, state.board);
         const auto same_root_street = state.betting.street == root_->public_state.betting.street;
+        const auto sampled_hole = context.terminal->sampled_hole(*context.deal, actor);
+        blueprint_bucket = table_ptr->lookup(sampled_hole);
         bucket = root_->root_uses_exact_private_hand && same_root_street
             ? static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(
-                context.terminal->sampled_hole(*context.deal, actor)))
+                sampled_hole))
             : (state.id == root_->public_state.id
                 ? root_->root_bucket
-                : table_ptr->lookup(context.terminal->sampled_hole(*context.deal, actor)));
+                : blueprint_bucket);
     }
     const auto& table = *table_ptr;
     const MultiwayInfosetId infoset = {state.id, actor};
@@ -365,7 +368,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     const auto lookup = actor == context.traverser || blueprint_policy_ == nullptr
         ? MultiwayBlueprintLookupStatus::Missing
         : blueprint_policy_->strategy_into(
-            infoset, bucket, state.legal_actions.data(), action_count, strategy.data());
+            infoset, blueprint_bucket, state.legal_actions.data(), action_count, strategy.data());
     if (lookup != MultiwayBlueprintLookupStatus::Hit) {
         MultiwaySearchProfileScope profile_scope(
             context.profile, MultiwaySearchProfileStage::RegretMatching);
@@ -644,6 +647,7 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
         std::uint64_t first_trajectory_id = 0U;
         std::uint64_t seed = 0U;
         double iteration_weight = 1.0;
+        auto deadline = std::chrono::steady_clock::time_point::max();
         {
             std::unique_lock<std::mutex> lock(pool_mutex_);
             work_cv_.wait(lock, [this, observed_generation] {
@@ -655,6 +659,7 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
             first_trajectory_id = active_first_trajectory_id_;
             seed = active_seed_;
             iteration_weight = active_iteration_weight_;
+            deadline = active_deadline_;
         }
 
         try {
@@ -664,7 +669,11 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                 for (auto local_id = batch.trajectories.begin;
                      local_id < batch.trajectories.end;
                      ++local_id) {
-                    if (cancelled_.load(std::memory_order_acquire)) break;
+                    if (cancelled_.load(std::memory_order_acquire) ||
+                        std::chrono::steady_clock::now() >= deadline) {
+                        cancelled_.store(true, std::memory_order_release);
+                        break;
+                    }
                     const auto trajectory_id = first_trajectory_id + local_id;
                     ++scratch.attempted;
                     if (traversal_.run(
@@ -701,7 +710,8 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     std::uint64_t first_trajectory_id,
     std::uint64_t trajectory_count,
     std::uint64_t seed,
-    double iteration_weight) {
+    double iteration_weight,
+    std::chrono::steady_clock::time_point deadline) {
     TEXASSOLVER_PROFILE_SCOPE("multiway.traversal.root_batch");
     if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
         throw std::invalid_argument("multiway batch iteration weight must be finite and positive");
@@ -725,6 +735,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         active_first_trajectory_id_ = first_trajectory_id;
         active_seed_ = seed;
         active_iteration_weight_ = iteration_weight;
+        active_deadline_ = deadline;
         worker_error_ = nullptr;
         cancelled_.store(false, std::memory_order_release);
     }
@@ -756,6 +767,10 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     }
     if (result.minimum_worker_trajectories == std::numeric_limits<std::uint64_t>::max()) {
         result.minimum_worker_trajectories = 0U;
+    }
+    if (cancelled_.load(std::memory_order_acquire)) {
+        result.profile = batch_profile.snapshot();
+        return result;
     }
     {
         MultiwaySearchProfileScope profile_scope(

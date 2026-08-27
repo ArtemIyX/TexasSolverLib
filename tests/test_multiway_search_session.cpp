@@ -472,6 +472,43 @@ TEST_CASE(multiway_search_session_exports_and_freezes_only_actual_hero_hand_poli
     EXPECT_TRUE(!session.export_hero_policy(0, actual).actual_hand_frozen);
 }
 
+TEST_CASE(multiway_search_session_exact_export_uses_each_combo_row) {
+    auto root = make_root(texas::core::Street::Flop);
+    const auto second_hole = texas::core::CanonicalComboCards{card(14U, 1U), card(12U, 1U)};
+    root.private_ranges.ranges[0].push_back({second_hole, 1.0});
+    root.root_uses_exact_private_hand = true;
+    const auto first_combo = combo_id(root.private_ranges.ranges[0][0].hole);
+    const auto second_combo = combo_id(second_hole);
+    root.root_bucket = static_cast<std::uint32_t>(
+        texas::solver::multiway::MultiwayBucketTable::hole_index(
+            root.private_ranges.ranges[0][0].hole));
+    auto solver_limits = limits();
+    solver_limits.max_sparse_values = 8U * texas::MULTIWAY_HOLE_COMBINATION_COUNT;
+    texas::solver::multiway::MultiwayCFRConfig cfr;
+    cfr.player_count = 2U;
+    const texas::solver::multiway::MultiwaySolveRequest request(root, cfr, solver_limits);
+    const auto buckets = make_buckets(root);
+    texas::solver::multiway::MultiwaySearchSession session(request, {&buckets}, 1U);
+    const auto infoset = root.root_infoset;
+    session.coordinator().admit_infoset_row({
+        infoset, texas::MULTIWAY_HOLE_COMBINATION_COUNT,
+        static_cast<std::uint8_t>(root.public_state.legal_actions.size())});
+    texas::solver::multiway::MultiwayWorkerDeltaStream stream(0U, 2U);
+    const auto first_bucket = static_cast<std::uint32_t>(
+        texas::solver::multiway::MultiwayBucketTable::hole_index(root.private_ranges.ranges[0][0].hole));
+    const auto second_bucket = static_cast<std::uint32_t>(
+        texas::solver::multiway::MultiwayBucketTable::hole_index(second_hole));
+    EXPECT_TRUE(stream.try_append({infoset, first_bucket, 0U, 0.0, 1.0, 1U}));
+    EXPECT_TRUE(stream.try_append({infoset, second_bucket, 1U, 0.0, 1.0, 2U}));
+    stream.sort_fixed_order();
+    session.coordinator().merge_worker_streams({stream});
+
+    const auto exported = session.export_hero_policy(0, first_combo);
+
+    EXPECT_EQ(exported.rows.size(), std::size_t{2});
+    EXPECT_TRUE(exported.rows[0].actions[0].probability != exported.rows[1].actions[0].probability);
+}
+
 TEST_CASE(multiway_search_session_carries_posteriors_into_reroots) {
     const auto root = make_root(texas::core::Street::Flop);
     const auto buckets = make_buckets(root);

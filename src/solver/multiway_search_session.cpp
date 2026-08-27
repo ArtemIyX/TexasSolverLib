@@ -190,7 +190,9 @@ MultiwaySearchSessionHeroPolicy MultiwaySearchSession::export_hero_policy(
         const auto combo = static_cast<CanonicalComboId>(value);
         if (!actual_view.legal(combo) || actual_view.weight(combo) <= 0.0) continue;
         std::uint32_t bucket = root.root_bucket;
-        if (root.public_state.betting.street != Street::Preflop &&
+        if (root.root_uses_exact_private_hand) {
+            bucket = static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(combos.cards(combo)));
+        } else if (root.public_state.betting.street != Street::Preflop &&
             !root.root_uses_exact_private_hand) {
             bucket = buckets_->table(root.public_state.betting.street, root.public_state.board)
                 .lookup(combos.cards(combo));

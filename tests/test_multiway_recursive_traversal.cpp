@@ -8,6 +8,7 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -395,6 +396,18 @@ TEST_CASE(multiway_root_batch_runner_partitions_workers_and_merges_in_fixed_orde
     EXPECT_EQ(
         fixture.coordinator.diagnostics().worker_delta_entries_merged,
         result.delta_entries_merged);
+}
+
+TEST_CASE(multiway_root_batch_runner_discards_a_deadline_interrupted_batch) {
+    ParallelRunnerFixture fixture(2U);
+    const auto before = fixture.coordinator.diagnostics().worker_delta_entries_merged;
+
+    const auto result = fixture.runner.run(
+        0U, 64U, 0x5eedU, 1.0,
+        std::chrono::steady_clock::now() - std::chrono::milliseconds(1));
+
+    EXPECT_TRUE(!result.clean);
+    EXPECT_EQ(fixture.coordinator.diagnostics().worker_delta_entries_merged, before);
 }
 
 TEST_CASE(multiway_root_batch_runner_is_deterministic_across_worker_partitions) {

@@ -240,6 +240,8 @@ TEST_CASE(multiway_p84_evaluation_adapter_selects_deterministic_request_local_ca
     blueprint.identity = fixture.identity;
     blueprint.public_state = fixture.root.id;
     blueprint.infoset = {fixture.root.id, 0};
+    blueprint.bucket = fixture.buckets.lookup(
+        texas::Street::Flop, fixture.root.board, {24U, 31U});
     blueprint.trajectories = 1U;
     blueprint.training.trajectories = 1U;
     blueprint.actions = {{fixture.root.legal_actions.front(), 65535U}};

@@ -4,6 +4,37 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## Pluribus audit round 5 remediation
+
+**Status:** Complete
+**Completed:** 2026-08-27
+
+- Fixed exact-hand range export and separated exact solver row ids from abstract blueprint buckets.
+- Bound blueprint and stable-root fallbacks to complete public, seat, bucket, and private-hand keys.
+- Preserved resolver seat order and odd-chip metadata, allowed folded-seat search, and discarded deadline-interrupted batches before merge.
+- Added focused regression coverage for the corrected contracts.
+
+### Files
+
+- `include/solver/multiway_resolver.hpp`
+- `include/solver/multiway_resolver_budget.hpp`
+- `include/solver/multiway_traversal.hpp`
+- `src/solver/multiway_resolver.cpp`
+- `src/solver/multiway_search_session.cpp`
+- `src/solver/multiway_traversal.cpp`
+- `tests/test_multiway_p8_differential.cpp`
+- `tests/test_multiway_recursive_traversal.cpp`
+- `tests/test_multiway_resolver.cpp`
+- `tests/test_multiway_search_session.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all 93 tests.
+
+### Limitations
+
+- None identified.
+
 ## Pluribus audit round 2 remediation
 
 **Status:** Complete

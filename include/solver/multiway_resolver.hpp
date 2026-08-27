@@ -63,6 +63,10 @@ struct MultiwayResolverRequest {
     // range, but do not implicitly create a singleton range.
     std::vector<MultiwayWeightedHole> hero_range;
     std::vector<MultiwayResolverSeatRange> opponent_ranges;
+    // Canonical cyclic seat order. Empty preserves the legacy ascending order.
+    std::vector<PlayerId> seat_order;
+    PlayerId next_street_first_seat = -1;
+    PlayerId odd_chip_first_seat = -1;
     std::chrono::steady_clock::time_point deadline{};
     std::uint64_t sampling_seed = 1;
 };
@@ -196,18 +200,24 @@ public:
     [[nodiscard]] bool find(
         const MultiwayModelIdentity& identity,
         std::uint64_t public_state_id,
+        PlayerId hero_seat,
+        std::uint32_t exact_hand,
         const std::vector<MultiwayActionDescriptor>& menu,
         std::vector<MultiwayResolverActionProbability>* policy) const;
 
     void store(
         const MultiwayModelIdentity& identity,
         std::uint64_t public_state_id,
+        PlayerId hero_seat,
+        std::uint32_t exact_hand,
         std::vector<MultiwayResolverActionProbability> policy);
 
 private:
     struct Entry {
         MultiwayModelIdentity identity{};
         std::uint64_t public_state_id = 0U;
+        PlayerId hero_seat = -1;
+        std::uint32_t exact_hand = 0U;
         std::vector<MultiwayResolverActionProbability> policy;
     };
 

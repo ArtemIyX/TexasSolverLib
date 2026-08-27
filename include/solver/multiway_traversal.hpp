@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <exception>
 #include <mutex>
@@ -135,7 +136,9 @@ public:
         std::uint64_t first_trajectory_id,
         std::uint64_t trajectory_count,
         std::uint64_t seed,
-        double iteration_weight = 1.0);
+        double iteration_weight = 1.0,
+        std::chrono::steady_clock::time_point deadline =
+            std::chrono::steady_clock::time_point::max());
 
 private:
     void worker_loop(std::size_t worker_index);
@@ -182,6 +185,8 @@ private:
     std::uint64_t active_first_trajectory_id_ = 0U;
     std::uint64_t active_seed_ = 0U;
     double active_iteration_weight_ = 1.0;
+    std::chrono::steady_clock::time_point active_deadline_ =
+        std::chrono::steady_clock::time_point::max();
     std::atomic<bool> cancelled_{false};
     std::exception_ptr worker_error_;
 };

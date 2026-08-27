@@ -44,6 +44,9 @@ public:
     void cancel() noexcept { cancelled_ = true; }
 
     [[nodiscard]] bool deadline_reached() const noexcept;
+    [[nodiscard]] std::chrono::steady_clock::time_point deadline() const noexcept {
+        return internal_deadline_;
+    }
     [[nodiscard]] bool deadline_expired() const noexcept { return deadline_expired_; }
     [[nodiscard]] bool cancelled() const noexcept { return cancelled_; }
     [[nodiscard]] std::uint64_t clean_batches() const noexcept { return clean_batches_; }

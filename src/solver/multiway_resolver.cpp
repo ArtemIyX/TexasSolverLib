@@ -153,9 +153,14 @@ bool same_menu(
 bool apply_blueprint_policy(
     const MultiwayBlueprintSnapshot* blueprint,
     const MultiwayModelIdentity& identity,
+    MultiwayPublicStateId public_state,
+    MultiwayInfosetId infoset,
+    std::uint32_t bucket,
     const std::vector<MultiwayActionDescriptor>& menu,
     std::vector<MultiwayResolverActionProbability>* policy) {
-    if (blueprint == nullptr || blueprint->identity != identity) return false;
+    if (blueprint == nullptr || blueprint->identity != identity ||
+        blueprint->public_state != public_state || blueprint->infoset != infoset ||
+        blueprint->bucket != bucket) return false;
     blueprint->validate();
     const auto fallback = static_policy(menu);
     std::vector<double> blueprint_probability(menu.size(), 0.0);
@@ -185,10 +190,13 @@ bool apply_blueprint_policy(
 bool try_apply_blueprint_policy(
     const MultiwayBlueprintSnapshot* blueprint,
     const MultiwayModelIdentity& identity,
+    MultiwayPublicStateId public_state,
+    MultiwayInfosetId infoset,
+    std::uint32_t bucket,
     const std::vector<MultiwayActionDescriptor>& menu,
     std::vector<MultiwayResolverActionProbability>* policy) noexcept {
     try {
-        return apply_blueprint_policy(blueprint, identity, menu, policy);
+        return apply_blueprint_policy(blueprint, identity, public_state, infoset, bucket, menu, policy);
     } catch (const std::exception&) {
         policy->clear();
         return false;
@@ -328,8 +336,9 @@ MultiwayResolverSearchEligibility search_eligibility(
     }
     for (std::size_t seat = 0U; seat < seat_count; ++seat) {
         if (static_cast<PlayerId>(seat) == request.hero_seat) continue;
-        if (state.folded()[seat]) return MultiwayResolverSearchEligibility::FoldedSeat;
-        if (!has_range[seat]) return MultiwayResolverSearchEligibility::IncompleteRanges;
+        if (!state.folded()[seat] && !has_range[seat]) {
+            return MultiwayResolverSearchEligibility::IncompleteRanges;
+        }
     }
     return MultiwayResolverSearchEligibility::Eligible;
 }
@@ -353,7 +362,7 @@ bool make_search_root(
     }
     for (std::size_t seat = 0U; seat < seat_count; ++seat) {
         if (static_cast<PlayerId>(seat) != request.hero_seat &&
-            (state.folded()[seat] || ranges[seat] == nullptr)) {
+            (!state.folded()[seat] && ranges[seat] == nullptr)) {
             return false;
         }
     }
@@ -366,20 +375,32 @@ bool make_search_root(
     root->root_bucket = static_cast<std::uint32_t>(
         MultiwayBucketTable::hole_index(request.hero_cards));
     root->root_uses_exact_private_hand = true;
-    root->seat_order.clear();
-    root->seat_order.reserve(seat_count);
-    for (std::size_t seat = 0U; seat < seat_count; ++seat) {
-        root->seat_order.push_back(static_cast<PlayerId>(seat));
+    root->seat_order = request.seat_order;
+    if (root->seat_order.empty()) {
+        root->seat_order.reserve(seat_count);
+        for (std::size_t seat = 0U; seat < seat_count; ++seat) {
+            root->seat_order.push_back(static_cast<PlayerId>(seat));
+        }
     }
-    root->next_street_first_seat = 0;
-    root->odd_chip_first_seat = 0;
+    root->next_street_first_seat = request.next_street_first_seat < 0
+        ? root->seat_order.front() : request.next_street_first_seat;
+    root->odd_chip_first_seat = request.odd_chip_first_seat < 0
+        ? root->seat_order.front() : request.odd_chip_first_seat;
     root->private_ranges.board = board;
     root->private_ranges.ranges.assign(seat_count, {});
     for (std::size_t seat = 0U; seat < seat_count; ++seat) {
         if (static_cast<PlayerId>(seat) == request.hero_seat) {
             root->private_ranges.ranges[seat] = request.hero_range;
-        } else {
+        } else if (ranges[seat] != nullptr) {
             root->private_ranges.ranges[seat] = ranges[seat]->hands;
+        } else {
+            auto& folded_range = root->private_ranges.ranges[seat];
+            for (std::uint8_t first = 0U; first < 52U; ++first) {
+                if (contains_card(board, first)) continue;
+                for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
+                    if (!contains_card(board, second)) folded_range.push_back({{first, second}, 1.0});
+                }
+            }
         }
     }
     root->action_abstraction_version = request.blueprint_identity.action_abstraction_hash;
@@ -550,7 +571,7 @@ RuntimeSearchOutcome run_search(
             const auto batch_first_trajectory = first_trajectory;
             const auto batch_result = runner.run(
                 batch_first_trajectory, config.runtime_limits.solver.trajectories_per_batch,
-                request.sampling_seed ^ public_state_id);
+                request.sampling_seed ^ public_state_id, 1.0, budget.deadline());
             search_profile.merge(batch_result.profile);
             first_trajectory += batch_result.trajectories_attempted;
             if (!budget.accept_clean_batch(
@@ -657,11 +678,14 @@ void MultiwayRuntimeSearchLimits::validate() const {
 bool MultiwayStableRootPolicyCache::find(
     const MultiwayModelIdentity& identity,
     std::uint64_t public_state_id,
+    PlayerId hero_seat,
+    std::uint32_t exact_hand,
     const std::vector<MultiwayActionDescriptor>& menu,
     std::vector<MultiwayResolverActionProbability>* policy) const {
     if (policy == nullptr) return false;
     std::lock_guard<std::mutex> lock(mutex_);
     if (entry_.identity != identity || entry_.public_state_id != public_state_id ||
+        entry_.hero_seat != hero_seat || entry_.exact_hand != exact_hand ||
         entry_.policy.size() != menu.size()) {
         return false;
     }
@@ -675,10 +699,14 @@ bool MultiwayStableRootPolicyCache::find(
 void MultiwayStableRootPolicyCache::store(
     const MultiwayModelIdentity& identity,
     std::uint64_t public_state_id,
+    PlayerId hero_seat,
+    std::uint32_t exact_hand,
     std::vector<MultiwayResolverActionProbability> policy) {
     std::lock_guard<std::mutex> lock(mutex_);
     entry_.identity = identity;
     entry_.public_state_id = public_state_id;
+    entry_.hero_seat = hero_seat;
+    entry_.exact_hand = exact_hand;
     entry_.policy = std::move(policy);
 }
 
@@ -841,12 +869,15 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
             result.diagnostics.status = status;
             if (config_.stable_root_cache != nullptr &&
                 config_.stable_root_cache->find(
-                    request.blueprint_identity, reconstructed_id, menu, &result.policy)) {
+                    request.blueprint_identity, reconstructed_id, request.hero_seat,
+                    static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)),
+                    menu, &result.policy)) {
                 set_policy_provenance(
                     &result.diagnostics, MultiwayPolicyProvenance::StableRootFallback);
             }
             if (result.policy.empty() && try_apply_blueprint_policy(
-                    blueprint, request.blueprint_identity, menu, &result.policy)) {
+                    blueprint, request.blueprint_identity, {reconstructed_id},
+                    {{reconstructed_id}, request.hero_seat}, bucket, menu, &result.policy)) {
                 set_policy_provenance(
                     &result.diagnostics, MultiwayPolicyProvenance::BlueprintFallback);
             }
@@ -931,7 +962,9 @@ MultiwayResolverResult MultiwayResolver::resolve(const MultiwayResolverRequest& 
                 sample_policy(&result, request.sampling_seed, reconstructed_id);
                 if (config_.stable_root_cache != nullptr) {
                     config_.stable_root_cache->store(
-                        request.blueprint_identity, reconstructed_id, result.policy);
+                        request.blueprint_identity, reconstructed_id, request.hero_seat,
+                        static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(request.hero_cards)),
+                        result.policy);
                 }
                 return result;
             }

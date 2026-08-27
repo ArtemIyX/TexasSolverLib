@@ -268,6 +268,17 @@ endfunction()
 
 texassolver_verify_source_classification()
 
+function(texassolver_configure_internal_target target)
+    target_include_directories(${target}
+        PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+    target_compile_features(${target} PUBLIC cxx_std_17)
+endfunction()
+
+function(texassolver_configure_example_target target)
+    target_include_directories(${target}
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+endfunction()
+
 if (WIN32)
     list(APPEND TEXASSOLVER_SOURCES src/util/abstraction.cpp)
 else()
@@ -303,10 +314,11 @@ unset(_texassolver_evaluator_options)
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
 
-target_sources(texas PRIVATE ${TEXASSOLVER_SOURCES})
-target_sources(texas PRIVATE ${TEXASSOLVER_PUBLIC_HEADERS})
-target_link_libraries(texas PRIVATE pheval)
-target_link_libraries(texas PRIVATE Threads::Threads)
+target_sources(texas PRIVATE
+    ${TEXASSOLVER_SOURCES}
+    ${TEXASSOLVER_PUBLIC_HEADERS}
+)
+target_link_libraries(texas PRIVATE pheval Threads::Threads)
 if (WIN32)
     target_link_libraries(texas PRIVATE Cabinet)
 endif()
@@ -329,11 +341,7 @@ if (TEXASSOLVER_BUILD_LEGACY_RESEARCH)
         ${TEXASSOLVER_LEGACY_RESEARCH_SOURCES}
     )
     add_library(TexasSolver::legacy_vector ALIAS texas_legacy_vector)
-    target_include_directories(texas_legacy_vector
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    )
-    target_compile_features(texas_legacy_vector PUBLIC cxx_std_17)
+    texassolver_configure_internal_target(texas_legacy_vector)
     target_link_libraries(texas_legacy_vector PUBLIC texas)
 endif()
 
@@ -342,11 +350,7 @@ if (TEXASSOLVER_BUILD_TESTS OR TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
         ${TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES}
     )
     add_library(TexasSolver::hunl_flat_mccfr_research ALIAS texas_hunl_flat_mccfr_research)
-    target_include_directories(texas_hunl_flat_mccfr_research
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    )
-    target_compile_features(texas_hunl_flat_mccfr_research PUBLIC cxx_std_17)
+    texassolver_configure_internal_target(texas_hunl_flat_mccfr_research)
     target_link_libraries(texas_hunl_flat_mccfr_research PUBLIC texas)
 endif()
 
@@ -354,11 +358,7 @@ if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
     add_library(texas_hunl_fixed_research STATIC
         ${TEXASSOLVER_FIXED_RESEARCH_SOURCES}
     )
-    target_include_directories(texas_hunl_fixed_research
-        PUBLIC
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    )
-    target_compile_features(texas_hunl_fixed_research PUBLIC cxx_std_17)
+    texassolver_configure_internal_target(texas_hunl_fixed_research)
     target_link_libraries(texas_hunl_fixed_research PUBLIC texas)
     add_library(TexasSolver::hunl_fixed_research ALIAS texas_hunl_fixed_research)
 endif()
@@ -420,7 +420,7 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
         examples/solve_kuhn.cpp
     )
     target_link_libraries(texas_solver_example PRIVATE texas)
-    target_include_directories(texas_solver_example PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    texassolver_configure_example_target(texas_solver_example)
 
     if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
         add_executable(texas_solver_hunl_mccfr_postflop
@@ -442,24 +442,33 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
             examples/benchmarks/main.cpp
         )
         target_link_libraries(texas_solver_benchmark PRIVATE texas)
-        target_include_directories(texas_solver_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        texassolver_configure_example_target(texas_solver_benchmark)
 
         add_executable(texas_solver_flat_scheduler_benchmark
             examples/benchmarks/flat_scheduler_main.cpp
         )
         target_link_libraries(texas_solver_flat_scheduler_benchmark PRIVATE texas)
-        target_include_directories(texas_solver_flat_scheduler_benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        texassolver_configure_example_target(texas_solver_flat_scheduler_benchmark)
 
         add_executable(texas_solver_hunl_backend_compare
             examples/benchmarks/hunl_backend_compare_main.cpp
         )
         target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
-        target_include_directories(texas_solver_hunl_backend_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        texassolver_configure_example_target(texas_solver_hunl_backend_compare)
     endif()
 
 endif()
 
 if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
+    set(TEXASSOLVER_HEAVY_TESTS
+        test_hunl_flat_dcfr
+        test_ranges_threading
+        test_solver_exploitability_contract
+        test_parallel_dcfr
+        test_hunl_bucket_model
+        test_hunl_flat_graph
+    )
+
     file(GLOB TEXASSOLVER_TEST_SOURCES CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.cpp
     )
@@ -476,6 +485,10 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         endif()
         if (test_name STREQUAL "test_hunl_sampled_solver" AND
             NOT TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
+            continue()
+        endif()
+        if (NOT TEXASSOLVER_BUILD_HEAVY_TESTS AND
+            test_name IN_LIST TEXASSOLVER_HEAVY_TESTS)
             continue()
         endif()
 
