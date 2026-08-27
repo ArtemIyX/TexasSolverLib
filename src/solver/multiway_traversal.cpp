@@ -291,15 +291,27 @@ Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
         }
         value += mixture[index] * values[index];
     }
+    if (request.continuation_actor != context.traverser) return value;
+    const auto sampling_reach = context.private_sampling_reach * context.public_sampling_reach;
+    Probability counterfactual_reach = context.private_chance_reach * context.public_chance_reach;
+    for (std::size_t player = 0U; player < context.player_count; ++player) {
+        if (static_cast<PlayerId>(player) != context.traverser) {
+            counterfactual_reach *= context.player_reaches[player];
+        }
+    }
+    const auto importance_weight = counterfactual_reach / sampling_reach;
+    if (!std::isfinite(importance_weight) || importance_weight < 0.0) {
+        throw std::overflow_error("multiway continuation importance weight is non-finite");
+    }
     if (context.continuation_stream != nullptr) {
         if (!context.continuation_stream->try_append({
                 continuation_key, mixture, values, context.trajectory_id,
-                context.continuation_sequence++})) {
+                 context.continuation_sequence++, importance_weight})) {
             context.accepted = false;
             return 0.0;
         }
     } else {
-        continuation_selector_->update_regrets(continuation_key, mixture, values);
+        continuation_selector_->update_regrets_weighted(continuation_key, mixture, values, importance_weight);
     }
     if (!std::isfinite(value)) {
         throw std::logic_error("multiway leaf evaluator returned a non-finite value");
@@ -557,6 +569,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
             profile, MultiwaySearchProfileStage::PrivateDealSampling);
         return terminal_.sample_private_deal(seed);
     }();
+    if (!deal.valid()) return false;
     const auto sampled_reach = terminal_.sampled_reach(deal);
     TraversalContext context;
     context.terminal = &terminal_;

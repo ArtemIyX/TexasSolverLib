@@ -113,6 +113,16 @@ void MultiwayFixedContinuationSelector::update_regrets(
     const MultiwayContinuationSelectionKey& key,
     const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& mixture,
     const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& values) const {
+    update_regrets_weighted(key, mixture, values, 1.0);
+}
+
+void MultiwayFixedContinuationSelector::update_regrets_weighted(
+    const MultiwayContinuationSelectionKey& key,
+    const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& mixture,
+    const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& values,
+    const double importance_weight) const {
+    if (!std::isfinite(importance_weight) || importance_weight < 0.0)
+        throw std::invalid_argument("multiway continuation importance weight is invalid");
     if (!key.valid()) throw std::invalid_argument("multiway continuation row key is invalid");
     double mixture_total = 0.0;
     for (const auto probability : mixture) {
@@ -136,7 +146,7 @@ void MultiwayFixedContinuationSelector::update_regrets(
     });
     auto& row = found == rows_.end() ? rows_.emplace_back(Row{key, {}}) : *found;
     for (std::size_t index = 0U; index < values.size(); ++index) {
-        const auto next = row.regrets[index] + values[index] - node_value;
+        const auto next = row.regrets[index] + (values[index] - node_value) * importance_weight;
         if (!std::isfinite(next)) throw std::overflow_error("multiway continuation regret is non-finite");
         row.regrets[index] = next;
     }
@@ -175,7 +185,8 @@ void MultiwayFixedContinuationSelector::merge_worker_streams(
     std::sort(ordered.begin(), ordered.end(), [](const auto* left, const auto* right) {
         return delta_less(*left, *right);
     });
-    for (const auto* delta : ordered) update_regrets(delta->key, delta->mixture, delta->values);
+    for (const auto* delta : ordered) update_regrets_weighted(
+        delta->key, delta->mixture, delta->values, delta->importance_weight);
 }
 
 }  // namespace texas::solver::multiway

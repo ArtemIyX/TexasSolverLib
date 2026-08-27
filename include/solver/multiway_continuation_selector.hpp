@@ -29,6 +29,7 @@ struct MultiwayContinuationDelta {
     std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> values{};
     std::uint64_t trajectory_id = 0U;
     std::uint32_t sequence = 0U;
+    double importance_weight = 1.0;
 };
 
 class MultiwayContinuationDeltaStream {
@@ -72,6 +73,11 @@ public:
         const MultiwayContinuationSelectionKey& key,
         const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& mixture,
         const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& values) const;
+    void update_regrets_weighted(
+        const MultiwayContinuationSelectionKey& key,
+        const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& mixture,
+        const std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>& values,
+        double importance_weight) const;
 
     // Installs the regret row for one abstract continuation information set.
     // Rows are request-owned and remain private-card independent.
