@@ -1,4 +1,5 @@
 #include "solver/multiway_memory.hpp"
+#include "solver/multiway_continuation_selector.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -63,6 +64,11 @@ std::uint64_t observed_multiway_process_memory_bytes() noexcept {
 }
 
 void MultiwayMemoryBudget::validate() const {
+    if (warning_bytes == std::numeric_limits<std::uint64_t>::max() &&
+        operating_bytes == std::numeric_limits<std::uint64_t>::max() &&
+        reject_bytes == std::numeric_limits<std::uint64_t>::max()) {
+        return;
+    }
     if (warning_bytes == 0U || operating_bytes == 0U || reject_bytes == 0U ||
         warning_bytes > operating_bytes || operating_bytes >= reject_bytes) {
         throw std::invalid_argument("multiway memory budget requires ordered non-zero limits");
@@ -115,13 +121,18 @@ MultiwayMemoryPreflight preflight_multiway_memory(
         checked_multiply(
             limits.worker_count,
             static_cast<std::uint64_t>(
-                sizeof(MultiwayPrivateWorkerScratch) +
-                sizeof(MultiwayWorkerDeltaStream) + sizeof(std::thread))));
+                 sizeof(MultiwayPrivateWorkerScratch) +
+                 sizeof(MultiwayWorkerDeltaStream) + sizeof(MultiwayContinuationDeltaStream) +
+                 sizeof(std::thread))));
+    result.estimate.worker_delta_bytes = checked_add(result.estimate.worker_delta_bytes,
+        checked_multiply(checked_multiply(limits.worker_count, limits.max_worker_delta_entries),
+                         sizeof(MultiwayContinuationDelta)));
     const auto aggregate_delta_entries = checked_multiply(
         limits.worker_count, limits.max_worker_delta_entries);
     result.estimate.merge_scratch_bytes = checked_multiply(
         aggregate_delta_entries,
-        static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t)));
+        static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + sizeof(MultiwayContinuationDelta) +
+                                   3U * sizeof(std::uint64_t) + sizeof(void*)));
     result.estimate.export_bytes = checked_multiply(
         inputs.export_action_capacity,
         2U * static_cast<std::uint64_t>(sizeof(MultiwayRootActionProbability)));
