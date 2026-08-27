@@ -41,18 +41,22 @@ cmake --build build --config Debug -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"
 python .agents\\skills\\cpp-build-test-fixer\\scripts\\ctest_compact.py
 ```
 
-## Suitable script/ helpers
+## Scripts
+
+Use python scripts when u need something from OS before using own commands.
 
 ```text
 repo_summary.py
-scan_errors.py
-compact_logs.py
-summarize_json.py
-extract_symbols.py
-extract_imports.py
-find_large_files.py
+cmake_summary.py
+cpp_file_summary.py
+compact_build.py
+scan_build_errors.py
+compact_ctest.py
+scan_ctest_errors.py
 list_recent_changes.py
-summarize_tests.py
+extract_symbols.py
+extract_includes.py
+find_large_files.py
 ```
 
 ## Hard Rules
