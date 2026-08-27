@@ -91,6 +91,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway_resolver_evaluation.hpp
     include/solver/multiway_rollout_leaf.hpp
     include/solver/multiway_decision_session.hpp
+    include/solver/multiway_action_calibration.hpp
     include/solver/multiway_full_hand_session.hpp
     include/solver/multiway_scheduler.hpp
     include/solver/multiway_search_profile.hpp
@@ -193,6 +194,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway_resolver_policy.cpp
     src/solver/multiway_rollout_leaf.cpp
     src/solver/multiway_decision_session.cpp
+    src/solver/multiway_action_calibration.cpp
     src/solver/multiway_full_hand_session.cpp
     src/solver/multiway_scheduler.cpp
     src/solver/multiway_search_session.cpp
