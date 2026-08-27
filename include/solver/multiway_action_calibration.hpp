@@ -20,9 +20,15 @@ struct MultiwayActionCalibrationCase {
 struct MultiwayActionCalibrationLimits {
     std::size_t maximum_actions = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
     double maximum_translation_rejection_rate = 1.0;
+    double maximum_artifact_miss_rate = 1.0;
     std::uint64_t maximum_estimated_menu_bytes = 1U << 20U;
     void validate() const;
 };
+
+using MultiwayActionCalibrationArtifactCoverageFn = bool (*) (
+    const MultiwayActionCalibrationCase& calibration_case,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    const void* context) noexcept;
 
 struct MultiwayActionCalibrationResult {
     std::uint64_t profile_identity = 0U;
@@ -35,6 +41,8 @@ struct MultiwayActionCalibrationResult {
     std::size_t rejected_translations = 0U;
     std::size_t expanded_actions = 0U;
     std::uint64_t estimated_menu_bytes = 0U;
+    std::size_t artifact_coverage_cases = 0U;
+    std::size_t artifact_miss_cases = 0U;
     bool within_limits = false;
 
     [[nodiscard]] double mean_branching_factor() const noexcept {
@@ -42,6 +50,9 @@ struct MultiwayActionCalibrationResult {
     }
     [[nodiscard]] double translation_rejection_rate() const noexcept {
         return cases == 0U ? 0.0 : static_cast<double>(rejected_translations) / static_cast<double>(cases);
+    }
+    [[nodiscard]] double artifact_miss_rate() const noexcept {
+        return cases == 0U ? 0.0 : static_cast<double>(artifact_miss_cases) / static_cast<double>(cases);
     }
 };
 
@@ -74,7 +85,9 @@ struct MultiwayActionCalibrationSelection {
     const std::vector<MultiwayActionCalibrationCase>& cases,
     MultiwayActionAbstractionConfig abstraction = {},
     MultiwayDeviationExpansionConfig expansion = {},
-    MultiwayActionCalibrationLimits limits = {});
+    MultiwayActionCalibrationLimits limits = {},
+    MultiwayActionCalibrationArtifactCoverageFn artifact_coverage_fn = nullptr,
+    const void* artifact_coverage_context = nullptr);
 
 [[nodiscard]] MultiwayActionCalibrationSelection select_multiway_action_profile(
     const std::vector<MultiwayActionAbstractionConfig>& candidates,

@@ -23,6 +23,7 @@ double calibration_z(double confidence_level) noexcept {
 void MultiwayActionCalibrationLimits::validate() const {
     if (maximum_actions == 0U || maximum_actions > MULTIWAY_MAX_ABSTRACTED_ACTIONS ||
         maximum_translation_rejection_rate < 0.0 || maximum_translation_rejection_rate > 1.0 ||
+        maximum_artifact_miss_rate < 0.0 || maximum_artifact_miss_rate > 1.0 ||
         maximum_estimated_menu_bytes == 0U) {
         throw std::invalid_argument("action calibration limits are invalid");
     }
@@ -32,7 +33,9 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
     const std::vector<MultiwayActionCalibrationCase>& cases,
     MultiwayActionAbstractionConfig abstraction,
     MultiwayDeviationExpansionConfig expansion,
-    MultiwayActionCalibrationLimits limits) {
+    MultiwayActionCalibrationLimits limits,
+    MultiwayActionCalibrationArtifactCoverageFn artifact_coverage_fn,
+    const void* artifact_coverage_context) {
     if (cases.empty()) throw std::invalid_argument("action calibration requires representative cases");
     expansion.validate();
     limits.validate();
@@ -44,6 +47,12 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
     result.translation_policy_identity ^= abstraction.translation_max_pseudo_harmonic_distance_basis_points;
     for (const auto& test_case : cases) {
         const auto menu = evaluator.make_legal_actions(test_case.betting, test_case.context);
+        if (artifact_coverage_fn != nullptr) {
+            ++result.artifact_coverage_cases;
+            if (!artifact_coverage_fn(test_case, menu, artifact_coverage_context)) {
+                ++result.artifact_miss_cases;
+            }
+        }
         result.profile_identity ^= evaluator.menu_profile_identity(test_case.context) +
             0x9e3779b97f4a7c15ULL + (result.profile_identity << 6U) + (result.profile_identity >> 2U);
         result.total_actions += menu.size();
@@ -64,6 +73,8 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
     }
     result.within_limits = result.max_actions <= limits.maximum_actions &&
         result.translation_rejection_rate() <= limits.maximum_translation_rejection_rate &&
+        (result.artifact_coverage_cases == 0U ||
+         result.artifact_miss_rate() <= limits.maximum_artifact_miss_rate) &&
         result.estimated_menu_bytes <= limits.maximum_estimated_menu_bytes;
     return result;
 }

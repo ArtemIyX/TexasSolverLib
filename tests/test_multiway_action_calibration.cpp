@@ -23,6 +23,10 @@ texas::MultiwayActionCalibrationQuality quality_by_branching(
     const texas::MultiwayActionCalibrationResult& result, const void*) noexcept {
     return {10.0 - result.mean_branching_factor(), 0.0};
 }
+
+bool no_artifact(const texas::MultiwayActionCalibrationCase&, const std::vector<texas::MultiwayActionDescriptor>&, const void*) noexcept {
+    return false;
+}
 }
 
 TEST_CASE(multiway_action_calibration_reports_representative_branching_and_identity) {
@@ -46,6 +50,19 @@ TEST_CASE(multiway_action_calibration_adapts_f4_evaluation_quality) {
     const auto quality = texas::multiway_action_quality_from_evaluation(evaluation);
     EXPECT_NEAR(quality.value, -1.25, 1e-12);
     EXPECT_NEAR(quality.standard_error, 0.2, 1e-12);
+}
+
+TEST_CASE(multiway_action_calibration_gates_artifact_coverage) {
+    const auto betting = state(texas::Street::Flop, 3U, 1000);
+    const std::vector<texas::MultiwayActionCalibrationCase> cases = {
+        {betting, texas::MultiwayAction::Check, 0, {}}};
+    texas::MultiwayActionCalibrationLimits limits;
+    limits.maximum_artifact_miss_rate = 0.0;
+    const auto result = texas::calibrate_multiway_action_abstraction(
+        cases, {}, {}, limits, no_artifact);
+    EXPECT_EQ(result.artifact_coverage_cases, std::size_t{1U});
+    EXPECT_EQ(result.artifact_miss_cases, std::size_t{1U});
+    EXPECT_TRUE(!result.within_limits);
 }
 
 TEST_CASE(multiway_action_calibration_threshold_sweep_changes_rejection_result) {
