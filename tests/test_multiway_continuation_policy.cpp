@@ -1,4 +1,5 @@
 #include "solver/multiway_continuation_policy.hpp"
+#include "solver/multiway_continuation_calibration.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -216,4 +217,16 @@ TEST_CASE(multiway_continuation_leaf_adapter_rejects_provider_failure_and_nonfin
     EXPECT_TRUE(std::isnan(missing_provider(request)));
 
     EXPECT_TRUE(!texas::make_multiway_fixed_continuation_leaf_evaluator(nullptr).valid());
+}
+
+TEST_CASE(multiway_continuation_calibration_reports_holdout_error_and_identity) {
+    texas::MultiwayContinuationCalibrationConfig config;
+    config.policy = texas::MultiwayContinuationPolicyKind::FoldBiased;
+    const std::vector<texas::MultiwayContinuationCalibrationCase> cases = {
+        {{{1.0, 2.0, 3.0, 4.0}}, 1.5, true},
+        {{{1.0, 2.0, 3.0, 4.0}}, 1.5, false}};
+    const auto result = texas::calibrate_multiway_continuation(config, cases);
+    EXPECT_TRUE(result.identity != 0U);
+    EXPECT_NEAR(result.held_out_error, 0.5, 1e-12);
+    EXPECT_TRUE(result.within_limits);
 }
