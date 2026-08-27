@@ -4,6 +4,60 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## F7 continuation policy and search-depth calibration
+
+**Status:** Complete
+**Completed:** 2026-08-27
+**Implementation commit:** `3e754ea feat(multiway): add continuation calibration gates`
+
+- Added typed calibration cases for blueprint and fixed continuation policies.
+- Added rollout-sample, cache-limit, street-boundary, bias-factor, and versioned identity configuration.
+- Added held-out absolute error, bias, variance, and nested-improvement gates against blueprint error.
+- Added finite-input validation and regression coverage.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/multiway_continuation_calibration.hpp`
+- `src/solver/multiway_continuation_calibration.cpp`
+- `tests/test_multiway_continuation_policy.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 cmake -S . -B build` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Production promotion still requires real stratified leaf rollouts, serialized multi-worker continuation comparisons, and target-hardware measurements.
+
+## F6 future-bucket calibration
+
+**Status:** Complete
+**Completed:** 2026-08-27
+
+- Added deterministic held-out sample splitting for future-street bucket calibration.
+- Added artifact-size, missing-bucket, within-bucket variance, and held-out policy-loss gates.
+- Added deterministic selection of the smallest passing future-bucket profile.
+- Reused the existing immutable producer, serializer, disk boundary, and identity checks.
+- Added repeated-board regression coverage and corrected missing-bucket accounting during review.
+
+### Implementation commits
+
+- `4297f2d`: future-bucket calibration API, metrics, and tests.
+- `c3f19cf`: held-out loss and within-bucket variance correction.
+- `89de8c6`: smallest passing profile selection.
+- `c8a3acd`: missing-bucket accounting fix.
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 cmake -S . -B build` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Production-quality promotion still requires a real private-card-independent training and held-out dataset plus target deployment measurements.
+
 ## F3-F5 full-hand evaluation and action calibration
 
 **Status:** Complete
