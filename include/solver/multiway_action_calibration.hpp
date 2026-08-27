@@ -43,9 +43,30 @@ struct MultiwayActionCalibrationResult {
     }
 };
 
+using MultiwayActionCalibrationValueFn = double (*) (
+    const MultiwayActionCalibrationResult& result,
+    const void* context) noexcept;
+
+struct MultiwayActionCalibrationSelection {
+    MultiwayActionAbstractionConfig abstraction{};
+    MultiwayActionCalibrationResult result{};
+    double baseline_value = 0.0;
+    double candidate_value = 0.0;
+    bool selected = false;
+};
+
 [[nodiscard]] MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
     const std::vector<MultiwayActionCalibrationCase>& cases,
     MultiwayActionAbstractionConfig abstraction = {},
+    MultiwayDeviationExpansionConfig expansion = {},
+    MultiwayActionCalibrationLimits limits = {});
+
+[[nodiscard]] MultiwayActionCalibrationSelection select_multiway_action_profile(
+    const std::vector<MultiwayActionAbstractionConfig>& candidates,
+    const std::vector<MultiwayActionCalibrationCase>& cases,
+    double frozen_baseline_value,
+    MultiwayActionCalibrationValueFn value_fn,
+    const void* context = nullptr,
     MultiwayDeviationExpansionConfig expansion = {},
     MultiwayActionCalibrationLimits limits = {});
 

@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace texas::solver::multiway {
 
@@ -51,6 +53,34 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
         result.translation_rejection_rate() <= limits.maximum_translation_rejection_rate &&
         result.estimated_menu_bytes <= limits.maximum_estimated_menu_bytes;
     return result;
+}
+
+MultiwayActionCalibrationSelection select_multiway_action_profile(
+    const std::vector<MultiwayActionAbstractionConfig>& candidates,
+    const std::vector<MultiwayActionCalibrationCase>& cases,
+    double frozen_baseline_value,
+    MultiwayActionCalibrationValueFn value_fn,
+    const void* context,
+    MultiwayDeviationExpansionConfig expansion,
+    MultiwayActionCalibrationLimits limits) {
+    if (candidates.empty() || value_fn == nullptr || !std::isfinite(frozen_baseline_value)) {
+        throw std::invalid_argument("action profile selection requires candidates, baseline, and scorer");
+    }
+    MultiwayActionCalibrationSelection selected;
+    selected.baseline_value = frozen_baseline_value;
+    selected.candidate_value = -std::numeric_limits<double>::infinity();
+    for (const auto& candidate : candidates) {
+        const auto result = calibrate_multiway_action_abstraction(cases, candidate, expansion, limits);
+        const auto value = value_fn(result, context);
+        if (!std::isfinite(value)) throw std::invalid_argument("action profile scorer returned a non-finite value");
+        if (result.within_limits && value > selected.candidate_value && value > frozen_baseline_value) {
+            selected.abstraction = candidate;
+            selected.result = result;
+            selected.candidate_value = value;
+            selected.selected = true;
+        }
+    }
+    return selected;
 }
 
 }  // namespace texas::solver::multiway
