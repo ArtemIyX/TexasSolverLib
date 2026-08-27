@@ -423,6 +423,14 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     texassolver_configure_example_target(texas_solver_example)
 
     if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
+        foreach(_multiway_workflow train buckets inspect evaluate)
+            add_executable(texas_multiway_${_multiway_workflow}
+                examples/multiway_workflow_main.cpp
+            )
+            target_link_libraries(texas_multiway_${_multiway_workflow} PRIVATE texas)
+            texassolver_configure_example_target(texas_multiway_${_multiway_workflow})
+        endforeach()
+
         add_executable(texas_solver_hunl_mccfr_postflop
             examples/hunl_mccfr_postflop_main.cpp
         )
@@ -530,6 +538,12 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_package_config_contract.cmake
+    )
+    add_test(
+        NAME test_multiway_workflow_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_multiway_workflow_boundary.cmake
     )
     add_test(
         NAME test_legacy_vector_boundary
