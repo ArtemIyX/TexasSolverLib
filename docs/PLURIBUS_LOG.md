@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## Project README expansion
+
+**Status:** Complete
+**Completed:** 2026-08-27
+
+- Replaced the brief repository overview with a detailed Pluribus project guide for users, developers, and LLM agents.
+- Documented project goals, maturity, architecture, solver families, build and package usage, helper scripts, the vendored evaluator boundary, repository skills, development constraints, and remaining milestones.
+
+### Files
+
+- `README.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- Build and tests were not run because this change only updates Markdown documentation.
+
+### Limitations
+
+- Production strategy quality, calibrated artifacts, and target-hardware performance remain unproven as documented in the README and project state.
+
 ## Solver layout migration
 
 **Status:** Complete
