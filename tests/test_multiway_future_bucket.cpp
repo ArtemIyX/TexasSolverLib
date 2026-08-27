@@ -7,7 +7,11 @@
 #include "test_harness.hpp"
 
 #include <memory>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
+#include <string>
 
 namespace {
 
@@ -28,6 +32,12 @@ texas::MultiwayFutureBucketProfile profile() {
 }
 
 }  // namespace
+
+std::filesystem::path future_bucket_path() {
+    return std::filesystem::temp_directory_path() /
+        (std::string("texas_solver_future_bucket_") +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".bin");
+}
 
 TEST_CASE(multiway_future_bucket_features_are_deterministic_and_reject_blocked_holes) {
     const auto first = texas::make_multiway_future_bucket_features(
@@ -76,4 +86,33 @@ TEST_CASE(multiway_future_bucket_artifact_can_be_injected_into_resolver_config) 
     const texas::MultiwayResolver resolver(config);
     (void)resolver;
     EXPECT_TRUE(true);
+}
+
+TEST_CASE(multiway_future_bucket_artifact_round_trips_through_atomic_disk_boundary) {
+    const auto path = future_bucket_path();
+    const auto expected = texas::build_multiway_future_bucket_artifact(identity(), boards(), profile());
+    texas::save_multiway_future_bucket_artifact_atomic(path, expected);
+    const auto loaded = texas::load_multiway_future_bucket_artifact(path, identity());
+    EXPECT_EQ(loaded.registry().identity(), expected.registry().identity());
+    EXPECT_EQ(loaded.lookup(texas::Street::Flop, {0U, 5U, 10U}, {1U, 2U}),
+              expected.lookup(texas::Street::Flop, {0U, 5U, 10U}, {1U, 2U}));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_future_bucket_artifact_disk_boundary_rejects_truncation_and_identity_mismatch) {
+    const auto path = future_bucket_path();
+    const auto expected = texas::build_multiway_future_bucket_artifact(identity(), boards(), profile());
+    texas::save_multiway_future_bucket_artifact_atomic(path, expected);
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        output.put('M');
+    }
+    EXPECT_THROW(texas::load_multiway_future_bucket_artifact(path, identity()), std::invalid_argument);
+    texas::save_multiway_future_bucket_artifact_atomic(path, expected);
+    auto different = texas::MultiwayBlueprintConfig{};
+    ++different.bucket_model_version;
+    EXPECT_THROW(
+        texas::load_multiway_future_bucket_artifact(path, texas::make_multiway_model_identity(different)),
+        std::invalid_argument);
+    std::filesystem::remove(path);
 }

@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 
 namespace texas::solver::multiway {
 
@@ -60,5 +61,11 @@ private:
     const MultiwayFutureBucketArtifact& artifact);
 [[nodiscard]] MultiwayFutureBucketArtifact deserialize_multiway_future_bucket_artifact(
     const std::vector<std::uint8_t>& bytes);
+void save_multiway_future_bucket_artifact_atomic(
+    const std::filesystem::path& path,
+    const MultiwayFutureBucketArtifact& artifact);
+[[nodiscard]] MultiwayFutureBucketArtifact load_multiway_future_bucket_artifact(
+    const std::filesystem::path& path,
+    const MultiwayModelIdentity& expected_identity);
 
 }  // namespace texas::solver::multiway

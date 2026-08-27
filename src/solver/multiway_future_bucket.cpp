@@ -1,12 +1,14 @@
 #include "solver/multiway_future_bucket.hpp"
 
 #include "core/canonical_combo.hpp"
+#include "core/atomic_publish.hpp"
 #include "games/hunl_eval.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <fstream>
 
 namespace texas::solver::multiway {
 
@@ -198,6 +200,34 @@ MultiwayFutureBucketArtifact deserialize_multiway_future_bucket_artifact(const s
     profile.lloyd_iterations = read_u32(bytes, cursor); profile.flop_bucket_count = read_u32(bytes, cursor); profile.turn_bucket_count = read_u32(bytes, cursor); profile.river_bucket_count = read_u32(bytes, cursor);
     std::vector<std::uint8_t> registry(bytes.begin() + static_cast<std::ptrdiff_t>(cursor), bytes.end());
     return {profile, deserialize_multiway_bucket_registry(registry)};
+}
+
+void save_multiway_future_bucket_artifact_atomic(
+    const std::filesystem::path& path,
+    const MultiwayFutureBucketArtifact& artifact) {
+    const auto bytes = serialize_multiway_future_bucket_artifact(artifact);
+    auto temporary = path;
+    temporary += ".tmp";
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+    if (!output) throw std::runtime_error("cannot create future bucket artifact temporary file");
+    output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    output.close();
+    if (!output) throw std::runtime_error("cannot write future bucket artifact temporary file");
+    core::publish_atomic_replace(temporary, path, "cannot publish future bucket artifact");
+}
+
+MultiwayFutureBucketArtifact load_multiway_future_bucket_artifact(
+    const std::filesystem::path& path,
+    const MultiwayModelIdentity& expected_identity) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("future bucket artifact is missing");
+    const std::vector<std::uint8_t> bytes{
+        std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    auto artifact = deserialize_multiway_future_bucket_artifact(bytes);
+    if (artifact.registry().identity() != expected_identity) {
+        throw std::invalid_argument("future bucket artifact identity mismatch");
+    }
+    return artifact;
 }
 
 }  // namespace texas::solver::multiway
