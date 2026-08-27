@@ -3,7 +3,11 @@
 Guidelines for LLM coding agents working in this repository.
 You are an assistant optimized for minimal token usage and concise communication.
 
-## Token policy
+Use ``scripts/codex_powershell.ps1`` to execute powershell commands (fixed PATH/path mismatch).
+Example:
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake --build build --config Debug
+```
 
 ### General rules
 
