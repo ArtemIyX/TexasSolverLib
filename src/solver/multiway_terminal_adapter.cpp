@@ -138,7 +138,10 @@ MultiwayTerminalAdapter::MultiwayTerminalAdapter(const MultiwaySolverCoordinator
 MultiwaySamplerDealToken MultiwayTerminalAdapter::sample_private_deal(std::uint64_t seed) const {
     MultiwayPrivateWorkerScratch scratch;
     if (!coordinator_->request_.compiled_private_ranges().try_sample_into(seed, scratch)) {
-        throw std::runtime_error("multiway sampler proposal collided");
+        MultiwayJointPrivateSample discarded;
+        discarded.attempts = scratch.attempts;
+        discarded.discarded_trajectories = scratch.discarded_trajectories;
+        return MultiwaySamplerDealToken(*coordinator_, std::move(discarded));
     }
     MultiwayJointPrivateSample deal;
     deal.holes.assign(scratch.holes.begin(), scratch.holes.begin() + scratch.seat_count);

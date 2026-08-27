@@ -64,6 +64,7 @@ struct MultiwayPrivateSamplingReach {
 class MultiwaySamplerDealToken {
 public:
     MultiwaySamplerDealToken() = delete;
+    [[nodiscard]] bool valid() const noexcept { return !deal_.holes.empty(); }
 
 private:
     friend class MultiwayTerminalAdapter;
@@ -71,7 +72,6 @@ private:
         const MultiwaySolverCoordinator& coordinator,
         MultiwayJointPrivateSample deal)
         : coordinator_(&coordinator), deal_(std::move(deal)) {}
-
     const MultiwaySolverCoordinator* coordinator_ = nullptr;
     MultiwayJointPrivateSample deal_{};
 };
