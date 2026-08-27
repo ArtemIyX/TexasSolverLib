@@ -7,6 +7,12 @@
 
 namespace texas::solver::multiway {
 
+double calibration_z(double confidence_level) noexcept {
+    if (confidence_level == 0.90) return 1.6448536269514722;
+    if (confidence_level == 0.95) return 1.959963984540054;
+    return 2.5758293035489004;
+}
+
 void MultiwayActionCalibrationLimits::validate() const {
     if (maximum_actions == 0U || maximum_actions > MULTIWAY_MAX_ABSTRACTED_ACTIONS ||
         maximum_translation_rejection_rate < 0.0 || maximum_translation_rejection_rate > 1.0 ||
@@ -77,6 +83,41 @@ MultiwayActionCalibrationSelection select_multiway_action_profile(
             selected.abstraction = candidate;
             selected.result = result;
             selected.candidate_value = value;
+            selected.selected = true;
+        }
+    }
+    return selected;
+}
+
+MultiwayActionCalibrationSelection select_multiway_action_profile_statistically(
+    const std::vector<MultiwayActionAbstractionConfig>& candidates,
+    const std::vector<MultiwayActionCalibrationCase>& cases,
+    MultiwayActionCalibrationQuality frozen_baseline,
+    MultiwayActionCalibrationQualityFn quality_fn,
+    const void* context,
+    double confidence_level,
+    MultiwayDeviationExpansionConfig expansion,
+    MultiwayActionCalibrationLimits limits) {
+    if (!std::isfinite(frozen_baseline.value) || !std::isfinite(frozen_baseline.standard_error) ||
+        frozen_baseline.standard_error < 0.0 || quality_fn == nullptr ||
+        (confidence_level != 0.90 && confidence_level != 0.95 && confidence_level != 0.99)) {
+        throw std::invalid_argument("statistical action selection inputs are invalid");
+    }
+    MultiwayActionCalibrationSelection selected;
+    selected.baseline_value = frozen_baseline.value;
+    selected.candidate_value = -std::numeric_limits<double>::infinity();
+    const auto baseline_lower = frozen_baseline.value - calibration_z(confidence_level) * frozen_baseline.standard_error;
+    for (const auto& candidate : candidates) {
+        const auto result = calibrate_multiway_action_abstraction(cases, candidate, expansion, limits);
+        const auto quality = quality_fn(result, context);
+        if (!std::isfinite(quality.value) || !std::isfinite(quality.standard_error) || quality.standard_error < 0.0) {
+            throw std::invalid_argument("action quality scorer returned invalid uncertainty");
+        }
+        const auto candidate_lower = quality.value - calibration_z(confidence_level) * quality.standard_error;
+        if (result.within_limits && candidate_lower > baseline_lower && quality.value > selected.candidate_value) {
+            selected.abstraction = candidate;
+            selected.result = result;
+            selected.candidate_value = quality.value;
             selected.selected = true;
         }
     }

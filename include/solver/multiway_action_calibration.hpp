@@ -47,6 +47,14 @@ using MultiwayActionCalibrationValueFn = double (*) (
     const MultiwayActionCalibrationResult& result,
     const void* context) noexcept;
 
+struct MultiwayActionCalibrationQuality {
+    double value = 0.0;
+    double standard_error = 0.0;
+};
+using MultiwayActionCalibrationQualityFn = MultiwayActionCalibrationQuality (*) (
+    const MultiwayActionCalibrationResult& result,
+    const void* context) noexcept;
+
 struct MultiwayActionCalibrationSelection {
     MultiwayActionAbstractionConfig abstraction{};
     MultiwayActionCalibrationResult result{};
@@ -67,6 +75,16 @@ struct MultiwayActionCalibrationSelection {
     double frozen_baseline_value,
     MultiwayActionCalibrationValueFn value_fn,
     const void* context = nullptr,
+    MultiwayDeviationExpansionConfig expansion = {},
+    MultiwayActionCalibrationLimits limits = {});
+
+[[nodiscard]] MultiwayActionCalibrationSelection select_multiway_action_profile_statistically(
+    const std::vector<MultiwayActionAbstractionConfig>& candidates,
+    const std::vector<MultiwayActionCalibrationCase>& cases,
+    MultiwayActionCalibrationQuality frozen_baseline,
+    MultiwayActionCalibrationQualityFn quality_fn,
+    const void* context = nullptr,
+    double confidence_level = 0.95,
     MultiwayDeviationExpansionConfig expansion = {},
     MultiwayActionCalibrationLimits limits = {});
 

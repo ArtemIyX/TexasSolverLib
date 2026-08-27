@@ -17,6 +17,11 @@ texas::MultiwayBettingSnapshot state(texas::Street street, std::size_t seats, in
 double score_by_branching(const texas::MultiwayActionCalibrationResult& result, const void*) noexcept {
     return 10.0 - result.mean_branching_factor();
 }
+
+texas::MultiwayActionCalibrationQuality quality_by_branching(
+    const texas::MultiwayActionCalibrationResult& result, const void*) noexcept {
+    return {10.0 - result.mean_branching_factor(), 0.0};
+}
 }
 
 TEST_CASE(multiway_action_calibration_reports_representative_branching_and_identity) {
@@ -81,4 +86,16 @@ TEST_CASE(multiway_action_calibration_selects_only_profile_above_frozen_baseline
         {candidate, rejected}, cases, 0.0, score_by_branching);
     EXPECT_TRUE(selected.selected);
     EXPECT_TRUE(selected.candidate_value > selected.baseline_value);
+}
+
+TEST_CASE(multiway_action_calibration_requires_statistical_improvement) {
+    const auto betting = state(texas::Street::Flop, 6U, 10000);
+    const std::vector<texas::MultiwayActionCalibrationCase> cases = {
+        {betting, texas::MultiwayAction::Check, 0, {}}};
+    const auto selected = texas::select_multiway_action_profile_statistically(
+        {{}}, cases, {0.0, 0.0}, quality_by_branching);
+    EXPECT_TRUE(selected.selected);
+    const auto rejected = texas::select_multiway_action_profile_statistically(
+        {{}}, cases, {10.0, 0.0}, quality_by_branching);
+    EXPECT_TRUE(!rejected.selected);
 }
