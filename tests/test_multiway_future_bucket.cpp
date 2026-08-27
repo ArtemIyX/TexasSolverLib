@@ -1,4 +1,5 @@
 #include "solver/multiway_future_bucket.hpp"
+#include "solver/multiway_future_bucket_calibration.hpp"
 #include "core/canonical_combo.hpp"
 #include "solver/multiway_public_builder.hpp"
 #include "solver/multiway_blueprint_config.hpp"
@@ -115,4 +116,18 @@ TEST_CASE(multiway_future_bucket_artifact_disk_boundary_rejects_truncation_and_i
         texas::load_multiway_future_bucket_artifact(path, texas::make_multiway_model_identity(different)),
         std::invalid_argument);
     std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_future_bucket_calibration_splits_and_gates_samples) {
+    const std::vector<texas::MultiwayFutureBucketCalibrationSample> samples = {
+        {{texas::Street::Flop, {0U, 5U, 10U}}, {1U, 2U}, 0.1, false},
+        {{texas::Street::Flop, {0U, 5U, 10U}}, {3U, 4U}, 0.15, false},
+        {{texas::Street::Turn, {0U, 5U, 10U, 15U}}, {1U, 2U}, 0.2, false}};
+    const auto split = texas::split_multiway_future_bucket_samples(samples, 7U, 0.5);
+    EXPECT_EQ(split.size(), samples.size());
+    const auto result = texas::calibrate_multiway_future_bucket_profile(
+        profile(), identity(), split);
+    EXPECT_EQ(result.samples, samples.size());
+    EXPECT_TRUE(result.artifact_bytes > 0U);
+    EXPECT_EQ(result.missing_buckets, std::size_t{0U});
 }
