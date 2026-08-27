@@ -34,6 +34,12 @@ struct MultiwayFutureBucketCalibrationResult {
     bool within_limits = false;
 };
 
+struct MultiwayFutureBucketCalibrationSelection {
+    MultiwayFutureBucketProfile profile{};
+    MultiwayFutureBucketCalibrationResult result{};
+    bool selected = false;
+};
+
 [[nodiscard]] std::vector<MultiwayFutureBucketCalibrationSample>
 split_multiway_future_bucket_samples(
     const std::vector<MultiwayFutureBucketCalibrationSample>& samples,
@@ -42,6 +48,12 @@ split_multiway_future_bucket_samples(
 
 [[nodiscard]] MultiwayFutureBucketCalibrationResult calibrate_multiway_future_bucket_profile(
     const MultiwayFutureBucketProfile& profile,
+    const MultiwayModelIdentity& identity,
+    const std::vector<MultiwayFutureBucketCalibrationSample>& samples,
+    const MultiwayFutureBucketCalibrationLimits& limits = {});
+
+[[nodiscard]] MultiwayFutureBucketCalibrationSelection select_smallest_multiway_future_bucket_profile(
+    const std::vector<MultiwayFutureBucketProfile>& profiles,
     const MultiwayModelIdentity& identity,
     const std::vector<MultiwayFutureBucketCalibrationSample>& samples,
     const MultiwayFutureBucketCalibrationLimits& limits = {});

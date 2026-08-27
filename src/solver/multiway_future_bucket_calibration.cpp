@@ -110,4 +110,25 @@ MultiwayFutureBucketCalibrationResult calibrate_multiway_future_bucket_profile(
         static_cast<double>(result.missing_buckets) / result.samples <= limits.maximum_missing_bucket_rate;
     return result;
 }
+
+MultiwayFutureBucketCalibrationSelection select_smallest_multiway_future_bucket_profile(
+    const std::vector<MultiwayFutureBucketProfile>& profiles, const MultiwayModelIdentity& identity,
+    const std::vector<MultiwayFutureBucketCalibrationSample>& samples,
+    const MultiwayFutureBucketCalibrationLimits& limits) {
+    if (profiles.empty()) throw std::invalid_argument("future bucket profile selection requires profiles");
+    MultiwayFutureBucketCalibrationSelection selection;
+    const auto bucket_total = [](const auto& profile) {
+        return static_cast<std::uint64_t>(profile.flop_bucket_count) + profile.turn_bucket_count + profile.river_bucket_count;
+    };
+    for (const auto& profile : profiles) {
+        const auto result = calibrate_multiway_future_bucket_profile(profile, identity, samples, limits);
+        if (result.within_limits && (!selection.selected || result.artifact_bytes < selection.result.artifact_bytes ||
+            (result.artifact_bytes == selection.result.artifact_bytes && bucket_total(profile) < bucket_total(selection.profile)))) {
+            selection.profile = profile;
+            selection.result = result;
+            selection.selected = true;
+        }
+    }
+    return selection;
+}
 }  // namespace texas::solver::multiway

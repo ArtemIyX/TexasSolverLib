@@ -131,3 +131,14 @@ TEST_CASE(multiway_future_bucket_calibration_splits_and_gates_samples) {
     EXPECT_TRUE(result.artifact_bytes > 0U);
     EXPECT_EQ(result.missing_buckets, std::size_t{0U});
 }
+
+TEST_CASE(multiway_future_bucket_calibration_selects_smallest_passing_profile) {
+    const std::vector<texas::MultiwayFutureBucketCalibrationSample> samples = {
+        {{texas::Street::Flop, {0U, 5U, 10U}}, {1U, 2U}, 0.1, false}};
+    auto small = profile();
+    small.flop_bucket_count = small.turn_bucket_count = small.river_bucket_count = 1U;
+    const auto selection = texas::select_smallest_multiway_future_bucket_profile(
+        {profile(), small}, identity(), samples);
+    EXPECT_TRUE(selection.selected);
+    EXPECT_EQ(selection.profile.flop_bucket_count, 1U);
+}
