@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <string_view>
 
@@ -66,7 +67,8 @@ int run(std::string_view name, int argc, char** argv) {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) noexcept {
+    try {
     const std::string_view executable = argc == 0 ? "multiway" : argv[0];
     const auto slash = executable.find_last_of("/\\");
     const auto name = executable.substr(slash == std::string_view::npos ? 0 : slash + 1);
@@ -74,4 +76,11 @@ int main(int argc, char** argv) {
     if (name == "texas_multiway_buckets") return run("buckets", argc, argv);
     if (name == "texas_multiway_inspect") return run("inspect", argc, argv);
     return run("evaluate", argc, argv);
+    } catch (const std::exception& error) {
+        std::cerr << "workflow failed: " << error.what() << "\n";
+        return EXIT_FAILURE;
+    } catch (...) {
+        std::cerr << "workflow failed: unknown exception\n";
+        return EXIT_FAILURE;
+    }
 }
