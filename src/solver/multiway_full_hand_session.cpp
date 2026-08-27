@@ -45,10 +45,10 @@ MultiwayResolverResult MultiwayFullHandSession::decide(
     PlayerId hero_seat, std::array<std::uint8_t, 2> hero_cards,
     const MultiwayResolverConfig& config,
     std::chrono::steady_clock::time_point deadline) const {
-    if (frozen_policy_.has_value()) return *frozen_policy_;
     if (hero_seat < 0 || static_cast<std::size_t>(hero_seat) >= beliefs_.seat_count()) {
         throw std::invalid_argument("full-hand hero seat is invalid");
     }
+    if (frozen_policy_.has_value()) return *frozen_policy_;
     MultiwayResolverRequest request;
     request.hero_seat = hero_seat;
     request.hero_cards = hero_cards;
