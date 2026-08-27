@@ -4,6 +4,30 @@ Update this file after each completed roadmap part. Record completed scope,
 files, verification, and any limitations. Do not claim an item is complete
 until its implementation and required validation are finished.
 
+## F3-F5 full-hand evaluation and action calibration
+
+**Status:** Complete
+**Completed:** 2026-08-27
+
+- Completed full-hand lifecycle regression coverage for folds, all-ins, side pots, settlement, street reroots, and frozen-policy decisions.
+- Added independent AIVAT evaluation with deterministic identity validation and frozen-prior support.
+- Added representative action-abstraction calibration across contextual menus, pseudo-harmonic translation, deviation expansion, artifact coverage, policy value, memory, and latency gates.
+- Added statistical frozen-baseline profile selection and an adapter from F4 Nash-convergence results to calibration quality.
+
+### Implementation commits
+
+- `c9f4da6`, `63383bf`, `60b1ca7`, `c1f855f`: F3 lifecycle contracts and dedicated regressions.
+- `2067f89`: independent AIVAT evaluation.
+- `9ce51fd`, `cc1d2a0`, `8506d46`, `b58c2f2`, `51046ee`, `4e1c79a`, `8da4a58`: F5 calibration, selection, evaluation, artifact-coverage, and latency gates.
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Production profile promotion still requires real trained artifacts and target-hardware measurements.
+
 ## Pluribus audit round 5 remediation
 
 **Status:** Complete
