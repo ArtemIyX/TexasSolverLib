@@ -35,7 +35,9 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
     MultiwayDeviationExpansionConfig expansion,
     MultiwayActionCalibrationLimits limits,
     MultiwayActionCalibrationArtifactCoverageFn artifact_coverage_fn,
-    const void* artifact_coverage_context) {
+    const void* artifact_coverage_context,
+    MultiwayActionCalibrationLatencyFn latency_fn,
+    const void* latency_context) {
     if (cases.empty()) throw std::invalid_argument("action calibration requires representative cases");
     expansion.validate();
     limits.validate();
@@ -47,6 +49,11 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
     result.translation_policy_identity ^= abstraction.translation_max_pseudo_harmonic_distance_basis_points;
     for (const auto& test_case : cases) {
         const auto menu = evaluator.make_legal_actions(test_case.betting, test_case.context);
+        if (latency_fn != nullptr) {
+            result.maximum_estimated_decision_nanoseconds = std::max(
+                result.maximum_estimated_decision_nanoseconds,
+                latency_fn(test_case, menu, latency_context));
+        }
         if (artifact_coverage_fn != nullptr) {
             ++result.artifact_coverage_cases;
             if (!artifact_coverage_fn(test_case, menu, artifact_coverage_context)) {
@@ -75,6 +82,8 @@ MultiwayActionCalibrationResult calibrate_multiway_action_abstraction(
         result.translation_rejection_rate() <= limits.maximum_translation_rejection_rate &&
         (result.artifact_coverage_cases == 0U ||
          result.artifact_miss_rate() <= limits.maximum_artifact_miss_rate) &&
+        (limits.maximum_estimated_decision_nanoseconds == 0U ||
+         result.maximum_estimated_decision_nanoseconds <= limits.maximum_estimated_decision_nanoseconds) &&
         result.estimated_menu_bytes <= limits.maximum_estimated_menu_bytes;
     return result;
 }

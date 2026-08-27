@@ -22,10 +22,15 @@ struct MultiwayActionCalibrationLimits {
     double maximum_translation_rejection_rate = 1.0;
     double maximum_artifact_miss_rate = 1.0;
     std::uint64_t maximum_estimated_menu_bytes = 1U << 20U;
+    std::uint64_t maximum_estimated_decision_nanoseconds = 0U;
     void validate() const;
 };
 
 using MultiwayActionCalibrationArtifactCoverageFn = bool (*) (
+    const MultiwayActionCalibrationCase& calibration_case,
+    const std::vector<MultiwayActionDescriptor>& menu,
+    const void* context) noexcept;
+using MultiwayActionCalibrationLatencyFn = std::uint64_t (*) (
     const MultiwayActionCalibrationCase& calibration_case,
     const std::vector<MultiwayActionDescriptor>& menu,
     const void* context) noexcept;
@@ -41,6 +46,7 @@ struct MultiwayActionCalibrationResult {
     std::size_t rejected_translations = 0U;
     std::size_t expanded_actions = 0U;
     std::uint64_t estimated_menu_bytes = 0U;
+    std::uint64_t maximum_estimated_decision_nanoseconds = 0U;
     std::size_t artifact_coverage_cases = 0U;
     std::size_t artifact_miss_cases = 0U;
     bool within_limits = false;
@@ -87,7 +93,9 @@ struct MultiwayActionCalibrationSelection {
     MultiwayDeviationExpansionConfig expansion = {},
     MultiwayActionCalibrationLimits limits = {},
     MultiwayActionCalibrationArtifactCoverageFn artifact_coverage_fn = nullptr,
-    const void* artifact_coverage_context = nullptr);
+    const void* artifact_coverage_context = nullptr,
+    MultiwayActionCalibrationLatencyFn latency_fn = nullptr,
+    const void* latency_context = nullptr);
 
 [[nodiscard]] MultiwayActionCalibrationSelection select_multiway_action_profile(
     const std::vector<MultiwayActionAbstractionConfig>& candidates,

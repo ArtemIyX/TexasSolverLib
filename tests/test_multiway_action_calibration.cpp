@@ -27,6 +27,9 @@ texas::MultiwayActionCalibrationQuality quality_by_branching(
 bool no_artifact(const texas::MultiwayActionCalibrationCase&, const std::vector<texas::MultiwayActionDescriptor>&, const void*) noexcept {
     return false;
 }
+std::uint64_t slow_profile(const texas::MultiwayActionCalibrationCase&, const std::vector<texas::MultiwayActionDescriptor>&, const void*) noexcept {
+    return 200U;
+}
 }
 
 TEST_CASE(multiway_action_calibration_reports_representative_branching_and_identity) {
@@ -62,6 +65,18 @@ TEST_CASE(multiway_action_calibration_gates_artifact_coverage) {
         cases, {}, {}, limits, no_artifact);
     EXPECT_EQ(result.artifact_coverage_cases, std::size_t{1U});
     EXPECT_EQ(result.artifact_miss_cases, std::size_t{1U});
+    EXPECT_TRUE(!result.within_limits);
+}
+
+TEST_CASE(multiway_action_calibration_gates_latency_estimate) {
+    const auto betting = state(texas::Street::River, 2U, 1000);
+    const std::vector<texas::MultiwayActionCalibrationCase> cases = {
+        {betting, texas::MultiwayAction::Check, 0, {}}};
+    texas::MultiwayActionCalibrationLimits limits;
+    limits.maximum_estimated_decision_nanoseconds = 100U;
+    const auto result = texas::calibrate_multiway_action_abstraction(
+        cases, {}, {}, limits, nullptr, nullptr, slow_profile);
+    EXPECT_EQ(result.maximum_estimated_decision_nanoseconds, 200U);
     EXPECT_TRUE(!result.within_limits);
 }
 
