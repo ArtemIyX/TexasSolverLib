@@ -1,5 +1,588 @@
 # Pluribus Roadmap Progress Log
 
+## F1.23 - Workflow output path handling
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Guarded directory creation for empty parent paths in bucket and report workflows.
+- Verified filename-only output paths remain valid through the full build/test workflow.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Full checkpoint serialization and production acceptance remain pending.
+
+## F1.22 - Executable training acceptance gates
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Prevented the training workflow from publishing when it discards trajectories or lacks nonzero all-street row and terminal coverage.
+- Verified the command-boundary change with the full build/test workflow.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The gate is ready for production execution but has not been satisfied by a production-scale workload.
+
+## F1.21 - Checkpoint coverage preservation
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added per-street row counts to the public coverage manifest.
+- Preserved those counters through in-memory checkpoint restore and report generation.
+- Verified the change with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The new coverage fields are not yet encoded in a disk checkpoint format.
+
+## F1.20 - Full checkpoint validation tests
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added regression tests for sparse shape/value count mismatches and non-finite checkpoint accumulators.
+- Reconfigured and verified the full build/test workflow.
+
+### Files
+
+- `tests/test_multiway_blueprint_training.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Disk serialization and cross-process resume equivalence remain pending.
+
+## F1.19 - Full checkpoint invariant validation
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added validation for checkpoint identity, trajectory/batch bounds, row-shape/value cardinality, finite accumulators, and late-window baselines.
+- Applied validation when creating and restoring in-memory checkpoints.
+- Verified the change with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Disk serialization of the validated full checkpoint remains pending.
+
+## F1.18 - Storage backend in workflow identity
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Included the declared storage backend in the workflow configuration fingerprint.
+- Reconfigured and verified the full build/test workflow.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Full checkpoint serialization and production acceptance remain pending.
+
+## F1.17 - Training report negative-path tests
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added regression coverage for impossible discard counts and missing completed-run fingerprints.
+- Reconfigured and verified the full build/test workflow.
+
+### Files
+
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Full checkpoint serialization and production qualification remain pending.
+
+## F1.16 - Training report validation
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added report validation for impossible discard counts and missing completed-run merge fingerprints.
+- Applied validation before atomic JSON publication and verified the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Validation does not replace the required production training and replay runs.
+
+## F1.15 - Artifact payload hash alignment
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Aligned streaming inspector hashing with the writer’s serialized little-endian 32-bit assignment encoding.
+- Verified the correction with the full build/test workflow.
+
+### Files
+
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- A production artifact hash comparison still requires generation and inspection of the complete artifact.
+
+## F1.14 - Workflow configuration fingerprint
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added a stable FNV-1a fingerprint over the frozen workflow semantic fields.
+- Added regression coverage proving semantic trajectory changes alter the fingerprint.
+- Reconfigured and verified the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Pilot capacity fields are intentionally excluded until they are resolved and frozen.
+
+## F1.13 - Qualification report contract tests
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added focused tests for the zero-miss qualification gate, atomic report publication, and training telemetry preservation.
+- Corrected test stream cleanup and verified all registered tests.
+
+### Files
+
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all 101 tests.
+
+### Limitations
+
+- Tests cover report contracts, not production replay or full-training qualification.
+
+## F1.12 - Deterministic merge fingerprint propagation
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Propagated the coordinator’s actual merged-stream fingerprint into training status and report output.
+- Removed the training command’s placeholder batch-count fingerprint.
+- Verified the change with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Disk checkpoint equivalence still requires persistent full checkpoint serialization and two actual training runs.
+
+## F1.11 - Discarded-trajectory telemetry
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Propagated coordinator discarded-trajectory counts into training status and JSON report output.
+- Removed the report’s previous non-authoritative hard-coded zero.
+- Verified the change with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The value is available after actual training execution; no production acceptance run has been performed.
+
+## F1.10 - Qualification evidence template
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added a machine-readable template covering every final F1 acceptance predicate, execution command, machine, config hash, and commit field.
+- Marked all runtime evidence unresolved until the authorized qualification workloads execute.
+
+### Files
+
+- `docs/qualification/f1_acceptance_report.template.json`
+- `docs/qualification/f1_acceptance_v1.md`
+
+### Validation
+
+- Reviewed JSON structure and Markdown diff; no build was required for documentation-only changes.
+
+### Limitations
+
+- The template is not an acceptance report and contains no measured production evidence.
+
+## F1.9 - Per-street training row telemetry
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added coordinator counters for preflop, flop, turn, and river sparse-row admission.
+- Propagated the counters through training status and JSON report output.
+- Verified the telemetry changes with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Counters are not yet populated into a completed production qualification report until the training and replay workloads run.
+
+## F1.8 - Required-lookup qualification report contract
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added typed counters for lookup hits, missing infosets, missing buckets, and action-menu mismatches.
+- Added the explicit zero-miss gate and atomic JSON report publication boundary.
+- Verified the package with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Deterministic replay integration and actual zero-miss qualification runs remain pending.
+
+## F1.7 - Executable bounded training workflow
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Wired `texas_multiway_train` to load a bucket artifact, construct six uniform all-combination ranges, start at the preflop root, run bounded batches, export the full blueprint, and publish a JSON report.
+- Kept production-scale capacity and acceptance claims unresolved until the authorized sizing and qualification runs.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Training still loads the bucket artifact into memory, does not resume full checkpoints, and does not perform required-lookup qualification.
+
+## F1.6 - Training report serialization boundary
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added an atomic JSON training-report writer and a typed report projection from current trainer telemetry.
+- Kept unavailable street-row and discarded-trajectory values non-authoritative until sampler telemetry is exposed.
+- Verified the new workflow module with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The report projection is not yet wired into a real training command and does not claim street-level or discard qualification.
+
+## F1.5 - Resumable bucket generation progress
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added a versioned progress sidecar with model identity, expected count, next index, rolling hash, and byte length.
+- Added verified append/resume support that rejects mismatched or truncated temporary artifacts.
+- Preserved atomic final publication and verified the package with the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The production bucket command persists a latest sidecar at street boundaries and automatically resumes matching temporary artifacts.
+
+## F1.4 - Bucket artifact inspection boundary
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added identity-checked streaming artifact inspection with exact per-street table counts and live-assignment telemetry.
+- Registered the inspector in the production library and verified it through the full build/test workflow.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The executable inspect workflow now emits deterministic telemetry and can atomically publish a JSON report.
+
+## F1.3 - Strict versioned workflow configuration
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added a typed parser for the F1 workflow configuration.
+- Added duplicate-key, unknown-key, malformed-value, unresolved-capacity, and semantic-profile rejection.
+- Added focused parser tests and registered the workflow module in CMake.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `git diff --check` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The executable workflows do not yet consume this parser; checkpoint persistence and production qualification remain pending.
+
+## F1.2 - Bounded bucket artifact writer
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added incremental serialization of bucket tables without retaining the full artifact in memory.
+- Added table-count, shape, byte-length, rolling payload-hash, and atomic-publication guards.
+- Added a byte-for-byte regression test against the existing reference serializer.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `tests/test_multiway_bucket_catalog.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Resumable sidecars, streaming inspection, and production artifact generation remain pending.
+
+## F1.1 - Deterministic postflop bucket catalog and acceptance contract
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added bounded lexicographic board enumeration for flop, turn, and river.
+- Added exact catalog counts, shard validation, and stable catalog fingerprints.
+- Added the versioned F1-DEV-12-v1 configuration template and acceptance predicates.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_catalog.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_catalog.cpp`
+- `tests/test_multiway_bucket_catalog.cpp`
+- `configs/multiway/f1_dev_v1.cfg`
+- `docs/qualification/f1_acceptance_v1.md`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Streaming artifact generation, persistent training checkpoints, production workflows, and qualification runs remain pending.
+
+## F2 pruning exploration correction
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Applied the configured 5% deterministic per-trajectory recovery probability
+  to traversal-time action pruning.
+- Preserved warmup, recovery-batch, immediate-terminal, and river exemptions.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- F1-F3 remain foundation work; full-scale artifact qualification and target-memory measurement are still pending.
+
+## F1 global training defaults
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Changed the blueprint training defaults to traverse the full bounded
+  preflop-to-river route: all three public chance boundaries and the supported
+  decision-depth cap.
+- Retained explicit shallow limits for constrained DEV profiles and tests.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- A complete canonical bucket artifact and measured qualification workload are still required for F1 acceptance.
+
+## F3 compact quantization hardening
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Hardened compact regret and strategy-mass quantization against extreme finite
+  deltas before integer conversion.
+- Added saturating accumulation coverage for compact storage.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Compact storage still requires measured DEV artifact qualification against the 64 GB target.
+
 ## Pluribus solver finish audit
 
 **Status:** Complete

@@ -349,6 +349,10 @@ struct MultiwaySolveDiagnostics {
     std::uint64_t trajectories_discarded = 0;
     std::uint64_t public_states_admitted = 0;
     std::uint64_t sparse_rows_admitted = 0;
+    std::uint64_t preflop_rows_admitted = 0;
+    std::uint64_t flop_rows_admitted = 0;
+    std::uint64_t turn_rows_admitted = 0;
+    std::uint64_t river_rows_admitted = 0;
     std::uint64_t worker_delta_entries_merged = 0;
     std::uint64_t terminal_visits = 0;
     std::uint64_t leaf_visits = 0;

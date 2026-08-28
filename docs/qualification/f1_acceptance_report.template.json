@@ -1,0 +1,40 @@
+{
+  "profile_id": "F1-DEV-12-v1",
+  "status": "unqualified",
+  "bucket_artifact": {
+    "identity_matches": null,
+    "payload_hash_matches": null,
+    "flop_tables": null,
+    "turn_tables": null,
+    "river_tables": null
+  },
+  "training": {
+    "started_at_preflop": null,
+    "preflop_rows": null,
+    "flop_rows": null,
+    "turn_rows": null,
+    "river_rows": null,
+    "terminal_visits": null,
+    "accepted_trajectories": null,
+    "discarded_trajectories": null
+  },
+  "resume": {
+    "continuous_payload_hash": null,
+    "resumed_payload_hash": null,
+    "continuous_coverage_fingerprint": null,
+    "resumed_coverage_fingerprint": null
+  },
+  "lookup": {
+    "missing_infosets": null,
+    "missing_buckets": null,
+    "action_menu_mismatches": null,
+    "first_replay_fingerprint": null,
+    "second_replay_fingerprint": null
+  },
+  "validation": {
+    "commands": [],
+    "machine": null,
+    "config_hash": null,
+    "git_commit": null
+  }
+}

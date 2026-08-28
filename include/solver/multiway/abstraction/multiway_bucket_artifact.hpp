@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <vector>
 
 namespace texas::solver::multiway {
@@ -76,5 +77,18 @@ void validate_multiway_bucket_coverage(
     const MultiwayBucketRegistry& registry);
 [[nodiscard]] MultiwayBucketRegistry deserialize_multiway_bucket_registry(
     const std::vector<std::uint8_t>& bytes);
+
+struct MultiwayBucketArtifactInspection {
+    std::uint64_t flop_tables = 0U;
+    std::uint64_t turn_tables = 0U;
+    std::uint64_t river_tables = 0U;
+    std::uint64_t live_assignments = 0U;
+    std::uint64_t payload_hash = 0U;
+    MultiwayModelIdentity identity{};
+};
+
+[[nodiscard]] MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
+    const std::filesystem::path& path,
+    const MultiwayModelIdentity& expected_identity);
 
 }  // namespace texas::solver::multiway

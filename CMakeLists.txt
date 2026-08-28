@@ -71,6 +71,11 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/blueprint/multiway_blueprint_store.hpp
     include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp
     include/solver/multiway/abstraction/multiway_bucket_artifact.hpp
+    include/solver/multiway/abstraction/multiway_bucket_catalog.hpp
+    include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp
+    include/solver/multiway/workflow/multiway_workflow_config.hpp
+    include/solver/multiway/workflow/multiway_training_report.hpp
+    include/solver/multiway/workflow/multiway_lookup_qualification.hpp
     include/solver/multiway/abstraction/multiway_bucket_model.hpp
     include/solver/multiway/engine/multiway_cfr.hpp
     include/solver/multiway/blueprint/multiway_checkpoint.hpp
@@ -178,6 +183,12 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_blueprint_store.cpp
     src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact.cpp
+    src/solver/multiway/abstraction/multiway_bucket_catalog.cpp
+    src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp
+    src/solver/multiway/abstraction/multiway_bucket_inspector.cpp
+    src/solver/multiway/workflow/multiway_workflow_config.cpp
+    src/solver/multiway/workflow/multiway_training_report.cpp
+    src/solver/multiway/workflow/multiway_lookup_qualification.cpp
     src/solver/multiway/abstraction/multiway_bucket_model.cpp
     src/solver/multiway/engine/multiway_cfr.cpp
     src/solver/multiway/blueprint/multiway_checkpoint.cpp

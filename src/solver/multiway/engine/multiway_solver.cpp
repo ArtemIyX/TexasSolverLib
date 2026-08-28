@@ -722,7 +722,16 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
     }
     if (compact) compact_storage_->admit_row(shape);
     else storage_.admit_row(shape);
-    if (!existed) ++diagnostics_.sparse_rows_admitted;
+    if (!existed) {
+        ++diagnostics_.sparse_rows_admitted;
+        switch (state->board.size()) {
+            case 0U: ++diagnostics_.preflop_rows_admitted; break;
+            case 3U: ++diagnostics_.flop_rows_admitted; break;
+            case 4U: ++diagnostics_.turn_rows_admitted; break;
+            case 5U: ++diagnostics_.river_rows_admitted; break;
+            default: break;
+        }
+    }
 }
 
 void MultiwaySolverCoordinator::regret_matched_strategy_into(

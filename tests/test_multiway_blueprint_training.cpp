@@ -6,10 +6,13 @@
 #include <stdexcept>
 #include <cstddef>
 #include <utility>
+#include <limits>
 
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts) {
     texas::MultiwayBlueprintTrainingConfig config;
     config.validate();
+    EXPECT_EQ(config.max_decision_depth, texas::MULTIWAY_MAX_DECISION_DEPTH);
+    EXPECT_EQ(config.max_public_chance_depth, texas::MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH);
     const auto identity = config.identity();
     EXPECT_TRUE(identity.combined_hash != 0U);
 
@@ -99,6 +102,26 @@ TEST_CASE(multiway_checkpoint_resume_identity_rejects_different_artifacts) {
     EXPECT_THROW(
         texas::MultiwayRootPolicyArtifact::validate_resume_identity(snapshot, config.identity()),
         std::invalid_argument);
+}
+
+TEST_CASE(multiway_full_checkpoint_rejects_mismatched_sparse_value_shapes) {
+    texas::MultiwayBlueprintTrainingCheckpoint checkpoint;
+    texas::MultiwayBlueprintConfig config;
+    checkpoint.identity = texas::make_multiway_model_identity(config);
+    checkpoint.coordinator.storage.shapes.push_back({{{1U}, 0}, 2U, 2U});
+    checkpoint.coordinator.storage.regrets.resize(3U);
+    checkpoint.coordinator.storage.strategy_sums.resize(3U);
+    EXPECT_THROW(checkpoint.validate(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_full_checkpoint_rejects_non_finite_accumulators) {
+    texas::MultiwayBlueprintTrainingCheckpoint checkpoint;
+    texas::MultiwayBlueprintConfig config;
+    checkpoint.identity = texas::make_multiway_model_identity(config);
+    checkpoint.coordinator.storage.shapes.push_back({{{1U}, 0}, 1U, 1U});
+    checkpoint.coordinator.storage.regrets.push_back(std::numeric_limits<double>::quiet_NaN());
+    checkpoint.coordinator.storage.strategy_sums.push_back(0.0);
+    EXPECT_THROW(checkpoint.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_training_metadata_persists_policy_variant_contract) {

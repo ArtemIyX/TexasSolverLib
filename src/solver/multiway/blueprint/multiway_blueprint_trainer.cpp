@@ -6,10 +6,39 @@
 
 #include <cmath>
 #include <limits>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
 namespace texas::solver::multiway {
+
+void MultiwayBlueprintTrainingCheckpoint::validate() const {
+    identity.validate();
+    if (training.trajectories < training.batches ||
+        coverage.admitted_rows != coordinator.storage.shapes.size() ||
+        coordinator.storage.regrets.size() != coordinator.storage.strategy_sums.size()) {
+        throw std::invalid_argument("multiway training checkpoint metadata is invalid");
+    }
+    std::size_t expected_values = 0U;
+    for (const auto& shape : coordinator.storage.shapes) {
+        if (shape.infoset.seat < 0 || shape.bucket_count == 0U || shape.action_count == 0U) {
+            throw std::invalid_argument("multiway training checkpoint row shape is invalid");
+        }
+        expected_values += static_cast<std::size_t>(shape.bucket_count) * shape.action_count;
+    }
+    if (expected_values != coordinator.storage.regrets.size()) {
+        throw std::invalid_argument("multiway training checkpoint value count is invalid");
+    }
+    for (const auto value : coordinator.storage.regrets) {
+        if (!std::isfinite(value)) throw std::invalid_argument("multiway training checkpoint regret is non-finite");
+    }
+    for (const auto value : coordinator.storage.strategy_sums) {
+        if (!std::isfinite(value)) throw std::invalid_argument("multiway training checkpoint strategy sum is non-finite");
+    }
+    for (const auto value : late_window_baseline) {
+        if (!std::isfinite(value)) throw std::invalid_argument("multiway training checkpoint baseline is non-finite");
+    }
+}
 namespace {
 
 using texas::core::fingerprint::append_u64;
@@ -264,11 +293,17 @@ void MultiwayBlueprintTrainer::run_batches(
         const auto& diagnostics = coordinator_->diagnostics();
         status_.visited_public_descriptors = diagnostics.public_states_admitted;
         status_.admitted_rows = diagnostics.sparse_rows_admitted;
+        status_.preflop_rows = diagnostics.preflop_rows_admitted;
+        status_.flop_rows = diagnostics.flop_rows_admitted;
+        status_.turn_rows = diagnostics.turn_rows_admitted;
+        status_.river_rows = diagnostics.river_rows_admitted;
         status_.admitted_action_cells = coordinator_->compact_storage() != nullptr
             ? coordinator_->compact_storage()->value_count() : coordinator_->storage().value_count();
         status_.terminal_visits = diagnostics.terminal_visits;
         status_.leaf_visits = diagnostics.leaf_visits;
         status_.missing_lookup_requests = diagnostics.missing_lookup_requests;
+        status_.discarded_trajectories = diagnostics.trajectories_discarded;
+        status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
     }
 }
 
@@ -280,6 +315,10 @@ MultiwayBlueprintCoverageManifest MultiwayBlueprintTrainer::coverage_manifest() 
         status_.terminal_visits,
         status_.leaf_visits,
         status_.missing_lookup_requests,
+        status_.preflop_rows,
+        status_.flop_rows,
+        status_.turn_rows,
+        status_.river_rows,
     };
 }
 
@@ -352,6 +391,7 @@ MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const
     result.coverage = coverage_manifest();
     result.coordinator = coordinator_->checkpoint();
     result.late_window_baseline = late_window_baseline_;
+    result.validate();
     return result;
 }
 
@@ -400,6 +440,7 @@ void MultiwayBlueprintTrainer::resume_from_root_policy(const MultiwayBlueprintSn
 
 void MultiwayBlueprintTrainer::resume_from_checkpoint(
     const MultiwayBlueprintTrainingCheckpoint& checkpoint) {
+    checkpoint.validate();
     checkpoint.identity.validate();
     if (checkpoint.identity != identity_ || checkpoint.training.schedule_hash != schedule_.identity() ||
         checkpoint.training.deterministic_seed != deterministic_seed_ ||
@@ -421,10 +462,20 @@ void MultiwayBlueprintTrainer::resume_from_checkpoint(
     status_.terminal_visits = checkpoint.coverage.terminal_visits;
     status_.leaf_visits = checkpoint.coverage.leaf_visits;
     status_.missing_lookup_requests = checkpoint.coverage.missing_lookup_requests;
+    status_.preflop_rows = checkpoint.coverage.preflop_rows;
+    status_.flop_rows = checkpoint.coverage.flop_rows;
+    status_.turn_rows = checkpoint.coverage.turn_rows;
+    status_.river_rows = checkpoint.coverage.river_rows;
     late_window_baseline_ = checkpoint.late_window_baseline;
     const auto& diagnostics = coordinator_->diagnostics();
     status_.visited_public_descriptors = diagnostics.public_states_admitted;
     status_.admitted_rows = diagnostics.sparse_rows_admitted;
+    status_.preflop_rows = diagnostics.preflop_rows_admitted;
+    status_.flop_rows = diagnostics.flop_rows_admitted;
+    status_.turn_rows = diagnostics.turn_rows_admitted;
+    status_.river_rows = diagnostics.river_rows_admitted;
+    status_.discarded_trajectories = diagnostics.trajectories_discarded;
+    status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
     status_.admitted_action_cells = coordinator_->storage().value_count();
 }
 

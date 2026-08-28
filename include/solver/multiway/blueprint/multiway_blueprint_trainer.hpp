@@ -48,9 +48,15 @@ struct MultiwayBlueprintIterationSchedule {
 struct MultiwayBlueprintTrainingStatus {
     std::uint64_t batches = 0;
     std::uint64_t trajectories = 0;
+    std::uint64_t discarded_trajectories = 0;
+    std::uint64_t merged_stream_fingerprint = 0;
     std::uint64_t pruned_negative_regrets = 0;
     std::uint64_t visited_public_descriptors = 0;
     std::uint64_t admitted_rows = 0;
+    std::uint64_t preflop_rows = 0;
+    std::uint64_t flop_rows = 0;
+    std::uint64_t turn_rows = 0;
+    std::uint64_t river_rows = 0;
     std::uint64_t admitted_action_cells = 0;
     std::uint64_t terminal_visits = 0;
     std::uint64_t leaf_visits = 0;
@@ -69,6 +75,10 @@ struct MultiwayBlueprintCoverageManifest {
     std::uint64_t terminal_visits = 0;
     std::uint64_t leaf_visits = 0;
     std::uint64_t missing_lookup_requests = 0;
+    std::uint64_t preflop_rows = 0;
+    std::uint64_t flop_rows = 0;
+    std::uint64_t turn_rows = 0;
+    std::uint64_t river_rows = 0;
 };
 
 struct MultiwayBlueprintTrainingCheckpoint {
@@ -77,6 +87,8 @@ struct MultiwayBlueprintTrainingCheckpoint {
     MultiwayBlueprintCoverageManifest coverage{};
     MultiwayCoordinatorCheckpoint coordinator{};
     std::vector<double> late_window_baseline;
+
+    void validate() const;
 };
 
 // Production composition boundary. Artifact inputs are non-owning and must
@@ -90,8 +102,10 @@ struct MultiwayBlueprintTrainingConfig {
     MultiwaySolverLimits limits{1, 1, 1024, 1024, 8192, 8192, 8192};
     MultiwayBlueprintIterationSchedule schedule{};
     std::uint64_t deterministic_seed = 1;
-    std::uint32_t max_decision_depth = 1;
-    std::uint32_t max_public_chance_depth = 0;
+    // The production default is a complete preflop-to-river traversal. Tests
+    // and constrained DEV profiles may explicitly select shallower limits.
+    std::uint32_t max_decision_depth = MULTIWAY_MAX_DECISION_DEPTH;
+    std::uint32_t max_public_chance_depth = MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH;
 
     void validate() const;
     [[nodiscard]] MultiwayModelIdentity identity() const;
