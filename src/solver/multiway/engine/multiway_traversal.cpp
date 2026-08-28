@@ -436,8 +436,10 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
                 next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal;
             const bool below_regret = coordinator_->action_below_regret(
                 infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold);
+            const bool random_recovery = !immediate_terminal && !below_regret &&
+                (static_cast<double>(next_random(context.random_state) % 1000000U) / 1000000.0) < explore;
             if (pruning_.should_explore_action(context.batch_number,
-                    below_regret || strategy[action] <= pruning_.action_probability_threshold,
+                    below_regret || strategy[action] <= pruning_.action_probability_threshold || random_recovery,
                     immediate_terminal, state.betting.street == Street::River)) {
                 strategy[action] = explore / action_count;
             } else if (!immediate_terminal) {

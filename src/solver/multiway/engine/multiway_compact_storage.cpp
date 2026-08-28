@@ -8,6 +8,13 @@
 namespace texas::solver::multiway {
 
 namespace {
+long long saturating_scaled(double value, double scale, long long minimum, long long maximum) noexcept {
+    const auto scaled = static_cast<long double>(value) * static_cast<long double>(scale);
+    if (scaled <= static_cast<long double>(minimum)) return minimum;
+    if (scaled >= static_cast<long double>(maximum)) return maximum;
+    return std::llround(scaled);
+}
+
 std::size_t cell(const MultiwaySparseRowMetadata& row, std::uint32_t bucket,
     std::uint8_t action) noexcept {
     return row.regret_offset + static_cast<std::size_t>(action) * row.shape.bucket_count + bucket;
@@ -57,12 +64,18 @@ void MultiwayCompactStorage::apply_delta(MultiwayInfosetId infoset, std::uint32_
         throw std::invalid_argument("invalid compact storage delta");
     }
     const auto index = cell(*row, bucket, action);
-    const auto regret_delta = std::llround(regret * 1024.0);
+    const auto regret_delta = saturating_scaled(regret, 1024.0, std::numeric_limits<long long>::min(),
+        std::numeric_limits<long long>::max());
     const auto old_regret = regrets_[index];
-    const auto next_regret = std::clamp<long long>(static_cast<long long>(old_regret) + regret_delta,
-        kRegretMin, kRegretMax);
+    const auto old_value = static_cast<long long>(old_regret);
+    const auto summed_regret = regret_delta > 0 && old_value > std::numeric_limits<long long>::max() - regret_delta
+        ? std::numeric_limits<long long>::max()
+        : regret_delta < 0 && old_value < std::numeric_limits<long long>::min() - regret_delta
+        ? std::numeric_limits<long long>::min() : old_value + regret_delta;
+    const auto next_regret = std::clamp<long long>(summed_regret, kRegretMin, kRegretMax);
     regrets_[index] = static_cast<std::int32_t>(next_regret);
-    const auto mass_delta = std::llround(strategy_sum * static_cast<double>(kMassScale));
+    const auto mass_delta = saturating_scaled(strategy_sum, static_cast<double>(kMassScale), 0,
+        std::numeric_limits<long long>::max());
     if (mass_delta > 0 && strategy_mass_[row->strategy_sum_offset + index - row->regret_offset] >
         std::numeric_limits<std::uint64_t>::max() - static_cast<std::uint64_t>(mass_delta)) {
         throw std::overflow_error("compact strategy mass overflow");

@@ -50,3 +50,14 @@ TEST_CASE(multiway_compact_storage_pruning_keeps_configured_floor) {
     EXPECT_NEAR(policy[0], 0.0, 1e-12);
     EXPECT_NEAR(policy[1], 1.0, 1e-12);
 }
+
+TEST_CASE(multiway_compact_storage_saturates_extreme_finite_deltas) {
+    texas::solver::multiway::MultiwayCompactStorage storage(1U, 1U);
+    const texas::MultiwayInfosetId infoset{{1U}, 0};
+    storage.admit_row({infoset, 1U, 1U});
+    storage.apply_delta(infoset, 0U, 0U, 1.0e300, 1.0e300);
+    EXPECT_TRUE(storage.regret_matched_strategy(infoset, 0U)[0] > 0.0);
+    EXPECT_TRUE(storage.average_strategy(infoset, 0U)[0] == 1.0);
+    storage.apply_delta(infoset, 0U, 0U, -1.0e300, 0.0);
+    EXPECT_TRUE(storage.regret_matched_strategy(infoset, 0U)[0] == 1.0);
+}
