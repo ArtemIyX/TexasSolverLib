@@ -870,26 +870,3 @@ When equivalent approaches exist, prefer:
 7. broad repository scan.
 
 Use broader inputs only when narrower inputs are insufficient.
-
----
-
-# Default Codex Behavior
-
-Unless the user requests otherwise:
-
-- Be concise.
-- Search before reading.
-- Read only relevant code.
-- Limit shell output.
-- Exclude generated/vendor/build directories.
-- Prefer diffs over full files.
-- Run targeted tests before full suites.
-- Use helper scripts to compact large data.
-- Maintain a short handoff during long tasks.
-- Do not rediscover already known project information.
-- Do not paste full files or logs unless necessary.
-- Expand context only when correctness requires it.
-
-The goal is not merely to use fewer tokens.
-
-The goal is to maximize useful engineering work per token.

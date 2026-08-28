@@ -1,15 +1,50 @@
 # AGENTS.md
 
+
 Guidelines for LLM coding agents working in this repository.
 You are an assistant optimized for minimal token usage and concise communication.
 
-Use ``scripts/codex_powershell.ps1`` to execute powershell commands (fixed PATH/path mismatch).
-Example:
-```bash
-powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake --build build --config Debug
-```
 
-### General rules
+
+## Workflow rules
+
+### Skill-set
+
+Use project skills to complete the task at hand
+
+|Skill|When to use|
+| -------- | ------- |
+|git-commit-hygiene| Commit small changes|
+|cpp-worker| Implement features|
+|cpp-unit-tests| Make unit tests for new features|
+|cpp-code-review| Review fresh-made code|
+|update-project-log| Update LOG file after finishing any task|
+
+
+### Scripts
+
+Use ``scripts/`` to streamline your work on the project.
+
+Use ``full_build.py`` to ensure that project compiles successfuly.
+
+|Script|When to use|
+|--------|-------|
+|codex_powershell.ps1|Execute any python script|
+|full_build.py|Execute compact build end-to-end|
+|cpp_file_summary.py|Retrieve information about cpp file|
+|extract_includes.pu|Retrieve includes from cpp file|
+|extract_symbols.py|Retrieve symbols from cpp file|
+|list_recent_changes.py|List git changes|
+|cmake_summary.py|Retrieve information about CMakeLists|
+|compact_build.py|Run only build|
+|scan_build_errors.py|Scan compilation errors|
+|compact_ctest.py|Run only ctest|
+|scan_ctest_errors.py|Scan ctest errors|
+
+
+## General rules
+
+Check [CODEX_TOKEN_EFFICIENT_WORKFLOW.md](CODEX_TOKEN_EFFICIENT_WORKFLOW.md) for LLM-Agent Token-Efficient Workflow Instructions.
 
 1. Write the shortest correct answer possible.
 2. Use plain sentences. Avoid decorative language.
@@ -32,44 +67,6 @@ powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake --b
 15. If the question requires explanation, give the minimal explanation needed for correctness.
 16. Do not add warnings, disclaimers, or background information unless required for correctness.
 17. Do not include motivational text, politeness phrases, or conversational padding.
-
-## Testing And Verification
-
-DO NOT execute run, build or test commands unless the user explicitly asks.
-
-When asked to test, typical commands are:
-
-```bash
-cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON
-cmake --build build --config Debug -- /nologo /v:q "/clp:ErrorsOnly;NoSummary"
-python .agents\\skills\\cpp-build-test-fixer\\scripts\\ctest_compact.py
-```
-
-## Scripts
-
-Use python scripts when u need something from OS before using own commands.
-
-```text
-repo_summary.py
-cmake_summary.py
-cpp_file_summary.py
-compact_build.py
-scan_build_errors.py
-compact_ctest.py
-scan_ctest_errors.py
-list_recent_changes.py
-extract_symbols.py
-extract_includes.py
-find_large_files.py
-```
-
-## Hard Rules
-
-- Do not run build, test, benchmark, install, or long-running solver commands unless the user explicitly asks.
-- Do not add poker client automation, screen scraping, clicking, stealth, evasion, account/session code.
-- Do not revert user changes or unrelated dirty files.
-- Keep exact `HUNLFlatDCFR` behavior intact unless the task explicitly targets it.
-- For large HUNL work, prefer a new sampled/lazy solver module over mutating the exact full-tree solver.
 
 
 ## Hot-Path Performance Rules

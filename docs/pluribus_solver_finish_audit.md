@@ -75,6 +75,9 @@ F1 global traversal
 F12 should be added while changing traversal, even though its release gate is
 later.
 
+The execution plan for the remaining F1 data-production and qualification
+blocker is [F1 acceptance blocker execution plan](pluribus_f1_acceptance_blocker_plan.md).
+
 ## Definition of finished
 
 - One versioned command generates buckets, trains/resumes a six-player global
