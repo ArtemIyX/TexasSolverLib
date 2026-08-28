@@ -32,6 +32,21 @@ inline constexpr std::uint32_t MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH = 3U;
 // insertion needs six. Two spare entries keep the boundary explicit.
 inline constexpr std::size_t MULTIWAY_MAX_TRAVERSAL_ACTIONS = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
 
+struct MultiwayTraversalPruningConfig {
+    bool enabled = false;
+    std::uint64_t warmup_batches = 0;
+    std::uint64_t recovery_interval_batches = 20;
+    double exploration_probability = 0.05;
+    double action_probability_threshold = 0.0;
+    double regret_threshold = 0.0;
+
+    void validate() const;
+    [[nodiscard]] bool recovery_batch(std::uint64_t batch_number) const noexcept;
+    [[nodiscard]] bool should_explore_action(
+        std::uint64_t batch_number, bool below_threshold,
+        bool immediate_terminal, bool river) const noexcept;
+};
+
 // Bounded lazy traversal. It samples opponent and public-chance nodes,
 // enumerates traverser decisions, and stops at exact terminals or the typed
 // strategic leaf boundary.
@@ -47,7 +62,8 @@ public:
         std::uint32_t max_public_chance_depth = 0U,
         const MultiwayBlueprintPolicyProvider* blueprint_policy = nullptr,
         const MultiwayFixedContinuationSelector* continuation_selector = nullptr,
-        const MultiwayFutureBucketArtifact* future_bucket_artifact = nullptr);
+        const MultiwayFutureBucketArtifact* future_bucket_artifact = nullptr,
+        MultiwayTraversalPruningConfig pruning = {});
 
     [[nodiscard]] bool run(
         PlayerId traverser,
@@ -56,7 +72,8 @@ public:
         MultiwayWorkerDeltaStream& stream,
         double iteration_weight = 1.0,
         MultiwaySearchProfile* profile = nullptr,
-        MultiwayContinuationDeltaStream* continuation_stream = nullptr) const;
+        MultiwayContinuationDeltaStream* continuation_stream = nullptr,
+        std::uint64_t batch_number = 0U) const;
 
     [[nodiscard]] const MultiwayFixedContinuationSelector* continuation_selector() const noexcept {
         return continuation_selector_;
@@ -100,6 +117,7 @@ private:
     const MultiwayBlueprintPolicyProvider* blueprint_policy_ = nullptr;
     const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
     const MultiwayFutureBucketArtifact* future_bucket_artifact_ = nullptr;
+    MultiwayTraversalPruningConfig pruning_{};
     std::uint64_t range_model_identity_ = 0;
     MultiwayTerminalAdapter terminal_;
 };
@@ -137,8 +155,9 @@ public:
         std::uint64_t trajectory_count,
         std::uint64_t seed,
         double iteration_weight = 1.0,
-        std::chrono::steady_clock::time_point deadline =
+            std::chrono::steady_clock::time_point deadline =
             std::chrono::steady_clock::time_point::max());
+    void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 
 private:
     void worker_loop(std::size_t worker_index);
@@ -184,6 +203,7 @@ private:
     std::size_t active_batch_count_ = 0U;
     std::uint64_t active_first_trajectory_id_ = 0U;
     std::uint64_t active_seed_ = 0U;
+    std::uint64_t active_batch_number_ = 0U;
     double active_iteration_weight_ = 1.0;
     std::chrono::steady_clock::time_point active_deadline_ =
         std::chrono::steady_clock::time_point::max();

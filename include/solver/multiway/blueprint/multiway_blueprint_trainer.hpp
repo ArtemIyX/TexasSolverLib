@@ -13,6 +13,14 @@
 
 namespace texas::solver::multiway {
 
+[[nodiscard]] MultiwayRootSnapshot make_multiway_initial_blueprint_root(
+    const MultiwayGameRules& rules,
+    MultiwayPrivateConfig private_ranges,
+    const MultiwayActionAbstraction& action_abstraction,
+    std::uint64_t action_abstraction_version,
+    std::uint64_t leaf_model_version,
+    PlayerId first_player = 0);
+
 struct MultiwayBlueprintIterationSchedule {
     bool linear_iteration_weighting = true;
     bool discount_regrets = false;
@@ -21,6 +29,13 @@ struct MultiwayBlueprintIterationSchedule {
     bool prune_negative_regrets = false;
     std::uint64_t pruning_warmup_batches = 0;
     std::uint64_t pruning_interval_batches = 1;
+    // Negative-regret pruning keeps a bounded floor and periodically explores
+    // every action to recover actions that were previously skipped.
+    double pruning_threshold = 0.0;
+    double regret_floor = 0.0;
+    std::uint64_t recovery_interval_batches = 20;
+    double pruning_exploration_probability = 0.05;
+    double pruning_action_probability_threshold = 0.0;
     // Zero disables late-window export. A non-zero value is the first
     // included batch in its separately accumulated weighted window.
     std::uint64_t late_window_start_batch = 0;
@@ -59,6 +74,7 @@ struct MultiwayBlueprintCoverageManifest {
 struct MultiwayBlueprintTrainingCheckpoint {
     MultiwayModelIdentity identity{};
     MultiwayBlueprintTrainingMetadata training{};
+    MultiwayBlueprintCoverageManifest coverage{};
     MultiwayCoordinatorCheckpoint coordinator{};
     std::vector<double> late_window_baseline;
 };

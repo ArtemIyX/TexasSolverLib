@@ -107,9 +107,40 @@ texas::MultiwayBucketRegistry make_buckets() {
     texas::MultiwayBlueprintConfig config;
     config.player_count = 3U;
     const auto compact_board = compact_bucket_board(kBoard);
-    return texas::MultiwayBucketRegistry({texas::MultiwayBucketTable(
-        texas::make_multiway_model_identity(config), texas::Street::River,
-        compact_board, 1U, one_bucket_assignments(compact_board))});
+    auto flop = std::vector<std::uint8_t>(compact_board.begin(), compact_board.begin() + 3);
+    return texas::MultiwayBucketRegistry({
+        texas::MultiwayBucketTable(texas::make_multiway_model_identity(config), texas::Street::Flop,
+            flop, 1U, one_bucket_assignments(flop)),
+        texas::MultiwayBucketTable(texas::make_multiway_model_identity(config), texas::Street::River,
+            compact_board, 1U, one_bucket_assignments(compact_board))});
+}
+
+texas::MultiwayRootSnapshot make_preflop_root(
+    const texas::MultiwayActionAbstraction& abstraction) {
+    texas::MultiwayGameConfig game;
+    game.starting_stacks = {1000, 1000, 1000, 1000, 1000, 1000};
+    game.initial_contributions = {0, 0, 0, 0, 50, 100};
+    game.initial_street_contributions = game.initial_contributions;
+    game.first_player = 0;
+    game.big_blind = 100;
+    game.street = texas::Street::Preflop;
+    const auto betting = texas::MultiwayState::initial(game).snapshot();
+    texas::MultiwayRootSnapshot root;
+    root.public_state = texas::MultiwayPublicBuilder::make_root(
+        betting, {}, abstraction.make_legal_actions(betting));
+    root.root_infoset = {root.public_state.id, 0};
+    root.root_bucket = 0U;
+    root.seat_order = {0, 1, 2, 3, 4, 5};
+    root.next_street_first_seat = 0;
+    root.odd_chip_first_seat = 0;
+    root.private_ranges.ranges.resize(6U);
+    const std::array<std::array<std::uint8_t, 2>, 6> ranks = {{{14, 13}, {12, 11},
+        {10, 9}, {8, 7}, {6, 5}, {4, 3}}};
+    for (std::size_t seat = 0; seat < 6U; ++seat)
+        root.private_ranges.ranges[seat] = {{{card(ranks[seat][0], 0), card(ranks[seat][1], 1)}, 1.0}};
+    root.action_abstraction_version = 1U;
+    root.leaf_model_version = 1U;
+    return root;
 }
 
 struct LeafProbe {
@@ -475,4 +506,18 @@ TEST_CASE(multiway_root_batch_runner_one_worker_remains_compatible) {
     EXPECT_EQ(
         fixture.coordinator.diagnostics().worker_delta_entries_merged,
         result.delta_entries_merged);
+}
+
+TEST_CASE(multiway_preflop_traversal_admits_lossless_class169_rows) {
+    texas::MultiwayActionAbstraction abstraction;
+    auto root = make_preflop_root(abstraction);
+    auto cfr = make_cfr();
+    cfr.player_count = 6U;
+    auto limits = make_limits(1024U);
+    limits.max_sparse_values = 4096U;
+    texas::MultiwaySolverCoordinator coordinator(
+        texas::MultiwaySolveRequest(root, cfr, limits));
+    const auto buckets = make_buckets();
+    EXPECT_TRUE(texas::MultiwayRootExternalSamplingTraversal(
+        coordinator, root, abstraction, buckets, nullptr, 1U, 0U).root_traverser() == 0);
 }

@@ -28,6 +28,9 @@ struct MultiwayBlueprintTrainingMetadata {
     std::uint64_t late_window_start_batch = 0;
     std::uint64_t schedule_hash = 0;
     std::uint64_t pruned_negative_regrets = 0;
+    std::uint64_t terminal_visits = 0;
+    std::uint64_t leaf_visits = 0;
+    std::uint64_t missing_lookup_requests = 0;
     std::uint8_t linear_iteration_weighting = 0;
     std::uint8_t discounting_enabled = 0;
     std::uint8_t negative_regret_pruning_enabled = 0;

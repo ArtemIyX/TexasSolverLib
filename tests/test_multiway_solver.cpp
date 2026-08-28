@@ -372,6 +372,27 @@ TEST_CASE(multiway_solver_root_bucket_must_fit_its_admitted_sparse_row) {
     }
 }
 
+TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export) {
+    auto limits = valid_limits();
+    limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+    texas::MultiwayCFRConfig cfr;
+    cfr.player_count = 2;
+    texas::MultiwaySolverCoordinator coordinator(
+        texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+    coordinator.admit_infoset_row(root_row());
+    texas::MultiwayWorkerDeltaStream first(0, 1U);
+    texas::MultiwayWorkerDeltaStream second(1, 1U);
+    EXPECT_TRUE(first.try_append(delta(0U, 1.0, 2.0)));
+    first.sort_fixed_order();
+    second.sort_fixed_order();
+    coordinator.merge_worker_streams({first, second});
+    EXPECT_TRUE(coordinator.compact_storage() != nullptr);
+    EXPECT_NEAR(coordinator.export_root_policy().actions[0].probability, 1.0, 1e-12);
+    const auto checkpoint = coordinator.checkpoint();
+    EXPECT_EQ(checkpoint.storage.shapes.size(), std::size_t{1});
+    EXPECT_TRUE(checkpoint.storage.regrets[0] > 0.0);
+}
+
 TEST_CASE(multiway_solver_live_root_uses_distinct_exact_private_hand_rows) {
     const auto first = std::array<std::uint8_t, 2>{card(14, 0), card(13, 0)};
     const auto second = std::array<std::uint8_t, 2>{card(12, 0), card(11, 0)};

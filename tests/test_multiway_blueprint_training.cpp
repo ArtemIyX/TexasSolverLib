@@ -1,8 +1,11 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>
+#include <cstddef>
+#include <utility>
 
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts) {
     texas::MultiwayBlueprintTrainingConfig config;
@@ -17,6 +20,29 @@ TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts) {
     EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
+TEST_CASE(multiway_training_identity_binds_storage_backend) {
+    texas::MultiwayBlueprintTrainingConfig reference;
+    auto compact = reference;
+    compact.limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+    EXPECT_TRUE(reference.identity() != compact.identity());
+}
+
+TEST_CASE(multiway_initial_blueprint_root_is_six_player_preflop_state) {
+    texas::MultiwayPrivateConfig ranges;
+    ranges.ranges.resize(6U);
+    for (std::size_t seat = 0; seat < 6U; ++seat) {
+        ranges.ranges[seat] = {{{texas::card_to_int(static_cast<std::uint8_t>(14U - seat), 0),
+            texas::card_to_int(static_cast<std::uint8_t>(13U - seat), 1)}, 1.0}};
+    }
+    texas::MultiwayActionAbstraction abstraction;
+    const auto root = texas::make_multiway_initial_blueprint_root(
+        texas::MultiwayGameRules::standard_6max(), std::move(ranges), abstraction, 1U, 1U);
+    EXPECT_EQ(root.public_state.betting.street, texas::Street::Preflop);
+    EXPECT_EQ(root.seat_order.size(), std::size_t{6});
+    EXPECT_EQ(root.root_infoset.seat, root.public_state.betting.current_player);
+    EXPECT_TRUE(!root.public_state.legal_actions.empty());
+}
+
 TEST_CASE(multiway_training_schedule_controls_linear_weighting_and_pruning) {
     texas::MultiwayBlueprintIterationSchedule schedule;
     EXPECT_EQ(schedule.strategy_weight(1U), 1.0);
@@ -28,6 +54,32 @@ TEST_CASE(multiway_training_schedule_controls_linear_weighting_and_pruning) {
     schedule.pruning_warmup_batches = 4U;
     schedule.validate();
     EXPECT_TRUE(schedule.identity() != 0U);
+}
+
+TEST_CASE(multiway_training_schedule_rejects_invalid_pruning_controls) {
+    texas::MultiwayBlueprintIterationSchedule schedule;
+    schedule.pruning_threshold = 0.1;
+    EXPECT_THROW(schedule.validate(), std::invalid_argument);
+    schedule.pruning_threshold = 0.0;
+    schedule.pruning_exploration_probability = 1.1;
+    EXPECT_THROW(schedule.validate(), std::invalid_argument);
+    schedule.pruning_exploration_probability = 0.05;
+    schedule.pruning_action_probability_threshold = 0.25;
+    schedule.validate();
+}
+
+TEST_CASE(multiway_traversal_pruning_policy_covers_warmup_recovery_and_exemptions) {
+    texas::MultiwayTraversalPruningConfig policy;
+    policy.enabled = true;
+    policy.warmup_batches = 4U;
+    policy.recovery_interval_batches = 20U;
+    EXPECT_TRUE(!policy.should_explore_action(4U, true, false, false));
+    EXPECT_TRUE(policy.should_explore_action(5U, true, false, false));
+    EXPECT_TRUE(!policy.should_explore_action(5U, false, false, false));
+    EXPECT_TRUE(policy.recovery_batch(20U));
+    EXPECT_TRUE(policy.should_explore_action(20U, false, false, false));
+    EXPECT_TRUE(!policy.should_explore_action(21U, true, true, false));
+    EXPECT_TRUE(!policy.should_explore_action(21U, true, false, true));
 }
 
 TEST_CASE(multiway_checkpoint_resume_identity_rejects_different_artifacts) {

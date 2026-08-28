@@ -1,5 +1,7 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "games/multiway_state.hpp"
 #include "core/fingerprint.hpp"
 
 #include <cmath>
@@ -75,6 +77,9 @@ MultiwayBlueprintTrainingMetadata make_metadata(
     metadata.late_window_start_batch = status.late_window_start_batch;
     metadata.schedule_hash = schedule.identity();
     metadata.pruned_negative_regrets = status.pruned_negative_regrets;
+    metadata.terminal_visits = status.terminal_visits;
+    metadata.leaf_visits = status.leaf_visits;
+    metadata.missing_lookup_requests = status.missing_lookup_requests;
     metadata.linear_iteration_weighting = schedule.linear_iteration_weighting ? 1U : 0U;
     metadata.discounting_enabled = schedule.discount_regrets ? 1U : 0U;
     metadata.negative_regret_pruning_enabled = schedule.prune_negative_regrets ? 1U : 0U;
@@ -83,10 +88,41 @@ MultiwayBlueprintTrainingMetadata make_metadata(
 
 }  // namespace
 
+MultiwayRootSnapshot make_multiway_initial_blueprint_root(
+    const MultiwayGameRules& rules,
+    MultiwayPrivateConfig private_ranges,
+    const MultiwayActionAbstraction& action_abstraction,
+    std::uint64_t action_abstraction_version,
+    std::uint64_t leaf_model_version,
+    PlayerId first_player) {
+    rules.validate();
+    auto state = games::multiway::MultiwayState::initial(rules, first_player);
+    auto betting = state.snapshot();
+    MultiwayRootSnapshot root;
+    root.public_state = MultiwayPublicBuilder::make_root(
+        betting, {}, action_abstraction.make_legal_actions(betting));
+    root.root_infoset = {root.public_state.id, betting.current_player};
+    root.root_bucket = 0U;
+    root.seat_order.resize(rules.player_count);
+    for (std::uint8_t seat = 0; seat < rules.player_count; ++seat) root.seat_order[seat] = seat;
+    root.next_street_first_seat = first_player;
+    root.odd_chip_first_seat = first_player;
+    root.private_ranges = std::move(private_ranges);
+    root.action_abstraction_version = action_abstraction_version;
+    root.leaf_model_version = leaf_model_version;
+    root.validate();
+    return root;
+}
+
 void MultiwayBlueprintIterationSchedule::validate() const {
     if (!std::isfinite(regret_discount_factor) || regret_discount_factor <= 0.0 ||
         regret_discount_factor > 1.0 || discount_interval_batches == 0U ||
-        pruning_interval_batches == 0U) {
+        pruning_interval_batches == 0U || !std::isfinite(pruning_threshold) ||
+        pruning_threshold > 0.0 || !std::isfinite(regret_floor) || regret_floor > 0.0 ||
+        !std::isfinite(pruning_exploration_probability) ||
+        pruning_exploration_probability < 0.0 || pruning_exploration_probability > 1.0 ||
+        !std::isfinite(pruning_action_probability_threshold) ||
+        pruning_action_probability_threshold < 0.0 || pruning_action_probability_threshold > 1.0) {
         throw std::invalid_argument("multiway blueprint schedule has invalid discount or pruning controls");
     }
 }
@@ -107,6 +143,11 @@ std::uint64_t MultiwayBlueprintIterationSchedule::identity() const noexcept {
     append_u64(hash, prune_negative_regrets ? 1U : 0U);
     append_u64(hash, pruning_warmup_batches);
     append_u64(hash, pruning_interval_batches);
+    append_u64(hash, static_cast<std::uint64_t>(pruning_threshold * -1000000000.0));
+    append_u64(hash, static_cast<std::uint64_t>(regret_floor * -1000000000.0));
+    append_u64(hash, recovery_interval_batches);
+    append_u64(hash, static_cast<std::uint64_t>(pruning_exploration_probability * 1000000000.0));
+    append_u64(hash, static_cast<std::uint64_t>(pruning_action_probability_threshold * 1000000000.0));
     append_u64(hash, late_window_start_batch);
     return hash == 0U ? 1U : hash;
 }
@@ -153,6 +194,7 @@ MultiwayModelIdentity MultiwayBlueprintTrainingConfig::identity() const {
     append_u64(runtime_hash, limits.max_sparse_values);
     append_u64(runtime_hash, limits.max_worker_delta_entries);
     append_u64(runtime_hash, limits.max_batches);
+    append_u64(runtime_hash, static_cast<std::uint8_t>(limits.storage_backend));
     append_u64(runtime_hash, schedule.identity());
     append_u64(runtime_hash, deterministic_seed);
     identity.runtime_search_schema_hash = runtime_hash == 0U ? 1U : runtime_hash;
@@ -198,6 +240,7 @@ void MultiwayBlueprintTrainer::run_batches(
             late_window_baseline_ = coordinator_->export_root_strategy_sums();
             status_.late_window_active = true;
         }
+        batch_runner_->set_batch_number(one_based_batch);
         (void)batch_runner_->run(
             status_.trajectories,
             trajectories_per_batch,
@@ -210,12 +253,22 @@ void MultiwayBlueprintTrainer::run_batches(
         }
         if (schedule_.prune_negative_regrets && status_.batches > schedule_.pruning_warmup_batches &&
             due(status_.batches - schedule_.pruning_warmup_batches, schedule_.pruning_interval_batches)) {
-            status_.pruned_negative_regrets += coordinator_->prune_negative_regrets();
+            const auto pruning_batch = status_.batches - schedule_.pruning_warmup_batches;
+            const bool recovery = schedule_.recovery_interval_batches != 0U &&
+                pruning_batch % schedule_.recovery_interval_batches == 0U;
+            if (!recovery) {
+                status_.pruned_negative_regrets += coordinator_->prune_negative_regrets(
+                    schedule_.pruning_threshold, schedule_.regret_floor);
+            }
         }
         const auto& diagnostics = coordinator_->diagnostics();
         status_.visited_public_descriptors = diagnostics.public_states_admitted;
         status_.admitted_rows = diagnostics.sparse_rows_admitted;
-        status_.admitted_action_cells = coordinator_->storage().value_count();
+        status_.admitted_action_cells = coordinator_->compact_storage() != nullptr
+            ? coordinator_->compact_storage()->value_count() : coordinator_->storage().value_count();
+        status_.terminal_visits = diagnostics.terminal_visits;
+        status_.leaf_visits = diagnostics.leaf_visits;
+        status_.missing_lookup_requests = diagnostics.missing_lookup_requests;
     }
 }
 
@@ -234,6 +287,36 @@ MultiwayFullBlueprintArtifact MultiwayBlueprintTrainer::export_full_policy() con
     MultiwayFullBlueprintArtifact artifact;
     artifact.identity = identity_;
     artifact.training = make_metadata(status_, schedule_, deterministic_seed_);
+    if (coordinator_->compact_storage() != nullptr) {
+        const auto checkpoint = coordinator_->checkpoint();
+        std::size_t offset = 0U;
+        for (const auto& shape : checkpoint.storage.shapes) {
+            const auto* state = coordinator_->find_public_state(shape.infoset.public_state);
+            if (state == nullptr) throw std::logic_error("compact row has no admitted public state");
+            for (std::uint32_t bucket = 0; bucket < shape.bucket_count; ++bucket) {
+                MultiwayBlueprintRow row;
+                row.infoset = shape.infoset;
+                row.bucket = bucket;
+                row.action_menu_id = state->legal_actions.front().action_menu_id;
+                double total = 0.0;
+                for (std::uint8_t action = 0; action < shape.action_count; ++action) total += checkpoint.storage.strategy_sums[offset + static_cast<std::size_t>(action) * shape.bucket_count + bucket];
+                std::uint32_t assigned = 0U;
+                for (std::uint8_t action = 0; action < shape.action_count; ++action) {
+                    const auto mass = checkpoint.storage.strategy_sums[offset + static_cast<std::size_t>(action) * shape.bucket_count + bucket];
+                    const auto probability = action + 1U == shape.action_count
+                        ? static_cast<std::uint16_t>(std::numeric_limits<std::uint16_t>::max() - assigned)
+                        : static_cast<std::uint16_t>(total > 0.0 ? std::floor(mass / total * std::numeric_limits<std::uint16_t>::max()) : 0U);
+                    assigned += probability;
+                    row.actions.push_back({state->legal_actions[action], probability});
+                }
+                artifact.rows.push_back(std::move(row));
+            }
+            offset += static_cast<std::size_t>(shape.action_count) * shape.bucket_count;
+        }
+        artifact.payload_hash = MultiwayFullBlueprintArtifacts::payload_hash(artifact);
+        artifact.validate();
+        return artifact;
+    }
     const auto& storage = coordinator_->storage();
     for (const auto& metadata : storage.rows()) {
         const auto* state = coordinator_->find_public_state(metadata.shape.infoset.public_state);
@@ -266,6 +349,7 @@ MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const
     MultiwayBlueprintTrainingCheckpoint result;
     result.identity = identity_;
     result.training = make_metadata(status_, schedule_, deterministic_seed_);
+    result.coverage = coverage_manifest();
     result.coordinator = coordinator_->checkpoint();
     result.late_window_baseline = late_window_baseline_;
     return result;
@@ -331,6 +415,12 @@ void MultiwayBlueprintTrainer::resume_from_checkpoint(
     status_.pruned_negative_regrets = checkpoint.training.pruned_negative_regrets;
     status_.late_window_start_batch = checkpoint.training.late_window_start_batch;
     status_.late_window_active = !checkpoint.late_window_baseline.empty();
+    status_.visited_public_descriptors = checkpoint.coverage.visited_public_descriptors;
+    status_.admitted_rows = checkpoint.coverage.admitted_rows;
+    status_.admitted_action_cells = checkpoint.coverage.admitted_action_cells;
+    status_.terminal_visits = checkpoint.coverage.terminal_visits;
+    status_.leaf_visits = checkpoint.coverage.leaf_visits;
+    status_.missing_lookup_requests = checkpoint.coverage.missing_lookup_requests;
     late_window_baseline_ = checkpoint.late_window_baseline;
     const auto& diagnostics = coordinator_->diagnostics();
     status_.visited_public_descriptors = diagnostics.public_states_admitted;
@@ -362,7 +452,11 @@ MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
         config_.blueprint.continuation_policy);
     MultiwayRootExternalSamplingTraversal traversal(
         *coordinator_, root_, *action_abstraction_, *buckets_, leaf_evaluator == nullptr ? nullptr : &leaf_evaluator_,
-        config_.max_decision_depth, config_.max_public_chance_depth, nullptr, continuation_selector_.get());
+        config_.max_decision_depth, config_.max_public_chance_depth, nullptr, continuation_selector_.get(), nullptr,
+        {config_.schedule.prune_negative_regrets, config_.schedule.pruning_warmup_batches,
+         config_.schedule.recovery_interval_batches, config_.schedule.pruning_exploration_probability,
+         config_.schedule.pruning_action_probability_threshold,
+         config_.schedule.pruning_threshold});
     batch_runner_ = std::make_unique<MultiwayRootBatchRunner>(
         std::move(traversal), *coordinator_, config_.limits.worker_count,
         config_.limits.max_worker_delta_entries);

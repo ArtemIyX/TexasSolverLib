@@ -75,6 +75,28 @@ std::uint64_t private_deal_identity(
 
 }  // namespace
 
+void MultiwayTraversalPruningConfig::validate() const {
+    if (!std::isfinite(exploration_probability) || exploration_probability < 0.0 ||
+        exploration_probability > 1.0 || !std::isfinite(action_probability_threshold) ||
+        action_probability_threshold < 0.0 || action_probability_threshold > 1.0 ||
+        !std::isfinite(regret_threshold) || regret_threshold > 0.0) {
+        throw std::invalid_argument("multiway traversal pruning exploration probability is invalid");
+    }
+}
+
+bool MultiwayTraversalPruningConfig::recovery_batch(std::uint64_t batch_number) const noexcept {
+    return enabled && batch_number > warmup_batches && recovery_interval_batches != 0U &&
+        batch_number % recovery_interval_batches == 0U;
+}
+
+bool MultiwayTraversalPruningConfig::should_explore_action(
+    std::uint64_t batch_number, bool below_threshold,
+    bool immediate_terminal, bool river) const noexcept {
+    if (!enabled || batch_number <= warmup_batches || immediate_terminal || river) return false;
+    if (recovery_batch(batch_number)) return true;
+    return below_threshold;
+}
+
 MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     MultiwaySolverCoordinator& coordinator,
     const MultiwayRootSnapshot& root,
@@ -85,7 +107,8 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
     std::uint32_t max_public_chance_depth,
     const MultiwayBlueprintPolicyProvider* blueprint_policy,
     const MultiwayFixedContinuationSelector* continuation_selector,
-    const MultiwayFutureBucketArtifact* future_bucket_artifact)
+    const MultiwayFutureBucketArtifact* future_bucket_artifact,
+    MultiwayTraversalPruningConfig pruning)
     : coordinator_(&coordinator),
       root_(&root),
       action_abstraction_(&action_abstraction),
@@ -96,12 +119,14 @@ MultiwayRootExternalSamplingTraversal::MultiwayRootExternalSamplingTraversal(
       blueprint_policy_(blueprint_policy),
       continuation_selector_(continuation_selector),
       future_bucket_artifact_(future_bucket_artifact),
+      pruning_(pruning),
       range_model_identity_(private_range_identity(root.private_ranges)),
       terminal_(coordinator) {
     root.validate();
-    if (root.public_state.betting.street < Street::Flop ||
+    pruning_.validate();
+    if (root.public_state.betting.street < Street::Preflop ||
         root.public_state.betting.street > Street::River) {
-        throw std::invalid_argument("multiway root traversal currently requires a postflop root");
+        throw std::invalid_argument("multiway root traversal requires a valid street");
     }
     if (max_decision_depth_ == 0U || max_decision_depth_ > MULTIWAY_MAX_DECISION_DEPTH) {
         throw std::invalid_argument("multiway traversal decision depth is outside the supported range");
@@ -130,6 +155,7 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     Probability public_chance_reach = 1.0;
     Probability public_sampling_reach = 1.0;
     double iteration_weight = 1.0;
+    std::uint64_t batch_number = 0;
     MultiwaySearchProfile* profile = nullptr;
     bool accepted = true;
 };
@@ -156,6 +182,17 @@ std::size_t sample_action(
         if (sample < cumulative) return action;
     }
     return action_count - 1U;
+}
+
+std::uint32_t preflop_class(const std::array<std::uint8_t, 2>& hole) noexcept {
+    const auto high = std::max(core::rank_of(hole[0]), core::rank_of(hole[1]));
+    const auto low = std::min(core::rank_of(hole[0]), core::rank_of(hole[1]));
+    const auto high_pos = static_cast<std::size_t>(14U - high);
+    const auto low_pos = static_cast<std::size_t>(14U - low);
+    if (high == low) return static_cast<std::uint32_t>(high_pos);
+    const auto pair_index = high_pos * 12U - (high_pos * (high_pos - 1U)) / 2U +
+        (low_pos - high_pos - 1U);
+    return static_cast<std::uint32_t>((core::suit_of(hole[0]) == core::suit_of(hole[1]) ? 13U : 91U) + pair_index);
 }
 
 bool append_infoset_update_noalloc(
@@ -240,6 +277,7 @@ bool append_infoset_update_noalloc(
 Value MultiwayRootExternalSamplingTraversal::evaluate_leaf(
     const MultiwayPublicStateDescriptor& state,
     TraversalContext& context) const {
+    coordinator_->record_leaf_visit();
     if (leaf_evaluator_ == nullptr || !leaf_evaluator_->valid()) {
         throw std::logic_error("multiway recursive traversal requires a leaf evaluator at its boundary");
     }
@@ -339,10 +377,14 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     {
         MultiwaySearchProfileScope profile_scope(
             context.profile, MultiwaySearchProfileStage::RowLookup);
-        table_ptr = &buckets_->table(state.betting.street, state.board);
         const auto same_root_street = state.betting.street == root_->public_state.betting.street;
         const auto sampled_hole = context.terminal->sampled_hole(*context.deal, actor);
-        blueprint_bucket = table_ptr->lookup(sampled_hole);
+        if (state.betting.street == Street::Preflop) {
+            blueprint_bucket = preflop_class(sampled_hole);
+        } else {
+            table_ptr = &buckets_->table(state.betting.street, state.board);
+            blueprint_bucket = table_ptr->lookup(sampled_hole);
+        }
         bucket = root_->root_uses_exact_private_hand && same_root_street
             ? static_cast<std::uint32_t>(MultiwayBucketTable::hole_index(
                 sampled_hole))
@@ -350,7 +392,9 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
                 ? root_->root_bucket
                 : blueprint_bucket);
     }
-    const auto& table = *table_ptr;
+    const auto bucket_count = state.betting.street == Street::Preflop
+        ? 169U
+        : table_ptr->bucket_count();
     const MultiwayInfosetId infoset = {state.id, actor};
     {
         MultiwaySearchProfileScope profile_scope(
@@ -360,7 +404,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             root_->root_uses_exact_private_hand &&
                 state.betting.street == root_->public_state.betting.street
                 ? static_cast<std::uint32_t>(MULTIWAY_HOLE_COMBINATION_COUNT)
-                : table.bucket_count(),
+                : bucket_count,
             static_cast<std::uint8_t>(action_count),
         });
     }
@@ -370,12 +414,40 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         : blueprint_policy_->strategy_into(
             infoset, blueprint_bucket, state.legal_actions.data(), action_count, strategy.data());
     if (lookup != MultiwayBlueprintLookupStatus::Hit) {
+        if (blueprint_policy_ != nullptr && actor != context.traverser) {
+            coordinator_->record_missing_lookup();
+        }
         MultiwaySearchProfileScope profile_scope(
             context.profile, MultiwaySearchProfileStage::RegretMatching);
         coordinator_->regret_matched_strategy_into(
             infoset, bucket, strategy.data(), action_count);
     }
     const auto betting_state = make_multiway_fixed_state(state.betting);
+    const bool pruning_recovery = pruning_.recovery_batch(context.batch_number);
+    if (pruning_.enabled && context.batch_number > pruning_.warmup_batches &&
+        !pruning_recovery && actor != context.traverser &&
+        state.betting.street != Street::River && action_count > 0U) {
+        const auto explore = pruning_.exploration_probability;
+        for (std::size_t action = 0; action < action_count; ++action) {
+            const auto next = betting_state.apply(
+                state.legal_actions[action].action,
+                state.legal_actions[action].target_street_contribution);
+            const bool immediate_terminal = next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal ||
+                next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal;
+            const bool below_regret = coordinator_->action_below_regret(
+                infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold);
+            if (pruning_.should_explore_action(context.batch_number,
+                    below_regret || strategy[action] <= pruning_.action_probability_threshold,
+                    immediate_terminal, state.betting.street == Street::River)) {
+                strategy[action] = explore / action_count;
+            } else if (!immediate_terminal) {
+                strategy[action] *= (1.0 - explore);
+            }
+        }
+        Probability total = 0.0;
+        for (std::size_t action = 0; action < action_count; ++action) total += strategy[action];
+        if (total > 0.0) for (std::size_t action = 0; action < action_count; ++action) strategy[action] /= total;
+    }
 
     const auto evaluate_action = [&](std::size_t action) {
         const auto next = betting_state.apply(
@@ -409,6 +481,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         }
         if (next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal ||
             next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal) {
+            coordinator_->record_terminal_visit();
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::TerminalSettlement);
             return context.terminal->resolve_admitted_terminal(child, *context.deal)
@@ -511,6 +584,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
     Value value = 0.0;
     if (chance_child.board_runout.chance_only_runout) {
         if (chance_child.board.size() == 5U) {
+            coordinator_->record_terminal_visit();
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::TerminalSettlement);
             value = context.terminal->resolve_admitted_terminal(chance_child, *context.deal)
@@ -560,7 +634,8 @@ bool MultiwayRootExternalSamplingTraversal::run(
     MultiwayWorkerDeltaStream& stream,
     double iteration_weight,
     MultiwaySearchProfile* profile,
-    MultiwayContinuationDeltaStream* continuation_stream) const {
+    MultiwayContinuationDeltaStream* continuation_stream,
+    std::uint64_t batch_number) const {
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -590,6 +665,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     const auto initial_size = stream.size();
     const auto initial_continuation_size = continuation_stream == nullptr ? 0U : continuation_stream->size();
     context.continuation_stream = continuation_stream;
+    context.batch_number = batch_number;
     (void)traverse_decision(root_state, 0U, 0U, context);
     if (!context.accepted) {
         stream.rewind(initial_size);
@@ -683,7 +759,8 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                             scratch.stream,
                             iteration_weight,
                             &scratch.profile,
-                            &scratch.continuation_stream)) {
+                            &scratch.continuation_stream,
+                            active_batch_number_)) {
                         ++scratch.accepted;
                     } else {
                         ++scratch.discarded;

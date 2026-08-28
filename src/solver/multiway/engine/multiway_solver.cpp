@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "core/fingerprint.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
@@ -498,6 +499,15 @@ std::vector<Probability> MultiwaySparseRowStorage::regret_matched_strategy(
     return strategy;
 }
 
+bool MultiwaySparseRowStorage::action_below_regret(
+    MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
+    double threshold) const noexcept {
+    const auto* row = metadata(infoset);
+    if (row == nullptr || bucket >= row->shape.bucket_count || action >= row->shape.action_count ||
+        !std::isfinite(threshold)) return false;
+    return regret_[row->regret_offset + static_cast<std::size_t>(action) * row->shape.bucket_count + bucket] < threshold;
+}
+
 void MultiwaySparseRowStorage::regret_matched_strategy_into(
     MultiwayInfosetId infoset,
     std::uint32_t bucket,
@@ -537,11 +547,12 @@ void MultiwaySparseRowStorage::scale_regrets(double factor) {
     for (auto& regret : regret_) regret *= factor;
 }
 
-std::size_t MultiwaySparseRowStorage::prune_negative_regrets() noexcept {
+std::size_t MultiwaySparseRowStorage::prune_negative_regrets(
+    double threshold, double regret_floor) noexcept {
     std::size_t pruned = 0;
     for (auto& regret : regret_) {
-        if (regret < 0.0) {
-            regret = 0.0;
+        if (regret < threshold) {
+            regret = std::max(regret_floor, threshold);
             ++pruned;
         }
     }
@@ -643,7 +654,12 @@ MultiwaySolveResult::MultiwaySolveResult(
 
 MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest& request)
     : request_(request),
-      storage_(request.limits().max_sparse_rows, checked_sparse_value_capacity(request)) {
+      storage_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32 ? 0U : request.limits().max_sparse_rows,
+          request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32 ? 0U : checked_sparse_value_capacity(request)) {
+    if (request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32) {
+        compact_storage_ = std::make_unique<MultiwayCompactStorage>(
+            request.limits().max_sparse_rows, checked_sparse_value_capacity(request));
+    }
     public_states_.reserve(request.limits().max_public_states);
     merge_stream_views_.reserve(request.limits().worker_count);
     const auto merge_capacity = static_cast<std::size_t>(request.limits().worker_count) *
@@ -681,8 +697,10 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
 
 void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape) {
     std::lock_guard<std::mutex> lock(traversal_mutex_);
-    if (!storage_.has_row(shape.infoset) &&
-        storage_.row_count() >= request_.limits().max_sparse_rows) {
+    const auto compact = compact_storage_ != nullptr;
+    const auto existed = compact ? compact_storage_->has_row(shape.infoset) : storage_.has_row(shape.infoset);
+    const auto row_count = compact ? compact_storage_->row_count() : storage_.row_count();
+    if (!existed && row_count >= request_.limits().max_sparse_rows) {
         throw std::length_error("multiway sparse row admission exceeds configured capacity");
     }
     const auto* state = public_state(shape.infoset.public_state);
@@ -702,8 +720,8 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
         request_.root().root_bucket >= shape.bucket_count) {
         throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
     }
-    const auto existed = storage_.has_row(shape.infoset);
-    storage_.admit_row(shape);
+    if (compact) compact_storage_->admit_row(shape);
+    else storage_.admit_row(shape);
     if (!existed) ++diagnostics_.sparse_rows_admitted;
 }
 
@@ -713,7 +731,22 @@ void MultiwaySolverCoordinator::regret_matched_strategy_into(
     Probability* output,
     std::size_t output_size) const {
     std::lock_guard<std::mutex> lock(traversal_mutex_);
+    if (compact_storage_ != nullptr) {
+        const auto strategy = compact_storage_->regret_matched_strategy(infoset, bucket);
+        if (strategy.size() != output_size) throw std::invalid_argument("compact policy size mismatch");
+        std::copy(strategy.begin(), strategy.end(), output);
+        return;
+    }
     storage_.regret_matched_strategy_into(infoset, bucket, output, output_size);
+}
+
+bool MultiwaySolverCoordinator::action_below_regret(
+    MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
+    double threshold) const noexcept {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    return compact_storage_ != nullptr
+        ? compact_storage_->action_below_regret(infoset, bucket, action, threshold)
+        : storage_.action_below_regret(infoset, bucket, action, threshold);
 }
 
 void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams) {
@@ -763,6 +796,16 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
     }
     std::sort(merge_deltas_.begin(), merge_deltas_.end(), delta_less);
     const auto stream_fingerprint = delta_stream_fingerprint(merge_deltas_);
+
+    if (compact_storage_ != nullptr) {
+        for (const auto& delta : merge_deltas_) {
+            compact_storage_->apply_delta(delta.infoset, delta.bucket, delta.action,
+                delta.regret, delta.strategy_sum);
+        }
+        diagnostics_.worker_delta_entries_merged += delta_count;
+        diagnostics_.last_merged_stream_fingerprint = stream_fingerprint;
+        return;
+    }
 
     for (std::size_t begin = 0; begin < merge_deltas_.size();) {
         const auto& first = merge_deltas_[begin];
@@ -818,7 +861,9 @@ MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy() const {
     result.bucket = root.root_bucket;
 
     std::vector<Probability> probabilities;
-    if (storage_.has_row(root.root_infoset)) {
+    if (compact_storage_ != nullptr && compact_storage_->has_row(root.root_infoset)) {
+        probabilities = compact_storage_->average_strategy(root.root_infoset, root.root_bucket);
+    } else if (storage_.has_row(root.root_infoset)) {
         probabilities = storage_.average_strategy(root.root_infoset, root.root_bucket);
     } else {
         const auto uniform = 1.0 / static_cast<double>(root.public_state.legal_actions.size());
@@ -838,7 +883,9 @@ MultiwayRootPolicy MultiwaySolverCoordinator::export_root_current_policy() const
     result.infoset = root.root_infoset;
     result.bucket = root.root_bucket;
     std::vector<Probability> probabilities;
-    if (storage_.has_row(root.root_infoset)) {
+    if (compact_storage_ != nullptr && compact_storage_->has_row(root.root_infoset)) {
+        probabilities = compact_storage_->regret_matched_strategy(root.root_infoset, root.root_bucket);
+    } else if (storage_.has_row(root.root_infoset)) {
         probabilities = storage_.regret_matched_strategy(root.root_infoset, root.root_bucket);
     } else {
         probabilities.assign(root.public_state.legal_actions.size(),
@@ -893,11 +940,34 @@ MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy_since(
 }
 
 void MultiwaySolverCoordinator::scale_regrets(double factor) {
+    if (compact_storage_ != nullptr) {
+        compact_storage_->scale_regrets(factor);
+        return;
+    }
     storage_.scale_regrets(factor);
 }
 
-std::size_t MultiwaySolverCoordinator::prune_negative_regrets() noexcept {
-    return storage_.prune_negative_regrets();
+MultiwaySolverCoordinator::~MultiwaySolverCoordinator() = default;
+
+void MultiwaySolverCoordinator::record_terminal_visit() noexcept {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    ++diagnostics_.terminal_visits;
+}
+
+void MultiwaySolverCoordinator::record_leaf_visit() noexcept {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    ++diagnostics_.leaf_visits;
+}
+
+void MultiwaySolverCoordinator::record_missing_lookup() noexcept {
+    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    ++diagnostics_.missing_lookup_requests;
+}
+
+std::size_t MultiwaySolverCoordinator::prune_negative_regrets(
+    double threshold, double regret_floor) noexcept {
+    if (compact_storage_ != nullptr) return compact_storage_->prune_negative_regrets(threshold, regret_floor);
+    return storage_.prune_negative_regrets(threshold, regret_floor);
 }
 
 const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::public_state(
@@ -917,6 +987,10 @@ MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
     std::lock_guard<std::mutex> lock(traversal_mutex_);
     MultiwayCoordinatorCheckpoint result;
     result.public_states = public_states_;
+    if (compact_storage_ != nullptr) {
+        compact_storage_->export_checkpoint(result.storage);
+        return result;
+    }
     result.storage.shapes.reserve(storage_.metadata_.size());
     result.storage.regrets.reserve(storage_.regret_.size());
     result.storage.strategy_sums.reserve(storage_.strategy_sum_.size());
@@ -971,6 +1045,18 @@ void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorChec
     }
     for (const auto& state : checkpoint.public_states) admit_public_state(state);
     for (const auto& shape : checkpoint.storage.shapes) admit_infoset_row(shape);
+    if (compact_storage_ != nullptr) {
+        std::size_t offset = 0U;
+        for (const auto& shape : checkpoint.storage.shapes) {
+            for (std::uint8_t action = 0; action < shape.action_count; ++action) {
+                for (std::uint32_t bucket = 0; bucket < shape.bucket_count; ++bucket) {
+                    compact_storage_->apply_delta(shape.infoset, bucket, action,
+                        checkpoint.storage.regrets[offset], checkpoint.storage.strategy_sums[offset]);
+                    ++offset;
+                }
+            }
+        }
+    }
     {
         std::lock_guard<std::mutex> lock(traversal_mutex_);
         storage_.regret_ = checkpoint.storage.regrets;

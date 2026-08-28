@@ -13,6 +13,8 @@
 
 namespace texas::solver::multiway {
 
+class MultiwayCompactStorage;
+
 class MultiwayTerminalAdapter;
 
 // Stable numeric identities are assigned by the coordinator. Zero is reserved
@@ -177,6 +179,7 @@ struct MultiwayRootSnapshot {
 };
 
 struct MultiwaySolverLimits {
+    enum class StorageBackend : std::uint8_t { Float64Reference, CompactInt32 };
     std::uint64_t seed = 1;
     std::uint32_t worker_count = 1;
     std::uint32_t trajectories_per_batch = 1;
@@ -185,6 +188,7 @@ struct MultiwaySolverLimits {
     std::size_t max_sparse_values = 0;
     std::size_t max_worker_delta_entries = 0;
     std::uint32_t max_batches = 64;
+    StorageBackend storage_backend = StorageBackend::Float64Reference;
 
     void validate() const;
 };
@@ -263,11 +267,15 @@ public:
         std::uint32_t bucket,
         Probability* output,
         std::size_t output_size) const;
+    [[nodiscard]] bool action_below_regret(
+        MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
+        double threshold) const noexcept;
     [[nodiscard]] std::vector<double> strategy_sums(
         MultiwayInfosetId infoset,
         std::uint32_t bucket) const;
     void scale_regrets(double factor);
-    [[nodiscard]] std::size_t prune_negative_regrets() noexcept;
+    [[nodiscard]] std::size_t prune_negative_regrets(
+        double threshold = 0.0, double regret_floor = 0.0) noexcept;
     [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
     [[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
     [[nodiscard]] std::size_t value_capacity_limit() const noexcept { return max_values_; }
@@ -342,6 +350,9 @@ struct MultiwaySolveDiagnostics {
     std::uint64_t public_states_admitted = 0;
     std::uint64_t sparse_rows_admitted = 0;
     std::uint64_t worker_delta_entries_merged = 0;
+    std::uint64_t terminal_visits = 0;
+    std::uint64_t leaf_visits = 0;
+    std::uint64_t missing_lookup_requests = 0;
     std::uint64_t last_merged_stream_fingerprint = 0U;
     double traversal_seconds = 0.0;
     double merge_seconds = 0.0;
@@ -373,6 +384,7 @@ private:
 class MultiwaySolverCoordinator {
 public:
     explicit MultiwaySolverCoordinator(const MultiwaySolveRequest& request);
+    ~MultiwaySolverCoordinator();
 
     void admit_public_state(const MultiwayPublicStateDescriptor& state);
     void admit_infoset_row(const MultiwaySparseRowShape& shape);
@@ -390,8 +402,16 @@ public:
     [[nodiscard]] MultiwayRootPolicy export_root_policy_since(
         const std::vector<double>& baseline_strategy_sums) const;
     void scale_regrets(double factor);
-    [[nodiscard]] std::size_t prune_negative_regrets() noexcept;
+    void record_terminal_visit() noexcept;
+    void record_leaf_visit() noexcept;
+    void record_missing_lookup() noexcept;
+    [[nodiscard]] bool action_below_regret(
+        MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
+        double threshold) const noexcept;
+    [[nodiscard]] std::size_t prune_negative_regrets(
+        double threshold = 0.0, double regret_floor = 0.0) noexcept;
     [[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
+    [[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return compact_storage_.get(); }
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
     [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
     [[nodiscard]] std::size_t merge_scratch_capacity() const noexcept {
@@ -418,6 +438,7 @@ private:
 
     MultiwaySolveRequest request_;
     MultiwaySparseRowStorage storage_;
+    std::unique_ptr<MultiwayCompactStorage> compact_storage_;
     std::vector<MultiwayPublicStateDescriptor> public_states_;
     std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
     std::vector<MultiwayWorkerDelta> merge_deltas_;
