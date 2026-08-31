@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - final five-run qualification matrix
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Completed five Release end-to-end repetitions at 65,536 tables for flop,
+  turn, and river using 1, 2, and 16 workers on the final direct-encoding and
+  reusable-slot pipeline.
+- Median rates for 1/2/16 workers were flop `8859`/`19381`/`102839`, turn
+  `8838`/`18874`/`102299`, and river `8241`/`17903`/`102826` tables/s.
+- All runs produced 256 chunks and identical per-street checksums. A 32-worker
+  comparison was slower than 16 workers on all streets.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Final Release qualification matrix passed: 45 benchmark runs.
+- Two-worker end-to-end throughput exceeded the 1.25x gate on every street.
+- Sixteen-worker throughput was the best tested safe policy; 32 logical workers
+  were slower and are excluded from the default.
+
+### Limitations
+
+- Full 2,891,785-table production generation remains intentionally unrun per
+  the user instruction. OS-level allocator, disk, and context-switch counters
+  were not collected.
+
 ## F1 bucket generation - final worker policy qualification
 
 **Status:** Complete
