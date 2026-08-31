@@ -1,5 +1,36 @@
 # Pluribus Roadmap Progress Log
 
+## Multiway artifact inspection multithreading
+
+**Status:** Complete
+**Completed:** 2026-08-31
+**Implementation commits:** `e743294`, `ce44b1f`
+
+- Added a bounded deterministic worker pool for complete schema-4 artifacts,
+  with fixed 4,096-table leaves, independent buffered readers, validation,
+  worker-local results, ordered reduction, and coordinator-only progress.
+- Added explicit parallel, legacy, and both hash modes while preserving the
+  historical stream FNV payload hash.
+- Wired inspection thread and hash options through the CLI and added a focused
+  deterministic inspection test.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- `python scripts/full_build.py` passed: Debug build and all 107 CTest tests.
+- `git diff --check` passed.
+
+### Limitations
+
+- Production-artifact throughput benchmarks were not run; the fixed leaf size
+  remains the plan's initial 4,096-table geometry.
+
 ## Multiway bucket inspection progress reporting
 
 **Status:** Complete
