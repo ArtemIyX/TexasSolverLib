@@ -1,5 +1,38 @@
 # Pluribus Roadmap Progress Log
 
+## F1 qualification harness and human execution plan
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a detailed F1 implementation and qualification plan covering missing
+  telemetry, sizing, artifact preflight, checkpoint equivalence, strict final
+  evidence aggregation, and the production acceptance sequence.
+- Established that LLM agents may inspect and edit repository files but only a
+  human may build or execute compiled programs, tests, workflows, or workloads.
+- Defined immutable evidence directories, human run records, failure handling,
+  LLM task packets, and exact F1 completion gates.
+
+### Files
+
+- `docs/f1_human_execution_implementation_plan.md`
+- `docs/project_state.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the current F1 configuration, workflow entry point, training report,
+  project state, repository guidance, and resulting documentation diff.
+- Ran Markdown heading and execution-boundary searches plus `git diff --check`.
+- Builds, tests, and compiled programs were not run, as required by the new
+  human-only execution boundary.
+
+### Limitations
+
+- This task creates the implementation/execution plan only. Qualification
+  harness code, human validation, production artifacts, and F1 acceptance
+  evidence remain pending.
+
 ## Current implementation state reconstruction
 
 **Status:** Complete

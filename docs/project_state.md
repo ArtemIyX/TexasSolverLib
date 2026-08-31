@@ -196,6 +196,9 @@ new full build/test run before release.
 
 ## Recommended next sequence
 
+The implementation and human-only execution contract is documented in the
+[F1 qualification plan](f1_human_execution_implementation_plan.md).
+
 1. Run the explicitly authorized F1 sizing pilot and freeze every unresolved
    `F1-DEV-12-v1` capacity field with headroom.
 2. Generate, inspect, hash, and externally publish the complete bucket artifact;
@@ -232,4 +235,3 @@ new full build/test run before release.
 - Current `CMakeLists.txt`, `include/`, `src/`, `tests/`, `examples/`, and
   `configs/multiway/f1_dev_v1.cfg`
 - Git commits `a779dcc`, `0e29a02`, `5006a43`, `97ce765`, and `292f777`
-
