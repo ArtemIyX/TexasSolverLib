@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - startup diagnostics
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added startup output for `texas_multiway_buckets` before configuration loading,
+  followed by a goal summary with profile, model identity, configuration
+  fingerprint, table target, sizing, and effective worker settings.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 107/107 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- None identified.
+
 ## F1 bucket generation - test-count documentation correction
 
 **Status:** Complete
