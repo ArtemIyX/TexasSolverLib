@@ -1,5 +1,26 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - topology-aware CLI default
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- The CLI now defaults to the smaller of four workers and detected physical
+  cores, while retaining explicit `--threads` overrides.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Full Debug build and all tests passed.
+
+### Limitations
+
+- The four-worker cap remains an evidence-based conservative cap; a future
+  host qualification may tune it independently.
+
 ## F1 bucket generation - physical topology diagnostics
 
 **Status:** Complete

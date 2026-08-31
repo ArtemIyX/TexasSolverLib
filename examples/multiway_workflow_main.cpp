@@ -678,7 +678,9 @@ int run(std::string_view name, int argc, char** argv) {
     std::int32_t exit_code = -1;
     std::uint64_t batches = 0U;
     std::uint64_t duplicates = 0U;
-    std::uint32_t threads = texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS;
+    std::uint32_t threads = (std::min)(
+        texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS,
+        texas::solver::multiway::multiway_bucket_physical_core_count());
     std::uint64_t benchmark_tables = 0U;
     std::uint64_t benchmark_start = 0U;
     std::string benchmark_mode = "build-only";
