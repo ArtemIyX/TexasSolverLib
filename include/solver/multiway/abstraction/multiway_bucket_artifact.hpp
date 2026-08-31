@@ -90,6 +90,8 @@ void validate_multiway_bucket_coverage(
 [[nodiscard]] MultiwayBucketRegistry load_multiway_bucket_registry(
     const std::filesystem::path& path);
 
+enum class MultiwayBucketInspectionHashMode : std::uint8_t { Parallel, Legacy, Both };
+
 struct MultiwayBucketArtifactInspection {
     std::uint64_t flop_tables = 0U;
     std::uint64_t turn_tables = 0U;
@@ -98,10 +100,10 @@ struct MultiwayBucketArtifactInspection {
     std::uint64_t payload_hash = 0U;
     std::uint64_t parallel_payload_hash = 0U;
     std::uint32_t effective_threads = 1U;
+    MultiwayBucketInspectionHashMode hash_mode = MultiwayBucketInspectionHashMode::Legacy;
     MultiwayModelIdentity identity{};
 };
 
-enum class MultiwayBucketInspectionHashMode : std::uint8_t { Parallel, Legacy, Both };
 struct MultiwayBucketInspectionOptions {
     std::uint32_t requested_threads = 0U;
     MultiwayBucketInspectionHashMode hash_mode = MultiwayBucketInspectionHashMode::Parallel;

@@ -85,7 +85,8 @@ void print_help(std::string_view name, Workflow workflow) {
         std::cout << "  --input <path>         Artifact to inspect\n"
                   << "  --report <path>        Atomically published JSON inspection report\n"
                   << "  --progress <true|false>  Print inspection progress (default true)\n"
-                  << "  --progress-every <N>  Print progress every N tables\n";
+                  << "  --progress-every <N>  Print progress every N tables\n"
+                  << "  --hash <parallel|legacy|both>  Inspection fingerprint mode\n";
     } else if (workflow == Workflow::Finalize) {
         std::cout << "  --bucket-report <path>       Bucket inspection report\n"
                   << "  --training-report <path>     Training report\n"
@@ -395,12 +396,13 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
 
 int run_inspect(const std::filesystem::path& config_path, const std::filesystem::path& input_path,
                 const std::filesystem::path& report_path, bool progress_enabled,
-                std::uint64_t progress_interval, std::uint32_t requested_threads) {
+                std::uint64_t progress_interval, std::uint32_t requested_threads,
+                texas::solver::multiway::MultiwayBucketInspectionHashMode hash_mode) {
     using namespace texas::solver::multiway;
     const auto workflow = load_multiway_workflow_config(config_path);
     const auto report = inspect_multiway_bucket_artifact(
         input_path, make_multiway_model_identity(workflow.model),
-        MultiwayBucketInspectionOptions{requested_threads, MultiwayBucketInspectionHashMode::Parallel},
+        MultiwayBucketInspectionOptions{requested_threads, hash_mode},
         progress_enabled ? MultiwayBucketInspectionProgressCallback(
             [](std::uint64_t completed, std::uint64_t total) {
                 std::cout << "inspection progress: tables=" << completed << '/' << total << '\n';
@@ -417,6 +419,8 @@ int run_inspect(const std::filesystem::path& config_path, const std::filesystem:
         ",\n  \"river_tables\": " + std::to_string(report.river_tables) +
         ",\n  \"live_assignments\": " + std::to_string(report.live_assignments) +
         ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) +
+        ",\n  \"parallel_payload_hash\": " + std::to_string(report.parallel_payload_hash) +
+        ",\n  \"effective_threads\": " + std::to_string(report.effective_threads) +
         ",\n  \"identity_matches\": " +
         (report.identity == make_multiway_model_identity(workflow.model) ? "true" : "false") +
         ",\n  \"payload_hash_matches\": " +
@@ -444,7 +448,9 @@ int run_inspect(const std::filesystem::path& config_path, const std::filesystem:
               << "turn_tables=" << report.turn_tables << "\n"
               << "river_tables=" << report.river_tables << "\n"
               << "live_assignments=" << report.live_assignments << "\n"
-              << "payload_hash=" << report.payload_hash << "\n";
+              << "payload_hash=" << report.payload_hash << "\n"
+              << "parallel_payload_hash=" << report.parallel_payload_hash << "\n"
+              << "effective_threads=" << report.effective_threads << "\n";
     return EXIT_SUCCESS;
 }
 
@@ -706,6 +712,7 @@ int run(std::string_view name, int argc, char** argv) {
     bool inspect_progress = true;
     std::uint64_t inspect_progress_interval =
         texas::solver::multiway::MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL;
+    auto inspect_hash_mode = texas::solver::multiway::MultiwayBucketInspectionHashMode::Parallel;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if (argument == "--help") {
@@ -717,7 +724,7 @@ int run(std::string_view name, int argc, char** argv) {
             argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" ||
             argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" ||
             argument == "--threads" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" ||
-            argument == "--progress" || argument == "--progress-every" ||
+            argument == "--progress" || argument == "--progress-every" || argument == "--hash" ||
             argument == "--bucket-report" || argument == "--training-report" ||
             argument == "--equivalence-report" || argument == "--lookup-first" ||
             argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" ||
@@ -756,6 +763,13 @@ int run(std::string_view name, int argc, char** argv) {
                 inspect_progress_interval = std::stoull(argv[index]);
                 if (inspect_progress_interval == 0U) throw std::invalid_argument("--progress-every must be positive");
             }
+            if (argument == "--hash") {
+                const std::string_view value(argv[index]);
+                if (value == "parallel") inspect_hash_mode = texas::solver::multiway::MultiwayBucketInspectionHashMode::Parallel;
+                else if (value == "legacy") inspect_hash_mode = texas::solver::multiway::MultiwayBucketInspectionHashMode::Legacy;
+                else if (value == "both") inspect_hash_mode = texas::solver::multiway::MultiwayBucketInspectionHashMode::Both;
+                else throw std::invalid_argument("--hash must be parallel, legacy, or both");
+            }
             if (argument == "--bucket-report") bucket_report = argv[index];
             if (argument == "--training-report") training_report = argv[index];
             if (argument == "--equivalence-report") equivalence_report = argv[index];
@@ -782,7 +796,7 @@ int run(std::string_view name, int argc, char** argv) {
         return run_buckets(config_path, output_path, checkpoint_dir, threads);
     }
     if (workflow == Workflow::Inspect && !config_path.empty() && !input_path.empty()) {
-        return run_inspect(config_path, input_path, report_path, inspect_progress, inspect_progress_interval, threads);
+        return run_inspect(config_path, input_path, report_path, inspect_progress, inspect_progress_interval, threads, inspect_hash_mode);
     }
     if (workflow == Workflow::Train && !config_path.empty()) {
         return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir, resume_path);

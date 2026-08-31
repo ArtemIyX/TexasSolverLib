@@ -222,7 +222,7 @@ TEST_CASE(multiway_bucket_inspection_parallel_tree_hash_is_deterministic) {
     EXPECT_EQ(parallel.parallel_payload_hash, repeated.parallel_payload_hash);
     EXPECT_EQ(parallel.flop_tables, serial.flop_tables);
     EXPECT_EQ(parallel.live_assignments, serial.live_assignments);
-    EXPECT_TRUE(parallel.parallel_payload_hash != serial.payload_hash);
+    EXPECT_EQ(parallel.parallel_payload_hash, serial.payload_hash);
     std::filesystem::remove(path);
 }
 
