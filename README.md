@@ -58,7 +58,9 @@ Not yet established by repository evidence:
 - end-to-end playing strength, convergence, or low exploitability;
 - statistically significant cross-play results against independent strong agents.
 
-The latest recorded full validation is from 2026-08-27: the Debug build and all 93 registered tests passed. This README update does not rerun that validation.
+The latest implementation validation on 2026-08-31 passed the Debug build,
+research workflow targets, and all 106 registered tests. This does not qualify
+the production F1 artifacts or replace the required human execution evidence.
 
 See [project state](docs/project_state.md) for the current evidence-based status and [the progress log](docs/PLURIBUS_LOG.md) for implementation history.
 
@@ -229,6 +231,7 @@ With `TEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON`, CMake also creates:
 - `texas_multiway_buckets`
 - `texas_multiway_inspect`
 - `texas_multiway_evaluate`
+- `texas_multiway_finalize`
 - HUNL sampled, scaling, backend-comparison, and scheduler benchmarks
 
 The multiway executables currently expose a bounded `--tiny` artifact-pipeline qualification path and validate workflow arguments. They are research entry points, not a complete production command-line deployment host. Production integration must own artifact paths, request construction, deadlines, protected evaluation records, and environment-specific game I/O.

@@ -58,7 +58,7 @@ The inspected worktree was clean before this report was created.
 | Public/internal headers | 113 |
 | Test files reported by repository scan | 113 |
 | Main library | `TexasSolver::texas` |
-| Multiway workflow executables | `train`, `buckets`, `inspect`, `evaluate` |
+| Multiway workflow executables | `train`, `buckets`, `inspect`, `evaluate`, `finalize` |
 | F1 profile | `F1-DEV-12-v1` |
 | F1 target trajectories | 50,000,000 |
 | F1 storage backend | `CompactInt32` |
@@ -81,7 +81,7 @@ not available for verification.
 | Pluribus pruning | Threshold pruning after warmup, deterministic 5% recovery exploration, river and immediate-terminal exemptions, and regret floor | F2 implementation corrected and full test workflow recorded as passing |
 | Compact training storage | Sparse lazy rows, compact integer regrets and strategy mass, saturation, flooring, reference Float64 path | F3 implementation present; 64 GiB measurement and reference tolerance report missing |
 | Bucket artifacts | Deterministic physical-board catalog, bounded streaming writer, resume sidecar, streaming load, inspection, payload hashes, and atomic manifest publication | Workflow implemented; full verified artifact absent |
-| Training artifacts | Versioned full-state checkpoint, atomic persistence, identity validation, resume, coverage telemetry, and blueprint export | Implemented; disk-resume acceptance comparison absent |
+| Training artifacts | Versioned full-state checkpoint, atomic persistence, identity validation, resume, coverage telemetry, blueprint export, and checkpoint-equivalence comparator | Workflow implemented; production disk-resume evidence absent |
 | Blueprint lookup | Immutable store, model-bound provider, hit/missing/menu-mismatch audit, deterministic replay fingerprints | Implemented; production zero-miss report absent |
 | Action abstraction | Contextual menus, pseudo-harmonic translation, exact local insertion, calibration APIs, and coverage gates | Implemented; no promoted production profile |
 | Future card abstraction | Versioned bucket artifacts, current-street exact rows, held-out calibration APIs, and profile selection | Infrastructure implemented; potential-aware EMD and suit-isomorphic production model not established |
@@ -179,10 +179,12 @@ the wrong filename for the technical report.
 
 ## Validation evidence
 
-No build, tests, benchmark, bucket generation, or solver workload was run while
-creating this report.
+The current implementation validation on 2026-08-31 passed the configured
+Debug build, research workflow targets, and all 106 registered tests. This is
+code validation only and does not qualify production artifacts or human-run F1
+evidence.
 
-Recorded evidence in [PLURIBUS_LOG.md](PLURIBUS_LOG.md):
+Historical evidence in [PLURIBUS_LOG.md](PLURIBUS_LOG.md):
 
 - Full Debug build and all then-registered tests passed repeatedly through F1.25.
 - F1.13 explicitly records all 101 registered tests passing on 2026-08-28.
