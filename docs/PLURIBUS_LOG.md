@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - post-serialization qualification
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Re-ran the 65,536-table Release end-to-end matrix after switching production
+  generation to worker-side serialized chunks.
+- Final pipeline rates at 1/2/4 workers were flop `8616`/`19340`/`38678`,
+  turn `8596`/`18754`/`37846`, and river `8261`/`18032`/`36783` tables/s.
+- Checksums matched for every street across worker counts; four workers reached
+  roughly 4.5x one-worker throughput.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Release end-to-end matrix passed for all three streets and 1, 2, and 4
+  workers.
+
+### Limitations
+
+- Serialized-mode telemetry currently reports chunk counts and queue depth but
+  does not yet aggregate wait timers.
+
 ## F1 bucket generation - worker-side serialized chunks
 
 **Status:** Complete
