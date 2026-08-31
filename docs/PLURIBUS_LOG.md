@@ -19,6 +19,7 @@
 - `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
 - `examples/multiway_workflow_main.cpp`
 - `tests/test_multiway_bucket_generation.cpp`
+- `docs/PLURIBUS_LOG.md`
 
 ### Validation
 
