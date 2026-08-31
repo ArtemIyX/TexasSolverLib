@@ -299,7 +299,10 @@ void generate_multiway_bucket_serialized_chunks(
             std::uint64_t first = 0U, last = 0U;
             {
                 std::unique_lock lock(mutex);
+                const auto wait_start = std::chrono::steady_clock::now();
                 condition.wait(lock, [&] { return failure || next_job >= end_index || in_flight < capacity; });
+                if (options.stats) options.stats->worker_wait_nanoseconds += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wait_start).count());
                 if (failure || next_job >= end_index) return;
                 first = next_job; last = first + std::min<std::uint64_t>(end_index - first, options.chunk_size);
                 next_job = last; ++in_flight;
@@ -336,7 +339,10 @@ void generate_multiway_bucket_serialized_chunks(
             Chunk chunk;
             {
                 std::unique_lock lock(mutex);
+                const auto wait_start = std::chrono::steady_clock::now();
                 condition.wait(lock, [&] { return failure || ready.find(next_publish) != ready.end(); });
+                if (options.stats) options.stats->ordered_publish_wait_nanoseconds += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wait_start).count());
                 if (failure) std::rethrow_exception(failure);
                 auto found = ready.find(next_publish);
                 chunk = std::move(found->second); ready.erase(found); --in_flight; condition.notify_all();

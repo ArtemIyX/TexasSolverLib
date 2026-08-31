@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - serialized scheduler wait telemetry
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added worker and ordered-publisher wait timers to serialized chunk
+  generation, making scheduler diagnostics comparable with the table-object
+  path.
+
+### Files
+
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+
+### Validation
+
+- Full Debug build and all tests passed.
+
+### Limitations
+
+- Hardware performance counters and allocator profiling remain external to the
+  benchmark executable.
+
 ## F1 bucket generation - post-serialization qualification
 
 **Status:** Complete
