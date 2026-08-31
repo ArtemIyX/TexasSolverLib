@@ -996,6 +996,10 @@ MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
     std::lock_guard<std::mutex> lock(traversal_mutex_);
     MultiwayCoordinatorCheckpoint result;
     result.public_states = public_states_;
+    result.terminal_visits = diagnostics_.terminal_visits;
+    result.leaf_visits = diagnostics_.leaf_visits;
+    result.missing_lookup_requests = diagnostics_.missing_lookup_requests;
+    result.last_merged_stream_fingerprint = diagnostics_.last_merged_stream_fingerprint;
     if (compact_storage_ != nullptr) {
         compact_storage_->export_checkpoint(result.storage);
         return result;
@@ -1070,6 +1074,10 @@ void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorChec
         std::lock_guard<std::mutex> lock(traversal_mutex_);
         storage_.regret_ = checkpoint.storage.regrets;
         storage_.strategy_sum_ = checkpoint.storage.strategy_sums;
+        diagnostics_.terminal_visits = checkpoint.terminal_visits;
+        diagnostics_.leaf_visits = checkpoint.leaf_visits;
+        diagnostics_.missing_lookup_requests = checkpoint.missing_lookup_requests;
+        diagnostics_.last_merged_stream_fingerprint = checkpoint.last_merged_stream_fingerprint;
     }
 }
 

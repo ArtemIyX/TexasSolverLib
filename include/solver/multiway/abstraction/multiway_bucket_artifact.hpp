@@ -77,6 +77,10 @@ void validate_multiway_bucket_coverage(
     const MultiwayBucketRegistry& registry);
 [[nodiscard]] MultiwayBucketRegistry deserialize_multiway_bucket_registry(
     const std::vector<std::uint8_t>& bytes);
+// Streaming load avoids materializing a second serialized copy alongside the
+// immutable registry required by traversal.
+[[nodiscard]] MultiwayBucketRegistry load_multiway_bucket_registry(
+    const std::filesystem::path& path);
 
 struct MultiwayBucketArtifactInspection {
     std::uint64_t flop_tables = 0U;

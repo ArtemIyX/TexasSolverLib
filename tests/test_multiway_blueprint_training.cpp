@@ -1,5 +1,6 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
+#include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "test_harness.hpp"
 
@@ -7,6 +8,10 @@
 #include <cstddef>
 #include <utility>
 #include <limits>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts) {
     texas::MultiwayBlueprintTrainingConfig config;
@@ -142,4 +147,32 @@ TEST_CASE(multiway_training_metadata_persists_policy_variant_contract) {
     snapshot.actions = {{{texas::MultiwayAction::Check, 0U, 0, 5U}, 65535U}};
     snapshot.validate();
     EXPECT_EQ(snapshot.policy_kind, texas::MultiwayBlueprintPolicyKind::LateWindowAverage);
+}
+
+TEST_CASE(multiway_full_training_checkpoint_round_trips_and_rejects_tampering) {
+    texas::MultiwayBlueprintTrainingConfig config;
+    texas::MultiwayBlueprintTrainingCheckpoint checkpoint;
+    checkpoint.identity = config.identity();
+    checkpoint.training.batches = 2U;
+    checkpoint.training.trajectories = 4U;
+    checkpoint.training.deterministic_seed = config.deterministic_seed;
+    checkpoint.training.schedule_hash = config.schedule.identity();
+    checkpoint.validate();
+    const auto path = std::filesystem::temp_directory_path() /
+        ("texas_solver_training_checkpoint_" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".bin");
+    texas::MultiwayTrainingCheckpointArtifacts::save_atomic(path, checkpoint);
+    const auto loaded = texas::MultiwayTrainingCheckpointArtifacts::load_verified(
+        path, checkpoint.identity, checkpoint.training.schedule_hash, checkpoint.training.deterministic_seed);
+    EXPECT_EQ(loaded.training.trajectories, checkpoint.training.trajectories);
+    EXPECT_EQ(texas::MultiwayTrainingCheckpointArtifacts::payload_hash(loaded),
+              texas::MultiwayTrainingCheckpointArtifacts::payload_hash(checkpoint));
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::app);
+        output.put('\0');
+    }
+    EXPECT_THROW(texas::MultiwayTrainingCheckpointArtifacts::load_verified(
+        path, checkpoint.identity, checkpoint.training.schedule_hash, checkpoint.training.deterministic_seed),
+        std::runtime_error);
+    std::filesystem::remove(path);
 }

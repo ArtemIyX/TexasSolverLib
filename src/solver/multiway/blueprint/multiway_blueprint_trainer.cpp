@@ -16,6 +16,9 @@ void MultiwayBlueprintTrainingCheckpoint::validate() const {
     identity.validate();
     if (training.trajectories < training.batches ||
         coverage.admitted_rows != coordinator.storage.shapes.size() ||
+        coverage.terminal_visits != coordinator.terminal_visits ||
+        coverage.leaf_visits != coordinator.leaf_visits ||
+        coverage.missing_lookup_requests != coordinator.missing_lookup_requests ||
         coordinator.storage.regrets.size() != coordinator.storage.strategy_sums.size()) {
         throw std::invalid_argument("multiway training checkpoint metadata is invalid");
     }

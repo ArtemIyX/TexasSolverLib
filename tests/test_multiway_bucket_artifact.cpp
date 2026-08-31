@@ -4,6 +4,8 @@
 #include "test_harness.hpp"
 
 #include <stdexcept>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
 namespace {
@@ -55,6 +57,21 @@ TEST_CASE(multiway_bucket_artifact_round_trips_and_rejects_corruption) {
 
     bytes.pop_back();
     EXPECT_THROW(texas::solver::multiway::deserialize_multiway_bucket_registry(bytes), std::invalid_argument);
+}
+
+TEST_CASE(multiway_bucket_artifact_stream_load_matches_memory_deserializer) {
+    const auto registry = texas::solver::multiway::build_multiway_baseline_bucket_registry(identity(), boards());
+    const auto bytes = texas::solver::multiway::serialize_multiway_bucket_registry(registry);
+    const auto path = std::filesystem::temp_directory_path() / "texas_solver_bucket_stream_load_test.bin";
+    {
+        std::ofstream output(path, std::ios::binary | std::ios::trunc);
+        output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    const auto streamed = texas::solver::multiway::load_multiway_bucket_registry(path);
+    EXPECT_EQ(streamed.identity(), registry.identity());
+    EXPECT_EQ(streamed.lookup(texas::core::Street::Turn, boards()[1].canonical_board, {1U, 2U}),
+              registry.lookup(texas::core::Street::Turn, boards()[1].canonical_board, {1U, 2U}));
+    std::filesystem::remove(path);
 }
 
 TEST_CASE(multiway_bucket_artifact_rejects_missing_board_and_legacy_schema) {

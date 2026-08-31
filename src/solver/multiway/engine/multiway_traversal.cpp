@@ -157,6 +157,7 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     double iteration_weight = 1.0;
     std::uint64_t batch_number = 0;
     MultiwaySearchProfile* profile = nullptr;
+    MultiwayBlueprintLookupAudit* lookup_audit = nullptr;
     bool accepted = true;
 };
 
@@ -413,6 +414,10 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         ? MultiwayBlueprintLookupStatus::Missing
         : blueprint_policy_->strategy_into(
             infoset, blueprint_bucket, state.legal_actions.data(), action_count, strategy.data());
+    if (context.lookup_audit != nullptr && blueprint_policy_ != nullptr && actor != context.traverser) {
+        context.lookup_audit->record(lookup, infoset, blueprint_bucket,
+                                     state.legal_actions.front().action_menu_id);
+    }
     if (lookup != MultiwayBlueprintLookupStatus::Hit) {
         if (blueprint_policy_ != nullptr && actor != context.traverser) {
             coordinator_->record_missing_lookup();
@@ -637,7 +642,8 @@ bool MultiwayRootExternalSamplingTraversal::run(
     double iteration_weight,
     MultiwaySearchProfile* profile,
     MultiwayContinuationDeltaStream* continuation_stream,
-    std::uint64_t batch_number) const {
+    std::uint64_t batch_number,
+    MultiwayBlueprintLookupAudit* lookup_audit) const {
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -664,6 +670,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     context.private_sampling_reach = sampled_reach.proposal_reach;
     context.iteration_weight = iteration_weight;
     context.profile = profile;
+    context.lookup_audit = lookup_audit;
     const auto initial_size = stream.size();
     const auto initial_continuation_size = continuation_stream == nullptr ? 0U : continuation_stream->size();
     context.continuation_stream = continuation_stream;

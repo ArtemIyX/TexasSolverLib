@@ -91,6 +91,29 @@ MultiwayBlueprintRowView MultiwayBlueprintStore::find(
         it->action_count};
 }
 
+bool MultiwayBlueprintStore::has_infoset(MultiwayInfosetId infoset) const noexcept {
+    const auto it = std::lower_bound(
+        rows_.begin(), rows_.end(),
+        std::tuple{infoset.public_state.value, infoset.seat, 0U, 0U},
+        [](const RuntimeRow& row, const auto& key) noexcept {
+            return std::tuple{row.infoset.public_state.value, row.infoset.seat,
+                              row.bucket, row.action_menu_id} < key;
+        });
+    return it != rows_.end() && it->infoset == infoset;
+}
+
+bool MultiwayBlueprintStore::has_infoset_bucket(
+    MultiwayInfosetId infoset, std::uint32_t bucket) const noexcept {
+    const auto it = std::lower_bound(
+        rows_.begin(), rows_.end(),
+        std::tuple{infoset.public_state.value, infoset.seat, bucket, 0U},
+        [](const RuntimeRow& row, const auto& key) noexcept {
+            return std::tuple{row.infoset.public_state.value, row.infoset.seat,
+                              row.bucket, row.action_menu_id} < key;
+        });
+    return it != rows_.end() && it->infoset == infoset && it->bucket == bucket;
+}
+
 std::uint64_t MultiwayBlueprintStore::memory_bytes() const noexcept {
     constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
     const auto saturating_add = [maximum](std::uint64_t left, std::uint64_t right) noexcept {

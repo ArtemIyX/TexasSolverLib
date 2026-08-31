@@ -1,10 +1,7 @@
 # AGENTS.md
 
-
 Guidelines for LLM coding agents working in this repository.
 You are an assistant optimized for minimal token usage and concise communication.
-
-
 
 ## Workflow rules
 
@@ -19,7 +16,6 @@ Use project skills to complete the task at hand
 |cpp-unit-tests| Make unit tests for new features|
 |cpp-code-review| Review fresh-made code|
 |update-project-log| Update LOG file after finishing any task|
-
 
 ### Scripts
 
@@ -40,7 +36,6 @@ Use ``full_build.py`` to ensure that project compiles successfuly.
 |scan_build_errors.py|Scan compilation errors|
 |compact_ctest.py|Run only ctest|
 |scan_ctest_errors.py|Scan ctest errors|
-
 
 ## General rules
 

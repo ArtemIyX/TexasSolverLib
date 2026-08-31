@@ -2,6 +2,7 @@
 #include "test_harness.hpp"
 
 #include <stdexcept>
+#include <cstring>
 
 namespace {
 const char* valid_config =
@@ -30,4 +31,19 @@ TEST_CASE(multiway_workflow_config_fingerprint_binds_semantic_fields) {
     changed_text.replace(changed_text.find("50000000"), 8U, "40000000");
     const auto second = texas::solver::multiway::parse_multiway_workflow_config(changed_text);
     EXPECT_TRUE(first.fingerprint() != second.fingerprint());
+}
+
+TEST_CASE(multiway_workflow_config_requires_all_or_no_capacity_limits) {
+    auto resolved = std::string(valid_config) +
+        "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+        "worker_delta_capacity=10000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+        "disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000\n";
+    resolved.replace(resolved.find("maximum_sparse_rows=UNRESOLVED"),
+                     std::strlen("maximum_sparse_rows=UNRESOLVED"),
+                     "maximum_sparse_rows=1000");
+    EXPECT_TRUE(texas::solver::multiway::parse_multiway_workflow_config(resolved).capacities_resolved());
+
+    auto partial = std::string(valid_config);
+    partial += "maximum_public_states=1000\n";
+    EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(partial), std::invalid_argument);
 }

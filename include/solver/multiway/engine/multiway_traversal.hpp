@@ -24,6 +24,7 @@
 namespace texas::solver::multiway {
 
 class MultiwayBlueprintPolicyProvider;
+struct MultiwayBlueprintLookupAudit;
 class MultiwayFutureBucketArtifact;
 
 inline constexpr std::uint32_t MULTIWAY_MAX_DECISION_DEPTH = 64U;
@@ -73,7 +74,8 @@ public:
         double iteration_weight = 1.0,
         MultiwaySearchProfile* profile = nullptr,
         MultiwayContinuationDeltaStream* continuation_stream = nullptr,
-        std::uint64_t batch_number = 0U) const;
+        std::uint64_t batch_number = 0U,
+        MultiwayBlueprintLookupAudit* lookup_audit = nullptr) const;
 
     [[nodiscard]] const MultiwayFixedContinuationSelector* continuation_selector() const noexcept {
         return continuation_selector_;

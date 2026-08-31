@@ -68,3 +68,38 @@ TEST_CASE(multiway_bucket_progress_sidecar_round_trips_and_rejects_mismatch) {
     EXPECT_THROW(load_multiway_bucket_progress(path, MultiwayModelIdentity{}, 10U), std::invalid_argument);
     std::filesystem::remove(path);
 }
+
+TEST_CASE(multiway_bucket_writer_resumes_from_a_flushed_verified_sidecar) {
+    using namespace texas::solver::multiway;
+    using texas::core::Street;
+    MultiwayBlueprintConfig config;
+    const auto identity = make_multiway_model_identity(config);
+    const auto destination = std::filesystem::temp_directory_path() / "texas_solver_bucket_resume_test";
+    const auto temporary = destination.string() + ".tmp";
+    const auto sidecar = destination.string() + ".progress";
+    std::filesystem::remove(destination);
+    std::filesystem::remove(temporary);
+    std::filesystem::remove(sidecar);
+    const auto first = build_multiway_baseline_bucket_table(identity, Street::Flop, {0U, 5U, 10U});
+    const auto second = build_multiway_baseline_bucket_table(identity, Street::Flop, {0U, 5U, 11U});
+    {
+        MultiwayBucketArtifactWriter writer(temporary, identity, 2U);
+        writer.append(first);
+        writer.flush_checkpoint();
+        save_multiway_bucket_progress_atomic(sidecar, identity, 2U, writer.progress());
+        writer.append(second);
+    }
+    auto writer = MultiwayBucketArtifactWriter::resume(
+        temporary, identity, 2U, load_multiway_bucket_progress(sidecar, identity, 2U));
+    writer.append(second);
+    writer.finish(destination);
+    std::ifstream input(destination, std::ios::binary);
+    const std::vector<std::uint8_t> actual((std::istreambuf_iterator<char>(input)), {});
+    input.close();
+    const auto expected = serialize_multiway_bucket_registry(
+        build_multiway_baseline_bucket_registry(identity, {
+            {Street::Flop, {0U, 5U, 10U}}, {Street::Flop, {0U, 5U, 11U}}}));
+    EXPECT_EQ(actual, expected);
+    std::filesystem::remove(destination);
+    std::filesystem::remove(sidecar);
+}

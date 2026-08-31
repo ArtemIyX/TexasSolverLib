@@ -78,9 +78,25 @@ TEST_CASE(multiway_blueprint_provider_distinguishes_hit_miss_and_menu_mismatch) 
     EXPECT_EQ(
         provider.strategy_into({{2U}, 0}, 0U, &stored.actions.front().action, 1U, &probability),
         texas::MultiwayBlueprintLookupStatus::Missing);
+    EXPECT_EQ(
+        provider.strategy_into({{1U}, 0}, 1U, &stored.actions.front().action, 1U, &probability),
+        texas::MultiwayBlueprintLookupStatus::MissingBucket);
     auto incompatible = stored.actions.front().action;
     incompatible.target_street_contribution = 1;
     EXPECT_EQ(
         provider.strategy_into({{1U}, 0}, 0U, &incompatible, 1U, &probability),
         texas::MultiwayBlueprintLookupStatus::IncompatibleMenu);
+}
+
+TEST_CASE(multiway_blueprint_lookup_audit_is_deterministic_and_classifies_results) {
+    texas::MultiwayBlueprintLookupAudit audit;
+    audit.record(texas::MultiwayBlueprintLookupStatus::Hit, {{1U}, 0}, 0U, 77U);
+    audit.record(texas::MultiwayBlueprintLookupStatus::Missing, {{2U}, 1}, 1U, 78U);
+    audit.record(texas::MultiwayBlueprintLookupStatus::MissingBucket, {{3U}, 2}, 2U, 79U);
+    audit.record(texas::MultiwayBlueprintLookupStatus::IncompatibleMenu, {{4U}, 3}, 3U, 80U);
+    EXPECT_EQ(audit.lookup_hits, 1U);
+    EXPECT_EQ(audit.missing_infosets, 1U);
+    EXPECT_EQ(audit.missing_buckets, 1U);
+    EXPECT_EQ(audit.action_menu_mismatches, 1U);
+    EXPECT_TRUE(audit.fingerprint() != 0U);
 }

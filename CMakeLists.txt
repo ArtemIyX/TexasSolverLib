@@ -70,6 +70,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp
     include/solver/multiway/blueprint/multiway_blueprint_store.hpp
     include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp
+    include/solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp
     include/solver/multiway/abstraction/multiway_bucket_artifact.hpp
     include/solver/multiway/abstraction/multiway_bucket_catalog.hpp
     include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp
@@ -178,6 +179,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/hunl/sampled/hunl_sampled_trajectory.cpp
     src/solver/multiway/abstraction/multiway_action_abstraction.cpp
     src/solver/multiway/blueprint/multiway_artifact.cpp
+    src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp
     src/solver/multiway/blueprint/multiway_blueprint_config.cpp
     src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp
     src/solver/multiway/blueprint/multiway_blueprint_store.cpp

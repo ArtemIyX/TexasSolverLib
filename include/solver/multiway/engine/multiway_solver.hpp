@@ -243,6 +243,10 @@ struct MultiwaySparseStorageCheckpoint {
 struct MultiwayCoordinatorCheckpoint {
     std::vector<MultiwayPublicStateDescriptor> public_states;
     MultiwaySparseStorageCheckpoint storage;
+    std::uint64_t terminal_visits = 0U;
+    std::uint64_t leaf_visits = 0U;
+    std::uint64_t missing_lookup_requests = 0U;
+    std::uint64_t last_merged_stream_fingerprint = 0U;
 };
 
 // Coordinator-owned sparse rows. Values are action-major: [action][bucket].

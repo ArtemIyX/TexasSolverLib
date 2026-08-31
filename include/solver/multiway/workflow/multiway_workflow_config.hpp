@@ -19,8 +19,17 @@ struct MultiwayWorkflowConfig {
     std::uint64_t deterministic_seed = 0U;
     std::uint32_t reference_worker_count = 0U;
     std::uint64_t target_trajectories = 0U;
+    std::uint64_t maximum_public_states = 0U;
+    std::uint64_t maximum_sparse_rows = 0U;
+    std::uint64_t maximum_sparse_values = 0U;
+    std::uint64_t worker_delta_capacity = 0U;
+    std::uint64_t trajectories_per_batch = 0U;
+    std::uint64_t checkpoint_interval = 0U;
+    std::uint64_t disk_space_requirement_bytes = 0U;
+    std::uint64_t process_memory_limit_bytes = 0U;
 
     void validate() const;
+    [[nodiscard]] bool capacities_resolved() const noexcept;
     [[nodiscard]] std::uint64_t fingerprint() const noexcept;
 };
 

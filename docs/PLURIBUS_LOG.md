@@ -1,5 +1,144 @@
 # Pluribus Roadmap Progress Log
 
+## F1.28 - Verified bucket manifest publication
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Successful bucket generation now reopens and fully inspects the atomically published binary.
+- The workflow rejects incomplete canonical street coverage and atomically writes `buckets.manifest` with the configuration fingerprint, identity, byte length, counts, live assignments, and payload hash.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- `texas_multiway_inspect` Debug target built successfully.
+
+### Limitations
+
+- The active production process predates this workflow change; its final binary will be inspected and given an equivalent manifest after publication.
+
+## F1.27 - Streaming bucket registry load and exercised production resume
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Replaced the workflow's full serialized bucket byte copy with a streaming registry loader.
+- Exercised the active production generator's resume path at the verified turn boundary.
+- Safely drops only uncheckpointed tail bytes after sidecar-prefix verification.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_artifact.cpp`
+- `tests/test_multiway_bucket_catalog.cpp`
+
+### Validation
+
+- `cmake --build build --target texas test_multiway_bucket_artifact --config Debug` passed.
+- `test_multiway_bucket_artifact.exe` passed all 6 tests.
+- `cmake --build build --target texas_multiway_train texas_multiway_evaluate --config Debug` passed.
+- Production generation resumed from 292,825 verified tables after sidecar validation.
+
+### Limitations
+
+- River generation and all F1 training qualification workloads remain active or pending.
+
+## F1.26 - Frozen sizing contract and resumable bucket generation
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added numeric capacity parsing, profile fingerprinting, and a hard training refusal until every sizing field is frozen.
+- Wired frozen limits and the `CompactInt32` backend into the training session and saves full checkpoints at fixed batch intervals.
+- Added flushed, periodic bucket sidecars and fixed rolling-hash resume validation.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `tests/test_multiway_bucket_catalog.cpp`
+
+### Validation
+
+- `cmake --build build --target texas --config Debug` passed.
+- `cmake --build build --target test_multiway_workflow_config test_multiway_bucket_catalog --config Debug` passed.
+- `test_multiway_workflow_config.exe` passed all 4 tests.
+- `test_multiway_bucket_catalog.exe` passed all 6 tests.
+
+### Limitations
+
+- `f1_dev_v1.cfg` remains intentionally unresolved until the active sizing run yields measured limits.
+- The full bucket generator is still running; no production artifact has been published.
+
+## F1.25 - Deterministic required-lookup qualification
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added deterministic sampled replay from an initial root with opponent policy requests routed through the full blueprint provider.
+- Records and publishes hit, missing-infoset, missing-bucket, and menu-mismatch counters plus two replay fingerprints.
+- Wired `texas_multiway_evaluate --artifacts <dir> --duplicates <count>` to require matching repeated replays and return nonzero on any required lookup failure.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_store.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_store.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_blueprint_store.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- The gate has not been run against a production bucket/blueprint pair because neither artifact has been generated or published.
+
+## F1.24 - Durable full-training checkpoint
+
+**Status:** Complete
+**Completed:** 2026-08-28
+
+- Added versioned, hashed, atomic binary persistence for full multiway training state.
+- Restores sparse row shapes and values, public descriptors, coverage, schedule/seed identity, and resume diagnostics.
+- Wired `texas_multiway_train --checkpoint-dir` and `--resume` to the artifact boundary.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: Debug build and all tests.
+
+### Limitations
+
+- Production sizing, full bucket generation, disk-resume equivalence, and required-lookup qualification remain unexecuted.
+
 ## F1.23 - Workflow output path handling
 
 **Status:** Complete

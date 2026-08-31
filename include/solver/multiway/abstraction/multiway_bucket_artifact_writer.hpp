@@ -34,6 +34,7 @@ public:
     MultiwayBucketArtifactWriter& operator=(MultiwayBucketArtifactWriter&&) = default;
 
     void append(const MultiwayBucketTable& table);
+    void flush_checkpoint();
     void finish(const std::filesystem::path& destination);
     [[nodiscard]] const MultiwayBucketArtifactProgress& progress() const noexcept { return progress_; }
 

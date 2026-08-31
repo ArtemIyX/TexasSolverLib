@@ -48,7 +48,7 @@ MultiwayBucketArtifactWriter MultiwayBucketArtifactWriter::resume(
     }
     std::error_code error;
     if (!std::filesystem::exists(temporary_path, error) || error ||
-        std::filesystem::file_size(temporary_path, error) != progress.byte_length || error) {
+        std::filesystem::file_size(temporary_path, error) < progress.byte_length || error) {
         throw std::invalid_argument("bucket resume file does not match progress");
     }
     std::ifstream existing(temporary_path, std::ios::binary);
@@ -59,7 +59,13 @@ MultiwayBucketArtifactWriter MultiwayBucketArtifactWriter::resume(
         if (byte == EOF) throw std::invalid_argument("bucket resume file is truncated");
         core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(static_cast<unsigned char>(byte)));
     }
-    if (core::fingerprint::finish(hash) != progress.payload_hash) throw std::invalid_argument("bucket resume hash mismatch");
+    if (hash != progress.payload_hash) throw std::invalid_argument("bucket resume hash mismatch");
+    const auto current_length = std::filesystem::file_size(temporary_path, error);
+    if (error) throw std::invalid_argument("bucket resume file size cannot be determined");
+    if (current_length > progress.byte_length) {
+        std::filesystem::resize_file(temporary_path, progress.byte_length, error);
+        if (error) throw std::runtime_error("bucket resume cannot discard uncheckpointed tail");
+    }
     MultiwayBucketArtifactWriter writer;
     writer.temporary_path_ = std::move(temporary_path);
     writer.expected_table_count_ = expected_table_count;
@@ -88,6 +94,12 @@ void MultiwayBucketArtifactWriter::append(const MultiwayBucketTable& table) {
     ++progress_.table_count;
     progress_.next_board_index = progress_.table_count;
     progress_.byte_length = static_cast<std::uint64_t>(output_.tellp());
+}
+
+void MultiwayBucketArtifactWriter::flush_checkpoint() {
+    if (finished_) throw std::logic_error("bucket artifact is already complete");
+    output_.flush();
+    if (!output_) throw std::runtime_error("cannot flush bucket artifact checkpoint");
 }
 
 void MultiwayBucketArtifactWriter::finish(const std::filesystem::path& destination) {

@@ -2,6 +2,7 @@
 #include "core/fingerprint.hpp"
 
 #include <fstream>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -34,6 +35,27 @@ void MultiwayWorkflowConfig::validate() const {
     if (model.player_count != 6U || model.initial_stack_chips != 10000 || model.small_blind_chips != 50 ||
         model.big_blind_chips != 100 || model.ante_chips != 0 || model.flop_bucket_count != 12U ||
         model.turn_bucket_count != 12U || model.river_bucket_count != 12U) throw std::invalid_argument("F1 model profile mismatch");
+    const auto any_capacity = maximum_public_states != 0U || maximum_sparse_rows != 0U ||
+        maximum_sparse_values != 0U || worker_delta_capacity != 0U || trajectories_per_batch != 0U ||
+        checkpoint_interval != 0U || disk_space_requirement_bytes != 0U || process_memory_limit_bytes != 0U;
+    if (any_capacity && !capacities_resolved()) {
+        throw std::invalid_argument("F1 workflow capacities must be fully resolved together");
+    }
+    if (capacities_resolved() &&
+        (trajectories_per_batch > std::numeric_limits<std::uint32_t>::max() ||
+         maximum_public_states > std::numeric_limits<std::size_t>::max() ||
+         maximum_sparse_rows > std::numeric_limits<std::size_t>::max() ||
+         maximum_sparse_values > std::numeric_limits<std::size_t>::max() ||
+         worker_delta_capacity > std::numeric_limits<std::size_t>::max())) {
+        throw std::invalid_argument("F1 workflow capacity exceeds the runtime type");
+    }
+}
+
+bool MultiwayWorkflowConfig::capacities_resolved() const noexcept {
+    return maximum_public_states != 0U && maximum_sparse_rows != 0U &&
+        maximum_sparse_values != 0U && worker_delta_capacity != 0U &&
+        trajectories_per_batch != 0U && checkpoint_interval != 0U &&
+        disk_space_requirement_bytes != 0U && process_memory_limit_bytes != 0U;
 }
 
 std::uint64_t MultiwayWorkflowConfig::fingerprint() const noexcept {
@@ -52,6 +74,9 @@ std::uint64_t MultiwayWorkflowConfig::fingerprint() const noexcept {
     append(model.flop_bucket_count); append(model.turn_bucket_count); append(model.river_bucket_count);
     append(max_decision_depth); append(max_public_chance_depth); append(deterministic_seed);
     append(reference_worker_count); append(target_trajectories);
+    append(maximum_public_states); append(maximum_sparse_rows); append(maximum_sparse_values);
+    append(worker_delta_capacity); append(trajectories_per_batch); append(checkpoint_interval);
+    append(disk_space_requirement_bytes); append(process_memory_limit_bytes);
     return core::fingerprint::finish(hash);
 }
 
@@ -91,7 +116,15 @@ MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text) {
                  key == "maximum_sparse_values" || key == "worker_delta_capacity" ||
                  key == "trajectories_per_batch" || key == "checkpoint_interval" ||
                  key == "disk_space_requirement_bytes" || key == "process_memory_limit_bytes") {
-            if (value != "UNRESOLVED") throw std::invalid_argument("pilot capacity must be UNRESOLVED: " + key);
+            const auto capacity = value == "UNRESOLVED" ? 0U : number(value, key.c_str());
+            if (key == "maximum_public_states") result.maximum_public_states = capacity;
+            else if (key == "maximum_sparse_rows") result.maximum_sparse_rows = capacity;
+            else if (key == "maximum_sparse_values") result.maximum_sparse_values = capacity;
+            else if (key == "worker_delta_capacity") result.worker_delta_capacity = capacity;
+            else if (key == "trajectories_per_batch") result.trajectories_per_batch = capacity;
+            else if (key == "checkpoint_interval") result.checkpoint_interval = capacity;
+            else if (key == "disk_space_requirement_bytes") result.disk_space_requirement_bytes = capacity;
+            else result.process_memory_limit_bytes = capacity;
         } else throw std::invalid_argument("unknown configuration key: " + key);
     }
     result.validate();

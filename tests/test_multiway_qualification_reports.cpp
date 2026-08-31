@@ -21,11 +21,13 @@ TEST_CASE(multiway_qualification_reports_publish_atomically) {
     MultiwayLookupQualificationReport lookup;
     lookup.lookup_hits = 4U;
     lookup.replay_fingerprint = 9U;
+    lookup.second_replay_fingerprint = 9U;
     save_multiway_lookup_qualification_report_atomic(path, lookup);
     std::ifstream input(path);
     const std::string text((std::istreambuf_iterator<char>(input)), {});
     input.close();
     EXPECT_TRUE(text.find("\"passed\": true") != std::string::npos);
+    EXPECT_TRUE(text.find("\"second_replay_fingerprint\": 9") != std::string::npos);
     std::filesystem::remove(path);
 }
 

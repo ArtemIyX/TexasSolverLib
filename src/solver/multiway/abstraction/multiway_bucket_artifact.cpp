@@ -4,6 +4,7 @@
 #include "core/poker.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <limits>
 #include <iterator>
 #include <stdexcept>
@@ -311,6 +312,67 @@ MultiwayBucketRegistry deserialize_multiway_bucket_registry(const std::vector<st
         tables.emplace_back(identity, street, std::move(board), bucket_count, std::move(assignments));
     }
     if (cursor != bytes.size()) throw std::invalid_argument("multiway bucket artifact has trailing data");
+    return MultiwayBucketRegistry(std::move(tables));
+}
+
+MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path& path) {
+    constexpr std::uint64_t kHeaderBytes = 4U + 4U + kIdentityFieldCount * 8U + 4U;
+    constexpr std::uint64_t kSmallestTableBytes = 2U + 3U + 4U +
+        MULTIWAY_HOLE_COMBINATION_COUNT * 4U;
+    std::error_code error;
+    const auto bytes = std::filesystem::file_size(path, error);
+    if (error || bytes < kHeaderBytes) throw std::invalid_argument("multiway bucket artifact is truncated");
+    std::ifstream input(path, std::ios::binary);
+    if (!input) throw std::runtime_error("multiway bucket artifact cannot be opened");
+    std::array<std::uint8_t, 4U> magic{};
+    input.read(reinterpret_cast<char*>(magic.data()), static_cast<std::streamsize>(magic.size()));
+    if (!input || !std::equal(magic.begin(), magic.end(), std::begin(kMagic))) {
+        throw std::invalid_argument("multiway bucket artifact has invalid header");
+    }
+    const auto read_byte = [&input]() -> std::uint8_t {
+        const auto value = input.get();
+        if (value == EOF) throw std::invalid_argument("multiway bucket artifact is truncated");
+        return static_cast<std::uint8_t>(static_cast<unsigned char>(value));
+    };
+    const auto read32 = [&read_byte]() -> std::uint32_t {
+        std::uint32_t value = 0U;
+        for (std::uint8_t index = 0U; index < 4U; ++index) value |= static_cast<std::uint32_t>(read_byte()) << (index * 8U);
+        return value;
+    };
+    const auto read64 = [&read_byte]() -> std::uint64_t {
+        std::uint64_t value = 0U;
+        for (std::uint8_t index = 0U; index < 8U; ++index) value |= static_cast<std::uint64_t>(read_byte()) << (index * 8U);
+        return value;
+    };
+    if (read32() != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION) {
+        throw std::invalid_argument("multiway bucket artifact schema is unsupported");
+    }
+    MultiwayModelIdentity identity;
+    visit_multiway_model_identity_fields(identity, [&read64](std::uint64_t& field) { field = read64(); });
+    identity.validate();
+    const auto table_count = read32();
+    if (table_count == 0U || table_count > (bytes - kHeaderBytes) / kSmallestTableBytes) {
+        throw std::invalid_argument("multiway bucket artifact table count is invalid");
+    }
+    std::vector<MultiwayBucketTable> tables;
+    tables.reserve(table_count);
+    for (std::uint32_t index = 0U; index < table_count; ++index) {
+        const auto street = static_cast<Street>(read_byte());
+        const auto board_size = static_cast<std::size_t>(read_byte());
+        if (board_size != board_size_for(street)) {
+            throw std::invalid_argument("multiway bucket artifact has invalid board metadata");
+        }
+        std::vector<std::uint8_t> board(board_size);
+        for (auto& card : board) card = read_byte();
+        const auto bucket_count = read32();
+        std::vector<std::uint32_t> assignments(MULTIWAY_HOLE_COMBINATION_COUNT);
+        for (auto& assignment : assignments) assignment = read32();
+        if (!is_multiway_canonical_board(street, board)) {
+            throw std::invalid_argument("multiway bucket artifact board is not canonical");
+        }
+        tables.emplace_back(identity, street, std::move(board), bucket_count, std::move(assignments));
+    }
+    if (input.peek() != EOF) throw std::invalid_argument("multiway bucket artifact has trailing data");
     return MultiwayBucketRegistry(std::move(tables));
 }
 
