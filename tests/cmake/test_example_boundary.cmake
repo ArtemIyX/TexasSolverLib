@@ -20,3 +20,6 @@ require_present(
 require_present(
     "examples/solve_kuhn.cpp"
     "stable example")
+require_present(
+    "foreach(_multiway_workflow train buckets inspect evaluate finalize)"
+    "F1 finalizer research example")

@@ -5,7 +5,7 @@ endif()
 file(READ "${SOURCE_DIR}/CMakeLists.txt" cmake_text)
 file(READ "${SOURCE_DIR}/examples/multiway_workflow_main.cpp" source_text)
 
-string(FIND "${cmake_text}" "foreach(_multiway_workflow train buckets inspect evaluate)" target_position)
+string(FIND "${cmake_text}" "foreach(_multiway_workflow train buckets inspect evaluate finalize)" target_position)
 if(target_position EQUAL -1)
     message(FATAL_ERROR "missing complete multiway research target generator")
 endif()
