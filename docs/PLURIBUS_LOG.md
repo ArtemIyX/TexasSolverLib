@@ -1,5 +1,33 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - measured default worker cap
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Changed the default bucket worker count from 16 to 4 after bounded Release
+  end-to-end measurements showed 4 workers at about `29.1k-29.6k tables/s`
+  while 8 workers provided no material improvement.
+- Preserved the explicit worker override for machine-specific qualification.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Release end-to-end smoke matrix over 1,024 flop tables: 1 worker about
+  `9.8k tables/s`, 2 workers about `19.5k tables/s`, 4 workers about `29.1k`
+  to `29.6k tables/s`, and 8 workers about `29.0k` to `29.6k tables/s`.
+- Checksums matched across all runs.
+
+### Limitations
+
+- The default is evidence-based for the qualification host, not a portable
+  physical-core detector; longer street-separated five-run qualification is
+  still required.
+
 ## F1 bucket generation - bounded end-to-end benchmark
 
 **Status:** Complete
