@@ -1,5 +1,34 @@
 # Pluribus Roadmap Progress Log
 
+## Multiway bucket inspection progress reporting
+
+**Status:** Complete
+**Completed:** 2026-08-31
+**Implementation commit:** `0103c31 feat(inspect): report artifact inspection progress`
+
+- Added console progress reporting to `texas_multiway_inspect`.
+- Progress is enabled by default and configurable with `--progress true|false`
+  and `--progress-every N`.
+- Preserved the library API through optional callback and interval parameters.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Full Debug build and CTest passed.
+- Focused bucket-generation suite passed all 18 tests.
+- CLI help confirmed the new options and defaults.
+
+### Limitations
+
+- Progress output is emitted by the executable callback, not by default from library callers.
+
 ## F1 bucket generation - single-worker performance implementation
 
 **Status:** Complete
