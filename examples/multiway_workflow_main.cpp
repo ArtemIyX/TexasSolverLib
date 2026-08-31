@@ -78,6 +78,7 @@ void print_help(std::string_view name, Workflow workflow) {
         std::cout << "  --output <path>        Atomically published bucket artifact\n"
                   << "  --checkpoint-dir <dir> Resume/checkpoint directory\n"
                   << "  --threads <integer>   Bucket worker count (default 16)\n";
+        std::cout << "  --benchmark-tables <integer>  Run bounded build-only benchmark\n";
     } else if (workflow == Workflow::Inspect) {
         std::cout << "  --input <path>         Artifact to inspect\n"
                   << "  --report <path>        Atomically published JSON inspection report\n";
@@ -322,6 +323,38 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
     save_bucket_manifest_atomic(manifest_path, workflow, inspection, std::filesystem::file_size(output_path));
     std::cout << "published bucket artifact: tables=" << writer->progress().table_count
               << " bytes=" << writer->progress().byte_length << "\n";
+    return EXIT_SUCCESS;
+}
+
+int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t table_count,
+                         std::uint32_t requested_threads) {
+    using namespace texas::solver::multiway;
+    if (table_count == 0U || table_count > multiway_bucket_board_count(texas::core::Street::Flop)) {
+        throw std::invalid_argument("--benchmark-tables must be within the flop catalog");
+    }
+    const auto workflow = load_multiway_workflow_config(config_path);
+    const auto identity = make_multiway_model_identity(workflow.model);
+    auto profile = MultiwayBucketBaselineProfile::standard();
+    profile.flop_bucket_count = workflow.model.flop_bucket_count;
+    profile.turn_bucket_count = workflow.model.turn_bucket_count;
+    profile.river_bucket_count = workflow.model.river_bucket_count;
+    std::uint64_t checksum = 0U;
+    const auto start = std::chrono::steady_clock::now();
+    generate_multiway_bucket_chunks(0U, table_count,
+        {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U},
+        [identity, profile](std::uint64_t begin, std::uint64_t end,
+                            std::vector<MultiwayBucketTable>& tables) {
+            build_multiway_baseline_bucket_chunk(identity, profile, begin, end, tables);
+        },
+        [&checksum](std::uint64_t, std::vector<MultiwayBucketTable>&& tables) {
+            for (const auto& table : tables)
+                for (const auto assignment : table.assignments()) checksum = checksum * 131U + assignment;
+        });
+    const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    std::cout << "bucket benchmark,mode=build-only,tables=" << table_count
+              << ",threads=" << requested_threads << ",seconds=" << seconds
+              << ",tables_per_second=" << static_cast<double>(table_count) / seconds
+              << ",checksum=" << checksum << "\n";
     return EXIT_SUCCESS;
 }
 
@@ -623,6 +656,7 @@ int run(std::string_view name, int argc, char** argv) {
     std::uint64_t batches = 0U;
     std::uint64_t duplicates = 0U;
     std::uint32_t threads = texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS;
+    std::uint64_t benchmark_tables = 0U;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if (argument == "--help") {
@@ -633,7 +667,7 @@ int run(std::string_view name, int argc, char** argv) {
         if (argument == "--config" || argument == "--seed" || argument == "--batches" ||
             argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" ||
             argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" ||
-            argument == "--threads" ||
+            argument == "--threads" || argument == "--benchmark-tables" ||
             argument == "--bucket-report" || argument == "--training-report" ||
             argument == "--equivalence-report" || argument == "--lookup-first" ||
             argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" ||
@@ -659,6 +693,7 @@ int run(std::string_view name, int argc, char** argv) {
                 }
                 threads = static_cast<std::uint32_t>(parsed);
             }
+            if (argument == "--benchmark-tables") benchmark_tables = std::stoull(argv[index]);
             if (argument == "--bucket-report") bucket_report = argv[index];
             if (argument == "--training-report") training_report = argv[index];
             if (argument == "--equivalence-report") equivalence_report = argv[index];
@@ -674,6 +709,9 @@ int run(std::string_view name, int argc, char** argv) {
         }
         std::cerr << "unknown option: " << argument << "\n";
         return EXIT_FAILURE;
+    }
+    if (workflow == Workflow::Buckets && !config_path.empty() && benchmark_tables != 0U) {
+        return run_bucket_benchmark(config_path, benchmark_tables, threads);
     }
     if (workflow == Workflow::Buckets && !config_path.empty() && !output_path.empty()) {
         return run_buckets(config_path, output_path, checkpoint_dir, threads);

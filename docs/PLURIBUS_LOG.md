@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - bounded build-only benchmark
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a bounded build-only benchmark mode to the bucket executable with fixed
+  table count, worker count, throughput, and deterministic checksum output.
+- Kept benchmark generation separate from production artifact publication.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Full build and test workflow passed.
+- Debug smoke benchmark, 1,024 flop tables: 1 worker `1694.88 tables/s`,
+  2 workers `2132.66 tables/s`; checksums matched.
+
+### Limitations
+
+- This is build-only Debug evidence; Release five-run qualification and
+  end-to-end publication gates remain outstanding.
+
 ## F1 bucket generation - incremental catalog advancement
 
 **Status:** Complete
