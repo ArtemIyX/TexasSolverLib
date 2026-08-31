@@ -196,6 +196,7 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
     if (!output_path.parent_path().empty()) std::filesystem::create_directories(output_path.parent_path());
     const auto expected_tables = multiway_bucket_board_count(texas::core::Street::Flop) +
         multiway_bucket_board_count(texas::core::Street::Turn) + multiway_bucket_board_count(texas::core::Street::River);
+    if (!checkpoint_dir.empty()) std::filesystem::create_directories(checkpoint_dir);
     constexpr std::uint64_t max_table_bytes = 2U + 5U + 4U +
         static_cast<std::uint64_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * 4U;
     if (expected_tables > (std::numeric_limits<std::uint64_t>::max() - 116U) / max_table_bytes) {
