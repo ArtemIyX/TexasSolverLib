@@ -1,5 +1,63 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - single-worker performance implementation
+
+**Status:** Complete
+**Completed:** 2026-08-31
+**Implementation commits:** `317d6c2 perf(buckets): optimize serialized worker kernel`,
+`510b9f4 fix(buckets): preserve empty serialized ranges`
+
+- Added overflow-checked serialized-generation memory estimation and wired it
+  into artifact preflight.
+- Optimized the direct worker kernel with cached combo metadata, board masks and
+  counts, reusable FNV board prefixes, and exact-size cursor encoding.
+- Added worker-active timing telemetry while preserving byte-identical artifacts.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- `full_build.py`: Debug build and full CTest passed.
+- `test_multiway_bucket_generation.exe`: 18 tests passed.
+- Release bounded build-only benchmark: 12 tables, 1 worker, checksum
+  `5817857183975694374`, active worker time `347500` ns.
+
+### Limitations
+
+- No before/after benchmark pair was run, so no numeric performance gain is
+  claimed. The full five-run qualification matrix remains deferred.
+
+## F1 bucket generation - single-worker performance review
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Froze the final 1/2/16-worker Release qualification medians and reviewed the
+  direct serialized worker kernel, benchmark attribution, and memory contract.
+- Identified five actionable single-worker performance costs and one memory
+  preflight defect, with an ordered fix-and-measure plan that preserves exact
+  artifact bytes and checksums.
+
+### Files
+
+- `docs/multiway_bucket_single_worker_performance_review.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static review only. No build, test, benchmark, profiler, or solver run was
+  performed because the review skill forbids execution unless requested.
+
+### Limitations
+
+- Hotspot rankings use code-path operation counts. Kernel-active timing and a
+  CPU profile are required before implementation priority is treated as final.
+
 ## F1 bucket generation - final five-run qualification matrix
 
 **Status:** Complete
