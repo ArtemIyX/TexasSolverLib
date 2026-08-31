@@ -189,9 +189,9 @@ TEST_CASE(multiway_bucket_generation_serialized_chunks_match_table_chunks) {
     };
     generate_multiway_bucket_serialized_chunks(
         0U, table_count, {4U, 3U, 2U, nullptr, direct_builder}, build_synthetic_chunk,
-        [&writer](std::uint64_t begin, std::uint64_t count, std::vector<std::uint8_t>&& payload) {
+        [&writer](std::uint64_t begin, std::uint64_t count, std::vector<std::uint8_t>& payload) {
             EXPECT_EQ(begin, writer.progress().table_count);
-            writer.append_serialized_chunk(count, std::move(payload));
+            writer.append_serialized_chunk(count, payload);
         });
     writer.finish(serialized_path);
     EXPECT_EQ(object_bytes, read_file(serialized_path));

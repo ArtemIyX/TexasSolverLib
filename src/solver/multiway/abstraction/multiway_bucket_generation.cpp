@@ -347,9 +347,13 @@ void generate_multiway_bucket_serialized_chunks(
     const auto capacity = options.queue_capacity == 0U
         ? std::max<std::uint32_t>(2U, threads * 2U) : std::max<std::uint32_t>(2U, options.queue_capacity);
     struct Chunk { std::uint64_t begin = 0U; std::uint64_t count = 0U; std::vector<std::uint8_t> payload; };
+    std::vector<Chunk> slots(capacity);
+    std::vector<std::size_t> free_slots;
+    free_slots.reserve(capacity);
+    for (std::size_t index = 0U; index < capacity; ++index) free_slots.push_back(index);
     std::mutex mutex;
     std::condition_variable condition;
-    std::map<std::uint64_t, Chunk> ready;
+    std::map<std::uint64_t, std::size_t> ready;
     std::exception_ptr failure;
     std::uint64_t next_job = begin_index;
     std::uint32_t in_flight = 0U;
@@ -361,18 +365,21 @@ void generate_multiway_bucket_serialized_chunks(
     const auto worker = [&]() {
         while (true) {
             std::uint64_t first = 0U, last = 0U;
+            std::size_t slot_index = 0U;
             {
                 std::unique_lock lock(mutex);
                 const auto wait_start = std::chrono::steady_clock::now();
-                condition.wait(lock, [&] { return failure || next_job >= end_index || in_flight < capacity; });
+                condition.wait(lock, [&] { return failure || next_job >= end_index || !free_slots.empty(); });
                 if (options.stats) options.stats->worker_wait_nanoseconds += static_cast<std::uint64_t>(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wait_start).count());
                 if (failure || next_job >= end_index) return;
                 first = next_job; last = first + std::min<std::uint64_t>(end_index - first, options.chunk_size);
                 next_job = last; ++in_flight;
+                slot_index = free_slots.back(); free_slots.pop_back();
             }
             try {
-                Chunk chunk; chunk.begin = first; chunk.count = last - first;
+                auto& chunk = slots[slot_index];
+                chunk.begin = first; chunk.count = last - first; chunk.payload.clear();
                 if (options.direct_serialized_builder) {
                     options.direct_serialized_builder(first, last, chunk.payload);
                 } else {
@@ -384,7 +391,7 @@ void generate_multiway_bucket_serialized_chunks(
                 }
                 {
                     std::lock_guard lock(mutex);
-                    if (!failure) ready.emplace(first, std::move(chunk)); else --in_flight;
+                    if (!failure) ready.emplace(first, slot_index); else { --in_flight; free_slots.push_back(slot_index); }
                 }
                 if (options.stats) {
                     std::lock_guard lock(mutex);
@@ -393,7 +400,7 @@ void generate_multiway_bucket_serialized_chunks(
                 }
                 condition.notify_all();
             } catch (...) {
-                { std::lock_guard lock(mutex); --in_flight; }
+                { std::lock_guard lock(mutex); --in_flight; free_slots.push_back(slot_index); }
                 fail(std::current_exception()); return;
             }
         }
@@ -404,7 +411,7 @@ void generate_multiway_bucket_serialized_chunks(
     std::uint64_t next_publish = begin_index;
     try {
         while (next_publish < end_index) {
-            Chunk chunk;
+            std::size_t slot_index = 0U;
             {
                 std::unique_lock lock(mutex);
                 const auto wait_start = std::chrono::steady_clock::now();
@@ -413,9 +420,12 @@ void generate_multiway_bucket_serialized_chunks(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wait_start).count());
                 if (failure) std::rethrow_exception(failure);
                 auto found = ready.find(next_publish);
-                chunk = std::move(found->second); ready.erase(found); --in_flight; condition.notify_all();
+                slot_index = found->second; ready.erase(found); --in_flight; condition.notify_all();
             }
-            publisher(chunk.begin, chunk.count, std::move(chunk.payload));
+            auto& chunk = slots[slot_index];
+            publisher(chunk.begin, chunk.count, chunk.payload);
+            chunk.payload.clear();
+            { std::lock_guard lock(mutex); free_slots.push_back(slot_index); condition.notify_all(); }
             if (options.stats) { std::lock_guard lock(mutex); ++options.stats->chunks_published; }
             next_publish += chunk.count;
             if (progress_callback) progress_callback({next_publish - begin_index, end_index - begin_index});

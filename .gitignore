@@ -73,3 +73,4 @@ doxygen_latex/
 *.prof
 coverage/
 lcov.info
+artifacts/*

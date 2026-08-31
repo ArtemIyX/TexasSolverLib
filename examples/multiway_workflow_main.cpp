@@ -297,11 +297,11 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
             already_written, expected_tables,
             {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U, nullptr, direct_build_chunk},
             build_chunk,
-            [&](std::uint64_t begin_index, std::uint64_t table_count, std::vector<std::uint8_t>&& payload) {
+            [&](std::uint64_t begin_index, std::uint64_t table_count, std::vector<std::uint8_t>& payload) {
                 if (begin_index != writer->progress().table_count) {
                     throw std::logic_error("bucket chunks were published out of order");
                 }
-                writer->append_serialized_chunk(table_count, std::move(payload));
+                writer->append_serialized_chunk(table_count, payload);
                 const auto completed = begin_index + table_count;
                     const auto flop_end = multiway_bucket_board_count(texas::core::Street::Flop);
                     const auto turn_end = flop_end +
@@ -366,9 +366,9 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
                             std::vector<MultiwayBucketTable>& tables) {
             build_multiway_baseline_bucket_chunk(identity, profile, begin, end, tables);
         },
-        [&checksum, &writer, publish](std::uint64_t, std::uint64_t count, std::vector<std::uint8_t>&& payload) {
+        [&checksum, &writer, publish](std::uint64_t, std::uint64_t count, std::vector<std::uint8_t>& payload) {
             for (const auto byte : payload) checksum = checksum * 131U + byte;
-            if (publish) writer->append_serialized_chunk(count, std::move(payload));
+            if (publish) writer->append_serialized_chunk(count, payload);
         });
     const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     if (publish) {

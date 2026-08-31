@@ -48,7 +48,7 @@ using MultiwayBucketChunkPublisher = std::function<void(
 using MultiwayBucketSerializedChunkPublisher = std::function<void(
     std::uint64_t begin_index,
     std::uint64_t table_count,
-    std::vector<std::uint8_t>&& payload)>;
+    std::vector<std::uint8_t>& payload)>;
 using MultiwayBucketProgressCallback = std::function<void(
     const MultiwayBucketGenerationProgress& progress)>;
 

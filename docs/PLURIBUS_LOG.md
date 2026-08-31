@@ -1,5 +1,36 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - reusable serialized ring slots
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Reworked serialized chunk publication to use bounded reusable payload slots.
+- Payload vectors retain capacity across worker chunks and return to the free
+  slot pool only after ordered publication, bounding in-flight payload memory.
+- Release 4,096-table smoke rates at 1/2/4/8 workers were `10262`/`20283`/
+  `36451`/`50774` tables/s with matching checksums.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- Full Debug build and all tests passed.
+- Release build passed.
+- Release end-to-end smoke benchmark passed for 1, 2, 4, and 8 workers.
+
+### Limitations
+
+- The conservative default remains four workers until a longer repeated matrix
+  validates whether the 8-worker result persists.
+
 ## F1 bucket generation - direct worker serialization
 
 **Status:** Complete

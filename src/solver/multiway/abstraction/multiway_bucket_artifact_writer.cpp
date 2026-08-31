@@ -116,7 +116,7 @@ void MultiwayBucketArtifactWriter::append_chunk(const std::vector<MultiwayBucket
 }
 
 void MultiwayBucketArtifactWriter::append_serialized_chunk(
-    std::uint64_t table_count, std::vector<std::uint8_t>&& payload) {
+    std::uint64_t table_count, const std::vector<std::uint8_t>& payload) {
     if (finished_ || progress_.table_count >= expected_table_count_ || table_count == 0U ||
         table_count > expected_table_count_ - progress_.table_count) {
         throw std::logic_error("bucket artifact chunk is invalid");
