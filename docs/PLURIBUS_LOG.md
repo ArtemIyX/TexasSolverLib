@@ -25,13 +25,18 @@
 
 - `full_build.py`: Debug build and full CTest passed.
 - `test_multiway_bucket_generation.exe`: 18 tests passed.
-- Release bounded build-only benchmark: 12 tables, 1 worker, checksum
-  `5817857183975694374`, active worker time `347500` ns.
+- Release end-to-end qualification matrix: five repetitions across global
+  starts `0`, `22100`, and `292825`, 65,536 tables, and 1/2/16 workers.
+  Checksums were identical for every repeated range.
+- Release median rates for starts `0`/`22100`/`292825` were respectively
+  `37561`/`74287`/`102307`, `38146`/`75474`/`101953`, and
+  `39699`/`78556`/`102531` tables/s at 1/2/16 workers.
 
 ### Limitations
 
-- No before/after benchmark pair was run, so no numeric performance gain is
-  claimed. The full five-run qualification matrix remains deferred.
+- The ranges are global catalog ranges, so the first range crosses the flop to
+  turn boundary. A same-binary before/after run was not available; comparison
+  is against the frozen review baselines.
 
 ## F1 bucket generation - single-worker performance review
 
