@@ -7,6 +7,7 @@
 #include "solver/multiway/abstraction/multiway_future_bucket.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_catalog.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_generation.hpp"
 #include "solver/multiway/workflow/multiway_workflow_config.hpp"
 #include "solver/multiway/workflow/multiway_training_report.hpp"
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
@@ -18,6 +19,7 @@
 #include <filesystem>
 #include <chrono>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <string_view>
@@ -73,7 +75,9 @@ void print_help(std::string_view name, Workflow workflow) {
                   << "  --checkpoint-dir <dir> Output directory for incomplete runs\n"
                   << "  --resume <path>        Checkpoint to resume\n";
     } else if (workflow == Workflow::Buckets) {
-        std::cout << "  --output <path>        Atomically published bucket artifact\n";
+        std::cout << "  --output <path>        Atomically published bucket artifact\n"
+                  << "  --checkpoint-dir <dir> Resume/checkpoint directory\n"
+                  << "  --threads <integer>   Bucket worker count (default 16)\n";
     } else if (workflow == Workflow::Inspect) {
         std::cout << "  --input <path>         Artifact to inspect\n"
                   << "  --report <path>        Atomically published JSON inspection report\n";
@@ -183,7 +187,7 @@ std::uint64_t estimate_full_blueprint_bytes(
 }
 
 int run_buckets(const std::filesystem::path& config_path, const std::filesystem::path& output_path,
-                const std::filesystem::path& checkpoint_dir) {
+                const std::filesystem::path& checkpoint_dir, std::uint32_t requested_threads) {
     using namespace texas::solver::multiway;
     const auto workflow = load_multiway_workflow_config(config_path);
     const auto identity = make_multiway_model_identity(workflow.model);
@@ -227,25 +231,62 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
         writer = std::make_unique<MultiwayBucketArtifactWriter>(temporary, identity, expected_tables);
     }
     const auto already_written = writer->progress().table_count;
-    std::uint64_t global_index = 0U;
-    for (const auto street : {texas::core::Street::Flop, texas::core::Street::Turn, texas::core::Street::River}) {
-        MultiwayBucketBoardCatalog catalog(street);
-        const auto begin = already_written > global_index ? std::min(catalog.size(), already_written - global_index) : 0U;
-        catalog.for_each(begin, catalog.size(), [&](const MultiwayBucketBoardRequest& request) {
-            writer->append(build_multiway_baseline_bucket_table(identity, request.street, request.canonical_board, profile));
-            if (!checkpoint_dir.empty() && writer->progress().table_count % 4096U == 0U) {
-                writer->flush_checkpoint();
-                save_multiway_bucket_progress_atomic(checkpoint_dir / "latest.progress", identity,
-                    expected_tables, writer->progress());
-            }
-        });
-        if (!checkpoint_dir.empty()) {
-            writer->flush_checkpoint();
-            std::filesystem::create_directories(checkpoint_dir);
-            save_multiway_bucket_progress_atomic(checkpoint_dir / "latest.progress", identity,
-                expected_tables, writer->progress());
+    const auto progress_start = std::chrono::steady_clock::now();
+    const auto publish_checkpoint = [&]() {
+        if (checkpoint_dir.empty()) return;
+        writer->flush_checkpoint();
+        save_multiway_bucket_progress_atomic(checkpoint_dir / "latest.progress", identity,
+            expected_tables, writer->progress());
+        const auto completed = writer->progress().table_count;
+        const auto elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - progress_start).count();
+        const auto rate = elapsed > 0.0
+            ? static_cast<double>(completed - already_written) / elapsed : 0.0;
+        const auto remaining = rate > 0.0
+            ? static_cast<double>(expected_tables - completed) / rate : 0.0;
+        const auto percentage = expected_tables == 0U
+            ? 100.0 : 100.0 * static_cast<double>(completed) /
+                static_cast<double>(expected_tables);
+        std::cout << "bucket progress: tables=" << completed << '/' << expected_tables
+                  << " (" << std::fixed << std::setprecision(2) << percentage << "%)"
+                  << " rate=" << rate << "/s elapsed=" << elapsed
+                  << "s eta=" << remaining << "s\n";
+    };
+    const auto build_chunk = [identity, profile](
+                                 std::uint64_t begin_index,
+                                 std::uint64_t end_index,
+                                 std::vector<MultiwayBucketTable>& tables) {
+        build_multiway_baseline_bucket_chunk(
+            identity, profile, begin_index, end_index, tables);
+    };
+    try {
+        generate_multiway_bucket_chunks(
+            already_written, expected_tables,
+            {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U},
+            build_chunk,
+            [&](std::uint64_t begin_index, std::vector<MultiwayBucketTable>&& tables) {
+                if (begin_index != writer->progress().table_count) {
+                    throw std::logic_error("bucket chunks were published out of order");
+                }
+                for (std::size_t index = 0U; index < tables.size(); ++index) {
+                    writer->append(tables[index]);
+                    const auto completed = begin_index + index + 1U;
+                    const auto flop_end = multiway_bucket_board_count(texas::core::Street::Flop);
+                    const auto turn_end = flop_end +
+                        multiway_bucket_board_count(texas::core::Street::Turn);
+                    if (!checkpoint_dir.empty() &&
+                        (completed % 4096U == 0U || completed == flop_end ||
+                         completed == turn_end || completed == expected_tables)) {
+                        publish_checkpoint();
+                    }
+                }
+            });
+    } catch (...) {
+        try {
+            publish_checkpoint();
+        } catch (...) {
         }
-        global_index += catalog.size();
+        throw;
     }
     writer->finish(output_path);
     const auto inspection = inspect_multiway_bucket_artifact(output_path, identity);
@@ -559,6 +600,7 @@ int run(std::string_view name, int argc, char** argv) {
     std::int32_t exit_code = -1;
     std::uint64_t batches = 0U;
     std::uint64_t duplicates = 0U;
+    std::uint32_t threads = texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if (argument == "--help") {
@@ -569,6 +611,7 @@ int run(std::string_view name, int argc, char** argv) {
         if (argument == "--config" || argument == "--seed" || argument == "--batches" ||
             argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" ||
             argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" ||
+            argument == "--threads" ||
             argument == "--bucket-report" || argument == "--training-report" ||
             argument == "--equivalence-report" || argument == "--lookup-first" ||
             argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" ||
@@ -587,6 +630,13 @@ int run(std::string_view name, int argc, char** argv) {
             if (argument == "--artifacts") artifacts_path = argv[index];
             if (argument == "--batches") batches = std::stoull(argv[index]);
             if (argument == "--duplicates") duplicates = std::stoull(argv[index]);
+            if (argument == "--threads") {
+                const auto parsed = std::stoull(argv[index]);
+                if (parsed > std::numeric_limits<std::uint32_t>::max()) {
+                    throw std::invalid_argument("--threads exceeds uint32 range");
+                }
+                threads = static_cast<std::uint32_t>(parsed);
+            }
             if (argument == "--bucket-report") bucket_report = argv[index];
             if (argument == "--training-report") training_report = argv[index];
             if (argument == "--equivalence-report") equivalence_report = argv[index];
@@ -604,7 +654,7 @@ int run(std::string_view name, int argc, char** argv) {
         return EXIT_FAILURE;
     }
     if (workflow == Workflow::Buckets && !config_path.empty() && !output_path.empty()) {
-        return run_buckets(config_path, output_path, checkpoint_dir);
+        return run_buckets(config_path, output_path, checkpoint_dir, threads);
     }
     if (workflow == Workflow::Inspect && !config_path.empty() && !input_path.empty()) {
         return run_inspect(config_path, input_path, report_path);

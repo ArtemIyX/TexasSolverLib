@@ -17,6 +17,11 @@ foreach(option "--help" "--config" "--seed")
     endif()
 endforeach()
 
+string(FIND "${source_text}" "--threads <integer>" threads_option_position)
+if(threads_option_position EQUAL -1)
+    message(FATAL_ERROR "bucket workflow front end does not expose --threads")
+endif()
+
 if(source_text MATCHES "install\\(")
     message(FATAL_ERROR "multiway workflow front end must remain non-installed")
 endif()
