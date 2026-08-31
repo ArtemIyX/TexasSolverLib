@@ -210,6 +210,22 @@ TEST_CASE(multiway_bucket_generation_serial_and_parallel_artifacts_match) {
     std::filesystem::remove(repeat_path);
 }
 
+TEST_CASE(multiway_bucket_inspection_parallel_tree_hash_is_deterministic) {
+    const auto path = unique_path("inspect-parallel.bin");
+    generate_artifact(1U, path);
+    const auto serial = inspect_multiway_bucket_artifact(
+        path, identity(), MultiwayBucketInspectionOptions{1U, MultiwayBucketInspectionHashMode::Legacy});
+    const auto parallel = inspect_multiway_bucket_artifact(
+        path, identity(), MultiwayBucketInspectionOptions{4U, MultiwayBucketInspectionHashMode::Parallel});
+    const auto repeated = inspect_multiway_bucket_artifact(
+        path, identity(), MultiwayBucketInspectionOptions{2U, MultiwayBucketInspectionHashMode::Parallel});
+    EXPECT_EQ(parallel.parallel_payload_hash, repeated.parallel_payload_hash);
+    EXPECT_EQ(parallel.flop_tables, serial.flop_tables);
+    EXPECT_EQ(parallel.live_assignments, serial.live_assignments);
+    EXPECT_TRUE(parallel.parallel_payload_hash != serial.payload_hash);
+    std::filesystem::remove(path);
+}
+
 TEST_CASE(multiway_bucket_generation_serialized_chunks_match_table_chunks) {
     constexpr std::uint64_t table_count = 12U;
     const auto object_path = unique_path("object.bin");

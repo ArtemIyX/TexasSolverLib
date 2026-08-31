@@ -395,11 +395,12 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
 
 int run_inspect(const std::filesystem::path& config_path, const std::filesystem::path& input_path,
                 const std::filesystem::path& report_path, bool progress_enabled,
-                std::uint64_t progress_interval) {
+                std::uint64_t progress_interval, std::uint32_t requested_threads) {
     using namespace texas::solver::multiway;
     const auto workflow = load_multiway_workflow_config(config_path);
     const auto report = inspect_multiway_bucket_artifact(
         input_path, make_multiway_model_identity(workflow.model),
+        MultiwayBucketInspectionOptions{requested_threads, MultiwayBucketInspectionHashMode::Parallel},
         progress_enabled ? MultiwayBucketInspectionProgressCallback(
             [](std::uint64_t completed, std::uint64_t total) {
                 std::cout << "inspection progress: tables=" << completed << '/' << total << '\n';
@@ -781,7 +782,7 @@ int run(std::string_view name, int argc, char** argv) {
         return run_buckets(config_path, output_path, checkpoint_dir, threads);
     }
     if (workflow == Workflow::Inspect && !config_path.empty() && !input_path.empty()) {
-        return run_inspect(config_path, input_path, report_path, inspect_progress, inspect_progress_interval);
+        return run_inspect(config_path, input_path, report_path, inspect_progress, inspect_progress_interval, threads);
     }
     if (workflow == Workflow::Train && !config_path.empty()) {
         return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir, resume_path);

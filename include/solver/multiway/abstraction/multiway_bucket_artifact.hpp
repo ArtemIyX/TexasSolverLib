@@ -96,7 +96,15 @@ struct MultiwayBucketArtifactInspection {
     std::uint64_t river_tables = 0U;
     std::uint64_t live_assignments = 0U;
     std::uint64_t payload_hash = 0U;
+    std::uint64_t parallel_payload_hash = 0U;
+    std::uint32_t effective_threads = 1U;
     MultiwayModelIdentity identity{};
+};
+
+enum class MultiwayBucketInspectionHashMode : std::uint8_t { Parallel, Legacy, Both };
+struct MultiwayBucketInspectionOptions {
+    std::uint32_t requested_threads = 0U;
+    MultiwayBucketInspectionHashMode hash_mode = MultiwayBucketInspectionHashMode::Parallel;
 };
 
 inline constexpr std::uint64_t MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL = 100000U;
@@ -106,6 +114,11 @@ using MultiwayBucketInspectionProgressCallback = std::function<void(
 [[nodiscard]] MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
     const std::filesystem::path& path,
     const MultiwayModelIdentity& expected_identity,
+    MultiwayBucketInspectionProgressCallback progress_callback = {},
+    std::uint64_t progress_interval = MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL);
+[[nodiscard]] MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
+    const std::filesystem::path& path, const MultiwayModelIdentity& expected_identity,
+    const MultiwayBucketInspectionOptions& options,
     MultiwayBucketInspectionProgressCallback progress_callback = {},
     std::uint64_t progress_interval = MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL);
 

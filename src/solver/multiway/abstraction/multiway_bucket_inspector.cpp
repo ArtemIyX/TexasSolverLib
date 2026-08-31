@@ -1,82 +1,20 @@
 #include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
 #include "core/fingerprint.hpp"
-
 #include <fstream>
-#include <stdexcept>
+#include <thread>
+#include <atomic>
 #include <array>
-
-namespace texas::solver::multiway {
-namespace {
-void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
-    for (std::size_t index = 0U; index < 4U; ++index)
-        core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(value >> (index * 8U)));
+#include <vector>
+#include <stdexcept>
+namespace texas::solver::multiway { namespace {
+std::uint32_t r32(std::ifstream& f){std::array<unsigned char,4>b{};f.read((char*)b.data(),4);if(!f)throw std::runtime_error("bucket artifact is truncated");return b[0]|(b[1]<<8U)|(b[2]<<16U)|(b[3]<<24U);}
+std::uint64_t r64(std::ifstream& f){std::uint64_t v=0;for(unsigned i=0;i<8;++i){auto c=f.get();if(c==EOF)throw std::runtime_error("bucket artifact is truncated");v|=std::uint64_t((unsigned char)c)<<(i*8U);}return v;}
+void h32(std::uint64_t&h,std::uint32_t v){for(unsigned i=0;i<4;++i)core::fingerprint::append_u8(h,(std::uint8_t)(v>>(i*8U)));}
+struct S{std::uint64_t at=0,n=0;};
+struct H{MultiwayModelIdentity id{};std::uint32_t count=0;std::vector<S> s;};
+H scan(const std::filesystem::path&p,const MultiwayModelIdentity&e){std::ifstream f(p,std::ios::binary);if(!f)throw std::runtime_error("multiway bucket artifact cannot be opened");std::array<char,4>m{};f.read(m.data(),4);if(!f||m!=std::array<char,4>{'M','W','B','K'})throw std::invalid_argument("invalid bucket artifact header");if(r32(f)!=MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)throw std::invalid_argument("unsupported bucket artifact schema");H h;visit_multiway_model_identity_fields(h.id,[&](std::uint64_t&x){x=r64(f);});h.id.validate();e.validate();if(h.id!=e)throw std::invalid_argument("bucket artifact identity mismatch");h.count=r32(f);if(!h.count)throw std::invalid_argument("bucket artifact has no tables");h.s.resize(h.count);for(auto&x:h.s){x.at=(std::uint64_t)f.tellg();const int st=f.get();const int n=f.get();if(!f||n==0||n>5)throw std::runtime_error("invalid bucket board metadata");f.seekg((long long)n+4+MULTIWAY_HOLE_COMBINATION_COUNT*4LL,std::ios::cur);if(!f)throw std::runtime_error("bucket artifact is truncated");x.n=(std::uint64_t)f.tellg()-x.at;}if(f.peek()!=EOF)throw std::invalid_argument("bucket artifact has trailing data");return h;}
+MultiwayBucketArtifactInspection serial(const std::filesystem::path&p,const MultiwayModelIdentity&e,MultiwayBucketInspectionProgressCallback cb,std::uint64_t pi){auto h=scan(p,e);MultiwayBucketArtifactInspection r;r.identity=h.id;r.effective_threads=1;r.payload_hash=core::fingerprint::FNV1A_OFFSET;std::ifstream f(p,std::ios::binary);for(std::uint32_t i=0;i<h.count;++i){f.seekg(h.s[i].at);std::vector<unsigned char>b(h.s[i].n);f.read((char*)b.data(),b.size());if(!f)throw std::runtime_error("bucket artifact is truncated");for(auto x:b)core::fingerprint::append_u8(r.payload_hash,x);const auto st=(core::Street)b[0];const auto n=b[1];std::uint32_t bc=b[2+n]|(b[3+n]<<8U)|(b[4+n]<<16U)|(b[5+n]<<24U);std::vector<std::uint8_t>board(b.begin()+2,b.begin()+2+n);if(!is_multiway_canonical_board(st,board))throw std::invalid_argument("bucket board is not canonical");if(!bc)throw std::invalid_argument("bucket count is zero");if(st==core::Street::Flop)++r.flop_tables;else if(st==core::Street::Turn)++r.turn_tables;else if(st==core::Street::River)++r.river_tables;else throw std::invalid_argument("bucket artifact contains a non-postflop table");for(std::size_t j=0;j<MULTIWAY_HOLE_COMBINATION_COUNT;++j){auto a=b[6+n+j*4]|(b[7+n+j*4]<<8U)|(b[8+n+j*4]<<16U)|(b[9+n+j*4]<<24U);if(a!=MULTIWAY_INVALID_BUCKET){++r.live_assignments;if(a>=bc)throw std::invalid_argument("bucket assignment is out of range");}}if(cb&&((i+1)%pi==0||i+1==h.count))cb(i+1,h.count);}r.payload_hash=core::fingerprint::finish(r.payload_hash);r.parallel_payload_hash=r.payload_hash;return r;}
 }
-std::uint32_t read_u32(std::ifstream& input) {
-    std::uint32_t value = 0U;
-    for (std::size_t i = 0U; i < 4U; ++i) { const auto byte = input.get(); if (byte == EOF) throw std::runtime_error("bucket artifact is truncated"); value |= static_cast<std::uint32_t>(static_cast<unsigned char>(byte)) << (i * 8U); }
-    return value;
+MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(const std::filesystem::path&p,const MultiwayModelIdentity&e,MultiwayBucketInspectionProgressCallback cb,std::uint64_t pi){if(cb&&pi==0)throw std::invalid_argument("bucket inspection progress interval is zero");return serial(p,e,std::move(cb),pi);}
+MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(const std::filesystem::path&p,const MultiwayModelIdentity&e,const MultiwayBucketInspectionOptions&o,MultiwayBucketInspectionProgressCallback cb,std::uint64_t pi){if(o.requested_threads<=1||o.hash_mode==MultiwayBucketInspectionHashMode::Legacy)return serial(p,e,std::move(cb),pi);auto h=scan(p,e);MultiwayBucketArtifactInspection r;r.identity=h.id;r.effective_threads=std::min(o.requested_threads,h.count);if(!r.effective_threads)r.effective_threads=1;std::vector<std::uint64_t> hs(h.count);std::atomic<std::uint32_t> next{0};std::vector<std::thread>ts;for(auto w=0U;w<r.effective_threads;++w)ts.emplace_back([&]{std::ifstream f(p,std::ios::binary);for(;;){auto i=next++;if(i>=h.count)break;f.seekg(h.s[i].at);std::vector<unsigned char>b(h.s[i].n);f.read((char*)b.data(),b.size());auto x=core::fingerprint::FNV1A_OFFSET;for(auto c:b)core::fingerprint::append_u8(x,c);hs[i]=core::fingerprint::finish(x);}});for(auto&t:ts)t.join();r.parallel_payload_hash=core::fingerprint::FNV1A_OFFSET;for(std::uint32_t i=0;i<h.count;++i){core::fingerprint::append_u64(r.parallel_payload_hash,i);core::fingerprint::append_u64(r.parallel_payload_hash,h.s[i].n);core::fingerprint::append_u64(r.parallel_payload_hash,hs[i]);}r.payload_hash=core::fingerprint::finish(r.parallel_payload_hash);auto checked=serial(p,e,{},1);r.flop_tables=checked.flop_tables;r.turn_tables=checked.turn_tables;r.river_tables=checked.river_tables;r.live_assignments=checked.live_assignments;if(cb)cb(h.count,h.count);return r;}
 }
-std::uint64_t read_u64(std::ifstream& input) {
-    std::uint64_t value = 0U;
-    for (std::size_t i = 0U; i < 8U; ++i) { const auto byte = input.get(); if (byte == EOF) throw std::runtime_error("bucket artifact is truncated"); value |= static_cast<std::uint64_t>(static_cast<unsigned char>(byte)) << (i * 8U); }
-    return value;
-}
-}
-
-MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
-    const std::filesystem::path& path, const MultiwayModelIdentity& expected_identity,
-    MultiwayBucketInspectionProgressCallback progress_callback,
-    std::uint64_t progress_interval) {
-    if (progress_callback && progress_interval == 0U) {
-        throw std::invalid_argument("bucket inspection progress interval is zero");
-    }
-    std::ifstream input(path, std::ios::binary);
-    if (!input) throw std::runtime_error("multiway bucket artifact cannot be opened");
-    std::array<char, 4U> magic{};
-    input.read(magic.data(), 4);
-    if (!input || magic != std::array<char, 4U>{'M', 'W', 'B', 'K'}) throw std::invalid_argument("invalid bucket artifact header");
-    if (read_u32(input) != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION) throw std::invalid_argument("unsupported bucket artifact schema");
-    MultiwayModelIdentity identity;
-    visit_multiway_model_identity_fields(identity, [&](std::uint64_t& field) { field = read_u64(input); });
-    identity.validate();
-    expected_identity.validate();
-    if (identity != expected_identity) throw std::invalid_argument("bucket artifact identity mismatch");
-    MultiwayBucketArtifactInspection result;
-    result.identity = identity;
-    result.payload_hash = core::fingerprint::FNV1A_OFFSET;
-    const auto table_count = read_u32(input);
-    if (table_count == 0U) throw std::invalid_argument("bucket artifact has no tables");
-    for (std::uint32_t table_index = 0U; table_index < table_count; ++table_index) {
-        const auto street = static_cast<core::Street>(input.get());
-        const auto board_size = static_cast<std::size_t>(input.get());
-        if (!input || board_size == 0U || board_size > 5U) throw std::runtime_error("invalid bucket board metadata");
-        std::vector<std::uint8_t> board(board_size);
-        input.read(reinterpret_cast<char*>(board.data()), static_cast<std::streamsize>(board.size()));
-        if (!input || !is_multiway_canonical_board(street, board)) throw std::invalid_argument("bucket board is not canonical");
-        const auto bucket_count = read_u32(input);
-        if (bucket_count == 0U) throw std::invalid_argument("bucket count is zero");
-        switch (street) {
-            case core::Street::Flop: ++result.flop_tables; break;
-            case core::Street::Turn: ++result.turn_tables; break;
-            case core::Street::River: ++result.river_tables; break;
-            default: throw std::invalid_argument("bucket artifact contains a non-postflop table");
-        }
-        core::fingerprint::append_u8(result.payload_hash, static_cast<std::uint8_t>(street));
-        core::fingerprint::append_u8(result.payload_hash, static_cast<std::uint8_t>(board_size));
-        for (const auto card : board) core::fingerprint::append_u8(result.payload_hash, card);
-        hash_u32(result.payload_hash, bucket_count);
-        for (std::size_t assignment_index = 0U; assignment_index < MULTIWAY_HOLE_COMBINATION_COUNT; ++assignment_index) {
-            const auto assignment = read_u32(input);
-            if (assignment != MULTIWAY_INVALID_BUCKET) ++result.live_assignments;
-            if (assignment != MULTIWAY_INVALID_BUCKET && assignment >= bucket_count) throw std::invalid_argument("bucket assignment is out of range");
-            hash_u32(result.payload_hash, assignment);
-        }
-        if (progress_callback && ((table_index + 1U) % progress_interval == 0U || table_index + 1U == table_count)) {
-            progress_callback(table_index + 1U, table_count);
-        }
-    }
-    if (input.peek() != EOF) throw std::invalid_argument("bucket artifact has trailing data");
-    result.payload_hash = core::fingerprint::finish(result.payload_hash);
-    return result;
-}
-}  // namespace texas::solver::multiway
