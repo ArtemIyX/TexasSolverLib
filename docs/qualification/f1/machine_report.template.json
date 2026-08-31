@@ -1,0 +1,19 @@
+{
+  "run_id": "",
+  "operator": "",
+  "git_commit": "",
+  "working_tree_clean": false,
+  "config_path": "",
+  "config_fingerprint": 0,
+  "model_identity": 0,
+  "binary_path": "",
+  "binary_hash": 0,
+  "command": "",
+  "working_directory": "",
+  "exit_code": -1,
+  "stdout_log": "",
+  "stderr_log": "",
+  "result_reports": [],
+  "artifacts": [],
+  "notes": ""
+}

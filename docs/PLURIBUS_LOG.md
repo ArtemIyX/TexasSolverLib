@@ -1,5 +1,583 @@
 # Pluribus Roadmap Progress Log
 
+## F1-WP5.8 - Human-command JSON escaping regression
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added coverage for quoted configuration paths in human command metadata.
+- Verified the final acceptance JSON preserves valid escaped command strings.
+
+### Files
+
+- `tests/test_multiway_f1_acceptance.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP5.7 - Complete evidence-chain publication gate
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Made all five source-report references mandatory for a passing final report.
+- Added negative coverage proving a report without source references cannot be
+  published.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP5.6 - Mandatory source-report references
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Required all five immutable source-report paths before a passing final
+  acceptance report can be published.
+- Added regression coverage for missing source references.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP5.5 - Strict finalizer publication contract
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Required producer evidence and human provenance on every published passing
+  acceptance report.
+- Escaped human metadata and source paths before writing JSON output.
+- Added a regression test rejecting a manually constructed pass without
+  evidence and verified Windows path handling.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP5.4 - Final acceptance evidence-chain output
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Extended `final_acceptance.json` with the accepted producer evidence header,
+  human-run metadata, and all source-report paths.
+- Added regression assertions that persisted finalization emits source evidence
+  references.
+- Fixed Windows test cleanup by closing the finalizer output report before
+  removing it.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_f1_acceptance.hpp`
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP6 - Human execution handoff package
+
+**Status:** Prepared
+**Completed:** 2026-08-31
+
+- Added the exact candidate build/test command template and expected registered
+  suite result to the F1 qualification README.
+- Added a YAML run-record template covering provenance, commands, exit codes,
+  machine data, reports, and artifact references.
+- Kept production qualification unqualified until a human supplies the run
+  records and immutable evidence files.
+
+### Files
+
+- `docs/qualification/f1/README.md`
+- `docs/qualification/f1/human_run_record.template.yaml`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP1.6 - Failure-path training evidence
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a failure-path report publication boundary so partial telemetry is
+  persisted before training rethrows a workflow failure.
+- Added an explicit failed-report state that permits incomplete merge evidence
+  while retaining the observed counters, high waters, and memory telemetry.
+- Added regression coverage for partial failed reports and exact accepted-count
+  accounting.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP1.5 - Accepted and discarded trajectory accounting
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added an explicit accepted-trajectory field to training reports while
+  retaining scheduled/attempted trajectory totals.
+- Derived accepted counts from sampler discard telemetry and made the persisted
+  finalizer consume the explicit field.
+- Published diagnostic training reports before the workflow raises on coverage
+  or discard failure.
+- Added regression coverage for attempted, accepted, and discarded counts.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `src/solver/multiway/workflow/multiway_sizing_report.cpp`
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP1.4 - Checkpoint-persisted street visits
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Persisted preflop, flop, turn, and river visit counters in the training
+  checkpoint payload and payload hash.
+- Incremented the training checkpoint format schema and restored counters after
+  resume without adding work to traversal inner loops.
+- Added checkpoint round-trip coverage for the counters.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP1.3 - Per-street visit telemetry and checkpoint persistence
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added preflop, flop, turn, and river decision-visit counters at the existing
+  coordinator row-admission boundary.
+- Added the counters to training status and serialized training reports.
+- Persisted and restored the counters in training checkpoints with a format
+  schema increment, including payload-hash coverage.
+- Added report and checkpoint round-trip coverage while keeping the hot path
+  free of new allocation, formatting, or filesystem work.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+## F1-WP1.2 - Artifact publication telemetry
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added checkpoint byte length and cumulative write duration telemetry at
+  training checkpoint boundaries.
+- Added full-blueprint byte length and export/publication duration telemetry
+  on the cold publication path.
+- Serialized the measurements and added regression coverage for their units and
+  preservation.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- Current solver diagnostics expose aggregate terminal and leaf visits, not
+  per-street visit counters. The report still records per-street row counts;
+  per-street visits require a separate diagnostics extension.
+
+## F1-WP5.3 - Finalizer command and human handoff package
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added the `texas_multiway_finalize` research executable with explicit paths
+  for every persisted report and explicit human-run provenance arguments.
+- Added F1 qualification README and machine/acceptance report templates.
+- Extended CMake boundary coverage for the finalizer target and preserved the
+  non-installed research-workflow boundary.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `CMakeLists.txt`
+- `tests/cmake/test_example_boundary.cmake`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/qualification/f1/README.md`
+- `docs/qualification/f1/acceptance_report.template.json`
+- `docs/qualification/f1/machine_report.template.json`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON -DTEXASSOLVER_BUILD_EXAMPLES=ON -DTEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- WP6-WP12 still require human execution of the compiled build, bucket
+  generation, sizing pilot, checkpoint-equivalence runs, 50-million-trajectory
+  acceptance run, lookup qualification, and final evidence audit.
+
+## F1-WP5.2 - Persisted report finalization
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added complete producer-identity fields to serialized evidence headers and
+  added evidence headers to inspection and checkpoint-equivalence reports.
+- Added a path-based finalizer that reads existing bucket, training,
+  equivalence, and both lookup reports without rerunning solver work.
+- Enforced required fields, exact schemas, report presence, matching producer
+  identities, lookup parity, and atomic final publication.
+- Added persisted positive, missing-report, and second-run provenance mismatch
+  tests.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_f1_acceptance.hpp`
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `include/solver/multiway/workflow/multiway_checkpoint_equivalence.hpp`
+- `src/solver/multiway/workflow/multiway_checkpoint_equivalence.cpp`
+- `src/solver/multiway/workflow/multiway_evidence.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- The finalizer API is available as a library boundary but is not yet exposed
+  as a dedicated command-line workflow in `multiway_workflow_main.cpp`.
+
+## F1-WP3.2 - Training and inspection publication preflight
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added checked full-blueprint size and process-memory estimates before a
+  training publication can allocate or publish output.
+- Added report-output preflight for inspection JSON publication, including
+  output-directory, disk-space, and verified-sidecar overwrite checks.
+- Kept both checks on the workflow cold path and left traversal behavior
+  unchanged.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- The workflow executable does not yet emit a schema-versioned inspection
+  evidence header or invoke the final acceptance aggregator.
+
+## F1-WP2.2 - Bounded sizing-pilot report
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a cold-path sizing report that preserves observed capacity high-water
+  marks, RSS, elapsed time, throughput, trajectory counts, and failure stage.
+- Preserved capacity and memory-limit failures as diagnostic reports with
+  `passed=false`; acceptance-profile evidence cannot be used as sizing input.
+- Added the finite bounded `F1-SIZING-12-v1` pilot configuration. Its limits are
+  pilot defaults and require human review against the available machine
+  envelope before execution.
+- Added focused tests for successful sizing, capacity failure, RSS failure,
+  profile separation, and atomic publication.
+
+### Files
+
+- `configs/multiway/f1_sizing_v1.cfg`
+- `include/solver/multiway/workflow/multiway_sizing_report.hpp`
+- `src/solver/multiway/workflow/multiway_sizing_report.cpp`
+- `tests/test_multiway_sizing_report.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 106/106 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- Pilot capacity values are intentionally bounded defaults, not acceptance
+  capacities. A human must review and approve them before the sizing run.
+
+## F1-WP5.1 - Final acceptance evidence aggregation
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added typed aggregation for bucket, training, resume-equivalence, and lookup
+  evidence with shared producer-identity validation.
+- Enforced acceptance-profile provenance, exact trajectory count, zero discard
+  count, lookup parity, and successful human-run metadata before publication.
+- Restricted atomic final-report publication to passing evidence and added
+  focused positive and rejection tests.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_f1_acceptance.hpp`
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 105/105 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- The finalizer currently consumes typed evidence supplied by the workflow; it
+  does not yet read the existing JSON reports and checkpoint directories by
+  path.
+
+## F1-WP4.1 - Streaming checkpoint equivalence
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added fixed-buffer streaming comparison for continuous and resumed blueprint
+  files with byte counts and payload fingerprints.
+- Compared model/configuration identity, seed, schedule, coverage, street rows,
+  terminal/leaf/discard counters, merge fingerprint, and completed trajectories.
+- Restricted atomic equivalence publication to reports where every equality gate
+  passes.
+- Added focused equality, payload-difference, metadata-difference, truncation,
+  and publication tests.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_checkpoint_equivalence.hpp`
+- `src/solver/multiway/workflow/multiway_checkpoint_equivalence.cpp`
+- `tests/test_multiway_checkpoint_equivalence.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 104/104 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- The comparator currently consumes run metadata supplied by the workflow; it
+  does not yet parse training JSON reports or checkpoint directories itself.
+
+## F1-WP3.1 - Artifact output preflight
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added cold-path artifact preflight validation for output directories, free
+  disk space, process-memory estimates, and verified-manifest overwrite refusal.
+- Rejected inconsistent temporary/sidecar resume states and validated existing
+  sidecars against model identity and expected table count.
+- Wired preflight into the bucket workflow before writer creation, including a
+  checked worst-case payload-size estimate.
+- Added focused tests for valid output, verified overwrite, partial resume,
+  malformed sidecars, and memory overcommit.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_artifact_preflight.hpp`
+- `src/solver/multiway/workflow/multiway_artifact_preflight.cpp`
+- `tests/test_multiway_artifact_preflight.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 103/103 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- Training and inspection report publication still need their own artifact
+  preflight wiring.
+
+## F1-WP2.1 - Sizing and acceptance profile separation
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added explicit `profile_kind` parsing and configuration identity coverage.
+- Enforced the fixed 50-million trajectory target for acceptance profiles.
+- Enforced a smaller-than-acceptance trajectory target for sizing profiles.
+- Included profile kind in workflow fingerprints and updated the F1 acceptance
+  configuration.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `configs/multiway/f1_dev_v1.cfg`
+- `tests/test_multiway_workflow_config.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 102/102 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- `f1_sizing_v1.cfg` and human-approved finite sizing capacities remain
+  pending.
+
+## F1-WP1.1 - Batch-boundary training telemetry
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added configured capacity and high-water counters to blueprint training
+  status.
+- Added elapsed wall time, throughput calculation, compact-storage usage, and
+  current/peak process RSS telemetry with availability handling.
+- Added per-batch admitted-row growth samples and a validated capacity
+  exhaustion stage.
+- Published the telemetry in versioned training reports and validated invalid
+  RSS and throughput boundaries.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 102/102 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- Checkpoint/blueprint byte telemetry and per-street visit counters are still
+  pending.
+
+## F1-WP0.1 - Shared evidence identity primitives
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added version constants and profile kinds for F1 evidence schemas.
+- Added validated producer identity fields for model, workflow, build, compiler,
+  commit, and artifact schema provenance.
+- Added matching-identity validation, deterministic header serialization, and a
+  reusable evidence header.
+- Attached the header to training and lookup report publication paths and made
+  provenance explicit at their producer APIs.
+
+### Files
+
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `src/solver/multiway/workflow/multiway_evidence.cpp`
+- `tests/test_multiway_evidence.cpp`
+- `CMakeLists.txt`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 cmake -S . -B build -DTEXASSOLVER_BUILD_TESTS=ON` passed.
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 102/102 tests passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- Sizing, checkpoint-equivalence, bucket-inspection, and final-acceptance report
+  types and their aggregators remain later WP0/F1 work.
+
 ## F1 qualification harness and human execution plan
 
 **Status:** Complete
