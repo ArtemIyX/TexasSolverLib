@@ -63,11 +63,9 @@ void build_multiway_baseline_bucket_chunk(
         const auto local_begin = begin_index > global_offset ? begin_index - global_offset : 0U;
         const auto local_end = end_index < street_end ? end_index - global_offset : catalog.size();
         if (local_begin < local_end) {
-            catalog.for_each(local_begin, local_end, [&](const MultiwayBucketBoardRequest& request) {
-                std::array<std::uint8_t, 5U> board{};
-                std::copy(request.canonical_board.begin(), request.canonical_board.end(), board.begin());
+            catalog.for_each_fixed_board(local_begin, local_end, [&](const std::array<std::uint8_t, 5U>& board) {
                 tables.push_back(build_multiway_baseline_bucket_table_fixed_board(
-                    identity, request.street, board, profile));
+                    identity, street, board, profile));
             });
         }
         global_offset = street_end;

@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - allocation-free catalog handoff
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a fixed-board catalog callback that avoids constructing a temporary
+  board request vector for every catalog entry.
+- Routed production generation through the allocation-free catalog callback.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_catalog.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: build OK, all tests passed.
+
+### Limitations
+
+- Table assignment vectors still allocate per table; serialized worker chunks
+  and performance qualification remain deferred.
+
 ## F1 bucket generation - trusted fixed-board kernel
 
 **Status:** Complete
