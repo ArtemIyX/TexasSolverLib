@@ -59,7 +59,7 @@ Not yet established by repository evidence:
 - statistically significant cross-play results against independent strong agents.
 
 The latest implementation validation on 2026-08-31 passed the Debug build,
-research workflow targets, and all 106 registered tests. This does not qualify
+research workflow targets, and all 107 registered tests. This does not qualify
 the production F1 artifacts or replace the required human execution evidence.
 
 See [project state](docs/project_state.md) for the current evidence-based status and [the progress log](docs/PLURIBUS_LOG.md) for implementation history.

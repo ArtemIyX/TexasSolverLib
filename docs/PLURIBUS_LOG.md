@@ -1,5 +1,18 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - test-count documentation correction
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Updated current README, project-state, and human handoff references from
+  106 to 107 registered tests after adding the parallel-generation suite.
+
+### Validation
+
+- Existing full-build result: 107/107 tests passed.
+- `git diff --check` passed.
+
 ## F1 bucket generation - bounded parallel publisher
 
 **Status:** Complete

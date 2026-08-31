@@ -41,7 +41,7 @@ powershell -ExecutionPolicy Bypass -File scripts\codex_powershell.ps1 `
 
 Record each command's exit code and preserve stderr separately when the shell
 environment supports it. Use [human_run_record.template.yaml](human_run_record.template.yaml)
-for every compiled execution. The expected registered-suite result is 106/106
+for every compiled execution. The expected registered-suite result is 107/107
 tests passed for the current candidate; a human must verify and record the
 actual result.
 
