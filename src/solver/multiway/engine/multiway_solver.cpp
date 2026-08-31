@@ -720,6 +720,13 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
         request_.root().root_bucket >= shape.bucket_count) {
         throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
     }
+    switch (state->betting.street) {
+        case Street::Preflop: ++diagnostics_.street_visits[0U]; break;
+        case Street::Flop: ++diagnostics_.street_visits[1U]; break;
+        case Street::Turn: ++diagnostics_.street_visits[2U]; break;
+        case Street::River: ++diagnostics_.street_visits[3U]; break;
+        case Street::Showdown: break;
+    }
     if (compact) compact_storage_->admit_row(shape);
     else storage_.admit_row(shape);
     if (!existed) {
@@ -1000,6 +1007,7 @@ MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
     result.leaf_visits = diagnostics_.leaf_visits;
     result.missing_lookup_requests = diagnostics_.missing_lookup_requests;
     result.last_merged_stream_fingerprint = diagnostics_.last_merged_stream_fingerprint;
+    result.street_visits = diagnostics_.street_visits;
     if (compact_storage_ != nullptr) {
         compact_storage_->export_checkpoint(result.storage);
         return result;
@@ -1078,6 +1086,7 @@ void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorChec
         diagnostics_.leaf_visits = checkpoint.leaf_visits;
         diagnostics_.missing_lookup_requests = checkpoint.missing_lookup_requests;
         diagnostics_.last_merged_stream_fingerprint = checkpoint.last_merged_stream_fingerprint;
+        diagnostics_.street_visits = checkpoint.street_visits;
     }
 }
 

@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <mutex>
 #include <optional>
 #include <vector>
@@ -247,6 +248,7 @@ struct MultiwayCoordinatorCheckpoint {
     std::uint64_t leaf_visits = 0U;
     std::uint64_t missing_lookup_requests = 0U;
     std::uint64_t last_merged_stream_fingerprint = 0U;
+    std::array<std::uint64_t, 4> street_visits{};
 };
 
 // Coordinator-owned sparse rows. Values are action-major: [action][bucket].
@@ -360,6 +362,7 @@ struct MultiwaySolveDiagnostics {
     std::uint64_t worker_delta_entries_merged = 0;
     std::uint64_t terminal_visits = 0;
     std::uint64_t leaf_visits = 0;
+    std::array<std::uint64_t, 4> street_visits{};
     std::uint64_t missing_lookup_requests = 0;
     std::uint64_t last_merged_stream_fingerprint = 0U;
     double traversal_seconds = 0.0;

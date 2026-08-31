@@ -1,12 +1,13 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "games/multiway_state.hpp"
 #include "core/fingerprint.hpp"
 
 #include <cmath>
 #include <limits>
-#include <cmath>
+#include <chrono>
 #include <stdexcept>
 #include <utility>
 
@@ -19,6 +20,7 @@ void MultiwayBlueprintTrainingCheckpoint::validate() const {
         coverage.terminal_visits != coordinator.terminal_visits ||
         coverage.leaf_visits != coordinator.leaf_visits ||
         coverage.missing_lookup_requests != coordinator.missing_lookup_requests ||
+        coverage.street_visits != coordinator.street_visits ||
         coordinator.storage.regrets.size() != coordinator.storage.strategy_sums.size()) {
         throw std::invalid_argument("multiway training checkpoint metadata is invalid");
     }
@@ -245,13 +247,18 @@ MultiwayBlueprintTrainer::MultiwayBlueprintTrainer(
       batch_runner_(&batch_runner),
       coordinator_(&coordinator),
       schedule_(schedule),
-      deterministic_seed_(deterministic_seed) {
+      deterministic_seed_(deterministic_seed),
+      started_at_(std::chrono::steady_clock::now()) {
     identity_.validate();
     schedule_.validate();
     if (deterministic_seed_ == 0U) {
         throw std::invalid_argument("multiway blueprint trainer requires a non-zero deterministic seed");
     }
     status_.late_window_start_batch = schedule_.late_window_start_batch;
+    status_.configured_max_public_states = coordinator_->limits().max_public_states;
+    status_.configured_max_sparse_rows = coordinator_->limits().max_sparse_rows;
+    status_.configured_max_sparse_values = coordinator_->limits().max_sparse_values;
+    status_.configured_worker_delta_capacity = coordinator_->limits().max_worker_delta_entries;
 }
 
 void MultiwayBlueprintTrainer::run_batches(
@@ -304,9 +311,43 @@ void MultiwayBlueprintTrainer::run_batches(
             ? coordinator_->compact_storage()->value_count() : coordinator_->storage().value_count();
         status_.terminal_visits = diagnostics.terminal_visits;
         status_.leaf_visits = diagnostics.leaf_visits;
+        status_.street_visits = diagnostics.street_visits;
         status_.missing_lookup_requests = diagnostics.missing_lookup_requests;
         status_.discarded_trajectories = diagnostics.trajectories_discarded;
         status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
+        status_.peak_public_states = std::max(status_.peak_public_states,
+            diagnostics.public_states_admitted);
+        status_.peak_sparse_rows = std::max(status_.peak_sparse_rows,
+            diagnostics.sparse_rows_admitted);
+        status_.peak_sparse_values = std::max(status_.peak_sparse_values,
+            static_cast<std::uint64_t>(coordinator_->compact_storage() != nullptr
+                ? coordinator_->compact_storage()->value_count() : coordinator_->storage().value_count()));
+        status_.peak_worker_delta_entries = std::max(status_.peak_worker_delta_entries,
+            diagnostics.worker_delta_entries_merged);
+        status_.peak_compact_storage_bytes = std::max(status_.peak_compact_storage_bytes,
+            static_cast<std::uint64_t>(coordinator_->compact_storage() != nullptr
+                ? coordinator_->compact_storage()->memory_bytes() : 0U));
+        status_.current_process_rss_bytes = observed_multiway_process_memory_bytes();
+        status_.process_rss_available = status_.current_process_rss_bytes != 0U;
+        status_.peak_process_rss_bytes = std::max(status_.peak_process_rss_bytes,
+            status_.current_process_rss_bytes);
+        status_.elapsed_wall_nanoseconds = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - started_at_).count());
+        status_.admitted_rows_per_batch.push_back(status_.admitted_rows);
+        if (status_.configured_max_public_states != 0U &&
+            status_.peak_public_states >= status_.configured_max_public_states) {
+            status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::PublicStates;
+        } else if (status_.configured_max_sparse_rows != 0U &&
+                   status_.peak_sparse_rows >= status_.configured_max_sparse_rows) {
+            status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::SparseRows;
+        } else if (status_.configured_max_sparse_values != 0U &&
+                   status_.peak_sparse_values >= status_.configured_max_sparse_values) {
+            status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::SparseValues;
+        } else if (status_.configured_worker_delta_capacity != 0U &&
+                   status_.peak_worker_delta_entries >= status_.configured_worker_delta_capacity) {
+            status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::WorkerDeltas;
+        }
     }
 }
 
@@ -322,6 +363,7 @@ MultiwayBlueprintCoverageManifest MultiwayBlueprintTrainer::coverage_manifest() 
         status_.flop_rows,
         status_.turn_rows,
         status_.river_rows,
+        status_.street_visits,
     };
 }
 
@@ -469,6 +511,7 @@ void MultiwayBlueprintTrainer::resume_from_checkpoint(
     status_.flop_rows = checkpoint.coverage.flop_rows;
     status_.turn_rows = checkpoint.coverage.turn_rows;
     status_.river_rows = checkpoint.coverage.river_rows;
+    status_.street_visits = checkpoint.coverage.street_visits;
     late_window_baseline_ = checkpoint.late_window_baseline;
     const auto& diagnostics = coordinator_->diagnostics();
     status_.visited_public_descriptors = diagnostics.public_states_admitted;
@@ -480,6 +523,7 @@ void MultiwayBlueprintTrainer::resume_from_checkpoint(
     status_.discarded_trajectories = diagnostics.trajectories_discarded;
     status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
     status_.admitted_action_cells = coordinator_->storage().value_count();
+    status_.street_visits = diagnostics.street_visits;
 }
 
 MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(

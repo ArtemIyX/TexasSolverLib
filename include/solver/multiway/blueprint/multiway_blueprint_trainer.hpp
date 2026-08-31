@@ -8,10 +8,20 @@
 #include "games/multiway_rules.hpp"
 
 #include <cstdint>
+#include <array>
+#include <chrono>
 #include <memory>
 #include <vector>
 
 namespace texas::solver::multiway {
+
+enum class MultiwayTrainingCapacityStage : std::uint8_t {
+    None = 0U,
+    PublicStates = 1U,
+    SparseRows = 2U,
+    SparseValues = 3U,
+    WorkerDeltas = 4U,
+};
 
 [[nodiscard]] MultiwayRootSnapshot make_multiway_initial_blueprint_root(
     const MultiwayGameRules& rules,
@@ -60,9 +70,28 @@ struct MultiwayBlueprintTrainingStatus {
     std::uint64_t admitted_action_cells = 0;
     std::uint64_t terminal_visits = 0;
     std::uint64_t leaf_visits = 0;
+    std::array<std::uint64_t, 4> street_visits{};
     std::uint64_t missing_lookup_requests = 0;
     std::uint64_t late_window_start_batch = 0;
     bool late_window_active = false;
+    // Batch-boundary telemetry. These fields are diagnostic and are not part
+    // of the strategy identity or deterministic merge state.
+    std::uint64_t configured_max_public_states = 0;
+    std::uint64_t configured_max_sparse_rows = 0;
+    std::uint64_t configured_max_sparse_values = 0;
+    std::uint64_t configured_worker_delta_capacity = 0;
+    std::uint64_t peak_public_states = 0;
+    std::uint64_t peak_sparse_rows = 0;
+    std::uint64_t peak_sparse_values = 0;
+    std::uint64_t peak_worker_delta_entries = 0;
+    std::uint64_t peak_compact_storage_bytes = 0;
+    std::uint64_t current_process_rss_bytes = 0;
+    std::uint64_t peak_process_rss_bytes = 0;
+    std::uint64_t elapsed_wall_nanoseconds = 0;
+    bool process_rss_available = false;
+    std::vector<std::uint64_t> admitted_rows_per_batch;
+    MultiwayTrainingCapacityStage capacity_exhaustion_stage =
+        MultiwayTrainingCapacityStage::None;
 };
 
 // Public-only coverage summary for a sparse full-blueprint export. Zero
@@ -79,6 +108,7 @@ struct MultiwayBlueprintCoverageManifest {
     std::uint64_t flop_rows = 0;
     std::uint64_t turn_rows = 0;
     std::uint64_t river_rows = 0;
+    std::array<std::uint64_t, 4> street_visits{};
 };
 
 struct MultiwayBlueprintTrainingCheckpoint {
@@ -144,6 +174,7 @@ private:
     MultiwaySolverCoordinator* coordinator_ = nullptr;
     MultiwayBlueprintIterationSchedule schedule_{};
     std::uint64_t deterministic_seed_ = 1;
+    std::chrono::steady_clock::time_point started_at_{};
     MultiwayBlueprintTrainingStatus status_{};
     std::vector<double> late_window_baseline_;
 };
