@@ -407,6 +407,9 @@ int run_inspect(const std::filesystem::path& config_path, const std::filesystem:
             [](std::uint64_t completed, std::uint64_t total) {
                 std::cout << "inspection progress: tables=" << completed << '/' << total << '\n';
             }) : MultiwayBucketInspectionProgressCallback{}, progress_interval);
+    const auto hash_algorithm = report.hash_mode == MultiwayBucketInspectionHashMode::Legacy
+        ? "fnv1a64-stream-v1" : report.hash_mode == MultiwayBucketInspectionHashMode::Both
+        ? "fnv1a64-stream-v1+fnv1a64-tree-v1" : "fnv1a64-tree-v1";
     if (report.flop_tables == 0U || report.turn_tables == 0U || report.river_tables == 0U) {
         throw std::runtime_error("bucket artifact has incomplete street coverage");
     }
@@ -420,6 +423,7 @@ int run_inspect(const std::filesystem::path& config_path, const std::filesystem:
         ",\n  \"live_assignments\": " + std::to_string(report.live_assignments) +
         ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) +
         ",\n  \"parallel_payload_hash\": " + std::to_string(report.parallel_payload_hash) +
+        ",\n  \"hash_algorithm\": \"" + std::string(hash_algorithm) + "\"" +
         ",\n  \"effective_threads\": " + std::to_string(report.effective_threads) +
         ",\n  \"identity_matches\": " +
         (report.identity == make_multiway_model_identity(workflow.model) ? "true" : "false") +
