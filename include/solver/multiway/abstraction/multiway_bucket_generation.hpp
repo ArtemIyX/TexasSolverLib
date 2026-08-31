@@ -43,6 +43,7 @@ using MultiwayBucketProgressCallback = std::function<void(
     const MultiwayBucketGenerationProgress& progress)>;
 
 [[nodiscard]] std::uint32_t multiway_bucket_hardware_thread_count() noexcept;
+[[nodiscard]] std::uint32_t multiway_bucket_physical_core_count() noexcept;
 [[nodiscard]] std::uint32_t resolve_multiway_bucket_thread_count(
     std::uint32_t requested_threads,
     std::uint32_t detected_threads) noexcept;

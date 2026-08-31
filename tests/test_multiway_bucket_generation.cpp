@@ -69,6 +69,11 @@ TEST_CASE(multiway_bucket_generation_resolves_thread_limits) {
     EXPECT_EQ(resolve_multiway_bucket_thread_count(0U, 32U), 0U);
 }
 
+TEST_CASE(multiway_bucket_generation_reports_nonzero_physical_core_count) {
+    EXPECT_TRUE(multiway_bucket_physical_core_count() > 0U);
+    EXPECT_TRUE(multiway_bucket_physical_core_count() <= multiway_bucket_hardware_thread_count());
+}
+
 TEST_CASE(multiway_bucket_generation_chunk_maps_across_street_boundaries) {
     const auto flop_count = multiway_bucket_board_count(texas::core::Street::Flop);
     std::vector<MultiwayBucketTable> tables;

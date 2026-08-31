@@ -226,6 +226,7 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
               << "  tables=" << expected_tables
               << " chunk_size=" << MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE
               << " hardware_threads=" << hardware_threads
+              << " physical_cores=" << multiway_bucket_physical_core_count()
               << " effective_threads=" << effective_threads << std::endl;
     if (!checkpoint_dir.empty()) std::filesystem::create_directories(checkpoint_dir);
     constexpr std::uint64_t max_table_bytes = 2U + 5U + 4U +
@@ -370,6 +371,8 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
               << ",tables=" << table_count
               << ",threads=" << requested_threads << ",seconds=" << seconds
               << ",tables_per_second=" << static_cast<double>(table_count) / seconds
+              << ",hardware_threads=" << multiway_bucket_hardware_thread_count()
+              << ",physical_cores=" << multiway_bucket_physical_core_count()
               << ",checksum=" << checksum << ",chunks_built=" << stats.chunks_built
               << ",chunks_published=" << stats.chunks_published
               << ",ready_high_watermark=" << stats.ready_queue_high_watermark

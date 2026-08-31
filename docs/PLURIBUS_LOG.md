@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - physical topology diagnostics
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added physical-core detection on Windows using processor-core topology
+  information, with a conservative hardware-thread fallback elsewhere.
+- Exposed physical and logical counts in production startup and benchmark
+  diagnostics, and added nonzero/ordering contract coverage.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- Full Debug build and all tests passed.
+
+### Limitations
+
+- Automatic worker selection remains the measured default cap of four; topology
+  is reported but not yet used to derive a portable machine-specific default.
+
 ## F1 bucket generation - five-run performance gate
 
 **Status:** Complete

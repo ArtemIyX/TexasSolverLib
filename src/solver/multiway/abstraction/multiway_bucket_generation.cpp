@@ -11,6 +11,9 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 namespace texas::solver::multiway {
 namespace {
@@ -36,11 +39,36 @@ std::uint32_t multiway_bucket_hardware_thread_count() noexcept {
     return detected == 0U ? 1U : detected;
 }
 
+std::uint32_t multiway_bucket_physical_core_count() noexcept {
+#if defined(_WIN32)
+    DWORD bytes = 0U;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &bytes);
+    if (bytes == 0U) return multiway_bucket_hardware_thread_count();
+    std::vector<std::uint8_t> buffer(bytes);
+    if (!GetLogicalProcessorInformationEx(
+            RelationProcessorCore,
+            reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &bytes)) {
+        return multiway_bucket_hardware_thread_count();
+    }
+    std::uint32_t cores = 0U;
+    DWORD offset = 0U;
+    while (offset < bytes) {
+        const auto* entry = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buffer.data() + offset);
+        if (entry->Relationship == RelationProcessorCore) ++cores;
+        if (entry->Size == 0U) break;
+        offset += entry->Size;
+    }
+    return cores == 0U ? multiway_bucket_hardware_thread_count() : cores;
+#else
+    return multiway_bucket_hardware_thread_count();
+#endif
+}
+
 std::uint32_t resolve_multiway_bucket_thread_count(
     std::uint32_t requested_threads, std::uint32_t detected_threads) noexcept {
     if (requested_threads == 0U) return 0U;
     const auto available = detected_threads == 0U ? 1U : detected_threads;
-    return std::min(requested_threads, available);
+    return (std::min)(requested_threads, available);
 }
 
 void build_multiway_baseline_bucket_chunk(
