@@ -9,7 +9,9 @@
 #include <exception>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <mutex>
+#include <chrono>
 #include <thread>
 #include <vector>
 
@@ -312,6 +314,9 @@ MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
         options.requested_threads ? options.requested_threads : multiway_bucket_physical_core_count(),
         static_cast<std::uint32_t>(ranges.size())));
     std::atomic<std::size_t> next{0U};
+    std::atomic<std::size_t> completed_workers{0U};
+    auto finished = std::make_unique<std::atomic_bool[]>(ranges.size());
+    for (std::size_t i = 0U; i < ranges.size(); ++i) finished[i].store(false);
     std::vector<std::thread> threads;
     for (std::uint32_t worker = 0U; worker < workers; ++worker) {
         threads.emplace_back([&] {
@@ -320,22 +325,38 @@ MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
                 if (index >= ranges.size()) break;
                 try { inspect_leaf(path, ranges[index], results[index]); }
                 catch (...) { results[index].error = std::current_exception(); results[index].error_table = ranges[index].street_index; }
+                finished[index].store(true, std::memory_order_release);
+                completed_workers.fetch_add(1U, std::memory_order_release);
             }
         });
     }
+    std::uint64_t frontier = 0U;
+    std::uint64_t next_progress = interval;
+    std::exception_ptr callback_error;
+    while (completed_workers.load(std::memory_order_acquire) < ranges.size()) {
+        while (frontier < ranges.size() && finished[frontier].load(std::memory_order_acquire)) {
+            ++frontier;
+            const auto completed_tables = frontier == ranges.size() ? header.table_count :
+                std::min<std::uint64_t>(header.table_count, frontier * kLeafTables);
+            if (callback && !callback_error && completed_tables >= next_progress) {
+                try { callback(completed_tables, header.table_count); }
+                catch (...) { callback_error = std::current_exception(); }
+                while (next_progress <= completed_tables) next_progress += interval;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     for (auto& thread : threads) thread.join();
+    if (callback_error) std::rethrow_exception(callback_error);
     MultiwayBucketArtifactInspection result;
     result.identity = header.identity;
     result.effective_threads = workers;
     result.hash_mode = options.hash_mode;
-    std::uint64_t completed = 0U;
     for (const auto& leaf : results) {
         if (leaf.error) std::rethrow_exception(leaf.error);
         result.live_assignments += leaf.live;
-        ++completed;
-        if (callback && (completed * kLeafTables >= interval || completed == results.size()))
-            callback(std::min<std::uint64_t>(header.table_count, completed * kLeafTables), header.table_count);
     }
+    if (callback && !callback_error && frontier == ranges.size() && next_progress > header.table_count) callback(header.table_count, header.table_count);
     result.parallel_payload_hash = core::fingerprint::FNV1A_OFFSET;
     append_u64(result.parallel_payload_hash, 0x666E7631ULL); // fnv1a64-tree-v1
     append_u64(result.parallel_payload_hash, std::filesystem::file_size(path) - kHeaderBytes);

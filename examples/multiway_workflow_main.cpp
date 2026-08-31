@@ -38,7 +38,7 @@ texas::solver::multiway::MultiwayEvidenceHeader make_evidence_header(
     using namespace texas::solver::multiway;
     const auto environment = [](const char* name) {
         const auto* value = std::getenv(name);
-        return value == nullptr ? std::string{} : std::string(value);
+        return value == nullptr || *value == '\0' ? std::string("unknown") : std::string(value);
     };
     MultiwayEvidenceHeader header;
     header.schema_version = schema_version;
@@ -405,7 +405,7 @@ int run_inspect(const std::filesystem::path& config_path, const std::filesystem:
         MultiwayBucketInspectionOptions{requested_threads, hash_mode},
         progress_enabled ? MultiwayBucketInspectionProgressCallback(
             [](std::uint64_t completed, std::uint64_t total) {
-                std::cout << "inspection progress: tables=" << completed << '/' << total << '\n';
+                std::cout << "inspection progress: tables=" << completed << '/' << total << std::endl;
             }) : MultiwayBucketInspectionProgressCallback{}, progress_interval);
     const auto hash_algorithm = report.hash_mode == MultiwayBucketInspectionHashMode::Legacy
         ? "fnv1a64-stream-v1" : report.hash_mode == MultiwayBucketInspectionHashMode::Both

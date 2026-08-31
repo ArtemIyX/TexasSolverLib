@@ -28,12 +28,14 @@
 - Release production-artifact inspection reached the workflow evidence gate
   successfully: 31.055 seconds legacy buffered inspection versus 12.077
   seconds with four parallel workers on the local 14.3 GiB artifact.
+- Release CLI qualification with 16 workers completed successfully on the
+  production artifact, emitted progress during inspection, and reported
+  2,891,785 tables and 3,140,843,160 live assignments.
 
 ### Limitations
 
-- The production command exits at the existing evidence-producer identity gate
-  because local provenance environment fields are unset; inspection itself
-  completed and reported counts before that gate.
+- CLI provenance fields default to the explicit value `unknown` when the local
+  environment does not provide them.
 
 ## Multiway bucket inspection progress reporting
 
