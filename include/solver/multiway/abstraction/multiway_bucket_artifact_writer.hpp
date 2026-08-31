@@ -36,6 +36,7 @@ public:
 
     void append(const MultiwayBucketTable& table);
     void append_chunk(const std::vector<MultiwayBucketTable>& tables);
+    void append_serialized_chunk(std::uint64_t table_count, std::vector<std::uint8_t>&& payload);
     void flush_checkpoint();
     void finish(const std::filesystem::path& destination);
     [[nodiscard]] const MultiwayBucketArtifactProgress& progress() const noexcept { return progress_; }

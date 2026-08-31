@@ -175,6 +175,25 @@ TEST_CASE(multiway_bucket_generation_serial_and_parallel_artifacts_match) {
     std::filesystem::remove(repeat_path);
 }
 
+TEST_CASE(multiway_bucket_generation_serialized_chunks_match_table_chunks) {
+    constexpr std::uint64_t table_count = 12U;
+    const auto object_path = unique_path("object.bin");
+    const auto serialized_path = unique_path("serialized.bin");
+    const auto object_bytes = generate_artifact(4U, object_path);
+    const auto temporary = serialized_path.string() + ".tmp";
+    MultiwayBucketArtifactWriter writer(temporary, identity(), table_count);
+    generate_multiway_bucket_serialized_chunks(
+        0U, table_count, {4U, 3U, 2U}, build_synthetic_chunk,
+        [&writer](std::uint64_t begin, std::uint64_t count, std::vector<std::uint8_t>&& payload) {
+            EXPECT_EQ(begin, writer.progress().table_count);
+            writer.append_serialized_chunk(count, std::move(payload));
+        });
+    writer.finish(serialized_path);
+    EXPECT_EQ(object_bytes, read_file(serialized_path));
+    std::filesystem::remove(object_path);
+    std::filesystem::remove(serialized_path);
+}
+
 TEST_CASE(multiway_bucket_generation_one_thread_is_synchronous) {
     const auto caller = std::this_thread::get_id();
     bool builder_on_caller = false;

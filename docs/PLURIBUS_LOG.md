@@ -1,5 +1,40 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - worker-side serialized chunks
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added serialized chunk generation that performs artifact-record encoding on
+  worker threads and hands the publisher one contiguous payload.
+- Production generation and the end-to-end benchmark now use the serialized
+  handoff; the checked table-object API remains available.
+- Added byte-identical regression coverage against table-object generation.
+- Updated Release smoke rates for 1/2/4/8 workers: `10098`/`18778`/`29549`/
+  `29465` tables/s on 1,024 flop tables, with matching checksums.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- Full Debug build and all tests passed.
+- Release build passed.
+- Serialized and table-object artifacts matched byte for byte.
+- Release end-to-end benchmark passed for 1,024 flop tables at 1, 2, 4, and
+  8 workers.
+
+### Limitations
+
+- Workers still construct table objects before encoding; fully direct encoding
+  into preallocated worker buffers remains a possible later refinement.
+
 ## F1 bucket generation - topology-aware CLI default
 
 **Status:** Complete

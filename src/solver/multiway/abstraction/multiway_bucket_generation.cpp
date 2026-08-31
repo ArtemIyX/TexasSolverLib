@@ -32,6 +32,25 @@ struct SharedGenerationState {
     std::exception_ptr failure;
 };
 
+void append_u32(std::vector<std::uint8_t>& payload, std::uint32_t value) {
+    for (std::size_t index = 0U; index < 4U; ++index) payload.push_back(static_cast<std::uint8_t>(value >> (index * 8U)));
+}
+
+void serialize_tables(const std::vector<MultiwayBucketTable>& tables, std::vector<std::uint8_t>& payload) {
+    payload.reserve(tables.size() * (MULTIWAY_HOLE_COMBINATION_COUNT * 4U + 16U));
+    for (const auto& table : tables) {
+        if (table.assignments().size() != MULTIWAY_HOLE_COMBINATION_COUNT || table.canonical_board().size() > 5U ||
+            !is_multiway_canonical_board(table.street(), table.canonical_board())) {
+            throw std::invalid_argument("invalid bucket table");
+        }
+        payload.push_back(static_cast<std::uint8_t>(table.street()));
+        payload.push_back(static_cast<std::uint8_t>(table.canonical_board().size()));
+        for (const auto card : table.canonical_board()) payload.push_back(card);
+        append_u32(payload, table.bucket_count());
+        for (const auto assignment : table.assignments()) append_u32(payload, assignment);
+    }
+}
+
 }  // namespace
 
 std::uint32_t multiway_bucket_hardware_thread_count() noexcept {
@@ -248,6 +267,89 @@ void generate_multiway_bucket_chunks(
     state.condition.notify_all();
     for (auto& thread : workers) thread.join();
     if (state.failure) std::rethrow_exception(state.failure);
+}
+
+void generate_multiway_bucket_serialized_chunks(
+    std::uint64_t begin_index, std::uint64_t end_index,
+    MultiwayBucketGenerationOptions options, MultiwayBucketChunkBuilder builder,
+    MultiwayBucketSerializedChunkPublisher publisher,
+    MultiwayBucketProgressCallback progress_callback) {
+    if (begin_index > end_index || options.chunk_size == 0U || !builder || !publisher) {
+        throw std::invalid_argument("invalid serialized bucket generation request");
+    }
+    const auto threads = resolve_multiway_bucket_thread_count(
+        options.requested_threads, multiway_bucket_hardware_thread_count());
+    if (threads == 0U) throw std::invalid_argument("bucket generation thread count is zero");
+    const auto capacity = options.queue_capacity == 0U
+        ? std::max<std::uint32_t>(2U, threads * 2U) : std::max<std::uint32_t>(2U, options.queue_capacity);
+    struct Chunk { std::uint64_t begin = 0U; std::uint64_t count = 0U; std::vector<std::uint8_t> payload; };
+    std::mutex mutex;
+    std::condition_variable condition;
+    std::map<std::uint64_t, Chunk> ready;
+    std::exception_ptr failure;
+    std::uint64_t next_job = begin_index;
+    std::uint32_t in_flight = 0U;
+    const auto fail = [&](std::exception_ptr error) {
+        std::lock_guard lock(mutex);
+        if (!failure) failure = std::move(error);
+        condition.notify_all();
+    };
+    const auto worker = [&]() {
+        while (true) {
+            std::uint64_t first = 0U, last = 0U;
+            {
+                std::unique_lock lock(mutex);
+                condition.wait(lock, [&] { return failure || next_job >= end_index || in_flight < capacity; });
+                if (failure || next_job >= end_index) return;
+                first = next_job; last = first + std::min<std::uint64_t>(end_index - first, options.chunk_size);
+                next_job = last; ++in_flight;
+            }
+            try {
+                std::vector<MultiwayBucketTable> tables;
+                tables.reserve(static_cast<std::size_t>(last - first));
+                builder(first, last, tables);
+                if (tables.size() != static_cast<std::size_t>(last - first)) throw std::runtime_error("bucket chunk builder returned an invalid table count");
+                Chunk chunk; chunk.begin = first; chunk.count = last - first;
+                serialize_tables(tables, chunk.payload);
+                {
+                    std::lock_guard lock(mutex);
+                    if (!failure) ready.emplace(first, std::move(chunk)); else --in_flight;
+                }
+                if (options.stats) {
+                    std::lock_guard lock(mutex);
+                    ++options.stats->chunks_built;
+                    options.stats->ready_queue_high_watermark = std::max<std::uint64_t>(options.stats->ready_queue_high_watermark, ready.size());
+                }
+                condition.notify_all();
+            } catch (...) {
+                { std::lock_guard lock(mutex); --in_flight; }
+                fail(std::current_exception()); return;
+            }
+        }
+    };
+    std::vector<std::thread> workers;
+    workers.reserve(threads);
+    for (std::uint32_t index = 0U; index < threads; ++index) workers.emplace_back(worker);
+    std::uint64_t next_publish = begin_index;
+    try {
+        while (next_publish < end_index) {
+            Chunk chunk;
+            {
+                std::unique_lock lock(mutex);
+                condition.wait(lock, [&] { return failure || ready.find(next_publish) != ready.end(); });
+                if (failure) std::rethrow_exception(failure);
+                auto found = ready.find(next_publish);
+                chunk = std::move(found->second); ready.erase(found); --in_flight; condition.notify_all();
+            }
+            publisher(chunk.begin, chunk.count, std::move(chunk.payload));
+            if (options.stats) { std::lock_guard lock(mutex); ++options.stats->chunks_published; }
+            next_publish += chunk.count;
+            if (progress_callback) progress_callback({next_publish - begin_index, end_index - begin_index});
+        }
+    } catch (...) { fail(std::current_exception()); }
+    condition.notify_all();
+    for (auto& thread : workers) thread.join();
+    if (failure) std::rethrow_exception(failure);
 }
 
 }  // namespace texas::solver::multiway

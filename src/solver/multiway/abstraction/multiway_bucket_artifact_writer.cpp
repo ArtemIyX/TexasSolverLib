@@ -115,6 +115,20 @@ void MultiwayBucketArtifactWriter::append_chunk(const std::vector<MultiwayBucket
     progress_.byte_length += bytes.size();
 }
 
+void MultiwayBucketArtifactWriter::append_serialized_chunk(
+    std::uint64_t table_count, std::vector<std::uint8_t>&& payload) {
+    if (finished_ || progress_.table_count >= expected_table_count_ || table_count == 0U ||
+        table_count > expected_table_count_ - progress_.table_count) {
+        throw std::logic_error("bucket artifact chunk is invalid");
+    }
+    output_.write(reinterpret_cast<const char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+    if (!output_) throw std::runtime_error("cannot write bucket artifact");
+    for (const auto byte : payload) core::fingerprint::append_u8(progress_.payload_hash, byte);
+    progress_.table_count += table_count;
+    progress_.next_board_index = progress_.table_count;
+    progress_.byte_length += payload.size();
+}
+
 void MultiwayBucketArtifactWriter::flush_checkpoint() {
     if (finished_) throw std::logic_error("bucket artifact is already complete");
     output_.flush();

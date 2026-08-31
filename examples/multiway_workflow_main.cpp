@@ -288,16 +288,16 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
             identity, profile, begin_index, end_index, tables);
     };
     try {
-        generate_multiway_bucket_chunks(
+        generate_multiway_bucket_serialized_chunks(
             already_written, expected_tables,
             {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U},
             build_chunk,
-            [&](std::uint64_t begin_index, std::vector<MultiwayBucketTable>&& tables) {
+            [&](std::uint64_t begin_index, std::uint64_t table_count, std::vector<std::uint8_t>&& payload) {
                 if (begin_index != writer->progress().table_count) {
                     throw std::logic_error("bucket chunks were published out of order");
                 }
-                writer->append_chunk(tables);
-                const auto completed = begin_index + tables.size();
+                writer->append_serialized_chunk(table_count, std::move(payload));
+                const auto completed = begin_index + table_count;
                     const auto flop_end = multiway_bucket_board_count(texas::core::Street::Flop);
                     const auto turn_end = flop_end +
                         multiway_bucket_board_count(texas::core::Street::Turn);
@@ -351,16 +351,15 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
     std::unique_ptr<MultiwayBucketArtifactWriter> writer;
     if (publish) writer = std::make_unique<MultiwayBucketArtifactWriter>(temporary, identity, table_count);
     const auto start = std::chrono::steady_clock::now();
-    generate_multiway_bucket_chunks(start_index, start_index + table_count,
+    generate_multiway_bucket_serialized_chunks(start_index, start_index + table_count,
         {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U, &stats},
         [identity, profile](std::uint64_t begin, std::uint64_t end,
                             std::vector<MultiwayBucketTable>& tables) {
             build_multiway_baseline_bucket_chunk(identity, profile, begin, end, tables);
         },
-        [&checksum, &writer, publish](std::uint64_t, std::vector<MultiwayBucketTable>&& tables) {
-            if (publish) writer->append_chunk(tables);
-            for (const auto& table : tables)
-                for (const auto assignment : table.assignments()) checksum = checksum * 131U + assignment;
+        [&checksum, &writer, publish](std::uint64_t, std::uint64_t count, std::vector<std::uint8_t>&& payload) {
+            for (const auto byte : payload) checksum = checksum * 131U + byte;
+            if (publish) writer->append_serialized_chunk(count, std::move(payload));
         });
     const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     if (publish) {

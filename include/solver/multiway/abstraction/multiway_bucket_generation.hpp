@@ -39,6 +39,10 @@ using MultiwayBucketChunkBuilder = std::function<void(
 using MultiwayBucketChunkPublisher = std::function<void(
     std::uint64_t begin_index,
     std::vector<MultiwayBucketTable>&& tables)>;
+using MultiwayBucketSerializedChunkPublisher = std::function<void(
+    std::uint64_t begin_index,
+    std::uint64_t table_count,
+    std::vector<std::uint8_t>&& payload)>;
 using MultiwayBucketProgressCallback = std::function<void(
     const MultiwayBucketGenerationProgress& progress)>;
 
@@ -63,6 +67,17 @@ void generate_multiway_bucket_chunks(
     MultiwayBucketGenerationOptions options,
     MultiwayBucketChunkBuilder builder,
     MultiwayBucketChunkPublisher publisher,
+    MultiwayBucketProgressCallback progress_callback = {});
+
+// Builds table chunks and serializes them on worker threads before publication.
+// The payload contains only table records, in the same artifact order as the
+// table-object API.
+void generate_multiway_bucket_serialized_chunks(
+    std::uint64_t begin_index,
+    std::uint64_t end_index,
+    MultiwayBucketGenerationOptions options,
+    MultiwayBucketChunkBuilder builder,
+    MultiwayBucketSerializedChunkPublisher publisher,
     MultiwayBucketProgressCallback progress_callback = {});
 
 }  // namespace texas::solver::multiway
