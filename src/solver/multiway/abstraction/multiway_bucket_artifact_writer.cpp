@@ -4,6 +4,7 @@
 #include "core/fingerprint.hpp"
 
 #include <array>
+#include <vector>
 #include <stdexcept>
 #include <filesystem>
 
@@ -20,6 +21,18 @@ void write_u64(std::ofstream& output, std::uint64_t value) {
 void hash_byte(std::uint64_t& hash, std::uint8_t value) noexcept { core::fingerprint::append_u8(hash, value); }
 void hash_u32(std::uint64_t& hash, std::uint32_t value) noexcept {
     for (std::size_t i = 0; i < 4U; ++i) hash_byte(hash, static_cast<std::uint8_t>(value >> (i * 8U)));
+}
+void append_u32(std::vector<char>& bytes, std::uint32_t value) {
+    for (std::size_t i = 0; i < 4U; ++i) bytes.push_back(static_cast<char>(value >> (i * 8U)));
+}
+void append_table_bytes(const MultiwayBucketTable& table, std::vector<char>& bytes) {
+    if (table.assignments().size() != MULTIWAY_HOLE_COMBINATION_COUNT || table.canonical_board().size() > 5U ||
+        !is_multiway_canonical_board(table.street(), table.canonical_board())) throw std::invalid_argument("invalid bucket table");
+    bytes.push_back(static_cast<char>(table.street()));
+    bytes.push_back(static_cast<char>(table.canonical_board().size()));
+    for (const auto card : table.canonical_board()) bytes.push_back(static_cast<char>(card));
+    append_u32(bytes, table.bucket_count());
+    for (const auto assignment : table.assignments()) append_u32(bytes, assignment);
 }
 }  // namespace
 
@@ -78,22 +91,21 @@ MultiwayBucketArtifactWriter MultiwayBucketArtifactWriter::resume(
 MultiwayBucketArtifactWriter::~MultiwayBucketArtifactWriter() { output_.close(); }
 
 void MultiwayBucketArtifactWriter::append(const MultiwayBucketTable& table) {
-    if (finished_ || progress_.table_count >= expected_table_count_) throw std::logic_error("bucket artifact is already complete");
-    if (table.assignments().size() != MULTIWAY_HOLE_COMBINATION_COUNT || table.canonical_board().size() > 5U ||
-        !is_multiway_canonical_board(table.street(), table.canonical_board())) throw std::invalid_argument("invalid bucket table");
-    output_.put(static_cast<char>(table.street()));
-    output_.put(static_cast<char>(table.canonical_board().size()));
-    for (const auto card : table.canonical_board()) output_.put(static_cast<char>(card));
-    write_u32(output_, table.bucket_count());
-    hash_byte(progress_.payload_hash, static_cast<std::uint8_t>(table.street()));
-    hash_byte(progress_.payload_hash, static_cast<std::uint8_t>(table.canonical_board().size()));
-    for (const auto card : table.canonical_board()) hash_byte(progress_.payload_hash, card);
-    hash_u32(progress_.payload_hash, table.bucket_count());
-    for (const auto assignment : table.assignments()) { write_u32(output_, assignment); hash_u32(progress_.payload_hash, assignment); }
+    append_chunk(std::vector<MultiwayBucketTable>{table});
+}
+
+void MultiwayBucketArtifactWriter::append_chunk(const std::vector<MultiwayBucketTable>& tables) {
+    if (finished_ || progress_.table_count >= expected_table_count_ || tables.size() > expected_table_count_ - progress_.table_count) throw std::logic_error("bucket artifact is already complete");
+    if (tables.empty()) return;
+    std::vector<char> bytes;
+    bytes.reserve(tables.size() * (MULTIWAY_HOLE_COMBINATION_COUNT * sizeof(std::uint32_t) + 16U));
+    for (const auto& table : tables) append_table_bytes(table, bytes);
+    output_.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     if (!output_) throw std::runtime_error("cannot write bucket artifact");
-    ++progress_.table_count;
+    for (const auto byte : bytes) core::fingerprint::append_u8(progress_.payload_hash, static_cast<std::uint8_t>(static_cast<unsigned char>(byte)));
+    progress_.table_count += tables.size();
     progress_.next_board_index = progress_.table_count;
-    progress_.byte_length = static_cast<std::uint64_t>(output_.tellp());
+    progress_.byte_length += bytes.size();
 }
 
 void MultiwayBucketArtifactWriter::flush_checkpoint() {

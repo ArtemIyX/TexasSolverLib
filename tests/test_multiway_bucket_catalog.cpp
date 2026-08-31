@@ -55,6 +55,38 @@ TEST_CASE(multiway_bucket_artifact_writer_matches_reference_serialization) {
     }
 }
 
+TEST_CASE(multiway_bucket_artifact_writer_chunk_matches_single_table_appends) {
+    using namespace texas::solver::multiway;
+    using texas::core::Street;
+    const auto identity = make_multiway_model_identity(MultiwayBlueprintConfig{});
+    const auto first = build_multiway_baseline_bucket_table(identity, Street::Flop, {0U, 5U, 10U});
+    const auto second = build_multiway_baseline_bucket_table(identity, Street::Flop, {0U, 5U, 11U});
+    const auto chunk_path = std::filesystem::temp_directory_path() / "texas_solver_chunk_writer_test";
+    const auto single_path = std::filesystem::temp_directory_path() / "texas_solver_single_writer_test";
+    const auto chunk_tmp = chunk_path.string() + ".tmp";
+    const auto single_tmp = single_path.string() + ".tmp";
+    std::filesystem::remove(chunk_path); std::filesystem::remove(single_path);
+    {
+        MultiwayBucketArtifactWriter writer(chunk_tmp, identity, 2U);
+        writer.append_chunk({first, second});
+        EXPECT_EQ(writer.progress().table_count, 2U);
+        writer.finish(chunk_path);
+    }
+    {
+        MultiwayBucketArtifactWriter writer(single_tmp, identity, 2U);
+        writer.append(first); writer.append(second);
+        writer.finish(single_path);
+    }
+    std::ifstream chunk(chunk_path, std::ios::binary);
+    std::ifstream single(single_path, std::ios::binary);
+    const std::vector<char> chunk_bytes((std::istreambuf_iterator<char>(chunk)), {});
+    const std::vector<char> single_bytes((std::istreambuf_iterator<char>(single)), {});
+    EXPECT_EQ(chunk_bytes, single_bytes);
+    chunk.close();
+    single.close();
+    std::filesystem::remove(chunk_path); std::filesystem::remove(single_path);
+}
+
 TEST_CASE(multiway_bucket_progress_sidecar_round_trips_and_rejects_mismatch) {
     using namespace texas::solver::multiway;
     texas::solver::multiway::MultiwayBlueprintConfig config;

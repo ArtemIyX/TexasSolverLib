@@ -292,9 +292,8 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
                 if (begin_index != writer->progress().table_count) {
                     throw std::logic_error("bucket chunks were published out of order");
                 }
-                for (std::size_t index = 0U; index < tables.size(); ++index) {
-                    writer->append(tables[index]);
-                    const auto completed = begin_index + index + 1U;
+                writer->append_chunk(tables);
+                const auto completed = begin_index + tables.size();
                     const auto flop_end = multiway_bucket_board_count(texas::core::Street::Flop);
                     const auto turn_end = flop_end +
                         multiway_bucket_board_count(texas::core::Street::Turn);
@@ -303,7 +302,6 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
                          completed == turn_end || completed == expected_tables)) {
                         publish_checkpoint();
                     }
-                }
             });
     } catch (...) {
         try {

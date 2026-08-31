@@ -1,5 +1,33 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - bulk artifact publication
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added chunked artifact serialization and hashing with one contiguous write per
+  generated chunk.
+- Updated the workflow publisher while preserving artifact bytes, ordering,
+  schema, checksum, checkpoint, and resume behavior.
+- Added byte-identical regression coverage against single-table publication.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_catalog.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: build OK, all tests passed.
+
+### Limitations
+
+- Trusted allocation-free generation, telemetry, topology-aware worker
+  selection, scheduler replacement, and benchmark acceptance evidence remain
+  deferred.
+
 ## F1 bucket generation - startup diagnostics
 
 **Status:** Complete

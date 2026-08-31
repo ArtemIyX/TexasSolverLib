@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdint>
+#include <vector>
 
 namespace texas::solver::multiway {
 
@@ -34,6 +35,7 @@ public:
     MultiwayBucketArtifactWriter& operator=(MultiwayBucketArtifactWriter&&) = default;
 
     void append(const MultiwayBucketTable& table);
+    void append_chunk(const std::vector<MultiwayBucketTable>& tables);
     void flush_checkpoint();
     void finish(const std::filesystem::path& destination);
     [[nodiscard]] const MultiwayBucketArtifactProgress& progress() const noexcept { return progress_; }
