@@ -84,6 +84,14 @@ TEST_CASE(multiway_bucket_generation_memory_estimate_accounts_for_slots_and_work
         std::invalid_argument);
 }
 
+TEST_CASE(multiway_bucket_generation_direct_builder_accepts_empty_range) {
+    std::vector<std::uint8_t> payload{42U};
+    build_multiway_baseline_direct_serialized_chunk(
+        identity(), MultiwayBucketBaselineProfile::standard(), 0U, 0U, payload);
+    EXPECT_EQ(payload.size(), 1U);
+    EXPECT_EQ(payload.front(), 42U);
+}
+
 TEST_CASE(multiway_bucket_generation_reports_nonzero_physical_core_count) {
     EXPECT_TRUE(multiway_bucket_physical_core_count() > 0U);
     EXPECT_TRUE(multiway_bucket_physical_core_count() <= multiway_bucket_hardware_thread_count());

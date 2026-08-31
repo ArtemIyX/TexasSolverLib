@@ -99,6 +99,7 @@ void build_direct_serialized_chunk(
     if (table_count > ((std::numeric_limits<std::size_t>::max)() - payload.size()) / max_record_bytes) {
         throw std::length_error("bucket payload size estimate overflows");
     }
+    if (table_count == 0U) return;
     const auto original_size = payload.size();
     payload.resize(original_size + static_cast<std::size_t>(table_count) * max_record_bytes);
     auto* output = payload.data() + original_size;
