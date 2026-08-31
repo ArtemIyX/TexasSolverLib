@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - bounded end-to-end benchmark
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a benchmark mode exercising the real artifact writer against a
+  temporary bounded output, alongside the build-only sink mode.
+- Release smoke testing over three paired 1,024-table runs measured about
+  `9795 tables/s` at one worker and `19547 tables/s` at two workers, with
+  identical deterministic checksums.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Debug full build and all tests passed.
+- Release build passed.
+- Release end-to-end benchmark passed for three worker-count pairs.
+
+### Limitations
+
+- Qualification still needs five-run street-separated matrices and physical
+  versus logical topology measurements.
+
 ## F1 bucket generation - bounded build-only benchmark
 
 **Status:** Complete

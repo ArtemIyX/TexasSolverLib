@@ -78,7 +78,8 @@ void print_help(std::string_view name, Workflow workflow) {
         std::cout << "  --output <path>        Atomically published bucket artifact\n"
                   << "  --checkpoint-dir <dir> Resume/checkpoint directory\n"
                   << "  --threads <integer>   Bucket worker count (default 16)\n";
-        std::cout << "  --benchmark-tables <integer>  Run bounded build-only benchmark\n";
+        std::cout << "  --benchmark-tables <integer>  Run bounded benchmark\n"
+                  << "  --benchmark-mode <mode>       build-only or end-to-end\n";
     } else if (workflow == Workflow::Inspect) {
         std::cout << "  --input <path>         Artifact to inspect\n"
                   << "  --report <path>        Atomically published JSON inspection report\n";
@@ -327,7 +328,7 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
 }
 
 int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t table_count,
-                         std::uint32_t requested_threads) {
+                         std::uint32_t requested_threads, bool publish) {
     using namespace texas::solver::multiway;
     if (table_count == 0U || table_count > multiway_bucket_board_count(texas::core::Street::Flop)) {
         throw std::invalid_argument("--benchmark-tables must be within the flop catalog");
@@ -339,6 +340,11 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
     profile.turn_bucket_count = workflow.model.turn_bucket_count;
     profile.river_bucket_count = workflow.model.river_bucket_count;
     std::uint64_t checksum = 0U;
+    const auto output = std::filesystem::temp_directory_path() /
+        ("texas_solver_bucket_benchmark_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".bin");
+    const auto temporary = output.string() + ".tmp";
+    std::unique_ptr<MultiwayBucketArtifactWriter> writer;
+    if (publish) writer = std::make_unique<MultiwayBucketArtifactWriter>(temporary, identity, table_count);
     const auto start = std::chrono::steady_clock::now();
     generate_multiway_bucket_chunks(0U, table_count,
         {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U},
@@ -346,12 +352,17 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
                             std::vector<MultiwayBucketTable>& tables) {
             build_multiway_baseline_bucket_chunk(identity, profile, begin, end, tables);
         },
-        [&checksum](std::uint64_t, std::vector<MultiwayBucketTable>&& tables) {
+        [&checksum, &writer, publish](std::uint64_t, std::vector<MultiwayBucketTable>&& tables) {
+            if (publish) writer->append_chunk(tables);
             for (const auto& table : tables)
                 for (const auto assignment : table.assignments()) checksum = checksum * 131U + assignment;
         });
     const auto seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    std::cout << "bucket benchmark,mode=build-only,tables=" << table_count
+    if (publish) {
+        writer->finish(output);
+        std::filesystem::remove(output);
+    }
+    std::cout << "bucket benchmark,mode=" << (publish ? "end-to-end" : "build-only") << ",tables=" << table_count
               << ",threads=" << requested_threads << ",seconds=" << seconds
               << ",tables_per_second=" << static_cast<double>(table_count) / seconds
               << ",checksum=" << checksum << "\n";
@@ -657,6 +668,7 @@ int run(std::string_view name, int argc, char** argv) {
     std::uint64_t duplicates = 0U;
     std::uint32_t threads = texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS;
     std::uint64_t benchmark_tables = 0U;
+    std::string benchmark_mode = "build-only";
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if (argument == "--help") {
@@ -667,7 +679,7 @@ int run(std::string_view name, int argc, char** argv) {
         if (argument == "--config" || argument == "--seed" || argument == "--batches" ||
             argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" ||
             argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" ||
-            argument == "--threads" || argument == "--benchmark-tables" ||
+            argument == "--threads" || argument == "--benchmark-tables" || argument == "--benchmark-mode" ||
             argument == "--bucket-report" || argument == "--training-report" ||
             argument == "--equivalence-report" || argument == "--lookup-first" ||
             argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" ||
@@ -694,6 +706,7 @@ int run(std::string_view name, int argc, char** argv) {
                 threads = static_cast<std::uint32_t>(parsed);
             }
             if (argument == "--benchmark-tables") benchmark_tables = std::stoull(argv[index]);
+            if (argument == "--benchmark-mode") benchmark_mode = argv[index];
             if (argument == "--bucket-report") bucket_report = argv[index];
             if (argument == "--training-report") training_report = argv[index];
             if (argument == "--equivalence-report") equivalence_report = argv[index];
@@ -711,7 +724,10 @@ int run(std::string_view name, int argc, char** argv) {
         return EXIT_FAILURE;
     }
     if (workflow == Workflow::Buckets && !config_path.empty() && benchmark_tables != 0U) {
-        return run_bucket_benchmark(config_path, benchmark_tables, threads);
+        if (benchmark_mode != "build-only" && benchmark_mode != "end-to-end") {
+            throw std::invalid_argument("--benchmark-mode must be build-only or end-to-end");
+        }
+        return run_bucket_benchmark(config_path, benchmark_tables, threads, benchmark_mode == "end-to-end");
     }
     if (workflow == Workflow::Buckets && !config_path.empty() && !output_path.empty()) {
         return run_buckets(config_path, output_path, checkpoint_dir, threads);
