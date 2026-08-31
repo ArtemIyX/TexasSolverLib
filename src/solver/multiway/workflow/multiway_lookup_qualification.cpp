@@ -11,12 +11,20 @@
 
 namespace texas::solver::multiway {
 
+void MultiwayLookupQualificationReport::validate() const {
+    evidence.validate(MULTIWAY_LOOKUP_QUALIFICATION_SCHEMA_VERSION);
+    if (second_replay_fingerprint != 0U && replay_fingerprint != second_replay_fingerprint) {
+        throw std::invalid_argument("multiway lookup replay fingerprints differ");
+    }
+}
+
 MultiwayLookupQualificationReport qualify_multiway_required_lookups(
     const MultiwayBlueprintTrainingConfig& config,
     const MultiwayRootSnapshot& root,
     const MultiwayBucketRegistry& buckets,
     const MultiwayFullBlueprintArtifact& blueprint,
-    std::uint64_t trajectory_count) {
+    std::uint64_t trajectory_count,
+    MultiwayEvidenceHeader evidence) {
     config.validate();
     root.validate();
     blueprint.validate();
@@ -43,16 +51,24 @@ MultiwayLookupQualificationReport qualify_multiway_required_lookups(
             throw std::runtime_error("multiway lookup qualification discarded a trajectory");
         }
     }
-    return {audit.lookup_hits, audit.missing_infosets, audit.missing_buckets,
-            audit.action_menu_mismatches, audit.fingerprint()};
+    MultiwayLookupQualificationReport report;
+    report.evidence = evidence;
+    report.lookup_hits = audit.lookup_hits;
+    report.missing_infosets = audit.missing_infosets;
+    report.missing_buckets = audit.missing_buckets;
+    report.action_menu_mismatches = audit.action_menu_mismatches;
+    report.replay_fingerprint = audit.fingerprint();
+    return report;
 }
 
 void save_multiway_lookup_qualification_report_atomic(
     const std::filesystem::path& path, const MultiwayLookupQualificationReport& report) {
+    report.validate();
     const auto temporary = path.string() + ".tmp";
     std::ofstream output(temporary, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot open lookup qualification report");
-    output << "{\n  \"lookup_hits\": " << report.lookup_hits
+    output << "{\n  \"evidence\": " << serialize_multiway_evidence_header(report.evidence)
+           << ",\n  \"lookup_hits\": " << report.lookup_hits
            << ",\n  \"missing_infosets\": " << report.missing_infosets
            << ",\n  \"missing_buckets\": " << report.missing_buckets
            << ",\n  \"action_menu_mismatches\": " << report.action_menu_mismatches

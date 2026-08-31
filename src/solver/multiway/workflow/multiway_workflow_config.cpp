@@ -29,8 +29,14 @@ void expect(std::uint64_t actual, std::uint64_t expected, const char* key) {
 
 void MultiwayWorkflowConfig::validate() const {
     if (schema_version != 1U || profile_id.empty() || preflop_classes != 169U || storage_backend != "CompactInt32" ||
+        (profile_kind != MultiwayWorkflowProfileKind::Sizing &&
+         profile_kind != MultiwayWorkflowProfileKind::Acceptance) ||
         max_decision_depth != 64U || max_public_chance_depth != 3U || deterministic_seed != 1U ||
-        reference_worker_count != 1U || target_trajectories == 0U) throw std::invalid_argument("invalid F1 workflow configuration");
+        reference_worker_count != 1U || target_trajectories == 0U ||
+        (profile_kind == MultiwayWorkflowProfileKind::Acceptance && target_trajectories != 50'000'000U) ||
+        (profile_kind == MultiwayWorkflowProfileKind::Sizing && target_trajectories >= 50'000'000U)) {
+        throw std::invalid_argument("invalid F1 workflow configuration");
+    }
     model.validate();
     if (model.player_count != 6U || model.initial_stack_chips != 10000 || model.small_blind_chips != 50 ||
         model.big_blind_chips != 100 || model.ante_chips != 0 || model.flop_bucket_count != 12U ||
@@ -62,6 +68,7 @@ std::uint64_t MultiwayWorkflowConfig::fingerprint() const noexcept {
     auto hash = core::fingerprint::FNV1A_OFFSET;
     const auto append = [&hash](std::uint64_t value) noexcept { core::fingerprint::append_u64(hash, value); };
     append(schema_version);
+    append(static_cast<std::uint64_t>(profile_kind));
     for (const auto character : profile_id) core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
     append(model.player_count);
     append(static_cast<std::uint64_t>(model.initial_stack_chips));
@@ -95,6 +102,11 @@ MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text) {
         if (!seen.insert(key).second) throw std::invalid_argument("duplicate configuration key: " + key);
         const auto n = [&] { return number(value, key.c_str()); };
         if (key == "schema_version") result.schema_version = static_cast<std::uint32_t>(n());
+        else if (key == "profile_kind") {
+            if (value == "sizing") result.profile_kind = MultiwayWorkflowProfileKind::Sizing;
+            else if (value == "acceptance") result.profile_kind = MultiwayWorkflowProfileKind::Acceptance;
+            else throw std::invalid_argument("invalid profile_kind");
+        }
         else if (key == "profile_id") result.profile_id = value;
         else if (key == "players") result.model.player_count = static_cast<std::uint8_t>(n());
         else if (key == "initial_stack_chips") result.model.initial_stack_chips = static_cast<int>(n());

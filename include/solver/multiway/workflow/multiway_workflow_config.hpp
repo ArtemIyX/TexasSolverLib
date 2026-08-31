@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
+#include "solver/multiway/workflow/multiway_evidence.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -10,6 +11,7 @@ namespace texas::solver::multiway {
 
 struct MultiwayWorkflowConfig {
     std::uint32_t schema_version = 0U;
+    MultiwayWorkflowProfileKind profile_kind = MultiwayWorkflowProfileKind::Acceptance;
     std::string profile_id;
     MultiwayBlueprintConfig model;
     std::uint32_t preflop_classes = 0U;
