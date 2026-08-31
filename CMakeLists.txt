@@ -75,6 +75,11 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_bucket_catalog.hpp
     include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp
     include/solver/multiway/workflow/multiway_workflow_config.hpp
+    include/solver/multiway/workflow/multiway_evidence.hpp
+    include/solver/multiway/workflow/multiway_artifact_preflight.hpp
+    include/solver/multiway/workflow/multiway_checkpoint_equivalence.hpp
+    include/solver/multiway/workflow/multiway_f1_acceptance.hpp
+    include/solver/multiway/workflow/multiway_sizing_report.hpp
     include/solver/multiway/workflow/multiway_training_report.hpp
     include/solver/multiway/workflow/multiway_lookup_qualification.hpp
     include/solver/multiway/abstraction/multiway_bucket_model.hpp
@@ -189,6 +194,11 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp
     src/solver/multiway/abstraction/multiway_bucket_inspector.cpp
     src/solver/multiway/workflow/multiway_workflow_config.cpp
+    src/solver/multiway/workflow/multiway_evidence.cpp
+    src/solver/multiway/workflow/multiway_artifact_preflight.cpp
+    src/solver/multiway/workflow/multiway_checkpoint_equivalence.cpp
+    src/solver/multiway/workflow/multiway_f1_acceptance.cpp
+    src/solver/multiway/workflow/multiway_sizing_report.cpp
     src/solver/multiway/workflow/multiway_training_report.cpp
     src/solver/multiway/workflow/multiway_lookup_qualification.cpp
     src/solver/multiway/abstraction/multiway_bucket_model.cpp
@@ -446,7 +456,7 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
     texassolver_configure_example_target(texas_solver_example)
 
     if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES)
-        foreach(_multiway_workflow train buckets inspect evaluate)
+        foreach(_multiway_workflow train buckets inspect evaluate finalize)
             add_executable(texas_multiway_${_multiway_workflow}
                 examples/multiway_workflow_main.cpp
             )

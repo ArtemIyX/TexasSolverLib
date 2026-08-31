@@ -10,11 +10,16 @@
 #include "solver/multiway/workflow/multiway_workflow_config.hpp"
 #include "solver/multiway/workflow/multiway_training_report.hpp"
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
+#include "solver/multiway/workflow/multiway_evidence.hpp"
+#include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
+#include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
 #include "core/canonical_combo.hpp"
 
 #include <filesystem>
+#include <chrono>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string_view>
 #include <vector>
 #include <memory>
@@ -22,12 +27,33 @@
 
 namespace {
 
-enum class Workflow { Train, Buckets, Inspect, Evaluate };
+enum class Workflow { Train, Buckets, Inspect, Evaluate, Finalize };
+
+texas::solver::multiway::MultiwayEvidenceHeader make_evidence_header(
+    std::uint32_t schema_version,
+    texas::solver::multiway::MultiwayModelIdentity model_identity,
+    std::uint64_t workflow_fingerprint) {
+    using namespace texas::solver::multiway;
+    const auto environment = [](const char* name) {
+        const auto* value = std::getenv(name);
+        return value == nullptr ? std::string{} : std::string(value);
+    };
+    MultiwayEvidenceHeader header;
+    header.schema_version = schema_version;
+    header.producer.git_commit = environment("TEXASSOLVER_GIT_COMMIT");
+    header.producer.build_configuration = environment("TEXASSOLVER_BUILD_CONFIGURATION");
+    header.producer.compiler_identity = environment("TEXASSOLVER_COMPILER_IDENTITY");
+    header.producer.model_identity = model_identity;
+    header.producer.workflow_config_fingerprint = workflow_fingerprint;
+    header.producer.artifact_schemas = {4U, 2U, 1U};
+    return header;
+}
 
 Workflow workflow_from_name(std::string_view name) {
     if (name == "train") return Workflow::Train;
     if (name == "buckets") return Workflow::Buckets;
     if (name == "inspect") return Workflow::Inspect;
+    if (name == "finalize") return Workflow::Finalize;
     return Workflow::Evaluate;
 }
 
@@ -51,6 +77,19 @@ void print_help(std::string_view name, Workflow workflow) {
     } else if (workflow == Workflow::Inspect) {
         std::cout << "  --input <path>         Artifact to inspect\n"
                   << "  --report <path>        Atomically published JSON inspection report\n";
+    } else if (workflow == Workflow::Finalize) {
+        std::cout << "  --bucket-report <path>       Bucket inspection report\n"
+                  << "  --training-report <path>     Training report\n"
+                  << "  --equivalence-report <path> Checkpoint equivalence report\n"
+                  << "  --lookup-first <path>        First lookup report\n"
+                  << "  --lookup-second <path>       Second lookup report\n"
+                  << "  --operator <id>              Human operator identifier\n"
+                  << "  --start-utc <timestamp>      Human-run start timestamp\n"
+                  << "  --end-utc <timestamp>        Human-run end timestamp\n"
+                  << "  --command <text>             Exact human command\n"
+                  << "  --machine-report <path>      Machine provenance report\n"
+                  << "  --exit-code <integer>        Human command exit code\n"
+                  << "  --output <path>              final_acceptance.json\n";
     } else {
         std::cout << "  --artifacts <dir>      Verified artifact directory\n"
                   << "  --duplicates <integer> Duplicate deal count\n";
@@ -124,6 +163,25 @@ void save_bucket_manifest_atomic(const std::filesystem::path& path,
     texas::core::publish_atomic_replace(temporary, path, "cannot publish bucket manifest");
 }
 
+std::uint64_t estimate_full_blueprint_bytes(
+    const texas::solver::multiway::MultiwayWorkflowConfig& workflow) {
+    using namespace texas::solver::multiway;
+    constexpr std::uint64_t max_actions_per_row = 64U;
+    constexpr std::uint64_t fixed_bytes = 256U;
+    const auto row_bytes = static_cast<std::uint64_t>(sizeof(MultiwayBlueprintRow));
+    const auto action_bytes = static_cast<std::uint64_t>(sizeof(MultiwayQuantizedRootAction));
+    if (action_bytes != 0U && max_actions_per_row >
+        (std::numeric_limits<std::uint64_t>::max() - row_bytes) / action_bytes) {
+        throw std::length_error("blueprint size estimate overflows");
+    }
+    const auto per_row = row_bytes + max_actions_per_row * action_bytes;
+    if (workflow.maximum_sparse_rows >
+        (std::numeric_limits<std::uint64_t>::max() - fixed_bytes) / per_row) {
+        throw std::length_error("blueprint size estimate overflows");
+    }
+    return fixed_bytes + workflow.maximum_sparse_rows * per_row;
+}
+
 int run_buckets(const std::filesystem::path& config_path, const std::filesystem::path& output_path,
                 const std::filesystem::path& checkpoint_dir) {
     using namespace texas::solver::multiway;
@@ -138,8 +196,25 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
     if (!output_path.parent_path().empty()) std::filesystem::create_directories(output_path.parent_path());
     const auto expected_tables = multiway_bucket_board_count(texas::core::Street::Flop) +
         multiway_bucket_board_count(texas::core::Street::Turn) + multiway_bucket_board_count(texas::core::Street::River);
-    std::unique_ptr<MultiwayBucketArtifactWriter> writer;
+    constexpr std::uint64_t max_table_bytes = 2U + 5U + 4U +
+        static_cast<std::uint64_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * 4U;
+    if (expected_tables > (std::numeric_limits<std::uint64_t>::max() - 116U) / max_table_bytes) {
+        throw std::length_error("bucket artifact size estimate overflows");
+    }
+    const auto estimated_bytes = 116U + expected_tables * max_table_bytes;
     const auto progress_path = checkpoint_dir.empty() ? std::filesystem::path{} : checkpoint_dir / "latest.progress";
+    preflight_multiway_artifact({
+        output_path,
+        output_path.string() + ".tmp",
+        progress_path,
+        identity,
+        expected_tables,
+        estimated_bytes,
+        workflow.disk_space_requirement_bytes == 0U
+            ? estimated_bytes : workflow.disk_space_requirement_bytes,
+        0U,
+        workflow.process_memory_limit_bytes});
+    std::unique_ptr<MultiwayBucketArtifactWriter> writer;
     if (!checkpoint_dir.empty() && std::filesystem::exists(temporary) && std::filesystem::exists(progress_path)) {
         writer = std::make_unique<MultiwayBucketArtifactWriter>(MultiwayBucketArtifactWriter::resume(
             temporary, identity, expected_tables,
@@ -195,13 +270,30 @@ int run_inspect(const std::filesystem::path& config_path, const std::filesystem:
         throw std::runtime_error("bucket artifact has incomplete street coverage");
     }
     const auto text = std::string("{\n  \"identity\": ") + std::to_string(report.identity.combined_hash) +
+        ",\n  \"evidence\": " + serialize_multiway_evidence_header(
+            make_evidence_header(MULTIWAY_BUCKET_INSPECTION_REPORT_SCHEMA_VERSION,
+                make_multiway_model_identity(workflow.model), workflow.fingerprint())) +
         ",\n  \"flop_tables\": " + std::to_string(report.flop_tables) +
         ",\n  \"turn_tables\": " + std::to_string(report.turn_tables) +
         ",\n  \"river_tables\": " + std::to_string(report.river_tables) +
         ",\n  \"live_assignments\": " + std::to_string(report.live_assignments) +
-        ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) + "\n}\n";
+        ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) +
+        ",\n  \"identity_matches\": " +
+        (report.identity == make_multiway_model_identity(workflow.model) ? "true" : "false") +
+        ",\n  \"payload_hash_matches\": " +
+        (report.payload_hash != 0U ? "true" : "false") + "\n}\n";
     if (!report_path.empty()) {
         if (!report_path.parent_path().empty()) std::filesystem::create_directories(report_path.parent_path());
+        preflight_multiway_artifact({
+            report_path,
+            report_path.string() + ".tmp",
+            {},
+            make_multiway_model_identity(workflow.model),
+            1U,
+            4096U,
+            4096U,
+            0U,
+            0U});
         const auto temporary = report_path.string() + ".tmp";
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
         if (!output) throw std::runtime_error("cannot open inspection report");
@@ -230,6 +322,19 @@ int run_train(const std::filesystem::path& config_path, const std::filesystem::p
         throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
     }
     const auto buckets = load_multiway_bucket_registry(input_path);
+    if (!output_path.parent_path().empty()) std::filesystem::create_directories(output_path.parent_path());
+    const auto identity = make_multiway_model_identity(workflow.model);
+    const auto estimated_blueprint_bytes = estimate_full_blueprint_bytes(workflow);
+    preflight_multiway_artifact({
+        output_path,
+        output_path.string() + ".tmp",
+        {},
+        identity,
+        1U,
+        estimated_blueprint_bytes,
+        workflow.disk_space_requirement_bytes,
+        estimated_blueprint_bytes,
+        workflow.process_memory_limit_bytes});
     MultiwayBlueprintTrainingConfig config;
     config.blueprint = workflow.model;
     config.bucket_profile.flop_bucket_count = workflow.model.flop_bucket_count;
@@ -268,27 +373,74 @@ int run_train(const std::filesystem::path& config_path, const std::filesystem::p
             resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
     }
     std::uint64_t remaining_batches = batches;
-    while (remaining_batches != 0U) {
-        const auto next = std::min(remaining_batches, workflow.checkpoint_interval);
-        session.run_batches(next);
-        remaining_batches -= next;
-        if (!checkpoint_path.empty()) {
-            if (!checkpoint_path.parent_path().empty()) {
-                std::filesystem::create_directories(checkpoint_path.parent_path());
+    std::uint64_t checkpoint_bytes = 0U;
+    std::uint64_t checkpoint_write_nanoseconds = 0U;
+    const auto publish_training_failure = [&]() {
+        auto failure_report = make_multiway_training_report(
+            session.status(), session.status().merged_stream_fingerprint,
+            make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
+                config.identity(), workflow.fingerprint()),
+            workflow.process_memory_limit_bytes);
+        failure_report.failed = true;
+        save_multiway_training_report_atomic(
+            report_path.empty() ? output_path.string() + ".json" : report_path,
+            failure_report);
+    };
+    try {
+        while (remaining_batches != 0U) {
+            const auto next = std::min(remaining_batches, workflow.checkpoint_interval);
+            session.run_batches(next);
+            remaining_batches -= next;
+            if (!checkpoint_path.empty()) {
+                if (!checkpoint_path.parent_path().empty()) {
+                    std::filesystem::create_directories(checkpoint_path.parent_path());
+                }
+                const auto checkpoint_start = std::chrono::steady_clock::now();
+                MultiwayTrainingCheckpointArtifacts::save_atomic(checkpoint_path, session.checkpoint());
+                checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - checkpoint_start).count());
+                std::error_code checkpoint_error;
+                const auto bytes = std::filesystem::file_size(checkpoint_path, checkpoint_error);
+                if (checkpoint_error) throw std::runtime_error("cannot measure training checkpoint");
+                checkpoint_bytes = std::max(checkpoint_bytes, static_cast<std::uint64_t>(bytes));
             }
-            MultiwayTrainingCheckpointArtifacts::save_atomic(checkpoint_path, session.checkpoint());
         }
+    } catch (...) {
+        publish_training_failure();
+        throw;
     }
     const auto& status = session.status();
+    auto training_report = make_multiway_training_report(
+        status, status.merged_stream_fingerprint,
+        make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
+            config.identity(), workflow.fingerprint()),
+        workflow.process_memory_limit_bytes);
     if (status.discarded_trajectories != 0U || status.preflop_rows == 0U ||
         status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U ||
         status.terminal_visits == 0U) {
+        training_report.failed = true;
+        save_multiway_training_report_atomic(
+            report_path.empty() ? output_path.string() + ".json" : report_path,
+            training_report);
         throw std::runtime_error("training failed the F1 coverage or discard gate");
     }
+    const auto blueprint_start = std::chrono::steady_clock::now();
     const auto artifact = session.export_full_policy();
     MultiwayFullBlueprintArtifacts::save_atomic(output_path, artifact);
-    save_multiway_training_report_atomic(report_path.empty() ? output_path.string() + ".json" : report_path,
-        make_multiway_training_report(session.status(), session.status().merged_stream_fingerprint));
+    const auto blueprint_export_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - blueprint_start).count());
+    std::error_code blueprint_error;
+    const auto blueprint_bytes = std::filesystem::file_size(output_path, blueprint_error);
+    if (blueprint_error) throw std::runtime_error("cannot measure blueprint artifact");
+    training_report.checkpoint_bytes = checkpoint_bytes;
+    training_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
+    training_report.blueprint_bytes = static_cast<std::uint64_t>(blueprint_bytes);
+    training_report.blueprint_export_nanoseconds = blueprint_export_nanoseconds;
+    save_multiway_training_report_atomic(
+        report_path.empty() ? output_path.string() + ".json" : report_path,
+        training_report);
     return EXIT_SUCCESS;
 }
 
@@ -338,8 +490,12 @@ int run_evaluate(const std::filesystem::path& config_path,
     const auto root = make_multiway_initial_blueprint_root(
         config.rules, std::move(ranges), abstraction,
         config.blueprint.action_abstraction_version, config.blueprint.terminal_model_version);
-    auto report = qualify_multiway_required_lookups(config, root, buckets, blueprint, trajectories);
-    const auto repeat = qualify_multiway_required_lookups(config, root, buckets, blueprint, trajectories);
+    const auto evidence = make_evidence_header(
+        MULTIWAY_LOOKUP_QUALIFICATION_SCHEMA_VERSION, config.identity(), workflow.fingerprint());
+    auto report = qualify_multiway_required_lookups(
+        config, root, buckets, blueprint, trajectories, evidence);
+    const auto repeat = qualify_multiway_required_lookups(
+        config, root, buckets, blueprint, trajectories, evidence);
     report.second_replay_fingerprint = repeat.replay_fingerprint;
     const auto output = report_path.empty() ? artifacts_path / "lookup_report.json" : report_path;
     if (!output.parent_path().empty()) std::filesystem::create_directories(output.parent_path());
@@ -350,6 +506,27 @@ int run_evaluate(const std::filesystem::path& config_path,
         repeat.action_menu_mismatches != report.action_menu_mismatches) {
         throw std::runtime_error("required blueprint lookup qualification failed");
     }
+    return EXIT_SUCCESS;
+}
+
+int run_finalize(const std::filesystem::path& output_path,
+                 const std::filesystem::path& bucket_report,
+                 const std::filesystem::path& training_report,
+                 const std::filesystem::path& equivalence_report,
+                 const std::filesystem::path& lookup_first,
+                 const std::filesystem::path& lookup_second,
+                 texas::solver::multiway::MultiwayF1HumanRunRecord human_run) {
+    using namespace texas::solver::multiway;
+    if (output_path.empty()) throw std::invalid_argument("finalize requires --output");
+    MultiwayF1AcceptanceInputPaths paths;
+    paths.bucket_inspection_report = bucket_report;
+    paths.training_report = training_report;
+    paths.checkpoint_equivalence_report = equivalence_report;
+    paths.first_lookup_report = lookup_first;
+    paths.second_lookup_report = lookup_second;
+    paths.human_run = std::move(human_run);
+    finalize_multiway_f1_acceptance_atomic(output_path, paths);
+    std::cout << "published F1 acceptance report: " << output_path.string() << "\n";
     return EXIT_SUCCESS;
 }
 
@@ -368,6 +545,17 @@ int run(std::string_view name, int argc, char** argv) {
     std::filesystem::path checkpoint_dir;
     std::filesystem::path resume_path;
     std::filesystem::path artifacts_path;
+    std::filesystem::path bucket_report;
+    std::filesystem::path training_report;
+    std::filesystem::path equivalence_report;
+    std::filesystem::path lookup_first;
+    std::filesystem::path lookup_second;
+    std::string operator_id;
+    std::string start_utc;
+    std::string end_utc;
+    std::string command;
+    std::filesystem::path machine_report;
+    std::int32_t exit_code = -1;
     std::uint64_t batches = 0U;
     std::uint64_t duplicates = 0U;
     for (int index = 1; index < argc; ++index) {
@@ -379,7 +567,12 @@ int run(std::string_view name, int argc, char** argv) {
         if (argument == "--tiny") return run_tiny_pipeline();
         if (argument == "--config" || argument == "--seed" || argument == "--batches" ||
             argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" ||
-            argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates") {
+            argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" ||
+            argument == "--bucket-report" || argument == "--training-report" ||
+            argument == "--equivalence-report" || argument == "--lookup-first" ||
+            argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" ||
+            argument == "--end-utc" || argument == "--command" || argument == "--machine-report" ||
+            argument == "--exit-code") {
             if (!consume_value(index, argc, argv, argument)) {
                 std::cerr << argument << " requires a value\n";
                 return EXIT_FAILURE;
@@ -393,6 +586,17 @@ int run(std::string_view name, int argc, char** argv) {
             if (argument == "--artifacts") artifacts_path = argv[index];
             if (argument == "--batches") batches = std::stoull(argv[index]);
             if (argument == "--duplicates") duplicates = std::stoull(argv[index]);
+            if (argument == "--bucket-report") bucket_report = argv[index];
+            if (argument == "--training-report") training_report = argv[index];
+            if (argument == "--equivalence-report") equivalence_report = argv[index];
+            if (argument == "--lookup-first") lookup_first = argv[index];
+            if (argument == "--lookup-second") lookup_second = argv[index];
+            if (argument == "--operator") operator_id = argv[index];
+            if (argument == "--start-utc") start_utc = argv[index];
+            if (argument == "--end-utc") end_utc = argv[index];
+            if (argument == "--command") command = argv[index];
+            if (argument == "--machine-report") machine_report = argv[index];
+            if (argument == "--exit-code") exit_code = static_cast<std::int32_t>(std::stoll(argv[index]));
             continue;
         }
         std::cerr << "unknown option: " << argument << "\n";
@@ -409,6 +613,11 @@ int run(std::string_view name, int argc, char** argv) {
     }
     if (workflow == Workflow::Evaluate && !config_path.empty()) {
         return run_evaluate(config_path, artifacts_path, duplicates, report_path);
+    }
+    if (workflow == Workflow::Finalize) {
+        return run_finalize(output_path, bucket_report, training_report, equivalence_report,
+            lookup_first, lookup_second,
+            {operator_id, start_utc, end_utc, command, machine_report.string(), exit_code});
     }
     std::cerr << name << " requires an explicit workflow configuration; use --help\n";
     return EXIT_FAILURE;
@@ -427,6 +636,7 @@ int main(int argc, char** argv) noexcept {
     if (name == "texas_multiway_train") return run("train", argc, argv);
     if (name == "texas_multiway_buckets") return run("buckets", argc, argv);
     if (name == "texas_multiway_inspect") return run("inspect", argc, argv);
+    if (name == "texas_multiway_finalize") return run("finalize", argc, argv);
     return run("evaluate", argc, argv);
     } catch (const std::exception& error) {
         std::cerr << "workflow failed: " << error.what() << "\n";
