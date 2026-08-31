@@ -24,7 +24,12 @@ std::uint64_t read_u64(std::ifstream& input) {
 }
 
 MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
-    const std::filesystem::path& path, const MultiwayModelIdentity& expected_identity) {
+    const std::filesystem::path& path, const MultiwayModelIdentity& expected_identity,
+    MultiwayBucketInspectionProgressCallback progress_callback,
+    std::uint64_t progress_interval) {
+    if (progress_callback && progress_interval == 0U) {
+        throw std::invalid_argument("bucket inspection progress interval is zero");
+    }
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("multiway bucket artifact cannot be opened");
     std::array<char, 4U> magic{};
@@ -65,6 +70,9 @@ MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
             if (assignment != MULTIWAY_INVALID_BUCKET) ++result.live_assignments;
             if (assignment != MULTIWAY_INVALID_BUCKET && assignment >= bucket_count) throw std::invalid_argument("bucket assignment is out of range");
             hash_u32(result.payload_hash, assignment);
+        }
+        if (progress_callback && ((table_index + 1U) % progress_interval == 0U || table_index + 1U == table_count)) {
+            progress_callback(table_index + 1U, table_count);
         }
     }
     if (input.peek() != EOF) throw std::invalid_argument("bucket artifact has trailing data");

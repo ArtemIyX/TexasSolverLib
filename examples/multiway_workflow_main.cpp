@@ -83,7 +83,9 @@ void print_help(std::string_view name, Workflow workflow) {
                   << "  --benchmark-mode <mode>       build-only or end-to-end\n";
     } else if (workflow == Workflow::Inspect) {
         std::cout << "  --input <path>         Artifact to inspect\n"
-                  << "  --report <path>        Atomically published JSON inspection report\n";
+                  << "  --report <path>        Atomically published JSON inspection report\n"
+                  << "  --progress <true|false>  Print inspection progress (default true)\n"
+                  << "  --progress-every <N>  Print progress every N tables\n";
     } else if (workflow == Workflow::Finalize) {
         std::cout << "  --bucket-report <path>       Bucket inspection report\n"
                   << "  --training-report <path>     Training report\n"
@@ -392,10 +394,16 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
 }
 
 int run_inspect(const std::filesystem::path& config_path, const std::filesystem::path& input_path,
-                const std::filesystem::path& report_path) {
+                const std::filesystem::path& report_path, bool progress_enabled,
+                std::uint64_t progress_interval) {
     using namespace texas::solver::multiway;
     const auto workflow = load_multiway_workflow_config(config_path);
-    const auto report = inspect_multiway_bucket_artifact(input_path, make_multiway_model_identity(workflow.model));
+    const auto report = inspect_multiway_bucket_artifact(
+        input_path, make_multiway_model_identity(workflow.model),
+        progress_enabled ? MultiwayBucketInspectionProgressCallback(
+            [](std::uint64_t completed, std::uint64_t total) {
+                std::cout << "inspection progress: tables=" << completed << '/' << total << '\n';
+            }) : MultiwayBucketInspectionProgressCallback{}, progress_interval);
     if (report.flop_tables == 0U || report.turn_tables == 0U || report.river_tables == 0U) {
         throw std::runtime_error("bucket artifact has incomplete street coverage");
     }
@@ -694,6 +702,9 @@ int run(std::string_view name, int argc, char** argv) {
     std::uint64_t benchmark_tables = 0U;
     std::uint64_t benchmark_start = 0U;
     std::string benchmark_mode = "build-only";
+    bool inspect_progress = true;
+    std::uint64_t inspect_progress_interval =
+        texas::solver::multiway::MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if (argument == "--help") {
@@ -705,6 +716,7 @@ int run(std::string_view name, int argc, char** argv) {
             argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" ||
             argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" ||
             argument == "--threads" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" ||
+            argument == "--progress" || argument == "--progress-every" ||
             argument == "--bucket-report" || argument == "--training-report" ||
             argument == "--equivalence-report" || argument == "--lookup-first" ||
             argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" ||
@@ -733,6 +745,16 @@ int run(std::string_view name, int argc, char** argv) {
             if (argument == "--benchmark-tables") benchmark_tables = std::stoull(argv[index]);
             if (argument == "--benchmark-start") benchmark_start = std::stoull(argv[index]);
             if (argument == "--benchmark-mode") benchmark_mode = argv[index];
+            if (argument == "--progress") {
+                const std::string_view value(argv[index]);
+                if (value == "true") inspect_progress = true;
+                else if (value == "false") inspect_progress = false;
+                else throw std::invalid_argument("--progress must be true or false");
+            }
+            if (argument == "--progress-every") {
+                inspect_progress_interval = std::stoull(argv[index]);
+                if (inspect_progress_interval == 0U) throw std::invalid_argument("--progress-every must be positive");
+            }
             if (argument == "--bucket-report") bucket_report = argv[index];
             if (argument == "--training-report") training_report = argv[index];
             if (argument == "--equivalence-report") equivalence_report = argv[index];
@@ -759,7 +781,7 @@ int run(std::string_view name, int argc, char** argv) {
         return run_buckets(config_path, output_path, checkpoint_dir, threads);
     }
     if (workflow == Workflow::Inspect && !config_path.empty() && !input_path.empty()) {
-        return run_inspect(config_path, input_path, report_path);
+        return run_inspect(config_path, input_path, report_path, inspect_progress, inspect_progress_interval);
     }
     if (workflow == Workflow::Train && !config_path.empty()) {
         return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir, resume_path);

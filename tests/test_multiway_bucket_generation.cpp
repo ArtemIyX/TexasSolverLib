@@ -185,11 +185,23 @@ TEST_CASE(multiway_bucket_generation_serial_and_parallel_artifacts_match) {
     EXPECT_EQ(parallel, repeated_parallel);
     const auto serial_report = inspect_multiway_bucket_artifact(
         serial_path, identity());
+    std::vector<std::uint64_t> inspection_progress;
+    const auto progress_report = inspect_multiway_bucket_artifact(
+        serial_path, identity(),
+        [&inspection_progress](std::uint64_t completed, std::uint64_t total) {
+            EXPECT_EQ(total, 12U);
+            inspection_progress.push_back(completed);
+        }, 5U);
     const auto parallel_report = inspect_multiway_bucket_artifact(
         parallel_path, identity());
     const auto repeated_report = inspect_multiway_bucket_artifact(
         repeat_path, identity());
     EXPECT_EQ(serial_report.payload_hash, parallel_report.payload_hash);
+    EXPECT_EQ(progress_report.payload_hash, serial_report.payload_hash);
+    EXPECT_EQ(inspection_progress.size(), 3U);
+    EXPECT_EQ(inspection_progress[0], 5U);
+    EXPECT_EQ(inspection_progress[1], 10U);
+    EXPECT_EQ(inspection_progress[2], 12U);
     EXPECT_EQ(parallel_report.payload_hash, repeated_report.payload_hash);
     EXPECT_EQ(serial_report.flop_tables, 12U);
     EXPECT_EQ(parallel_report.flop_tables, 12U);

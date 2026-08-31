@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <vector>
 
 namespace texas::solver::multiway {
@@ -98,8 +99,14 @@ struct MultiwayBucketArtifactInspection {
     MultiwayModelIdentity identity{};
 };
 
+inline constexpr std::uint64_t MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL = 100000U;
+using MultiwayBucketInspectionProgressCallback = std::function<void(
+    std::uint64_t completed_tables, std::uint64_t total_tables)>;
+
 [[nodiscard]] MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
     const std::filesystem::path& path,
-    const MultiwayModelIdentity& expected_identity);
+    const MultiwayModelIdentity& expected_identity,
+    MultiwayBucketInspectionProgressCallback progress_callback = {},
+    std::uint64_t progress_interval = MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL);
 
 }  // namespace texas::solver::multiway
