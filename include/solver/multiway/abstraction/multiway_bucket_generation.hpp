@@ -20,11 +20,17 @@ struct MultiwayBucketGenerationStats {
     std::uint64_t ordered_publish_wait_nanoseconds = 0U;
 };
 
+using MultiwayBucketDirectSerializedBuilder = std::function<void(
+    std::uint64_t begin_index,
+    std::uint64_t end_index,
+    std::vector<std::uint8_t>& payload)>;
+
 struct MultiwayBucketGenerationOptions {
     std::uint32_t requested_threads = MULTIWAY_BUCKET_DEFAULT_THREADS;
     std::uint32_t chunk_size = MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE;
     std::uint32_t queue_capacity = 0U;
     MultiwayBucketGenerationStats* stats = nullptr;
+    MultiwayBucketDirectSerializedBuilder direct_serialized_builder;
 };
 
 struct MultiwayBucketGenerationProgress {
@@ -58,6 +64,12 @@ void build_multiway_baseline_bucket_chunk(
     std::uint64_t begin_index,
     std::uint64_t end_index,
     std::vector<MultiwayBucketTable>& tables);
+void build_multiway_baseline_direct_serialized_chunk(
+    const MultiwayModelIdentity& identity,
+    const MultiwayBucketBaselineProfile& profile,
+    std::uint64_t begin_index,
+    std::uint64_t end_index,
+    std::vector<std::uint8_t>& payload);
 
 // Builds [begin_index, end_index) concurrently and publishes chunks in
 // global-index order. The builder and publisher are cold-path callbacks.

@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - direct worker serialization
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added direct artifact-record encoding from fixed catalog boards and compact
+  hole combinations, avoiding temporary table objects and assignment vectors
+  on the production serialized path.
+- Added differential coverage against the checked/table-object artifact path.
+- Updated Release smoke rates for 1/2/4 workers to `10060`/`18542`/`29489`
+  tables/s on 1,024 flop tables; checksums matched.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- Full Debug build and all tests passed.
+- Release build passed.
+- Release direct-serialization smoke benchmark passed at 1, 2, and 4 workers.
+
+### Limitations
+
+- Payload vectors still allocate once per worker chunk; reusable ring-slot
+  buffers and external allocator/CPU/disk profiling remain future work.
+
 ## F1 bucket generation - serialized scheduler wait telemetry
 
 **Status:** Complete

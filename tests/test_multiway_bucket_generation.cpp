@@ -182,8 +182,13 @@ TEST_CASE(multiway_bucket_generation_serialized_chunks_match_table_chunks) {
     const auto object_bytes = generate_artifact(4U, object_path);
     const auto temporary = serialized_path.string() + ".tmp";
     MultiwayBucketArtifactWriter writer(temporary, identity(), table_count);
+    const auto direct_builder = [](std::uint64_t begin, std::uint64_t end,
+                                   std::vector<std::uint8_t>& payload) {
+        build_multiway_baseline_direct_serialized_chunk(
+            identity(), MultiwayBucketBaselineProfile::standard(), begin, end, payload);
+    };
     generate_multiway_bucket_serialized_chunks(
-        0U, table_count, {4U, 3U, 2U}, build_synthetic_chunk,
+        0U, table_count, {4U, 3U, 2U, nullptr, direct_builder}, build_synthetic_chunk,
         [&writer](std::uint64_t begin, std::uint64_t count, std::vector<std::uint8_t>&& payload) {
             EXPECT_EQ(begin, writer.progress().table_count);
             writer.append_serialized_chunk(count, std::move(payload));

@@ -287,10 +287,15 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
         build_multiway_baseline_bucket_chunk(
             identity, profile, begin_index, end_index, tables);
     };
+    const auto direct_build_chunk = [identity, profile](std::uint64_t begin_index,
+                                                         std::uint64_t end_index,
+                                                         std::vector<std::uint8_t>& payload) {
+        build_multiway_baseline_direct_serialized_chunk(identity, profile, begin_index, end_index, payload);
+    };
     try {
         generate_multiway_bucket_serialized_chunks(
             already_written, expected_tables,
-            {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U},
+            {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U, nullptr, direct_build_chunk},
             build_chunk,
             [&](std::uint64_t begin_index, std::uint64_t table_count, std::vector<std::uint8_t>&& payload) {
                 if (begin_index != writer->progress().table_count) {
@@ -351,8 +356,12 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
     std::unique_ptr<MultiwayBucketArtifactWriter> writer;
     if (publish) writer = std::make_unique<MultiwayBucketArtifactWriter>(temporary, identity, table_count);
     const auto start = std::chrono::steady_clock::now();
+    const auto direct_build = [identity, profile](std::uint64_t begin, std::uint64_t end,
+                                                   std::vector<std::uint8_t>& payload) {
+        build_multiway_baseline_direct_serialized_chunk(identity, profile, begin, end, payload);
+    };
     generate_multiway_bucket_serialized_chunks(start_index, start_index + table_count,
-        {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U, &stats},
+        {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U, &stats, direct_build},
         [identity, profile](std::uint64_t begin, std::uint64_t end,
                             std::vector<MultiwayBucketTable>& tables) {
             build_multiway_baseline_bucket_chunk(identity, profile, begin, end, tables);

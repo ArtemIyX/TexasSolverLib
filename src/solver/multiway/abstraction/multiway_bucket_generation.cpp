@@ -16,6 +16,7 @@
 #endif
 
 namespace texas::solver::multiway {
+using core::CanonicalComboId;
 namespace {
 
 struct GenerationChunk {
@@ -51,7 +52,70 @@ void serialize_tables(const std::vector<MultiwayBucketTable>& tables, std::vecto
     }
 }
 
+void build_direct_serialized_chunk(
+    const MultiwayModelIdentity& identity, const MultiwayBucketBaselineProfile& profile,
+    std::uint64_t begin_index, std::uint64_t end_index, std::vector<std::uint8_t>& payload) {
+    identity.validate(); profile.validate();
+    const auto flop = multiway_bucket_board_count(core::Street::Flop);
+    const auto turn = multiway_bucket_board_count(core::Street::Turn);
+    const auto total = flop + turn + multiway_bucket_board_count(core::Street::River);
+    if (begin_index > end_index || end_index > total) throw std::out_of_range("bucket chunk range exceeds catalog");
+    payload.reserve(static_cast<std::size_t>(end_index - begin_index) * (MULTIWAY_HOLE_COMBINATION_COUNT * 4U + 16U));
+    std::uint64_t offset = 0U;
+    for (const auto street : {core::Street::Flop, core::Street::Turn, core::Street::River}) {
+        const MultiwayBucketBoardCatalog catalog(street);
+        const auto street_end = offset + catalog.size();
+        if (end_index <= offset) break;
+        const auto local_begin = begin_index > offset ? begin_index - offset : 0U;
+        const auto local_end = end_index < street_end ? end_index - offset : catalog.size();
+        if (local_begin < local_end) catalog.for_each_fixed_board(local_begin, local_end,
+            [&](const std::array<std::uint8_t, 5U>& board) {
+                const auto board_size = street == core::Street::Flop ? 3U : street == core::Street::Turn ? 4U : 5U;
+                payload.push_back(static_cast<std::uint8_t>(street));
+                payload.push_back(static_cast<std::uint8_t>(board_size));
+                for (std::size_t index = 0U; index < board_size; ++index) payload.push_back(board[index]);
+                append_u32(payload, profile.bucket_count(street));
+                std::array<std::uint8_t, 15U> rank_counts{};
+                std::uint16_t rank_mask = 0U;
+                std::uint8_t suit_mask = 0U;
+                for (std::size_t index = 0U; index < board_size; ++index) {
+                    rank_mask |= static_cast<std::uint16_t>(1U << core::rank_of(board[index]));
+                    suit_mask |= static_cast<std::uint8_t>(1U << core::suit_of(board[index]));
+                    ++rank_counts[core::rank_of(board[index])];
+                }
+                std::uint8_t pair_count = 0U;
+                for (const auto count : rank_counts) if (count >= 2U) ++pair_count;
+                for (CanonicalComboId id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id) {
+                    const auto& hole = core::canonical_combos().cards(id);
+                    bool blocked = false;
+                    for (std::size_t index = 0U; index < board_size; ++index) blocked = blocked || board[index] == hole[0] || board[index] == hole[1];
+                    if (blocked) { append_u32(payload, MULTIWAY_INVALID_BUCKET); continue; }
+                    MultiwayBucketFeatures features;
+                    features.board_rank_mask = rank_mask; features.board_suit_mask = suit_mask;
+                    features.board_pair_count = pair_count; features.board_size = static_cast<std::uint8_t>(board_size);
+                    features.hole_high_rank = (std::max)(core::rank_of(hole[0]), core::rank_of(hole[1]));
+                    features.hole_low_rank = (std::min)(core::rank_of(hole[0]), core::rank_of(hole[1]));
+                    features.hole_suited = core::suit_of(hole[0]) == core::suit_of(hole[1]) ? 1U : 0U;
+                    for (std::size_t index = 0U; index < board_size; ++index) {
+                        const auto card = board[index];
+                        if (core::rank_of(card) == core::rank_of(hole[0]) || core::rank_of(card) == core::rank_of(hole[1])) ++features.hole_pairs_board;
+                        if (core::suit_of(card) == core::suit_of(hole[0])) ++features.hole_suit_matches_board;
+                        if (core::suit_of(card) == core::suit_of(hole[1])) ++features.hole_suit_matches_board;
+                    }
+                    append_u32(payload, assign_multiway_baseline_bucket(features, profile, street));
+                }
+            });
+        offset = street_end;
+    }
+}
+
 }  // namespace
+
+void build_multiway_baseline_direct_serialized_chunk(
+    const MultiwayModelIdentity& identity, const MultiwayBucketBaselineProfile& profile,
+    std::uint64_t begin_index, std::uint64_t end_index, std::vector<std::uint8_t>& payload) {
+    build_direct_serialized_chunk(identity, profile, begin_index, end_index, payload);
+}
 
 std::uint32_t multiway_bucket_hardware_thread_count() noexcept {
     const auto detected = std::thread::hardware_concurrency();
@@ -308,12 +372,16 @@ void generate_multiway_bucket_serialized_chunks(
                 next_job = last; ++in_flight;
             }
             try {
-                std::vector<MultiwayBucketTable> tables;
-                tables.reserve(static_cast<std::size_t>(last - first));
-                builder(first, last, tables);
-                if (tables.size() != static_cast<std::size_t>(last - first)) throw std::runtime_error("bucket chunk builder returned an invalid table count");
                 Chunk chunk; chunk.begin = first; chunk.count = last - first;
-                serialize_tables(tables, chunk.payload);
+                if (options.direct_serialized_builder) {
+                    options.direct_serialized_builder(first, last, chunk.payload);
+                } else {
+                    std::vector<MultiwayBucketTable> tables;
+                    tables.reserve(static_cast<std::size_t>(last - first));
+                    builder(first, last, tables);
+                    if (tables.size() != static_cast<std::size_t>(last - first)) throw std::runtime_error("bucket chunk builder returned an invalid table count");
+                    serialize_tables(tables, chunk.payload);
+                }
                 {
                     std::lock_guard lock(mutex);
                     if (!failure) ready.emplace(first, std::move(chunk)); else --in_flight;
