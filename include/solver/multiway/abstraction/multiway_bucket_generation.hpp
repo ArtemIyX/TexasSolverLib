@@ -9,7 +9,7 @@
 
 namespace texas::solver::multiway {
 
-inline constexpr std::uint32_t MULTIWAY_BUCKET_DEFAULT_THREADS = 4U;
+inline constexpr std::uint32_t MULTIWAY_BUCKET_DEFAULT_THREADS = 16U;
 inline constexpr std::uint32_t MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE = 256U;
 
 struct MultiwayBucketGenerationStats {

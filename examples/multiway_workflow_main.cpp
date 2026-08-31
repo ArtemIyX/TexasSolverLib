@@ -77,7 +77,7 @@ void print_help(std::string_view name, Workflow workflow) {
     } else if (workflow == Workflow::Buckets) {
         std::cout << "  --output <path>        Atomically published bucket artifact\n"
                   << "  --checkpoint-dir <dir> Resume/checkpoint directory\n"
-                  << "  --threads <integer>   Bucket worker count (default 4)\n";
+                  << "  --threads <integer>   Bucket worker count (default physical-core cap)\n";
         std::cout << "  --benchmark-start <integer>   Global catalog start index\n"
                   << "  --benchmark-tables <integer>  Run bounded benchmark\n"
                   << "  --benchmark-mode <mode>       build-only or end-to-end\n";

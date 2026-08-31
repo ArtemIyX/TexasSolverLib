@@ -1,5 +1,34 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - final worker policy qualification
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Raised the measured worker cap to 16 and kept the CLI default topology-aware
+  as `min(16, physical_cores)`.
+- Release 65,536-table end-to-end measurements showed 16 workers at
+  `103567`/`102801`/`100819` tables/s for flop/turn/river, while 32 logical
+  workers fell to `99315`/`98162`/`97414` and had much higher worker wait time.
+- The policy therefore avoids SMT oversubscription by default while allowing
+  explicit qualification overrides.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Release 65,536-table matrix passed at 16 and 32 workers for all streets.
+- Checksums matched across worker counts.
+- Full Debug build and all tests passed after the policy change.
+
+### Limitations
+
+- The selected cap is measured on the qualification host; other machines
+  should use the explicit override and benchmark mode.
+
 ## F1 bucket generation - reusable serialized ring slots
 
 **Status:** Complete
