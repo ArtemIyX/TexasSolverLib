@@ -18,6 +18,9 @@
 - Full build and test workflow passed.
 - Debug smoke benchmark, 1,024 flop tables: 1 worker `1694.88 tables/s`,
   2 workers `2132.66 tables/s`; checksums matched.
+- Release smoke benchmark, three paired runs over 1,024 flop tables: 1 worker
+  median about `10906 tables/s`, 2 workers median about `21512 tables/s`;
+  all checksums matched.
 
 ### Limitations
 
