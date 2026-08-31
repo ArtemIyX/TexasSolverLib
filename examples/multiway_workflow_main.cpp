@@ -189,6 +189,12 @@ std::uint64_t estimate_full_blueprint_bytes(
 int run_buckets(const std::filesystem::path& config_path, const std::filesystem::path& output_path,
                 const std::filesystem::path& checkpoint_dir, std::uint32_t requested_threads) {
     using namespace texas::solver::multiway;
+    std::cout << "texas_multiway_buckets: starting bucket generation\n"
+              << "  config=" << config_path.string() << "\n"
+              << "  output=" << output_path.string() << "\n"
+              << "  checkpoint_dir="
+              << (checkpoint_dir.empty() ? std::string("<disabled>") : checkpoint_dir.string()) << "\n"
+              << "  requested_threads=" << requested_threads << std::endl;
     const auto workflow = load_multiway_workflow_config(config_path);
     const auto identity = make_multiway_model_identity(workflow.model);
     MultiwayBucketBaselineProfile profile = MultiwayBucketBaselineProfile::standard();
@@ -200,6 +206,24 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
     if (!output_path.parent_path().empty()) std::filesystem::create_directories(output_path.parent_path());
     const auto expected_tables = multiway_bucket_board_count(texas::core::Street::Flop) +
         multiway_bucket_board_count(texas::core::Street::Turn) + multiway_bucket_board_count(texas::core::Street::River);
+    const auto hardware_threads = multiway_bucket_hardware_thread_count();
+    const auto effective_threads = resolve_multiway_bucket_thread_count(
+        requested_threads, hardware_threads);
+    std::cout << "bucket generation goal:\n"
+              << "  profile=" << workflow.profile_id
+              << " kind=" << static_cast<unsigned>(workflow.profile_kind)
+              << " schema=" << workflow.schema_version << "\n"
+              << "  model_identity=" << identity.combined_hash
+              << " config_fingerprint=" << workflow.fingerprint() << "\n"
+              << "  players=" << static_cast<unsigned>(workflow.model.player_count)
+              << " buckets=" << workflow.model.flop_bucket_count << '/'
+              << workflow.model.turn_bucket_count << '/'
+              << workflow.model.river_bucket_count
+              << " seed=" << workflow.deterministic_seed << "\n"
+              << "  tables=" << expected_tables
+              << " chunk_size=" << MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE
+              << " hardware_threads=" << hardware_threads
+              << " effective_threads=" << effective_threads << std::endl;
     if (!checkpoint_dir.empty()) std::filesystem::create_directories(checkpoint_dir);
     constexpr std::uint64_t max_table_bytes = 2U + 5U + 4U +
         static_cast<std::uint64_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * 4U;

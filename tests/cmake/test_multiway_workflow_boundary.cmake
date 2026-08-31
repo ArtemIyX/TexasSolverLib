@@ -22,6 +22,14 @@ if(threads_option_position EQUAL -1)
     message(FATAL_ERROR "bucket workflow front end does not expose --threads")
 endif()
 
+foreach(startup_log "texas_multiway_buckets: starting bucket generation"
+        "bucket generation goal:" "effective_threads=")
+    string(FIND "${source_text}" "${startup_log}" startup_log_position)
+    if(startup_log_position EQUAL -1)
+        message(FATAL_ERROR "bucket workflow is missing startup log field: ${startup_log}")
+    endif()
+endforeach()
+
 if(source_text MATCHES "install\\(")
     message(FATAL_ERROR "multiway workflow front end must remain non-installed")
 endif()
