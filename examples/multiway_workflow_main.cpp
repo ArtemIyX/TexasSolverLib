@@ -340,6 +340,7 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
     profile.turn_bucket_count = workflow.model.turn_bucket_count;
     profile.river_bucket_count = workflow.model.river_bucket_count;
     std::uint64_t checksum = 0U;
+    MultiwayBucketGenerationStats stats;
     const auto output = std::filesystem::temp_directory_path() /
         ("texas_solver_bucket_benchmark_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".bin");
     const auto temporary = output.string() + ".tmp";
@@ -347,7 +348,7 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
     if (publish) writer = std::make_unique<MultiwayBucketArtifactWriter>(temporary, identity, table_count);
     const auto start = std::chrono::steady_clock::now();
     generate_multiway_bucket_chunks(0U, table_count,
-        {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U},
+        {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U, &stats},
         [identity, profile](std::uint64_t begin, std::uint64_t end,
                             std::vector<MultiwayBucketTable>& tables) {
             build_multiway_baseline_bucket_chunk(identity, profile, begin, end, tables);
@@ -365,7 +366,11 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
     std::cout << "bucket benchmark,mode=" << (publish ? "end-to-end" : "build-only") << ",tables=" << table_count
               << ",threads=" << requested_threads << ",seconds=" << seconds
               << ",tables_per_second=" << static_cast<double>(table_count) / seconds
-              << ",checksum=" << checksum << "\n";
+              << ",checksum=" << checksum << ",chunks_built=" << stats.chunks_built
+              << ",chunks_published=" << stats.chunks_published
+              << ",ready_high_watermark=" << stats.ready_queue_high_watermark
+              << ",worker_wait_ns=" << stats.worker_wait_nanoseconds
+              << ",publish_wait_ns=" << stats.ordered_publish_wait_nanoseconds << "\n";
     return EXIT_SUCCESS;
 }
 

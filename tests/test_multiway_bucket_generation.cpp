@@ -303,3 +303,16 @@ TEST_CASE(multiway_bucket_generation_repeated_parallel_runs_are_deterministic) {
         }
     }
 }
+
+TEST_CASE(multiway_bucket_generation_reports_aggregate_scheduler_stats) {
+    MultiwayBucketGenerationStats stats;
+    MultiwayBucketGenerationOptions options{2U, 2U, 2U, &stats};
+    std::uint64_t published = 0U;
+    generate_multiway_bucket_chunks(
+        0U, 6U, options, build_synthetic_chunk,
+        [&published](std::uint64_t, std::vector<MultiwayBucketTable>&& tables) { published += tables.size(); });
+    EXPECT_EQ(published, 6U);
+    EXPECT_EQ(stats.chunks_built, 3U);
+    EXPECT_EQ(stats.chunks_published, 3U);
+    EXPECT_TRUE(stats.ready_queue_high_watermark <= 2U);
+}

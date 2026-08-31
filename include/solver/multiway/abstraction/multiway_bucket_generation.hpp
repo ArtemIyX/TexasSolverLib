@@ -12,10 +12,19 @@ namespace texas::solver::multiway {
 inline constexpr std::uint32_t MULTIWAY_BUCKET_DEFAULT_THREADS = 4U;
 inline constexpr std::uint32_t MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE = 256U;
 
+struct MultiwayBucketGenerationStats {
+    std::uint64_t chunks_built = 0U;
+    std::uint64_t chunks_published = 0U;
+    std::uint64_t ready_queue_high_watermark = 0U;
+    std::uint64_t worker_wait_nanoseconds = 0U;
+    std::uint64_t ordered_publish_wait_nanoseconds = 0U;
+};
+
 struct MultiwayBucketGenerationOptions {
     std::uint32_t requested_threads = MULTIWAY_BUCKET_DEFAULT_THREADS;
     std::uint32_t chunk_size = MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE;
     std::uint32_t queue_capacity = 0U;
+    MultiwayBucketGenerationStats* stats = nullptr;
 };
 
 struct MultiwayBucketGenerationProgress {

@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - aggregate scheduler telemetry
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added optional aggregate statistics for chunks built and published, ready
+  queue high-water mark, worker wait time, and ordered publication wait time.
+- Exposed metrics in bounded benchmark output and added contract tests.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: build OK, all tests passed.
+
+### Limitations
+
+- Telemetry is aggregate only; publisher sub-stage timers and machine CPU,
+  heap, disk, and context-switch counters remain external measurements.
+
 ## F1 bucket generation - measured default worker cap
 
 **Status:** Complete

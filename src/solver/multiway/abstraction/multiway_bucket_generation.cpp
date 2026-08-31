@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <condition_variable>
+#include <chrono>
 #include <exception>
 #include <map>
 #include <mutex>
@@ -100,6 +101,10 @@ void generate_multiway_bucket_chunks(
                 throw std::runtime_error("bucket chunk builder returned an invalid table count");
             }
             publisher(next, std::move(tables));
+            if (options.stats) {
+                ++options.stats->chunks_built;
+                ++options.stats->chunks_published;
+            }
             next = chunk_end;
             if (progress_callback) {
                 progress_callback({next - begin_index, end_index - begin_index});
@@ -123,10 +128,13 @@ void generate_multiway_bucket_chunks(
             std::uint64_t job_end = 0U;
             {
                 std::unique_lock lock(state.mutex);
+                const auto wait_start = std::chrono::steady_clock::now();
                 state.condition.wait(lock, [&] {
                     return state.failure || state.next_job >= end_index ||
                         state.in_flight < queue_capacity;
                 });
+                if (options.stats) options.stats->worker_wait_nanoseconds += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wait_start).count());
                 if (state.failure || state.next_job >= end_index) return;
                 job_begin = state.next_job;
                 const auto remaining = end_index - job_begin;
@@ -147,6 +155,11 @@ void generate_multiway_bucket_chunks(
                     std::lock_guard lock(state.mutex);
                     if (!state.failure) state.ready.emplace(chunk.begin_index, std::move(chunk));
                     else --state.in_flight;
+                    if (options.stats) {
+                        ++options.stats->chunks_built;
+                        options.stats->ready_queue_high_watermark = std::max<std::uint64_t>(
+                            options.stats->ready_queue_high_watermark, state.ready.size());
+                    }
                 }
                 state.condition.notify_all();
             } catch (...) {
@@ -176,9 +189,12 @@ void generate_multiway_bucket_chunks(
             GenerationChunk chunk;
             {
                 std::unique_lock lock(state.mutex);
+                const auto wait_start = std::chrono::steady_clock::now();
                 state.condition.wait(lock, [&] {
                     return state.failure || state.ready.find(next_publish) != state.ready.end();
                 });
+                if (options.stats) options.stats->ordered_publish_wait_nanoseconds += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - wait_start).count());
                 if (state.failure) std::rethrow_exception(state.failure);
                 auto found = state.ready.find(next_publish);
                 chunk = std::move(found->second);
@@ -187,6 +203,10 @@ void generate_multiway_bucket_chunks(
                 state.condition.notify_all();
             }
             publisher(chunk.begin_index, std::move(chunk.tables));
+            if (options.stats) {
+                std::lock_guard lock(state.mutex);
+                ++options.stats->chunks_published;
+            }
             next_publish += options.chunk_size;
             if (next_publish > end_index) next_publish = end_index;
             if (progress_callback) {
