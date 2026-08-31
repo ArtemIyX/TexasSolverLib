@@ -74,6 +74,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_bucket_artifact.hpp
     include/solver/multiway/abstraction/multiway_bucket_catalog.hpp
     include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp
+    include/solver/multiway/abstraction/multiway_bucket_generation.hpp
     include/solver/multiway/workflow/multiway_workflow_config.hpp
     include/solver/multiway/workflow/multiway_evidence.hpp
     include/solver/multiway/workflow/multiway_artifact_preflight.hpp
@@ -192,6 +193,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/abstraction/multiway_bucket_artifact.cpp
     src/solver/multiway/abstraction/multiway_bucket_catalog.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp
+    src/solver/multiway/abstraction/multiway_bucket_generation.cpp
     src/solver/multiway/abstraction/multiway_bucket_inspector.cpp
     src/solver/multiway/workflow/multiway_workflow_config.cpp
     src/solver/multiway/workflow/multiway_evidence.cpp
