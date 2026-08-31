@@ -78,7 +78,8 @@ void print_help(std::string_view name, Workflow workflow) {
         std::cout << "  --output <path>        Atomically published bucket artifact\n"
                   << "  --checkpoint-dir <dir> Resume/checkpoint directory\n"
                   << "  --threads <integer>   Bucket worker count (default 4)\n";
-        std::cout << "  --benchmark-tables <integer>  Run bounded benchmark\n"
+        std::cout << "  --benchmark-start <integer>   Global catalog start index\n"
+                  << "  --benchmark-tables <integer>  Run bounded benchmark\n"
                   << "  --benchmark-mode <mode>       build-only or end-to-end\n";
     } else if (workflow == Workflow::Inspect) {
         std::cout << "  --input <path>         Artifact to inspect\n"
@@ -327,11 +328,13 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
     return EXIT_SUCCESS;
 }
 
-int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t table_count,
-                         std::uint32_t requested_threads, bool publish) {
+int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t start_index,
+                         std::uint64_t table_count, std::uint32_t requested_threads, bool publish) {
     using namespace texas::solver::multiway;
-    if (table_count == 0U || table_count > multiway_bucket_board_count(texas::core::Street::Flop)) {
-        throw std::invalid_argument("--benchmark-tables must be within the flop catalog");
+    const auto total_tables = multiway_bucket_board_count(texas::core::Street::Flop) +
+        multiway_bucket_board_count(texas::core::Street::Turn) + multiway_bucket_board_count(texas::core::Street::River);
+    if (table_count == 0U || start_index > total_tables || table_count > total_tables - start_index) {
+        throw std::invalid_argument("benchmark range exceeds the bucket catalog");
     }
     const auto workflow = load_multiway_workflow_config(config_path);
     const auto identity = make_multiway_model_identity(workflow.model);
@@ -347,7 +350,7 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
     std::unique_ptr<MultiwayBucketArtifactWriter> writer;
     if (publish) writer = std::make_unique<MultiwayBucketArtifactWriter>(temporary, identity, table_count);
     const auto start = std::chrono::steady_clock::now();
-    generate_multiway_bucket_chunks(0U, table_count,
+    generate_multiway_bucket_chunks(start_index, start_index + table_count,
         {requested_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE, 0U, &stats},
         [identity, profile](std::uint64_t begin, std::uint64_t end,
                             std::vector<MultiwayBucketTable>& tables) {
@@ -363,7 +366,8 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
         writer->finish(output);
         std::filesystem::remove(output);
     }
-    std::cout << "bucket benchmark,mode=" << (publish ? "end-to-end" : "build-only") << ",tables=" << table_count
+    std::cout << "bucket benchmark,mode=" << (publish ? "end-to-end" : "build-only") << ",start=" << start_index
+              << ",tables=" << table_count
               << ",threads=" << requested_threads << ",seconds=" << seconds
               << ",tables_per_second=" << static_cast<double>(table_count) / seconds
               << ",checksum=" << checksum << ",chunks_built=" << stats.chunks_built
@@ -673,6 +677,7 @@ int run(std::string_view name, int argc, char** argv) {
     std::uint64_t duplicates = 0U;
     std::uint32_t threads = texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS;
     std::uint64_t benchmark_tables = 0U;
+    std::uint64_t benchmark_start = 0U;
     std::string benchmark_mode = "build-only";
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
@@ -684,7 +689,7 @@ int run(std::string_view name, int argc, char** argv) {
         if (argument == "--config" || argument == "--seed" || argument == "--batches" ||
             argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" ||
             argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" ||
-            argument == "--threads" || argument == "--benchmark-tables" || argument == "--benchmark-mode" ||
+            argument == "--threads" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" ||
             argument == "--bucket-report" || argument == "--training-report" ||
             argument == "--equivalence-report" || argument == "--lookup-first" ||
             argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" ||
@@ -711,6 +716,7 @@ int run(std::string_view name, int argc, char** argv) {
                 threads = static_cast<std::uint32_t>(parsed);
             }
             if (argument == "--benchmark-tables") benchmark_tables = std::stoull(argv[index]);
+            if (argument == "--benchmark-start") benchmark_start = std::stoull(argv[index]);
             if (argument == "--benchmark-mode") benchmark_mode = argv[index];
             if (argument == "--bucket-report") bucket_report = argv[index];
             if (argument == "--training-report") training_report = argv[index];
@@ -732,7 +738,7 @@ int run(std::string_view name, int argc, char** argv) {
         if (benchmark_mode != "build-only" && benchmark_mode != "end-to-end") {
             throw std::invalid_argument("--benchmark-mode must be build-only or end-to-end");
         }
-        return run_bucket_benchmark(config_path, benchmark_tables, threads, benchmark_mode == "end-to-end");
+        return run_bucket_benchmark(config_path, benchmark_start, benchmark_tables, threads, benchmark_mode == "end-to-end");
     }
     if (workflow == Workflow::Buckets && !config_path.empty() && !output_path.empty()) {
         return run_buckets(config_path, output_path, checkpoint_dir, threads);

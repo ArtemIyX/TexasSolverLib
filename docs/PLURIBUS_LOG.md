@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - street-separated qualification smoke matrix
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Extended the bounded benchmark with an explicit global catalog start index,
+  enabling isolated flop, turn, and river measurements.
+- Release end-to-end 1,024-table pairs showed two-worker scaling from 1 worker
+  to 2 workers on flop (`9828` to `19438` tables/s), turn (`9116` to `17926`),
+  and river (`8880` to `17411`); checksums matched.
+- Exposed queue and ordered-publisher wait metrics in these runs.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Full Debug build and all tests passed.
+- Release build passed.
+- Street-separated Release end-to-end smoke matrix passed.
+
+### Limitations
+
+- Samples are 1,024 tables rather than the 65,536-table qualification size;
+  five repetitions, physical-core discovery, and long-range gates remain.
+
 ## F1 bucket generation - buffered resume hashing
 
 **Status:** Complete
