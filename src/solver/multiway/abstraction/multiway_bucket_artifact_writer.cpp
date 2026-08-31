@@ -67,10 +67,17 @@ MultiwayBucketArtifactWriter MultiwayBucketArtifactWriter::resume(
     std::ifstream existing(temporary_path, std::ios::binary);
     existing.seekg(116, std::ios::beg);
     auto hash = core::fingerprint::FNV1A_OFFSET;
-    for (std::uint64_t index = 116U; index < progress.byte_length; ++index) {
-        const auto byte = existing.get();
-        if (byte == EOF) throw std::invalid_argument("bucket resume file is truncated");
-        core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(static_cast<unsigned char>(byte)));
+    std::array<char, 64U * 1024U> buffer{};
+    std::uint64_t remaining = progress.byte_length - 116U;
+    while (remaining != 0U) {
+        const auto request = static_cast<std::streamsize>(std::min<std::uint64_t>(remaining, buffer.size()));
+        existing.read(buffer.data(), request);
+        const auto received = existing.gcount();
+        if (received != request) throw std::invalid_argument("bucket resume file is truncated");
+        for (std::streamsize index = 0; index < received; ++index) {
+            core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(static_cast<unsigned char>(buffer[static_cast<std::size_t>(index)])));
+        }
+        remaining -= static_cast<std::uint64_t>(received);
     }
     if (hash != progress.payload_hash) throw std::invalid_argument("bucket resume hash mismatch");
     const auto current_length = std::filesystem::file_size(temporary_path, error);

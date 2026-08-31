@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - buffered resume hashing
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Changed resume verification to read the checkpointed payload in 64 KiB
+  blocks while retaining byte-exact FNV hashing and truncation detection.
+
+### Files
+
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+
+### Validation
+
+- Existing full resume and artifact tests passed through the full build/test
+  workflow.
+
+### Limitations
+
+- Final artifact inspection remains stream-oriented and is not part of worker
+  scaling measurements.
+
 ## F1 bucket generation - aggregate scheduler telemetry
 
 **Status:** Complete
