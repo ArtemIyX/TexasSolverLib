@@ -65,3 +65,8 @@ After the reports exist, the human may run:
 
 Do not edit generated reports to make a predicate pass. Failed or incomplete
 evidence remains unqualified and must be rerun by the human operator.
+
+Bucket generation uses 16 workers by default. On the 32-thread qualification
+machine, pass `--threads 32`; use `--threads 1` for the serial compatibility
+path. Progress is printed at checkpoint boundaries and persisted in
+`buckets\checkpoints\latest.progress`.

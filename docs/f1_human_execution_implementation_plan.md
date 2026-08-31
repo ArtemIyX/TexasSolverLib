@@ -539,7 +539,8 @@ This package is human-only execution.
 .\build\Release\texas_multiway_buckets.exe `
   --config configs\multiway\f1_dev_v1.cfg `
   --output artifacts\f1_dev_v1\buckets\buckets.bin `
-  --checkpoint-dir artifacts\f1_dev_v1\buckets\checkpoints
+  --checkpoint-dir artifacts\f1_dev_v1\buckets\checkpoints `
+  --threads 32
 
 .\build\Release\texas_multiway_inspect.exe `
   --config configs\multiway\f1_dev_v1.cfg `

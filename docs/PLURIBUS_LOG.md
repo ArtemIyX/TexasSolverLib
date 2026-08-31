@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - bounded parallel publisher
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a fixed worker-pool scheduler with 256-table chunks, bounded in-flight
+  results, ordered publication, and a synchronous `--threads 1` path.
+- Added configurable bucket worker count with a default of 16 and hardware
+  concurrency clamping.
+- Preserved serialized table order, payload hashes, checkpoints, resume, and
+  atomic publication while adding checkpoint-boundary progress/ETA output.
+- Added failure checkpoint preservation and reduced deterministic, resume,
+  street-boundary, backpressure, and publication tests.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_generation.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts\\codex_powershell.ps1 python scripts\\full_build.py` passed: build succeeded and 107/107 tests passed.
+- `git diff --check` passed.
+
 ## F1-WP5.8 - Human-command JSON escaping regression
 
 **Status:** Complete
