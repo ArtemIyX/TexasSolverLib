@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - five-run performance gate
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Completed five paired Release end-to-end runs for 65,536-table flop, turn,
+  and river ranges.
+- Median one-worker to two-worker throughput was flop `8108` to `20513`
+  tables/s (2.53x), turn `7891` to `19698` (2.50x), and river `7573` to
+  `18937` (2.50x).
+- Every run produced 256 chunks and matching deterministic checksums.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+
+### Validation
+
+- Release end-to-end benchmark matrix passed: 30 runs total.
+- Two-worker build-only and end-to-end throughput exceeded the plan's 1.50x
+  build-only and 1.25x end-to-end minimum gates for this bounded workload.
+
+### Limitations
+
+- CPU topology, resident memory, disk throughput, and context-switch counters
+  were not captured; the full production generation remains deferred.
+
 ## F1 bucket generation - street-separated qualification smoke matrix
 
 **Status:** Complete
