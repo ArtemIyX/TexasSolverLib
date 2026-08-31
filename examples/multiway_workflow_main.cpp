@@ -245,7 +245,8 @@ int run_buckets(const std::filesystem::path& config_path, const std::filesystem:
         estimated_bytes,
         workflow.disk_space_requirement_bytes == 0U
             ? estimated_bytes : workflow.disk_space_requirement_bytes,
-        0U,
+        estimate_multiway_bucket_generation_process_memory_bytes(
+            requested_threads, hardware_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE),
         workflow.process_memory_limit_bytes});
     std::unique_ptr<MultiwayBucketArtifactWriter> writer;
     if (!checkpoint_dir.empty() && std::filesystem::exists(temporary) && std::filesystem::exists(progress_path)) {
@@ -385,7 +386,8 @@ int run_bucket_benchmark(const std::filesystem::path& config_path, std::uint64_t
               << ",chunks_published=" << stats.chunks_published
               << ",ready_high_watermark=" << stats.ready_queue_high_watermark
               << ",worker_wait_ns=" << stats.worker_wait_nanoseconds
-              << ",publish_wait_ns=" << stats.ordered_publish_wait_nanoseconds << "\n";
+              << ",publish_wait_ns=" << stats.ordered_publish_wait_nanoseconds
+              << ",worker_active_ns=" << stats.worker_active_nanoseconds << "\n";
     return EXIT_SUCCESS;
 }
 

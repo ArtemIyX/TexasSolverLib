@@ -1,6 +1,8 @@
 #include "solver/multiway/abstraction/multiway_bucket_generation.hpp"
 
 #include "solver/multiway/abstraction/multiway_bucket_catalog.hpp"
+#include "core/fingerprint.hpp"
+#include "core/poker.hpp"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +10,7 @@
 #include <chrono>
 #include <exception>
 #include <map>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -37,6 +40,37 @@ void append_u32(std::vector<std::uint8_t>& payload, std::uint32_t value) {
     for (std::size_t index = 0U; index < 4U; ++index) payload.push_back(static_cast<std::uint8_t>(value >> (index * 8U)));
 }
 
+void write_u32(std::uint8_t*& cursor, std::uint32_t value) noexcept {
+    for (std::size_t index = 0U; index < 4U; ++index) *cursor++ = static_cast<std::uint8_t>(value >> (index * 8U));
+}
+
+struct ComboMetadata { std::array<std::uint8_t, 2U> cards; std::array<std::uint8_t, 2U> ranks; std::array<std::uint8_t, 2U> suits; };
+
+const std::array<ComboMetadata, MULTIWAY_HOLE_COMBINATION_COUNT>& combo_metadata() {
+    static const auto result = [] {
+        std::array<ComboMetadata, MULTIWAY_HOLE_COMBINATION_COUNT> value{};
+        for (CanonicalComboId id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id) {
+            const auto cards = core::canonical_combos().cards(id);
+            value[id] = {cards, {core::rank_of(cards[0]), core::rank_of(cards[1])},
+                         {core::suit_of(cards[0]), core::suit_of(cards[1])}};
+        }
+        return value;
+    }();
+    return result;
+}
+
+std::uint64_t board_hash_prefix(core::Street street, const MultiwayBucketFeatures& features) noexcept {
+    auto hash = core::fingerprint::FNV1A_OFFSET;
+    core::fingerprint::append_u64(hash, static_cast<std::uint8_t>(street));
+    core::fingerprint::append_u64(hash, features.board_rank_mask);
+    core::fingerprint::append_u64(hash, features.board_suit_mask);
+    core::fingerprint::append_u64(hash, features.board_pair_count);
+    core::fingerprint::append_u64(hash, features.board_size);
+    return hash;
+}
+
+void add_u64(std::uint64_t& hash, std::uint64_t value) noexcept { core::fingerprint::append_u64(hash, value); }
+
 void serialize_tables(const std::vector<MultiwayBucketTable>& tables, std::vector<std::uint8_t>& payload) {
     payload.reserve(tables.size() * (MULTIWAY_HOLE_COMBINATION_COUNT * 4U + 16U));
     for (const auto& table : tables) {
@@ -60,7 +94,14 @@ void build_direct_serialized_chunk(
     const auto turn = multiway_bucket_board_count(core::Street::Turn);
     const auto total = flop + turn + multiway_bucket_board_count(core::Street::River);
     if (begin_index > end_index || end_index > total) throw std::out_of_range("bucket chunk range exceeds catalog");
-    payload.reserve(static_cast<std::size_t>(end_index - begin_index) * (MULTIWAY_HOLE_COMBINATION_COUNT * 4U + 16U));
+    constexpr std::size_t max_record_bytes = 2U + 5U + 4U + MULTIWAY_HOLE_COMBINATION_COUNT * 4U;
+    const auto table_count = end_index - begin_index;
+    if (table_count > ((std::numeric_limits<std::size_t>::max)() - payload.size()) / max_record_bytes) {
+        throw std::length_error("bucket payload size estimate overflows");
+    }
+    const auto original_size = payload.size();
+    payload.resize(original_size + static_cast<std::size_t>(table_count) * max_record_bytes);
+    auto* output = payload.data() + original_size;
     std::uint64_t offset = 0U;
     for (const auto street : {core::Street::Flop, core::Street::Turn, core::Street::River}) {
         const MultiwayBucketBoardCatalog catalog(street);
@@ -71,42 +112,66 @@ void build_direct_serialized_chunk(
         if (local_begin < local_end) catalog.for_each_fixed_board(local_begin, local_end,
             [&](const std::array<std::uint8_t, 5U>& board) {
                 const auto board_size = street == core::Street::Flop ? 3U : street == core::Street::Turn ? 4U : 5U;
-                payload.push_back(static_cast<std::uint8_t>(street));
-                payload.push_back(static_cast<std::uint8_t>(board_size));
-                for (std::size_t index = 0U; index < board_size; ++index) payload.push_back(board[index]);
-                append_u32(payload, profile.bucket_count(street));
+                const auto bucket_count = street == core::Street::Flop ? profile.flop_bucket_count : street == core::Street::Turn ? profile.turn_bucket_count : profile.river_bucket_count;
+                *output++ = static_cast<std::uint8_t>(street); *output++ = static_cast<std::uint8_t>(board_size);
+                for (std::size_t index = 0U; index < board_size; ++index) *output++ = board[index];
+                write_u32(output, bucket_count);
                 std::array<std::uint8_t, 15U> rank_counts{};
+                std::array<std::uint8_t, 4U> suit_counts{};
+                std::uint64_t dead_mask = 0U;
                 std::uint16_t rank_mask = 0U;
                 std::uint8_t suit_mask = 0U;
                 for (std::size_t index = 0U; index < board_size; ++index) {
-                    rank_mask |= static_cast<std::uint16_t>(1U << core::rank_of(board[index]));
-                    suit_mask |= static_cast<std::uint8_t>(1U << core::suit_of(board[index]));
-                    ++rank_counts[core::rank_of(board[index])];
+                    const auto rank = core::rank_of(board[index]); const auto suit = core::suit_of(board[index]);
+                    dead_mask |= 1ULL << board[index]; rank_mask |= static_cast<std::uint16_t>(1U << rank);
+                    suit_mask |= static_cast<std::uint8_t>(1U << suit); ++rank_counts[rank]; ++suit_counts[suit];
                 }
                 std::uint8_t pair_count = 0U;
                 for (const auto count : rank_counts) if (count >= 2U) ++pair_count;
+                MultiwayBucketFeatures board_features;
+                board_features.board_rank_mask = rank_mask; board_features.board_suit_mask = suit_mask;
+                board_features.board_pair_count = pair_count; board_features.board_size = static_cast<std::uint8_t>(board_size);
+                const auto board_prefix = board_hash_prefix(street, board_features);
                 for (CanonicalComboId id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id) {
-                    const auto& hole = core::canonical_combos().cards(id);
-                    bool blocked = false;
-                    for (std::size_t index = 0U; index < board_size; ++index) blocked = blocked || board[index] == hole[0] || board[index] == hole[1];
-                    if (blocked) { append_u32(payload, MULTIWAY_INVALID_BUCKET); continue; }
-                    MultiwayBucketFeatures features;
-                    features.board_rank_mask = rank_mask; features.board_suit_mask = suit_mask;
-                    features.board_pair_count = pair_count; features.board_size = static_cast<std::uint8_t>(board_size);
-                    features.hole_high_rank = (std::max)(core::rank_of(hole[0]), core::rank_of(hole[1]));
-                    features.hole_low_rank = (std::min)(core::rank_of(hole[0]), core::rank_of(hole[1]));
-                    features.hole_suited = core::suit_of(hole[0]) == core::suit_of(hole[1]) ? 1U : 0U;
-                    for (std::size_t index = 0U; index < board_size; ++index) {
-                        const auto card = board[index];
-                        if (core::rank_of(card) == core::rank_of(hole[0]) || core::rank_of(card) == core::rank_of(hole[1])) ++features.hole_pairs_board;
-                        if (core::suit_of(card) == core::suit_of(hole[0])) ++features.hole_suit_matches_board;
-                        if (core::suit_of(card) == core::suit_of(hole[1])) ++features.hole_suit_matches_board;
-                    }
-                    append_u32(payload, assign_multiway_baseline_bucket(features, profile, street));
+                    const auto& combo = combo_metadata()[id];
+                    if ((dead_mask & ((1ULL << combo.cards[0]) | (1ULL << combo.cards[1]))) != 0U) { write_u32(output, MULTIWAY_INVALID_BUCKET); continue; }
+                    MultiwayBucketFeatures features = board_features;
+                    features.hole_high_rank = (std::max)(combo.ranks[0], combo.ranks[1]); features.hole_low_rank = (std::min)(combo.ranks[0], combo.ranks[1]);
+                    features.hole_suited = combo.suits[0] == combo.suits[1] ? 1U : 0U;
+                    features.hole_pairs_board = combo.ranks[0] == combo.ranks[1] ? rank_counts[combo.ranks[0]] : static_cast<std::uint8_t>(rank_counts[combo.ranks[0]] + rank_counts[combo.ranks[1]]);
+                    features.hole_suit_matches_board = static_cast<std::uint8_t>(suit_counts[combo.suits[0]] + suit_counts[combo.suits[1]]);
+                    auto hash = board_prefix; add_u64(hash, features.hole_high_rank); add_u64(hash, features.hole_low_rank); add_u64(hash, features.hole_suited); add_u64(hash, features.hole_pairs_board); add_u64(hash, features.hole_suit_matches_board);
+                    write_u32(output, static_cast<std::uint32_t>((hash ^ (profile.feature_version * 0x9e3779b97f4a7c15ULL)) % bucket_count));
                 }
+                if (static_cast<std::size_t>(output - payload.data()) > payload.size()) throw std::logic_error("bucket payload cursor overflow");
             });
         offset = street_end;
     }
+    payload.resize(static_cast<std::size_t>(output - payload.data()));
+}
+
+std::uint64_t estimate_multiway_bucket_generation_process_memory_bytes_impl(
+    std::uint32_t requested_threads, std::uint32_t detected_threads,
+    std::uint32_t chunk_size, std::uint32_t queue_capacity) {
+    if (chunk_size == 0U) throw std::invalid_argument("bucket generation chunk size is zero");
+    const auto threads = resolve_multiway_bucket_thread_count(requested_threads, detected_threads);
+    if (threads == 0U) throw std::invalid_argument("bucket generation thread count is zero");
+    std::uint32_t slots = queue_capacity;
+    if (slots == 0U) {
+        if (threads > (std::numeric_limits<std::uint32_t>::max)() / 2U) {
+            throw std::length_error("bucket generation queue size overflows");
+        }
+        slots = (std::max)(2U, threads * 2U);
+    } else {
+        slots = (std::max)(2U, slots);
+    }
+    constexpr std::uint64_t max_record_bytes = 2U + 5U + 4U + MULTIWAY_HOLE_COMBINATION_COUNT * 4U;
+    constexpr std::uint64_t fixed_bytes = 1U << 20U;
+    if (slots > ((std::numeric_limits<std::uint64_t>::max)() - fixed_bytes) / (chunk_size * max_record_bytes + 128U) ||
+        threads > ((std::numeric_limits<std::uint64_t>::max)() - fixed_bytes) / (1U << 20U)) {
+        throw std::length_error("bucket generation memory estimate overflows");
+    }
+    return fixed_bytes + static_cast<std::uint64_t>(slots) * (chunk_size * max_record_bytes + 128U) + static_cast<std::uint64_t>(threads) * (1U << 20U);
 }
 
 }  // namespace
@@ -115,6 +180,13 @@ void build_multiway_baseline_direct_serialized_chunk(
     const MultiwayModelIdentity& identity, const MultiwayBucketBaselineProfile& profile,
     std::uint64_t begin_index, std::uint64_t end_index, std::vector<std::uint8_t>& payload) {
     build_direct_serialized_chunk(identity, profile, begin_index, end_index, payload);
+}
+
+std::uint64_t estimate_multiway_bucket_generation_process_memory_bytes(
+    std::uint32_t requested_threads, std::uint32_t detected_threads,
+    std::uint32_t chunk_size, std::uint32_t queue_capacity) {
+    return estimate_multiway_bucket_generation_process_memory_bytes_impl(
+        requested_threads, detected_threads, chunk_size, queue_capacity);
 }
 
 std::uint32_t multiway_bucket_hardware_thread_count() noexcept {
@@ -378,6 +450,7 @@ void generate_multiway_bucket_serialized_chunks(
                 slot_index = free_slots.back(); free_slots.pop_back();
             }
             try {
+                const auto active_start = std::chrono::steady_clock::now();
                 auto& chunk = slots[slot_index];
                 chunk.begin = first; chunk.count = last - first; chunk.payload.clear();
                 if (options.direct_serialized_builder) {
@@ -388,6 +461,12 @@ void generate_multiway_bucket_serialized_chunks(
                     builder(first, last, tables);
                     if (tables.size() != static_cast<std::size_t>(last - first)) throw std::runtime_error("bucket chunk builder returned an invalid table count");
                     serialize_tables(tables, chunk.payload);
+                }
+                if (options.stats) {
+                    std::lock_guard lock(mutex);
+                    options.stats->worker_active_nanoseconds += static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::steady_clock::now() - active_start).count());
                 }
                 {
                     std::lock_guard lock(mutex);

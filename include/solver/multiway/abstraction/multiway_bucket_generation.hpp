@@ -18,7 +18,14 @@ struct MultiwayBucketGenerationStats {
     std::uint64_t ready_queue_high_watermark = 0U;
     std::uint64_t worker_wait_nanoseconds = 0U;
     std::uint64_t ordered_publish_wait_nanoseconds = 0U;
+    std::uint64_t worker_active_nanoseconds = 0U;
 };
+
+[[nodiscard]] std::uint64_t estimate_multiway_bucket_generation_process_memory_bytes(
+    std::uint32_t requested_threads,
+    std::uint32_t detected_threads,
+    std::uint32_t chunk_size,
+    std::uint32_t queue_capacity = 0U);
 
 using MultiwayBucketDirectSerializedBuilder = std::function<void(
     std::uint64_t begin_index,

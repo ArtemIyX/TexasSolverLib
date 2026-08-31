@@ -69,6 +69,21 @@ TEST_CASE(multiway_bucket_generation_resolves_thread_limits) {
     EXPECT_EQ(resolve_multiway_bucket_thread_count(0U, 32U), 0U);
 }
 
+TEST_CASE(multiway_bucket_generation_memory_estimate_accounts_for_slots_and_workers) {
+    const auto one_worker = estimate_multiway_bucket_generation_process_memory_bytes(1U, 16U, 256U);
+    const auto four_workers = estimate_multiway_bucket_generation_process_memory_bytes(4U, 16U, 256U);
+    const auto larger_queue = estimate_multiway_bucket_generation_process_memory_bytes(1U, 16U, 256U, 8U);
+    EXPECT_TRUE(one_worker > 0U);
+    EXPECT_TRUE(four_workers > one_worker);
+    EXPECT_TRUE(larger_queue > one_worker);
+    EXPECT_THROW(
+        estimate_multiway_bucket_generation_process_memory_bytes(1U, 16U, 0U),
+        std::invalid_argument);
+    EXPECT_THROW(
+        estimate_multiway_bucket_generation_process_memory_bytes(0U, 16U, 256U),
+        std::invalid_argument);
+}
+
 TEST_CASE(multiway_bucket_generation_reports_nonzero_physical_core_count) {
     EXPECT_TRUE(multiway_bucket_physical_core_count() > 0U);
     EXPECT_TRUE(multiway_bucket_physical_core_count() <= multiway_bucket_hardware_thread_count());
@@ -344,4 +359,17 @@ TEST_CASE(multiway_bucket_generation_reports_aggregate_scheduler_stats) {
     EXPECT_EQ(stats.chunks_built, 3U);
     EXPECT_EQ(stats.chunks_published, 3U);
     EXPECT_TRUE(stats.ready_queue_high_watermark <= 2U);
+}
+
+TEST_CASE(multiway_bucket_generation_reports_worker_active_time) {
+    MultiwayBucketGenerationStats stats;
+    generate_multiway_bucket_serialized_chunks(
+        0U, 2U, {1U, 1U, 2U, &stats,
+            [](std::uint64_t begin, std::uint64_t end, std::vector<std::uint8_t>& payload) {
+                build_multiway_baseline_direct_serialized_chunk(
+                    identity(), MultiwayBucketBaselineProfile::standard(), begin, end, payload);
+            }},
+        build_synthetic_chunk,
+        [](std::uint64_t, std::uint64_t, std::vector<std::uint8_t>&) {});
+    EXPECT_TRUE(stats.worker_active_nanoseconds > 0U);
 }
