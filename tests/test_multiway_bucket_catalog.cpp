@@ -28,6 +28,19 @@ TEST_CASE(multiway_bucket_catalog_adjacent_shards_are_complete) {
     EXPECT_THROW(catalog.for_each(10U, 0U, [&](const auto&) {}), std::out_of_range);
 }
 
+TEST_CASE(multiway_bucket_catalog_fixed_iterator_preserves_index_order) {
+    using texas::core::Street;
+    texas::solver::multiway::MultiwayBucketBoardCatalog catalog(Street::Turn);
+    std::vector<std::vector<std::uint8_t>> reference;
+    std::vector<std::array<std::uint8_t, 5U>> fixed;
+    catalog.for_each(123U, 133U, [&](const auto& request) { reference.push_back(request.canonical_board); });
+    catalog.for_each_fixed_board(123U, 133U, [&](const auto& board) { fixed.push_back(board); });
+    EXPECT_EQ(reference.size(), fixed.size());
+    for (std::size_t index = 0U; index < reference.size(); ++index) {
+        for (std::size_t card = 0U; card < 4U; ++card) EXPECT_EQ(reference[index][card], fixed[index][card]);
+    }
+}
+
 TEST_CASE(multiway_bucket_catalog_rejects_non_postflop_streets) {
     EXPECT_THROW(texas::solver::multiway::MultiwayBucketBoardCatalog(texas::core::Street::Preflop), std::invalid_argument);
 }

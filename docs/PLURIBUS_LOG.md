@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - incremental catalog advancement
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Changed the production fixed-board catalog iterator to unrank its first
+  board once and advance subsequent combinations lexicographically.
+- Added a range differential test covering exact index ordering.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_catalog.hpp`
+- `tests/test_multiway_bucket_catalog.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: build OK, all tests passed.
+
+### Limitations
+
+- Worker assignment vectors and object handoff allocations remain; serialized
+  worker buffers, telemetry, and performance qualification remain deferred.
+
 ## F1 bucket generation - allocation-free catalog handoff
 
 **Status:** Complete
