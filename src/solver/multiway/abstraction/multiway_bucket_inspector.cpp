@@ -30,7 +30,7 @@ struct Range {
 
 struct Reader {
     std::ifstream input;
-    std::array<std::uint8_t, kReaderBytes> buffer{};
+    std::vector<std::uint8_t> buffer;
     std::uint64_t begin = 0U;
     std::uint64_t end = 0U;
     std::uint64_t position = 0U;
@@ -39,7 +39,7 @@ struct Reader {
     std::uint64_t* hash = nullptr;
 
     Reader(const std::filesystem::path& path, std::uint64_t first, std::uint64_t last, std::uint64_t* hash_value = nullptr)
-        : begin(first), end(last), position(first), hash(hash_value) {
+        : buffer(kReaderBytes), begin(first), end(last), position(first), hash(hash_value) {
         input.open(path, std::ios::binary);
         if (!input) throw std::runtime_error("multiway bucket artifact cannot be opened");
         input.seekg(static_cast<std::streamoff>(first));
@@ -280,7 +280,7 @@ MultiwayBucketArtifactInspection legacy_compat(const std::filesystem::path& path
 MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
     const std::filesystem::path& path, const MultiwayModelIdentity& expected,
     MultiwayBucketInspectionProgressCallback callback, std::uint64_t interval) {
-    return legacy_compat(path, expected, std::move(callback), interval);
+    return legacy(path, expected, std::move(callback), interval);
 }
 
 MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
@@ -288,10 +288,10 @@ MultiwayBucketArtifactInspection inspect_multiway_bucket_artifact(
     const MultiwayBucketInspectionOptions& options,
     MultiwayBucketInspectionProgressCallback callback, std::uint64_t interval) {
     if (options.hash_mode == MultiwayBucketInspectionHashMode::Legacy || options.requested_threads == 1U)
-        return legacy_compat(path, expected, std::move(callback), interval);
+        return legacy(path, expected, std::move(callback), interval);
     const auto header = read_header(path, expected);
     if (!complete_layout(header, std::filesystem::file_size(path)))
-        return legacy_compat(path, expected, std::move(callback), interval);
+        return legacy(path, expected, std::move(callback), interval);
     if (interval == 0U && callback) throw std::invalid_argument("bucket inspection progress interval is zero");
     std::vector<Range> ranges;
     for (const auto street : {core::Street::Flop, core::Street::Turn, core::Street::River}) {

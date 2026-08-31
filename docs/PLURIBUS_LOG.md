@@ -25,11 +25,15 @@
 
 - `python scripts/full_build.py` passed: Debug build and all 107 CTest tests.
 - `git diff --check` passed.
+- Release production-artifact inspection reached the workflow evidence gate
+  successfully: 31.055 seconds legacy buffered inspection versus 12.077
+  seconds with four parallel workers on the local 14.3 GiB artifact.
 
 ### Limitations
 
-- Production-artifact throughput benchmarks were not run; the fixed leaf size
-  remains the plan's initial 4,096-table geometry.
+- The production command exits at the existing evidence-producer identity gate
+  because local provenance environment fields are unset; inspection itself
+  completed and reported counts before that gate.
 
 ## Multiway bucket inspection progress reporting
 
