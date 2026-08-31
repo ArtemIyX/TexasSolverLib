@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## F1 bucket generation - trusted fixed-board kernel
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a fixed-board generation path that precomputes board metadata once and
+  avoids per-hole public validation and board-vector scans.
+- Routed catalog chunk generation through the new path.
+- Added differential coverage against the checked builder.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_generation.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+
+### Validation
+
+- `powershell -ExecutionPolicy Bypass -File scripts/codex_powershell.ps1 python scripts/full_build.py` passed: build OK, all tests passed.
+
+### Limitations
+
+- Assignment vectors and table objects remain allocated at chunk boundaries;
+  full serialized worker chunks and performance qualification remain deferred.
+
 ## F1 bucket generation - bulk artifact publication
 
 **Status:** Complete

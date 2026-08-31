@@ -3,6 +3,7 @@
 #include "solver/multiway/abstraction/multiway_bucket_catalog.hpp"
 
 #include <algorithm>
+#include <array>
 #include <condition_variable>
 #include <exception>
 #include <map>
@@ -63,8 +64,10 @@ void build_multiway_baseline_bucket_chunk(
         const auto local_end = end_index < street_end ? end_index - global_offset : catalog.size();
         if (local_begin < local_end) {
             catalog.for_each(local_begin, local_end, [&](const MultiwayBucketBoardRequest& request) {
-                tables.push_back(build_multiway_baseline_bucket_table(
-                    identity, request.street, request.canonical_board, profile));
+                std::array<std::uint8_t, 5U> board{};
+                std::copy(request.canonical_board.begin(), request.canonical_board.end(), board.begin());
+                tables.push_back(build_multiway_baseline_bucket_table_fixed_board(
+                    identity, request.street, board, profile));
             });
         }
         global_offset = street_end;

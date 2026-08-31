@@ -62,6 +62,13 @@ struct MultiwayBucketBoardRequest {
     core::Street street,
     std::vector<std::uint8_t> canonical_board,
     const MultiwayBucketBaselineProfile& profile = MultiwayBucketBaselineProfile::standard());
+// Fixed-board variant for catalog generation. The caller supplies a validated
+// sorted board of the street's exact length.
+[[nodiscard]] MultiwayBucketTable build_multiway_baseline_bucket_table_fixed_board(
+    const MultiwayModelIdentity& identity,
+    core::Street street,
+    const std::array<std::uint8_t, 5U>& canonical_board,
+    const MultiwayBucketBaselineProfile& profile = MultiwayBucketBaselineProfile::standard());
 [[nodiscard]] MultiwayBucketRegistry build_multiway_baseline_bucket_registry(
     const MultiwayModelIdentity& identity,
     const std::vector<MultiwayBucketBoardRequest>& boards,

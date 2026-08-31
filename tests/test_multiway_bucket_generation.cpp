@@ -82,6 +82,19 @@ TEST_CASE(multiway_bucket_generation_chunk_maps_across_street_boundaries) {
     EXPECT_EQ(tables[3].street(), texas::core::Street::Turn);
 }
 
+TEST_CASE(multiway_bucket_generation_fixed_board_kernel_matches_checked_builder) {
+    const auto model = identity();
+    const std::array<std::uint8_t, 5U> board{0U, 5U, 10U, 0U, 0U};
+    const auto checked = build_multiway_baseline_bucket_table(
+        model, texas::core::Street::Flop, {0U, 5U, 10U});
+    const auto trusted = build_multiway_baseline_bucket_table_fixed_board(
+        model, texas::core::Street::Flop, board);
+    EXPECT_EQ(trusted.canonical_board(), checked.canonical_board());
+    EXPECT_EQ(trusted.bucket_count(), checked.bucket_count());
+    EXPECT_EQ(trusted.assignments(), checked.assignments());
+    EXPECT_EQ(trusted.table_identity(), checked.table_identity());
+}
+
 TEST_CASE(multiway_bucket_generation_publishes_out_of_order_workers_in_order) {
     std::vector<std::uint64_t> published;
     std::vector<std::uint64_t> progress;

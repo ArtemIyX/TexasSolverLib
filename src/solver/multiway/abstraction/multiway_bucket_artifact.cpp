@@ -210,6 +210,59 @@ MultiwayBucketTable build_multiway_baseline_bucket_table(
     return {identity, street, std::move(canonical_board), count, std::move(assignments)};
 }
 
+MultiwayBucketTable build_multiway_baseline_bucket_table_fixed_board(
+    const MultiwayModelIdentity& identity, Street street,
+    const std::array<std::uint8_t, 5U>& canonical_board,
+    const MultiwayBucketBaselineProfile& profile) {
+    identity.validate();
+    profile.validate();
+    const auto board_size = street == Street::Flop ? 3U : street == Street::Turn ? 4U : street == Street::River ? 5U : 0U;
+    if (board_size == 0U || !std::is_sorted(canonical_board.begin(), canonical_board.begin() + board_size) ||
+        !are_valid_compact_cards(canonical_board.data(), board_size)) {
+        throw std::invalid_argument("multiway bucket builder requires a canonical sorted board");
+    }
+    const auto count = profile.bucket_count(street);
+    std::vector<std::uint32_t> assignments(MULTIWAY_HOLE_COMBINATION_COUNT, MULTIWAY_INVALID_BUCKET);
+    MultiwayBucketFeatures features;
+    features.board_size = static_cast<std::uint8_t>(board_size);
+    std::array<std::uint8_t, 15U> rank_counts{};
+    for (std::size_t index = 0U; index < board_size; ++index) {
+        const auto card = canonical_board[index];
+        const auto rank = rank_of(card);
+        const auto suit = suit_of(card);
+        features.board_rank_mask |= static_cast<std::uint16_t>(1U << rank);
+        features.board_suit_mask |= static_cast<std::uint8_t>(1U << suit);
+        ++rank_counts[rank];
+    }
+    for (const auto count_at_rank : rank_counts) if (count_at_rank >= 2U) ++features.board_pair_count;
+    for (CanonicalComboId id = 0U; id < MULTIWAY_HOLE_COMBINATION_COUNT; ++id) {
+        const auto& hole = canonical_combos().cards(id);
+        bool blocked = false;
+        for (std::size_t board_index = 0U; board_index < board_size; ++board_index) {
+            blocked = blocked || canonical_board[board_index] == hole[0] || canonical_board[board_index] == hole[1];
+        }
+        if (blocked) continue;
+        features.hole_pairs_board = 0U;
+        features.hole_suit_matches_board = 0U;
+        const auto first_rank = rank_of(hole[0]);
+        const auto second_rank = rank_of(hole[1]);
+        const auto first_suit = suit_of(hole[0]);
+        const auto second_suit = suit_of(hole[1]);
+        for (std::size_t board_index = 0U; board_index < board_size; ++board_index) {
+            const auto card = canonical_board[board_index];
+            if (rank_of(card) == first_rank || rank_of(card) == second_rank) ++features.hole_pairs_board;
+            if (suit_of(card) == first_suit) ++features.hole_suit_matches_board;
+            if (suit_of(card) == second_suit) ++features.hole_suit_matches_board;
+        }
+        features.hole_high_rank = std::max(first_rank, second_rank);
+        features.hole_low_rank = std::min(first_rank, second_rank);
+        features.hole_suited = first_suit == second_suit ? 1U : 0U;
+        assignments[id] = assign_multiway_baseline_bucket(features, profile, street);
+    }
+    std::vector<std::uint8_t> board(canonical_board.begin(), canonical_board.begin() + board_size);
+    return {identity, street, std::move(board), count, std::move(assignments)};
+}
+
 MultiwayBucketRegistry build_multiway_baseline_bucket_registry(
     const MultiwayModelIdentity& identity,
     const std::vector<MultiwayBucketBoardRequest>& boards,
