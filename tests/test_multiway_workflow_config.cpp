@@ -6,7 +6,7 @@
 
 namespace {
 const char* valid_config =
-    "schema_version=1\nprofile_id=F1-DEV-12-v1\nplayers=6\ninitial_stack_chips=10000\n"
+    "schema_version=1\nprofile_kind=acceptance\nprofile_id=F1-DEV-12-v1\nplayers=6\ninitial_stack_chips=10000\n"
     "small_blind_chips=50\nbig_blind_chips=100\nante_chips=0\nrake=0\npreflop_classes=169\n"
     "flop_buckets=12\nturn_buckets=12\nriver_buckets=12\nstorage_backend=CompactInt32\n"
     "max_decision_depth=64\nmax_public_chance_depth=3\ndeterministic_seed=1\n"
@@ -28,6 +28,8 @@ TEST_CASE(multiway_workflow_config_rejects_unknown_and_duplicate_keys) {
 TEST_CASE(multiway_workflow_config_fingerprint_binds_semantic_fields) {
     const auto first = texas::solver::multiway::parse_multiway_workflow_config(valid_config);
     auto changed_text = std::string(valid_config);
+    changed_text.replace(changed_text.find("profile_kind=acceptance"),
+        std::strlen("profile_kind=acceptance"), "profile_kind=sizing");
     changed_text.replace(changed_text.find("50000000"), 8U, "40000000");
     const auto second = texas::solver::multiway::parse_multiway_workflow_config(changed_text);
     EXPECT_TRUE(first.fingerprint() != second.fingerprint());
@@ -46,4 +48,23 @@ TEST_CASE(multiway_workflow_config_requires_all_or_no_capacity_limits) {
     auto partial = std::string(valid_config);
     partial += "maximum_public_states=1000\n";
     EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(partial), std::invalid_argument);
+}
+
+TEST_CASE(multiway_workflow_config_separates_sizing_and_acceptance_profiles) {
+    using namespace texas::solver::multiway;
+    auto sizing_text = std::string(valid_config);
+    sizing_text.replace(
+        sizing_text.find("profile_kind=acceptance"),
+        std::strlen("profile_kind=acceptance"), "profile_kind=sizing");
+    sizing_text.replace(sizing_text.find("target_trajectories=50000000"),
+        std::strlen("target_trajectories=50000000"), "target_trajectories=100");
+    const auto sizing = parse_multiway_workflow_config(sizing_text);
+    EXPECT_TRUE(sizing.profile_kind == MultiwayWorkflowProfileKind::Sizing);
+    EXPECT_EQ(sizing.target_trajectories, 100U);
+
+    auto invalid_acceptance = std::string(valid_config);
+    invalid_acceptance.replace(
+        invalid_acceptance.find("target_trajectories=50000000"),
+        std::strlen("target_trajectories=50000000"), "target_trajectories=100");
+    EXPECT_THROW(parse_multiway_workflow_config(invalid_acceptance), std::invalid_argument);
 }
