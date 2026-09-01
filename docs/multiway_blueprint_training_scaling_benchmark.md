@@ -276,19 +276,17 @@ the shared synchronization line at maximum frequency.
 
 Location: `src/solver/multiway/engine/multiway_traversal.cpp:795-799`
 
-Workers finish near the same time and serialize on `pool_mutex_` only to increment
-`completed_workers_`. More workers increase contention exactly where the
-coordinator is waiting to start serial merge.
+This finding is resolved. Workers increment `completed_workers_` atomically and
+notify only the final waiter; completion does not reacquire `pool_mutex_`.
 
 ### S20. Dispatch wakes inactive configured workers
 
 Locations: `src/solver/multiway/engine/multiway_traversal.cpp:738-750`,
 `src/solver/multiway/engine/multiway_traversal.cpp:836-840`
 
-`notify_all()` wakes every configured thread and completion waits for
-`worker_count_`, not `active_batch_count_`. When a batch activates fewer workers,
-inactive threads still copy batch fields, lock completion state, and join the
-barrier. Small batches pay overhead proportional to configured workers.
+This finding is resolved. Each worker has a dedicated condition variable and the
+runner notifies only workers in `active_batch_count_`; completion also waits on
+that active count.
 
 ### S21. Private-deal sampling allocates per trajectory
 
