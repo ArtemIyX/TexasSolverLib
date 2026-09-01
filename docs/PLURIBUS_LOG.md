@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## Multiway blueprint multithreaded training activation and qualification
+
+**Status:** Complete
+**Completed:** 2026-09-01
+
+- Activated schema 2 training worker counts, CLI overrides, pre-allocation memory admission, deterministic worker telemetry, and true per-worker delta high-water accounting.
+- Qualified four workers on the checked-in benchmark fixture with a measured 2.20x median gain over one worker. Eight and sixteen workers were slower on this host.
+
+### Files
+
+- `docs/multiway_blueprint_multithreaded_training_done.md`
+- Existing implementation and focused test files are recorded in commit `40a6738`.
+
+### Validation
+
+- `python scripts/full_build.py`: PASS; Debug build and all registered tests passed.
+- Release scaling benchmark commands and results are recorded in `docs/multiway_blueprint_multithreaded_training_done.md`.
+
+### Limitations
+
+- Four workers are qualified only for the documented fixture and host. Production F1 performance and memory qualification still require the human execution run.
+
 ## Sixteen-worker blueprint training scaling audit plan
 
 **Status:** Complete
