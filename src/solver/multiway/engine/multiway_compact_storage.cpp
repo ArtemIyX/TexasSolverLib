@@ -113,14 +113,25 @@ std::vector<Probability> MultiwayCompactStorage::regret_matched_strategy(Multiwa
     const auto* row = metadata(infoset);
     if (row == nullptr || bucket >= row->shape.bucket_count) throw std::out_of_range("compact storage lookup");
     std::vector<Probability> result(row->shape.action_count);
+    regret_matched_strategy_into(infoset, bucket, result.data(), result.size());
+    return result;
+}
+
+void MultiwayCompactStorage::regret_matched_strategy_into(
+    MultiwayInfosetId infoset, std::uint32_t bucket,
+    Probability* output, std::size_t output_size) const {
+    const auto* row = metadata(infoset);
+    if (row == nullptr || bucket >= row->shape.bucket_count) throw std::out_of_range("compact storage lookup");
+    if (output == nullptr || output_size != row->shape.action_count) {
+        throw std::invalid_argument("compact policy output size mismatch");
+    }
     Probability total = 0.0;
     for (std::uint8_t action = 0; action < row->shape.action_count; ++action) {
-        result[action] = std::max(0.0, static_cast<double>(regrets_[cell(*row, bucket, action)]) / 1024.0);
-        total += result[action];
+        output[action] = std::max(0.0, static_cast<double>(regrets_[cell(*row, bucket, action)]) / 1024.0);
+        total += output[action];
     }
-    if (total == 0.0) std::fill(result.begin(), result.end(), 1.0 / result.size());
-    else for (auto& value : result) value /= total;
-    return result;
+    if (total == 0.0) std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
+    else for (std::size_t action = 0U; action < output_size; ++action) output[action] /= total;
 }
 
 std::vector<Probability> MultiwayCompactStorage::average_strategy(MultiwayInfosetId infoset, std::uint32_t bucket) const {

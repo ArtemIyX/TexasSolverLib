@@ -1,6 +1,8 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "test_harness.hpp"
 
+#include <array>
+
 TEST_CASE(multiway_compact_storage_saturates_regrets_and_normalizes_policies) {
     texas::solver::multiway::MultiwayCompactStorage storage(2U, 6U);
     const texas::solver::multiway::MultiwayInfosetId infoset{{7U}, 0};
@@ -37,6 +39,23 @@ TEST_CASE(multiway_compact_storage_matches_reference_policy_shape) {
     EXPECT_NEAR(current[1], 0.0, 1e-12);
     EXPECT_NEAR(average[0], 0.75, 1e-6);
     EXPECT_NEAR(average[1], 0.25, 1e-6);
+}
+
+TEST_CASE(multiway_compact_storage_allocation_free_policy_matches_vector_api) {
+    const texas::solver::multiway::MultiwayInfosetId infoset{{10U}, 1};
+    texas::solver::multiway::MultiwayCompactStorage compact(1U, 3U);
+    compact.admit_row({infoset, 1U, 3U});
+    compact.apply_delta(infoset, 0U, 0U, 3.0, 0.0);
+    compact.apply_delta(infoset, 0U, 1U, 1.0, 0.0);
+    compact.apply_delta(infoset, 0U, 2U, -2.0, 0.0);
+    const auto expected = compact.regret_matched_strategy(infoset, 0U);
+    std::array<texas::Probability, 3> actual{};
+    compact.regret_matched_strategy_into(infoset, 0U, actual.data(), actual.size());
+    for (std::size_t action = 0U; action < actual.size(); ++action) {
+        EXPECT_NEAR(actual[action], expected[action], 0.0);
+    }
+    EXPECT_THROW(compact.regret_matched_strategy_into(infoset, 0U, actual.data(), 2U),
+        std::invalid_argument);
 }
 
 TEST_CASE(multiway_compact_storage_pruning_keeps_configured_floor) {

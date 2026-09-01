@@ -13,6 +13,7 @@
 #include <exception>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace texas::solver::multiway {
@@ -748,9 +749,7 @@ void MultiwaySolverCoordinator::regret_matched_strategy_into(
     std::size_t output_size) const {
     std::lock_guard<std::mutex> lock(traversal_mutex_);
     if (compact_storage_ != nullptr) {
-        const auto strategy = compact_storage_->regret_matched_strategy(infoset, bucket);
-        if (strategy.size() != output_size) throw std::invalid_argument("compact policy size mismatch");
-        std::copy(strategy.begin(), strategy.end(), output);
+        compact_storage_->regret_matched_strategy_into(infoset, bucket, output, output_size);
         return;
     }
     storage_.regret_matched_strategy_into(infoset, bucket, output, output_size);
@@ -1010,23 +1009,88 @@ MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
     result.street_visits = diagnostics_.street_visits;
     if (compact_storage_ != nullptr) {
         compact_storage_->export_checkpoint(result.storage);
-        return result;
+    } else {
+        result.storage.shapes.reserve(storage_.metadata_.size());
+        result.storage.regrets.reserve(storage_.regret_.size());
+        result.storage.strategy_sums.reserve(storage_.strategy_sum_.size());
+        for (const auto& row : storage_.metadata_) {
+            result.storage.shapes.push_back(row.shape);
+            const auto values = row.value_count();
+            result.storage.regrets.insert(
+                result.storage.regrets.end(),
+                storage_.regret_.begin() + static_cast<std::ptrdiff_t>(row.regret_offset),
+                storage_.regret_.begin() + static_cast<std::ptrdiff_t>(row.regret_offset + values));
+            result.storage.strategy_sums.insert(
+                result.storage.strategy_sums.end(),
+                storage_.strategy_sum_.begin() + static_cast<std::ptrdiff_t>(row.strategy_sum_offset),
+                storage_.strategy_sum_.begin() + static_cast<std::ptrdiff_t>(row.strategy_sum_offset + values));
+        }
     }
-    result.storage.shapes.reserve(storage_.metadata_.size());
-    result.storage.regrets.reserve(storage_.regret_.size());
-    result.storage.strategy_sums.reserve(storage_.strategy_sum_.size());
-    for (const auto& row : storage_.metadata_) {
-        result.storage.shapes.push_back(row.shape);
-        const auto values = row.value_count();
-        result.storage.regrets.insert(
-            result.storage.regrets.end(),
-            storage_.regret_.begin() + static_cast<std::ptrdiff_t>(row.regret_offset),
-            storage_.regret_.begin() + static_cast<std::ptrdiff_t>(row.regret_offset + values));
-        result.storage.strategy_sums.insert(
-            result.storage.strategy_sums.end(),
-            storage_.strategy_sum_.begin() + static_cast<std::ptrdiff_t>(row.strategy_sum_offset),
-            storage_.strategy_sum_.begin() + static_cast<std::ptrdiff_t>(row.strategy_sum_offset + values));
+
+    std::unordered_map<std::uint64_t, std::size_t> state_indices;
+    state_indices.reserve(result.public_states.size());
+    for (std::size_t index = 0U; index < result.public_states.size(); ++index) {
+        state_indices.emplace(result.public_states[index].id.value, index);
     }
+    const auto unknown_depth = std::numeric_limits<std::uint32_t>::max();
+    std::vector<std::uint32_t> state_depths(result.public_states.size(), unknown_depth);
+    std::vector<std::size_t> ancestry;
+    ancestry.reserve(128U);
+    for (std::size_t index = 0U; index < result.public_states.size(); ++index) {
+        if (state_depths[index] != unknown_depth) continue;
+        ancestry.clear();
+        auto current = index;
+        while (state_depths[current] == unknown_depth &&
+               result.public_states[current].parent_id.value != 0U) {
+            ancestry.push_back(current);
+            current = state_indices.at(result.public_states[current].parent_id.value);
+        }
+        if (state_depths[current] == unknown_depth) state_depths[current] = 0U;
+        auto depth = state_depths[current];
+        for (auto reverse = ancestry.rbegin(); reverse != ancestry.rend(); ++reverse) {
+            state_depths[*reverse] = ++depth;
+        }
+    }
+    std::vector<std::size_t> state_order(result.public_states.size(), 0U);
+    for (std::size_t index = 0U; index < state_order.size(); ++index) state_order[index] = index;
+    std::sort(state_order.begin(), state_order.end(), [&result, &state_depths](
+        std::size_t left, std::size_t right) {
+        return state_depths[left] != state_depths[right]
+            ? state_depths[left] < state_depths[right]
+            : result.public_states[left].id.value < result.public_states[right].id.value;
+    });
+    std::vector<MultiwayPublicStateDescriptor> canonical_states;
+    canonical_states.reserve(result.public_states.size());
+    for (const auto index : state_order) canonical_states.push_back(std::move(result.public_states[index]));
+    result.public_states = std::move(canonical_states);
+    std::vector<std::size_t> offsets(result.storage.shapes.size() + 1U, 0U);
+    std::vector<std::size_t> order(result.storage.shapes.size(), 0U);
+    for (std::size_t index = 0U; index < result.storage.shapes.size(); ++index) {
+        offsets[index + 1U] = offsets[index] +
+            static_cast<std::size_t>(result.storage.shapes[index].bucket_count) *
+            result.storage.shapes[index].action_count;
+        order[index] = index;
+    }
+    std::sort(order.begin(), order.end(), [&result](std::size_t left, std::size_t right) {
+        const auto& lhs = result.storage.shapes[left].infoset;
+        const auto& rhs = result.storage.shapes[right].infoset;
+        return lhs.public_state.value != rhs.public_state.value
+            ? lhs.public_state.value < rhs.public_state.value : lhs.seat < rhs.seat;
+    });
+    MultiwaySparseStorageCheckpoint canonical;
+    canonical.shapes.reserve(order.size());
+    canonical.regrets.reserve(result.storage.regrets.size());
+    canonical.strategy_sums.reserve(result.storage.strategy_sums.size());
+    for (const auto index : order) {
+        canonical.shapes.push_back(result.storage.shapes[index]);
+        canonical.regrets.insert(canonical.regrets.end(),
+            result.storage.regrets.begin() + static_cast<std::ptrdiff_t>(offsets[index]),
+            result.storage.regrets.begin() + static_cast<std::ptrdiff_t>(offsets[index + 1U]));
+        canonical.strategy_sums.insert(canonical.strategy_sums.end(),
+            result.storage.strategy_sums.begin() + static_cast<std::ptrdiff_t>(offsets[index]),
+            result.storage.strategy_sums.begin() + static_cast<std::ptrdiff_t>(offsets[index + 1U]));
+    }
+    result.storage = std::move(canonical);
     return result;
 }
 

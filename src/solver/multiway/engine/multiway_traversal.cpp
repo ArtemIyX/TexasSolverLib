@@ -751,6 +751,7 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
             if (worker_index < batch_count) {
                 const auto& batch = worker_batches_[worker_index];
                 auto& scratch = worker_scratch_[worker_index];
+                const auto active_start = std::chrono::steady_clock::now();
                 for (auto local_id = batch.trajectories.begin;
                      local_id < batch.trajectories.end;
                      ++local_id) {
@@ -775,8 +776,15 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                         ++scratch.discarded;
                     }
                 }
+                scratch.active_nanoseconds = static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - active_start).count());
+                const auto sort_start = std::chrono::steady_clock::now();
                 scratch.stream.sort_fixed_order();
                 scratch.continuation_stream.sort_fixed_order();
+                scratch.sort_nanoseconds = static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::steady_clock::now() - sort_start).count());
             }
         } catch (...) {
             cancelled_.store(true, std::memory_order_release);
@@ -825,6 +833,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         worker_error_ = nullptr;
         cancelled_.store(false, std::memory_order_release);
     }
+    const auto coordinator_wait_start = std::chrono::steady_clock::now();
     work_cv_.notify_all();
     {
         std::unique_lock<std::mutex> lock(pool_mutex_);
@@ -834,6 +843,9 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     }
 
     MultiwayRootBatchResult result;
+    result.coordinator_wait_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - coordinator_wait_start).count());
     result.run.worker_count = worker_count_;
     result.run.base_seed = seed;
     result.run.first_trajectory_id = first_trajectory_id;
@@ -847,6 +859,14 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         result.trajectories_accepted += scratch.accepted;
         result.trajectories_discarded += scratch.discarded;
         result.delta_entries_merged += scratch.stream.size();
+        result.maximum_worker_delta_entries = std::max(
+            result.maximum_worker_delta_entries,
+            static_cast<std::uint64_t>(std::max(
+                scratch.stream.size(), scratch.continuation_stream.size())));
+        result.worker_active_nanoseconds += scratch.active_nanoseconds;
+        result.maximum_worker_active_nanoseconds = std::max(
+            result.maximum_worker_active_nanoseconds, scratch.active_nanoseconds);
+        result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
         result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
         result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
         batch_profile.merge(scratch.profile.snapshot());
@@ -858,6 +878,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         result.profile = batch_profile.snapshot();
         return result;
     }
+    const auto merge_start = std::chrono::steady_clock::now();
     {
         MultiwaySearchProfileScope profile_scope(
             &batch_profile, MultiwaySearchProfileStage::DeltaMerge);
@@ -866,6 +887,9 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
             selector->merge_worker_streams(continuation_stream_views_);
         }
     }
+    result.merge_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - merge_start).count());
     result.run.merged_stream_fingerprint =
         coordinator_->diagnostics().last_merged_stream_fingerprint;
     result.profile = batch_profile.snapshot();

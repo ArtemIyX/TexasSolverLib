@@ -498,6 +498,12 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
         )
         target_link_libraries(texas_solver_hunl_backend_compare PRIVATE texas)
         texassolver_configure_example_target(texas_solver_hunl_backend_compare)
+
+        add_executable(texas_solver_multiway_training_scaling
+            examples/benchmarks/multiway_training_scaling_main.cpp
+        )
+        target_link_libraries(texas_solver_multiway_training_scaling PRIVATE texas)
+        texassolver_configure_example_target(texas_solver_multiway_training_scaling)
     endif()
 
 endif()

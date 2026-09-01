@@ -68,3 +68,48 @@ TEST_CASE(multiway_workflow_config_separates_sizing_and_acceptance_profiles) {
         std::strlen("target_trajectories=50000000"), "target_trajectories=100");
     EXPECT_THROW(parse_multiway_workflow_config(invalid_acceptance), std::invalid_argument);
 }
+
+TEST_CASE(multiway_workflow_config_schema_two_supports_sixteen_training_workers) {
+    using namespace texas::solver::multiway;
+    auto text = std::string(valid_config);
+    text.replace(text.find("schema_version=1"), std::strlen("schema_version=1"), "schema_version=2");
+    text.replace(text.find("reference_worker_count=1"),
+        std::strlen("reference_worker_count=1"), "training_worker_count=16");
+    const auto config = parse_multiway_workflow_config(text);
+    EXPECT_EQ(config.training_worker_count, 16U);
+
+    auto zero = text;
+    zero.replace(zero.find("training_worker_count=16"),
+        std::strlen("training_worker_count=16"), "training_worker_count=0");
+    EXPECT_THROW(parse_multiway_workflow_config(zero), std::invalid_argument);
+
+    auto seventeen = text;
+    seventeen.replace(seventeen.find("training_worker_count=16"),
+        std::strlen("training_worker_count=16"), "training_worker_count=17");
+    EXPECT_THROW(parse_multiway_workflow_config(seventeen), std::invalid_argument);
+
+    auto overflowing = text;
+    overflowing.replace(overflowing.find("training_worker_count=16"),
+        std::strlen("training_worker_count=16"), "training_worker_count=4294967297");
+    EXPECT_THROW(parse_multiway_workflow_config(overflowing), std::invalid_argument);
+}
+
+TEST_CASE(multiway_workflow_config_worker_key_is_schema_specific) {
+    auto schema_two_with_legacy_key = std::string(valid_config);
+    schema_two_with_legacy_key.replace(schema_two_with_legacy_key.find("schema_version=1"),
+        std::strlen("schema_version=1"), "schema_version=2");
+    EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(schema_two_with_legacy_key),
+        std::invalid_argument);
+}
+
+TEST_CASE(multiway_training_worker_override_takes_precedence_and_caps_to_batch) {
+    using namespace texas::solver::multiway;
+    const auto configured = resolve_multiway_training_workers(4U, 0U, 100U);
+    EXPECT_EQ(configured.requested, 4U);
+    EXPECT_EQ(configured.effective, 4U);
+    const auto overridden = resolve_multiway_training_workers(4U, 16U, 8U);
+    EXPECT_EQ(overridden.requested, 16U);
+    EXPECT_EQ(overridden.effective, 8U);
+    EXPECT_THROW(resolve_multiway_training_workers(4U, 17U, 100U), std::invalid_argument);
+    EXPECT_THROW(resolve_multiway_training_workers(4U, 0U, 0U), std::invalid_argument);
+}

@@ -5,6 +5,7 @@
 #include "games/multiway_state.hpp"
 #include "core/fingerprint.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <chrono>
@@ -12,6 +13,19 @@
 #include <utility>
 
 namespace texas::solver::multiway {
+namespace {
+
+void sort_blueprint_rows(std::vector<MultiwayBlueprintRow>& rows) {
+    std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+        if (left.infoset.public_state.value != right.infoset.public_state.value) {
+            return left.infoset.public_state.value < right.infoset.public_state.value;
+        }
+        if (left.infoset.seat != right.infoset.seat) return left.infoset.seat < right.infoset.seat;
+        return left.bucket < right.bucket;
+    });
+}
+
+}  // namespace
 
 void MultiwayBlueprintTrainingCheckpoint::validate() const {
     identity.validate();
@@ -205,7 +219,8 @@ void MultiwayBlueprintTrainingConfig::validate() const {
         blueprint.turn_bucket_count != bucket_profile.turn_bucket_count ||
         blueprint.river_bucket_count != bucket_profile.river_bucket_count ||
         max_decision_depth == 0U || max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH ||
-        max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH) {
+        max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH ||
+        (requested_worker_count != 0U && requested_worker_count < limits.worker_count)) {
         throw std::invalid_argument("multiway training configuration has inconsistent artifact or traversal inputs");
     }
 }
@@ -242,7 +257,9 @@ MultiwayBlueprintTrainer::MultiwayBlueprintTrainer(
     MultiwayRootBatchRunner& batch_runner,
     MultiwaySolverCoordinator& coordinator,
     MultiwayBlueprintIterationSchedule schedule,
-    std::uint64_t deterministic_seed)
+    std::uint64_t deterministic_seed,
+    std::uint32_t requested_worker_count,
+    std::uint64_t memory_preflight_estimate_bytes)
     : identity_(identity),
       batch_runner_(&batch_runner),
       coordinator_(&coordinator),
@@ -259,6 +276,11 @@ MultiwayBlueprintTrainer::MultiwayBlueprintTrainer(
     status_.configured_max_sparse_rows = coordinator_->limits().max_sparse_rows;
     status_.configured_max_sparse_values = coordinator_->limits().max_sparse_values;
     status_.configured_worker_delta_capacity = coordinator_->limits().max_worker_delta_entries;
+    status_.requested_worker_count = requested_worker_count == 0U
+        ? coordinator_->limits().worker_count : requested_worker_count;
+    status_.effective_worker_count = coordinator_->limits().worker_count;
+    status_.trajectories_per_batch = coordinator_->limits().trajectories_per_batch;
+    status_.memory_preflight_estimate_bytes = memory_preflight_estimate_bytes;
 }
 
 void MultiwayBlueprintTrainer::run_batches(
@@ -280,11 +302,14 @@ void MultiwayBlueprintTrainer::run_batches(
             status_.late_window_active = true;
         }
         batch_runner_->set_batch_number(one_based_batch);
-        (void)batch_runner_->run(
+        const auto batch_result = batch_runner_->run(
             status_.trajectories,
             trajectories_per_batch,
             seed + status_.batches,
             schedule_.strategy_weight(one_based_batch));
+        if (!batch_result.clean) {
+            throw std::runtime_error("multiway blueprint training batch did not complete cleanly");
+        }
         status_.trajectories += trajectories_per_batch;
         ++status_.batches;
         if (schedule_.discount_regrets && due(status_.batches, schedule_.discount_interval_batches)) {
@@ -323,7 +348,17 @@ void MultiwayBlueprintTrainer::run_batches(
             static_cast<std::uint64_t>(coordinator_->compact_storage() != nullptr
                 ? coordinator_->compact_storage()->value_count() : coordinator_->storage().value_count()));
         status_.peak_worker_delta_entries = std::max(status_.peak_worker_delta_entries,
-            diagnostics.worker_delta_entries_merged);
+            batch_result.maximum_worker_delta_entries);
+        status_.cumulative_worker_delta_entries = diagnostics.worker_delta_entries_merged;
+        status_.worker_active_nanoseconds += batch_result.worker_active_nanoseconds;
+        status_.coordinator_wait_nanoseconds += batch_result.coordinator_wait_nanoseconds;
+        status_.delta_sort_nanoseconds += batch_result.delta_sort_nanoseconds;
+        status_.merge_nanoseconds += batch_result.merge_nanoseconds;
+        status_.minimum_worker_trajectories = status_.batches == 1U
+            ? batch_result.minimum_worker_trajectories
+            : std::min(status_.minimum_worker_trajectories, batch_result.minimum_worker_trajectories);
+        status_.maximum_worker_trajectories = std::max(
+            status_.maximum_worker_trajectories, batch_result.maximum_worker_trajectories);
         status_.peak_compact_storage_bytes = std::max(status_.peak_compact_storage_bytes,
             static_cast<std::uint64_t>(coordinator_->compact_storage() != nullptr
                 ? coordinator_->compact_storage()->memory_bytes() : 0U));
@@ -397,6 +432,7 @@ MultiwayFullBlueprintArtifact MultiwayBlueprintTrainer::export_full_policy() con
             }
             offset += static_cast<std::size_t>(shape.action_count) * shape.bucket_count;
         }
+        sort_blueprint_rows(artifact.rows);
         artifact.payload_hash = MultiwayFullBlueprintArtifacts::payload_hash(artifact);
         artifact.validate();
         return artifact;
@@ -424,6 +460,7 @@ MultiwayFullBlueprintArtifact MultiwayBlueprintTrainer::export_full_policy() con
             artifact.rows.push_back(std::move(row));
         }
     }
+    sort_blueprint_rows(artifact.rows);
     artifact.payload_hash = MultiwayFullBlueprintArtifacts::payload_hash(artifact);
     artifact.validate();
     return artifact;
@@ -559,7 +596,8 @@ MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
         std::move(traversal), *coordinator_, config_.limits.worker_count,
         config_.limits.max_worker_delta_entries);
     trainer_ = std::make_unique<MultiwayBlueprintTrainer>(
-        identity, *batch_runner_, *coordinator_, config_.schedule, config_.deterministic_seed);
+        identity, *batch_runner_, *coordinator_, config_.schedule, config_.deterministic_seed,
+        config_.requested_worker_count, config_.memory_preflight_estimate_bytes);
 }
 
 void MultiwayBlueprintTrainingSession::run_batches(std::uint64_t batch_count) {

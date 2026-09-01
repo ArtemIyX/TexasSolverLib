@@ -18,6 +18,10 @@ void MultiwayTrainingReport::validate() const {
         throw std::invalid_argument("available process RSS must be non-zero");
     }
     if (peak_process_rss_bytes < current_process_rss_bytes ||
+        requested_worker_count > 16U || effective_worker_count > requested_worker_count ||
+        ((requested_worker_count != 0U || effective_worker_count != 0U) &&
+         (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) ||
+        minimum_worker_trajectories > maximum_worker_trajectories ||
         !std::isfinite(trajectories_per_second()) ||
         static_cast<unsigned>(capacity_exhaustion_stage) >
             static_cast<unsigned>(MultiwayTrainingCapacityStage::WorkerDeltas)) {
@@ -63,6 +67,17 @@ MultiwayTrainingReport make_multiway_training_report(
     report.configured_max_sparse_rows = status.configured_max_sparse_rows;
     report.configured_max_sparse_values = status.configured_max_sparse_values;
     report.configured_worker_delta_capacity = status.configured_worker_delta_capacity;
+    report.cumulative_worker_delta_entries = status.cumulative_worker_delta_entries;
+    report.worker_active_nanoseconds = status.worker_active_nanoseconds;
+    report.coordinator_wait_nanoseconds = status.coordinator_wait_nanoseconds;
+    report.delta_sort_nanoseconds = status.delta_sort_nanoseconds;
+    report.merge_nanoseconds = status.merge_nanoseconds;
+    report.minimum_worker_trajectories = status.minimum_worker_trajectories;
+    report.maximum_worker_trajectories = status.maximum_worker_trajectories;
+    report.requested_worker_count = status.requested_worker_count;
+    report.effective_worker_count = status.effective_worker_count;
+    report.trajectories_per_batch = status.trajectories_per_batch;
+    report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
     report.capacity_exhaustion_stage = status.capacity_exhaustion_stage;
     report.admitted_rows_per_batch = status.admitted_rows_per_batch;
     report.current_process_rss_bytes = status.current_process_rss_bytes;
@@ -112,6 +127,17 @@ void save_multiway_training_report_atomic(const std::filesystem::path& path,
            << ",\n  \"configured_max_sparse_rows\": " << report.configured_max_sparse_rows
            << ",\n  \"configured_max_sparse_values\": " << report.configured_max_sparse_values
            << ",\n  \"configured_worker_delta_capacity\": " << report.configured_worker_delta_capacity
+           << ",\n  \"cumulative_worker_delta_entries\": " << report.cumulative_worker_delta_entries
+           << ",\n  \"worker_active_nanoseconds\": " << report.worker_active_nanoseconds
+           << ",\n  \"coordinator_wait_nanoseconds\": " << report.coordinator_wait_nanoseconds
+           << ",\n  \"delta_sort_nanoseconds\": " << report.delta_sort_nanoseconds
+           << ",\n  \"merge_nanoseconds\": " << report.merge_nanoseconds
+           << ",\n  \"minimum_worker_trajectories\": " << report.minimum_worker_trajectories
+           << ",\n  \"maximum_worker_trajectories\": " << report.maximum_worker_trajectories
+           << ",\n  \"requested_worker_count\": " << report.requested_worker_count
+           << ",\n  \"effective_worker_count\": " << report.effective_worker_count
+           << ",\n  \"trajectories_per_batch\": " << report.trajectories_per_batch
+           << ",\n  \"memory_preflight_estimate_bytes\": " << report.memory_preflight_estimate_bytes
            << ",\n  \"checkpoint_bytes\": " << report.checkpoint_bytes
            << ",\n  \"checkpoint_write_nanoseconds\": " << report.checkpoint_write_nanoseconds
            << ",\n  \"blueprint_bytes\": " << report.blueprint_bytes

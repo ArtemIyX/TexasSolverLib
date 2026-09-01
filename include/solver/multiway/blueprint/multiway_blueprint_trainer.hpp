@@ -84,10 +84,21 @@ struct MultiwayBlueprintTrainingStatus {
     std::uint64_t peak_sparse_rows = 0;
     std::uint64_t peak_sparse_values = 0;
     std::uint64_t peak_worker_delta_entries = 0;
+    std::uint64_t cumulative_worker_delta_entries = 0;
     std::uint64_t peak_compact_storage_bytes = 0;
     std::uint64_t current_process_rss_bytes = 0;
     std::uint64_t peak_process_rss_bytes = 0;
     std::uint64_t elapsed_wall_nanoseconds = 0;
+    std::uint64_t worker_active_nanoseconds = 0;
+    std::uint64_t coordinator_wait_nanoseconds = 0;
+    std::uint64_t delta_sort_nanoseconds = 0;
+    std::uint64_t merge_nanoseconds = 0;
+    std::uint64_t minimum_worker_trajectories = 0;
+    std::uint64_t maximum_worker_trajectories = 0;
+    std::uint32_t requested_worker_count = 0;
+    std::uint32_t effective_worker_count = 0;
+    std::uint64_t trajectories_per_batch = 0;
+    std::uint64_t memory_preflight_estimate_bytes = 0;
     bool process_rss_available = false;
     std::vector<std::uint64_t> admitted_rows_per_batch;
     MultiwayTrainingCapacityStage capacity_exhaustion_stage =
@@ -136,6 +147,9 @@ struct MultiwayBlueprintTrainingConfig {
     // and constrained DEV profiles may explicitly select shallower limits.
     std::uint32_t max_decision_depth = MULTIWAY_MAX_DECISION_DEPTH;
     std::uint32_t max_public_chance_depth = MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH;
+    // Diagnostic execution metadata. Zero uses the effective runtime value.
+    std::uint32_t requested_worker_count = 0U;
+    std::uint64_t memory_preflight_estimate_bytes = 0U;
 
     void validate() const;
     [[nodiscard]] MultiwayModelIdentity identity() const;
@@ -150,7 +164,9 @@ public:
         MultiwayRootBatchRunner& batch_runner,
         MultiwaySolverCoordinator& coordinator,
         MultiwayBlueprintIterationSchedule schedule = {},
-        std::uint64_t deterministic_seed = 1);
+        std::uint64_t deterministic_seed = 1,
+        std::uint32_t requested_worker_count = 0U,
+        std::uint64_t memory_preflight_estimate_bytes = 0U);
 
     void run_batches(
         std::uint64_t batch_count,

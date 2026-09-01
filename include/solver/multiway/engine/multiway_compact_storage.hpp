@@ -28,6 +28,9 @@ public:
         double threshold = 0.0, double regret_floor = 0.0) noexcept;
     [[nodiscard]] std::vector<Probability> regret_matched_strategy(
         MultiwayInfosetId infoset, std::uint32_t bucket) const;
+    void regret_matched_strategy_into(
+        MultiwayInfosetId infoset, std::uint32_t bucket,
+        Probability* output, std::size_t output_size) const;
     [[nodiscard]] std::vector<Probability> average_strategy(
         MultiwayInfosetId infoset, std::uint32_t bucket) const;
     [[nodiscard]] bool action_below_regret(

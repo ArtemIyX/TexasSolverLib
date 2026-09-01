@@ -14,6 +14,7 @@
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 #include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/canonical_combo.hpp"
 
 #include <filesystem>
@@ -74,6 +75,7 @@ void print_help(std::string_view name, Workflow workflow) {
                   << "  --report <path>        JSON training report\n"
                   << "  --checkpoint-dir <dir> Output directory for incomplete runs\n"
                   << "  --resume <path>        Checkpoint to resume\n";
+        std::cout << "  --threads <1..16>      Training worker override\n";
     } else if (workflow == Workflow::Buckets) {
         std::cout << "  --output <path>        Atomically published bucket artifact\n"
                   << "  --checkpoint-dir <dir> Resume/checkpoint directory\n"
@@ -462,7 +464,8 @@ int run_train(const std::filesystem::path& config_path, const std::filesystem::p
               const std::filesystem::path& output_path, std::uint64_t batches,
               const std::filesystem::path& report_path,
               const std::filesystem::path& checkpoint_dir,
-              const std::filesystem::path& resume_path) {
+              const std::filesystem::path& resume_path,
+              std::uint32_t worker_override) {
     using namespace texas;
     using namespace texas::solver::multiway;
     if (batches == 0U || input_path.empty() || output_path.empty()) throw std::invalid_argument("train requires --input, --output, and --batches");
@@ -494,7 +497,10 @@ int run_train(const std::filesystem::path& config_path, const std::filesystem::p
     config.max_public_chance_depth = workflow.max_public_chance_depth;
     config.deterministic_seed = workflow.deterministic_seed;
     config.limits.seed = workflow.deterministic_seed;
-    config.limits.worker_count = workflow.reference_worker_count;
+    const auto workers = resolve_multiway_training_workers(
+        workflow.training_worker_count, worker_override, workflow.trajectories_per_batch);
+    config.requested_worker_count = workers.requested;
+    config.limits.worker_count = workers.effective;
     config.limits.trajectories_per_batch = static_cast<std::uint32_t>(workflow.trajectories_per_batch);
     config.limits.max_public_states = static_cast<std::size_t>(workflow.maximum_public_states);
     config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
@@ -504,6 +510,32 @@ int run_train(const std::filesystem::path& config_path, const std::filesystem::p
     config.limits.storage_backend = workflow.storage_backend == "CompactInt32"
         ? MultiwaySolverLimits::StorageBackend::CompactInt32
         : MultiwaySolverLimits::StorageBackend::Float64Reference;
+    if (workflow.process_memory_limit_bytes < 3U) {
+        throw std::invalid_argument("training process memory limit is too small");
+    }
+    const auto operating_bytes = workflow.process_memory_limit_bytes - 1U;
+    const auto warning_bytes = std::max<std::uint64_t>(
+        1U, operating_bytes - operating_bytes / 5U);
+    MultiwayMemoryInputs memory_inputs;
+    memory_inputs.range_row_count = workflow.model.player_count;
+    memory_inputs.range_entry_count = static_cast<std::uint64_t>(workflow.model.player_count) *
+        core::CANONICAL_HOLE_COMBINATION_COUNT;
+    memory_inputs.export_action_capacity = workflow.maximum_sparse_values;
+    const auto memory_preflight = preflight_multiway_memory(
+        config.limits,
+        {warning_bytes, workflow.process_memory_limit_bytes, operating_bytes},
+        memory_inputs);
+    if (memory_preflight.status == MultiwayMemoryStatus::Rejected) {
+        throw std::runtime_error(std::string("training memory preflight rejected: ") +
+            memory_preflight.message + "; admission_stage=" +
+            std::to_string(static_cast<unsigned>(memory_preflight.highest_admitted_stage)) +
+            "; estimated_bytes=" +
+            std::to_string(memory_preflight.estimate.total_bytes));
+    }
+    config.memory_preflight_estimate_bytes = memory_preflight.estimate.total_bytes;
+    std::cout << "training_workers_requested=" << workers.requested << "\n"
+              << "training_workers_effective=" << workers.effective << "\n"
+              << "training_memory_estimate_bytes=" << memory_preflight.estimate.total_bytes << "\n";
     MultiwayPrivateConfig ranges;
     ranges.ranges.resize(6U);
     for (std::size_t seat = 0U; seat < ranges.ranges.size(); ++seat) {
@@ -620,7 +652,7 @@ int run_evaluate(const std::filesystem::path& config_path,
     config.max_public_chance_depth = workflow.max_public_chance_depth;
     config.deterministic_seed = workflow.deterministic_seed;
     config.limits.seed = workflow.deterministic_seed;
-    config.limits.worker_count = workflow.reference_worker_count;
+    config.limits.worker_count = workflow.training_worker_count;
     config.limits.trajectories_per_batch = static_cast<std::uint32_t>(workflow.trajectories_per_batch);
     config.limits.max_public_states = static_cast<std::size_t>(workflow.maximum_public_states);
     config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
@@ -710,6 +742,7 @@ int run(std::string_view name, int argc, char** argv) {
     std::uint32_t threads = (std::min)(
         texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS,
         texas::solver::multiway::multiway_bucket_physical_core_count());
+    bool threads_specified = false;
     std::uint64_t benchmark_tables = 0U;
     std::uint64_t benchmark_start = 0U;
     std::string benchmark_mode = "build-only";
@@ -753,6 +786,7 @@ int run(std::string_view name, int argc, char** argv) {
                     throw std::invalid_argument("--threads exceeds uint32 range");
                 }
                 threads = static_cast<std::uint32_t>(parsed);
+                threads_specified = true;
             }
             if (argument == "--benchmark-tables") benchmark_tables = std::stoull(argv[index]);
             if (argument == "--benchmark-start") benchmark_start = std::stoull(argv[index]);
@@ -803,7 +837,8 @@ int run(std::string_view name, int argc, char** argv) {
         return run_inspect(config_path, input_path, report_path, inspect_progress, inspect_progress_interval, threads, inspect_hash_mode);
     }
     if (workflow == Workflow::Train && !config_path.empty()) {
-        return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir, resume_path);
+        return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir,
+            resume_path, threads_specified ? threads : 0U);
     }
     if (workflow == Workflow::Evaluate && !config_path.empty()) {
         return run_evaluate(config_path, artifacts_path, duplicates, report_path);

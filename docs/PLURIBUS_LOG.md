@@ -1,5 +1,158 @@
 # Pluribus Roadmap Progress Log
 
+## Sixteen-worker blueprint training scaling audit plan
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Audited the shared coordinator, traversal pool, compact storage, and existing
+  scaling evidence to identify the global traversal mutex and locked admission
+  work as the primary sixteen-worker bottleneck.
+- Defined a frozen batch-epoch architecture with immutable coordinator views,
+  worker-local updates and diagnostics, deterministic staged admission, and a
+  fixed-order reduction.
+- Added measurable 1/2/4/8/16 speedup gates, contention instrumentation,
+  controlled experiments, implementation phases, validation requirements, and
+  completion criteria.
+
+### Files
+
+- `docs/multiway_blueprint_training_scaling_benchmark.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check -- docs/PLURIBUS_LOG.md`: passed.
+- The new audit-plan section passed a focused trailing-whitespace check.
+- No build or tests were run because this task changes documentation only.
+
+### Limitations
+
+- The proposed speedups remain targets until the planned code changes and the
+  full Release qualification matrix are completed on the target hardware.
+
+## Multiway blueprint training scaling benchmark
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Added a configurable Release benchmark for deterministic multiway blueprint
+  training worker and batch-size scaling.
+- The benchmark reports per-sample and median throughput, coordinator wait,
+  aggregate worker-active time, sort and merge time, trajectory balance,
+  per-worker delta occupancy, and deterministic merge fingerprints.
+- Measured 4/8/16 workers at 1,000, 4,000, and 16,000 trajectories per batch
+  with one warm-up and three independent samples per point.
+- Published the command, all raw samples, median comparison, bottleneck
+  analysis, and limitations in a dedicated benchmark report.
+
+### Files
+
+- `CMakeLists.txt`
+- `examples/benchmarks/multiway_training_scaling_main.cpp`
+- `docs/multiway_blueprint_training_scaling_benchmark.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `python scripts/full_build.py`: Debug build and all 108 CTest tests passed.
+- Release benchmark target built successfully and its `--help` smoke run passed.
+- Median trajectories/s for 4/8/16 workers were 56.8k/51.9k/47.5k at batch
+  1,000, 56.8k/50.5k/48.2k at batch 4,000, and 55.3k/41.2k/40.6k at batch
+  16,000.
+- Every worker count produced the same deterministic merge fingerprint for
+  each fixed batch size.
+- `git diff --check` passed and the focused C++ review found no actionable
+  findings.
+
+### Limitations
+
+- The benchmark is a bounded three-player river, depth-one training fixture.
+  It isolates scheduler and coordinator scaling but does not replace a full
+  six-player preflop-to-river production qualification.
+
+## Multiway blueprint multithreaded training
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Activated deterministic schema-2 blueprint training with validated 1 to 16
+  worker configuration and a `--threads` override.
+- Added mandatory process-memory admission, requested/effective worker and
+  stage timing telemetry, true per-worker delta high-water reporting,
+  canonical checkpoint/export ordering, and allocation-free compact regret
+  matching in the serialized lookup path.
+- Qualified exact 1/2/4/8/16-worker state and policy equivalence, fixed-worker
+  checkpoint resume, cancellation/error/capacity boundaries, and selected four
+  workers for the sizing profile from the Release scaling matrix.
+
+### Files
+
+- `configs/multiway/f1_sizing_v1.cfg`
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `python scripts/full_build.py`: Debug build and all 108 CTest tests passed.
+- Dedicated Release parallel-training executable: all seven tests passed.
+- Release matrix after warm-up, three samples each: median throughput was
+  19.8k, 35.5k, 52.6k, 47.1k, and 44.1k trajectories/s for 1, 2, 4, 8, and
+  16 workers. Four workers delivered 2.65x median speedup; 16 delivered 2.23x.
+- `git diff --check` passed.
+- Independent C++ review: no remaining actionable findings.
+
+### Limitations
+
+- The acceptance profile remains schema 1 with one worker until its full
+  50-million-trajectory production qualification is completed.
+- Sixteen workers are supported and deterministic but were not fastest on the
+  bounded local Release fixture.
+
+## Multiway blueprint multithreaded training audit and plan
+
+**Status:** Complete
+**Completed:** 2026-08-31
+
+- Audited the F1 blueprint training path and confirmed that its deterministic
+  persistent worker pool is implemented but disabled by the one-worker workflow
+  contract and train CLI plumbing.
+- Recorded two actionable findings and a staged activation, memory admission,
+  telemetry, correctness, performance, and qualification plan for up to 16
+  training workers.
+
+### Files
+
+- `docs/multiway_blueprint_multithreaded_training_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the documentation diff and targeted source locations.
+- No build, test, benchmark, or solver job was run because this was a read-only
+  C++ audit and documentation task.
+
+### Limitations
+
+- The plan does not activate training workers or claim measured training
+  speedup. Implementation and Release qualification remain deferred.
+
 ## Multiway artifact inspection multithreading
 
 **Status:** Complete

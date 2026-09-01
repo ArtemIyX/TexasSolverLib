@@ -1,6 +1,7 @@
 #include "solver/multiway/workflow/multiway_workflow_config.hpp"
 #include "core/fingerprint.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <limits>
 #include <set>
@@ -28,11 +29,12 @@ void expect(std::uint64_t actual, std::uint64_t expected, const char* key) {
 }  // namespace
 
 void MultiwayWorkflowConfig::validate() const {
-    if (schema_version != 1U || profile_id.empty() || preflop_classes != 169U || storage_backend != "CompactInt32" ||
+    if ((schema_version != 1U && schema_version != 2U) || profile_id.empty() || preflop_classes != 169U || storage_backend != "CompactInt32" ||
         (profile_kind != MultiwayWorkflowProfileKind::Sizing &&
          profile_kind != MultiwayWorkflowProfileKind::Acceptance) ||
         max_decision_depth != 64U || max_public_chance_depth != 3U || deterministic_seed != 1U ||
-        reference_worker_count != 1U || target_trajectories == 0U ||
+        training_worker_count == 0U || training_worker_count > 16U ||
+        (schema_version == 1U && training_worker_count != 1U) || target_trajectories == 0U ||
         (profile_kind == MultiwayWorkflowProfileKind::Acceptance && target_trajectories != 50'000'000U) ||
         (profile_kind == MultiwayWorkflowProfileKind::Sizing && target_trajectories >= 50'000'000U)) {
         throw std::invalid_argument("invalid F1 workflow configuration");
@@ -64,6 +66,18 @@ bool MultiwayWorkflowConfig::capacities_resolved() const noexcept {
         disk_space_requirement_bytes != 0U && process_memory_limit_bytes != 0U;
 }
 
+MultiwayTrainingWorkerResolution resolve_multiway_training_workers(
+    std::uint32_t configured_workers,
+    std::uint32_t override_workers,
+    std::uint64_t trajectories_per_batch) {
+    const auto requested = override_workers == 0U ? configured_workers : override_workers;
+    if (requested == 0U || requested > 16U || trajectories_per_batch == 0U) {
+        throw std::invalid_argument("training worker count must be in [1, 16] with a positive batch size");
+    }
+    return {requested, static_cast<std::uint32_t>(
+        std::min<std::uint64_t>(requested, trajectories_per_batch))};
+}
+
 std::uint64_t MultiwayWorkflowConfig::fingerprint() const noexcept {
     auto hash = core::fingerprint::FNV1A_OFFSET;
     const auto append = [&hash](std::uint64_t value) noexcept { core::fingerprint::append_u64(hash, value); };
@@ -80,7 +94,7 @@ std::uint64_t MultiwayWorkflowConfig::fingerprint() const noexcept {
     for (const auto character : storage_backend) core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
     append(model.flop_bucket_count); append(model.turn_bucket_count); append(model.river_bucket_count);
     append(max_decision_depth); append(max_public_chance_depth); append(deterministic_seed);
-    append(reference_worker_count); append(target_trajectories);
+    append(training_worker_count); append(target_trajectories);
     append(maximum_public_states); append(maximum_sparse_rows); append(maximum_sparse_values);
     append(worker_delta_capacity); append(trajectories_per_batch); append(checkpoint_interval);
     append(disk_space_requirement_bytes); append(process_memory_limit_bytes);
@@ -122,7 +136,11 @@ MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text) {
         else if (key == "max_decision_depth") result.max_decision_depth = static_cast<std::uint32_t>(n());
         else if (key == "max_public_chance_depth") result.max_public_chance_depth = static_cast<std::uint32_t>(n());
         else if (key == "deterministic_seed") result.deterministic_seed = n();
-        else if (key == "reference_worker_count") result.reference_worker_count = static_cast<std::uint32_t>(n());
+        else if (key == "reference_worker_count" || key == "training_worker_count") {
+            const auto workers = n();
+            if (workers > 16U) throw std::invalid_argument("training worker count exceeds 16");
+            result.training_worker_count = static_cast<std::uint32_t>(workers);
+        }
         else if (key == "target_trajectories") result.target_trajectories = n();
         else if (key == "maximum_public_states" || key == "maximum_sparse_rows" ||
                  key == "maximum_sparse_values" || key == "worker_delta_capacity" ||
@@ -138,6 +156,15 @@ MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text) {
             else if (key == "disk_space_requirement_bytes") result.disk_space_requirement_bytes = capacity;
             else result.process_memory_limit_bytes = capacity;
         } else throw std::invalid_argument("unknown configuration key: " + key);
+    }
+    if (result.schema_version == 1U) {
+        if (seen.count("reference_worker_count") == 0U || seen.count("training_worker_count") != 0U) {
+            throw std::invalid_argument("schema 1 requires reference_worker_count");
+        }
+    } else if (result.schema_version == 2U) {
+        if (seen.count("training_worker_count") == 0U || seen.count("reference_worker_count") != 0U) {
+            throw std::invalid_argument("schema 2 requires training_worker_count");
+        }
     }
     result.validate();
     return result;

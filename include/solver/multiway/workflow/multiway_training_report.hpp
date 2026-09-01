@@ -28,6 +28,17 @@ struct MultiwayTrainingReport {
     std::uint64_t configured_max_sparse_rows = 0U;
     std::uint64_t configured_max_sparse_values = 0U;
     std::uint64_t configured_worker_delta_capacity = 0U;
+    std::uint64_t cumulative_worker_delta_entries = 0U;
+    std::uint64_t worker_active_nanoseconds = 0U;
+    std::uint64_t coordinator_wait_nanoseconds = 0U;
+    std::uint64_t delta_sort_nanoseconds = 0U;
+    std::uint64_t merge_nanoseconds = 0U;
+    std::uint64_t minimum_worker_trajectories = 0U;
+    std::uint64_t maximum_worker_trajectories = 0U;
+    std::uint32_t requested_worker_count = 0U;
+    std::uint32_t effective_worker_count = 0U;
+    std::uint64_t trajectories_per_batch = 0U;
+    std::uint64_t memory_preflight_estimate_bytes = 0U;
     std::uint64_t checkpoint_bytes = 0U;
     std::uint64_t checkpoint_write_nanoseconds = 0U;
     std::uint64_t blueprint_bytes = 0U;

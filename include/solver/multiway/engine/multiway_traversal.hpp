@@ -131,6 +131,12 @@ struct MultiwayRootBatchResult {
     std::uint64_t delta_entries_merged = 0;
     std::uint64_t minimum_worker_trajectories = 0;
     std::uint64_t maximum_worker_trajectories = 0;
+    std::uint64_t maximum_worker_delta_entries = 0;
+    std::uint64_t worker_active_nanoseconds = 0;
+    std::uint64_t maximum_worker_active_nanoseconds = 0;
+    std::uint64_t coordinator_wait_nanoseconds = 0;
+    std::uint64_t delta_sort_nanoseconds = 0;
+    std::uint64_t merge_nanoseconds = 0;
     MultiwaySearchProfileSnapshot profile{};
     MultiwayRunMetadata run{};
     bool clean = false;
@@ -173,6 +179,8 @@ private:
         std::uint64_t attempted = 0;
         std::uint64_t accepted = 0;
         std::uint64_t discarded = 0;
+        std::uint64_t active_nanoseconds = 0;
+        std::uint64_t sort_nanoseconds = 0;
         MultiwaySearchProfile profile{};
 
         void reset(MultiwaySearchProfileMode profile_mode) noexcept {
@@ -181,6 +189,8 @@ private:
             attempted = 0;
             accepted = 0;
             discarded = 0;
+            active_nanoseconds = 0;
+            sort_nanoseconds = 0;
             profile.reset(profile_mode);
         }
     };
