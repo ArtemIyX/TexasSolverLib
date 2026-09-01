@@ -338,6 +338,8 @@ int run(const BenchmarkConfig& config) {
               << " seed=" << config.seed << '\n';
     for (const auto batch_size : config.batch_sizes) {
         std::uint64_t reference_fingerprint = 0U;
+        double previous_median = 0.0;
+        std::uint32_t previous_workers = 0U;
         for (const auto workers : config.workers) {
             std::vector<BenchmarkResult> samples;
             samples.reserve(config.repeats);
@@ -353,12 +355,19 @@ int run(const BenchmarkConfig& config) {
                 print_sample(result);
                 samples.push_back(result);
             }
+            const auto median = median_throughput(samples);
             std::cout << "summary"
                       << " workers=" << workers
                       << " batch_size=" << batch_size
                       << " median_trajectories_per_second=" << std::fixed << std::setprecision(1)
-                      << median_throughput(samples)
+                      << median
                       << " fingerprint=" << reference_fingerprint << '\n';
+            if (previous_workers != 0U && median <= previous_median) {
+                throw std::runtime_error(
+                    "worker scaling gate failed: throughput must increase strictly with worker count");
+            }
+            previous_workers = workers;
+            previous_median = median;
         }
     }
     return EXIT_SUCCESS;
