@@ -516,8 +516,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             coordinator_->record_terminal_visit();
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::TerminalSettlement);
-            return context.terminal->resolve_admitted_terminal(child, *context.deal)
-                .utilities[static_cast<std::size_t>(context.traverser)];
+            return context.terminal->resolve_admitted_terminal_value(
+                child, *context.deal, context.traverser);
         }
         const auto next_depth = decision_depth + 1U;
         if (next.current_player >= 0 && next.street == state.betting.street &&
@@ -619,8 +619,8 @@ Value MultiwayRootExternalSamplingTraversal::traverse_public_chance(
             coordinator_->record_terminal_visit();
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::TerminalSettlement);
-            value = context.terminal->resolve_admitted_terminal(chance_child, *context.deal)
-                .utilities[static_cast<std::size_t>(context.traverser)];
+            value = context.terminal->resolve_admitted_terminal_value(
+                chance_child, *context.deal, context.traverser);
         } else {
             value = traverse_public_chance(
                 chance_child, decision_depth, next_chance_depth, context);

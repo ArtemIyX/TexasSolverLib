@@ -144,6 +144,10 @@ private:
     [[nodiscard]] MultiwayTerminalResult resolve_admitted_terminal(
         const MultiwayPublicStateDescriptor& state,
         const MultiwaySamplerDealToken& private_deal) const;
+    [[nodiscard]] Value resolve_admitted_terminal_value(
+        const MultiwayPublicStateDescriptor& state,
+        const MultiwaySamplerDealToken& private_deal,
+        PlayerId seat) const;
     [[nodiscard]] const MultiwayPublicStateDescriptor& require_public_state(
         MultiwayPublicStateId id) const;
     void validate_token(const MultiwaySamplerDealToken& token) const;

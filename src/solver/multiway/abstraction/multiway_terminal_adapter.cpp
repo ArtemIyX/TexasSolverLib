@@ -535,6 +535,49 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_admitted_terminal(
     return resolve_terminal_impl(state.betting, state.board, private_deal.deal_);
 }
 
+Value MultiwayTerminalAdapter::resolve_admitted_terminal_value(
+    const MultiwayPublicStateDescriptor& state,
+    const MultiwaySamplerDealToken& private_deal,
+    PlayerId seat) const {
+    validate_token(private_deal);
+    const auto betting_state = validate_root_consistent_state(root_, state.betting, state.board);
+    validate_private_deal(root_, state.board, private_deal.deal_);
+    if (seat < 0 || static_cast<std::size_t>(seat) >= state.betting.contributions.size()) {
+        throw std::out_of_range("multiway terminal utility seat");
+    }
+    MultiwayFixedTerminalInput input;
+    input.seat_count = static_cast<std::uint8_t>(state.betting.contributions.size());
+    input.odd_chip_first_seat = root_.odd_chip_first_seat;
+    input.rake_policy = root_.rake_policy;
+    input.flop_seen = state.board.size() >= 3U;
+    for (std::size_t player = 0U; player < input.seat_count; ++player) {
+        input.contributions[player] = state.betting.contributions[player];
+        input.folded[player] = state.betting.folded[player];
+    }
+    if (betting_state.next_node_kind() == MultiwayNextNodeKind::FoldTerminal) {
+        MultiwayFixedTerminalScratch scratch;
+        MultiwayFixedTerminalResult result;
+        settle_multiway_terminal_fixed(input, scratch, result);
+        return result.utilities[static_cast<std::size_t>(seat)];
+    }
+    const auto showdown_ready = betting_state.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal ||
+        (betting_state.requires_board_runout() && state.board.size() == 5U);
+    if (!showdown_ready) {
+        throw std::logic_error("multiway terminal resolution requires a fold terminal or completed showdown");
+    }
+    for (std::size_t player = 0U; player < input.seat_count; ++player) {
+        std::array<std::uint8_t, 7> cards{};
+        std::copy(state.board.begin(), state.board.end(), cards.begin());
+        cards[5] = private_deal.deal_.holes[player][0];
+        cards[6] = private_deal.deal_.holes[player][1];
+        input.strengths[player] = Strength::evaluate_7(cards);
+    }
+    MultiwayFixedTerminalScratch scratch;
+    MultiwayFixedTerminalResult result;
+    settle_multiway_terminal_fixed(input, scratch, result);
+    return result.utilities[static_cast<std::size_t>(seat)];
+}
+
 MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
     const MultiwayBettingSnapshot& betting,
     const std::vector<std::uint8_t>& board,
