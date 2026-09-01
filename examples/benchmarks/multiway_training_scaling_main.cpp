@@ -62,16 +62,20 @@ const std::vector<std::uint8_t> kBoard = {
     card(2, 0), card(7, 1), card(9, 2), card(4, 3), card(6, 0),
 };
 
-std::vector<std::uint32_t> one_bucket_assignments() {
+std::vector<std::uint32_t> benchmark_bucket_assignments() {
+    constexpr std::uint32_t bucket_count = 64U;
     std::vector<std::uint32_t> result(texas::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
+    std::size_t hole_index = 0U;
     for (std::uint8_t first = 0U; first < 52U; ++first) {
         for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
+            result[hole_index] = static_cast<std::uint32_t>(hole_index % bucket_count);
             for (const auto board_card : kBoard) {
                 if (first == board_card || second == board_card) {
-                    result[texas::MultiwayBucketTable::hole_index({first, second})] =
+                    result[hole_index] =
                         texas::MULTIWAY_INVALID_BUCKET;
                 }
             }
+            ++hole_index;
         }
     }
     return result;
@@ -138,7 +142,7 @@ public:
           request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)),
           coordinator_(request_),
           buckets_({texas::MultiwayBucketTable(
-              bucket_identity(), texas::Street::River, kBoard, 1U, one_bucket_assignments())}),
+              bucket_identity(), texas::Street::River, kBoard, 64U, benchmark_bucket_assignments())}),
           evaluator_{deterministic_leaf, nullptr},
           traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 1U),
           runner_(traversal_, coordinator_, workers, delta_capacity_,
