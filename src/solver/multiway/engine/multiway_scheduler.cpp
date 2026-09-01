@@ -66,6 +66,25 @@ std::size_t MultiwayScheduler::partition_deterministic_into(
     return static_cast<std::size_t>(worker_count_u64);
 }
 
+std::size_t MultiwayScheduler::partition_round_robin_into(
+    std::uint64_t trajectory_count,
+    std::size_t requested_workers,
+    MultiwayWorkerBatch* output,
+    std::size_t output_capacity) noexcept {
+    if (output == nullptr || output_capacity == 0U) return 0U;
+    if (trajectory_count == 0U) {
+        output[0] = {0U, {0U, 0U, 1U}};
+        return 1U;
+    }
+    const auto workers = std::min<std::uint64_t>(trajectory_count,
+        std::min<std::uint64_t>(std::max<std::size_t>(1U, requested_workers), output_capacity));
+    for (std::uint64_t worker = 0U; worker < workers; ++worker) {
+        output[static_cast<std::size_t>(worker)] = {
+            static_cast<std::size_t>(worker), {worker, trajectory_count, workers}};
+    }
+    return static_cast<std::size_t>(workers);
+}
+
 std::vector<MultiwayWorkerBatch> MultiwayScheduler::partition_deterministic(
     std::uint64_t trajectory_count,
     std::size_t requested_workers) {

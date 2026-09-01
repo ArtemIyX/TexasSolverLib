@@ -40,8 +40,11 @@ struct MultiwayRunMetadata {
 struct MultiwayTrajectoryRange {
     std::uint64_t begin = 0;
     std::uint64_t end = 0;
+    std::uint64_t stride = 1U;
 
-    [[nodiscard]] std::uint64_t size() const noexcept { return end - begin; }
+    [[nodiscard]] std::uint64_t size() const noexcept {
+        return begin >= end ? 0U : (end - begin + stride - 1U) / stride;
+    }
 };
 
 struct MultiwayWorkerBatch {
@@ -54,6 +57,11 @@ public:
     // Writes a deterministic contiguous partition into caller-owned storage.
     // Returns zero only when output is null or capacity is zero.
     [[nodiscard]] static std::size_t partition_deterministic_into(
+        std::uint64_t trajectory_count,
+        std::size_t requested_workers,
+        MultiwayWorkerBatch* output,
+        std::size_t output_capacity) noexcept;
+    [[nodiscard]] static std::size_t partition_round_robin_into(
         std::uint64_t trajectory_count,
         std::size_t requested_workers,
         MultiwayWorkerBatch* output,

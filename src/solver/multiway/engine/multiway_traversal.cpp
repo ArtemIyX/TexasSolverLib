@@ -791,7 +791,7 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                 const auto active_start = std::chrono::steady_clock::now();
                 for (auto local_id = batch.trajectories.begin;
                      local_id < batch.trajectories.end;
-                     ++local_id) {
+                     local_id += batch.trajectories.stride) {
                     const bool has_deadline = deadline != std::chrono::steady_clock::time_point::max();
                     const bool cancellation_requested =
                         ((local_id - batch.trajectories.begin) & 7U) == 0U &&
@@ -850,7 +850,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     if (!std::isfinite(iteration_weight) || iteration_weight <= 0.0) {
         throw std::invalid_argument("multiway batch iteration weight must be finite and positive");
     }
-    const auto batch_count = MultiwayScheduler::partition_deterministic_into(
+    const auto batch_count = MultiwayScheduler::partition_round_robin_into(
         trajectory_count,
         worker_count_,
         worker_batches_.data(),
