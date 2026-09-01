@@ -136,7 +136,7 @@ MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text) {
         else if (key == "max_decision_depth") result.max_decision_depth = static_cast<std::uint32_t>(n());
         else if (key == "max_public_chance_depth") result.max_public_chance_depth = static_cast<std::uint32_t>(n());
         else if (key == "deterministic_seed") result.deterministic_seed = n();
-        else if (key == "reference_worker_count" || key == "training_worker_count") {
+        else if (key == "reference_worker_count" || key == "training_worker_count" || key == "threads") {
             const auto workers = n();
             if (workers > 16U) throw std::invalid_argument("training worker count exceeds 16");
             result.training_worker_count = static_cast<std::uint32_t>(workers);
@@ -155,7 +155,12 @@ MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text) {
             else if (key == "checkpoint_interval") result.checkpoint_interval = capacity;
             else if (key == "disk_space_requirement_bytes") result.disk_space_requirement_bytes = capacity;
             else result.process_memory_limit_bytes = capacity;
-        } else throw std::invalid_argument("unknown configuration key: " + key);
+        } else if (key == "input_path") result.training_input_path = value;
+        else if (key == "output_path") result.training_output_path = value;
+        else if (key == "report_path") result.training_report_path = value;
+        else if (key == "checkpoint_dir") result.training_checkpoint_dir = value;
+        else if (key == "batches") result.training_batches = n();
+        else throw std::invalid_argument("unknown configuration key: " + key);
     }
     if (result.schema_version == 1U) {
         if (seen.count("reference_worker_count") == 0U || seen.count("training_worker_count") != 0U) {

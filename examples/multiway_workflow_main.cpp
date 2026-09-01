@@ -460,16 +460,22 @@ int run_inspect(const std::filesystem::path& config_path, const std::filesystem:
     return EXIT_SUCCESS;
 }
 
-int run_train(const std::filesystem::path& config_path, const std::filesystem::path& input_path,
-              const std::filesystem::path& output_path, std::uint64_t batches,
-              const std::filesystem::path& report_path,
-              const std::filesystem::path& checkpoint_dir,
+int run_train(const std::filesystem::path& config_path, std::filesystem::path input_path,
+              std::filesystem::path output_path, std::uint64_t batches,
+              std::filesystem::path report_path,
+              std::filesystem::path checkpoint_dir,
               const std::filesystem::path& resume_path,
               std::uint32_t worker_override) {
     using namespace texas;
     using namespace texas::solver::multiway;
-    if (batches == 0U || input_path.empty() || output_path.empty()) throw std::invalid_argument("train requires --input, --output, and --batches");
     const auto workflow = load_multiway_workflow_config(config_path);
+    if (input_path.empty()) input_path = workflow.training_input_path;
+    if (output_path.empty()) output_path = workflow.training_output_path;
+    if (report_path.empty()) report_path = workflow.training_report_path;
+    if (checkpoint_dir.empty()) checkpoint_dir = workflow.training_checkpoint_dir;
+    if (batches == 0U) batches = workflow.training_batches;
+    if (worker_override == 0U) worker_override = workflow.training_worker_count;
+    if (batches == 0U || input_path.empty() || output_path.empty()) throw std::invalid_argument("train requires input_path, output_path, and batches");
     if (!workflow.capacities_resolved()) {
         throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
     }

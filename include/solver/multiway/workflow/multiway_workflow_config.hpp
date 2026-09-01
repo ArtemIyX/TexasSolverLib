@@ -29,6 +29,11 @@ struct MultiwayWorkflowConfig {
     std::uint64_t checkpoint_interval = 0U;
     std::uint64_t disk_space_requirement_bytes = 0U;
     std::uint64_t process_memory_limit_bytes = 0U;
+    std::filesystem::path training_input_path;
+    std::filesystem::path training_output_path;
+    std::filesystem::path training_report_path;
+    std::filesystem::path training_checkpoint_dir;
+    std::uint64_t training_batches = 0U;
 
     void validate() const;
     [[nodiscard]] bool capacities_resolved() const noexcept;
