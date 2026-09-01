@@ -80,3 +80,24 @@ TEST_CASE(multiway_compact_storage_saturates_extreme_finite_deltas) {
     storage.apply_delta(infoset, 0U, 0U, -1.0e300, 0.0);
     EXPECT_TRUE(storage.regret_matched_strategy(infoset, 0U)[0] == 1.0);
 }
+
+TEST_CASE(multiway_compact_storage_fused_discount_and_prune_matches_sequential_order) {
+    const texas::MultiwayInfosetId infoset{{12U}, 0};
+    texas::solver::multiway::MultiwayCompactStorage fused(1U, 3U);
+    texas::solver::multiway::MultiwayCompactStorage sequential(1U, 3U);
+    fused.admit_row({infoset, 1U, 3U});
+    sequential.admit_row({infoset, 1U, 3U});
+    for (std::uint8_t action = 0U; action < 3U; ++action) {
+        fused.apply_delta(infoset, 0U, action, static_cast<double>(action) - 1.5, 0.0);
+        sequential.apply_delta(infoset, 0U, action, static_cast<double>(action) - 1.5, 0.0);
+    }
+    const auto fused_pruned = fused.scale_and_prune_regrets(0.5, -0.25, -0.1);
+    sequential.scale_regrets(0.5);
+    const auto sequential_pruned = sequential.prune_negative_regrets(-0.25, -0.1);
+    EXPECT_EQ(fused_pruned, sequential_pruned);
+    const auto fused_policy = fused.regret_matched_strategy(infoset, 0U);
+    const auto sequential_policy = sequential.regret_matched_strategy(infoset, 0U);
+    for (std::size_t action = 0U; action < fused_policy.size(); ++action) {
+        EXPECT_NEAR(fused_policy[action], sequential_policy[action], 0.0);
+    }
+}
