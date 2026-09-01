@@ -516,6 +516,14 @@ TEST_CASE(multiway_solver_public_state_lookup_returns_admitted_and_rejects_missi
     EXPECT_TRUE(coordinator.find_public_state({999}) == nullptr);
 }
 
+TEST_CASE(multiway_solver_checkpoint_canonicalizes_public_states_in_place) {
+    texas::MultiwaySolverCoordinator coordinator(valid_request());
+    coordinator.admit_public_state(checked_action_child_public_state());
+    const auto checkpoint = coordinator.checkpoint();
+    EXPECT_EQ(checkpoint.public_states.front().id, root_public_state().id);
+    EXPECT_TRUE(checkpoint.public_states.size() >= 2U);
+}
+
 TEST_CASE(multiway_solver_child_admission_requires_a_replayed_parent_action_history) {
     texas::MultiwaySolverCoordinator coordinator(valid_request());
     const auto child = checked_action_child_public_state();

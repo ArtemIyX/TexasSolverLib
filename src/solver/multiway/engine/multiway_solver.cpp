@@ -1160,18 +1160,17 @@ MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
             state_depths[*reverse] = ++depth;
         }
     }
-    std::vector<std::size_t> state_order(result.public_states.size(), 0U);
-    for (std::size_t index = 0U; index < state_order.size(); ++index) state_order[index] = index;
-    std::sort(state_order.begin(), state_order.end(), [&result, &state_depths](
-        std::size_t left, std::size_t right) {
-        return state_depths[left] != state_depths[right]
-            ? state_depths[left] < state_depths[right]
-            : result.public_states[left].id.value < result.public_states[right].id.value;
+    std::unordered_map<std::uint64_t, std::uint32_t> depth_by_state;
+    depth_by_state.reserve(result.public_states.size());
+    for (std::size_t index = 0U; index < result.public_states.size(); ++index) {
+        depth_by_state.emplace(result.public_states[index].id.value, state_depths[index]);
+    }
+    std::sort(result.public_states.begin(), result.public_states.end(), [&depth_by_state](
+        const MultiwayPublicStateDescriptor& left, const MultiwayPublicStateDescriptor& right) {
+        const auto left_depth = depth_by_state.at(left.id.value);
+        const auto right_depth = depth_by_state.at(right.id.value);
+        return left_depth != right_depth ? left_depth < right_depth : left.id.value < right.id.value;
     });
-    std::vector<MultiwayPublicStateDescriptor> canonical_states;
-    canonical_states.reserve(result.public_states.size());
-    for (const auto index : state_order) canonical_states.push_back(std::move(result.public_states[index]));
-    result.public_states = std::move(canonical_states);
     std::vector<std::size_t> offsets(result.storage.shapes.size() + 1U, 0U);
     std::vector<std::size_t> order(result.storage.shapes.size(), 0U);
     for (std::size_t index = 0U; index < result.storage.shapes.size(); ++index) {
