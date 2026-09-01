@@ -158,6 +158,10 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     std::uint64_t batch_number = 0;
     MultiwaySearchProfile* profile = nullptr;
     MultiwayBlueprintLookupAudit* lookup_audit = nullptr;
+    const MultiwayBucketTable* cached_bucket_table = nullptr;
+    Street cached_bucket_street = Street::Preflop;
+    std::array<std::uint8_t, 5> cached_bucket_board{};
+    std::size_t cached_bucket_board_size = 0U;
     bool accepted = true;
 };
 
@@ -383,7 +387,19 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         if (state.betting.street == Street::Preflop) {
             blueprint_bucket = preflop_class(sampled_hole);
         } else {
-            table_ptr = &buckets_->table(state.betting.street, state.board);
+            const bool cache_hit = context.cached_bucket_table != nullptr &&
+                context.cached_bucket_street == state.betting.street &&
+                context.cached_bucket_board_size == state.board.size() &&
+                std::equal(state.board.begin(), state.board.end(), context.cached_bucket_board.begin());
+            if (cache_hit) {
+                table_ptr = context.cached_bucket_table;
+            } else {
+                table_ptr = &buckets_->table(state.betting.street, state.board);
+                context.cached_bucket_table = table_ptr;
+                context.cached_bucket_street = state.betting.street;
+                context.cached_bucket_board_size = state.board.size();
+                std::copy(state.board.begin(), state.board.end(), context.cached_bucket_board.begin());
+            }
             blueprint_bucket = table_ptr->lookup(sampled_hole);
         }
         bucket = root_->root_uses_exact_private_hand && same_root_street
