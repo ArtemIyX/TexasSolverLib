@@ -676,10 +676,7 @@ MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest&
         compact_storage_ = std::make_unique<MultiwayCompactStorage>(
             request.limits().max_sparse_rows, checked_sparse_value_capacity(request));
     }
-    // Public states are graph-shaped and usually sparse. Reserve only the
-    // root; lazy growth preserves the configured hard limit without consuming
-    // the complete worst-case metadata budget up front.
-    public_states_.reserve(1U);
+    public_state_order_.reserve(1U);
     merge_stream_views_.reserve(request.limits().worker_count);
     merge_stream_cursors_.reserve(request.limits().worker_count);
     // Pending cells contain one entry per distinct merged cell, not one entry
@@ -725,11 +722,13 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
     } else if (state.id != request_.root().public_state.id) {
         throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
     }
-    const auto insert_at = std::lower_bound(public_states_.begin(), public_states_.end(), state.id,
-        [](const MultiwayPublicStateDescriptor& existing, MultiwayPublicStateId id) {
-            return existing.id < id;
+    public_states_.push_back(state);
+    const auto inserted_index = public_states_.size() - 1U;
+    const auto insert_at = std::lower_bound(public_state_order_.begin(), public_state_order_.end(), state.id,
+        [this](std::size_t index, MultiwayPublicStateId id) {
+            return public_states_[index].id < id;
         });
-    public_states_.insert(insert_at, state);
+    public_state_order_.insert(insert_at, inserted_index);
     ++diagnostics_.public_states_admitted;
 }
 
@@ -1095,11 +1094,12 @@ std::size_t MultiwaySolverCoordinator::prune_negative_regrets(
 
 const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::public_state(
     MultiwayPublicStateId id) const noexcept {
-    const auto found = std::lower_bound(public_states_.begin(), public_states_.end(), id,
-        [](const MultiwayPublicStateDescriptor& state, MultiwayPublicStateId value) {
-            return state.id < value;
+    const auto found = std::lower_bound(public_state_order_.begin(), public_state_order_.end(), id,
+        [this](std::size_t index, MultiwayPublicStateId value) {
+            return public_states_[index].id < value;
         });
-    return found == public_states_.end() || found->id != id ? nullptr : &*found;
+    return found == public_state_order_.end() || public_states_[*found].id != id
+        ? nullptr : &public_states_[*found];
 }
 
 const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::find_public_state(
@@ -1111,7 +1111,7 @@ const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::find_public_stat
 MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
     std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     MultiwayCoordinatorCheckpoint result;
-    result.public_states = public_states_;
+    result.public_states.assign(public_states_.begin(), public_states_.end());
     result.terminal_visits = diagnostics_.terminal_visits;
     result.leaf_visits = diagnostics_.leaf_visits;
     result.missing_lookup_requests = diagnostics_.missing_lookup_requests;
@@ -1232,6 +1232,7 @@ void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorChec
     {
         std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
         public_states_.clear();
+        public_state_order_.clear();
         storage_.metadata_.clear();
         storage_.regret_.clear();
         storage_.strategy_sum_.clear();

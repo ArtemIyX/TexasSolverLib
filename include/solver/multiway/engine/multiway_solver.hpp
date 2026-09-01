@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <array>
+#include <deque>
 #include <mutex>
 #include <shared_mutex>
 #include <optional>
@@ -457,7 +458,8 @@ private:
     MultiwaySolveRequest request_;
     MultiwaySparseRowStorage storage_;
     std::unique_ptr<MultiwayCompactStorage> compact_storage_;
-    std::vector<MultiwayPublicStateDescriptor> public_states_;
+    std::deque<MultiwayPublicStateDescriptor> public_states_;
+    std::vector<std::size_t> public_state_order_;
     std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
     std::vector<std::size_t> merge_stream_cursors_;
     std::vector<PendingMergeCell> pending_merge_cells_;
