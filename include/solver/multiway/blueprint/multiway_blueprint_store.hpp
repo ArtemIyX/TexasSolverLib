@@ -41,6 +41,12 @@ public:
         MultiwayInfosetId infoset,
         std::uint32_t bucket,
         std::uint64_t action_menu_id) const noexcept;
+    [[nodiscard]] MultiwayBlueprintRowView find(
+        MultiwayInfosetId infoset,
+        std::uint32_t bucket,
+        std::uint64_t action_menu_id,
+        bool& infoset_present,
+        bool& bucket_present) const noexcept;
     [[nodiscard]] bool has_infoset(MultiwayInfosetId infoset) const noexcept;
     [[nodiscard]] bool has_infoset_bucket(
         MultiwayInfosetId infoset, std::uint32_t bucket) const noexcept;

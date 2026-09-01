@@ -37,12 +37,14 @@ MultiwayBlueprintLookupStatus MultiwayBlueprintPolicyProvider::strategy_into(
         return MultiwayBlueprintLookupStatus::Missing;
     }
     const auto menu_id = legal_actions[0].action_menu_id;
-    const auto row = store_->find(infoset, bucket, menu_id);
+    bool infoset_present = false;
+    bool bucket_present = false;
+    const auto row = store_->find(infoset, bucket, menu_id, infoset_present, bucket_present);
     if (!row.valid()) {
-        if (store_->has_infoset_bucket(infoset, bucket)) {
+        if (bucket_present) {
             return MultiwayBlueprintLookupStatus::IncompatibleMenu;
         }
-        return store_->has_infoset(infoset)
+        return infoset_present
             ? MultiwayBlueprintLookupStatus::MissingBucket
             : MultiwayBlueprintLookupStatus::Missing;
     }

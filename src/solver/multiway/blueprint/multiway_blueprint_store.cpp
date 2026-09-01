@@ -71,6 +71,19 @@ MultiwayBlueprintRowView MultiwayBlueprintStore::find(
     MultiwayInfosetId infoset,
     std::uint32_t bucket,
     std::uint64_t action_menu_id) const noexcept {
+    bool infoset_present = false;
+    bool bucket_present = false;
+    return find(infoset, bucket, action_menu_id, infoset_present, bucket_present);
+}
+
+MultiwayBlueprintRowView MultiwayBlueprintStore::find(
+    MultiwayInfosetId infoset,
+    std::uint32_t bucket,
+    std::uint64_t action_menu_id,
+    bool& infoset_present,
+    bool& bucket_present) const noexcept {
+    infoset_present = false;
+    bucket_present = false;
     const auto it = std::lower_bound(
         rows_.begin(),
         rows_.end(),
@@ -79,10 +92,19 @@ MultiwayBlueprintRowView MultiwayBlueprintStore::find(
             return std::tuple{
                 row.infoset.public_state.value, row.infoset.seat, row.bucket, row.action_menu_id} < key;
         });
-    if (it == rows_.end() ||
-        it->infoset != infoset || it->bucket != bucket || it->action_menu_id != action_menu_id) {
+    if (it != rows_.begin()) {
+        const auto& previous = *(it - 1);
+        if (previous.infoset == infoset) {
+            infoset_present = true;
+            bucket_present = previous.bucket == bucket;
+        }
+    }
+    if (it == rows_.end() || it->infoset != infoset) {
         return {};
     }
+    infoset_present = true;
+    bucket_present = it->bucket == bucket;
+    if (!bucket_present || it->action_menu_id != action_menu_id) return {};
     return {
         it->infoset,
         it->bucket,
