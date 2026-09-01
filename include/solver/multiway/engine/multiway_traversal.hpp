@@ -170,7 +170,7 @@ public:
 private:
     void worker_loop(std::size_t worker_index);
 
-    struct WorkerScratch {
+    struct alignas(64) WorkerScratch {
         explicit WorkerScratch(std::size_t worker_index, std::size_t delta_capacity)
             : stream(worker_index, delta_capacity), continuation_stream(worker_index, delta_capacity) {}
 

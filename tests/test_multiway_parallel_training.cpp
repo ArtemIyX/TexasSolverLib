@@ -223,6 +223,23 @@ TEST_CASE(multiway_parallel_runner_reports_true_per_worker_delta_high_water) {
     EXPECT_TRUE(result.coordinator_wait_nanoseconds > 0U);
 }
 
+TEST_CASE(multiway_parallel_runner_small_batch_waits_only_for_active_workers) {
+    ParallelTrainingFixture fixture(16U);
+    const auto result = fixture.runner.run(0U, 1U, 0x77U);
+    EXPECT_TRUE(result.clean);
+    EXPECT_EQ(result.minimum_worker_trajectories, 0U);
+    EXPECT_EQ(result.maximum_worker_trajectories, 1U);
+    EXPECT_EQ(result.trajectories_attempted, 1U);
+}
+
+TEST_CASE(multiway_blueprint_training_telemetry_retention_is_bounded) {
+    ParallelTrainingFixture fixture(1U);
+    fixture.trainer.run_batches(260U, 1U, 0x77U);
+    EXPECT_EQ(fixture.trainer.status().admitted_rows_per_batch.size(), 256U);
+    EXPECT_EQ(fixture.trainer.status().admitted_rows_per_batch.back(),
+        fixture.trainer.status().admitted_rows);
+}
+
 TEST_CASE(multiway_parallel_runner_propagates_worker_exceptions_and_joins) {
     ParallelTrainingFixture fixture(4U, 1U);
     EXPECT_THROW(fixture.runner.run(0U, 4U, 0x77U), std::length_error);

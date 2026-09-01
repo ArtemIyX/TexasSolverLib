@@ -661,17 +661,30 @@ MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest&
         compact_storage_ = std::make_unique<MultiwayCompactStorage>(
             request.limits().max_sparse_rows, checked_sparse_value_capacity(request));
     }
-    public_states_.reserve(request.limits().max_public_states);
+    // Public states are graph-shaped and usually sparse. Reserve only the
+    // root; lazy growth preserves the configured hard limit without consuming
+    // the complete worst-case metadata budget up front.
+    public_states_.reserve(1U);
     merge_stream_views_.reserve(request.limits().worker_count);
     const auto merge_capacity = static_cast<std::size_t>(request.limits().worker_count) *
         request.limits().max_worker_delta_entries;
     merge_deltas_.reserve(merge_capacity);
-    pending_merge_cells_.reserve(merge_capacity);
+    pending_merge_cells_.reserve(std::min(merge_capacity, request.limits().max_sparse_values));
     admit_public_state(request_.root().public_state);
 }
 
 void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDescriptor& state) {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    {
+        std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+        const auto* existing = public_state(state.id);
+        if (existing != nullptr) {
+            if (!same_public_state_descriptor(*existing, state)) {
+                throw std::invalid_argument("multiway public state id was admitted with conflicting data");
+            }
+            return;
+        }
+    }
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     validate_public_state_descriptor(state);
     const auto existing = public_state(state.id);
     if (existing != nullptr) {
@@ -697,7 +710,19 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
 }
 
 void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape) {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    {
+        std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+        const auto* existing = compact_storage_ != nullptr
+            ? compact_storage_->metadata(shape.infoset) : storage_.metadata(shape.infoset);
+        if (existing != nullptr) {
+            if (existing->shape.bucket_count != shape.bucket_count ||
+                existing->shape.action_count != shape.action_count) {
+                throw std::invalid_argument("multiway sparse row shape conflicts");
+            }
+            return;
+        }
+    }
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     const auto compact = compact_storage_ != nullptr;
     const auto existed = compact ? compact_storage_->has_row(shape.infoset) : storage_.has_row(shape.infoset);
     const auto row_count = compact ? compact_storage_->row_count() : storage_.row_count();
@@ -747,7 +772,7 @@ void MultiwaySolverCoordinator::regret_matched_strategy_into(
     std::uint32_t bucket,
     Probability* output,
     std::size_t output_size) const {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
     if (compact_storage_ != nullptr) {
         compact_storage_->regret_matched_strategy_into(infoset, bucket, output, output_size);
         return;
@@ -758,14 +783,14 @@ void MultiwaySolverCoordinator::regret_matched_strategy_into(
 bool MultiwaySolverCoordinator::action_below_regret(
     MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
     double threshold) const noexcept {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
     return compact_storage_ != nullptr
         ? compact_storage_->action_below_regret(infoset, bucket, action, threshold)
         : storage_.action_below_regret(infoset, bucket, action, threshold);
 }
 
 void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams) {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     if (streams.size() != request_.limits().worker_count) {
         throw std::invalid_argument("multiway merge requires one stream for every configured worker");
     }
@@ -776,7 +801,7 @@ void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayW
 
 void MultiwaySolverCoordinator::merge_worker_streams(
     const std::vector<const MultiwayWorkerDeltaStream*>& streams) {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     merge_worker_streams_locked(streams);
 }
 
@@ -802,7 +827,7 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
 
     merge_deltas_.clear();
     pending_merge_cells_.clear();
-    if (delta_count > merge_deltas_.capacity() || delta_count > pending_merge_cells_.capacity()) {
+    if (delta_count > merge_deltas_.capacity()) {
         throw std::logic_error("multiway merge scratch capacity changed after coordinator construction");
     }
     for (const auto* stream : streams) {
@@ -965,17 +990,17 @@ void MultiwaySolverCoordinator::scale_regrets(double factor) {
 MultiwaySolverCoordinator::~MultiwaySolverCoordinator() = default;
 
 void MultiwaySolverCoordinator::record_terminal_visit() noexcept {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     ++diagnostics_.terminal_visits;
 }
 
 void MultiwaySolverCoordinator::record_leaf_visit() noexcept {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     ++diagnostics_.leaf_visits;
 }
 
 void MultiwaySolverCoordinator::record_missing_lookup() noexcept {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     ++diagnostics_.missing_lookup_requests;
 }
 
@@ -995,11 +1020,12 @@ const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::public_state(
 
 const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::find_public_state(
     MultiwayPublicStateId id) const noexcept {
+    std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
     return public_state(id);
 }
 
 MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const {
-    std::lock_guard<std::mutex> lock(traversal_mutex_);
+    std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
     MultiwayCoordinatorCheckpoint result;
     result.public_states = public_states_;
     result.terminal_visits = diagnostics_.terminal_visits;
@@ -1121,7 +1147,7 @@ void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorChec
         }
     }
     {
-        std::lock_guard<std::mutex> lock(traversal_mutex_);
+        std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
         public_states_.clear();
         storage_.metadata_.clear();
         storage_.regret_.clear();
@@ -1143,7 +1169,7 @@ void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorChec
         }
     }
     {
-        std::lock_guard<std::mutex> lock(traversal_mutex_);
+        std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
         storage_.regret_ = checkpoint.storage.regrets;
         storage_.strategy_sum_ = checkpoint.storage.strategy_sums;
         diagnostics_.terminal_visits = checkpoint.terminal_visits;

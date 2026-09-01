@@ -755,8 +755,9 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                 for (auto local_id = batch.trajectories.begin;
                      local_id < batch.trajectories.end;
                      ++local_id) {
-                    if (cancelled_.load(std::memory_order_acquire) ||
-                        std::chrono::steady_clock::now() >= deadline) {
+                    const bool has_deadline = deadline != std::chrono::steady_clock::time_point::max();
+                    if (cancelled_.load(std::memory_order_relaxed) ||
+                        (has_deadline && std::chrono::steady_clock::now() >= deadline)) {
                         cancelled_.store(true, std::memory_order_release);
                         break;
                     }
@@ -794,8 +795,10 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
 
         {
             std::lock_guard<std::mutex> lock(pool_mutex_);
-            ++completed_workers_;
-            if (completed_workers_ == worker_count_) completion_cv_.notify_one();
+            if (worker_index < active_batch_count_) {
+                ++completed_workers_;
+                if (completed_workers_ == active_batch_count_) completion_cv_.notify_one();
+            }
         }
     }
 }
@@ -837,7 +840,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     work_cv_.notify_all();
     {
         std::unique_lock<std::mutex> lock(pool_mutex_);
-        completion_cv_.wait(lock, [this] { return completed_workers_ == worker_count_; });
+        completion_cv_.wait(lock, [this] { return completed_workers_ == active_batch_count_; });
         batch_active_ = false;
         if (worker_error_ != nullptr) std::rethrow_exception(worker_error_);
     }

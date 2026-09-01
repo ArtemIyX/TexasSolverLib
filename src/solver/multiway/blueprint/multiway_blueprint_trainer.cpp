@@ -272,6 +272,7 @@ MultiwayBlueprintTrainer::MultiwayBlueprintTrainer(
         throw std::invalid_argument("multiway blueprint trainer requires a non-zero deterministic seed");
     }
     status_.late_window_start_batch = schedule_.late_window_start_batch;
+    status_.admitted_rows_per_batch.reserve(256U);
     status_.configured_max_public_states = coordinator_->limits().max_public_states;
     status_.configured_max_sparse_rows = coordinator_->limits().max_sparse_rows;
     status_.configured_max_sparse_values = coordinator_->limits().max_sparse_values;
@@ -369,7 +370,11 @@ void MultiwayBlueprintTrainer::run_batches(
         status_.elapsed_wall_nanoseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - started_at_).count());
-        status_.admitted_rows_per_batch.push_back(status_.admitted_rows);
+        if (status_.admitted_rows_per_batch.size() < 256U) {
+            status_.admitted_rows_per_batch.push_back(status_.admitted_rows);
+        } else {
+            status_.admitted_rows_per_batch.back() = status_.admitted_rows;
+        }
         if (status_.configured_max_public_states != 0U &&
             status_.peak_public_states >= status_.configured_max_public_states) {
             status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::PublicStates;

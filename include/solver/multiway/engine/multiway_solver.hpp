@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <array>
 #include <mutex>
+#include <shared_mutex>
 #include <optional>
 #include <vector>
 
@@ -455,7 +456,7 @@ private:
     std::vector<MultiwayWorkerDelta> merge_deltas_;
     std::vector<PendingMergeCell> pending_merge_cells_;
     MultiwaySolveDiagnostics diagnostics_;
-    mutable std::mutex traversal_mutex_;
+    mutable std::shared_mutex traversal_mutex_;
 };
 
 }  // namespace texas::solver::multiway
