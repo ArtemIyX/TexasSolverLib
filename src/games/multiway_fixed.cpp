@@ -47,6 +47,10 @@ PlayerId next_pending_after(const MultiwayFixedState& state, PlayerId player) no
 void refresh_round_completion(MultiwayFixedState& state) noexcept {
     if (live_count(state) <= 1U) {
         state.current_player = -1;
+        for (std::size_t seat = 0; seat < state.seat_count; ++seat) {
+            state.pending[seat] = false;
+            state.may_raise[seat] = false;
+        }
         return;
     }
     if (actionable_count(state) <= 1U) {

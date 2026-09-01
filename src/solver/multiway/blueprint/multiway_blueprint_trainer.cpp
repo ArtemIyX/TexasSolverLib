@@ -436,9 +436,13 @@ MultiwayFullBlueprintArtifact MultiwayBlueprintTrainer::export_full_policy() con
                 std::uint32_t assigned = 0U;
                 for (std::uint8_t action = 0; action < shape.action_count; ++action) {
                     const auto mass = checkpoint.storage.strategy_sums[offset + static_cast<std::size_t>(action) * shape.bucket_count + bucket];
+                    const auto remaining_actions = static_cast<std::uint32_t>(shape.action_count - action - 1U);
+                    const auto remaining_mass = std::numeric_limits<std::uint16_t>::max() - assigned;
+                    const auto raw_probability = total > 0.0
+                        ? static_cast<std::uint32_t>(std::floor(mass / total * std::numeric_limits<std::uint16_t>::max())) : 0U;
                     const auto probability = action + 1U == shape.action_count
-                        ? static_cast<std::uint16_t>(std::numeric_limits<std::uint16_t>::max() - assigned)
-                        : static_cast<std::uint16_t>(total > 0.0 ? std::floor(mass / total * std::numeric_limits<std::uint16_t>::max()) : 0U);
+                        ? static_cast<std::uint16_t>(remaining_mass)
+                        : static_cast<std::uint16_t>(std::clamp(raw_probability, 1U, remaining_mass - remaining_actions));
                     assigned += probability;
                     row.actions.push_back({state->legal_actions[action], probability});
                 }
@@ -464,10 +468,13 @@ MultiwayFullBlueprintArtifact MultiwayBlueprintTrainer::export_full_policy() con
             row.actions.reserve(strategy.size());
             std::uint32_t assigned = 0U;
             for (std::size_t action = 0U; action < strategy.size(); ++action) {
+                const auto remaining_actions = static_cast<std::uint32_t>(strategy.size() - action - 1U);
+                const auto remaining_mass = std::numeric_limits<std::uint16_t>::max() - assigned;
+                const auto raw_probability = static_cast<std::uint32_t>(std::floor(strategy[action] *
+                    std::numeric_limits<std::uint16_t>::max()));
                 const auto probability = action + 1U == strategy.size()
-                    ? static_cast<std::uint16_t>(std::numeric_limits<std::uint16_t>::max() - assigned)
-                    : static_cast<std::uint16_t>(std::floor(strategy[action] *
-                        std::numeric_limits<std::uint16_t>::max()));
+                    ? static_cast<std::uint16_t>(remaining_mass)
+                    : static_cast<std::uint16_t>(std::clamp(raw_probability, 1U, remaining_mass - remaining_actions));
                 assigned += probability;
                 row.actions.push_back({state->legal_actions[action], probability});
             }

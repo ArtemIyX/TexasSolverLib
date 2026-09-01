@@ -243,6 +243,8 @@ void MultiwayState::select_next_player() {
 void MultiwayState::refresh_round_completion() {
     if (live_player_count() <= 1U) {
         current_player_ = -1;
+        std::fill(pending_.begin(), pending_.end(), false);
+        std::fill(may_raise_.begin(), may_raise_.end(), false);
         return;
     }
     if (actionable_player_count() <= 1U) {

@@ -10,6 +10,8 @@
 #include <stdexcept>
 #include <utility>
 #include <cstring>
+#include <atomic>
+#include <thread>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -126,6 +128,34 @@ bool are_valid_compact_cards(const std::uint8_t* cards, std::size_t count) noexc
         }
     }
     return true;
+}
+
+void validate_mapped_assignments_parallel(const std::vector<MultiwayBucketTable>& tables) {
+    if (tables.empty()) return;
+    const auto hardware = std::max(1U, std::thread::hardware_concurrency());
+    const auto worker_count = std::min<std::size_t>(tables.size(), std::min<std::size_t>(hardware, 16U));
+    std::atomic<bool> invalid{false};
+    std::vector<std::thread> workers;
+    workers.reserve(worker_count);
+    for (std::size_t worker = 0U; worker < worker_count; ++worker) {
+        workers.emplace_back([&, worker] {
+            for (std::size_t index = worker; index < tables.size() && !invalid.load(std::memory_order_relaxed);
+                 index += worker_count) {
+                const auto& table = tables[index];
+                for (std::size_t assignment = 0U; assignment < table.assignment_count(); ++assignment) {
+                    const auto bucket = table.assignment_at(assignment);
+                    if (bucket != MULTIWAY_INVALID_BUCKET && bucket >= table.bucket_count()) {
+                        invalid.store(true, std::memory_order_relaxed);
+                        return;
+                    }
+                }
+            }
+        });
+    }
+    for (auto& worker : workers) worker.join();
+    if (invalid.load(std::memory_order_relaxed)) {
+        throw std::invalid_argument("multiway bucket artifact contains an out-of-range assignment");
+    }
 }
 
 }  // namespace
@@ -466,6 +496,7 @@ MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path
         table.table_identity_ = table_hash;
         tables.push_back(std::move(table));
     }
+    validate_mapped_assignments_parallel(tables);
     if (cursor != mapped->size) throw std::invalid_argument("multiway bucket artifact has trailing data");
     return MultiwayBucketRegistry(std::move(tables), std::move(mapped));
 }

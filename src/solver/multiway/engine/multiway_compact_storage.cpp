@@ -89,11 +89,13 @@ void MultiwayCompactStorage::apply_delta(const MultiwaySparseRowMetadata& row,
     regrets_[index] = static_cast<std::int32_t>(next_regret);
     const auto mass_delta = saturating_scaled(strategy_sum, static_cast<double>(kMassScale), 0,
         std::numeric_limits<long long>::max());
-    if (mass_delta > 0 && strategy_mass_[row.strategy_sum_offset + index - row.regret_offset] >
-        std::numeric_limits<std::uint64_t>::max() - static_cast<std::uint64_t>(mass_delta)) {
-        throw std::overflow_error("compact strategy mass overflow");
+    auto& stored_mass = strategy_mass_[row.strategy_sum_offset + index - row.regret_offset];
+    const auto positive_delta = static_cast<std::uint64_t>(std::max(0LL, mass_delta));
+    if (positive_delta > std::numeric_limits<std::uint64_t>::max() - stored_mass) {
+        stored_mass = std::numeric_limits<std::uint64_t>::max();
+    } else {
+        stored_mass += positive_delta;
     }
-    strategy_mass_[row.strategy_sum_offset + index - row.regret_offset] += static_cast<std::uint64_t>(std::max(0LL, mass_delta));
 }
 
 void MultiwayCompactStorage::scale_regrets(double factor) {
