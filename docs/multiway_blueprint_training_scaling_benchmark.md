@@ -14,14 +14,15 @@ sample, identical seeds, and pinned logical processors. The median throughput wa
 
 | Workers | Median trajectories/s |
 |---:|---:|
-| 1 | 24,908.1 |
-| 2 | 32,232.4 |
-| 4 | 60,022.1 |
-| 8 | 113,225.8 |
-| 16 | 151,607.0 |
+| 1 | 22,508.0 |
+| 2 | 26,975.9 |
+| 4 | 52,083.0 |
+| 8 | 91,057.7 |
+| 16 | 169,235.0 |
 
 The strict ordering gate passed for this run. All fingerprints were identical.
-Samples now also report coordinator lock-wait nanoseconds separately from the
+The fixture now uses 64 deterministic buckets, rather than one bucket, to
+exercise bucket indexing and larger row storage. Samples also report coordinator lock-wait nanoseconds separately from the
 worker-completion barrier.
 The full Debug build and CTest workflow also passed. This is interim evidence;
 the audit remains incomplete until every finding and its focused test are closed.
