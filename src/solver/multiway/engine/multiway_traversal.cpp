@@ -733,6 +733,10 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     continuation_stream_views_.reserve(worker_count_);
     worker_batches_.resize(worker_count_);
     threads_.reserve(worker_count_);
+    worker_work_cvs_.reserve(worker_count_);
+    for (std::uint32_t worker = 0U; worker < worker_count_; ++worker) {
+        worker_work_cvs_.push_back(std::make_unique<std::condition_variable>());
+    }
     const auto per_worker_capacity = worker_delta_capacity_ / worker_count_ +
         (worker_delta_capacity_ % worker_count_ == 0U ? 0U : 1U);
     for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
@@ -748,7 +752,7 @@ MultiwayRootBatchRunner::~MultiwayRootBatchRunner() {
         std::lock_guard<std::mutex> lock(pool_mutex_);
         stop_workers_ = true;
     }
-    work_cv_.notify_all();
+    for (const auto& work_cv : worker_work_cvs_) work_cv->notify_one();
     for (auto& thread : threads_) {
         if (thread.joinable()) thread.join();
     }
@@ -772,7 +776,7 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
         auto deadline = std::chrono::steady_clock::time_point::max();
         {
             std::unique_lock<std::mutex> lock(pool_mutex_);
-            work_cv_.wait(lock, [this, observed_generation] {
+            worker_work_cvs_[worker_index]->wait(lock, [this, observed_generation] {
                 return stop_workers_ || (batch_active_ && batch_generation_ != observed_generation);
             });
             if (stop_workers_) return;
@@ -875,7 +879,9 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     }
     const auto coordinator_wait_start = std::chrono::steady_clock::now();
     const auto coordinator_lock_wait_before = coordinator_->diagnostics().coordinator_lock_wait_nanoseconds;
-    work_cv_.notify_all();
+    for (std::size_t worker = 0U; worker < batch_count; ++worker) {
+        worker_work_cvs_[worker]->notify_one();
+    }
     {
         std::unique_lock<std::mutex> lock(pool_mutex_);
         completion_cv_.wait(lock, [this] {

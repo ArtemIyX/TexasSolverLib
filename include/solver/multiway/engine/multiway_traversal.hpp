@@ -17,6 +17,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <exception>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -208,8 +209,8 @@ private:
     std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;
     std::vector<MultiwayWorkerBatch> worker_batches_;
     std::vector<std::thread> threads_;
+    std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;
     std::mutex pool_mutex_;
-    std::condition_variable work_cv_;
     std::condition_variable completion_cv_;
     bool stop_workers_ = false;
     bool batch_active_ = false;
