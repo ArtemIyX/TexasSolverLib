@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "games/multiway_fixed.hpp"
+
 namespace texas::solver::multiway {
 namespace {
 
@@ -82,6 +84,29 @@ MultiwayTerminalResult convert_terminal_utilities(
     }
     result.utility_units = root.value_units;
     return result;
+}
+
+MultiwayTerminalResult convert_fixed_terminal_result(
+    const MultiwayFixedTerminalResult& fixed,
+    const MultiwayRootSnapshot& root,
+    int big_blind) {
+    MultiwayTerminalResult result;
+    result.refunds.assign(fixed.refunds.begin(), fixed.refunds.begin() + fixed.seat_count);
+    result.payouts.assign(fixed.payouts.begin(), fixed.payouts.begin() + fixed.seat_count);
+    result.utilities.assign(fixed.utilities.begin(), fixed.utilities.begin() + fixed.seat_count);
+    result.rake_taken = fixed.rake_taken;
+    result.utility_units = MultiwayValueUnits::Chips;
+    for (std::size_t index = 0U; index < fixed.pot_count; ++index) {
+        const auto& fixed_pot = fixed.pots[index];
+        MultiwaySidePot pot;
+        pot.amount = fixed_pot.amount;
+        pot.contribution_cap = fixed_pot.contribution_cap;
+        pot.eligible_players.assign(
+            fixed_pot.eligible_players.begin(),
+            fixed_pot.eligible_players.begin() + fixed_pot.eligible_count);
+        result.pots.push_back(std::move(pot));
+    }
+    return convert_terminal_utilities(std::move(result), root, big_blind);
 }
 
 MultiwayState validate_root_consistent_state(
@@ -518,15 +543,19 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
     validate_private_deal(root_, board, private_deal);
 
     if (state.next_node_kind() == MultiwayNextNodeKind::FoldTerminal) {
-        MultiwayTerminalInput input;
-        input.contributions = betting.contributions;
-        input.folded = betting.folded;
-        input.strengths.assign(betting.contributions.size(), Strength{});
+        MultiwayFixedTerminalInput input;
+        input.seat_count = static_cast<std::uint8_t>(betting.contributions.size());
         input.odd_chip_first_seat = root_.odd_chip_first_seat;
         input.rake_policy = root_.rake_policy;
         input.flop_seen = board.size() >= 3U;
-        return convert_terminal_utilities(
-            settle_multiway_terminal(input), root_, betting.big_blind);
+        for (std::size_t seat = 0U; seat < input.seat_count; ++seat) {
+            input.contributions[seat] = betting.contributions[seat];
+            input.folded[seat] = betting.folded[seat];
+        }
+        MultiwayFixedTerminalScratch scratch;
+        MultiwayFixedTerminalResult fixed_result;
+        settle_multiway_terminal_fixed(input, scratch, fixed_result);
+        return convert_fixed_terminal_result(fixed_result, root_, betting.big_blind);
     }
     const auto showdown_ready = state.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal ||
         (state.requires_board_runout() && board.size() == 5U);
@@ -534,16 +563,24 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
         throw std::logic_error("multiway terminal resolution requires a fold terminal or completed showdown");
     }
 
-    MultiwayShowdownInput input;
-    input.board = board;
-    input.holes.assign(private_deal.holes.begin(), private_deal.holes.end());
-    input.contributions = betting.contributions;
-    input.folded = betting.folded;
+    MultiwayFixedTerminalInput input;
+    input.seat_count = static_cast<std::uint8_t>(betting.contributions.size());
     input.odd_chip_first_seat = root_.odd_chip_first_seat;
     input.rake_policy = root_.rake_policy;
     input.flop_seen = board.size() >= 3U;
-    return convert_terminal_utilities(
-        evaluate_multiway_showdown(input), root_, betting.big_blind);
+    for (std::size_t seat = 0U; seat < input.seat_count; ++seat) {
+        input.contributions[seat] = betting.contributions[seat];
+        input.folded[seat] = betting.folded[seat];
+        std::array<std::uint8_t, 7> cards = {};
+        std::copy(board.begin(), board.end(), cards.begin());
+        cards[5] = private_deal.holes[seat][0];
+        cards[6] = private_deal.holes[seat][1];
+        input.strengths[seat] = Strength::evaluate_7(cards);
+    }
+    MultiwayFixedTerminalScratch scratch;
+    MultiwayFixedTerminalResult fixed_result;
+    settle_multiway_terminal_fixed(input, scratch, fixed_result);
+    return convert_fixed_terminal_result(fixed_result, root_, betting.big_blind);
 }
 
 }  // namespace texas::solver::multiway
