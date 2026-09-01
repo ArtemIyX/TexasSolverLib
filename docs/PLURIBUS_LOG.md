@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## Post-activation multiway training scaling audit
+
+**Status:** Complete
+**Completed:** 2026-09-01
+
+- Recorded 30 evidence-backed findings across the active 1-through-16-worker
+  traversal, coordinator, compact storage, continuation, scheduling, merge,
+  allocation, telemetry, checkpoint, and benchmark paths.
+- Defined an ordered measurement and immutable-batch-epoch plan to remove shared
+  traversal writes and qualify monotonic 1/2/4/8/16-worker scaling.
+
+### Files
+
+- `docs/multiway_blueprint_training_scaling_benchmark.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static source review only. Builds, tests, solver runs, and benchmarks were not
+  run because the requested code-review workflow forbids them without explicit
+  authorization.
+
+### Limitations
+
+- Bottleneck priorities are supported by code paths and the recorded 4-versus-8
+  worker regression. Phase 0 instrumentation is required to quantify each share.
+
 ## Multiway blueprint multithreaded training activation and qualification
 
 **Status:** Complete
