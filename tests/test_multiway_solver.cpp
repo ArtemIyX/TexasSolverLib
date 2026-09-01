@@ -333,6 +333,26 @@ TEST_CASE(multiway_solver_sparse_merge_rejects_lost_nonzero_float64_updates_tran
     EXPECT_NEAR(coordinator.storage().average_strategy(root_infoset(), 0U)[0], 1.0, 1e-12);
 }
 
+TEST_CASE(multiway_solver_sparse_merge_grows_bounded_pending_cell_scratch) {
+    auto limits = valid_limits();
+    limits.max_worker_delta_entries = 300U;
+    texas::MultiwayCFRConfig cfr;
+    cfr.player_count = 2U;
+    texas::MultiwaySolverCoordinator coordinator(
+        texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+    coordinator.admit_infoset_row(root_row());
+    texas::MultiwayWorkerDeltaStream first(0U, 150U);
+    texas::MultiwayWorkerDeltaStream second(1U, 150U);
+    for (std::uint64_t trajectory = 0U; trajectory < 300U; ++trajectory) {
+        auto update = delta(trajectory, 0.0, 1.0, 0U);
+        EXPECT_TRUE((trajectory % 2U == 0U ? first : second).try_append(update));
+    }
+    first.sort_fixed_order();
+    second.sort_fixed_order();
+    coordinator.merge_worker_streams({first, second});
+    EXPECT_NEAR(coordinator.storage().average_strategy(root_infoset(), 0U)[0], 1.0, 1e-12);
+}
+
 TEST_CASE(multiway_solver_sparse_admission_enforces_row_and_value_caps) {
     auto limits = valid_limits();
     limits.max_sparse_rows = 1;
