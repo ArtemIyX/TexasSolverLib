@@ -682,9 +682,10 @@ MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest&
     public_states_.reserve(1U);
     merge_stream_views_.reserve(request.limits().worker_count);
     merge_stream_cursors_.reserve(request.limits().worker_count);
-    const auto merge_capacity = static_cast<std::size_t>(request.limits().worker_count) *
-        request.limits().max_worker_delta_entries;
-    pending_merge_cells_.reserve(std::min(merge_capacity, request.limits().max_sparse_values));
+    // Pending cells contain one entry per distinct merged cell, not one entry
+    // per worker delta. Keep only a small warm reserve and grow for unusually
+    // broad batches.
+    pending_merge_cells_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_values));
     admit_public_state(request_.root().public_state);
 }
 
