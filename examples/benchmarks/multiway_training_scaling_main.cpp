@@ -22,7 +22,7 @@
 namespace {
 
 struct BenchmarkConfig {
-    std::vector<std::uint32_t> workers{4U, 8U, 16U};
+    std::vector<std::uint32_t> workers{1U, 2U, 4U, 8U, 16U};
     std::vector<std::uint32_t> batch_sizes{1000U, 4000U, 16000U};
     std::uint32_t warmup_batches = 1U;
     std::uint32_t timed_batches = 1U;
@@ -267,7 +267,7 @@ BenchmarkConfig parse_args(int argc, char** argv) {
         const std::string_view option(argv[index]);
         if (option == "--help") {
             std::cout << "Usage: texas_solver_multiway_training_scaling [options]\n"
-                      << "  --workers 4,8,16\n"
+                      << "  --workers 1,2,4,8,16\n"
                       << "  --batch-sizes 1000,4000,16000\n"
                       << "  --warmup-batches N\n"
                       << "  --timed-batches N\n"
