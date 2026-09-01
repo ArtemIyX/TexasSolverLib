@@ -13,6 +13,7 @@
 #include <cstring>
 #include <exception>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -444,15 +445,19 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
             infoset, bucket, strategy.data(), action_count);
     }
     const auto betting_state = make_multiway_fixed_state(state.betting);
+    std::array<std::optional<MultiwayFixedState>, MULTIWAY_MAX_TRAVERSAL_ACTIONS> successors;
+    for (std::size_t action = 0U; action < action_count; ++action) {
+        successors[action].emplace(betting_state.apply(
+            state.legal_actions[action].action,
+            state.legal_actions[action].target_street_contribution));
+    }
     const bool pruning_recovery = pruning_.recovery_batch(context.batch_number);
     if (pruning_.enabled && context.batch_number > pruning_.warmup_batches &&
         !pruning_recovery && actor != context.traverser &&
         state.betting.street != Street::River && action_count > 0U) {
         const auto explore = pruning_.exploration_probability;
         for (std::size_t action = 0; action < action_count; ++action) {
-            const auto next = betting_state.apply(
-                state.legal_actions[action].action,
-                state.legal_actions[action].target_street_contribution);
+            const auto& next = *successors[action];
             const bool immediate_terminal = next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal ||
                 next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal;
             const bool below_regret = coordinator_->action_below_regret(
@@ -473,9 +478,7 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
     }
 
     const auto evaluate_action = [&](std::size_t action) {
-        const auto next = betting_state.apply(
-            state.legal_actions[action].action,
-            state.legal_actions[action].target_street_contribution);
+        const auto& next = *successors[action];
         std::array<MultiwayActionDescriptor, MULTIWAY_MAX_TRAVERSAL_ACTIONS> child_actions{};
         std::size_t child_action_count = 0U;
         if (next.current_player >= 0) {
