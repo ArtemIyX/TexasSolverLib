@@ -78,7 +78,7 @@ MultiwayFixedContinuationSelector::strategy(const MultiwayContinuationSelectionK
         result[0] = 1.0;
         return result;
     }
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
         return same_key(row.key, key);
     });
@@ -140,7 +140,7 @@ void MultiwayFixedContinuationSelector::update_regrets_weighted(
     double node_value = 0.0;
     for (std::size_t index = 0U; index < values.size(); ++index) node_value += mixture[index] * values[index];
     if (!std::isfinite(node_value)) throw std::overflow_error("multiway continuation value is non-finite");
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
         return same_key(row.key, key);
     });
@@ -159,7 +159,7 @@ void MultiwayFixedContinuationSelector::set_regrets(
     for (const auto regret : regrets) {
         if (!std::isfinite(regret)) throw std::invalid_argument("multiway continuation regret is non-finite");
     }
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
         return same_key(row.key, key);
     });

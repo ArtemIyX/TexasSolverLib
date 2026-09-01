@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <array>
 #include <mutex>
+#include <shared_mutex>
 #include <vector>
 
 namespace texas::solver::multiway {
@@ -95,7 +96,7 @@ private:
         std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> regrets{};
     };
     mutable std::vector<Row> rows_;
-    mutable std::mutex mutex_;
+    mutable std::shared_mutex mutex_;
 };
 
 }  // namespace texas::solver::multiway
