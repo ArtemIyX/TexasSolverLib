@@ -191,7 +191,6 @@ void MultiwayFixedContinuationSelector::set_regrets(
 
 void MultiwayFixedContinuationSelector::merge_worker_streams(
     const std::vector<const MultiwayContinuationDeltaStream*>& streams) const {
-    std::vector<const MultiwayContinuationDelta*> ordered;
     std::size_t count = 0U;
     for (std::size_t worker = 0U; worker < streams.size(); ++worker) {
         const auto* stream = streams[worker];
@@ -200,15 +199,24 @@ void MultiwayFixedContinuationSelector::merge_worker_streams(
         }
         count += stream->size();
     }
-    ordered.reserve(count);
-    for (const auto* stream : streams) {
-        for (const auto& delta : stream->deltas()) ordered.push_back(&delta);
+    std::vector<std::size_t> cursors(streams.size(), 0U);
+    for (std::size_t merged = 0U; merged < count; ++merged) {
+        const MultiwayContinuationDelta* next = nullptr;
+        std::size_t next_worker = 0U;
+        for (std::size_t worker = 0U; worker < streams.size(); ++worker) {
+            const auto cursor = cursors[worker];
+            const auto& deltas = streams[worker]->deltas();
+            if (cursor >= deltas.size()) continue;
+            const auto* candidate = &deltas[cursor];
+            if (next == nullptr || delta_less(*candidate, *next)) {
+                next = candidate;
+                next_worker = worker;
+            }
+        }
+        if (next == nullptr) throw std::logic_error("multiway continuation merge lost a delta");
+        update_regrets_weighted(next->key, next->mixture, next->values, next->importance_weight);
+        ++cursors[next_worker];
     }
-    std::sort(ordered.begin(), ordered.end(), [](const auto* left, const auto* right) {
-        return delta_less(*left, *right);
-    });
-    for (const auto* delta : ordered) update_regrets_weighted(
-        delta->key, delta->mixture, delta->values, delta->importance_weight);
 }
 
 }  // namespace texas::solver::multiway
