@@ -426,6 +426,19 @@ void MultiwayActionAbstraction::make_legal_actions_into(
         }
     }
 
+    // Preserve every legal action kind even when a sizing template clips all
+    // of its candidates to the all-in boundary.
+    for (const auto action : {MultiwayAction::Bet, MultiwayAction::Raise}) {
+        if (!has_action(action) || std::any_of(result.begin(), result.end(), [action](const auto& entry) {
+                return entry.action == action;
+            })) {
+            continue;
+        }
+        const auto minimum_target = action == MultiwayAction::Bet
+            ? saturated_add(actor_contribution, state.last_full_raise_size())
+            : saturated_add(state.current_bet(), state.last_full_raise_size());
+        if (minimum_target < all_in_target) append(action, minimum_target);
+    }
     if (has_action(MultiwayAction::AllIn)) append(MultiwayAction::AllIn, 0);
     normalize_menu(state, result, nullptr);
 }

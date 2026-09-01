@@ -404,6 +404,7 @@ TEST_CASE(multiway_recursive_batch_rotates_traversers_deterministically_across_s
 
     texas::MultiwayRootBatchRunner runner(
         fixture.traversal, fixture.coordinator, 1U, 128U);
+    const auto lock_wait_before = fixture.coordinator.diagnostics().coordinator_lock_wait_nanoseconds;
     const auto result = runner.run(0U, 3U, 0x5eedU);
     EXPECT_EQ(result.trajectories_attempted, 3U);
     EXPECT_EQ(result.trajectories_accepted, 3U);
@@ -416,7 +417,7 @@ TEST_CASE(multiway_recursive_batch_rotates_traversers_deterministically_across_s
         result.delta_entries_merged);
     EXPECT_EQ(
         result.coordinator_lock_wait_nanoseconds,
-        fixture.coordinator.diagnostics().coordinator_lock_wait_nanoseconds);
+        fixture.coordinator.diagnostics().coordinator_lock_wait_nanoseconds - lock_wait_before);
     EXPECT_TRUE(fixture.coordinator.diagnostics().coordinator_lock_wait_nanoseconds > 0U);
 }
 

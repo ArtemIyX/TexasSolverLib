@@ -1,9 +1,11 @@
 #include "games/multiway_state.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/continuation/multiway_continuation_selector.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,6 +16,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -59,36 +62,48 @@ constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit) {
 }
 
 const std::vector<std::uint8_t> kBoard = {
-    card(2, 0), card(7, 1), card(9, 2), card(4, 3), card(6, 0),
+    card(2, 0), card(7, 1), card(9, 2),
 };
 
-std::vector<std::uint32_t> benchmark_bucket_assignments() {
-    constexpr std::uint32_t bucket_count = 64U;
-    std::vector<std::uint32_t> result(texas::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
-    std::size_t hole_index = 0U;
-    for (std::uint8_t first = 0U; first < 52U; ++first) {
-        for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second) {
-            result[hole_index] = static_cast<std::uint32_t>(hole_index % bucket_count);
-            for (const auto board_card : kBoard) {
-                if (first == board_card || second == board_card) {
-                    result[hole_index] =
-                        texas::MULTIWAY_INVALID_BUCKET;
-                }
-            }
-            ++hole_index;
+texas::MultiwayBucketRegistry benchmark_buckets(const texas::MultiwayModelIdentity& identity) {
+    std::vector<texas::MultiwayBucketBoardRequest> requests;
+    const auto add_request = [&requests](texas::Street street, std::vector<std::uint8_t> board) {
+        if (std::none_of(requests.begin(), requests.end(), [street, &board](const auto& existing) {
+                return existing.street == street && existing.canonical_board == board;
+            })) {
+            requests.push_back({street, std::move(board)});
+        }
+    };
+    add_request(texas::Street::Flop, kBoard);
+    for (std::uint8_t turn = 0U; turn < 52U; ++turn) {
+        if (std::find(kBoard.begin(), kBoard.end(), turn) != kBoard.end()) continue;
+        auto turn_board = kBoard;
+        turn_board.push_back(turn);
+        std::sort(turn_board.begin(), turn_board.end());
+        add_request(texas::Street::Turn, turn_board);
+        for (std::uint8_t river = 0U; river < 52U; ++river) {
+            if (std::find(turn_board.begin(), turn_board.end(), river) != turn_board.end()) continue;
+            auto river_board = turn_board;
+            river_board.push_back(river);
+            std::sort(river_board.begin(), river_board.end());
+            add_request(texas::Street::River, std::move(river_board));
         }
     }
-    return result;
+    texas::MultiwayBucketBaselineProfile profile;
+    profile.flop_bucket_count = 1024U;
+    profile.turn_bucket_count = 1024U;
+    profile.river_bucket_count = 1024U;
+    return texas::build_multiway_baseline_bucket_registry(identity, requests, profile);
 }
 
 texas::MultiwayRootSnapshot make_root(const texas::MultiwayActionAbstraction& abstraction) {
     texas::MultiwayGameConfig game;
-    game.starting_stacks = {1000, 1000, 1000};
-    game.initial_contributions = {0, 0, 0};
+    game.starting_stacks = {10000, 10000, 10000};
+    game.initial_contributions = {100, 100, 100};
     game.initial_street_contributions = {0, 0, 0};
     game.first_player = 0;
     game.big_blind = 100;
-    game.street = texas::Street::River;
+    game.street = texas::Street::Flop;
     const auto betting = texas::MultiwayState::initial(game).snapshot();
     texas::MultiwayRootSnapshot root;
     root.public_state = texas::MultiwayPublicBuilder::make_root(
@@ -124,9 +139,9 @@ texas::MultiwayModelIdentity training_identity(
     texas::MultiwayBlueprintTrainingConfig config;
     config.limits.worker_count = workers;
     config.limits.trajectories_per_batch = batch_size;
-    config.limits.max_public_states = 256U;
-    config.limits.max_sparse_rows = 128U;
-    config.limits.max_sparse_values = 1024U;
+    config.limits.max_public_states = 100000U;
+    config.limits.max_sparse_rows = 100000U;
+    config.limits.max_sparse_values = 1000000U;
     config.limits.max_worker_delta_entries = delta_capacity;
     config.limits.max_batches = 16U;
     config.deterministic_seed = seed;
@@ -137,14 +152,16 @@ texas::MultiwayModelIdentity training_identity(
 class BenchmarkFixture {
 public:
     BenchmarkFixture(std::uint32_t workers, std::uint32_t batch_size, std::uint64_t seed)
-        : delta_capacity_(checked_delta_capacity(batch_size)),
+        : delta_capacity_(checked_delta_capacity(batch_size, workers)),
           root_(make_root(abstraction_)),
           request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)),
           coordinator_(request_),
-          buckets_({texas::MultiwayBucketTable(
-              bucket_identity(), texas::Street::River, kBoard, 64U, benchmark_bucket_assignments())}),
+          buckets_(benchmark_buckets(bucket_identity())),
+          continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(
+              texas::MultiwayContinuationPolicyKind::Blueprint)),
           evaluator_{deterministic_leaf, nullptr},
-          traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 1U),
+          traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U,
+              nullptr, continuation_selector_.get()),
           runner_(traversal_, coordinator_, workers, delta_capacity_,
               texas::MultiwaySearchProfileMode::Disabled, true),
           trainer_(training_identity(workers, batch_size, delta_capacity_, seed),
@@ -183,11 +200,11 @@ public:
     }
 
 private:
-    static std::size_t checked_delta_capacity(std::uint32_t batch_size) {
-        if (batch_size > std::numeric_limits<std::size_t>::max() / 4U) {
+    static std::size_t checked_delta_capacity(std::uint32_t batch_size, std::uint32_t workers) {
+        if (workers == 0U || batch_size > std::numeric_limits<std::size_t>::max() / 4U / workers) {
             throw std::overflow_error("batch size overflows worker delta capacity");
         }
-        return static_cast<std::size_t>(batch_size) * 4U;
+        return static_cast<std::size_t>(batch_size) * 4U * workers;
     }
 
     static texas::MultiwayCFRConfig make_cfr() {
@@ -203,9 +220,9 @@ private:
         texas::MultiwaySolverLimits limits;
         limits.worker_count = workers;
         limits.trajectories_per_batch = batch_size;
-        limits.max_public_states = 256U;
-        limits.max_sparse_rows = 128U;
-        limits.max_sparse_values = 1024U;
+        limits.max_public_states = 100000U;
+        limits.max_sparse_rows = 100000U;
+        limits.max_sparse_values = 1000000U;
         limits.max_worker_delta_entries = delta_capacity;
         limits.max_batches = 16U;
         limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
@@ -215,6 +232,9 @@ private:
     static texas::MultiwayModelIdentity bucket_identity() {
         texas::MultiwayBlueprintConfig config;
         config.player_count = 3U;
+        config.flop_bucket_count = 1024U;
+        config.turn_bucket_count = 1024U;
+        config.river_bucket_count = 1024U;
         return texas::make_multiway_model_identity(config);
     }
 
@@ -224,6 +244,7 @@ private:
     texas::MultiwaySolveRequest request_;
     texas::MultiwaySolverCoordinator coordinator_;
     texas::MultiwayBucketRegistry buckets_;
+    std::shared_ptr<texas::MultiwayFixedContinuationSelector> continuation_selector_;
     texas::MultiwayLeafEvaluator evaluator_;
     texas::MultiwayRootExternalSamplingTraversal traversal_;
     texas::MultiwayRootBatchRunner runner_;

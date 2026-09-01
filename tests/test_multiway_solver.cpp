@@ -344,7 +344,7 @@ TEST_CASE(multiway_solver_sparse_merge_grows_bounded_pending_cell_scratch) {
     texas::MultiwayWorkerDeltaStream first(0U, 150U);
     texas::MultiwayWorkerDeltaStream second(1U, 150U);
     for (std::uint64_t trajectory = 0U; trajectory < 300U; ++trajectory) {
-        auto update = delta(trajectory, 0.0, 1.0, 0U);
+        auto update = delta(0U, 0.0, 1.0, trajectory);
         EXPECT_TRUE((trajectory % 2U == 0U ? first : second).try_append(update));
     }
     first.sort_fixed_order();

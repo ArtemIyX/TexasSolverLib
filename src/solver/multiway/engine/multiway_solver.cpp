@@ -129,6 +129,22 @@ bool same_public_state_descriptor(
            left.legal_actions == right.legal_actions;
 }
 
+bool same_public_state_payload(
+    const MultiwayPublicStateDescriptor& left,
+    const MultiwayPublicStateDescriptor& right) noexcept {
+    return left.id == right.id && left.canonical_history_id == right.canonical_history_id &&
+           same_betting_snapshot(left.betting, right.betting) && left.board == right.board &&
+           left.board_runout == right.board_runout && left.history == right.history &&
+           left.legal_actions == right.legal_actions;
+}
+
+bool equivalent_chance_transition_edge(
+    const MultiwayPublicStateDescriptor& left,
+    const MultiwayPublicStateDescriptor& right) noexcept {
+    return left.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction &&
+           right.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction;
+}
+
 void validate_public_state_child_transition(
     const MultiwayRootSnapshot& root,
     const MultiwayPublicStateDescriptor& parent,
@@ -308,8 +324,14 @@ void validate_public_state_descriptor(const MultiwayPublicStateDescriptor& state
             throw std::invalid_argument("multiway public state action descriptor is not executable");
         }
     }
-    for (const auto covered : covered_actions) {
-        if (!covered) throw std::invalid_argument("multiway public state action menu omits a legal action kind");
+    for (std::size_t action_index = 0; action_index < covered_actions.size(); ++action_index) {
+        if (!covered_actions[action_index]) {
+            throw std::invalid_argument(
+                "multiway public state action menu omits legal action kind " +
+                std::to_string(static_cast<std::uint8_t>(available_actions[action_index])) +
+                " street " + std::to_string(static_cast<std::uint8_t>(state.betting.street)) +
+                " current_bet " + std::to_string(state.betting.current_bet));
+        }
     }
     const auto seat_count = state.betting.stacks.size();
     for (const auto& entry : state.history) {
@@ -691,7 +713,9 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
         std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
         const auto* existing = public_state(state.id);
         if (existing != nullptr) {
-            if (!same_public_state_descriptor(*existing, state)) {
+            if (!same_public_state_descriptor(*existing, state) &&
+                !(same_public_state_payload(*existing, state) &&
+                  equivalent_chance_transition_edge(*existing, state))) {
                 throw std::invalid_argument("multiway public state id was admitted with conflicting data");
             }
             return;
@@ -705,7 +729,9 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
     validate_public_state_descriptor(state);
     const auto existing = public_state(state.id);
     if (existing != nullptr) {
-        if (!same_public_state_descriptor(*existing, state)) {
+        if (!same_public_state_descriptor(*existing, state) &&
+            !(same_public_state_payload(*existing, state) &&
+              equivalent_chance_transition_edge(*existing, state))) {
             throw std::invalid_argument("multiway public state id was admitted with conflicting data");
         }
         return;

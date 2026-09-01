@@ -1,5 +1,20 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-09-01 - Deep multiway scaling fixture verification
+
+**Status:** Verified implementation step
+
+- Configured the scaling benchmark for a three-player flop root, depth 3,
+  turn and river transitions, 1024 buckets on every postflop street, and
+  Blueprint continuation selection.
+- Added complete canonical turn/river bucket registry coverage and equalized
+  per-worker delta capacity so trajectories are not discarded at 16 workers.
+- Preserved legal action-kind coverage when sizing templates clip to the
+  all-in boundary and accepted equivalent chance-transition transpositions.
+- Release benchmark: 7,694.7, 9,471.5, 18,365.5, 30,880.6, and 38,054.5
+  trajectories/s for 1, 2, 4, 8, and 16 workers, with identical fingerprints.
+- Full Debug build and all 108 tests passed.
+
 ## Post-activation multiway training scaling audit
 
 **Status:** Complete

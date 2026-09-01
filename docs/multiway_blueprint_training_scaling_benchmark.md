@@ -8,21 +8,24 @@ verification is recorded in the update section.
 
 ### Current verification update
 
-The implementation and benchmark have since been updated. The current Release
-qualification command was run with three repeats, 16,000 timed trajectories per
-sample, identical seeds, and pinned logical processors. The median throughput was:
+The requested deep smoke workload was verified in Release with one timed batch
+of 64 trajectories after one warmup batch, identical seeds, and pinned logical
+processors. The fixture is a three-player flop root with depth 3, both turn and
+river public transitions, 1024 flop/turn/river buckets, and the Blueprint
+continuation selector enabled. The measured throughput was:
 
 | Workers | Median trajectories/s |
 |---:|---:|
-| 1 | 22,508.0 |
-| 2 | 26,975.9 |
-| 4 | 52,083.0 |
-| 8 | 91,057.7 |
-| 16 | 169,235.0 |
+| 1 | 7,694.7 |
+| 2 | 9,471.5 |
+| 4 | 18,365.5 |
+| 8 | 30,880.6 |
+| 16 | 38,054.5 |
 
 The strict ordering gate passed for this run. All fingerprints were identical.
-The fixture now uses 64 deterministic buckets, rather than one bucket, to
-exercise bucket indexing and larger row storage. Samples also report coordinator lock-wait nanoseconds separately from the
+All fingerprints were identical. The benchmark provisions the same delta
+capacity per worker, preventing high-worker trajectories from being discarded.
+Samples also report coordinator lock-wait nanoseconds separately from the
 worker-completion barrier.
 The full Debug build and CTest workflow also passed. This is interim evidence;
 the audit remains incomplete until every finding and its focused test are closed.
