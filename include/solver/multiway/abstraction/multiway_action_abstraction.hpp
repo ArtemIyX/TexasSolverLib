@@ -120,6 +120,11 @@ public:
         const MultiwayBettingSnapshot& betting,
         MultiwayActionAbstractionContext context) const;
 
+    void make_legal_actions_into(
+        const MultiwayBettingSnapshot& betting,
+        MultiwayActionAbstractionContext context,
+        std::vector<MultiwayActionDescriptor>& output) const;
+
     [[nodiscard]] std::uint64_t menu_profile_identity(
         MultiwayActionAbstractionContext context = {}) const noexcept;
 

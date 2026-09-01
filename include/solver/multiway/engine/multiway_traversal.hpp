@@ -76,7 +76,8 @@ public:
         MultiwaySearchProfile* profile = nullptr,
         MultiwayContinuationDeltaStream* continuation_stream = nullptr,
         std::uint64_t batch_number = 0U,
-        MultiwayBlueprintLookupAudit* lookup_audit = nullptr) const;
+        MultiwayBlueprintLookupAudit* lookup_audit = nullptr,
+        std::vector<MultiwayActionDescriptor>* action_menu_scratch = nullptr) const;
 
     [[nodiscard]] const MultiwayFixedContinuationSelector* continuation_selector() const noexcept {
         return continuation_selector_;
@@ -184,6 +185,7 @@ private:
         std::uint64_t discarded = 0;
         std::uint64_t active_nanoseconds = 0;
         std::uint64_t sort_nanoseconds = 0;
+        std::vector<MultiwayActionDescriptor> action_menu_scratch;
         MultiwaySearchProfile profile{};
 
         void reset(MultiwaySearchProfileMode profile_mode) noexcept {

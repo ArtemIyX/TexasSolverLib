@@ -169,6 +169,7 @@ struct MultiwayRootExternalSamplingTraversal::TraversalContext {
     Street cached_bucket_street = Street::Preflop;
     std::array<std::uint8_t, 5> cached_bucket_board{};
     std::size_t cached_bucket_board_size = 0U;
+    std::vector<MultiwayActionDescriptor>* action_menu_scratch = nullptr;
     bool accepted = true;
 };
 
@@ -490,14 +491,17 @@ Value MultiwayRootExternalSamplingTraversal::traverse_decision(
         if (next.current_player >= 0) {
             MultiwaySearchProfileScope profile_scope(
                 context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
-            const auto generated_actions = action_abstraction_->make_legal_actions(
-                make_multiway_betting_snapshot(next));
-            if (generated_actions.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
+            std::vector<MultiwayActionDescriptor> local_action_menu;
+            auto& action_menu = context.action_menu_scratch != nullptr
+                ? *context.action_menu_scratch : local_action_menu;
+            action_abstraction_->make_legal_actions_into(
+                make_multiway_betting_snapshot(next), {}, action_menu);
+            if (action_menu.size() > MULTIWAY_MAX_TRAVERSAL_ACTIONS) {
                 throw std::length_error(
                     "multiway generated action menu exceeds the compact traversal limit");
             }
-            child_action_count = generated_actions.size();
-            std::copy(generated_actions.begin(), generated_actions.end(), child_actions.begin());
+            child_action_count = action_menu.size();
+            std::copy(action_menu.begin(), action_menu.end(), child_actions.begin());
         }
         MultiwayPublicStateDescriptor child;
         {
@@ -668,7 +672,8 @@ bool MultiwayRootExternalSamplingTraversal::run(
     MultiwaySearchProfile* profile,
     MultiwayContinuationDeltaStream* continuation_stream,
     std::uint64_t batch_number,
-    MultiwayBlueprintLookupAudit* lookup_audit) const {
+    MultiwayBlueprintLookupAudit* lookup_audit,
+    std::vector<MultiwayActionDescriptor>* action_menu_scratch) const {
     const auto& root_state = root_->public_state;
     if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) ==
             root_->seat_order.end() ||
@@ -696,6 +701,7 @@ bool MultiwayRootExternalSamplingTraversal::run(
     context.iteration_weight = iteration_weight;
     context.profile = profile;
     context.lookup_audit = lookup_audit;
+    context.action_menu_scratch = action_menu_scratch;
     const auto initial_size = stream.size();
     const auto initial_continuation_size = continuation_stream == nullptr ? 0U : continuation_stream->size();
     context.continuation_stream = continuation_stream;
@@ -815,7 +821,9 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                             iteration_weight,
                             &scratch.profile,
                             &scratch.continuation_stream,
-                            active_batch_number_)) {
+                            active_batch_number_,
+                            nullptr,
+                            &scratch.action_menu_scratch)) {
                         ++scratch.accepted;
                     } else {
                         ++scratch.discarded;

@@ -275,6 +275,15 @@ MultiwayDeviationDisposition MultiwayActionAbstraction::classify_observed_action
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_actions(
     const MultiwayBettingSnapshot& betting,
     MultiwayActionAbstractionContext context) const {
+    std::vector<MultiwayActionDescriptor> result;
+    make_legal_actions_into(betting, context, result);
+    return result;
+}
+
+void MultiwayActionAbstraction::make_legal_actions_into(
+    const MultiwayBettingSnapshot& betting,
+    MultiwayActionAbstractionContext context,
+    std::vector<MultiwayActionDescriptor>& result) const {
     const auto state = MultiwayState::from_snapshot(betting);
     const auto base_actions = state.legal_actions();
     const auto actor = static_cast<std::size_t>(state.current_player());
@@ -283,7 +292,7 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
     const auto all_in_target = actor_contribution + state.stacks()[actor];
     const auto live_count = static_cast<std::size_t>(std::count(state.folded().begin(), state.folded().end(), false));
 
-    std::vector<MultiwayActionDescriptor> result;
+    result.clear();
     result.reserve(MULTIWAY_MAX_ABSTRACTED_ACTIONS);
     const auto append = [&](MultiwayAction action, int target) {
         const auto successor = state.apply(action, target);
@@ -419,7 +428,6 @@ std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::make_legal_acti
 
     if (has_action(MultiwayAction::AllIn)) append(MultiwayAction::AllIn, 0);
     normalize_menu(state, result, nullptr);
-    return result;
 }
 
 std::vector<MultiwayActionDescriptor> MultiwayActionAbstraction::insert_exact_observed_action(

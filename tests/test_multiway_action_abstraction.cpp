@@ -66,6 +66,20 @@ TEST_CASE(multiway_action_abstraction_expands_multiway_bet_sizes) {
     EXPECT_EQ(actions.back().action, texas::MultiwayAction::AllIn);
 }
 
+TEST_CASE(multiway_action_abstraction_reusable_output_matches_value_return) {
+    const auto state = flop_root(3U, 10000, 700);
+    texas::MultiwayActionAbstraction abstraction;
+    const auto expected = abstraction.make_legal_actions(state.snapshot());
+    std::vector<texas::MultiwayActionDescriptor> output;
+    abstraction.make_legal_actions_into(state.snapshot(), {}, output);
+    EXPECT_EQ(output.size(), expected.size());
+    for (std::size_t index = 0U; index < expected.size(); ++index) {
+        EXPECT_EQ(output[index].action, expected[index].action);
+        EXPECT_EQ(output[index].target_street_contribution, expected[index].target_street_contribution);
+        EXPECT_EQ(output[index].action_menu_id, expected[index].action_menu_id);
+    }
+}
+
 TEST_CASE(multiway_action_abstraction_uses_default_preflop_templates) {
     const auto state = preflop_root();
     const auto actions = texas::MultiwayActionAbstraction().make_legal_actions(state.snapshot());
