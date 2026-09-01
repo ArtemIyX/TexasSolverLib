@@ -666,6 +666,7 @@ MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest&
     // the complete worst-case metadata budget up front.
     public_states_.reserve(1U);
     merge_stream_views_.reserve(request.limits().worker_count);
+    merge_stream_cursors_.reserve(request.limits().worker_count);
     const auto merge_capacity = static_cast<std::size_t>(request.limits().worker_count) *
         request.limits().max_worker_delta_entries;
     merge_deltas_.reserve(merge_capacity);
@@ -830,11 +831,22 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
     if (delta_count > merge_deltas_.capacity()) {
         throw std::logic_error("multiway merge scratch capacity changed after coordinator construction");
     }
-    for (const auto* stream : streams) {
-        merge_deltas_.insert(
-            merge_deltas_.end(), stream->deltas().begin(), stream->deltas().end());
+    merge_stream_cursors_.assign(streams.size(), 0U);
+    while (merge_deltas_.size() < delta_count) {
+        const MultiwayWorkerDelta* next = nullptr;
+        std::size_t next_worker = 0U;
+        for (std::size_t worker = 0U; worker < streams.size(); ++worker) {
+            const auto cursor = merge_stream_cursors_[worker];
+            const auto& deltas = streams[worker]->deltas();
+            if (cursor < deltas.size() && (next == nullptr || delta_less(deltas[cursor], *next))) {
+                next = &deltas[cursor];
+                next_worker = worker;
+            }
+        }
+        if (next == nullptr) throw std::logic_error("multiway k-way merge lost a worker delta");
+        merge_deltas_.push_back(*next);
+        ++merge_stream_cursors_[next_worker];
     }
-    std::sort(merge_deltas_.begin(), merge_deltas_.end(), delta_less);
     const auto stream_fingerprint = delta_stream_fingerprint(merge_deltas_);
 
     if (compact_storage_ != nullptr) {

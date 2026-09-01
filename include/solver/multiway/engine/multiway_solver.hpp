@@ -453,6 +453,7 @@ private:
     std::unique_ptr<MultiwayCompactStorage> compact_storage_;
     std::vector<MultiwayPublicStateDescriptor> public_states_;
     std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
+    std::vector<std::size_t> merge_stream_cursors_;
     std::vector<MultiwayWorkerDelta> merge_deltas_;
     std::vector<PendingMergeCell> pending_merge_cells_;
     MultiwaySolveDiagnostics diagnostics_;
