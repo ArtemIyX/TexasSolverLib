@@ -58,7 +58,7 @@ void validate_private_deal(
     validate_board(board);
     std::array<bool, 64> used = {};
     for (const auto card : board) used[card] = true;
-    for (const auto& hole : private_deal.holes) {
+    for (const auto& hole : private_deal) {
         if (!are_valid_and_distinct_cards(hole.data(), hole.size()) || used[hole[0]] || used[hole[1]]) {
             throw std::invalid_argument("multiway terminal adapter private deal overlaps the board or another seat");
         }
@@ -144,7 +144,8 @@ MultiwaySamplerDealToken MultiwayTerminalAdapter::sample_private_deal(std::uint6
         return MultiwaySamplerDealToken(*coordinator_, std::move(discarded));
     }
     MultiwayJointPrivateSample deal;
-    deal.holes.assign(scratch.holes.begin(), scratch.holes.begin() + scratch.seat_count);
+    deal.holes.count = scratch.seat_count;
+    std::copy_n(scratch.holes.begin(), scratch.seat_count, deal.holes.begin());
     deal.attempts = scratch.attempts;
     deal.chance_reach = scratch.chance_reach;
     deal.conditional_deal_probability = scratch.conditional_deal_probability;
@@ -258,7 +259,7 @@ std::vector<MultiwayBoardChanceEdge> MultiwayTerminalAdapter::canonical_board_ch
 
     std::array<bool, 64> used = {};
     for (const auto card : board) used[card] = true;
-    for (const auto& hole : private_deal.holes) {
+    for (const auto& hole : private_deal) {
         used[hole[0]] = true;
         used[hole[1]] = true;
     }
@@ -390,7 +391,7 @@ MultiwaySampledPublicBoardChance MultiwayTerminalAdapter::sample_validated_publi
 
     std::array<bool, 64> used{};
     for (const auto card : board) used[card] = true;
-    for (const auto& hole : private_deal.holes) {
+    for (const auto& hole : private_deal) {
         used[hole[0]] = true;
         used[hole[1]] = true;
     }
@@ -535,7 +536,7 @@ MultiwayTerminalResult MultiwayTerminalAdapter::resolve_terminal_impl(
 
     MultiwayShowdownInput input;
     input.board = board;
-    input.holes = private_deal.holes;
+    input.holes.assign(private_deal.holes.begin(), private_deal.holes.end());
     input.contributions = betting.contributions;
     input.folded = betting.folded;
     input.odd_chip_first_seat = root_.odd_chip_first_seat;

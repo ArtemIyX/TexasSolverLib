@@ -5,9 +5,11 @@
 #include "games/multiway_terminal.hpp"
 
 #include <array>
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <initializer_list>
 
 namespace texas::games::multiway {
 
@@ -41,8 +43,37 @@ MultiwayPrivateRangeFeasibilityResult preflight_multiway_private_range_feasibili
     const MultiwayPrivateConfig& config,
     std::uint64_t node_budget = 1'000'000U);
 
+struct MultiwayFixedPrivateHoles {
+    std::array<std::array<std::uint8_t, 2>, 6> values = {};
+    std::uint8_t count = 0U;
+
+    MultiwayFixedPrivateHoles() = default;
+    MultiwayFixedPrivateHoles(std::initializer_list<std::array<std::uint8_t, 2>> input) {
+        *this = input;
+    }
+    MultiwayFixedPrivateHoles& operator=(
+        std::initializer_list<std::array<std::uint8_t, 2>> input) noexcept {
+        count = static_cast<std::uint8_t>(std::min(input.size(), values.size()));
+        std::copy_n(input.begin(), count, values.begin());
+        return *this;
+    }
+    [[nodiscard]] std::size_t size() const noexcept { return count; }
+    [[nodiscard]] bool empty() const noexcept { return count == 0U; }
+    [[nodiscard]] auto begin() const noexcept { return values.begin(); }
+    [[nodiscard]] auto end() const noexcept { return values.begin() + count; }
+    [[nodiscard]] auto begin() noexcept { return values.begin(); }
+    [[nodiscard]] auto end() noexcept { return values.begin() + count; }
+    [[nodiscard]] auto& operator[](std::size_t index) noexcept { return values[index]; }
+    [[nodiscard]] const auto& operator[](std::size_t index) const noexcept { return values[index]; }
+    friend bool operator==(const MultiwayFixedPrivateHoles& left,
+        const MultiwayFixedPrivateHoles& right) noexcept {
+        return left.count == right.count && std::equal(
+            left.begin(), left.end(), right.begin());
+    }
+};
+
 struct MultiwayJointPrivateSample {
-    std::vector<std::array<std::uint8_t, 2>> holes;
+    MultiwayFixedPrivateHoles holes{};
     std::uint32_t attempts = 0;
     // One independent proposal is made per trajectory. Compatible samples
     // retain their independent range-product probability; collisions discard
@@ -54,6 +85,11 @@ struct MultiwayJointPrivateSample {
     std::uint32_t accepted_trajectories = 0;
     std::uint32_t rejected_trajectories = 0;
     std::uint32_t discarded_trajectories = 0;
+
+    [[nodiscard]] bool empty() const noexcept { return holes.empty(); }
+    [[nodiscard]] std::size_t size() const noexcept { return holes.size(); }
+    [[nodiscard]] auto begin() const noexcept { return holes.begin(); }
+    [[nodiscard]] auto end() const noexcept { return holes.end(); }
 };
 
 struct MultiwayPrivateWorkerScratch {

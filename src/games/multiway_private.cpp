@@ -91,7 +91,8 @@ MultiwayJointPrivateSample sample_multiway_private_hands(
     compiled.sample_into(seed, scratch);
 
     MultiwayJointPrivateSample sample;
-    sample.holes.assign(scratch.holes.begin(), scratch.holes.begin() + scratch.seat_count);
+    sample.holes.count = scratch.seat_count;
+    std::copy_n(scratch.holes.begin(), scratch.seat_count, sample.holes.begin());
     sample.attempts = scratch.attempts;
     sample.chance_reach = scratch.chance_reach;
     sample.conditional_deal_probability = scratch.conditional_deal_probability;

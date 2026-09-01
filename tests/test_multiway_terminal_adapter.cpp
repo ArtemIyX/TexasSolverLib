@@ -20,7 +20,10 @@ const std::vector<std::uint8_t> kFlop = {c(2, 0), c(7, 1), c(9, 2)};
 
 texas::MultiwayJointPrivateSample private_deal() {
     texas::MultiwayJointPrivateSample deal;
-    deal.holes = {{c(14, 0), c(13, 0)}, {c(12, 0), c(11, 0)}, {c(10, 0), c(8, 0)}};
+    deal.holes[0] = {c(14, 0), c(13, 0)};
+    deal.holes[1] = {c(12, 0), c(11, 0)};
+    deal.holes[2] = {c(10, 0), c(8, 0)};
+    deal.holes.count = 3U;
     return deal;
 }
 
