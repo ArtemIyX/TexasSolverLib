@@ -795,12 +795,9 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
             if (worker_error_ == nullptr) worker_error_ = std::current_exception();
         }
 
-        {
-            std::lock_guard<std::mutex> lock(pool_mutex_);
-            if (worker_index < active_batch_count_) {
-                ++completed_workers_;
-                if (completed_workers_ == active_batch_count_) completion_cv_.notify_one();
-            }
+        if (worker_index < batch_count) {
+            const auto completed = completed_workers_.fetch_add(1U, std::memory_order_release) + 1U;
+            if (completed == batch_count) completion_cv_.notify_one();
         }
     }
 }
@@ -829,7 +826,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         }
         batch_active_ = true;
         ++batch_generation_;
-        completed_workers_ = 0U;
+        completed_workers_.store(0U, std::memory_order_relaxed);
         active_batch_count_ = batch_count;
         active_first_trajectory_id_ = first_trajectory_id;
         active_seed_ = seed;
@@ -842,7 +839,9 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
     work_cv_.notify_all();
     {
         std::unique_lock<std::mutex> lock(pool_mutex_);
-        completion_cv_.wait(lock, [this] { return completed_workers_ == active_batch_count_; });
+        completion_cv_.wait(lock, [this] {
+            return completed_workers_.load(std::memory_order_acquire) == active_batch_count_;
+        });
         batch_active_ = false;
         if (worker_error_ != nullptr) std::rethrow_exception(worker_error_);
     }

@@ -211,7 +211,7 @@ private:
     bool stop_workers_ = false;
     bool batch_active_ = false;
     std::uint64_t batch_generation_ = 0U;
-    std::size_t completed_workers_ = 0U;
+    std::atomic<std::size_t> completed_workers_{0U};
     std::size_t active_batch_count_ = 0U;
     std::uint64_t active_first_trajectory_id_ = 0U;
     std::uint64_t active_seed_ = 0U;
