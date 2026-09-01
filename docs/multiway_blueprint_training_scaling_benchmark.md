@@ -7,6 +7,31 @@ measured Release result is 44,071 trajectories/s at four workers and 40,162 at
 eight workers for the 16,000-trajectory fixture. No build, test, solver, or
 benchmark was run for this audit.
 
+### Current verification update
+
+The implementation and benchmark have since been updated. The current Release
+qualification command was run with five repeats, 16,000 timed trajectories per
+sample, identical seeds, and pinned logical processors. The median throughput was:
+
+| Workers | Median trajectories/s |
+|---:|---:|
+| 1 | 24,964.3 |
+| 2 | 32,728.1 |
+| 4 | 66,527.3 |
+| 8 | 109,932.5 |
+| 16 | 130,391.2 |
+
+The strict ordering gate passed for this run. All fingerprints were identical.
+The full Debug build and CTest workflow also passed. This is interim evidence;
+the audit remains incomplete until every finding and its focused test are closed.
+
+Verified implementation commits include shared admission/read locking,
+bounded telemetry, right-sized worker streams, deterministic k-way merges,
+continuation indexed lookup and merge, inline private-hole sampling, fixed
+terminal settlement, fused regret maintenance, atomic completion, bucket-table
+caching, successor reuse, cancellation polling amortization, controlled worker
+affinity, and round-robin scheduling.
+
 The target is repeatable throughput ordering on the Ryzen 9 9950X3D host:
 
 ```text
