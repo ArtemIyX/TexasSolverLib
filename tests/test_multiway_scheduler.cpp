@@ -42,6 +42,23 @@ TEST_CASE(multiway_scheduler_writes_reusable_fixed_partition_storage) {
     EXPECT_EQ(texas::MultiwayScheduler::partition_deterministic_into(1U, 1U, nullptr, 0U), 0U);
 }
 
+TEST_CASE(multiway_scheduler_round_robin_partitions_cover_each_trajectory_once) {
+    texas::MultiwayWorkerBatch batches[4] = {};
+    const auto count = texas::MultiwayScheduler::partition_round_robin_into(
+        10U, 3U, batches, 4U);
+    EXPECT_EQ(count, 3U);
+    EXPECT_EQ(batches[0].trajectories.begin, 0U);
+    EXPECT_EQ(batches[0].trajectories.end, 10U);
+    EXPECT_EQ(batches[0].trajectories.stride, 3U);
+    EXPECT_EQ(batches[0].trajectories.size(), 4U);
+    EXPECT_EQ(batches[1].trajectories.begin, 1U);
+    EXPECT_EQ(batches[1].trajectories.size(), 3U);
+    EXPECT_EQ(batches[2].trajectories.begin, 2U);
+    EXPECT_EQ(batches[2].trajectories.size(), 3U);
+    EXPECT_EQ(texas::MultiwayScheduler::partition_round_robin_into(
+        1U, 2U, nullptr, 2U), 0U);
+}
+
 TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity) {
     const auto first_seed = texas::multiway_deterministic_trajectory_seed(0x1234U, 17U);
     EXPECT_EQ(first_seed, texas::multiway_deterministic_trajectory_seed(0x1234U, 17U));
