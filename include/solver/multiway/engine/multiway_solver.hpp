@@ -281,6 +281,8 @@ public:
         MultiwayInfosetId infoset,
         std::uint32_t bucket) const;
     void scale_regrets(double factor);
+    [[nodiscard]] std::size_t scale_and_prune_regrets(
+        double factor, double threshold, double regret_floor) noexcept;
     [[nodiscard]] std::size_t prune_negative_regrets(
         double threshold = 0.0, double regret_floor = 0.0) noexcept;
     [[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
@@ -414,6 +416,8 @@ public:
     [[nodiscard]] MultiwayRootPolicy export_root_policy_since(
         const std::vector<double>& baseline_strategy_sums) const;
     void scale_regrets(double factor);
+    [[nodiscard]] std::size_t scale_and_prune_regrets(
+        double factor, double threshold, double regret_floor) noexcept;
     void record_terminal_visit() noexcept;
     void record_leaf_visit() noexcept;
     void record_missing_lookup() noexcept;

@@ -97,6 +97,23 @@ void MultiwayCompactStorage::scale_regrets(double factor) {
     }
 }
 
+std::size_t MultiwayCompactStorage::scale_and_prune_regrets(
+    double factor, double threshold, double regret_floor) noexcept {
+    if (!std::isfinite(factor) || factor <= 0.0 || factor > 1.0) return 0U;
+    const auto floor_value = std::clamp<long long>(std::llround(regret_floor * 1024.0), kRegretMin, kRegretMax);
+    const auto threshold_value = std::clamp<long long>(std::llround(threshold * 1024.0), kRegretMin, kRegretMax);
+    std::size_t count = 0U;
+    for (auto& regret : regrets_) {
+        regret = static_cast<std::int32_t>(std::clamp<long long>(
+            std::llround(static_cast<double>(regret) * factor), kRegretMin, kRegretMax));
+        if (regret < threshold_value) {
+            regret = static_cast<std::int32_t>(std::max(floor_value, threshold_value));
+            ++count;
+        }
+    }
+    return count;
+}
+
 std::size_t MultiwayCompactStorage::prune_negative_regrets(
     double threshold, double regret_floor) noexcept {
     const auto floor_value = std::clamp<long long>(std::llround(regret_floor * 1024.0),

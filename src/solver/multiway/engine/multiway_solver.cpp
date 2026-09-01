@@ -794,6 +794,20 @@ void MultiwaySolverCoordinator::regret_matched_strategy_into(
     storage_.regret_matched_strategy_into(infoset, bucket, output, output_size);
 }
 
+std::size_t MultiwaySparseRowStorage::scale_and_prune_regrets(
+    double factor, double threshold, double regret_floor) noexcept {
+    if (!std::isfinite(factor) || factor <= 0.0 || factor > 1.0) return 0U;
+    std::size_t count = 0U;
+    for (auto& regret : regret_) {
+        regret *= factor;
+        if (regret < threshold) {
+            regret = std::max(regret_floor, threshold);
+            ++count;
+        }
+    }
+    return count;
+}
+
 bool MultiwaySolverCoordinator::action_below_regret(
     MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
     double threshold) const noexcept {
@@ -1026,6 +1040,14 @@ void MultiwaySolverCoordinator::scale_regrets(double factor) {
         return;
     }
     storage_.scale_regrets(factor);
+}
+
+std::size_t MultiwaySolverCoordinator::scale_and_prune_regrets(
+    double factor, double threshold, double regret_floor) noexcept {
+    if (compact_storage_ != nullptr) {
+        return compact_storage_->scale_and_prune_regrets(factor, threshold, regret_floor);
+    }
+    return storage_.scale_and_prune_regrets(factor, threshold, regret_floor);
 }
 
 MultiwaySolverCoordinator::~MultiwaySolverCoordinator() = default;

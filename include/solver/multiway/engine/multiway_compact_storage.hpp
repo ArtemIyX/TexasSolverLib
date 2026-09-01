@@ -24,6 +24,8 @@ public:
     void apply_delta(MultiwayInfosetId infoset, std::uint32_t bucket,
         std::uint8_t action, double regret, double strategy_sum);
     void scale_regrets(double factor);
+    [[nodiscard]] std::size_t scale_and_prune_regrets(
+        double factor, double threshold, double regret_floor) noexcept;
     [[nodiscard]] std::size_t prune_negative_regrets(
         double threshold = 0.0, double regret_floor = 0.0) noexcept;
     [[nodiscard]] std::vector<Probability> regret_matched_strategy(

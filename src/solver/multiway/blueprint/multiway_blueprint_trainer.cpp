@@ -313,18 +313,26 @@ void MultiwayBlueprintTrainer::run_batches(
         }
         status_.trajectories += trajectories_per_batch;
         ++status_.batches;
-        if (schedule_.discount_regrets && due(status_.batches, schedule_.discount_interval_batches)) {
-            coordinator_->scale_regrets(schedule_.regret_discount_factor);
-        }
-        if (schedule_.prune_negative_regrets && status_.batches > schedule_.pruning_warmup_batches &&
-            due(status_.batches - schedule_.pruning_warmup_batches, schedule_.pruning_interval_batches)) {
+        const bool discount_due = schedule_.discount_regrets &&
+            due(status_.batches, schedule_.discount_interval_batches);
+        const bool pruning_due = schedule_.prune_negative_regrets &&
+            status_.batches > schedule_.pruning_warmup_batches &&
+            due(status_.batches - schedule_.pruning_warmup_batches, schedule_.pruning_interval_batches);
+        if (pruning_due) {
             const auto pruning_batch = status_.batches - schedule_.pruning_warmup_batches;
             const bool recovery = schedule_.recovery_interval_batches != 0U &&
                 pruning_batch % schedule_.recovery_interval_batches == 0U;
-            if (!recovery) {
+            if (!recovery && discount_due) {
+                status_.pruned_negative_regrets += coordinator_->scale_and_prune_regrets(
+                    schedule_.regret_discount_factor, schedule_.pruning_threshold, schedule_.regret_floor);
+            } else if (!recovery) {
                 status_.pruned_negative_regrets += coordinator_->prune_negative_regrets(
                     schedule_.pruning_threshold, schedule_.regret_floor);
+            } else if (discount_due) {
+                coordinator_->scale_regrets(schedule_.regret_discount_factor);
             }
+        } else if (discount_due) {
+            coordinator_->scale_regrets(schedule_.regret_discount_factor);
         }
         const auto& diagnostics = coordinator_->diagnostics();
         status_.visited_public_descriptors = diagnostics.public_states_admitted;
