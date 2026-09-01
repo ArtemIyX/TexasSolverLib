@@ -246,23 +246,26 @@ void MultiwayState::refresh_round_completion() {
         return;
     }
     if (actionable_player_count() <= 1U) {
-        bool lone_actionable_player_faces_bet = false;
+        PlayerId lone_actionable_player = -1;
         for (std::size_t seat = 0; seat < pending_.size(); ++seat) {
             if (pending_[seat] && is_actionable(static_cast<PlayerId>(seat)) &&
                 street_contributions_[seat] < current_bet_) {
-                lone_actionable_player_faces_bet = true;
+                lone_actionable_player = static_cast<PlayerId>(seat);
                 break;
             }
         }
-        if (!lone_actionable_player_faces_bet) {
+        if (lone_actionable_player < 0) {
             current_player_ = -1;
             return;
         }
+        current_player_ = lone_actionable_player;
+        return;
     }
     bool has_pending = false;
     for (std::size_t seat = 0; seat < pending_.size(); ++seat) {
         if (pending_[seat] && is_actionable(static_cast<PlayerId>(seat))) {
             has_pending = true;
+            if (current_player_ < 0) current_player_ = static_cast<PlayerId>(seat);
             break;
         }
     }

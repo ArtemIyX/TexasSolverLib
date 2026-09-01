@@ -50,21 +50,26 @@ void refresh_round_completion(MultiwayFixedState& state) noexcept {
         return;
     }
     if (actionable_count(state) <= 1U) {
-        bool lone_player_faces_bet = false;
+        PlayerId lone_player = -1;
         for (std::size_t seat = 0; seat < state.seat_count; ++seat) {
             if (state.pending[seat] && is_actionable(state, static_cast<PlayerId>(seat)) &&
                 state.street_contributions[seat] < state.current_bet) {
-                lone_player_faces_bet = true;
+                lone_player = static_cast<PlayerId>(seat);
                 break;
             }
         }
-        if (!lone_player_faces_bet) {
+        if (lone_player < 0) {
             state.current_player = -1;
             return;
         }
+        state.current_player = lone_player;
+        return;
     }
     for (std::size_t seat = 0; seat < state.seat_count; ++seat) {
-        if (state.pending[seat] && is_actionable(state, static_cast<PlayerId>(seat))) return;
+        if (state.pending[seat] && is_actionable(state, static_cast<PlayerId>(seat))) {
+            if (state.current_player < 0) state.current_player = static_cast<PlayerId>(seat);
+            return;
+        }
     }
     state.current_player = -1;
 }
