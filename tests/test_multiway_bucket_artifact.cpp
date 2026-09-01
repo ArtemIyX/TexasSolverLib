@@ -67,10 +67,32 @@ TEST_CASE(multiway_bucket_artifact_stream_load_matches_memory_deserializer) {
         std::ofstream output(path, std::ios::binary | std::ios::trunc);
         output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
+    {
     const auto streamed = texas::solver::multiway::load_multiway_bucket_registry(path);
     EXPECT_EQ(streamed.identity(), registry.identity());
     EXPECT_EQ(streamed.lookup(texas::core::Street::Turn, boards()[1].canonical_board, {1U, 2U}),
               registry.lookup(texas::core::Street::Turn, boards()[1].canonical_board, {1U, 2U}));
+    EXPECT_EQ(texas::solver::multiway::serialize_multiway_bucket_registry(streamed), bytes);
+    for (std::size_t table_index = 0U; table_index < boards().size(); ++table_index) {
+        const auto& expected = registry.table(boards()[table_index].street, boards()[table_index].canonical_board);
+        const auto& mapped = streamed.table(boards()[table_index].street, boards()[table_index].canonical_board);
+        for (std::size_t id = 0U; id < texas::solver::multiway::MULTIWAY_HOLE_COMBINATION_COUNT; ++id)
+            EXPECT_EQ(mapped.assignment_at(id), expected.assignments()[id]);
+    }
+    }
+    std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_bucket_artifact_mapped_registry_survives_loader_return) {
+    const auto source = texas::solver::multiway::build_multiway_baseline_bucket_registry(identity(), boards());
+    const auto bytes = texas::solver::multiway::serialize_multiway_bucket_registry(source);
+    const auto path = std::filesystem::temp_directory_path() / "texas_solver_bucket_mapped_lifetime_test.bin";
+    { std::ofstream output(path, std::ios::binary | std::ios::trunc); output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())); }
+    {
+    auto loaded = texas::solver::multiway::load_multiway_bucket_registry(path);
+    EXPECT_EQ(loaded.lookup(texas::core::Street::Flop, boards()[0].canonical_board, {1U, 2U}),
+              source.lookup(texas::core::Street::Flop, boards()[0].canonical_board, {1U, 2U}));
+    }
     std::filesystem::remove(path);
 }
 

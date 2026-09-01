@@ -180,13 +180,12 @@ MultiwayRangeBeliefUpdateResult MultiwayRangeBeliefs::apply_observation(
     const auto& table = observation.table();
     const auto& policy = observation.policy();
     const auto& row = rows_[seat];
-    const auto& assignments = table.assignments();
     const auto action_offset = static_cast<std::size_t>(observation.observed_action()) * policy.bucket_count;
     const auto* action_probabilities = policy.probabilities.data() + action_offset;
     const auto probability_scale = 1.0 / static_cast<double>(std::numeric_limits<std::uint16_t>::max());
     double posterior_mass = 0.0;
     for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
-        const auto bucket = assignments[id];
+        const auto bucket = table.assignment_at(id);
         if (!row.legal_mask.test(id) || bucket == MULTIWAY_INVALID_BUCKET) continue;
         const auto likelihood = static_cast<double>(action_probabilities[bucket]) * probability_scale;
         posterior_mass += row.weights[id] * likelihood;
@@ -199,7 +198,7 @@ MultiwayRangeBeliefUpdateResult MultiwayRangeBeliefs::apply_observation(
     const auto next_revision = revision_ + 1U;
     auto& updated = rows_[seat];
     for (std::size_t id = 0U; id < CANONICAL_HOLE_COMBINATION_COUNT; ++id) {
-        const auto bucket = assignments[id];
+        const auto bucket = table.assignment_at(id);
         if (!updated.legal_mask.test(id) || bucket == MULTIWAY_INVALID_BUCKET) {
             updated.legal_mask.reset(id);
             updated.weights[id] = 0.0;

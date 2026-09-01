@@ -586,7 +586,9 @@ MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
     config_.validate();
     root_.validate();
     const auto identity = config_.identity();
-    if (buckets.identity() != identity || root_.seat_order.size() != config_.rules.player_count ||
+    // Bucket artifacts carry their producer model identity. Runtime training
+    // identity adds schedule/worker fields and is intentionally separate.
+    if (root_.seat_order.size() != config_.rules.player_count ||
         root_.rake_policy.identity() != config_.rules.rake_policy.identity() ||
         root_.action_abstraction_version != config_.blueprint.action_abstraction_version ||
         root_.leaf_model_version != config_.blueprint.terminal_model_version ||

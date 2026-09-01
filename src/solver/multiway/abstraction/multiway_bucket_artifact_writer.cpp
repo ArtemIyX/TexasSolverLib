@@ -26,13 +26,14 @@ void append_u32(std::vector<char>& bytes, std::uint32_t value) {
     for (std::size_t i = 0; i < 4U; ++i) bytes.push_back(static_cast<char>(value >> (i * 8U)));
 }
 void append_table_bytes(const MultiwayBucketTable& table, std::vector<char>& bytes) {
-    if (table.assignments().size() != MULTIWAY_HOLE_COMBINATION_COUNT || table.canonical_board().size() > 5U ||
+    if (table.assignment_count() != MULTIWAY_HOLE_COMBINATION_COUNT || table.canonical_board().size() > 5U ||
         !is_multiway_canonical_board(table.street(), table.canonical_board())) throw std::invalid_argument("invalid bucket table");
     bytes.push_back(static_cast<char>(table.street()));
     bytes.push_back(static_cast<char>(table.canonical_board().size()));
     for (const auto card : table.canonical_board()) bytes.push_back(static_cast<char>(card));
     append_u32(bytes, table.bucket_count());
-    for (const auto assignment : table.assignments()) append_u32(bytes, assignment);
+    for (std::size_t index = 0U; index < MULTIWAY_HOLE_COMBINATION_COUNT; ++index)
+        append_u32(bytes, table.assignment_at(index));
 }
 }  // namespace
 

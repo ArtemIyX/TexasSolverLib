@@ -468,6 +468,7 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
               std::uint32_t worker_override) {
     using namespace texas;
     using namespace texas::solver::multiway;
+    std::cout << "training starting: config=" << config_path.string() << std::endl;
     const auto workflow = load_multiway_workflow_config(config_path);
     if (input_path.empty()) input_path = workflow.training_input_path;
     if (output_path.empty()) output_path = workflow.training_output_path;
@@ -476,13 +477,32 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
     if (batches == 0U) batches = workflow.training_batches;
     if (worker_override == 0U) worker_override = workflow.training_worker_count;
     if (batches == 0U || input_path.empty() || output_path.empty()) throw std::invalid_argument("train requires input_path, output_path, and batches");
+    const auto log_path = workflow.training_log_path.empty()
+        ? std::filesystem::path(report_path.empty() ? output_path.string() + ".log" : report_path.string() + ".log")
+        : workflow.training_log_path;
+    if (!log_path.parent_path().empty()) std::filesystem::create_directories(log_path.parent_path());
+    std::ofstream log(log_path, std::ios::app);
+    if (!log) throw std::runtime_error("cannot open training log");
+    const auto log_line = [&log](const std::string& line) {
+        std::cout << line << std::endl;
+        log << line << '\n' << std::flush;
+    };
+    log_line("training configured: input=" + input_path.string() +
+        " output=" + output_path.string() + " batches=" + std::to_string(batches) +
+        " threads=" + std::to_string(worker_override));
+    log_line("training initialization: validating resolved capacities");
     if (!workflow.capacities_resolved()) {
         throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
     }
+    log_line("training initialization: loading bucket artifact");
     const auto buckets = load_multiway_bucket_registry(input_path);
+    log_line("training initialization: bucket artifact loaded tables=" +
+        std::to_string(buckets.tables().size()));
+    log_line("training initialization: preparing output and model identity");
     if (!output_path.parent_path().empty()) std::filesystem::create_directories(output_path.parent_path());
     const auto identity = make_multiway_model_identity(workflow.model);
     const auto estimated_blueprint_bytes = estimate_full_blueprint_bytes(workflow);
+    log_line("training initialization: running artifact preflight");
     preflight_multiway_artifact({
         output_path,
         output_path.string() + ".tmp",
@@ -493,6 +513,7 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
         workflow.disk_space_requirement_bytes,
         estimated_blueprint_bytes,
         workflow.process_memory_limit_bytes});
+    log_line("training initialization: constructing training configuration");
     MultiwayBlueprintTrainingConfig config;
     config.blueprint = workflow.model;
     config.bucket_profile.flop_bucket_count = workflow.model.flop_bucket_count;
@@ -527,6 +548,7 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
     memory_inputs.range_entry_count = static_cast<std::uint64_t>(workflow.model.player_count) *
         core::CANONICAL_HOLE_COMBINATION_COUNT;
     memory_inputs.export_action_capacity = workflow.maximum_sparse_values;
+    log_line("training initialization: running memory preflight");
     const auto memory_preflight = preflight_multiway_memory(
         config.limits,
         {warning_bytes, workflow.process_memory_limit_bytes, operating_bytes},
@@ -539,9 +561,12 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
             std::to_string(memory_preflight.estimate.total_bytes));
     }
     config.memory_preflight_estimate_bytes = memory_preflight.estimate.total_bytes;
-    std::cout << "training_workers_requested=" << workers.requested << "\n"
-              << "training_workers_effective=" << workers.effective << "\n"
-              << "training_memory_estimate_bytes=" << memory_preflight.estimate.total_bytes << "\n";
+    log_line("training workers requested=" + std::to_string(workers.requested) +
+        " effective=" + std::to_string(workers.effective) +
+        " memory_estimate_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
+    log_line("training initialization: loading bucket artifact bytes=" +
+        std::to_string(std::filesystem::file_size(input_path)));
+    log_line("training initialization: constructing six-player uniform ranges");
     MultiwayPrivateConfig ranges;
     ranges.ranges.resize(6U);
     for (std::size_t seat = 0U; seat < ranges.ranges.size(); ++seat) {
@@ -549,13 +574,18 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
         for (core::CanonicalComboId id = 0U; id < core::CANONICAL_HOLE_COMBINATION_COUNT; ++id)
             ranges.ranges[seat].push_back({core::canonical_combos().cards(id), 1.0});
     }
+    log_line("training initialization: constructing flop/preflop root");
     MultiwayActionAbstraction abstraction;
     const auto root = make_multiway_initial_blueprint_root(config.rules, std::move(ranges), abstraction,
         config.blueprint.action_abstraction_version, config.blueprint.terminal_model_version);
+    log_line("training initialization: constructing training session and worker pool");
     MultiwayBlueprintTrainingSession session(config, root, buckets);
+    log_line("worker pool constructed: requested=" + std::to_string(workers.requested) +
+        " effective=" + std::to_string(workers.effective));
     const auto checkpoint_path = !resume_path.empty() ? resume_path :
         (checkpoint_dir.empty() ? std::filesystem::path{} : checkpoint_dir / "latest.bin");
     if (!resume_path.empty()) {
+        log_line("training initialization: loading checkpoint");
         session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
             resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
     }
@@ -576,8 +606,16 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
     try {
         while (remaining_batches != 0U) {
             const auto next = std::min(remaining_batches, workflow.checkpoint_interval);
+            log_line("training started: running batches " +
+                std::to_string(batches - remaining_batches + 1U) + "-" +
+                std::to_string(batches - remaining_batches + next));
             session.run_batches(next);
             remaining_batches -= next;
+            log_line("training progress: batches_completed=" +
+                std::to_string(batches - remaining_batches) + "/" + std::to_string(batches) +
+                " trajectories=" + std::to_string(session.status().trajectories) +
+                " discarded=" + std::to_string(session.status().discarded_trajectories) +
+                " effective_workers=" + std::to_string(workers.effective));
             if (!checkpoint_path.empty()) {
                 if (!checkpoint_path.parent_path().empty()) {
                     std::filesystem::create_directories(checkpoint_path.parent_path());
@@ -593,7 +631,12 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
                 checkpoint_bytes = std::max(checkpoint_bytes, static_cast<std::uint64_t>(bytes));
             }
         }
+    } catch (const std::exception& error) {
+        log_line("training failed: " + std::string(error.what()));
+        publish_training_failure();
+        throw;
     } catch (...) {
+        log_line("training failed: unknown exception");
         publish_training_failure();
         throw;
     }
@@ -628,6 +671,9 @@ int run_train(const std::filesystem::path& config_path, std::filesystem::path in
     save_multiway_training_report_atomic(
         report_path.empty() ? output_path.string() + ".json" : report_path,
         training_report);
+    log_line("training finished: batches=" + std::to_string(batches) +
+        " trajectories=" + std::to_string(status.trajectories) +
+        " blueprint=" + output_path.string());
     return EXIT_SUCCESS;
 }
 

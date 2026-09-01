@@ -9,6 +9,18 @@
 #include <iterator>
 #include <stdexcept>
 #include <utility>
+#include <cstring>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace texas::solver::multiway {
 
@@ -19,6 +31,11 @@ using core::is_card_index;
 using core::rank_of;
 using core::suit_of;
 namespace {
+
+std::uint32_t mapped_u32(const std::uint8_t* p) noexcept {
+    return static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8U) |
+        (static_cast<std::uint32_t>(p[2]) << 16U) | (static_cast<std::uint32_t>(p[3]) << 24U);
+}
 
 constexpr std::uint8_t kMagic[] = {'M', 'W', 'B', 'K'};
 constexpr std::size_t kIdentityFieldCount = 13U;
@@ -320,7 +337,8 @@ std::vector<std::uint8_t> serialize_multiway_bucket_registry(const MultiwayBucke
         output.push_back(static_cast<std::uint8_t>(table.canonical_board().size()));
         output.insert(output.end(), table.canonical_board().begin(), table.canonical_board().end());
         append_u32(output, table.bucket_count());
-        for (const auto assignment : table.assignments()) append_u32(output, assignment);
+        for (std::size_t assignment = 0U; assignment < MULTIWAY_HOLE_COMBINATION_COUNT; ++assignment)
+            append_u32(output, table.assignment_at(assignment));
     }
     return output;
 }
@@ -368,6 +386,17 @@ MultiwayBucketRegistry deserialize_multiway_bucket_registry(const std::vector<st
     return MultiwayBucketRegistry(std::move(tables));
 }
 
+MultiwayBucketRegistry::MappedArtifact::~MappedArtifact() {
+#ifdef _WIN32
+    if (data) UnmapViewOfFile(data);
+    if (mapping) CloseHandle(mapping);
+    if (file != -1) CloseHandle(reinterpret_cast<HANDLE>(file));
+#else
+    if (data) munmap(const_cast<std::uint8_t*>(data), size);
+    if (file >= 0) close(static_cast<int>(file));
+#endif
+}
+
 MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path& path) {
     constexpr std::uint64_t kHeaderBytes = 4U + 4U + kIdentityFieldCount * 8U + 4U;
     constexpr std::uint64_t kSmallestTableBytes = 2U + 3U + 4U +
@@ -375,28 +404,28 @@ MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path
     std::error_code error;
     const auto bytes = std::filesystem::file_size(path, error);
     if (error || bytes < kHeaderBytes) throw std::invalid_argument("multiway bucket artifact is truncated");
-    std::ifstream input(path, std::ios::binary);
-    if (!input) throw std::runtime_error("multiway bucket artifact cannot be opened");
-    std::array<std::uint8_t, 4U> magic{};
-    input.read(reinterpret_cast<char*>(magic.data()), static_cast<std::streamsize>(magic.size()));
-    if (!input || !std::equal(magic.begin(), magic.end(), std::begin(kMagic))) {
+    auto mapped = std::make_unique<MultiwayBucketRegistry::MappedArtifact>();
+#ifdef _WIN32
+    mapped->file = reinterpret_cast<std::intptr_t>(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (mapped->file == reinterpret_cast<std::intptr_t>(INVALID_HANDLE_VALUE)) throw std::runtime_error("multiway bucket artifact cannot be opened");
+    mapped->mapping = CreateFileMappingW(reinterpret_cast<HANDLE>(mapped->file), nullptr, PAGE_READONLY, 0, 0, nullptr);
+    mapped->data = static_cast<const std::uint8_t*>(MapViewOfFile(mapped->mapping, FILE_MAP_READ, 0, 0, 0));
+#else
+    mapped->file = open(path.c_str(), O_RDONLY);
+    if (mapped->file < 0) throw std::runtime_error("multiway bucket artifact cannot be opened");
+    mapped->data = static_cast<const std::uint8_t*>(mmap(nullptr, static_cast<std::size_t>(bytes), PROT_READ, MAP_PRIVATE, mapped->file, 0));
+    if (mapped->data == MAP_FAILED) mapped->data = nullptr;
+#endif
+    mapped->size = static_cast<std::size_t>(bytes);
+    if (mapped->data == nullptr) throw std::runtime_error("cannot map multiway bucket artifact");
+    const auto* input = mapped->data;
+    if (std::memcmp(input, kMagic, 4U) != 0) {
         throw std::invalid_argument("multiway bucket artifact has invalid header");
     }
-    const auto read_byte = [&input]() -> std::uint8_t {
-        const auto value = input.get();
-        if (value == EOF) throw std::invalid_argument("multiway bucket artifact is truncated");
-        return static_cast<std::uint8_t>(static_cast<unsigned char>(value));
-    };
-    const auto read32 = [&read_byte]() -> std::uint32_t {
-        std::uint32_t value = 0U;
-        for (std::uint8_t index = 0U; index < 4U; ++index) value |= static_cast<std::uint32_t>(read_byte()) << (index * 8U);
-        return value;
-    };
-    const auto read64 = [&read_byte]() -> std::uint64_t {
-        std::uint64_t value = 0U;
-        for (std::uint8_t index = 0U; index < 8U; ++index) value |= static_cast<std::uint64_t>(read_byte()) << (index * 8U);
-        return value;
-    };
+    std::size_t cursor = 4U;
+    const auto read_byte = [&]() { if (cursor >= mapped->size) throw std::invalid_argument("multiway bucket artifact is truncated"); return input[cursor++]; };
+    const auto read32 = [&]() { if (mapped->size - cursor < 4U) throw std::invalid_argument("multiway bucket artifact is truncated"); const auto v = mapped_u32(input + cursor); cursor += 4U; return v; };
+    const auto read64 = [&]() { if (mapped->size - cursor < 8U) throw std::invalid_argument("multiway bucket artifact is truncated"); std::uint64_t v=0; for (int i=0;i<8;++i) v |= static_cast<std::uint64_t>(input[cursor++]) << (i*8); return v; };
     if (read32() != MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION) {
         throw std::invalid_argument("multiway bucket artifact schema is unsupported");
     }
@@ -418,15 +447,27 @@ MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path
         std::vector<std::uint8_t> board(board_size);
         for (auto& card : board) card = read_byte();
         const auto bucket_count = read32();
-        std::vector<std::uint32_t> assignments(MULTIWAY_HOLE_COMBINATION_COUNT);
-        for (auto& assignment : assignments) assignment = read32();
+        if (mapped->size - cursor < MULTIWAY_HOLE_COMBINATION_COUNT * 4U) throw std::invalid_argument("multiway bucket artifact is truncated");
+        const auto* assignments = input + cursor;
+        cursor += MULTIWAY_HOLE_COMBINATION_COUNT * 4U;
         if (!is_multiway_canonical_board(street, board)) {
             throw std::invalid_argument("multiway bucket artifact board is not canonical");
         }
-        tables.emplace_back(identity, street, std::move(board), bucket_count, std::move(assignments));
+        if (!is_multiway_canonical_board(street, board) || bucket_count == 0U) throw std::invalid_argument("multiway bucket artifact has invalid table");
+        MultiwayBucketTable table;
+        table.identity_ = identity; table.street_ = street; table.canonical_board_ = std::move(board);
+        table.bucket_count_ = bucket_count; table.mapped_assignments_ = assignments;
+        auto table_hash = texas::core::fingerprint::FNV1A_OFFSET;
+        texas::core::fingerprint::append_u64(table_hash, identity.combined_hash);
+        texas::core::fingerprint::append_u64(table_hash, static_cast<std::uint8_t>(street));
+        texas::core::fingerprint::append_u64(table_hash, table.canonical_board_.size());
+        for (const auto card : table.canonical_board_) texas::core::fingerprint::append_u64(table_hash, card);
+        texas::core::fingerprint::append_u64(table_hash, bucket_count);
+        table.table_identity_ = table_hash;
+        tables.push_back(std::move(table));
     }
-    if (input.peek() != EOF) throw std::invalid_argument("multiway bucket artifact has trailing data");
-    return MultiwayBucketRegistry(std::move(tables));
+    if (cursor != mapped->size) throw std::invalid_argument("multiway bucket artifact has trailing data");
+    return MultiwayBucketRegistry(std::move(tables), std::move(mapped));
 }
 
 }  // namespace texas::solver::multiway

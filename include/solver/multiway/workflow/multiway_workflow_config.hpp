@@ -34,6 +34,7 @@ struct MultiwayWorkflowConfig {
     std::filesystem::path training_report_path;
     std::filesystem::path training_checkpoint_dir;
     std::uint64_t training_batches = 0U;
+    std::filesystem::path training_log_path;
 
     void validate() const;
     [[nodiscard]] bool capacities_resolved() const noexcept;

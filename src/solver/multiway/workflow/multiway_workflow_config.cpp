@@ -41,8 +41,8 @@ void MultiwayWorkflowConfig::validate() const {
     }
     model.validate();
     if (model.player_count != 6U || model.initial_stack_chips != 10000 || model.small_blind_chips != 50 ||
-        model.big_blind_chips != 100 || model.ante_chips != 0 || model.flop_bucket_count != 12U ||
-        model.turn_bucket_count != 12U || model.river_bucket_count != 12U) throw std::invalid_argument("F1 model profile mismatch");
+        model.big_blind_chips != 100 || model.ante_chips != 0 || model.flop_bucket_count != 96U ||
+        model.turn_bucket_count != 128U || model.river_bucket_count != 192U) throw std::invalid_argument("F1 model profile mismatch");
     const auto any_capacity = maximum_public_states != 0U || maximum_sparse_rows != 0U ||
         maximum_sparse_values != 0U || worker_delta_capacity != 0U || trajectories_per_batch != 0U ||
         checkpoint_interval != 0U || disk_space_requirement_bytes != 0U || process_memory_limit_bytes != 0U;
@@ -160,6 +160,7 @@ MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text) {
         else if (key == "report_path") result.training_report_path = value;
         else if (key == "checkpoint_dir") result.training_checkpoint_dir = value;
         else if (key == "batches") result.training_batches = n();
+        else if (key == "log_path") result.training_log_path = value;
         else throw std::invalid_argument("unknown configuration key: " + key);
     }
     if (result.schema_version == 1U) {

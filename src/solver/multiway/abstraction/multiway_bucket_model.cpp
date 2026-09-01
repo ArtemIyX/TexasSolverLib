@@ -99,7 +99,7 @@ std::uint32_t MultiwayBucketTable::lookup(const std::array<std::uint8_t, 2>& hol
     if (!is_live_hole(canonical_board_, hole)) {
         throw std::invalid_argument("multiway bucket lookup requires a live distinct hole-card pair");
     }
-    const auto bucket = assignments_[hole_index(hole)];
+    const auto bucket = assignment_at(hole_index(hole));
     if (bucket >= bucket_count_) {
         throw std::logic_error("multiway bucket table has no assignment for a live hole-card pair");
     }
@@ -135,6 +135,28 @@ MultiwayBucketRegistry::MultiwayBucketRegistry(std::vector<MultiwayBucketTable> 
         }
     }
 }
+
+MultiwayBucketRegistry::MultiwayBucketRegistry(
+    std::vector<MultiwayBucketTable> tables,
+    std::unique_ptr<MappedArtifact> mapped_artifact)
+    : tables_(std::move(tables)), mapped_artifact_(std::move(mapped_artifact)) {
+    if (tables_.empty()) throw std::invalid_argument("multiway bucket registry requires at least one table");
+    identity_ = tables_.front().identity();
+    identity_.validate();
+    for (const auto& table : tables_) {
+        if (table.identity() != identity_ || table.bucket_count() == 0U || table.mapped_assignments_ == nullptr) {
+            throw std::invalid_argument("multiway bucket registry has invalid mapped table");
+        }
+    }
+    std::sort(tables_.begin(), tables_.end(), [](const auto& left, const auto& right) {
+        if (left.street() != right.street()) return left.street() < right.street();
+        return left.canonical_board() < right.canonical_board();
+    });
+}
+
+MultiwayBucketRegistry::~MultiwayBucketRegistry() = default;
+MultiwayBucketRegistry::MultiwayBucketRegistry(MultiwayBucketRegistry&&) noexcept = default;
+MultiwayBucketRegistry& MultiwayBucketRegistry::operator=(MultiwayBucketRegistry&&) noexcept = default;
 
 const MultiwayBucketTable& MultiwayBucketRegistry::table(
     Street street,

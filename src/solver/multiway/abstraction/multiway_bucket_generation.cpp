@@ -74,7 +74,7 @@ void add_u64(std::uint64_t& hash, std::uint64_t value) noexcept { core::fingerpr
 void serialize_tables(const std::vector<MultiwayBucketTable>& tables, std::vector<std::uint8_t>& payload) {
     payload.reserve(tables.size() * (MULTIWAY_HOLE_COMBINATION_COUNT * 4U + 16U));
     for (const auto& table : tables) {
-        if (table.assignments().size() != MULTIWAY_HOLE_COMBINATION_COUNT || table.canonical_board().size() > 5U ||
+        if (table.assignment_count() != MULTIWAY_HOLE_COMBINATION_COUNT || table.canonical_board().size() > 5U ||
             !is_multiway_canonical_board(table.street(), table.canonical_board())) {
             throw std::invalid_argument("invalid bucket table");
         }
@@ -82,7 +82,8 @@ void serialize_tables(const std::vector<MultiwayBucketTable>& tables, std::vecto
         payload.push_back(static_cast<std::uint8_t>(table.canonical_board().size()));
         for (const auto card : table.canonical_board()) payload.push_back(card);
         append_u32(payload, table.bucket_count());
-        for (const auto assignment : table.assignments()) append_u32(payload, assignment);
+        for (std::size_t index = 0U; index < MULTIWAY_HOLE_COMBINATION_COUNT; ++index)
+            append_u32(payload, table.assignment_at(index));
     }
 }
 
