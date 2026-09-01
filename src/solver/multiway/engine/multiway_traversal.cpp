@@ -874,6 +874,7 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
         cancelled_.store(false, std::memory_order_release);
     }
     const auto coordinator_wait_start = std::chrono::steady_clock::now();
+    const auto coordinator_lock_wait_before = coordinator_->diagnostics().coordinator_lock_wait_nanoseconds;
     work_cv_.notify_all();
     {
         std::unique_lock<std::mutex> lock(pool_mutex_);
@@ -934,6 +935,8 @@ MultiwayRootBatchResult MultiwayRootBatchRunner::run(
             std::chrono::steady_clock::now() - merge_start).count());
     result.run.merged_stream_fingerprint =
         coordinator_->diagnostics().last_merged_stream_fingerprint;
+    result.coordinator_lock_wait_nanoseconds =
+        coordinator_->diagnostics().coordinator_lock_wait_nanoseconds - coordinator_lock_wait_before;
     result.profile = batch_profile.snapshot();
     result.clean = true;
     return result;

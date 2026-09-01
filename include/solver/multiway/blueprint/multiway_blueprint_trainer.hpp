@@ -91,6 +91,7 @@ struct MultiwayBlueprintTrainingStatus {
     std::uint64_t elapsed_wall_nanoseconds = 0;
     std::uint64_t worker_active_nanoseconds = 0;
     std::uint64_t coordinator_wait_nanoseconds = 0;
+    std::uint64_t coordinator_lock_wait_nanoseconds = 0;
     std::uint64_t delta_sort_nanoseconds = 0;
     std::uint64_t merge_nanoseconds = 0;
     std::uint64_t minimum_worker_trajectories = 0;

@@ -361,6 +361,7 @@ void MultiwayBlueprintTrainer::run_batches(
         status_.cumulative_worker_delta_entries = diagnostics.worker_delta_entries_merged;
         status_.worker_active_nanoseconds += batch_result.worker_active_nanoseconds;
         status_.coordinator_wait_nanoseconds += batch_result.coordinator_wait_nanoseconds;
+        status_.coordinator_lock_wait_nanoseconds += batch_result.coordinator_lock_wait_nanoseconds;
         status_.delta_sort_nanoseconds += batch_result.delta_sort_nanoseconds;
         status_.merge_nanoseconds += batch_result.merge_nanoseconds;
         status_.minimum_worker_trajectories = status_.batches == 1U

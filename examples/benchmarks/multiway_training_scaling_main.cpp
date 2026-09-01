@@ -39,6 +39,7 @@ struct BenchmarkResult {
     std::uint64_t elapsed_nanoseconds = 0U;
     std::uint64_t worker_active_nanoseconds = 0U;
     std::uint64_t coordinator_wait_nanoseconds = 0U;
+    std::uint64_t coordinator_lock_wait_nanoseconds = 0U;
     std::uint64_t sort_nanoseconds = 0U;
     std::uint64_t merge_nanoseconds = 0U;
     std::uint64_t minimum_worker_trajectories = 0U;
@@ -167,6 +168,7 @@ public:
             static_cast<std::uint64_t>(elapsed),
             after.worker_active_nanoseconds - before.worker_active_nanoseconds,
             after.coordinator_wait_nanoseconds - before.coordinator_wait_nanoseconds,
+            after.coordinator_lock_wait_nanoseconds - before.coordinator_lock_wait_nanoseconds,
             after.delta_sort_nanoseconds - before.delta_sort_nanoseconds,
             after.merge_nanoseconds - before.merge_nanoseconds,
             after.minimum_worker_trajectories,
@@ -321,6 +323,7 @@ void print_sample(const BenchmarkResult& result) {
               << " trajectories_per_second=" << std::fixed << std::setprecision(1)
               << result.trajectories_per_second()
               << " coordinator_wait_ns=" << result.coordinator_wait_nanoseconds
+              << " coordinator_lock_wait_ns=" << result.coordinator_lock_wait_nanoseconds
               << " worker_active_ns=" << result.worker_active_nanoseconds
               << " sort_ns=" << result.sort_nanoseconds
               << " merge_ns=" << result.merge_nanoseconds

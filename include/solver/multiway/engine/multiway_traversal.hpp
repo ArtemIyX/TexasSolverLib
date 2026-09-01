@@ -135,6 +135,7 @@ struct MultiwayRootBatchResult {
     std::uint64_t worker_active_nanoseconds = 0;
     std::uint64_t maximum_worker_active_nanoseconds = 0;
     std::uint64_t coordinator_wait_nanoseconds = 0;
+    std::uint64_t coordinator_lock_wait_nanoseconds = 0;
     std::uint64_t delta_sort_nanoseconds = 0;
     std::uint64_t merge_nanoseconds = 0;
     MultiwaySearchProfileSnapshot profile{};
