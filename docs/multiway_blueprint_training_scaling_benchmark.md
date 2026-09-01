@@ -2,15 +2,14 @@
 
 ## Scope and evidence
 
-This is a post-activation code audit of the multiway blueprint training path. The
-measured Release result is 44,071 trajectories/s at four workers and 40,162 at
-eight workers for the 16,000-trajectory fixture. No build, test, solver, or
-benchmark was run for this audit.
+This is a post-activation code audit of the multiway blueprint training path.
+The original baseline is retained below for historical comparison. Current
+verification is recorded in the update section.
 
 ### Current verification update
 
 The implementation and benchmark have since been updated. The current Release
-qualification command was run with five repeats, 16,000 timed trajectories per
+qualification command was run with three repeats, 16,000 timed trajectories per
 sample, identical seeds, and pinned logical processors. The median throughput was:
 
 | Workers | Median trajectories/s |
@@ -32,7 +31,10 @@ bounded telemetry, right-sized worker streams, deterministic k-way merges,
 continuation indexed lookup and merge, inline private-hole sampling, fixed
 terminal settlement, fused regret maintenance, atomic completion, bucket-table
 caching, successor reuse, cancellation polling amortization, controlled worker
-affinity, and round-robin scheduling.
+affinity, round-robin scheduling, reusable worker action-menu scratch,
+bounded pending-cell scratch, targeted worker wakeups, and in-place checkpoint
+canonicalization. Full Release rebuild and benchmark both passed after the
+latest S3 change.
 
 The target is repeatable throughput ordering on the Ryzen 9 9950X3D host:
 
