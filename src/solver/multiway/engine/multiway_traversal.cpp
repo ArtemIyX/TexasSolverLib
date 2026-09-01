@@ -706,8 +706,10 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     continuation_stream_views_.reserve(worker_count_);
     worker_batches_.resize(worker_count_);
     threads_.reserve(worker_count_);
+    const auto per_worker_capacity = worker_delta_capacity_ / worker_count_ +
+        (worker_delta_capacity_ % worker_count_ == 0U ? 0U : 1U);
     for (std::uint32_t worker = 0; worker < worker_count_; ++worker) {
-        worker_scratch_.emplace_back(worker, worker_delta_capacity_);
+        worker_scratch_.emplace_back(worker, per_worker_capacity);
         worker_stream_views_.push_back(&worker_scratch_.back().stream);
         continuation_stream_views_.push_back(&worker_scratch_.back().continuation_stream);
         threads_.emplace_back(&MultiwayRootBatchRunner::worker_loop, this, worker);
