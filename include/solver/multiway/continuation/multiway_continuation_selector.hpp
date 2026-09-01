@@ -4,6 +4,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 
 #include <cstdint>
+#include <cstddef>
 #include <array>
 #include <mutex>
 #include <shared_mutex>

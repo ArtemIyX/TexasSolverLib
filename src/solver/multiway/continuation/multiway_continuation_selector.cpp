@@ -16,6 +16,18 @@ bool same_key(
         left.leaf_model_version == right.leaf_model_version;
 }
 
+bool key_less(const MultiwayContinuationSelectionKey& left,
+    const MultiwayContinuationSelectionKey& right) noexcept {
+    if (left.public_state != right.public_state) return left.public_state < right.public_state;
+    if (left.actor != right.actor) return left.actor < right.actor;
+    if (left.street != right.street) return left.street < right.street;
+    if (left.future_bucket != right.future_bucket) return left.future_bucket < right.future_bucket;
+    if (left.action_abstraction_version != right.action_abstraction_version) {
+        return left.action_abstraction_version < right.action_abstraction_version;
+    }
+    return left.leaf_model_version < right.leaf_model_version;
+}
+
 bool delta_less(const MultiwayContinuationDelta& left, const MultiwayContinuationDelta& right) noexcept {
     if (left.trajectory_id != right.trajectory_id) return left.trajectory_id < right.trajectory_id;
     return left.sequence < right.sequence;
@@ -79,10 +91,11 @@ MultiwayFixedContinuationSelector::strategy(const MultiwayContinuationSelectionK
         return result;
     }
     std::shared_lock<std::shared_mutex> lock(mutex_);
-    const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
-        return same_key(row.key, key);
-    });
-    if (found != rows_.end()) {
+    const auto found = std::lower_bound(rows_.begin(), rows_.end(), key,
+        [](const Row& row, const MultiwayContinuationSelectionKey& value) {
+            return key_less(row.key, value);
+        });
+    if (found != rows_.end() && same_key(found->key, key)) {
         double total = 0.0;
         for (std::size_t index = 0U; index < found->regrets.size(); ++index) {
             const auto regret = std::max(0.0, found->regrets[index]);
@@ -141,10 +154,15 @@ void MultiwayFixedContinuationSelector::update_regrets_weighted(
     for (std::size_t index = 0U; index < values.size(); ++index) node_value += mixture[index] * values[index];
     if (!std::isfinite(node_value)) throw std::overflow_error("multiway continuation value is non-finite");
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
-        return same_key(row.key, key);
-    });
-    auto& row = found == rows_.end() ? rows_.emplace_back(Row{key, {}}) : *found;
+    const auto found = std::lower_bound(rows_.begin(), rows_.end(), key,
+        [](const Row& row, const MultiwayContinuationSelectionKey& value) {
+            return key_less(row.key, value);
+        });
+    auto found_index = static_cast<std::size_t>(found - rows_.begin());
+    if (found == rows_.end() || !same_key(found->key, key)) {
+        rows_.insert(rows_.begin() + static_cast<std::ptrdiff_t>(found_index), Row{key, {}});
+    }
+    auto& row = rows_[found_index];
     for (std::size_t index = 0U; index < values.size(); ++index) {
         const auto next = row.regrets[index] + (values[index] - node_value) * importance_weight;
         if (!std::isfinite(next)) throw std::overflow_error("multiway continuation regret is non-finite");
@@ -160,11 +178,15 @@ void MultiwayFixedContinuationSelector::set_regrets(
         if (!std::isfinite(regret)) throw std::invalid_argument("multiway continuation regret is non-finite");
     }
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    const auto found = std::find_if(rows_.begin(), rows_.end(), [&key](const Row& row) {
-        return same_key(row.key, key);
-    });
-    if (found == rows_.end()) rows_.push_back({key, regrets});
-    else found->regrets = regrets;
+    const auto found = std::lower_bound(rows_.begin(), rows_.end(), key,
+        [](const Row& row, const MultiwayContinuationSelectionKey& value) {
+            return key_less(row.key, value);
+        });
+    if (found == rows_.end() || !same_key(found->key, key)) {
+        rows_.insert(found, {key, regrets});
+    } else {
+        found->regrets = regrets;
+    }
 }
 
 void MultiwayFixedContinuationSelector::merge_worker_streams(
