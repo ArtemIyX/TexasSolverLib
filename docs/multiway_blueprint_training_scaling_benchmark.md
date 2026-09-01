@@ -15,13 +15,15 @@ sample, identical seeds, and pinned logical processors. The median throughput wa
 
 | Workers | Median trajectories/s |
 |---:|---:|
-| 1 | 24,964.3 |
-| 2 | 32,728.1 |
-| 4 | 66,527.3 |
-| 8 | 109,932.5 |
-| 16 | 130,391.2 |
+| 1 | 24,908.1 |
+| 2 | 32,232.4 |
+| 4 | 60,022.1 |
+| 8 | 113,225.8 |
+| 16 | 151,607.0 |
 
 The strict ordering gate passed for this run. All fingerprints were identical.
+Samples now also report coordinator lock-wait nanoseconds separately from the
+worker-completion barrier.
 The full Debug build and CTest workflow also passed. This is interim evidence;
 the audit remains incomplete until every finding and its focused test are closed.
 
