@@ -22,7 +22,11 @@ std::size_t cell(const MultiwaySparseRowMetadata& row, std::uint32_t bucket,
 }
 
 MultiwayCompactStorage::MultiwayCompactStorage(std::size_t max_rows, std::size_t max_values)
-    : max_rows_(max_rows), max_values_(max_values) {}
+    : max_rows_(max_rows), max_values_(max_values) {
+    rows_.reserve(max_rows_);
+    regrets_.reserve(max_values_);
+    strategy_mass_.reserve(max_values_);
+}
 
 const MultiwaySparseRowMetadata* MultiwayCompactStorage::metadata(MultiwayInfosetId infoset) const noexcept {
     const auto it = std::lower_bound(rows_.begin(), rows_.end(), infoset,
