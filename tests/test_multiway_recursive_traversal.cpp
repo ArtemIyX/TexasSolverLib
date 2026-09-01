@@ -414,6 +414,7 @@ TEST_CASE(multiway_recursive_batch_rotates_traversers_deterministically_across_s
     EXPECT_EQ(
         fixture.coordinator.diagnostics().worker_delta_entries_merged,
         result.delta_entries_merged);
+    EXPECT_TRUE(fixture.coordinator.diagnostics().coordinator_lock_wait_nanoseconds > 0U);
 }
 
 TEST_CASE(multiway_root_batch_runner_partitions_workers_and_merges_in_fixed_order) {

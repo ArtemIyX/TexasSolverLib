@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <exception>
@@ -698,7 +699,11 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
             return;
         }
     }
+    const auto lock_wait_start = std::chrono::steady_clock::now();
     std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+    diagnostics_.coordinator_lock_wait_nanoseconds += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - lock_wait_start).count());
     validate_public_state_descriptor(state);
     const auto existing = public_state(state.id);
     if (existing != nullptr) {
@@ -736,7 +741,11 @@ void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& 
             return;
         }
     }
+    const auto lock_wait_start = std::chrono::steady_clock::now();
     std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+    diagnostics_.coordinator_lock_wait_nanoseconds += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - lock_wait_start).count());
     const auto compact = compact_storage_ != nullptr;
     const auto existed = compact ? compact_storage_->has_row(shape.infoset) : storage_.has_row(shape.infoset);
     const auto row_count = compact ? compact_storage_->row_count() : storage_.row_count();

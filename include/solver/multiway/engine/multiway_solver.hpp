@@ -367,6 +367,7 @@ struct MultiwaySolveDiagnostics {
     std::uint64_t leaf_visits = 0;
     std::array<std::uint64_t, 4> street_visits{};
     std::uint64_t missing_lookup_requests = 0;
+    std::uint64_t coordinator_lock_wait_nanoseconds = 0;
     std::uint64_t last_merged_stream_fingerprint = 0U;
     double traversal_seconds = 0.0;
     double merge_seconds = 0.0;
