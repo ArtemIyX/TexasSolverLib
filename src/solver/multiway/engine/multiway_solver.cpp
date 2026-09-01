@@ -724,7 +724,11 @@ void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDesc
     } else if (state.id != request_.root().public_state.id) {
         throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
     }
-    public_states_.push_back(state);
+    const auto insert_at = std::lower_bound(public_states_.begin(), public_states_.end(), state.id,
+        [](const MultiwayPublicStateDescriptor& existing, MultiwayPublicStateId id) {
+            return existing.id < id;
+        });
+    public_states_.insert(insert_at, state);
     ++diagnostics_.public_states_admitted;
 }
 
@@ -1090,10 +1094,11 @@ std::size_t MultiwaySolverCoordinator::prune_negative_regrets(
 
 const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::public_state(
     MultiwayPublicStateId id) const noexcept {
-    const auto found = std::find_if(
-        public_states_.begin(), public_states_.end(),
-        [id](const MultiwayPublicStateDescriptor& state) { return state.id == id; });
-    return found == public_states_.end() ? nullptr : &*found;
+    const auto found = std::lower_bound(public_states_.begin(), public_states_.end(), id,
+        [](const MultiwayPublicStateDescriptor& state, MultiwayPublicStateId value) {
+            return state.id < value;
+        });
+    return found == public_states_.end() || found->id != id ? nullptr : &*found;
 }
 
 const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::find_public_state(

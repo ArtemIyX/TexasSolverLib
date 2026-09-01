@@ -506,6 +506,16 @@ TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_fr
     EXPECT_THROW(coordinator.admit_public_state(child), std::invalid_argument);
 }
 
+TEST_CASE(multiway_solver_public_state_lookup_returns_admitted_and_rejects_missing_ids) {
+    texas::MultiwaySolverCoordinator coordinator(valid_request());
+    const auto child = checked_action_child_public_state();
+    coordinator.admit_public_state(child);
+
+    EXPECT_EQ(coordinator.find_public_state(root_public_state().id)->id, root_public_state().id);
+    EXPECT_EQ(coordinator.find_public_state(child.id)->id, child.id);
+    EXPECT_TRUE(coordinator.find_public_state({999}) == nullptr);
+}
+
 TEST_CASE(multiway_solver_child_admission_requires_a_replayed_parent_action_history) {
     texas::MultiwaySolverCoordinator coordinator(valid_request());
     const auto child = checked_action_child_public_state();
