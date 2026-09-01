@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -330,6 +331,7 @@ void print_sample(const BenchmarkResult& result) {
 
 int run(const BenchmarkConfig& config) {
     std::cout << "fixture=three_player_river_depth_one"
+              << " hardware_concurrency=" << std::thread::hardware_concurrency()
               << " warmup_batches=" << config.warmup_batches
               << " timed_batches=" << config.timed_batches
               << " repeats=" << config.repeats
