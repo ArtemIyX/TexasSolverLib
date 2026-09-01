@@ -529,9 +529,12 @@ TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_fr
 TEST_CASE(multiway_solver_public_state_lookup_returns_admitted_and_rejects_missing_ids) {
     texas::MultiwaySolverCoordinator coordinator(valid_request());
     const auto child = checked_action_child_public_state();
+    const auto* root_pointer = coordinator.find_public_state(root_public_state().id);
+    EXPECT_TRUE(root_pointer != nullptr);
     coordinator.admit_public_state(child);
 
-    EXPECT_EQ(coordinator.find_public_state(root_public_state().id)->id, root_public_state().id);
+    EXPECT_TRUE(coordinator.find_public_state(root_public_state().id) == root_pointer);
+    EXPECT_EQ(root_pointer->id, root_public_state().id);
     EXPECT_EQ(coordinator.find_public_state(child.id)->id, child.id);
     EXPECT_TRUE(coordinator.find_public_state({999}) == nullptr);
 }
