@@ -427,7 +427,8 @@ public:
     [[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
     [[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
     [[nodiscard]] std::size_t merge_scratch_capacity() const noexcept {
-        return merge_deltas_.capacity();
+        return static_cast<std::size_t>(request_.limits().worker_count) *
+            request_.limits().max_worker_delta_entries;
     }
     [[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
     [[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
@@ -454,7 +455,6 @@ private:
     std::vector<MultiwayPublicStateDescriptor> public_states_;
     std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
     std::vector<std::size_t> merge_stream_cursors_;
-    std::vector<MultiwayWorkerDelta> merge_deltas_;
     std::vector<PendingMergeCell> pending_merge_cells_;
     MultiwaySolveDiagnostics diagnostics_;
     mutable std::shared_mutex traversal_mutex_;
