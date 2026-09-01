@@ -67,7 +67,16 @@ void MultiwayCompactStorage::apply_delta(MultiwayInfosetId infoset, std::uint32_
         !std::isfinite(regret) || !std::isfinite(strategy_sum) || strategy_sum < 0.0) {
         throw std::invalid_argument("invalid compact storage delta");
     }
-    const auto index = cell(*row, bucket, action);
+    apply_delta(*row, bucket, action, regret, strategy_sum);
+}
+
+void MultiwayCompactStorage::apply_delta(const MultiwaySparseRowMetadata& row,
+    std::uint32_t bucket, std::uint8_t action, double regret, double strategy_sum) {
+    if (bucket >= row.shape.bucket_count || action >= row.shape.action_count ||
+        !std::isfinite(regret) || !std::isfinite(strategy_sum) || strategy_sum < 0.0) {
+        throw std::invalid_argument("invalid compact storage delta");
+    }
+    const auto index = cell(row, bucket, action);
     const auto regret_delta = saturating_scaled(regret, 1024.0, std::numeric_limits<long long>::min(),
         std::numeric_limits<long long>::max());
     const auto old_regret = regrets_[index];
@@ -80,11 +89,11 @@ void MultiwayCompactStorage::apply_delta(MultiwayInfosetId infoset, std::uint32_
     regrets_[index] = static_cast<std::int32_t>(next_regret);
     const auto mass_delta = saturating_scaled(strategy_sum, static_cast<double>(kMassScale), 0,
         std::numeric_limits<long long>::max());
-    if (mass_delta > 0 && strategy_mass_[row->strategy_sum_offset + index - row->regret_offset] >
+    if (mass_delta > 0 && strategy_mass_[row.strategy_sum_offset + index - row.regret_offset] >
         std::numeric_limits<std::uint64_t>::max() - static_cast<std::uint64_t>(mass_delta)) {
         throw std::overflow_error("compact strategy mass overflow");
     }
-    strategy_mass_[row->strategy_sum_offset + index - row->regret_offset] += static_cast<std::uint64_t>(std::max(0LL, mass_delta));
+    strategy_mass_[row.strategy_sum_offset + index - row.regret_offset] += static_cast<std::uint64_t>(std::max(0LL, mass_delta));
 }
 
 void MultiwayCompactStorage::scale_regrets(double factor) {

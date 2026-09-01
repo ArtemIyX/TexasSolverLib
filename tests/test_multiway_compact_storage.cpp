@@ -101,3 +101,15 @@ TEST_CASE(multiway_compact_storage_fused_discount_and_prune_matches_sequential_o
         EXPECT_NEAR(fused_policy[action], sequential_policy[action], 0.0);
     }
 }
+
+TEST_CASE(multiway_compact_storage_cached_row_delta_matches_infoset_lookup) {
+    texas::solver::multiway::MultiwayCompactStorage storage(2U, 16U);
+    const texas::MultiwayInfosetId infoset{{13U}, 0};
+    storage.admit_row({infoset, 2U, 2U});
+    const auto* row = storage.metadata(infoset);
+    EXPECT_TRUE(row != nullptr);
+    storage.apply_delta(infoset, 0U, 0U, 1.25, 2.0);
+    storage.apply_delta(*row, 0U, 1U, -0.5, 3.0);
+    EXPECT_NEAR(storage.strategy_sums(infoset, 0U)[0], 2.0, 1e-9);
+    EXPECT_NEAR(storage.strategy_sums(infoset, 0U)[1], 3.0, 1e-9);
+}

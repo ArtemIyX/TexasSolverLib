@@ -864,6 +864,7 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
     std::uint8_t cell_action = 0U;
     double cell_regret = 0.0;
     double cell_strategy_sum = 0.0;
+    const MultiwaySparseRowMetadata* compact_cell_row = nullptr;
     std::uint64_t previous_trajectory = 0U;
     bool have_trajectory = false;
     const auto flush_cell = [&] {
@@ -911,6 +912,11 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
                 cell_strategy_sum = storage_.strategy_sum_[row->strategy_sum_offset +
                     static_cast<std::size_t>(delta.action) * row->shape.bucket_count + delta.bucket];
             } else {
+                compact_cell_row = compact_storage_->metadata(delta.infoset);
+                if (compact_cell_row == nullptr || delta.bucket >= compact_cell_row->shape.bucket_count ||
+                    delta.action >= compact_cell_row->shape.action_count) {
+                    throw std::invalid_argument("multiway delta does not match an admitted row cell");
+                }
                 cell_regret = 0.0;
                 cell_strategy_sum = 0.0;
             }
@@ -922,7 +928,7 @@ void MultiwaySolverCoordinator::merge_worker_streams_locked(
         previous_trajectory = delta.trajectory_id;
         have_trajectory = true;
         if (compact_storage_ != nullptr) {
-            compact_storage_->apply_delta(delta.infoset, delta.bucket, delta.action,
+            compact_storage_->apply_delta(*compact_cell_row, delta.bucket, delta.action,
                 delta.regret, delta.strategy_sum);
         } else {
             const auto next_regret = cell_regret + delta.regret;

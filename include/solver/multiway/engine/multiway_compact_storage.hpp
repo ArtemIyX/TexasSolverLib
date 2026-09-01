@@ -23,6 +23,8 @@ public:
     [[nodiscard]] const MultiwaySparseRowMetadata* metadata(MultiwayInfosetId infoset) const noexcept;
     void apply_delta(MultiwayInfosetId infoset, std::uint32_t bucket,
         std::uint8_t action, double regret, double strategy_sum);
+    void apply_delta(const MultiwaySparseRowMetadata& row, std::uint32_t bucket,
+        std::uint8_t action, double regret, double strategy_sum);
     void scale_regrets(double factor);
     [[nodiscard]] std::size_t scale_and_prune_regrets(
         double factor, double threshold, double regret_floor) noexcept;
