@@ -9,10 +9,10 @@ import subprocess
 from pathlib import Path
 
 
-def build_command(root: Path) -> list[str]:
+def build_command(root: Path, configuration: str) -> list[str]:
     if os.name != "nt":
         return [
-            "cmake", "--build", "build", "--config", "Debug", "--parallel", "--",
+            "cmake", "--build", "build", "--config", configuration, "--parallel", "--",
             "/nologo", "/v:q", "/clp:ErrorsOnly;NoSummary",
         ]
 
@@ -29,7 +29,7 @@ def build_command(root: Path) -> list[str]:
     msbuild = query.stdout.splitlines()[0]
     return [
         msbuild, str(root / "build/ALL_BUILD.vcxproj"),
-        "/p:Configuration=Debug", "/p:Platform=x64", "/m",
+        f"/p:Configuration={configuration}", "/p:Platform=x64", "/m",
         "/nologo", "/v:q", "/clp:ErrorsOnly;NoSummary",
     ]
 
@@ -38,6 +38,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1],
                         help="repository root (default: script's parent repository)")
+    parser.add_argument("--configuration", choices=("Debug", "Release"), default="Debug")
     parser.add_argument("-o", "--output", type=Path, default=Path("tmp/build_debug.log"),
                         help="log file (default: tmp/build_debug.log)")
     args = parser.parse_args()
@@ -45,7 +46,7 @@ def main() -> int:
     output = args.output if args.output.is_absolute() else root / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    command = build_command(root)
+    command = build_command(root, args.configuration)
     environment = {
         key: value for key, value in os.environ.items()
         if key.casefold() != "path"
