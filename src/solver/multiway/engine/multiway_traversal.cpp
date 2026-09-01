@@ -777,7 +777,10 @@ void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
                      local_id < batch.trajectories.end;
                      ++local_id) {
                     const bool has_deadline = deadline != std::chrono::steady_clock::time_point::max();
-                    if (cancelled_.load(std::memory_order_relaxed) ||
+                    const bool cancellation_requested =
+                        ((local_id - batch.trajectories.begin) & 7U) == 0U &&
+                        cancelled_.load(std::memory_order_relaxed);
+                    if (cancellation_requested ||
                         (has_deadline && std::chrono::steady_clock::now() >= deadline)) {
                         cancelled_.store(true, std::memory_order_release);
                         break;
