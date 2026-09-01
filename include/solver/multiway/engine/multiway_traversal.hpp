@@ -152,7 +152,8 @@ public:
         MultiwaySolverCoordinator& coordinator,
         std::uint32_t worker_count,
         std::size_t worker_delta_capacity,
-        MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled);
+        MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled,
+        bool pin_workers = false);
     ~MultiwayRootBatchRunner();
 
     MultiwayRootBatchRunner(const MultiwayRootBatchRunner&) = delete;
@@ -200,6 +201,7 @@ private:
     std::uint32_t worker_count_ = 0;
     std::size_t worker_delta_capacity_ = 0;
     MultiwaySearchProfileMode profile_mode_ = MultiwaySearchProfileMode::Disabled;
+    bool pin_workers_ = false;
     std::vector<WorkerScratch> worker_scratch_;
     std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
     std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;

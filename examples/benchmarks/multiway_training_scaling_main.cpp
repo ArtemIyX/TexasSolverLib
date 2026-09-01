@@ -140,7 +140,8 @@ public:
               bucket_identity(), texas::Street::River, kBoard, 1U, one_bucket_assignments())}),
           evaluator_{deterministic_leaf, nullptr},
           traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 1U),
-          runner_(traversal_, coordinator_, workers, delta_capacity_),
+          runner_(traversal_, coordinator_, workers, delta_capacity_,
+              texas::MultiwaySearchProfileMode::Disabled, true),
           trainer_(training_identity(workers, batch_size, delta_capacity_, seed),
               runner_, coordinator_, {}, seed, workers, 0U) {}
 
@@ -332,6 +333,7 @@ void print_sample(const BenchmarkResult& result) {
 int run(const BenchmarkConfig& config) {
     std::cout << "fixture=three_player_river_depth_one"
               << " hardware_concurrency=" << std::thread::hardware_concurrency()
+              << " worker_affinity=pinned_logical_processor"
               << " warmup_batches=" << config.warmup_batches
               << " timed_batches=" << config.timed_batches
               << " repeats=" << config.repeats

@@ -17,6 +17,12 @@
 #include <stdexcept>
 #include <thread>
 #include <utility>
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace texas::solver::multiway {
 namespace {
@@ -707,12 +713,14 @@ MultiwayRootBatchRunner::MultiwayRootBatchRunner(
     MultiwaySolverCoordinator& coordinator,
     std::uint32_t worker_count,
     std::size_t worker_delta_capacity,
-    MultiwaySearchProfileMode profile_mode)
+    MultiwaySearchProfileMode profile_mode,
+    bool pin_workers)
     : traversal_(std::move(traversal)),
       coordinator_(&coordinator),
       worker_count_(worker_count),
       worker_delta_capacity_(worker_delta_capacity),
-      profile_mode_(profile_mode) {
+      profile_mode_(profile_mode),
+      pin_workers_(pin_workers) {
     if (worker_count_ == 0U || worker_delta_capacity_ == 0U) {
         throw std::invalid_argument("multiway root batch runner requires positive worker limits");
     }
@@ -747,6 +755,14 @@ MultiwayRootBatchRunner::~MultiwayRootBatchRunner() {
 }
 
 void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index) {
+#if defined(_WIN32)
+    if (pin_workers_ && worker_index < sizeof(DWORD_PTR) * 8U) {
+        const auto mask = static_cast<DWORD_PTR>(1) << worker_index;
+        (void)::SetThreadAffinityMask(::GetCurrentThread(), mask);
+    }
+#else
+    (void)worker_index;
+#endif
     std::uint64_t observed_generation = 0U;
     while (true) {
         std::size_t batch_count = 0U;
