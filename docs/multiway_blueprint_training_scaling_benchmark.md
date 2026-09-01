@@ -184,7 +184,7 @@ imbalance, or memory bandwidth.
 
 Location: `examples/benchmarks/multiway_training_scaling_main.cpp:30-211`
 
-The fixture is three-player, river-only, one bucket, deterministic leaf, and
+The fixture is three-player, river-only, 64 deterministic buckets, deterministic leaf, and
 maximum decision depth one. Its storage limits are tiny. It is useful for a
 repeatable regression signal, but it does not exercise board transitions,
 production bucket lookup, continuation work, large graph admission, deep
