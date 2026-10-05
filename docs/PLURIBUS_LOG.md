@@ -1,5 +1,58 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-05 - Configurable F1 workflow bucket counts
+
+**Status:** Complete
+**Completed:** 2026-10-05
+
+- Removed the fixed 96/128/192 bucket-count restriction from F1 workflow
+  validation. Positive bucket counts remain validated by the model config and
+  remain part of workflow and model identities.
+- Updated F1 config fixtures and added coverage for both 12/12/12 and
+  96/128/192, including rejection of a zero bucket count.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `tests/test_multiway_sizing_report.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- No build, tests, or solver executable was run, per user instruction.
+
+### Limitations
+
+- The existing bucket artifact was not reinspected after this source change.
+
+## 2026-10-05 - Current multiway next-actions document
+
+**Status:** Complete
+**Completed:** 2026-10-05
+
+- Compared the current C++ training and artifact paths with the scaling audit,
+  project state, technical report, local artifact evidence, and F1 configs.
+- Recorded the next sequence: reconcile bucket identity, size and freeze F1,
+  qualify training and lookup, then measure production scaling and strength.
+
+### Files
+
+- `docs/multiway_next_actions.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the document against current source, configs, and local artifact
+  inspection; `git diff --check` passed. No build or solver run was needed for
+  this documentation task.
+
+### Limitations
+
+- The existing bucket artifact's provenance and compatibility with F1 remain
+  unverified; no production training or acceptance is claimed.
+
 ## 2026-09-01 - Deep multiway scaling fixture verification
 
 **Status:** Verified implementation step

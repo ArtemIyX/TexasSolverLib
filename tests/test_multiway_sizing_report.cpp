@@ -14,7 +14,7 @@ texas::solver::multiway::MultiwayWorkflowConfig sizing_workflow() {
         "schema_version=1\nprofile_kind=sizing\nprofile_id=F1-SIZING-12-v1\n"
         "players=6\ninitial_stack_chips=10000\nsmall_blind_chips=50\n"
         "big_blind_chips=100\nante_chips=0\nrake=0\npreflop_classes=169\n"
-        "flop_buckets=96\nturn_buckets=128\nriver_buckets=192\n"
+        "flop_buckets=12\nturn_buckets=12\nriver_buckets=12\n"
         "storage_backend=CompactInt32\nmax_decision_depth=64\n"
         "max_public_chance_depth=3\ndeterministic_seed=1\n"
         "reference_worker_count=1\ntarget_trajectories=100000\n"

@@ -8,7 +8,7 @@ namespace {
 const char* valid_config =
     "schema_version=1\nprofile_kind=acceptance\nprofile_id=F1-DEV-12-v1\nplayers=6\ninitial_stack_chips=10000\n"
     "small_blind_chips=50\nbig_blind_chips=100\nante_chips=0\nrake=0\npreflop_classes=169\n"
-    "flop_buckets=96\nturn_buckets=128\nriver_buckets=192\nstorage_backend=CompactInt32\n"
+    "flop_buckets=12\nturn_buckets=12\nriver_buckets=12\nstorage_backend=CompactInt32\n"
     "max_decision_depth=64\nmax_public_chance_depth=3\ndeterministic_seed=1\n"
     "reference_worker_count=1\ntarget_trajectories=50000000\nmaximum_sparse_rows=UNRESOLVED\n";
 }
@@ -16,8 +16,27 @@ const char* valid_config =
 TEST_CASE(multiway_workflow_config_parses_f1_profile) {
     const auto config = texas::solver::multiway::parse_multiway_workflow_config(valid_config);
     EXPECT_EQ(config.model.player_count, 6U);
-    EXPECT_EQ(config.model.flop_bucket_count, 96U);
+    EXPECT_EQ(config.model.flop_bucket_count, 12U);
     EXPECT_EQ(config.target_trajectories, 50000000U);
+}
+
+TEST_CASE(multiway_workflow_config_accepts_distinct_bucket_counts) {
+    using namespace texas::solver::multiway;
+    const auto f1 = parse_multiway_workflow_config(valid_config);
+    auto alternate_text = std::string(valid_config);
+    alternate_text.replace(alternate_text.find("flop_buckets=12"), std::strlen("flop_buckets=12"), "flop_buckets=96");
+    alternate_text.replace(alternate_text.find("turn_buckets=12"), std::strlen("turn_buckets=12"), "turn_buckets=128");
+    alternate_text.replace(alternate_text.find("river_buckets=12"), std::strlen("river_buckets=12"), "river_buckets=192");
+    const auto alternate = parse_multiway_workflow_config(alternate_text);
+    EXPECT_EQ(alternate.model.flop_bucket_count, 96U);
+    EXPECT_EQ(alternate.model.turn_bucket_count, 128U);
+    EXPECT_EQ(alternate.model.river_bucket_count, 192U);
+    EXPECT_TRUE(f1.fingerprint() != alternate.fingerprint());
+
+    auto zero_bucket_text = std::string(valid_config);
+    zero_bucket_text.replace(zero_bucket_text.find("river_buckets=12"),
+        std::strlen("river_buckets=12"), "river_buckets=0");
+    EXPECT_THROW(parse_multiway_workflow_config(zero_bucket_text), std::invalid_argument);
 }
 
 TEST_CASE(multiway_workflow_config_rejects_unknown_and_duplicate_keys) {
