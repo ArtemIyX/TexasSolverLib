@@ -1,5 +1,57 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-05 - Add C++ formatting script
+
+**Status:** Complete
+**Completed:** 2026-10-05
+
+- Added `scripts/format_cpp.py` with file, recursive folder, and project modes.
+- Formats `.h`, `.hpp`, and `.cpp` files through `clang-format`; project mode
+  skips external, generated, and dependency directories.
+
+### Files
+
+- `scripts/format_cpp.py`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Python bytecode compilation and CLI help passed.
+- Fixture checks passed for file, folder, and project file selection, plus the
+  missing-formatter error path.
+
+### Limitations
+
+- `clang-format` is not installed on this host, so actual formatting was not
+  verified.
+
+## 2026-10-05 - Bucket inspection progress for all hash passes
+
+**Status:** Complete
+**Completed:** 2026-10-05
+
+- Added phase-labeled progress output for parallel and legacy bucket hash passes.
+- The serial fallback and second legacy pass now emit progress callbacks,
+  including a phase reset marker before legacy scanning begins.
+- Added a regression test for progress reporting on the serial fallback path.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- No build, tests, or solver executable was run, per user instruction.
+
+### Limitations
+
+- Progress changes take effect after rebuilding the inspector executable.
+
 ## 2026-10-05 - Configurable F1 workflow bucket counts
 
 **Status:** Complete

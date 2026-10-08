@@ -9,1429 +9,1658 @@
 #include <limits>
 #include <stdexcept>
 
-namespace texas::games::hunl {
-
-namespace {
-
-constexpr std::array<ActionId, 5> BET_ACTION_IDS = {
-    ACTION_BET_33, ACTION_BET_75, ACTION_BET_100, ACTION_BET_150, ACTION_BET_200};
-constexpr std::array<ActionId, 5> RAISE_ACTION_IDS = {
-    ACTION_RAISE_33, ACTION_RAISE_75, ACTION_RAISE_100, ACTION_RAISE_150, ACTION_RAISE_200};
-constexpr std::uint8_t OOP_PLAYER = 1;
-constexpr int HISTORY_CODE_FOLD = 1;
-constexpr int HISTORY_CODE_CHECK = 2;
-constexpr int HISTORY_CODE_CALL = 3;
-constexpr int HISTORY_CODE_ALL_IN = 4;
-constexpr std::uint8_t MAX_HISTORY_SAFE_RAISES_PER_STREET = 10;
-
-std::string token_from_history_code(int code) {
-    if (code == HISTORY_CODE_FOLD) return "f";
-    if (code == HISTORY_CODE_CHECK) return "x";
-    if (code == HISTORY_CODE_CALL) return "c";
-    if (code == HISTORY_CODE_ALL_IN) return "A";
-    if (code < 0 && code != std::numeric_limits<int>::min()) {
-        return "b" + std::to_string(-static_cast<std::int64_t>(code));
-    }
-    if (code > HISTORY_CODE_ALL_IN) {
-        return "r" + std::to_string(code - HISTORY_CODE_ALL_IN);
-    }
-    throw std::logic_error("invalid HUNL history code");
-}
-
-std::size_t expected_board_size_for_street(Street street) {
-    switch (street) {
-        case Street::Preflop:
-            return 0;
-        case Street::Flop:
-            return 3;
-        case Street::Turn:
-            return 4;
-        case Street::River:
-        case Street::Showdown:
-            return 5;
-    }
-    throw std::logic_error("invalid Street in expected_board_size_for_street");
-}
-
-bool board_contains_card(const std::vector<std::uint8_t>& board, std::uint8_t card) {
-    return std::find(board.begin(), board.end(), card) != board.end();
-}
-
-bool valid_config_street(Street street) noexcept {
-    return street == Street::Preflop || street == Street::Flop ||
-           street == Street::Turn || street == Street::River ||
-           street == Street::Showdown;
-}
-
-bool valid_flat_solve_mode(HUNLFlatSolveMode mode) noexcept {
-    return mode == HUNLFlatSolveMode::Auto ||
-           mode == HUNLFlatSolveMode::ExplicitHand ||
-           mode == HUNLFlatSolveMode::Bucketed;
-}
-
-bool valid_range_policy(HUNLRangePolicy policy) noexcept {
-    return policy == HUNLRangePolicy::Unspecified ||
-           policy == HUNLRangePolicy::Uniform ||
-           policy == HUNLRangePolicy::UseInitialRanges ||
-           policy == HUNLRangePolicy::RequireExplicit;
-}
-
-int checked_nonnegative_add(int lhs, int rhs, const char* context) {
-    if (lhs < 0 || rhs < 0 ||
-        static_cast<std::int64_t>(lhs) + rhs > std::numeric_limits<int>::max()) {
-        throw std::overflow_error(context);
-    }
-    return lhs + rhs;
-}
-
-int checked_nonnegative_multiply(int lhs, int rhs, const char* context) {
-    if (lhs < 0 || rhs < 0 ||
-        static_cast<std::int64_t>(lhs) * rhs > std::numeric_limits<int>::max()) {
-        throw std::overflow_error(context);
-    }
-    return lhs * rhs;
-}
-
-void validate_sizing_menu(
-    const std::vector<double>& values,
-    std::int64_t maximum_pot,
-    const char* field_name) {
-    if (values.size() > BET_ACTION_IDS.size()) {
-        throw std::invalid_argument(
-            std::string("HUNLConfig.validate: ") + field_name +
-            " exceeds the supported action menu");
-    }
-    for (const auto value : values) {
-        if (!std::isfinite(value) || value < 0.0 ||
-            value * static_cast<double>(maximum_pot) >
-                static_cast<double>(std::numeric_limits<int>::max())) {
-            throw std::invalid_argument(
-                std::string("HUNLConfig.validate: ") + field_name +
-                " must contain finite non-negative representable values");
-        }
-    }
-}
-
-void validate_hole_cards_against_board(
-    const std::array<std::array<std::uint8_t, 2>, 2>& holes,
-    const std::vector<std::uint8_t>& board,
-    const char* context) {
-    const std::array<std::uint8_t, 4> all_hole_cards = {
-        holes[0][0], holes[0][1], holes[1][0], holes[1][1]};
-    if (!are_valid_and_distinct_cards(all_hole_cards.data(), all_hole_cards.size())) {
-        throw std::invalid_argument(std::string(context) + " hole cards must be valid and distinct");
-    }
-    for (const auto card : all_hole_cards) {
-        if (board_contains_card(board, card)) {
-            throw std::invalid_argument(std::string(context) + " hole cards must not overlap initial_board");
-        }
-    }
-}
-
-void validate_range_input(
-    const HUNLRangeInput& range_input,
-    Street starting_street,
-    const std::vector<std::uint8_t>& initial_board,
-    bool bucketed_mode,
-    const char* field_name,
-    std::size_t player) {
-    double total_weight = 0.0;
-    for (const auto& weighted_hand : range_input.hand_weights) {
-        if (!std::isfinite(weighted_hand.weight) || weighted_hand.weight < 0.0) {
-            throw std::invalid_argument(
-                std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] hand weights must be finite and non-negative");
-        }
-        if (!are_valid_and_distinct_cards(weighted_hand.hole.data(), weighted_hand.hole.size())) {
-            throw std::invalid_argument(
-                std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] hand entries must contain two valid distinct cards");
-        }
-        if (board_contains_card(initial_board, weighted_hand.hole[0]) ||
-            board_contains_card(initial_board, weighted_hand.hole[1])) {
-            throw std::invalid_argument(
-                std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] contains hole cards blocked by initial_board");
-        }
-        total_weight += weighted_hand.weight;
-        if (!std::isfinite(total_weight)) {
-            throw std::invalid_argument("HUNLConfig.validate: range weight total must be finite");
-        }
-    }
-
-    for (const auto& weighted_bucket : range_input.bucket_weights) {
-        if (!std::isfinite(weighted_bucket.weight) || weighted_bucket.weight < 0.0) {
-            throw std::invalid_argument(
-                std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] bucket weights must be finite and non-negative");
-        }
-        if (weighted_bucket.street != starting_street) {
-            throw std::invalid_argument(
-                std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] bucket street must match starting_street");
-        }
-        if (!bucketed_mode) {
-            throw std::invalid_argument(
-                std::string("HUNLConfig.validate: ") + field_name +
-                "[" + std::to_string(player) + "] bucket weights require bucketed flat solve mode");
-        }
-        total_weight += weighted_bucket.weight;
-        if (!std::isfinite(total_weight)) {
-            throw std::invalid_argument("HUNLConfig.validate: range weight total must be finite");
-        }
-    }
-    if (range_input.hand_weights.empty() && range_input.bucket_weights.empty()) {
-        throw std::invalid_argument("HUNLConfig.validate: range input must not be empty");
-    }
-    if (total_weight <= 0.0) {
-        throw std::invalid_argument("HUNLConfig.validate: range input must have positive total weight");
-    }
-}
-
-}
-
-bool is_opening_bet(ActionId action) {
-    return std::find(BET_ACTION_IDS.begin(), BET_ACTION_IDS.end(), action) != BET_ACTION_IDS.end();
-}
-
-bool is_raise(ActionId action) {
-    return std::find(RAISE_ACTION_IDS.begin(), RAISE_ACTION_IDS.end(), action) != RAISE_ACTION_IDS.end();
-}
-
-void validate_hunl_infoset_encoding(const HUNLInfosetEncoding& encoding) {
-    if (!valid_config_street(encoding.street) ||
-        encoding.board_count > encoding.board.size() ||
-        encoding.history_count > encoding.history_codes.size()) {
-        throw std::invalid_argument("invalid HUNL infoset encoding dimensions");
-    }
-    if (!are_valid_and_distinct_cards(encoding.hole.data(), encoding.hole.size()) ||
-        !are_valid_and_distinct_cards(encoding.board.data(), encoding.board_count)) {
-        throw std::invalid_argument("invalid HUNL infoset encoding cards");
-    }
-    for (const auto hole_card : encoding.hole) {
-        for (std::size_t board_index = 0; board_index < encoding.board_count; ++board_index) {
-            if (hole_card == encoding.board[board_index]) {
-                throw std::invalid_argument("HUNL infoset hole card overlaps the board");
-            }
-        }
-    }
-    for (std::size_t board_index = encoding.board_count;
-         board_index < encoding.board.size();
-         ++board_index) {
-        if (encoding.board[board_index] != 0U) {
-            throw std::invalid_argument("HUNL infoset encoding has non-canonical unused board data");
-        }
-    }
-    std::size_t segment_total = 0;
-    for (const auto length : encoding.street_lengths) {
-        segment_total += length;
-    }
-    if (segment_total != encoding.history_count) {
-        throw std::invalid_argument("HUNL infoset street lengths do not match history count");
-    }
-    for (std::size_t index = 0; index < encoding.history_count; ++index) {
-        const auto code = encoding.history_codes[index];
-        if (code == 0 || code == std::numeric_limits<int>::min()) {
-            throw std::invalid_argument("HUNL infoset encoding has an invalid history code");
-        }
-    }
-    for (std::size_t index = encoding.history_count;
-         index < encoding.history_codes.size();
-         ++index) {
-        if (encoding.history_codes[index] != 0) {
-            throw std::invalid_argument("HUNL infoset encoding has non-canonical unused history data");
-        }
-    }
-}
-
-std::size_t HUNLInfosetEncodingHash::operator()(const HUNLInfosetEncoding& encoding) const noexcept {
-    std::size_t seed = static_cast<std::size_t>(encoding.street);
-    auto mix = [&](std::size_t value) {
-        seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
-    };
-    mix(encoding.board_count);
-    mix(encoding.history_count);
-    for (const auto card : encoding.hole) mix(card);
-    const auto board_count = std::min<std::size_t>(
-        encoding.board_count, encoding.board.size());
-    for (std::size_t i = 0; i < board_count; ++i) mix(encoding.board[i]);
-    for (const auto len : encoding.street_lengths) mix(len);
-    const auto history_count = std::min<std::size_t>(
-        encoding.history_count, encoding.history_codes.size());
-    for (std::size_t i = 0; i < history_count; ++i) {
-        mix(static_cast<std::size_t>(encoding.history_codes[i]));
-    }
-    return seed;
-}
-
-std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding) {
-    validate_hunl_infoset_encoding(encoding);
-    std::vector<std::uint8_t> hole_cards = {encoding.hole[0], encoding.hole[1]};
-    std::vector<std::uint8_t> board_cards(
-        encoding.board.begin(),
-        encoding.board.begin() + static_cast<std::ptrdiff_t>(encoding.board_count));
-
-    std::string out = sorted_card_string(hole_cards);
-    out += "|";
-    out += sorted_card_string(board_cards);
-    out += "|";
-    out += street_token(encoding.street);
-    out += "|";
-
-    std::size_t offset = 0;
-    bool wrote_segment = false;
-    for (std::size_t street_index = 0; street_index < encoding.street_lengths.size(); ++street_index) {
-        const auto segment_len = encoding.street_lengths[street_index];
-        if (segment_len == 0) {
-            continue;
-        }
-        if (wrote_segment) {
-            out += "/";
-        }
-        for (std::size_t i = 0; i < segment_len; ++i) {
-            out += token_from_history_code(encoding.history_codes[offset + i]);
-        }
-        offset += segment_len;
-        wrote_segment = true;
-    }
-    return out;
-}
-
-HUNLRangePolicy resolve_range_policy(const HUNLConfig& config) {
-    if (config.range_policy != HUNLRangePolicy::Unspecified) {
-        return config.range_policy;
-    }
-    for (const auto& range_input : config.initial_ranges) {
-        if (range_input.has_value()) {
-            return HUNLRangePolicy::UseInitialRanges;
-        }
-    }
-    return HUNLRangePolicy::Uniform;
-}
-
-std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(const HUNLConfig& config) {
-    validate_hunl_joint_range_feasibility(config);
-    const auto& combos = canonical_combos();
-    std::array<double, CANONICAL_HOLE_COMBINATION_COUNT> first_weights = {};
-    std::array<double, CANONICAL_HOLE_COMBINATION_COUNT> second_weights = {};
-    for (const auto& hand : config.initial_ranges[0]->hand_weights) {
-        if (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0) {
-            first_weights[combos.id(hand.hole)] += hand.weight;
-        }
-    }
-    for (const auto& hand : config.initial_ranges[1]->hand_weights) {
-        if (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0) {
-            second_weights[combos.id(hand.hole)] += hand.weight;
-        }
-    }
-    std::vector<HUNLJointRangeDeal> deals;
-    deals.reserve(CANONICAL_HOLE_COMBINATION_COUNT * CANONICAL_HOLE_COMBINATION_COUNT);
-    double total = 0.0;
-    for (std::size_t hero_id = 0U; hero_id < CANONICAL_HOLE_COMBINATION_COUNT; ++hero_id) {
-        const auto hero_weight = first_weights[hero_id];
-        if (hero_weight <= 0.0) continue;
-        const auto& hero = combos.cards(static_cast<CanonicalComboId>(hero_id));
-        for (std::size_t villain_id = 0U; villain_id < CANONICAL_HOLE_COMBINATION_COUNT; ++villain_id) {
-            const auto villain_weight = second_weights[villain_id];
-            if (villain_weight <= 0.0) continue;
-            const auto& villain = combos.cards(static_cast<CanonicalComboId>(villain_id));
-            const std::array<std::uint8_t, 4> cards = {
-                hero[0], hero[1], villain[0], villain[1]};
-            if (!are_valid_and_distinct_cards(cards.data(), cards.size())) continue;
-            const auto weight = hero_weight * villain_weight;
-            if (weight <= 0.0) continue;
-            deals.push_back({{hero, villain}, weight});
-            total += weight;
-        }
-    }
-    if (!std::isfinite(total) || total <= 0.0) {
-        throw std::invalid_argument("initial ranges have no blocker-compatible joint private deal");
-    }
-    for (auto& deal : deals) deal.weight /= total;
-    return deals;
-}
-
-void validate_hunl_joint_range_feasibility(const HUNLConfig& config) {
-    config.validate();
-    const auto policy = resolve_range_policy(config);
-    if (policy != HUNLRangePolicy::UseInitialRanges && policy != HUNLRangePolicy::RequireExplicit) {
-        throw std::invalid_argument("normalize_hunl_joint_range requires explicit initial ranges");
-    }
-    const auto& first = config.initial_ranges[0]->hand_weights;
-    const auto& second = config.initial_ranges[1]->hand_weights;
-    if (first.empty() || second.empty()) {
-        throw std::invalid_argument("normalize_hunl_joint_range requires hand-weight ranges for both players");
-    }
-    bool first_valid = false;
-    bool second_valid = false;
-    for (const auto& hand : first) first_valid = first_valid ||
-        (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0);
-    for (const auto& hand : second) second_valid = second_valid ||
-        (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0);
-    if (!first_valid || !second_valid) {
-        throw std::invalid_argument("initial ranges have no positive canonical private hands");
-    }
-    for (const auto& hero : first) {
-        if (!is_valid_card(hero.hole[0]) || !is_valid_card(hero.hole[1]) || hero.hole[0] == hero.hole[1] ||
-            hero.weight <= 0.0) continue;
-        for (const auto& villain : second) {
-            if (!is_valid_card(villain.hole[0]) || !is_valid_card(villain.hole[1]) || villain.hole[0] == villain.hole[1] ||
-                villain.weight <= 0.0) continue;
-            const std::array<std::uint8_t, 4> cards = {
-                hero.hole[0], hero.hole[1], villain.hole[0], villain.hole[1]};
-            if (are_valid_and_distinct_cards(cards.data(), cards.size())) return;
-        }
-    }
-    throw std::invalid_argument("initial ranges have no blocker-compatible joint private deal");
-}
-
-std::size_t configured_bucket_count(const HUNLConfig& config, Street street) {
-    switch (street) {
-        case Street::Flop:
-            return config.bucket_counts_by_street[0] > 0 ? config.bucket_counts_by_street[0] : 1326U;
-        case Street::Turn:
-            return config.bucket_counts_by_street[1] > 0 ? config.bucket_counts_by_street[1] : 1326U;
-        case Street::River:
-        case Street::Showdown:
-            return config.bucket_counts_by_street[2] > 0 ? config.bucket_counts_by_street[2] : 1326U;
-        case Street::Preflop:
-            return 1326U;
-    }
-    throw std::logic_error("invalid Street in configured_bucket_count");
-}
-
-void HUNLConfig::validate() const {
-    if (depth_limit_plies > 1'000'000U) {
-        throw std::invalid_argument("HUNLConfig.validate: depth_limit_plies is unreasonably large");
-    }
-    if (rake_rate != 0.0) {
-        throw std::invalid_argument("HUNLConfig.validate: rake_rate must be 0.0");
-    }
-    if (rake_cap != 0) {
-        throw std::invalid_argument("HUNLConfig.validate: rake_cap must be 0");
-    }
-    if (starting_stack <= 0) {
-        throw std::invalid_argument("HUNLConfig.validate: starting_stack must be > 0");
-    }
-    if (big_blind <= 0) {
-        throw std::invalid_argument("HUNLConfig.validate: big_blind must be > 0");
-    }
-    if (small_blind < 0 || ante < 0 || initial_pot < 0) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: small_blind, ante, initial_pot must be non-negative");
-    }
-    if (!valid_config_street(starting_street) ||
-        !valid_flat_solve_mode(flat_solve_mode) ||
-        !valid_range_policy(range_policy)) {
-        throw std::invalid_argument("HUNLConfig.validate: invalid enum value");
-    }
-    if (small_blind > big_blind) {
-        throw std::invalid_argument("HUNLConfig.validate: small_blind must be <= big_blind");
-    }
-    if (initial_contributions[0] < 0 || initial_contributions[1] < 0) {
-        throw std::invalid_argument("HUNLConfig.validate: initial_contributions must be non-negative");
-    }
-    const auto blind_sb_wide =
-        static_cast<std::int64_t>(small_blind) + ante;
-    const auto blind_bb_wide =
-        static_cast<std::int64_t>(big_blind) + ante;
-    if (blind_sb_wide > std::numeric_limits<int>::max() ||
-        blind_bb_wide > std::numeric_limits<int>::max() ||
-        blind_sb_wide + blind_bb_wide > std::numeric_limits<int>::max() ||
-        blind_sb_wide > starting_stack || blind_bb_wide > starting_stack) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: forced bets exceed the supported stack or chip domain");
-    }
-    if (min_bet_bb <= 0 || force_allin_threshold < 0 ||
-        static_cast<std::int64_t>(min_bet_bb) * big_blind >
-            std::numeric_limits<int>::max() ||
-        static_cast<std::int64_t>(force_allin_threshold) * big_blind >
-            std::numeric_limits<int>::max()) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: bet thresholds exceed the supported chip domain");
-    }
-    if (preflop_raise_cap > MAX_HISTORY_SAFE_RAISES_PER_STREET ||
-        postflop_raise_cap > MAX_HISTORY_SAFE_RAISES_PER_STREET) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: raise caps exceed infoset history capacity");
-    }
-    const auto maximum_pot = starting_street == Street::Preflop
-        ? static_cast<std::int64_t>(starting_stack) * 2
-        : static_cast<std::int64_t>(initial_pot) +
-            static_cast<std::int64_t>(starting_stack) * 2;
-    if (maximum_pot <= 0 ||
-        maximum_pot >
-            static_cast<std::int64_t>(std::numeric_limits<int>::max()) -
-                HISTORY_CODE_ALL_IN) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: maximum pot exceeds the supported chip domain");
-    }
-    validate_sizing_menu(bet_size_fractions, maximum_pot, "bet_size_fractions");
-    if (flop_bet_fractions.has_value()) {
-        validate_sizing_menu(*flop_bet_fractions, maximum_pot, "flop_bet_fractions");
-    }
-    if (turn_bet_fractions.has_value()) {
-        validate_sizing_menu(*turn_bet_fractions, maximum_pot, "turn_bet_fractions");
-    }
-    if (river_bet_fractions.has_value()) {
-        validate_sizing_menu(*river_bet_fractions, maximum_pot, "river_bet_fractions");
-    }
-    validate_sizing_menu(raise_size_xs, maximum_pot, "raise_size_xs");
-    if (auto_all_in_spr_threshold.has_value() &&
-        (!std::isfinite(*auto_all_in_spr_threshold) ||
-         *auto_all_in_spr_threshold < 0.0)) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: auto_all_in_spr_threshold must be finite and non-negative");
-    }
-
-    const auto expected_board_size = expected_board_size_for_street(starting_street);
-    if (initial_board.size() != expected_board_size) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: initial_board size does not match starting_street");
-    }
-    if (!are_valid_and_distinct_cards(initial_board.data(), initial_board.size())) {
-        throw std::invalid_argument("HUNLConfig.validate: initial_board cards must be valid and distinct");
-    }
-    if (initial_hole_cards.has_value()) {
-        validate_hole_cards_against_board(
-            *initial_hole_cards,
-            initial_board,
-            "HUNLConfig.validate:");
-    }
-    const bool bucketed_mode =
-        flat_solve_mode == HUNLFlatSolveMode::Bucketed ||
-        (flat_solve_mode == HUNLFlatSolveMode::Auto && abstraction_path.has_value());
-
-    const auto effective_range_policy = resolve_range_policy(*this);
-    const bool range_contract =
-        effective_range_policy == HUNLRangePolicy::UseInitialRanges ||
-        effective_range_policy == HUNLRangePolicy::RequireExplicit;
-    if (range_contract &&
-        (!initial_ranges[0].has_value() || !initial_ranges[1].has_value())) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: range_policy requires initial_ranges for both players");
-    }
-    if (range_contract && initial_hole_cards.has_value()) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: range solve contract must not include initial_hole_cards");
-    }
-    if (!range_contract && (initial_ranges[0].has_value() || initial_ranges[1].has_value())) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: initial_ranges require UseInitialRanges or RequireExplicit policy");
-    }
-    for (std::size_t player = 0; player < initial_ranges.size(); ++player) {
-        if (initial_ranges[player].has_value()) {
-            validate_range_input(
-                *initial_ranges[player],
-                starting_street,
-                initial_board,
-                bucketed_mode,
-                "initial_ranges",
-                player);
-        }
-    }
-
-    const auto c0 = initial_contributions[0];
-    const auto c1 = initial_contributions[1];
-    if (starting_street == Street::Preflop) {
-        if (c0 == 0 && c1 == 0 && initial_pot == 0) {
-            return;
-        }
-
-        const auto blind_sb = static_cast<int>(blind_sb_wide);
-        const auto blind_bb = static_cast<int>(blind_bb_wide);
-        const auto expected_pot = blind_sb + blind_bb;
-        if (c0 == blind_sb && c1 == blind_bb && initial_pot == expected_pot) {
-            return;
-        }
-
-        throw std::invalid_argument(
-            "HUNLConfig.validate: invalid preflop initial_contributions / initial_pot combination");
-    }
-
-    if (initial_board.empty()) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: initial_board must be non-empty when starting_street > Preflop");
-    }
-    const auto contribution_sum = static_cast<std::int64_t>(c0) + c1;
-    if (contribution_sum != 0 && contribution_sum != initial_pot) {
-        throw std::invalid_argument(
-            "HUNLConfig.validate: initial_contributions must sum to initial_pot or both be zero");
-    }
-}
-
-HUNLState HUNLState::initial(std::shared_ptr<const HUNLConfig> cfg) {
-    if (!cfg) {
-        throw std::invalid_argument("HUNLState::initial requires a non-null config");
-    }
-    cfg->validate();
-
-    if (cfg->starting_street == Street::Preflop) {
-        return initial_preflop(std::move(cfg));
-    }
-
-    const auto contributions = cfg->initial_contributions;
-    const std::array<int, 2> stacks = {cfg->starting_stack, cfg->starting_stack};
-    const std::array<bool, 2> all_in = {stacks[0] == 0, stacks[1] == 0};
-    const auto hole = cfg->initial_hole_cards;
-    const auto c0 = contributions[0];
-    const auto c1 = contributions[1];
-
-    int to_call = 0;
-    PlayerId aggressor = -1;
-    PlayerId first_actor = 1;
-    if (c0 < c1) {
-        to_call = c1 - c0;
-        aggressor = 1;
-        first_actor = 0;
-    } else if (c1 < c0) {
-        to_call = c0 - c1;
-        aggressor = 0;
-        first_actor = 1;
-    }
-
-    HUNLState state;
-    state.hole_cards = hole;
-    state.board = cfg->initial_board;
-    state.street = cfg->starting_street;
-    state.contributions = contributions;
-    state.stacks = stacks;
-    state.street_aggressor = aggressor;
-    state.street_num_raises = to_call > 0 ? 1 : 0;
-    state.to_call = to_call;
-    state.cur_player = (all_in[0] || all_in[1] || !hole.has_value()) ? -1 : first_actor;
-    state.folded = {false, false};
-    state.all_in = all_in;
-    state.config = std::move(cfg);
-    return state;
-}
-
-HUNLState HUNLState::initial() {
-    return initial(std::make_shared<const HUNLConfig>(default_tiny_subgame()));
-}
-
-HUNLState HUNLState::initial_preflop(std::shared_ptr<const HUNLConfig> cfg) {
-    const auto blind_sb = checked_nonnegative_add(
-        cfg->small_blind, cfg->ante, "HUNL small blind plus ante overflow");
-    const auto blind_bb = checked_nonnegative_add(
-        cfg->big_blind, cfg->ante, "HUNL big blind plus ante overflow");
-    const auto sb_contrib = std::max(blind_sb, cfg->initial_contributions[0]);
-    const auto bb_contrib = std::max(blind_bb, cfg->initial_contributions[1]);
-
-    HUNLState state;
-    state.hole_cards = cfg->initial_hole_cards;
-    state.board = {};
-    state.street = Street::Preflop;
-    state.contributions = {sb_contrib, bb_contrib};
-    state.stacks = {cfg->starting_stack - sb_contrib, cfg->starting_stack - bb_contrib};
-    state.street_aggressor = 1;
-    state.street_num_raises = 1;
-    state.to_call = bb_contrib - sb_contrib;
-    state.cur_player = state.hole_cards.has_value() ? 0 : -1;
-    state.folded = {false, false};
-    state.all_in = {state.stacks[0] == 0, state.stacks[1] == 0};
-    state.config = std::move(cfg);
-    return state;
-}
-
-HUNLState HUNLState::clone_with_hole_cards(
-    const std::array<std::array<std::uint8_t, 2>, 2>& hole) const {
-    if (!are_valid_and_distinct_cards(board.data(), board.size())) {
-        throw std::invalid_argument("HUNLState::clone_with_hole_cards board cards must be valid and distinct");
-    }
-    validate_hole_cards_against_board(hole, board, "HUNLState::clone_with_hole_cards");
-    HUNLState next = *this;
-    next.hole_cards = hole;
-    if (next.cur_player < 0) {
-        next.cur_player = 1;
-        if (street == Street::Preflop || contributions[0] < contributions[1]) {
-            next.cur_player = 0;
-        }
-    }
-    return next;
-}
-
-ActionContext HUNLState::action_context() const {
-    if (!config) {
-        throw std::logic_error("HUNLState.action_context requires config");
-    }
-    const auto& cfg = *config;
-    const auto pot_wide =
-        static_cast<std::int64_t>(contributions[0]) + contributions[1] +
-        cfg.initial_pot - cfg.initial_contributions[0] -
-        cfg.initial_contributions[1];
-    if (pot_wide < 0 || pot_wide > std::numeric_limits<int>::max()) {
-        throw std::overflow_error("HUNL action-context pot exceeds the supported chip domain");
-    }
-    const auto pot = static_cast<int>(pot_wide);
-    ActionContext ctx;
-    ctx.pot = pot;
-    ctx.to_call = to_call;
-    ctx.stacks = stacks;
-    ctx.contributions = contributions;
-    ctx.cur_player = static_cast<std::uint8_t>(std::max(cur_player, 0));
-    ctx.street = street;
-    ctx.street_num_raises = street_num_raises;
-    ctx.street_aggressor = street_aggressor;
-    ctx.big_blind = cfg.big_blind;
-    ctx.bet_size_fractions = cfg.bet_size_fractions;
-    ctx.flop_bet_fractions = cfg.flop_bet_fractions;
-    ctx.turn_bet_fractions = cfg.turn_bet_fractions;
-    ctx.river_bet_fractions = cfg.river_bet_fractions;
-    ctx.raise_size_xs = cfg.raise_size_xs;
-    ctx.preflop_raise_cap = cfg.preflop_raise_cap;
-    ctx.postflop_raise_cap = cfg.postflop_raise_cap;
-    ctx.force_allin_threshold = cfg.force_allin_threshold;
-    ctx.min_bet_bb = cfg.min_bet_bb;
-    ctx.include_all_in = cfg.include_all_in;
-    ctx.auto_all_in_spr_threshold = cfg.auto_all_in_spr_threshold;
-    ctx.allow_oop_flop_lead = cfg.allow_oop_flop_lead;
-    ctx.street_action_count = static_cast<std::uint32_t>(current_street_tokens.size());
-    return ctx;
-}
-
-bool HUNLState::is_terminal() const {
-    return folded[0] || folded[1] || street == Street::Showdown;
-}
-
-std::vector<Value> HUNLState::utility() const {
-    if (!config) {
-        throw std::logic_error("HUNLState.utility requires config");
-    }
-    const auto& cfg = *config;
-    const auto bb = static_cast<double>(cfg.big_blind);
-    const auto init_c0 = static_cast<double>(cfg.initial_contributions[0]);
-    const auto init_c1 = static_cast<double>(cfg.initial_contributions[1]);
-    const auto cs0 = static_cast<double>(contributions[0]) - init_c0;
-    const auto cs1 = static_cast<double>(contributions[1]) - init_c1;
-    const auto pot_total = static_cast<double>(cfg.initial_pot) + cs0 + cs1;
-
-    if (folded[0]) {
-        return {-cs0 / bb, (pot_total - cs1) / bb};
-    }
-    if (folded[1]) {
-        return {(pot_total - cs0) / bb, -cs1 / bb};
-    }
-
-    if (!hole_cards.has_value() || board.size() < 5) {
-        throw std::logic_error("showdown requires dealt hole cards and 5-card board");
-    }
-
-    std::array<std::uint8_t, 7> seven0 = {};
-    std::array<std::uint8_t, 7> seven1 = {};
-    seven0[0] = (*hole_cards)[0][0];
-    seven0[1] = (*hole_cards)[0][1];
-    seven1[0] = (*hole_cards)[1][0];
-    seven1[1] = (*hole_cards)[1][1];
-    for (std::size_t i = 0; i < 5; ++i) {
-        seven0[i + 2] = board[i];
-        seven1[i + 2] = board[i];
-    }
-
-    const auto s0 = Strength::evaluate_7(seven0);
-    const auto s1 = Strength::evaluate_7(seven1);
-    if (s0 > s1) {
-        return {(pot_total - cs0) / bb, -cs1 / bb};
-    }
-    if (s1 > s0) {
-        return {-cs0 / bb, (pot_total - cs1) / bb};
-    }
-    return {(pot_total / 2.0 - cs0) / bb, (pot_total / 2.0 - cs1) / bb};
-}
-
-PlayerId HUNLState::current_player() const {
-    return is_terminal() ? -1 : cur_player;
-}
-
-std::vector<ChanceOutcome> HUNLState::chance_outcomes() const {
-    if (cur_player != -1 || is_terminal() || !hole_cards.has_value()) {
-        return {};
-    }
-
-    if (!are_valid_and_distinct_cards(board.data(), board.size())) {
-        throw std::invalid_argument("HUNLState::chance_outcomes board cards must be valid and distinct");
-    }
-    validate_hole_cards_against_board(
-        *hole_cards,
-        board,
-        "HUNLState::chance_outcomes");
-
-    std::array<bool, 64> held = {};
-    for (const auto c : {(*hole_cards)[0][0], (*hole_cards)[0][1], (*hole_cards)[1][0], (*hole_cards)[1][1]}) {
-        held[c] = true;
-    }
-    for (const auto c : board) {
-        held[c] = true;
-    }
-
-    std::vector<std::uint8_t> remaining;
-    for (std::uint8_t r = 2; r <= 14; ++r) {
-        for (std::uint8_t s = 0; s < 4; ++s) {
-            const auto c = card_to_int(r, s);
-            if (!held[c]) {
-                remaining.push_back(c);
-            }
-        }
-    }
-    if (remaining.empty()) {
-        return {};
-    }
-
-    const auto p = 1.0 / static_cast<double>(remaining.size());
-    std::vector<ChanceOutcome> out;
-    out.reserve(remaining.size());
-    for (const auto c : remaining) {
-        out.push_back({c, p});
-    }
-    return out;
-}
-
-std::vector<ActionId> HUNLState::legal_actions() const {
-    if (is_terminal() || cur_player == -1) {
-        return {};
-    }
-    return enumerate_legal_actions(action_context());
-}
-
-HUNLState HUNLState::apply(ActionId action) const {
-    if (is_terminal()) {
-        throw std::invalid_argument("cannot apply an action to a terminal HUNL state");
-    }
-    if (cur_player == -1) {
-        if (action < 0 || action > std::numeric_limits<std::uint8_t>::max() ||
-            pending_board_deals == 0 || !hole_cards.has_value()) {
-            throw std::invalid_argument("illegal HUNL chance action");
-        }
-        const auto card = static_cast<std::uint8_t>(action);
-        const auto& holes = *hole_cards;
-        if (!is_valid_card(card) || board_contains_card(board, card) ||
-            card == holes[0][0] || card == holes[0][1] ||
-            card == holes[1][0] || card == holes[1][1]) {
-            throw std::invalid_argument("illegal HUNL chance action");
-        }
-        return apply_chance(card);
-    }
-
-    const auto actions = legal_actions();
-    if (std::find(actions.begin(), actions.end(), action) == actions.end()) {
-        throw std::invalid_argument("illegal HUNL player action");
-    }
-    return apply_player(action);
-}
-
-HUNLState HUNLState::next_state(ActionId action) const {
-    return apply(action);
-}
-
-std::string HUNLState::infoset_key(PlayerId player) const {
-    return hunl_infoset_key(infoset_encoding(player));
-}
-
-HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const {
-    if (player < 0 || player > 1 || !hole_cards.has_value()) {
-        throw std::invalid_argument(
-            "HUNLState::infoset_encoding requires player 0 or 1 and private cards");
-    }
-    if (board.size() > HUNLInfosetEncoding{}.board.size() ||
-        betting_history_codes.size() > HUNLInfosetEncoding{}.street_lengths.size()) {
-        throw std::invalid_argument("HUNL state exceeds infoset encoding capacity");
-    }
-    std::size_t total_history_codes = current_street_history_codes.size();
-    for (const auto& completed : betting_history_codes) {
-        if (completed.size() > HUNL_MAX_HISTORY_CODES -
-                std::min(total_history_codes, HUNL_MAX_HISTORY_CODES)) {
-            throw std::invalid_argument("HUNL state exceeds infoset history capacity");
-        }
-        total_history_codes += completed.size();
-    }
-    if (total_history_codes > HUNL_MAX_HISTORY_CODES ||
-        (!current_street_history_codes.empty() &&
-         betting_history_codes.size() >= HUNLInfosetEncoding{}.street_lengths.size())) {
-        throw std::invalid_argument("HUNL state exceeds infoset history capacity");
-    }
-    HUNLInfosetEncoding encoding;
-    encoding.street = street;
-    std::vector<std::uint8_t> sorted_board = board;
-    std::sort(sorted_board.begin(), sorted_board.end());
-    encoding.board_count = static_cast<std::uint8_t>(sorted_board.size());
-    for (std::size_t i = 0; i < sorted_board.size() && i < encoding.board.size(); ++i) {
-        encoding.board[i] = sorted_board[i];
-    }
-
-    const auto player_idx = static_cast<std::size_t>(player);
-    encoding.hole = {(*hole_cards)[player_idx][0], (*hole_cards)[player_idx][1]};
-    if (encoding.hole[1] < encoding.hole[0]) {
-        std::swap(encoding.hole[0], encoding.hole[1]);
-    }
-
-    std::size_t offset = 0;
-    for (std::size_t street_index = 0;
-         street_index < betting_history_codes.size();
-         ++street_index) {
-        const auto& street_codes = betting_history_codes[street_index];
-        encoding.street_lengths[street_index] =
-            static_cast<std::uint8_t>(street_codes.size());
-        for (const auto code : street_codes) {
-            encoding.history_codes[offset++] = code;
-        }
-    }
-
-    if (!current_street_history_codes.empty()) {
-        const auto current_index = betting_history_codes.size();
-        encoding.street_lengths[current_index] =
-            static_cast<std::uint8_t>(current_street_history_codes.size());
-        for (const auto code : current_street_history_codes) {
-            encoding.history_codes[offset++] = code;
-        }
-    }
-    encoding.history_count = static_cast<std::uint8_t>(offset);
-    validate_hunl_infoset_encoding(encoding);
-    return encoding;
-}
-
-std::string HUNLState::infoset_key(
-    PlayerId player,
-    const texas::util::AbstractionTables* abstraction) const {
-    if (player < 0 || player > 1) {
-        throw std::invalid_argument("HUNLState::infoset_key requires player 0 or 1");
-    }
-    const auto player_idx = static_cast<std::size_t>(player);
-    if (abstraction && street >= Street::Flop && hole_cards.has_value()) {
-        const auto bucket = lookup_bucket(*abstraction, board, (*hole_cards)[player_idx], street);
-        return "b" + std::to_string(bucket) + "|" + street_token(street) + "|" + format_history();
-    }
-    const auto hole = hole_cards.has_value() ? sorted_card_string(
-        std::vector<std::uint8_t>{(*hole_cards)[player_idx][0], (*hole_cards)[player_idx][1]}) : std::string();
-    const auto board_str = sorted_card_string(board);
-    return hole + "|" + board_str + "|" + street_token(street) + "|" + format_history();
-}
-
-std::string HUNLState::format_history() const {
-    std::vector<std::string> parts;
-    parts.reserve(betting_tokens.size() + 1);
-    for (const auto& street_tokens : betting_tokens) {
-        std::string joined;
-        for (const auto& token : street_tokens) {
-            joined += token;
-        }
-        parts.push_back(std::move(joined));
-    }
-    std::string current;
-    for (const auto& token : current_street_tokens) {
-        current += token;
-    }
-    parts.push_back(std::move(current));
-
-    std::string out;
-    for (std::size_t i = 0; i < parts.size(); ++i) {
-        if (i > 0) {
-            out += "/";
-        }
-        out += parts[i];
-    }
-    return out;
-}
-
-HUNLState HUNLState::apply_chance(std::uint8_t card) const {
-    HUNLState next = *this;
-    next.board.push_back(card);
-    next.pending_board_deals = next.pending_board_deals > 0 ? next.pending_board_deals - 1 : 0;
-    if (next.pending_board_deals > 0) {
-        return next;
-    }
-    return after_board_dealt(std::move(next));
-}
-
-HUNLState HUNLState::after_board_dealt(HUNLState state) const {
-    if (state.all_in[0] || state.all_in[1]) {
-        if (state.board.size() >= 5) {
-            state.street = Street::Showdown;
-            state.cur_player = -1;
-            return state;
-        }
-        state.cur_player = -1;
-        state.pending_board_deals = 1;
-        return state;
-    }
-    state.cur_player = 1;
-    return state;
-}
-
-HUNLState HUNLState::apply_player(ActionId action) const {
-    const auto ctx = action_context();
-    const auto player = static_cast<std::size_t>(cur_player);
-    auto contributions_next = contributions;
-    auto stacks_next = stacks;
-    auto folded_next = folded;
-    auto all_in_next = all_in;
-    auto street_aggressor_next = street_aggressor;
-    auto street_num_raises_next = street_num_raises;
-    auto to_call_next = to_call;
-    std::string token;
-    int history_code = 0;
-
-    if (action == ACTION_FOLD) {
-        folded_next[player] = true;
-        token = "f";
-        history_code = HISTORY_CODE_FOLD;
-    } else if (action == ACTION_CHECK) {
-        token = "x";
-        history_code = HISTORY_CODE_CHECK;
-    } else if (action == ACTION_CALL) {
-        const auto pay = std::min(to_call, stacks_next[player]);
-        contributions_next[player] += pay;
-        stacks_next[player] -= pay;
-        if (stacks_next[player] == 0) {
-            all_in_next[player] = true;
-        }
-        to_call_next = 0;
-        token = "c";
-        history_code = HISTORY_CODE_CALL;
-    } else if (action == ACTION_ALL_IN) {
-        const auto pay = stacks_next[player];
-        contributions_next[player] += pay;
-        stacks_next[player] = 0;
-        all_in_next[player] = true;
-        const auto opp = 1U - player;
-        to_call_next = std::max(contributions_next[player] - contributions_next[opp], 0);
-        street_aggressor_next = static_cast<PlayerId>(player);
-        ++street_num_raises_next;
-        token = "A";
-        history_code = HISTORY_CODE_ALL_IN;
-    } else if (is_opening_bet(action)) {
-        const auto amount = compute_bet_amount(static_cast<std::uint8_t>(action), ctx);
-        contributions_next[player] += amount;
-        stacks_next[player] -= amount;
-        if (stacks_next[player] == 0) {
-            all_in_next[player] = true;
-        }
-        const auto opp = 1U - player;
-        to_call_next = contributions_next[player] - contributions_next[opp];
-        street_aggressor_next = static_cast<PlayerId>(player);
-        ++street_num_raises_next;
-        token = "b" + std::to_string(amount);
-        history_code = -amount;
-    } else if (is_raise(action)) {
-        const auto new_contrib = compute_raise_to(static_cast<std::uint8_t>(action), ctx);
-        const auto pay = new_contrib - contributions_next[player];
-        contributions_next[player] = new_contrib;
-        stacks_next[player] -= pay;
-        if (stacks_next[player] == 0) {
-            all_in_next[player] = true;
-        }
-        const auto opp = 1U - player;
-        to_call_next = contributions_next[player] - contributions_next[opp];
-        street_aggressor_next = static_cast<PlayerId>(player);
-        ++street_num_raises_next;
-        token = "r" + std::to_string(new_contrib);
-        history_code = new_contrib + HISTORY_CODE_ALL_IN;
-    } else {
-        throw std::invalid_argument("Unknown HUNL action");
-    }
-
-    HUNLState new_state = *this;
-    new_state.contributions = contributions_next;
-    new_state.stacks = stacks_next;
-    new_state.street_history.push_back(action);
-    new_state.current_street_tokens.push_back(token);
-    new_state.current_street_history_codes.push_back(history_code);
-    new_state.street_aggressor = street_aggressor_next;
-    new_state.street_num_raises = street_num_raises_next;
-    new_state.to_call = to_call_next;
-    new_state.folded = folded_next;
-    new_state.all_in = all_in_next;
-
-    if (new_state.folded[0] || new_state.folded[1]) {
-        new_state.cur_player = -1;
-        return new_state;
-    }
-    if (street_complete(action, new_state)) {
-        return begin_street_transition(std::move(new_state));
-    }
-
-    const auto next_player = 1U - player;
-    if (new_state.all_in[next_player]) {
-        const auto refund = std::max(new_state.contributions[player] - new_state.contributions[next_player], 0);
-        if (refund > 0) {
-            new_state.contributions[player] -= refund;
-            new_state.stacks[player] += refund;
-            new_state.all_in[player] = new_state.stacks[player] == 0;
-        }
-        new_state.to_call = 0;
-        return begin_street_transition(std::move(new_state));
-    }
-
-    new_state.cur_player = static_cast<PlayerId>(next_player);
-    return new_state;
-}
-
-bool HUNLState::street_complete(ActionId action, const HUNLState& new_state) const {
-    if (action == ACTION_FOLD) {
-        return false;
-    }
-    if (new_state.to_call > 0) {
-        return false;
-    }
-    if (action == ACTION_ALL_IN && to_call > 0) {
-        return true;
-    }
-    const auto player = cur_player;
-    const auto opponent = 1 - player;
-    if (action == ACTION_CHECK && street_aggressor == -1 && new_state.street_history.size() >= 2) {
-        return true;
-    }
-    if (street == Street::Preflop && action == ACTION_CHECK && player == 1 &&
-        street_aggressor == 1 && street_num_raises == 1) {
-        return true;
-    }
-    if (action == ACTION_CALL) {
-        const auto preflop_sb_limp =
-            street == Street::Preflop && street_aggressor == opponent && street_num_raises == 1 && player == 0;
-        return !preflop_sb_limp;
-    }
-    return false;
-}
-
-HUNLState HUNLState::begin_street_transition(HUNLState state) const {
-    state.betting_tokens.push_back(state.current_street_tokens);
-    state.current_street_tokens.clear();
-    state.betting_history_codes.push_back(state.current_street_history_codes);
-    state.current_street_history_codes.clear();
-    if (state.street == Street::River) {
-        state.street = Street::Showdown;
-        state.cur_player = -1;
-        return state;
-    }
-    if (state.all_in[0] || state.all_in[1]) {
-        state.cur_player = -1;
-        state.pending_board_deals = 1;
-        state.street_history.clear();
-        state.street_aggressor = -1;
-        state.street_num_raises = 0;
-        state.to_call = 0;
-        return state;
-    }
-    const auto next_street = street_from_u8(static_cast<std::uint8_t>(state.street) + 1);
-    if (!next_street.has_value()) {
-        throw std::logic_error("next street out of range");
-    }
-    state.street = *next_street;
-    state.cur_player = -1;
-    state.pending_board_deals = cards_to_deal(*next_street);
-    state.street_history.clear();
-    state.street_aggressor = -1;
-    state.street_num_raises = 0;
-    state.to_call = 0;
-    return state;
-}
-
-bool is_preflop(const ActionContext& ctx) {
-    return ctx.street == Street::Preflop;
-}
-
-const std::vector<double>& bet_menu(const ActionContext& ctx) {
-    switch (ctx.street) {
-        case Street::Flop:
-            if (ctx.flop_bet_fractions.has_value()) {
-                return *ctx.flop_bet_fractions;
-            }
-            break;
-        case Street::Turn:
-            if (ctx.turn_bet_fractions.has_value()) {
-                return *ctx.turn_bet_fractions;
-            }
-            break;
-        case Street::River:
-            if (ctx.river_bet_fractions.has_value()) {
-                return *ctx.river_bet_fractions;
-            }
-            break;
-        default:
-            break;
-    }
-    return ctx.bet_size_fractions;
-}
-
-std::vector<double> raise_menu(const ActionContext& ctx) {
-    const auto len = std::min(ctx.raise_size_xs.size(), RAISE_ACTION_IDS.size());
-    return std::vector<double>(ctx.raise_size_xs.begin(), ctx.raise_size_xs.begin() + static_cast<std::ptrdiff_t>(len));
-}
-
-bool is_oop_flop_first_action(const ActionContext& ctx) {
-    return ctx.street == Street::Flop &&
-           ctx.cur_player == OOP_PLAYER &&
-           ctx.street_action_count == 0 &&
-           ctx.to_call == 0 &&
-           ctx.street_aggressor < 0;
-}
-
-double stack_to_pot_ratio(const ActionContext& ctx) {
-    const auto effective_stack = std::min(ctx.stacks[0], ctx.stacks[1]);
-    if (ctx.pot <= 0) {
-        return effective_stack > 0 ? std::numeric_limits<double>::infinity() : 0.0;
-    }
-    return static_cast<double>(effective_stack) / static_cast<double>(ctx.pot);
-}
-
-bool should_include_all_in(const ActionContext& ctx) {
-    if (ctx.include_all_in) {
-        return true;
-    }
-    return ctx.auto_all_in_spr_threshold.has_value() &&
-           stack_to_pot_ratio(ctx) <= *ctx.auto_all_in_spr_threshold;
-}
-
-std::uint8_t raise_cap(const ActionContext& ctx) {
-    return is_preflop(ctx) ? ctx.preflop_raise_cap : ctx.postflop_raise_cap;
-}
-
-int min_bet(const ActionContext& ctx) {
-    return checked_nonnegative_multiply(
-        ctx.min_bet_bb, ctx.big_blind, "HUNL minimum bet overflow");
-}
-
-int force_allin_chip_threshold(const ActionContext& ctx) {
-    return checked_nonnegative_multiply(
-        ctx.force_allin_threshold,
-        ctx.big_blind,
-        "HUNL forced all-in threshold overflow");
-}
-
-int stack_remaining(const ActionContext& ctx) {
-    return ctx.stacks[ctx.cur_player];
-}
-
-int min_raise_increment(const ActionContext& ctx) {
-    return std::max(ctx.to_call, ctx.big_blind);
-}
-
-int python_round_positive(double value) {
-    if (!std::isfinite(value) || value < 0.0 ||
-        value > static_cast<double>(std::numeric_limits<int>::max())) {
-        throw std::invalid_argument(
-            "python_round_positive expects finite non-negative representable input");
-    }
-    const auto floor_value = std::floor(value);
-    const auto fraction = value - floor_value;
-    if (fraction < 0.5) {
-        return static_cast<int>(floor_value);
-    }
-    if (fraction > 0.5) {
-        return static_cast<int>(floor_value + 1.0);
-    }
-    const auto floor_int = static_cast<int>(floor_value);
-    return (floor_int % 2 == 0) ? floor_int : floor_int + 1;
-}
-
-int bet_amount_for_fraction(const ActionContext& ctx, double fraction) {
-    if (!std::isfinite(fraction) || fraction < 0.0) {
-        throw std::invalid_argument("HUNL bet fraction must be finite and non-negative");
-    }
-    return std::max(
-        python_round_positive(static_cast<double>(ctx.pot) * fraction),
-        min_bet(ctx));
-}
-
-int raise_to_for_multiplier(const ActionContext& ctx, double multiplier) {
-    if (!std::isfinite(multiplier) || multiplier < 0.0) {
-        throw std::invalid_argument("HUNL raise multiplier must be finite and non-negative");
-    }
-    const auto aggressor_idx = static_cast<std::size_t>(std::max(ctx.street_aggressor, 0));
-    const auto aggressor_contrib = ctx.contributions[aggressor_idx];
-    const auto raise_to = python_round_positive(static_cast<double>(aggressor_contrib) * multiplier);
-    const auto min_raise_to = checked_nonnegative_add(
-        aggressor_contrib,
-        min_raise_increment(ctx),
-        "HUNL minimum raise target overflow");
-    return std::max(raise_to, min_raise_to);
-}
-
-int compute_bet_amount(std::uint8_t action_id, const ActionContext& ctx) {
-    const auto stack = stack_remaining(ctx);
-    if (action_id == ACTION_ALL_IN) {
-        return stack;
-    }
-    const auto it = std::find(BET_ACTION_IDS.begin(), BET_ACTION_IDS.end(), action_id);
-    if (it == BET_ACTION_IDS.end()) {
-        throw std::invalid_argument("compute_bet_amount: action is not a bet");
-    }
-    const auto idx = static_cast<std::size_t>(std::distance(BET_ACTION_IDS.begin(), it));
-    return std::min(bet_amount_for_fraction(ctx, bet_menu(ctx).at(idx)), stack);
-}
-
-int compute_raise_to(std::uint8_t action_id, const ActionContext& ctx) {
-    const auto cur_contrib = ctx.contributions[ctx.cur_player];
-    const auto stack = stack_remaining(ctx);
-    const auto max_raise_to = checked_nonnegative_add(
-        cur_contrib, stack, "HUNL maximum raise target overflow");
-    if (action_id == ACTION_ALL_IN) {
-        return max_raise_to;
-    }
-    const auto raise_values = raise_menu(ctx);
-    const auto it = std::find(RAISE_ACTION_IDS.begin(), RAISE_ACTION_IDS.end(), action_id);
-    if (it == RAISE_ACTION_IDS.end()) {
-        throw std::invalid_argument("compute_raise_to: action is not a raise");
-    }
-    const auto idx = static_cast<std::size_t>(std::distance(RAISE_ACTION_IDS.begin(), it));
-    return std::min(raise_to_for_multiplier(ctx, raise_values.at(idx)), max_raise_to);
-}
-
-std::vector<ActionId> enumerate_bets(const ActionContext& ctx) {
-    const auto stack = stack_remaining(ctx);
-    const auto force_threshold = force_allin_chip_threshold(ctx);
-    std::vector<int> seen_amounts;
-    std::vector<ActionId> actions;
-    const auto& menu = bet_menu(ctx);
-    for (std::size_t i = 0; i < menu.size() && i < BET_ACTION_IDS.size(); ++i) {
-        const auto raw_amount = bet_amount_for_fraction(ctx, menu[i]);
-        if (raw_amount >= stack || (stack - raw_amount) <= force_threshold) {
-            continue;
-        }
-        if (std::find(seen_amounts.begin(), seen_amounts.end(), raw_amount) != seen_amounts.end()) {
-            continue;
-        }
-        seen_amounts.push_back(raw_amount);
-        actions.push_back(BET_ACTION_IDS[i]);
-    }
-    return actions;
-}
-
-std::vector<ActionId> enumerate_raises(const ActionContext& ctx) {
-    const auto cur_contrib = ctx.contributions[ctx.cur_player];
-    const auto stack = stack_remaining(ctx);
-    const auto max_raise_to = checked_nonnegative_add(
-        cur_contrib, stack, "HUNL maximum raise target overflow");
-    const auto force_threshold = force_allin_chip_threshold(ctx);
-    std::vector<int> seen_raise_tos;
-    std::vector<ActionId> actions;
-    const auto raise_values = raise_menu(ctx);
-    for (std::size_t i = 0; i < raise_values.size() && i < RAISE_ACTION_IDS.size(); ++i) {
-        const auto raise_to = raise_to_for_multiplier(ctx, raise_values[i]);
-        const auto chips_added = raise_to - cur_contrib;
-        if (raise_to >= max_raise_to || (stack - chips_added) <= force_threshold) {
-            continue;
-        }
-        if (std::find(seen_raise_tos.begin(), seen_raise_tos.end(), raise_to) != seen_raise_tos.end()) {
-            continue;
-        }
-        seen_raise_tos.push_back(raise_to);
-        actions.push_back(RAISE_ACTION_IDS[i]);
-    }
-    return actions;
-}
-
-std::vector<ActionId> enumerate_legal_actions(const ActionContext& ctx) {
-    std::vector<ActionId> actions;
-    const auto stack = stack_remaining(ctx);
-    if (stack <= 0) {
-        return actions;
-    }
-
-    const auto facing_bet = ctx.to_call > 0;
-    if (facing_bet) {
-        actions.push_back(ACTION_FOLD);
-        actions.push_back(ACTION_CALL);
-    } else {
-        actions.push_back(ACTION_CHECK);
-    }
-
-    const auto cap_reached = ctx.street_num_raises >= raise_cap(ctx);
-    const auto flop_no_donk = !ctx.allow_oop_flop_lead && !facing_bet && is_oop_flop_first_action(ctx);
-    if (!cap_reached && !flop_no_donk) {
-        if (facing_bet) {
-            const auto raises = enumerate_raises(ctx);
-            actions.insert(actions.end(), raises.begin(), raises.end());
-        } else {
-            const auto bets = enumerate_bets(ctx);
-            actions.insert(actions.end(), bets.begin(), bets.end());
-        }
-    }
-
-    const auto can_actually_raise = stack > ctx.to_call;
-    if (should_include_all_in(ctx) && !cap_reached && !flop_no_donk && can_actually_raise) {
-        actions.push_back(ACTION_ALL_IN);
-    }
-    return actions;
-}
-
-HUNLConfig default_tiny_subgame() {
-    HUNLConfig cfg;
-    cfg.starting_stack = 1000;
-    cfg.starting_street = Street::River;
-    cfg.initial_board = {
-        card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2), card_to_int(13, 1), card_to_int(5, 0)};
-    cfg.initial_pot = 1000;
-    cfg.initial_contributions = {500, 500};
-    cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {card_to_int(14, 1), card_to_int(13, 3)},
-        {card_to_int(12, 2), card_to_int(12, 1)},
-    }};
-    return cfg;
-}
-
-HUNLConfig benchmark_turn_subgame() {
-    HUNLConfig cfg;
-    cfg.starting_stack = 1000;
-    cfg.starting_street = Street::Turn;
-    cfg.initial_board = {
-        card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2), card_to_int(13, 1)};
-    cfg.initial_pot = 1000;
-    cfg.initial_contributions = {500, 500};
-    cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {card_to_int(14, 1), card_to_int(13, 3)},
-        {card_to_int(12, 2), card_to_int(12, 1)},
-    }};
-    return cfg;
-}
-
-HUNLConfig rta_flop_conservative() {
-    HUNLConfig cfg;
-    cfg.starting_stack = 1000;
-    cfg.starting_street = Street::Flop;
-    cfg.initial_board = {
-        card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2)};
-    cfg.initial_pot = 1000;
-    cfg.initial_contributions = {500, 500};
-    cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {card_to_int(14, 1), card_to_int(13, 3)},
-        {card_to_int(12, 2), card_to_int(12, 1)},
-    }};
-    cfg.flop_bet_fractions = std::vector<double>{0.33, 0.75};
-    cfg.turn_bet_fractions = std::vector<double>{0.50, 1.00};
-    cfg.river_bet_fractions = std::vector<double>{0.75};
-    cfg.raise_size_xs = {3.0};
-    cfg.postflop_raise_cap = 1;
-    cfg.include_all_in = false;
-    cfg.auto_all_in_spr_threshold = 2.5;
-    cfg.allow_oop_flop_lead = false;
-    cfg.bucket_counts_by_street = {64, 48, 32};
-    return cfg;
-}
-
-HUNLConfig rta_flop_balanced() {
-    HUNLConfig cfg;
-    cfg.starting_stack = 1000;
-    cfg.starting_street = Street::Flop;
-    cfg.initial_board = {
-        card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2)};
-    cfg.initial_pot = 1000;
-    cfg.initial_contributions = {500, 500};
-    cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{{
-        {card_to_int(14, 1), card_to_int(13, 3)},
-        {card_to_int(12, 2), card_to_int(12, 1)},
-    }};
-    cfg.flop_bet_fractions = std::vector<double>{0.33, 0.75, 1.25};
-    cfg.turn_bet_fractions = std::vector<double>{0.50, 1.00};
-    cfg.river_bet_fractions = std::vector<double>{0.50, 1.00};
-    cfg.raise_size_xs = {3.0};
-    cfg.postflop_raise_cap = 1;
-    cfg.include_all_in = false;
-    cfg.auto_all_in_spr_threshold = 2.5;
-    cfg.allow_oop_flop_lead = false;
-    cfg.bucket_counts_by_street = {96, 64, 48};
-    return cfg;
-}
-
-}  // namespace texas::games::hunl
-
-
+namespace texas::games::hunl
+{
+
+	namespace
+	{
+
+		constexpr std::array<ActionId, 5> BET_ACTION_IDS = {
+			ACTION_BET_33, ACTION_BET_75, ACTION_BET_100, ACTION_BET_150, ACTION_BET_200
+		};
+		constexpr std::array<ActionId, 5> RAISE_ACTION_IDS = {
+			ACTION_RAISE_33, ACTION_RAISE_75, ACTION_RAISE_100, ACTION_RAISE_150, ACTION_RAISE_200
+		};
+		constexpr std::uint8_t OOP_PLAYER = 1;
+		constexpr int HISTORY_CODE_FOLD = 1;
+		constexpr int HISTORY_CODE_CHECK = 2;
+		constexpr int HISTORY_CODE_CALL = 3;
+		constexpr int HISTORY_CODE_ALL_IN = 4;
+		constexpr std::uint8_t MAX_HISTORY_SAFE_RAISES_PER_STREET = 10;
+
+		std::string token_from_history_code(int code)
+		{
+			if (code == HISTORY_CODE_FOLD)
+				return "f";
+			if (code == HISTORY_CODE_CHECK)
+				return "x";
+			if (code == HISTORY_CODE_CALL)
+				return "c";
+			if (code == HISTORY_CODE_ALL_IN)
+				return "A";
+			if (code < 0 && code != std::numeric_limits<int>::min())
+			{
+				return "b" + std::to_string(-static_cast<std::int64_t>(code));
+			}
+			if (code > HISTORY_CODE_ALL_IN)
+			{
+				return "r" + std::to_string(code - HISTORY_CODE_ALL_IN);
+			}
+			throw std::logic_error("invalid HUNL history code");
+		}
+
+		std::size_t expected_board_size_for_street(Street street)
+		{
+			switch (street)
+			{
+				case Street::Preflop:
+					return 0;
+				case Street::Flop:
+					return 3;
+				case Street::Turn:
+					return 4;
+				case Street::River:
+				case Street::Showdown:
+					return 5;
+			}
+			throw std::logic_error("invalid Street in expected_board_size_for_street");
+		}
+
+		bool board_contains_card(const std::vector<std::uint8_t>& board, std::uint8_t card)
+		{
+			return std::find(board.begin(), board.end(), card) != board.end();
+		}
+
+		bool valid_config_street(Street street) noexcept
+		{
+			return street == Street::Preflop || street == Street::Flop || street == Street::Turn || street == Street::River || street == Street::Showdown;
+		}
+
+		bool valid_flat_solve_mode(HUNLFlatSolveMode mode) noexcept
+		{
+			return mode == HUNLFlatSolveMode::Auto || mode == HUNLFlatSolveMode::ExplicitHand || mode == HUNLFlatSolveMode::Bucketed;
+		}
+
+		bool valid_range_policy(HUNLRangePolicy policy) noexcept
+		{
+			return policy == HUNLRangePolicy::Unspecified || policy == HUNLRangePolicy::Uniform || policy == HUNLRangePolicy::UseInitialRanges || policy == HUNLRangePolicy::RequireExplicit;
+		}
+
+		int checked_nonnegative_add(int lhs, int rhs, const char* context)
+		{
+			if (lhs < 0 || rhs < 0 || static_cast<std::int64_t>(lhs) + rhs > std::numeric_limits<int>::max())
+			{
+				throw std::overflow_error(context);
+			}
+			return lhs + rhs;
+		}
+
+		int checked_nonnegative_multiply(int lhs, int rhs, const char* context)
+		{
+			if (lhs < 0 || rhs < 0 || static_cast<std::int64_t>(lhs) * rhs > std::numeric_limits<int>::max())
+			{
+				throw std::overflow_error(context);
+			}
+			return lhs * rhs;
+		}
+
+		void validate_sizing_menu(
+			const std::vector<double>& values,
+			std::int64_t maximum_pot,
+			const char* field_name)
+		{
+			if (values.size() > BET_ACTION_IDS.size())
+			{
+				throw std::invalid_argument(
+					std::string("HUNLConfig.validate: ") + field_name + " exceeds the supported action menu");
+			}
+			for (const auto value : values)
+			{
+				if (!std::isfinite(value) || value < 0.0 || value * static_cast<double>(maximum_pot) > static_cast<double>(std::numeric_limits<int>::max()))
+				{
+					throw std::invalid_argument(
+						std::string("HUNLConfig.validate: ") + field_name + " must contain finite non-negative representable values");
+				}
+			}
+		}
+
+		void validate_hole_cards_against_board(
+			const std::array<std::array<std::uint8_t, 2>, 2>& holes,
+			const std::vector<std::uint8_t>& board,
+			const char* context)
+		{
+			const std::array<std::uint8_t, 4> all_hole_cards = {
+				holes[0][0], holes[0][1], holes[1][0], holes[1][1]
+			};
+			if (!are_valid_and_distinct_cards(all_hole_cards.data(), all_hole_cards.size()))
+			{
+				throw std::invalid_argument(std::string(context) + " hole cards must be valid and distinct");
+			}
+			for (const auto card : all_hole_cards)
+			{
+				if (board_contains_card(board, card))
+				{
+					throw std::invalid_argument(std::string(context) + " hole cards must not overlap initial_board");
+				}
+			}
+		}
+
+		void validate_range_input(
+			const HUNLRangeInput& range_input,
+			Street starting_street,
+			const std::vector<std::uint8_t>& initial_board,
+			bool bucketed_mode,
+			const char* field_name,
+			std::size_t player)
+		{
+			double total_weight = 0.0;
+			for (const auto& weighted_hand : range_input.hand_weights)
+			{
+				if (!std::isfinite(weighted_hand.weight) || weighted_hand.weight < 0.0)
+				{
+					throw std::invalid_argument(
+						std::string("HUNLConfig.validate: ") + field_name + "[" + std::to_string(player) + "] hand weights must be finite and non-negative");
+				}
+				if (!are_valid_and_distinct_cards(weighted_hand.hole.data(), weighted_hand.hole.size()))
+				{
+					throw std::invalid_argument(
+						std::string("HUNLConfig.validate: ") + field_name + "[" + std::to_string(player) + "] hand entries must contain two valid distinct cards");
+				}
+				if (board_contains_card(initial_board, weighted_hand.hole[0]) || board_contains_card(initial_board, weighted_hand.hole[1]))
+				{
+					throw std::invalid_argument(
+						std::string("HUNLConfig.validate: ") + field_name + "[" + std::to_string(player) + "] contains hole cards blocked by initial_board");
+				}
+				total_weight += weighted_hand.weight;
+				if (!std::isfinite(total_weight))
+				{
+					throw std::invalid_argument("HUNLConfig.validate: range weight total must be finite");
+				}
+			}
+
+			for (const auto& weighted_bucket : range_input.bucket_weights)
+			{
+				if (!std::isfinite(weighted_bucket.weight) || weighted_bucket.weight < 0.0)
+				{
+					throw std::invalid_argument(
+						std::string("HUNLConfig.validate: ") + field_name + "[" + std::to_string(player) + "] bucket weights must be finite and non-negative");
+				}
+				if (weighted_bucket.street != starting_street)
+				{
+					throw std::invalid_argument(
+						std::string("HUNLConfig.validate: ") + field_name + "[" + std::to_string(player) + "] bucket street must match starting_street");
+				}
+				if (!bucketed_mode)
+				{
+					throw std::invalid_argument(
+						std::string("HUNLConfig.validate: ") + field_name + "[" + std::to_string(player) + "] bucket weights require bucketed flat solve mode");
+				}
+				total_weight += weighted_bucket.weight;
+				if (!std::isfinite(total_weight))
+				{
+					throw std::invalid_argument("HUNLConfig.validate: range weight total must be finite");
+				}
+			}
+			if (range_input.hand_weights.empty() && range_input.bucket_weights.empty())
+			{
+				throw std::invalid_argument("HUNLConfig.validate: range input must not be empty");
+			}
+			if (total_weight <= 0.0)
+			{
+				throw std::invalid_argument("HUNLConfig.validate: range input must have positive total weight");
+			}
+		}
+
+	} // namespace
+
+	bool is_opening_bet(ActionId action)
+	{
+		return std::find(BET_ACTION_IDS.begin(), BET_ACTION_IDS.end(), action) != BET_ACTION_IDS.end();
+	}
+
+	bool is_raise(ActionId action)
+	{
+		return std::find(RAISE_ACTION_IDS.begin(), RAISE_ACTION_IDS.end(), action) != RAISE_ACTION_IDS.end();
+	}
+
+	void validate_hunl_infoset_encoding(const HUNLInfosetEncoding& encoding)
+	{
+		if (!valid_config_street(encoding.street) || encoding.board_count > encoding.board.size() || encoding.history_count > encoding.history_codes.size())
+		{
+			throw std::invalid_argument("invalid HUNL infoset encoding dimensions");
+		}
+		if (!are_valid_and_distinct_cards(encoding.hole.data(), encoding.hole.size()) || !are_valid_and_distinct_cards(encoding.board.data(), encoding.board_count))
+		{
+			throw std::invalid_argument("invalid HUNL infoset encoding cards");
+		}
+		for (const auto hole_card : encoding.hole)
+		{
+			for (std::size_t board_index = 0; board_index < encoding.board_count; ++board_index)
+			{
+				if (hole_card == encoding.board[board_index])
+				{
+					throw std::invalid_argument("HUNL infoset hole card overlaps the board");
+				}
+			}
+		}
+		for (std::size_t board_index = encoding.board_count;
+			board_index < encoding.board.size();
+			++board_index)
+		{
+			if (encoding.board[board_index] != 0U)
+			{
+				throw std::invalid_argument("HUNL infoset encoding has non-canonical unused board data");
+			}
+		}
+		std::size_t segment_total = 0;
+		for (const auto length : encoding.street_lengths)
+		{
+			segment_total += length;
+		}
+		if (segment_total != encoding.history_count)
+		{
+			throw std::invalid_argument("HUNL infoset street lengths do not match history count");
+		}
+		for (std::size_t index = 0; index < encoding.history_count; ++index)
+		{
+			const auto code = encoding.history_codes[index];
+			if (code == 0 || code == std::numeric_limits<int>::min())
+			{
+				throw std::invalid_argument("HUNL infoset encoding has an invalid history code");
+			}
+		}
+		for (std::size_t index = encoding.history_count;
+			index < encoding.history_codes.size();
+			++index)
+		{
+			if (encoding.history_codes[index] != 0)
+			{
+				throw std::invalid_argument("HUNL infoset encoding has non-canonical unused history data");
+			}
+		}
+	}
+
+	std::size_t HUNLInfosetEncodingHash::operator()(const HUNLInfosetEncoding& encoding) const noexcept
+	{
+		std::size_t seed = static_cast<std::size_t>(encoding.street);
+		auto mix = [&](std::size_t value) {
+			seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
+		};
+		mix(encoding.board_count);
+		mix(encoding.history_count);
+		for (const auto card : encoding.hole)
+			mix(card);
+		const auto board_count = std::min<std::size_t>(
+			encoding.board_count, encoding.board.size());
+		for (std::size_t i = 0; i < board_count; ++i)
+			mix(encoding.board[i]);
+		for (const auto len : encoding.street_lengths)
+			mix(len);
+		const auto history_count = std::min<std::size_t>(
+			encoding.history_count, encoding.history_codes.size());
+		for (std::size_t i = 0; i < history_count; ++i)
+		{
+			mix(static_cast<std::size_t>(encoding.history_codes[i]));
+		}
+		return seed;
+	}
+
+	std::string hunl_infoset_key(const HUNLInfosetEncoding& encoding)
+	{
+		validate_hunl_infoset_encoding(encoding);
+		std::vector<std::uint8_t> hole_cards = { encoding.hole[0], encoding.hole[1] };
+		std::vector<std::uint8_t> board_cards(
+			encoding.board.begin(),
+			encoding.board.begin() + static_cast<std::ptrdiff_t>(encoding.board_count));
+
+		std::string out = sorted_card_string(hole_cards);
+		out += "|";
+		out += sorted_card_string(board_cards);
+		out += "|";
+		out += street_token(encoding.street);
+		out += "|";
+
+		std::size_t offset = 0;
+		bool wrote_segment = false;
+		for (std::size_t street_index = 0; street_index < encoding.street_lengths.size(); ++street_index)
+		{
+			const auto segment_len = encoding.street_lengths[street_index];
+			if (segment_len == 0)
+			{
+				continue;
+			}
+			if (wrote_segment)
+			{
+				out += "/";
+			}
+			for (std::size_t i = 0; i < segment_len; ++i)
+			{
+				out += token_from_history_code(encoding.history_codes[offset + i]);
+			}
+			offset += segment_len;
+			wrote_segment = true;
+		}
+		return out;
+	}
+
+	HUNLRangePolicy resolve_range_policy(const HUNLConfig& config)
+	{
+		if (config.range_policy != HUNLRangePolicy::Unspecified)
+		{
+			return config.range_policy;
+		}
+		for (const auto& range_input : config.initial_ranges)
+		{
+			if (range_input.has_value())
+			{
+				return HUNLRangePolicy::UseInitialRanges;
+			}
+		}
+		return HUNLRangePolicy::Uniform;
+	}
+
+	std::vector<HUNLJointRangeDeal> normalize_hunl_joint_range(const HUNLConfig& config)
+	{
+		validate_hunl_joint_range_feasibility(config);
+		const auto& combos = canonical_combos();
+		std::array<double, CANONICAL_HOLE_COMBINATION_COUNT> first_weights = {};
+		std::array<double, CANONICAL_HOLE_COMBINATION_COUNT> second_weights = {};
+		for (const auto& hand : config.initial_ranges[0]->hand_weights)
+		{
+			if (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0)
+			{
+				first_weights[combos.id(hand.hole)] += hand.weight;
+			}
+		}
+		for (const auto& hand : config.initial_ranges[1]->hand_weights)
+		{
+			if (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0)
+			{
+				second_weights[combos.id(hand.hole)] += hand.weight;
+			}
+		}
+		std::vector<HUNLJointRangeDeal> deals;
+		deals.reserve(CANONICAL_HOLE_COMBINATION_COUNT * CANONICAL_HOLE_COMBINATION_COUNT);
+		double total = 0.0;
+		for (std::size_t hero_id = 0U; hero_id < CANONICAL_HOLE_COMBINATION_COUNT; ++hero_id)
+		{
+			const auto hero_weight = first_weights[hero_id];
+			if (hero_weight <= 0.0)
+				continue;
+			const auto& hero = combos.cards(static_cast<CanonicalComboId>(hero_id));
+			for (std::size_t villain_id = 0U; villain_id < CANONICAL_HOLE_COMBINATION_COUNT; ++villain_id)
+			{
+				const auto villain_weight = second_weights[villain_id];
+				if (villain_weight <= 0.0)
+					continue;
+				const auto& villain = combos.cards(static_cast<CanonicalComboId>(villain_id));
+				const std::array<std::uint8_t, 4> cards = {
+					hero[0], hero[1], villain[0], villain[1]
+				};
+				if (!are_valid_and_distinct_cards(cards.data(), cards.size()))
+					continue;
+				const auto weight = hero_weight * villain_weight;
+				if (weight <= 0.0)
+					continue;
+				deals.push_back({ { hero, villain }, weight });
+				total += weight;
+			}
+		}
+		if (!std::isfinite(total) || total <= 0.0)
+		{
+			throw std::invalid_argument("initial ranges have no blocker-compatible joint private deal");
+		}
+		for (auto& deal : deals)
+			deal.weight /= total;
+		return deals;
+	}
+
+	void validate_hunl_joint_range_feasibility(const HUNLConfig& config)
+	{
+		config.validate();
+		const auto policy = resolve_range_policy(config);
+		if (policy != HUNLRangePolicy::UseInitialRanges && policy != HUNLRangePolicy::RequireExplicit)
+		{
+			throw std::invalid_argument("normalize_hunl_joint_range requires explicit initial ranges");
+		}
+		const auto& first = config.initial_ranges[0]->hand_weights;
+		const auto& second = config.initial_ranges[1]->hand_weights;
+		if (first.empty() || second.empty())
+		{
+			throw std::invalid_argument("normalize_hunl_joint_range requires hand-weight ranges for both players");
+		}
+		bool first_valid = false;
+		bool second_valid = false;
+		for (const auto& hand : first)
+			first_valid = first_valid || (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0);
+		for (const auto& hand : second)
+			second_valid = second_valid || (is_valid_card(hand.hole[0]) && is_valid_card(hand.hole[1]) && hand.hole[0] != hand.hole[1] && hand.weight > 0.0);
+		if (!first_valid || !second_valid)
+		{
+			throw std::invalid_argument("initial ranges have no positive canonical private hands");
+		}
+		for (const auto& hero : first)
+		{
+			if (!is_valid_card(hero.hole[0]) || !is_valid_card(hero.hole[1]) || hero.hole[0] == hero.hole[1] || hero.weight <= 0.0)
+				continue;
+			for (const auto& villain : second)
+			{
+				if (!is_valid_card(villain.hole[0]) || !is_valid_card(villain.hole[1]) || villain.hole[0] == villain.hole[1] || villain.weight <= 0.0)
+					continue;
+				const std::array<std::uint8_t, 4> cards = {
+					hero.hole[0], hero.hole[1], villain.hole[0], villain.hole[1]
+				};
+				if (are_valid_and_distinct_cards(cards.data(), cards.size()))
+					return;
+			}
+		}
+		throw std::invalid_argument("initial ranges have no blocker-compatible joint private deal");
+	}
+
+	std::size_t configured_bucket_count(const HUNLConfig& config, Street street)
+	{
+		switch (street)
+		{
+			case Street::Flop:
+				return config.bucket_counts_by_street[0] > 0 ? config.bucket_counts_by_street[0] : 1326U;
+			case Street::Turn:
+				return config.bucket_counts_by_street[1] > 0 ? config.bucket_counts_by_street[1] : 1326U;
+			case Street::River:
+			case Street::Showdown:
+				return config.bucket_counts_by_street[2] > 0 ? config.bucket_counts_by_street[2] : 1326U;
+			case Street::Preflop:
+				return 1326U;
+		}
+		throw std::logic_error("invalid Street in configured_bucket_count");
+	}
+
+	void HUNLConfig::validate() const
+	{
+		if (depth_limit_plies > 1'000'000U)
+		{
+			throw std::invalid_argument("HUNLConfig.validate: depth_limit_plies is unreasonably large");
+		}
+		if (rake_rate != 0.0)
+		{
+			throw std::invalid_argument("HUNLConfig.validate: rake_rate must be 0.0");
+		}
+		if (rake_cap != 0)
+		{
+			throw std::invalid_argument("HUNLConfig.validate: rake_cap must be 0");
+		}
+		if (starting_stack <= 0)
+		{
+			throw std::invalid_argument("HUNLConfig.validate: starting_stack must be > 0");
+		}
+		if (big_blind <= 0)
+		{
+			throw std::invalid_argument("HUNLConfig.validate: big_blind must be > 0");
+		}
+		if (small_blind < 0 || ante < 0 || initial_pot < 0)
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: small_blind, ante, initial_pot must be non-negative");
+		}
+		if (!valid_config_street(starting_street) || !valid_flat_solve_mode(flat_solve_mode) || !valid_range_policy(range_policy))
+		{
+			throw std::invalid_argument("HUNLConfig.validate: invalid enum value");
+		}
+		if (small_blind > big_blind)
+		{
+			throw std::invalid_argument("HUNLConfig.validate: small_blind must be <= big_blind");
+		}
+		if (initial_contributions[0] < 0 || initial_contributions[1] < 0)
+		{
+			throw std::invalid_argument("HUNLConfig.validate: initial_contributions must be non-negative");
+		}
+		const auto blind_sb_wide =
+			static_cast<std::int64_t>(small_blind) + ante;
+		const auto blind_bb_wide =
+			static_cast<std::int64_t>(big_blind) + ante;
+		if (blind_sb_wide > std::numeric_limits<int>::max() || blind_bb_wide > std::numeric_limits<int>::max() || blind_sb_wide + blind_bb_wide > std::numeric_limits<int>::max() || blind_sb_wide > starting_stack || blind_bb_wide > starting_stack)
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: forced bets exceed the supported stack or chip domain");
+		}
+		if (min_bet_bb <= 0 || force_allin_threshold < 0 || static_cast<std::int64_t>(min_bet_bb) * big_blind > std::numeric_limits<int>::max() || static_cast<std::int64_t>(force_allin_threshold) * big_blind > std::numeric_limits<int>::max())
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: bet thresholds exceed the supported chip domain");
+		}
+		if (preflop_raise_cap > MAX_HISTORY_SAFE_RAISES_PER_STREET || postflop_raise_cap > MAX_HISTORY_SAFE_RAISES_PER_STREET)
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: raise caps exceed infoset history capacity");
+		}
+		const auto maximum_pot = starting_street == Street::Preflop
+			? static_cast<std::int64_t>(starting_stack) * 2
+			: static_cast<std::int64_t>(initial_pot) + static_cast<std::int64_t>(starting_stack) * 2;
+		if (maximum_pot <= 0 || maximum_pot > static_cast<std::int64_t>(std::numeric_limits<int>::max()) - HISTORY_CODE_ALL_IN)
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: maximum pot exceeds the supported chip domain");
+		}
+		validate_sizing_menu(bet_size_fractions, maximum_pot, "bet_size_fractions");
+		if (flop_bet_fractions.has_value())
+		{
+			validate_sizing_menu(*flop_bet_fractions, maximum_pot, "flop_bet_fractions");
+		}
+		if (turn_bet_fractions.has_value())
+		{
+			validate_sizing_menu(*turn_bet_fractions, maximum_pot, "turn_bet_fractions");
+		}
+		if (river_bet_fractions.has_value())
+		{
+			validate_sizing_menu(*river_bet_fractions, maximum_pot, "river_bet_fractions");
+		}
+		validate_sizing_menu(raise_size_xs, maximum_pot, "raise_size_xs");
+		if (auto_all_in_spr_threshold.has_value() && (!std::isfinite(*auto_all_in_spr_threshold) || *auto_all_in_spr_threshold < 0.0))
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: auto_all_in_spr_threshold must be finite and non-negative");
+		}
+
+		const auto expected_board_size = expected_board_size_for_street(starting_street);
+		if (initial_board.size() != expected_board_size)
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: initial_board size does not match starting_street");
+		}
+		if (!are_valid_and_distinct_cards(initial_board.data(), initial_board.size()))
+		{
+			throw std::invalid_argument("HUNLConfig.validate: initial_board cards must be valid and distinct");
+		}
+		if (initial_hole_cards.has_value())
+		{
+			validate_hole_cards_against_board(
+				*initial_hole_cards,
+				initial_board,
+				"HUNLConfig.validate:");
+		}
+		const bool bucketed_mode =
+			flat_solve_mode == HUNLFlatSolveMode::Bucketed || (flat_solve_mode == HUNLFlatSolveMode::Auto && abstraction_path.has_value());
+
+		const auto effective_range_policy = resolve_range_policy(*this);
+		const bool range_contract =
+			effective_range_policy == HUNLRangePolicy::UseInitialRanges || effective_range_policy == HUNLRangePolicy::RequireExplicit;
+		if (range_contract && (!initial_ranges[0].has_value() || !initial_ranges[1].has_value()))
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: range_policy requires initial_ranges for both players");
+		}
+		if (range_contract && initial_hole_cards.has_value())
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: range solve contract must not include initial_hole_cards");
+		}
+		if (!range_contract && (initial_ranges[0].has_value() || initial_ranges[1].has_value()))
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: initial_ranges require UseInitialRanges or RequireExplicit policy");
+		}
+		for (std::size_t player = 0; player < initial_ranges.size(); ++player)
+		{
+			if (initial_ranges[player].has_value())
+			{
+				validate_range_input(
+					*initial_ranges[player],
+					starting_street,
+					initial_board,
+					bucketed_mode,
+					"initial_ranges",
+					player);
+			}
+		}
+
+		const auto c0 = initial_contributions[0];
+		const auto c1 = initial_contributions[1];
+		if (starting_street == Street::Preflop)
+		{
+			if (c0 == 0 && c1 == 0 && initial_pot == 0)
+			{
+				return;
+			}
+
+			const auto blind_sb = static_cast<int>(blind_sb_wide);
+			const auto blind_bb = static_cast<int>(blind_bb_wide);
+			const auto expected_pot = blind_sb + blind_bb;
+			if (c0 == blind_sb && c1 == blind_bb && initial_pot == expected_pot)
+			{
+				return;
+			}
+
+			throw std::invalid_argument(
+				"HUNLConfig.validate: invalid preflop initial_contributions / initial_pot combination");
+		}
+
+		if (initial_board.empty())
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: initial_board must be non-empty when starting_street > Preflop");
+		}
+		const auto contribution_sum = static_cast<std::int64_t>(c0) + c1;
+		if (contribution_sum != 0 && contribution_sum != initial_pot)
+		{
+			throw std::invalid_argument(
+				"HUNLConfig.validate: initial_contributions must sum to initial_pot or both be zero");
+		}
+	}
+
+	HUNLState HUNLState::initial(std::shared_ptr<const HUNLConfig> cfg)
+	{
+		if (!cfg)
+		{
+			throw std::invalid_argument("HUNLState::initial requires a non-null config");
+		}
+		cfg->validate();
+
+		if (cfg->starting_street == Street::Preflop)
+		{
+			return initial_preflop(std::move(cfg));
+		}
+
+		const auto contributions = cfg->initial_contributions;
+		const std::array<int, 2> stacks = { cfg->starting_stack, cfg->starting_stack };
+		const std::array<bool, 2> all_in = { stacks[0] == 0, stacks[1] == 0 };
+		const auto hole = cfg->initial_hole_cards;
+		const auto c0 = contributions[0];
+		const auto c1 = contributions[1];
+
+		int to_call = 0;
+		PlayerId aggressor = -1;
+		PlayerId first_actor = 1;
+		if (c0 < c1)
+		{
+			to_call = c1 - c0;
+			aggressor = 1;
+			first_actor = 0;
+		}
+		else if (c1 < c0)
+		{
+			to_call = c0 - c1;
+			aggressor = 0;
+			first_actor = 1;
+		}
+
+		HUNLState state;
+		state.hole_cards = hole;
+		state.board = cfg->initial_board;
+		state.street = cfg->starting_street;
+		state.contributions = contributions;
+		state.stacks = stacks;
+		state.street_aggressor = aggressor;
+		state.street_num_raises = to_call > 0 ? 1 : 0;
+		state.to_call = to_call;
+		state.cur_player = (all_in[0] || all_in[1] || !hole.has_value()) ? -1 : first_actor;
+		state.folded = { false, false };
+		state.all_in = all_in;
+		state.config = std::move(cfg);
+		return state;
+	}
+
+	HUNLState HUNLState::initial()
+	{
+		return initial(std::make_shared<const HUNLConfig>(default_tiny_subgame()));
+	}
+
+	HUNLState HUNLState::initial_preflop(std::shared_ptr<const HUNLConfig> cfg)
+	{
+		const auto blind_sb = checked_nonnegative_add(
+			cfg->small_blind, cfg->ante, "HUNL small blind plus ante overflow");
+		const auto blind_bb = checked_nonnegative_add(
+			cfg->big_blind, cfg->ante, "HUNL big blind plus ante overflow");
+		const auto sb_contrib = std::max(blind_sb, cfg->initial_contributions[0]);
+		const auto bb_contrib = std::max(blind_bb, cfg->initial_contributions[1]);
+
+		HUNLState state;
+		state.hole_cards = cfg->initial_hole_cards;
+		state.board = {};
+		state.street = Street::Preflop;
+		state.contributions = { sb_contrib, bb_contrib };
+		state.stacks = { cfg->starting_stack - sb_contrib, cfg->starting_stack - bb_contrib };
+		state.street_aggressor = 1;
+		state.street_num_raises = 1;
+		state.to_call = bb_contrib - sb_contrib;
+		state.cur_player = state.hole_cards.has_value() ? 0 : -1;
+		state.folded = { false, false };
+		state.all_in = { state.stacks[0] == 0, state.stacks[1] == 0 };
+		state.config = std::move(cfg);
+		return state;
+	}
+
+	HUNLState HUNLState::clone_with_hole_cards(
+		const std::array<std::array<std::uint8_t, 2>, 2>& hole) const
+	{
+		if (!are_valid_and_distinct_cards(board.data(), board.size()))
+		{
+			throw std::invalid_argument("HUNLState::clone_with_hole_cards board cards must be valid and distinct");
+		}
+		validate_hole_cards_against_board(hole, board, "HUNLState::clone_with_hole_cards");
+		HUNLState next = *this;
+		next.hole_cards = hole;
+		if (next.cur_player < 0)
+		{
+			next.cur_player = 1;
+			if (street == Street::Preflop || contributions[0] < contributions[1])
+			{
+				next.cur_player = 0;
+			}
+		}
+		return next;
+	}
+
+	ActionContext HUNLState::action_context() const
+	{
+		if (!config)
+		{
+			throw std::logic_error("HUNLState.action_context requires config");
+		}
+		const auto& cfg = *config;
+		const auto pot_wide =
+			static_cast<std::int64_t>(contributions[0]) + contributions[1] + cfg.initial_pot - cfg.initial_contributions[0] - cfg.initial_contributions[1];
+		if (pot_wide < 0 || pot_wide > std::numeric_limits<int>::max())
+		{
+			throw std::overflow_error("HUNL action-context pot exceeds the supported chip domain");
+		}
+		const auto pot = static_cast<int>(pot_wide);
+		ActionContext ctx;
+		ctx.pot = pot;
+		ctx.to_call = to_call;
+		ctx.stacks = stacks;
+		ctx.contributions = contributions;
+		ctx.cur_player = static_cast<std::uint8_t>(std::max(cur_player, 0));
+		ctx.street = street;
+		ctx.street_num_raises = street_num_raises;
+		ctx.street_aggressor = street_aggressor;
+		ctx.big_blind = cfg.big_blind;
+		ctx.bet_size_fractions = cfg.bet_size_fractions;
+		ctx.flop_bet_fractions = cfg.flop_bet_fractions;
+		ctx.turn_bet_fractions = cfg.turn_bet_fractions;
+		ctx.river_bet_fractions = cfg.river_bet_fractions;
+		ctx.raise_size_xs = cfg.raise_size_xs;
+		ctx.preflop_raise_cap = cfg.preflop_raise_cap;
+		ctx.postflop_raise_cap = cfg.postflop_raise_cap;
+		ctx.force_allin_threshold = cfg.force_allin_threshold;
+		ctx.min_bet_bb = cfg.min_bet_bb;
+		ctx.include_all_in = cfg.include_all_in;
+		ctx.auto_all_in_spr_threshold = cfg.auto_all_in_spr_threshold;
+		ctx.allow_oop_flop_lead = cfg.allow_oop_flop_lead;
+		ctx.street_action_count = static_cast<std::uint32_t>(current_street_tokens.size());
+		return ctx;
+	}
+
+	bool HUNLState::is_terminal() const
+	{
+		return folded[0] || folded[1] || street == Street::Showdown;
+	}
+
+	std::vector<Value> HUNLState::utility() const
+	{
+		if (!config)
+		{
+			throw std::logic_error("HUNLState.utility requires config");
+		}
+		const auto& cfg = *config;
+		const auto bb = static_cast<double>(cfg.big_blind);
+		const auto init_c0 = static_cast<double>(cfg.initial_contributions[0]);
+		const auto init_c1 = static_cast<double>(cfg.initial_contributions[1]);
+		const auto cs0 = static_cast<double>(contributions[0]) - init_c0;
+		const auto cs1 = static_cast<double>(contributions[1]) - init_c1;
+		const auto pot_total = static_cast<double>(cfg.initial_pot) + cs0 + cs1;
+
+		if (folded[0])
+		{
+			return { -cs0 / bb, (pot_total - cs1) / bb };
+		}
+		if (folded[1])
+		{
+			return { (pot_total - cs0) / bb, -cs1 / bb };
+		}
+
+		if (!hole_cards.has_value() || board.size() < 5)
+		{
+			throw std::logic_error("showdown requires dealt hole cards and 5-card board");
+		}
+
+		std::array<std::uint8_t, 7> seven0 = {};
+		std::array<std::uint8_t, 7> seven1 = {};
+		seven0[0] = (*hole_cards)[0][0];
+		seven0[1] = (*hole_cards)[0][1];
+		seven1[0] = (*hole_cards)[1][0];
+		seven1[1] = (*hole_cards)[1][1];
+		for (std::size_t i = 0; i < 5; ++i)
+		{
+			seven0[i + 2] = board[i];
+			seven1[i + 2] = board[i];
+		}
+
+		const auto s0 = Strength::evaluate_7(seven0);
+		const auto s1 = Strength::evaluate_7(seven1);
+		if (s0 > s1)
+		{
+			return { (pot_total - cs0) / bb, -cs1 / bb };
+		}
+		if (s1 > s0)
+		{
+			return { -cs0 / bb, (pot_total - cs1) / bb };
+		}
+		return { (pot_total / 2.0 - cs0) / bb, (pot_total / 2.0 - cs1) / bb };
+	}
+
+	PlayerId HUNLState::current_player() const
+	{
+		return is_terminal() ? -1 : cur_player;
+	}
+
+	std::vector<ChanceOutcome> HUNLState::chance_outcomes() const
+	{
+		if (cur_player != -1 || is_terminal() || !hole_cards.has_value())
+		{
+			return {};
+		}
+
+		if (!are_valid_and_distinct_cards(board.data(), board.size()))
+		{
+			throw std::invalid_argument("HUNLState::chance_outcomes board cards must be valid and distinct");
+		}
+		validate_hole_cards_against_board(
+			*hole_cards,
+			board,
+			"HUNLState::chance_outcomes");
+
+		std::array<bool, 64> held = {};
+		for (const auto c : { (*hole_cards)[0][0], (*hole_cards)[0][1], (*hole_cards)[1][0], (*hole_cards)[1][1] })
+		{
+			held[c] = true;
+		}
+		for (const auto c : board)
+		{
+			held[c] = true;
+		}
+
+		std::vector<std::uint8_t> remaining;
+		for (std::uint8_t r = 2; r <= 14; ++r)
+		{
+			for (std::uint8_t s = 0; s < 4; ++s)
+			{
+				const auto c = card_to_int(r, s);
+				if (!held[c])
+				{
+					remaining.push_back(c);
+				}
+			}
+		}
+		if (remaining.empty())
+		{
+			return {};
+		}
+
+		const auto p = 1.0 / static_cast<double>(remaining.size());
+		std::vector<ChanceOutcome> out;
+		out.reserve(remaining.size());
+		for (const auto c : remaining)
+		{
+			out.push_back({ c, p });
+		}
+		return out;
+	}
+
+	std::vector<ActionId> HUNLState::legal_actions() const
+	{
+		if (is_terminal() || cur_player == -1)
+		{
+			return {};
+		}
+		return enumerate_legal_actions(action_context());
+	}
+
+	HUNLState HUNLState::apply(ActionId action) const
+	{
+		if (is_terminal())
+		{
+			throw std::invalid_argument("cannot apply an action to a terminal HUNL state");
+		}
+		if (cur_player == -1)
+		{
+			if (action < 0 || action > std::numeric_limits<std::uint8_t>::max() || pending_board_deals == 0 || !hole_cards.has_value())
+			{
+				throw std::invalid_argument("illegal HUNL chance action");
+			}
+			const auto card = static_cast<std::uint8_t>(action);
+			const auto& holes = *hole_cards;
+			if (!is_valid_card(card) || board_contains_card(board, card) || card == holes[0][0] || card == holes[0][1] || card == holes[1][0] || card == holes[1][1])
+			{
+				throw std::invalid_argument("illegal HUNL chance action");
+			}
+			return apply_chance(card);
+		}
+
+		const auto actions = legal_actions();
+		if (std::find(actions.begin(), actions.end(), action) == actions.end())
+		{
+			throw std::invalid_argument("illegal HUNL player action");
+		}
+		return apply_player(action);
+	}
+
+	HUNLState HUNLState::next_state(ActionId action) const
+	{
+		return apply(action);
+	}
+
+	std::string HUNLState::infoset_key(PlayerId player) const
+	{
+		return hunl_infoset_key(infoset_encoding(player));
+	}
+
+	HUNLInfosetEncoding HUNLState::infoset_encoding(PlayerId player) const
+	{
+		if (player < 0 || player > 1 || !hole_cards.has_value())
+		{
+			throw std::invalid_argument(
+				"HUNLState::infoset_encoding requires player 0 or 1 and private cards");
+		}
+		if (board.size() > HUNLInfosetEncoding{}.board.size() || betting_history_codes.size() > HUNLInfosetEncoding{}.street_lengths.size())
+		{
+			throw std::invalid_argument("HUNL state exceeds infoset encoding capacity");
+		}
+		std::size_t total_history_codes = current_street_history_codes.size();
+		for (const auto& completed : betting_history_codes)
+		{
+			if (completed.size() > HUNL_MAX_HISTORY_CODES - std::min(total_history_codes, HUNL_MAX_HISTORY_CODES))
+			{
+				throw std::invalid_argument("HUNL state exceeds infoset history capacity");
+			}
+			total_history_codes += completed.size();
+		}
+		if (total_history_codes > HUNL_MAX_HISTORY_CODES || (!current_street_history_codes.empty() && betting_history_codes.size() >= HUNLInfosetEncoding{}.street_lengths.size()))
+		{
+			throw std::invalid_argument("HUNL state exceeds infoset history capacity");
+		}
+		HUNLInfosetEncoding encoding;
+		encoding.street = street;
+		std::vector<std::uint8_t> sorted_board = board;
+		std::sort(sorted_board.begin(), sorted_board.end());
+		encoding.board_count = static_cast<std::uint8_t>(sorted_board.size());
+		for (std::size_t i = 0; i < sorted_board.size() && i < encoding.board.size(); ++i)
+		{
+			encoding.board[i] = sorted_board[i];
+		}
+
+		const auto player_idx = static_cast<std::size_t>(player);
+		encoding.hole = { (*hole_cards)[player_idx][0], (*hole_cards)[player_idx][1] };
+		if (encoding.hole[1] < encoding.hole[0])
+		{
+			std::swap(encoding.hole[0], encoding.hole[1]);
+		}
+
+		std::size_t offset = 0;
+		for (std::size_t street_index = 0;
+			street_index < betting_history_codes.size();
+			++street_index)
+		{
+			const auto& street_codes = betting_history_codes[street_index];
+			encoding.street_lengths[street_index] =
+				static_cast<std::uint8_t>(street_codes.size());
+			for (const auto code : street_codes)
+			{
+				encoding.history_codes[offset++] = code;
+			}
+		}
+
+		if (!current_street_history_codes.empty())
+		{
+			const auto current_index = betting_history_codes.size();
+			encoding.street_lengths[current_index] =
+				static_cast<std::uint8_t>(current_street_history_codes.size());
+			for (const auto code : current_street_history_codes)
+			{
+				encoding.history_codes[offset++] = code;
+			}
+		}
+		encoding.history_count = static_cast<std::uint8_t>(offset);
+		validate_hunl_infoset_encoding(encoding);
+		return encoding;
+	}
+
+	std::string HUNLState::infoset_key(
+		PlayerId player,
+		const texas::util::AbstractionTables* abstraction) const
+	{
+		if (player < 0 || player > 1)
+		{
+			throw std::invalid_argument("HUNLState::infoset_key requires player 0 or 1");
+		}
+		const auto player_idx = static_cast<std::size_t>(player);
+		if (abstraction && street >= Street::Flop && hole_cards.has_value())
+		{
+			const auto bucket = lookup_bucket(*abstraction, board, (*hole_cards)[player_idx], street);
+			return "b" + std::to_string(bucket) + "|" + street_token(street) + "|" + format_history();
+		}
+		const auto hole = hole_cards.has_value() ? sorted_card_string(
+													   std::vector<std::uint8_t>{ (*hole_cards)[player_idx][0], (*hole_cards)[player_idx][1] })
+												 : std::string();
+		const auto board_str = sorted_card_string(board);
+		return hole + "|" + board_str + "|" + street_token(street) + "|" + format_history();
+	}
+
+	std::string HUNLState::format_history() const
+	{
+		std::vector<std::string> parts;
+		parts.reserve(betting_tokens.size() + 1);
+		for (const auto& street_tokens : betting_tokens)
+		{
+			std::string joined;
+			for (const auto& token : street_tokens)
+			{
+				joined += token;
+			}
+			parts.push_back(std::move(joined));
+		}
+		std::string current;
+		for (const auto& token : current_street_tokens)
+		{
+			current += token;
+		}
+		parts.push_back(std::move(current));
+
+		std::string out;
+		for (std::size_t i = 0; i < parts.size(); ++i)
+		{
+			if (i > 0)
+			{
+				out += "/";
+			}
+			out += parts[i];
+		}
+		return out;
+	}
+
+	HUNLState HUNLState::apply_chance(std::uint8_t card) const
+	{
+		HUNLState next = *this;
+		next.board.push_back(card);
+		next.pending_board_deals = next.pending_board_deals > 0 ? next.pending_board_deals - 1 : 0;
+		if (next.pending_board_deals > 0)
+		{
+			return next;
+		}
+		return after_board_dealt(std::move(next));
+	}
+
+	HUNLState HUNLState::after_board_dealt(HUNLState state) const
+	{
+		if (state.all_in[0] || state.all_in[1])
+		{
+			if (state.board.size() >= 5)
+			{
+				state.street = Street::Showdown;
+				state.cur_player = -1;
+				return state;
+			}
+			state.cur_player = -1;
+			state.pending_board_deals = 1;
+			return state;
+		}
+		state.cur_player = 1;
+		return state;
+	}
+
+	HUNLState HUNLState::apply_player(ActionId action) const
+	{
+		const auto ctx = action_context();
+		const auto player = static_cast<std::size_t>(cur_player);
+		auto contributions_next = contributions;
+		auto stacks_next = stacks;
+		auto folded_next = folded;
+		auto all_in_next = all_in;
+		auto street_aggressor_next = street_aggressor;
+		auto street_num_raises_next = street_num_raises;
+		auto to_call_next = to_call;
+		std::string token;
+		int history_code = 0;
+
+		if (action == ACTION_FOLD)
+		{
+			folded_next[player] = true;
+			token = "f";
+			history_code = HISTORY_CODE_FOLD;
+		}
+		else if (action == ACTION_CHECK)
+		{
+			token = "x";
+			history_code = HISTORY_CODE_CHECK;
+		}
+		else if (action == ACTION_CALL)
+		{
+			const auto pay = std::min(to_call, stacks_next[player]);
+			contributions_next[player] += pay;
+			stacks_next[player] -= pay;
+			if (stacks_next[player] == 0)
+			{
+				all_in_next[player] = true;
+			}
+			to_call_next = 0;
+			token = "c";
+			history_code = HISTORY_CODE_CALL;
+		}
+		else if (action == ACTION_ALL_IN)
+		{
+			const auto pay = stacks_next[player];
+			contributions_next[player] += pay;
+			stacks_next[player] = 0;
+			all_in_next[player] = true;
+			const auto opp = 1U - player;
+			to_call_next = std::max(contributions_next[player] - contributions_next[opp], 0);
+			street_aggressor_next = static_cast<PlayerId>(player);
+			++street_num_raises_next;
+			token = "A";
+			history_code = HISTORY_CODE_ALL_IN;
+		}
+		else if (is_opening_bet(action))
+		{
+			const auto amount = compute_bet_amount(static_cast<std::uint8_t>(action), ctx);
+			contributions_next[player] += amount;
+			stacks_next[player] -= amount;
+			if (stacks_next[player] == 0)
+			{
+				all_in_next[player] = true;
+			}
+			const auto opp = 1U - player;
+			to_call_next = contributions_next[player] - contributions_next[opp];
+			street_aggressor_next = static_cast<PlayerId>(player);
+			++street_num_raises_next;
+			token = "b" + std::to_string(amount);
+			history_code = -amount;
+		}
+		else if (is_raise(action))
+		{
+			const auto new_contrib = compute_raise_to(static_cast<std::uint8_t>(action), ctx);
+			const auto pay = new_contrib - contributions_next[player];
+			contributions_next[player] = new_contrib;
+			stacks_next[player] -= pay;
+			if (stacks_next[player] == 0)
+			{
+				all_in_next[player] = true;
+			}
+			const auto opp = 1U - player;
+			to_call_next = contributions_next[player] - contributions_next[opp];
+			street_aggressor_next = static_cast<PlayerId>(player);
+			++street_num_raises_next;
+			token = "r" + std::to_string(new_contrib);
+			history_code = new_contrib + HISTORY_CODE_ALL_IN;
+		}
+		else
+		{
+			throw std::invalid_argument("Unknown HUNL action");
+		}
+
+		HUNLState new_state = *this;
+		new_state.contributions = contributions_next;
+		new_state.stacks = stacks_next;
+		new_state.street_history.push_back(action);
+		new_state.current_street_tokens.push_back(token);
+		new_state.current_street_history_codes.push_back(history_code);
+		new_state.street_aggressor = street_aggressor_next;
+		new_state.street_num_raises = street_num_raises_next;
+		new_state.to_call = to_call_next;
+		new_state.folded = folded_next;
+		new_state.all_in = all_in_next;
+
+		if (new_state.folded[0] || new_state.folded[1])
+		{
+			new_state.cur_player = -1;
+			return new_state;
+		}
+		if (street_complete(action, new_state))
+		{
+			return begin_street_transition(std::move(new_state));
+		}
+
+		const auto next_player = 1U - player;
+		if (new_state.all_in[next_player])
+		{
+			const auto refund = std::max(new_state.contributions[player] - new_state.contributions[next_player], 0);
+			if (refund > 0)
+			{
+				new_state.contributions[player] -= refund;
+				new_state.stacks[player] += refund;
+				new_state.all_in[player] = new_state.stacks[player] == 0;
+			}
+			new_state.to_call = 0;
+			return begin_street_transition(std::move(new_state));
+		}
+
+		new_state.cur_player = static_cast<PlayerId>(next_player);
+		return new_state;
+	}
+
+	bool HUNLState::street_complete(ActionId action, const HUNLState& new_state) const
+	{
+		if (action == ACTION_FOLD)
+		{
+			return false;
+		}
+		if (new_state.to_call > 0)
+		{
+			return false;
+		}
+		if (action == ACTION_ALL_IN && to_call > 0)
+		{
+			return true;
+		}
+		const auto player = cur_player;
+		const auto opponent = 1 - player;
+		if (action == ACTION_CHECK && street_aggressor == -1 && new_state.street_history.size() >= 2)
+		{
+			return true;
+		}
+		if (street == Street::Preflop && action == ACTION_CHECK && player == 1 && street_aggressor == 1 && street_num_raises == 1)
+		{
+			return true;
+		}
+		if (action == ACTION_CALL)
+		{
+			const auto preflop_sb_limp =
+				street == Street::Preflop && street_aggressor == opponent && street_num_raises == 1 && player == 0;
+			return !preflop_sb_limp;
+		}
+		return false;
+	}
+
+	HUNLState HUNLState::begin_street_transition(HUNLState state) const
+	{
+		state.betting_tokens.push_back(state.current_street_tokens);
+		state.current_street_tokens.clear();
+		state.betting_history_codes.push_back(state.current_street_history_codes);
+		state.current_street_history_codes.clear();
+		if (state.street == Street::River)
+		{
+			state.street = Street::Showdown;
+			state.cur_player = -1;
+			return state;
+		}
+		if (state.all_in[0] || state.all_in[1])
+		{
+			state.cur_player = -1;
+			state.pending_board_deals = 1;
+			state.street_history.clear();
+			state.street_aggressor = -1;
+			state.street_num_raises = 0;
+			state.to_call = 0;
+			return state;
+		}
+		const auto next_street = street_from_u8(static_cast<std::uint8_t>(state.street) + 1);
+		if (!next_street.has_value())
+		{
+			throw std::logic_error("next street out of range");
+		}
+		state.street = *next_street;
+		state.cur_player = -1;
+		state.pending_board_deals = cards_to_deal(*next_street);
+		state.street_history.clear();
+		state.street_aggressor = -1;
+		state.street_num_raises = 0;
+		state.to_call = 0;
+		return state;
+	}
+
+	bool is_preflop(const ActionContext& ctx)
+	{
+		return ctx.street == Street::Preflop;
+	}
+
+	const std::vector<double>& bet_menu(const ActionContext& ctx)
+	{
+		switch (ctx.street)
+		{
+			case Street::Flop:
+				if (ctx.flop_bet_fractions.has_value())
+				{
+					return *ctx.flop_bet_fractions;
+				}
+				break;
+			case Street::Turn:
+				if (ctx.turn_bet_fractions.has_value())
+				{
+					return *ctx.turn_bet_fractions;
+				}
+				break;
+			case Street::River:
+				if (ctx.river_bet_fractions.has_value())
+				{
+					return *ctx.river_bet_fractions;
+				}
+				break;
+			default:
+				break;
+		}
+		return ctx.bet_size_fractions;
+	}
+
+	std::vector<double> raise_menu(const ActionContext& ctx)
+	{
+		const auto len = std::min(ctx.raise_size_xs.size(), RAISE_ACTION_IDS.size());
+		return std::vector<double>(ctx.raise_size_xs.begin(), ctx.raise_size_xs.begin() + static_cast<std::ptrdiff_t>(len));
+	}
+
+	bool is_oop_flop_first_action(const ActionContext& ctx)
+	{
+		return ctx.street == Street::Flop && ctx.cur_player == OOP_PLAYER && ctx.street_action_count == 0 && ctx.to_call == 0 && ctx.street_aggressor < 0;
+	}
+
+	double stack_to_pot_ratio(const ActionContext& ctx)
+	{
+		const auto effective_stack = std::min(ctx.stacks[0], ctx.stacks[1]);
+		if (ctx.pot <= 0)
+		{
+			return effective_stack > 0 ? std::numeric_limits<double>::infinity() : 0.0;
+		}
+		return static_cast<double>(effective_stack) / static_cast<double>(ctx.pot);
+	}
+
+	bool should_include_all_in(const ActionContext& ctx)
+	{
+		if (ctx.include_all_in)
+		{
+			return true;
+		}
+		return ctx.auto_all_in_spr_threshold.has_value() && stack_to_pot_ratio(ctx) <= *ctx.auto_all_in_spr_threshold;
+	}
+
+	std::uint8_t raise_cap(const ActionContext& ctx)
+	{
+		return is_preflop(ctx) ? ctx.preflop_raise_cap : ctx.postflop_raise_cap;
+	}
+
+	int min_bet(const ActionContext& ctx)
+	{
+		return checked_nonnegative_multiply(
+			ctx.min_bet_bb, ctx.big_blind, "HUNL minimum bet overflow");
+	}
+
+	int force_allin_chip_threshold(const ActionContext& ctx)
+	{
+		return checked_nonnegative_multiply(
+			ctx.force_allin_threshold,
+			ctx.big_blind,
+			"HUNL forced all-in threshold overflow");
+	}
+
+	int stack_remaining(const ActionContext& ctx)
+	{
+		return ctx.stacks[ctx.cur_player];
+	}
+
+	int min_raise_increment(const ActionContext& ctx)
+	{
+		return std::max(ctx.to_call, ctx.big_blind);
+	}
+
+	int python_round_positive(double value)
+	{
+		if (!std::isfinite(value) || value < 0.0 || value > static_cast<double>(std::numeric_limits<int>::max()))
+		{
+			throw std::invalid_argument(
+				"python_round_positive expects finite non-negative representable input");
+		}
+		const auto floor_value = std::floor(value);
+		const auto fraction = value - floor_value;
+		if (fraction < 0.5)
+		{
+			return static_cast<int>(floor_value);
+		}
+		if (fraction > 0.5)
+		{
+			return static_cast<int>(floor_value + 1.0);
+		}
+		const auto floor_int = static_cast<int>(floor_value);
+		return (floor_int % 2 == 0) ? floor_int : floor_int + 1;
+	}
+
+	int bet_amount_for_fraction(const ActionContext& ctx, double fraction)
+	{
+		if (!std::isfinite(fraction) || fraction < 0.0)
+		{
+			throw std::invalid_argument("HUNL bet fraction must be finite and non-negative");
+		}
+		return std::max(
+			python_round_positive(static_cast<double>(ctx.pot) * fraction),
+			min_bet(ctx));
+	}
+
+	int raise_to_for_multiplier(const ActionContext& ctx, double multiplier)
+	{
+		if (!std::isfinite(multiplier) || multiplier < 0.0)
+		{
+			throw std::invalid_argument("HUNL raise multiplier must be finite and non-negative");
+		}
+		const auto aggressor_idx = static_cast<std::size_t>(std::max(ctx.street_aggressor, 0));
+		const auto aggressor_contrib = ctx.contributions[aggressor_idx];
+		const auto raise_to = python_round_positive(static_cast<double>(aggressor_contrib) * multiplier);
+		const auto min_raise_to = checked_nonnegative_add(
+			aggressor_contrib,
+			min_raise_increment(ctx),
+			"HUNL minimum raise target overflow");
+		return std::max(raise_to, min_raise_to);
+	}
+
+	int compute_bet_amount(std::uint8_t action_id, const ActionContext& ctx)
+	{
+		const auto stack = stack_remaining(ctx);
+		if (action_id == ACTION_ALL_IN)
+		{
+			return stack;
+		}
+		const auto it = std::find(BET_ACTION_IDS.begin(), BET_ACTION_IDS.end(), action_id);
+		if (it == BET_ACTION_IDS.end())
+		{
+			throw std::invalid_argument("compute_bet_amount: action is not a bet");
+		}
+		const auto idx = static_cast<std::size_t>(std::distance(BET_ACTION_IDS.begin(), it));
+		return std::min(bet_amount_for_fraction(ctx, bet_menu(ctx).at(idx)), stack);
+	}
+
+	int compute_raise_to(std::uint8_t action_id, const ActionContext& ctx)
+	{
+		const auto cur_contrib = ctx.contributions[ctx.cur_player];
+		const auto stack = stack_remaining(ctx);
+		const auto max_raise_to = checked_nonnegative_add(
+			cur_contrib, stack, "HUNL maximum raise target overflow");
+		if (action_id == ACTION_ALL_IN)
+		{
+			return max_raise_to;
+		}
+		const auto raise_values = raise_menu(ctx);
+		const auto it = std::find(RAISE_ACTION_IDS.begin(), RAISE_ACTION_IDS.end(), action_id);
+		if (it == RAISE_ACTION_IDS.end())
+		{
+			throw std::invalid_argument("compute_raise_to: action is not a raise");
+		}
+		const auto idx = static_cast<std::size_t>(std::distance(RAISE_ACTION_IDS.begin(), it));
+		return std::min(raise_to_for_multiplier(ctx, raise_values.at(idx)), max_raise_to);
+	}
+
+	std::vector<ActionId> enumerate_bets(const ActionContext& ctx)
+	{
+		const auto stack = stack_remaining(ctx);
+		const auto force_threshold = force_allin_chip_threshold(ctx);
+		std::vector<int> seen_amounts;
+		std::vector<ActionId> actions;
+		const auto& menu = bet_menu(ctx);
+		for (std::size_t i = 0; i < menu.size() && i < BET_ACTION_IDS.size(); ++i)
+		{
+			const auto raw_amount = bet_amount_for_fraction(ctx, menu[i]);
+			if (raw_amount >= stack || (stack - raw_amount) <= force_threshold)
+			{
+				continue;
+			}
+			if (std::find(seen_amounts.begin(), seen_amounts.end(), raw_amount) != seen_amounts.end())
+			{
+				continue;
+			}
+			seen_amounts.push_back(raw_amount);
+			actions.push_back(BET_ACTION_IDS[i]);
+		}
+		return actions;
+	}
+
+	std::vector<ActionId> enumerate_raises(const ActionContext& ctx)
+	{
+		const auto cur_contrib = ctx.contributions[ctx.cur_player];
+		const auto stack = stack_remaining(ctx);
+		const auto max_raise_to = checked_nonnegative_add(
+			cur_contrib, stack, "HUNL maximum raise target overflow");
+		const auto force_threshold = force_allin_chip_threshold(ctx);
+		std::vector<int> seen_raise_tos;
+		std::vector<ActionId> actions;
+		const auto raise_values = raise_menu(ctx);
+		for (std::size_t i = 0; i < raise_values.size() && i < RAISE_ACTION_IDS.size(); ++i)
+		{
+			const auto raise_to = raise_to_for_multiplier(ctx, raise_values[i]);
+			const auto chips_added = raise_to - cur_contrib;
+			if (raise_to >= max_raise_to || (stack - chips_added) <= force_threshold)
+			{
+				continue;
+			}
+			if (std::find(seen_raise_tos.begin(), seen_raise_tos.end(), raise_to) != seen_raise_tos.end())
+			{
+				continue;
+			}
+			seen_raise_tos.push_back(raise_to);
+			actions.push_back(RAISE_ACTION_IDS[i]);
+		}
+		return actions;
+	}
+
+	std::vector<ActionId> enumerate_legal_actions(const ActionContext& ctx)
+	{
+		std::vector<ActionId> actions;
+		const auto stack = stack_remaining(ctx);
+		if (stack <= 0)
+		{
+			return actions;
+		}
+
+		const auto facing_bet = ctx.to_call > 0;
+		if (facing_bet)
+		{
+			actions.push_back(ACTION_FOLD);
+			actions.push_back(ACTION_CALL);
+		}
+		else
+		{
+			actions.push_back(ACTION_CHECK);
+		}
+
+		const auto cap_reached = ctx.street_num_raises >= raise_cap(ctx);
+		const auto flop_no_donk = !ctx.allow_oop_flop_lead && !facing_bet && is_oop_flop_first_action(ctx);
+		if (!cap_reached && !flop_no_donk)
+		{
+			if (facing_bet)
+			{
+				const auto raises = enumerate_raises(ctx);
+				actions.insert(actions.end(), raises.begin(), raises.end());
+			}
+			else
+			{
+				const auto bets = enumerate_bets(ctx);
+				actions.insert(actions.end(), bets.begin(), bets.end());
+			}
+		}
+
+		const auto can_actually_raise = stack > ctx.to_call;
+		if (should_include_all_in(ctx) && !cap_reached && !flop_no_donk && can_actually_raise)
+		{
+			actions.push_back(ACTION_ALL_IN);
+		}
+		return actions;
+	}
+
+	HUNLConfig default_tiny_subgame()
+	{
+		HUNLConfig cfg;
+		cfg.starting_stack = 1000;
+		cfg.starting_street = Street::River;
+		cfg.initial_board = {
+			card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2), card_to_int(13, 1), card_to_int(5, 0)
+		};
+		cfg.initial_pot = 1000;
+		cfg.initial_contributions = { 500, 500 };
+		cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{ {
+			{ card_to_int(14, 1), card_to_int(13, 3) },
+			{ card_to_int(12, 2), card_to_int(12, 1) },
+		} };
+		return cfg;
+	}
+
+	HUNLConfig benchmark_turn_subgame()
+	{
+		HUNLConfig cfg;
+		cfg.starting_stack = 1000;
+		cfg.starting_street = Street::Turn;
+		cfg.initial_board = {
+			card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2), card_to_int(13, 1)
+		};
+		cfg.initial_pot = 1000;
+		cfg.initial_contributions = { 500, 500 };
+		cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{ {
+			{ card_to_int(14, 1), card_to_int(13, 3) },
+			{ card_to_int(12, 2), card_to_int(12, 1) },
+		} };
+		return cfg;
+	}
+
+	HUNLConfig rta_flop_conservative()
+	{
+		HUNLConfig cfg;
+		cfg.starting_stack = 1000;
+		cfg.starting_street = Street::Flop;
+		cfg.initial_board = {
+			card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2)
+		};
+		cfg.initial_pot = 1000;
+		cfg.initial_contributions = { 500, 500 };
+		cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{ {
+			{ card_to_int(14, 1), card_to_int(13, 3) },
+			{ card_to_int(12, 2), card_to_int(12, 1) },
+		} };
+		cfg.flop_bet_fractions = std::vector<double>{ 0.33, 0.75 };
+		cfg.turn_bet_fractions = std::vector<double>{ 0.50, 1.00 };
+		cfg.river_bet_fractions = std::vector<double>{ 0.75 };
+		cfg.raise_size_xs = { 3.0 };
+		cfg.postflop_raise_cap = 1;
+		cfg.include_all_in = false;
+		cfg.auto_all_in_spr_threshold = 2.5;
+		cfg.allow_oop_flop_lead = false;
+		cfg.bucket_counts_by_street = { 64, 48, 32 };
+		return cfg;
+	}
+
+	HUNLConfig rta_flop_balanced()
+	{
+		HUNLConfig cfg;
+		cfg.starting_stack = 1000;
+		cfg.starting_street = Street::Flop;
+		cfg.initial_board = {
+			card_to_int(14, 0), card_to_int(7, 3), card_to_int(2, 2)
+		};
+		cfg.initial_pot = 1000;
+		cfg.initial_contributions = { 500, 500 };
+		cfg.initial_hole_cards = std::array<std::array<std::uint8_t, 2>, 2>{ {
+			{ card_to_int(14, 1), card_to_int(13, 3) },
+			{ card_to_int(12, 2), card_to_int(12, 1) },
+		} };
+		cfg.flop_bet_fractions = std::vector<double>{ 0.33, 0.75, 1.25 };
+		cfg.turn_bet_fractions = std::vector<double>{ 0.50, 1.00 };
+		cfg.river_bet_fractions = std::vector<double>{ 0.50, 1.00 };
+		cfg.raise_size_xs = { 3.0 };
+		cfg.postflop_raise_cap = 1;
+		cfg.include_all_in = false;
+		cfg.auto_all_in_spr_threshold = 2.5;
+		cfg.allow_oop_flop_lead = false;
+		cfg.bucket_counts_by_street = { 96, 64, 48 };
+		return cfg;
+	}
+
+} // namespace texas::games::hunl

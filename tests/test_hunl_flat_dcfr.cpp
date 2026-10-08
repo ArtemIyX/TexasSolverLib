@@ -14,1280 +14,1410 @@
 #include <string>
 #include <vector>
 
-namespace {
+namespace
+{
 
-constexpr std::uint8_t c(std::uint8_t rank, std::uint8_t suit) {
-    return texas::card_to_int(rank, suit);
+	constexpr std::uint8_t c(std::uint8_t rank, std::uint8_t suit)
+	{
+		return texas::card_to_int(rank, suit);
+	}
+
+	std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b)
+	{
+		crc ^= b;
+		for (int i = 0; i < 8; ++i)
+		{
+			crc = (crc & 1U) ? (0xEDB88320U ^ (crc >> 1U)) : (crc >> 1U);
+		}
+		return crc;
+	}
+
+	std::uint32_t crc32(const std::vector<std::uint8_t>& data)
+	{
+		std::uint32_t crc = 0xFFFFFFFFU;
+		for (auto b : data)
+		{
+			crc = crc32_byte(crc, b);
+		}
+		return ~crc;
+	}
+
+	void append_u16(std::vector<std::uint8_t>& out, std::uint16_t v)
+	{
+		out.push_back(static_cast<std::uint8_t>(v & 0xFFU));
+		out.push_back(static_cast<std::uint8_t>((v >> 8U) & 0xFFU));
+	}
+
+	void append_u32(std::vector<std::uint8_t>& out, std::uint32_t v)
+	{
+		out.push_back(static_cast<std::uint8_t>(v & 0xFFU));
+		out.push_back(static_cast<std::uint8_t>((v >> 8U) & 0xFFU));
+		out.push_back(static_cast<std::uint8_t>((v >> 16U) & 0xFFU));
+		out.push_back(static_cast<std::uint8_t>((v >> 24U) & 0xFFU));
+	}
+
+	std::vector<std::uint8_t> make_npy_u8(const std::vector<std::uint8_t>& data)
+	{
+		std::vector<std::uint8_t> out;
+		const std::string header_dict =
+			"{'descr': '|u1', 'fortran_order': False, 'shape': (" + std::to_string(data.size()) + ",), }";
+		std::string header = header_dict;
+		while ((10 + header.size() + 1) % 16 != 0)
+		{
+			header.push_back(' ');
+		}
+		header.push_back('\n');
+
+		out.insert(out.end(), { 0x93, 'N', 'U', 'M', 'P', 'Y', 1, 0 });
+		append_u16(out, static_cast<std::uint16_t>(header.size()));
+		out.insert(out.end(), header.begin(), header.end());
+		out.insert(out.end(), data.begin(), data.end());
+		return out;
+	}
+
+	std::vector<std::uint8_t> make_json_bytes(const std::string& json)
+	{
+		return std::vector<std::uint8_t>(json.begin(), json.end());
+	}
+
+	struct ZipBuilder
+	{
+		struct Entry
+		{
+			std::string name;
+			std::vector<std::uint8_t> data;
+			std::uint32_t crc = 0;
+			std::uint32_t local_offset = 0;
+		};
+
+		std::vector<Entry> entries;
+
+		void add(const std::string& name, const std::vector<std::uint8_t>& data)
+		{
+			entries.push_back(Entry{ name, data, crc32(data), 0 });
+		}
+
+		std::vector<std::uint8_t> finish()
+		{
+			std::vector<std::uint8_t> out;
+			std::vector<std::uint8_t> central;
+			for (auto& entry : entries)
+			{
+				entry.local_offset = static_cast<std::uint32_t>(out.size());
+				const auto name_len = static_cast<std::uint16_t>(entry.name.size());
+				append_u32(out, 0x04034b50U);
+				append_u16(out, 20);
+				append_u16(out, 0);
+				append_u16(out, 0);
+				append_u16(out, 0);
+				append_u16(out, 0);
+				append_u32(out, entry.crc);
+				append_u32(out, static_cast<std::uint32_t>(entry.data.size()));
+				append_u32(out, static_cast<std::uint32_t>(entry.data.size()));
+				append_u16(out, name_len);
+				append_u16(out, 0);
+				out.insert(out.end(), entry.name.begin(), entry.name.end());
+				out.insert(out.end(), entry.data.begin(), entry.data.end());
+
+				append_u32(central, 0x02014b50U);
+				append_u16(central, 20);
+				append_u16(central, 20);
+				append_u16(central, 0);
+				append_u16(central, 0);
+				append_u16(central, 0);
+				append_u16(central, 0);
+				append_u32(central, entry.crc);
+				append_u32(central, static_cast<std::uint32_t>(entry.data.size()));
+				append_u32(central, static_cast<std::uint32_t>(entry.data.size()));
+				append_u16(central, name_len);
+				append_u16(central, 0);
+				append_u16(central, 0);
+				append_u16(central, 0);
+				append_u16(central, 0);
+				append_u32(central, 0);
+				append_u32(central, entry.local_offset);
+				central.insert(central.end(), entry.name.begin(), entry.name.end());
+			}
+
+			const auto cd_offset = static_cast<std::uint32_t>(out.size());
+			out.insert(out.end(), central.begin(), central.end());
+			append_u32(out, 0x06054b50U);
+			append_u16(out, 0);
+			append_u16(out, 0);
+			append_u16(out, static_cast<std::uint16_t>(entries.size()));
+			append_u16(out, static_cast<std::uint16_t>(entries.size()));
+			append_u32(out, static_cast<std::uint32_t>(central.size()));
+			append_u32(out, cd_offset);
+			append_u16(out, 0);
+			return out;
+		}
+	};
+
+	std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::vector<std::uint8_t>& board)
+	{
+		std::array<bool, 64> blocked = {};
+		for (const auto card : board)
+		{
+			blocked[card] = true;
+		}
+
+		std::vector<std::uint8_t> live_cards;
+		for (std::uint8_t rank = 2; rank <= 14; ++rank)
+		{
+			for (std::uint8_t suit = 0; suit < 4; ++suit)
+			{
+				const auto card = texas::card_to_int(rank, suit);
+				if (!blocked[card])
+				{
+					live_cards.push_back(card);
+				}
+			}
+		}
+
+		std::vector<std::array<std::uint8_t, 2>> hands;
+		for (std::size_t i = 0; i < live_cards.size(); ++i)
+		{
+			for (std::size_t j = i + 1; j < live_cards.size(); ++j)
+			{
+				hands.push_back({ live_cards[i], live_cards[j] });
+			}
+		}
+		return hands;
+	}
+
+	std::filesystem::path make_tmp_path(const std::string& name)
+	{
+		return std::filesystem::temp_directory_path() / name;
+	}
+
+	std::filesystem::path write_two_bucket_river_abstraction(const std::vector<std::uint8_t>& board)
+	{
+		const auto tmp = make_tmp_path("texas_hunl_flat_dcfr_bucket_ranges.npz");
+		const auto board_key = texas::canonicalize_board(board);
+
+		std::string river_hand_index = "{\"" + board_key + "\":{";
+		std::vector<std::uint8_t> river_assignments;
+		const auto live_hands = enumerate_live_hands(board);
+		river_assignments.reserve(live_hands.size());
+		for (std::size_t i = 0; i < live_hands.size(); ++i)
+		{
+			const auto [canonical_board_key, hand_key] = texas::canonicalize(board, live_hands[i]);
+			(void)canonical_board_key;
+			if (i > 0)
+			{
+				river_hand_index += ",";
+			}
+			river_hand_index += "\"" + hand_key + "\":" + std::to_string(i);
+			river_assignments.push_back(static_cast<std::uint8_t>(i % 2));
+		}
+		river_hand_index += "}}";
+
+		const std::string board_index = "{\"" + board_key + "\":0}";
+		const std::string metadata =
+			"{\"bucket_counts\":[1,1,2],\"feature_bins\":1,\"schema_version\":1,\"seed\":7,\"version\":\"v1\"}";
+
+		ZipBuilder zip;
+		auto add_named = [&](const std::string& name, const std::vector<std::uint8_t>& raw) {
+			zip.add(name, make_npy_u8(raw));
+		};
+
+		add_named("flop_assignments.npy", { 0 });
+		add_named("turn_assignments.npy", { 0 });
+		add_named("river_assignments.npy", river_assignments);
+		add_named("flop_board_index.npy", make_json_bytes("{}"));
+		add_named("turn_board_index.npy", make_json_bytes("{}"));
+		add_named("river_board_index.npy", make_json_bytes(board_index));
+		add_named("flop_hand_index.npy", make_json_bytes("{}"));
+		add_named("turn_hand_index.npy", make_json_bytes("{}"));
+		add_named("river_hand_index.npy", make_json_bytes(river_hand_index));
+		add_named("metadata.npy", make_json_bytes(metadata));
+
+		const auto bytes = zip.finish();
+		std::ofstream out(tmp, std::ios::binary);
+		out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		return tmp;
+	}
+
+	texas::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph()
+	{
+		texas::HUNLFlatSolveGraph graph;
+		graph.root = 0;
+		graph.max_depth = 2;
+		graph.max_actions = 2;
+
+		graph.children = { 1, 2, 3, 4, 5, 6 };
+		graph.chance_outcomes = {
+			texas::HUNLFlatChanceOutcome{ 0, 0.5, 1 },
+			texas::HUNLFlatChanceOutcome{ 1, 0.5, 2 },
+		};
+
+		const auto shared_infoset = texas::InfosetId{ 0 };
+		graph.infosets.push_back(texas::HUNLFlatInfoset{
+			shared_infoset,
+			0,
+			2,
+			{},
+			0,
+			0,
+			texas::Street::Flop,
+			2,
+		});
+		graph.infoset_debug_keys = { "shared-depth-infoset" };
+		graph.infoset_nodes = { 1, 2 };
+
+		auto make_terminal_meta = [](double value) {
+			texas::HUNLFlatNodeMeta meta;
+			meta.type = texas::HUNLFlatNodeType::TerminalFold;
+			meta.terminal_utility = { value, -value };
+			meta.terminal_kind = texas::TerminalKind::fold(1, 1);
+			return meta;
+		};
+
+		graph.node_meta.resize(7);
+
+		graph.node_meta[0].child_begin = 0;
+		graph.node_meta[0].child_count = 2;
+		graph.node_meta[0].chance_begin = 0;
+		graph.node_meta[0].chance_count = 2;
+		graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
+		graph.node_meta[0].street = texas::Street::Flop;
+
+		for (std::uint32_t node_idx : { 1U, 2U })
+		{
+			auto& meta = graph.node_meta[node_idx];
+			meta.child_begin = node_idx == 1 ? 2 : 4;
+			meta.child_count = 2;
+			meta.infoset_id = shared_infoset;
+			meta.player = 0;
+			meta.type = texas::HUNLFlatNodeType::Decision;
+			meta.street = texas::Street::Flop;
+			meta.action_count = 2;
+			meta.has_infoset = true;
+		}
+
+		graph.node_meta[3] = make_terminal_meta(3.0);
+		graph.node_meta[4] = make_terminal_meta(-1.0);
+		graph.node_meta[5] = make_terminal_meta(2.0);
+		graph.node_meta[6] = make_terminal_meta(-2.0);
+
+		graph.depth_order = { 0, 1, 2, 3, 4, 5, 6 };
+		graph.depth_slices = {
+			texas::HUNLFlatSlice{ 0, 1 },
+			texas::HUNLFlatSlice{ 1, 2 },
+			texas::HUNLFlatSlice{ 3, 4 },
+		};
+		graph.node_depths = { 0, 1, 1, 2, 2, 2, 2 };
+		graph.forward_order = graph.depth_order;
+		graph.reverse_order = { 6, 5, 4, 3, 2, 1, 0 };
+		graph.street_order = graph.depth_order;
+		graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+			texas::HUNLFlatSlice{ 0, static_cast<std::uint32_t>(graph.node_meta.size()) };
+		return graph;
+	}
+
+	texas::HUNLFlatSolveGraph make_unreachable_infoset_graph()
+	{
+		texas::HUNLFlatSolveGraph graph;
+		graph.root = 0;
+		graph.max_depth = 1;
+		graph.max_actions = 1;
+		graph.children = { 1, 3 };
+		graph.node_meta.resize(4);
+		graph.infosets = {
+			texas::HUNLFlatInfoset{ texas::InfosetId{ 0 }, 0, 1, {}, 0, 0, texas::Street::Flop, 1 },
+			texas::HUNLFlatInfoset{ texas::InfosetId{ 1 }, 1, 1, {}, 1, 0, texas::Street::Flop, 1 },
+		};
+		graph.infoset_debug_keys = { "reachable", "unreachable" };
+		graph.infoset_nodes = { 0, 2 };
+		graph.depth_order = { 0, 2, 1, 3 };
+		graph.forward_order = graph.depth_order;
+		graph.reverse_order = { 3, 1, 2, 0 };
+		graph.street_order = graph.depth_order;
+		graph.depth_slices = {
+			texas::HUNLFlatSlice{ 0, 2 },
+			texas::HUNLFlatSlice{ 2, 2 },
+		};
+		graph.node_depths = { 0, 1, 0, 1 };
+		graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
+			texas::HUNLFlatSlice{ 0, static_cast<std::uint32_t>(graph.node_meta.size()) };
+
+		auto set_decision = [&](std::uint32_t node_idx, texas::InfosetId infoset_id) {
+			graph.node_meta[node_idx].child_begin = node_idx == 0 ? 0 : 1;
+			graph.node_meta[node_idx].child_count = 1;
+			graph.node_meta[node_idx].infoset_id = infoset_id;
+			graph.node_meta[node_idx].player = 0;
+			graph.node_meta[node_idx].type = texas::HUNLFlatNodeType::Decision;
+			graph.node_meta[node_idx].street = texas::Street::Flop;
+			graph.node_meta[node_idx].action_count = 1;
+			graph.node_meta[node_idx].has_infoset = true;
+		};
+
+		auto set_terminal = [&](std::uint32_t node_idx, double value) {
+			graph.node_meta[node_idx].type = texas::HUNLFlatNodeType::TerminalFold;
+			graph.node_meta[node_idx].terminal_utility = { value, -value };
+			graph.node_meta[node_idx].terminal_kind = texas::TerminalKind::fold(1, 1);
+		};
+
+		set_decision(0, texas::InfosetId{ 0 });
+		set_decision(2, texas::InfosetId{ 1 });
+		set_terminal(1, 1.0);
+		set_terminal(3, -2.0);
+		return graph;
+	}
+
+} // namespace
+
+TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 3 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
+
+	solver.run_iterations(2);
+
+	EXPECT_EQ(solver.iterations(), 2U);
+	EXPECT_TRUE(solver.profile().strategy_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().reach_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().terminal_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().backward_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().regret_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().average_strategy_seconds >= 0.0);
 }
 
-std::uint32_t crc32_byte(std::uint32_t crc, std::uint8_t b) {
-    crc ^= b;
-    for (int i = 0; i < 8; ++i) {
-        crc = (crc & 1U) ? (0xEDB88320U ^ (crc >> 1U)) : (crc >> 1U);
-    }
-    return crc;
+TEST_CASE(hunl_flat_dcfr_keeps_configured_worker_pool_across_iterations)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 3 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		3);
+
+	EXPECT_EQ(solver.worker_count(), 3U);
+	solver.run_iteration();
+	solver.run_iteration();
+
+	EXPECT_EQ(solver.worker_count(), 3U);
+	EXPECT_EQ(solver.iterations(), 2U);
 }
 
-std::uint32_t crc32(const std::vector<std::uint8_t>& data) {
-    std::uint32_t crc = 0xFFFFFFFFU;
-    for (auto b : data) {
-        crc = crc32_byte(crc, b);
-    }
-    return ~crc;
+TEST_CASE(hunl_flat_dcfr_accepts_single_worker_pool_configuration)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1);
+
+	EXPECT_EQ(solver.worker_count(), 1U);
+	solver.run_iteration();
+	EXPECT_EQ(solver.iterations(), 1U);
 }
 
-void append_u16(std::vector<std::uint8_t>& out, std::uint16_t v) {
-    out.push_back(static_cast<std::uint8_t>(v & 0xFFU));
-    out.push_back(static_cast<std::uint8_t>((v >> 8U) & 0xFFU));
+TEST_CASE(hunl_flat_dcfr_strategy_stage_writes_normalized_rows)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
+
+	auto& table = solver.infoset_table_mut();
+	for (const auto& meta : table.meta())
+	{
+		auto* regret = table.regret_mut(meta.id);
+		for (std::size_t i = 0; i < meta.value_count; ++i)
+		{
+			regret[i] = 0.0;
+		}
+		if (meta.action_count >= 2 && meta.hand_count >= 1)
+		{
+			regret[0] = 2.0;
+			regret[meta.hand_count] = 1.0;
+		}
+	}
+
+	solver.run_iteration();
+
+	for (const auto& meta : table.meta())
+	{
+		const auto* strategy = table.current_strategy(meta.id);
+		for (std::size_t h = 0; h < meta.hand_count; ++h)
+		{
+			double sum = 0.0;
+			for (std::size_t a = 0; a < meta.action_count; ++a)
+			{
+				const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
+				EXPECT_TRUE(strategy[idx] >= 0.0);
+				sum += strategy[idx];
+			}
+			EXPECT_NEAR(sum, 1.0, 1e-12);
+		}
+	}
 }
 
-void append_u32(std::vector<std::uint8_t>& out, std::uint32_t v) {
-    out.push_back(static_cast<std::uint8_t>(v & 0xFFU));
-    out.push_back(static_cast<std::uint8_t>((v >> 8U) & 0xFFU));
-    out.push_back(static_cast<std::uint8_t>((v >> 16U) & 0xFFU));
-    out.push_back(static_cast<std::uint8_t>((v >> 24U) & 0xFFU));
+TEST_CASE(hunl_flat_dcfr_exports_average_strategy_by_infoset_key)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
+
+	solver.run_iteration();
+	const auto exported = solver.export_average_strategy();
+
+	EXPECT_EQ(exported.size(), graph.infosets.size());
+	for (const auto& infoset : graph.infosets)
+	{
+		const auto it = exported.find(std::string(graph.infoset_key(infoset)));
+		EXPECT_TRUE(it != exported.end());
+		EXPECT_EQ(it->second.size(),
+			static_cast<std::size_t>(infoset.action_count) * solver.infoset_table().meta()[infoset.id.value].hand_count);
+	}
 }
 
-std::vector<std::uint8_t> make_npy_u8(const std::vector<std::uint8_t>& data) {
-    std::vector<std::uint8_t> out;
-    const std::string header_dict =
-        "{'descr': '|u1', 'fortran_order': False, 'shape': (" + std::to_string(data.size()) + ",), }";
-    std::string header = header_dict;
-    while ((10 + header.size() + 1) % 16 != 0) {
-        header.push_back(' ');
-    }
-    header.push_back('\n');
+TEST_CASE(hunl_flat_dcfr_forward_reach_initializes_root_reaches)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    out.insert(out.end(), {0x93, 'N', 'U', 'M', 'P', 'Y', 1, 0});
-    append_u16(out, static_cast<std::uint16_t>(header.size()));
-    out.insert(out.end(), header.begin(), header.end());
-    out.insert(out.end(), data.begin(), data.end());
-    return out;
+	solver.run_iteration();
+
+	EXPECT_NEAR(solver.player0_reach()[graph.root], 1.0, 1e-12);
+	EXPECT_NEAR(solver.player1_reach()[graph.root], 1.0, 1e-12);
+	EXPECT_NEAR(solver.chance_reach()[graph.root], 1.0, 1e-12);
 }
 
-std::vector<std::uint8_t> make_json_bytes(const std::string& json) {
-    return std::vector<std::uint8_t>(json.begin(), json.end());
+TEST_CASE(hunl_flat_dcfr_forward_reach_distributes_mass_across_explicit_rows)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 4, 4 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
+
+	solver.run_iteration();
+
+	const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+	const auto bucket_range = solver.infoset_table().infoset_bucket_range(root_infoset);
+	double total_bucket_mass = 0.0;
+	for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx)
+	{
+		EXPECT_TRUE(solver.bucket_reach()[idx] > 0.0);
+		total_bucket_mass += solver.bucket_reach()[idx];
+	}
+	EXPECT_NEAR(total_bucket_mass, 1.0, 1e-12);
 }
 
-struct ZipBuilder {
-    struct Entry {
-        std::string name;
-        std::vector<std::uint8_t> data;
-        std::uint32_t crc = 0;
-        std::uint32_t local_offset = 0;
-    };
+TEST_CASE(hunl_flat_dcfr_precomputes_normalized_bucket_reach)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 4, 4 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    std::vector<Entry> entries;
+	solver.run_iteration();
 
-    void add(const std::string& name, const std::vector<std::uint8_t>& data) {
-        entries.push_back(Entry{name, data, crc32(data), 0});
-    }
+	for (const auto& meta : solver.infoset_table().meta())
+	{
+		const auto bucket_range = solver.infoset_table().infoset_bucket_range(meta.id);
+		double normalized_sum = 0.0;
+		for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx)
+		{
+			const auto value = solver.normalized_bucket_reach()[idx];
+			EXPECT_TRUE(value >= 0.0);
+			normalized_sum += value;
+		}
 
-    std::vector<std::uint8_t> finish() {
-        std::vector<std::uint8_t> out;
-        std::vector<std::uint8_t> central;
-        for (auto& entry : entries) {
-            entry.local_offset = static_cast<std::uint32_t>(out.size());
-            const auto name_len = static_cast<std::uint16_t>(entry.name.size());
-            append_u32(out, 0x04034b50U);
-            append_u16(out, 20);
-            append_u16(out, 0);
-            append_u16(out, 0);
-            append_u16(out, 0);
-            append_u16(out, 0);
-            append_u32(out, entry.crc);
-            append_u32(out, static_cast<std::uint32_t>(entry.data.size()));
-            append_u32(out, static_cast<std::uint32_t>(entry.data.size()));
-            append_u16(out, name_len);
-            append_u16(out, 0);
-            out.insert(out.end(), entry.name.begin(), entry.name.end());
-            out.insert(out.end(), entry.data.begin(), entry.data.end());
-
-            append_u32(central, 0x02014b50U);
-            append_u16(central, 20);
-            append_u16(central, 20);
-            append_u16(central, 0);
-            append_u16(central, 0);
-            append_u16(central, 0);
-            append_u16(central, 0);
-            append_u32(central, entry.crc);
-            append_u32(central, static_cast<std::uint32_t>(entry.data.size()));
-            append_u32(central, static_cast<std::uint32_t>(entry.data.size()));
-            append_u16(central, name_len);
-            append_u16(central, 0);
-            append_u16(central, 0);
-            append_u16(central, 0);
-            append_u16(central, 0);
-            append_u32(central, 0);
-            append_u32(central, entry.local_offset);
-            central.insert(central.end(), entry.name.begin(), entry.name.end());
-        }
-
-        const auto cd_offset = static_cast<std::uint32_t>(out.size());
-        out.insert(out.end(), central.begin(), central.end());
-        append_u32(out, 0x06054b50U);
-        append_u16(out, 0);
-        append_u16(out, 0);
-        append_u16(out, static_cast<std::uint16_t>(entries.size()));
-        append_u16(out, static_cast<std::uint16_t>(entries.size()));
-        append_u32(out, static_cast<std::uint32_t>(central.size()));
-        append_u32(out, cd_offset);
-        append_u16(out, 0);
-        return out;
-    }
-};
-
-std::vector<std::array<std::uint8_t, 2>> enumerate_live_hands(const std::vector<std::uint8_t>& board) {
-    std::array<bool, 64> blocked = {};
-    for (const auto card : board) {
-        blocked[card] = true;
-    }
-
-    std::vector<std::uint8_t> live_cards;
-    for (std::uint8_t rank = 2; rank <= 14; ++rank) {
-        for (std::uint8_t suit = 0; suit < 4; ++suit) {
-            const auto card = texas::card_to_int(rank, suit);
-            if (!blocked[card]) {
-                live_cards.push_back(card);
-            }
-        }
-    }
-
-    std::vector<std::array<std::uint8_t, 2>> hands;
-    for (std::size_t i = 0; i < live_cards.size(); ++i) {
-        for (std::size_t j = i + 1; j < live_cards.size(); ++j) {
-            hands.push_back({live_cards[i], live_cards[j]});
-        }
-    }
-    return hands;
+		const auto total = solver.infoset_bucket_totals()[meta.id.value];
+		if (total > 0.0)
+		{
+			EXPECT_NEAR(normalized_sum, 1.0, 1e-12);
+			for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket)
+			{
+				const auto idx = bucket_range.begin + static_cast<std::uint32_t>(bucket);
+				EXPECT_NEAR(
+					solver.normalized_bucket_reach()[idx],
+					solver.bucket_reach()[idx] / total,
+					1e-12);
+			}
+		}
+		else
+		{
+			EXPECT_NEAR(normalized_sum, 1.0, 1e-12);
+			for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket)
+			{
+				const auto idx = bucket_range.begin + static_cast<std::uint32_t>(bucket);
+				EXPECT_NEAR(
+					solver.normalized_bucket_reach()[idx],
+					1.0 / static_cast<double>(meta.bucket_count),
+					1e-12);
+			}
+		}
+	}
 }
 
-std::filesystem::path make_tmp_path(const std::string& name) {
-    return std::filesystem::temp_directory_path() / name;
+TEST_CASE(hunl_flat_dcfr_zero_reach_infosets_fall_back_to_uniform_bucket_priors)
+{
+	const auto graph = make_unreachable_infoset_graph();
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 3 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1);
+
+	solver.run_iteration();
+
+	const auto unreachable_infoset = texas::InfosetId{ 1 };
+	const auto& infoset_meta = solver.infoset_table().meta()[unreachable_infoset.value];
+	const auto bucket_range = solver.infoset_table().infoset_bucket_range(unreachable_infoset);
+	EXPECT_NEAR(solver.infoset_bucket_totals()[unreachable_infoset.value], 0.0, 1e-12);
+	for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx)
+	{
+		EXPECT_NEAR(
+			solver.normalized_bucket_reach()[idx],
+			1.0 / static_cast<double>(infoset_meta.bucket_count),
+			1e-12);
+	}
 }
 
-std::filesystem::path write_two_bucket_river_abstraction(const std::vector<std::uint8_t>& board) {
-    const auto tmp = make_tmp_path("texas_hunl_flat_dcfr_bucket_ranges.npz");
-    const auto board_key = texas::canonicalize_board(board);
+TEST_CASE(hunl_flat_dcfr_forward_reach_propagates_strategy_on_decision_nodes)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    std::string river_hand_index = "{\"" + board_key + "\":{";
-    std::vector<std::uint8_t> river_assignments;
-    const auto live_hands = enumerate_live_hands(board);
-    river_assignments.reserve(live_hands.size());
-    for (std::size_t i = 0; i < live_hands.size(); ++i) {
-        const auto [canonical_board_key, hand_key] = texas::canonicalize(board, live_hands[i]);
-        (void)canonical_board_key;
-        if (i > 0) {
-            river_hand_index += ",";
-        }
-        river_hand_index += "\"" + hand_key + "\":" + std::to_string(i);
-        river_assignments.push_back(static_cast<std::uint8_t>(i % 2));
-    }
-    river_hand_index += "}}";
+	const auto root_idx = graph.root;
+	const auto& root_meta = graph.node_meta[root_idx];
+	EXPECT_EQ(root_meta.type, texas::HUNLFlatNodeType::Decision);
+	EXPECT_TRUE(root_meta.child_count >= 2);
 
-    const std::string board_index = "{\"" + board_key + "\":0}";
-    const std::string metadata =
-        "{\"bucket_counts\":[1,1,2],\"feature_bins\":1,\"schema_version\":1,\"seed\":7,\"version\":\"v1\"}";
+	auto& table = solver.infoset_table_mut();
+	const auto infoset_id = root_meta.infoset_id;
+	auto* regret = table.regret_mut(infoset_id);
+	for (std::size_t i = 0; i < table.row_value_count(infoset_id); ++i)
+	{
+		regret[i] = 0.0;
+	}
+	const auto hand_count = table.meta()[infoset_id.value].hand_count;
+	regret[0] = 3.0;
+	regret[hand_count] = 1.0;
 
-    ZipBuilder zip;
-    auto add_named = [&](const std::string& name, const std::vector<std::uint8_t>& raw) {
-        zip.add(name, make_npy_u8(raw));
-    };
+	solver.run_iteration();
 
-    add_named("flop_assignments.npy", {0});
-    add_named("turn_assignments.npy", {0});
-    add_named("river_assignments.npy", river_assignments);
-    add_named("flop_board_index.npy", make_json_bytes("{}"));
-    add_named("turn_board_index.npy", make_json_bytes("{}"));
-    add_named("river_board_index.npy", make_json_bytes(board_index));
-    add_named("flop_hand_index.npy", make_json_bytes("{}"));
-    add_named("turn_hand_index.npy", make_json_bytes("{}"));
-    add_named("river_hand_index.npy", make_json_bytes(river_hand_index));
-    add_named("metadata.npy", make_json_bytes(metadata));
-
-    const auto bytes = zip.finish();
-    std::ofstream out(tmp, std::ios::binary);
-    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    return tmp;
+	const auto child0 = graph.children[root_meta.child_begin];
+	const auto child1 = graph.children[root_meta.child_begin + 1];
+	if (root_meta.player == 0)
+	{
+		EXPECT_TRUE(solver.player0_reach()[child0] > solver.player0_reach()[child1]);
+		EXPECT_NEAR(solver.player1_reach()[child0], 1.0, 1e-12);
+		EXPECT_NEAR(solver.player1_reach()[child1], 1.0, 1e-12);
+	}
+	else
+	{
+		EXPECT_TRUE(solver.player1_reach()[child0] > solver.player1_reach()[child1]);
+		EXPECT_NEAR(solver.player0_reach()[child0], 1.0, 1e-12);
+		EXPECT_NEAR(solver.player0_reach()[child1], 1.0, 1e-12);
+	}
+	EXPECT_NEAR(solver.chance_reach()[child0], 1.0, 1e-12);
+	EXPECT_NEAR(solver.chance_reach()[child1], 1.0, 1e-12);
 }
 
-texas::HUNLFlatSolveGraph make_shared_infoset_same_depth_graph() {
-    texas::HUNLFlatSolveGraph graph;
-    graph.root = 0;
-    graph.max_depth = 2;
-    graph.max_actions = 2;
+TEST_CASE(hunl_flat_dcfr_forward_reach_uses_local_bucket_mass_per_node)
+{
+	const auto graph = make_shared_infoset_same_depth_graph();
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1);
 
-    graph.children = {1, 2, 3, 4, 5, 6};
-    graph.chance_outcomes = {
-        texas::HUNLFlatChanceOutcome{0, 0.5, 1},
-        texas::HUNLFlatChanceOutcome{1, 0.5, 2},
-    };
+	auto& table = solver.infoset_table_mut();
+	const auto infoset_id = graph.infosets.front().id;
+	auto* regret = table.regret_mut(infoset_id);
+	for (std::size_t bucket = 0; bucket < table.meta()[infoset_id.value].bucket_count; ++bucket)
+	{
+		regret[bucket] = 4.0;
+		regret[table.meta()[infoset_id.value].bucket_count + bucket] = 0.0;
+	}
 
-    const auto shared_infoset = texas::InfosetId{0};
-    graph.infosets.push_back(texas::HUNLFlatInfoset{
-        shared_infoset,
-        0,
-        2,
-        {},
-        0,
-        0,
-        texas::Street::Flop,
-        2,
-    });
-    graph.infoset_debug_keys = {"shared-depth-infoset"};
-    graph.infoset_nodes = {1, 2};
+	solver.run_iteration();
 
-    auto make_terminal_meta = [](double value) {
-        texas::HUNLFlatNodeMeta meta;
-        meta.type = texas::HUNLFlatNodeType::TerminalFold;
-        meta.terminal_utility = {value, -value};
-        meta.terminal_kind = texas::TerminalKind::fold(1, 1);
-        return meta;
-    };
-
-    graph.node_meta.resize(7);
-
-    graph.node_meta[0].child_begin = 0;
-    graph.node_meta[0].child_count = 2;
-    graph.node_meta[0].chance_begin = 0;
-    graph.node_meta[0].chance_count = 2;
-    graph.node_meta[0].type = texas::HUNLFlatNodeType::Chance;
-    graph.node_meta[0].street = texas::Street::Flop;
-
-    for (std::uint32_t node_idx : {1U, 2U}) {
-        auto& meta = graph.node_meta[node_idx];
-        meta.child_begin = node_idx == 1 ? 2 : 4;
-        meta.child_count = 2;
-        meta.infoset_id = shared_infoset;
-        meta.player = 0;
-        meta.type = texas::HUNLFlatNodeType::Decision;
-        meta.street = texas::Street::Flop;
-        meta.action_count = 2;
-        meta.has_infoset = true;
-    }
-
-    graph.node_meta[3] = make_terminal_meta(3.0);
-    graph.node_meta[4] = make_terminal_meta(-1.0);
-    graph.node_meta[5] = make_terminal_meta(2.0);
-    graph.node_meta[6] = make_terminal_meta(-2.0);
-
-    graph.depth_order = {0, 1, 2, 3, 4, 5, 6};
-    graph.depth_slices = {
-        texas::HUNLFlatSlice{0, 1},
-        texas::HUNLFlatSlice{1, 2},
-        texas::HUNLFlatSlice{3, 4},
-    };
-    graph.node_depths = {0, 1, 1, 2, 2, 2, 2};
-    graph.forward_order = graph.depth_order;
-    graph.reverse_order = {6, 5, 4, 3, 2, 1, 0};
-    graph.street_order = graph.depth_order;
-    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
-        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
-    return graph;
+	EXPECT_NEAR(solver.player0_reach()[3], 1.0, 1e-12);
+	EXPECT_NEAR(solver.player0_reach()[4], 0.0, 1e-12);
+	EXPECT_NEAR(solver.player0_reach()[5], 1.0, 1e-12);
+	EXPECT_NEAR(solver.player0_reach()[6], 0.0, 1e-12);
+	EXPECT_NEAR(solver.chance_reach()[3], 0.5, 1e-12);
+	EXPECT_NEAR(solver.chance_reach()[5], 0.5, 1e-12);
 }
 
-texas::HUNLFlatSolveGraph make_unreachable_infoset_graph() {
-    texas::HUNLFlatSolveGraph graph;
-    graph.root = 0;
-    graph.max_depth = 1;
-    graph.max_actions = 1;
-    graph.children = {1, 3};
-    graph.node_meta.resize(4);
-    graph.infosets = {
-        texas::HUNLFlatInfoset{texas::InfosetId{0}, 0, 1, {}, 0, 0, texas::Street::Flop, 1},
-        texas::HUNLFlatInfoset{texas::InfosetId{1}, 1, 1, {}, 1, 0, texas::Street::Flop, 1},
-    };
-    graph.infoset_debug_keys = {"reachable", "unreachable"};
-    graph.infoset_nodes = {0, 2};
-    graph.depth_order = {0, 2, 1, 3};
-    graph.forward_order = graph.depth_order;
-    graph.reverse_order = {3, 1, 2, 0};
-    graph.street_order = graph.depth_order;
-    graph.depth_slices = {
-        texas::HUNLFlatSlice{0, 2},
-        texas::HUNLFlatSlice{2, 2},
-    };
-    graph.node_depths = {0, 1, 0, 1};
-    graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
-        texas::HUNLFlatSlice{0, static_cast<std::uint32_t>(graph.node_meta.size())};
+TEST_CASE(hunl_flat_dcfr_forward_reach_weights_chance_nodes)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    auto set_decision = [&](std::uint32_t node_idx, texas::InfosetId infoset_id) {
-        graph.node_meta[node_idx].child_begin = node_idx == 0 ? 0 : 1;
-        graph.node_meta[node_idx].child_count = 1;
-        graph.node_meta[node_idx].infoset_id = infoset_id;
-        graph.node_meta[node_idx].player = 0;
-        graph.node_meta[node_idx].type = texas::HUNLFlatNodeType::Decision;
-        graph.node_meta[node_idx].street = texas::Street::Flop;
-        graph.node_meta[node_idx].action_count = 1;
-        graph.node_meta[node_idx].has_infoset = true;
-    };
+	solver.run_iteration();
 
-    auto set_terminal = [&](std::uint32_t node_idx, double value) {
-        graph.node_meta[node_idx].type = texas::HUNLFlatNodeType::TerminalFold;
-        graph.node_meta[node_idx].terminal_utility = {value, -value};
-        graph.node_meta[node_idx].terminal_kind = texas::TerminalKind::fold(1, 1);
-    };
+	bool checked_chance = false;
+	for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx)
+	{
+		const auto& meta = graph.node_meta[node_idx];
+		if (meta.type != texas::HUNLFlatNodeType::Chance || meta.chance_count == 0)
+		{
+			continue;
+		}
 
-    set_decision(0, texas::InfosetId{0});
-    set_decision(2, texas::InfosetId{1});
-    set_terminal(1, 1.0);
-    set_terminal(3, -2.0);
-    return graph;
+		const auto& outcome = graph.chance_outcomes[meta.chance_begin];
+		const auto parent_chance = solver.chance_reach()[node_idx];
+		const auto child_chance = solver.chance_reach()[outcome.child];
+		if (parent_chance > 0.0)
+		{
+			EXPECT_TRUE(child_chance > 0.0);
+			EXPECT_TRUE(child_chance <= parent_chance);
+			checked_chance = true;
+			break;
+		}
+	}
+
+	EXPECT_TRUE(checked_chance);
 }
 
-}  // namespace
+TEST_CASE(hunl_flat_dcfr_terminal_stage_uses_precomputed_leaf_utilities)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-TEST_CASE(hunl_flat_dcfr_runs_explicit_stage_iteration) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 3},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+	solver.run_iteration();
 
-    solver.run_iterations(2);
+	bool saw_terminal = false;
+	for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx)
+	{
+		const auto& meta = graph.node_meta[node_idx];
+		if (meta.type != texas::HUNLFlatNodeType::TerminalFold && meta.type != texas::HUNLFlatNodeType::TerminalShowdown)
+		{
+			continue;
+		}
 
-    EXPECT_EQ(solver.iterations(), 2U);
-    EXPECT_TRUE(solver.profile().strategy_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().reach_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().terminal_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().backward_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().regret_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().average_strategy_seconds >= 0.0);
+		saw_terminal = true;
+		if (meta.type == texas::HUNLFlatNodeType::TerminalFold)
+		{
+			EXPECT_TRUE(meta.terminal_kind.tag == texas::TerminalKindTag::Fold);
+		}
+		else
+		{
+			EXPECT_TRUE(meta.terminal_kind.tag == texas::TerminalKindTag::Showdown);
+		}
+		EXPECT_NEAR(meta.terminal_utility[0], solver.terminal_values()[node_idx], 1e-12);
+	}
+
+	EXPECT_TRUE(saw_terminal);
 }
 
-TEST_CASE(hunl_flat_dcfr_keeps_configured_worker_pool_across_iterations) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 3},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        3);
+TEST_CASE(hunl_flat_dcfr_backward_stage_copies_terminal_values_into_node_values)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    EXPECT_EQ(solver.worker_count(), 3U);
-    solver.run_iteration();
-    solver.run_iteration();
+	solver.run_iteration();
 
-    EXPECT_EQ(solver.worker_count(), 3U);
-    EXPECT_EQ(solver.iterations(), 2U);
+	bool saw_terminal = false;
+	for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx)
+	{
+		const auto& meta = graph.node_meta[node_idx];
+		if (meta.type != texas::HUNLFlatNodeType::TerminalFold && meta.type != texas::HUNLFlatNodeType::TerminalShowdown)
+		{
+			continue;
+		}
+		saw_terminal = true;
+		EXPECT_NEAR(solver.node_values()[node_idx], solver.terminal_values()[node_idx], 1e-12);
+	}
+
+	EXPECT_TRUE(saw_terminal);
 }
 
-TEST_CASE(hunl_flat_dcfr_accepts_single_worker_pool_configuration) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1);
-
-    EXPECT_EQ(solver.worker_count(), 1U);
-    solver.run_iteration();
-    EXPECT_EQ(solver.iterations(), 1U);
+TEST_CASE(hunl_flat_dcfr_rejects_depth_limited_graphs_without_shared_leaf_evaluator)
+{
+	auto config = texas::benchmark_turn_subgame();
+	config.depth_limit_plies = 1;
+	const auto graph = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
+	EXPECT_THROW(
+		texas::HUNLFlatDCFR(graph, { 2, 2 }, texas::HUNLFlatValueLayout::InfosetActionHand),
+		std::invalid_argument);
 }
 
-TEST_CASE(hunl_flat_dcfr_strategy_stage_writes_normalized_rows) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_depth_limited_rejection_is_worker_count_independent)
+{
+	auto config = texas::benchmark_turn_subgame();
+	config.depth_limit_plies = 1;
+	const auto graph_a = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
+	const auto graph_b = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
 
-    auto& table = solver.infoset_table_mut();
-    for (const auto& meta : table.meta()) {
-        auto* regret = table.regret_mut(meta.id);
-        for (std::size_t i = 0; i < meta.value_count; ++i) {
-            regret[i] = 0.0;
-        }
-        if (meta.action_count >= 2 && meta.hand_count >= 1) {
-            regret[0] = 2.0;
-            regret[meta.hand_count] = 1.0;
-        }
-    }
-
-    solver.run_iteration();
-
-    for (const auto& meta : table.meta()) {
-        const auto* strategy = table.current_strategy(meta.id);
-        for (std::size_t h = 0; h < meta.hand_count; ++h) {
-            double sum = 0.0;
-            for (std::size_t a = 0; a < meta.action_count; ++a) {
-                const auto idx = a * static_cast<std::size_t>(meta.hand_count) + h;
-                EXPECT_TRUE(strategy[idx] >= 0.0);
-                sum += strategy[idx];
-            }
-            EXPECT_NEAR(sum, 1.0, 1e-12);
-        }
-    }
+	EXPECT_THROW(texas::HUNLFlatDCFR(graph_a, { 2, 2 }, texas::HUNLFlatValueLayout::InfosetActionHand, 1),
+		std::invalid_argument);
+	EXPECT_THROW(texas::HUNLFlatDCFR(graph_b, { 2, 2 }, texas::HUNLFlatValueLayout::InfosetActionHand, 2),
+		std::invalid_argument);
 }
 
-TEST_CASE(hunl_flat_dcfr_exports_average_strategy_by_infoset_key) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    solver.run_iteration();
-    const auto exported = solver.export_average_strategy();
+	solver.run_iteration();
 
-    EXPECT_EQ(exported.size(), graph.infosets.size());
-    for (const auto& infoset : graph.infosets) {
-        const auto it = exported.find(std::string(graph.infoset_key(infoset)));
-        EXPECT_TRUE(it != exported.end());
-        EXPECT_EQ(it->second.size(),
-                  static_cast<std::size_t>(infoset.action_count) *
-                      solver.infoset_table().meta()[infoset.id.value].hand_count);
-    }
+	bool checked_parent = false;
+	for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx)
+	{
+		const auto& meta = graph.node_meta[node_idx];
+		if (meta.child_count == 0)
+		{
+			continue;
+		}
+
+		for (std::size_t i = 0; i < meta.child_count; ++i)
+		{
+			const auto child = graph.children[meta.child_begin + i];
+			EXPECT_NEAR(
+				solver.action_values()[meta.child_begin + i],
+				solver.node_values()[child],
+				1e-12);
+		}
+		checked_parent = true;
+		break;
+	}
+
+	EXPECT_TRUE(checked_parent);
 }
 
-TEST_CASE(hunl_flat_dcfr_forward_reach_initializes_root_reaches) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph)
+{
+	const auto graph = make_shared_infoset_same_depth_graph();
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1);
 
-    solver.run_iteration();
+	auto& table = solver.infoset_table_mut();
+	const auto infoset_id = graph.infosets.front().id;
+	auto* regret = table.regret_mut(infoset_id);
+	const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+	for (std::size_t bucket = 0; bucket < bucket_count; ++bucket)
+	{
+		regret[bucket] = 4.0;
+		regret[bucket_count + bucket] = 0.0;
+	}
 
-    EXPECT_NEAR(solver.player0_reach()[graph.root], 1.0, 1e-12);
-    EXPECT_NEAR(solver.player1_reach()[graph.root], 1.0, 1e-12);
-    EXPECT_NEAR(solver.chance_reach()[graph.root], 1.0, 1e-12);
+	solver.run_iteration();
+
+	EXPECT_NEAR(solver.node_values()[1], 3.0, 1e-12);
+	EXPECT_NEAR(solver.node_values()[2], 2.0, 1e-12);
+	EXPECT_NEAR(solver.node_values()[graph.root], 2.5, 1e-12);
+	EXPECT_NEAR(solver.action_values()[2], 3.0, 1e-12);
+	EXPECT_NEAR(solver.action_values()[3], -1.0, 1e-12);
+	EXPECT_NEAR(solver.action_values()[4], 2.0, 1e-12);
+	EXPECT_NEAR(solver.action_values()[5], -2.0, 1e-12);
 }
 
-TEST_CASE(hunl_flat_dcfr_forward_reach_distributes_mass_across_explicit_rows) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {4, 4},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    solver.run_iteration();
+	auto& table = solver.infoset_table_mut();
+	const auto& root_meta = graph.node_meta[graph.root];
+	const auto infoset_id = root_meta.infoset_id;
+	auto* regret = table.regret_mut(infoset_id);
+	for (std::size_t i = 0; i < table.row_value_count(infoset_id); ++i)
+	{
+		regret[i] = 0.0;
+	}
+	if (root_meta.child_count >= 2)
+	{
+		const auto hand_count = table.meta()[infoset_id.value].hand_count;
+		regret[0] = 4.0;
+		regret[hand_count] = 1.0;
+	}
 
-    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
-    const auto bucket_range = solver.infoset_table().infoset_bucket_range(root_infoset);
-    double total_bucket_mass = 0.0;
-    for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
-        EXPECT_TRUE(solver.bucket_reach()[idx] > 0.0);
-        total_bucket_mass += solver.bucket_reach()[idx];
-    }
-    EXPECT_NEAR(total_bucket_mass, 1.0, 1e-12);
+	solver.run_iteration();
+
+	if (root_meta.type == texas::HUNLFlatNodeType::Decision && root_meta.child_count >= 2)
+	{
+		const auto a0 = solver.action_values()[root_meta.child_begin];
+		const auto a1 = solver.action_values()[root_meta.child_begin + 1];
+		EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
+		EXPECT_TRUE(solver.node_values()[graph.root] >= std::min(a0, a1) - 1e-12);
+	}
+	else
+	{
+		EXPECT_TRUE(root_meta.child_count > 0);
+	}
 }
 
-TEST_CASE(hunl_flat_dcfr_precomputes_normalized_bucket_reach) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {4, 4},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_regret_update_uses_action_minus_node_value)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    solver.run_iteration();
+	auto& table = solver.infoset_table_mut();
+	const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+	auto* regret_before = table.regret_mut(root_infoset);
+	const auto before0 = regret_before[0];
+	const auto action_count = table.meta()[root_infoset.value].action_count;
+	const auto hand_count = table.meta()[root_infoset.value].hand_count;
+	const auto before1 = action_count >= 2 ? regret_before[hand_count] : before0;
 
-    for (const auto& meta : solver.infoset_table().meta()) {
-        const auto bucket_range = solver.infoset_table().infoset_bucket_range(meta.id);
-        double normalized_sum = 0.0;
-        for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
-            const auto value = solver.normalized_bucket_reach()[idx];
-            EXPECT_TRUE(value >= 0.0);
-            normalized_sum += value;
-        }
+	solver.run_iteration();
 
-        const auto total = solver.infoset_bucket_totals()[meta.id.value];
-        if (total > 0.0) {
-            EXPECT_NEAR(normalized_sum, 1.0, 1e-12);
-            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                const auto idx = bucket_range.begin + static_cast<std::uint32_t>(bucket);
-                EXPECT_NEAR(
-                    solver.normalized_bucket_reach()[idx],
-                    solver.bucket_reach()[idx] / total,
-                    1e-12);
-            }
-        } else {
-            EXPECT_NEAR(normalized_sum, 1.0, 1e-12);
-            for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-                const auto idx = bucket_range.begin + static_cast<std::uint32_t>(bucket);
-                EXPECT_NEAR(
-                    solver.normalized_bucket_reach()[idx],
-                    1.0 / static_cast<double>(meta.bucket_count),
-                    1e-12);
-            }
-        }
-    }
+	const auto* regret_after = table.regret(root_infoset);
+	if (action_count >= 2)
+	{
+		EXPECT_TRUE(regret_after[0] != before0 || regret_after[hand_count] != before1);
+	}
+	else
+	{
+		EXPECT_TRUE(regret_after[0] != before0);
+	}
 }
 
-TEST_CASE(hunl_flat_dcfr_zero_reach_infosets_fall_back_to_uniform_bucket_priors) {
-    const auto graph = make_unreachable_infoset_graph();
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 3},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1);
+TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    solver.run_iteration();
+	solver.run_iteration();
 
-    const auto unreachable_infoset = texas::InfosetId{1};
-    const auto& infoset_meta = solver.infoset_table().meta()[unreachable_infoset.value];
-    const auto bucket_range = solver.infoset_table().infoset_bucket_range(unreachable_infoset);
-    EXPECT_NEAR(solver.infoset_bucket_totals()[unreachable_infoset.value], 0.0, 1e-12);
-    for (std::uint32_t idx = bucket_range.begin; idx < bucket_range.end; ++idx) {
-        EXPECT_NEAR(
-            solver.normalized_bucket_reach()[idx],
-            1.0 / static_cast<double>(infoset_meta.bucket_count),
-            1e-12);
-    }
+	const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+	const auto* strategy = solver.infoset_table().current_strategy(root_infoset);
+	const auto* strategy_sum = solver.infoset_table().strategy_sum(root_infoset);
+	const auto action_count = solver.infoset_table().meta()[root_infoset.value].action_count;
+	const auto hand_count = solver.infoset_table().meta()[root_infoset.value].hand_count;
+	const auto bucket_range = solver.infoset_table().infoset_bucket_range(root_infoset);
+	const auto own_reach = graph.node_meta[graph.root].player == 0
+		? solver.player0_reach()[graph.root] * solver.chance_reach()[graph.root]
+		: solver.player1_reach()[graph.root] * solver.chance_reach()[graph.root];
+	const auto first_bucket_mass = solver.normalized_bucket_reach()[bucket_range.begin];
+
+	EXPECT_NEAR(strategy_sum[0], own_reach * first_bucket_mass * strategy[0], 1e-12);
+	if (action_count >= 2)
+	{
+		EXPECT_NEAR(strategy_sum[hand_count], own_reach * first_bucket_mass * strategy[hand_count], 1e-12);
+	}
 }
 
-TEST_CASE(hunl_flat_dcfr_forward_reach_propagates_strategy_on_decision_nodes) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_float32_precision_tracks_double_on_small_game)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph_f64 = texas::HUNLFlatSolveGraph::build(config);
+	const auto graph_f32 = texas::HUNLFlatSolveGraph::build(config);
 
-    const auto root_idx = graph.root;
-    const auto& root_meta = graph.node_meta[root_idx];
-    EXPECT_EQ(root_meta.type, texas::HUNLFlatNodeType::Decision);
-    EXPECT_TRUE(root_meta.child_count >= 2);
+	texas::HUNLFlatDCFR solver_f64(
+		graph_f64,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1,
+		1.5,
+		0.0,
+		2.0,
+		texas::HUNLFlatStoragePrecision::Float64);
+	texas::HUNLFlatDCFR solver_f32(
+		graph_f32,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1,
+		1.5,
+		0.0,
+		2.0,
+		texas::HUNLFlatStoragePrecision::Float32);
 
-    auto& table = solver.infoset_table_mut();
-    const auto infoset_id = root_meta.infoset_id;
-    auto* regret = table.regret_mut(infoset_id);
-    for (std::size_t i = 0; i < table.row_value_count(infoset_id); ++i) {
-        regret[i] = 0.0;
-    }
-    const auto hand_count = table.meta()[infoset_id.value].hand_count;
-    regret[0] = 3.0;
-    regret[hand_count] = 1.0;
+	solver_f64.run_iterations(3);
+	solver_f32.run_iterations(3);
 
-    solver.run_iteration();
+	EXPECT_EQ(solver_f64.storage_precision(), texas::HUNLFlatStoragePrecision::Float64);
+	EXPECT_EQ(solver_f32.storage_precision(), texas::HUNLFlatStoragePrecision::Float32);
+	EXPECT_NEAR(solver_f64.node_values()[graph_f64.root], solver_f32.node_values()[graph_f32.root], 1e-5);
+	EXPECT_NEAR(solver_f64.terminal_values()[0], solver_f32.terminal_values()[0], 1e-9);
 
-    const auto child0 = graph.children[root_meta.child_begin];
-    const auto child1 = graph.children[root_meta.child_begin + 1];
-    if (root_meta.player == 0) {
-        EXPECT_TRUE(solver.player0_reach()[child0] > solver.player0_reach()[child1]);
-        EXPECT_NEAR(solver.player1_reach()[child0], 1.0, 1e-12);
-        EXPECT_NEAR(solver.player1_reach()[child1], 1.0, 1e-12);
-    } else {
-        EXPECT_TRUE(solver.player1_reach()[child0] > solver.player1_reach()[child1]);
-        EXPECT_NEAR(solver.player0_reach()[child0], 1.0, 1e-12);
-        EXPECT_NEAR(solver.player0_reach()[child1], 1.0, 1e-12);
-    }
-    EXPECT_NEAR(solver.chance_reach()[child0], 1.0, 1e-12);
-    EXPECT_NEAR(solver.chance_reach()[child1], 1.0, 1e-12);
+	const auto root_infoset = graph_f64.node_meta[graph_f64.root].infoset_id;
+	const auto action_count = solver_f64.infoset_table().meta()[root_infoset.value].action_count;
+	const auto bucket_count = solver_f64.infoset_table().meta()[root_infoset.value].bucket_count;
+	for (std::size_t bucket = 0; bucket < bucket_count; ++bucket)
+	{
+		double sum_f64 = 0.0;
+		double sum_f32 = 0.0;
+		for (std::size_t action = 0; action < action_count; ++action)
+		{
+			const auto idx = action * bucket_count + bucket;
+			const auto p64 = solver_f64.infoset_table().current_strategy_value(root_infoset, idx);
+			const auto p32 = solver_f32.infoset_table().current_strategy_value(root_infoset, idx);
+			EXPECT_NEAR(p64, p32, 1e-5);
+			sum_f64 += p64;
+			sum_f32 += p32;
+		}
+		EXPECT_NEAR(sum_f64, 1.0, 1e-12);
+		EXPECT_NEAR(sum_f32, 1.0, 1e-5);
+	}
 }
 
-TEST_CASE(hunl_flat_dcfr_forward_reach_uses_local_bucket_mass_per_node) {
-    const auto graph = make_shared_infoset_same_depth_graph();
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1);
+TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values)
+{
+	const auto graph = make_shared_infoset_same_depth_graph();
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1);
 
-    auto& table = solver.infoset_table_mut();
-    const auto infoset_id = graph.infosets.front().id;
-    auto* regret = table.regret_mut(infoset_id);
-    for (std::size_t bucket = 0; bucket < table.meta()[infoset_id.value].bucket_count; ++bucket) {
-        regret[bucket] = 4.0;
-        regret[table.meta()[infoset_id.value].bucket_count + bucket] = 0.0;
-    }
+	auto& table = solver.infoset_table_mut();
+	const auto infoset_id = graph.infosets.front().id;
+	auto* regret = table.regret_mut(infoset_id);
+	const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+	for (std::size_t bucket = 0; bucket < bucket_count; ++bucket)
+	{
+		regret[bucket] = 4.0;
+		regret[bucket_count + bucket] = 0.0;
+	}
 
-    solver.run_iteration();
+	solver.run_iteration();
 
-    EXPECT_NEAR(solver.player0_reach()[3], 1.0, 1e-12);
-    EXPECT_NEAR(solver.player0_reach()[4], 0.0, 1e-12);
-    EXPECT_NEAR(solver.player0_reach()[5], 1.0, 1e-12);
-    EXPECT_NEAR(solver.player0_reach()[6], 0.0, 1e-12);
-    EXPECT_NEAR(solver.chance_reach()[3], 0.5, 1e-12);
-    EXPECT_NEAR(solver.chance_reach()[5], 0.5, 1e-12);
+	const auto* regret_after = solver.infoset_table().regret(infoset_id);
+	EXPECT_NEAR(regret_after[0], 2.0, 1e-12);
+	EXPECT_NEAR(regret_after[1], 2.0, 1e-12);
+	EXPECT_NEAR(regret_after[2], -1.0, 1e-12);
+	EXPECT_NEAR(regret_after[3], -1.0, 1e-12);
 }
 
-TEST_CASE(hunl_flat_dcfr_forward_reach_weights_chance_nodes) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph_for_hand_action_layout)
+{
+	const auto graph = make_shared_infoset_same_depth_graph();
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetHandAction,
+		1);
 
-    solver.run_iteration();
+	auto& table = solver.infoset_table_mut();
+	const auto infoset_id = graph.infosets.front().id;
+	auto* regret = table.regret_mut(infoset_id);
+	const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+	for (std::size_t bucket = 0; bucket < bucket_count; ++bucket)
+	{
+		regret[table.value_index(infoset_id, bucket, 0)] = 4.0;
+		regret[table.value_index(infoset_id, bucket, 1)] = 0.0;
+	}
 
-    bool checked_chance = false;
-    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
-        const auto& meta = graph.node_meta[node_idx];
-        if (meta.type != texas::HUNLFlatNodeType::Chance || meta.chance_count == 0) {
-            continue;
-        }
+	solver.run_iteration();
 
-        const auto& outcome = graph.chance_outcomes[meta.chance_begin];
-        const auto parent_chance = solver.chance_reach()[node_idx];
-        const auto child_chance = solver.chance_reach()[outcome.child];
-        if (parent_chance > 0.0) {
-            EXPECT_TRUE(child_chance > 0.0);
-            EXPECT_TRUE(child_chance <= parent_chance);
-            checked_chance = true;
-            break;
-        }
-    }
-
-    EXPECT_TRUE(checked_chance);
+	EXPECT_NEAR(solver.node_values()[1], 3.0, 1e-12);
+	EXPECT_NEAR(solver.node_values()[2], 2.0, 1e-12);
+	EXPECT_NEAR(solver.node_values()[graph.root], 2.5, 1e-12);
+	EXPECT_NEAR(solver.action_values()[2], 3.0, 1e-12);
+	EXPECT_NEAR(solver.action_values()[3], -1.0, 1e-12);
+	EXPECT_NEAR(solver.action_values()[4], 2.0, 1e-12);
+	EXPECT_NEAR(solver.action_values()[5], -2.0, 1e-12);
 }
 
-TEST_CASE(hunl_flat_dcfr_terminal_stage_uses_precomputed_leaf_utilities) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values_for_hand_action_layout)
+{
+	const auto graph = make_shared_infoset_same_depth_graph();
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetHandAction,
+		1);
 
-    solver.run_iteration();
+	auto& table = solver.infoset_table_mut();
+	const auto infoset_id = graph.infosets.front().id;
+	auto* regret = table.regret_mut(infoset_id);
+	const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
+	for (std::size_t bucket = 0; bucket < bucket_count; ++bucket)
+	{
+		regret[table.value_index(infoset_id, bucket, 0)] = 4.0;
+		regret[table.value_index(infoset_id, bucket, 1)] = 0.0;
+	}
 
-    bool saw_terminal = false;
-    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
-        const auto& meta = graph.node_meta[node_idx];
-        if (meta.type != texas::HUNLFlatNodeType::TerminalFold &&
-            meta.type != texas::HUNLFlatNodeType::TerminalShowdown) {
-            continue;
-        }
+	solver.run_iteration();
 
-        saw_terminal = true;
-        if (meta.type == texas::HUNLFlatNodeType::TerminalFold) {
-            EXPECT_TRUE(meta.terminal_kind.tag == texas::TerminalKindTag::Fold);
-        } else {
-            EXPECT_TRUE(meta.terminal_kind.tag == texas::TerminalKindTag::Showdown);
-        }
-        EXPECT_NEAR(meta.terminal_utility[0], solver.terminal_values()[node_idx], 1e-12);
-    }
-
-    EXPECT_TRUE(saw_terminal);
+	const auto* regret_after = solver.infoset_table().regret(infoset_id);
+	EXPECT_NEAR(regret_after[table.value_index(infoset_id, 0, 0)], 2.0, 1e-12);
+	EXPECT_NEAR(regret_after[table.value_index(infoset_id, 1, 0)], 2.0, 1e-12);
+	EXPECT_NEAR(regret_after[table.value_index(infoset_id, 0, 1)], -1.0, 1e-12);
+	EXPECT_NEAR(regret_after[table.value_index(infoset_id, 1, 1)], -1.0, 1e-12);
 }
 
-TEST_CASE(hunl_flat_dcfr_backward_stage_copies_terminal_values_into_node_values) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    solver.run_iteration();
+	solver.run_iterations(2);
 
-    bool saw_terminal = false;
-    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
-        const auto& meta = graph.node_meta[node_idx];
-        if (meta.type != texas::HUNLFlatNodeType::TerminalFold &&
-            meta.type != texas::HUNLFlatNodeType::TerminalShowdown) {
-            continue;
-        }
-        saw_terminal = true;
-        EXPECT_NEAR(solver.node_values()[node_idx], solver.terminal_values()[node_idx], 1e-12);
-    }
-
-    EXPECT_TRUE(saw_terminal);
+	for (const auto& meta : solver.infoset_table().meta())
+	{
+		EXPECT_EQ(meta.last_discount_iter, 2U);
+	}
 }
 
-TEST_CASE(hunl_flat_dcfr_rejects_depth_limited_graphs_without_shared_leaf_evaluator) {
-    auto config = texas::benchmark_turn_subgame();
-    config.depth_limit_plies = 1;
-    const auto graph = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
-    EXPECT_THROW(
-        texas::HUNLFlatDCFR(graph, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand),
-        std::invalid_argument);
+TEST_CASE(hunl_flat_dcfr_produces_normalized_strategies_after_simd_passes)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetHandAction,
+		2);
+
+	solver.run_iterations(3);
+
+	EXPECT_EQ(solver.iterations(), 3U);
+	EXPECT_TRUE(solver.profile().discount_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().strategy_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().reach_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().terminal_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().backward_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().regret_seconds >= 0.0);
+	EXPECT_TRUE(solver.profile().average_strategy_seconds >= 0.0);
+
+	for (const auto& meta : solver.infoset_table().meta())
+	{
+		const auto* strategy = solver.infoset_table().current_strategy(meta.id);
+		for (std::size_t h = 0; h < meta.hand_count; ++h)
+		{
+			double sum = 0.0;
+			for (std::size_t a = 0; a < meta.action_count; ++a)
+			{
+				const auto idx = h * static_cast<std::size_t>(meta.action_count) + a;
+				EXPECT_TRUE(strategy[idx] >= 0.0 || std::isnan(strategy[idx]));
+				sum += strategy[idx];
+			}
+			EXPECT_NEAR(sum, 1.0, 1e-12);
+		}
+	}
 }
 
-TEST_CASE(hunl_flat_dcfr_depth_limited_rejection_is_worker_count_independent) {
-    auto config = texas::benchmark_turn_subgame();
-    config.depth_limit_plies = 1;
-    const auto graph_a = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
-    const auto graph_b = texas::HUNLFlatSolveGraph::build(std::make_shared<const texas::HUNLConfig>(config));
+TEST_CASE(hunl_flat_dcfr_matches_across_worker_counts_on_small_tree)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph_a = texas::HUNLFlatSolveGraph::build(config);
+	const auto graph_b = texas::HUNLFlatSolveGraph::build(config);
 
-    EXPECT_THROW(texas::HUNLFlatDCFR(graph_a, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 1),
-                 std::invalid_argument);
-    EXPECT_THROW(texas::HUNLFlatDCFR(graph_b, {2, 2}, texas::HUNLFlatValueLayout::InfosetActionHand, 2),
-                 std::invalid_argument);
+	texas::HUNLFlatDCFR single_worker(
+		graph_a,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetHandAction,
+		1);
+	texas::HUNLFlatDCFR two_workers(
+		graph_b,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetHandAction,
+		2);
+
+	single_worker.run_iterations(2);
+	two_workers.run_iterations(2);
+
+	const auto exported_single = single_worker.export_average_strategy();
+	const auto exported_parallel = two_workers.export_average_strategy();
+
+	EXPECT_EQ(exported_single.size(), exported_parallel.size());
+	for (const auto& [key, strategy] : exported_single)
+	{
+		const auto it = exported_parallel.find(key);
+		EXPECT_TRUE(it != exported_parallel.end());
+		EXPECT_EQ(strategy.size(), it->second.size());
+		for (std::size_t i = 0; i < strategy.size(); ++i)
+		{
+			EXPECT_NEAR(strategy[i], it->second[i], 1e-12);
+		}
+	}
+
+	EXPECT_TRUE(single_worker.profile().strategy_seconds >= 0.0);
+	EXPECT_TRUE(two_workers.profile().strategy_seconds >= 0.0);
+	EXPECT_TRUE(single_worker.profile().backward_seconds >= 0.0);
+	EXPECT_TRUE(two_workers.profile().backward_seconds >= 0.0);
 }
 
-TEST_CASE(hunl_flat_dcfr_backward_stage_writes_action_values_from_children) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_rejects_negative_range_weights_in_config_validation)
+{
+	auto config = texas::default_tiny_subgame();
+	config.initial_hole_cards = std::nullopt;
+	config.range_policy = texas::HUNLRangePolicy::RequireExplicit;
+	texas::HUNLRangeInput range;
+	range.hand_weights.push_back({ { c(14, 1), c(13, 3) }, -0.5 });
+	config.initial_ranges[0] = range;
+	texas::HUNLRangeInput opponent_range;
+	opponent_range.hand_weights.push_back({ { c(12, 1), c(11, 3) }, 1.0 });
+	config.initial_ranges[1] = opponent_range;
 
-    solver.run_iteration();
-
-    bool checked_parent = false;
-    for (std::size_t node_idx = 0; node_idx < graph.node_meta.size(); ++node_idx) {
-        const auto& meta = graph.node_meta[node_idx];
-        if (meta.child_count == 0) {
-            continue;
-        }
-
-        for (std::size_t i = 0; i < meta.child_count; ++i) {
-            const auto child = graph.children[meta.child_begin + i];
-            EXPECT_NEAR(
-                solver.action_values()[meta.child_begin + i],
-                solver.node_values()[child],
-                1e-12);
-        }
-        checked_parent = true;
-        break;
-    }
-
-    EXPECT_TRUE(checked_parent);
-}
-
-TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph) {
-    const auto graph = make_shared_infoset_same_depth_graph();
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1);
-
-    auto& table = solver.infoset_table_mut();
-    const auto infoset_id = graph.infosets.front().id;
-    auto* regret = table.regret_mut(infoset_id);
-    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
-    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
-        regret[bucket] = 4.0;
-        regret[bucket_count + bucket] = 0.0;
-    }
-
-    solver.run_iteration();
-
-    EXPECT_NEAR(solver.node_values()[1], 3.0, 1e-12);
-    EXPECT_NEAR(solver.node_values()[2], 2.0, 1e-12);
-    EXPECT_NEAR(solver.node_values()[graph.root], 2.5, 1e-12);
-    EXPECT_NEAR(solver.action_values()[2], 3.0, 1e-12);
-    EXPECT_NEAR(solver.action_values()[3], -1.0, 1e-12);
-    EXPECT_NEAR(solver.action_values()[4], 2.0, 1e-12);
-    EXPECT_NEAR(solver.action_values()[5], -2.0, 1e-12);
-}
-
-TEST_CASE(hunl_flat_dcfr_backward_stage_computes_root_value_from_children) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
-
-    auto& table = solver.infoset_table_mut();
-    const auto& root_meta = graph.node_meta[graph.root];
-    const auto infoset_id = root_meta.infoset_id;
-    auto* regret = table.regret_mut(infoset_id);
-    for (std::size_t i = 0; i < table.row_value_count(infoset_id); ++i) {
-        regret[i] = 0.0;
-    }
-    if (root_meta.child_count >= 2) {
-        const auto hand_count = table.meta()[infoset_id.value].hand_count;
-        regret[0] = 4.0;
-        regret[hand_count] = 1.0;
-    }
-
-    solver.run_iteration();
-
-    if (root_meta.type == texas::HUNLFlatNodeType::Decision && root_meta.child_count >= 2) {
-        const auto a0 = solver.action_values()[root_meta.child_begin];
-        const auto a1 = solver.action_values()[root_meta.child_begin + 1];
-        EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
-        EXPECT_TRUE(solver.node_values()[graph.root] >= std::min(a0, a1) - 1e-12);
-    } else {
-        EXPECT_TRUE(root_meta.child_count > 0);
-    }
-}
-
-TEST_CASE(hunl_flat_dcfr_regret_update_uses_action_minus_node_value) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
-
-    auto& table = solver.infoset_table_mut();
-    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
-    auto* regret_before = table.regret_mut(root_infoset);
-    const auto before0 = regret_before[0];
-    const auto action_count = table.meta()[root_infoset.value].action_count;
-    const auto hand_count = table.meta()[root_infoset.value].hand_count;
-    const auto before1 = action_count >= 2 ? regret_before[hand_count] : before0;
-
-    solver.run_iteration();
-
-    const auto* regret_after = table.regret(root_infoset);
-    if (action_count >= 2) {
-        EXPECT_TRUE(regret_after[0] != before0 || regret_after[hand_count] != before1);
-    } else {
-        EXPECT_TRUE(regret_after[0] != before0);
-    }
-}
-
-TEST_CASE(hunl_flat_dcfr_average_strategy_update_is_reach_weighted) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
-
-    solver.run_iteration();
-
-    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
-    const auto* strategy = solver.infoset_table().current_strategy(root_infoset);
-    const auto* strategy_sum = solver.infoset_table().strategy_sum(root_infoset);
-    const auto action_count = solver.infoset_table().meta()[root_infoset.value].action_count;
-    const auto hand_count = solver.infoset_table().meta()[root_infoset.value].hand_count;
-    const auto bucket_range = solver.infoset_table().infoset_bucket_range(root_infoset);
-    const auto own_reach = graph.node_meta[graph.root].player == 0
-        ? solver.player0_reach()[graph.root] * solver.chance_reach()[graph.root]
-        : solver.player1_reach()[graph.root] * solver.chance_reach()[graph.root];
-    const auto first_bucket_mass = solver.normalized_bucket_reach()[bucket_range.begin];
-
-    EXPECT_NEAR(strategy_sum[0], own_reach * first_bucket_mass * strategy[0], 1e-12);
-    if (action_count >= 2) {
-        EXPECT_NEAR(strategy_sum[hand_count], own_reach * first_bucket_mass * strategy[hand_count], 1e-12);
-    }
-}
-
-TEST_CASE(hunl_flat_dcfr_float32_precision_tracks_double_on_small_game) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph_f64 = texas::HUNLFlatSolveGraph::build(config);
-    const auto graph_f32 = texas::HUNLFlatSolveGraph::build(config);
-
-    texas::HUNLFlatDCFR solver_f64(
-        graph_f64,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1,
-        1.5,
-        0.0,
-        2.0,
-        texas::HUNLFlatStoragePrecision::Float64);
-    texas::HUNLFlatDCFR solver_f32(
-        graph_f32,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1,
-        1.5,
-        0.0,
-        2.0,
-        texas::HUNLFlatStoragePrecision::Float32);
-
-    solver_f64.run_iterations(3);
-    solver_f32.run_iterations(3);
-
-    EXPECT_EQ(solver_f64.storage_precision(), texas::HUNLFlatStoragePrecision::Float64);
-    EXPECT_EQ(solver_f32.storage_precision(), texas::HUNLFlatStoragePrecision::Float32);
-    EXPECT_NEAR(solver_f64.node_values()[graph_f64.root], solver_f32.node_values()[graph_f32.root], 1e-5);
-    EXPECT_NEAR(solver_f64.terminal_values()[0], solver_f32.terminal_values()[0], 1e-9);
-
-    const auto root_infoset = graph_f64.node_meta[graph_f64.root].infoset_id;
-    const auto action_count = solver_f64.infoset_table().meta()[root_infoset.value].action_count;
-    const auto bucket_count = solver_f64.infoset_table().meta()[root_infoset.value].bucket_count;
-    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
-        double sum_f64 = 0.0;
-        double sum_f32 = 0.0;
-        for (std::size_t action = 0; action < action_count; ++action) {
-            const auto idx = action * bucket_count + bucket;
-            const auto p64 = solver_f64.infoset_table().current_strategy_value(root_infoset, idx);
-            const auto p32 = solver_f32.infoset_table().current_strategy_value(root_infoset, idx);
-            EXPECT_NEAR(p64, p32, 1e-5);
-            sum_f64 += p64;
-            sum_f32 += p32;
-        }
-        EXPECT_NEAR(sum_f64, 1.0, 1e-12);
-        EXPECT_NEAR(sum_f32, 1.0, 1e-5);
-    }
-}
-
-TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values) {
-    const auto graph = make_shared_infoset_same_depth_graph();
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1);
-
-    auto& table = solver.infoset_table_mut();
-    const auto infoset_id = graph.infosets.front().id;
-    auto* regret = table.regret_mut(infoset_id);
-    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
-    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
-        regret[bucket] = 4.0;
-        regret[bucket_count + bucket] = 0.0;
-    }
-
-    solver.run_iteration();
-
-    const auto* regret_after = solver.infoset_table().regret(infoset_id);
-    EXPECT_NEAR(regret_after[0], 2.0, 1e-12);
-    EXPECT_NEAR(regret_after[1], 2.0, 1e-12);
-    EXPECT_NEAR(regret_after[2], -1.0, 1e-12);
-    EXPECT_NEAR(regret_after[3], -1.0, 1e-12);
-}
-
-TEST_CASE(hunl_flat_dcfr_backward_stage_computes_exact_values_on_shared_infoset_graph_for_hand_action_layout) {
-    const auto graph = make_shared_infoset_same_depth_graph();
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetHandAction,
-        1);
-
-    auto& table = solver.infoset_table_mut();
-    const auto infoset_id = graph.infosets.front().id;
-    auto* regret = table.regret_mut(infoset_id);
-    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
-    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
-        regret[table.value_index(infoset_id, bucket, 0)] = 4.0;
-        regret[table.value_index(infoset_id, bucket, 1)] = 0.0;
-    }
-
-    solver.run_iteration();
-
-    EXPECT_NEAR(solver.node_values()[1], 3.0, 1e-12);
-    EXPECT_NEAR(solver.node_values()[2], 2.0, 1e-12);
-    EXPECT_NEAR(solver.node_values()[graph.root], 2.5, 1e-12);
-    EXPECT_NEAR(solver.action_values()[2], 3.0, 1e-12);
-    EXPECT_NEAR(solver.action_values()[3], -1.0, 1e-12);
-    EXPECT_NEAR(solver.action_values()[4], 2.0, 1e-12);
-    EXPECT_NEAR(solver.action_values()[5], -2.0, 1e-12);
-}
-
-TEST_CASE(hunl_flat_dcfr_regret_update_matches_exact_shared_infoset_values_for_hand_action_layout) {
-    const auto graph = make_shared_infoset_same_depth_graph();
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetHandAction,
-        1);
-
-    auto& table = solver.infoset_table_mut();
-    const auto infoset_id = graph.infosets.front().id;
-    auto* regret = table.regret_mut(infoset_id);
-    const auto bucket_count = table.meta()[infoset_id.value].bucket_count;
-    for (std::size_t bucket = 0; bucket < bucket_count; ++bucket) {
-        regret[table.value_index(infoset_id, bucket, 0)] = 4.0;
-        regret[table.value_index(infoset_id, bucket, 1)] = 0.0;
-    }
-
-    solver.run_iteration();
-
-    const auto* regret_after = solver.infoset_table().regret(infoset_id);
-    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 0, 0)], 2.0, 1e-12);
-    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 1, 0)], 2.0, 1e-12);
-    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 0, 1)], -1.0, 1e-12);
-    EXPECT_NEAR(regret_after[table.value_index(infoset_id, 1, 1)], -1.0, 1e-12);
-}
-
-TEST_CASE(hunl_flat_dcfr_discount_stage_updates_infoset_discount_iteration) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
-
-    solver.run_iterations(2);
-
-    for (const auto& meta : solver.infoset_table().meta()) {
-        EXPECT_EQ(meta.last_discount_iter, 2U);
-    }
-}
-
-TEST_CASE(hunl_flat_dcfr_produces_normalized_strategies_after_simd_passes) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetHandAction,
-        2);
-
-    solver.run_iterations(3);
-
-    EXPECT_EQ(solver.iterations(), 3U);
-    EXPECT_TRUE(solver.profile().discount_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().strategy_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().reach_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().terminal_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().backward_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().regret_seconds >= 0.0);
-    EXPECT_TRUE(solver.profile().average_strategy_seconds >= 0.0);
-
-    for (const auto& meta : solver.infoset_table().meta()) {
-        const auto* strategy = solver.infoset_table().current_strategy(meta.id);
-        for (std::size_t h = 0; h < meta.hand_count; ++h) {
-            double sum = 0.0;
-            for (std::size_t a = 0; a < meta.action_count; ++a) {
-                const auto idx = h * static_cast<std::size_t>(meta.action_count) + a;
-                EXPECT_TRUE(strategy[idx] >= 0.0 || std::isnan(strategy[idx]));
-                sum += strategy[idx];
-            }
-            EXPECT_NEAR(sum, 1.0, 1e-12);
-        }
-    }
-}
-
-TEST_CASE(hunl_flat_dcfr_matches_across_worker_counts_on_small_tree) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph_a = texas::HUNLFlatSolveGraph::build(config);
-    const auto graph_b = texas::HUNLFlatSolveGraph::build(config);
-
-    texas::HUNLFlatDCFR single_worker(
-        graph_a,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetHandAction,
-        1);
-    texas::HUNLFlatDCFR two_workers(
-        graph_b,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetHandAction,
-        2);
-
-    single_worker.run_iterations(2);
-    two_workers.run_iterations(2);
-
-    const auto exported_single = single_worker.export_average_strategy();
-    const auto exported_parallel = two_workers.export_average_strategy();
-
-    EXPECT_EQ(exported_single.size(), exported_parallel.size());
-    for (const auto& [key, strategy] : exported_single) {
-        const auto it = exported_parallel.find(key);
-        EXPECT_TRUE(it != exported_parallel.end());
-        EXPECT_EQ(strategy.size(), it->second.size());
-        for (std::size_t i = 0; i < strategy.size(); ++i) {
-            EXPECT_NEAR(strategy[i], it->second[i], 1e-12);
-        }
-    }
-
-    EXPECT_TRUE(single_worker.profile().strategy_seconds >= 0.0);
-    EXPECT_TRUE(two_workers.profile().strategy_seconds >= 0.0);
-    EXPECT_TRUE(single_worker.profile().backward_seconds >= 0.0);
-    EXPECT_TRUE(two_workers.profile().backward_seconds >= 0.0);
-}
-
-TEST_CASE(hunl_flat_dcfr_rejects_negative_range_weights_in_config_validation) {
-    auto config = texas::default_tiny_subgame();
-    config.initial_hole_cards = std::nullopt;
-    config.range_policy = texas::HUNLRangePolicy::RequireExplicit;
-    texas::HUNLRangeInput range;
-    range.hand_weights.push_back({{c(14, 1), c(13, 3)}, -0.5});
-    config.initial_ranges[0] = range;
-    texas::HUNLRangeInput opponent_range;
-    opponent_range.hand_weights.push_back({{c(12, 1), c(11, 3)}, 1.0});
-    config.initial_ranges[1] = opponent_range;
-
-    EXPECT_THROW(config.validate(), std::invalid_argument);
+	EXPECT_THROW(config.validate(), std::invalid_argument);
 }
 
 #if defined(_WIN32)
-TEST_CASE(hunl_flat_bucket_map_applies_mixed_range_inputs_per_infoset_player) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
-    const auto hole = (*config->initial_hole_cards)[0];
+TEST_CASE(hunl_flat_bucket_map_applies_mixed_range_inputs_per_infoset_player)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+	const auto hole = (*config->initial_hole_cards)[0];
 
-    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
-        graph,
-        texas::load_abstraction(abstraction_path));
+	auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
+		graph,
+		texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    texas::HUNLRangeInput mixed_range;
-    mixed_range.hand_weights.push_back({hole, 3.0});
-    mixed_range.bucket_weights.push_back({texas::Street::River, 1U, 1.0});
-    player_ranges[0] = mixed_range;
+	std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = { std::nullopt, std::nullopt };
+	texas::HUNLRangeInput mixed_range;
+	mixed_range.hand_weights.push_back({ hole, 3.0 });
+	mixed_range.bucket_weights.push_back({ texas::Street::River, 1U, 1.0 });
+	player_ranges[0] = mixed_range;
 
-    bucket_map.apply_range_inputs(graph, player_ranges);
+	bucket_map.apply_range_inputs(graph, player_ranges);
 
-    bool checked_player_zero_infoset = false;
-    for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 0 || infoset.street != texas::Street::River) {
-            continue;
-        }
-        const auto mapped_bucket = bucket_map.lookup_bucket(infoset.id, hole);
-        const auto* weights = bucket_map.bucket_weights(infoset.id);
-        EXPECT_TRUE(weights != nullptr);
-        EXPECT_EQ(weights->size(), 2U);
-        const auto expected_bucket0 = mapped_bucket == 0 ? 0.75 : 0.0;
-        const auto expected_bucket1 = mapped_bucket == 1 ? 1.0 : 0.25;
-        EXPECT_NEAR((*weights)[0], expected_bucket0, 1e-12);
-        EXPECT_NEAR((*weights)[1], expected_bucket1, 1e-12);
-        checked_player_zero_infoset = true;
-        break;
-    }
+	bool checked_player_zero_infoset = false;
+	for (const auto& infoset : graph.infosets)
+	{
+		if (infoset.player != 0 || infoset.street != texas::Street::River)
+		{
+			continue;
+		}
+		const auto mapped_bucket = bucket_map.lookup_bucket(infoset.id, hole);
+		const auto* weights = bucket_map.bucket_weights(infoset.id);
+		EXPECT_TRUE(weights != nullptr);
+		EXPECT_EQ(weights->size(), 2U);
+		const auto expected_bucket0 = mapped_bucket == 0 ? 0.75 : 0.0;
+		const auto expected_bucket1 = mapped_bucket == 1 ? 1.0 : 0.25;
+		EXPECT_NEAR((*weights)[0], expected_bucket0, 1e-12);
+		EXPECT_NEAR((*weights)[1], expected_bucket1, 1e-12);
+		checked_player_zero_infoset = true;
+		break;
+	}
 
-    EXPECT_TRUE(checked_player_zero_infoset);
-    std::filesystem::remove(abstraction_path);
+	EXPECT_TRUE(checked_player_zero_infoset);
+	std::filesystem::remove(abstraction_path);
 }
 
-TEST_CASE(hunl_flat_bucket_map_applies_direct_bucket_weights) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+TEST_CASE(hunl_flat_bucket_map_applies_direct_bucket_weights)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
 
-    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
-        graph,
-        texas::load_abstraction(abstraction_path));
+	auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
+		graph,
+		texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    texas::HUNLRangeInput bucket_only_range;
-    bucket_only_range.bucket_weights.push_back({texas::Street::River, 0U, 2.0});
-    bucket_only_range.bucket_weights.push_back({texas::Street::River, 1U, 6.0});
-    player_ranges[1] = bucket_only_range;
+	std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = { std::nullopt, std::nullopt };
+	texas::HUNLRangeInput bucket_only_range;
+	bucket_only_range.bucket_weights.push_back({ texas::Street::River, 0U, 2.0 });
+	bucket_only_range.bucket_weights.push_back({ texas::Street::River, 1U, 6.0 });
+	player_ranges[1] = bucket_only_range;
 
-    bucket_map.apply_range_inputs(graph, player_ranges);
+	bucket_map.apply_range_inputs(graph, player_ranges);
 
-    bool checked_player_one_infoset = false;
-    for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 1 || infoset.street != texas::Street::River) {
-            continue;
-        }
-        const auto* weights = bucket_map.bucket_weights(infoset.id);
-        EXPECT_TRUE(weights != nullptr);
-        EXPECT_EQ(weights->size(), 2U);
-        EXPECT_NEAR((*weights)[0], 0.25, 1e-12);
-        EXPECT_NEAR((*weights)[1], 0.75, 1e-12);
-        checked_player_one_infoset = true;
-        break;
-    }
+	bool checked_player_one_infoset = false;
+	for (const auto& infoset : graph.infosets)
+	{
+		if (infoset.player != 1 || infoset.street != texas::Street::River)
+		{
+			continue;
+		}
+		const auto* weights = bucket_map.bucket_weights(infoset.id);
+		EXPECT_TRUE(weights != nullptr);
+		EXPECT_EQ(weights->size(), 2U);
+		EXPECT_NEAR((*weights)[0], 0.25, 1e-12);
+		EXPECT_NEAR((*weights)[1], 0.75, 1e-12);
+		checked_player_one_infoset = true;
+		break;
+	}
 
-    EXPECT_TRUE(checked_player_one_infoset);
-    std::filesystem::remove(abstraction_path);
+	EXPECT_TRUE(checked_player_one_infoset);
+	std::filesystem::remove(abstraction_path);
 }
 
-TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_non_matching_streets) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_non_matching_streets)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
 
-    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
-        graph,
-        texas::load_abstraction(abstraction_path));
+	auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
+		graph,
+		texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    texas::HUNLRangeInput turn_only_range;
-    turn_only_range.bucket_weights.push_back({texas::Street::Turn, 0U, 5.0});
-    turn_only_range.bucket_weights.push_back({texas::Street::Turn, 1U, 1.0});
-    player_ranges[0] = turn_only_range;
+	std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = { std::nullopt, std::nullopt };
+	texas::HUNLRangeInput turn_only_range;
+	turn_only_range.bucket_weights.push_back({ texas::Street::Turn, 0U, 5.0 });
+	turn_only_range.bucket_weights.push_back({ texas::Street::Turn, 1U, 1.0 });
+	player_ranges[0] = turn_only_range;
 
-    bucket_map.apply_range_inputs(graph, player_ranges);
+	bucket_map.apply_range_inputs(graph, player_ranges);
 
-    bool checked_infoset = false;
-    for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 0 || infoset.street != texas::Street::River) {
-            continue;
-        }
-        const auto* weights = bucket_map.bucket_weights(infoset.id);
-        EXPECT_TRUE(weights != nullptr);
-        EXPECT_NEAR((*weights)[0] + (*weights)[1], 0.0, 1e-12);
-        checked_infoset = true;
-        break;
-    }
+	bool checked_infoset = false;
+	for (const auto& infoset : graph.infosets)
+	{
+		if (infoset.player != 0 || infoset.street != texas::Street::River)
+		{
+			continue;
+		}
+		const auto* weights = bucket_map.bucket_weights(infoset.id);
+		EXPECT_TRUE(weights != nullptr);
+		EXPECT_NEAR((*weights)[0] + (*weights)[1], 0.0, 1e-12);
+		checked_infoset = true;
+		break;
+	}
 
-    EXPECT_TRUE(checked_infoset);
-    std::filesystem::remove(abstraction_path);
+	EXPECT_TRUE(checked_infoset);
+	std::filesystem::remove(abstraction_path);
 }
 
-TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
+TEST_CASE(hunl_flat_bucket_map_range_inputs_ignore_blocked_hands)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	const auto abstraction_path = write_two_bucket_river_abstraction(config->initial_board);
 
-    auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
-        graph,
-        texas::load_abstraction(abstraction_path));
+	auto bucket_map = texas::HUNLFlatBucketMap::from_abstraction(
+		graph,
+		texas::load_abstraction(abstraction_path));
 
-    std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = {std::nullopt, std::nullopt};
-    texas::HUNLRangeInput blocked_hand_range;
-    blocked_hand_range.hand_weights.push_back({{config->initial_board[0], c(9, 1)}, 5.0});
-    player_ranges[0] = blocked_hand_range;
+	std::array<std::optional<texas::HUNLRangeInput>, 2> player_ranges = { std::nullopt, std::nullopt };
+	texas::HUNLRangeInput blocked_hand_range;
+	blocked_hand_range.hand_weights.push_back({ { config->initial_board[0], c(9, 1) }, 5.0 });
+	player_ranges[0] = blocked_hand_range;
 
-    bucket_map.apply_range_inputs(graph, player_ranges);
+	bucket_map.apply_range_inputs(graph, player_ranges);
 
-    bool checked_infoset = false;
-    for (const auto& infoset : graph.infosets) {
-        if (infoset.player != 0 || infoset.street != texas::Street::River) {
-            continue;
-        }
-        const auto* weights = bucket_map.bucket_weights(infoset.id);
-        EXPECT_TRUE(weights != nullptr);
-        EXPECT_NEAR((*weights)[0] + (*weights)[1], 0.0, 1e-12);
-        checked_infoset = true;
-        break;
-    }
+	bool checked_infoset = false;
+	for (const auto& infoset : graph.infosets)
+	{
+		if (infoset.player != 0 || infoset.street != texas::Street::River)
+		{
+			continue;
+		}
+		const auto* weights = bucket_map.bucket_weights(infoset.id);
+		EXPECT_TRUE(weights != nullptr);
+		EXPECT_NEAR((*weights)[0] + (*weights)[1], 0.0, 1e-12);
+		checked_infoset = true;
+		break;
+	}
 
-    EXPECT_TRUE(checked_infoset);
-    std::filesystem::remove(abstraction_path);
+	EXPECT_TRUE(checked_infoset);
+	std::filesystem::remove(abstraction_path);
 }
 #endif
 
-TEST_CASE(hunl_flat_dcfr_backward_stage_root_value_stays_between_child_values_with_more_rows) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
-    const auto graph = texas::HUNLFlatSolveGraph::build(config);
-    texas::HUNLFlatDCFR solver(
-        graph,
-        {4, 4},
-        texas::HUNLFlatValueLayout::InfosetActionHand);
+TEST_CASE(hunl_flat_dcfr_backward_stage_root_value_stays_between_child_values_with_more_rows)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::default_tiny_subgame());
+	const auto graph = texas::HUNLFlatSolveGraph::build(config);
+	texas::HUNLFlatDCFR solver(
+		graph,
+		{ 4, 4 },
+		texas::HUNLFlatValueLayout::InfosetActionHand);
 
-    auto& table = solver.infoset_table_mut();
-    const auto root_infoset = graph.node_meta[graph.root].infoset_id;
-    auto* regret = table.regret_mut(root_infoset);
-    const auto& meta = table.meta()[root_infoset.value];
-    for (std::size_t i = 0; i < meta.value_count; ++i) {
-        regret[i] = 0.0;
-    }
-    if (meta.action_count >= 2) {
-        for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket) {
-            regret[bucket] = 3.0 + static_cast<double>(bucket);
-            regret[meta.bucket_count + bucket] = 1.0;
-        }
-    }
+	auto& table = solver.infoset_table_mut();
+	const auto root_infoset = graph.node_meta[graph.root].infoset_id;
+	auto* regret = table.regret_mut(root_infoset);
+	const auto& meta = table.meta()[root_infoset.value];
+	for (std::size_t i = 0; i < meta.value_count; ++i)
+	{
+		regret[i] = 0.0;
+	}
+	if (meta.action_count >= 2)
+	{
+		for (std::size_t bucket = 0; bucket < meta.bucket_count; ++bucket)
+		{
+			regret[bucket] = 3.0 + static_cast<double>(bucket);
+			regret[meta.bucket_count + bucket] = 1.0;
+		}
+	}
 
-    solver.run_iteration();
+	solver.run_iteration();
 
-    const auto& root_meta = graph.node_meta[graph.root];
-    EXPECT_TRUE(root_meta.child_count >= 2);
-    const auto a0 = solver.action_values()[root_meta.child_begin];
-    const auto a1 = solver.action_values()[root_meta.child_begin + 1];
-    EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
-    EXPECT_TRUE(solver.node_values()[graph.root] >= std::min(a0, a1) - 1e-12);
+	const auto& root_meta = graph.node_meta[graph.root];
+	EXPECT_TRUE(root_meta.child_count >= 2);
+	const auto a0 = solver.action_values()[root_meta.child_begin];
+	const auto a1 = solver.action_values()[root_meta.child_begin + 1];
+	EXPECT_TRUE(solver.node_values()[graph.root] <= std::max(a0, a1) + 1e-12);
+	EXPECT_TRUE(solver.node_values()[graph.root] >= std::min(a0, a1) - 1e-12);
 }
 
-TEST_CASE(hunl_flat_dcfr_backward_stage_action_hand_layout_matches_across_worker_counts) {
-    const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
-    const auto graph_a = texas::HUNLFlatSolveGraph::build(config);
-    const auto graph_b = texas::HUNLFlatSolveGraph::build(config);
+TEST_CASE(hunl_flat_dcfr_backward_stage_action_hand_layout_matches_across_worker_counts)
+{
+	const auto config = std::make_shared<const texas::HUNLConfig>(texas::benchmark_turn_subgame());
+	const auto graph_a = texas::HUNLFlatSolveGraph::build(config);
+	const auto graph_b = texas::HUNLFlatSolveGraph::build(config);
 
-    texas::HUNLFlatDCFR single_worker(
-        graph_a,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        1);
-    texas::HUNLFlatDCFR two_workers(
-        graph_b,
-        {2, 2},
-        texas::HUNLFlatValueLayout::InfosetActionHand,
-        2);
+	texas::HUNLFlatDCFR single_worker(
+		graph_a,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		1);
+	texas::HUNLFlatDCFR two_workers(
+		graph_b,
+		{ 2, 2 },
+		texas::HUNLFlatValueLayout::InfosetActionHand,
+		2);
 
-    single_worker.run_iteration();
-    two_workers.run_iteration();
+	single_worker.run_iteration();
+	two_workers.run_iteration();
 
-    for (std::size_t i = 0; i < single_worker.node_values().size(); ++i) {
-        EXPECT_NEAR(single_worker.node_values()[i], two_workers.node_values()[i], 1e-12);
-    }
-    for (std::size_t i = 0; i < single_worker.action_values().size(); ++i) {
-        EXPECT_NEAR(single_worker.action_values()[i], two_workers.action_values()[i], 1e-12);
-    }
+	for (std::size_t i = 0; i < single_worker.node_values().size(); ++i)
+	{
+		EXPECT_NEAR(single_worker.node_values()[i], two_workers.node_values()[i], 1e-12);
+	}
+	for (std::size_t i = 0; i < single_worker.action_values().size(); ++i)
+	{
+		EXPECT_NEAR(single_worker.action_values()[i], two_workers.action_values()[i], 1e-12);
+	}
 }

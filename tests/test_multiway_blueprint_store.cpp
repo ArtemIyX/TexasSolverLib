@@ -7,96 +7,106 @@
 #include <stdexcept>
 #include <vector>
 
-namespace {
+namespace
+{
 
-texas::MultiwayBlueprintRow row(std::uint64_t state, texas::PlayerId seat, std::uint32_t bucket) {
-    texas::MultiwayBlueprintRow result;
-    result.infoset = {{state}, seat};
-    result.bucket = bucket;
-    result.action_menu_id = 77U;
-    result.actions = {{{texas::MultiwayAction::Check, 0U, 0, 77U}, 65535U}};
-    return result;
+	texas::MultiwayBlueprintRow row(std::uint64_t state, texas::PlayerId seat, std::uint32_t bucket)
+	{
+		texas::MultiwayBlueprintRow result;
+		result.infoset = { { state }, seat };
+		result.bucket = bucket;
+		result.action_menu_id = 77U;
+		result.actions = { { { texas::MultiwayAction::Check, 0U, 0, 77U }, 65535U } };
+		return result;
+	}
+
+	texas::MultiwayModelIdentity identity()
+	{
+		return texas::make_multiway_model_identity(texas::MultiwayBlueprintConfig{});
+	}
+
+} // namespace
+
+TEST_CASE(multiway_blueprint_store_finds_128_sorted_rows)
+{
+	std::vector<texas::MultiwayBlueprintRow> rows;
+	rows.reserve(128U);
+	for (std::uint64_t index = 128U; index > 0U; --index)
+		rows.push_back(row(index, 0, 0U));
+	const texas::MultiwayBlueprintStore store(identity(), std::move(rows));
+
+	EXPECT_EQ(store.row_count(), std::size_t{ 128U });
+	EXPECT_TRUE(store.memory_bytes() >= 128U * sizeof(texas::MultiwayBlueprintRowView));
+	for (std::uint64_t index = 1U; index <= 128U; ++index)
+	{
+		const auto found = store.find({ { index }, 0 }, 0U, 77U);
+		EXPECT_TRUE(found.valid());
+		EXPECT_EQ(found.infoset.public_state.value, index);
+		EXPECT_EQ(found.action_count, std::size_t{ 1U });
+	}
 }
 
-texas::MultiwayModelIdentity identity() {
-    return texas::make_multiway_model_identity(texas::MultiwayBlueprintConfig{});
+TEST_CASE(multiway_blueprint_store_flattens_runtime_actions)
+{
+	auto first = row(1U, 0, 0U);
+	auto second = row(2U, 0, 0U);
+	second.actions.push_back({ { texas::MultiwayAction::Fold, 1U, 0, 77U }, 1U });
+	second.actions[0].probability = 65534U;
+	const texas::MultiwayBlueprintStore store(identity(), { first, second });
+
+	const auto found = store.find({ { 2U }, 0 }, 0U, 77U);
+	EXPECT_TRUE(found.valid());
+	EXPECT_EQ(found.action_count, std::size_t{ 2U });
+	EXPECT_EQ(found.actions[0].probability, std::uint16_t{ 65534U });
+	EXPECT_EQ(found.actions[1].probability, std::uint16_t{ 1U });
+
+	const auto first_view = store.find({ { 1U }, 0 }, 0U, 77U);
+	EXPECT_TRUE(first_view.valid());
+	EXPECT_TRUE(first_view.actions + first_view.action_count == found.actions);
 }
 
-}  // namespace
-
-TEST_CASE(multiway_blueprint_store_finds_128_sorted_rows) {
-    std::vector<texas::MultiwayBlueprintRow> rows;
-    rows.reserve(128U);
-    for (std::uint64_t index = 128U; index > 0U; --index) rows.push_back(row(index, 0, 0U));
-    const texas::MultiwayBlueprintStore store(identity(), std::move(rows));
-
-    EXPECT_EQ(store.row_count(), std::size_t{128U});
-    EXPECT_TRUE(store.memory_bytes() >= 128U * sizeof(texas::MultiwayBlueprintRowView));
-    for (std::uint64_t index = 1U; index <= 128U; ++index) {
-        const auto found = store.find({{index}, 0}, 0U, 77U);
-        EXPECT_TRUE(found.valid());
-        EXPECT_EQ(found.infoset.public_state.value, index);
-        EXPECT_EQ(found.action_count, std::size_t{1U});
-    }
+TEST_CASE(multiway_blueprint_store_rejects_duplicate_and_malformed_rows)
+{
+	EXPECT_THROW(texas::MultiwayBlueprintStore(identity(), { row(1U, 0, 0U), row(1U, 0, 0U) }), std::invalid_argument);
+	auto malformed = row(2U, 0, 0U);
+	malformed.actions[0].probability = 1U;
+	EXPECT_THROW(texas::MultiwayBlueprintStore(identity(), { malformed }), std::invalid_argument);
 }
 
-TEST_CASE(multiway_blueprint_store_flattens_runtime_actions) {
-    auto first = row(1U, 0, 0U);
-    auto second = row(2U, 0, 0U);
-    second.actions.push_back({{texas::MultiwayAction::Fold, 1U, 0, 77U}, 1U});
-    second.actions[0].probability = 65534U;
-    const texas::MultiwayBlueprintStore store(identity(), {first, second});
+TEST_CASE(multiway_blueprint_provider_distinguishes_hit_miss_and_menu_mismatch)
+{
+	const auto stored = row(1U, 0, 0U);
+	const texas::MultiwayBlueprintStore store(identity(), { stored });
+	const texas::MultiwayBlueprintPolicyProvider provider(store);
+	texas::Probability probability = 0.0;
+	EXPECT_EQ(
+		provider.strategy_into({ { 1U }, 0 }, 0U, &stored.actions.front().action, 1U, &probability),
+		texas::MultiwayBlueprintLookupStatus::Hit);
+	EXPECT_NEAR(probability, 1.0, 1e-12);
 
-    const auto found = store.find({{2U}, 0}, 0U, 77U);
-    EXPECT_TRUE(found.valid());
-    EXPECT_EQ(found.action_count, std::size_t{2U});
-    EXPECT_EQ(found.actions[0].probability, std::uint16_t{65534U});
-    EXPECT_EQ(found.actions[1].probability, std::uint16_t{1U});
-
-    const auto first_view = store.find({{1U}, 0}, 0U, 77U);
-    EXPECT_TRUE(first_view.valid());
-    EXPECT_TRUE(first_view.actions + first_view.action_count == found.actions);
+	EXPECT_EQ(
+		provider.strategy_into({ { 2U }, 0 }, 0U, &stored.actions.front().action, 1U, &probability),
+		texas::MultiwayBlueprintLookupStatus::Missing);
+	EXPECT_EQ(
+		provider.strategy_into({ { 1U }, 0 }, 1U, &stored.actions.front().action, 1U, &probability),
+		texas::MultiwayBlueprintLookupStatus::MissingBucket);
+	auto incompatible = stored.actions.front().action;
+	incompatible.target_street_contribution = 1;
+	EXPECT_EQ(
+		provider.strategy_into({ { 1U }, 0 }, 0U, &incompatible, 1U, &probability),
+		texas::MultiwayBlueprintLookupStatus::IncompatibleMenu);
 }
 
-TEST_CASE(multiway_blueprint_store_rejects_duplicate_and_malformed_rows) {
-    EXPECT_THROW(texas::MultiwayBlueprintStore(identity(), {row(1U, 0, 0U), row(1U, 0, 0U)}), std::invalid_argument);
-    auto malformed = row(2U, 0, 0U);
-    malformed.actions[0].probability = 1U;
-    EXPECT_THROW(texas::MultiwayBlueprintStore(identity(), {malformed}), std::invalid_argument);
-}
-
-TEST_CASE(multiway_blueprint_provider_distinguishes_hit_miss_and_menu_mismatch) {
-    const auto stored = row(1U, 0, 0U);
-    const texas::MultiwayBlueprintStore store(identity(), {stored});
-    const texas::MultiwayBlueprintPolicyProvider provider(store);
-    texas::Probability probability = 0.0;
-    EXPECT_EQ(
-        provider.strategy_into({{1U}, 0}, 0U, &stored.actions.front().action, 1U, &probability),
-        texas::MultiwayBlueprintLookupStatus::Hit);
-    EXPECT_NEAR(probability, 1.0, 1e-12);
-
-    EXPECT_EQ(
-        provider.strategy_into({{2U}, 0}, 0U, &stored.actions.front().action, 1U, &probability),
-        texas::MultiwayBlueprintLookupStatus::Missing);
-    EXPECT_EQ(
-        provider.strategy_into({{1U}, 0}, 1U, &stored.actions.front().action, 1U, &probability),
-        texas::MultiwayBlueprintLookupStatus::MissingBucket);
-    auto incompatible = stored.actions.front().action;
-    incompatible.target_street_contribution = 1;
-    EXPECT_EQ(
-        provider.strategy_into({{1U}, 0}, 0U, &incompatible, 1U, &probability),
-        texas::MultiwayBlueprintLookupStatus::IncompatibleMenu);
-}
-
-TEST_CASE(multiway_blueprint_lookup_audit_is_deterministic_and_classifies_results) {
-    texas::MultiwayBlueprintLookupAudit audit;
-    audit.record(texas::MultiwayBlueprintLookupStatus::Hit, {{1U}, 0}, 0U, 77U);
-    audit.record(texas::MultiwayBlueprintLookupStatus::Missing, {{2U}, 1}, 1U, 78U);
-    audit.record(texas::MultiwayBlueprintLookupStatus::MissingBucket, {{3U}, 2}, 2U, 79U);
-    audit.record(texas::MultiwayBlueprintLookupStatus::IncompatibleMenu, {{4U}, 3}, 3U, 80U);
-    EXPECT_EQ(audit.lookup_hits, 1U);
-    EXPECT_EQ(audit.missing_infosets, 1U);
-    EXPECT_EQ(audit.missing_buckets, 1U);
-    EXPECT_EQ(audit.action_menu_mismatches, 1U);
-    EXPECT_TRUE(audit.fingerprint() != 0U);
+TEST_CASE(multiway_blueprint_lookup_audit_is_deterministic_and_classifies_results)
+{
+	texas::MultiwayBlueprintLookupAudit audit;
+	audit.record(texas::MultiwayBlueprintLookupStatus::Hit, { { 1U }, 0 }, 0U, 77U);
+	audit.record(texas::MultiwayBlueprintLookupStatus::Missing, { { 2U }, 1 }, 1U, 78U);
+	audit.record(texas::MultiwayBlueprintLookupStatus::MissingBucket, { { 3U }, 2 }, 2U, 79U);
+	audit.record(texas::MultiwayBlueprintLookupStatus::IncompatibleMenu, { { 4U }, 3 }, 3U, 80U);
+	EXPECT_EQ(audit.lookup_hits, 1U);
+	EXPECT_EQ(audit.missing_infosets, 1U);
+	EXPECT_EQ(audit.missing_buckets, 1U);
+	EXPECT_EQ(audit.action_menu_mismatches, 1U);
+	EXPECT_TRUE(audit.fingerprint() != 0U);
 }

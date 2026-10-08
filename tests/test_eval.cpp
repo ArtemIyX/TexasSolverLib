@@ -3,39 +3,44 @@
 
 #include <array>
 
-namespace {
+namespace
+{
 
-constexpr std::uint8_t c(std::uint8_t rank, std::uint8_t suit) {
-    return texas::card_to_int(rank, suit);
+	constexpr std::uint8_t c(std::uint8_t rank, std::uint8_t suit)
+	{
+		return texas::card_to_int(rank, suit);
+	}
+
+} // namespace
+
+TEST_CASE(eval_five_card_ordering_and_bridge)
+{
+	const std::array<std::uint8_t, 5> high_card = { c(14, 0), c(11, 1), c(8, 2), c(5, 3), c(2, 0) };
+	const std::array<std::uint8_t, 5> pair = { c(8, 0), c(8, 1), c(14, 0), c(11, 1), c(2, 0) };
+	const std::array<std::uint8_t, 5> straight_flush = { c(9, 0), c(8, 0), c(7, 0), c(6, 0), c(5, 0) };
+
+	const auto s_high = texas::Strength::evaluate_5(high_card);
+	const auto s_pair = texas::Strength::evaluate_5(pair);
+	const auto s_sf = texas::Strength::evaluate_5(straight_flush);
+
+	EXPECT_TRUE(s_high < s_pair);
+	EXPECT_TRUE(s_pair < s_sf);
 }
 
-}  // namespace
+TEST_CASE(eval_six_card_uses_fast_path)
+{
+	const std::array<std::uint8_t, 6> strong = { c(14, 0), c(14, 1), c(13, 0), c(12, 1), c(11, 2), c(2, 3) };
+	const std::array<std::uint8_t, 6> weak = { c(14, 0), c(13, 1), c(12, 0), c(9, 1), c(8, 2), c(2, 3) };
 
-TEST_CASE(eval_five_card_ordering_and_bridge) {
-    const std::array<std::uint8_t, 5> high_card = {c(14, 0), c(11, 1), c(8, 2), c(5, 3), c(2, 0)};
-    const std::array<std::uint8_t, 5> pair = {c(8, 0), c(8, 1), c(14, 0), c(11, 1), c(2, 0)};
-    const std::array<std::uint8_t, 5> straight_flush = {c(9, 0), c(8, 0), c(7, 0), c(6, 0), c(5, 0)};
+	const auto s_strong = texas::Strength::evaluate_6(strong);
+	const auto s_weak = texas::Strength::evaluate_6(weak);
 
-    const auto s_high = texas::Strength::evaluate_5(high_card);
-    const auto s_pair = texas::Strength::evaluate_5(pair);
-    const auto s_sf = texas::Strength::evaluate_5(straight_flush);
-
-    EXPECT_TRUE(s_high < s_pair);
-    EXPECT_TRUE(s_pair < s_sf);
+	EXPECT_TRUE(s_weak < s_strong);
 }
 
-TEST_CASE(eval_six_card_uses_fast_path) {
-    const std::array<std::uint8_t, 6> strong = {c(14, 0), c(14, 1), c(13, 0), c(12, 1), c(11, 2), c(2, 3)};
-    const std::array<std::uint8_t, 6> weak = {c(14, 0), c(13, 1), c(12, 0), c(9, 1), c(8, 2), c(2, 3)};
-
-    const auto s_strong = texas::Strength::evaluate_6(strong);
-    const auto s_weak = texas::Strength::evaluate_6(weak);
-
-    EXPECT_TRUE(s_weak < s_strong);
-}
-
-TEST_CASE(eval_seven_card_uses_fast_path) {
-    const std::array<std::uint8_t, 7> seven = {c(14, 0), c(11, 0), c(8, 0), c(5, 0), c(2, 0), c(7, 1), c(6, 2)};
-    const auto s_7 = texas::Strength::evaluate_7(seven);
-    EXPECT_TRUE(s_7.value != 0U);
+TEST_CASE(eval_seven_card_uses_fast_path)
+{
+	const std::array<std::uint8_t, 7> seven = { c(14, 0), c(11, 0), c(8, 0), c(5, 0), c(2, 0), c(7, 1), c(6, 2) };
+	const auto s_7 = texas::Strength::evaluate_7(seven);
+	EXPECT_TRUE(s_7.value != 0U);
 }

@@ -17,496 +17,608 @@
 #include <thread>
 #include <vector>
 
-namespace texas::preflop {
+namespace texas::preflop
+{
 
-namespace {
-constexpr std::array<std::uint8_t, 13> RANKS = {14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2};
-constexpr std::size_t DECK_SIZE = 52;
-constexpr std::size_t BOARD_CARDS = 5;
-constexpr std::size_t EQUITY_TABLE_SIZE =
-    PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS;
+	namespace
+	{
+		constexpr std::array<std::uint8_t, 13> RANKS = { 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2 };
+		constexpr std::size_t DECK_SIZE = 52;
+		constexpr std::size_t BOARD_CARDS = 5;
+		constexpr std::size_t EQUITY_TABLE_SIZE =
+			PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS;
 
-std::size_t rank_pos(std::uint8_t rank) {
-    return static_cast<std::size_t>(std::find(RANKS.begin(), RANKS.end(), rank) - RANKS.begin());
-}
+		std::size_t rank_pos(std::uint8_t rank)
+		{
+			return static_cast<std::size_t>(std::find(RANKS.begin(), RANKS.end(), rank) - RANKS.begin());
+		}
 
-void validate_rank(std::uint8_t rank, const char* caller) {
-    if (rank < 2U || rank > 14U) {
-        throw std::invalid_argument(std::string(caller) + " requires ranks in [2, 14]");
-    }
-}
+		void validate_rank(std::uint8_t rank, const char* caller)
+		{
+			if (rank < 2U || rank > 14U)
+			{
+				throw std::invalid_argument(std::string(caller) + " requires ranks in [2, 14]");
+			}
+		}
 
-void validate_class(std::uint16_t class_idx, const char* caller) {
-    if (class_idx >= PREFLOP_NUM_CLASSES) {
-        throw std::out_of_range(std::string(caller) + " class index is out of range");
-    }
-}
+		void validate_class(std::uint16_t class_idx, const char* caller)
+		{
+			if (class_idx >= PREFLOP_NUM_CLASSES)
+			{
+				throw std::out_of_range(std::string(caller) + " class index is out of range");
+			}
+		}
 
-void validate_private_deal(
-    const std::array<std::uint8_t, 2>& hero,
-    const std::array<std::uint8_t, 2>& villain,
-    const char* caller) {
-    const std::array<std::uint8_t, 4> cards = {
-        hero[0], hero[1], villain[0], villain[1]};
-    if (!are_valid_and_distinct_cards(cards.data(), cards.size())) {
-        throw std::invalid_argument(
-            std::string(caller) + " requires four valid distinct private cards");
-    }
-}
+		void validate_private_deal(
+			const std::array<std::uint8_t, 2>& hero,
+			const std::array<std::uint8_t, 2>& villain,
+			const char* caller)
+		{
+			const std::array<std::uint8_t, 4> cards = {
+				hero[0], hero[1], villain[0], villain[1]
+			};
+			if (!are_valid_and_distinct_cards(cards.data(), cards.size()))
+			{
+				throw std::invalid_argument(
+					std::string(caller) + " requires four valid distinct private cards");
+			}
+		}
 
-std::size_t equity_table_index(
-    std::size_t hero_class,
-    std::size_t villain_class,
-    std::size_t variant,
-    std::size_t backing_size) {
-    if (hero_class >= PREFLOP_NUM_CLASSES ||
-        villain_class >= PREFLOP_NUM_CLASSES ||
-        variant >= PREFLOP_NUM_VARIANTS) {
-        throw std::out_of_range("PreflopEquityTable coordinate is out of range");
-    }
-    if (backing_size != EQUITY_TABLE_SIZE) {
-        throw std::logic_error("PreflopEquityTable backing storage has an invalid size");
-    }
-    return (hero_class * PREFLOP_NUM_CLASSES + villain_class) *
-        PREFLOP_NUM_VARIANTS + variant;
-}
+		std::size_t equity_table_index(
+			std::size_t hero_class,
+			std::size_t villain_class,
+			std::size_t variant,
+			std::size_t backing_size)
+		{
+			if (hero_class >= PREFLOP_NUM_CLASSES || villain_class >= PREFLOP_NUM_CLASSES || variant >= PREFLOP_NUM_VARIANTS)
+			{
+				throw std::out_of_range("PreflopEquityTable coordinate is out of range");
+			}
+			if (backing_size != EQUITY_TABLE_SIZE)
+			{
+				throw std::logic_error("PreflopEquityTable backing storage has an invalid size");
+			}
+			return (hero_class * PREFLOP_NUM_CLASSES + villain_class) * PREFLOP_NUM_VARIANTS + variant;
+		}
 
-std::array<std::uint8_t, DECK_SIZE> build_deck() {
-    std::array<std::uint8_t, DECK_SIZE> deck{};
-    std::size_t idx = 0;
-    for (std::uint8_t rank = 2; rank <= 14; ++rank) {
-        for (std::uint8_t suit = 0; suit < 4; ++suit) {
-            deck[idx++] = card_to_int(rank, suit);
-        }
-    }
-    return deck;
-}
+		std::array<std::uint8_t, DECK_SIZE> build_deck()
+		{
+			std::array<std::uint8_t, DECK_SIZE> deck{};
+			std::size_t idx = 0;
+			for (std::uint8_t rank = 2; rank <= 14; ++rank)
+			{
+				for (std::uint8_t suit = 0; suit < 4; ++suit)
+				{
+					deck[idx++] = card_to_int(rank, suit);
+				}
+			}
+			return deck;
+		}
 
-template <typename F>
-void for_each_5_combo(std::size_t n, F&& fn) {
-    for (std::size_t a = 0; a + 4 < n; ++a) {
-        for (std::size_t b = a + 1; b + 3 < n; ++b) {
-            for (std::size_t c = b + 1; c + 2 < n; ++c) {
-                for (std::size_t d = c + 1; d + 1 < n; ++d) {
-                    for (std::size_t e = d + 1; e < n; ++e) {
-                        fn(a, b, c, d, e);
-                    }
-                }
-            }
-        }
-    }
-}
+		template <typename F>
+		void for_each_5_combo(std::size_t n, F&& fn)
+		{
+			for (std::size_t a = 0; a + 4 < n; ++a)
+			{
+				for (std::size_t b = a + 1; b + 3 < n; ++b)
+				{
+					for (std::size_t c = b + 1; c + 2 < n; ++c)
+					{
+						for (std::size_t d = c + 1; d + 1 < n; ++d)
+						{
+							for (std::size_t e = d + 1; e < n; ++e)
+							{
+								fn(a, b, c, d, e);
+							}
+						}
+					}
+				}
+			}
+		}
 
-HoleRep make_rep(const std::array<std::uint8_t, 2>& hero, const std::array<std::uint8_t, 2>& villain) {
-    return HoleRep{hero, villain};
-}
+		HoleRep make_rep(const std::array<std::uint8_t, 2>& hero, const std::array<std::uint8_t, 2>& villain)
+		{
+			return HoleRep{ hero, villain };
+		}
 
-}  // namespace
+	} // namespace
 
-std::uint16_t class_index(std::uint8_t rank_hi, std::uint8_t rank_lo, bool suited) {
-    validate_rank(rank_hi, "class_index");
-    validate_rank(rank_lo, "class_index");
-    if (rank_hi == rank_lo) {
-        return static_cast<std::uint16_t>(rank_pos(rank_hi));
-    }
-    const auto hi = rank_pos(rank_hi);
-    const auto lo = rank_pos(rank_lo);
-    const auto a = std::min(hi, lo);
-    const auto b = std::max(hi, lo);
-    const std::size_t pair_idx = a * 12 - (a * (a - 1)) / 2 + (b - a - 1);
-    return static_cast<std::uint16_t>((suited ? 13 : 13 + 78) + pair_idx);
-}
+	std::uint16_t class_index(std::uint8_t rank_hi, std::uint8_t rank_lo, bool suited)
+	{
+		validate_rank(rank_hi, "class_index");
+		validate_rank(rank_lo, "class_index");
+		if (rank_hi == rank_lo)
+		{
+			return static_cast<std::uint16_t>(rank_pos(rank_hi));
+		}
+		const auto hi = rank_pos(rank_hi);
+		const auto lo = rank_pos(rank_lo);
+		const auto a = std::min(hi, lo);
+		const auto b = std::max(hi, lo);
+		const std::size_t pair_idx = a * 12 - (a * (a - 1)) / 2 + (b - a - 1);
+		return static_cast<std::uint16_t>((suited ? 13 : 13 + 78) + pair_idx);
+	}
 
-std::tuple<std::uint8_t, std::uint8_t, bool> class_decode(std::uint16_t class_idx) {
-    validate_class(class_idx, "class_decode");
-    const auto idx = static_cast<std::size_t>(class_idx);
-    if (idx < 13) {
-        return {static_cast<std::uint8_t>(RANKS[idx]), static_cast<std::uint8_t>(RANKS[idx]), false};
-    }
-    const bool suited = idx < 13 + 78;
-    const std::size_t pair_idx = suited ? (idx - 13) : (idx - 13 - 78);
-    std::size_t remaining = pair_idx;
-    for (std::size_t a = 0; a < 12; ++a) {
-        const std::size_t row_len = 12 - a;
-        if (remaining < row_len) {
-            return {
-                static_cast<std::uint8_t>(RANKS[a]),
-                static_cast<std::uint8_t>(RANKS[a + 1 + remaining]),
-                suited};
-        }
-        remaining -= row_len;
-    }
-    throw std::logic_error("class_decode failed to decode a validated class index");
-}
+	std::tuple<std::uint8_t, std::uint8_t, bool> class_decode(std::uint16_t class_idx)
+	{
+		validate_class(class_idx, "class_decode");
+		const auto idx = static_cast<std::size_t>(class_idx);
+		if (idx < 13)
+		{
+			return { static_cast<std::uint8_t>(RANKS[idx]), static_cast<std::uint8_t>(RANKS[idx]), false };
+		}
+		const bool suited = idx < 13 + 78;
+		const std::size_t pair_idx = suited ? (idx - 13) : (idx - 13 - 78);
+		std::size_t remaining = pair_idx;
+		for (std::size_t a = 0; a < 12; ++a)
+		{
+			const std::size_t row_len = 12 - a;
+			if (remaining < row_len)
+			{
+				return {
+					static_cast<std::uint8_t>(RANKS[a]),
+					static_cast<std::uint8_t>(RANKS[a + 1 + remaining]),
+					suited
+				};
+			}
+			remaining -= row_len;
+		}
+		throw std::logic_error("class_decode failed to decode a validated class index");
+	}
 
-std::uint16_t hole_to_class(const std::array<std::uint8_t, 2>& hole) {
-    if (!are_valid_and_distinct_cards(hole.data(), hole.size())) {
-        throw std::invalid_argument("hole_to_class requires two valid distinct cards");
-    }
-    const auto r0 = rank_of(hole[0]);
-    const auto r1 = rank_of(hole[1]);
-    const auto s0 = suit_of(hole[0]);
-    const auto s1 = suit_of(hole[1]);
-    const auto hi = std::max(r0, r1);
-    const auto lo = std::min(r0, r1);
-    return class_index(hi, lo, s0 == s1 && r0 != r1);
-}
+	std::uint16_t hole_to_class(const std::array<std::uint8_t, 2>& hole)
+	{
+		if (!are_valid_and_distinct_cards(hole.data(), hole.size()))
+		{
+			throw std::invalid_argument("hole_to_class requires two valid distinct cards");
+		}
+		const auto r0 = rank_of(hole[0]);
+		const auto r1 = rank_of(hole[1]);
+		const auto s0 = suit_of(hole[0]);
+		const auto s1 = suit_of(hole[1]);
+		const auto hi = std::max(r0, r1);
+		const auto lo = std::min(r0, r1);
+		return class_index(hi, lo, s0 == s1 && r0 != r1);
+	}
 
-std::optional<HoleRep> build_hole_rep(std::uint16_t hero_class, std::uint16_t villain_class, std::uint8_t variant) {
-    validate_class(hero_class, "build_hole_rep");
-    validate_class(villain_class, "build_hole_rep");
-    if (variant >= PREFLOP_NUM_VARIANTS) {
-        throw std::out_of_range("build_hole_rep variant is out of range");
-    }
-    const auto [h_hi, h_lo, h_suited] = class_decode(hero_class);
-    const auto [v_hi, v_lo, v_suited] = class_decode(villain_class);
-    const std::array<std::uint8_t, 2> hero = h_hi == h_lo
-        ? std::array<std::uint8_t, 2>{card_to_int(h_hi, 0), card_to_int(h_lo, 1)}
-        : h_suited ? std::array<std::uint8_t, 2>{card_to_int(h_hi, 0), card_to_int(h_lo, 0)}
-                   : std::array<std::uint8_t, 2>{card_to_int(h_hi, 0), card_to_int(h_lo, 1)};
-    auto make = [&](std::uint8_t ra, std::uint8_t sa, std::uint8_t rb, std::uint8_t sb) -> std::optional<HoleRep> {
-        const auto a = card_to_int(ra, sa);
-        const auto b = card_to_int(rb, sb);
-        if (a == b || a == hero[0] || a == hero[1] || b == hero[0] || b == hero[1]) {
-            return std::nullopt;
-        }
-        return make_rep(hero, {a, b});
-    };
-    if (v_hi == v_lo) {
-        return make(v_hi, 2 + (variant % 2), v_lo, 3);
-    }
-    return v_suited ? make(v_hi, variant % 4, v_lo, variant % 4) : make(v_hi, variant % 4, v_lo, (variant + 1) % 4);
-}
+	std::optional<HoleRep> build_hole_rep(std::uint16_t hero_class, std::uint16_t villain_class, std::uint8_t variant)
+	{
+		validate_class(hero_class, "build_hole_rep");
+		validate_class(villain_class, "build_hole_rep");
+		if (variant >= PREFLOP_NUM_VARIANTS)
+		{
+			throw std::out_of_range("build_hole_rep variant is out of range");
+		}
+		const auto [h_hi, h_lo, h_suited] = class_decode(hero_class);
+		const auto [v_hi, v_lo, v_suited] = class_decode(villain_class);
+		const std::array<std::uint8_t, 2> hero = h_hi == h_lo
+			? std::array<std::uint8_t, 2>{ card_to_int(h_hi, 0), card_to_int(h_lo, 1) }
+			: h_suited ? std::array<std::uint8_t, 2>{ card_to_int(h_hi, 0), card_to_int(h_lo, 0) }
+					   : std::array<std::uint8_t, 2>{ card_to_int(h_hi, 0), card_to_int(h_lo, 1) };
+		auto make = [&](std::uint8_t ra, std::uint8_t sa, std::uint8_t rb, std::uint8_t sb) -> std::optional<HoleRep> {
+			const auto a = card_to_int(ra, sa);
+			const auto b = card_to_int(rb, sb);
+			if (a == b || a == hero[0] || a == hero[1] || b == hero[0] || b == hero[1])
+			{
+				return std::nullopt;
+			}
+			return make_rep(hero, { a, b });
+		};
+		if (v_hi == v_lo)
+		{
+			return make(v_hi, 2 + (variant % 2), v_lo, 3);
+		}
+		return v_suited ? make(v_hi, variant % 4, v_lo, variant % 4) : make(v_hi, variant % 4, v_lo, (variant + 1) % 4);
+	}
 
-double enumerate_pair_equity(const std::array<std::uint8_t, 2>& hero, const std::array<std::uint8_t, 2>& villain) {
-    validate_private_deal(hero, villain, "enumerate_pair_equity");
-    std::array<bool, 64> used{};
-    for (const auto c : hero) {
-        used[c] = true;
-    }
-    for (const auto c : villain) {
-        used[c] = true;
-    }
+	double enumerate_pair_equity(const std::array<std::uint8_t, 2>& hero, const std::array<std::uint8_t, 2>& villain)
+	{
+		validate_private_deal(hero, villain, "enumerate_pair_equity");
+		std::array<bool, 64> used{};
+		for (const auto c : hero)
+		{
+			used[c] = true;
+		}
+		for (const auto c : villain)
+		{
+			used[c] = true;
+		}
 
-    const auto deck = build_deck();
-    std::vector<std::uint8_t> live;
-    live.reserve(48);
-    for (const auto c : deck) {
-        if (!used[c]) {
-            live.push_back(c);
-        }
-    }
+		const auto deck = build_deck();
+		std::vector<std::uint8_t> live;
+		live.reserve(48);
+		for (const auto c : deck)
+		{
+			if (!used[c])
+			{
+				live.push_back(c);
+			}
+		}
 
-    std::array<std::uint8_t, 7> seven0{};
-    std::array<std::uint8_t, 7> seven1{};
-    seven0[0] = hero[0];
-    seven0[1] = hero[1];
-    seven1[0] = villain[0];
-    seven1[1] = villain[1];
+		std::array<std::uint8_t, 7> seven0{};
+		std::array<std::uint8_t, 7> seven1{};
+		seven0[0] = hero[0];
+		seven0[1] = hero[1];
+		seven1[0] = villain[0];
+		seven1[1] = villain[1];
 
-    std::uint64_t wins = 0;
-    std::uint64_t ties = 0;
-    std::uint64_t total = 0;
-    for_each_5_combo(live.size(), [&](std::size_t a, std::size_t b, std::size_t c, std::size_t d, std::size_t e) {
-        seven0[2] = live[a];
-        seven0[3] = live[b];
-        seven0[4] = live[c];
-        seven0[5] = live[d];
-        seven0[6] = live[e];
-        seven1[2] = live[a];
-        seven1[3] = live[b];
-        seven1[4] = live[c];
-        seven1[5] = live[d];
-        seven1[6] = live[e];
-        const auto s0 = Strength::evaluate_7(seven0);
-        const auto s1 = Strength::evaluate_7(seven1);
-        if (s0 > s1) {
-            ++wins;
-        } else if (s0 == s1) {
-            ++ties;
-        }
-        ++total;
-    });
+		std::uint64_t wins = 0;
+		std::uint64_t ties = 0;
+		std::uint64_t total = 0;
+		for_each_5_combo(live.size(), [&](std::size_t a, std::size_t b, std::size_t c, std::size_t d, std::size_t e) {
+			seven0[2] = live[a];
+			seven0[3] = live[b];
+			seven0[4] = live[c];
+			seven0[5] = live[d];
+			seven0[6] = live[e];
+			seven1[2] = live[a];
+			seven1[3] = live[b];
+			seven1[4] = live[c];
+			seven1[5] = live[d];
+			seven1[6] = live[e];
+			const auto s0 = Strength::evaluate_7(seven0);
+			const auto s1 = Strength::evaluate_7(seven1);
+			if (s0 > s1)
+			{
+				++wins;
+			}
+			else if (s0 == s1)
+			{
+				++ties;
+			}
+			++total;
+		});
 
-    return (static_cast<double>(wins) + 0.5 * static_cast<double>(ties)) / static_cast<double>(total);
-}
+		return (static_cast<double>(wins) + 0.5 * static_cast<double>(ties)) / static_cast<double>(total);
+	}
 
-double monte_carlo_pair_equity(
-    const std::array<std::uint8_t, 2>& hero,
-    const std::array<std::uint8_t, 2>& villain,
-    std::size_t n_samples,
-    std::uint64_t seed) {
-    validate_private_deal(hero, villain, "monte_carlo_pair_equity");
-    if (n_samples == 0U) {
-        throw std::invalid_argument("monte_carlo_pair_equity requires at least one sample");
-    }
-    std::array<bool, 64> used{};
-    for (const auto c : hero) {
-        used[c] = true;
-    }
-    for (const auto c : villain) {
-        used[c] = true;
-    }
+	double monte_carlo_pair_equity(
+		const std::array<std::uint8_t, 2>& hero,
+		const std::array<std::uint8_t, 2>& villain,
+		std::size_t n_samples,
+		std::uint64_t seed)
+	{
+		validate_private_deal(hero, villain, "monte_carlo_pair_equity");
+		if (n_samples == 0U)
+		{
+			throw std::invalid_argument("monte_carlo_pair_equity requires at least one sample");
+		}
+		std::array<bool, 64> used{};
+		for (const auto c : hero)
+		{
+			used[c] = true;
+		}
+		for (const auto c : villain)
+		{
+			used[c] = true;
+		}
 
-    const auto deck = build_deck();
-    std::vector<std::uint8_t> live;
-    live.reserve(48);
-    for (const auto c : deck) {
-        if (!used[c]) {
-            live.push_back(c);
-        }
-    }
+		const auto deck = build_deck();
+		std::vector<std::uint8_t> live;
+		live.reserve(48);
+		for (const auto c : deck)
+		{
+			if (!used[c])
+			{
+				live.push_back(c);
+			}
+		}
 
-    PcsRng rng(seed);
-    std::array<std::uint8_t, 7> seven0{};
-    std::array<std::uint8_t, 7> seven1{};
-    seven0[0] = hero[0];
-    seven0[1] = hero[1];
-    seven1[0] = villain[0];
-    seven1[1] = villain[1];
+		PcsRng rng(seed);
+		std::array<std::uint8_t, 7> seven0{};
+		std::array<std::uint8_t, 7> seven1{};
+		seven0[0] = hero[0];
+		seven0[1] = hero[1];
+		seven1[0] = villain[0];
+		seven1[1] = villain[1];
 
-    std::uint64_t wins = 0;
-    std::uint64_t ties = 0;
-    std::array<std::size_t, BOARD_CARDS> picks{};
-    for (std::size_t sample = 0; sample < n_samples; ++sample) {
-        for (std::size_t i = 0; i < BOARD_CARDS; ++i) {
-            while (true) {
-                const auto pos = static_cast<std::size_t>(rng.gen_range(static_cast<std::uint64_t>(live.size())));
-                bool duplicate = false;
-                for (std::size_t j = 0; j < i; ++j) {
-                    if (picks[j] == pos) {
-                        duplicate = true;
-                        break;
-                    }
-                }
-                if (!duplicate) {
-                    picks[i] = pos;
-                    break;
-                }
-            }
-        }
-        for (std::size_t i = 0; i < BOARD_CARDS; ++i) {
-            seven0[2 + i] = live[picks[i]];
-            seven1[2 + i] = live[picks[i]];
-        }
-        const auto s0 = Strength::evaluate_7(seven0);
-        const auto s1 = Strength::evaluate_7(seven1);
-        if (s0 > s1) {
-            ++wins;
-        } else if (s0 == s1) {
-            ++ties;
-        }
-    }
-    return (static_cast<double>(wins) + 0.5 * static_cast<double>(ties)) / static_cast<double>(n_samples);
-}
+		std::uint64_t wins = 0;
+		std::uint64_t ties = 0;
+		std::array<std::size_t, BOARD_CARDS> picks{};
+		for (std::size_t sample = 0; sample < n_samples; ++sample)
+		{
+			for (std::size_t i = 0; i < BOARD_CARDS; ++i)
+			{
+				while (true)
+				{
+					const auto pos = static_cast<std::size_t>(rng.gen_range(static_cast<std::uint64_t>(live.size())));
+					bool duplicate = false;
+					for (std::size_t j = 0; j < i; ++j)
+					{
+						if (picks[j] == pos)
+						{
+							duplicate = true;
+							break;
+						}
+					}
+					if (!duplicate)
+					{
+						picks[i] = pos;
+						break;
+					}
+				}
+			}
+			for (std::size_t i = 0; i < BOARD_CARDS; ++i)
+			{
+				seven0[2 + i] = live[picks[i]];
+				seven1[2 + i] = live[picks[i]];
+			}
+			const auto s0 = Strength::evaluate_7(seven0);
+			const auto s1 = Strength::evaluate_7(seven1);
+			if (s0 > s1)
+			{
+				++wins;
+			}
+			else if (s0 == s1)
+			{
+				++ties;
+			}
+		}
+		return (static_cast<double>(wins) + 0.5 * static_cast<double>(ties)) / static_cast<double>(n_samples);
+	}
 
-std::vector<double> build_equity_table_flat() {
-    std::vector<double> table(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS, std::numeric_limits<double>::quiet_NaN());
-    for (std::size_t hero = 0; hero < PREFLOP_NUM_CLASSES; ++hero) {
-        for (std::size_t villain = 0; villain < PREFLOP_NUM_CLASSES; ++villain) {
-            for (std::size_t variant = 0; variant < PREFLOP_NUM_VARIANTS; ++variant) {
-                if (auto rep = build_hole_rep(static_cast<std::uint16_t>(hero), static_cast<std::uint16_t>(villain), static_cast<std::uint8_t>(variant))) {
-                    table[(hero * PREFLOP_NUM_CLASSES + villain) * PREFLOP_NUM_VARIANTS + variant] =
-                        enumerate_pair_equity(rep->hero, rep->villain);
-                }
-            }
-        }
-    }
-    return table;
-}
+	std::vector<double> build_equity_table_flat()
+	{
+		std::vector<double> table(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS, std::numeric_limits<double>::quiet_NaN());
+		for (std::size_t hero = 0; hero < PREFLOP_NUM_CLASSES; ++hero)
+		{
+			for (std::size_t villain = 0; villain < PREFLOP_NUM_CLASSES; ++villain)
+			{
+				for (std::size_t variant = 0; variant < PREFLOP_NUM_VARIANTS; ++variant)
+				{
+					if (auto rep = build_hole_rep(static_cast<std::uint16_t>(hero), static_cast<std::uint16_t>(villain), static_cast<std::uint8_t>(variant)))
+					{
+						table[(hero * PREFLOP_NUM_CLASSES + villain) * PREFLOP_NUM_VARIANTS + variant] =
+							enumerate_pair_equity(rep->hero, rep->villain);
+					}
+				}
+			}
+		}
+		return table;
+	}
 
-std::vector<double> build_equity_table_flat_parallel(std::size_t n_threads) {
-    n_threads = std::max<std::size_t>(1, n_threads);
-    std::vector<double> table(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS, std::numeric_limits<double>::quiet_NaN());
-    std::mutex mutex;
-    std::atomic<std::size_t> cursor{0};
-    std::atomic<bool> cancel{false};
-    std::exception_ptr worker_error;
-    std::mutex worker_error_mutex;
-    std::vector<std::tuple<std::uint16_t, std::uint16_t, std::uint8_t>> work;
-    work.reserve(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS);
-    for (std::uint16_t h = 0; h < PREFLOP_NUM_CLASSES; ++h) {
-        for (std::uint16_t v = 0; v < PREFLOP_NUM_CLASSES; ++v) {
-            for (std::uint8_t variant = 0; variant < PREFLOP_NUM_VARIANTS; ++variant) {
-                work.emplace_back(h, v, variant);
-            }
-        }
-    }
+	std::vector<double> build_equity_table_flat_parallel(std::size_t n_threads)
+	{
+		n_threads = std::max<std::size_t>(1, n_threads);
+		std::vector<double> table(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS, std::numeric_limits<double>::quiet_NaN());
+		std::mutex mutex;
+		std::atomic<std::size_t> cursor{ 0 };
+		std::atomic<bool> cancel{ false };
+		std::exception_ptr worker_error;
+		std::mutex worker_error_mutex;
+		std::vector<std::tuple<std::uint16_t, std::uint16_t, std::uint8_t>> work;
+		work.reserve(PREFLOP_NUM_CLASSES * PREFLOP_NUM_CLASSES * PREFLOP_NUM_VARIANTS);
+		for (std::uint16_t h = 0; h < PREFLOP_NUM_CLASSES; ++h)
+		{
+			for (std::uint16_t v = 0; v < PREFLOP_NUM_CLASSES; ++v)
+			{
+				for (std::uint8_t variant = 0; variant < PREFLOP_NUM_VARIANTS; ++variant)
+				{
+					work.emplace_back(h, v, variant);
+				}
+			}
+		}
 
-    std::vector<std::thread> threads;
-    auto thread_guard = texas::util::detail::make_thread_join_guard(
-        threads,
-        [&cancel] { cancel.store(true, std::memory_order_release); });
-    threads.reserve(n_threads);
-    for (std::size_t t = 0; t < n_threads; ++t) {
-        threads.emplace_back([&] {
-            try {
-                while (!cancel.load(std::memory_order_acquire)) {
-                    const auto i = cursor.fetch_add(1, std::memory_order_relaxed);
-                    if (i >= work.size()) {
-                        break;
-                    }
-                    const auto [h, v, variant] = work[i];
-                    if (auto rep = build_hole_rep(h, v, variant)) {
-                        const auto eq = enumerate_pair_equity(rep->hero, rep->villain);
-                        std::lock_guard<std::mutex> lock(mutex);
-                        table[(static_cast<std::size_t>(h) * PREFLOP_NUM_CLASSES + static_cast<std::size_t>(v)) * PREFLOP_NUM_VARIANTS + variant] = eq;
-                    }
-                }
-            } catch (...) {
-                cancel.store(true, std::memory_order_release);
-                std::lock_guard<std::mutex> lock(worker_error_mutex);
-                if (worker_error == nullptr) {
-                    worker_error = std::current_exception();
-                }
-            }
-        });
-    }
-    for (auto& thread : threads) {
-        thread.join();
-    }
-    thread_guard.release();
-    if (worker_error != nullptr) {
-        std::rethrow_exception(worker_error);
-    }
-    return table;
-}
+		std::vector<std::thread> threads;
+		auto thread_guard = texas::util::detail::make_thread_join_guard(
+			threads,
+			[&cancel] { cancel.store(true, std::memory_order_release); });
+		threads.reserve(n_threads);
+		for (std::size_t t = 0; t < n_threads; ++t)
+		{
+			threads.emplace_back([&] {
+				try
+				{
+					while (!cancel.load(std::memory_order_acquire))
+					{
+						const auto i = cursor.fetch_add(1, std::memory_order_relaxed);
+						if (i >= work.size())
+						{
+							break;
+						}
+						const auto [h, v, variant] = work[i];
+						if (auto rep = build_hole_rep(h, v, variant))
+						{
+							const auto eq = enumerate_pair_equity(rep->hero, rep->villain);
+							std::lock_guard<std::mutex> lock(mutex);
+							table[(static_cast<std::size_t>(h) * PREFLOP_NUM_CLASSES + static_cast<std::size_t>(v)) * PREFLOP_NUM_VARIANTS + variant] = eq;
+						}
+					}
+				}
+				catch (...)
+				{
+					cancel.store(true, std::memory_order_release);
+					std::lock_guard<std::mutex> lock(worker_error_mutex);
+					if (worker_error == nullptr)
+					{
+						worker_error = std::current_exception();
+					}
+				}
+			});
+		}
+		for (auto& thread : threads)
+		{
+			thread.join();
+		}
+		thread_guard.release();
+		if (worker_error != nullptr)
+		{
+			std::rethrow_exception(worker_error);
+		}
+		return table;
+	}
 
-PreflopEquityTable::PreflopEquityTable()
-    : table_(EQUITY_TABLE_SIZE, std::numeric_limits<double>::quiet_NaN()) {}
+	PreflopEquityTable::PreflopEquityTable()
+		: table_(EQUITY_TABLE_SIZE, std::numeric_limits<double>::quiet_NaN()) {}
 
-double PreflopEquityTable::at(std::size_t h, std::size_t v, std::size_t var) const {
-    return table_[equity_table_index(h, v, var, table_.size())];
-}
+	double PreflopEquityTable::at(std::size_t h, std::size_t v, std::size_t var) const
+	{
+		return table_[equity_table_index(h, v, var, table_.size())];
+	}
 
-double& PreflopEquityTable::at(std::size_t h, std::size_t v, std::size_t var) {
-    return table_[equity_table_index(h, v, var, table_.size())];
-}
+	double& PreflopEquityTable::at(std::size_t h, std::size_t v, std::size_t var)
+	{
+		return table_[equity_table_index(h, v, var, table_.size())];
+	}
 
-bool PreflopEquityTable::empty() const {
-    return !valid_;
-}
+	bool PreflopEquityTable::empty() const
+	{
+		return !valid_;
+	}
 
-const std::vector<double>& PreflopEquityTable::data() const {
-    return table_;
-}
+	const std::vector<double>& PreflopEquityTable::data() const
+	{
+		return table_;
+	}
 
-std::vector<double>& PreflopEquityTable::data() {
-    return table_;
-}
+	std::vector<double>& PreflopEquityTable::data()
+	{
+		return table_;
+	}
 
-PreflopEquityTable PreflopEquityTable::build() {
-    PreflopEquityTable out;
-    out.table_ = build_equity_table_flat();
-    out.valid_ = true;
-    return out;
-}
+	PreflopEquityTable PreflopEquityTable::build()
+	{
+		PreflopEquityTable out;
+		out.table_ = build_equity_table_flat();
+		out.valid_ = true;
+		return out;
+	}
 
-PreflopEquityTable PreflopEquityTable::build_parallel(std::size_t n_threads) {
-    PreflopEquityTable out;
-    out.table_ = build_equity_table_flat_parallel(n_threads);
-    out.valid_ = true;
-    return out;
-}
+	PreflopEquityTable PreflopEquityTable::build_parallel(std::size_t n_threads)
+	{
+		PreflopEquityTable out;
+		out.table_ = build_equity_table_flat_parallel(n_threads);
+		out.valid_ = true;
+		return out;
+	}
 
-namespace {
-constexpr std::array<char, 8> MAGIC = {'T', 'S', 'P', 'E', 'Q', '0', '0', '1'};
+	namespace
+	{
+		constexpr std::array<char, 8> MAGIC = { 'T', 'S', 'P', 'E', 'Q', '0', '0', '1' };
 
-void write_u64(std::ostream& out, std::uint64_t value) {
-    std::array<char, sizeof(value)> bytes{};
-    for (std::size_t index = 0; index < bytes.size(); ++index) {
-        bytes[index] = static_cast<char>((value >> (index * 8U)) & 0xffU);
-    }
-    out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-}
+		void write_u64(std::ostream& out, std::uint64_t value)
+		{
+			std::array<char, sizeof(value)> bytes{};
+			for (std::size_t index = 0; index < bytes.size(); ++index)
+			{
+				bytes[index] = static_cast<char>((value >> (index * 8U)) & 0xffU);
+			}
+			out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+		}
 
-bool read_u64(std::istream& in, std::uint64_t& value) {
-    std::array<unsigned char, sizeof(value)> bytes{};
-    if (!in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) {
-        return false;
-    }
-    value = 0;
-    for (std::size_t index = 0; index < bytes.size(); ++index) {
-        value |= static_cast<std::uint64_t>(bytes[index]) << (index * 8U);
-    }
-    return true;
-}
+		bool read_u64(std::istream& in, std::uint64_t& value)
+		{
+			std::array<unsigned char, sizeof(value)> bytes{};
+			if (!in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
+			{
+				return false;
+			}
+			value = 0;
+			for (std::size_t index = 0; index < bytes.size(); ++index)
+			{
+				value |= static_cast<std::uint64_t>(bytes[index]) << (index * 8U);
+			}
+			return true;
+		}
 
-void write_double(std::ostream& out, double value) {
-    std::uint64_t bits = 0;
-    static_assert(sizeof(bits) == sizeof(value), "double must be 64-bit");
-    std::memcpy(&bits, &value, sizeof(bits));
-    write_u64(out, bits);
-}
+		void write_double(std::ostream& out, double value)
+		{
+			std::uint64_t bits = 0;
+			static_assert(sizeof(bits) == sizeof(value), "double must be 64-bit");
+			std::memcpy(&bits, &value, sizeof(bits));
+			write_u64(out, bits);
+		}
 
-bool read_double(std::istream& in, double& value) {
-    std::uint64_t bits = 0;
-    if (!read_u64(in, bits)) return false;
-    std::memcpy(&value, &bits, sizeof(value));
-    return std::isfinite(value);
-}
-}  // namespace
+		bool read_double(std::istream& in, double& value)
+		{
+			std::uint64_t bits = 0;
+			if (!read_u64(in, bits))
+				return false;
+			std::memcpy(&value, &bits, sizeof(value));
+			return std::isfinite(value);
+		}
+	} // namespace
 
-PreflopEquityTable PreflopEquityTable::load(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    PreflopEquityTable out;
-    if (!in) {
-        return out;
-    }
-    std::array<char, MAGIC.size()> magic{};
-    in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
-    if (magic != MAGIC) {
-        return load_csv(path.string());
-    }
-    std::uint64_t n = 0;
-    if (!read_u64(in, n) || n != out.table_.size()) {
-        return out;
-    }
-    for (auto& value : out.table_) {
-        if (!read_double(in, value)) return PreflopEquityTable{};
-    }
-    if (in.peek() != std::char_traits<char>::eof()) return PreflopEquityTable{};
-    out.valid_ = true;
-    return out;
-}
+	PreflopEquityTable PreflopEquityTable::load(const std::filesystem::path& path)
+	{
+		std::ifstream in(path, std::ios::binary);
+		PreflopEquityTable out;
+		if (!in)
+		{
+			return out;
+		}
+		std::array<char, MAGIC.size()> magic{};
+		in.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+		if (magic != MAGIC)
+		{
+			return load_csv(path.string());
+		}
+		std::uint64_t n = 0;
+		if (!read_u64(in, n) || n != out.table_.size())
+		{
+			return out;
+		}
+		for (auto& value : out.table_)
+		{
+			if (!read_double(in, value))
+				return PreflopEquityTable{};
+		}
+		if (in.peek() != std::char_traits<char>::eof())
+			return PreflopEquityTable{};
+		out.valid_ = true;
+		return out;
+	}
 
-void PreflopEquityTable::save(const std::filesystem::path& path) const {
-    std::ofstream out(path, std::ios::binary);
-    if (!out) throw std::runtime_error("PreflopEquityTable output cannot be opened");
-    if (!std::all_of(table_.begin(), table_.end(), [](double value) { return std::isfinite(value); })) {
-        throw std::invalid_argument("PreflopEquityTable cannot save non-finite values");
-    }
-    out.write(MAGIC.data(), static_cast<std::streamsize>(MAGIC.size()));
-    write_u64(out, static_cast<std::uint64_t>(table_.size()));
-    for (const auto value : table_) write_double(out, value);
-    if (!out) throw std::runtime_error("PreflopEquityTable write failed");
-}
+	void PreflopEquityTable::save(const std::filesystem::path& path) const
+	{
+		std::ofstream out(path, std::ios::binary);
+		if (!out)
+			throw std::runtime_error("PreflopEquityTable output cannot be opened");
+		if (!std::all_of(table_.begin(), table_.end(), [](double value) { return std::isfinite(value); }))
+		{
+			throw std::invalid_argument("PreflopEquityTable cannot save non-finite values");
+		}
+		out.write(MAGIC.data(), static_cast<std::streamsize>(MAGIC.size()));
+		write_u64(out, static_cast<std::uint64_t>(table_.size()));
+		for (const auto value : table_)
+			write_double(out, value);
+		if (!out)
+			throw std::runtime_error("PreflopEquityTable write failed");
+	}
 
-PreflopEquityTable PreflopEquityTable::load_csv(const std::string& path) {
-    std::ifstream in(path);
-    PreflopEquityTable out;
-    if (!in) return out;
-    for (double& cell : out.table_) {
-        if (!(in >> cell) || !std::isfinite(cell)) return PreflopEquityTable{};
-    }
-    std::string trailing;
-    if (in >> trailing) return PreflopEquityTable{};
-    out.valid_ = true;
-    return out;
-}
+	PreflopEquityTable PreflopEquityTable::load_csv(const std::string& path)
+	{
+		std::ifstream in(path);
+		PreflopEquityTable out;
+		if (!in)
+			return out;
+		for (double& cell : out.table_)
+		{
+			if (!(in >> cell) || !std::isfinite(cell))
+				return PreflopEquityTable{};
+		}
+		std::string trailing;
+		if (in >> trailing)
+			return PreflopEquityTable{};
+		out.valid_ = true;
+		return out;
+	}
 
-void PreflopEquityTable::save_csv(const std::string& path) const {
-    std::ofstream out(path);
-    if (!out) throw std::runtime_error("PreflopEquityTable CSV output cannot be opened");
-    if (!std::all_of(table_.begin(), table_.end(), [](double value) { return std::isfinite(value); })) {
-        throw std::invalid_argument("PreflopEquityTable cannot save non-finite values");
-    }
-    for (const double cell : table_) {
-        out << cell << '\n';
-    }
-    if (!out) throw std::runtime_error("PreflopEquityTable CSV write failed");
-}
+	void PreflopEquityTable::save_csv(const std::string& path) const
+	{
+		std::ofstream out(path);
+		if (!out)
+			throw std::runtime_error("PreflopEquityTable CSV output cannot be opened");
+		if (!std::all_of(table_.begin(), table_.end(), [](double value) { return std::isfinite(value); }))
+		{
+			throw std::invalid_argument("PreflopEquityTable cannot save non-finite values");
+		}
+		for (const double cell : table_)
+		{
+			out << cell << '\n';
+		}
+		if (!out)
+			throw std::runtime_error("PreflopEquityTable CSV write failed");
+	}
 
-}  // namespace texas::preflop
-
-
+} // namespace texas::preflop

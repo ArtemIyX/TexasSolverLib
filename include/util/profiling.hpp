@@ -3,36 +3,41 @@
 #include <cstdint>
 #include <string_view>
 
-namespace texas::util::profiling {
+namespace texas::util::profiling
+{
 
-bool enabled() noexcept;
-bool detail_enabled() noexcept;
-void mark(std::string_view name, double seconds) noexcept;
-void mark_with_calls(std::string_view name, double seconds, std::uint64_t calls) noexcept;
-void print_profiler_report();
+	bool enabled() noexcept;
+	bool detail_enabled() noexcept;
+	void mark(std::string_view name, double seconds) noexcept;
+	void mark_with_calls(std::string_view name, double seconds, std::uint64_t calls) noexcept;
+	void print_profiler_report();
 
-class ScopedTimer {
-public:
-    explicit ScopedTimer(std::string_view name) noexcept;
-    ~ScopedTimer();
+	class ScopedTimer
+	{
+	public:
+		explicit ScopedTimer(std::string_view name) noexcept;
+		~ScopedTimer();
 
-    ScopedTimer(const ScopedTimer&) = delete;
-    ScopedTimer& operator=(const ScopedTimer&) = delete;
+		ScopedTimer(const ScopedTimer&) = delete;
+		ScopedTimer& operator=(const ScopedTimer&) = delete;
 
-private:
-    std::string_view name_;
-    std::uint64_t start_ns_ = 0;
-};
+	private:
+		std::string_view name_;
+		std::uint64_t start_ns_ = 0;
+	};
 
-void write_report();
+	void write_report();
 
-}  // namespace texas::util::profiling
+} // namespace texas::util::profiling
 
 #define TEXASSOLVER_PROFILE_SCOPE(name_literal) \
-    TEXASSOLVER_PROFILE_SCOPE_IMPL(name_literal, __COUNTER__)
+	TEXASSOLVER_PROFILE_SCOPE_IMPL(name_literal, __COUNTER__)
 
-#define TEXASSOLVER_PROFILE_SCOPE_IMPL(name_literal, counter) \
-    ::texas::util::profiling::ScopedTimer TEXASSOLVER_PROFILE_SCOPE_NAME(counter){name_literal}
+#define TEXASSOLVER_PROFILE_SCOPE_IMPL(name_literal, counter)                     \
+	::texas::util::profiling::ScopedTimer TEXASSOLVER_PROFILE_SCOPE_NAME(counter) \
+	{                                                                             \
+		name_literal                                                              \
+	}
 
 #define TEXASSOLVER_PROFILE_SCOPE_NAME(counter) TEXASSOLVER_PROFILE_SCOPE_NAME_IMPL(counter)
 #define TEXASSOLVER_PROFILE_SCOPE_NAME_IMPL(counter) _profile_scope_##counter

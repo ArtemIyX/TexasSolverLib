@@ -11,143 +11,155 @@
 #include <vector>
 #include <initializer_list>
 
-namespace texas::games::multiway {
+namespace texas::games::multiway
+{
 
-struct MultiwayWeightedHole {
-    std::array<std::uint8_t, 2> hole = {0, 0};
-    double weight = 0.0;
-};
+	struct MultiwayWeightedHole
+	{
+		std::array<std::uint8_t, 2> hole = { 0, 0 };
+		double weight = 0.0;
+	};
 
-struct MultiwayPrivateConfig {
-    std::vector<std::uint8_t> board;
-    std::vector<std::vector<MultiwayWeightedHole>> ranges;
-    void validate() const;
-};
+	struct MultiwayPrivateConfig
+	{
+		std::vector<std::uint8_t> board;
+		std::vector<std::vector<MultiwayWeightedHole>> ranges;
+		void validate() const;
+	};
 
-enum class MultiwayPrivateRangeFeasibilityStatus : std::uint8_t {
-    Feasible,
-    Infeasible,
-    SearchBudgetExhausted,
-};
+	enum class MultiwayPrivateRangeFeasibilityStatus : std::uint8_t
+	{
+		Feasible,
+		Infeasible,
+		SearchBudgetExhausted,
+	};
 
-// Coordinator-only preflight for a compiled private-range request. This
-// bounded search must complete before workers begin trajectory sampling.
-struct MultiwayPrivateRangeFeasibilityResult {
-    MultiwayPrivateRangeFeasibilityStatus status = MultiwayPrivateRangeFeasibilityStatus::Infeasible;
-    std::uint64_t visited_nodes = 0;
-    std::uint64_t node_budget = 0;
-    std::string reason;
-};
+	// Coordinator-only preflight for a compiled private-range request. This
+	// bounded search must complete before workers begin trajectory sampling.
+	struct MultiwayPrivateRangeFeasibilityResult
+	{
+		MultiwayPrivateRangeFeasibilityStatus status = MultiwayPrivateRangeFeasibilityStatus::Infeasible;
+		std::uint64_t visited_nodes = 0;
+		std::uint64_t node_budget = 0;
+		std::string reason;
+	};
 
-MultiwayPrivateRangeFeasibilityResult preflight_multiway_private_range_feasibility(
-    const MultiwayPrivateConfig& config,
-    std::uint64_t node_budget = 1'000'000U);
+	MultiwayPrivateRangeFeasibilityResult preflight_multiway_private_range_feasibility(
+		const MultiwayPrivateConfig& config,
+		std::uint64_t node_budget = 1'000'000U);
 
-struct MultiwayFixedPrivateHoles {
-    std::array<std::array<std::uint8_t, 2>, 6> values = {};
-    std::uint8_t count = 0U;
+	struct MultiwayFixedPrivateHoles
+	{
+		std::array<std::array<std::uint8_t, 2>, 6> values = {};
+		std::uint8_t count = 0U;
 
-    MultiwayFixedPrivateHoles() = default;
-    MultiwayFixedPrivateHoles(std::initializer_list<std::array<std::uint8_t, 2>> input) {
-        *this = input;
-    }
-    MultiwayFixedPrivateHoles& operator=(
-        std::initializer_list<std::array<std::uint8_t, 2>> input) noexcept {
-        count = static_cast<std::uint8_t>(std::min(input.size(), values.size()));
-        std::copy_n(input.begin(), count, values.begin());
-        return *this;
-    }
-    [[nodiscard]] std::size_t size() const noexcept { return count; }
-    [[nodiscard]] bool empty() const noexcept { return count == 0U; }
-    [[nodiscard]] auto begin() const noexcept { return values.begin(); }
-    [[nodiscard]] auto end() const noexcept { return values.begin() + count; }
-    [[nodiscard]] auto begin() noexcept { return values.begin(); }
-    [[nodiscard]] auto end() noexcept { return values.begin() + count; }
-    [[nodiscard]] auto& operator[](std::size_t index) noexcept { return values[index]; }
-    [[nodiscard]] const auto& operator[](std::size_t index) const noexcept { return values[index]; }
-    friend bool operator==(const MultiwayFixedPrivateHoles& left,
-        const MultiwayFixedPrivateHoles& right) noexcept {
-        return left.count == right.count && std::equal(
-            left.begin(), left.end(), right.begin());
-    }
-};
+		MultiwayFixedPrivateHoles() = default;
+		MultiwayFixedPrivateHoles(std::initializer_list<std::array<std::uint8_t, 2>> input)
+		{
+			*this = input;
+		}
+		MultiwayFixedPrivateHoles& operator=(
+			std::initializer_list<std::array<std::uint8_t, 2>> input) noexcept
+		{
+			count = static_cast<std::uint8_t>(std::min(input.size(), values.size()));
+			std::copy_n(input.begin(), count, values.begin());
+			return *this;
+		}
+		[[nodiscard]] std::size_t size() const noexcept { return count; }
+		[[nodiscard]] bool empty() const noexcept { return count == 0U; }
+		[[nodiscard]] auto begin() const noexcept { return values.begin(); }
+		[[nodiscard]] auto end() const noexcept { return values.begin() + count; }
+		[[nodiscard]] auto begin() noexcept { return values.begin(); }
+		[[nodiscard]] auto end() noexcept { return values.begin() + count; }
+		[[nodiscard]] auto& operator[](std::size_t index) noexcept { return values[index]; }
+		[[nodiscard]] const auto& operator[](std::size_t index) const noexcept { return values[index]; }
+		friend bool operator==(const MultiwayFixedPrivateHoles& left,
+			const MultiwayFixedPrivateHoles& right) noexcept
+		{
+			return left.count == right.count && std::equal(left.begin(), left.end(), right.begin());
+		}
+	};
 
-struct MultiwayJointPrivateSample {
-    MultiwayFixedPrivateHoles holes{};
-    std::uint32_t attempts = 0;
-    // One independent proposal is made per trajectory. Compatible samples
-    // retain their independent range-product probability; collisions discard
-    // the trajectory. No global compatible-deal normalization is used.
-    double chance_reach = 0.0;
-    double conditional_deal_probability = 0.0;
-    double proposal_reach = 0.0;
-    double inclusion_reach = 0.0;
-    std::uint32_t accepted_trajectories = 0;
-    std::uint32_t rejected_trajectories = 0;
-    std::uint32_t discarded_trajectories = 0;
+	struct MultiwayJointPrivateSample
+	{
+		MultiwayFixedPrivateHoles holes{};
+		std::uint32_t attempts = 0;
+		// One independent proposal is made per trajectory. Compatible samples
+		// retain their independent range-product probability; collisions discard
+		// the trajectory. No global compatible-deal normalization is used.
+		double chance_reach = 0.0;
+		double conditional_deal_probability = 0.0;
+		double proposal_reach = 0.0;
+		double inclusion_reach = 0.0;
+		std::uint32_t accepted_trajectories = 0;
+		std::uint32_t rejected_trajectories = 0;
+		std::uint32_t discarded_trajectories = 0;
 
-    [[nodiscard]] bool empty() const noexcept { return holes.empty(); }
-    [[nodiscard]] std::size_t size() const noexcept { return holes.size(); }
-    [[nodiscard]] auto begin() const noexcept { return holes.begin(); }
-    [[nodiscard]] auto end() const noexcept { return holes.end(); }
-};
+		[[nodiscard]] bool empty() const noexcept { return holes.empty(); }
+		[[nodiscard]] std::size_t size() const noexcept { return holes.size(); }
+		[[nodiscard]] auto begin() const noexcept { return holes.begin(); }
+		[[nodiscard]] auto end() const noexcept { return holes.end(); }
+	};
 
-struct MultiwayPrivateWorkerScratch {
-    std::array<std::array<std::uint8_t, 2>, 6> holes = {};
-    std::array<bool, 64> used = {};
-    std::uint8_t seat_count = 0;
-    std::uint32_t attempts = 0;
-    double chance_reach = 0.0;
-    double conditional_deal_probability = 0.0;
-    double proposal_reach = 0.0;
-    double inclusion_reach = 0.0;
-    std::uint32_t accepted_trajectories = 0;
-    std::uint32_t rejected_trajectories = 0;
-    std::uint32_t discarded_trajectories = 0;
-};
+	struct MultiwayPrivateWorkerScratch
+	{
+		std::array<std::array<std::uint8_t, 2>, 6> holes = {};
+		std::array<bool, 64> used = {};
+		std::uint8_t seat_count = 0;
+		std::uint32_t attempts = 0;
+		double chance_reach = 0.0;
+		double conditional_deal_probability = 0.0;
+		double proposal_reach = 0.0;
+		double inclusion_reach = 0.0;
+		std::uint32_t accepted_trajectories = 0;
+		std::uint32_t rejected_trajectories = 0;
+		std::uint32_t discarded_trajectories = 0;
+	};
 
-// Immutable, canonicalized range tables for traversal workers.  Reversed and
-// duplicate hole-card entries are merged at compile time; cumulative weights
-// make each draw allocation-free.
-class MultiwayCompiledPrivateRanges {
-public:
-    explicit MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config);
+	// Immutable, canonicalized range tables for traversal workers.  Reversed and
+	// duplicate hole-card entries are merged at compile time; cumulative weights
+	// make each draw allocation-free.
+	class MultiwayCompiledPrivateRanges
+	{
+	public:
+		explicit MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config);
 
-    // Allocation-free worker path. Exactly one independent proposal is made
-    // per trajectory. False records a discarded collision.
-    [[nodiscard]] bool try_sample_into(
-        std::uint64_t seed,
-        MultiwayPrivateWorkerScratch& scratch) const noexcept;
-    void sample_into(std::uint64_t seed, MultiwayPrivateWorkerScratch& scratch) const;
-    [[nodiscard]] std::size_t seat_count() const noexcept;
+		// Allocation-free worker path. Exactly one independent proposal is made
+		// per trajectory. False records a discarded collision.
+		[[nodiscard]] bool try_sample_into(
+			std::uint64_t seed,
+			MultiwayPrivateWorkerScratch& scratch) const noexcept;
+		void sample_into(std::uint64_t seed, MultiwayPrivateWorkerScratch& scratch) const;
+		[[nodiscard]] std::size_t seat_count() const noexcept;
 
-private:
-    std::vector<std::uint8_t> board_;
-    std::vector<std::vector<MultiwayWeightedHole>> ranges_;
-    std::vector<std::vector<double>> cumulative_weights_;
-    std::vector<double> range_totals_;
-};
+	private:
+		std::vector<std::uint8_t> board_;
+		std::vector<std::vector<MultiwayWeightedHole>> ranges_;
+		std::vector<std::vector<double>> cumulative_weights_;
+		std::vector<double> range_totals_;
+	};
 
-// Samples one independent per-seat proposal and discards colliding deals.
-// Accepted samples expose their product proposal probability directly.
-MultiwayJointPrivateSample sample_multiway_private_hands(
-    const MultiwayPrivateConfig& config,
-    std::uint64_t seed);
+	// Samples one independent per-seat proposal and discards colliding deals.
+	// Accepted samples expose their product proposal probability directly.
+	MultiwayJointPrivateSample sample_multiway_private_hands(
+		const MultiwayPrivateConfig& config,
+		std::uint64_t seed);
 
-struct MultiwayShowdownInput {
-    std::vector<std::uint8_t> board;
-    std::vector<std::array<std::uint8_t, 2>> holes;
-    std::vector<int> contributions;
-    std::vector<bool> folded;
-    PlayerId odd_chip_first_seat = 0;
-    MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
-    bool flop_seen = true;
+	struct MultiwayShowdownInput
+	{
+		std::vector<std::uint8_t> board;
+		std::vector<std::array<std::uint8_t, 2>> holes;
+		std::vector<int> contributions;
+		std::vector<bool> folded;
+		PlayerId odd_chip_first_seat = 0;
+		MultiwayRakePolicy rake_policy = MultiwayRakePolicy::explicit_zero();
+		bool flop_seen = true;
 
-    void validate() const;
-};
+		void validate() const;
+	};
 
-// Evaluates all surviving seats' seven-card hands then delegates pot and
-// utility settlement to the precomputed multiway terminal layer.
-MultiwayTerminalResult evaluate_multiway_showdown(const MultiwayShowdownInput& input);
+	// Evaluates all surviving seats' seven-card hands then delegates pot and
+	// utility settlement to the precomputed multiway terminal layer.
+	MultiwayTerminalResult evaluate_multiway_showdown(const MultiwayShowdownInput& input);
 
-}  // namespace texas::games::multiway
+} // namespace texas::games::multiway

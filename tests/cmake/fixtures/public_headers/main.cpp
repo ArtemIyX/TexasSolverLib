@@ -3,6 +3,7 @@
 #include "solver/hunl/sampled/hunl_sampled_solver.hpp"
 #include "solver/multiway/resolver/multiway_resolver.hpp"
 
-int main() {
-    return 0;
+int main()
+{
+	return 0;
 }
