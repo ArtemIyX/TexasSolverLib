@@ -46,12 +46,12 @@ def main() -> int:
     args = parser.parse_args()
     if args.parallel < 1:
         parser.error("--parallel must be positive")
-    print(f"\started build: {args}")
     root = args.root.resolve()
     output = args.output if args.output.is_absolute() else root / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
 
     command = build_command(root, args.configuration, args.parallel)
+    print(f"started compact build: configuration={args.configuration} parallel_jobs={args.parallel} root={root} log={output}")
     environment = {
         key: value for key, value in os.environ.items()
         if key.casefold() != "path"
