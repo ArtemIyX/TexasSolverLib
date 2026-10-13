@@ -290,8 +290,8 @@ TEST_CASE(multiway_external_sampling_request_uses_compiled_private_proposal_reac
 		std::array<std::uint8_t, 2>{ 4U, 5U },
 	};
 	sample.chance_reach = 0.25;
-	sample.conditional_deal_probability = 1.0 / 3.0;
-	sample.inclusion_reach = 0.75;
+	sample.conditional_deal_probability = 0.25;
+	sample.inclusion_reach = 1.0;
 	sample.proposal_reach = 0.25;
 	sample.accepted_trajectories = 1;
 	const auto request = texas::make_multiway_external_sampling_request(
@@ -312,8 +312,8 @@ TEST_CASE(multiway_external_sampling_request_rejects_discarded_or_unaccepted_pri
 	texas::MultiwayJointPrivateSample sample;
 	sample.holes = { std::array<std::uint8_t, 2>{ 2U, 3U }, std::array<std::uint8_t, 2>{ 4U, 5U } };
 	sample.chance_reach = 0.25;
-	sample.conditional_deal_probability = 0.5;
-	sample.inclusion_reach = 0.5;
+	sample.conditional_deal_probability = 0.25;
+	sample.inclusion_reach = 1.0;
 	sample.proposal_reach = 0.25;
 	sample.accepted_trajectories = 0;
 	sample.discarded_trajectories = 1;
@@ -329,7 +329,7 @@ TEST_CASE(multiway_external_sampling_request_rejects_invalid_private_reach_compo
 	sample.holes = { std::array<std::uint8_t, 2>{ 2U, 3U }, std::array<std::uint8_t, 2>{ 4U, 5U } };
 	sample.chance_reach = 0.25;
 	sample.conditional_deal_probability = 0.5;
-	sample.inclusion_reach = 1.5;
+	sample.inclusion_reach = 1.0;
 	sample.proposal_reach = 0.75;
 	sample.accepted_trajectories = 1;
 	EXPECT_THROW(
@@ -347,8 +347,8 @@ TEST_CASE(multiway_external_sampling_request_preserves_traverser_reach_for_each_
 		std::array<std::uint8_t, 2>{ 6U, 7U },
 	};
 	sample.chance_reach = 0.4;
-	sample.conditional_deal_probability = 0.5;
-	sample.inclusion_reach = 0.8;
+	sample.conditional_deal_probability = 0.4;
+	sample.inclusion_reach = 1.0;
 	sample.proposal_reach = 0.4;
 	sample.accepted_trajectories = 1;
 	for (texas::PlayerId traverser = 0; traverser < 3; ++traverser)

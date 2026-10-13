@@ -84,9 +84,9 @@ namespace texas::games::multiway
 	{
 		MultiwayFixedPrivateHoles holes{};
 		std::uint32_t attempts = 0;
-		// One independent proposal is made per trajectory. Compatible samples
-		// retain their independent range-product probability; collisions discard
-		// the trajectory. No global compatible-deal normalization is used.
+		// Samples are drawn sequentially from each seat's blocker-compatible
+		// range mass. The probability fields contain the product of those
+		// conditional proposal probabilities.
 		double chance_reach = 0.0;
 		double conditional_deal_probability = 0.0;
 		double proposal_reach = 0.0;
@@ -124,8 +124,8 @@ namespace texas::games::multiway
 	public:
 		explicit MultiwayCompiledPrivateRanges(const MultiwayPrivateConfig& config);
 
-		// Allocation-free worker path. Exactly one independent proposal is made
-		// per trajectory. False records a discarded collision.
+		// Allocation-free worker path. False means that the configured ranges
+		// have no compatible continuation for the deterministic seat order.
 		[[nodiscard]] bool try_sample_into(
 			std::uint64_t seed,
 			MultiwayPrivateWorkerScratch& scratch) const noexcept;
@@ -135,11 +135,9 @@ namespace texas::games::multiway
 	private:
 		std::vector<std::uint8_t> board_;
 		std::vector<std::vector<MultiwayWeightedHole>> ranges_;
-		std::vector<std::vector<double>> cumulative_weights_;
-		std::vector<double> range_totals_;
 	};
 
-	// Samples one independent per-seat proposal and discards colliding deals.
+	// Samples one blocker-compatible hand per seat in deterministic order.
 	// Accepted samples expose their product proposal probability directly.
 	MultiwayJointPrivateSample sample_multiway_private_hands(
 		const MultiwayPrivateConfig& config,

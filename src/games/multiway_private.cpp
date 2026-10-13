@@ -24,10 +24,26 @@ namespace texas::games::multiway
 			used[hole[1]] = true;
 		}
 
-		std::size_t sample_cumulative(const std::vector<double>& cumulative, PcsRng& rng)
+		std::size_t sample_compatible(
+			const std::vector<MultiwayWeightedHole>& range,
+			const std::array<bool, 64>& used,
+			double compatible_mass,
+			PcsRng& rng) noexcept
 		{
-			const auto draw = rng.next_unit_f64() * cumulative.back();
-			return static_cast<std::size_t>(std::lower_bound(cumulative.begin(), cumulative.end(), draw) - cumulative.begin());
+			const auto draw = rng.next_unit_f64() * compatible_mass;
+			double cumulative = 0.0;
+			std::size_t last_compatible = range.size();
+			for (std::size_t index = 0U; index < range.size(); ++index)
+			{
+				const auto& entry = range[index];
+				if (entry.weight <= 0.0 || overlaps(entry.hole, used))
+					continue;
+				last_compatible = index;
+				cumulative += entry.weight;
+				if (draw < cumulative)
+					return index;
+			}
+			return last_compatible;
 		}
 
 		MultiwayPrivateRangeFeasibilityStatus find_compatible_deal(
@@ -101,11 +117,9 @@ namespace texas::games::multiway
 			}
 			catch (const std::invalid_argument&)
 			{
-				// This compatibility API historically reports an impossible
-				// joint draw as rejection exhaustion. The compiled API keeps the
-				// stronger preflight distinction for coordinator use.
-				throw std::runtime_error(
-					"unable to sample compatible multiway private hands within rejection limit");
+				// The compatibility API preserves a runtime error while the
+				// compiled API keeps the stronger preflight distinction.
+				throw std::runtime_error("unable to sample compatible multiway private hands");
 			}
 		}();
 		MultiwayPrivateWorkerScratch scratch;
@@ -174,8 +188,6 @@ namespace texas::games::multiway
 			throw std::runtime_error("multiway private range feasibility preflight exhausted its node budget");
 		}
 		ranges_.resize(config.ranges.size());
-		cumulative_weights_.resize(config.ranges.size());
-		range_totals_.resize(config.ranges.size(), 0.0);
 		for (std::size_t seat = 0; seat < config.ranges.size(); ++seat)
 		{
 			auto entries = config.ranges[seat];
@@ -200,18 +212,10 @@ namespace texas::games::multiway
 					ranges_[seat].push_back(entry);
 				}
 			}
-			double total = 0.0;
-			cumulative_weights_[seat].reserve(ranges_[seat].size());
-			for (const auto& entry : ranges_[seat])
-			{
-				total += entry.weight;
-				cumulative_weights_[seat].push_back(total);
-			}
 			if (ranges_[seat].empty())
 			{
 				throw std::invalid_argument("multiway compiled private range has no positive-mass hand");
 			}
-			range_totals_[seat] = total;
 		}
 	}
 
@@ -230,39 +234,44 @@ namespace texas::games::multiway
 		scratch.rejected_trajectories = 0;
 		scratch.discarded_trajectories = 0;
 		PcsRng rng(seed);
+		scratch.attempts = 1U;
 		scratch.used.fill(false);
 		for (const auto card : board_)
 			scratch.used[card] = true;
-		bool compatible = true;
-		double chance_reach = 1.0;
+		double proposal_reach = 1.0;
 		for (std::size_t seat = 0; seat < ranges_.size(); ++seat)
 		{
-			const auto selected = sample_cumulative(cumulative_weights_[seat], rng);
+			double compatible_mass = 0.0;
+			for (const auto& entry : ranges_[seat])
+			{
+				if (!overlaps(entry.hole, scratch.used))
+					compatible_mass += entry.weight;
+			}
+			if (!std::isfinite(compatible_mass) || compatible_mass <= 0.0)
+			{
+				scratch.holes = {};
+				scratch.rejected_trajectories = 1U;
+				return false;
+			}
+			const auto selected = sample_compatible(ranges_[seat], scratch.used, compatible_mass, rng);
+			if (selected >= ranges_[seat].size())
+			{
+				scratch.holes = {};
+				scratch.rejected_trajectories = 1U;
+				return false;
+			}
 			const auto& entry = ranges_[seat][selected];
 			const auto& hole = entry.hole;
-			chance_reach *= entry.weight / range_totals_[seat];
-			if (overlaps(hole, scratch.used))
-			{
-				compatible = false;
-				break;
-			}
+			proposal_reach *= entry.weight / compatible_mass;
 			scratch.holes[seat] = hole;
 			mark(hole, scratch.used);
 		}
-		scratch.attempts = 1U;
-		if (compatible)
-		{
-			scratch.seat_count = static_cast<std::uint8_t>(ranges_.size());
-			scratch.chance_reach = chance_reach;
-			scratch.conditional_deal_probability = chance_reach;
-			scratch.proposal_reach = chance_reach;
-			scratch.accepted_trajectories = 1;
-			return true;
-		}
-		scratch.holes = {};
-		scratch.rejected_trajectories = 1U;
-		scratch.discarded_trajectories = 1;
-		return false;
+		scratch.seat_count = static_cast<std::uint8_t>(ranges_.size());
+		scratch.chance_reach = proposal_reach;
+		scratch.conditional_deal_probability = proposal_reach;
+		scratch.proposal_reach = proposal_reach;
+		scratch.accepted_trajectories = 1U;
+		return true;
 	}
 
 	void MultiwayCompiledPrivateRanges::sample_into(
@@ -271,7 +280,7 @@ namespace texas::games::multiway
 	{
 		if (try_sample_into(seed, scratch))
 			return;
-		throw std::runtime_error("independent multiway private proposal collided");
+		throw std::runtime_error("multiway private range has no compatible sequential draw");
 	}
 
 	std::size_t MultiwayCompiledPrivateRanges::seat_count() const noexcept
