@@ -9,10 +9,10 @@ import subprocess
 from pathlib import Path
 
 
-def build_command(root: Path, configuration: str) -> list[str]:
+def build_command(root: Path, configuration: str, parallel: int) -> list[str]:
     if os.name != "nt":
         return [
-            "cmake", "--build", "build", "--config", configuration, "--parallel", "--",
+            "cmake", "--build", "build", "--config", configuration, "--parallel", str(parallel), "--",
             "/nologo", "/v:q", "/clp:ErrorsOnly;NoSummary",
         ]
 
@@ -29,7 +29,7 @@ def build_command(root: Path, configuration: str) -> list[str]:
     msbuild = query.stdout.splitlines()[0]
     return [
         msbuild, str(root / "build/ALL_BUILD.vcxproj"),
-        f"/p:Configuration={configuration}", "/p:Platform=x64", "/m",
+        f"/p:Configuration={configuration}", "/p:Platform=x64", f"/m:{parallel}",
         "/nologo", "/v:q", "/clp:ErrorsOnly;NoSummary",
     ]
 
@@ -39,14 +39,19 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1],
                         help="repository root (default: script's parent repository)")
     parser.add_argument("--configuration", choices=("Debug", "Release"), default="Debug")
+    parser.add_argument("--parallel", type=int, default=16, metavar="N",
+                        help="maximum build jobs (default: 16)")
     parser.add_argument("-o", "--output", type=Path, default=Path("tmp/build_debug.log"),
                         help="log file (default: tmp/build_debug.log)")
     args = parser.parse_args()
+    if args.parallel < 1:
+        parser.error("--parallel must be positive")
+    print(f"\started build: {args}")
     root = args.root.resolve()
     output = args.output if args.output.is_absolute() else root / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    command = build_command(root, args.configuration)
+    command = build_command(root, args.configuration, args.parallel)
     environment = {
         key: value for key, value in os.environ.items()
         if key.casefold() != "path"
