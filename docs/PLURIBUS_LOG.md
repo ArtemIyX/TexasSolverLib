@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-13 - Add multiway batch throughput telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-13
+**Implementation commit:** `7adf47c pb-1 Multiway: Add batch telemetry`
+
+- Added batch-boundary worker wake, completion, tail-idle, sorting, delta, discovery, and per-worker profile telemetry.
+- Propagated telemetry through blueprint training status and JSON reports without changing traversal, scheduling, merge order, or deterministic identity.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+
+### Validation
+
+- Source diff review completed.
+- Builds, tests, benchmarks, and scripts were not run per user instruction.
+
+### Limitations
+
+- Allocation probing, benchmark CLI extensions, and baseline matrix execution remain deferred.
+
 ## 2026-10-13 - Implement deterministic fixed and dynamic worker scheduling
 
 **Status:** Complete
