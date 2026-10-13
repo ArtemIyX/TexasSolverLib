@@ -196,6 +196,8 @@ TEST_CASE(multiway_parallel_training_fixed_and_dynamic_modes_match_at_focused_wo
 		const auto& dynamic_status = dynamic.trainer.status();
 		const auto& repeated_status = repeated_dynamic.trainer.status();
 		EXPECT_EQ(fixed_status.trajectories, dynamic_status.trajectories);
+		EXPECT_EQ(fixed_status.trajectories, 96U);
+		EXPECT_EQ(fixed_status.discarded_trajectories, 0U);
 		EXPECT_EQ(fixed_status.discarded_trajectories, dynamic_status.discarded_trajectories);
 		EXPECT_EQ(fixed_status.cumulative_worker_delta_entries, dynamic_status.cumulative_worker_delta_entries);
 		EXPECT_EQ(fixed_status.merged_stream_fingerprint, dynamic_status.merged_stream_fingerprint);
@@ -220,6 +222,8 @@ TEST_CASE(multiway_parallel_training_matches_one_worker_through_sixteen_workers)
 		expect_same_storage(expected, parallel.trainer.checkpoint().coordinator);
 		expect_same_policy_rows(expected_policy, parallel.trainer.export_full_policy());
 		const auto& status = parallel.trainer.status();
+		EXPECT_EQ(status.trajectories, 96U);
+		EXPECT_EQ(status.discarded_trajectories, 0U);
 		EXPECT_EQ(status.requested_worker_count, workers);
 		EXPECT_EQ(status.effective_worker_count, workers);
 		EXPECT_EQ(status.trajectories_per_batch, 32U);
@@ -325,6 +329,19 @@ TEST_CASE(multiway_parallel_runner_reports_worker_capacity_discards)
 	EXPECT_TRUE(!result.clean);
 	EXPECT_TRUE(result.trajectories_discarded > 0U);
 	EXPECT_TRUE(result.maximum_worker_delta_entries <= 1U);
+}
+
+TEST_CASE(multiway_blueprint_training_retains_failed_batch_telemetry_without_committing_it)
+{
+	ParallelTrainingFixture fixture(4U, 256U, 1U);
+	EXPECT_THROW(fixture.trainer.run_batches(1U, 8U, 0x77U), std::runtime_error);
+	const auto& status = fixture.trainer.status();
+	EXPECT_EQ(status.batches, 0U);
+	EXPECT_EQ(status.trajectories, 0U);
+	EXPECT_TRUE(status.failed_batch_available);
+	EXPECT_EQ(status.failed_batch.trajectories_attempted, 8U);
+	EXPECT_TRUE(status.failed_batch.trajectories_discarded > 0U);
+	EXPECT_TRUE(status.failed_batch.worker_trajectory_counts.size() == 4U);
 }
 
 TEST_CASE(multiway_parallel_training_scaling_smoke)

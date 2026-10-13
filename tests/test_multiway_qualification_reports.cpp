@@ -179,5 +179,12 @@ TEST_CASE(multiway_training_report_preserves_failed_partial_telemetry)
 	report.batches = 1U;
 	report.trajectories = 10U;
 	report.failed = true;
+	report.failed_batch_available = true;
+	report.failed_batch.trajectories_attempted = 32U;
+	report.failed_batch.trajectories_accepted = 6U;
+	report.failed_batch.trajectories_discarded = 26U;
+	report.failed_batch.delta_entries_merged = 87U;
+	report.failed_batch.worker_trajectory_counts = { 32U };
+	report.failed_batch.worker_active_nanoseconds_by_worker = { 100U };
 	report.validate();
 }

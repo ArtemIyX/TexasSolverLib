@@ -72,6 +72,8 @@ namespace texas::solver::multiway
 		std::uint64_t blueprint_export_nanoseconds = 0U;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
 			MultiwayTrainingCapacityStage::None;
+		bool failed_batch_available = false;
+		MultiwayRootBatchResult failed_batch{};
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		[[nodiscard]] double trajectories_per_second() const noexcept;
 		std::uint64_t batches = 0U;

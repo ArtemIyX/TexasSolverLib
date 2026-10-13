@@ -209,6 +209,11 @@ Write-Output "[ram1000] report: peak_process_rss_bytes=$($report.peak_process_rs
 Write-Output "[ram1000] report: peak_public_states=$($report.peak_public_states) peak_sparse_rows=$($report.peak_sparse_rows) peak_sparse_values=$($report.peak_sparse_values)"
 Write-Output "[ram1000] timing: worker_active_ns=$($report.worker_active_nanoseconds) min_worker_active_ns=$($report.minimum_worker_active_nanoseconds) max_worker_active_ns=$($report.maximum_worker_active_nanoseconds) coordinator_wait_ns=$($report.coordinator_wait_nanoseconds) barrier_wait_ns=$($report.barrier_wait_nanoseconds) lock_wait_ns=$($report.coordinator_lock_wait_nanoseconds) delta_sort_ns=$($report.delta_sort_nanoseconds) merge_ns=$($report.merge_nanoseconds) process_cpu_ns=$processCpuNanoseconds"
 Write-Output "[ram1000] workers: trajectories=$($report.worker_trajectory_counts -join ',') active_ns=$($report.worker_active_nanoseconds_by_worker -join ',')"
+if ($null -ne $report.failed_batch) {
+    Write-Output "[ram1000] failed_batch: attempted=$($report.failed_batch.trajectories_attempted) accepted=$($report.failed_batch.trajectories_accepted) discarded=$($report.failed_batch.trajectories_discarded) delta_entries=$($report.failed_batch.delta_entries_merged) discovery_capacity_exhausted=$($report.failed_batch.discovery_capacity_exhausted)"
+    Write-Output "[ram1000] failed_batch timing: worker_active_ns=$($report.failed_batch.worker_active_nanoseconds) coordinator_wait_ns=$($report.failed_batch.coordinator_wait_nanoseconds) barrier_wait_ns=$($report.failed_batch.barrier_wait_nanoseconds) delta_sort_ns=$($report.failed_batch.delta_sort_nanoseconds) merge_ns=$($report.failed_batch.merge_nanoseconds)"
+    Write-Output "[ram1000] failed_batch workers: trajectories=$($report.failed_batch.worker_trajectory_counts -join ',') active_ns=$($report.failed_batch.worker_active_nanoseconds_by_worker -join ',')"
+}
 Write-Output "[ram1000] logs: stdout=$stdoutPath stderr=$stderrPath"
 
 if ($exitCodeKnown -and $exitCode -ne 0) {

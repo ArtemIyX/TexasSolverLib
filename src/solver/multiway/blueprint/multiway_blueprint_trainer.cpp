@@ -319,9 +319,18 @@ namespace texas::solver::multiway
 				schedule_.strategy_weight(one_based_batch));
 			if (!batch_result.clean)
 			{
+				status_.failed_batch_available = true;
+				status_.failed_batch = batch_result;
 				if (batch_result.discovery_capacity_exhausted)
 					status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::Discovery;
-				throw std::runtime_error("multiway blueprint training batch did not complete cleanly");
+				throw std::runtime_error(
+					"multiway blueprint training batch did not complete cleanly: attempted="
+					+ std::to_string(batch_result.trajectories_attempted)
+					+ " accepted=" + std::to_string(batch_result.trajectories_accepted)
+					+ " discarded=" + std::to_string(batch_result.trajectories_discarded)
+					+ " delta_entries=" + std::to_string(batch_result.delta_entries_merged)
+					+ " discovery_capacity_exhausted="
+					+ (batch_result.discovery_capacity_exhausted ? "true" : "false"));
 			}
 			status_.trajectories += trajectories_per_batch;
 			++status_.batches;

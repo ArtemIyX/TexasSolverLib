@@ -134,6 +134,8 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
 			MultiwayTrainingCapacityStage::None;
+		bool failed_batch_available = false;
+		MultiwayRootBatchResult failed_batch{};
 	};
 
 	// Public-only coverage summary for a sparse full-blueprint export. Zero

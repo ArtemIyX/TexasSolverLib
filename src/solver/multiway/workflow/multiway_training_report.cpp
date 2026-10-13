@@ -31,6 +31,27 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("invalid multiway training report");
 		}
+		if (failed_batch_available)
+		{
+			const auto& batch = failed_batch;
+			const auto worker_count = batch.worker_trajectory_counts.size();
+			const auto matches = [worker_count](std::size_t size) {
+				return size == 0U || size == worker_count;
+			};
+			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded ||
+				!matches(batch.worker_active_nanoseconds_by_worker.size()) ||
+				!matches(batch.worker_sort_nanoseconds_by_worker.size()) ||
+				!matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) ||
+				!matches(batch.worker_completion_nanoseconds_by_worker.size()) ||
+				!matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) ||
+				!matches(batch.worker_regret_delta_entries.size()) ||
+				!matches(batch.worker_continuation_delta_entries.size()) ||
+				!matches(batch.worker_discovery_public_state_counts.size()) ||
+				!matches(batch.worker_discovery_row_counts.size()))
+			{
+				throw std::invalid_argument("invalid failed multiway batch telemetry");
+			}
+		}
 		evidence.validate(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION);
 		if (process_rss_available && current_process_rss_bytes == 0U)
 		{
@@ -121,6 +142,8 @@ namespace texas::solver::multiway
 		report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
 		report.memory_ledger = status.memory_ledger;
 		report.capacity_exhaustion_stage = status.capacity_exhaustion_stage;
+		report.failed_batch_available = status.failed_batch_available;
+		report.failed_batch = status.failed_batch;
 		report.admitted_rows_per_batch = status.admitted_rows_per_batch;
 		report.current_process_rss_bytes = status.current_process_rss_bytes;
 		report.peak_process_rss_bytes = status.peak_process_rss_bytes;
@@ -165,6 +188,7 @@ namespace texas::solver::multiway
 			   << ",\n  \"discarded_trajectories\": " << report.discarded_trajectories
 			   << ",\n  \"deterministic_merge_fingerprint\": " << report.deterministic_merge_fingerprint
 			   << ",\n  \"failed\": " << (report.failed ? "true" : "false")
+			   << ",\n  \"failed_batch_available\": " << (report.failed_batch_available ? "true" : "false")
 			   << ",\n  \"elapsed_wall_nanoseconds\": " << report.elapsed_wall_nanoseconds
 			   << ",\n  \"trajectories_per_second\": " << report.trajectories_per_second()
 			   << ",\n  \"current_process_rss_bytes\": " << report.current_process_rss_bytes
@@ -227,6 +251,47 @@ namespace texas::solver::multiway
 		write_u64_array("worker_continuation_delta_entries", report.worker_continuation_delta_entries);
 		write_u64_array("worker_discovery_public_state_counts", report.worker_discovery_public_state_counts);
 		write_u64_array("worker_discovery_row_counts", report.worker_discovery_row_counts);
+		if (report.failed_batch_available)
+		{
+			const auto& batch = report.failed_batch;
+			output << ",\n  \"failed_batch\": {\"trajectories_attempted\": " << batch.trajectories_attempted
+				   << ", \"trajectories_accepted\": " << batch.trajectories_accepted
+				   << ", \"trajectories_discarded\": " << batch.trajectories_discarded
+				   << ", \"delta_entries_merged\": " << batch.delta_entries_merged
+				   << ", \"total_peak_delta_entries\": " << batch.total_peak_delta_entries
+				   << ", \"generated_update_count\": " << batch.generated_update_count
+				   << ", \"worker_active_nanoseconds\": " << batch.worker_active_nanoseconds
+				   << ", \"worker_wake_latency_nanoseconds\": " << batch.worker_wake_latency_nanoseconds
+				   << ", \"worker_completion_nanoseconds\": " << batch.worker_completion_nanoseconds
+				   << ", \"worker_tail_idle_nanoseconds\": " << batch.worker_tail_idle_nanoseconds
+				   << ", \"coordinator_wait_nanoseconds\": " << batch.coordinator_wait_nanoseconds
+				   << ", \"barrier_wait_nanoseconds\": " << batch.barrier_wait_nanoseconds
+				   << ", \"delta_sort_nanoseconds\": " << batch.delta_sort_nanoseconds
+				   << ", \"merge_nanoseconds\": " << batch.merge_nanoseconds
+				   << ", \"discovery_capacity_exhausted\": "
+				   << (batch.discovery_capacity_exhausted ? "true" : "false");
+				const auto write_failed_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
+					output << ", \"" << name << "\": [";
+					for (std::size_t index = 0U; index < values.size(); ++index)
+					{
+						if (index != 0U)
+							output << ',';
+						output << values[index];
+					}
+					output << ']';
+				};
+				write_failed_array("worker_trajectory_counts", batch.worker_trajectory_counts);
+				write_failed_array("worker_active_nanoseconds_by_worker", batch.worker_active_nanoseconds_by_worker);
+				write_failed_array("worker_sort_nanoseconds_by_worker", batch.worker_sort_nanoseconds_by_worker);
+				write_failed_array("worker_wake_latency_nanoseconds_by_worker", batch.worker_wake_latency_nanoseconds_by_worker);
+				write_failed_array("worker_completion_nanoseconds_by_worker", batch.worker_completion_nanoseconds_by_worker);
+				write_failed_array("worker_tail_idle_nanoseconds_by_worker", batch.worker_tail_idle_nanoseconds_by_worker);
+				write_failed_array("worker_regret_delta_entries", batch.worker_regret_delta_entries);
+				write_failed_array("worker_continuation_delta_entries", batch.worker_continuation_delta_entries);
+				write_failed_array("worker_discovery_public_state_counts", batch.worker_discovery_public_state_counts);
+				write_failed_array("worker_discovery_row_counts", batch.worker_discovery_row_counts);
+				output << '}';
+		}
 		output << ",\n  \"worker_profiles\": [";
 		for (std::size_t worker = 0U; worker < report.worker_profiles.size(); ++worker)
 		{
