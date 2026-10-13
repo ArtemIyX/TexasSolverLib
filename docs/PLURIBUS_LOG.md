@@ -1,5 +1,41 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-13 - Repair multiway worker-matrix sampling and failure telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-13
+**Implementation commits:** `414c95c`, `9e6b8fe`, `316fb20`, `a789e51`
+
+- Replaced one-shot private-card proposals with deterministic blocker-conditioned sampling and conditional proposal probabilities.
+- Preserved the zero-discard worker-matrix gate and added failed-batch telemetry without committing failed training progress.
+- Added CSV worker-list parsing and documented the failure analysis.
+
+### Files
+
+- `include/games/multiway_private.hpp`
+- `src/games/multiway_private.cpp`
+- `src/solver/multiway/abstraction/multiway_terminal_adapter.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `scripts/run_multiway_ram_1000.ps1`
+- `scripts/run_multiway_worker_matrix.ps1`
+- `tests/test_multiway_private.cpp`
+- `tests/test_multiway_cfr.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/multiway_worker_matrix_failure_analysis.md`
+
+### Validation
+
+- Not run. Builds, tests, benchmarks, and executables were explicitly excluded.
+
+### Limitations
+
+- Runtime verification remains required before using the worker matrix for measurements.
+
 ## 2026-10-13 - Add multiway batch throughput telemetry
 
 **Status:** Complete
