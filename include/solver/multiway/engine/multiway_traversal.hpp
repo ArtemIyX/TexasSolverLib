@@ -184,7 +184,17 @@ namespace texas::solver::multiway
 		std::uint64_t minimum_worker_trajectories = 0;
 		std::uint64_t maximum_worker_trajectories = 0;
 		std::uint64_t maximum_worker_delta_entries = 0;
+		std::uint64_t total_peak_regret_delta_entries = 0;
+		std::uint64_t total_peak_continuation_delta_entries = 0;
+		std::uint64_t total_peak_delta_entries = 0;
+		std::uint64_t generated_update_count = 0;
+		std::uint64_t generated_discovery_public_state_count = 0;
+		std::uint64_t generated_discovery_row_count = 0;
+		// Traversal time excluding worker delta sorting.
 		std::uint64_t worker_active_nanoseconds = 0;
+		std::uint64_t worker_wake_latency_nanoseconds = 0;
+		std::uint64_t worker_completion_nanoseconds = 0;
+		std::uint64_t worker_tail_idle_nanoseconds = 0;
 		std::uint64_t minimum_worker_active_nanoseconds = 0;
 		std::uint64_t maximum_worker_active_nanoseconds = 0;
 		std::uint64_t coordinator_wait_nanoseconds = 0;
@@ -196,6 +206,15 @@ namespace texas::solver::multiway
 		// Attempted trajectories assigned to each worker; on a clean run these are completed.
 		std::vector<std::uint64_t> worker_trajectory_counts;
 		std::vector<std::uint64_t> worker_active_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_sort_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_wake_latency_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_completion_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_tail_idle_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_regret_delta_entries;
+		std::vector<std::uint64_t> worker_continuation_delta_entries;
+		std::vector<std::uint64_t> worker_discovery_public_state_counts;
+		std::vector<std::uint64_t> worker_discovery_row_counts;
+		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		MultiwaySearchProfileSnapshot profile{};
 		MultiwayRunMetadata run{};
 		bool discovery_capacity_exhausted = false;
@@ -247,6 +266,10 @@ namespace texas::solver::multiway
 			std::uint64_t discarded = 0;
 			std::uint64_t active_nanoseconds = 0;
 			std::uint64_t sort_nanoseconds = 0;
+			std::uint64_t wake_latency_nanoseconds = 0;
+			std::uint64_t completion_nanoseconds = 0;
+			std::uint64_t completion_timestamp_nanoseconds = 0;
+			std::uint64_t tail_idle_nanoseconds = 0;
 			std::vector<MultiwayActionDescriptor> action_menu_scratch;
 			MultiwaySearchProfile profile{};
 
@@ -260,6 +283,10 @@ namespace texas::solver::multiway
 				discarded = 0;
 				active_nanoseconds = 0;
 				sort_nanoseconds = 0;
+				wake_latency_nanoseconds = 0;
+				completion_nanoseconds = 0;
+				completion_timestamp_nanoseconds = 0;
+				tail_idle_nanoseconds = 0;
 				profile.reset(profile_mode);
 			}
 		};
@@ -280,6 +307,8 @@ namespace texas::solver::multiway
 		std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;
 		std::mutex pool_mutex_;
 		std::condition_variable completion_cv_;
+		std::uint64_t notification_timestamp_nanoseconds_ = 0U;
+		std::atomic<std::uint64_t> batch_completion_timestamp_nanoseconds_{ 0U };
 		bool stop_workers_ = false;
 		bool batch_active_ = false;
 		std::uint64_t batch_generation_ = 0U;

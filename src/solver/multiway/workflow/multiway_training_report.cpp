@@ -11,6 +11,22 @@ namespace texas::solver::multiway
 
 	void MultiwayTrainingReport::validate() const
 	{
+		const auto worker_vectors_match = [this] {
+			const auto worker_count = worker_trajectory_counts.size();
+			const auto matches = [worker_count](std::size_t size) {
+				return size == 0U || size == worker_count;
+			};
+			return matches(worker_active_nanoseconds_by_worker.size()) &&
+				matches(worker_sort_nanoseconds_by_worker.size()) &&
+				matches(worker_wake_latency_nanoseconds_by_worker.size()) &&
+				matches(worker_completion_nanoseconds_by_worker.size()) &&
+				matches(worker_tail_idle_nanoseconds_by_worker.size()) &&
+				matches(worker_regret_delta_entries.size()) &&
+				matches(worker_continuation_delta_entries.size()) &&
+				matches(worker_discovery_public_state_counts.size()) &&
+				matches(worker_discovery_row_counts.size()) &&
+				matches(worker_profiles.size());
+		};
 		if (accepted_trajectories > trajectories || discarded_trajectories > trajectories || (batches != 0U && deterministic_merge_fingerprint == 0U && !failed))
 		{
 			throw std::invalid_argument("invalid multiway training report");
@@ -20,7 +36,7 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("available process RSS must be non-zero");
 		}
-		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || worker_trajectory_counts.size() != worker_active_nanoseconds_by_worker.size() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery))
+		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery))
 		{
 			throw std::invalid_argument("invalid multiway training telemetry");
 		}
@@ -64,6 +80,12 @@ namespace texas::solver::multiway
 		report.peak_sparse_rows = status.peak_sparse_rows;
 		report.peak_sparse_values = status.peak_sparse_values;
 		report.peak_worker_delta_entries = status.peak_worker_delta_entries;
+		report.total_peak_regret_delta_entries = status.total_peak_regret_delta_entries;
+		report.total_peak_continuation_delta_entries = status.total_peak_continuation_delta_entries;
+		report.total_peak_delta_entries = status.total_peak_delta_entries;
+		report.generated_update_count = status.generated_update_count;
+		report.generated_discovery_public_state_count = status.generated_discovery_public_state_count;
+		report.generated_discovery_row_count = status.generated_discovery_row_count;
 		report.peak_compact_storage_bytes = status.peak_compact_storage_bytes;
 		report.configured_max_public_states = status.configured_max_public_states;
 		report.configured_max_sparse_rows = status.configured_max_sparse_rows;
@@ -71,6 +93,9 @@ namespace texas::solver::multiway
 		report.configured_worker_delta_capacity = status.configured_worker_delta_capacity;
 		report.cumulative_worker_delta_entries = status.cumulative_worker_delta_entries;
 		report.worker_active_nanoseconds = status.worker_active_nanoseconds;
+		report.worker_wake_latency_nanoseconds = status.worker_wake_latency_nanoseconds;
+		report.worker_completion_nanoseconds = status.worker_completion_nanoseconds;
+		report.worker_tail_idle_nanoseconds = status.worker_tail_idle_nanoseconds;
 		report.minimum_worker_active_nanoseconds = status.minimum_worker_active_nanoseconds;
 		report.maximum_worker_active_nanoseconds = status.maximum_worker_active_nanoseconds;
 		report.coordinator_wait_nanoseconds = status.coordinator_wait_nanoseconds;
@@ -84,6 +109,15 @@ namespace texas::solver::multiway
 		report.trajectories_per_batch = status.trajectories_per_batch;
 		report.worker_trajectory_counts = status.worker_trajectory_counts;
 		report.worker_active_nanoseconds_by_worker = status.worker_active_nanoseconds_by_worker;
+		report.worker_sort_nanoseconds_by_worker = status.worker_sort_nanoseconds_by_worker;
+		report.worker_wake_latency_nanoseconds_by_worker = status.worker_wake_latency_nanoseconds_by_worker;
+		report.worker_completion_nanoseconds_by_worker = status.worker_completion_nanoseconds_by_worker;
+		report.worker_tail_idle_nanoseconds_by_worker = status.worker_tail_idle_nanoseconds_by_worker;
+		report.worker_regret_delta_entries = status.worker_regret_delta_entries;
+		report.worker_continuation_delta_entries = status.worker_continuation_delta_entries;
+		report.worker_discovery_public_state_counts = status.worker_discovery_public_state_counts;
+		report.worker_discovery_row_counts = status.worker_discovery_row_counts;
+		report.worker_profiles = status.worker_profiles;
 		report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
 		report.memory_ledger = status.memory_ledger;
 		report.capacity_exhaustion_stage = status.capacity_exhaustion_stage;
@@ -105,6 +139,16 @@ namespace texas::solver::multiway
 		std::ofstream output(temporary, std::ios::trunc);
 		if (!output)
 			throw std::runtime_error("cannot open training report");
+		const auto write_u64_array = [&output](const char* name, const std::vector<std::uint64_t>& values, bool leading_comma = true) {
+			output << (leading_comma ? ",\n  \"" : "\n  \"") << name << "\": [";
+			for (std::size_t index = 0U; index < values.size(); ++index)
+			{
+				if (index != 0U)
+					output << ',';
+				output << values[index];
+			}
+			output << ']';
+		};
 		output << "{\n  \"evidence\": " << serialize_multiway_evidence_header(report.evidence)
 			   << ",\n  \"batches\": " << report.batches
 			   << ",\n  \"trajectories\": " << report.trajectories
@@ -132,6 +176,12 @@ namespace texas::solver::multiway
 			   << ",\n  \"peak_sparse_rows\": " << report.peak_sparse_rows
 			   << ",\n  \"peak_sparse_values\": " << report.peak_sparse_values
 			   << ",\n  \"peak_worker_delta_entries\": " << report.peak_worker_delta_entries
+			   << ",\n  \"total_peak_regret_delta_entries\": " << report.total_peak_regret_delta_entries
+			   << ",\n  \"total_peak_continuation_delta_entries\": " << report.total_peak_continuation_delta_entries
+			   << ",\n  \"total_peak_delta_entries\": " << report.total_peak_delta_entries
+			   << ",\n  \"generated_update_count\": " << report.generated_update_count
+			   << ",\n  \"generated_discovery_public_state_count\": " << report.generated_discovery_public_state_count
+			   << ",\n  \"generated_discovery_row_count\": " << report.generated_discovery_row_count
 			   << ",\n  \"peak_compact_storage_bytes\": " << report.peak_compact_storage_bytes
 			   << ",\n  \"configured_max_public_states\": " << report.configured_max_public_states
 			   << ",\n  \"configured_max_sparse_rows\": " << report.configured_max_sparse_rows
@@ -139,6 +189,9 @@ namespace texas::solver::multiway
 			   << ",\n  \"configured_worker_delta_capacity\": " << report.configured_worker_delta_capacity
 			   << ",\n  \"cumulative_worker_delta_entries\": " << report.cumulative_worker_delta_entries
 			   << ",\n  \"worker_active_nanoseconds\": " << report.worker_active_nanoseconds
+			   << ",\n  \"worker_wake_latency_nanoseconds\": " << report.worker_wake_latency_nanoseconds
+			   << ",\n  \"worker_completion_nanoseconds\": " << report.worker_completion_nanoseconds
+			   << ",\n  \"worker_tail_idle_nanoseconds\": " << report.worker_tail_idle_nanoseconds
 			   << ",\n  \"minimum_worker_active_nanoseconds\": " << report.minimum_worker_active_nanoseconds
 			   << ",\n  \"maximum_worker_active_nanoseconds\": " << report.maximum_worker_active_nanoseconds
 			   << ",\n  \"coordinator_wait_nanoseconds\": " << report.coordinator_wait_nanoseconds
@@ -164,6 +217,31 @@ namespace texas::solver::multiway
 			if (index != 0U)
 				output << ',';
 			output << report.worker_active_nanoseconds_by_worker[index];
+		}
+		output << "]";
+		write_u64_array("worker_sort_nanoseconds_by_worker", report.worker_sort_nanoseconds_by_worker);
+		write_u64_array("worker_wake_latency_nanoseconds_by_worker", report.worker_wake_latency_nanoseconds_by_worker);
+		write_u64_array("worker_completion_nanoseconds_by_worker", report.worker_completion_nanoseconds_by_worker);
+		write_u64_array("worker_tail_idle_nanoseconds_by_worker", report.worker_tail_idle_nanoseconds_by_worker);
+		write_u64_array("worker_regret_delta_entries", report.worker_regret_delta_entries);
+		write_u64_array("worker_continuation_delta_entries", report.worker_continuation_delta_entries);
+		write_u64_array("worker_discovery_public_state_counts", report.worker_discovery_public_state_counts);
+		write_u64_array("worker_discovery_row_counts", report.worker_discovery_row_counts);
+		output << ",\n  \"worker_profiles\": [";
+		for (std::size_t worker = 0U; worker < report.worker_profiles.size(); ++worker)
+		{
+			if (worker != 0U)
+				output << ',';
+			const auto& profile = report.worker_profiles[worker];
+			output << "{\"mode\": " << static_cast<unsigned>(profile.mode) << ", \"checkpoints\": [";
+			for (std::size_t stage = 0U; stage < profile.checkpoints.size(); ++stage)
+			{
+				if (stage != 0U)
+					output << ',';
+				output << "{\"elapsed_nanoseconds\": " << profile.checkpoints[stage].elapsed_nanoseconds
+					   << ", \"calls\": " << profile.checkpoints[stage].calls << '}';
+			}
+			output << "]}";
 		}
 		output << "]"
 			   << ",\n  \"memory_preflight_estimate_bytes\": " << report.memory_preflight_estimate_bytes

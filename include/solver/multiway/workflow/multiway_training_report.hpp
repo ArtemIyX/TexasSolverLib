@@ -26,6 +26,12 @@ namespace texas::solver::multiway
 		std::uint64_t peak_sparse_rows = 0U;
 		std::uint64_t peak_sparse_values = 0U;
 		std::uint64_t peak_worker_delta_entries = 0U;
+		std::uint64_t total_peak_regret_delta_entries = 0U;
+		std::uint64_t total_peak_continuation_delta_entries = 0U;
+		std::uint64_t total_peak_delta_entries = 0U;
+		std::uint64_t generated_update_count = 0U;
+		std::uint64_t generated_discovery_public_state_count = 0U;
+		std::uint64_t generated_discovery_row_count = 0U;
 		std::uint64_t peak_compact_storage_bytes = 0U;
 		std::uint64_t configured_max_public_states = 0U;
 		std::uint64_t configured_max_sparse_rows = 0U;
@@ -33,6 +39,9 @@ namespace texas::solver::multiway
 		std::uint64_t configured_worker_delta_capacity = 0U;
 		std::uint64_t cumulative_worker_delta_entries = 0U;
 		std::uint64_t worker_active_nanoseconds = 0U;
+		std::uint64_t worker_wake_latency_nanoseconds = 0U;
+		std::uint64_t worker_completion_nanoseconds = 0U;
+		std::uint64_t worker_tail_idle_nanoseconds = 0U;
 		std::uint64_t minimum_worker_active_nanoseconds = 0U;
 		std::uint64_t maximum_worker_active_nanoseconds = 0U;
 		std::uint64_t coordinator_wait_nanoseconds = 0U;
@@ -46,6 +55,15 @@ namespace texas::solver::multiway
 		std::uint64_t trajectories_per_batch = 0U;
 		std::vector<std::uint64_t> worker_trajectory_counts;
 		std::vector<std::uint64_t> worker_active_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_sort_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_wake_latency_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_completion_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_tail_idle_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_regret_delta_entries;
+		std::vector<std::uint64_t> worker_continuation_delta_entries;
+		std::vector<std::uint64_t> worker_discovery_public_state_counts;
+		std::vector<std::uint64_t> worker_discovery_row_counts;
+		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};
 		std::uint64_t checkpoint_bytes = 0U;

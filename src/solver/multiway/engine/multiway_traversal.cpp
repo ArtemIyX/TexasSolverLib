@@ -26,6 +26,15 @@
 
 namespace texas::solver::multiway
 {
+
+	namespace
+	{
+		[[nodiscard]] std::uint64_t steady_now_nanoseconds() noexcept
+		{
+			return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count());
+		}
+	}
 	namespace
 	{
 
@@ -1005,6 +1014,12 @@ namespace texas::solver::multiway
 				iteration_weight = active_iteration_weight_;
 				deadline = active_deadline_;
 			}
+			if (worker_index < batch_count)
+			{
+				const auto now = steady_now_nanoseconds();
+				const auto notified = notification_timestamp_nanoseconds_;
+				worker_scratch_[worker_index].wake_latency_nanoseconds = now >= notified ? now - notified : 0U;
+			}
 
 			try
 			{
@@ -1085,9 +1100,16 @@ namespace texas::solver::multiway
 
 			if (worker_index < batch_count)
 			{
+				const auto completion_start = steady_now_nanoseconds();
 				const auto completed = completed_workers_.fetch_add(1U, std::memory_order_release) + 1U;
+				const auto completion_end = steady_now_nanoseconds();
+				worker_scratch_[worker_index].completion_nanoseconds = completion_end - completion_start;
+				worker_scratch_[worker_index].completion_timestamp_nanoseconds = completion_end;
 				if (completed == batch_count)
+				{
+					batch_completion_timestamp_nanoseconds_.store(completion_end, std::memory_order_release);
 					completion_cv_.notify_one();
+				}
 			}
 		}
 	}
@@ -1137,6 +1159,8 @@ namespace texas::solver::multiway
 			active_deadline_ = deadline;
 			worker_error_ = nullptr;
 			cancelled_.store(false, std::memory_order_release);
+			notification_timestamp_nanoseconds_ = steady_now_nanoseconds();
+			batch_completion_timestamp_nanoseconds_.store(0U, std::memory_order_relaxed);
 		}
 		const auto coordinator_wait_start = std::chrono::steady_clock::now();
 		const auto coordinator_lock_wait_before = coordinator_->diagnostics().coordinator_lock_wait_nanoseconds;
@@ -1173,6 +1197,16 @@ namespace texas::solver::multiway
 		result.minimum_worker_active_nanoseconds = std::numeric_limits<std::uint64_t>::max();
 		result.worker_trajectory_counts.resize(worker_scratch_.size());
 		result.worker_active_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_sort_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_wake_latency_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_completion_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_tail_idle_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_regret_delta_entries.resize(worker_scratch_.size());
+		result.worker_continuation_delta_entries.resize(worker_scratch_.size());
+		result.worker_discovery_public_state_counts.resize(worker_scratch_.size());
+		result.worker_discovery_row_counts.resize(worker_scratch_.size());
+		result.worker_profiles.resize(worker_scratch_.size());
+		const auto batch_completion_timestamp = batch_completion_timestamp_nanoseconds_.load(std::memory_order_acquire);
 		for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
 		{
 			const auto& scratch = worker_scratch_[worker_index];
@@ -1180,6 +1214,16 @@ namespace texas::solver::multiway
 			result.trajectories_accepted += scratch.accepted;
 			result.trajectories_discarded += scratch.discarded;
 			result.delta_entries_merged += scratch.stream.size();
+			const auto regret_entries = static_cast<std::uint64_t>(scratch.stream.size());
+			const auto continuation_entries = static_cast<std::uint64_t>(scratch.continuation_stream.size());
+			const auto discovery_public_states = static_cast<std::uint64_t>(scratch.discovery.public_state_count());
+			const auto discovery_rows = static_cast<std::uint64_t>(scratch.discovery.row_count());
+			result.total_peak_regret_delta_entries += regret_entries;
+			result.total_peak_continuation_delta_entries += continuation_entries;
+			result.total_peak_delta_entries += regret_entries + continuation_entries;
+			result.generated_update_count += regret_entries + continuation_entries;
+			result.generated_discovery_public_state_count += discovery_public_states;
+			result.generated_discovery_row_count += discovery_rows;
 			result.maximum_worker_delta_entries = std::max(
 				result.maximum_worker_delta_entries,
 				static_cast<std::uint64_t>(std::max(
@@ -1187,11 +1231,25 @@ namespace texas::solver::multiway
 			result.worker_active_nanoseconds += scratch.active_nanoseconds;
 			result.worker_trajectory_counts[worker_index] = scratch.attempted;
 			result.worker_active_nanoseconds_by_worker[worker_index] = scratch.active_nanoseconds;
+			result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
+			result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
+			result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
+			result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
+				batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
+					? batch_completion_timestamp - scratch.completion_timestamp_nanoseconds : 0U;
+			result.worker_regret_delta_entries[worker_index] = regret_entries;
+			result.worker_continuation_delta_entries[worker_index] = continuation_entries;
+			result.worker_discovery_public_state_counts[worker_index] = discovery_public_states;
+			result.worker_discovery_row_counts[worker_index] = discovery_rows;
+			result.worker_profiles[worker_index] = scratch.profile.snapshot();
 			result.minimum_worker_active_nanoseconds = std::min(
 				result.minimum_worker_active_nanoseconds, scratch.active_nanoseconds);
 			result.maximum_worker_active_nanoseconds = std::max(
 				result.maximum_worker_active_nanoseconds, scratch.active_nanoseconds);
 			result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
+			result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
+			result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
+			result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
 			result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
 			result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
 			batch_profile.merge(scratch.profile.snapshot());
