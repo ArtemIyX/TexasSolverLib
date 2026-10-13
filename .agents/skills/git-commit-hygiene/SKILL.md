@@ -34,7 +34,7 @@ Only create a commit when the user asks to commit or clearly authorizes it.
 
    Rules:
 
-   - Use the branch identifier as the first token. Strip a standard prefix such as `feature/`, `fix/`, or `codex/`; for `feature/pb-1`, use `pb-1`.
+   - Use the branch identifier as the first token. Strip a standard prefix such as `feature/`, `fix/`, or `codex/`;
    - Add one short parenthesized scope only when it materially narrows the change, for example `(memory)`.
    - Use a clear, title-cased target followed by a colon, for example `Multiway:` or `Build:`.
    - Start the short description with an imperative verb and keep it specific.
