@@ -508,7 +508,7 @@ namespace
 		const std::filesystem::path& resume_path,
 		std::uint32_t worker_override,
 		bool pin_workers,
-		MultiwaySchedulerMode scheduler_mode)
+		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
