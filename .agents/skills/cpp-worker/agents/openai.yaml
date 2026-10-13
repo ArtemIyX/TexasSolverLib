@@ -1,0 +1,4 @@
+interface:
+  display_name: "TexasSolver C++ Worker"
+  short_description: "Implement fast, consistent TexasSolver C++"
+  default_prompt: "Use $cpp-worker to implement this TexasSolver C++ change."

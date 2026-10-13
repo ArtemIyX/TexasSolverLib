@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Commit Hygiene"
+  short_description: "Review changes and craft clean Git commits"
+  default_prompt: "Use $git-commit-hygiene to review and commit my changes."

@@ -1,0 +1,106 @@
+# AGENTS.md
+
+Guidelines for LLM coding agents working in this repository.
+You are an assistant optimized for minimal token usage and concise communication.
+
+## Workflow rules
+
+### Skill-set
+
+Use project skills to complete the task at hand
+
+|Skill|When to use|
+| -------- | ------- |
+|git-commit-hygiene| Commit small changes|
+|cpp-worker| Implement features|
+|cpp-unit-tests| Make unit tests for new features|
+|cpp-code-review| Review fresh-made code|
+|update-project-log| Update LOG file after finishing any task|
+
+### Scripts
+
+Use ``scripts/`` to streamline your work on the project.
+
+Use ``full_build.py`` to ensure that project compiles successfuly.
+
+|Script|When to use|
+|--------|-------|
+|codex_powershell.ps1|Execute any python script|
+|full_build.py|Execute compact build end-to-end|
+|cpp_file_summary.py|Retrieve information about cpp file|
+|extract_includes.pu|Retrieve includes from cpp file|
+|extract_symbols.py|Retrieve symbols from cpp file|
+|list_recent_changes.py|List git changes|
+|cmake_summary.py|Retrieve information about CMakeLists|
+|compact_build.py|Run only build|
+|scan_build_errors.py|Scan compilation errors|
+|compact_ctest.py|Run only ctest|
+|scan_ctest_errors.py|Scan ctest errors|
+
+## General rules
+
+Check [CODEX_TOKEN_EFFICIENT_WORKFLOW.md](CODEX_TOKEN_EFFICIENT_WORKFLOW.md) for LLM-Agent Token-Efficient Workflow Instructions.
+
+1. Write the shortest correct answer possible.
+2. Use plain sentences. Avoid decorative language.
+3. Do not use emojis.
+4. Do not use em-dashes.
+5. Do not include filler phrases such as:
+    - "Certainly"
+    - "Here is"
+    - "Let me explain"
+    - "In conclusion"
+6. Be concise.
+7. No long explanations.
+8. Show only the patch and the reason.
+9. Do not restate the whole plan unless it changed.
+10. Avoid repetition and paraphrasing.
+11. Do not restate the user question.
+12. Prefer short sentences instead of long paragraphs.
+13. Prefer bullet points only when they reduce length.
+14. Do not add explanations unless explicitly requested.
+15. If the question requires explanation, give the minimal explanation needed for correctness.
+16. Do not add warnings, disclaimers, or background information unless required for correctness.
+17. Do not include motivational text, politeness phrases, or conversational padding.
+
+
+## Hot-Path Performance Rules
+
+In traversal, row update, terminal inner loops, and merge inner loops and hot-pathes:
+
+- no `std::string`;
+- no formatting/logging;
+- no heap allocation;
+- no `new` / `delete`;
+- no `std::shared_ptr`;
+- no `std::function`;
+- no virtual dispatch;
+- no exceptions as normal control flow;
+- no hash-map lookup inside per-action or per-bucket loops;
+- no unreserved `std::vector::push_back`.
+
+Preferred hot-path style:
+
+- flat arrays;
+- compact integer ids;
+- raw pointer or `std::span` non-owning views;
+- preallocated worker scratch;
+- stack/fixed-size arrays for small action menus;
+- action-major contiguous rows: `row[action][bucket]`;
+- scalar reference kernels first, optional SIMD kernels later.
+
+Ownership rule:
+
+- own memory with RAII containers at subsystem boundaries;
+- pass raw pointer/span views into hot kernels;
+- raw pointers must not own memory;
+- avoid shared ownership in solver internals.
+
+## Style
+
+- Use C++17.
+- Keep comments short and useful.
+- Prefer clear structured APIs over ad hoc strings.
+- Use integer ids and explicit metadata for states, rows, actions, buckets, and trajectories.
+- Keep scalar validation paths even when adding SIMD.
+- Keep exact-mode behavior deterministic.
