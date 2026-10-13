@@ -19,12 +19,18 @@ namespace texas::solver::multiway
 			return matches(worker_active_nanoseconds_by_worker.size()) &&
 				matches(worker_sort_nanoseconds_by_worker.size()) &&
 				matches(worker_wake_latency_nanoseconds_by_worker.size()) &&
+				matches(worker_cv_wait_nanoseconds_by_worker.size()) &&
 				matches(worker_completion_nanoseconds_by_worker.size()) &&
 				matches(worker_tail_idle_nanoseconds_by_worker.size()) &&
 				matches(worker_regret_delta_entries.size()) &&
 				matches(worker_continuation_delta_entries.size()) &&
 				matches(worker_discovery_public_state_counts.size()) &&
 				matches(worker_discovery_row_counts.size()) &&
+				matches(worker_allocation_counts.size()) &&
+				matches(worker_allocated_bytes.size()) &&
+				matches(worker_resolved_processor.size()) &&
+				matches(worker_affinity_masks.size()) &&
+				matches(worker_affinity_succeeded.size()) &&
 				matches(worker_profiles.size());
 		};
 		if (accepted_trajectories > trajectories || discarded_trajectories > trajectories || (batches != 0U && deterministic_merge_fingerprint == 0U && !failed))
@@ -42,12 +48,18 @@ namespace texas::solver::multiway
 				!matches(batch.worker_active_nanoseconds_by_worker.size()) ||
 				!matches(batch.worker_sort_nanoseconds_by_worker.size()) ||
 				!matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) ||
+				!matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) ||
 				!matches(batch.worker_completion_nanoseconds_by_worker.size()) ||
 				!matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) ||
 				!matches(batch.worker_regret_delta_entries.size()) ||
 				!matches(batch.worker_continuation_delta_entries.size()) ||
 				!matches(batch.worker_discovery_public_state_counts.size()) ||
-				!matches(batch.worker_discovery_row_counts.size()))
+				!matches(batch.worker_discovery_row_counts.size()) ||
+				!matches(batch.worker_allocation_counts.size()) ||
+				!matches(batch.worker_allocated_bytes.size()) ||
+				!matches(batch.worker_resolved_processor.size()) ||
+				!matches(batch.worker_affinity_masks.size()) ||
+				!matches(batch.worker_affinity_succeeded.size()))
 			{
 				throw std::invalid_argument("invalid failed multiway batch telemetry");
 			}
@@ -107,6 +119,10 @@ namespace texas::solver::multiway
 		report.generated_update_count = status.generated_update_count;
 		report.generated_discovery_public_state_count = status.generated_discovery_public_state_count;
 		report.generated_discovery_row_count = status.generated_discovery_row_count;
+		report.coordinator_admission_nanoseconds = status.coordinator_admission_nanoseconds;
+		report.trainer_only_nanoseconds = status.trainer_only_nanoseconds;
+		report.process_cpu_nanoseconds = status.process_cpu_nanoseconds;
+		report.peak_working_set_bytes = status.peak_working_set_bytes;
 		report.peak_compact_storage_bytes = status.peak_compact_storage_bytes;
 		report.configured_max_public_states = status.configured_max_public_states;
 		report.configured_max_sparse_rows = status.configured_max_sparse_rows;
@@ -115,6 +131,7 @@ namespace texas::solver::multiway
 		report.cumulative_worker_delta_entries = status.cumulative_worker_delta_entries;
 		report.worker_active_nanoseconds = status.worker_active_nanoseconds;
 		report.worker_wake_latency_nanoseconds = status.worker_wake_latency_nanoseconds;
+		report.worker_cv_wait_nanoseconds = status.worker_cv_wait_nanoseconds;
 		report.worker_completion_nanoseconds = status.worker_completion_nanoseconds;
 		report.worker_tail_idle_nanoseconds = status.worker_tail_idle_nanoseconds;
 		report.minimum_worker_active_nanoseconds = status.minimum_worker_active_nanoseconds;
@@ -132,12 +149,19 @@ namespace texas::solver::multiway
 		report.worker_active_nanoseconds_by_worker = status.worker_active_nanoseconds_by_worker;
 		report.worker_sort_nanoseconds_by_worker = status.worker_sort_nanoseconds_by_worker;
 		report.worker_wake_latency_nanoseconds_by_worker = status.worker_wake_latency_nanoseconds_by_worker;
+		report.worker_cv_wait_nanoseconds_by_worker = status.worker_cv_wait_nanoseconds_by_worker;
 		report.worker_completion_nanoseconds_by_worker = status.worker_completion_nanoseconds_by_worker;
 		report.worker_tail_idle_nanoseconds_by_worker = status.worker_tail_idle_nanoseconds_by_worker;
 		report.worker_regret_delta_entries = status.worker_regret_delta_entries;
 		report.worker_continuation_delta_entries = status.worker_continuation_delta_entries;
 		report.worker_discovery_public_state_counts = status.worker_discovery_public_state_counts;
 		report.worker_discovery_row_counts = status.worker_discovery_row_counts;
+		report.worker_allocation_counts = status.worker_allocation_counts;
+		report.worker_allocated_bytes = status.worker_allocated_bytes;
+		report.worker_resolved_processor = status.worker_resolved_processor;
+		report.worker_affinity_masks = status.worker_affinity_masks;
+		report.worker_affinity_succeeded = status.worker_affinity_succeeded;
+		report.affinity_requested = status.affinity_requested;
 		report.worker_profiles = status.worker_profiles;
 		report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
 		report.memory_ledger = status.memory_ledger;
@@ -206,6 +230,11 @@ namespace texas::solver::multiway
 			   << ",\n  \"generated_update_count\": " << report.generated_update_count
 			   << ",\n  \"generated_discovery_public_state_count\": " << report.generated_discovery_public_state_count
 			   << ",\n  \"generated_discovery_row_count\": " << report.generated_discovery_row_count
+			   << ",\n  \"coordinator_admission_nanoseconds\": " << report.coordinator_admission_nanoseconds
+			   << ",\n  \"trainer_only_nanoseconds\": " << report.trainer_only_nanoseconds
+			   << ",\n  \"process_cpu_nanoseconds\": " << report.process_cpu_nanoseconds
+			   << ",\n  \"peak_working_set_bytes\": " << report.peak_working_set_bytes
+			   << ",\n  \"affinity_requested\": " << (report.affinity_requested ? "true" : "false")
 			   << ",\n  \"peak_compact_storage_bytes\": " << report.peak_compact_storage_bytes
 			   << ",\n  \"configured_max_public_states\": " << report.configured_max_public_states
 			   << ",\n  \"configured_max_sparse_rows\": " << report.configured_max_sparse_rows
@@ -214,6 +243,7 @@ namespace texas::solver::multiway
 			   << ",\n  \"cumulative_worker_delta_entries\": " << report.cumulative_worker_delta_entries
 			   << ",\n  \"worker_active_nanoseconds\": " << report.worker_active_nanoseconds
 			   << ",\n  \"worker_wake_latency_nanoseconds\": " << report.worker_wake_latency_nanoseconds
+			   << ",\n  \"worker_cv_wait_nanoseconds\": " << report.worker_cv_wait_nanoseconds
 			   << ",\n  \"worker_completion_nanoseconds\": " << report.worker_completion_nanoseconds
 			   << ",\n  \"worker_tail_idle_nanoseconds\": " << report.worker_tail_idle_nanoseconds
 			   << ",\n  \"minimum_worker_active_nanoseconds\": " << report.minimum_worker_active_nanoseconds
@@ -245,12 +275,18 @@ namespace texas::solver::multiway
 		output << "]";
 		write_u64_array("worker_sort_nanoseconds_by_worker", report.worker_sort_nanoseconds_by_worker);
 		write_u64_array("worker_wake_latency_nanoseconds_by_worker", report.worker_wake_latency_nanoseconds_by_worker);
+		write_u64_array("worker_cv_wait_nanoseconds_by_worker", report.worker_cv_wait_nanoseconds_by_worker);
 		write_u64_array("worker_completion_nanoseconds_by_worker", report.worker_completion_nanoseconds_by_worker);
 		write_u64_array("worker_tail_idle_nanoseconds_by_worker", report.worker_tail_idle_nanoseconds_by_worker);
 		write_u64_array("worker_regret_delta_entries", report.worker_regret_delta_entries);
 		write_u64_array("worker_continuation_delta_entries", report.worker_continuation_delta_entries);
 		write_u64_array("worker_discovery_public_state_counts", report.worker_discovery_public_state_counts);
 		write_u64_array("worker_discovery_row_counts", report.worker_discovery_row_counts);
+		write_u64_array("worker_allocation_counts", report.worker_allocation_counts);
+		write_u64_array("worker_allocated_bytes", report.worker_allocated_bytes);
+		write_u64_array("worker_resolved_processor", std::vector<std::uint64_t>(report.worker_resolved_processor.begin(), report.worker_resolved_processor.end()));
+		write_u64_array("worker_affinity_masks", report.worker_affinity_masks);
+		write_u64_array("worker_affinity_succeeded", std::vector<std::uint64_t>(report.worker_affinity_succeeded.begin(), report.worker_affinity_succeeded.end()));
 		if (report.failed_batch_available)
 		{
 			const auto& batch = report.failed_batch;
@@ -262,9 +298,11 @@ namespace texas::solver::multiway
 				   << ", \"generated_update_count\": " << batch.generated_update_count
 				   << ", \"worker_active_nanoseconds\": " << batch.worker_active_nanoseconds
 				   << ", \"worker_wake_latency_nanoseconds\": " << batch.worker_wake_latency_nanoseconds
+				   << ", \"worker_cv_wait_nanoseconds\": " << batch.worker_cv_wait_nanoseconds
 				   << ", \"worker_completion_nanoseconds\": " << batch.worker_completion_nanoseconds
 				   << ", \"worker_tail_idle_nanoseconds\": " << batch.worker_tail_idle_nanoseconds
 				   << ", \"coordinator_wait_nanoseconds\": " << batch.coordinator_wait_nanoseconds
+				   << ", \"coordinator_admission_nanoseconds\": " << batch.coordinator_admission_nanoseconds
 				   << ", \"barrier_wait_nanoseconds\": " << batch.barrier_wait_nanoseconds
 				   << ", \"delta_sort_nanoseconds\": " << batch.delta_sort_nanoseconds
 				   << ", \"merge_nanoseconds\": " << batch.merge_nanoseconds
@@ -284,12 +322,18 @@ namespace texas::solver::multiway
 				write_failed_array("worker_active_nanoseconds_by_worker", batch.worker_active_nanoseconds_by_worker);
 				write_failed_array("worker_sort_nanoseconds_by_worker", batch.worker_sort_nanoseconds_by_worker);
 				write_failed_array("worker_wake_latency_nanoseconds_by_worker", batch.worker_wake_latency_nanoseconds_by_worker);
+				write_failed_array("worker_cv_wait_nanoseconds_by_worker", batch.worker_cv_wait_nanoseconds_by_worker);
 				write_failed_array("worker_completion_nanoseconds_by_worker", batch.worker_completion_nanoseconds_by_worker);
 				write_failed_array("worker_tail_idle_nanoseconds_by_worker", batch.worker_tail_idle_nanoseconds_by_worker);
 				write_failed_array("worker_regret_delta_entries", batch.worker_regret_delta_entries);
 				write_failed_array("worker_continuation_delta_entries", batch.worker_continuation_delta_entries);
 				write_failed_array("worker_discovery_public_state_counts", batch.worker_discovery_public_state_counts);
 				write_failed_array("worker_discovery_row_counts", batch.worker_discovery_row_counts);
+				write_failed_array("worker_allocation_counts", batch.worker_allocation_counts);
+				write_failed_array("worker_allocated_bytes", batch.worker_allocated_bytes);
+				write_failed_array("worker_resolved_processor", std::vector<std::uint64_t>(batch.worker_resolved_processor.begin(), batch.worker_resolved_processor.end()));
+				write_failed_array("worker_affinity_masks", batch.worker_affinity_masks);
+				write_failed_array("worker_affinity_succeeded", std::vector<std::uint64_t>(batch.worker_affinity_succeeded.begin(), batch.worker_affinity_succeeded.end()));
 				output << '}';
 		}
 		output << ",\n  \"worker_profiles\": [";

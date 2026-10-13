@@ -94,6 +94,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_future_bucket.hpp
     include/solver/multiway/continuation/multiway_leaf_evaluator.hpp
     include/solver/multiway/engine/multiway_memory.hpp
+    include/solver/multiway/engine/multiway_allocation_probe.hpp
     include/solver/multiway/abstraction/multiway_model_identity.hpp
     include/solver/multiway/abstraction/multiway_public_builder.hpp
     include/solver/multiway/session/multiway_range_belief.hpp
@@ -212,6 +213,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_export.cpp
     src/solver/multiway/abstraction/multiway_future_bucket.cpp
     src/solver/multiway/engine/multiway_memory.cpp
+    src/solver/multiway/engine/multiway_allocation_probe.cpp
     src/solver/multiway/abstraction/multiway_model_identity.cpp
     src/solver/multiway/abstraction/multiway_public_builder.cpp
     src/solver/multiway/session/multiway_range_belief.cpp

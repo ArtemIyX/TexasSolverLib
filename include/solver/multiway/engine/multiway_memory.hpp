@@ -112,6 +112,8 @@ namespace texas::solver::multiway
 	// Returns the current process resident set when available. Zero means the
 	// platform does not expose the metric.
 	[[nodiscard]] std::uint64_t observed_multiway_process_memory_bytes() noexcept;
+	[[nodiscard]] std::uint64_t observed_multiway_process_peak_working_set_bytes() noexcept;
+	[[nodiscard]] std::uint64_t observed_multiway_training_process_cpu_nanoseconds() noexcept;
 
 	[[nodiscard]] MultiwayMemoryPreflight preflight_multiway_memory(
 		const MultiwaySolverLimits& limits,

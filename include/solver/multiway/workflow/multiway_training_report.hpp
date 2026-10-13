@@ -32,6 +32,10 @@ namespace texas::solver::multiway
 		std::uint64_t generated_update_count = 0U;
 		std::uint64_t generated_discovery_public_state_count = 0U;
 		std::uint64_t generated_discovery_row_count = 0U;
+		std::uint64_t coordinator_admission_nanoseconds = 0U;
+		std::uint64_t trainer_only_nanoseconds = 0U;
+		std::uint64_t process_cpu_nanoseconds = 0U;
+		std::uint64_t peak_working_set_bytes = 0U;
 		std::uint64_t peak_compact_storage_bytes = 0U;
 		std::uint64_t configured_max_public_states = 0U;
 		std::uint64_t configured_max_sparse_rows = 0U;
@@ -40,6 +44,7 @@ namespace texas::solver::multiway
 		std::uint64_t cumulative_worker_delta_entries = 0U;
 		std::uint64_t worker_active_nanoseconds = 0U;
 		std::uint64_t worker_wake_latency_nanoseconds = 0U;
+		std::uint64_t worker_cv_wait_nanoseconds = 0U;
 		std::uint64_t worker_completion_nanoseconds = 0U;
 		std::uint64_t worker_tail_idle_nanoseconds = 0U;
 		std::uint64_t minimum_worker_active_nanoseconds = 0U;
@@ -57,12 +62,19 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_active_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_sort_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_wake_latency_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_cv_wait_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_completion_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_tail_idle_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_regret_delta_entries;
 		std::vector<std::uint64_t> worker_continuation_delta_entries;
 		std::vector<std::uint64_t> worker_discovery_public_state_counts;
 		std::vector<std::uint64_t> worker_discovery_row_counts;
+		std::vector<std::uint64_t> worker_allocation_counts;
+		std::vector<std::uint64_t> worker_allocated_bytes;
+		std::vector<std::uint32_t> worker_resolved_processor;
+		std::vector<std::uint64_t> worker_affinity_masks;
+		std::vector<std::uint8_t> worker_affinity_succeeded;
+		bool affinity_requested = false;
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};

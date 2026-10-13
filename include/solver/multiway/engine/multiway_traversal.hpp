@@ -10,6 +10,7 @@
 #include "solver/multiway/session/multiway_search_profile.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/abstraction/multiway_terminal_adapter.hpp"
+#include "solver/multiway/engine/multiway_allocation_probe.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -190,9 +191,11 @@ namespace texas::solver::multiway
 		std::uint64_t generated_update_count = 0;
 		std::uint64_t generated_discovery_public_state_count = 0;
 		std::uint64_t generated_discovery_row_count = 0;
+		std::uint64_t coordinator_admission_nanoseconds = 0;
 		// Traversal time excluding worker delta sorting.
 		std::uint64_t worker_active_nanoseconds = 0;
 		std::uint64_t worker_wake_latency_nanoseconds = 0;
+		std::uint64_t worker_cv_wait_nanoseconds = 0;
 		std::uint64_t worker_completion_nanoseconds = 0;
 		std::uint64_t worker_tail_idle_nanoseconds = 0;
 		std::uint64_t minimum_worker_active_nanoseconds = 0;
@@ -208,12 +211,19 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_active_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_sort_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_wake_latency_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_cv_wait_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_completion_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_tail_idle_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_regret_delta_entries;
 		std::vector<std::uint64_t> worker_continuation_delta_entries;
 		std::vector<std::uint64_t> worker_discovery_public_state_counts;
 		std::vector<std::uint64_t> worker_discovery_row_counts;
+		std::vector<std::uint64_t> worker_allocation_counts;
+		std::vector<std::uint64_t> worker_allocated_bytes;
+		std::vector<std::uint32_t> worker_resolved_processor;
+		std::vector<std::uint64_t> worker_affinity_masks;
+		std::vector<std::uint8_t> worker_affinity_succeeded;
+		bool affinity_requested = false;
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		MultiwaySearchProfileSnapshot profile{};
 		MultiwayRunMetadata run{};
@@ -267,9 +277,18 @@ namespace texas::solver::multiway
 			std::uint64_t active_nanoseconds = 0;
 			std::uint64_t sort_nanoseconds = 0;
 			std::uint64_t wake_latency_nanoseconds = 0;
+			std::uint64_t cv_wait_nanoseconds = 0;
 			std::uint64_t completion_nanoseconds = 0;
 			std::uint64_t completion_timestamp_nanoseconds = 0;
 			std::uint64_t tail_idle_nanoseconds = 0;
+			std::uint64_t peak_regret_delta_entries = 0;
+			std::uint64_t peak_continuation_delta_entries = 0;
+			std::uint64_t peak_discovery_public_state_count = 0;
+			std::uint64_t peak_discovery_row_count = 0;
+			std::uint32_t resolved_processor = 0U;
+			std::uint64_t affinity_mask = 0U;
+			bool affinity_succeeded = false;
+			MultiwayAllocationProbe allocation_probe;
 			std::vector<MultiwayActionDescriptor> action_menu_scratch;
 			MultiwaySearchProfile profile{};
 
@@ -284,9 +303,18 @@ namespace texas::solver::multiway
 				active_nanoseconds = 0;
 				sort_nanoseconds = 0;
 				wake_latency_nanoseconds = 0;
+				cv_wait_nanoseconds = 0;
 				completion_nanoseconds = 0;
 				completion_timestamp_nanoseconds = 0;
 				tail_idle_nanoseconds = 0;
+				peak_regret_delta_entries = 0;
+				peak_continuation_delta_entries = 0;
+				peak_discovery_public_state_count = 0;
+				peak_discovery_row_count = 0;
+				resolved_processor = 0U;
+				affinity_mask = 0U;
+				affinity_succeeded = false;
+				allocation_probe.reset();
 				profile.reset(profile_mode);
 			}
 		};
