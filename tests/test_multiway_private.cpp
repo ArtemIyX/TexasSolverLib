@@ -148,7 +148,8 @@ TEST_CASE(multiway_private_joint_sampling_never_returns_a_board_card)
 TEST_CASE(multiway_private_rejects_impossible_joint_ranges_without_cartesian_expansion)
 {
 	auto config = ranges();
-	config.ranges[1] = config.ranges[0];
+	config.ranges[0] = { hand(14, 0, 13, 0) };
+	config.ranges[1] = { hand(14, 0, 13, 0) };
 	EXPECT_THROW(texas::sample_multiway_private_hands(config, 7), std::runtime_error);
 }
 
