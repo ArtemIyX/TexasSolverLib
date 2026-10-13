@@ -1,5 +1,25 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-13 - Record multiway worker-matrix telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-13
+
+- Recorded the 40-run unpinned worker and scheduler matrix results.
+- Documented throughput, correctness gates, memory usage, and scaling observations.
+
+### Files
+
+- `docs/multiway_worker_matrix_telemetry_report.md`
+
+### Validation
+
+- User-run worker matrix reported `PASS`: 40 runs completed with zero discards, bounded RSS, and one merge fingerprint.
+
+### Limitations
+
+- The 160-trajectory pilot is insufficient for a stable scaling conclusion.
+
 ## 2026-10-13 - Repair multiway worker-matrix sampling and failure telemetry
 
 **Status:** Complete
