@@ -15,17 +15,32 @@ param(
     [ValidateRange(1, 20)]
     [int]$Repeats = 3,
 
-    [int[]]$Workers = @(4, 8),
+    [string[]]$Workers = @('4', '8'),
 
     [string]$OutputDirectory = ''
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $runner = Join-Path $PSScriptRoot 'run_multiway_ram_1000.ps1'
+$workerCounts = @(
+    $Workers |
+        ForEach-Object { $_ -split ',' } |
+        ForEach-Object {
+            $value = $_.Trim()
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                throw 'Workers cannot contain empty values'
+            }
+            try {
+                [int]$value
+            } catch {
+                throw "Invalid worker count: $value"
+            }
+        }
+)
 $pinningModes = @($Pinning)
 $schedulingModes = if ($Scheduling -eq 'both') { @('fixed', 'dynamic') } else { @($Scheduling) }
 
-if ($Workers.Count -eq 0 -or @($Workers | Where-Object { $_ -lt 1 -or $_ -gt 16 }).Count -ne 0) {
+if ($workerCounts.Count -eq 0 -or @($workerCounts | Where-Object { $_ -lt 1 -or $_ -gt 16 }).Count -ne 0) {
     throw 'Workers must contain values in the range 1..16'
 }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
@@ -38,12 +53,12 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 Write-Output '[matrix] starting focused worker scheduler comparison'
 Write-Output "[matrix] repository_root=$repoRoot"
-Write-Output "[matrix] pinning=$($pinningModes -join ',') workers=$($Workers -join ',') scheduling=$($schedulingModes -join ',') repeats=$Repeats batches=$Batches trajectories_per_batch=$TrajectoriesPerBatch"
+Write-Output "[matrix] pinning=$($pinningModes -join ',') workers=$($workerCounts -join ',') scheduling=$($schedulingModes -join ',') repeats=$Repeats batches=$Batches trajectories_per_batch=$TrajectoriesPerBatch"
 
 $results = @()
 foreach ($pinningMode in $pinningModes) {
     foreach ($schedulerMode in $schedulingModes) {
-        foreach ($workerCount in $Workers) {
+        foreach ($workerCount in $workerCounts) {
             for ($repeat = 1; $repeat -le $Repeats; ++$repeat) {
                 $runDirectory = Join-Path $OutputDirectory ("{0}\{1}\workers_{2}\repeat_{3}" -f $pinningMode, $schedulerMode, $workerCount, $repeat)
                 Write-Output "[matrix] running pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat output_directory=$runDirectory"
