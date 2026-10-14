@@ -95,8 +95,8 @@ New-Item -ItemType Directory -Force -Path $RunDirectory | Out-Null
 $config = Join-Path $RunDirectory 'pilot_batch.cfg'
 Copy-Item -LiteralPath $sourceConfig -Destination $config -Force
 $configText = Get-Content -Raw -LiteralPath $config
-$updatedConfigText = $configText -replace '(?m)^[ \t]*trajectories_per_batch[ \t]*=[ \t]*\d+[ \t]*$', "trajectories_per_batch=$TrajectoriesPerBatch"
-if ($updatedConfigText -eq $configText) {
+$updatedConfigText = $configText -replace '(?m)^[ \t]*trajectories_per_batch[ \t]*=[ \t]*\d+[ \t]*\r?$', "trajectories_per_batch=$TrajectoriesPerBatch"
+if ($updatedConfigText -eq $configText -and [int]$configValues['trajectories_per_batch'] -ne $TrajectoriesPerBatch) {
     throw "Could not replace trajectories_per_batch in run-local config: $config"
 }
 Set-Content -LiteralPath $config -Value $updatedConfigText -NoNewline

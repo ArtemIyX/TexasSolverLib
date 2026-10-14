@@ -1046,7 +1046,7 @@ int main(int argc, char** argv) noexcept
 		{
 			name.remove_suffix(4U);
 		}
-		if (name == "texas_multiway_train")
+		if (name == "texas_multiway_train" || name == "texas_multiway_train_tracy")
 			return run("train", argc, argv);
 		if (name == "texas_multiway_buckets")
 			return run("buckets", argc, argv);

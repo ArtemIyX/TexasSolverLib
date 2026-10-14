@@ -1,5 +1,40 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-14 - Add complete CLI Tracy training capture workflow
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Added a no-GUI wrapper that starts `tracy-capture`, runs the real multiway
+  training workflow, preserves trainer JSON and logs, exports Tracy phase CSV,
+  writes a wrapper lifecycle log, and writes a manifest containing workload,
+  tool hashes, paths, and trace metadata.
+- Fixed the Windows line-ending match and idempotent-value handling in the
+  existing bounded training wrapper so its run-local `trajectories_per_batch`
+  override works on CRLF configs and when the requested value is already 1000.
+- Fixed the `_tracy` workflow executable dispatch so it enters the training
+  path instead of falling through to evaluation.
+- Documented the bounded one-worker invocation and artifact layout.
+
+### Files
+
+- `scripts/run_multiway_tracy_training_capture.ps1`
+- `scripts/run_multiway_ram_1000.ps1`
+- `examples/multiway_workflow_main.cpp`
+- `docs/tracy_multiway_blueprint_training.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- PowerShell parser validation passed.
+- Rebuilt `texas_multiway_train_tracy` successfully.
+- `texas_multiway_train_tracy.exe --help` now reports the train workflow.
+
+### Limitations
+
+- A new training capture was not launched automatically; the wrapper is ready
+  for the operator-selected workload and output directory.
+
 ## 2026-10-14 - Implement Tracy diagnostics for multiway blueprint training
 
 **Status:** Complete

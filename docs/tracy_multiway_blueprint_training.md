@@ -66,6 +66,28 @@ The exported rows include the coarse worker, coordinator, trainer, and
 telemetry zones. JSON reports remain authoritative for counts, fingerprints,
 memory admission, and unprofiled throughput.
 
+## Complete CLI training capture
+
+For a real workflow run with no profiler GUI, use the combined wrapper. It
+starts the matching capture utility, runs the Tracy training binary through the
+existing bounded training workflow, preserves the trainer JSON and logs,
+exports multiway zones to CSV, and writes a manifest linking every artifact:
+
+```powershell
+& .\scripts\codex_powershell.ps1 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_multiway_tracy_training_capture.ps1 `
+  -Workers 1 `
+  -Batches 2 `
+  -TrajectoriesPerBatch 1000 `
+  -CaptureId cli-workflow-1w-2x1000 `
+  -OutputDirectory tmp\tracy\cli-workflow-1w-2x1000
+```
+
+The output directory contains `*.tracy`, `*.csv`, `report.json`,
+`run_metrics.json`, `run_manifest.json`, `run.cfg`, `blueprint.bin`,
+checkpoint data, the trainer logs, capture logs, and `capture_wrapper.log`
+with the wrapper’s own lifecycle messages. The wrapper is CLI-only and does
+not start Tracy Profiler.
+
 ## Interpretation rules
 
 - Do not use `_tracy` timings as throughput qualification data.
