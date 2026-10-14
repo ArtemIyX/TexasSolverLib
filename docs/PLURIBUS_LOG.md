@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-14 - Document application and script I/O contracts
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Documented C++ executable targets, generated test executables, Python utilities,
+  PowerShell measurement workflows, Tracy tools, command-line inputs, stream
+  outputs, generated files, and the multiway artifact pipeline.
+- Added explicit artifact and stage relationships for bucket generation,
+  inspection, training, lookup qualification, finalization, and Tracy capture.
+
+### Files
+
+- `docs/application_and_script_io.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked target names and build gates against `CMakeLists.txt`.
+- Cross-checked CLI options and artifact paths against executable entry points
+  and scripts.
+- Ran targeted `git diff --check` on the documentation log successfully and
+  checked the new document for trailing whitespace.
+- No build, test, benchmark, script, or solver run was performed by request.
+
+### Limitations
+
+- The document is source-derived. Runtime-only behavior and future schema changes
+  are not independently exercised here.
+
 ## 2026-10-14 - Align Tracy integration with 0.14.1
 
 **Status:** Complete
