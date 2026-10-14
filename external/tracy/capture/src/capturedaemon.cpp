@@ -1,5 +1,4 @@
 #ifdef _WIN32
-#  include <process.h>
 #  include <windows.h>
 #else
 #  include <unistd.h>
@@ -8,10 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <cerrno>
-#include <cstdio>
 #include <cstring>
-#include <fcntl.h>
 #include <filesystem>
 #include <map>
 #include <mutex>
@@ -32,7 +28,6 @@
 #include "../../server/TracyWorker.hpp"
 #include "GitRef.hpp"
 
-#include "CaptureConsole.hpp"
 #include "CaptureOutput.hpp"
 
 static std::atomic<bool> g_shutdown{false};
@@ -41,27 +36,10 @@ static uint16_t g_listenPort = 8086;
 static std::string g_filterName;
 static int g_filterPort = 0;
 static int64_t g_memoryLimit = -1;
-static std::string g_lockFile;
 
 void SigInt( int )
 {
     g_shutdown.store( true, std::memory_order_relaxed );
-}
-
-static void RemoveLockFile()
-{
-    std::error_code ec;
-    std::filesystem::remove( g_lockFile, ec );
-}
-
-static long ReadLockPid( const std::string& path )
-{
-    FILE* in = fopen( path.c_str(), "r" );
-    if( !in ) return -1;
-    long pid = -1;
-    const int result = fscanf( in, "%li", &pid );
-    fclose( in );
-    return ( result == 1 && pid > 0 ) ? pid : -1;
 }
 
 struct ClientStats
@@ -180,13 +158,12 @@ void CaptureThread( ClientSession* session, const std::string& address, uint16_t
     {
         auto& lock = worker.GetMbpsDataLock();
         lock.lock();
-        const auto& mbpsData = worker.GetMbpsData();
-        if( !mbpsData.empty() )
-        {
-            session->stats.mbps = mbpsData.back();
-            session->stats.txBytes = worker.GetDataTransferred();
-        }
+        float mbps = worker.GetMbpsData().back();
+        int64_t txTotal = worker.GetDataTransferred();
         lock.unlock();
+        
+        session->stats.mbps = mbps;
+        session->stats.txBytes = txTotal;
         session->stats.memUsage = tracy::memUsage.load( std::memory_order_relaxed );
         
         std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
@@ -358,45 +335,7 @@ int main( int argc, char** argv )
     std::filesystem::create_directories( outputDir );
     
     InitTerminalDetection();
-#ifndef _WIN32
-    g_lockFile = outputDir + "/.tracy-capture-daemon.lock";
-    {
-        int lockFd = -1;
-        for( int attempt = 0; attempt < 5; attempt++ )
-        {
-            lockFd = open( g_lockFile.c_str(), O_CREAT | O_EXCL | O_WRONLY, 0644 );
-            if( lockFd >= 0 ) break;
-            if( errno != EEXIST )
-            {
-                fprintf( stderr, "Error: Cannot create the lock file %s: %s\n", g_lockFile.c_str(), strerror( errno ) );
-                return 1;
-            }
-            const long owner = ReadLockPid( g_lockFile );
-            if( owner <= 0 )
-            {
-                fprintf( stderr, "Error: The lock file %s has no readable owner PID; remove it by hand if no daemon is running\n", g_lockFile.c_str() );
-                return 1;
-            }
-            // EPERM: the process exists under another user; treat it as alive.
-            if( kill( owner, 0 ) == 0 || errno == EPERM )
-            {
-                fprintf( stderr, "Error: Another capture daemon (pid %ld) is already using the output directory %s\n", owner, outputDir.c_str() );
-                return 1;
-            }
-            std::error_code ec;
-            std::filesystem::remove( g_lockFile, ec );
-        }
-        if( lockFd < 0 )
-        {
-            fprintf( stderr, "Error: Another capture daemon is already using the output directory %s\n", outputDir.c_str() );
-            return 1;
-        }
-        const std::string pid = std::to_string( getpid() );
-        write( lockFd, pid.c_str(), pid.size() );
-        close( lockFd );
-    }
-    atexit( RemoveLockFile );
-#endif
+    
 #ifdef _WIN32
     signal( SIGINT, SigInt );
 #else

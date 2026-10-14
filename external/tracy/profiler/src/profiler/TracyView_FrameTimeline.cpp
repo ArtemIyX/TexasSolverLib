@@ -372,29 +372,14 @@ void View::DrawTimelineSections()
     }
     if( visible.empty() ) return;
 
-    if( m_vd.groupSectionsByCategory )
-    {
-        pdqsort( visible.begin(), visible.end(), []( const SectionEntry& a, const SectionEntry& b ) { return a.category != b.category ? a.category < b.category : a.len > b.len; } );
-    }
-    else
-    {
-        pdqsort( visible.begin(), visible.end(), []( const SectionEntry& a, const SectionEntry& b ) { return a.len > b.len; } );
-    }
+    pdqsort( visible.begin(), visible.end(), []( const SectionEntry& a, const SectionEntry& b ) { return a.len > b.len; } );
 
     std::vector<SectionRow> rows;
-    size_t rowBase = 0;
-    uint16_t rowCategory = visible[0].category;
     for( auto& e : visible )
     {
-        if( m_vd.groupSectionsByCategory && e.category != rowCategory )
-        {
-            rowCategory = e.category;
-            rowBase = rows.size();
-        }
         bool found = false;
-        for( size_t r=rowBase; r<rows.size(); r++ )
+        for( auto& row : rows )
         {
-            auto& row = rows[r];
             for( size_t i=0; i<row.available.size(); i++ )
             {
                 const auto gap = row.available[i];
@@ -440,31 +425,6 @@ void View::DrawTimelineSections()
     const auto pxns = w / double( timespan );
     const auto nspx = 1.0 / pxns;
     const auto MinVisNs = int64_t( round( GetScale() * MinVisSize * nspx ) );
-
-    auto Interact = [this]( int64_t s, int64_t e )
-    {
-        if( IsMouseClickReleased( ImGuiMouseButton_Right ) ) m_setRangePopup = RangeSlim { s, e, true };
-        if( IsMouseClicked( ImGuiMouseButton_Middle ) )
-        {
-            if( s_config.achievements ) Achieve( "markSections" );
-            ZoomToRange( s, e );
-        }
-    };
-
-    auto SectionTooltip = [this, &Interact]( const char* name, int64_t s, int64_t e, uint16_t category )
-    {
-        ImGui::BeginTooltip();
-        TextFocused( "Section:", name );
-        if( m_worker.GetSectionDescriptions().size() > 1 )
-        {
-            TextFocused( "Category:", m_worker.GetSectionCategoryDescription( category ) );
-        }
-        ImGui::Separator();
-        TextFocused( "Execution time:", TimeToString( e - s ) );
-        TextFocused( "Time from start of program:", TimeToStringExact( s ) );
-        ImGui::EndTooltip();
-        Interact( s, e );
-    };
 
     int rowidx = 0;
     for( auto& row : rows )
@@ -520,18 +480,32 @@ void View::DrawTimelineSections()
 
                 if( hover && ImGui::IsMouseHoveringRect( wpos + ImVec2( std::max( px0, -10.0 ), offset ), wpos + ImVec2( std::min( std::max( pr1, px0 + MinVisSize ), double( w + 10 ) ), offset + ty + 1 ) ) )
                 {
+                    ImGui::BeginTooltip();
                     if( count > 1 )
                     {
-                        ImGui::BeginTooltip();
                         TextFocused( "Sections too small to display:", RealToString( count ) );
                         ImGui::Separator();
                         TextFocused( "Execution time:", TimeToString( groupEnd - start ) );
                         ImGui::EndTooltip();
-                        Interact( start, groupEnd );
+
+                        if( IsMouseClickReleased( ImGuiMouseButton_Right ) ) m_setRangePopup = RangeSlim { start, groupEnd, true };
+                        if( IsMouseClicked( ImGuiMouseButton_Middle ) ) ZoomToRange( start, groupEnd );
                     }
                     else
                     {
-                        SectionTooltip( m_worker.GetString( v.text ), start, end, entry.category );
+                        const char* name = m_worker.GetString( v.text );
+                        TextFocused( "Section:", name );
+                        if( m_worker.GetSectionDescriptions().size() > 1 )
+                        {
+                            TextFocused( "Category:", m_worker.GetSectionCategoryDescription( entry.category ) );
+                        }
+                        ImGui::Separator();
+                        TextFocused( "Execution time:", TimeToString( end - start ) );
+                        TextFocused( "Time from start of program:", TimeToStringExact( start ) );
+                        ImGui::EndTooltip();
+
+                        if( IsMouseClickReleased( ImGuiMouseButton_Right ) ) m_setRangePopup = RangeSlim { start, end, true };
+                        if( IsMouseClicked( ImGuiMouseButton_Middle ) ) ZoomToRange( start, end );
                     }
                 }
 
@@ -577,7 +551,19 @@ void View::DrawTimelineSections()
 
                 if( hover && ImGui::IsMouseHoveringRect( wpos + ImVec2( px0, offset ), wpos + ImVec2( px1, offset + ty + 1 ) ) )
                 {
-                    SectionTooltip( name, start, end, entry.category );
+                    ImGui::BeginTooltip();
+                    TextFocused( "Section:", name );
+                    if( m_worker.GetSectionDescriptions().size() > 1 )
+                    {
+                        TextFocused( "Category:", m_worker.GetSectionCategoryDescription( entry.category ) );
+                    }
+                    ImGui::Separator();
+                    TextFocused( "Execution time:", TimeToString( end - start ) );
+                    TextFocused( "Time from start of program:", TimeToStringExact( start ) );
+                    ImGui::EndTooltip();
+
+                    if( IsMouseClickReleased( ImGuiMouseButton_Right ) ) m_setRangePopup = RangeSlim { start, end, true };
+                    if( IsMouseClicked( ImGuiMouseButton_Middle ) ) ZoomToRange( start, end );
                 }
 
                 ++i;

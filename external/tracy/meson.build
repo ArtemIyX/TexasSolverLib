@@ -1,4 +1,4 @@
-project('tracy', ['cpp'], version: run_command(find_program('python3'), files('extra/tracy-version.py'), 'public/common/TracyVersion.hpp', check: true).stdout().strip(), meson_version: '>=1.3.0', default_options : ['cpp_std=c++11'])
+project('tracy', ['cpp'], version: run_command('sh', files('extra/tracy-version.sh'), 'public/common/TracyVersion.hpp', check: true).stdout().strip(), meson_version: '>=1.3.0', default_options : ['cpp_std=c++11'])
 
 # internal compiler flags
 tracy_compile_args = []
@@ -227,16 +227,10 @@ tracy_compile_args += tracy_common_args
 
 tracy_deps = [dependency('threads')] + tracy_public_deps
 
-tracy_link_args = []
-if host_machine.system() == 'windows' and (compiler.get_id() == 'gcc' or compiler.get_id() == 'clang')
-  tracy_link_args += ['-lws2_32', '-ldbghelp', '-lsecur32']
-endif
-
 tracy = library('tracy', tracy_src, tracy_header_files,
     dependencies        : tracy_deps,
     include_directories : tracy_public_include_dirs,
     cpp_args            : tracy_compile_args,
-    link_args           : tracy_link_args,
     override_options    : override_options,
     install             : true)
 

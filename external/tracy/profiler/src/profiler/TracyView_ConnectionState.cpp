@@ -23,7 +23,7 @@ bool View::DrawConnection()
         std::shared_lock<std::shared_mutex> lock( m_worker.GetMbpsDataLock() );
         TextFocused( isConnected ? "Connected to:" : "Disconnected:", m_worker.GetAddr().c_str() );
         const auto& mbpsVector = m_worker.GetMbpsData();
-        const auto mbps = mbpsVector.empty() ? 0.f : mbpsVector.back();
+        const auto mbps = mbpsVector.back();
         char buf[64];
         if( mbps < 0.1f )
         {

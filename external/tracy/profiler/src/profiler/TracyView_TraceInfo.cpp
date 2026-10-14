@@ -13,8 +13,6 @@ namespace tracy
 
 void View::DrawInfo()
 {
-    if( s_config.achievements && !m_worker.GetAppInfo().empty() ) Achieve( "appInfo" );
-
     const auto scale = GetScale();
     ImGui::SetNextWindowSize( ImVec2( 400 * scale, 650 * scale ), ImGuiCond_FirstUseEver );
     ImGui::Begin( "Trace information", &m_showInfo, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse );
@@ -497,27 +495,6 @@ void View::DrawInfo()
             {
                 CallstackTooltip( crash.callstack );
             }
-        }
-    }
-
-    const auto& dgroups = m_worker.GetDeadlockGroups();
-    const auto& dmembers = m_worker.GetDeadlockMembers();
-    if( !dgroups.empty() )
-    {
-        ImGui::Separator();
-        TextColoredUnformatted( ImVec4( 1.f, 0.2f, 0.2f, 1.f ), ICON_FA_ARROWS_SPIN " Deadlock detected " ICON_FA_ARROWS_SPIN );
-        for( size_t gi = 0; gi < dgroups.size(); gi++ )
-        {
-            const auto& dlk = dgroups[gi];
-            ImGui::PushID( gi );
-            ImGui::Separator();
-            TextFocused( "Cycle closed at:", TimeToString( dlk.time ) );
-            DrawDeadlockMembers( dlk, dmembers );
-            if( ImGui::Button( ICON_FA_MICROSCOPE " Focus" ) )
-            {
-                CenterAtTime( dlk.time );
-            }
-            ImGui::PopID();
         }
     }
 

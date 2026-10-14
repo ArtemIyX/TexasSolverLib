@@ -8,12 +8,6 @@
 namespace tracy
 {
 
-inline constexpr float s_zoomPresets[] = {
-    1.f/2, 1.f/1.75f, 1.f/1.5f, 1.f/1.25f, 1.f, 1.25f, 1.5f, 1.75f, 2.f, 2.25f, 2.5f, 2.75f, 3.f
-};
-constexpr int s_zoomPresetCount = sizeof( s_zoomPresets ) / sizeof( *s_zoomPresets );
-constexpr int s_zoomPreset100 = 4;
-
 struct Config
 {
     bool threadedRendering = true;
@@ -34,7 +28,7 @@ struct Config
     bool drawContextSwitches = true;
     int plotHeight = 100;
     bool saveUserScale = false;
-    int zoomLevel = s_zoomPreset100;
+    float userScale = 1.0f;
 
     // LLM assistant settings
 #ifdef __EMSCRIPTEN__
@@ -42,7 +36,7 @@ struct Config
 #else
     bool llm = true;
 #endif
-    std::string llmAddress = "http://localhost:9931";
+    std::string llmAddress = "http://localhost:8080";
     std::string llmModel;
     std::string llmFastModel;
     std::string llmEmbeddingsModel;

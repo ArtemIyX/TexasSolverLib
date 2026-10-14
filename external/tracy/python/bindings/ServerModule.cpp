@@ -754,10 +754,25 @@ PYBIND11_MODULE( TracyServerBindings, m )
                 name = w.GetZoneName( w.GetSourceLocation( lm->srcloc ) );
             int64_t totalWaitNs = 0;
             uint64_t contentionCount = 0;
-            for( const auto& ti : lm->threads )
+            std::unordered_map<uint8_t, int64_t> pendingWait;
+            for( const auto& evPtr : lm->timeline )
             {
-                totalWaitNs += ti.waitTotal;
-                contentionCount += ti.waitCount;
+                const auto* ev = evPtr.ptr.get();
+                if( !ev ) continue;
+                if( ev->type == LockEvent::Type::Wait || ev->type == LockEvent::Type::WaitShared )
+                {
+                    pendingWait[ev->thread] = ev->Time();
+                }
+                else if( ev->type == LockEvent::Type::Obtain || ev->type == LockEvent::Type::ObtainShared )
+                {
+                    auto it = pendingWait.find( ev->thread );
+                    if( it != pendingWait.end() )
+                    {
+                        totalWaitNs += ev->Time() - it->second;
+                        contentionCount++;
+                        pendingWait.erase( it );
+                    }
+                }
             }
             if( contentionCount == 0 ) continue;
             py::dict d;
@@ -765,10 +780,7 @@ PYBIND11_MODULE( TracyServerBindings, m )
             d["total_wait_ns"] = totalWaitNs;
             d["avg_wait_ns"] = (double)totalWaitNs / (double)contentionCount;
             d["contention_count"] = contentionCount;
-            std::vector<uint64_t> threads;
-            threads.reserve( lm->threads.size() );
-            for( const auto& ti : lm->threads ) threads.push_back( ti.thread );
-            d["threads"] = threads;
+            d["threads"] = lm->threadList;
             result.append( d );
         }
         return result;
@@ -1042,16 +1054,13 @@ PYBIND11_MODULE( TracyServerBindings, m )
             else
                 name = w.GetZoneName( w.GetSourceLocation( lm->srcloc ) );
             const char* typeStr = lm->type == LockType::Lockable ? "Lockable" : "SharedLockable";
-            std::vector<uint64_t> threads;
-            threads.reserve( lm->threads.size() );
-            for( const auto& ti : lm->threads ) threads.push_back( ti.thread );
             result.push_back( LockSummary{
                 name,
                 lm->isContended,
                 std::string( typeStr ),
                 lm->timeAnnounce,
                 lm->timeTerminate,
-                std::move( threads ) } );
+                lm->threadList } );
         }
         return result;
     } ) )
@@ -1100,36 +1109,7 @@ PYBIND11_MODULE( TracyServerBindings, m )
         // Plain relaxed atomic like IsConnected() above — no locked()
         // needed. True once post-load zone/symbol stats have finished
         // building; get_all_zone_stats() et al. can be empty until then.
-        .def( "is_background_done", &Worker::IsBackgroundDone )
-        // Raw compressed bytes read off the socket post-handshake.
-        .def( "get_data_transferred", &Worker::GetDataTransferred )
-        // Raw HandshakeStatus byte (TracyProtocol.hpp): 0=none, 1=Welcome,
-        // 2=ProtocolMismatch, 3=NotAvailable, 4=Dropped.
-        .def( "get_handshake_status", &Worker::GetHandshakeStatus )
-        // Raw Failure byte (Worker::Failure, TracyWorker.hpp): 0=None,
-        // ZoneStack, ZoneDoubleEnd, ZoneText, ZoneValue, ZoneColor, ZoneName,
-        // MemFree, MemAllocTwice, FrameEnd, FrameImageIndex, FrameImageTwice,
-        // FiberLeave, SourceLocationOverflow, LockThreadOverflow, in order.
-        .def( "get_failure_type", []( const Worker& w ) -> int { return (int)w.GetFailureType(); } )
-        // GetFailureData() as a dict: thread_id, thread_name, zone_name,
-        // function, file, line. Empty if get_failure_type() is zero.
-        .def( "get_failure_data", []( Worker& w ) {
-            py::dict d;
-            if( w.GetFailureType() == Worker::Failure::None ) return d;
-            const auto& fd = w.GetFailureData();
-            d["thread_id"] = fd.thread;
-            d["thread_name"] = w.GetThreadName( fd.thread );
-            if( fd.srcloc != 0 )
-            {
-                const auto& srcloc = w.GetSourceLocation( fd.srcloc );
-                d["zone_name"] = w.GetZoneName( srcloc );
-                d["function"] = w.GetString( srcloc.function );
-                d["file"] = w.GetString( srcloc.file );
-                d["line"] = srcloc.line;
-            }
-            if( !fd.message.empty() ) d["message"] = fd.message;
-            return d;
-        } );
+        .def( "is_background_done", &Worker::IsBackgroundDone );
 
     // -------------------------------------------------------------------------
     // FileRead

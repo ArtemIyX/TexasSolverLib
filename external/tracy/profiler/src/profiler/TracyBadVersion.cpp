@@ -58,7 +58,7 @@ void BadVersionImpl( BadVersionState& badVer )
         ImGui::PushFont( g_fonts.normal, FontBig );
         TextCentered( ICON_FA_TRIANGLE_EXCLAMATION );
         ImGui::PopFont();
-        ImGui::Text( "The file could not be read or is corrupted." );
+        ImGui::Text( "The file you are trying to open cannot be mapped to memory." );
         ImGui::Separator();
         if( ImGui::Button( "OK" ) )
         {

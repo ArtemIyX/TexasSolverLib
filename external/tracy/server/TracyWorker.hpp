@@ -19,7 +19,6 @@
 #include "../public/common/TracySocket.hpp"
 #include "tracy_robin_hood.h"
 #include "TracyEvent.hpp"
-#include "TracyLocks.hpp"
 #include "TracyShortPtr.hpp"
 #include "TracySlab.hpp"
 #include "TracyStringDiscovery.hpp"
@@ -55,30 +54,19 @@ namespace EventType
 
 struct UnsupportedVersion : public std::exception
 {
-    UnsupportedVersion( int version ) : version( version )
-    {
-        msg = "Trace file requires Tracy " + std::to_string( version >> 16 ) + "." + std::to_string( ( version >> 8 ) & 0xFF ) + "." + std::to_string( version & 0xFF ) + " or newer.";
-    }
-    const char* what() const noexcept override { return msg.c_str(); }
+    UnsupportedVersion( int version ) : version( version ) {}
     int version;
-    std::string msg;
 };
 
 struct LegacyVersion : public std::exception
 {
-    LegacyVersion( int version ) : version ( version )
-    {
-        msg = "Trace file was created by legacy Tracy " + std::to_string( version >> 16 ) + "." + std::to_string( ( version >> 8 ) & 0xFF ) + "." + std::to_string( version & 0xFF ) + ". Use the update utility from an older version to convert it.";
-    }
-    const char* what() const noexcept override { return msg.c_str(); }
+    LegacyVersion( int version ) : version ( version ) {}
     int version;
-    std::string msg;
 };
 
 struct LoadFailure : public std::exception
 {
     LoadFailure( const char* msg ) : msg( msg ) {}
-    const char* what() const noexcept override { return msg.c_str(); }
     std::string msg;
 };
 
@@ -236,14 +224,11 @@ private:
         int64_t max = std::numeric_limits<int64_t>::min();
         int64_t total = 0;
         double sumSq = 0;
-        int64_t selfMin = std::numeric_limits<int64_t>::max();
-        int64_t selfMax = std::numeric_limits<int64_t>::min();
-        int64_t selfTotal = 0;
     };
 
     struct CallstackFrameIdHash
     {
-        uint64_t operator()( const CallstackFrameId& id ) const { return id.data; }
+        size_t operator()( const CallstackFrameId& id ) const { return id.data; }
     };
 
     struct CallstackFrameIdCompare
@@ -386,10 +371,6 @@ private:
 
         CrashEvent crashEvent;
 
-        Vector<DeadlockGroup> deadlockGroups;
-        Vector<DeadlockMember> deadlockMembers;
-        unordered_flat_set<uint32_t> waitingLocks;
-
         unordered_flat_map<uint64_t, ContextSwitch*> ctxSwitch;
 
         CpuData cpuData[256];
@@ -475,7 +456,6 @@ public:
         FrameImageTwice,
         FiberLeave,
         SourceLocationOverflow,
-        LockThreadOverflow,
 
         NUM_FAILURES
     };
@@ -523,13 +503,6 @@ public:
         DataBlock& m_data;
     };
     MainThreadDataLockGuard ObtainLockForMainThread() { return { m_data }; }
-
-    void UpdateDeadlocks()
-    {
-        if( !m_detectDeadlocks ) return;
-        m_detectDeadlocks = false;
-        if( !m_data.waitingLocks.empty() ) DetectDeadlocksLive();
-    }
 
     size_t GetFrameCount( const FrameData& fd ) const { return fd.frames.size(); }
     size_t GetFullFrameCount( const FrameData& fd ) const;
@@ -629,10 +602,6 @@ public:
 #endif
 
     const CrashEvent& GetCrashEvent() const { return m_data.crashEvent; }
-    const Vector<DeadlockGroup>& GetDeadlockGroups() const { return m_data.deadlockGroups; }
-    const Vector<DeadlockMember>& GetDeadlockMembers() const { return m_data.deadlockMembers; }
-    bool IsDeadlockedThread( uint64_t thread ) const;
-    bool IsDeadlockedPair( uint64_t thread, uint32_t lock ) const;
 
     // Some zones may have incomplete timing data (only start time is available, end hasn't arrived yet).
     // GetZoneEnd() will try to infer the end time by looking at child zones (parent zone can't end
@@ -661,7 +630,6 @@ public:
 
     tracy_force_inline const Vector<short_ptr<ZoneEvent>>& GetZoneChildren( int32_t idx ) const { return m_data.zoneChildren[idx]; }
     tracy_force_inline const Vector<short_ptr<GpuEvent>>& GetGpuChildren( int32_t idx ) const { return m_data.gpuChildren[idx]; }
-    int64_t GetGpuChildTime( const GpuEvent& zone ) const;
 #ifndef TRACY_NO_STATISTICS
     tracy_force_inline const Vector<GhostZone>& GetGhostChildren( int32_t idx ) const { return m_data.ghostChildren[idx]; }
     tracy_force_inline const GhostKey& GetGhostFrame( const Int24& frame ) const { return m_data.ghostFrames[frame.Val()]; }
@@ -677,8 +645,6 @@ public:
 #ifndef TRACY_NO_STATISTICS
     SourceLocationZones& GetZonesForSourceLocation( int16_t srcloc );
     const SourceLocationZones& GetZonesForSourceLocation( int16_t srcloc ) const;
-    GpuSourceLocationZones& GetGpuZonesForSourceLocation( int16_t srcloc );
-    const GpuSourceLocationZones& GetGpuZonesForSourceLocation( int16_t srcloc ) const;
     const unordered_flat_map<int16_t, SourceLocationZones>& GetSourceLocationZones() const { return m_data.sourceLocationZones; }
     const unordered_flat_map<int16_t, GpuSourceLocationZones>& GetGpuSourceLocationZones() const { return m_data.gpuSourceLocationZones; }
     bool AreSourceLocationZonesReady() const { return m_data.sourceLocationZonesReady; }
@@ -920,7 +886,6 @@ private:
     void FrameImageTwiceFailure();
     void FiberLeaveFailure();
     void SourceLocationOverflowFailure();
-    void LockThreadOverflowFailure();
 
     tracy_force_inline void CheckSourceLocation( uint64_t ptr );
     void NewSourceLocation( uint64_t ptr );
@@ -986,10 +951,7 @@ private:
 
     tracy_force_inline void NewZone( ZoneEvent* zone );
 
-    void AppendLock( LockMap& lock, int64_t time, uint16_t slot, LockEvent::Type type );
-    void ProcessLockThreadEvent( uint64_t id, int64_t time, uint64_t thread, LockEvent::Type type );
-    void DetectDeadlocks();
-    void DetectDeadlocksLive();
+    void InsertLockEvent( LockMap& lockmap, LockEvent* lev, uint64_t thread, int64_t time );
 
     bool CheckString( uint64_t ptr );
     void CheckThreadString( uint64_t id );
@@ -1117,8 +1079,6 @@ private:
     bool m_terminate = false;
     bool m_crashed = false;
     bool m_disconnect = false;
-
-    bool m_detectDeadlocks = false;
     void* m_stream;     // LZ4_streamDecode_t*
     char* m_buffer;
     int m_bufferOffset;

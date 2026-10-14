@@ -1,5 +1,4 @@
 #include "TracyFileRead.hpp"
-#include "TracySafeFileWrite.hpp"
 #include "TracyFileWrite.hpp"
 #include "TracyPrint.hpp"
 #include "TracyWorker.hpp"
@@ -376,7 +375,7 @@ int main( int argc, char** argv )
     std::cout << "  Total messages: " << merged.messages.size() << std::endl;
     std::cout << "  Total threads: " << merged.threadNames.size() << std::endl;
 
-    auto outFile = std::unique_ptr<tracy::SafeFileWrite>( tracy::SafeFileWrite::Open( outputFile.c_str(), tracy::FileCompression::Zstd, 3, 4 ) );
+    auto outFile = std::unique_ptr<tracy::FileWrite>( tracy::FileWrite::Open( outputFile.c_str(), tracy::FileCompression::Zstd, 3, 4 ) );
     if( !outFile )
     {
         std::cerr << "Error: Could not open output file: " << outputFile << std::endl;
@@ -385,13 +384,8 @@ int main( int argc, char** argv )
 
     std::cout << "Writing: " << outputFile << std::endl;
     tracy::Worker writer( merged.name.c_str(), merged.process.c_str(), merged.timeline, merged.messages, merged.plots, merged.threadNames );
-    writer.Write( outFile->File(), false );
-    outFile->File().Finish();
-    if( !outFile->Commit() )
-    {
-        std::cerr << "Error: Could not finalize output file: " << outputFile << std::endl;
-        return 1;
-    }
+    writer.Write( *outFile, false );
+    outFile->Finish();
 
     auto stats = outFile->GetCompressionStatistics();
     std::cout << "Done. Output size: " << tracy::MemSizeToString( stats.second ) << " (" << (100.0 * stats.second / stats.first) << "% ratio)" << std::endl;

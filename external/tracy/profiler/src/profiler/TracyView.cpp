@@ -16,8 +16,8 @@
 #include "TracyFileRead.hpp"
 #include "TracyFilesystem.hpp"
 #include "TracyImGui.hpp"
+#include "TracyManualData.hpp"
 #include "TracyPrint.hpp"
-#include "TracySafeFileWrite.hpp"
 #include "TracySourceView.hpp"
 #include "TracyTexture.hpp"
 #include "TracyView.hpp"
@@ -53,12 +53,13 @@ View::View( void(*cbMainThread)(const std::function<void()>&, bool), const char*
     , m_achievements( s_config.achievements )
     , m_horizontalScrollMultiplier( s_config.horizontalScrollMultiplier )
     , m_verticalScrollMultiplier( s_config.verticalScrollMultiplier )
-    , m_markdown( this, &m_worker, &GetManualWindow() )
+    , m_manualData( std::make_shared<TracyManualData>() )
+    , m_markdown( this, &m_worker )
 #ifdef __EMSCRIPTEN__
     , m_td( 2, "ViewMt" )
 #else
     , m_td( std::thread::hardware_concurrency(), "ViewMt" )
-    , m_llm( m_worker, *this )
+    , m_llm( m_worker, *this, *m_manualData )
 #endif
 {
     InitTextEditor();
@@ -84,12 +85,13 @@ View::View( void(*cbMainThread)(const std::function<void()>&, bool), FileRead& f
     , m_achievements( s_config.achievements )
     , m_horizontalScrollMultiplier( s_config.horizontalScrollMultiplier )
     , m_verticalScrollMultiplier( s_config.verticalScrollMultiplier )
-    , m_markdown( this, &m_worker, &GetManualWindow() )
+    , m_manualData( std::make_shared<TracyManualData>() )
+    , m_markdown( this, &m_worker )
 #ifdef __EMSCRIPTEN__
     , m_td( 2, "ViewMt" )
 #else
     , m_td( std::thread::hardware_concurrency(), "ViewMt" )
-    , m_llm( m_worker, *this )
+    , m_llm( m_worker, *this, *m_manualData )
 #endif
 {
     m_notificationTime = 4;
@@ -158,18 +160,6 @@ void View::SaveUserData()
     m_userData.StoreAnnotations( m_annotations );
     m_userData.StoreSourceSubstitutions( m_sourceSubstitutions );
     m_userData.Save();
-}
-
-void View::SetZoomPreset( int idx )
-{
-    assert( idx >= 0 && idx < s_zoomPresetCount );
-    if( m_sscb ) m_sscb( idx );
-}
-
-void View::ZoomUserScale( int dir )
-{
-    const int idx = dir == 0 ? s_zoomPreset100 : s_config.zoomLevel + dir;
-    if( idx >= 0 && idx < s_zoomPresetCount ) SetZoomPreset( idx );
 }
 
 void View::ViewSource( const char* fileName, int line )
@@ -755,8 +745,6 @@ bool View::DrawImpl()
         return keepOpen;
     }
 
-    m_worker.UpdateDeadlocks();
-
     if( m_achievements )
     {
         if( m_worker.IsConnected() ) Achieve( "connectToClient" );
@@ -797,21 +785,6 @@ bool View::DrawImpl()
         {
             m_findZone.show = true;
             m_shortcut = ShortcutAction::OpenFind;
-        }
-        if( m_sscb )
-        {
-            if( ImGui::IsKeyPressed( ImGuiKey_Equal, false ) || ImGui::IsKeyPressed( ImGuiKey_KeypadAdd, false ) )
-            {
-                ZoomUserScale( 1 );
-            }
-            else if( ImGui::IsKeyPressed( ImGuiKey_Minus, false ) || ImGui::IsKeyPressed( ImGuiKey_KeypadSubtract, false ) )
-            {
-                ZoomUserScale( -1 );
-            }
-            else if( ImGui::IsKeyPressed( ImGuiKey_0, false ) || ImGui::IsKeyPressed( ImGuiKey_Keypad0, false ) )
-            {
-                ZoomUserScale( 0 );
-            }
         }
     }
 
@@ -1014,19 +987,26 @@ bool View::DrawImpl()
         ImGui::EndPopup();
     }
     ImGui::SameLine();
-    ToggleButton( ICON_FA_BOOK, GetManualWindow().Show() );
+    ToggleButton( ICON_FA_BOOK, m_showManual );
     if( m_sscb )
     {
         ImGui::SameLine();
         if( ImGui::Button( ICON_FA_MAGNIFYING_GLASS_PLUS ) ) ImGui::OpenPopup( "ZoomPopup" );
         if( ImGui::BeginPopup( "ZoomPopup" ) )
         {
-            for( int i=0; i<s_zoomPresetCount; i++ )
-            {
-                char label[32];
-                sprintf( label, "%i%%", int( s_zoomPresets[i] * 100.f + 0.001f ) );
-                if( ImGui::RadioButton( label, i == s_config.zoomLevel ) ) SetZoomPreset( i );
-            }
+            if( ImGui::Button( "50%" ) )  m_sscb( 1.f/2 );
+            if( ImGui::Button( "57%" ) )  m_sscb( 1.f/1.75f );
+            if( ImGui::Button( "66%" ) )  m_sscb( 1.f/1.5f );
+            if( ImGui::Button( "80%" ) )  m_sscb( 1.f/1.25f );
+            if( ImGui::Button( "100%" ) ) m_sscb( 1.f );
+            if( ImGui::Button( "125%" ) ) m_sscb( 1.25f );
+            if( ImGui::Button( "150%" ) ) m_sscb( 1.5f );
+            if( ImGui::Button( "175%" ) ) m_sscb( 1.75f );
+            if( ImGui::Button( "200%" ) ) m_sscb( 2.f );
+            if( ImGui::Button( "225%" ) ) m_sscb( 2.25f );
+            if( ImGui::Button( "250%" ) ) m_sscb( 2.5f );
+            if( ImGui::Button( "275%" ) ) m_sscb( 2.75f );
+            if( ImGui::Button( "300%" ) ) m_sscb( 3.f );
             ImGui::EndPopup();
         }
     }
@@ -1231,7 +1211,7 @@ bool View::DrawImpl()
     if( m_sampleParents.symAddr != 0 ) DrawSampleParents();
     if( m_showRanges ) DrawRanges();
     if( m_showWaitStacks ) DrawWaitStacks();
-    if( GetManualWindow().Show() ) GetManualWindow().Draw( m_markdown );
+    if( m_showManual ) DrawManual();
     if( m_showFrameStatistics ) DrawFrameStatistics();
 #ifndef __EMSCRIPTEN__
     if( m_llm.m_show ) m_llm.Draw( m_llmConstraint );
@@ -1507,7 +1487,7 @@ bool View::DrawSourceTooltip( const char* filename, uint32_t lineStart, uint32_t
 
 bool View::Save( const char* fn, FileCompression comp, int zlevel, bool buildDict, int streams )
 {
-    std::unique_ptr<SafeFileWrite> f( SafeFileWrite::Open( fn, comp, zlevel, streams ) );
+    std::unique_ptr<FileWrite> f( FileWrite::Open( fn, comp, zlevel, streams ) );
     if( !f ) return false;
 
     m_filename = fn;
@@ -1518,12 +1498,11 @@ bool View::Save( const char* fn, FileCompression comp, int zlevel, bool buildDic
     m_saveThreadState.store( SaveThreadState::Saving, std::memory_order_relaxed );
     m_saveThread = std::thread( [this, f{std::move( f )}, buildDict] {
         Worker::MainThreadDataLockGuard lock = m_worker.ObtainLockForMainThread();
-        m_worker.Write( f->File(), buildDict );
-        f->File().Finish();
+        m_worker.Write( *f, buildDict );
+        f->Finish();
         const auto stats = f->GetCompressionStatistics();
         m_srcFileBytes.store( stats.first, std::memory_order_relaxed );
         m_dstFileBytes.store( stats.second, std::memory_order_relaxed );
-        f->Commit();
         m_saveThreadState.store( SaveThreadState::NeedsJoin, std::memory_order_release );
     } );
 

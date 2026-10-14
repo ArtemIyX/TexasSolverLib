@@ -18,11 +18,10 @@
 #include "TracyBuzzAnim.hpp"
 #include "TracyConfig.hpp"
 #include "TracyDecayValue.hpp"
-#include "TracyManualWindow.hpp"
+#include "TracyManualData.hpp"
 #include "TracyMarkdown.hpp"
 #include "TracySourceContents.hpp"
 #include "TracyTimelineController.hpp"
-#include "TracyTimelineDraw.hpp"
 #include "TracyUserData.hpp"
 #include "TracyUtility.hpp"
 #include "TracyViewData.hpp"
@@ -68,8 +67,6 @@ struct MessagesDraw;
 struct CpuUsageDraw;
 struct CpuCtxDraw;
 struct LockDraw;
-struct DeadlockGroup;
-struct DeadlockMember;
 struct PlotDraw;
 struct FlameGraphContext;
 
@@ -148,7 +145,7 @@ public:
     };
 
     using SetTitleCallback = void(*)( const char* );
-    using SetScaleCallback = void(*)( int );
+    using SetScaleCallback = void(*)( float );
     using AttentionCallback = void(*)();
 
     View( void(*cbMainThread)(const std::function<void()>&, bool), const char* addr, uint16_t port, SetTitleCallback stcb, SetScaleCallback sscb, AttentionCallback acb, AchievementsMgr* amgr );
@@ -166,6 +163,9 @@ public:
     void ViewSymbolSource( const char* fileName, int line );
     void ViewSymbol( const char* fileName, int line, uint64_t baseAddr, uint64_t symAddr );
     bool ViewDispatch( const char* fileName, int line, uint64_t symAddr );
+
+    const TracyManualData::ManualChunk* GetManualChunk( const char* anchor ) const;
+    bool ViewManualChunk( const char* anchor );
 
     bool ReconnectRequested() const { return m_reconnectRequested; }
     std::string GetAddress() const { return m_worker.GetAddr(); }
@@ -210,13 +210,6 @@ public:
     void DrawThread( const TimelineContext& ctx, const ThreadData& thread, const std::vector<TimelineDraw>& draw, const std::vector<ContextSwitchDraw>& ctxDraw, const std::vector<SamplesDraw>& samplesDraw, const std::vector<std::unique_ptr<LockDraw>>& lockDraw, int& offset, int depth, bool hasCtxSwitches, bool hasSamples );
     void DrawThreadMessagesList( const TimelineContext& ctx, const std::vector<MessagesDraw>& drawList, int offset, uint64_t tid );
     void DrawThreadOverlays( const ThreadData& thread, const ImVec2& ul, const ImVec2& dr );
-    void Achieve( const char* id );
-
-    static constexpr uint64_t AnyThread = ~0ull;
-    static constexpr uint32_t AnyLock = ~0u;
-    void DrawDeadlockMembers( const DeadlockGroup& group, const Vector<DeadlockMember>& members ) const;
-    void DrawDeadlockDetail( uint64_t thread, uint32_t lock ) const;
-
     bool DrawGpu( const TimelineContext& ctx, const GpuCtxData& gpu, int& offset );
     bool DrawCpuData( const TimelineContext& ctx, const std::vector<CpuUsageDraw>& cpuDraw, const std::vector<std::vector<CpuCtxDraw>>& ctxDraw, int& offset, bool hasCpuData );
     void DrawThreadMigrations( const TimelineContext& ctx, const int origOffset, uint64_t thread );
@@ -309,9 +302,8 @@ private:
     void InitTextEditor();
     void SetupConfig();
     void SetupRanges();
+    void Achieve( const char* id );
     void SaveUserData();
-    void SetZoomPreset( int idx );
-    void ZoomUserScale( int dir );
 
     bool DrawImpl();
     void DrawFrameImage( FrameImageCache& cache, const FrameImage& fi, float scale = GetScale() );
@@ -324,15 +316,14 @@ private:
     void DrawTimeline();
     void DrawSampleList( const TimelineContext& ctx, const std::vector<SamplesDraw>& drawList, const Vector<SampleData>& vec, int offset, uint64_t tid );
     void DrawZoneList( const TimelineContext& ctx, const std::vector<TimelineDraw>& drawList, int offset, uint64_t tid, int maxDepth, double margin );
-    void DrawThreadCropper( const int depth, const uint64_t tid, const float xPos, const float yPos, const float ostep, const float cropperWidth, const bool hasCtxSwitches, const bool hover );
+    void DrawThreadCropper( const int depth, const uint64_t tid, const float xPos, const float yPos, const float ostep, const float cropperWidth, const bool hasCtxSwitches );
     void DrawContextSwitchList( const TimelineContext& ctx, const std::vector<ContextSwitchDraw>& drawList, const Vector<ContextSwitchData>& ctxSwitch, int offset, int endOffset, bool isFiber, uint64_t tid );
     int DispatchGpuZoneLevel( const Vector<short_ptr<GpuEvent>>& vec, bool hover, double pxns, int64_t nspx, const ImVec2& wpos, int offset, int depth, uint64_t thread, float yMin, float yMax, int64_t begin, int drift );
     template<typename Adapter, typename V>
     int DrawGpuZoneLevel( const V& vec, bool hover, double pxns, int64_t nspx, const ImVec2& wpos, int offset, int depth, uint64_t thread, float yMin, float yMax, int64_t begin, int drift );
     template<typename Adapter, typename V>
     int SkipGpuZoneLevel( const V& vec, bool hover, double pxns, int64_t nspx, const ImVec2& wpos, int offset, int depth, uint64_t thread, float yMin, float yMax, int64_t begin, int drift );
-    void DrawLockHeader( uint32_t id, const LockMap& lockmap, const SourceLocation& srcloc, bool hover, ImDrawList* draw, const ImVec2& wpos, float w, float ty, float offset, uint16_t tid );
-    static const char* GetLockDisplayName( const Worker& worker, const LockMap& lockmap );
+    void DrawLockHeader( uint32_t id, const LockMap& lockmap, const SourceLocation& srcloc, bool hover, ImDrawList* draw, const ImVec2& wpos, float w, float ty, float offset, uint8_t tid );
     int DrawLocks( const TimelineContext& ctx, const std::vector<std::unique_ptr<LockDraw>>& lockDraw, uint64_t tid, int _offset, LockHighlight& highlight );
     void DrawPlotPoint( const ImVec2& wpos, float x, float y, int offset, uint32_t color, bool hover, bool hasPrev, const PlotItem& item, double prev, PlotType type, PlotValueFormatting format, float PlotHeight, uint64_t name );
     void DrawPlotPoint( const ImVec2& wpos, float x, float y, int offset, uint32_t color, bool hover, double val, PlotValueFormatting format, float PlotHeight );
@@ -340,7 +331,6 @@ private:
     void DrawMessages();
     void DrawMessageLine( const MessageData& msg, bool hasCallstack, int& idx );
     void DrawFindZone();
-    void DrawFindZoneCpuDetails( int16_t matchSrcloc );
     void AccumulationModeComboBox();
     void DrawStatistics();
     void DrawSamplesStatistics(Vector<SymList>& data, int64_t timeRange, uint64_t totalSamples, AccumulationMode accumulationMode);
@@ -363,6 +353,7 @@ private:
     void DrawRangeEntry( Range& range, const char* label, const char* tooltip, uint32_t color, int id );
     bool ShouldDrawRange( const RangeId& id ) const;
     void DrawWaitStacks();
+    void DrawManual();
     void DrawFrameStatistics();
     void DrawFlameGraph();
     void DrawFlameGraphHeader( int64_t vStart, int64_t vEnd );
@@ -423,8 +414,7 @@ private:
 
     void ShowZoneInfo( const ZoneEvent& ev );
     void ShowZoneInfo( const GpuEvent& ev, uint64_t thread );
-    void DeadlockTooltip( const DeadlockGroup& group, const Vector<DeadlockMember>& members ) const;
-    void DeadlocksTooltip();
+
     void ZoneTooltip( const ZoneEvent& ev );
     void ZoneTooltip( const GpuEvent& ev );
     void CallstackTooltip( uint32_t idx );
@@ -450,7 +440,6 @@ private:
 
     void FindZones();
     void FindZonesCompare();
-    bool IsGpuSourceLocation( int16_t srcloc ) const;
 
     std::vector<MemoryPage> GetMemoryPages() const;
 
@@ -653,6 +642,8 @@ private:
     bool m_showAnnotationList = false;
     bool m_showWaitStacks = false;
     bool m_showFlameGraph = false;
+    bool m_showManual = false;
+    bool m_manualPositionReset = false;
     bool m_showFrameStatistics = false;
 
     AccumulationMode m_statAccumulationMode = AccumulationMode::SelfOnly;
@@ -811,7 +802,6 @@ private:
         float median, selMedian;
         float p75, p90, p99, p99_9;
         int64_t total, selTotal;
-        double sumSq = 0;
         int64_t selTime;
         bool drawAvgMed = true;
         bool drawSelAvgMed = true;
@@ -859,7 +849,6 @@ private:
             p99 = 0;
             p99_9 = 0;
             total = 0;
-            sumSq = 0;
             tmin = std::numeric_limits<int64_t>::max();
             tmax = std::numeric_limits<int64_t>::min();
         }
@@ -1077,6 +1066,8 @@ private:
     double m_horizontalScrollMultiplier = 1.0;
     double m_verticalScrollMultiplier = 1.0;
 
+    std::shared_ptr<TracyManualData> m_manualData;
+    size_t m_activeManualChunk = 0;
     Markdown m_markdown;
 
     TaskDispatch m_td;

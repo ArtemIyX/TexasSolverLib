@@ -2,25 +2,16 @@
 #include "TracyEmbed.hpp"
 
 #include "data/Text100Million.hpp"
-#include "data/TextAnnotateZones.hpp"
-#include "data/TextAppInfo.hpp"
 #include "data/TextConnectToClient.hpp"
-#include "data/TextContention.hpp"
 #include "data/TextFindZone.hpp"
 #include "data/TextFrameImages.hpp"
-#include "data/TextGhostZones.hpp"
 #include "data/TextGlobalSettings.hpp"
 #include "data/TextInstrumentFrames.hpp"
 #include "data/TextInstrumentationIntro.hpp"
 #include "data/TextInstrumentationStatistics.hpp"
 #include "data/TextIntro.hpp"
 #include "data/TextLoadTrace.hpp"
-#include "data/TextLocks.hpp"
-#include "data/TextManual.hpp"
-#include "data/TextMemory.hpp"
-#include "data/TextPlots.hpp"
 #include "data/TextSamplingIntro.hpp"
-#include "data/TextSections.hpp"
 #include "data/TextSaveTrace.hpp"
 
 namespace tracy::data
@@ -37,50 +28,14 @@ static std::string UnpackImpl( size_t size, size_t lz4Size, const uint8_t* data 
 #define Unpack( name ) UnpackImpl( Embed::name##Size, Embed::name##Lz4Size, Embed::name##Data )
 
 
-AchievementItem ai_ghostZones = {
-    .id = "ghostZones",
-    .name = "Ghost zones",
-    .text = Unpack( TextGhostZones )
-};
-
-AchievementItem* ac_samplingIntroItems[] = { &ai_ghostZones, nullptr };
-
 AchievementItem ai_samplingIntro = {
     .id = "samplingIntro",
     .name = "Sampling program execution",
     .text = Unpack( TextSamplingIntro ),
-    .items = ac_samplingIntroItems,
 };
 
 AchievementItem* ac_samplingItems[] = { &ai_samplingIntro, nullptr };
 AchievementCategory ac_sampling = { "sampling", "Sampling", ac_samplingItems };
-
-AchievementItem ai_trackMemory = {
-    .id = "trackMemory",
-    .name = "Track memory",
-    .text = Unpack( TextMemory )
-};
-
-AchievementItem* ac_memoryItems[] = { &ai_trackMemory, nullptr };
-AchievementCategory ac_memory = { "memory", "Memory", ac_memoryItems };
-
-AchievementItem ai_lockContention = {
-    .id = "lockContention",
-    .name = "Analyze contention",
-    .text = Unpack( TextContention )
-};
-
-AchievementItem* ac_watchLocksItems[] = { &ai_lockContention, nullptr };
-
-AchievementItem ai_watchLocks = {
-    .id = "watchLocks",
-    .name = "Watch locks",
-    .text = Unpack( TextLocks ),
-    .items = ac_watchLocksItems
-};
-
-AchievementItem* ac_locksItems[] = { &ai_watchLocks, nullptr };
-AchievementCategory ac_locks = { "locks", "Locks", ac_locksItems };
 
 
 AchievementItem ai_100million = {
@@ -101,42 +56,18 @@ AchievementItem ai_findZone = {
     .text = Unpack( TextFindZone )
 };
 
-AchievementItem ai_annotateZones = {
-    .id = "annotateZones",
-    .name = "Annotate zones",
-    .text = Unpack( TextAnnotateZones )
-};
-
-AchievementItem ai_markSections = {
-    .id = "markSections",
-    .name = "Mark sections",
-    .text = Unpack( TextSections )
-};
-
-AchievementItem ai_chartValues = {
-    .id = "chartValues",
-    .name = "Chart values",
-    .text = Unpack( TextPlots )
-};
-
 AchievementItem* ac_instrumentationIntroItems[] = {
     &ai_100million,
     &ai_instrumentationStatistics,
     &ai_findZone,
-    &ai_annotateZones,
-    &ai_markSections,
-    &ai_chartValues,
     nullptr
 };
 
-AchievementItem* ac_instrumentationIntroUnlock[] = { &ai_trackMemory, &ai_watchLocks, nullptr };
-
 AchievementItem ai_instrumentationIntro = {
     .id = "instrumentationIntro",
-    .name = "Instrumenting your application",
+    .name = "Instrumentating your application",
     .text = Unpack( TextInstrumentationIntro ),
-    .items = ac_instrumentationIntroItems,
-    .unlocks = ac_instrumentationIntroUnlock
+    .items = ac_instrumentationIntroItems
 };
 
 AchievementItem ai_frameImages = {
@@ -173,16 +104,9 @@ AchievementItem ai_saveTrace = {
     .text = Unpack( TextSaveTrace )
 };
 
-AchievementItem ai_appInfo = {
-    .id = "appInfo",
-    .name = "Describe your application",
-    .text = Unpack( TextAppInfo )
-};
-
 AchievementItem* ac_connectToServerItems[] = {
     &ai_saveTrace,
     &ai_loadTrace,
-    &ai_appInfo,
     nullptr
 };
 
@@ -206,16 +130,9 @@ AchievementItem ai_globalSettings = {
     .text = Unpack( TextGlobalSettings )
 };
 
-AchievementItem ai_manual = {
-    .id = "manual",
-    .name = "Read the manual",
-    .text = Unpack( TextManual )
-};
-
 AchievementItem* ac_achievementsIntroItems[] = {
     &ai_connectToServer,
     &ai_globalSettings,
-    &ai_manual,
     nullptr
 };
 
@@ -236,8 +153,6 @@ AchievementCategory* AchievementCategories[] = {
     &ac_firstSteps,
     &ac_instrumentation,
     &ac_sampling,
-    &ac_memory,
-    &ac_locks,
     nullptr
 };
 

@@ -1,5 +1,5 @@
-#ifndef __CAPTURECONSOLE_HPP__
-#define __CAPTURECONSOLE_HPP__
+#ifndef __CAPTUREOUTPUT_HPP__
+#define __CAPTUREOUTPUT_HPP__
 
 #include <stdint.h>
 
@@ -24,9 +24,10 @@ bool IsTerminal();
 #endif
 void AnsiPrintf( const char* ansiEscape, const char* format, ... );
 
-// Renders the live capture status line (rate / compression / transferred /
-// memory / time / query backlog) on the current line. Does nothing when
-// stdout is not a terminal or until the worker reports its first rate sample.
+int WaitForConnection( tracy::Worker& worker );
+
+void PrintWorkerFailure( tracy::Worker& worker );
+
 void PrintCaptureProgress( tracy::Worker& worker, int64_t firstTime, int64_t memoryLimit );
 
 #endif

@@ -115,10 +115,4 @@ void TracyManualData::AddManualChunk( const std::string_view& manual, int start,
     }
 }
 
-const TracyManualData& GetManualData()
-{
-    static TracyManualData data;
-    return data;
-}
-
 }

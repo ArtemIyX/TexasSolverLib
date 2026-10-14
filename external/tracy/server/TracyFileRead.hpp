@@ -98,12 +98,6 @@ private:
 
 class FileRead
 {
-#ifdef __EMSCRIPTEN__
-    static constexpr int ThreadedStreams = 4;
-#else
-    static constexpr int ThreadedStreams = 256;
-#endif
-
     struct StreamHandle
     {
         StreamHandle( uint8_t type ) : stream( type ), outputReady( false ) {}
@@ -120,7 +114,6 @@ class FileRead
         std::condition_variable signal;
 
         std::thread thread;
-        bool threaded = true;
     };
 
 public:
@@ -138,7 +131,7 @@ public:
             v->exit = true;
             v->signal.notify_one();
         }
-        for( auto& v : m_streams ) if( v->threaded ) v->thread.join();
+        for( auto& v : m_streams ) v->thread.join();
         m_streams.clear();
         if( m_data ) munmap( m_data, m_dataSize );
     }
@@ -465,12 +458,6 @@ private:
             throw NotTracyDump();
         }
 
-        if( streams == 0 )
-        {
-            fclose( f );
-            throw FileReadError();
-        }
-
         struct stat64 buf;
         if( stat64( fn, &buf ) == 0 )
         {
@@ -480,26 +467,6 @@ private:
         {
             fclose( f );
             throw FileReadError();
-        }
-
-        // Block framing is `u32 size + payload`; a truncated file must be rejected
-        // before the decompression threads are started, since their size fields
-        // would authorize out-of-bounds reads.
-        {
-            const auto dataLen = m_dataSize - m_dataOffset;
-            uint64_t consumed = 0;
-            while( consumed != dataLen )
-            {
-                uint32_t sz;
-                if( fread( &sz, 1, sizeof( sz ), f ) != sizeof( sz ) ||
-                    sz > dataLen - consumed - sizeof( sz ) ||
-                    ( consumed + sizeof( sz ) + sz != dataLen && fseek( f, sz, SEEK_CUR ) != 0 ) )
-                {
-                    fclose( f );
-                    throw FileReadError();
-                }
-                consumed += sizeof( sz ) + sz;
-            }
         }
 
         m_data = (char*)mmap( nullptr, m_dataSize, PROT_READ, MAP_SHARED, fileno( f ), 0 );
@@ -518,19 +485,9 @@ private:
             uptr->src = m_data + m_dataOffset;
             uptr->size = sz;
             uptr->inputReady = true;
-            uptr->threaded = i < ThreadedStreams;
-            if( uptr->threaded )
-            {
-                uptr->thread = std::thread( [ptr = uptr.get()] { Worker( ptr ); } );
-            }
+            uptr->thread = std::thread( [ptr = uptr.get()] { Worker( ptr ); } );
             m_streams.emplace_back( std::move( uptr ) );
             m_dataOffset += sz;
-        }
-
-        if( m_streams.empty() )
-        {
-            munmap( m_data, m_dataSize );
-            throw FileReadError();
         }
 
         GetNextDataBlock();
@@ -606,16 +563,8 @@ private:
     void GetNextDataBlock()
     {
         auto& hnd = *m_streams[m_streamId];
-        if( hnd.threaded )
-        {
-            while( hnd.outputReady.load( std::memory_order_acquire ) == false ) { YieldThread(); }
-            hnd.outputReady.store( false, std::memory_order_relaxed );
-        }
-        else if( hnd.inputReady )
-        {
-            hnd.stream.Decompress( hnd.src, hnd.size );
-            hnd.inputReady = false;
-        }
+        while( hnd.outputReady.load( std::memory_order_acquire ) == false ) { YieldThread(); }
+        hnd.outputReady.store( false, std::memory_order_relaxed );
         m_buf = hnd.stream.GetBuffer();
         m_offset = 0;
 
@@ -626,7 +575,7 @@ private:
             hnd.src = m_data + m_dataOffset;
             hnd.size = sz;
             hnd.inputReady = true;
-            if( hnd.threaded ) hnd.signal.notify_one();
+            hnd.signal.notify_one();
             lock.unlock();
             m_dataOffset += sz;
         }

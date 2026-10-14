@@ -416,11 +416,12 @@ static int64_t SetupHwTimer()
 }
 #endif
 
+uint32_t ___tracy_magic_pid_override = 0;
+char ___tracy_magic_process_name[64] = {};
+
 static const char* GetProcessName()
 {
-#ifdef TRACY_HAS_EXTERNAL_TARGET
-    if( GetExternalTargetPid() != 0 ) return GetExternalTargetName();
-#endif
+    if( *___tracy_magic_process_name != 0 ) return ___tracy_magic_process_name;
 
     const char* processName = "unknown";
 #ifdef _WIN32
@@ -556,15 +557,10 @@ static const char* GetHostInfo()
     ptr += sprintf( ptr, "OS: Linux %s\n", utsName.release );
 #  endif
 #elif defined __APPLE__
-    char osVer[64] = {};
-    size_t osVerSz = sizeof( osVer ) - 1;
-    const bool haveVer = sysctlbyname( "kern.osproductversion", osVer, &osVerSz, nullptr, 0 ) == 0;
 #  if TARGET_OS_IPHONE == 1
-    if( haveVer ) ptr += sprintf( ptr, "OS: iOS %s\n", osVer );
-    else ptr += sprintf( ptr, "OS: iOS\n" );
+    ptr += sprintf( ptr, "OS: Darwin (iOS)\n" );
 #  elif TARGET_OS_MAC == 1
-    if( haveVer ) ptr += sprintf( ptr, "OS: macOS %s\n", osVer );
-    else ptr += sprintf( ptr, "OS: macOS\n" );
+    ptr += sprintf( ptr, "OS: Darwin (OSX)\n" );
 #  else
     ptr += sprintf( ptr, "OS: Darwin (unknown)\n" );
 #  endif
@@ -694,15 +690,6 @@ static const char* GetHostInfo()
         ptr += sprintf( ptr, "Device: %s\n", DecodeIosDevice( str ) );
         tracy_free( str );
     }
-#elif defined __APPLE__
-    {
-        size_t sz;
-        sysctlbyname( "machdep.cpu.brand_string", nullptr, &sz, nullptr, 0 );
-        auto str = (char*)tracy_malloc( sz );
-        sysctlbyname( "machdep.cpu.brand_string", str, &sz, nullptr, 0 );
-        ptr += sprintf( ptr, "CPU: %s\n", str );
-        tracy_free( str );
-    }
 #else
     ptr += sprintf( ptr, "CPU: unknown\n" );
 #endif
@@ -763,10 +750,7 @@ static const char* GetHostInfo()
 
 static uint64_t GetPid()
 {
-#ifdef TRACY_HAS_EXTERNAL_TARGET
-    const auto externalPid = GetExternalTargetPid();
-    if( externalPid != 0 ) return uint64_t( externalPid );
-#endif
+    if( ___tracy_magic_pid_override != 0 ) return uint64_t( ___tracy_magic_pid_override );
 
 #if defined _WIN32
     return uint64_t( GetCurrentProcessId() );
@@ -934,7 +918,6 @@ std::atomic<bool> s_symbolThreadGone { false };
 #endif
 #ifdef TRACY_HAS_SYSTEM_TRACING
 static std::atomic<Thread*> s_sysTraceThread(nullptr);
-static std::atomic<bool> s_sysTraceStartFailed(false);
 #endif
 
 #if defined __linux__ && !defined TRACY_NO_CRASH_HANDLER
@@ -1190,16 +1173,11 @@ static void StartSystemTracing( int64_t& samplingPeriod )
     }
     else if( SysTraceStart( samplingPeriod ) )
     {
-        s_sysTraceStartFailed.store( false, std::memory_order_release );
         Thread* sysTraceThread = (Thread*)tracy_malloc( sizeof( Thread ) );
         new( sysTraceThread ) Thread( SysTraceWorker, nullptr );
         Thread* prev = s_sysTraceThread.exchange( sysTraceThread );
         TRACY_ASSERT( prev == nullptr );
         std::this_thread::sleep_for( std::chrono::milliseconds( 1 ) );
-    }
-    else
-    {
-        s_sysTraceStartFailed.store( true, std::memory_order_release );
     }
 }
 
@@ -1532,26 +1510,6 @@ TRACY_API bool ProfilerAllocatorAvailable() { return !RpThreadShutdown; }
 
 TRACY_API bool BeginSamplingProfiling() { return GetProfiler().BeginSamplingProfiling(); }
 TRACY_API void EndSamplingProfiling() { return GetProfiler().EndSamplingProfiling(); }
-TRACY_API bool IsSystemTracingFailed()
-{
-#if defined(TRACY_HAS_SYSTEM_TRACING)
-    return s_sysTraceStartFailed.load( std::memory_order_acquire );
-#else
-    return false;
-#endif
-}
-
-static std::atomic<int> s_reservedListenFd( -1 );
-
-TRACY_API void SetReservedListenSocket( int fd )
-{
-    TRACY_ASSERT( fd >= 0 );
-    s_reservedListenFd.store( fd, std::memory_order_release );
-}
-
-static std::atomic<bool> s_dataPortListening(false);
-
-TRACY_API bool IsDataPortListening() { return s_dataPortListening.load( std::memory_order_acquire ); }
 
 constexpr static size_t SafeSendBufferSize = 65536;
 
@@ -1566,7 +1524,6 @@ Profiler::Profiler()
     , m_broadcast( nullptr )
     , m_noExit( false )
     , m_userPort( 0 )
-    , m_dataPort( 0 )
     , m_zoneId( 1 )
     , m_sectionId( 1 )
     , m_samplingPeriod( 0 )
@@ -1838,22 +1795,13 @@ void Profiler::Worker()
 #endif
 
     m_exectime = 0;
-#ifdef TRACY_HAS_EXTERNAL_TARGET
-    if( GetExternalTargetPid() != 0 )
+    const auto execname = GetProcessExecutablePath();
+    if( execname )
     {
-        m_exectime = GetExternalTargetExeTime();
-    }
-    else
-#endif
-    {
-        const auto execname = GetProcessExecutablePath();
-        if( execname )
+        struct stat st;
+        if( stat( execname, &st ) == 0 )
         {
-            struct stat st;
-            if( stat( execname, &st ) == 0 )
-            {
-                m_exectime = (uint64_t)st.st_mtime;
-            }
+            m_exectime = (uint64_t)st.st_mtime;
         }
     }
 
@@ -1932,13 +1880,7 @@ void Profiler::Worker()
 
     ListenSocket listen;
     bool isListening = false;
-    const int reservedFd = s_reservedListenFd.exchange( -1, std::memory_order_acquire );
-    if( reservedFd != -1 )
-    {
-        listen.Adopt( reservedFd );
-        isListening = true;
-    }
-    else if( !dataPortSearch )
+    if( !dataPortSearch )
     {
         isListening = listen.Listen( dataPort, 4 );
     }
@@ -1954,9 +1896,6 @@ void Profiler::Worker()
             }
         }
     }
-    if( isListening ) dataPort = listen.LocalPort();
-
-    s_dataPortListening.store( isListening, std::memory_order_release );
     if( !isListening )
     {
         for(;;)
@@ -1971,7 +1910,6 @@ void Profiler::Worker()
             std::this_thread::sleep_for( std::chrono::milliseconds( 10 ) );
         }
     }
-    m_dataPort.store( dataPort, std::memory_order_release );
 
 #ifndef TRACY_NO_BROADCAST
     m_broadcast = (UdpBroadcast*)tracy_malloc( sizeof( UdpBroadcast ) );
@@ -3803,6 +3741,7 @@ void Profiler::QueueKernelCode( uint64_t symbol, uint32_t size )
 
 void Profiler::QueueSourceCodeQuery( uint32_t id )
 {
+    TRACY_ASSERT( m_exectime != 0 );
     TRACY_ASSERT( m_queryData );
     m_symbolQueue.emplace( SymbolQueueItem { SymbolQueueItemType::SourceCode, uint64_t( m_queryData ), uint64_t( m_queryImage ), id } );
     m_queryData = nullptr;
@@ -4491,35 +4430,29 @@ void Profiler::HandleParameter( uint64_t payload )
 
 void Profiler::HandleSymbolCodeQuery( uint64_t symbol, uint32_t size )
 {
-    if( symbol >> 63 != 0 )
+#ifdef __linux__
+    // When profiling an external process, symbol addresses are ELF virtual
+    // addresses, not pointers in the monitor's address space.  We cannot
+    // read code bytes directly.
+    if( ___tracy_magic_pid_override != 0 )
     {
-        QueueKernelCode( symbol, size );
-        return;
-    }
-
-    auto&& lambda = [ this, symbol ]( const char* buf, size_t size ) {
-        SendLongString( symbol, buf, size, QueueType::SymbolCode );
-    };
-
-#ifdef TRACY_HAS_EXTERNAL_TARGET
-    if( GetExternalTargetPid() != 0 )
-    {
-        auto buf = (char*)tracy_malloc_fast( size );
-        if( ReadExternalTargetMemory( symbol, size, buf ) == size )
-        {
-            lambda( buf, size );
-        }
-        else
-        {
-            AckSymbolCodeNotAvailable();
-        }
-        tracy_free_fast( buf );
+        AckSymbolCodeNotAvailable();
         return;
     }
 #endif
+    if( symbol >> 63 != 0 )
+    {
+        QueueKernelCode( symbol, size );
+    }
+    else
+    {
+        auto&& lambda = [ this, symbol ]( const char* buf, size_t size ) {
+            SendLongString( symbol, buf, size, QueueType::SymbolCode );
+        };
 
-    // 'symbol' may have come from a module that has since unloaded, perform a safe copy before sending
-    if( !WithSafeCopy( (const char*)symbol, size, lambda ) ) AckSymbolCodeNotAvailable();
+        // 'symbol' may have come from a module that has since unloaded, perform a safe copy before sending
+        if( !WithSafeCopy( (const char*)symbol, size, lambda ) ) AckSymbolCodeNotAvailable();
+    }
 }
 
 void Profiler::HandleSourceCodeQuery( char* data, char* image, uint32_t id )
@@ -5438,7 +5371,7 @@ TRACY_API void ___tracy_after_lock_lockable_ctx( struct __tracy_lockable_context
     tracy::Profiler::QueueSerialFinish();
 }
 
-TRACY_API void ___tracy_before_unlock_lockable_ctx( struct __tracy_lockable_context_data* lockdata )
+TRACY_API void ___tracy_after_unlock_lockable_ctx( struct __tracy_lockable_context_data* lockdata )
 {
 #ifdef TRACY_ON_DEMAND
     lockdata->m_lockCount.fetch_sub( 1, std::memory_order_relaxed );
@@ -5578,9 +5511,9 @@ TRACY_API void ___tracy_after_lock_shared_lockable_ctx( struct __tracy_shared_lo
     ___tracy_after_lock_lockable_ctx( &lockdata->m_base );
 }
 
-TRACY_API void ___tracy_before_unlock_shared_lockable_ctx( struct __tracy_shared_lockable_context_data* lockdata )
+TRACY_API void ___tracy_after_unlock_shared_lockable_ctx( struct __tracy_shared_lockable_context_data* lockdata )
 {
-    ___tracy_before_unlock_lockable_ctx( &lockdata->m_base );
+    ___tracy_after_unlock_lockable_ctx( &lockdata->m_base );
 }
 
 TRACY_API void ___tracy_after_try_lock_shared_lockable_ctx( struct __tracy_shared_lockable_context_data* lockdata, int32_t acquired )
@@ -5622,7 +5555,7 @@ TRACY_API void ___tracy_after_lock_shared_shared_lockable_ctx( struct __tracy_sh
     tracy::Profiler::QueueSerialFinish();
 }
 
-TRACY_API void ___tracy_before_unlock_shared_shared_lockable_ctx( struct __tracy_shared_lockable_context_data* lockdata )
+TRACY_API void ___tracy_after_unlock_shared_shared_lockable_ctx( struct __tracy_shared_lockable_context_data* lockdata )
 {
 #ifdef TRACY_ON_DEMAND
     lockdata->m_base.m_lockCount.fetch_sub( 1, std::memory_order_relaxed );
@@ -5678,28 +5611,6 @@ TRACY_API void ___tracy_mark_shared_lockable_ctx( struct __tracy_shared_lockable
 TRACY_API void ___tracy_custom_name_shared_lockable_ctx( struct __tracy_shared_lockable_context_data* lockdata, const char* name, size_t nameSz )
 {
     ___tracy_custom_name_lockable_ctx( &lockdata->m_base, name, nameSz );
-}
-
-TRACY_API uint32_t ___tracy_section_enter( uint16_t category, const char* fmt, ... )
-{
-    va_list args;
-    va_start( args, fmt );
-    uint32_t id = tracy::Profiler::SectionEnterV( category, fmt, args );
-    va_end( args );
-    return id;
-}
-
-TRACY_API void ___tracy_section_leave( uint32_t id )
-{
-    tracy::Profiler::SectionLeave( id );
-}
-
-TRACY_API void ___tracy_section_setup( uint16_t category, const char* fmt, ... )
-{
-    va_list args;
-    va_start( args, fmt );
-    tracy::Profiler::SectionSetupV( category, fmt, args );
-    va_end( args );
 }
 
 TRACY_API int32_t ___tracy_connected( void )

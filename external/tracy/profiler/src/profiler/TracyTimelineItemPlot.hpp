@@ -19,14 +19,11 @@ protected:
     uint32_t HeaderLineColor() const override { return 0x8844DDDD; }
     const char* HeaderLabel() const override;
 
-    bool PinToBottom() const override { return true; }
-
     int64_t RangeBegin() const override;
     int64_t RangeEnd() const override;
 
     void HeaderTooltip( const char* label ) const override;
     void HeaderExtraContents( const TimelineContext& ctx, int offset, float labelWidth ) override;
-    void HeaderZoomed() override;
 
     bool DrawContents( const TimelineContext& ctx, int& offset ) override;
     void DrawFinished() override;

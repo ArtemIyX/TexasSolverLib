@@ -16,7 +16,6 @@ set(TRACY_SERVER_DIR ${CMAKE_CURRENT_LIST_DIR}/../server)
 set(TRACY_SERVER_SOURCES
     TracyBroadcast.cpp
     TracyMemory.cpp
-    TracyLocks.cpp
     TracyMmap.cpp
     TracyPrint.cpp
     TracySysUtil.cpp
