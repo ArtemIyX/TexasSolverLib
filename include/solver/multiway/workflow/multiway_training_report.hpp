@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <array>
+#include <string>
 
 namespace texas::solver::multiway
 {
@@ -16,6 +17,10 @@ namespace texas::solver::multiway
 			MultiwayWorkflowProfileKind::Acceptance,
 			{}
 		};
+		std::string instrumentation_kind = "none";
+		std::string tracy_version;
+		std::string trace_capture_id;
+		bool allocation_probe_valid = true;
 		std::uint64_t elapsed_wall_nanoseconds = 0U;
 		std::uint64_t current_process_rss_bytes = 0U;
 		std::uint64_t peak_process_rss_bytes = 0U;

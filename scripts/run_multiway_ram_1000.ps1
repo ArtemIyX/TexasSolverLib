@@ -14,6 +14,13 @@ param(
     [ValidateSet('fixed', 'dynamic')]
     [string]$Scheduler = 'fixed',
 
+    [ValidateSet('normal', 'tracy')]
+    [string]$BinaryKind = 'normal',
+
+    [string]$BinaryPath = '',
+
+    [string]$TraceCaptureId = '',
+
     [string]$RunDirectory = ''
 )
 
@@ -26,6 +33,7 @@ Write-Output "[ram1000] requested_batches=$Batches"
 Write-Output "[ram1000] trajectories_per_batch=$TrajectoriesPerBatch"
 Write-Output "[ram1000] pin_workers=$($PinWorkers.IsPresent)"
 Write-Output "[ram1000] scheduler=$Scheduler"
+Write-Output "[ram1000] binary_kind=$BinaryKind"
 
 if ([string]::IsNullOrWhiteSpace($RunDirectory)) {
     $RunDirectory = Join-Path $repoRoot ("tmp\ram_{0}_after" -f ($Batches * $TrajectoriesPerBatch))
@@ -33,9 +41,31 @@ if ([string]::IsNullOrWhiteSpace($RunDirectory)) {
     $RunDirectory = Join-Path $repoRoot $RunDirectory
 }
 
-$executable = Join-Path $repoRoot 'build\Debug\texas_multiway_train.exe'
+if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
+    $BinaryPath = if ($BinaryKind -eq 'tracy') {
+        Join-Path $repoRoot 'build-tracy\RelWithDebInfo\texas_multiway_train_tracy.exe'
+    } else {
+        Join-Path $repoRoot 'build\Debug\texas_multiway_train.exe'
+    }
+} elseif (-not [System.IO.Path]::IsPathRooted($BinaryPath)) {
+    $BinaryPath = Join-Path $repoRoot $BinaryPath
+}
+$executable = $BinaryPath
 $sourceConfig = Join-Path $repoRoot 'artifacts\f1_sizing_v1\pilot_batch1.cfg'
 $bucketArtifact = Join-Path $repoRoot 'artifacts\f1_sizing_v1\buckets\buckets.bin'
+
+$gitCommit = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
+if ([string]::IsNullOrWhiteSpace($gitCommit)) {
+    throw 'Could not determine git commit for run provenance'
+}
+$env:TEXASSOLVER_GIT_COMMIT = $gitCommit
+$env:TEXASSOLVER_BUILD_CONFIGURATION = if ($BinaryKind -eq 'tracy') { 'RelWithDebInfo' } else { 'Debug' }
+$env:TEXASSOLVER_COMPILER_IDENTITY = if ([string]::IsNullOrWhiteSpace($env:VCToolsVersion)) { 'MSVC' } else { "MSVC $($env:VCToolsVersion)" }
+if ($BinaryKind -eq 'tracy') {
+    $env:TEXASSOLVER_TRACE_CAPTURE_ID = if ([string]::IsNullOrWhiteSpace($TraceCaptureId)) { 'not-captured' } else { $TraceCaptureId }
+} else {
+    Remove-Item Env:TEXASSOLVER_TRACE_CAPTURE_ID -ErrorAction SilentlyContinue
+}
 
 Write-Output '[ram1000] validating executable, expanded pilot config, and bucket artifact'
 foreach ($requiredPath in @($executable, $sourceConfig, $bucketArtifact)) {
@@ -160,6 +190,8 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     exit_code_available = $exitCodeKnown
     pin_workers = $PinWorkers.IsPresent
     scheduler = $Scheduler
+    binary_kind = $BinaryKind
+    binary_path = $executable
     chunk_size = 4
     trajectories_per_batch = $TrajectoriesPerBatch
     process_cpu_nanoseconds = $processCpuNanoseconds
@@ -173,6 +205,10 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     worker_active_nanoseconds = $report.worker_active_nanoseconds
     process_cpu_nanoseconds_reported = $report.process_cpu_nanoseconds
     peak_working_set_bytes_reported = $report.peak_working_set_bytes
+    instrumentation_kind = $report.instrumentation_kind
+    tracy_version = $report.tracy_version
+    trace_capture_id = $report.trace_capture_id
+    allocation_probe_valid = $report.allocation_probe_valid
     minimum_worker_active_nanoseconds = $report.minimum_worker_active_nanoseconds
     maximum_worker_active_nanoseconds = $report.maximum_worker_active_nanoseconds
     coordinator_wait_nanoseconds = $report.coordinator_wait_nanoseconds

@@ -100,6 +100,11 @@ foreach ($pinningMode in $pinningModes) {
                     $report.capacity_exhaustion_stage -ne 0) {
                     throw "Correctness gate failed for pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat"
                 }
+                if ($report.evidence.schema_version -ne 6 -or
+                    $report.instrumentation_kind -ne 'none' -or
+                    -not $report.allocation_probe_valid) {
+                    throw "Worker matrix requires an unprofiled schema 6 report for pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat"
+                }
                 if ($report.peak_process_rss_bytes -gt $report.memory_preflight_estimate_bytes) {
                     throw "Peak RSS exceeded the memory preflight estimate for pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat"
                 }

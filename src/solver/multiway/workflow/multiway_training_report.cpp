@@ -1,9 +1,11 @@
 #include "solver/multiway/workflow/multiway_training_report.hpp"
 
 #include "core/atomic_publish.hpp"
+#include "util/tracy.hpp"
 
 #include <fstream>
 #include <cmath>
+#include <cstdlib>
 #include <stdexcept>
 
 namespace texas::solver::multiway
@@ -11,6 +13,14 @@ namespace texas::solver::multiway
 
 	void MultiwayTrainingReport::validate() const
 	{
+		if (instrumentation_kind != "none" && instrumentation_kind != "tracy")
+			throw std::invalid_argument("invalid multiway training instrumentation kind");
+		if (instrumentation_kind == "none" &&
+			(!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid))
+			throw std::invalid_argument("unprofiled training report has Tracy provenance");
+		if (instrumentation_kind == "tracy" &&
+			(tracy_version.empty() || allocation_probe_valid))
+			throw std::invalid_argument("Tracy training report has invalid provenance");
 		const auto worker_vectors_match = [this] {
 			const auto worker_count = worker_trajectory_counts.size();
 			const auto matches = [worker_count](std::size_t size) {
@@ -109,6 +119,14 @@ namespace texas::solver::multiway
 		report.street_visits = status.street_visits;
 		report.deterministic_merge_fingerprint = fingerprint;
 		report.evidence = evidence;
+#if defined(TEXASSOLVER_TRACY_ENABLED) && TEXASSOLVER_TRACY_ENABLED
+		report.instrumentation_kind = "tracy";
+		report.tracy_version = texas::util::TEXASSOLVER_TRACY_VERSION;
+		report.allocation_probe_valid = false;
+		const auto* capture_id = std::getenv("TEXASSOLVER_TRACE_CAPTURE_ID");
+		report.trace_capture_id = capture_id == nullptr || *capture_id == '\0'
+			? "not-captured" : capture_id;
+#endif
 		report.peak_public_states = status.peak_public_states;
 		report.peak_sparse_rows = status.peak_sparse_rows;
 		report.peak_sparse_values = status.peak_sparse_values;
@@ -197,6 +215,11 @@ namespace texas::solver::multiway
 			output << ']';
 		};
 		output << "{\n  \"evidence\": " << serialize_multiway_evidence_header(report.evidence)
+			   << ",\n  \"instrumentation_kind\": \"" << report.instrumentation_kind
+			   << "\",\n  \"tracy_version\": \"" << report.tracy_version
+			   << "\",\n  \"trace_capture_id\": \"" << report.trace_capture_id
+			   << "\",\n  \"allocation_probe_valid\": "
+			   << (report.allocation_probe_valid ? "true" : "false")
 			   << ",\n  \"batches\": " << report.batches
 			   << ",\n  \"trajectories\": " << report.trajectories
 			   << ",\n  \"accepted_trajectories\": " << report.accepted_trajectories
