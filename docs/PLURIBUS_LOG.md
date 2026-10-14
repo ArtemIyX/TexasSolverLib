@@ -1,5 +1,44 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-14 - Implement Tracy diagnostics for multiway blueprint training
+
+**Status:** Complete
+**Completed:** 2026-10-14
+**Implementation commits:** `4628ebd`, `f29bc5d`, `9cac476`, `700dcc4`
+
+- Vendored Tracy 0.14.2 under `external/tracy` and isolated it behind the
+  diagnostic-only `texas_tracy` target and `_tracy` executables.
+- Added compile-time no-op wrappers, multiway worker/coordinator/trainer phase
+  zones, batch frames, plots, and schema 6 provenance fields.
+- Added the bounded capture wrapper, matching Tracy capture/profiler/CSV tools,
+  operator documentation, and the normal-target dependency boundary test.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/util/tracy.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `docs/tracy_multiway_blueprint_training.md`
+- `docs/tracy_multiway_blueprint_training_plan.md`
+- `scripts/run_multiway_tracy_capture.ps1`
+- `tests/cmake/test_tracy_boundary.cmake`
+
+### Validation
+
+- Normal Debug target and Tracy RelWithDebInfo diagnostic targets built.
+- Full CTest passed: 110/110 tests.
+- Focused qualification and Tracy boundary tests passed: 2/2.
+- Bounded loopback capture produced a 27,599-byte Tracy 0.14.2 trace and a
+  provenance manifest. Matching CSV export completed successfully.
+
+### Limitations
+
+- The Tracy profiler GUI remains manual and was not opened or connected by the
+  agent. `_tracy` timings are diagnostic only and are not throughput
+  qualification data.
+
 ## 2026-10-14 - Plan Tracy diagnostics for multiway training scaling
 
 **Status:** Complete
