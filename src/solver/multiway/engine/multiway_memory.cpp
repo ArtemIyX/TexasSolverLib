@@ -12,11 +12,13 @@
 	#include <psapi.h>
 #elif defined(__linux__)
 	#include <fstream>
+	#include <ctime>
 	#include <unistd.h>
 #endif
 
 #include <limits>
 #include <algorithm>
+#include <string>
 #include <stdexcept>
 #include <thread>
 
@@ -69,6 +71,58 @@ namespace texas::solver::multiway
 			return 0U;
 		}
 		return resident_pages * static_cast<std::uint64_t>(page_size);
+#else
+		return 0U;
+#endif
+	}
+
+	std::uint64_t observed_multiway_process_peak_working_set_bytes() noexcept
+	{
+#if defined(_WIN32)
+		PROCESS_MEMORY_COUNTERS_EX counters{};
+		counters.cb = sizeof(counters);
+		if (K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) == 0)
+			return 0U;
+		return static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
+#elif defined(__linux__)
+		std::ifstream input("/proc/self/status");
+		std::string name;
+		std::uint64_t value = 0U;
+		std::string unit;
+		while (input >> name)
+		{
+			if (name != "VmHWM:")
+			{
+				std::getline(input, name);
+				continue;
+			}
+			if (!(input >> value >> unit) || unit != "kB" || value > UINT64_MAX / 1024U)
+				return 0U;
+			return value * 1024U;
+		}
+		return 0U;
+#else
+		return 0U;
+#endif
+	}
+
+	std::uint64_t observed_multiway_training_process_cpu_nanoseconds() noexcept
+	{
+#if defined(_WIN32)
+		FILETIME creation{}, exit{}, kernel{}, user{};
+		if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user) == 0)
+			return 0U;
+		const auto ticks = [](const FILETIME& value) noexcept {
+			return (static_cast<std::uint64_t>(value.dwHighDateTime) << 32U) | value.dwLowDateTime;
+		};
+		const auto total = ticks(kernel) + ticks(user);
+		return total > UINT64_MAX / 100U ? UINT64_MAX : total * 100U;
+#elif defined(__linux__)
+		struct timespec value{};
+		if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &value) != 0 || value.tv_sec < 0 || value.tv_nsec < 0)
+			return 0U;
+		const auto seconds = static_cast<std::uint64_t>(value.tv_sec);
+		return seconds > UINT64_MAX / 1'000'000'000ULL ? UINT64_MAX : seconds * 1'000'000'000ULL + static_cast<std::uint64_t>(value.tv_nsec);
 #else
 		return 0U;
 #endif

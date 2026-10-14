@@ -15,17 +15,32 @@ param(
     [ValidateRange(1, 20)]
     [int]$Repeats = 3,
 
-    [int[]]$Workers = @(4, 8),
+    [string[]]$Workers = @('4', '8'),
 
     [string]$OutputDirectory = ''
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $runner = Join-Path $PSScriptRoot 'run_multiway_ram_1000.ps1'
+$workerCounts = @(
+    $Workers |
+        ForEach-Object { $_ -split ',' } |
+        ForEach-Object {
+            $value = $_.Trim()
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                throw 'Workers cannot contain empty values'
+            }
+            try {
+                [int]$value
+            } catch {
+                throw "Invalid worker count: $value"
+            }
+        }
+)
 $pinningModes = @($Pinning)
 $schedulingModes = if ($Scheduling -eq 'both') { @('fixed', 'dynamic') } else { @($Scheduling) }
 
-if ($Workers.Count -eq 0 -or @($Workers | Where-Object { $_ -lt 1 -or $_ -gt 16 }).Count -ne 0) {
+if ($workerCounts.Count -eq 0 -or @($workerCounts | Where-Object { $_ -lt 1 -or $_ -gt 16 }).Count -ne 0) {
     throw 'Workers must contain values in the range 1..16'
 }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
@@ -38,12 +53,12 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 Write-Output '[matrix] starting focused worker scheduler comparison'
 Write-Output "[matrix] repository_root=$repoRoot"
-Write-Output "[matrix] pinning=$($pinningModes -join ',') workers=$($Workers -join ',') scheduling=$($schedulingModes -join ',') repeats=$Repeats batches=$Batches trajectories_per_batch=$TrajectoriesPerBatch"
+Write-Output "[matrix] pinning=$($pinningModes -join ',') workers=$($workerCounts -join ',') scheduling=$($schedulingModes -join ',') repeats=$Repeats batches=$Batches trajectories_per_batch=$TrajectoriesPerBatch"
 
 $results = @()
 foreach ($pinningMode in $pinningModes) {
     foreach ($schedulerMode in $schedulingModes) {
-        foreach ($workerCount in $Workers) {
+        foreach ($workerCount in $workerCounts) {
             for ($repeat = 1; $repeat -le $Repeats; ++$repeat) {
                 $runDirectory = Join-Path $OutputDirectory ("{0}\{1}\workers_{2}\repeat_{3}" -f $pinningMode, $schedulerMode, $workerCount, $repeat)
                 Write-Output "[matrix] running pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat output_directory=$runDirectory"
@@ -84,6 +99,11 @@ foreach ($pinningMode in $pinningModes) {
                     $report.failed -or
                     $report.capacity_exhaustion_stage -ne 0) {
                     throw "Correctness gate failed for pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat"
+                }
+                if ($report.evidence.schema_version -ne 6 -or
+                    $report.instrumentation_kind -ne 'none' -or
+                    -not $report.allocation_probe_valid) {
+                    throw "Worker matrix requires an unprofiled schema 6 report for pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat"
                 }
                 if ($report.peak_process_rss_bytes -gt $report.memory_preflight_estimate_bytes) {
                     throw "Peak RSS exceeded the memory preflight estimate for pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat"
@@ -134,6 +154,10 @@ foreach ($pinningMode in $pinningModes) {
                     coordinator_lock_wait_nanoseconds = $report.coordinator_lock_wait_nanoseconds
                     delta_sort_nanoseconds = $report.delta_sort_nanoseconds
                     merge_nanoseconds = $report.merge_nanoseconds
+                    coordinator_admission_nanoseconds = $report.coordinator_admission_nanoseconds
+                    trainer_only_nanoseconds = $report.trainer_only_nanoseconds
+                    process_cpu_nanoseconds_reported = $report.process_cpu_nanoseconds
+                    peak_working_set_bytes = $report.peak_working_set_bytes
                     active_nanoseconds_per_trajectory = ($activePerTrajectory -join ',')
                     active_time_imbalance = $activeImbalance
                     barrier_share = $barrierShare
@@ -144,6 +168,14 @@ foreach ($pinningMode in $pinningModes) {
                     memory_preflight_estimate_bytes = $report.memory_preflight_estimate_bytes
                     worker_trajectory_counts = ($report.worker_trajectory_counts -join ',')
                     worker_active_nanoseconds_by_worker = ($report.worker_active_nanoseconds_by_worker -join ',')
+                    worker_wake_latency_nanoseconds_by_worker = ($report.worker_wake_latency_nanoseconds_by_worker -join ',')
+                    worker_cv_wait_nanoseconds_by_worker = ($report.worker_cv_wait_nanoseconds_by_worker -join ',')
+                    worker_tail_idle_nanoseconds_by_worker = ($report.worker_tail_idle_nanoseconds_by_worker -join ',')
+                    worker_allocation_counts = ($report.worker_allocation_counts -join ',')
+                    worker_allocated_bytes = ($report.worker_allocated_bytes -join ',')
+                    worker_resolved_processor = ($report.worker_resolved_processor -join ',')
+                    worker_affinity_masks = ($report.worker_affinity_masks -join ',')
+                    worker_affinity_succeeded = ($report.worker_affinity_succeeded -join ',')
                     fingerprint = $report.deterministic_merge_fingerprint
                     report_path = $reportPath
                 }

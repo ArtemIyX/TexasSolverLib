@@ -1,5 +1,302 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-14 - Document application and script I/O contracts
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Documented C++ executable targets, generated test executables, Python utilities,
+  PowerShell measurement workflows, Tracy tools, command-line inputs, stream
+  outputs, generated files, and the multiway artifact pipeline.
+- Added explicit artifact and stage relationships for bucket generation,
+  inspection, training, lookup qualification, finalization, and Tracy capture.
+
+### Files
+
+- `docs/application_and_script_io.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked target names and build gates against `CMakeLists.txt`.
+- Cross-checked CLI options and artifact paths against executable entry points
+  and scripts.
+- Ran targeted `git diff --check` on the documentation log successfully and
+  checked the new document for trailing whitespace.
+- No build, test, benchmark, script, or solver run was performed by request.
+
+### Limitations
+
+- The document is source-derived. Runtime-only behavior and future schema changes
+  are not independently exercised here.
+
+## 2026-10-14 - Align Tracy integration with 0.14.1
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Updated Tracy provenance, capture-tool version checks, manifests, and report
+  fixtures from 0.14.2 to the vendored 0.14.1 release.
+- Updated current Tracy operator and integration documentation while retaining
+  historical 0.14.2 capture records.
+
+### Files
+
+- `include/util/tracy.hpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `scripts/run_multiway_tracy_capture.ps1`
+- `scripts/run_multiway_tracy_training_capture.ps1`
+- `docs/tracy_multiway_blueprint_training.md`
+- `docs/tracy_multiway_blueprint_training_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Confirmed `external/tracy/public/common/TracyVersion.hpp` reports 0.14.1.
+- Ran `git diff --check` on the changed files successfully.
+- No build, test, benchmark, script, or solver run was performed by request.
+
+### Limitations
+
+- The Tracy 0.14.1 compatibility changes were not compiled or executed.
+
+## 2026-10-14 - Plan Tracy multiway scaling remediation
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Analyzed checkpoint construction and serialization, deterministic discovery
+  admission, worker scheduling, and capacity contracts against the Tracy
+  scaling QA evidence.
+- Defined scoped implementation, validation, and performance gates for faster
+  checkpoint output, bulk coordinator admission, and multi-worker scaling.
+
+### Files
+
+- `docs/plans/tracy_multiway_scaling_remediation_plan_2026-10-14.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked the plan against the captured JSON metrics and the responsible
+  checkpoint, public-catalog, admission, scheduling, and memory-preflight code.
+- Reviewed the documentation diff.
+- No build, test, benchmark, or solver run was performed because this was an
+  analysis and planning task.
+
+### Limitations
+
+- Performance targets require future implementation and measurement.
+
+## 2026-10-14 - Document Tracy multiway scaling QA findings
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Added a developer-facing QA report comparing the one-worker and four-worker
+  real-workflow Tracy captures.
+- Documented the weak 12.3% batch speedup, coordinator admission regression,
+  worker imbalance, and 198-240 second checkpoint-write cost.
+- Separated batch timing evidence from lifetime worker waits and end-to-end
+  artifact output timing.
+
+### Files
+
+- `docs/reports/tracy_multiway_training_scaling_qa_2026-10-14.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Compared both Tracy CSV exports with their matching `report.json` files.
+- Cross-checked accepted trajectories, failure status, and deterministic merge
+  fingerprints for both worker counts.
+- No build, test, benchmark, or solver run was required for this documentation-only task.
+
+### Limitations
+
+- Source captures contain one batch and one sample per worker count.
+- Checkpoint sub-operation timing is not yet instrumented.
+
+## 2026-10-14 - Add complete CLI Tracy training capture workflow
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Added a no-GUI wrapper that starts `tracy-capture`, runs the real multiway
+  training workflow, preserves trainer JSON and logs, exports Tracy phase CSV,
+  writes a wrapper lifecycle log, and writes a manifest containing workload,
+  tool hashes, paths, and trace metadata.
+- Fixed the Windows line-ending match and idempotent-value handling in the
+  existing bounded training wrapper so its run-local `trajectories_per_batch`
+  override works on CRLF configs and when the requested value is already 1000.
+- Fixed the `_tracy` workflow executable dispatch so it enters the training
+  path instead of falling through to evaluation.
+- Documented the bounded one-worker invocation and artifact layout.
+
+### Files
+
+- `scripts/run_multiway_tracy_training_capture.ps1`
+- `scripts/run_multiway_ram_1000.ps1`
+- `examples/multiway_workflow_main.cpp`
+- `docs/tracy_multiway_blueprint_training.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- PowerShell parser validation passed.
+- Rebuilt `texas_multiway_train_tracy` successfully.
+- `texas_multiway_train_tracy.exe --help` now reports the train workflow.
+
+### Limitations
+
+- A new training capture was not launched automatically; the wrapper is ready
+  for the operator-selected workload and output directory.
+
+## 2026-10-14 - Implement Tracy diagnostics for multiway blueprint training
+
+**Status:** Complete
+**Completed:** 2026-10-14
+**Implementation commits:** `4628ebd`, `f29bc5d`, `9cac476`, `700dcc4`
+
+- Vendored Tracy 0.14.2 under `external/tracy` and isolated it behind the
+  diagnostic-only `texas_tracy` target and `_tracy` executables.
+- Added compile-time no-op wrappers, multiway worker/coordinator/trainer phase
+  zones, batch frames, plots, and schema 6 provenance fields.
+- Added the bounded capture wrapper, matching Tracy capture/profiler/CSV tools,
+  operator documentation, and the normal-target dependency boundary test.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/util/tracy.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `docs/tracy_multiway_blueprint_training.md`
+- `docs/tracy_multiway_blueprint_training_plan.md`
+- `scripts/run_multiway_tracy_capture.ps1`
+- `tests/cmake/test_tracy_boundary.cmake`
+
+### Validation
+
+- Normal Debug target and Tracy RelWithDebInfo diagnostic targets built.
+- Full CTest passed: 110/110 tests.
+- Focused qualification and Tracy boundary tests passed: 2/2.
+- Bounded loopback capture produced a non-empty Tracy 0.14.2 trace and a
+  provenance manifest. Matching CSV export completed successfully.
+
+### Limitations
+
+- The Tracy profiler GUI remains manual and was not opened or connected by the
+  agent. `_tracy` timings are diagnostic only and are not throughput
+  qualification data.
+
+## 2026-10-14 - Plan Tracy diagnostics for multiway training scaling
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Verified the current multiway build, profiling, worker, trainer, report, and measurement boundaries.
+- Documented proven production-like scaling regressions and stale evidence limits.
+- Defined an offline, target-isolated Tracy integration with exact zones, controls, validation, capture protocol, and commit-sized tickets.
+
+### Files
+
+- `docs/tracy_multiway_blueprint_training_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Source, CMake, scripts, retained JSON evidence, and upstream Tracy 0.14.1 documentation were reviewed.
+- Builds, tests, benchmarks, installs, and solver jobs were not run because the task explicitly requested a plan only.
+
+### Limitations
+
+- The retained production-like reports use older schemas and unknown binary provenance. A fresh unprofiled baseline and Tracy captures are still required to attribute the scaling loss.
+
+## 2026-10-13 - Record multiway worker-matrix telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-13
+
+- Recorded the 40-run unpinned worker and scheduler matrix results.
+- Documented throughput, correctness gates, memory usage, and scaling observations.
+
+### Files
+
+- `docs/multiway_worker_matrix_telemetry_report.md`
+
+### Validation
+
+- User-run worker matrix reported `PASS`: 40 runs completed with zero discards, bounded RSS, and one merge fingerprint.
+
+### Limitations
+
+- The 160-trajectory pilot is insufficient for a stable scaling conclusion.
+
+## 2026-10-13 - Repair multiway worker-matrix sampling and failure telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-13
+**Implementation commits:** `414c95c`, `9e6b8fe`, `316fb20`, `a789e51`
+
+- Replaced one-shot private-card proposals with deterministic blocker-conditioned sampling and conditional proposal probabilities.
+- Preserved the zero-discard worker-matrix gate and added failed-batch telemetry without committing failed training progress.
+- Added CSV worker-list parsing and documented the failure analysis.
+
+### Files
+
+- `include/games/multiway_private.hpp`
+- `src/games/multiway_private.cpp`
+- `src/solver/multiway/abstraction/multiway_terminal_adapter.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `scripts/run_multiway_ram_1000.ps1`
+- `scripts/run_multiway_worker_matrix.ps1`
+- `tests/test_multiway_private.cpp`
+- `tests/test_multiway_cfr.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/multiway_worker_matrix_failure_analysis.md`
+
+### Validation
+
+- Not run. Builds, tests, benchmarks, and executables were explicitly excluded.
+
+### Limitations
+
+- Runtime verification remains required before using the worker matrix for measurements.
+
+## 2026-10-13 - Add multiway batch throughput telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-13
+**Implementation commit:** `7adf47c pb-1 Multiway: Add batch telemetry`
+
+- Added batch-boundary worker wake, completion, tail-idle, sorting, delta, discovery, and per-worker profile telemetry.
+- Propagated telemetry through blueprint training status and JSON reports without changing traversal, scheduling, merge order, or deterministic identity.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+
+### Validation
+
+- Source diff review completed.
+- Builds, tests, benchmarks, and scripts were not run per user instruction.
+
+### Limitations
+
+- Allocation probing, benchmark CLI extensions, and baseline matrix execution remain deferred.
+
 ## 2026-10-13 - Implement deterministic fixed and dynamic worker scheduling
 
 **Status:** Complete

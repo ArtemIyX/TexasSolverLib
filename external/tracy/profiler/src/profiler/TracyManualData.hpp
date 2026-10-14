@@ -34,8 +34,6 @@ private:
     uint64_t m_hash;
 };
 
-const TracyManualData& GetManualData();
-
 }
 
 #endif

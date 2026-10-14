@@ -40,13 +40,18 @@ def summarize(text: str) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--parallel", type=int, default=16, metavar="N",
+                        help="maximum test jobs (default: 16)")
     parser.add_argument("-o", "--output", type=Path, default=Path("tmp/ctest_debug.log"),
                         help="full CTest log (default: tmp/ctest_debug.log)")
     args = parser.parse_args()
+    if args.parallel < 1:
+        parser.error("--parallel must be positive")
     root = args.root.resolve()
     output = args.output if args.output.is_absolute() else root / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
-    command = ["ctest", "--test-dir", "build", "-C", "Debug", "--output-on-failure", "--parallel"]
+    command = ["ctest", "--test-dir", "build", "-C", "Debug", "--output-on-failure", "--parallel", str(args.parallel)]
+    print(f"started compact ctest: configuration=Debug parallel_jobs={args.parallel} root={root} log={output}")
     result = subprocess.run(command, cwd=root, capture_output=True, text=True,
                             encoding="utf-8", errors="replace")
     transcript = result.stdout + result.stderr

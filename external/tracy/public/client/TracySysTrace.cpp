@@ -404,7 +404,6 @@ void SysTraceGetExternalName( uint64_t thread, const char*& threadName, const ch
 #      include "TracyCpuid.hpp"
 #    endif
 
-#    include "TracyCallstack.hpp"
 #    include "TracyProfiler.hpp"
 #    include "TracyRingBuffer.hpp"
 #    include "TracyThread.hpp"
@@ -420,7 +419,12 @@ static bool s_ctxSwitchCallchain = false;
 
 static RingBuffer* s_ring = nullptr;
 
+extern uint32_t ___tracy_magic_pid_override;
 
+// (pid, cpu) pair for a per-task perf event open. In self-profiling mode we
+// iterate one entry per CPU with pid = our tgid. In monitor mode we iterate
+// one entry per existing thread of the target, with cpu = -1, so inherit=1
+// can cover all descendants without multiplying ring buffers by CPU count.
 struct PerfIterTarget
 {
     pid_t pid;
@@ -457,12 +461,6 @@ static int EnumerateTaskTids( pid_t pid, uint32_t** out )
         tids[count++] = (uint32_t)tid;
     }
     closedir( dir );
-    if( count == 0 )
-    {
-        tracy_free( tids );
-        *out = nullptr;
-        return 0;
-    }
     *out = tids;
     return (int)count;
 }
@@ -478,16 +476,13 @@ static bool CurrentProcOwnsThread( uint32_t tid )
     if( hv == -tid ) return false;
 
     char path[256];
-#ifdef TRACY_HAS_EXTERNAL_TARGET
-    const auto externalPid = GetExternalTargetPid();
-    if( externalPid != 0 )
+    if( ___tracy_magic_pid_override != 0 )
     {
-        sprintf( path, "/proc/%" PRIu32 "/task/%" PRIu32, externalPid, tid );
+        sprintf( path, "/proc/%d/task/%d", (int)___tracy_magic_pid_override, tid );
     }
     else
-#endif
     {
-        sprintf( path, "/proc/self/task/%" PRIu32, tid );
+        sprintf( path, "/proc/self/task/%d", tid );
     }
     struct stat st;
     if( stat( path, &st ) == 0 )
@@ -520,36 +515,6 @@ enum TraceEventId
     EventContextSwitch,
     EventWaking,
 };
-
-static void ProbePreciseIp( perf_event_attr& pe, pid_t pid );
-
-static bool OpenSampleEvent( const PerfIterTarget& tgt, const perf_event_attr& inPe, int eventId )
-{
-    static bool noKernelAccessLogged = false;
-    perf_event_attr pe = inPe;
-    int fd = perf_event_open( &pe, tgt.pid, tgt.cpu, -1, PERF_FLAG_FD_CLOEXEC );
-    if( fd == -1 )
-    {
-        pe.exclude_kernel = 1;
-        pe.exclude_callchain_kernel = 1;
-        ProbePreciseIp( pe, tgt.pid );
-        fd = perf_event_open( &pe, tgt.pid, tgt.cpu, -1, PERF_FLAG_FD_CLOEXEC );
-        if( fd != -1 && !noKernelAccessLogged )
-        {
-            noKernelAccessLogged = true;
-            TracyDebug( "  No access to kernel samples; user-space only (perf_event_paranoid / capabilities)" );
-        }
-    }
-    if( fd == -1 )
-    {
-        TracyDebug( "  Failed to setup!" );
-        return false;
-    }
-    new( s_ring + s_numBuffers ) RingBuffer( 64 * 1024, fd, eventId );
-    if( !s_ring[s_numBuffers].IsValid() ) return false;
-    s_numBuffers++;
-    return true;
-}
 
 static void ProbePreciseIp( perf_event_attr& pe, unsigned long long config0, unsigned long long config1, pid_t pid )
 {
@@ -672,161 +637,6 @@ static char* GetTraceFsPath()
     return ret;
 }
 
-struct TracepointField
-{
-    uint32_t offset;
-    uint32_t size;
-};
-
-static struct
-{
-    TracepointField prevPid, prevPrio, prevState, nextPid, nextPrio;
-    uint32_t minRecordSize;
-} s_switchLayout;
-
-static struct
-{
-    TracepointField pid;
-    uint32_t minRecordSize;
-} s_wakingLayout;
-
-static struct
-{
-    TracepointField crtc;
-    uint32_t minRecordSize;
-} s_vsyncLayout;
-
-// Reads the whole format file of a tracepoint event. Caller owns the buffer.
-static char* ReadTracepointFormat( const char* base, const char* eventPath )
-{
-    const auto blen = strlen( base );
-    const auto plen = strlen( eventPath );
-    const char* suffix = "/format";
-    const auto slen = strlen( suffix );
-
-    auto path = (char*)tracy_malloc( blen + plen + slen + 1 );
-    memcpy( path, base, blen );
-    memcpy( path + blen, eventPath, plen );
-    memcpy( path + blen + plen, suffix, slen + 1 );
-
-    const int fd = open( path, O_RDONLY );
-    tracy_free( path );
-    if( fd < 0 ) return nullptr;
-
-    size_t cap = 4096;
-    size_t len = 0;
-    auto buf = (char*)tracy_malloc( cap );
-    for(;;)
-    {
-        const auto cnt = read( fd, buf + len, cap - 1 - len );
-        if( cnt <= 0 ) break;
-        len += (size_t)cnt;
-        if( len + 1 == cap )
-        {
-            cap *= 2;
-            buf = (char*)tracy_realloc( buf, cap );
-        }
-    }
-    close( fd );
-    buf[len] = '\0';
-    return buf;
-}
-
-static const char* FindInLine( const char* s, const char* end, const char* needle )
-{
-    const auto nlen = strlen( needle );
-    while( s + nlen <= end )
-    {
-        if( memcmp( s, needle, nlen ) == 0 ) return s;
-        s++;
-    }
-    return nullptr;
-}
-
-static bool ParseTracepointField( const char* format, const char* name, TracepointField& field )
-{
-    const auto nlen = strlen( name );
-
-    auto line = format;
-    while( *line )
-    {
-        const auto eol = strchr( line, '\n' );
-        const auto end = eol ? eol : line + strlen( line );
-
-        auto s = line;
-        while( s < end && ( *s == ' ' || *s == '\t' ) ) s++;
-        if( strncmp( s, "field:", 6 ) == 0 )
-        {
-            s += 6;
-            const auto semi = (const char*)memchr( s, ';', end - s );
-            if( semi )
-            {
-                auto tok = semi;
-                while( tok > s && tok[-1] != ' ' && tok[-1] != '\t' ) tok--;
-                auto tlen = (size_t)( semi - tok );
-                const auto bracket = (const char*)memchr( tok, '[', tlen );
-                if( bracket ) tlen = (size_t)( bracket - tok );
-                if( tlen == nlen && memcmp( tok, name, tlen ) == 0 )
-                {
-                    const auto offsetTag = FindInLine( semi + 1, end, "offset:" );
-                    const auto sizeTag = FindInLine( semi + 1, end, "size:" );
-                    if( !offsetTag || !sizeTag ) return false;
-                    const int off = atoi( offsetTag + 7 );
-                    const int sz = atoi( sizeTag + 5 );
-                    if( off < 0 || sz <= 0 ) return false;
-                    field.offset = (uint32_t)off;
-                    field.size = (uint32_t)sz;
-                    return true;
-                }
-            }
-        }
-
-        line = eol ? eol + 1 : end;
-    }
-    return false;
-}
-
-static uint32_t MaxLayoutEnd( uint32_t cur, const TracepointField& field )
-{
-    const auto e = field.offset + field.size;
-    return e > cur ? e : cur;
-}
-
-static bool ParseSchedSwitchFormat( const char* format )
-{
-    auto& f = s_switchLayout;
-    if( !ParseTracepointField( format, "prev_pid", f.prevPid ) || f.prevPid.size != 4 ) return false;
-    if( !ParseTracepointField( format, "prev_prio", f.prevPrio ) || f.prevPrio.size != 4 ) return false;
-    if( !ParseTracepointField( format, "prev_state", f.prevState ) || ( f.prevState.size != 4 && f.prevState.size != 8 ) ) return false;
-    if( !ParseTracepointField( format, "next_pid", f.nextPid ) || f.nextPid.size != 4 ) return false;
-    if( !ParseTracepointField( format, "next_prio", f.nextPrio ) || f.nextPrio.size != 4 ) return false;
-
-    uint32_t min = 0;
-    min = MaxLayoutEnd( min, f.prevPid );
-    min = MaxLayoutEnd( min, f.prevPrio );
-    min = MaxLayoutEnd( min, f.prevState );
-    min = MaxLayoutEnd( min, f.nextPid );
-    min = MaxLayoutEnd( min, f.nextPrio );
-    f.minRecordSize = min;
-    return true;
-}
-
-static bool ParseSchedWakingFormat( const char* format )
-{
-    auto& f = s_wakingLayout;
-    if( !ParseTracepointField( format, "pid", f.pid ) || f.pid.size != 4 ) return false;
-    f.minRecordSize = MaxLayoutEnd( 0, f.pid );
-    return true;
-}
-
-static bool ParseDrmVblankFormat( const char* format )
-{
-    auto& f = s_vsyncLayout;
-    if( !ParseTracepointField( format, "crtc", f.crtc ) || f.crtc.size != 4 ) return false;
-    f.minRecordSize = MaxLayoutEnd( 0, f.crtc );
-    return true;
-}
-
 // Categories of the running kernel's perf_event_open() ABI, defined by the
 // perf_event_attr fields Tracy uses. use_clockid/clockid exist since Linux
 // 4.1 (commit 34f439278c), sample_max_stack since Linux 4.8 (commit
@@ -881,38 +691,6 @@ bool SysTraceStart( int64_t& samplingPeriod )
     if( wakingIdStr ) wakingId = atoi( wakingIdStr );
     const auto vsyncIdStr = ReadFile( traceFsPath, "/events/drm/drm_vblank_event/id" );
     if( vsyncIdStr ) vsyncId = atoi( vsyncIdStr );
-
-    bool switchLayout = false, wakingLayout = false, vsyncLayout = false;
-    if( switchId != -1 )
-    {
-        const auto switchFormat = ReadTracepointFormat( traceFsPath, "/events/sched/sched_switch" );
-        if( switchFormat )
-        {
-            switchLayout = ParseSchedSwitchFormat( switchFormat );
-            tracy_free( switchFormat );
-        }
-        if( !switchLayout ) TracyDebug( "Failed to parse sched_switch format, context switch capture disabled." );
-    }
-    if( wakingId != -1 )
-    {
-        const auto wakingFormat = ReadTracepointFormat( traceFsPath, "/events/sched/sched_waking" );
-        if( wakingFormat )
-        {
-            wakingLayout = ParseSchedWakingFormat( wakingFormat );
-            tracy_free( wakingFormat );
-        }
-        if( !wakingLayout ) TracyDebug( "Failed to parse sched_waking format, waking capture disabled." );
-    }
-    if( vsyncId != -1 )
-    {
-        const auto vsyncFormat = ReadTracepointFormat( traceFsPath, "/events/drm/drm_vblank_event" );
-        if( vsyncFormat )
-        {
-            vsyncLayout = ParseDrmVblankFormat( vsyncFormat );
-            tracy_free( vsyncFormat );
-        }
-        if( !vsyncLayout ) TracyDebug( "Failed to parse drm_vblank_event format, vsync capture disabled." );
-    }
 
     tracy_free( traceFsPath );
 
@@ -1002,19 +780,16 @@ bool SysTraceStart( int64_t& samplingPeriod )
         }
     }
     samplingPeriod = SamplingFrequencyToPeriodNs( samplingFrequency );
-#ifdef TRACY_HAS_EXTERNAL_TARGET
-    const auto externalPid = GetExternalTargetPid();
-#else
-    const uint32_t externalPid = 0;
-#endif
-    uint32_t currentPid = externalPid != 0 ? externalPid : (uint32_t)getpid();
+    uint32_t currentPid = ___tracy_magic_pid_override != 0 ? ___tracy_magic_pid_override : (uint32_t)getpid();
 
     s_numCpus = (int)std::thread::hardware_concurrency();
 
-    PerfIterTarget* iter;
-    int numIter;
-#ifdef TRACY_HAS_EXTERNAL_TARGET
-    if( externalPid != 0 )
+    // Build the per-task iteration list. In monitor mode this is all existing
+    // threads of the target (one event per thread, any CPU); in self-profiling
+    // it is per-CPU bound to our own tgid.
+    PerfIterTarget* iter = nullptr;
+    int numIter = 0;
+    if( ___tracy_magic_pid_override != 0 )
     {
         uint32_t* tids = nullptr;
         const int numTids = EnumerateTaskTids( (pid_t)currentPid, &tids );
@@ -1023,28 +798,13 @@ bool SysTraceStart( int64_t& samplingPeriod )
             TracyDebug( "Failed to enumerate threads of pid %u; target may have exited.", currentPid );
             return false;
         }
-        if( numTids == 1 )
-        {
-            iter = (PerfIterTarget*)tracy_malloc( sizeof( PerfIterTarget ) * s_numCpus );
-            for( int i=0; i<s_numCpus; i++ ) iter[i] = { (pid_t)tids[0], i };
-            numIter = s_numCpus;
-            TracyDebug( "Monitor mode: per-CPU events on pid %u (launch)", currentPid );
-        }
-        else
-        {
-            iter = (PerfIterTarget*)tracy_malloc( sizeof( PerfIterTarget ) * numTids * s_numCpus );
-            int k = 0;
-            for( int i=0; i<numTids; i++ )
-            {
-                for( int c=0; c<s_numCpus; c++ ) iter[k++] = { (pid_t)tids[i], c };
-            }
-            numIter = numTids * s_numCpus;
-            TracyDebug( "Monitor mode: per-thread per-CPU events for %i threads of pid %u (attach)", numTids, currentPid );
-        }
+        iter = (PerfIterTarget*)tracy_malloc( sizeof( PerfIterTarget ) * numTids );
+        for( int i=0; i<numTids; i++ ) iter[i] = { (pid_t)tids[i], -1 };
+        numIter = numTids;
         tracy_free( tids );
+        TracyDebug( "Monitor mode: tracing %i existing threads of pid %u", numIter, currentPid );
     }
     else
-#endif
     {
         iter = (PerfIterTarget*)tracy_malloc( sizeof( PerfIterTarget ) * s_numCpus );
         for( int i=0; i<s_numCpus; i++ ) iter[i] = { (pid_t)currentPid, i };
@@ -1069,7 +829,7 @@ bool SysTraceStart( int64_t& samplingPeriod )
     pe.size = sizeof( perf_event_attr );
     pe.config = PERF_COUNT_SW_CPU_CLOCK;
     pe.sample_freq = samplingFrequency;
-    pe.sample_type = PERF_SAMPLE_IP | PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_CALLCHAIN;
+    pe.sample_type = PERF_SAMPLE_TID | PERF_SAMPLE_TIME | PERF_SAMPLE_CALLCHAIN;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION( 4, 8, 0 )
     if( perfAbi >= PerfAbi48AndNewer ) pe.sample_max_stack = 127;
 #endif
@@ -1088,7 +848,25 @@ bool SysTraceStart( int64_t& samplingPeriod )
         ProbePreciseIp( pe, currentPid );
         for( int i=0; i<numIter; i++ )
         {
-            if( OpenSampleEvent( iter[i], pe, EventCallstack ) ) TracyDebug( "  Target %i ok (EventCallstack)", i );
+            int fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+            if( fd == -1 )
+            {
+                pe.exclude_kernel = 1;
+                ProbePreciseIp( pe, currentPid );
+                fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+                if( fd == -1 )
+                {
+                    TracyDebug( "  Failed to setup!");
+                    break;
+                }
+                TracyDebug( "  No access to kernel samples" );
+            }
+            new( s_ring+s_numBuffers ) RingBuffer( 64*1024, fd, EventCallstack );
+            if( s_ring[s_numBuffers].IsValid() )
+            {
+                s_numBuffers++;
+                TracyDebug( "  Target %i ok", i );
+            }
         }
     }
 
@@ -1116,13 +894,31 @@ bool SysTraceStart( int64_t& samplingPeriod )
         ProbePreciseIp( pe, PERF_COUNT_HW_CPU_CYCLES, PERF_COUNT_HW_INSTRUCTIONS, currentPid );
         for( int i=0; i<numIter; i++ )
         {
-            if( OpenSampleEvent( iter[i], pe, EventCpuCycles ) ) TracyDebug( "  Target %i ok (EventCpuCycles)", i );
+            const int fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+            if( fd != -1 )
+            {
+                new( s_ring+s_numBuffers ) RingBuffer( 64*1024, fd, EventCpuCycles );
+                if( s_ring[s_numBuffers].IsValid() )
+                {
+                    s_numBuffers++;
+                    TracyDebug( "  Target %i ok", i );
+                }
+            }
         }
 
         pe.config = PERF_COUNT_HW_INSTRUCTIONS;
         for( int i=0; i<numIter; i++ )
         {
-            if( OpenSampleEvent( iter[i], pe, EventInstructionsRetired ) ) TracyDebug( "  Target %i ok (EventInstructionsRetired)", i );
+            const int fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+            if( fd != -1 )
+            {
+                new( s_ring+s_numBuffers ) RingBuffer( 64*1024, fd, EventInstructionsRetired );
+                if( s_ring[s_numBuffers].IsValid() )
+                {
+                    s_numBuffers++;
+                    TracyDebug( "  Target %i ok", i );
+                }
+            }
         }
     }
 
@@ -1138,13 +934,31 @@ bool SysTraceStart( int64_t& samplingPeriod )
         }
         for( int i=0; i<numIter; i++ )
         {
-            if( OpenSampleEvent( iter[i], pe, EventCacheReference ) ) TracyDebug( "  Target %i ok (EventCacheReference)", i );
+            const int fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+            if( fd != -1 )
+            {
+                new( s_ring+s_numBuffers ) RingBuffer( 64*1024, fd, EventCacheReference );
+                if( s_ring[s_numBuffers].IsValid() )
+                {
+                    s_numBuffers++;
+                    TracyDebug( "  Target %i ok", i );
+                }
+            }
         }
 
         pe.config = PERF_COUNT_HW_CACHE_MISSES;
         for( int i=0; i<numIter; i++ )
         {
-            if( OpenSampleEvent( iter[i], pe, EventCacheMiss ) ) TracyDebug( "  Target %i ok (EventCacheMiss)", i );
+            const int fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+            if( fd != -1 )
+            {
+                new( s_ring+s_numBuffers ) RingBuffer( 64*1024, fd, EventCacheMiss );
+                if( s_ring[s_numBuffers].IsValid() )
+                {
+                    s_numBuffers++;
+                    TracyDebug( "  Target %i ok", i );
+                }
+            }
         }
     }
 
@@ -1155,20 +969,38 @@ bool SysTraceStart( int64_t& samplingPeriod )
         ProbePreciseIp( pe, PERF_COUNT_HW_BRANCH_INSTRUCTIONS, PERF_COUNT_HW_BRANCH_MISSES, currentPid );
         for( int i=0; i<numIter; i++ )
         {
-            if( OpenSampleEvent( iter[i], pe, EventBranchRetired ) ) TracyDebug( "  Target %i ok (EventBranchRetired)", i );
+            const int fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+            if( fd != -1 )
+            {
+                new( s_ring+s_numBuffers ) RingBuffer( 64*1024, fd, EventBranchRetired );
+                if( s_ring[s_numBuffers].IsValid() )
+                {
+                    s_numBuffers++;
+                    TracyDebug( "  Target %i ok", i );
+                }
+            }
         }
 
         pe.config = PERF_COUNT_HW_BRANCH_MISSES;
         for( int i=0; i<numIter; i++ )
         {
-            if( OpenSampleEvent( iter[i], pe, EventBranchMiss ) ) TracyDebug( "  Target %i ok (EventBranchMiss)", i );
+            const int fd = perf_event_open( &pe, iter[i].pid, iter[i].cpu, -1, PERF_FLAG_FD_CLOEXEC );
+            if( fd != -1 )
+            {
+                new( s_ring+s_numBuffers ) RingBuffer( 64*1024, fd, EventBranchMiss );
+                if( s_ring[s_numBuffers].IsValid() )
+                {
+                    s_numBuffers++;
+                    TracyDebug( "  Target %i ok", i );
+                }
+            }
         }
     }
 
     s_ctxBufferIdx = s_numBuffers;
 
     // vsync
-    if( !noVsync && vsyncId != -1 && vsyncLayout )
+    if( !noVsync && vsyncId != -1 )
     {
         pe = {};
         pe.type = PERF_TYPE_TRACEPOINT;
@@ -1193,14 +1025,14 @@ bool SysTraceStart( int64_t& samplingPeriod )
                 if( s_ring[s_numBuffers].IsValid() )
                 {
                     s_numBuffers++;
-                    TracyDebug( "  Core %i ok (EventVsync)", i );
+                    TracyDebug( "  Core %i ok", i );
                 }
             }
         }
     }
 
     // context switches
-    if( !noCtxSwitch && switchId != -1 && switchLayout )
+    if( !noCtxSwitch && switchId != -1 )
     {
         s_ctxSwitchCallchain = !noWaitStacks;
 
@@ -1235,12 +1067,12 @@ bool SysTraceStart( int64_t& samplingPeriod )
                 if( s_ring[s_numBuffers].IsValid() )
                 {
                     s_numBuffers++;
-                    TracyDebug( "  Core %i ok (EventContextSwitch)", i );
+                    TracyDebug( "  Core %i ok", i );
                 }
             }
         }
 
-        if( wakingId != -1 && wakingLayout )
+        if( wakingId != -1 )
         {
             pe = {};
             pe.type = PERF_TYPE_TRACEPOINT;
@@ -1269,7 +1101,7 @@ bool SysTraceStart( int64_t& samplingPeriod )
                     if( s_ring[s_numBuffers].IsValid() )
                     {
                         s_numBuffers++;
-                        TracyDebug( "  Core %i ok (EventWaking)", i );
+                        TracyDebug( "  Core %i ok", i );
                     }
                 }
             }
@@ -1280,7 +1112,7 @@ bool SysTraceStart( int64_t& samplingPeriod )
 
     tracy_free( iter );
 
-    if( s_numBuffers == 0 || ( externalPid != 0 && s_ctxBufferIdx == 0 ) )
+    if( s_numBuffers == 0 )
     {
         tracy_free( s_ring );
         s_ring = nullptr;
@@ -1393,42 +1225,38 @@ void SysTraceWorker( void* ptr )
                     {
                         auto offset = pos + sizeof( perf_event_header );
 
-                        // field order matches PERF_SAMPLE_IP | TID | TIME | CALLCHAIN (then buf.cnt ips)
+                        // Layout:
+                        //   u32 pid, tid
+                        //   u64 time
+                        //   u64 cnt
+                        //   u64 ip[cnt]
 
 #pragma pack( push, 1 )
                         struct
                         {
-                            uint64_t ip;
-                            uint32_t pid;
                             uint32_t tid;
                             uint64_t t0;
                             uint64_t cnt;
                         } buf;
 #pragma pack( pop )
 
+                        offset += sizeof( uint32_t );
                         ring.Read( &buf, offset, sizeof( buf ) );
                         offset += sizeof( buf );
 
-                        uint64_t* trace;
                         if( buf.cnt > 0 )
                         {
-                            trace = GetCallstackBlock( buf.cnt, ring, offset );
-                        }
-                        else
-                        {
-                            trace = (uint64_t*)tracy_malloc_fast( 2 * sizeof( uint64_t ) );
-                            trace[0] = 1;
-                            trace[1] = buf.ip;
-                        }
-
 #if defined TRACY_HW_TIMER && defined TRACY_HAS_RDTSC
-                        buf.t0 = ring.ConvertTimeToTsc( buf.t0 );
+                            buf.t0 = ring.ConvertTimeToTsc( buf.t0 );
 #endif
-                        TracyLfqPrepare( QueueType::CallstackSample );
-                        MemWrite( &item->callstackSampleFat.time, int64_t( buf.t0 ) );
-                        MemWrite( &item->callstackSampleFat.thread, buf.tid );
-                        MemWrite( &item->callstackSampleFat.ptr, uint64_t( trace ) );
-                        TracyLfqCommit;
+                            auto trace = GetCallstackBlock( buf.cnt, ring, offset );
+
+                            TracyLfqPrepare( QueueType::CallstackSample );
+                            MemWrite( &item->callstackSampleFat.time, int64_t( buf.t0 ) );
+                            MemWrite( &item->callstackSampleFat.thread, buf.tid );
+                            MemWrite( &item->callstackSampleFat.ptr, uint64_t( trace ) );
+                            TracyLfqCommit;
+                        }
                     }
                     pos += hdr.size;
                 }
@@ -1585,7 +1413,15 @@ void SysTraceWorker( void* ptr )
                             //   u64 ip[cnt] // PERF_SAMPLE_CALLCHAIN, if enabled
                             //   u32 size
                             //   u8  data[size]
-                            // Field offsets within the record come from the format file, parsed in SysTraceStart.
+                            // Data (not ABI stable, but has not changed since it was added, in 2009):
+                            //   u8  hdr[8]
+                            //   u8  prev_comm[16]
+                            //   u32 prev_pid
+                            //   u32 prev_prio
+                            //   lng prev_state
+                            //   u8  next_comm[16]
+                            //   u32 next_pid
+                            //   u32 next_prio
 
                             offset += sizeof( perf_event_header ) + sizeof( uint64_t );
 
@@ -1598,69 +1434,72 @@ void SysTraceWorker( void* ptr )
                                 traceOffset = offset;
                                 offset += sizeof( uint64_t ) * cnt;
                             }
-                            offset += sizeof( uint32_t );
+                            offset += sizeof( uint32_t ) + 8 + 16;
 
-                            TRACY_ASSERT( offset + s_switchLayout.minRecordSize <= rbPos + hdr.size );
+                            struct
+                            {
+                                uint32_t prev_pid, prev_prio;
+                                long prev_state;
+                                char next_comm[16];
+                                uint32_t next_pid, next_prio;
+                            } buf;
 
-                            const auto& f = s_switchLayout;
-                            uint32_t prev_pid, prev_prio, next_pid, next_prio;
-                            uint64_t prev_state = 0;
-                            ring.Read( &prev_pid, offset + f.prevPid.offset, sizeof( prev_pid ) );
-                            ring.Read( &prev_prio, offset + f.prevPrio.offset, sizeof( prev_prio ) );
-                            ring.Read( &prev_state, offset + f.prevState.offset, f.prevState.size );
-                            ring.Read( &next_pid, offset + f.nextPid.offset, sizeof( next_pid ) );
-                            ring.Read( &next_prio, offset + f.nextPrio.offset, sizeof( next_prio ) );
+                            ring.Read( &buf, offset, sizeof( buf ) );
 
                             uint8_t oldThreadWaitReason = 100;
                             uint8_t oldThreadState;
 
-                            if(      prev_state & 0x0001 ) oldThreadState = 104;
-                            else if( prev_state & 0x0002 ) oldThreadState = 101;
-                            else if( prev_state & 0x0004 ) oldThreadState = 105;
-                            else if( prev_state & 0x0008 ) oldThreadState = 106;
-                            else if( prev_state & 0x0010 ) oldThreadState = 108;
-                            else if( prev_state & 0x0020 ) oldThreadState = 109;
-                            else if( prev_state & 0x0040 ) oldThreadState = 110;
-                            else if( prev_state & 0x0080 ) oldThreadState = 102;
+                            if(      buf.prev_state & 0x0001 ) oldThreadState = 104;
+                            else if( buf.prev_state & 0x0002 ) oldThreadState = 101;
+                            else if( buf.prev_state & 0x0004 ) oldThreadState = 105;
+                            else if( buf.prev_state & 0x0008 ) oldThreadState = 106;
+                            else if( buf.prev_state & 0x0010 ) oldThreadState = 108;
+                            else if( buf.prev_state & 0x0020 ) oldThreadState = 109;
+                            else if( buf.prev_state & 0x0040 ) oldThreadState = 110;
+                            else if( buf.prev_state & 0x0080 ) oldThreadState = 102;
                             else                           oldThreadState = 103;
 
                             TracyLfqPrepare( QueueType::ContextSwitch );
                             MemWrite( &item->contextSwitch.time, t0 );
-                            MemWrite( &item->contextSwitch.oldThread, prev_pid );
-                            MemWrite( &item->contextSwitch.newThread, next_pid );
+                            MemWrite( &item->contextSwitch.oldThread, buf.prev_pid );
+                            MemWrite( &item->contextSwitch.newThread, buf.next_pid );
                             MemWrite( &item->contextSwitch.cpu, uint8_t( ring.GetCpu() ) );
                             MemWrite( &item->contextSwitch.oldThreadWaitReason, oldThreadWaitReason );
                             MemWrite( &item->contextSwitch.oldThreadState, oldThreadState );
                             MemWrite( &item->contextSwitch.previousCState, uint8_t( 0 ) );
-                            MemWrite( &item->contextSwitch.newThreadPriority, int8_t( next_prio ) );
-                            MemWrite( &item->contextSwitch.oldThreadPriority, int8_t( prev_prio ) );
+                            MemWrite( &item->contextSwitch.newThreadPriority, int8_t( buf.next_prio ) );
+                            MemWrite( &item->contextSwitch.oldThreadPriority, int8_t( buf.prev_prio ) );
                             TracyLfqCommit;
 
-                            if( cnt > 0 && prev_pid != 0 && CurrentProcOwnsThread( prev_pid ) )
+                            if( cnt > 0 && buf.prev_pid != 0 && CurrentProcOwnsThread( buf.prev_pid ) )
                             {
                                 auto trace = GetCallstackBlock( cnt, ring, traceOffset );
 
                                 TracyLfqPrepare( QueueType::CallstackSampleContextSwitch );
                                 MemWrite( &item->callstackSampleFat.time, t0 );
-                                MemWrite( &item->callstackSampleFat.thread, prev_pid );
+                                MemWrite( &item->callstackSampleFat.thread, buf.prev_pid );
                                 MemWrite( &item->callstackSampleFat.ptr, (uint64_t)trace );
                                 TracyLfqCommit;
                             }
                         }
-                        else if( rid == EventWaking )
+                        else if( rid == EventWaking)
                         {
                             // See /sys/kernel/debug/tracing/events/sched/sched_waking/format
+                            // Layout:
                             //   u64 time // PERF_SAMPLE_TIME
                             //   u32 size
                             //   u8  data[size]
-                            // Field offsets within the record come from the format file, parsed in SysTraceStart.
-
-                            const uint64_t dataOffset = offset + sizeof( perf_event_header ) + sizeof( uint64_t ) + sizeof( uint32_t );
-                            TRACY_ASSERT( dataOffset + s_wakingLayout.minRecordSize <= rbPos + hdr.size );
-
+                            // Data:
+                            //   u8  hdr[8]
+                            //   u8  comm[16]
+                            //   u32 pid
+                            //   i32 prio
+                            //   i32 target_cpu
+                            const uint32_t dataOffset = sizeof( perf_event_header ) + sizeof( uint64_t ) + sizeof( uint32_t ); 
+                            offset += dataOffset + 8 + 16;
                             uint32_t pid;
-                            ring.Read( &pid, dataOffset + s_wakingLayout.pid.offset, sizeof( uint32_t ) );
-
+                            ring.Read( &pid, offset, sizeof( uint32_t ) );
+                            
                             TracyLfqPrepare( QueueType::ThreadWakeup );
                             MemWrite( &item->threadWakeup.time, t0 );
                             MemWrite( &item->threadWakeup.thread, pid );
@@ -1679,13 +1518,17 @@ void SysTraceWorker( void* ptr )
                             //   u64 time
                             //   u32 size
                             //   u8  data[size]
-                            // Field offsets within the record come from the format file, parsed in SysTraceStart.
+                            // Data (not ABI stable):
+                            //   u8  hdr[8]
+                            //   i32 crtc
+                            //   u32 seq
+                            //   i64 ktime
+                            //   u8  high precision
 
-                            const uint64_t dataOffset = offset + sizeof( perf_event_header ) + sizeof( uint64_t ) + sizeof( uint32_t );
-                            TRACY_ASSERT( dataOffset + s_vsyncLayout.minRecordSize <= rbPos + hdr.size );
+                            offset += sizeof( perf_event_header ) + sizeof( uint64_t ) + sizeof( uint32_t ) + 8;
 
                             int32_t crtc;
-                            ring.Read( &crtc, dataOffset + s_vsyncLayout.crtc.offset, sizeof( int32_t ) );
+                            ring.Read( &crtc, offset, sizeof( int32_t ) );
 
                             // Note: The timestamp value t0 might be off by a number of microseconds from the
                             // true hardware vblank event. The ktime value should be used instead, but it is
@@ -1737,17 +1580,10 @@ void SysTraceGetExternalName( uint64_t thread, const char*& threadName, const ch
     f = fopen( fn, "rb" );
     if( f )
     {
-        char buf[256] = {};
+        char buf[256];
         const auto sz = fread( buf, 1, 256, f );
         if( sz > 0 && buf[sz-1] == '\n' ) buf[sz-1] = '\0';
-        if( sz > 0 )
-        {
-            threadName = CopyString( buf );
-        }
-        else
-        {
-            threadName = CopyString( "???", 3 );
-        }
+        threadName = CopyString( buf );
         fclose( f );
     }
     else
@@ -1759,22 +1595,15 @@ void SysTraceGetExternalName( uint64_t thread, const char*& threadName, const ch
     f = fopen( fn, "rb" );
     if( f )
     {
-        char* tmp = (char*)tracy_malloc_fast( 8*1024 + 1 );
+        char* tmp = (char*)tracy_malloc_fast( 8*1024 );
         const auto fsz = (ptrdiff_t)fread( tmp, 1, 8*1024, f );
         fclose( f );
-        if( fsz <= 0 )
-        {
-            tracy_free_fast( tmp );
-            name = CopyStringFast( "???", 3 );
-            return;
-        }
-        tmp[fsz] = '\0';
 
         int pid = -1;
         auto line = tmp;
         for(;;)
         {
-            if( line - tmp + 6 <= fsz && memcmp( "Tgid:\t", line, 6 ) == 0 )
+            if( memcmp( "Tgid:\t", line, 6 ) == 0 )
             {
                 pid = atoi( line + 6 );
                 break;
@@ -1798,10 +1627,10 @@ void SysTraceGetExternalName( uint64_t thread, const char*& threadName, const ch
             f = fopen( fn, "rb" );
             if( f )
             {
-                char buf[256] = {};
+                char buf[256];
                 const auto sz = fread( buf, 1, 256, f );
                 if( sz > 0 && buf[sz-1] == '\n' ) buf[sz-1] = '\0';
-                name = sz > 0 ? CopyStringFast( buf ) : CopyStringFast( "???", 3 );
+                name = CopyStringFast( buf );
                 fclose( f );
                 return;
             }

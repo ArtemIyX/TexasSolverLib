@@ -14,6 +14,13 @@ param(
     [ValidateSet('fixed', 'dynamic')]
     [string]$Scheduler = 'fixed',
 
+    [ValidateSet('normal', 'tracy')]
+    [string]$BinaryKind = 'normal',
+
+    [string]$BinaryPath = '',
+
+    [string]$TraceCaptureId = '',
+
     [string]$RunDirectory = ''
 )
 
@@ -26,6 +33,7 @@ Write-Output "[ram1000] requested_batches=$Batches"
 Write-Output "[ram1000] trajectories_per_batch=$TrajectoriesPerBatch"
 Write-Output "[ram1000] pin_workers=$($PinWorkers.IsPresent)"
 Write-Output "[ram1000] scheduler=$Scheduler"
+Write-Output "[ram1000] binary_kind=$BinaryKind"
 
 if ([string]::IsNullOrWhiteSpace($RunDirectory)) {
     $RunDirectory = Join-Path $repoRoot ("tmp\ram_{0}_after" -f ($Batches * $TrajectoriesPerBatch))
@@ -33,9 +41,31 @@ if ([string]::IsNullOrWhiteSpace($RunDirectory)) {
     $RunDirectory = Join-Path $repoRoot $RunDirectory
 }
 
-$executable = Join-Path $repoRoot 'build\Debug\texas_multiway_train.exe'
+if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
+    $BinaryPath = if ($BinaryKind -eq 'tracy') {
+        Join-Path $repoRoot 'build-tracy\RelWithDebInfo\texas_multiway_train_tracy.exe'
+    } else {
+        Join-Path $repoRoot 'build\Debug\texas_multiway_train.exe'
+    }
+} elseif (-not [System.IO.Path]::IsPathRooted($BinaryPath)) {
+    $BinaryPath = Join-Path $repoRoot $BinaryPath
+}
+$executable = $BinaryPath
 $sourceConfig = Join-Path $repoRoot 'artifacts\f1_sizing_v1\pilot_batch1.cfg'
 $bucketArtifact = Join-Path $repoRoot 'artifacts\f1_sizing_v1\buckets\buckets.bin'
+
+$gitCommit = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
+if ([string]::IsNullOrWhiteSpace($gitCommit)) {
+    throw 'Could not determine git commit for run provenance'
+}
+$env:TEXASSOLVER_GIT_COMMIT = $gitCommit
+$env:TEXASSOLVER_BUILD_CONFIGURATION = if ($BinaryKind -eq 'tracy') { 'RelWithDebInfo' } else { 'Debug' }
+$env:TEXASSOLVER_COMPILER_IDENTITY = if ([string]::IsNullOrWhiteSpace($env:VCToolsVersion)) { 'MSVC' } else { "MSVC $($env:VCToolsVersion)" }
+if ($BinaryKind -eq 'tracy') {
+    $env:TEXASSOLVER_TRACE_CAPTURE_ID = if ([string]::IsNullOrWhiteSpace($TraceCaptureId)) { 'not-captured' } else { $TraceCaptureId }
+} else {
+    Remove-Item Env:TEXASSOLVER_TRACE_CAPTURE_ID -ErrorAction SilentlyContinue
+}
 
 Write-Output '[ram1000] validating executable, expanded pilot config, and bucket artifact'
 foreach ($requiredPath in @($executable, $sourceConfig, $bucketArtifact)) {
@@ -65,8 +95,8 @@ New-Item -ItemType Directory -Force -Path $RunDirectory | Out-Null
 $config = Join-Path $RunDirectory 'pilot_batch.cfg'
 Copy-Item -LiteralPath $sourceConfig -Destination $config -Force
 $configText = Get-Content -Raw -LiteralPath $config
-$updatedConfigText = $configText -replace '(?m)^[ \t]*trajectories_per_batch[ \t]*=[ \t]*\d+[ \t]*$', "trajectories_per_batch=$TrajectoriesPerBatch"
-if ($updatedConfigText -eq $configText) {
+$updatedConfigText = $configText -replace '(?m)^[ \t]*trajectories_per_batch[ \t]*=[ \t]*\d+[ \t]*\r?$', "trajectories_per_batch=$TrajectoriesPerBatch"
+if ($updatedConfigText -eq $configText -and [int]$configValues['trajectories_per_batch'] -ne $TrajectoriesPerBatch) {
     throw "Could not replace trajectories_per_batch in run-local config: $config"
 }
 Set-Content -LiteralPath $config -Value $updatedConfigText -NoNewline
@@ -160,6 +190,8 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     exit_code_available = $exitCodeKnown
     pin_workers = $PinWorkers.IsPresent
     scheduler = $Scheduler
+    binary_kind = $BinaryKind
+    binary_path = $executable
     chunk_size = 4
     trajectories_per_batch = $TrajectoriesPerBatch
     process_cpu_nanoseconds = $processCpuNanoseconds
@@ -171,6 +203,12 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     current_process_rss_bytes = $report.current_process_rss_bytes
     memory_preflight_estimate_bytes = $report.memory_preflight_estimate_bytes
     worker_active_nanoseconds = $report.worker_active_nanoseconds
+    process_cpu_nanoseconds_reported = $report.process_cpu_nanoseconds
+    peak_working_set_bytes_reported = $report.peak_working_set_bytes
+    instrumentation_kind = $report.instrumentation_kind
+    tracy_version = $report.tracy_version
+    trace_capture_id = $report.trace_capture_id
+    allocation_probe_valid = $report.allocation_probe_valid
     minimum_worker_active_nanoseconds = $report.minimum_worker_active_nanoseconds
     maximum_worker_active_nanoseconds = $report.maximum_worker_active_nanoseconds
     coordinator_wait_nanoseconds = $report.coordinator_wait_nanoseconds
@@ -178,8 +216,19 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     coordinator_lock_wait_nanoseconds = $report.coordinator_lock_wait_nanoseconds
     delta_sort_nanoseconds = $report.delta_sort_nanoseconds
     merge_nanoseconds = $report.merge_nanoseconds
+    coordinator_admission_nanoseconds = $report.coordinator_admission_nanoseconds
+    trainer_only_nanoseconds = $report.trainer_only_nanoseconds
     worker_trajectory_counts = ($report.worker_trajectory_counts -join ',')
     worker_active_nanoseconds_by_worker = ($report.worker_active_nanoseconds_by_worker -join ',')
+    worker_wake_latency_nanoseconds_by_worker = ($report.worker_wake_latency_nanoseconds_by_worker -join ',')
+    worker_cv_wait_nanoseconds_by_worker = ($report.worker_cv_wait_nanoseconds_by_worker -join ',')
+    worker_tail_idle_nanoseconds_by_worker = ($report.worker_tail_idle_nanoseconds_by_worker -join ',')
+    worker_allocation_counts = ($report.worker_allocation_counts -join ',')
+    worker_allocated_bytes = ($report.worker_allocated_bytes -join ',')
+    worker_resolved_processor = ($report.worker_resolved_processor -join ',')
+    worker_affinity_masks = ($report.worker_affinity_masks -join ',')
+    worker_affinity_succeeded = ($report.worker_affinity_succeeded -join ',')
+    affinity_requested = $report.affinity_requested
     peak_public_states = $report.peak_public_states
     peak_sparse_rows = $report.peak_sparse_rows
     peak_sparse_values = $report.peak_sparse_values
@@ -208,7 +257,13 @@ Write-Output "[ram1000] report: trajectories=$($report.trajectories) accepted=$(
 Write-Output "[ram1000] report: peak_process_rss_bytes=$($report.peak_process_rss_bytes) memory_preflight_estimate_bytes=$($report.memory_preflight_estimate_bytes)"
 Write-Output "[ram1000] report: peak_public_states=$($report.peak_public_states) peak_sparse_rows=$($report.peak_sparse_rows) peak_sparse_values=$($report.peak_sparse_values)"
 Write-Output "[ram1000] timing: worker_active_ns=$($report.worker_active_nanoseconds) min_worker_active_ns=$($report.minimum_worker_active_nanoseconds) max_worker_active_ns=$($report.maximum_worker_active_nanoseconds) coordinator_wait_ns=$($report.coordinator_wait_nanoseconds) barrier_wait_ns=$($report.barrier_wait_nanoseconds) lock_wait_ns=$($report.coordinator_lock_wait_nanoseconds) delta_sort_ns=$($report.delta_sort_nanoseconds) merge_ns=$($report.merge_nanoseconds) process_cpu_ns=$processCpuNanoseconds"
-Write-Output "[ram1000] workers: trajectories=$($report.worker_trajectory_counts -join ',') active_ns=$($report.worker_active_nanoseconds_by_worker -join ',')"
+Write-Output "[ram1000] phases: admission_ns=$($report.coordinator_admission_nanoseconds) trainer_only_ns=$($report.trainer_only_nanoseconds) reported_cpu_ns=$($report.process_cpu_nanoseconds) peak_working_set_bytes=$($report.peak_working_set_bytes)"
+Write-Output "[ram1000] workers: trajectories=$($report.worker_trajectory_counts -join ',') active_ns=$($report.worker_active_nanoseconds_by_worker -join ',') wake_ns=$($report.worker_wake_latency_nanoseconds_by_worker -join ',') cv_wait_ns=$($report.worker_cv_wait_nanoseconds_by_worker -join ',') tail_idle_ns=$($report.worker_tail_idle_nanoseconds_by_worker -join ',') allocations=$($report.worker_allocation_counts -join ',') allocated_bytes=$($report.worker_allocated_bytes -join ',') processors=$($report.worker_resolved_processor -join ',') affinity_ok=$($report.worker_affinity_succeeded -join ',')"
+if ($null -ne $report.failed_batch) {
+    Write-Output "[ram1000] failed_batch: attempted=$($report.failed_batch.trajectories_attempted) accepted=$($report.failed_batch.trajectories_accepted) discarded=$($report.failed_batch.trajectories_discarded) delta_entries=$($report.failed_batch.delta_entries_merged) discovery_capacity_exhausted=$($report.failed_batch.discovery_capacity_exhausted)"
+    Write-Output "[ram1000] failed_batch timing: worker_active_ns=$($report.failed_batch.worker_active_nanoseconds) coordinator_wait_ns=$($report.failed_batch.coordinator_wait_nanoseconds) barrier_wait_ns=$($report.failed_batch.barrier_wait_nanoseconds) delta_sort_ns=$($report.failed_batch.delta_sort_nanoseconds) merge_ns=$($report.failed_batch.merge_nanoseconds)"
+    Write-Output "[ram1000] failed_batch workers: trajectories=$($report.failed_batch.worker_trajectory_counts -join ',') active_ns=$($report.failed_batch.worker_active_nanoseconds_by_worker -join ',')"
+}
 Write-Output "[ram1000] logs: stdout=$stdoutPath stderr=$stderrPath"
 
 if ($exitCodeKnown -and $exitCode -ne 0) {

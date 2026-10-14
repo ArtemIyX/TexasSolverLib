@@ -25,10 +25,6 @@ project(
     VERSION ${TRACY_VERSION_STRING}
 )
 
-if(APPLE)
-    enable_language(OBJC)
-endif()
-
 if(SELF_PROFILE)
     add_definitions(-DTRACY_ENABLE)
     add_compile_options(-g -O3 -fno-omit-frame-pointer)
@@ -43,7 +39,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/../cmake/config.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/vendor.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/server.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/GitRef.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/../cmake/manual.cmake)
 
 include(ExternalProject)
 ExternalProject_Add(embed
@@ -53,26 +48,18 @@ ExternalProject_Add(embed
         -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}
 )
 
-# Embeds a file into the profiler as a compressed C array (data/NAME.cpp/.hpp).
-# FILE is relative to the current source directory; with BUILD, relative to
-# the current build directory. With TEXT, line endings are normalized to unix.
 function(Embed LIST NAME FILE)
-    cmake_parse_arguments(EMBED "TEXT;BUILD" "" "" ${ARGN})
+    cmake_parse_arguments(EMBED "TEXT" "" "" ${ARGN})
     if(EMBED_TEXT)
         set(EMBED_FLAGS -t)
     else()
         set(EMBED_FLAGS)
     endif()
-    if(EMBED_BUILD)
-        set(EMBED_SOURCE ${CMAKE_CURRENT_BINARY_DIR}/${FILE})
-    else()
-        set(EMBED_SOURCE ${CMAKE_CURRENT_LIST_DIR}/${FILE})
-    endif()
     add_custom_command(
         OUTPUT data/${NAME}.cpp data/${NAME}.hpp
         COMMAND ${CMAKE_COMMAND} -E make_directory data
-        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/embed ${EMBED_FLAGS} ${NAME} ${EMBED_SOURCE} data/${NAME}
-        DEPENDS embed ${EMBED_SOURCE}
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/embed ${EMBED_FLAGS} ${NAME} ${CMAKE_CURRENT_LIST_DIR}/${FILE} data/${NAME}
+        DEPENDS embed ${CMAKE_CURRENT_LIST_DIR}/${FILE}
     )
     list(APPEND ${LIST} data/${NAME}.cpp)
     return(PROPAGATE ${LIST})
@@ -91,7 +78,6 @@ set(SERVER_FILES
     TracyFilesystem.cpp
     TracyImGui.cpp
     TracyManualData.cpp
-    TracyManualWindow.cpp
     TracyMarkdown.cpp
     TracyMicroArchitecture.cpp
     TracyMouse.cpp
@@ -125,6 +111,7 @@ set(SERVER_FILES
     TracyView_FrameTree.cpp
     TracyView_GpuTimeline.cpp
     TracyView_Locks.cpp
+    TracyView_Manual.cpp
     TracyView_Memory.cpp
     TracyView_Messages.cpp
     TracyView_Navigation.cpp
@@ -186,46 +173,21 @@ Embed(PROFILER_FILES FontBold src/font/Roboto-Bold.ttf)
 Embed(PROFILER_FILES FontItalic src/font/Roboto-Italic.ttf)
 Embed(PROFILER_FILES FontBoldItalic src/font/Roboto-BoldItalic.ttf)
 Embed(PROFILER_FILES FontEmoji src/font/NotoEmoji-Regular.ttf)
-Embed(PROFILER_FILES FontCjk src/font/SourceHanSans-Normal.ttc)
-set(MANUAL_MD ${CMAKE_CURRENT_BINARY_DIR}/manual/tracy.md)
-add_custom_command(
-    OUTPUT ${MANUAL_MD}
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/../manual/latex2md.py
-            --tex ${CMAKE_CURRENT_LIST_DIR}/../manual/tracy.tex
-            --out ${MANUAL_MD}
-            --pandoc ${TRACY_PANDOC}
-            --icons ${CMAKE_CURRENT_LIST_DIR}/src/profiler/IconsFontAwesome7.h
-    DEPENDS
-        ${CMAKE_CURRENT_LIST_DIR}/../manual/tracy.tex
-        ${CMAKE_CURRENT_LIST_DIR}/../manual/filter.lua
-        ${CMAKE_CURRENT_LIST_DIR}/../manual/latex2md.py
-        ${CMAKE_CURRENT_LIST_DIR}/src/profiler/IconsFontAwesome7.h
-    COMMENT "Generating user manual"
-    VERBATIM)
 
-Embed(PROFILER_FILES Manual manual/tracy.md TEXT BUILD)
+Embed(PROFILER_FILES Manual ../manual/tracy.md TEXT)
 
 Embed(PROFILER_FILES Text100Million src/achievements/100Million.md TEXT)
-Embed(PROFILER_FILES TextAnnotateZones src/achievements/AnnotateZones.md TEXT)
-Embed(PROFILER_FILES TextAppInfo src/achievements/AppInfo.md TEXT)
 Embed(PROFILER_FILES TextConnectToClient src/achievements/ConnectToClient.md TEXT)
-Embed(PROFILER_FILES TextContention src/achievements/Contention.md TEXT)
 Embed(PROFILER_FILES TextFindZone src/achievements/FindZone.md TEXT)
 Embed(PROFILER_FILES TextFrameImages src/achievements/FrameImages.md TEXT)
-Embed(PROFILER_FILES TextGhostZones src/achievements/GhostZones.md TEXT)
 Embed(PROFILER_FILES TextGlobalSettings src/achievements/GlobalSettings.md TEXT)
 Embed(PROFILER_FILES TextInstrumentationIntro src/achievements/InstrumentationIntro.md TEXT)
 Embed(PROFILER_FILES TextInstrumentationStatistics src/achievements/InstrumentationStatistics.md TEXT)
 Embed(PROFILER_FILES TextInstrumentFrames src/achievements/InstrumentFrames.md TEXT)
 Embed(PROFILER_FILES TextIntro src/achievements/Intro.md TEXT)
 Embed(PROFILER_FILES TextLoadTrace src/achievements/LoadTrace.md TEXT)
-Embed(PROFILER_FILES TextLocks src/achievements/Locks.md TEXT)
-Embed(PROFILER_FILES TextManual src/achievements/Manual.md TEXT)
-Embed(PROFILER_FILES TextMemory src/achievements/Memory.md TEXT)
-Embed(PROFILER_FILES TextPlots src/achievements/Plots.md TEXT)
 Embed(PROFILER_FILES TextSamplingIntro src/achievements/SamplingIntro.md TEXT)
 Embed(PROFILER_FILES TextSaveTrace src/achievements/SaveTrace.md TEXT)
-Embed(PROFILER_FILES TextSections src/achievements/Sections.md TEXT)
 
 set(INCLUDES "${CMAKE_CURRENT_BINARY_DIR}")
 set(LIBS "")
@@ -244,39 +206,43 @@ if(USE_WAYLAND)
 
     include(${CMAKE_CURRENT_LIST_DIR}/../cmake/FindWaylandScanner.cmake)
 
-    pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
-    pkg_get_variable(WAYLAND_PROTOCOLS_PKGDATADIR wayland-protocols pkgdatadir)
+    CPMAddPackage(
+        NAME wayland-protocols
+        GIT_REPOSITORY https://gitlab.freedesktop.org/wayland/wayland-protocols.git
+        GIT_TAG 1.47
+        DOWNLOAD_ONLY YES
+    )
 
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/stable/xdg-shell/xdg-shell.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/stable/xdg-shell/xdg-shell.xml
         BASENAME xdg-shell
     )
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/staging/xdg-activation/xdg-activation-v1.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/staging/xdg-activation/xdg-activation-v1.xml
         BASENAME xdg-activation
     )
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
         BASENAME xdg-decoration
     )
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/staging/fractional-scale/fractional-scale-v1.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/staging/fractional-scale/fractional-scale-v1.xml
         BASENAME fractional-scale
     )
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/stable/viewporter/viewporter.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/stable/viewporter/viewporter.xml
         BASENAME viewporter
     )
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/staging/cursor-shape/cursor-shape-v1.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/staging/cursor-shape/cursor-shape-v1.xml
         BASENAME cursor-shape
     )
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/unstable/tablet/tablet-unstable-v2.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/unstable/tablet/tablet-unstable-v2.xml
         BASENAME tablet
     )
     ecm_add_wayland_client_protocol(PROFILER_FILES
-        PROTOCOL ${WAYLAND_PROTOCOLS_PKGDATADIR}/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml
+        PROTOCOL ${wayland-protocols_SOURCE_DIR}/staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml
         BASENAME xdg-toplevel-icon
     )
 elseif(EMSCRIPTEN)
@@ -368,7 +334,6 @@ if(NOT EMSCRIPTEN)
 endif()
 
 if(EMSCRIPTEN)
-    target_compile_options(${PROJECT_NAME} PRIVATE -sDISABLE_EXCEPTION_CATCHING=0)
     target_link_options(${PROJECT_NAME} PRIVATE
         -pthread
         -sASSERTIONS=0
@@ -380,8 +345,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=_main,_nativeOpenFile,_tracy_paste_clipboard
         -sEXPORTED_RUNTIME_METHODS=ccall
         -sENVIRONMENT=web,worker
-        -sDISABLE_EXCEPTION_CATCHING=0
-        "--pre-js;${CMAKE_CURRENT_LIST_DIR}/wasm/url_trace_pre.js"
+        --preload-file embed.tracy
     )
 
     file(DOWNLOAD https://share.nereid.pl/i/embed.tracy ${CMAKE_CURRENT_BINARY_DIR}/embed.tracy EXPECTED_MD5 f018919fcd34de2fb349be8be354048b)

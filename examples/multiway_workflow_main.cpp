@@ -16,6 +16,7 @@
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/canonical_combo.hpp"
+#include "util/tracy.hpp"
 
 #include <filesystem>
 #include <chrono>
@@ -508,10 +509,12 @@ namespace
 		const std::filesystem::path& resume_path,
 		std::uint32_t worker_override,
 		bool pin_workers,
-		MultiwaySchedulerMode scheduler_mode)
+		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
+		TEXASSOLVER_TRACY_SET_THREAD_NAME("mw.train.main");
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
 		const auto workflow = load_multiway_workflow_config(config_path);
 		if (input_path.empty())
@@ -1043,7 +1046,7 @@ int main(int argc, char** argv) noexcept
 		{
 			name.remove_suffix(4U);
 		}
-		if (name == "texas_multiway_train")
+		if (name == "texas_multiway_train" || name == "texas_multiway_train_tracy")
 			return run("train", argc, argv);
 		if (name == "texas_multiway_buckets")
 			return run("buckets", argc, argv);

@@ -9,10 +9,16 @@ import subprocess
 from pathlib import Path
 
 
-def build_command(root: Path, configuration: str) -> list[str]:
+def build_command(root: Path, build_dir: Path, configuration: str, parallel: int, targets: list[str]) -> list[str]:
+    if targets:
+        return [
+            "cmake", "--build", str(build_dir), "--config", configuration,
+            "--parallel", str(parallel), "--target", *targets, "--",
+            "/nologo", "/v:q", "/clp:ErrorsOnly;NoSummary",
+        ]
     if os.name != "nt":
         return [
-            "cmake", "--build", "build", "--config", configuration, "--parallel", "--",
+            "cmake", "--build", str(build_dir), "--config", configuration, "--parallel", str(parallel), "--",
             "/nologo", "/v:q", "/clp:ErrorsOnly;NoSummary",
         ]
 
@@ -28,8 +34,8 @@ def build_command(root: Path, configuration: str) -> list[str]:
     )
     msbuild = query.stdout.splitlines()[0]
     return [
-        msbuild, str(root / "build/ALL_BUILD.vcxproj"),
-        f"/p:Configuration={configuration}", "/p:Platform=x64", "/m",
+        msbuild, str(build_dir / "ALL_BUILD.vcxproj"),
+        f"/p:Configuration={configuration}", "/p:Platform=x64", f"/m:{parallel}",
         "/nologo", "/v:q", "/clp:ErrorsOnly;NoSummary",
     ]
 
@@ -38,15 +44,26 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1],
                         help="repository root (default: script's parent repository)")
-    parser.add_argument("--configuration", choices=("Debug", "Release"), default="Debug")
+    parser.add_argument("--build-dir", type=Path, default=Path("build"),
+                        help="configured build directory (default: build)")
+    parser.add_argument("--configuration", choices=("Debug", "Release", "RelWithDebInfo"), default="Debug")
+    parser.add_argument("--parallel", type=int, default=16, metavar="N",
+                        help="maximum build jobs (default: 16)")
+    parser.add_argument("--target", action="append", default=[],
+                        help="build only the named target; may be repeated")
     parser.add_argument("-o", "--output", type=Path, default=Path("tmp/build_debug.log"),
                         help="log file (default: tmp/build_debug.log)")
     args = parser.parse_args()
+    if args.parallel < 1:
+        parser.error("--parallel must be positive")
     root = args.root.resolve()
+    build_dir = args.build_dir if args.build_dir.is_absolute() else root / args.build_dir
     output = args.output if args.output.is_absolute() else root / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    command = build_command(root, args.configuration)
+    command = build_command(root, build_dir, args.configuration, args.parallel, args.target)
+    target_summary = ",".join(args.target) if args.target else "all"
+    print(f"started compact build: configuration={args.configuration} targets={target_summary} parallel_jobs={args.parallel} root={root} build_dir={build_dir} log={output}")
     environment = {
         key: value for key, value in os.environ.items()
         if key.casefold() != "path"

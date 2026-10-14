@@ -577,7 +577,29 @@ int64_t View::GetZoneChildTime( const ZoneEvent& zone )
 
 int64_t View::GetZoneChildTime( const GpuEvent& zone )
 {
-    return m_worker.GetGpuChildTime( zone );
+    int64_t time = 0;
+    if( zone.Child() >= 0 )
+    {
+        auto& children = m_worker.GetGpuChildren( zone.Child() );
+        if( children.is_magic() )
+        {
+            auto& vec = *(Vector<GpuEvent>*)&children;
+            for( auto& v : vec )
+            {
+                const auto childSpan = std::max( int64_t( 0 ), v.GpuEnd() - v.GpuStart() );
+                time += childSpan;
+            }
+        }
+        else
+        {
+            for( auto& v : children )
+            {
+                const auto childSpan = std::max( int64_t( 0 ), v->GpuEnd() - v->GpuStart() );
+                time += childSpan;
+            }
+        }
+    }
+    return time;
 }
 
 int64_t View::GetZoneChildTimeFast( const ZoneEvent& zone )
@@ -896,7 +918,6 @@ void View::UpdateTitle()
         snprintf( buf, 1024, "%s (%s)", captureName, desc.c_str() );
         m_stcb( buf );
     }
-#ifndef __EMSCRIPTEN__
     else if( !m_filename.empty() )
     {
         auto fptr = m_filename.c_str() + m_filename.size() - 1;
@@ -907,7 +928,6 @@ void View::UpdateTitle()
         snprintf( buf, 1024, "%s (%s)", captureName, fptr );
         m_stcb( buf );
     }
-#endif
     else
     {
         m_stcb( captureName );

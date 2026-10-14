@@ -5,6 +5,7 @@
 #include "solver/multiway/continuation/multiway_continuation_selector.hpp"
 #include "solver/multiway/abstraction/multiway_future_bucket.hpp"
 #include "util/profiling.hpp"
+#include "util/tracy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -12,20 +13,32 @@
 #include <cmath>
 #include <cstring>
 #include <exception>
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <thread>
-#include <utility>
 #if defined(_WIN32)
 	#ifndef NOMINMAX
 		#define NOMINMAX
 	#endif
 	#include <windows.h>
+#elif defined(__linux__)
+	#include <sched.h>
 #endif
+#include <utility>
 
 namespace texas::solver::multiway
 {
+
+	namespace
+	{
+		[[nodiscard]] std::uint64_t steady_now_nanoseconds() noexcept
+		{
+			return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count());
+		}
+	}
 	namespace
 	{
 
@@ -970,15 +983,34 @@ namespace texas::solver::multiway
 
 	void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index)
 	{
+		auto& worker_scratch = worker_scratch_[worker_index];
+		static constexpr const char* worker_names[] = {
+			"mw.worker.00", "mw.worker.01", "mw.worker.02", "mw.worker.03",
+			"mw.worker.04", "mw.worker.05", "mw.worker.06", "mw.worker.07",
+			"mw.worker.08", "mw.worker.09", "mw.worker.10", "mw.worker.11",
+			"mw.worker.12", "mw.worker.13", "mw.worker.14", "mw.worker.15"
+		};
+		TEXASSOLVER_TRACY_SET_THREAD_NAME(
+			worker_index < std::size(worker_names) ? worker_names[worker_index] : "mw.worker");
 #if defined(_WIN32)
 		if (pin_workers_ && worker_index < sizeof(DWORD_PTR) * 8U)
 		{
 			const auto mask = static_cast<DWORD_PTR>(1) << worker_index;
-			(void)::SetThreadAffinityMask(::GetCurrentThread(), mask);
+			worker_scratch.affinity_mask = static_cast<std::uint64_t>(mask);
+			worker_scratch.affinity_succeeded = ::SetThreadAffinityMask(::GetCurrentThread(), mask) != 0;
 		}
-#else
-		(void)worker_index;
 #endif
+		auto current_processor = []() noexcept -> std::uint32_t {
+#if defined(_WIN32)
+			return static_cast<std::uint32_t>(::GetCurrentProcessorNumber());
+#elif defined(__linux__)
+			const auto processor = ::sched_getcpu();
+			return processor < 0 ? 0U : static_cast<std::uint32_t>(processor);
+#else
+			return 0U;
+#endif
+		};
+		worker_scratch.resolved_processor = current_processor();
 		std::uint64_t observed_generation = 0U;
 		while (true)
 		{
@@ -989,7 +1021,9 @@ namespace texas::solver::multiway
 			std::uint64_t seed = 0U;
 			double iteration_weight = 1.0;
 			auto deadline = std::chrono::steady_clock::time_point::max();
+			const auto cv_wait_start = steady_now_nanoseconds();
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.cv_wait");
 				std::unique_lock<std::mutex> lock(pool_mutex_);
 				worker_work_cvs_[worker_index]->wait(lock, [this, observed_generation] {
 					return stop_workers_ || (batch_active_ && batch_generation_ != observed_generation);
@@ -1005,29 +1039,43 @@ namespace texas::solver::multiway
 				iteration_weight = active_iteration_weight_;
 				deadline = active_deadline_;
 			}
+			const auto cv_wait_end = steady_now_nanoseconds();
+			worker_scratch_[worker_index].cv_wait_nanoseconds = cv_wait_end >= cv_wait_start
+				? cv_wait_end - cv_wait_start : 0U;
+			if (worker_index < batch_count)
+			{
+				const auto now = steady_now_nanoseconds();
+				const auto notified = notification_timestamp_nanoseconds_;
+				worker_scratch_[worker_index].wake_latency_nanoseconds = now >= notified ? now - notified : 0U;
+			}
 
 			try
 			{
 				if (worker_index < batch_count)
 				{
 					auto& scratch = worker_scratch_[worker_index];
-					const auto active_start = std::chrono::steady_clock::now();
-					const auto process_range = [&](const MultiwayTrajectoryRange& range) {
-						for (auto local_id = range.begin;
-							local_id < range.end;
-							local_id += range.stride)
-						{
-							const bool has_deadline = deadline != std::chrono::steady_clock::time_point::max();
-							const bool cancellation_requested =
-								((local_id - range.begin) & 7U) == 0U && cancelled_.load(std::memory_order_relaxed);
-							if (cancellation_requested || (has_deadline && std::chrono::steady_clock::now() >= deadline))
+#if !defined(TEXASSOLVER_TRACY_ENABLED) || !TEXASSOLVER_TRACY_ENABLED
+					MultiwayAllocationProbeScope allocation_scope(scratch.allocation_probe);
+#endif
+					{
+						TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.active");
+						const auto active_start = std::chrono::steady_clock::now();
+						const auto process_range = [&](const MultiwayTrajectoryRange& range) {
+							for (auto local_id = range.begin;
+								local_id < range.end;
+								local_id += range.stride)
 							{
-								cancelled_.store(true, std::memory_order_release);
-								break;
-							}
-							const auto trajectory_id = first_trajectory_id + local_id;
-							++scratch.attempted;
-							if (traversal_.run(
+								const bool has_deadline = deadline != std::chrono::steady_clock::time_point::max();
+								const bool cancellation_requested =
+									((local_id - range.begin) & 7U) == 0U && cancelled_.load(std::memory_order_relaxed);
+								if (cancellation_requested || (has_deadline && std::chrono::steady_clock::now() >= deadline))
+								{
+									cancelled_.store(true, std::memory_order_release);
+									break;
+								}
+								const auto trajectory_id = first_trajectory_id + local_id;
+								++scratch.attempted;
+								const auto accepted = traversal_.run(
 									traversal_.traverser_for_trajectory(trajectory_id),
 									trajectory_id,
 									multiway_deterministic_trajectory_seed(seed, trajectory_id),
@@ -1038,41 +1086,58 @@ namespace texas::solver::multiway
 									active_batch_number_,
 									nullptr,
 									&scratch.action_menu_scratch,
-									immutable_epochs_ ? &scratch.discovery : nullptr))
+									immutable_epochs_ ? &scratch.discovery : nullptr);
+								scratch.peak_regret_delta_entries = std::max(
+									scratch.peak_regret_delta_entries, static_cast<std::uint64_t>(scratch.stream.size()));
+								scratch.peak_continuation_delta_entries = std::max(
+									scratch.peak_continuation_delta_entries, static_cast<std::uint64_t>(scratch.continuation_stream.size()));
+								scratch.peak_discovery_public_state_count = std::max(
+									scratch.peak_discovery_public_state_count, static_cast<std::uint64_t>(scratch.discovery.public_state_count()));
+								scratch.peak_discovery_row_count = std::max(
+									scratch.peak_discovery_row_count, static_cast<std::uint64_t>(scratch.discovery.row_count()));
+								if (accepted)
+								{
+									++scratch.accepted;
+								}
+								else
+								{
+									++scratch.discarded;
+								}
+							}
+						};
+						{
+							TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traversal");
+							if (scheduler_mode_ == MultiwaySchedulerMode::Fixed)
 							{
-								++scratch.accepted;
+								process_range(worker_batches_[worker_index].trajectories);
 							}
 							else
 							{
-								++scratch.discarded;
+								while (!cancelled_.load(std::memory_order_relaxed))
+								{
+									const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
+									if (chunk_index >= chunk_count)
+										break;
+									process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index));
+								}
 							}
 						}
-					};
-					if (scheduler_mode_ == MultiwaySchedulerMode::Fixed)
-					{
-						process_range(worker_batches_[worker_index].trajectories);
-					}
-					else
-					{
-						while (!cancelled_.load(std::memory_order_relaxed))
-						{
-							const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
-							if (chunk_index >= chunk_count)
-								break;
-							process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index));
-						}
-					}
 					scratch.active_nanoseconds = static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - active_start)
 							.count());
+					}
 					const auto sort_start = std::chrono::steady_clock::now();
-					scratch.stream.sort_fixed_order();
-					scratch.continuation_stream.sort_fixed_order();
+					{
+						TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.delta_sort");
+						scratch.stream.sort_fixed_order();
+						scratch.continuation_stream.sort_fixed_order();
+					}
 					scratch.sort_nanoseconds = static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - sort_start)
 							.count());
+					scratch.resolved_processor = current_processor();
 				}
 			}
 			catch (...)
@@ -1085,9 +1150,17 @@ namespace texas::solver::multiway
 
 			if (worker_index < batch_count)
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.complete");
+				const auto completion_start = steady_now_nanoseconds();
 				const auto completed = completed_workers_.fetch_add(1U, std::memory_order_release) + 1U;
+				const auto completion_end = steady_now_nanoseconds();
+				worker_scratch_[worker_index].completion_nanoseconds = completion_end - completion_start;
+				worker_scratch_[worker_index].completion_timestamp_nanoseconds = completion_end;
 				if (completed == batch_count)
+				{
+					batch_completion_timestamp_nanoseconds_.store(completion_end, std::memory_order_release);
 					completion_cv_.notify_one();
+				}
 			}
 		}
 	}
@@ -1116,42 +1189,47 @@ namespace texas::solver::multiway
 		for (auto& scratch : worker_scratch_)
 			scratch.reset(profile_mode_);
 
-		{
-			std::lock_guard<std::mutex> lock(pool_mutex_);
-			if (batch_active_)
-			{
-				throw std::logic_error("multiway root batch runner does not support concurrent batches");
-			}
-			batch_active_ = true;
-			++batch_generation_;
-			completed_workers_.store(0U, std::memory_order_relaxed);
-			active_batch_count_ = batch_count;
-			active_trajectory_count_ = trajectory_count;
-			active_chunk_count_ = scheduler_mode_ == MultiwaySchedulerMode::Dynamic
-				? MultiwayScheduler::dynamic_chunk_count(trajectory_count)
-				: 0U;
-			next_dynamic_chunk_.store(0U, std::memory_order_relaxed);
-			active_first_trajectory_id_ = first_trajectory_id;
-			active_seed_ = seed;
-			active_iteration_weight_ = iteration_weight;
-			active_deadline_ = deadline;
-			worker_error_ = nullptr;
-			cancelled_.store(false, std::memory_order_release);
-		}
 		const auto coordinator_wait_start = std::chrono::steady_clock::now();
 		const auto coordinator_lock_wait_before = coordinator_->diagnostics().coordinator_lock_wait_nanoseconds;
-		for (std::size_t worker = 0U; worker < batch_count; ++worker)
 		{
-			worker_work_cvs_[worker]->notify_one();
-		}
-		{
-			std::unique_lock<std::mutex> lock(pool_mutex_);
-			completion_cv_.wait(lock, [this] {
-				return completed_workers_.load(std::memory_order_acquire) == active_batch_count_;
-			});
-			batch_active_ = false;
-			if (worker_error_ != nullptr)
-				std::rethrow_exception(worker_error_);
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.batch.dispatch_wait");
+			{
+				std::lock_guard<std::mutex> lock(pool_mutex_);
+				if (batch_active_)
+				{
+					throw std::logic_error("multiway root batch runner does not support concurrent batches");
+				}
+				batch_active_ = true;
+				++batch_generation_;
+				completed_workers_.store(0U, std::memory_order_relaxed);
+				active_batch_count_ = batch_count;
+				active_trajectory_count_ = trajectory_count;
+				active_chunk_count_ = scheduler_mode_ == MultiwaySchedulerMode::Dynamic
+					? MultiwayScheduler::dynamic_chunk_count(trajectory_count)
+					: 0U;
+				next_dynamic_chunk_.store(0U, std::memory_order_relaxed);
+				active_first_trajectory_id_ = first_trajectory_id;
+				active_seed_ = seed;
+				active_iteration_weight_ = iteration_weight;
+				active_deadline_ = deadline;
+				worker_error_ = nullptr;
+				cancelled_.store(false, std::memory_order_release);
+				notification_timestamp_nanoseconds_ = steady_now_nanoseconds();
+				batch_completion_timestamp_nanoseconds_.store(0U, std::memory_order_relaxed);
+			}
+			for (std::size_t worker = 0U; worker < batch_count; ++worker)
+			{
+				worker_work_cvs_[worker]->notify_one();
+			}
+			{
+				std::unique_lock<std::mutex> lock(pool_mutex_);
+				completion_cv_.wait(lock, [this] {
+					return completed_workers_.load(std::memory_order_acquire) == active_batch_count_;
+				});
+				batch_active_ = false;
+				if (worker_error_ != nullptr)
+					std::rethrow_exception(worker_error_);
+			}
 		}
 
 		MultiwayRootBatchResult result;
@@ -1173,31 +1251,82 @@ namespace texas::solver::multiway
 		result.minimum_worker_active_nanoseconds = std::numeric_limits<std::uint64_t>::max();
 		result.worker_trajectory_counts.resize(worker_scratch_.size());
 		result.worker_active_nanoseconds_by_worker.resize(worker_scratch_.size());
-		for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
+		result.worker_sort_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_wake_latency_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_cv_wait_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_completion_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_tail_idle_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_regret_delta_entries.resize(worker_scratch_.size());
+		result.worker_continuation_delta_entries.resize(worker_scratch_.size());
+		result.worker_discovery_public_state_counts.resize(worker_scratch_.size());
+		result.worker_discovery_row_counts.resize(worker_scratch_.size());
+		result.worker_allocation_counts.resize(worker_scratch_.size());
+		result.worker_allocated_bytes.resize(worker_scratch_.size());
+		result.worker_resolved_processor.resize(worker_scratch_.size());
+		result.worker_affinity_masks.resize(worker_scratch_.size());
+		result.worker_affinity_succeeded.resize(worker_scratch_.size());
+		result.affinity_requested = pin_workers_;
+		result.worker_profiles.resize(worker_scratch_.size());
+		const auto batch_completion_timestamp = batch_completion_timestamp_nanoseconds_.load(std::memory_order_acquire);
 		{
-			const auto& scratch = worker_scratch_[worker_index];
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.collect");
+			for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
+			{
+				const auto& scratch = worker_scratch_[worker_index];
 			result.trajectories_attempted += scratch.attempted;
 			result.trajectories_accepted += scratch.accepted;
 			result.trajectories_discarded += scratch.discarded;
 			result.delta_entries_merged += scratch.stream.size();
+			const auto regret_entries = static_cast<std::uint64_t>(scratch.stream.size());
+			const auto continuation_entries = static_cast<std::uint64_t>(scratch.continuation_stream.size());
+			const auto discovery_public_states = static_cast<std::uint64_t>(scratch.discovery.public_state_count());
+			const auto discovery_rows = static_cast<std::uint64_t>(scratch.discovery.row_count());
+			result.total_peak_regret_delta_entries += scratch.peak_regret_delta_entries;
+			result.total_peak_continuation_delta_entries += scratch.peak_continuation_delta_entries;
+			result.total_peak_delta_entries += scratch.peak_regret_delta_entries + scratch.peak_continuation_delta_entries;
+			result.generated_update_count += regret_entries + continuation_entries;
+			result.generated_discovery_public_state_count += discovery_public_states;
+			result.generated_discovery_row_count += discovery_rows;
 			result.maximum_worker_delta_entries = std::max(
 				result.maximum_worker_delta_entries,
-				static_cast<std::uint64_t>(std::max(
-					scratch.stream.size(), scratch.continuation_stream.size())));
+				std::max(scratch.peak_regret_delta_entries, scratch.peak_continuation_delta_entries));
 			result.worker_active_nanoseconds += scratch.active_nanoseconds;
 			result.worker_trajectory_counts[worker_index] = scratch.attempted;
 			result.worker_active_nanoseconds_by_worker[worker_index] = scratch.active_nanoseconds;
+			result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
+			result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
+			result.worker_cv_wait_nanoseconds_by_worker[worker_index] = scratch.cv_wait_nanoseconds;
+			result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
+			result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
+				batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
+					? batch_completion_timestamp - scratch.completion_timestamp_nanoseconds : 0U;
+			result.worker_regret_delta_entries[worker_index] = scratch.peak_regret_delta_entries;
+			result.worker_continuation_delta_entries[worker_index] = scratch.peak_continuation_delta_entries;
+			result.worker_discovery_public_state_counts[worker_index] = scratch.peak_discovery_public_state_count;
+			result.worker_discovery_row_counts[worker_index] = scratch.peak_discovery_row_count;
+			const auto allocation_snapshot = scratch.allocation_probe.snapshot();
+			result.worker_allocation_counts[worker_index] = allocation_snapshot.allocation_count;
+			result.worker_allocated_bytes[worker_index] = allocation_snapshot.allocated_bytes;
+			result.worker_resolved_processor[worker_index] = scratch.resolved_processor;
+			result.worker_affinity_masks[worker_index] = scratch.affinity_mask;
+			result.worker_affinity_succeeded[worker_index] = scratch.affinity_succeeded ? 1U : 0U;
+			result.worker_profiles[worker_index] = scratch.profile.snapshot();
 			result.minimum_worker_active_nanoseconds = std::min(
 				result.minimum_worker_active_nanoseconds, scratch.active_nanoseconds);
 			result.maximum_worker_active_nanoseconds = std::max(
 				result.maximum_worker_active_nanoseconds, scratch.active_nanoseconds);
 			result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
+			result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
+			result.worker_cv_wait_nanoseconds += scratch.cv_wait_nanoseconds;
+			result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
+			result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
 			result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
 			result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
 			batch_profile.merge(scratch.profile.snapshot());
 			terminal_visits += scratch.discovery.terminal_visits();
 			leaf_visits += scratch.discovery.leaf_visits();
-			missing_lookup_requests += scratch.discovery.missing_lookup_requests();
+				missing_lookup_requests += scratch.discovery.missing_lookup_requests();
+			}
 		}
 		if (result.minimum_worker_trajectories == std::numeric_limits<std::uint64_t>::max())
 		{
@@ -1217,47 +1346,61 @@ namespace texas::solver::multiway
 		}
 		if (immutable_epochs_)
 		{
+			const auto admission_start = std::chrono::steady_clock::now();
 			std::vector<MultiwayPublicStateDescriptor> discoveries;
 			std::vector<MultiwaySparseRowShape> rows;
-			for (const auto& scratch : worker_scratch_)
 			{
-				discoveries.insert(discoveries.end(), scratch.discovery.public_states().begin(), scratch.discovery.public_states().end());
-				rows.insert(rows.end(), scratch.discovery.rows().begin(), scratch.discovery.rows().end());
-				if (scratch.discovery.overflowed())
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_copy");
+				for (const auto& scratch : worker_scratch_)
 				{
-					result.discovery_capacity_exhausted = true;
-					result.clean = false;
-					result.profile = batch_profile.snapshot();
-					return result;
+					discoveries.insert(discoveries.end(), scratch.discovery.public_states().begin(), scratch.discovery.public_states().end());
+					rows.insert(rows.end(), scratch.discovery.rows().begin(), scratch.discovery.rows().end());
+					if (scratch.discovery.overflowed())
+					{
+						result.discovery_capacity_exhausted = true;
+						result.clean = false;
+						result.profile = batch_profile.snapshot();
+						return result;
+					}
 				}
 			}
-			std::sort(discoveries.begin(), discoveries.end(), [](const auto& left, const auto& right) {
-				return left.id != right.id ? left.id < right.id : left.parent_id < right.parent_id;
-			});
+			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_sort");
+				std::sort(discoveries.begin(), discoveries.end(), [](const auto& left, const auto& right) {
+					return left.id != right.id ? left.id < right.id : left.parent_id < right.parent_id;
+				});
+				std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
+			}
 			std::vector<bool> admitted(discoveries.size(), false);
 			std::size_t remaining = discoveries.size();
-			while (remaining != 0U)
 			{
-				bool progress = false;
-				for (std::size_t index = 0U; index < discoveries.size(); ++index)
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_admit");
+				while (remaining != 0U)
 				{
-					if (admitted[index] || (discoveries[index].parent_id.value != 0U && coordinator_->find_public_state(discoveries[index].parent_id) == nullptr))
-						continue;
-					coordinator_->admit_public_state(discoveries[index]);
-					admitted[index] = true;
-					--remaining;
-					progress = true;
+					bool progress = false;
+					for (std::size_t index = 0U; index < discoveries.size(); ++index)
+					{
+						if (admitted[index] || (discoveries[index].parent_id.value != 0U && coordinator_->find_public_state(discoveries[index].parent_id) == nullptr))
+							continue;
+						coordinator_->admit_public_state(discoveries[index]);
+						admitted[index] = true;
+						--remaining;
+						progress = true;
+					}
+					if (!progress)
+						throw std::logic_error("immutable multiway discovery epoch has an unresolved parent");
 				}
-				if (!progress)
-					throw std::logic_error("immutable multiway discovery epoch has an unresolved parent");
 			}
-			std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
 			for (const auto& row : rows)
 				coordinator_->admit_infoset_row(row);
 			coordinator_->merge_traversal_counters(terminal_visits, leaf_visits, missing_lookup_requests);
+			result.coordinator_admission_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - admission_start).count());
 		}
 		const auto merge_start = std::chrono::steady_clock::now();
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.delta_merge");
 			MultiwaySearchProfileScope profile_scope(
 				&batch_profile, MultiwaySearchProfileStage::DeltaMerge);
 			coordinator_->merge_worker_streams(worker_stream_views_);

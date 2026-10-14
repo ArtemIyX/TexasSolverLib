@@ -104,6 +104,10 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.barrier_wait_nanoseconds, 20U);
 	EXPECT_EQ(report.worker_trajectory_counts[1U], 10U);
 	EXPECT_EQ(report.worker_active_nanoseconds_by_worker[1U], 60U);
+	EXPECT_EQ(report.instrumentation_kind, std::string("none"));
+	EXPECT_TRUE(report.tracy_version.empty());
+	EXPECT_TRUE(report.trace_capture_id.empty());
+	EXPECT_TRUE(report.allocation_probe_valid);
 	const auto path = std::filesystem::temp_directory_path() / "texas_solver_training_report_telemetry_test.json";
 	save_multiway_training_report_atomic(path, report);
 	std::ifstream input(path);
@@ -117,6 +121,29 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_trajectory_counts\": [10,10,0,0,0,0,0,0]") != std::string::npos);
 	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_training_report_separates_tracy_provenance)
+{
+	using namespace texas::solver::multiway;
+	MultiwayTrainingReport report;
+	MultiwayProducerIdentity identity;
+	identity.git_commit = "test";
+	identity.build_configuration = "RelWithDebInfo";
+	identity.compiler_identity = "test";
+	identity.model_identity = make_multiway_model_identity(MultiwayBlueprintConfig{});
+	identity.workflow_config_fingerprint = 1U;
+	identity.artifact_schemas = { 4U, 2U, 1U };
+	report.evidence = { MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
+		MultiwayWorkflowProfileKind::Acceptance, identity };
+	report.instrumentation_kind = "tracy";
+	report.tracy_version = "0.14.1";
+	report.trace_capture_id = "capture-test";
+	report.allocation_probe_valid = false;
+	report.validate();
+
+	report.allocation_probe_valid = true;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_training_report_calculates_throughput_and_rejects_bad_rss)
@@ -179,5 +206,12 @@ TEST_CASE(multiway_training_report_preserves_failed_partial_telemetry)
 	report.batches = 1U;
 	report.trajectories = 10U;
 	report.failed = true;
+	report.failed_batch_available = true;
+	report.failed_batch.trajectories_attempted = 32U;
+	report.failed_batch.trajectories_accepted = 6U;
+	report.failed_batch.trajectories_discarded = 26U;
+	report.failed_batch.delta_entries_merged = 87U;
+	report.failed_batch.worker_trajectory_counts = { 32U };
+	report.failed_batch.worker_active_nanoseconds_by_worker = { 100U };
 	report.validate();
 }

@@ -126,15 +126,7 @@ void AchievementsMgr::Achieve( const char* id )
         {
             (*c)->unlockTime = t;
             auto cit = m_map.find( (*c)->id );
-            assert( cit != m_map.end() );
-            auto& cat = *cit->second.category;
-            if( cat.unlockTime == 0 ) cat.unlockTime = t;
-            auto items = cat.items;
-            while( *items )
-            {
-                if( (*items)->unlockTime == 0 ) (*items)->unlockTime = cat.unlockTime;
-                items++;
-            }
+            if( cit->second.category->unlockTime == 0 ) cit->second.category->unlockTime = t;
             c++;
         }
     }

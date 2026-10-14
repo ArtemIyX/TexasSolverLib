@@ -16,7 +16,6 @@ concurrency:
 
 env:
   CPM_SOURCE_CACHE: ${{ github.workspace }}/cpm-cache
-  PANDOC_CACHE_DIR: ${{ github.workspace }}/pandoc-cache
 
 jobs:
   build-linux:
@@ -34,11 +33,6 @@ jobs:
         path: ${{ env.CPM_SOURCE_CACHE }}
         key: ${{ runner.os }}-cpm-${{ hashFiles('**/vendor.cmake', '**/CMakeLists.txt') }}
         restore-keys: ${{ runner.os }}-cpm-
-    - name: Cache pandoc
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.PANDOC_CACHE_DIR }}
-        key: ${{ runner.os }}-pandoc-${{ hashFiles('cmake/manual.cmake') }}
     - name: Determine build parallelism
       run: |
         if [ "${ACT:-}" != "true" ] && [ "${FORGEJO_ACTIONS:-}" != "true" ]; then
@@ -78,10 +72,6 @@ jobs:
       run: |
         cmake -B merge/build -S merge -DCMAKE_BUILD_TYPE=Release -DGIT_REV=${{ github.sha }}
         cmake --build merge/build $CMAKE_PARALLEL
-    - name: Monitor utility
-      run: |
-        cmake -B monitor/build -S monitor -DCMAKE_BUILD_TYPE=Release -DGIT_REV=${{ github.sha }}
-        cmake --build monitor/build $CMAKE_PARALLEL
     - name: Library (cmake)
       run: |
         cmake -B build -DCMAKE_BUILD_TYPE=Release -DTRACY_ENABLE=ON
@@ -106,7 +96,6 @@ jobs:
         cp import/build/tracy-import-chrome bin
         cp import/build/tracy-import-fuchsia bin
         cp merge/build/tracy-merge bin
-        cp monitor/build/tracy-monitor bin
         strip bin/tracy-*
     - uses: actions/upload-artifact@v4
       with:

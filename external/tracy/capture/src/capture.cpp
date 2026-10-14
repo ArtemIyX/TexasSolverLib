@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 #include "../../server/TracyFileWrite.hpp"
 #include "../../server/TracyPrint.hpp"
@@ -18,8 +19,6 @@
 #include "../../server/TracyWorker.hpp"
 #include "../../public/common/TracyVersion.hpp"
 #include "GitRef.hpp"
-#include "CaptureFileBackup.hpp"
-#include "CaptureConsole.hpp"
 
 #include "CaptureOutput.hpp"
 
@@ -97,18 +96,21 @@ int main( int argc, char** argv )
 
     if( !address || !output ) Usage();
 
-    const char* prepError = nullptr;
-    const auto prep = tracy::PrepareOutputFile( output, overwrite, &prepError );
-    if( prep == tracy::OutputPrep::Exists )
+    struct stat st;
+    if( stat( output, &st ) == 0 && !overwrite )
     {
         printf( "Output file %s already exists! Use -f to force overwrite.\n", output );
         return 4;
     }
-    if( prep == tracy::OutputPrep::Unusable )
+
+    FILE* test = fopen( output, "wb" );
+    if( !test )
     {
-        printf( "Cannot use output file: %s!\n", prepError );
+        printf( "Cannot open output file %s for writing!\n", output );
         return 5;
     }
+    fclose( test );
+    unlink( output );
 
     printf( "Connecting to %s:%i...", address, port );
     fflush( stdout );
@@ -167,12 +169,10 @@ int main( int argc, char** argv )
         f->Finish();
         const auto stats = f->GetCompressionStatistics();
         printf( "Trace size %s (%.2f%% ratio)\n", tracy::MemSizeToString( stats.second ), 100.f * stats.second / stats.first );
-        tracy::DiscardOutputBackup();
     }
     else
     {
         AnsiPrintf( ANSI_RED ANSI_BOLD, " failed!\n");
-        tracy::RestoreOutputBackup();
     }
 
     return 0;

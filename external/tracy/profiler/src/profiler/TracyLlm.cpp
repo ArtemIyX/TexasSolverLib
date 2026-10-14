@@ -31,7 +31,7 @@ extern double s_time;
 
 constexpr size_t InputBufferSize = 1024;
 
-TracyLlm::TracyLlm( Worker& worker, View& view )
+TracyLlm::TracyLlm( Worker& worker, View& view, const TracyManualData& manual )
     : m_exit( false )
     , m_input( nullptr )
     , m_apiInput( nullptr )
@@ -65,7 +65,7 @@ TracyLlm::TracyLlm( Worker& worker, View& view )
 
     m_api = std::make_unique<TracyLlmApi>();
     m_chatUi = std::make_unique<TracyLlmChat>( view, worker, m_skills );
-    m_tools = std::make_unique<TracyLlmTools>( worker, view, m_skills );
+    m_tools = std::make_unique<TracyLlmTools>( worker, view, manual, m_skills );
 
     m_busy = true;
     QueueConnect();
@@ -197,7 +197,7 @@ void TracyLlm::Draw( WindowConstraints& constraints )
         memcpy( m_apiInput, s_config.llmAddress.c_str(), sz );
         m_apiInput[sz] = 0;
         ImGui::SetNextItemWidth( ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x );
-        bool changed = ImGui::InputTextWithHint( "##api", "http://localhost:9931", m_apiInput, InputBufferSize );
+        bool changed = ImGui::InputTextWithHint( "##api", "http://localhost:8080", m_apiInput, InputBufferSize );
         bool commit = ImGui::IsItemDeactivatedAfterEdit();
         ImGui::SameLine();
         if( ImGui::BeginCombo( "##presets", nullptr, ImGuiComboFlags_NoPreview ) )
@@ -208,7 +208,7 @@ void TracyLlm::Draw( WindowConstraints& constraints )
                 const char* address;
             };
             constexpr static std::array presets = {
-                Preset { "Llama.cpp", "http://localhost:9931" },
+                Preset { "Llama.cpp", "http://localhost:8080" },
                 Preset { "LM Studio", "http://localhost:1234" },
             };
             for( auto& preset : presets )

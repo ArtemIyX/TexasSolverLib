@@ -5,7 +5,6 @@
 #include <inttypes.h>
 #define IMGUI_DEFINE_MATH_OPERATORS 1
 #include <imgui.h>
-#include <numbers>
 #include <mutex>
 #include <stdint.h>
 #include <stdio.h>
@@ -19,10 +18,6 @@
 
 #ifdef _WIN32
 #  include <windows.h>
-#endif
-
-#ifdef __EMSCRIPTEN__
-#  include <emscripten.h>
 #endif
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -39,7 +34,6 @@
 #include "profiler/TracyConfig.hpp"
 #include "profiler/TracyFileselector.hpp"
 #include "profiler/TracyImGui.hpp"
-#include "profiler/TracyManualWindow.hpp"
 #include "profiler/TracyMarkdown.hpp"
 #include "profiler/TracyMouse.hpp"
 #include "profiler/TracyProtoHistory.hpp"
@@ -171,10 +165,10 @@ static void ScaleWindow(ImGuiWindow* window, float scale)
 
 static void SetupDPIScale()
 {
-    auto scale = dpiScale * tracy::s_zoomPresets[tracy::s_config.zoomLevel];
+    auto scale = dpiScale * tracy::s_config.userScale;
 
 #ifdef __APPLE__
-    scale = tracy::s_zoomPresets[tracy::s_config.zoomLevel];
+    scale = tracy::s_config.userScale;
 #endif
 
     if( !dpiFirstSetup && prevScale == scale ) return;
@@ -220,10 +214,9 @@ static int IsBusy()
     return 0;
 }
 
-static void SetupScaleCallback( int preset )
+static void SetupScaleCallback( float scale )
 {
-    assert( preset >= 0 && preset < tracy::s_zoomPresetCount );
-    tracy::s_config.zoomLevel = preset;
+    tracy::s_config.userScale = scale;
     if ( tracy::s_config.saveUserScale ) tracy::SaveConfig();
     RunOnMainThread( []{ SetupDPIScale(); }, true );
 }
@@ -243,30 +236,7 @@ int main( int argc, char** argv )
 
     std::unique_ptr<tracy::FileRead> initFileOpen;
 #ifdef __EMSCRIPTEN__
-    const auto FileExists = []( const char* fn ) -> bool
-    {
-        auto f = fopen( fn, "rb" );
-        if( f ) fclose( f );
-        return f != nullptr;
-    };
-    if( FileExists( "/url.tracy" ) )
-    {
-        loadThread = std::thread( [] {
-            try
-            {
-                auto f = std::shared_ptr<tracy::FileRead>( tracy::FileRead::Open( "/url.tracy" ) );
-                if( f )
-                {
-                    view.store( std::make_shared<tracy::View>( RunOnMainThread, *f, SetWindowTitleCallback, SetupScaleCallback, AttentionCallback, s_achievements ), std::memory_order_release );
-                }
-            }
-            catch( const tracy::NotTracyDump& ) { badVer.state = tracy::BadVersionState::BadFile; }
-            catch( const tracy::FileReadError& ) { badVer.state = tracy::BadVersionState::ReadError; }
-            catch( const tracy::UnsupportedVersion& e ) { badVer.state = tracy::BadVersionState::UnsupportedVersion; badVer.version = e.version; }
-            catch( const tracy::LegacyVersion& e ) { badVer.state = tracy::BadVersionState::LegacyVersion; badVer.version = e.version; }
-            catch( const tracy::LoadFailure& e ) { badVer.state = tracy::BadVersionState::LoadFailure; badVer.msg = e.msg; }
-        } );
-    }
+    initFileOpen = std::unique_ptr<tracy::FileRead>( tracy::FileRead::Open( "embed.tracy" ) );
 #endif
     if( argc == 2 )
     {
@@ -297,11 +267,6 @@ int main( int argc, char** argv )
         catch( const tracy::LegacyVersion& e )
         {
             fprintf( stderr, "The file you are trying to open is from a legacy version.\n" );
-            exit( 1 );
-        }
-        catch( const tracy::FileReadError& e )
-        {
-            fprintf( stderr, "Cannot read trace file: %s\n", argv[1] );
             exit( 1 );
         }
         if( !initFileOpen )
@@ -387,23 +352,14 @@ int main( int argc, char** argv )
         }
     }
 
-    if( tracy::s_config.achievements ) s_achievements->Achieve( "achievementsIntro" );
+    s_achievements->Achieve( "achievementsIntro" );
 
     tracy::UpdateTextureRGBAMips( zigzagTex, (void**)zigzagPx, zigzagX, zigzagY, 6 );
     for( auto& v : zigzagPx ) free( v );
 
     if( initFileOpen )
     {
-        try
-        {
-            view.store( std::make_shared<tracy::View>( RunOnMainThread, *initFileOpen, SetWindowTitleCallback, SetupScaleCallback, AttentionCallback, s_achievements ), std::memory_order_release );
-        }
-        catch( const std::exception& e )
-        {
-            fprintf( stderr, "Cannot load trace file: %s\n", e.what() );
-            initFileOpen.reset();
-            _Exit( 1 );
-        }
+        view.store( std::make_shared<tracy::View>( RunOnMainThread, *initFileOpen, SetWindowTitleCallback, SetupScaleCallback, AttentionCallback, s_achievements ), std::memory_order_release );
         initFileOpen.reset();
     }
     else if( connectTo )
@@ -567,70 +523,12 @@ static void DrawAchievements( tracy::data::AchievementItem** items )
     }
 }
 
-struct UnlockSpin
-{
-    void Trigger() { start = ImGui::GetTime(); }
-    bool Active() const { return start >= 0; }
-
-    float Angle()
-    {
-        if( start < 0 ) return 0.f;
-        const double dt = ImGui::GetTime() - start;
-        if( dt >= duration )
-        {
-            start = -1.0;
-            return 0.f;
-        }
-        tracy::s_wasActive = true;
-        const float u = float( dt / duration );
-        const float v = 1.f - u;
-        return turns * 2.f * std::numbers::pi_v<float> * ( 1.f - v * v * v * v );
-    }
-
-    double start = -1.0;
-    static constexpr float duration = 3.f;
-    static constexpr float turns = 6.f;
-};
-
-struct AttentionDance
-{
-    void Start() { if( start < 0 ) start = ImGui::GetTime(); }
-    void Stop() { start = -1.0; }
-
-    float Angle() const
-    {
-        if( start < 0 ) return 0.f;
-        const float dt = float( ImGui::GetTime() - start );
-        const auto s0 = sin( dt * ( 2.f * std::numbers::pi_v<float> / period ) );
-        const auto s1 = s0 * 0.5f + 0.5f;
-        const auto s2 = s1 * s1 * ( 3.f - 2.f * s1 );
-        return amplitude * s2 * 2.f + 1.f;
-    }
-
-    float Scale() const
-    {
-        if( start < 0 ) return 1.f;
-        const float dt = float( ImGui::GetTime() - start );
-        const float s = sin( dt * ( std::numbers::pi_v<float> / scalePeriod ) );
-        const float s2 = s * s;
-        const float s4 = s2 * s2;
-        return 1.f + scaleAmplitude * s4 * s4 * s4;
-    }
-
-    double start = -1.0;
-    static constexpr float period = 1.f;
-    static constexpr float amplitude = 15.f * std::numbers::pi_v<float> / 180.f;
-    static constexpr float scalePeriod = 0.63f;
-    static constexpr float scaleAmplitude = 0.4f;
-};
-
 static void DrawContents()
 {
     static bool reconnect = false;
     static std::string reconnectAddr;
     static uint16_t reconnectPort;
     static bool showFilter = false;
-    static tracy::Markdown s_manualMarkdown( nullptr, nullptr, &tracy::GetManualWindow() );
 
 #ifndef __EMSCRIPTEN__
     UpdateBroadcastClients();
@@ -747,7 +645,7 @@ static void DrawContents()
             ImGui::Separator();
             if( ImGui::TreeNode( ICON_FA_TOOLBOX " Global settings" ) )
             {
-                if( tracy::s_config.achievements ) s_achievements->Achieve( "globalSettings" );
+                s_achievements->Achieve( "globalSettings" );
 
                 ImGui::PushStyleVar( ImGuiStyleVar_FramePadding, ImVec2( 0, 0 ) );
 
@@ -834,11 +732,7 @@ static void DrawContents()
                 }
 
                 ImGui::Spacing();
-                if( ImGui::Checkbox( "Enable achievements", &tracy::s_config.achievements ) )
-                {
-                    tracy::SaveConfig();
-                    if( tracy::s_config.achievements ) s_achievements->Achieve( "achievementsIntro" );
-                }
+                if( ImGui::Checkbox( "Enable achievements", &tracy::s_config.achievements ) ) tracy::SaveConfig();
                 ImGui::Spacing();
                 if( ImGui::Checkbox( "Save UI scale", &tracy::s_config.saveUserScale) ) tracy::SaveConfig();
 #ifndef __EMSCRIPTEN__
@@ -866,7 +760,7 @@ static void DrawContents()
         ImGui::Spacing();
         if( ImGui::Button( ICON_FA_BOOK " Manual" ) )
         {
-            tracy::GetManualWindow().Show() = true;
+            tracy::OpenWebpage( "https://github.com/wolfpld/tracy/releases" );
         }
         ImGui::SameLine();
         if( ImGui::Button( ICON_FA_EARTH_AMERICAS " Web" ) )
@@ -1434,7 +1328,6 @@ Would you like to enable achievements?
         {
             tracy::s_config.achievements = true;
             tracy::SaveConfig();
-            s_achievements->Achieve( "achievementsIntro" );
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
@@ -1449,9 +1342,7 @@ Would you like to enable achievements?
 
     if( tracy::s_config.achievements )
     {
-        const float borderSize = ImGui::GetStyle().PopupBorderSize;
         ImGui::PushStyleVar( ImGuiStyleVar_WindowRounding, 16 * dpiScale );
-        ImGui::PushStyleVar( ImGuiStyleVar_PopupBorderSize, 0.f );
 
         ImGui::PushFont( g_fonts.normal, FontBig );
         const auto starSize = ImGui::CalcTextSize( ICON_FA_STAR );
@@ -1461,8 +1352,6 @@ Would you like to enable achievements?
         static float animProgress = 0;
         static bool showAchievements = false;
         static float openTimeLeft = 0;
-        static UnlockSpin spin;
-        static AttentionDance dance;
 
         float aSize = 0;
         const auto aItem = s_achievements->GetNextQueue();
@@ -1473,7 +1362,6 @@ Would you like to enable achievements?
             if( animStage == 0 )
             {
                 animStage = 1;
-                spin.Trigger();
             }
         }
 
@@ -1508,23 +1396,15 @@ Would you like to enable achievements?
 
         const auto cursor = ImGui::GetCursorPos();
         const auto cursorScreen = ImGui::GetCursorScreenPos();
-        const auto wpos = ImGui::GetWindowPos();
-        const auto wend = wpos + ImGui::GetWindowSize();
-        const bool hovered = ( animStage == 0 || animStage == 2 ) && ImGui::IsMouseHoveringRect( wpos, wend );
-
-        const bool pulsing = achievementsAttention && !showAchievements;
-        if( pulsing && !spin.Active() ) dance.Start();
-        else dance.Stop();
-
         uint32_t color = 0xFF888888;
-        if( pulsing )
+        if( achievementsAttention && !showAchievements )
         {
             const auto t = sin( ImGui::GetTime() * 4 ) * 0.5f + 0.5f;
             const auto c0 = uint32_t( std::lerp( 0x88, 0x00, t ) );
             const auto c1 = uint32_t( std::lerp( 0x88, 0xFF, t ) );
             color = 0xFF000000 | ( c0 << 16 ) | ( c1 << 8 ) | c1;
         }
-        if( hovered )
+        if( ( animStage == 0 || animStage == 2 ) && ImGui::IsMouseHoveringRect( cursorScreen - ImVec2( dpiScale * 2, dpiScale * 2 ), cursorScreen + starSize + ImVec2( dpiScale * 4, dpiScale * 4 ) ) )
         {
             color = 0xFFFFFFFF;
             if( ImGui::IsMouseClicked( ImGuiMouseButton_Left ) )
@@ -1538,20 +1418,17 @@ Would you like to enable achievements?
                     showAchievements = true;
                     animStage = 3;
                     s_achievementItem = aItem;
-                    s_switchAchievementCategory = true;
                 }
             }
         }
-        auto draw = ImGui::GetWindowDrawList();
-        draw->PushClipRectFullScreen();
-        tracy::DrawGlyphTransformed( draw, g_fonts.normal, FontBig, ICON_FA_STAR, cursorScreen, ImVec2( 0.5f, 0.55f ), spin.Angle() + dance.Angle(), dance.Scale(), color );
-        draw->PopClipRect();
-        draw->AddRect( wpos, wend, hovered ? 0xFFFFFFFF : ImGui::GetColorU32( ImGuiCol_Border ), 16 * dpiScale, 0, borderSize );
-        ImGui::Dummy( starSize );
+        ImGui::PushFont( g_fonts.normal, FontBig );
+        tracy::TextColoredUnformatted( color, ICON_FA_STAR );
+        ImGui::PopFont();
 
         if( aItem )
         {
             ImGui::SameLine();
+            const auto dismiss = ImGui::GetCursorScreenPos();
             const auto th = ImGui::GetTextLineHeight();
             ImGui::SetCursorPosY( cursor.y - th * 0.175f );
             ImGui::TextUnformatted( aItem->name );
@@ -1559,15 +1436,25 @@ Would you like to enable achievements?
             ImGui::SetCursorPos( cursor + ImVec2( starSize.x + ImGui::GetStyle().ItemSpacing.x, th ) );
             tracy::TextDisabledUnformatted( "Click to open" );
             ImGui::PopFont();
-            if( animStage == 2 && !aItem->keepOpen )
+            if( animStage == 2 )
             {
-                openTimeLeft -= ImGui::GetIO().DeltaTime;
-                if( openTimeLeft < 0 ) animStage = 3;
+                if( ImGui::IsMouseHoveringRect( dismiss - ImVec2( 0, dpiScale * 6 ), dismiss + ImVec2( aSize, th * 1.5f + dpiScale * 4 ) ) && ImGui::IsMouseClicked( ImGuiMouseButton_Left ) )
+                {
+                    s_achievementItem = aItem;
+                    s_switchAchievementCategory = true;
+                    showAchievements = true;
+                    animStage = 3;
+                }
+                if( !aItem->keepOpen )
+                {
+                    openTimeLeft -= ImGui::GetIO().DeltaTime;
+                    if( openTimeLeft < 0 ) animStage = 3;
+                }
             }
         }
 
         ImGui::End();
-        ImGui::PopStyleVar( 2 );
+        ImGui::PopStyleVar();
 
         if( showAchievements )
         {
@@ -1610,7 +1497,8 @@ Would you like to enable achievements?
                         ImGui::BeginChild( "##achievementtext", ImVec2( 0, 0 ), ImGuiChildFlags_AlwaysUseWindowPadding );
                         if( s_achievementItem )
                         {
-                            s_manualMarkdown.Print( s_achievementItem->text.c_str(), s_achievementItem->text.size() );
+                            tracy::Markdown md( nullptr, nullptr );
+                            md.Print( s_achievementItem->text.c_str(), s_achievementItem->text.size() );
                         }
                         ImGui::EndChild();
                         ImGui::EndColumns();
@@ -1621,12 +1509,6 @@ Would you like to enable achievements?
             ImGui::EndTabBar();
             ImGui::End();
         }
-    }
-
-    if( tracy::GetManualWindow().Show() )
-    {
-        if( tracy::s_config.achievements ) s_achievements->Achieve( "manual" );
-        if( !viewPtr ) tracy::GetManualWindow().Draw( s_manualMarkdown );
     }
 
     bptr->EndFrame();

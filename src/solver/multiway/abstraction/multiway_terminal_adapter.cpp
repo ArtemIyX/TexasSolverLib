@@ -198,12 +198,7 @@ namespace texas::solver::multiway
 	{
 		MultiwayPrivateWorkerScratch scratch;
 		if (!coordinator_->request_.compiled_private_ranges().try_sample_into(seed, scratch))
-		{
-			MultiwayJointPrivateSample discarded;
-			discarded.attempts = scratch.attempts;
-			discarded.discarded_trajectories = scratch.discarded_trajectories;
-			return MultiwaySamplerDealToken(*coordinator_, std::move(discarded));
-		}
+			throw std::runtime_error("multiway private sampler found no compatible sequential deal");
 		MultiwayJointPrivateSample deal;
 		deal.holes.count = scratch.seat_count;
 		std::copy_n(scratch.holes.begin(), scratch.seat_count, deal.holes.begin());

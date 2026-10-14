@@ -17,7 +17,6 @@ concurrency:
 
 env:
   CPM_SOURCE_CACHE: ${{ github.workspace }}/cpm-cache
-  PANDOC_CACHE_DIR: ${{ github.workspace }}/pandoc-cache
 
 jobs:
   build-windows:
@@ -30,26 +29,9 @@ jobs:
         path: ${{ env.CPM_SOURCE_CACHE }}
         key: ${{ runner.os }}-cpm-${{ hashFiles('**/vendor.cmake', '**/CMakeLists.txt') }}
         restore-keys: ${{ runner.os }}-cpm-
-    - name: Cache pandoc
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.PANDOC_CACHE_DIR }}
-        key: ${{ runner.os }}-pandoc-${{ hashFiles('cmake/manual.cmake') }}
     - uses: microsoft/setup-msbuild@v2
     - name: Trust git repo
       run: git config --global --add safe.directory '*'
-    - name: Install meson
-      run: python -m pip install --upgrade meson
-    - name: Library (meson)
-      env:
-        CCACHE_DISABLE: '1'
-      run: |
-        $vs = & "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        foreach ($line in & cmd /c "`"$vs\VC\Auxiliary\Build\vcvarsall.bat`" x64 && set") {
-          if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process') }
-        }
-        meson setup -Dtracy_enable=true build-meson
-        meson compile -C build-meson
     - name: Test application
       uses: ./.github/actions/test-tracy
     - name: Build profiler

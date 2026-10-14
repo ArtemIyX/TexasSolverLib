@@ -1,5 +1,6 @@
 #include "games/multiway_private.hpp"
 #include "games/hunl.hpp"
+#include "core/canonical_combo.hpp"
 #include "test_harness.hpp"
 
 #include <cstdint>
@@ -91,6 +92,30 @@ TEST_CASE(multiway_private_joint_sampling_is_seed_deterministic)
 	EXPECT_EQ(first.attempts, second.attempts);
 }
 
+TEST_CASE(multiway_private_six_uniform_full_deck_ranges_are_collision_free)
+{
+	texas::MultiwayPrivateConfig config;
+	config.ranges.resize(6U);
+	for (auto& range : config.ranges)
+	{
+		for (texas::core::CanonicalComboId id = 0U;
+			id < texas::core::CANONICAL_HOLE_COMBINATION_COUNT; ++id)
+			range.push_back({ texas::core::canonical_combos().cards(id), 1.0 });
+	}
+	texas::MultiwayCompiledPrivateRanges compiled(config);
+	for (std::uint64_t seed = 1U; seed <= 32U; ++seed)
+	{
+		texas::MultiwayPrivateWorkerScratch scratch;
+		EXPECT_TRUE(compiled.try_sample_into(seed, scratch));
+		EXPECT_EQ(scratch.seat_count, 6U);
+		EXPECT_EQ(scratch.accepted_trajectories, 1U);
+		EXPECT_EQ(scratch.discarded_trajectories, 0U);
+		for (std::size_t seat = 0U; seat < scratch.seat_count; ++seat)
+			for (std::size_t other = seat + 1U; other < scratch.seat_count; ++other)
+				EXPECT_TRUE(!overlap(scratch.holes[seat], scratch.holes[other]));
+	}
+}
+
 TEST_CASE(multiway_compiled_private_ranges_canonicalize_duplicates_and_sample_into_worker_scratch)
 {
 	auto config = ranges();
@@ -123,7 +148,8 @@ TEST_CASE(multiway_private_joint_sampling_never_returns_a_board_card)
 TEST_CASE(multiway_private_rejects_impossible_joint_ranges_without_cartesian_expansion)
 {
 	auto config = ranges();
-	config.ranges[1] = config.ranges[0];
+	config.ranges[0] = { hand(14, 0, 13, 0) };
+	config.ranges[1] = { hand(14, 0, 13, 0) };
 	EXPECT_THROW(texas::sample_multiway_private_hands(config, 7), std::runtime_error);
 }
 
@@ -251,32 +277,22 @@ TEST_CASE(multiway_compiled_private_ranges_offer_nonthrowing_worker_sampling)
 	EXPECT_EQ(scratch.seat_count, 3U);
 }
 
-TEST_CASE(multiway_private_compiled_sampler_exposes_direct_one_shot_proposal_reach)
+TEST_CASE(multiway_private_compiled_sampler_conditions_each_draw_on_blockers)
 {
 	texas::MultiwayPrivateConfig config;
 	config.board = { c(2, 0), c(3, 1), c(4, 2) };
 	config.ranges = {
-		{ hand(14, 0, 13, 0), hand(12, 0, 11, 0) },
+		{ hand(14, 0, 13, 0) },
 		{ hand(14, 0, 10, 0), hand(9, 0, 8, 0) },
 	};
 	texas::MultiwayCompiledPrivateRanges compiled(config);
 	texas::MultiwayPrivateWorkerScratch scratch;
-	bool accepted = false;
-	for (std::uint64_t seed = 1; seed <= 100U; ++seed)
-	{
-		if (compiled.try_sample_into(seed, scratch))
-		{
-			accepted = true;
-			break;
-		}
-	}
-	EXPECT_TRUE(accepted);
-	// One of four independent draws collides. Compatible deals retain their
-	// direct independent proposal probability without global normalization.
-	EXPECT_NEAR(scratch.chance_reach, 0.25, 1e-12);
-	EXPECT_NEAR(scratch.conditional_deal_probability, 0.25, 1e-12);
+	EXPECT_TRUE(compiled.try_sample_into(1U, scratch));
+	EXPECT_TRUE(!overlap(scratch.holes[0], scratch.holes[1]));
+	EXPECT_NEAR(scratch.chance_reach, 1.0, 1e-12);
+	EXPECT_NEAR(scratch.conditional_deal_probability, 1.0, 1e-12);
 	EXPECT_NEAR(scratch.inclusion_reach, 1.0, 1e-12);
-	EXPECT_NEAR(scratch.proposal_reach, 0.25, 1e-12);
+	EXPECT_NEAR(scratch.proposal_reach, 1.0, 1e-12);
 	EXPECT_EQ(scratch.accepted_trajectories, 1U);
 	EXPECT_EQ(scratch.rejected_trajectories, 0U);
 	EXPECT_EQ(scratch.discarded_trajectories, 0U);
@@ -297,33 +313,26 @@ TEST_CASE(multiway_private_proposal_contract_is_identity_for_always_compatible_r
 	}
 }
 
-TEST_CASE(multiway_private_proposal_does_not_retry_after_a_collision)
+TEST_CASE(multiway_private_proposal_contract_avoids_colliding_marginal_draws)
 {
 	texas::MultiwayPrivateConfig config;
 	config.board = { c(2, 0), c(3, 1), c(4, 2) };
 	config.ranges = {
-		{ hand(14, 0, 13, 0), hand(12, 0, 11, 0) },
+		{ hand(14, 0, 13, 0) },
 		{ hand(14, 0, 10, 0), hand(9, 0, 8, 0) },
 	};
 	texas::MultiwayCompiledPrivateRanges compiled(config);
 	texas::MultiwayPrivateWorkerScratch scratch;
-	bool accepted = false;
-	for (std::uint64_t seed = 1; seed <= 100U; ++seed)
-	{
-		if (compiled.try_sample_into(seed, scratch))
-		{
-			accepted = true;
-			break;
-		}
-	}
-	EXPECT_TRUE(accepted);
+	EXPECT_TRUE(compiled.try_sample_into(1U, scratch));
+	EXPECT_TRUE(!overlap(scratch.holes[0], scratch.holes[1]));
 	EXPECT_EQ(scratch.attempts, 1U);
 	EXPECT_NEAR(scratch.inclusion_reach, 1.0, 1e-12);
-	EXPECT_NEAR(scratch.conditional_deal_probability, scratch.chance_reach, 1e-12);
-	EXPECT_NEAR(scratch.proposal_reach, scratch.chance_reach, 1e-12);
+	EXPECT_NEAR(scratch.chance_reach, 1.0, 1e-12);
+	EXPECT_NEAR(scratch.conditional_deal_probability, 1.0, 1e-12);
+	EXPECT_NEAR(scratch.proposal_reach, 1.0, 1e-12);
 }
 
-TEST_CASE(multiway_private_proposal_contract_never_records_retries)
+TEST_CASE(multiway_private_conditioned_sampler_records_one_sampling_pass)
 {
 	auto config = ranges();
 	config.ranges[0] = { hand(14, 0, 13, 0) };
@@ -346,30 +355,12 @@ TEST_CASE(multiway_private_proposal_contract_never_records_retries)
 	EXPECT_TRUE(observed_accept);
 }
 
-TEST_CASE(multiway_private_proposal_contract_marks_bounded_rejection_exhaustion)
+TEST_CASE(multiway_private_proposal_contract_reports_no_compatible_prefix)
 {
 	auto config = ranges();
 	config.ranges[0] = { hand(14, 0, 13, 0) };
-	config.ranges[1] = { hand(14, 0, 13, 0), hand(10, 0, 8, 0) };
-	texas::MultiwayCompiledPrivateRanges compiled(config);
-	bool observed_exhaustion = false;
-	for (std::uint64_t seed = 1; seed <= 100U; ++seed)
-	{
-		texas::MultiwayPrivateWorkerScratch scratch;
-		if (!compiled.try_sample_into(seed, scratch))
-		{
-			observed_exhaustion = true;
-			EXPECT_EQ(scratch.chance_reach, 0.0);
-			EXPECT_EQ(scratch.conditional_deal_probability, 0.0);
-			EXPECT_EQ(scratch.proposal_reach, 0.0);
-			EXPECT_NEAR(scratch.inclusion_reach, 1.0, 1e-12);
-			EXPECT_EQ(scratch.accepted_trajectories, 0U);
-			EXPECT_EQ(scratch.rejected_trajectories, 1U);
-			EXPECT_EQ(scratch.discarded_trajectories, 1U);
-			break;
-		}
-	}
-	EXPECT_TRUE(observed_exhaustion);
+	config.ranges[1] = { hand(14, 0, 13, 0) };
+	EXPECT_THROW(texas::MultiwayCompiledPrivateRanges(config), std::invalid_argument);
 }
 
 TEST_CASE(multiway_private_standalone_sample_preserves_compiled_proposal_fields)
@@ -402,8 +393,9 @@ TEST_CASE(multiway_private_proposal_contract_is_seed_deterministic_including_rea
 TEST_CASE(multiway_private_failed_try_sample_clears_reused_worker_scratch)
 {
 	auto config = ranges();
-	config.ranges[0] = { hand(14, 0, 13, 0) };
+	config.ranges[0] = { hand(14, 0, 13, 0), hand(12, 0, 11, 0) };
 	config.ranges[1] = { hand(14, 0, 13, 0), hand(10, 0, 8, 0) };
+	config.ranges[2] = { hand(12, 0, 11, 0) };
 	texas::MultiwayCompiledPrivateRanges compiled(config);
 	bool observed_failure = false;
 	for (std::uint64_t seed = 1; seed <= 20; ++seed)
