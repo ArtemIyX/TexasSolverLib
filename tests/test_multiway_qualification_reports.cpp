@@ -137,7 +137,7 @@ TEST_CASE(multiway_training_report_separates_tracy_provenance)
 	report.evidence = { MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 		MultiwayWorkflowProfileKind::Acceptance, identity };
 	report.instrumentation_kind = "tracy";
-	report.tracy_version = "0.14.2";
+	report.tracy_version = "0.14.1";
 	report.trace_capture_id = "capture-test";
 	report.allocation_probe_valid = false;
 	report.validate();

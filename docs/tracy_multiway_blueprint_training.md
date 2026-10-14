@@ -1,6 +1,6 @@
 # Tracy multiway training operator guide
 
-The repository uses Tracy 0.14.2 only in diagnostic binaries. The normal
+The repository uses Tracy 0.14.1 only in diagnostic binaries. The normal
 `texas` target remains the authoritative correctness and performance target.
 
 ## Built tools
@@ -20,7 +20,7 @@ build-tracy-capture/RelWithDebInfo/tracy-capture.exe
 build-tracy-csvexport/RelWithDebInfo/tracy-csvexport.exe
 ```
 
-All tools must be from Tracy 0.14.2. The client is configured for on-demand,
+All tools must be from Tracy 0.14.1. The client is configured for on-demand,
 localhost-only, IPv4 collection. Sampling, call stacks, locks, and Tracy
 memory hooks are disabled by default.
 

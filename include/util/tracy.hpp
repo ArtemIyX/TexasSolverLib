@@ -12,7 +12,7 @@ namespace texas::util
 
 #if defined(TEXASSOLVER_TRACY_ENABLED) && TEXASSOLVER_TRACY_ENABLED
 
-	inline constexpr const char* TEXASSOLVER_TRACY_VERSION = "0.14.2";
+	inline constexpr const char* TEXASSOLVER_TRACY_VERSION = "0.14.1";
 
 #define TEXASSOLVER_TRACY_ZONE_SCOPED(name) ZoneScopedN(name)
 #define TEXASSOLVER_TRACY_ZONE_NAMED(variable, name, active) ZoneNamedN(variable, name, active)

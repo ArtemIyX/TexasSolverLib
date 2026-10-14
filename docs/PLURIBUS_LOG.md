@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-14 - Align Tracy integration with 0.14.1
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Updated Tracy provenance, capture-tool version checks, manifests, and report
+  fixtures from 0.14.2 to the vendored 0.14.1 release.
+- Updated current Tracy operator and integration documentation while retaining
+  historical 0.14.2 capture records.
+
+### Files
+
+- `include/util/tracy.hpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `scripts/run_multiway_tracy_capture.ps1`
+- `scripts/run_multiway_tracy_training_capture.ps1`
+- `docs/tracy_multiway_blueprint_training.md`
+- `docs/tracy_multiway_blueprint_training_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Confirmed `external/tracy/public/common/TracyVersion.hpp` reports 0.14.1.
+- Ran `git diff --check` on the changed files successfully.
+- No build, test, benchmark, script, or solver run was performed by request.
+
+### Limitations
+
+- The Tracy 0.14.1 compatibility changes were not compiled or executed.
+
 ## 2026-10-14 - Plan Tracy multiway scaling remediation
 
 **Status:** Complete

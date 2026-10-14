@@ -78,10 +78,10 @@ foreach ($requiredPath in @($CaptureToolPath, $CsvExportToolPath, $TrainingScrip
 }
 
 $captureVersionOutput = (& $CaptureToolPath 2>&1 | Out-String)
-if ($captureVersionOutput -notmatch 'tracy-capture\s+0\.14\.2\b') {
-    throw "Expected Tracy capture tool version 0.14.2, got: $captureVersionOutput"
+if ($captureVersionOutput -notmatch 'tracy-capture\s+0\.14\.1\b') {
+    throw "Expected Tracy capture tool version 0.14.1, got: $captureVersionOutput"
 }
-Write-ScriptLog 'validated required tools and Tracy capture version 0.14.2'
+Write-ScriptLog 'validated required tools and Tracy capture version 0.14.1'
 
 $tracePath = Join-Path $OutputDirectory ($CaptureId + '.tracy')
 $csvPath = Join-Path $OutputDirectory ($CaptureId + '.csv')
@@ -212,7 +212,7 @@ $blueprintPath = Join-Path $OutputDirectory 'blueprint.bin'
 $checkpointDirectory = Join-Path $OutputDirectory 'checkpoints'
 $manifest = [ordered]@{
     schema_version = 1
-    tracy_version = '0.14.2'
+    tracy_version = '0.14.1'
     capture_id = $CaptureId
     captured_at_utc = (Get-Date).ToUniversalTime().ToString('o')
     git_commit = $gitCommit

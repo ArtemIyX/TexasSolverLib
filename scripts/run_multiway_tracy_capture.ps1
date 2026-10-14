@@ -41,8 +41,8 @@ foreach ($requiredPath in @($CaptureToolPath, $DiagnosticBinaryPath)) {
 }
 
 $captureVersionOutput = (& $CaptureToolPath 2>&1 | Out-String)
-if ($captureVersionOutput -notmatch 'tracy-capture\s+0\.14\.2\b') {
-    throw "Expected Tracy capture tool version 0.14.2, got: $captureVersionOutput"
+if ($captureVersionOutput -notmatch 'tracy-capture\s+0\.14\.1\b') {
+    throw "Expected Tracy capture tool version 0.14.1, got: $captureVersionOutput"
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -144,7 +144,7 @@ if ($traceBytes -le 0) {
 
 $manifest = [ordered]@{
     schema_version = 1
-    tracy_version = '0.14.2'
+    tracy_version = '0.14.1'
     capture_id = $CaptureId
     captured_at_utc = (Get-Date).ToUniversalTime().ToString('o')
     git_commit = $gitCommit
