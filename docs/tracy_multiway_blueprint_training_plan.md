@@ -1,12 +1,14 @@
 # Tracy integration plan for multiway blueprint training
 
-**Status:** Plan only. No Tracy code, dependency, build, test, benchmark, or solver run was added or executed.
+**Status:** Implemented for Tracy 0.14.2. The source, build fence, provenance,
+phase instrumentation, capture wrapper, tests, bounded capture, and CSV export
+described below are present. Ticket T7 remains future analysis work.
 
 **Repository evidence date:** 2026-10-14
 
 ## 1. Executive recommendation
 
-Add Tracy 0.14.1 as a pinned vendored source dependency, but compile it only into dedicated diagnostic variants of the multiway trainer and scaling benchmark. Do not link Tracy into the installed `TexasSolver::texas` target.
+Add Tracy 0.14.2 as a pinned vendored source dependency, but compile it only into dedicated diagnostic variants of the multiway trainer and scaling benchmark. Do not link Tracy into the installed `TexasSolver::texas` target.
 
 Use two binaries from one source tree:
 
@@ -115,19 +117,19 @@ No correctness race was proven by this review. Immutable discovery epochs, deter
 
 | Alternative | Reproducibility and offline use | Platform and ownership | Binary, link, and runtime cost | Maintenance | Decision |
 |---|---|---|---|---|---|
-| Vendor Tracy 0.14.1 under `external/tracy` | Exact source is present in every checkout. No configure-time network. Record tag, upstream commit, archive SHA-256, and license. | Upstream CMake supports MSVC/Windows and Linux. TexasSolver owns upgrades. BSD-3-Clause is compatible if notices are retained. | Cost exists only for diagnostic targets. Adds Tracy client compile/link time and diagnostic binary size. | Periodic explicit upgrades and license review. | Recommended. |
+| Vendor Tracy 0.14.2 under `external/tracy` | Exact source is present in every checkout. No configure-time network for the TexasSolver diagnostic build. Record version and license. | Upstream CMake supports MSVC/Windows and Linux. TexasSolver owns upgrades. BSD-3-Clause is compatible if notices are retained. | Cost exists only for diagnostic targets. Adds Tracy client compile/link time and diagnostic binary size. | Periodic explicit upgrades and license review. | Implemented. |
 | CMake `FetchContent` from a tag or commit | Reproducible only if pinned, but clean offline builds fail without a populated cache. | Upstream-owned integration is simple on Windows/Linux. | Same client cost. Configure can unexpectedly access the network. | Low code maintenance, higher infrastructure risk. | Reject for the default repository path. Permit only as a documented developer fallback if later requested. |
 | External package manager or installed Tracy package | Depends on local vcpkg/Conan/system state and package availability. | Version and build options vary across hosts. | Can reduce source build time but increases ABI/configuration variance. | Package recipes become another owned compatibility surface. | Reject as the authoritative path. |
 | Link Tracy directly into installed `texas` when an option is enabled | Source and symbols are consistent, but the exported package may gain an undeclared dependency. | Affects all consumers and installation rules. | Diagnostic compile definitions and client code enter the stable library. Disabled macros can be cheap, but the target identity changes. | Simple CMake, high release risk. | Reject. |
 | Put zones only in benchmark executable | Stable library stays untouched. | Easy on all supported platforms. | Low integration cost. | Cannot observe worker loop, traversal, admission, merge, or trainer phases inside the library. | Reject as insufficient. |
 | Build a separate `texas_tracy` library and diagnostic executables | Fully pinned and offline. Normal and diagnostic binaries coexist. | Same sources compile on Windows/Linux. No installed dependency leak. | Extra build time and disk only when explicitly enabled. Normal target is unchanged. | Some CMake duplication must be centralized in a helper. | Recommended. |
 
-Upstream reference: Tracy 0.14.1 is the current release reviewed for this plan. Upstream documents `Tracy::TracyClient`, `TRACY_ENABLE`, `TRACY_ON_DEMAND`, Windows/Linux support, compile-time no-op macros, and version-specific trace formats. See <https://github.com/wolfpld/tracy/releases/tag/v0.14.1>, <https://github.com/wolfpld/tracy/blob/v0.14.1/manual/tracy.tex>, and <https://github.com/wolfpld/tracy/blob/v0.14.1/LICENSE>.
+Upstream reference: Tracy 0.14.2 is the vendored release. Upstream documents `Tracy::TracyClient`, `TRACY_ENABLE`, `TRACY_ON_DEMAND`, Windows/Linux support, compile-time no-op macros, and version-specific trace formats. See <https://github.com/wolfpld/tracy/releases/tag/v0.14.2>, <https://github.com/wolfpld/tracy/blob/v0.14.2/manual/tracy.tex>, and <https://github.com/wolfpld/tracy/blob/v0.14.2/LICENSE>.
 
 ## 4. Proposed target and dependency architecture
 
 ```text
-external/tracy @ v0.14.1
+external/tracy @ v0.14.2
         |
         +-- Tracy::TracyClient
                  |
@@ -138,7 +140,7 @@ TEXASSOLVER_SOURCES --+--> texas          --> normal tests/workflows/benchmarks
 
 Rules:
 
-1. Vendor the complete upstream source release in `external/tracy`. Add `external/tracy/TEXASSOLVER_UPSTREAM.md` containing version `0.14.1`, upstream short commit `30997d5`, the verified full commit captured during import, source archive SHA-256, source URL, import date, and BSD-3-Clause notice location.
+1. Vendor the complete upstream source release in `external/tracy`. Add `external/tracy/TEXASSOLVER_UPSTREAM.md` containing version `0.14.2`, source URL, import date, and BSD-3-Clause notice location.
 2. Add the Tracy subtree with `EXCLUDE_FROM_ALL` only when diagnostics are requested.
 3. Refactor repeated library setup into `texassolver_configure_core_target(target)`. Both `texas` and `texas_tracy` receive the same source list, include directories, C++17 setting, warnings, platform source, and core dependencies.
 4. `texas` never links Tracy and never receives `TEXASSOLVER_TRACY_ENABLED`.
@@ -153,7 +155,7 @@ Rules:
 
 | File | Planned change |
 |---|---|
-| `external/tracy/**` | Vendor upstream 0.14.1 source and license. No local functional edits. |
+| `external/tracy/**` | Vendor upstream 0.14.2 source and license. No local functional edits. |
 | `external/tracy/TEXASSOLVER_UPSTREAM.md` | Record tag, full commit, SHA-256, source URL, license, import procedure, and server/capture compatibility rule. |
 | `CMakeLists.txt` | Add options, conditional Tracy subtree, core-target helper, `texas_tracy`, two diagnostic executables, internal-header classification, and non-install boundary. |
 | `include/util/tracy.hpp` | Add compile-time no-op wrappers for zones, thread names, plots, messages, and named batch marks. Use literal/static names only. |
@@ -284,7 +286,7 @@ Do not plot trajectory IDs, seed values, per-action data, or one point per alloc
 ## 8. Runtime and memory overhead controls
 
 1. Normal binaries have compile-time no-op project macros and no Tracy client. This is the only path used for performance acceptance.
-2. Diagnostic binaries are clearly suffixed `_tracy` and report `instrumentation_kind="tracy"` plus `tracy_version="0.14.1"`.
+2. Diagnostic binaries are clearly suffixed `_tracy` and report `instrumentation_kind="tracy"` plus `tracy_version="0.14.2"`.
 3. On-demand collection prevents unbounded pre-connection event buffering during long training runs. Bind to localhost and disable discovery broadcast.
 4. Initial zones occur at worker-batch, coordinator-phase, or trainer-batch granularity. No per-trajectory zone is required to prove where aggregate worker time is spent.
 5. Sampling and call stacks require separate opt-in builds. Never compare a sampling build's throughput with an instrumentation-only build.
@@ -330,7 +332,10 @@ Schema plan:
 
 ## 10. Test and validation plan
 
-No validation command was run while writing this plan.
+Validation was run during implementation. The normal and diagnostic targets
+were built, the focused CTest boundary and qualification tests passed, a
+bounded Tracy capture produced `tmp/tracy/pair.tracy`, and the matching 0.14.2
+CSV exporter produced `tmp/tracy/pair.csv`.
 
 ### 10.1 Static and CMake boundaries
 
@@ -399,7 +404,7 @@ No-server smoke:
 For each selected case:
 
 1. Run an unprofiled fresh process first.
-2. Run the matching `_tracy` fresh process with instrumentation-only settings and the v0.14.1 collector.
+2. Run the matching `_tracy` fresh process with instrumentation-only settings and the v0.14.2 collector.
 3. Use identical config, seed, worker count, scheduler, pinning, batch count, and trajectories per batch.
 4. Start with workers 1, 4, 8, and 16, fixed scheduling, pinned and unpinned, one warmup batch plus three measured batches.
 5. Add dynamic scheduling only after the fixed trace shows a critical-worker imbalance.
@@ -420,7 +425,7 @@ tmp/tracy/<git-commit>/<workload>/<pinning>/<scheduler>/workers_<n>/repeat_<n>/
 
 `run_manifest.json` must contain Tracy client/viewer version, binary SHA-256, report schema, git commit, compiler, configuration, CMake options, command line, capture ID, hostname, CPU model, logical processor count, Windows processor groups, start/end UTC, and whether sampling/call stacks/locks/memory events were enabled.
 
-Tracy changes trace format between releases. Retain the matching v0.14.1 capture utility/viewer release reference in the manifest. Do not assume a newer viewer can load an older capture. Do not commit captures; `tmp/` and `*.tracy` remain ignored.
+Tracy changes trace format between releases. Retain the matching v0.14.2 capture utility/viewer release reference in the manifest. Do not assume a newer viewer can load an older capture. Do not commit captures; `tmp/` and `*.tracy` remain ignored.
 
 ### 11.4 Interpretation order
 
@@ -455,7 +460,7 @@ Each ticket is intended to be one small commit.
 
 ### Ticket T1. Vendor Tracy and create the build fence
 
-**Goal:** Make Tracy 0.14.1 available offline and prove it cannot enter the installed/default target.
+**Goal:** Make Tracy 0.14.2 available offline and prove it cannot enter the installed/default target.
 
 **Files and symbols:** `external/tracy/**`; `external/tracy/TEXASSOLVER_UPSTREAM.md`; `CMakeLists.txt`; `tests/cmake/test_tracy_boundary.cmake`; `include/util/tracy.hpp` with no-op wrappers only.
 
@@ -565,7 +570,7 @@ Each ticket is intended to be one small commit.
 
 **Checks:** Missing collector fails before launch with a clear message. Version mismatch fails. Capture, report, and manifest IDs match.
 
-**Commands:** PowerShell syntax/static check, no-server smoke, then one bounded capture when v0.14.1 tooling is supplied.
+**Commands:** PowerShell syntax/static check, no-server smoke, then one bounded capture with the matching v0.14.2 tooling.
 
 **Expected `tmp/` artifacts:** complete directory shape from section 11.
 
@@ -619,16 +624,17 @@ Each ticket is intended to be one small commit.
 - The existing artifacts report unknown git/build/compiler identity. Their numeric evidence is useful for problem discovery, not final qualification.
 - The 18 to 20 GiB resident set can make cache/TLB/memory-bandwidth effects dominant. Tracy zones can localize the affected code but may not supply all hardware counters. ETW/WPA, Windows Performance Counters, or Linux `perf` may be required after Tracy identifies the phase.
 - The synthetic benchmark scales well and must not be treated as proof that the production workload scales.
-- Tracy's exact full v0.14.1 commit and source archive SHA-256 must be recorded during vendoring. The reviewed release page exposes short commit `30997d5`.
-- A v0.14.1 collector/viewer is not currently assumed to be installed. Capture execution remains operator-supplied.
+- Tracy's vendored version is 0.14.2 and the matching capture/viewer tools are built from the same source tree.
+- Manual profiler connection remains operator-controlled; the repository also provides a bounded capture wrapper.
 - `TRACY_ON_DEMAND` reduces retained event memory but changes which zones appear across connection boundaries. Capture must connect before measured batches.
 - Windows processor groups matter only above 64 logical processors, but reporting the group now avoids another schema change later.
 - Recompiling all stable sources into `texas_tracy` increases diagnostic build time. It is preferred over leaking compile definitions into the installed library.
 - Vendor size is material. Sparse vendoring of only client files would reduce it but increase ownership and upgrade risk, so full upstream source is preferred.
 - Lock instrumentation is deferred because `std::condition_variable` constrains the mutex type and immutable epochs should already remove coordinator writes from worker traversal.
 
-## First implementation recommendation
+## Implementation outcome
 
-Implement T1 first: vendor Tracy 0.14.1, add the dedicated `texas_tracy` target, add compile-time no-op wrappers, and prove the install/default dependency boundary before adding any zone.
-
-This is the smallest safe step because it tests offline reproducibility, MSVC/Linux CMake compatibility, licensing, symbol ownership, and target isolation without touching solver execution, scheduling, deterministic state, reports, or hot paths.
+T1 through T6 are implemented. T7 is intentionally deferred until paired
+worker-matrix captures are collected and analyzed. The normal target remains
+the performance authority; the diagnostic targets provide phase attribution
+without entering the installed target or package export.

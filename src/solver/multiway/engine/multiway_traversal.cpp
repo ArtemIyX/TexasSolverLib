@@ -1060,68 +1060,68 @@ namespace texas::solver::multiway
 					{
 						TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.active");
 						const auto active_start = std::chrono::steady_clock::now();
-					const auto process_range = [&](const MultiwayTrajectoryRange& range) {
-						for (auto local_id = range.begin;
-							local_id < range.end;
-							local_id += range.stride)
-						{
-							const bool has_deadline = deadline != std::chrono::steady_clock::time_point::max();
-							const bool cancellation_requested =
-								((local_id - range.begin) & 7U) == 0U && cancelled_.load(std::memory_order_relaxed);
-							if (cancellation_requested || (has_deadline && std::chrono::steady_clock::now() >= deadline))
+						const auto process_range = [&](const MultiwayTrajectoryRange& range) {
+							for (auto local_id = range.begin;
+								local_id < range.end;
+								local_id += range.stride)
 							{
-								cancelled_.store(true, std::memory_order_release);
-								break;
+								const bool has_deadline = deadline != std::chrono::steady_clock::time_point::max();
+								const bool cancellation_requested =
+									((local_id - range.begin) & 7U) == 0U && cancelled_.load(std::memory_order_relaxed);
+								if (cancellation_requested || (has_deadline && std::chrono::steady_clock::now() >= deadline))
+								{
+									cancelled_.store(true, std::memory_order_release);
+									break;
+								}
+								const auto trajectory_id = first_trajectory_id + local_id;
+								++scratch.attempted;
+								const auto accepted = traversal_.run(
+									traversal_.traverser_for_trajectory(trajectory_id),
+									trajectory_id,
+									multiway_deterministic_trajectory_seed(seed, trajectory_id),
+									scratch.stream,
+									iteration_weight,
+									&scratch.profile,
+									&scratch.continuation_stream,
+									active_batch_number_,
+									nullptr,
+									&scratch.action_menu_scratch,
+									immutable_epochs_ ? &scratch.discovery : nullptr);
+								scratch.peak_regret_delta_entries = std::max(
+									scratch.peak_regret_delta_entries, static_cast<std::uint64_t>(scratch.stream.size()));
+								scratch.peak_continuation_delta_entries = std::max(
+									scratch.peak_continuation_delta_entries, static_cast<std::uint64_t>(scratch.continuation_stream.size()));
+								scratch.peak_discovery_public_state_count = std::max(
+									scratch.peak_discovery_public_state_count, static_cast<std::uint64_t>(scratch.discovery.public_state_count()));
+								scratch.peak_discovery_row_count = std::max(
+									scratch.peak_discovery_row_count, static_cast<std::uint64_t>(scratch.discovery.row_count()));
+								if (accepted)
+								{
+									++scratch.accepted;
+								}
+								else
+								{
+									++scratch.discarded;
+								}
 							}
-							const auto trajectory_id = first_trajectory_id + local_id;
-							++scratch.attempted;
-							const auto accepted = traversal_.run(
-								traversal_.traverser_for_trajectory(trajectory_id),
-								trajectory_id,
-								multiway_deterministic_trajectory_seed(seed, trajectory_id),
-								scratch.stream,
-								iteration_weight,
-								&scratch.profile,
-								&scratch.continuation_stream,
-								active_batch_number_,
-								nullptr,
-								&scratch.action_menu_scratch,
-								immutable_epochs_ ? &scratch.discovery : nullptr);
-			scratch.peak_regret_delta_entries = std::max(
-				scratch.peak_regret_delta_entries, static_cast<std::uint64_t>(scratch.stream.size()));
-			scratch.peak_continuation_delta_entries = std::max(
-				scratch.peak_continuation_delta_entries, static_cast<std::uint64_t>(scratch.continuation_stream.size()));
-			scratch.peak_discovery_public_state_count = std::max(
-				scratch.peak_discovery_public_state_count, static_cast<std::uint64_t>(scratch.discovery.public_state_count()));
-			scratch.peak_discovery_row_count = std::max(
-				scratch.peak_discovery_row_count, static_cast<std::uint64_t>(scratch.discovery.row_count()));
-			if (accepted)
+						};
+						{
+							TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traversal");
+							if (scheduler_mode_ == MultiwaySchedulerMode::Fixed)
 							{
-								++scratch.accepted;
+								process_range(worker_batches_[worker_index].trajectories);
 							}
 							else
 							{
-								++scratch.discarded;
+								while (!cancelled_.load(std::memory_order_relaxed))
+								{
+									const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
+									if (chunk_index >= chunk_count)
+										break;
+									process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index));
+								}
 							}
 						}
-					};
-					{
-						TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traversal");
-						if (scheduler_mode_ == MultiwaySchedulerMode::Fixed)
-						{
-							process_range(worker_batches_[worker_index].trajectories);
-						}
-						else
-						{
-							while (!cancelled_.load(std::memory_order_relaxed))
-							{
-								const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
-								if (chunk_index >= chunk_count)
-									break;
-								process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index));
-							}
-						}
-					}
 					scratch.active_nanoseconds = static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - active_start)
@@ -1195,27 +1195,27 @@ namespace texas::solver::multiway
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.batch.dispatch_wait");
 			{
 				std::lock_guard<std::mutex> lock(pool_mutex_);
-			if (batch_active_)
-			{
-				throw std::logic_error("multiway root batch runner does not support concurrent batches");
-			}
-			batch_active_ = true;
-			++batch_generation_;
-			completed_workers_.store(0U, std::memory_order_relaxed);
-			active_batch_count_ = batch_count;
-			active_trajectory_count_ = trajectory_count;
-			active_chunk_count_ = scheduler_mode_ == MultiwaySchedulerMode::Dynamic
-				? MultiwayScheduler::dynamic_chunk_count(trajectory_count)
-				: 0U;
-			next_dynamic_chunk_.store(0U, std::memory_order_relaxed);
-			active_first_trajectory_id_ = first_trajectory_id;
-			active_seed_ = seed;
-			active_iteration_weight_ = iteration_weight;
-			active_deadline_ = deadline;
-			worker_error_ = nullptr;
-			cancelled_.store(false, std::memory_order_release);
-			notification_timestamp_nanoseconds_ = steady_now_nanoseconds();
-			batch_completion_timestamp_nanoseconds_.store(0U, std::memory_order_relaxed);
+				if (batch_active_)
+				{
+					throw std::logic_error("multiway root batch runner does not support concurrent batches");
+				}
+				batch_active_ = true;
+				++batch_generation_;
+				completed_workers_.store(0U, std::memory_order_relaxed);
+				active_batch_count_ = batch_count;
+				active_trajectory_count_ = trajectory_count;
+				active_chunk_count_ = scheduler_mode_ == MultiwaySchedulerMode::Dynamic
+					? MultiwayScheduler::dynamic_chunk_count(trajectory_count)
+					: 0U;
+				next_dynamic_chunk_.store(0U, std::memory_order_relaxed);
+				active_first_trajectory_id_ = first_trajectory_id;
+				active_seed_ = seed;
+				active_iteration_weight_ = iteration_weight;
+				active_deadline_ = deadline;
+				worker_error_ = nullptr;
+				cancelled_.store(false, std::memory_order_release);
+				notification_timestamp_nanoseconds_ = steady_now_nanoseconds();
+				batch_completion_timestamp_nanoseconds_.store(0U, std::memory_order_relaxed);
 			}
 			for (std::size_t worker = 0U; worker < batch_count; ++worker)
 			{
@@ -1272,7 +1272,7 @@ namespace texas::solver::multiway
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.collect");
 			for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
 			{
-			const auto& scratch = worker_scratch_[worker_index];
+				const auto& scratch = worker_scratch_[worker_index];
 			result.trajectories_attempted += scratch.attempted;
 			result.trajectories_accepted += scratch.accepted;
 			result.trajectories_discarded += scratch.discarded;

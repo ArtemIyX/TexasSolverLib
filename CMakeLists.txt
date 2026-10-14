@@ -395,6 +395,7 @@ if (TEXASSOLVER_BUILD_TRACY_DIAGNOSTICS)
     set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
     set(TRACY_ON_DEMAND ${TEXASSOLVER_TRACY_ON_DEMAND} CACHE BOOL "" FORCE)
     set(TRACY_ONLY_LOCALHOST ON CACHE BOOL "" FORCE)
+    set(TRACY_ONLY_IPV4 ON CACHE BOOL "" FORCE)
     set(TRACY_NO_BROADCAST ON CACHE BOOL "" FORCE)
     set(TRACY_NO_SAMPLING ON CACHE BOOL "" FORCE)
     if (TEXASSOLVER_TRACY_SAMPLING)
@@ -548,7 +549,7 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
             add_executable(texas_multiway_train_tracy
                 examples/multiway_workflow_main.cpp
             )
-            target_link_libraries(texas_multiway_train_tracy PRIVATE texas_tracy)
+            target_link_libraries(texas_multiway_train_tracy PRIVATE texas_tracy Tracy::TracyClient)
             target_compile_definitions(texas_multiway_train_tracy PRIVATE TEXASSOLVER_TRACY_ENABLED=1)
             target_include_directories(texas_multiway_train_tracy PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -558,7 +559,7 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
             add_executable(texas_solver_multiway_training_scaling_tracy
                 examples/benchmarks/multiway_training_scaling_main.cpp
             )
-            target_link_libraries(texas_solver_multiway_training_scaling_tracy PRIVATE texas_tracy)
+            target_link_libraries(texas_solver_multiway_training_scaling_tracy PRIVATE texas_tracy Tracy::TracyClient)
             target_compile_definitions(texas_solver_multiway_training_scaling_tracy PRIVATE TEXASSOLVER_TRACY_ENABLED=1)
             target_include_directories(texas_solver_multiway_training_scaling_tracy PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}/include
