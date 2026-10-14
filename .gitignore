@@ -71,6 +71,7 @@ doxygen_latex/
 *.gcda
 *.gcno
 *.prof
+*.tracy
 coverage/
 lcov.info
 artifacts/*

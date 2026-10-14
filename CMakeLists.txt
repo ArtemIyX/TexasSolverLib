@@ -13,6 +13,12 @@ option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
 option(TEXASSOLVER_BUILD_LEGACY_RESEARCH "Build the legacy vector DCFR research component" OFF)
 option(TEXASSOLVER_BUILD_RESEARCH_EXAMPLES "Build benchmark and backend-comparison examples" OFF)
 option(TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH "Build fixed-private sampled HUNL reference kernels" OFF)
+option(TEXASSOLVER_BUILD_TRACY_DIAGNOSTICS "Build non-installed Tracy diagnostic targets" OFF)
+option(TEXASSOLVER_TRACY_ON_DEMAND "Collect Tracy events only while a collector is connected" ON)
+option(TEXASSOLVER_TRACY_SAMPLING "Enable Tracy statistical sampling" OFF)
+option(TEXASSOLVER_TRACY_CALLSTACKS "Enable Tracy call stacks" OFF)
+option(TEXASSOLVER_TRACY_LOCKS "Enable selected Tracy lock instrumentation" OFF)
+option(TEXASSOLVER_TRACY_MEMORY "Enable explicit Tracy solver allocation events" OFF)
 
 if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES AND NOT TEXASSOLVER_BUILD_EXAMPLES)
     message(FATAL_ERROR
@@ -134,6 +140,7 @@ set(TEXASSOLVER_COMPATIBILITY_HEADERS
     include/core/legacy_namespace_compat.hpp
 )
 set(TEXASSOLVER_STABLE_INTERNAL_HEADERS
+    include/util/tracy.hpp
     include/solver/hunl/sampled/hunl_sampled_trajectory.hpp
     include/solver/multiway/resolver/multiway_resolver_policy.hpp
 )
@@ -306,6 +313,28 @@ endfunction()
 
 texassolver_verify_source_classification()
 
+function(texassolver_configure_core_target target)
+    target_sources(${target} PRIVATE
+        ${TEXASSOLVER_SOURCES}
+        ${TEXASSOLVER_PUBLIC_HEADERS}
+    )
+    target_link_libraries(${target} PRIVATE pheval Threads::Threads)
+    if (WIN32)
+        target_link_libraries(${target} PRIVATE Cabinet)
+    endif()
+    target_include_directories(${target}
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
+    target_compile_features(${target} PUBLIC cxx_std_17)
+    if (MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
 function(texassolver_configure_internal_target target)
     target_include_directories(${target}
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -351,28 +380,41 @@ unset(_texassolver_evaluator_options)
 
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
-
-target_sources(texas PRIVATE
-    ${TEXASSOLVER_SOURCES}
-    ${TEXASSOLVER_PUBLIC_HEADERS}
-)
-target_link_libraries(texas PRIVATE pheval Threads::Threads)
-if (WIN32)
-    target_link_libraries(texas PRIVATE Cabinet)
-endif()
-
-target_include_directories(texas
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
-
-target_compile_features(texas PUBLIC cxx_std_17)
+texassolver_configure_core_target(texas)
 
 set_target_properties(texas PROPERTIES
     EXPORT_NAME texas
     OUTPUT_NAME texas
 )
+
+if (TEXASSOLVER_BUILD_TRACY_DIAGNOSTICS)
+    if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/tracy/CMakeLists.txt")
+        message(FATAL_ERROR "TEXASSOLVER_BUILD_TRACY_DIAGNOSTICS requires vendored external/tracy")
+    endif()
+    set(TRACY_STATIC ON CACHE BOOL "" FORCE)
+    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ${TEXASSOLVER_TRACY_ON_DEMAND} CACHE BOOL "" FORCE)
+    set(TRACY_ONLY_LOCALHOST ON CACHE BOOL "" FORCE)
+    set(TRACY_NO_BROADCAST ON CACHE BOOL "" FORCE)
+    set(TRACY_NO_SAMPLING ON CACHE BOOL "" FORCE)
+    if (TEXASSOLVER_TRACY_SAMPLING)
+        set(TRACY_NO_SAMPLING OFF CACHE BOOL "" FORCE)
+    endif()
+    set(TRACY_NO_CALLSTACK ON CACHE BOOL "" FORCE)
+    if (TEXASSOLVER_TRACY_CALLSTACKS)
+        set(TRACY_NO_CALLSTACK OFF CACHE BOOL "" FORCE)
+    endif()
+    set(TRACY_LTO OFF CACHE BOOL "" FORCE)
+    set(TRACY_NO_EXIT OFF CACHE BOOL "" FORCE)
+    set(TRACY_NO_CONTEXT_SWITCH OFF CACHE BOOL "" FORCE)
+    add_subdirectory(external/tracy EXCLUDE_FROM_ALL)
+
+    add_library(texas_tracy STATIC)
+    texassolver_configure_core_target(texas_tracy)
+    target_compile_definitions(texas_tracy PRIVATE TEXASSOLVER_TRACY_ENABLED=1)
+    target_link_libraries(texas_tracy PRIVATE Tracy::TracyClient)
+    set_target_properties(texas_tracy PROPERTIES OUTPUT_NAME texas_tracy)
+endif()
 
 if (TEXASSOLVER_BUILD_LEGACY_RESEARCH)
     add_library(texas_legacy_vector STATIC
@@ -399,12 +441,6 @@ if (TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
     texassolver_configure_internal_target(texas_hunl_fixed_research)
     target_link_libraries(texas_hunl_fixed_research PUBLIC texas)
     add_library(TexasSolver::hunl_fixed_research ALIAS texas_hunl_fixed_research)
-endif()
-
-if (MSVC)
-    target_compile_options(texas PRIVATE /W4)
-else()
-    target_compile_options(texas PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 install(TARGETS texas
@@ -507,6 +543,28 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
         )
         target_link_libraries(texas_solver_multiway_training_scaling PRIVATE texas)
         texassolver_configure_example_target(texas_solver_multiway_training_scaling)
+
+        if (TEXASSOLVER_BUILD_TRACY_DIAGNOSTICS)
+            add_executable(texas_multiway_train_tracy
+                examples/multiway_workflow_main.cpp
+            )
+            target_link_libraries(texas_multiway_train_tracy PRIVATE texas_tracy)
+            target_compile_definitions(texas_multiway_train_tracy PRIVATE TEXASSOLVER_TRACY_ENABLED=1)
+            target_include_directories(texas_multiway_train_tracy PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+                ${CMAKE_CURRENT_SOURCE_DIR}/external/tracy/public
+            )
+
+            add_executable(texas_solver_multiway_training_scaling_tracy
+                examples/benchmarks/multiway_training_scaling_main.cpp
+            )
+            target_link_libraries(texas_solver_multiway_training_scaling_tracy PRIVATE texas_tracy)
+            target_compile_definitions(texas_solver_multiway_training_scaling_tracy PRIVATE TEXASSOLVER_TRACY_ENABLED=1)
+            target_include_directories(texas_solver_multiway_training_scaling_tracy PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/include
+                ${CMAKE_CURRENT_SOURCE_DIR}/external/tracy/public
+            )
+        endif()
     endif()
 
 endif()
@@ -638,6 +696,12 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
         COMMAND ${CMAKE_COMMAND}
             "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_source_classification.cmake
+    )
+    add_test(
+        NAME test_tracy_boundary
+        COMMAND ${CMAKE_COMMAND}
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/cmake/test_tracy_boundary.cmake
     )
     add_test(
         NAME test_legacy_namespace_boundary

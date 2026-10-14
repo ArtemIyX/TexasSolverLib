@@ -2,29 +2,17 @@ if ($args.Count -eq 0) {
     throw 'A command is required.'
 }
 
-$pathEntries = @(
+$pathValues = @(
     [Environment]::GetEnvironmentVariables('Process').GetEnumerator() |
         Where-Object { $_.Key -ieq 'Path' }
 )
-$paths = $pathEntries.Value -split ';' |
+$paths = $pathValues.Value -split ';' |
     Where-Object { $_ } |
     Select-Object -Unique
 
-# A malformed inherited environment can contain both Path and PATH. Delete
-# every copy before adding one canonical entry for child processes.
-while ($true) {
-    $duplicates = @(
-        [Environment]::GetEnvironmentVariables('Process').GetEnumerator() |
-            Where-Object { $_.Key -ieq 'Path' }
-    )
-    if ($duplicates.Count -eq 0) {
-        break
-    }
-    foreach ($entry in $duplicates) {
-        [Environment]::SetEnvironmentVariable($entry.Key, $null, 'Process')
-    }
-}
-
+# Keep one normalized PATH value for child processes. Environment variable
+# names are case-insensitive on Windows, so deleting every case variant can
+# loop indefinitely when the host exposes duplicate entries.
 [Environment]::SetEnvironmentVariable('Path', ($paths -join ';'), 'Process')
 
 $command = $args[0]
