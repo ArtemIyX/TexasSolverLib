@@ -18,7 +18,7 @@ foreach(required_text
     endif()
 endforeach()
 
-if(project_cmake MATCHES "target_link_libraries\\(texas[^\\n]*Tracy")
+if(project_cmake MATCHES "target_link_libraries\\(texas[ \\t\\r\\n]+[^\\)]*Tracy")
     message(FATAL_ERROR "normal texas target must not link Tracy")
 endif()
 if(project_cmake MATCHES "install\\([^\\)]*texas_tracy")

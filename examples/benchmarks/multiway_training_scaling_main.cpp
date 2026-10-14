@@ -6,6 +6,7 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/continuation/multiway_continuation_selector.hpp"
+#include "util/tracy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -418,6 +419,7 @@ namespace
 
 	int run(const BenchmarkConfig& config)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "fixture=three_player_river_depth_one"
 				  << " hardware_concurrency=" << std::thread::hardware_concurrency()
 				  << " worker_affinity=pinned_logical_processor"
@@ -476,6 +478,7 @@ int main(int argc, char** argv) noexcept
 {
 	try
 	{
+		TEXASSOLVER_TRACY_SET_THREAD_NAME("mw.train.main");
 		return run(parse_args(argc, argv));
 	}
 	catch (const std::exception& error)
