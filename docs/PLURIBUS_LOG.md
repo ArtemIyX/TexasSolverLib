@@ -1,5 +1,62 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-14 - Plan Tracy multiway scaling remediation
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Analyzed checkpoint construction and serialization, deterministic discovery
+  admission, worker scheduling, and capacity contracts against the Tracy
+  scaling QA evidence.
+- Defined scoped implementation, validation, and performance gates for faster
+  checkpoint output, bulk coordinator admission, and multi-worker scaling.
+
+### Files
+
+- `docs/plans/tracy_multiway_scaling_remediation_plan_2026-10-14.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked the plan against the captured JSON metrics and the responsible
+  checkpoint, public-catalog, admission, scheduling, and memory-preflight code.
+- Reviewed the documentation diff.
+- No build, test, benchmark, or solver run was performed because this was an
+  analysis and planning task.
+
+### Limitations
+
+- Performance targets require future implementation and measurement.
+
+## 2026-10-14 - Document Tracy multiway scaling QA findings
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Added a developer-facing QA report comparing the one-worker and four-worker
+  real-workflow Tracy captures.
+- Documented the weak 12.3% batch speedup, coordinator admission regression,
+  worker imbalance, and 198-240 second checkpoint-write cost.
+- Separated batch timing evidence from lifetime worker waits and end-to-end
+  artifact output timing.
+
+### Files
+
+- `docs/reports/tracy_multiway_training_scaling_qa_2026-10-14.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Compared both Tracy CSV exports with their matching `report.json` files.
+- Cross-checked accepted trajectories, failure status, and deterministic merge
+  fingerprints for both worker counts.
+- No build, test, benchmark, or solver run was required for this documentation-only task.
+
+### Limitations
+
+- Source captures contain one batch and one sample per worker count.
+- Checkpoint sub-operation timing is not yet instrumented.
+
 ## 2026-10-14 - Add complete CLI Tracy training capture workflow
 
 **Status:** Complete
