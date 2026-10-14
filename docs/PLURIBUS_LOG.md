@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-14 - Plan Tracy diagnostics for multiway training scaling
+
+**Status:** Complete
+**Completed:** 2026-10-14
+
+- Verified the current multiway build, profiling, worker, trainer, report, and measurement boundaries.
+- Documented proven production-like scaling regressions and stale evidence limits.
+- Defined an offline, target-isolated Tracy integration with exact zones, controls, validation, capture protocol, and commit-sized tickets.
+
+### Files
+
+- `docs/tracy_multiway_blueprint_training_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Source, CMake, scripts, retained JSON evidence, and upstream Tracy 0.14.1 documentation were reviewed.
+- Builds, tests, benchmarks, installs, and solver jobs were not run because the task explicitly requested a plan only.
+
+### Limitations
+
+- The retained production-like reports use older schemas and unknown binary provenance. A fresh unprofiled baseline and Tracy captures are still required to attribute the scaling loss.
+
 ## 2026-10-13 - Record multiway worker-matrix telemetry
 
 **Status:** Complete
