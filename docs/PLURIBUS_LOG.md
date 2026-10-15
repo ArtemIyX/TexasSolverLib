@@ -4,7 +4,11 @@
 
 **Status:** Implementation complete; operator validation pending
 **Completed:** 2026-10-15
-**Implementation commit:** `beb507f PB-3 Multiway: Implement AD2-AD4 discovery merge`
+**Implementation commits:**
+
+- `beb507f PB-3 Multiway: Implement AD2-AD4 discovery merge`
+- `3ceee18 PB-3 Multiway: Avoid redundant admission reconstruction`
+- `b03caa2 PB-3 Tests: Cover shuffled discovery candidates`
 
 - Added worker-local discovery preparation that sorts deterministically,
   deduplicates candidates in place, and rejects conflicting public-state or
@@ -16,8 +20,8 @@
   admission ordering.
 - Reused coordinator merge/order buffers and removed repeated parent descriptor
   reconstruction from the admission path.
-- Added focused discovery-stream tests for compatible duplicate collapse and
-  conflicting candidate rejection.
+- Added focused discovery-stream tests for shuffled input, compatible duplicate
+  collapse, and conflicting candidate rejection.
 
 ### Files
 
