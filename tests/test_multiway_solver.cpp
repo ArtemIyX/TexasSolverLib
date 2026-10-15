@@ -803,6 +803,70 @@ TEST_CASE(multiway_solver_discovery_stream_rejects_conflicting_candidates)
 	EXPECT_THROW(rows.prepare_for_merge(), std::invalid_argument);
 }
 
+TEST_CASE(multiway_solver_discovery_merge_collapses_cross_worker_duplicates)
+{
+	texas::MultiwayDiscoveryStream first(8U);
+	texas::MultiwayDiscoveryStream second(8U);
+	const auto first_child = checked_action_child_public_state();
+	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
+	EXPECT_TRUE(first.try_append_public_state(first_child));
+	EXPECT_TRUE(second.try_append_public_state(second_child));
+	EXPECT_TRUE(second.try_append_public_state(first_child));
+	EXPECT_TRUE(first.try_append_row(root_row()));
+	EXPECT_TRUE(second.try_append_row(root_row()));
+	first.prepare_for_merge();
+	second.prepare_for_merge();
+
+	const std::vector<const texas::MultiwayDiscoveryStream*> streams = { &first, &second };
+	std::vector<texas::MultiwayPublicStateDescriptor> public_states;
+	std::vector<texas::MultiwaySparseRowShape> rows;
+	std::vector<std::size_t> cursors;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(streams, public_states, rows, cursors);
+
+	EXPECT_EQ(public_states.size(), 2U);
+	EXPECT_EQ(rows.size(), 1U);
+	EXPECT_TRUE(public_states[0].id < public_states[1].id);
+
+	texas::MultiwayDiscoveryStream conflicting(4U);
+	auto conflicting_child = first_child;
+	conflicting_child.betting.current_bet += 1;
+	EXPECT_TRUE(conflicting.try_append_public_state(conflicting_child));
+	conflicting.prepare_for_merge();
+	const std::vector<const texas::MultiwayDiscoveryStream*> conflicting_streams = { &first, &conflicting };
+	EXPECT_THROW(texas::solver::multiway::detail::merge_multiway_discovery_streams(conflicting_streams, public_states, rows, cursors), std::invalid_argument);
+}
+
+TEST_CASE(multiway_solver_discovery_parent_order_rejects_cycles_and_unresolved_parents)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	texas::solver::multiway::detail::MultiwayDiscoveryParentOrderScratch scratch;
+
+	std::vector<texas::MultiwayPublicStateDescriptor> ordered(2U);
+	ordered[0].id = { 500U };
+	ordered[0].parent_id = root_public_state().id;
+	ordered[1].id = { 501U };
+	ordered[1].parent_id = ordered[0].id;
+	texas::solver::multiway::detail::build_multiway_parent_first_order(ordered, coordinator, diagnostics, scratch);
+	EXPECT_EQ(scratch.order.size(), 2U);
+	EXPECT_EQ(scratch.order[0], 0U);
+	EXPECT_EQ(scratch.order[1], 1U);
+	EXPECT_EQ(scratch.depths[0], 1U);
+	EXPECT_EQ(scratch.depths[1], 2U);
+
+	std::vector<texas::MultiwayPublicStateDescriptor> unresolved(1U);
+	unresolved[0].id = { 600U };
+	unresolved[0].parent_id = { 999U };
+	EXPECT_THROW(texas::solver::multiway::detail::build_multiway_parent_first_order(unresolved, coordinator, diagnostics, scratch), std::invalid_argument);
+
+	std::vector<texas::MultiwayPublicStateDescriptor> cycle(2U);
+	cycle[0].id = { 700U };
+	cycle[0].parent_id = { 701U };
+	cycle[1].id = { 701U };
+	cycle[1].parent_id = { 700U };
+	EXPECT_THROW(texas::solver::multiway::detail::build_multiway_parent_first_order(cycle, coordinator, diagnostics, scratch), std::invalid_argument);
+}
+
 TEST_CASE(multiway_solver_merge_rejects_missing_misindexed_or_unsorted_worker_streams)
 {
 	texas::MultiwaySolverCoordinator coordinator(valid_request());

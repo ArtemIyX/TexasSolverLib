@@ -79,6 +79,29 @@ namespace texas::solver::multiway
 		std::uint64_t missing_lookup_requests_ = 0U;
 	};
 
+	namespace detail
+	{
+		struct MultiwayDiscoveryParentOrderScratch
+		{
+			std::vector<std::size_t> order;
+			std::vector<std::uint32_t> depths;
+			std::vector<std::uint8_t> colors;
+			std::vector<std::size_t> stack;
+		};
+
+		void merge_multiway_discovery_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& public_states,
+			std::vector<MultiwaySparseRowShape>& rows,
+			std::vector<std::size_t>& cursors);
+
+		void build_multiway_parent_first_order(
+			const std::vector<MultiwayPublicStateDescriptor>& candidates,
+			const MultiwaySolverCoordinator& coordinator,
+			MultiwayAdmissionDiagnostics& diagnostics,
+			MultiwayDiscoveryParentOrderScratch& scratch);
+	} // namespace detail
+
 	struct MultiwayTraversalPruningConfig
 	{
 		bool enabled = false;
@@ -336,10 +359,7 @@ namespace texas::solver::multiway
 		std::vector<std::size_t> discovery_merge_cursors_;
 		std::vector<MultiwayPublicStateDescriptor> discovery_public_states_;
 		std::vector<MultiwaySparseRowShape> discovery_rows_;
-		std::vector<std::size_t> admission_order_;
-		std::vector<std::uint32_t> admission_depths_;
-		std::vector<std::uint8_t> admission_colors_;
-		std::vector<std::size_t> admission_stack_;
+		detail::MultiwayDiscoveryParentOrderScratch admission_order_scratch_;
 		std::vector<MultiwayWorkerBatch> worker_batches_;
 		std::vector<std::thread> threads_;
 		std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;

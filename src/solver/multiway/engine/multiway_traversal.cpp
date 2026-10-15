@@ -238,7 +238,7 @@ namespace texas::solver::multiway
 
 		void build_parent_first_order(
 			const std::vector<MultiwayPublicStateDescriptor>& candidates,
-			MultiwaySolverCoordinator& coordinator,
+			const MultiwaySolverCoordinator& coordinator,
 			MultiwayAdmissionDiagnostics& diagnostics,
 			std::vector<std::size_t>& order,
 			std::vector<std::uint32_t>& depths,
@@ -352,6 +352,30 @@ namespace texas::solver::multiway
 		};
 
 	} // namespace
+
+	namespace detail
+	{
+		void merge_multiway_discovery_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& public_states,
+			std::vector<MultiwaySparseRowShape>& rows,
+			std::vector<std::size_t>& cursors)
+		{
+			merge_public_state_streams(streams, public_states, cursors);
+			merge_row_streams(streams, rows, cursors);
+		}
+
+		void build_multiway_parent_first_order(
+			const std::vector<MultiwayPublicStateDescriptor>& candidates,
+			const MultiwaySolverCoordinator& coordinator,
+			MultiwayAdmissionDiagnostics& diagnostics,
+			MultiwayDiscoveryParentOrderScratch& scratch)
+		{
+			build_parent_first_order(
+				candidates, coordinator, diagnostics, scratch.order, scratch.depths,
+				scratch.colors, scratch.stack);
+		}
+	} // namespace detail
 
 	bool MultiwayDiscoveryStream::try_append_public_state(const MultiwayPublicStateDescriptor& state)
 	{
@@ -1665,8 +1689,9 @@ namespace texas::solver::multiway
 			}
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge");
-				merge_public_state_streams(discovery_stream_views_, discovery_public_states_, discovery_merge_cursors_);
-				merge_row_streams(discovery_stream_views_, discovery_rows_, discovery_merge_cursors_);
+				detail::merge_multiway_discovery_streams(
+					discovery_stream_views_, discovery_public_states_, discovery_rows_,
+					discovery_merge_cursors_);
 			}
 			result.admission_diagnostics.globally_unique_public_state_candidates =
 				static_cast<std::uint64_t>(discovery_public_states_.size());
@@ -1676,13 +1701,13 @@ namespace texas::solver::multiway
 				*coordinator_, result.admission_diagnostics);
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_parent_order");
-				build_parent_first_order(
+				detail::build_multiway_parent_first_order(
 					discovery_public_states_, *coordinator_, result.admission_diagnostics,
-					admission_order_, admission_depths_, admission_colors_, admission_stack_);
+					admission_order_scratch_);
 			}
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_admit");
-				for (const auto index : admission_order_)
+				for (const auto index : admission_order_scratch_.order)
 					coordinator_->admit_public_state(discovery_public_states_[index]);
 			}
 			for (const auto& row : discovery_rows_)
