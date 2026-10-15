@@ -2,7 +2,7 @@
 
 ## 2026-10-15 - Correct checkpoint payload hash ordering
 
-**Status:** Implemented, operator validation pending
+**Status:** Complete
 **Completed:** 2026-10-15
 **Implementation commit:** `ba3b7c0 PB-3 Multiway: Preserve checkpoint payload hash order`
 
@@ -19,15 +19,19 @@
 ### Validation
 
 - `git diff --cached --check` passed before commit.
+- Operator reported the targeted round-trip and tampering test passed.
+- Operator reported `acceptance_pass: true` for
+  `tmp/tracy/cp3-1w-1x1000-300s-rerun/report.json` after matching the
+  one-batch workload and expected deterministic merge fingerprint.
 - No build, test, benchmark, executable, or solver script was run by Codex.
 
 ### Limitations
 
-- The targeted round-trip and tampering test must be rerun by the operator.
+- None identified.
 
 ## 2026-10-15 - Implement CP3-CP5 checkpoint write path
 
-**Status:** Implemented, operator validation pending
+**Status:** Complete
 **Completed:** 2026-10-15
 
 - Added a sealed checkpoint writer for the trusted training workflow while
@@ -57,12 +61,15 @@
 - Reviewed the changed C++ with the TexasSolver C++ review rules.
 - `git diff --check` passed for the staged changes.
 - Commits: `9b32e42`, `b533176`, `15b64ac`.
+- Operator reported checkpoint save/load and tampering validation passed.
+- Operator reported CP3-CP5 Tracy acceptance passed with complete phase
+  coverage, byte accounting, zero discarded trajectories, and the expected
+  deterministic merge fingerprint.
 - No build, test, benchmark, executable, or solver script was run by Codex.
 
 ### Limitations
 
-- Operator byte-compatibility, save/load, existing-destination replacement,
-  publication-mode, and Windows throughput checks remain required.
+- None identified.
 
 ## 2026-10-15 - Implement CP2 linear compact checkpoint export
 
