@@ -380,10 +380,10 @@ namespace texas::solver::multiway
 			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->validation_nanoseconds, started);
 		}
 		const auto temporary = path.string() + ".tmp";
-		const auto encoding_started = std::chrono::steady_clock::now();
 		std::ofstream out;
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.binary_encoding_write");
+			const auto encoding_started = std::chrono::steady_clock::now();
 			out.open(temporary, std::ios::binary | std::ios::trunc);
 			if (!out)
 				throw std::runtime_error("multiway training checkpoint temporary file cannot be opened");
@@ -445,14 +445,21 @@ namespace texas::solver::multiway
 				write_double(out, value);
 			if (telemetry != nullptr)
 				record_max(&telemetry->late_window_baseline_bytes, output_position(out) - baseline_start);
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->binary_encoding_write_nanoseconds, encoding_started);
+		}
+		std::uint64_t serialized_payload_hash = 0U;
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.payload_hash");
 			const auto hash_started = std::chrono::steady_clock::now();
-			{
-				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.payload_hash");
-				portable::write_u64(out, payload_hash(checkpoint));
-			}
+			serialized_payload_hash = payload_hash(checkpoint);
 			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->payload_hash_nanoseconds, hash_started);
 		}
-		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->binary_encoding_write_nanoseconds, encoding_started);
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.binary_encoding_write");
+			const auto encoding_started = std::chrono::steady_clock::now();
+			portable::write_u64(out, serialized_payload_hash);
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->binary_encoding_write_nanoseconds, encoding_started);
+		}
 		const auto close_started = std::chrono::steady_clock::now();
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.stream_close_or_flush");

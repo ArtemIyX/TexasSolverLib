@@ -1,5 +1,86 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Implement CP1 checkpoint phase telemetry
+
+**Status:** Implemented; runtime validation pending
+**Completed:** 2026-10-15
+
+- Added independent Tracy zones and report telemetry for checkpoint snapshot
+  locking, catalog export, compact storage export, canonicalization, both
+  validations, payload hashing, binary encoding, stream close/flush, and atomic
+  publication.
+- Added serialized byte counts for public states, row shapes, regrets, strategy
+  sums, and the late-window baseline without changing checkpoint payload bytes or
+  payload hashing.
+- Kept payload-hash timing separate from binary encoding timing so phase totals
+  do not double-count the nested hash operation.
+- Bumped the training report schema to 7 and updated the worker-matrix schema
+  gate.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `scripts/run_multiway_worker_matrix.ps1`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the changed C++ diff with the TexasSolver C++ review rules.
+- `git diff --check` passed for tracked changes.
+- No build, test, benchmark, executable, or solver script was run by session rule.
+
+### Limitations
+
+- Operator validation is still required: build the diagnostic target, run the
+  Tracy capture, confirm report fields, and verify that the phase timings explain
+  at least 95% of checkpoint duration.
+
+## 2026-10-15 - Split Tracy scaling remediation into operator-ready tasks
+
+**Status:** Complete
+**Completed:** 2026-10-15
+
+- Split the Tracy scaling remediation plan into nine independently scoped tasks.
+- Marked source-only work that Codex can prepare and runtime validation that an
+  operator must execute because it requires builds, tests, captures, or solver
+  workflows.
+- Preserved the remediation dependencies, determinism gates, and performance
+  acceptance criteria.
+
+### Files
+
+- `docs/plans/2026-10-15/01_cp1_checkpoint_telemetry.md`
+- `docs/plans/2026-10-15/02_cp2_linear_compact_snapshot_export.md`
+- `docs/plans/2026-10-15/03_cp3_cp5_checkpoint_write_path.md`
+- `docs/plans/2026-10-15/04_ad1_admission_diagnostics.md`
+- `docs/plans/2026-10-15/05_ad2_ad4_discovery_merge.md`
+- `docs/plans/2026-10-15/06_ad5_ad6_bulk_admission_epoch_filtering.md`
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/plans/2026-10-15/08_th3_dynamic_scheduler_qualification.md`
+- `docs/plans/2026-10-15/09_th4_th5_traversal_pinning.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the generated Markdown structure and task dependencies.
+- No build, test, benchmark, executable, or solver script was run.
+
+### Limitations
+
+- The documents are execution plans. Runtime gates remain unverified until an
+  operator runs the required workflows.
+
 ## 2026-10-14 - Document application and script I/O contracts
 
 **Status:** Complete
