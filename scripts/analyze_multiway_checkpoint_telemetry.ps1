@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ReportPath,
+    [Parameter(Mandatory = $true)]
+    [string]$CsvPath,
     [ValidateRange(0.0, 1.0)]
     [double]$MinimumPhaseCoverage = 0.95,
     [string]$ExpectedMergeFingerprint = ''
@@ -11,8 +13,12 @@ $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
     throw "Training report was not found: $ReportPath"
 }
+if (-not (Test-Path -LiteralPath $CsvPath -PathType Leaf)) {
+    throw "Tracy CSV was not found: $CsvPath"
+}
 
 $resolvedReportPath = (Resolve-Path -LiteralPath $ReportPath).Path
+$resolvedCsvPath = (Resolve-Path -LiteralPath $CsvPath).Path
 $report = Get-Content -Raw -LiteralPath $resolvedReportPath | ConvertFrom-Json
 
 if ($null -eq $report.evidence -or $report.evidence.schema_version -ne 7) {
@@ -47,6 +53,35 @@ foreach ($name in ($phaseNames + $byteNames)) {
     if (-not ($telemetry.PSObject.Properties.Name -contains $name)) {
         throw "Training report is missing checkpoint telemetry field: $name"
     }
+}
+
+$requiredCsvZones = @(
+    'mw.checkpoint.snapshot_lock_wait',
+    'mw.checkpoint.public_catalog_export',
+    'mw.checkpoint.compact_storage_export',
+    'mw.checkpoint.canonicalization',
+    'mw.checkpoint.training_validation',
+    'mw.checkpoint.artifact_validation',
+    'mw.checkpoint.payload_hash',
+    'mw.checkpoint.binary_encoding_write',
+    'mw.checkpoint.stream_close_or_flush',
+    'mw.checkpoint.atomic_publication'
+)
+$csvRows = Import-Csv -LiteralPath $resolvedCsvPath
+$csvZoneTotals = [ordered]@{}
+$csvZonesPass = $true
+foreach ($zoneName in $requiredCsvZones) {
+    $zoneRows = @($csvRows | Where-Object { $_.name -eq $zoneName })
+    if ($zoneRows.Count -eq 0) {
+        $csvZonesPass = $false
+        $csvZoneTotals[$zoneName] = $null
+        continue
+    }
+    $zoneTotal = [uint64]0
+    foreach ($zoneRow in $zoneRows) {
+        $zoneTotal += [uint64]$zoneRow.total_ns
+    }
+    $csvZoneTotals[$zoneName] = $zoneTotal
 }
 
 $phaseNanoseconds = [ordered]@{}
@@ -89,7 +124,10 @@ $mergeFingerprintMatches = if ($mergeFingerprintChecked) {
 
 $summary = [ordered]@{
     report_path = $resolvedReportPath
+    csv_path = $resolvedCsvPath
     schema_version = [uint32]$report.evidence.schema_version
+    csv_zone_totals = $csvZoneTotals
+    csv_zones_pass = $csvZonesPass
     phase_nanoseconds = $phaseNanoseconds
     phase_total_nanoseconds = $phaseTotalNanoseconds
     checkpoint_write_nanoseconds = $checkpointWriteNanoseconds
@@ -112,6 +150,7 @@ $summary = [ordered]@{
 }
 
 $summary['acceptance_pass'] = [bool]($summary.phase_coverage_pass -and
+    $summary.csv_zones_pass -and
     $summary.byte_accounting_pass -and
     $summary.discarded_trajectories_pass -and
     $summary.failed_pass -and

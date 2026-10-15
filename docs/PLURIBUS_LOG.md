@@ -20,6 +20,7 @@
   `run_metrics.json` artifact.
 - Added a non-executing report analyzer for schema, phase coverage, byte
   accounting, discarded trajectories, and merge-fingerprint validation.
+- Extended the analyzer to require every CP1 Tracy zone in the exported CSV.
 
 ### Files
 

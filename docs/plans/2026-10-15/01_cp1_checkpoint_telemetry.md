@@ -47,9 +47,10 @@ of the existing checkpoint duration.
 - Run the Tracy capture on the same bounded workload.
 - Provide JSON, CSV, manifest, and checkpoint timing results.
 - Run `scripts/analyze_multiway_checkpoint_telemetry.ps1` against the new
-  `report.json`, passing the baseline merge fingerprint. The analyzer checks
-  schema 7, all phase fields, the 95% timing gate, zero discarded trajectories,
-  and the unchanged merge fingerprint.
+  `report.json` and Tracy CSV, passing the baseline merge fingerprint. The
+  analyzer checks schema 7, all report fields and Tracy zones, the 95% timing
+  gate, zero discarded trajectories, byte accounting, and the unchanged merge
+  fingerprint.
 
 ## Acceptance
 
