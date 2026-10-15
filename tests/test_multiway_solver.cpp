@@ -456,6 +456,51 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	EXPECT_EQ(checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
 }
 
+TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canonical_rows)
+{
+	const auto child = checked_action_child_public_state();
+	auto compact_limits = valid_limits();
+	compact_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+	auto reference_limits = compact_limits;
+	reference_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::Float64Reference;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	texas::MultiwaySolverCoordinator compact(
+		texas::MultiwaySolveRequest(valid_root(), cfr, compact_limits));
+	texas::MultiwaySolverCoordinator reference(
+		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
+	const texas::MultiwaySparseRowShape child_row = {
+		{ child.id, child.betting.current_player }, 2U,
+		static_cast<std::uint8_t>(child.legal_actions.size()) };
+	compact.admit_public_state(child);
+	reference.admit_public_state(child);
+	compact.admit_infoset_row(root_row());
+	reference.admit_infoset_row(root_row());
+	compact.admit_infoset_row(child_row);
+	reference.admit_infoset_row(child_row);
+
+	texas::MultiwayWorkerDeltaStream first(0U, 2U);
+	texas::MultiwayWorkerDeltaStream second(1U, 2U);
+	EXPECT_TRUE(first.try_append(delta(0U, 1.0, 2.0, 0U)));
+	EXPECT_TRUE(first.try_append({ { child.id, child.betting.current_player }, 1U, 0U, -0.5, 3.0, 1U }));
+	first.sort_fixed_order();
+	second.sort_fixed_order();
+	compact.merge_worker_streams({ first, second });
+	reference.merge_worker_streams({ first, second });
+
+	const auto compact_checkpoint = compact.checkpoint();
+	const auto reference_checkpoint = reference.checkpoint();
+	EXPECT_EQ(compact_checkpoint.storage.shapes.size(), reference_checkpoint.storage.shapes.size());
+	for (std::size_t index = 0U; index < reference_checkpoint.storage.shapes.size(); ++index)
+	{
+		EXPECT_EQ(compact_checkpoint.storage.shapes[index].infoset, reference_checkpoint.storage.shapes[index].infoset);
+		EXPECT_EQ(compact_checkpoint.storage.shapes[index].bucket_count, reference_checkpoint.storage.shapes[index].bucket_count);
+		EXPECT_EQ(compact_checkpoint.storage.shapes[index].action_count, reference_checkpoint.storage.shapes[index].action_count);
+	}
+	EXPECT_EQ(compact_checkpoint.storage.regrets, reference_checkpoint.storage.regrets);
+	EXPECT_EQ(compact_checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
+}
+
 TEST_CASE(multiway_solver_live_root_uses_distinct_exact_private_hand_rows)
 {
 	const auto first = std::array<std::uint8_t, 2>{ card(14, 0), card(13, 0) };
