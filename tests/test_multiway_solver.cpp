@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
@@ -807,6 +808,61 @@ TEST_CASE(multiway_solver_prepared_admission_rejects_capacity_before_mutation)
 	EXPECT_THROW(coordinator.admit_prepared_batch({ first_child }, { 0U }, rows), std::length_error);
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 1U);
 	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 0U);
+}
+
+TEST_CASE(multiway_public_catalog_batch_commit_preserves_sorted_reconstruction)
+{
+	texas::MultiwayPublicCatalog catalog(8U);
+	catalog.admit(root_public_state());
+	const auto first = action_child_public_state(root_public_state(), 2, 102, 0);
+	const auto second = action_child_public_state(root_public_state(), 2, 102, 1);
+	std::vector<texas::MultiwayPublicStateDescriptor> states = { second, first };
+	std::sort(states.begin(), states.end(), [](const auto& left, const auto& right) { return left.id < right.id; });
+	catalog.admit_batch(states, { 1U, 1U });
+
+	EXPECT_EQ(catalog.size(), 3U);
+	EXPECT_TRUE(catalog.contains(first.id));
+	EXPECT_TRUE(catalog.contains(second.id));
+	std::vector<texas::MultiwayPublicStateDescriptor> exported;
+	catalog.export_descriptors(exported);
+	EXPECT_EQ(exported.size(), 3U);
+	EXPECT_EQ(exported[1].id, states[0].id);
+	EXPECT_EQ(exported[2].id, states[1].id);
+}
+
+TEST_CASE(multiway_sparse_row_batch_commit_preserves_sorted_offsets)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	const auto first = action_child_public_state(root_public_state(), 2, 102, 0);
+	const auto second = action_child_public_state(root_public_state(), 2, 102, 1);
+	std::vector<texas::MultiwayPublicStateDescriptor> states = { first, second };
+	std::sort(states.begin(), states.end(), [](const auto& left, const auto& right) { return left.id < right.id; });
+	std::vector<texas::MultiwaySparseRowShape> rows;
+	for (const auto& state : states)
+		rows.push_back({ { state.id, state.betting.current_player }, 1U, static_cast<std::uint8_t>(state.legal_actions.size()) });
+	std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
+	coordinator.admit_prepared_batch(states, { 0U, 1U }, rows);
+
+	const auto& metadata = coordinator.storage().rows();
+	EXPECT_EQ(metadata.size(), rows.size());
+	EXPECT_TRUE(metadata[0].shape.infoset < metadata[1].shape.infoset);
+	EXPECT_EQ(metadata[1].regret_offset, metadata[0].regret_offset + metadata[0].value_count());
+	EXPECT_EQ(coordinator.storage().value_count(), metadata[0].value_count() + metadata[1].value_count());
+}
+
+TEST_CASE(multiway_compact_storage_batch_commit_initializes_sorted_rows_and_pages)
+{
+	texas::MultiwayCompactStorage storage(4U, 32U, 2U);
+	const texas::MultiwaySparseRowShape first{ { { 20U }, 1 }, 3U, 2U };
+	const texas::MultiwaySparseRowShape second{ { { 10U }, 0 }, 3U, 2U };
+	storage.admit_rows({ first, second }, { 1U, 1U });
+
+	EXPECT_EQ(storage.row_count(), 2U);
+	EXPECT_EQ(storage.page_count(), 2U);
+	EXPECT_EQ(storage.value_count(), 8U);
+	EXPECT_TRUE(storage.rows()[0].shape.infoset.public_state < storage.rows()[1].shape.infoset.public_state);
+	EXPECT_TRUE(storage.has_page(first.infoset, 0U));
+	EXPECT_TRUE(storage.has_page(second.infoset, 0U));
 }
 
 TEST_CASE(multiway_solver_worker_delta_stream_is_bounded_finite_and_sortable)
