@@ -856,14 +856,14 @@ TEST_CASE(multiway_solver_discovery_parent_order_rejects_cycles_and_unresolved_p
 
 	std::vector<texas::MultiwayPublicStateDescriptor> unresolved(1U);
 	unresolved[0].id = { 600U };
-	unresolved[0].parent_id = { 999U };
+	unresolved[0].parent_id = { std::numeric_limits<std::uint64_t>::max() };
 	EXPECT_THROW(texas::solver::multiway::detail::build_multiway_parent_first_order(unresolved, coordinator, diagnostics, scratch), std::invalid_argument);
 
 	std::vector<texas::MultiwayPublicStateDescriptor> cycle(2U);
-	cycle[0].id = { 700U };
-	cycle[0].parent_id = { 701U };
-	cycle[1].id = { 701U };
-	cycle[1].parent_id = { 700U };
+	cycle[0].id = { std::numeric_limits<std::uint64_t>::max() - 2U };
+	cycle[0].parent_id = { std::numeric_limits<std::uint64_t>::max() - 1U };
+	cycle[1].id = { std::numeric_limits<std::uint64_t>::max() - 1U };
+	cycle[1].parent_id = { std::numeric_limits<std::uint64_t>::max() - 2U };
 	EXPECT_THROW(texas::solver::multiway::detail::build_multiway_parent_first_order(cycle, coordinator, diagnostics, scratch), std::invalid_argument);
 }
 
