@@ -16,6 +16,8 @@
   do not double-count the nested hash operation.
 - Bumped the training report schema to 7 and updated the worker-matrix schema
   gate.
+- Propagated the nested checkpoint telemetry object into the QA wrapper's
+  `run_metrics.json` artifact.
 
 ### Files
 
@@ -29,6 +31,7 @@
 - `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
 - `src/solver/multiway/workflow/multiway_training_report.cpp`
 - `examples/multiway_workflow_main.cpp`
+- `scripts/run_multiway_ram_1000.ps1`
 - `scripts/run_multiway_worker_matrix.ps1`
 - `tests/test_multiway_blueprint_training.cpp`
 - `tests/test_multiway_qualification_reports.cpp`
