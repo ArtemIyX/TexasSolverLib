@@ -102,7 +102,7 @@ foreach ($name in $byteNames) {
 }
 
 $checkpointWriteNanoseconds = [uint64]$report.checkpoint_write_nanoseconds
-$phaseCoverage = if ($checkpointWriteNanoseconds -eq 0U) {
+$phaseCoverage = if ($checkpointWriteNanoseconds -eq 0) {
     0.0
 } else {
     [double]$phaseTotalNanoseconds / [double]$checkpointWriteNanoseconds
@@ -144,7 +144,7 @@ $summary = [ordered]@{
     unattributed_checkpoint_bytes = $unattributedCheckpointBytes
     byte_accounting_pass = $checkpointBytes -ge 0 -and [int64]$payloadSectionBytes -le $checkpointBytes
     discarded_trajectories = $discardedTrajectories
-    discarded_trajectories_pass = $discardedTrajectories -eq 0U
+    discarded_trajectories_pass = $discardedTrajectories -eq 0
     failed = [bool]$report.failed
     failed_pass = -not [bool]$report.failed
     deterministic_merge_fingerprint = $mergeFingerprint

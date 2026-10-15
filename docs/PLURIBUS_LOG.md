@@ -25,6 +25,8 @@
   fingerprint in Windows PowerShell.
 - Added a checkpoint round-trip assertion that runtime telemetry is not
   serialized into the checkpoint artifact.
+- Corrected PowerShell analyzer comparisons to use PowerShell numeric literal
+  syntax instead of C++ unsigned suffixes.
 
 ### Files
 
