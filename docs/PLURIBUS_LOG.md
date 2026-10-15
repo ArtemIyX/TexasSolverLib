@@ -2,7 +2,7 @@
 
 ## 2026-10-15 - Implement CP1 checkpoint phase telemetry
 
-**Status:** Implemented; runtime validation pending
+**Status:** Implemented and operator-validated
 **Completed:** 2026-10-15
 
 - Added independent Tracy zones and report telemetry for checkpoint snapshot
@@ -52,13 +52,20 @@
 
 - Reviewed the changed C++ diff with the TexasSolver C++ review rules.
 - `git diff --check` passed for tracked changes.
-- No build, test, benchmark, executable, or solver script was run by session rule.
+- Operator capture `tmp/tracy/cp1-1w-1x1000` produced a schema-7 report and
+  Tracy 0.14.1 manifest for the current CP1 instrumentation.
+- The CP1 analyzer passed: all CSV zones present, phase total
+  `161722238900 ns` versus checkpoint total `161727571400 ns` (`99.9967%`),
+  payload sections `137380459` bytes versus checkpoint size `137380835` bytes,
+  zero discarded trajectories, and matching merge fingerprint
+  `9806774443936985566`.
+- No build, test, benchmark, executable, or solver script was run by Codex;
+  the operator supplied the runtime capture and analyzer result.
 
 ### Limitations
 
-- Operator validation is still required: build the diagnostic target, run the
-  Tracy capture, confirm report fields, and verify that the phase timings explain
-  at least 95% of checkpoint duration.
+- The evidence is a bounded one-worker, one-batch, 1,000-trajectory capture;
+  it validates CP1 instrumentation and acceptance gates, not throughput scaling.
 
 ## 2026-10-15 - Split Tracy scaling remediation into operator-ready tasks
 
