@@ -4,6 +4,7 @@
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "test_harness.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -752,6 +753,60 @@ TEST_CASE(multiway_solver_public_state_admission_enforces_its_capacity)
 		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
 	const auto child = checked_action_child_public_state();
 	EXPECT_THROW(coordinator.admit_public_state(child), std::length_error);
+}
+
+TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_known_entries)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	const auto child = checked_action_child_public_state();
+	const std::vector<texas::MultiwayPublicStateDescriptor> states = { child };
+	const std::vector<std::size_t> order = { 0U };
+	const texas::MultiwaySparseRowShape child_row{
+		{ child.id, child.betting.current_player }, 1U,
+		static_cast<std::uint8_t>(child.legal_actions.size()) };
+	const std::vector<texas::MultiwaySparseRowShape> rows = { child_row };
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	coordinator.set_admission_diagnostics(&diagnostics);
+
+	coordinator.admit_prepared_batch(states, order, rows);
+	EXPECT_EQ(diagnostics.lock_acquisitions, 1U);
+	EXPECT_TRUE(coordinator.has_public_state_epoch(child.id));
+	EXPECT_TRUE(coordinator.has_infoset_row_epoch(child_row.infoset));
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
+	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 1U);
+
+	coordinator.admit_prepared_batch(states, order, rows);
+	EXPECT_EQ(diagnostics.lock_acquisitions, 2U);
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
+	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 1U);
+}
+
+TEST_CASE(multiway_solver_prepared_admission_rejects_capacity_before_mutation)
+{
+	auto limits = valid_limits();
+	limits.max_public_states = 2U;
+	limits.max_sparse_rows = 1U;
+	limits.max_sparse_values = 2U;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	texas::MultiwaySolverCoordinator coordinator(
+		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	const auto first_child = action_child_public_state(root_public_state(), 2, 102, 0);
+	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
+	std::vector<texas::MultiwayPublicStateDescriptor> states = { first_child, second_child };
+	std::sort(states.begin(), states.end(), [](const auto& left, const auto& right) { return left.id < right.id; });
+	const std::vector<std::size_t> order = { 0U, 1U };
+	EXPECT_THROW(coordinator.admit_prepared_batch(states, order, {}), std::length_error);
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 1U);
+
+	const auto child_row = texas::MultiwaySparseRowShape{
+		{ first_child.id, first_child.betting.current_player }, 1U,
+		static_cast<std::uint8_t>(first_child.legal_actions.size()) };
+	std::vector<texas::MultiwaySparseRowShape> rows = { root_row(), child_row };
+	std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
+	EXPECT_THROW(coordinator.admit_prepared_batch({ first_child }, { 0U }, rows), std::length_error);
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 1U);
+	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 0U);
 }
 
 TEST_CASE(multiway_solver_worker_delta_stream_is_bounded_finite_and_sortable)
