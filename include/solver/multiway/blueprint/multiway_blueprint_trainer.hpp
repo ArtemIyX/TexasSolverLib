@@ -175,6 +175,7 @@ namespace texas::solver::multiway
 		MultiwayBlueprintCoverageManifest coverage{};
 		MultiwayCoordinatorCheckpoint coordinator{};
 		std::vector<double> late_window_baseline;
+		MultiwayCheckpointTelemetry telemetry{};
 
 		void validate() const;
 	};

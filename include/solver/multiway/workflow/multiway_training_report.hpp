@@ -85,6 +85,7 @@ namespace texas::solver::multiway
 		MultiwayMemoryLedger memory_ledger{};
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
+		MultiwayCheckpointTelemetry checkpoint_telemetry{};
 		std::uint64_t blueprint_bytes = 0U;
 		std::uint64_t blueprint_export_nanoseconds = 0U;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =

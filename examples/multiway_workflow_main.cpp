@@ -649,12 +649,16 @@ namespace
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
+		MultiwayCheckpointTelemetry checkpoint_telemetry{};
 		const auto publish_training_failure = [&]() {
 			auto failure_report = make_multiway_training_report(
 				session.status(), session.status().merged_stream_fingerprint,
 				make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 					config.identity(), workflow.fingerprint()),
 				workflow.process_memory_limit_bytes);
+			failure_report.checkpoint_bytes = checkpoint_bytes;
+			failure_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
+			failure_report.checkpoint_telemetry = checkpoint_telemetry;
 			failure_report.failed = true;
 			save_multiway_training_report_atomic(
 				report_path.empty() ? output_path.string() + ".json" : report_path,
@@ -676,7 +680,9 @@ namespace
 						std::filesystem::create_directories(checkpoint_path.parent_path());
 					}
 					const auto checkpoint_start = std::chrono::steady_clock::now();
-					MultiwayTrainingCheckpointArtifacts::save_atomic(checkpoint_path, session.checkpoint());
+					auto checkpoint = session.checkpoint();
+					checkpoint_telemetry.accumulate(checkpoint.telemetry);
+					MultiwayTrainingCheckpointArtifacts::save_atomic(checkpoint_path, checkpoint, &checkpoint_telemetry);
 					checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - checkpoint_start)
@@ -707,6 +713,7 @@ namespace
 			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 				config.identity(), workflow.fingerprint()),
 			workflow.process_memory_limit_bytes);
+		training_report.checkpoint_telemetry = checkpoint_telemetry;
 		if (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U)
 		{
 			training_report.failed = true;

@@ -351,6 +351,44 @@ namespace texas::solver::multiway
 		std::vector<double> strategy_sums;
 	};
 
+	// Runtime-only checkpoint diagnostics. These fields are not serialized or
+	// included in the checkpoint payload hash.
+	struct MultiwayCheckpointTelemetry
+	{
+		std::uint64_t snapshot_lock_wait_nanoseconds = 0U;
+		std::uint64_t public_catalog_export_nanoseconds = 0U;
+		std::uint64_t compact_storage_export_nanoseconds = 0U;
+		std::uint64_t canonicalization_nanoseconds = 0U;
+		std::uint64_t validation_nanoseconds = 0U;
+		std::uint64_t payload_hash_nanoseconds = 0U;
+		std::uint64_t binary_encoding_write_nanoseconds = 0U;
+		std::uint64_t stream_close_or_flush_nanoseconds = 0U;
+		std::uint64_t atomic_publication_nanoseconds = 0U;
+		std::uint64_t public_state_bytes = 0U;
+		std::uint64_t row_shape_bytes = 0U;
+		std::uint64_t regret_bytes = 0U;
+		std::uint64_t strategy_sum_bytes = 0U;
+		std::uint64_t late_window_baseline_bytes = 0U;
+
+		void accumulate(const MultiwayCheckpointTelemetry& other) noexcept
+		{
+			snapshot_lock_wait_nanoseconds += other.snapshot_lock_wait_nanoseconds;
+			public_catalog_export_nanoseconds += other.public_catalog_export_nanoseconds;
+			compact_storage_export_nanoseconds += other.compact_storage_export_nanoseconds;
+			canonicalization_nanoseconds += other.canonicalization_nanoseconds;
+			validation_nanoseconds += other.validation_nanoseconds;
+			payload_hash_nanoseconds += other.payload_hash_nanoseconds;
+			binary_encoding_write_nanoseconds += other.binary_encoding_write_nanoseconds;
+			stream_close_or_flush_nanoseconds += other.stream_close_or_flush_nanoseconds;
+			atomic_publication_nanoseconds += other.atomic_publication_nanoseconds;
+			public_state_bytes = public_state_bytes > other.public_state_bytes ? public_state_bytes : other.public_state_bytes;
+			row_shape_bytes = row_shape_bytes > other.row_shape_bytes ? row_shape_bytes : other.row_shape_bytes;
+			regret_bytes = regret_bytes > other.regret_bytes ? regret_bytes : other.regret_bytes;
+			strategy_sum_bytes = strategy_sum_bytes > other.strategy_sum_bytes ? strategy_sum_bytes : other.strategy_sum_bytes;
+			late_window_baseline_bytes = late_window_baseline_bytes > other.late_window_baseline_bytes ? late_window_baseline_bytes : other.late_window_baseline_bytes;
+		}
+	};
+
 	struct MultiwayCoordinatorCheckpoint
 	{
 		std::vector<MultiwayPublicStateDescriptor> public_states;
@@ -360,6 +398,7 @@ namespace texas::solver::multiway
 		std::uint64_t missing_lookup_requests = 0U;
 		std::uint64_t last_merged_stream_fingerprint = 0U;
 		std::array<std::uint64_t, 4> street_visits{};
+		MultiwayCheckpointTelemetry telemetry{};
 	};
 
 	// Coordinator-owned sparse rows. Values are action-major: [action][bucket].

@@ -393,6 +393,20 @@ namespace texas::solver::multiway
 			   << ", \"committed_bytes\": " << report.memory_ledger.committed_bytes << "}"
 			   << ",\n  \"checkpoint_bytes\": " << report.checkpoint_bytes
 			   << ",\n  \"checkpoint_write_nanoseconds\": " << report.checkpoint_write_nanoseconds
+			   << ",\n  \"checkpoint_telemetry\": {\"snapshot_lock_wait_nanoseconds\": " << report.checkpoint_telemetry.snapshot_lock_wait_nanoseconds
+			   << ", \"public_catalog_export_nanoseconds\": " << report.checkpoint_telemetry.public_catalog_export_nanoseconds
+			   << ", \"compact_storage_export_nanoseconds\": " << report.checkpoint_telemetry.compact_storage_export_nanoseconds
+			   << ", \"canonicalization_nanoseconds\": " << report.checkpoint_telemetry.canonicalization_nanoseconds
+			   << ", \"validation_nanoseconds\": " << report.checkpoint_telemetry.validation_nanoseconds
+			   << ", \"payload_hash_nanoseconds\": " << report.checkpoint_telemetry.payload_hash_nanoseconds
+			   << ", \"binary_encoding_write_nanoseconds\": " << report.checkpoint_telemetry.binary_encoding_write_nanoseconds
+			   << ", \"stream_close_or_flush_nanoseconds\": " << report.checkpoint_telemetry.stream_close_or_flush_nanoseconds
+			   << ", \"atomic_publication_nanoseconds\": " << report.checkpoint_telemetry.atomic_publication_nanoseconds
+			   << ", \"public_state_bytes\": " << report.checkpoint_telemetry.public_state_bytes
+			   << ", \"row_shape_bytes\": " << report.checkpoint_telemetry.row_shape_bytes
+			   << ", \"regret_bytes\": " << report.checkpoint_telemetry.regret_bytes
+			   << ", \"strategy_sum_bytes\": " << report.checkpoint_telemetry.strategy_sum_bytes
+			   << ", \"late_window_baseline_bytes\": " << report.checkpoint_telemetry.late_window_baseline_bytes << "}"
 			   << ",\n  \"blueprint_bytes\": " << report.blueprint_bytes
 			   << ",\n  \"blueprint_export_nanoseconds\": " << report.blueprint_export_nanoseconds
 			   << ",\n  \"capacity_exhaustion_stage\": "

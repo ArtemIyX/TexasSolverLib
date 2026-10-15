@@ -663,8 +663,17 @@ namespace texas::solver::multiway
 		result.training = make_metadata(status_, schedule_, deterministic_seed_);
 		result.coverage = coverage_manifest();
 		result.coordinator = coordinator_->checkpoint();
+		result.telemetry = result.coordinator.telemetry;
 		result.late_window_baseline = late_window_baseline_;
-		result.validate();
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.training_validation");
+			const auto started = std::chrono::steady_clock::now();
+			result.validate();
+			result.telemetry.validation_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started)
+					.count());
+		}
 		return result;
 	}
 

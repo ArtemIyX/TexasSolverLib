@@ -86,6 +86,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	auto report = make_multiway_training_report(status, 77U, evidence);
 	report.checkpoint_bytes = 123U;
 	report.checkpoint_write_nanoseconds = 456U;
+	report.checkpoint_telemetry.public_catalog_export_nanoseconds = 12U;
+	report.checkpoint_telemetry.public_state_bytes = 34U;
 	report.blueprint_bytes = 789U;
 	report.blueprint_export_nanoseconds = 1011U;
 	EXPECT_EQ(report.discarded_trajectories, 3U);
@@ -114,6 +116,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	const std::string text((std::istreambuf_iterator<char>(input)), {});
 	input.close();
 	EXPECT_TRUE(text.find("\"checkpoint_bytes\": 123") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_catalog_export_nanoseconds\": 12") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_state_bytes\": 34") != std::string::npos);
 	EXPECT_TRUE(text.find("\"blueprint_bytes\": 789") != std::string::npos);
 	EXPECT_TRUE(text.find("\"requested_worker_count\": 16") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_preflight_estimate_bytes\": 999") != std::string::npos);

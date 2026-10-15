@@ -3,9 +3,11 @@
 #include "core/atomic_publish.hpp"
 #include "core/fingerprint.hpp"
 #include "core/portable_binary.hpp"
+#include "util/tracy.hpp"
 
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -27,6 +29,28 @@ namespace texas::solver::multiway
 		{
 			if (!ok)
 				throw std::runtime_error("multiway training checkpoint is truncated");
+		}
+		std::uint64_t output_position(std::ostream& out)
+		{
+			const auto position = out.tellp();
+			if (position == std::streampos(-1))
+				throw std::runtime_error("multiway training checkpoint output position is unavailable");
+			return static_cast<std::uint64_t>(position);
+		}
+		void add_elapsed(
+			std::uint64_t* target,
+			const std::chrono::steady_clock::time_point started) noexcept
+		{
+			if (target != nullptr)
+				*target += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - started)
+						.count());
+		}
+		void record_max(std::uint64_t* target, std::uint64_t value) noexcept
+		{
+			if (target != nullptr && value > *target)
+				*target = value;
 		}
 		void write_double(std::ostream& out, double value)
 		{
@@ -344,61 +368,106 @@ namespace texas::solver::multiway
 		return core::fingerprint::finish(hash);
 	}
 
-	void MultiwayTrainingCheckpointArtifacts::save_atomic(const std::filesystem::path& path, const MultiwayBlueprintTrainingCheckpoint& checkpoint)
+	void MultiwayTrainingCheckpointArtifacts::save_atomic(
+		const std::filesystem::path& path,
+		const MultiwayBlueprintTrainingCheckpoint& checkpoint,
+		MultiwayCheckpointTelemetry* telemetry)
 	{
-		checkpoint.validate();
-		const auto temporary = path.string() + ".tmp";
-		std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-		if (!out)
-			throw std::runtime_error("multiway training checkpoint temporary file cannot be opened");
-		out.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
-		portable::write_u32(out, kSchema);
-		write_identity(out, checkpoint.identity);
-		write_metadata(out, checkpoint.training);
-		const auto& coverage = checkpoint.coverage;
-		portable::write_u64(out, coverage.visited_public_descriptors);
-		portable::write_u64(out, coverage.admitted_rows);
-		portable::write_u64(out, coverage.admitted_action_cells);
-		portable::write_u64(out, coverage.terminal_visits);
-		portable::write_u64(out, coverage.leaf_visits);
-		portable::write_u64(out, coverage.missing_lookup_requests);
-		portable::write_u64(out, coverage.preflop_rows);
-		portable::write_u64(out, coverage.flop_rows);
-		portable::write_u64(out, coverage.turn_rows);
-		portable::write_u64(out, coverage.river_rows);
-		for (const auto value : coverage.street_visits)
-			portable::write_u64(out, value);
-		portable::write_u64(out, checkpoint.coordinator.terminal_visits);
-		portable::write_u64(out, checkpoint.coordinator.leaf_visits);
-		portable::write_u64(out, checkpoint.coordinator.missing_lookup_requests);
-		portable::write_u64(out, checkpoint.coordinator.last_merged_stream_fingerprint);
-		for (const auto value : checkpoint.coordinator.street_visits)
-			portable::write_u64(out, value);
-		portable::write_u32(out, static_cast<std::uint32_t>(checkpoint.coordinator.public_states.size()));
-		for (const auto& state : checkpoint.coordinator.public_states)
-			write_state(out, state);
-		portable::write_u32(out, static_cast<std::uint32_t>(checkpoint.coordinator.storage.shapes.size()));
-		for (const auto& shape : checkpoint.coordinator.storage.shapes)
 		{
-			portable::write_u64(out, shape.infoset.public_state.value);
-			portable::write_i32(out, shape.infoset.seat);
-			portable::write_u32(out, shape.bucket_count);
-			portable::write_u8(out, shape.action_count);
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.artifact_validation");
+			const auto started = std::chrono::steady_clock::now();
+			checkpoint.validate();
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->validation_nanoseconds, started);
 		}
-		portable::write_u64(out, checkpoint.coordinator.storage.regrets.size());
-		for (const auto value : checkpoint.coordinator.storage.regrets)
-			write_double(out, value);
-		portable::write_u64(out, checkpoint.coordinator.storage.strategy_sums.size());
-		for (const auto value : checkpoint.coordinator.storage.strategy_sums)
-			write_double(out, value);
-		portable::write_u64(out, checkpoint.late_window_baseline.size());
-		for (const auto value : checkpoint.late_window_baseline)
-			write_double(out, value);
-		portable::write_u64(out, payload_hash(checkpoint));
-		out.close();
+		const auto temporary = path.string() + ".tmp";
+		const auto encoding_started = std::chrono::steady_clock::now();
+		std::ofstream out;
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.binary_encoding_write");
+			out.open(temporary, std::ios::binary | std::ios::trunc);
+			if (!out)
+				throw std::runtime_error("multiway training checkpoint temporary file cannot be opened");
+			out.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
+			portable::write_u32(out, kSchema);
+			write_identity(out, checkpoint.identity);
+			write_metadata(out, checkpoint.training);
+			const auto& coverage = checkpoint.coverage;
+			portable::write_u64(out, coverage.visited_public_descriptors);
+			portable::write_u64(out, coverage.admitted_rows);
+			portable::write_u64(out, coverage.admitted_action_cells);
+			portable::write_u64(out, coverage.terminal_visits);
+			portable::write_u64(out, coverage.leaf_visits);
+			portable::write_u64(out, coverage.missing_lookup_requests);
+			portable::write_u64(out, coverage.preflop_rows);
+			portable::write_u64(out, coverage.flop_rows);
+			portable::write_u64(out, coverage.turn_rows);
+			portable::write_u64(out, coverage.river_rows);
+			for (const auto value : coverage.street_visits)
+				portable::write_u64(out, value);
+			portable::write_u64(out, checkpoint.coordinator.terminal_visits);
+			portable::write_u64(out, checkpoint.coordinator.leaf_visits);
+			portable::write_u64(out, checkpoint.coordinator.missing_lookup_requests);
+			portable::write_u64(out, checkpoint.coordinator.last_merged_stream_fingerprint);
+			for (const auto value : checkpoint.coordinator.street_visits)
+				portable::write_u64(out, value);
+			const auto public_state_start = telemetry == nullptr ? 0U : output_position(out);
+			portable::write_u32(out, static_cast<std::uint32_t>(checkpoint.coordinator.public_states.size()));
+			for (const auto& state : checkpoint.coordinator.public_states)
+				write_state(out, state);
+			if (telemetry != nullptr)
+				record_max(&telemetry->public_state_bytes, output_position(out) - public_state_start);
+			const auto row_shape_start = telemetry == nullptr ? 0U : output_position(out);
+			portable::write_u32(out, static_cast<std::uint32_t>(checkpoint.coordinator.storage.shapes.size()));
+			for (const auto& shape : checkpoint.coordinator.storage.shapes)
+			{
+				portable::write_u64(out, shape.infoset.public_state.value);
+				portable::write_i32(out, shape.infoset.seat);
+				portable::write_u32(out, shape.bucket_count);
+				portable::write_u8(out, shape.action_count);
+			}
+			if (telemetry != nullptr)
+				record_max(&telemetry->row_shape_bytes, output_position(out) - row_shape_start);
+			const auto regret_start = telemetry == nullptr ? 0U : output_position(out);
+			portable::write_u64(out, checkpoint.coordinator.storage.regrets.size());
+			for (const auto value : checkpoint.coordinator.storage.regrets)
+				write_double(out, value);
+			if (telemetry != nullptr)
+				record_max(&telemetry->regret_bytes, output_position(out) - regret_start);
+			const auto strategy_start = telemetry == nullptr ? 0U : output_position(out);
+			portable::write_u64(out, checkpoint.coordinator.storage.strategy_sums.size());
+			for (const auto value : checkpoint.coordinator.storage.strategy_sums)
+				write_double(out, value);
+			if (telemetry != nullptr)
+				record_max(&telemetry->strategy_sum_bytes, output_position(out) - strategy_start);
+			const auto baseline_start = telemetry == nullptr ? 0U : output_position(out);
+			portable::write_u64(out, checkpoint.late_window_baseline.size());
+			for (const auto value : checkpoint.late_window_baseline)
+				write_double(out, value);
+			if (telemetry != nullptr)
+				record_max(&telemetry->late_window_baseline_bytes, output_position(out) - baseline_start);
+			const auto hash_started = std::chrono::steady_clock::now();
+			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.payload_hash");
+				portable::write_u64(out, payload_hash(checkpoint));
+			}
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->payload_hash_nanoseconds, hash_started);
+		}
+		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->binary_encoding_write_nanoseconds, encoding_started);
+		const auto close_started = std::chrono::steady_clock::now();
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.stream_close_or_flush");
+			out.flush();
+			out.close();
+		}
+		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->stream_close_or_flush_nanoseconds, close_started);
 		if (!out)
 			throw std::runtime_error("multiway training checkpoint write failed");
-		core::publish_atomic_replace(temporary, path, "multiway training checkpoint publish failed");
+		const auto publication_started = std::chrono::steady_clock::now();
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.atomic_publication");
+			core::publish_atomic_replace(temporary, path, "multiway training checkpoint publish failed");
+		}
+		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->atomic_publication_nanoseconds, publication_started);
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayTrainingCheckpointArtifacts::load_verified(const std::filesystem::path& path, const MultiwayModelIdentity& expected_identity, std::uint64_t expected_schedule_hash, std::uint64_t expected_seed)
