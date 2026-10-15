@@ -681,6 +681,77 @@ namespace texas::solver::multiway
 		}
 	}
 
+	void MultiwaySparseRowStorage::admit_rows(
+		const std::vector<MultiwaySparseRowShape>& shapes,
+		const std::vector<std::uint8_t>& new_row_flags)
+	{
+		if (shapes.size() != new_row_flags.size())
+			throw std::invalid_argument("multiway sparse row batch flags do not match shapes");
+		std::size_t new_count = 0U;
+		std::size_t new_values = 0U;
+		for (std::size_t index = 0U; index < shapes.size(); ++index)
+		{
+			if (new_row_flags[index] == 0U)
+				continue;
+			const auto& shape = shapes[index];
+			if (shape.infoset.public_state.value == 0U || shape.infoset.seat < 0)
+				throw std::invalid_argument("multiway sparse row requires a stable per-seat infoset id");
+			const auto values = checked_value_count(shape);
+			if (new_values > std::numeric_limits<std::size_t>::max() - values)
+				throw std::overflow_error("multiway sparse row batch value count overflows size_t");
+			new_values += values;
+			++new_count;
+		}
+		if (metadata_.size() > max_rows_ || new_count > max_rows_ - metadata_.size())
+			throw std::length_error("multiway sparse row admission exceeds configured capacity");
+		if (regret_.size() > max_values_ || new_values > max_values_ - regret_.size())
+			throw std::length_error("multiway sparse row admission exceeds configured value capacity");
+		if (new_count == 0U)
+			return;
+
+		std::vector<MultiwaySparseRowMetadata> pending;
+		pending.reserve(new_count);
+		std::size_t value_offset = regret_.size();
+		for (std::size_t index = 0U; index < shapes.size(); ++index)
+		{
+			if (new_row_flags[index] == 0U)
+				continue;
+			const auto values = checked_value_count(shapes[index]);
+			pending.push_back({ shapes[index], value_offset, value_offset });
+			value_offset += values;
+		}
+
+		metadata_.reserve(metadata_.size() + pending.size());
+		regret_.reserve(regret_.size() + new_values);
+		strategy_sum_.reserve(strategy_sum_.size() + new_values);
+		std::vector<MultiwaySparseRowMetadata> merged;
+		merged.reserve(metadata_.size() + pending.size());
+		std::size_t existing_index = 0U;
+		std::size_t pending_index = 0U;
+		while (existing_index < metadata_.size() || pending_index < pending.size())
+		{
+			if (pending_index == pending.size() || (existing_index < metadata_.size() && metadata_[existing_index].shape.infoset < pending[pending_index].shape.infoset))
+				merged.push_back(metadata_[existing_index++]);
+			else
+				merged.push_back(pending[pending_index++]);
+		}
+
+		const auto old_regret_size = regret_.size();
+		const auto old_strategy_size = strategy_sum_.size();
+		try
+		{
+			regret_.resize(old_regret_size + new_values, 0.0);
+			strategy_sum_.resize(old_strategy_size + new_values, 0.0);
+			metadata_.swap(merged);
+		}
+		catch (...)
+		{
+			strategy_sum_.resize(old_strategy_size);
+			regret_.resize(old_regret_size);
+			throw;
+		}
+	}
+
 	void MultiwaySparseRowStorage::apply_delta(
 		MultiwayInfosetId infoset,
 		std::uint32_t bucket,
@@ -927,19 +998,15 @@ namespace texas::solver::multiway
 					.count());
 
 		const auto storage_commit_started = std::chrono::steady_clock::now();
+		if (compact)
+			compact_storage_->admit_rows(rows, new_rows);
+		else
+			storage_.admit_rows(rows, new_rows);
+		diagnostics_.sparse_rows_admitted += static_cast<std::uint64_t>(new_row_count);
 		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
 		{
 			if (new_rows[row_index] == 0U)
 				continue;
-			const auto started = std::chrono::steady_clock::now();
-			if (compact)
-				compact_storage_->admit_row(rows[row_index]);
-			else
-				storage_.admit_row(rows[row_index]);
-			if (admission_diagnostics_ != nullptr)
-				admission_diagnostics_->row_admission_nanoseconds += static_cast<std::uint64_t>(
-					std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
-			++diagnostics_.sparse_rows_admitted;
 			switch (static_cast<Street>(new_row_streets[row_index]))
 			{
 				case Street::Preflop:
@@ -959,10 +1026,14 @@ namespace texas::solver::multiway
 			}
 		}
 		if (admission_diagnostics_ != nullptr)
-			admission_diagnostics_->storage_commit_nanoseconds += static_cast<std::uint64_t>(
+		{
+			const auto elapsed = static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
 					std::chrono::steady_clock::now() - storage_commit_started)
 					.count());
+			admission_diagnostics_->storage_commit_nanoseconds += elapsed;
+			admission_diagnostics_->row_admission_nanoseconds += elapsed;
+		}
 	}
 
 	void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDescriptor& state)

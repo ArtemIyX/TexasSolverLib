@@ -108,6 +108,103 @@ namespace texas::solver::multiway
 		admit_page(shape.infoset, 0U);
 	}
 
+	void MultiwayCompactStorage::admit_rows(
+		const std::vector<MultiwaySparseRowShape>& shapes,
+		const std::vector<std::uint8_t>& new_row_flags)
+	{
+		if (shapes.size() != new_row_flags.size())
+			throw std::invalid_argument("compact storage row batch flags do not match shapes");
+		std::size_t new_count = 0U;
+		std::size_t new_values = 0U;
+		for (std::size_t index = 0U; index < shapes.size(); ++index)
+		{
+			if (new_row_flags[index] == 0U)
+				continue;
+			const auto& shape = shapes[index];
+			if (shape.infoset.public_state.value == 0U || shape.infoset.seat < 0 || shape.bucket_count == 0U || shape.action_count == 0U)
+				throw std::invalid_argument("compact storage row shape is empty or invalid");
+			const auto values = static_cast<std::size_t>(shape.action_count) * std::min<std::uint32_t>(shape.bucket_count, page_width_);
+			if (new_values > std::numeric_limits<std::size_t>::max() - values)
+				throw std::overflow_error("compact storage row batch value count overflows size_t");
+			new_values += values;
+			++new_count;
+		}
+		if (rows_.size() > max_rows_ || new_count > max_rows_ - rows_.size())
+			throw std::length_error("compact storage row capacity exceeded");
+		if (regrets_.size() > max_values_ || new_values > max_values_ - regrets_.size())
+			throw std::length_error("compact storage page capacity exceeded");
+		if (new_count == 0U)
+			return;
+
+		std::vector<MultiwaySparseRowMetadata> pending_rows;
+		std::vector<PageMetadata> pending_pages;
+		pending_rows.reserve(new_count);
+		pending_pages.reserve(new_count);
+		std::size_t value_offset = regrets_.size();
+		std::size_t strategy_offset = strategy_mass_.size();
+		for (std::size_t index = 0U; index < shapes.size(); ++index)
+		{
+			if (new_row_flags[index] == 0U)
+				continue;
+			const auto& shape = shapes[index];
+			const auto page_buckets = std::min<std::size_t>(page_width_, shape.bucket_count);
+			const auto values = static_cast<std::size_t>(shape.action_count) * page_buckets;
+			pending_rows.push_back({ shape, 0U, 0U });
+			pending_pages.push_back({ shape.infoset, 0U, static_cast<std::uint32_t>(page_buckets), value_offset, strategy_offset });
+			value_offset += values;
+			strategy_offset += values;
+		}
+		std::sort(pending_rows.begin(), pending_rows.end(), [](const auto& left, const auto& right) {
+			return checkpoint_infoset_less(left.shape.infoset, right.shape.infoset);
+		});
+		std::sort(pending_pages.begin(), pending_pages.end(), [](const auto& left, const auto& right) {
+			return checkpoint_infoset_less(left.infoset, right.infoset) || (left.infoset == right.infoset && left.page_index < right.page_index);
+		});
+
+		rows_.reserve(rows_.size() + pending_rows.size());
+		pages_.reserve(pages_.size() + pending_pages.size());
+		regrets_.reserve(regrets_.size() + new_values);
+		strategy_mass_.reserve(strategy_mass_.size() + new_values);
+		std::vector<MultiwaySparseRowMetadata> merged_rows;
+		merged_rows.reserve(rows_.size() + pending_rows.size());
+		std::size_t existing_row = 0U;
+		std::size_t pending_row = 0U;
+		while (existing_row < rows_.size() || pending_row < pending_rows.size())
+		{
+			if (pending_row == pending_rows.size() || (existing_row < rows_.size() && checkpoint_infoset_less(rows_[existing_row].shape.infoset, pending_rows[pending_row].shape.infoset)))
+				merged_rows.push_back(rows_[existing_row++]);
+			else
+				merged_rows.push_back(pending_rows[pending_row++]);
+		}
+		std::vector<PageMetadata> merged_pages;
+		merged_pages.reserve(pages_.size() + pending_pages.size());
+		std::size_t existing_page = 0U;
+		std::size_t pending_page = 0U;
+		while (existing_page < pages_.size() || pending_page < pending_pages.size())
+		{
+			if (pending_page == pending_pages.size() || (existing_page < pages_.size() && (checkpoint_infoset_less(pages_[existing_page].infoset, pending_pages[pending_page].infoset) || (pages_[existing_page].infoset == pending_pages[pending_page].infoset && pages_[existing_page].page_index < pending_pages[pending_page].page_index))))
+				merged_pages.push_back(pages_[existing_page++]);
+			else
+				merged_pages.push_back(pending_pages[pending_page++]);
+		}
+
+		const auto old_regret_size = regrets_.size();
+		const auto old_strategy_size = strategy_mass_.size();
+		try
+		{
+			regrets_.resize(old_regret_size + new_values, 0);
+			strategy_mass_.resize(old_strategy_size + new_values, 0);
+			rows_.swap(merged_rows);
+			pages_.swap(merged_pages);
+		}
+		catch (...)
+		{
+			strategy_mass_.resize(old_strategy_size);
+			regrets_.resize(old_regret_size);
+			throw;
+		}
+	}
+
 	void MultiwayCompactStorage::admit_page(MultiwayInfosetId infoset, std::uint32_t page_index)
 	{
 		const auto* row = metadata(infoset);

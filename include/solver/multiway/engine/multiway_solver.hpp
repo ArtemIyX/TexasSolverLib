@@ -447,6 +447,9 @@ namespace texas::solver::multiway
 			double factor, double threshold, double regret_floor) noexcept;
 		[[nodiscard]] std::size_t prune_negative_regrets(
 			double threshold = 0.0, double regret_floor = 0.0) noexcept;
+		void admit_rows(
+			const std::vector<MultiwaySparseRowShape>& shapes,
+			const std::vector<std::uint8_t>& new_row_flags);
 		[[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
 		[[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 		[[nodiscard]] std::size_t value_capacity_limit() const noexcept { return max_values_; }
