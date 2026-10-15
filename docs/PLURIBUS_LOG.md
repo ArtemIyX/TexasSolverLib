@@ -21,6 +21,8 @@
 - Added a non-executing report analyzer for schema, phase coverage, byte
   accounting, discarded trajectories, and merge-fingerprint validation.
 - Extended the analyzer to require every CP1 Tracy zone in the exported CSV.
+- Preserved exact decimal comparison for the 64-bit deterministic merge
+  fingerprint in Windows PowerShell.
 
 ### Files
 

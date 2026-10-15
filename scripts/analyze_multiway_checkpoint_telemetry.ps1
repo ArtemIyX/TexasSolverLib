@@ -19,7 +19,8 @@ if (-not (Test-Path -LiteralPath $CsvPath -PathType Leaf)) {
 
 $resolvedReportPath = (Resolve-Path -LiteralPath $ReportPath).Path
 $resolvedCsvPath = (Resolve-Path -LiteralPath $CsvPath).Path
-$report = Get-Content -Raw -LiteralPath $resolvedReportPath | ConvertFrom-Json
+$reportText = Get-Content -Raw -LiteralPath $resolvedReportPath
+$report = $reportText | ConvertFrom-Json
 
 if ($null -eq $report.evidence -or $report.evidence.schema_version -ne 7) {
     throw 'CP1 requires training report schema 7'
@@ -110,10 +111,13 @@ $phaseCoverage = if ($checkpointWriteNanoseconds -eq 0U) {
 $checkpointBytes = [int64]$report.checkpoint_bytes
 $unattributedCheckpointBytes = $checkpointBytes - [int64]$payloadSectionBytes
 $discardedTrajectories = [uint64]$report.discarded_trajectories
-$mergeFingerprint = if ($null -eq $report.deterministic_merge_fingerprint) {
-    ''
+$mergeFingerprintMatch = [regex]::Match(
+    $reportText,
+    '"deterministic_merge_fingerprint"\s*:\s*(\d+)')
+$mergeFingerprint = if ($mergeFingerprintMatch.Success) {
+    $mergeFingerprintMatch.Groups[1].Value
 } else {
-    $report.deterministic_merge_fingerprint.ToString()
+    ''
 }
 $mergeFingerprintChecked = -not [string]::IsNullOrWhiteSpace($ExpectedMergeFingerprint)
 $mergeFingerprintMatches = if ($mergeFingerprintChecked) {
