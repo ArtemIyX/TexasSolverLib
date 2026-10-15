@@ -1,5 +1,48 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Implement AD2-AD4 discovery preparation and parent-first merge
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commit:** `beb507f PB-3 Multiway: Implement AD2-AD4 discovery merge`
+
+- Added worker-local discovery preparation that sorts deterministically,
+  deduplicates candidates in place, and rejects conflicting public-state or
+  row descriptors.
+- Replaced coordinator discovery concatenation and global sorting with direct
+  deterministic k-way merging of prepared worker streams.
+- Added binary-search parent resolution with memoized candidate depths,
+  cycle/unresolved-parent rejection before mutation, and `(depth, state_id)`
+  admission ordering.
+- Reused coordinator merge/order buffers and removed repeated parent descriptor
+  reconstruction from the admission path.
+- Added focused discovery-stream tests for compatible duplicate collapse and
+  conflicting candidate rejection.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Focused source diff reviewed.
+- `git diff --check` passed.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+- Operator must run the correctness suite and identical 1-worker/4-worker
+  admission measurements, then provide fingerprints, admitted-set comparisons,
+  and timing results.
+
+### Limitations
+
+- Runtime acceptance and the four-worker admission slowdown threshold remain
+  unverified until operator validation.
+
 ## 2026-10-15 - Accept formatted bucket checkpoint setup
 
 **Status:** Complete
