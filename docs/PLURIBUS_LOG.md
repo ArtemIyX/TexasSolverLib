@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Accept formatted bucket checkpoint setup
+
+**Status:** Implemented, operator validation pending
+**Completed:** 2026-10-15
+**Implementation commit:** `721baa3 PB-3 Tests: Accept formatted checkpoint setup`
+
+- Made the bucket workflow boundary check validate the checkpoint guard,
+  directory creation call, and writer setup order independently of C++ line
+  formatting.
+- Preserved the requirement that the checkpoint directory is created before
+  `MultiwayBucketArtifactWriter` setup.
+
+### Files
+
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused source diff reviewed.
+- `git diff --check` passed.
+- No build or test was run by Codex.
+
+### Limitations
+
+- Operator must rerun the failing CMake boundary check.
+
 ## 2026-10-15 - Fix AD1 report validation compile error
 
 **Status:** Complete
