@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Add AD7 catalog optimization planning prompt
+
+**Status:** Complete
+**Completed:** 2026-10-15
+
+- Added a handoff prompt for the next AI agent to prepare the follow-up AD7
+  catalog menu-lookup optimization plan.
+- Recorded the latest performance evidence, correctness invariants, candidate
+  solutions, required telemetry, and session constraints.
+
+### Files
+
+- `docs/prompts/ad7_catalog_menu_lookup_followup_planning_prompt.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the new prompt and latest `tmp/tracy/ad7-post-*` reports.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- The follow-up implementation plan must be prepared by the next agent.
+
 ## 2026-10-15 - Fix AD7 fixed-state transition compile error
 
 **Status:** Complete
