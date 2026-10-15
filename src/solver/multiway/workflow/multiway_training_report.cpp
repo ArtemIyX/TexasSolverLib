@@ -36,6 +36,10 @@ namespace texas::solver::multiway
 				matches(worker_continuation_delta_entries.size()) &&
 				matches(worker_discovery_public_state_counts.size()) &&
 				matches(worker_discovery_row_counts.size()) &&
+				matches(report.admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) &&
+				matches(report.admission_diagnostics.worker_raw_row_candidates_by_worker.size()) &&
+				matches(report.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) &&
+				matches(report.admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) &&
 				matches(worker_allocation_counts.size()) &&
 				matches(worker_allocated_bytes.size()) &&
 				matches(worker_resolved_processor.size()) &&
@@ -138,6 +142,7 @@ namespace texas::solver::multiway
 		report.generated_discovery_public_state_count = status.generated_discovery_public_state_count;
 		report.generated_discovery_row_count = status.generated_discovery_row_count;
 		report.coordinator_admission_nanoseconds = status.coordinator_admission_nanoseconds;
+		report.admission_diagnostics = status.admission_diagnostics;
 		report.trainer_only_nanoseconds = status.trainer_only_nanoseconds;
 		report.process_cpu_nanoseconds = status.process_cpu_nanoseconds;
 		report.peak_working_set_bytes = status.peak_working_set_bytes;
@@ -310,6 +315,38 @@ namespace texas::solver::multiway
 		write_u64_array("worker_resolved_processor", std::vector<std::uint64_t>(report.worker_resolved_processor.begin(), report.worker_resolved_processor.end()));
 		write_u64_array("worker_affinity_masks", report.worker_affinity_masks);
 		write_u64_array("worker_affinity_succeeded", std::vector<std::uint64_t>(report.worker_affinity_succeeded.begin(), report.worker_affinity_succeeded.end()));
+		const auto& admission = report.admission_diagnostics;
+		output << ",\n  \"admission_diagnostics\": {\"raw_public_state_candidates\": " << admission.raw_public_state_candidates
+			   << ", \"raw_row_candidates\": " << admission.raw_row_candidates
+			   << ", \"worker_local_unique_public_state_candidates\": " << admission.worker_local_unique_public_state_candidates
+			   << ", \"worker_local_unique_row_candidates\": " << admission.worker_local_unique_row_candidates
+			   << ", \"globally_unique_public_state_candidates\": " << admission.globally_unique_public_state_candidates
+			   << ", \"globally_unique_row_candidates\": " << admission.globally_unique_row_candidates
+			   << ", \"already_admitted_public_state_candidates\": " << admission.already_admitted_public_state_candidates
+			   << ", \"already_admitted_row_candidates\": " << admission.already_admitted_row_candidates
+			   << ", \"newly_admitted_public_state_candidates\": " << admission.newly_admitted_public_state_candidates
+			   << ", \"newly_admitted_row_candidates\": " << admission.newly_admitted_row_candidates
+			   << ", \"parent_resolution_passes\": " << admission.parent_resolution_passes
+			   << ", \"parent_resolution_probes\": " << admission.parent_resolution_probes
+			   << ", \"descriptor_reconstructions\": " << admission.descriptor_reconstructions
+			   << ", \"lock_acquisitions\": " << admission.lock_acquisitions
+			   << ", \"catalog_index_insertion_nanoseconds\": " << admission.catalog_index_insertion_nanoseconds
+			   << ", \"row_admission_nanoseconds\": " << admission.row_admission_nanoseconds;
+		const auto write_admission_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
+			output << ", \"" << name << "\": [";
+			for (std::size_t index = 0U; index < values.size(); ++index)
+			{
+				if (index != 0U)
+					output << ',';
+				output << values[index];
+			}
+			output << ']';
+		};
+		write_admission_array("worker_raw_public_state_candidates_by_worker", admission.worker_raw_public_state_candidates_by_worker);
+		write_admission_array("worker_raw_row_candidates_by_worker", admission.worker_raw_row_candidates_by_worker);
+		write_admission_array("worker_local_unique_public_state_candidates_by_worker", admission.worker_local_unique_public_state_candidates_by_worker);
+		write_admission_array("worker_local_unique_row_candidates_by_worker", admission.worker_local_unique_row_candidates_by_worker);
+		output << '}';
 		if (report.failed_batch_available)
 		{
 			const auto& batch = report.failed_batch;

@@ -215,7 +215,9 @@ namespace texas::solver::multiway
 		explicit MultiwayPublicCatalog(std::size_t max_nodes = 0U);
 
 		void clear() noexcept;
-		void admit(const MultiwayPublicStateDescriptor& state);
+		void admit(
+			const MultiwayPublicStateDescriptor& state,
+			std::uint64_t* index_insertion_nanoseconds = nullptr);
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const;
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
@@ -534,6 +536,62 @@ namespace texas::solver::multiway
 		std::optional<MultiwayNashConv> quality;
 	};
 
+	// Cold coordinator admission diagnostics. These counters are runtime-only
+	// telemetry and do not affect strategy identity or deterministic merges.
+	struct MultiwayAdmissionDiagnostics
+	{
+		std::uint64_t raw_public_state_candidates = 0U;
+		std::uint64_t raw_row_candidates = 0U;
+		std::uint64_t worker_local_unique_public_state_candidates = 0U;
+		std::uint64_t worker_local_unique_row_candidates = 0U;
+		std::uint64_t globally_unique_public_state_candidates = 0U;
+		std::uint64_t globally_unique_row_candidates = 0U;
+		std::uint64_t already_admitted_public_state_candidates = 0U;
+		std::uint64_t already_admitted_row_candidates = 0U;
+		std::uint64_t newly_admitted_public_state_candidates = 0U;
+		std::uint64_t newly_admitted_row_candidates = 0U;
+		std::uint64_t parent_resolution_passes = 0U;
+		std::uint64_t parent_resolution_probes = 0U;
+		std::uint64_t descriptor_reconstructions = 0U;
+		std::uint64_t lock_acquisitions = 0U;
+		std::uint64_t catalog_index_insertion_nanoseconds = 0U;
+		std::uint64_t row_admission_nanoseconds = 0U;
+		std::vector<std::uint64_t> worker_raw_public_state_candidates_by_worker;
+		std::vector<std::uint64_t> worker_raw_row_candidates_by_worker;
+		std::vector<std::uint64_t> worker_local_unique_public_state_candidates_by_worker;
+		std::vector<std::uint64_t> worker_local_unique_row_candidates_by_worker;
+
+		void accumulate(const MultiwayAdmissionDiagnostics& other)
+		{
+			raw_public_state_candidates += other.raw_public_state_candidates;
+			raw_row_candidates += other.raw_row_candidates;
+			worker_local_unique_public_state_candidates += other.worker_local_unique_public_state_candidates;
+			worker_local_unique_row_candidates += other.worker_local_unique_row_candidates;
+			globally_unique_public_state_candidates += other.globally_unique_public_state_candidates;
+			globally_unique_row_candidates += other.globally_unique_row_candidates;
+			already_admitted_public_state_candidates += other.already_admitted_public_state_candidates;
+			already_admitted_row_candidates += other.already_admitted_row_candidates;
+			newly_admitted_public_state_candidates += other.newly_admitted_public_state_candidates;
+			newly_admitted_row_candidates += other.newly_admitted_row_candidates;
+			parent_resolution_passes += other.parent_resolution_passes;
+			parent_resolution_probes += other.parent_resolution_probes;
+			descriptor_reconstructions += other.descriptor_reconstructions;
+			lock_acquisitions += other.lock_acquisitions;
+			catalog_index_insertion_nanoseconds += other.catalog_index_insertion_nanoseconds;
+			row_admission_nanoseconds += other.row_admission_nanoseconds;
+			const auto append = [](std::vector<std::uint64_t>& target, const std::vector<std::uint64_t>& source) {
+				if (target.size() < source.size())
+					target.resize(source.size(), 0U);
+				for (std::size_t index = 0U; index < source.size(); ++index)
+					target[index] += source[index];
+			};
+			append(worker_raw_public_state_candidates_by_worker, other.worker_raw_public_state_candidates_by_worker);
+			append(worker_raw_row_candidates_by_worker, other.worker_raw_row_candidates_by_worker);
+			append(worker_local_unique_public_state_candidates_by_worker, other.worker_local_unique_public_state_candidates_by_worker);
+			append(worker_local_unique_row_candidates_by_worker, other.worker_local_unique_row_candidates_by_worker);
+		}
+	};
+
 	// Immutable boundary output. It deliberately retains only a root policy,
 	// per-seat root values, and diagnostics; it never exports dense global policy.
 	class MultiwaySolveResult
@@ -606,6 +664,10 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return compact_storage_.get(); }
 		[[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
 		[[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
+		void set_admission_diagnostics(MultiwayAdmissionDiagnostics* diagnostics) noexcept
+		{
+			admission_diagnostics_ = diagnostics;
+		}
 		[[nodiscard]] std::size_t merge_scratch_capacity() const noexcept
 		{
 			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().max_worker_delta_entries;
@@ -638,6 +700,7 @@ namespace texas::solver::multiway
 		std::vector<std::size_t> merge_stream_cursors_;
 		std::vector<PendingMergeCell> pending_merge_cells_;
 		MultiwaySolveDiagnostics diagnostics_;
+		MultiwayAdmissionDiagnostics* admission_diagnostics_ = nullptr;
 		mutable std::shared_mutex traversal_mutex_;
 	};
 

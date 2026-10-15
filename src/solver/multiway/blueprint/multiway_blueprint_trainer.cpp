@@ -324,6 +324,7 @@ namespace texas::solver::multiway
 				schedule_.strategy_weight(one_based_batch));
 			if (!batch_result.clean)
 			{
+				status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
 				status_.failed_batch_available = true;
 				status_.failed_batch = batch_result;
 				if (batch_result.discovery_capacity_exhausted)
@@ -407,6 +408,7 @@ namespace texas::solver::multiway
 			status_.generated_discovery_public_state_count += batch_result.generated_discovery_public_state_count;
 			status_.generated_discovery_row_count += batch_result.generated_discovery_row_count;
 			status_.coordinator_admission_nanoseconds += batch_result.coordinator_admission_nanoseconds;
+			status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
 			status_.affinity_requested = batch_result.affinity_requested;
 			status_.cumulative_worker_delta_entries = diagnostics.worker_delta_entries_merged;
 			status_.worker_active_nanoseconds += batch_result.worker_active_nanoseconds;

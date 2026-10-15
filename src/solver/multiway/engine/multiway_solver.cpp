@@ -761,6 +761,8 @@ namespace texas::solver::multiway
 	{
 		{
 			std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+			if (admission_diagnostics_ != nullptr)
+				++admission_diagnostics_->lock_acquisitions;
 			const auto* existing = public_state(state.id);
 			if (existing != nullptr)
 			{
@@ -773,6 +775,8 @@ namespace texas::solver::multiway
 		}
 		const auto lock_wait_start = std::chrono::steady_clock::now();
 		std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+		if (admission_diagnostics_ != nullptr)
+			++admission_diagnostics_->lock_acquisitions;
 		diagnostics_.coordinator_lock_wait_nanoseconds += static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - lock_wait_start)
@@ -804,7 +808,11 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
 		}
-		public_catalog_.admit(state);
+		public_catalog_.admit(
+			state,
+			admission_diagnostics_ == nullptr
+				? nullptr
+				: &admission_diagnostics_->catalog_index_insertion_nanoseconds);
 		++diagnostics_.public_states_admitted;
 	}
 
@@ -812,6 +820,8 @@ namespace texas::solver::multiway
 	{
 		{
 			std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+			if (admission_diagnostics_ != nullptr)
+				++admission_diagnostics_->lock_acquisitions;
 			const auto* existing = compact_storage_ != nullptr
 				? compact_storage_->metadata(shape.infoset)
 				: storage_.metadata(shape.infoset);
@@ -826,6 +836,8 @@ namespace texas::solver::multiway
 		}
 		const auto lock_wait_start = std::chrono::steady_clock::now();
 		std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+		if (admission_diagnostics_ != nullptr)
+			++admission_diagnostics_->lock_acquisitions;
 		diagnostics_.coordinator_lock_wait_nanoseconds += static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - lock_wait_start)
@@ -872,10 +884,16 @@ namespace texas::solver::multiway
 			case Street::Showdown:
 				break;
 		}
+		const auto row_admission_started = std::chrono::steady_clock::now();
 		if (compact)
 			compact_storage_->admit_row(shape);
 		else
 			storage_.admit_row(shape);
+		if (admission_diagnostics_ != nullptr)
+			admission_diagnostics_->row_admission_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - row_admission_started)
+					.count());
 		if (!existed)
 		{
 			++diagnostics_.sparse_rows_admitted;
@@ -1308,13 +1326,19 @@ namespace texas::solver::multiway
 		MultiwayPublicStateId id) const
 	{
 		thread_local MultiwayPublicStateDescriptor scratch;
-		return public_catalog_.reconstruct(id, scratch) ? &scratch : nullptr;
+		if (!public_catalog_.reconstruct(id, scratch))
+			return nullptr;
+		if (admission_diagnostics_ != nullptr)
+			++admission_diagnostics_->descriptor_reconstructions;
+		return &scratch;
 	}
 
 	const MultiwayPublicStateDescriptor* MultiwaySolverCoordinator::find_public_state(
 		MultiwayPublicStateId id) const noexcept
 	{
 		std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+		if (admission_diagnostics_ != nullptr)
+			++admission_diagnostics_->lock_acquisitions;
 		try
 		{
 			return public_state(id);

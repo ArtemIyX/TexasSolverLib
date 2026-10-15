@@ -105,6 +105,51 @@ namespace texas::solver::multiway
 			return hash == 0U ? 1U : hash;
 		}
 
+		std::uint64_t count_unique_public_state_candidates(
+			const std::vector<MultiwayPublicStateDescriptor>& candidates)
+		{
+			std::vector<MultiwayPublicStateId> ids;
+			ids.reserve(candidates.size());
+			for (const auto& candidate : candidates)
+				ids.push_back(candidate.id);
+			std::sort(ids.begin(), ids.end());
+			return static_cast<std::uint64_t>(std::unique(ids.begin(), ids.end()) - ids.begin());
+		}
+
+		std::uint64_t count_unique_row_candidates(
+			const std::vector<MultiwaySparseRowShape>& candidates)
+		{
+			std::vector<MultiwayInfosetId> ids;
+			ids.reserve(candidates.size());
+			for (const auto& candidate : candidates)
+				ids.push_back(candidate.infoset);
+			std::sort(ids.begin(), ids.end());
+			return static_cast<std::uint64_t>(std::unique(ids.begin(), ids.end()) - ids.begin());
+		}
+
+		class MultiwayAdmissionDiagnosticsScope final
+		{
+		public:
+			MultiwayAdmissionDiagnosticsScope(
+				MultiwaySolverCoordinator& coordinator,
+				MultiwayAdmissionDiagnostics& diagnostics) noexcept
+				: coordinator_(coordinator)
+			{
+				coordinator_.set_admission_diagnostics(&diagnostics);
+			}
+
+			~MultiwayAdmissionDiagnosticsScope()
+			{
+				coordinator_.set_admission_diagnostics(nullptr);
+			}
+
+			MultiwayAdmissionDiagnosticsScope(const MultiwayAdmissionDiagnosticsScope&) = delete;
+			MultiwayAdmissionDiagnosticsScope& operator=(const MultiwayAdmissionDiagnosticsScope&) = delete;
+
+		private:
+			MultiwaySolverCoordinator& coordinator_;
+		};
+
 	} // namespace
 
 	bool MultiwayDiscoveryStream::try_append_public_state(const MultiwayPublicStateDescriptor& state)
@@ -1260,6 +1305,10 @@ namespace texas::solver::multiway
 		result.worker_continuation_delta_entries.resize(worker_scratch_.size());
 		result.worker_discovery_public_state_counts.resize(worker_scratch_.size());
 		result.worker_discovery_row_counts.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_raw_public_state_candidates_by_worker.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_raw_row_candidates_by_worker.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_local_unique_row_candidates_by_worker.resize(worker_scratch_.size());
 		result.worker_allocation_counts.resize(worker_scratch_.size());
 		result.worker_allocated_bytes.resize(worker_scratch_.size());
 		result.worker_resolved_processor.resize(worker_scratch_.size());
@@ -1287,6 +1336,16 @@ namespace texas::solver::multiway
 			result.generated_update_count += regret_entries + continuation_entries;
 			result.generated_discovery_public_state_count += discovery_public_states;
 			result.generated_discovery_row_count += discovery_rows;
+			result.admission_diagnostics.raw_public_state_candidates += discovery_public_states;
+			result.admission_diagnostics.raw_row_candidates += discovery_rows;
+			result.admission_diagnostics.worker_raw_public_state_candidates_by_worker[worker_index] = discovery_public_states;
+			result.admission_diagnostics.worker_raw_row_candidates_by_worker[worker_index] = discovery_rows;
+			const auto local_unique_public_states = count_unique_public_state_candidates(scratch.discovery.public_states());
+			const auto local_unique_rows = count_unique_row_candidates(scratch.discovery.rows());
+			result.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker[worker_index] = local_unique_public_states;
+			result.admission_diagnostics.worker_local_unique_row_candidates_by_worker[worker_index] = local_unique_rows;
+			result.admission_diagnostics.worker_local_unique_public_state_candidates += local_unique_public_states;
+			result.admission_diagnostics.worker_local_unique_row_candidates += local_unique_rows;
 			result.maximum_worker_delta_entries = std::max(
 				result.maximum_worker_delta_entries,
 				std::max(scratch.peak_regret_delta_entries, scratch.peak_continuation_delta_entries));
@@ -1347,6 +1406,8 @@ namespace texas::solver::multiway
 		if (immutable_epochs_)
 		{
 			const auto admission_start = std::chrono::steady_clock::now();
+			const auto public_states_before = coordinator_->diagnostics().public_states_admitted;
+			const auto rows_before = coordinator_->diagnostics().sparse_rows_admitted;
 			std::vector<MultiwayPublicStateDescriptor> discoveries;
 			std::vector<MultiwaySparseRowShape> rows;
 			{
@@ -1371,17 +1432,30 @@ namespace texas::solver::multiway
 				});
 				std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
 			}
+			result.admission_diagnostics.globally_unique_public_state_candidates =
+				count_unique_public_state_candidates(discoveries);
+			result.admission_diagnostics.globally_unique_row_candidates =
+				count_unique_row_candidates(rows);
 			std::vector<bool> admitted(discoveries.size(), false);
 			std::size_t remaining = discoveries.size();
+			MultiwayAdmissionDiagnosticsScope admission_diagnostics_scope(
+				*coordinator_, result.admission_diagnostics);
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_admit");
 				while (remaining != 0U)
 				{
+					++result.admission_diagnostics.parent_resolution_passes;
 					bool progress = false;
 					for (std::size_t index = 0U; index < discoveries.size(); ++index)
 					{
-						if (admitted[index] || (discoveries[index].parent_id.value != 0U && coordinator_->find_public_state(discoveries[index].parent_id) == nullptr))
+						if (admitted[index])
 							continue;
+						if (discoveries[index].parent_id.value != 0U)
+						{
+							++result.admission_diagnostics.parent_resolution_probes;
+							if (coordinator_->find_public_state(discoveries[index].parent_id) == nullptr)
+								continue;
+						}
 						coordinator_->admit_public_state(discoveries[index]);
 						admitted[index] = true;
 						--remaining;
@@ -1393,6 +1467,23 @@ namespace texas::solver::multiway
 			}
 			for (const auto& row : rows)
 				coordinator_->admit_infoset_row(row);
+			const auto public_states_after = coordinator_->diagnostics().public_states_admitted;
+			const auto rows_after = coordinator_->diagnostics().sparse_rows_admitted;
+			result.admission_diagnostics.newly_admitted_public_state_candidates =
+				public_states_after >= public_states_before
+					? public_states_after - public_states_before : 0U;
+			result.admission_diagnostics.newly_admitted_row_candidates =
+				rows_after >= rows_before ? rows_after - rows_before : 0U;
+			result.admission_diagnostics.already_admitted_public_state_candidates =
+				result.admission_diagnostics.globally_unique_public_state_candidates >=
+					result.admission_diagnostics.newly_admitted_public_state_candidates
+					? result.admission_diagnostics.globally_unique_public_state_candidates -
+						result.admission_diagnostics.newly_admitted_public_state_candidates : 0U;
+			result.admission_diagnostics.already_admitted_row_candidates =
+				result.admission_diagnostics.globally_unique_row_candidates >=
+					result.admission_diagnostics.newly_admitted_row_candidates
+					? result.admission_diagnostics.globally_unique_row_candidates -
+						result.admission_diagnostics.newly_admitted_row_candidates : 0U;
 			coordinator_->merge_traversal_counters(terminal_visits, leaf_visits, missing_lookup_requests);
 			result.coordinator_admission_nanoseconds = static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(

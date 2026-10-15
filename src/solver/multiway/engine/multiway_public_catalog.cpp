@@ -1,6 +1,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -44,7 +45,9 @@ namespace texas::solver::multiway
 		return node(id) != nullptr;
 	}
 
-	void MultiwayPublicCatalog::admit(const MultiwayPublicStateDescriptor& state)
+	void MultiwayPublicCatalog::admit(
+		const MultiwayPublicStateDescriptor& state,
+		std::uint64_t* index_insertion_nanoseconds)
 	{
 		if (state.id.value == 0U || state.board.size() > 5U || state.incoming_edge.dealt_cards.size() > 3U || state.incoming_edge.transition_board.size() > 5U)
 			throw std::invalid_argument("packed public catalog state is malformed");
@@ -111,7 +114,13 @@ namespace texas::solver::multiway
 		nodes_.push_back(packed);
 		const auto insertion = std::lower_bound(index_.begin(), index_.end(), state.id,
 			[](const IndexEntry& entry, MultiwayPublicStateId key) { return entry.id < key; });
+		const auto index_started = std::chrono::steady_clock::now();
 		index_.insert(insertion, IndexEntry{ state.id, node_index });
+		if (index_insertion_nanoseconds != nullptr)
+			*index_insertion_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - index_started)
+					.count());
 	}
 
 	bool MultiwayPublicCatalog::reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const
