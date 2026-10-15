@@ -203,7 +203,7 @@ namespace texas::solver::multiway
 				}
 				case MultiwayPublicParentEdgeKind::StreetTransition:
 				{
-					if (!parent_state.requires_street_transition() || child.history != parent.history || child.board != child.incoming_edge.transition_board || child.board.size() != expected_board_card_count(static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U)) || child.board.size() < parent.board.size() || !board_contains(child.board, parent.board) || child.board_runout.remaining_board_cards != 5U - child.board.size() || child.board_runout.chance_only_runout)
+					if (parent_state.next_node_kind() != MultiwayNextNodeKind::StreetTransition || child.history != parent.history || child.board != child.incoming_edge.transition_board || child.board.size() != expected_board_card_count(static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U)) || child.board.size() < parent.board.size() || !board_contains(child.board, parent.board) || child.board_runout.remaining_board_cards != 5U - child.board.size() || child.board_runout.chance_only_runout)
 					{
 						throw std::invalid_argument("multiway child street transition has inconsistent public state");
 					}
