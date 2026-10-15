@@ -269,7 +269,8 @@ namespace
 				  << " hardware_threads=" << hardware_threads
 				  << " physical_cores=" << multiway_bucket_physical_core_count()
 				  << " effective_threads=" << effective_threads << std::endl;
-		if (!checkpoint_dir.empty()) std::filesystem::create_directories(checkpoint_dir);
+		if (!checkpoint_dir.empty())
+			std::filesystem::create_directories(checkpoint_dir);
 		constexpr std::uint64_t max_table_bytes = 2U + 5U + 4U + static_cast<std::uint64_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * 4U;
 		if (expected_tables > (std::numeric_limits<std::uint64_t>::max() - 116U) / max_table_bytes)
 		{

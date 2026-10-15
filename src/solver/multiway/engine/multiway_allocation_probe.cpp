@@ -48,8 +48,8 @@ void* operator new(std::size_t bytes)
 {
 	if (void* memory = std::malloc(bytes == 0U ? 1U : bytes))
 	{
-	texas::solver::multiway::record_allocation(bytes);
-	return memory;
+		texas::solver::multiway::record_allocation(bytes);
+		return memory;
 	}
 	throw std::bad_alloc();
 }
@@ -59,14 +59,33 @@ void* operator new[](std::size_t bytes)
 	return ::operator new(bytes);
 }
 
-void operator delete(void* memory) noexcept { std::free(memory); }
-void operator delete[](void* memory) noexcept { std::free(memory); }
-void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
-void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); }
+void operator delete(void* memory) noexcept
+{
+	std::free(memory);
+}
+void operator delete[](void* memory) noexcept
+{
+	std::free(memory);
+}
+void operator delete(void* memory, std::size_t) noexcept
+{
+	std::free(memory);
+}
+void operator delete[](void* memory, std::size_t) noexcept
+{
+	std::free(memory);
+}
 
 void* operator new(std::size_t bytes, const std::nothrow_t&) noexcept
 {
-	try { return ::operator new(bytes); } catch (...) { return nullptr; }
+	try
+	{
+		return ::operator new(bytes);
+	}
+	catch (...)
+	{
+		return nullptr;
+	}
 }
 
 void* operator new[](std::size_t bytes, const std::nothrow_t&) noexcept
@@ -74,8 +93,14 @@ void* operator new[](std::size_t bytes, const std::nothrow_t&) noexcept
 	return ::operator new(bytes, std::nothrow);
 }
 
-void operator delete(void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
-void operator delete[](void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
+void operator delete(void* memory, const std::nothrow_t&) noexcept
+{
+	std::free(memory);
+}
+void operator delete[](void* memory, const std::nothrow_t&) noexcept
+{
+	std::free(memory);
+}
 
 void* operator new(std::size_t bytes, std::align_val_t alignment)
 {
@@ -105,13 +130,29 @@ void operator delete(void* memory, std::align_val_t) noexcept
 	std::free(memory);
 #endif
 }
-void operator delete[](void* memory, std::align_val_t alignment) noexcept { ::operator delete(memory, alignment); }
-void operator delete(void* memory, std::size_t, std::align_val_t alignment) noexcept { ::operator delete(memory, alignment); }
-void operator delete[](void* memory, std::size_t, std::align_val_t alignment) noexcept { ::operator delete(memory, alignment); }
+void operator delete[](void* memory, std::align_val_t alignment) noexcept
+{
+	::operator delete(memory, alignment);
+}
+void operator delete(void* memory, std::size_t, std::align_val_t alignment) noexcept
+{
+	::operator delete(memory, alignment);
+}
+void operator delete[](void* memory, std::size_t, std::align_val_t alignment) noexcept
+{
+	::operator delete(memory, alignment);
+}
 
 void* operator new(std::size_t bytes, std::align_val_t alignment, const std::nothrow_t&) noexcept
 {
-	try { return ::operator new(bytes, alignment); } catch (...) { return nullptr; }
+	try
+	{
+		return ::operator new(bytes, alignment);
+	}
+	catch (...)
+	{
+		return nullptr;
+	}
 }
 
 void* operator new[](std::size_t bytes, std::align_val_t alignment, const std::nothrow_t&) noexcept

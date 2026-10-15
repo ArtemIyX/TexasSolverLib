@@ -1,10 +1,10 @@
 #include "core/atomic_publish.hpp"
 
 #ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
+	#ifndef NOMINMAX
+		#define NOMINMAX
+	#endif
+	#include <windows.h>
 #endif
 
 #include <stdexcept>
@@ -55,17 +55,17 @@ namespace texas::core
 	{
 		switch (mode)
 		{
-		case AtomicPublishMode::Rename:
-			return "rename";
-		case AtomicPublishMode::WindowsReplace:
-			return "windows_replace";
-		case AtomicPublishMode::CopyFallback:
-			return "copy_fallback";
-		case AtomicPublishMode::BackupRename:
-			return "backup_rename";
-		case AtomicPublishMode::Unknown:
-		default:
-			return "unknown";
+			case AtomicPublishMode::Rename:
+				return "rename";
+			case AtomicPublishMode::WindowsReplace:
+				return "windows_replace";
+			case AtomicPublishMode::CopyFallback:
+				return "copy_fallback";
+			case AtomicPublishMode::BackupRename:
+				return "backup_rename";
+			case AtomicPublishMode::Unknown:
+			default:
+				return "unknown";
 		}
 	}
 

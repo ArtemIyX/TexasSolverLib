@@ -28,7 +28,7 @@ namespace texas::solver::multiway
 				return maximum;
 			return std::llround(scaled);
 		}
-	}
+	} // namespace
 
 	MultiwayCompactStorage::MultiwayCompactStorage(std::size_t max_rows, std::size_t max_values, std::uint32_t page_width)
 		: max_rows_(max_rows), max_values_(max_values), page_width_(page_width)

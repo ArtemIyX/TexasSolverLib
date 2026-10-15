@@ -81,8 +81,7 @@ namespace texas::solver::multiway
 		std::uint64_t trajectory_count) noexcept
 	{
 		return static_cast<std::size_t>(
-			trajectory_count / MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE +
-			(trajectory_count % MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE == 0U ? 0U : 1U));
+			trajectory_count / MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE + (trajectory_count % MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE == 0U ? 0U : 1U));
 	}
 
 	MultiwayTrajectoryRange MultiwayScheduler::dynamic_chunk_range(

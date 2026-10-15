@@ -65,4 +65,3 @@ TEST_CASE(multiway_public_catalog_uses_fixed_node_memory_for_repeated_menus)
 	EXPECT_EQ(catalog.size(), 8U);
 	EXPECT_TRUE(catalog.memory_bytes() < 8U * sizeof(texas::MultiwayPublicStateDescriptor));
 }
-

@@ -175,12 +175,32 @@ TEST_CASE(multiway_compact_storage_checkpoint_matches_scalar_action_major_refere
 	texas::solver::multiway::MultiwaySparseStorageCheckpoint checkpoint;
 	storage.export_checkpoint(checkpoint);
 	const std::array<double, 12> expected_regrets = {
-		1.0, -0.5, 0.0, 0.0, 4.0, 0.0,
-		0.0, 0.0, -3.0, 2.0, 0.0, 6.0,
+		1.0,
+		-0.5,
+		0.0,
+		0.0,
+		4.0,
+		0.0,
+		0.0,
+		0.0,
+		-3.0,
+		2.0,
+		0.0,
+		6.0,
 	};
 	const std::array<double, 12> expected_strategy_sums = {
-		2.0, 3.0, 0.0, 0.0, 5.0, 0.0,
-		0.0, 0.0, 11.0, 7.0, 0.0, 13.0,
+		2.0,
+		3.0,
+		0.0,
+		0.0,
+		5.0,
+		0.0,
+		0.0,
+		0.0,
+		11.0,
+		7.0,
+		0.0,
+		13.0,
 	};
 
 	EXPECT_EQ(checkpoint.shapes.size(), 2U);

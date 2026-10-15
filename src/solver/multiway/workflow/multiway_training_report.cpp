@@ -15,37 +15,16 @@ namespace texas::solver::multiway
 	{
 		if (instrumentation_kind != "none" && instrumentation_kind != "tracy")
 			throw std::invalid_argument("invalid multiway training instrumentation kind");
-		if (instrumentation_kind == "none" &&
-			(!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid))
+		if (instrumentation_kind == "none" && (!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid))
 			throw std::invalid_argument("unprofiled training report has Tracy provenance");
-		if (instrumentation_kind == "tracy" &&
-			(tracy_version.empty() || allocation_probe_valid))
+		if (instrumentation_kind == "tracy" && (tracy_version.empty() || allocation_probe_valid))
 			throw std::invalid_argument("Tracy training report has invalid provenance");
 		const auto worker_vectors_match = [this] {
 			const auto worker_count = worker_trajectory_counts.size();
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			return matches(worker_active_nanoseconds_by_worker.size()) &&
-				matches(worker_sort_nanoseconds_by_worker.size()) &&
-				matches(worker_wake_latency_nanoseconds_by_worker.size()) &&
-				matches(worker_cv_wait_nanoseconds_by_worker.size()) &&
-				matches(worker_completion_nanoseconds_by_worker.size()) &&
-				matches(worker_tail_idle_nanoseconds_by_worker.size()) &&
-				matches(worker_regret_delta_entries.size()) &&
-				matches(worker_continuation_delta_entries.size()) &&
-				matches(worker_discovery_public_state_counts.size()) &&
-				matches(worker_discovery_row_counts.size()) &&
-				matches(report.admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) &&
-				matches(report.admission_diagnostics.worker_raw_row_candidates_by_worker.size()) &&
-				matches(report.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) &&
-				matches(report.admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) &&
-				matches(worker_allocation_counts.size()) &&
-				matches(worker_allocated_bytes.size()) &&
-				matches(worker_resolved_processor.size()) &&
-				matches(worker_affinity_masks.size()) &&
-				matches(worker_affinity_succeeded.size()) &&
-				matches(worker_profiles.size());
+			return matches(worker_active_nanoseconds_by_worker.size()) && matches(worker_sort_nanoseconds_by_worker.size()) && matches(worker_wake_latency_nanoseconds_by_worker.size()) && matches(worker_cv_wait_nanoseconds_by_worker.size()) && matches(worker_completion_nanoseconds_by_worker.size()) && matches(worker_tail_idle_nanoseconds_by_worker.size()) && matches(worker_regret_delta_entries.size()) && matches(worker_continuation_delta_entries.size()) && matches(worker_discovery_public_state_counts.size()) && matches(worker_discovery_row_counts.size()) && matches(report.admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) && matches(report.admission_diagnostics.worker_raw_row_candidates_by_worker.size()) && matches(report.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) && matches(report.admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) && matches(worker_allocation_counts.size()) && matches(worker_allocated_bytes.size()) && matches(worker_resolved_processor.size()) && matches(worker_affinity_masks.size()) && matches(worker_affinity_succeeded.size()) && matches(worker_profiles.size());
 		};
 		if (accepted_trajectories > trajectories || discarded_trajectories > trajectories || (batches != 0U && deterministic_merge_fingerprint == 0U && !failed))
 		{
@@ -58,22 +37,7 @@ namespace texas::solver::multiway
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded ||
-				!matches(batch.worker_active_nanoseconds_by_worker.size()) ||
-				!matches(batch.worker_sort_nanoseconds_by_worker.size()) ||
-				!matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) ||
-				!matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) ||
-				!matches(batch.worker_completion_nanoseconds_by_worker.size()) ||
-				!matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) ||
-				!matches(batch.worker_regret_delta_entries.size()) ||
-				!matches(batch.worker_continuation_delta_entries.size()) ||
-				!matches(batch.worker_discovery_public_state_counts.size()) ||
-				!matches(batch.worker_discovery_row_counts.size()) ||
-				!matches(batch.worker_allocation_counts.size()) ||
-				!matches(batch.worker_allocated_bytes.size()) ||
-				!matches(batch.worker_resolved_processor.size()) ||
-				!matches(batch.worker_affinity_masks.size()) ||
-				!matches(batch.worker_affinity_succeeded.size()))
+			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded || !matches(batch.worker_active_nanoseconds_by_worker.size()) || !matches(batch.worker_sort_nanoseconds_by_worker.size()) || !matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) || !matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) || !matches(batch.worker_completion_nanoseconds_by_worker.size()) || !matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) || !matches(batch.worker_regret_delta_entries.size()) || !matches(batch.worker_continuation_delta_entries.size()) || !matches(batch.worker_discovery_public_state_counts.size()) || !matches(batch.worker_discovery_row_counts.size()) || !matches(batch.worker_allocation_counts.size()) || !matches(batch.worker_allocated_bytes.size()) || !matches(batch.worker_resolved_processor.size()) || !matches(batch.worker_affinity_masks.size()) || !matches(batch.worker_affinity_succeeded.size()))
 			{
 				throw std::invalid_argument("invalid failed multiway batch telemetry");
 			}
@@ -129,7 +93,8 @@ namespace texas::solver::multiway
 		report.allocation_probe_valid = false;
 		const auto* capture_id = std::getenv("TEXASSOLVER_TRACE_CAPTURE_ID");
 		report.trace_capture_id = capture_id == nullptr || *capture_id == '\0'
-			? "not-captured" : capture_id;
+			? "not-captured"
+			: capture_id;
 #endif
 		report.peak_public_states = status.peak_public_states;
 		report.peak_sparse_rows = status.peak_sparse_rows;
@@ -368,33 +333,33 @@ namespace texas::solver::multiway
 				   << ", \"merge_nanoseconds\": " << batch.merge_nanoseconds
 				   << ", \"discovery_capacity_exhausted\": "
 				   << (batch.discovery_capacity_exhausted ? "true" : "false");
-				const auto write_failed_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
-					output << ", \"" << name << "\": [";
-					for (std::size_t index = 0U; index < values.size(); ++index)
-					{
-						if (index != 0U)
-							output << ',';
-						output << values[index];
-					}
-					output << ']';
-				};
-				write_failed_array("worker_trajectory_counts", batch.worker_trajectory_counts);
-				write_failed_array("worker_active_nanoseconds_by_worker", batch.worker_active_nanoseconds_by_worker);
-				write_failed_array("worker_sort_nanoseconds_by_worker", batch.worker_sort_nanoseconds_by_worker);
-				write_failed_array("worker_wake_latency_nanoseconds_by_worker", batch.worker_wake_latency_nanoseconds_by_worker);
-				write_failed_array("worker_cv_wait_nanoseconds_by_worker", batch.worker_cv_wait_nanoseconds_by_worker);
-				write_failed_array("worker_completion_nanoseconds_by_worker", batch.worker_completion_nanoseconds_by_worker);
-				write_failed_array("worker_tail_idle_nanoseconds_by_worker", batch.worker_tail_idle_nanoseconds_by_worker);
-				write_failed_array("worker_regret_delta_entries", batch.worker_regret_delta_entries);
-				write_failed_array("worker_continuation_delta_entries", batch.worker_continuation_delta_entries);
-				write_failed_array("worker_discovery_public_state_counts", batch.worker_discovery_public_state_counts);
-				write_failed_array("worker_discovery_row_counts", batch.worker_discovery_row_counts);
-				write_failed_array("worker_allocation_counts", batch.worker_allocation_counts);
-				write_failed_array("worker_allocated_bytes", batch.worker_allocated_bytes);
-				write_failed_array("worker_resolved_processor", std::vector<std::uint64_t>(batch.worker_resolved_processor.begin(), batch.worker_resolved_processor.end()));
-				write_failed_array("worker_affinity_masks", batch.worker_affinity_masks);
-				write_failed_array("worker_affinity_succeeded", std::vector<std::uint64_t>(batch.worker_affinity_succeeded.begin(), batch.worker_affinity_succeeded.end()));
-				output << '}';
+			const auto write_failed_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
+				output << ", \"" << name << "\": [";
+				for (std::size_t index = 0U; index < values.size(); ++index)
+				{
+					if (index != 0U)
+						output << ',';
+					output << values[index];
+				}
+				output << ']';
+			};
+			write_failed_array("worker_trajectory_counts", batch.worker_trajectory_counts);
+			write_failed_array("worker_active_nanoseconds_by_worker", batch.worker_active_nanoseconds_by_worker);
+			write_failed_array("worker_sort_nanoseconds_by_worker", batch.worker_sort_nanoseconds_by_worker);
+			write_failed_array("worker_wake_latency_nanoseconds_by_worker", batch.worker_wake_latency_nanoseconds_by_worker);
+			write_failed_array("worker_cv_wait_nanoseconds_by_worker", batch.worker_cv_wait_nanoseconds_by_worker);
+			write_failed_array("worker_completion_nanoseconds_by_worker", batch.worker_completion_nanoseconds_by_worker);
+			write_failed_array("worker_tail_idle_nanoseconds_by_worker", batch.worker_tail_idle_nanoseconds_by_worker);
+			write_failed_array("worker_regret_delta_entries", batch.worker_regret_delta_entries);
+			write_failed_array("worker_continuation_delta_entries", batch.worker_continuation_delta_entries);
+			write_failed_array("worker_discovery_public_state_counts", batch.worker_discovery_public_state_counts);
+			write_failed_array("worker_discovery_row_counts", batch.worker_discovery_row_counts);
+			write_failed_array("worker_allocation_counts", batch.worker_allocation_counts);
+			write_failed_array("worker_allocated_bytes", batch.worker_allocated_bytes);
+			write_failed_array("worker_resolved_processor", std::vector<std::uint64_t>(batch.worker_resolved_processor.begin(), batch.worker_resolved_processor.end()));
+			write_failed_array("worker_affinity_masks", batch.worker_affinity_masks);
+			write_failed_array("worker_affinity_succeeded", std::vector<std::uint64_t>(batch.worker_affinity_succeeded.begin(), batch.worker_affinity_succeeded.end()));
+			output << '}';
 		}
 		output << ",\n  \"worker_profiles\": [";
 		for (std::size_t worker = 0U; worker < report.worker_profiles.size(); ++worker)

@@ -471,7 +471,8 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
 	const texas::MultiwaySparseRowShape child_row = {
 		{ child.id, child.betting.current_player }, 2U,
-		static_cast<std::uint8_t>(child.legal_actions.size()) };
+		static_cast<std::uint8_t>(child.legal_actions.size())
+	};
 	compact.admit_public_state(child);
 	reference.admit_public_state(child);
 	compact.admit_infoset_row(root_row());

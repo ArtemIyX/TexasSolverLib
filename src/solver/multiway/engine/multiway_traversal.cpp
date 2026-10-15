@@ -36,9 +36,10 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t steady_now_nanoseconds() noexcept
 		{
 			return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now().time_since_epoch()).count());
+				std::chrono::steady_clock::now().time_since_epoch())
+					.count());
 		}
-	}
+	} // namespace
 	namespace
 	{
 
@@ -653,9 +654,9 @@ namespace texas::solver::multiway
 				const bool immediate_terminal = next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal || next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal;
 				const bool below_regret = context.discovery_stream != nullptr
 					? coordinator_->action_below_regret_epoch(
-						infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold)
+						  infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold)
 					: coordinator_->action_below_regret(
-						infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold);
+						  infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold);
 				const bool random_recovery = !immediate_terminal && !below_regret && (static_cast<double>(next_random(context.random_state) % 1000000U) / 1000000.0) < explore;
 				if (pruning_.should_explore_action(context.batch_number,
 						below_regret || strategy[action] <= pruning_.action_probability_threshold || random_recovery,
@@ -1086,7 +1087,8 @@ namespace texas::solver::multiway
 			}
 			const auto cv_wait_end = steady_now_nanoseconds();
 			worker_scratch_[worker_index].cv_wait_nanoseconds = cv_wait_end >= cv_wait_start
-				? cv_wait_end - cv_wait_start : 0U;
+				? cv_wait_end - cv_wait_start
+				: 0U;
 			if (worker_index < batch_count)
 			{
 				const auto now = steady_now_nanoseconds();
@@ -1167,10 +1169,10 @@ namespace texas::solver::multiway
 								}
 							}
 						}
-					scratch.active_nanoseconds = static_cast<std::uint64_t>(
-						std::chrono::duration_cast<std::chrono::nanoseconds>(
-							std::chrono::steady_clock::now() - active_start)
-							.count());
+						scratch.active_nanoseconds = static_cast<std::uint64_t>(
+							std::chrono::duration_cast<std::chrono::nanoseconds>(
+								std::chrono::steady_clock::now() - active_start)
+								.count());
 					}
 					const auto sort_start = std::chrono::steady_clock::now();
 					{
@@ -1224,13 +1226,13 @@ namespace texas::solver::multiway
 		}
 		const auto batch_count = scheduler_mode_ == MultiwaySchedulerMode::Fixed
 			? MultiwayScheduler::partition_round_robin_into(
-				trajectory_count,
-				worker_count_,
-				worker_batches_.data(),
-				worker_batches_.size())
+				  trajectory_count,
+				  worker_count_,
+				  worker_batches_.data(),
+				  worker_batches_.size())
 			: trajectory_count == 0U
-				? 1U
-				: static_cast<std::size_t>(std::min<std::uint64_t>(trajectory_count, worker_count_));
+			? 1U
+			: static_cast<std::size_t>(std::min<std::uint64_t>(trajectory_count, worker_count_));
 		for (auto& scratch : worker_scratch_)
 			scratch.reset(profile_mode_);
 
@@ -1322,68 +1324,69 @@ namespace texas::solver::multiway
 			for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
 			{
 				const auto& scratch = worker_scratch_[worker_index];
-			result.trajectories_attempted += scratch.attempted;
-			result.trajectories_accepted += scratch.accepted;
-			result.trajectories_discarded += scratch.discarded;
-			result.delta_entries_merged += scratch.stream.size();
-			const auto regret_entries = static_cast<std::uint64_t>(scratch.stream.size());
-			const auto continuation_entries = static_cast<std::uint64_t>(scratch.continuation_stream.size());
-			const auto discovery_public_states = static_cast<std::uint64_t>(scratch.discovery.public_state_count());
-			const auto discovery_rows = static_cast<std::uint64_t>(scratch.discovery.row_count());
-			result.total_peak_regret_delta_entries += scratch.peak_regret_delta_entries;
-			result.total_peak_continuation_delta_entries += scratch.peak_continuation_delta_entries;
-			result.total_peak_delta_entries += scratch.peak_regret_delta_entries + scratch.peak_continuation_delta_entries;
-			result.generated_update_count += regret_entries + continuation_entries;
-			result.generated_discovery_public_state_count += discovery_public_states;
-			result.generated_discovery_row_count += discovery_rows;
-			result.admission_diagnostics.raw_public_state_candidates += discovery_public_states;
-			result.admission_diagnostics.raw_row_candidates += discovery_rows;
-			result.admission_diagnostics.worker_raw_public_state_candidates_by_worker[worker_index] = discovery_public_states;
-			result.admission_diagnostics.worker_raw_row_candidates_by_worker[worker_index] = discovery_rows;
-			const auto local_unique_public_states = count_unique_public_state_candidates(scratch.discovery.public_states());
-			const auto local_unique_rows = count_unique_row_candidates(scratch.discovery.rows());
-			result.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker[worker_index] = local_unique_public_states;
-			result.admission_diagnostics.worker_local_unique_row_candidates_by_worker[worker_index] = local_unique_rows;
-			result.admission_diagnostics.worker_local_unique_public_state_candidates += local_unique_public_states;
-			result.admission_diagnostics.worker_local_unique_row_candidates += local_unique_rows;
-			result.maximum_worker_delta_entries = std::max(
-				result.maximum_worker_delta_entries,
-				std::max(scratch.peak_regret_delta_entries, scratch.peak_continuation_delta_entries));
-			result.worker_active_nanoseconds += scratch.active_nanoseconds;
-			result.worker_trajectory_counts[worker_index] = scratch.attempted;
-			result.worker_active_nanoseconds_by_worker[worker_index] = scratch.active_nanoseconds;
-			result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
-			result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
-			result.worker_cv_wait_nanoseconds_by_worker[worker_index] = scratch.cv_wait_nanoseconds;
-			result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
-			result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
-				batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
-					? batch_completion_timestamp - scratch.completion_timestamp_nanoseconds : 0U;
-			result.worker_regret_delta_entries[worker_index] = scratch.peak_regret_delta_entries;
-			result.worker_continuation_delta_entries[worker_index] = scratch.peak_continuation_delta_entries;
-			result.worker_discovery_public_state_counts[worker_index] = scratch.peak_discovery_public_state_count;
-			result.worker_discovery_row_counts[worker_index] = scratch.peak_discovery_row_count;
-			const auto allocation_snapshot = scratch.allocation_probe.snapshot();
-			result.worker_allocation_counts[worker_index] = allocation_snapshot.allocation_count;
-			result.worker_allocated_bytes[worker_index] = allocation_snapshot.allocated_bytes;
-			result.worker_resolved_processor[worker_index] = scratch.resolved_processor;
-			result.worker_affinity_masks[worker_index] = scratch.affinity_mask;
-			result.worker_affinity_succeeded[worker_index] = scratch.affinity_succeeded ? 1U : 0U;
-			result.worker_profiles[worker_index] = scratch.profile.snapshot();
-			result.minimum_worker_active_nanoseconds = std::min(
-				result.minimum_worker_active_nanoseconds, scratch.active_nanoseconds);
-			result.maximum_worker_active_nanoseconds = std::max(
-				result.maximum_worker_active_nanoseconds, scratch.active_nanoseconds);
-			result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
-			result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
-			result.worker_cv_wait_nanoseconds += scratch.cv_wait_nanoseconds;
-			result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
-			result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
-			result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
-			result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
-			batch_profile.merge(scratch.profile.snapshot());
-			terminal_visits += scratch.discovery.terminal_visits();
-			leaf_visits += scratch.discovery.leaf_visits();
+				result.trajectories_attempted += scratch.attempted;
+				result.trajectories_accepted += scratch.accepted;
+				result.trajectories_discarded += scratch.discarded;
+				result.delta_entries_merged += scratch.stream.size();
+				const auto regret_entries = static_cast<std::uint64_t>(scratch.stream.size());
+				const auto continuation_entries = static_cast<std::uint64_t>(scratch.continuation_stream.size());
+				const auto discovery_public_states = static_cast<std::uint64_t>(scratch.discovery.public_state_count());
+				const auto discovery_rows = static_cast<std::uint64_t>(scratch.discovery.row_count());
+				result.total_peak_regret_delta_entries += scratch.peak_regret_delta_entries;
+				result.total_peak_continuation_delta_entries += scratch.peak_continuation_delta_entries;
+				result.total_peak_delta_entries += scratch.peak_regret_delta_entries + scratch.peak_continuation_delta_entries;
+				result.generated_update_count += regret_entries + continuation_entries;
+				result.generated_discovery_public_state_count += discovery_public_states;
+				result.generated_discovery_row_count += discovery_rows;
+				result.admission_diagnostics.raw_public_state_candidates += discovery_public_states;
+				result.admission_diagnostics.raw_row_candidates += discovery_rows;
+				result.admission_diagnostics.worker_raw_public_state_candidates_by_worker[worker_index] = discovery_public_states;
+				result.admission_diagnostics.worker_raw_row_candidates_by_worker[worker_index] = discovery_rows;
+				const auto local_unique_public_states = count_unique_public_state_candidates(scratch.discovery.public_states());
+				const auto local_unique_rows = count_unique_row_candidates(scratch.discovery.rows());
+				result.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker[worker_index] = local_unique_public_states;
+				result.admission_diagnostics.worker_local_unique_row_candidates_by_worker[worker_index] = local_unique_rows;
+				result.admission_diagnostics.worker_local_unique_public_state_candidates += local_unique_public_states;
+				result.admission_diagnostics.worker_local_unique_row_candidates += local_unique_rows;
+				result.maximum_worker_delta_entries = std::max(
+					result.maximum_worker_delta_entries,
+					std::max(scratch.peak_regret_delta_entries, scratch.peak_continuation_delta_entries));
+				result.worker_active_nanoseconds += scratch.active_nanoseconds;
+				result.worker_trajectory_counts[worker_index] = scratch.attempted;
+				result.worker_active_nanoseconds_by_worker[worker_index] = scratch.active_nanoseconds;
+				result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
+				result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
+				result.worker_cv_wait_nanoseconds_by_worker[worker_index] = scratch.cv_wait_nanoseconds;
+				result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
+				result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
+					batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
+					? batch_completion_timestamp - scratch.completion_timestamp_nanoseconds
+					: 0U;
+				result.worker_regret_delta_entries[worker_index] = scratch.peak_regret_delta_entries;
+				result.worker_continuation_delta_entries[worker_index] = scratch.peak_continuation_delta_entries;
+				result.worker_discovery_public_state_counts[worker_index] = scratch.peak_discovery_public_state_count;
+				result.worker_discovery_row_counts[worker_index] = scratch.peak_discovery_row_count;
+				const auto allocation_snapshot = scratch.allocation_probe.snapshot();
+				result.worker_allocation_counts[worker_index] = allocation_snapshot.allocation_count;
+				result.worker_allocated_bytes[worker_index] = allocation_snapshot.allocated_bytes;
+				result.worker_resolved_processor[worker_index] = scratch.resolved_processor;
+				result.worker_affinity_masks[worker_index] = scratch.affinity_mask;
+				result.worker_affinity_succeeded[worker_index] = scratch.affinity_succeeded ? 1U : 0U;
+				result.worker_profiles[worker_index] = scratch.profile.snapshot();
+				result.minimum_worker_active_nanoseconds = std::min(
+					result.minimum_worker_active_nanoseconds, scratch.active_nanoseconds);
+				result.maximum_worker_active_nanoseconds = std::max(
+					result.maximum_worker_active_nanoseconds, scratch.active_nanoseconds);
+				result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
+				result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
+				result.worker_cv_wait_nanoseconds += scratch.cv_wait_nanoseconds;
+				result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
+				result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
+				result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
+				result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
+				batch_profile.merge(scratch.profile.snapshot());
+				terminal_visits += scratch.discovery.terminal_visits();
+				leaf_visits += scratch.discovery.leaf_visits();
 				missing_lookup_requests += scratch.discovery.missing_lookup_requests();
 			}
 		}
@@ -1471,23 +1474,23 @@ namespace texas::solver::multiway
 			const auto rows_after = coordinator_->diagnostics().sparse_rows_admitted;
 			result.admission_diagnostics.newly_admitted_public_state_candidates =
 				public_states_after >= public_states_before
-					? public_states_after - public_states_before : 0U;
+				? public_states_after - public_states_before
+				: 0U;
 			result.admission_diagnostics.newly_admitted_row_candidates =
 				rows_after >= rows_before ? rows_after - rows_before : 0U;
 			result.admission_diagnostics.already_admitted_public_state_candidates =
-				result.admission_diagnostics.globally_unique_public_state_candidates >=
-					result.admission_diagnostics.newly_admitted_public_state_candidates
-					? result.admission_diagnostics.globally_unique_public_state_candidates -
-						result.admission_diagnostics.newly_admitted_public_state_candidates : 0U;
+				result.admission_diagnostics.globally_unique_public_state_candidates >= result.admission_diagnostics.newly_admitted_public_state_candidates
+				? result.admission_diagnostics.globally_unique_public_state_candidates - result.admission_diagnostics.newly_admitted_public_state_candidates
+				: 0U;
 			result.admission_diagnostics.already_admitted_row_candidates =
-				result.admission_diagnostics.globally_unique_row_candidates >=
-					result.admission_diagnostics.newly_admitted_row_candidates
-					? result.admission_diagnostics.globally_unique_row_candidates -
-						result.admission_diagnostics.newly_admitted_row_candidates : 0U;
+				result.admission_diagnostics.globally_unique_row_candidates >= result.admission_diagnostics.newly_admitted_row_candidates
+				? result.admission_diagnostics.globally_unique_row_candidates - result.admission_diagnostics.newly_admitted_row_candidates
+				: 0U;
 			coordinator_->merge_traversal_counters(terminal_visits, leaf_visits, missing_lookup_requests);
 			result.coordinator_admission_nanoseconds = static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - admission_start).count());
+					std::chrono::steady_clock::now() - admission_start)
+					.count());
 		}
 		const auto merge_start = std::chrono::steady_clock::now();
 		{
@@ -1509,9 +1512,7 @@ namespace texas::solver::multiway
 		result.coordinator_lock_wait_nanoseconds =
 			coordinator_->diagnostics().coordinator_lock_wait_nanoseconds - coordinator_lock_wait_before;
 		result.profile = batch_profile.snapshot();
-		result.clean = result.trajectories_discarded == 0U &&
-			result.trajectories_attempted == result.trajectories_accepted &&
-			(result.delta_entries_merged == 0U || result.run.merged_stream_fingerprint != 0U);
+		result.clean = result.trajectories_discarded == 0U && result.trajectories_attempted == result.trajectories_accepted && (result.delta_entries_merged == 0U || result.run.merged_stream_fingerprint != 0U);
 		return result;
 	}
 
