@@ -272,7 +272,7 @@ namespace texas::solver::multiway
 					const auto parent_id = candidates[current].parent_id;
 					if (parent_id.value == 0U)
 					{
-						if (candidates[current].id != coordinator.root().public_state.id && !coordinator.has_public_state(candidates[current].id))
+						if (candidates[current].id != coordinator.root().public_state.id && !coordinator.has_public_state_epoch(candidates[current].id))
 							throw std::invalid_argument("multiway discovery contains a non-root state without a parent");
 						depths[current] = 0U;
 						colors[current] = 2U;
@@ -282,7 +282,7 @@ namespace texas::solver::multiway
 					const auto parent_index = find_candidate(parent_id);
 					if (parent_index == candidates.size())
 					{
-						if (!coordinator.has_public_state(parent_id))
+						if (!coordinator.has_public_state_epoch(parent_id))
 							throw std::invalid_argument("multiway discovery contains an unresolved parent");
 						depths[current] = 1U;
 						colors[current] = 2U;
@@ -1707,11 +1707,9 @@ namespace texas::solver::multiway
 			}
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_admit");
-				for (const auto index : admission_order_scratch_.order)
-					coordinator_->admit_public_state(discovery_public_states_[index]);
+				coordinator_->admit_prepared_batch(
+					discovery_public_states_, admission_order_scratch_.order, discovery_rows_);
 			}
-			for (const auto& row : discovery_rows_)
-				coordinator_->admit_infoset_row(row);
 			const auto public_states_after = coordinator_->diagnostics().public_states_admitted;
 			const auto rows_after = coordinator_->diagnostics().sparse_rows_admitted;
 			result.admission_diagnostics.newly_admitted_public_state_candidates =

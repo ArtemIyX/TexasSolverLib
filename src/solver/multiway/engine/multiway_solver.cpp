@@ -757,6 +757,186 @@ namespace texas::solver::multiway
 		admit_public_state(request_.root().public_state);
 	}
 
+	void MultiwaySolverCoordinator::admit_prepared_batch(
+		const std::vector<MultiwayPublicStateDescriptor>& public_states,
+		const std::vector<std::size_t>& parent_order,
+		const std::vector<MultiwaySparseRowShape>& rows)
+	{
+		if (parent_order.size() != public_states.size())
+			throw std::invalid_argument("multiway prepared admission order does not match public states");
+		if (!std::is_sorted(public_states.begin(), public_states.end(), [](const auto& left, const auto& right) {
+			return left.id < right.id;
+		}))
+			throw std::invalid_argument("multiway prepared public states must be sorted by id");
+		for (std::size_t index = 1U; index < public_states.size(); ++index)
+		{
+			if (public_states[index - 1U].id == public_states[index].id)
+				throw std::invalid_argument("multiway prepared public states must be unique");
+		}
+		if (!std::is_sorted(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
+			return left.infoset < right.infoset;
+		}))
+			throw std::invalid_argument("multiway prepared rows must be sorted by infoset");
+		for (std::size_t index = 1U; index < rows.size(); ++index)
+		{
+			if (rows[index - 1U].infoset == rows[index].infoset)
+				throw std::invalid_argument("multiway prepared rows must be unique");
+		}
+
+		const auto lock_wait_start = std::chrono::steady_clock::now();
+		std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+		if (admission_diagnostics_ != nullptr)
+			++admission_diagnostics_->lock_acquisitions;
+		diagnostics_.coordinator_lock_wait_nanoseconds += static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - lock_wait_start)
+				.count());
+
+		std::vector<std::uint8_t> processed_states(public_states.size(), 0U);
+		std::vector<std::uint8_t> new_states(public_states.size(), 0U);
+		std::size_t new_state_count = 0U;
+		const auto find_candidate = [&public_states](MultiwayPublicStateId id) {
+			const auto it = std::lower_bound(public_states.begin(), public_states.end(), id,
+				[](const auto& candidate, MultiwayPublicStateId value) { return candidate.id < value; });
+			return it == public_states.end() || it->id != id
+				? public_states.size()
+				: static_cast<std::size_t>(it - public_states.begin());
+		};
+		for (const auto state_index : parent_order)
+		{
+			if (state_index >= public_states.size() || processed_states[state_index] != 0U)
+				throw std::invalid_argument("multiway prepared admission order is not a permutation");
+			const auto& state = public_states[state_index];
+			if (public_catalog_.contains(state.id))
+			{
+				MultiwayPublicStateDescriptor existing;
+				if (!public_catalog_.reconstruct(state.id, existing) || !public_state_candidates_compatible(existing, state))
+					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
+				processed_states[state_index] = 1U;
+				continue;
+			}
+
+			validate_public_state_descriptor(state);
+			if (public_catalog_.size() >= request_.limits().max_public_states ||
+				new_state_count >= request_.limits().max_public_states - public_catalog_.size())
+				throw std::length_error("multiway public-state admission exceeds configured capacity");
+			if (state.parent_id.value != 0U)
+			{
+				const auto parent_index = find_candidate(state.parent_id);
+				MultiwayPublicStateDescriptor existing_parent;
+				const MultiwayPublicStateDescriptor* parent = nullptr;
+				if (parent_index != public_states.size())
+				{
+					if (processed_states[parent_index] == 0U)
+						throw std::invalid_argument("multiway prepared admission order is not parent-first");
+					parent = &public_states[parent_index];
+				}
+				else if (public_catalog_.reconstruct(state.parent_id, existing_parent))
+					parent = &existing_parent;
+				if (parent == nullptr)
+					throw std::invalid_argument("multiway public state parent must be admitted first");
+				validate_public_state_child_transition(request_.root(), *parent, state);
+			}
+			else if (state.id != request_.root().public_state.id)
+			{
+				throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
+			}
+			processed_states[state_index] = 1U;
+			new_states[state_index] = 1U;
+			++new_state_count;
+		}
+
+		const auto compact = compact_storage_ != nullptr;
+		const auto current_row_count = compact ? compact_storage_->row_count() : storage_.row_count();
+		std::vector<std::uint8_t> new_rows(rows.size(), 0U);
+		std::vector<std::uint8_t> new_row_streets(rows.size(), 0U);
+		std::size_t new_row_count = 0U;
+		std::size_t new_value_count = 0U;
+		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
+		{
+			const auto& shape = rows[row_index];
+			const auto state_index = find_candidate(shape.infoset.public_state);
+			MultiwayPublicStateDescriptor existing_state;
+			const MultiwayPublicStateDescriptor* state = nullptr;
+			if (state_index != public_states.size())
+				state = &public_states[state_index];
+			else if (public_catalog_.reconstruct(shape.infoset.public_state, existing_state))
+				state = &existing_state;
+			if (state == nullptr || shape.infoset.seat < 0 || static_cast<std::size_t>(shape.infoset.seat) >= request_.root().seat_order.size())
+				throw std::invalid_argument("multiway row must belong to an admitted per-seat public infoset");
+			const auto betting_state = MultiwayState::from_snapshot(state->betting);
+			if (betting_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision || shape.infoset.seat != state->betting.current_player)
+				throw std::invalid_argument("multiway row must belong to its public decision owner");
+			if (shape.action_count != state->legal_actions.size())
+				throw std::invalid_argument("multiway row action count must match its public action menu");
+			if (shape.infoset == request_.root().root_infoset && request_.root().root_bucket >= shape.bucket_count)
+				throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
+			const auto existing = compact ? compact_storage_->metadata(shape.infoset) : storage_.metadata(shape.infoset);
+			if (existing != nullptr)
+			{
+				if (existing->shape.bucket_count != shape.bucket_count || existing->shape.action_count != shape.action_count)
+					throw std::invalid_argument("multiway sparse row shape conflicts");
+				continue;
+			}
+			new_rows[row_index] = 1U;
+			new_row_streets[row_index] = static_cast<std::uint8_t>(state->betting.street);
+			++new_row_count;
+			const auto values = compact
+				? static_cast<std::size_t>(shape.action_count) * std::min<std::uint32_t>(shape.bucket_count, compact_storage_->page_width())
+				: checked_value_count(shape);
+			if (new_value_count > std::numeric_limits<std::size_t>::max() - values)
+				throw std::overflow_error("multiway prepared row value count overflows size_t");
+			new_value_count += values;
+		}
+		if (current_row_count > request_.limits().max_sparse_rows || new_row_count > request_.limits().max_sparse_rows - current_row_count)
+			throw std::length_error("multiway sparse row admission exceeds configured capacity");
+		const auto current_value_count = compact ? compact_storage_->value_count() : storage_.value_count();
+		const auto value_capacity = compact ? compact_storage_->configured_cell_capacity() : storage_.value_capacity_limit();
+		if (current_value_count > value_capacity || new_value_count > value_capacity - current_value_count)
+			throw std::length_error("multiway prepared row admission exceeds configured value capacity");
+
+		for (const auto state_index : parent_order)
+		{
+			if (new_states[state_index] == 0U)
+				continue;
+			public_catalog_.admit(
+				public_states[state_index],
+				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds);
+			++diagnostics_.public_states_admitted;
+		}
+		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
+		{
+			if (new_rows[row_index] == 0U)
+				continue;
+			const auto started = std::chrono::steady_clock::now();
+			if (compact)
+				compact_storage_->admit_row(rows[row_index]);
+			else
+				storage_.admit_row(rows[row_index]);
+			if (admission_diagnostics_ != nullptr)
+				admission_diagnostics_->row_admission_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+			++diagnostics_.sparse_rows_admitted;
+			switch (static_cast<Street>(new_row_streets[row_index]))
+			{
+				case Street::Preflop:
+					++diagnostics_.preflop_rows_admitted;
+					break;
+				case Street::Flop:
+					++diagnostics_.flop_rows_admitted;
+					break;
+				case Street::Turn:
+					++diagnostics_.turn_rows_admitted;
+					break;
+				case Street::River:
+					++diagnostics_.river_rows_admitted;
+					break;
+				case Street::Showdown:
+					break;
+			}
+		}
+	}
+
 	void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDescriptor& state)
 	{
 		{
@@ -1362,6 +1542,11 @@ namespace texas::solver::multiway
 		std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 		if (admission_diagnostics_ != nullptr)
 			++admission_diagnostics_->lock_acquisitions;
+		return has_public_state_epoch(id);
+	}
+
+	bool MultiwaySolverCoordinator::has_public_state_epoch(MultiwayPublicStateId id) const noexcept
+	{
 		return public_catalog_.contains(id);
 	}
 

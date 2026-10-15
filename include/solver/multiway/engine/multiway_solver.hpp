@@ -621,12 +621,21 @@ namespace texas::solver::multiway
 		~MultiwaySolverCoordinator();
 
 		void admit_public_state(const MultiwayPublicStateDescriptor& state);
+		// Inputs must be canonical and public_states must be sorted by id. The
+		// parent_order indexes that stream in parent-first order.
+		void admit_prepared_batch(
+			const std::vector<MultiwayPublicStateDescriptor>& public_states,
+			const std::vector<std::size_t>& parent_order,
+			const std::vector<MultiwaySparseRowShape>& rows);
 		[[nodiscard]] static bool public_state_candidates_compatible(
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept;
 		void admit_infoset_row(const MultiwaySparseRowShape& shape);
 		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const noexcept;
+		// Epoch queries are lock-free and valid only while the coordinator's
+		// immutable batch epoch is not being mutated.
 		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const noexcept;
+		[[nodiscard]] bool has_public_state_epoch(MultiwayPublicStateId id) const noexcept;
 		void regret_matched_strategy_into(
 			MultiwayInfosetId infoset,
 			std::uint32_t bucket,
