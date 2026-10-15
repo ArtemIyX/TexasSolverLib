@@ -1,5 +1,46 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Implement AD5-AD6 bulk admission and epoch filtering
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commits:**
+
+- `ac12103 PB-3 Multiway: Add bulk epoch admission`
+- `4028346 PB-3 Tests: Cover bulk epoch admission`
+
+- Added a prepared discovery-batch admission API with one coordinator lock.
+- Preflighted public-state, row, compact-page, and value capacities before
+  mutation.
+- Preserved descriptor, parent-transition, row-shape, and duplicate-conflict
+  validation while skipping epoch-known states and rows.
+- Added lock-free immutable-epoch public-state membership queries and routed
+  parent resolution through them.
+- Added focused tests for one-lock admission, epoch filtering, and rejection
+  without partial mutation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Focused diff reviewed.
+- Static symbol and path checks completed.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+- Operator must run rejection, equivalence, capacity, and fixed/dynamic worker
+  validation, then provide admission timing and checkpoint results.
+
+### Limitations
+
+- Runtime acceptance, checkpoint equivalence, and the below-250-ms cold-batch
+  target remain unverified until operator validation.
+
 ## 2026-10-15 - Implement AD2-AD4 discovery preparation and parent-first merge
 
 **Status:** Implementation complete; operator validation pending
