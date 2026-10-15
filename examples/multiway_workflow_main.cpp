@@ -681,8 +681,9 @@ namespace
 					}
 					const auto checkpoint_start = std::chrono::steady_clock::now();
 					auto checkpoint = session.checkpoint();
+					checkpoint.validate();
 					checkpoint_telemetry.accumulate(checkpoint.telemetry);
-					MultiwayTrainingCheckpointArtifacts::save_atomic(checkpoint_path, checkpoint, &checkpoint_telemetry);
+					MultiwayTrainingCheckpointArtifacts::save_atomic_sealed(checkpoint_path, checkpoint, &checkpoint_telemetry);
 					checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - checkpoint_start)

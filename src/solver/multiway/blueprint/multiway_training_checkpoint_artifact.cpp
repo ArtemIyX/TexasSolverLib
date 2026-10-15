@@ -379,6 +379,14 @@ namespace texas::solver::multiway
 			checkpoint.validate();
 			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->validation_nanoseconds, started);
 		}
+		save_atomic_sealed(path, checkpoint, telemetry);
+	}
+
+	void MultiwayTrainingCheckpointArtifacts::save_atomic_sealed(
+		const std::filesystem::path& path,
+		const MultiwayBlueprintTrainingCheckpoint& checkpoint,
+		MultiwayCheckpointTelemetry* telemetry)
+	{
 		const auto temporary = path.string() + ".tmp";
 		std::ofstream out;
 		{
