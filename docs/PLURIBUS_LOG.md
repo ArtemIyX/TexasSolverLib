@@ -18,6 +18,8 @@
   gate.
 - Propagated the nested checkpoint telemetry object into the QA wrapper's
   `run_metrics.json` artifact.
+- Added a non-executing report analyzer for schema, phase coverage, byte
+  accounting, discarded trajectories, and merge-fingerprint validation.
 
 ### Files
 
@@ -32,6 +34,7 @@
 - `src/solver/multiway/workflow/multiway_training_report.cpp`
 - `examples/multiway_workflow_main.cpp`
 - `scripts/run_multiway_ram_1000.ps1`
+- `scripts/analyze_multiway_checkpoint_telemetry.ps1`
 - `scripts/run_multiway_worker_matrix.ps1`
 - `tests/test_multiway_blueprint_training.cpp`
 - `tests/test_multiway_qualification_reports.cpp`
