@@ -947,12 +947,26 @@ namespace texas::solver::multiway
 		const auto current_row_count = compact ? compact_storage_->row_count() : storage_.row_count();
 		std::vector<std::uint8_t> new_rows(rows.size(), 0U);
 		std::vector<std::uint8_t> new_row_streets(rows.size(), 0U);
+		std::vector<std::size_t> row_state_indexes(rows.size(), public_states.size());
+		for (std::size_t row_index = 0U; row_index < rows.size();)
+		{
+			const auto seat = rows[row_index].infoset.seat;
+			std::size_t state_index = 0U;
+			while (row_index < rows.size() && rows[row_index].infoset.seat == seat)
+			{
+				while (state_index < public_states.size() && public_states[state_index].id < rows[row_index].infoset.public_state)
+					++state_index;
+				if (state_index < public_states.size() && public_states[state_index].id == rows[row_index].infoset.public_state)
+					row_state_indexes[row_index] = state_index;
+				++row_index;
+			}
+		}
 		std::size_t new_row_count = 0U;
 		std::size_t new_value_count = 0U;
 		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
 		{
 			const auto& shape = rows[row_index];
-			const auto state_index = find_candidate(shape.infoset.public_state);
+			const auto state_index = row_state_indexes[row_index];
 			MultiwayPublicStateDescriptor existing_state;
 			const MultiwayPublicStateDescriptor* state = nullptr;
 			if (state_index != public_states.size())
