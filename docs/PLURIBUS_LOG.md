@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Fix AD7 admission compile error
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `9156d73 PB-3 Multiway: Fix admission index redeclaration`
+
+- Reset the existing sparse-row merge scan index instead of redeclaring it in
+  the same function scope.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the focused diff and ran `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must rerun the requested build and focused test to confirm the
+  compiler error is resolved.
+
 ## 2026-10-15 - Implement AD7 admission hot-path optimization
 
 **Status:** Implementation complete; operator validation pending
