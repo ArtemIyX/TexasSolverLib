@@ -14,7 +14,7 @@
   canonical storage copy.
 - Preserved the Float64 reference export and canonicalization path unchanged.
 - Added compact action-major sparse-page coverage and compact-versus-Float64
-  checkpoint equivalence coverage.
+  checkpoint equivalence coverage, including multiple canonical rows.
 
 ### Files
 
@@ -29,6 +29,7 @@
 - Reviewed the changed C++ diff with the TexasSolver C++ review rules.
 - `git diff --check --ignore-submodules=all` passed for the changed files.
 - Committed as `bd4cceb` (`PB-3 Multiway: Linearize compact checkpoint export`).
+- Added the multirow equivalence case in commit `e0c9e37`.
 - No build, test, benchmark, executable, or solver script was run by Codex.
 
 ### Limitations
