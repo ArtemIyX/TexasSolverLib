@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Fix AD7 fixed-state transition compile error
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `b6296ba PB-3 Multiway: Fix fixed-state transition check`
+
+- Replaced the remaining dynamic-only street-transition helper call with the
+  equivalent `MultiwayFixedState::next_node_kind()` check.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the focused diff and checked it with `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must rerun the build and focused tests to confirm the compile fix.
+
 ## 2026-10-15 - Implement AD7 state preflight and catalog optimization
 
 **Status:** Implementation complete; operator validation pending
