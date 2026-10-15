@@ -4,7 +4,7 @@
 
 **Status:** Complete for implementation; operator qualification pending
 **Completed:** 2026-10-15
-**Implementation commits:** `57c2243 PB-3 Multiway: Index canonical catalog menus`, `dd019f7 PB-3 Tests: Cover indexed catalog admission`, `16e507d PB-3 Tests: Verify catalog telemetry reporting`, `1bae7ed PB-3 Multiway: Measure validated menu key preparation`
+**Implementation commits:** `57c2243 PB-3 Multiway: Index canonical catalog menus`, `dd019f7 PB-3 Tests: Cover indexed catalog admission`, `16e507d PB-3 Tests: Verify catalog telemetry reporting`, `1bae7ed PB-3 Multiway: Measure validated menu key preparation`, `5da74f3 PB-3 Tests: Prove catalog menu reuse counters`
 
 - Replaced linear catalog menu lookup with a sorted canonical-ID index and
   full descriptor-vector equality checks for collision safety.
