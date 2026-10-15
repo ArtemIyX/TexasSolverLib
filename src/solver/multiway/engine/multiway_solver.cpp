@@ -1,6 +1,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "core/fingerprint.hpp"
+#include "games/multiway_fixed.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
@@ -118,6 +119,20 @@ namespace texas::solver::multiway
 			return left.stacks == right.stacks && left.contributions == right.contributions && left.street_contributions == right.street_contributions && left.folded == right.folded && left.all_in == right.all_in && left.may_raise == right.may_raise && left.pending == right.pending && left.has_acted == right.has_acted && left.bet_faced_when_acted == right.bet_faced_when_acted && left.current_player == right.current_player && left.last_aggressor == right.last_aggressor && left.current_bet == right.current_bet && left.last_full_raise_size == right.last_full_raise_size && left.big_blind == right.big_blind && left.street == right.street;
 		}
 
+		bool same_fixed_betting_snapshot(
+			const MultiwayFixedState& left,
+			const MultiwayBettingSnapshot& right) noexcept
+		{
+			if (right.stacks.size() != left.seat_count || right.contributions.size() != left.seat_count || right.street_contributions.size() != left.seat_count || right.folded.size() != left.seat_count || right.all_in.size() != left.seat_count || right.may_raise.size() != left.seat_count || right.pending.size() != left.seat_count || right.has_acted.size() != left.seat_count || right.bet_faced_when_acted.size() != left.seat_count || right.current_player != left.current_player || right.last_aggressor != left.last_aggressor || right.current_bet != left.current_bet || right.last_full_raise_size != left.last_full_raise_size || right.big_blind != left.big_blind || right.street != left.street)
+				return false;
+			for (std::size_t seat = 0U; seat < left.seat_count; ++seat)
+			{
+				if (right.stacks[seat] != left.stacks[seat] || right.contributions[seat] != left.contributions[seat] || right.street_contributions[seat] != left.street_contributions[seat] || right.folded[seat] != left.folded[seat] || right.all_in[seat] != left.all_in[seat] || right.may_raise[seat] != left.may_raise[seat] || right.pending[seat] != left.pending[seat] || right.has_acted[seat] != left.has_acted[seat] || right.bet_faced_when_acted[seat] != left.bet_faced_when_acted[seat])
+					return false;
+			}
+			return true;
+		}
+
 		bool same_public_state_descriptor(
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept
@@ -144,7 +159,7 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& parent,
 			const MultiwayPublicStateDescriptor& child)
 		{
-			const auto parent_state = MultiwayState::from_snapshot(parent.betting);
+			const auto parent_state = make_multiway_fixed_state(parent.betting);
 			switch (child.incoming_edge.kind)
 			{
 				case MultiwayPublicParentEdgeKind::BettingAction:
@@ -161,9 +176,8 @@ namespace texas::solver::multiway
 						throw std::invalid_argument("multiway child history action is not in the parent decision menu");
 					}
 					const auto expected_betting = parent_state.apply(
-																  appended.action.action, appended.action.target_street_contribution)
-													  .snapshot();
-					if (!same_betting_snapshot(expected_betting, child.betting))
+						appended.action.action, appended.action.target_street_contribution);
+					if (!same_fixed_betting_snapshot(expected_betting, child.betting))
 					{
 						throw std::invalid_argument("multiway child betting snapshot does not match its parent action");
 					}
@@ -195,9 +209,8 @@ namespace texas::solver::multiway
 					}
 					const auto next_street = static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U);
 					const auto expected_betting = parent_state.begin_next_street(
-																  next_street, root.next_street_first_seat)
-													  .snapshot();
-					if (!same_betting_snapshot(expected_betting, child.betting))
+						 next_street, root.next_street_first_seat);
+					if (!same_fixed_betting_snapshot(expected_betting, child.betting))
 					{
 						throw std::invalid_argument("multiway child street transition does not match root seat semantics");
 					}
@@ -278,10 +291,11 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("multiway public state requires stable identities");
 			}
 			const auto known_board_cards = expected_board_card_count(state.betting.street);
-			const auto betting_state = MultiwayState::from_snapshot(state.betting);
+			const auto betting_state = make_multiway_fixed_state(state.betting);
+			const auto next_node_kind = betting_state.next_node_kind();
 			const auto valid_board_size = state.board_runout.chance_only_runout
 				? state.board.size() >= known_board_cards && state.board.size() <= 5U
-				: betting_state.requires_street_transition()
+				: next_node_kind == MultiwayNextNodeKind::StreetTransition
 				? state.board.size() >= known_board_cards && state.board.size() <= expected_board_card_count(static_cast<Street>(static_cast<std::uint8_t>(state.betting.street) + 1U))
 				: state.board.size() == known_board_cards;
 			if (!valid_board_size || !std::is_sorted(state.board.begin(), state.board.end()) || state.board_runout.remaining_board_cards != 5U - state.board.size() || !are_valid_and_distinct_cards(state.board.data(), state.board.size()))
@@ -289,12 +303,12 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("multiway public state has an inconsistent board/runout state");
 			}
 
-			if (state.board_runout.chance_only_runout != betting_state.requires_board_runout())
+			if (state.board_runout.chance_only_runout != (next_node_kind == MultiwayNextNodeKind::BoardRunout))
 			{
 				throw std::invalid_argument("multiway public state has an inconsistent chance-only runout flag");
 			}
 			const auto available_actions = betting_state.legal_actions();
-			std::vector<bool> covered_actions(available_actions.size(), false);
+			std::array<bool, kMultiwayFixedMaxActions> covered_actions{};
 			const auto expected_menu_id = MultiwayPublicBuilder::stable_action_menu_id(state.legal_actions);
 			for (std::size_t index = 0; index < state.legal_actions.size(); ++index)
 			{
@@ -303,12 +317,20 @@ namespace texas::solver::multiway
 				{
 					throw std::invalid_argument("multiway public state action menu is not a stable descriptor sequence");
 				}
-				const auto available = std::find(available_actions.begin(), available_actions.end(), action.action);
-				if (available == available_actions.end())
+				std::size_t available_index = available_actions.count;
+				for (std::size_t candidate = 0U; candidate < available_actions.count; ++candidate)
+				{
+					if (available_actions.actions[candidate] == action.action)
+					{
+						available_index = candidate;
+						break;
+					}
+				}
+				if (available_index == available_actions.count)
 				{
 					throw std::invalid_argument("multiway public state action is unavailable in its betting snapshot");
 				}
-				covered_actions[static_cast<std::size_t>(available - available_actions.begin())] = true;
+				covered_actions[available_index] = true;
 				for (std::size_t prior = 0; prior < index; ++prior)
 				{
 					if (state.legal_actions[prior].action == action.action && state.legal_actions[prior].target_street_contribution == action.target_street_contribution)
@@ -319,8 +341,8 @@ namespace texas::solver::multiway
 				try
 				{
 					const auto successor = betting_state.apply(action.action, action.target_street_contribution);
-					const auto acting_seat = static_cast<std::size_t>(betting_state.current_player());
-					if (successor.street_contributions()[acting_seat] != action.target_street_contribution)
+					const auto acting_seat = static_cast<std::size_t>(betting_state.current_player);
+					if (successor.street_contributions[acting_seat] != action.target_street_contribution)
 					{
 						throw std::invalid_argument("action descriptor does not encode its exact resulting contribution");
 					}
@@ -330,12 +352,12 @@ namespace texas::solver::multiway
 					throw std::invalid_argument("multiway public state action descriptor is not executable");
 				}
 			}
-			for (std::size_t action_index = 0; action_index < covered_actions.size(); ++action_index)
+			for (std::size_t action_index = 0U; action_index < available_actions.count; ++action_index)
 			{
 				if (!covered_actions[action_index])
 				{
 					throw std::invalid_argument(
-						"multiway public state action menu omits legal action kind " + std::to_string(static_cast<std::uint8_t>(available_actions[action_index])) + " street " + std::to_string(static_cast<std::uint8_t>(state.betting.street)) + " current_bet " + std::to_string(state.betting.current_bet));
+						"multiway public state action menu omits legal action kind " + std::to_string(static_cast<std::uint8_t>(available_actions.actions[action_index])) + " street " + std::to_string(static_cast<std::uint8_t>(state.betting.street)) + " current_bet " + std::to_string(state.betting.current_bet));
 				}
 			}
 			const auto seat_count = state.betting.stacks.size();
@@ -837,6 +859,11 @@ namespace texas::solver::multiway
 		// per worker delta. Keep only a small warm reserve and grow for unusually
 		// broad batches.
 		pending_merge_cells_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_values));
+		admission_processed_states_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
+		admission_new_states_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
+		admission_new_rows_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_rows));
+		admission_new_row_streets_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_rows));
+		admission_row_state_indexes_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_rows));
 		admit_public_state(request_.root().public_state);
 	}
 
@@ -879,8 +906,20 @@ namespace texas::solver::multiway
 				.count());
 
 		const auto state_preflight_started = std::chrono::steady_clock::now();
-		std::vector<std::uint8_t> processed_states(public_states.size(), 0U);
-		std::vector<std::uint8_t> new_states(public_states.size(), 0U);
+		admission_processed_states_.assign(public_states.size(), 0U);
+		admission_new_states_.assign(public_states.size(), 0U);
+		admission_new_rows_.assign(rows.size(), 0U);
+		admission_new_row_streets_.assign(rows.size(), 0U);
+		admission_row_state_indexes_.assign(rows.size(), public_states.size());
+		auto& processed_states = admission_processed_states_;
+		const auto classification_started = std::chrono::steady_clock::now();
+		public_catalog_.classify_new_states(public_states, admission_new_states_);
+		if (admission_diagnostics_ != nullptr)
+			admission_diagnostics_->state_catalog_classification_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - classification_started)
+					.count());
+		const auto& new_states = admission_new_states_;
 		std::size_t new_state_count = 0U;
 		const auto find_candidate = [&public_states](MultiwayPublicStateId id) {
 			const auto it = std::lower_bound(public_states.begin(), public_states.end(), id,
@@ -894,16 +933,26 @@ namespace texas::solver::multiway
 			if (state_index >= public_states.size() || processed_states[state_index] != 0U)
 				throw std::invalid_argument("multiway prepared admission order is not a permutation");
 			const auto& state = public_states[state_index];
-			if (public_catalog_.contains(state.id))
+			if (new_states[state_index] == 0U)
 			{
+				if (admission_diagnostics_ != nullptr)
+					++admission_diagnostics_->existing_public_state_checks;
 				MultiwayPublicStateDescriptor existing;
 				if (!public_catalog_.reconstruct(state.id, existing) || !public_state_candidates_compatible(existing, state))
 					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
-				processed_states[state_index] = 1U;
+				admission_processed_states_[state_index] = 1U;
 				continue;
 			}
 
+			if (admission_diagnostics_ != nullptr)
+				++admission_diagnostics_->new_public_state_validations;
+			const auto validation_started = std::chrono::steady_clock::now();
 			validate_public_state_descriptor(state);
+			if (admission_diagnostics_ != nullptr)
+				admission_diagnostics_->public_state_validation_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - validation_started)
+						.count());
 			if (public_catalog_.size() >= request_.limits().max_public_states ||
 				new_state_count >= request_.limits().max_public_states - public_catalog_.size())
 				throw std::length_error("multiway public-state admission exceeds configured capacity");
@@ -923,17 +972,27 @@ namespace texas::solver::multiway
 					parent = &public_states[parent_index];
 				}
 				else if (public_catalog_.reconstruct(state.parent_id, existing_parent))
+				{
+					if (admission_diagnostics_ != nullptr)
+						++admission_diagnostics_->parent_catalog_resolutions;
 					parent = &existing_parent;
+				}
 				if (parent == nullptr)
 					throw std::invalid_argument("multiway public state parent must be admitted first");
+				const auto parent_validation_started = std::chrono::steady_clock::now();
 				validate_public_state_child_transition(request_.root(), *parent, state);
+				if (admission_diagnostics_ != nullptr)
+					admission_diagnostics_->parent_transition_validation_nanoseconds += static_cast<std::uint64_t>(
+						std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - parent_validation_started)
+							.count());
 			}
 			else if (state.id != request_.root().public_state.id)
 			{
 				throw std::invalid_argument("multiway coordinator admits only its immutable root without a parent edge");
 			}
 			processed_states[state_index] = 1U;
-			new_states[state_index] = 1U;
+			admission_new_states_[state_index] = 1U;
 			++new_state_count;
 		}
 		if (admission_diagnostics_ != nullptr)
@@ -945,9 +1004,9 @@ namespace texas::solver::multiway
 		const auto row_preflight_started = std::chrono::steady_clock::now();
 		const auto compact = compact_storage_ != nullptr;
 		const auto current_row_count = compact ? compact_storage_->row_count() : storage_.row_count();
-		std::vector<std::uint8_t> new_rows(rows.size(), 0U);
-		std::vector<std::uint8_t> new_row_streets(rows.size(), 0U);
-		std::vector<std::size_t> row_state_indexes(rows.size(), public_states.size());
+		const auto& new_rows = admission_new_rows_;
+		const auto& new_row_streets = admission_new_row_streets_;
+		auto& row_state_indexes = admission_row_state_indexes_;
 		for (std::size_t row_index = 0U; row_index < rows.size();)
 		{
 			const auto seat = rows[row_index].infoset.seat;
@@ -967,15 +1026,33 @@ namespace texas::solver::multiway
 		{
 			const auto& shape = rows[row_index];
 			const auto state_index = row_state_indexes[row_index];
+			const auto row_state_started = std::chrono::steady_clock::now();
 			MultiwayPublicStateDescriptor existing_state;
 			const MultiwayPublicStateDescriptor* state = nullptr;
 			if (state_index != public_states.size())
+			{
+				if (admission_diagnostics_ != nullptr)
+					++admission_diagnostics_->row_batch_state_resolutions;
 				state = &public_states[state_index];
-			else if (public_catalog_.reconstruct(shape.infoset.public_state, existing_state))
+			}
+			else if (public_catalog_.node(shape.infoset.public_state) != nullptr && public_catalog_.reconstruct(shape.infoset.public_state, existing_state))
+			{
+				if (admission_diagnostics_ != nullptr)
+				{
+					++admission_diagnostics_->row_catalog_state_resolutions;
+					++admission_diagnostics_->descriptor_reconstructions;
+				}
 				state = &existing_state;
+			}
+			if (admission_diagnostics_ != nullptr)
+				admission_diagnostics_->row_state_resolution_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - row_state_started)
+						.count());
 			if (state == nullptr || shape.infoset.seat < 0 || static_cast<std::size_t>(shape.infoset.seat) >= request_.root().seat_order.size())
 				throw std::invalid_argument("multiway row must belong to an admitted per-seat public infoset");
-			const auto betting_state = MultiwayState::from_snapshot(state->betting);
+			const auto row_shape_started = std::chrono::steady_clock::now();
+			const auto betting_state = make_multiway_fixed_state(state->betting);
 			if (betting_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision || shape.infoset.seat != state->betting.current_player)
 				throw std::invalid_argument("multiway row must belong to its public decision owner");
 			if (shape.action_count != state->legal_actions.size())
@@ -989,8 +1066,8 @@ namespace texas::solver::multiway
 					throw std::invalid_argument("multiway sparse row shape conflicts");
 				continue;
 			}
-			new_rows[row_index] = 1U;
-			new_row_streets[row_index] = static_cast<std::uint8_t>(state->betting.street);
+			admission_new_rows_[row_index] = 1U;
+			admission_new_row_streets_[row_index] = static_cast<std::uint8_t>(state->betting.street);
 			++new_row_count;
 			const auto values = compact
 				? static_cast<std::size_t>(shape.action_count) * std::min<std::uint32_t>(shape.bucket_count, compact_storage_->page_width())
@@ -998,6 +1075,11 @@ namespace texas::solver::multiway
 			if (new_value_count > std::numeric_limits<std::size_t>::max() - values)
 				throw std::overflow_error("multiway prepared row value count overflows size_t");
 			new_value_count += values;
+			if (admission_diagnostics_ != nullptr)
+				admission_diagnostics_->row_shape_validation_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - row_shape_started)
+						.count());
 		}
 		if (current_row_count > request_.limits().max_sparse_rows || new_row_count > request_.limits().max_sparse_rows - current_row_count)
 			throw std::length_error("multiway sparse row admission exceeds configured capacity");
@@ -1015,7 +1097,9 @@ namespace texas::solver::multiway
 		public_catalog_.admit_batch(
 			public_states,
 			new_states,
-			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds);
+			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds,
+			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_menu_lookup_nanoseconds,
+			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_merge_nanoseconds);
 		diagnostics_.public_states_admitted += static_cast<std::uint64_t>(new_state_count);
 		if (admission_diagnostics_ != nullptr)
 			admission_diagnostics_->catalog_commit_nanoseconds += static_cast<std::uint64_t>(
@@ -1167,7 +1251,7 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway row must belong to an admitted per-seat public infoset");
 		}
-		const auto betting_state = MultiwayState::from_snapshot(state->betting);
+		const auto betting_state = make_multiway_fixed_state(state->betting);
 		if (betting_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision || shape.infoset.seat != state->betting.current_player)
 		{
 			throw std::invalid_argument("multiway row must belong to its public decision owner");

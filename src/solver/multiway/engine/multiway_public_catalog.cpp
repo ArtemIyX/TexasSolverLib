@@ -33,6 +33,21 @@ namespace texas::solver::multiway
 		return std::numeric_limits<std::size_t>::max();
 	}
 
+	void MultiwayPublicCatalog::classify_new_states(
+		const std::vector<MultiwayPublicStateDescriptor>& states,
+		std::vector<std::uint8_t>& new_state_flags) const
+	{
+		new_state_flags.assign(states.size(), 1U);
+		std::size_t catalog_index = 0U;
+		for (std::size_t state_index = 0U; state_index < states.size(); ++state_index)
+		{
+			while (catalog_index < index_.size() && index_[catalog_index].id < states[state_index].id)
+				++catalog_index;
+			if (catalog_index < index_.size() && index_[catalog_index].id == states[state_index].id)
+				new_state_flags[state_index] = 0U;
+		}
+	}
+
 	const MultiwayPackedPublicNode* MultiwayPublicCatalog::node(MultiwayPublicStateId id) const noexcept
 	{
 		const auto found = std::lower_bound(index_.begin(), index_.end(), id,
@@ -132,7 +147,9 @@ namespace texas::solver::multiway
 	void MultiwayPublicCatalog::admit_batch(
 		const std::vector<MultiwayPublicStateDescriptor>& states,
 		const std::vector<std::uint8_t>& new_state_flags,
-		std::uint64_t* index_insertion_nanoseconds)
+		std::uint64_t* index_insertion_nanoseconds,
+		std::uint64_t* menu_lookup_nanoseconds,
+		std::uint64_t* index_merge_nanoseconds)
 	{
 		if (states.size() != new_state_flags.size())
 			throw std::invalid_argument("packed public catalog batch flags do not match states");
@@ -178,7 +195,13 @@ namespace texas::solver::multiway
 		{
 			if (new_state_flags[index] == 0U)
 				continue;
+			const auto menu_started = std::chrono::steady_clock::now();
 			const auto menu = find_menu(states[index].legal_actions);
+			if (menu_lookup_nanoseconds != nullptr)
+				*menu_lookup_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - menu_started)
+						.count());
 			std::size_t menu_handle = menu;
 			if (menu_handle == std::numeric_limits<std::size_t>::max())
 			{
@@ -195,6 +218,7 @@ namespace texas::solver::multiway
 		nodes_.reserve(nodes_.size() + pending_nodes.size());
 		index_.reserve(index_.size() + pending_index.size());
 		const auto index_started = std::chrono::steady_clock::now();
+		const auto index_merge_started = std::chrono::steady_clock::now();
 		std::vector<IndexEntry> merged_index;
 		merged_index.reserve(index_.size() + pending_index.size());
 		std::size_t old_index = 0U;
@@ -206,6 +230,11 @@ namespace texas::solver::multiway
 			else
 				merged_index.push_back(pending_index[new_index++]);
 		}
+		if (index_merge_nanoseconds != nullptr)
+			*index_merge_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - index_merge_started)
+					.count());
 		nodes_.insert(nodes_.end(), pending_nodes.begin(), pending_nodes.end());
 		index_.swap(merged_index);
 		if (index_insertion_nanoseconds != nullptr)

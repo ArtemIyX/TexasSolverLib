@@ -221,7 +221,9 @@ namespace texas::solver::multiway
 		void admit_batch(
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			const std::vector<std::uint8_t>& new_state_flags,
-			std::uint64_t* index_insertion_nanoseconds = nullptr);
+			std::uint64_t* index_insertion_nanoseconds = nullptr,
+			std::uint64_t* menu_lookup_nanoseconds = nullptr,
+			std::uint64_t* index_merge_nanoseconds = nullptr);
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const;
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
@@ -229,6 +231,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 
 	private:
+		friend class MultiwaySolverCoordinator;
 		struct IndexEntry
 		{
 			MultiwayPublicStateId id{};
@@ -236,6 +239,9 @@ namespace texas::solver::multiway
 		};
 
 		[[nodiscard]] std::size_t find_menu(const std::vector<MultiwayActionDescriptor>& menu) const noexcept;
+		void classify_new_states(
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			std::vector<std::uint8_t>& new_state_flags) const;
 		[[nodiscard]] MultiwayPackedPublicNode pack_node(
 			const MultiwayPublicStateDescriptor& state, std::uint32_t menu_handle) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
@@ -562,14 +568,26 @@ namespace texas::solver::multiway
 		std::uint64_t parent_resolution_passes = 0U;
 		std::uint64_t parent_resolution_probes = 0U;
 		std::uint64_t descriptor_reconstructions = 0U;
+		std::uint64_t existing_public_state_checks = 0U;
+		std::uint64_t new_public_state_validations = 0U;
+		std::uint64_t parent_catalog_resolutions = 0U;
+		std::uint64_t row_batch_state_resolutions = 0U;
+		std::uint64_t row_catalog_state_resolutions = 0U;
 		std::uint64_t lock_acquisitions = 0U;
 		std::uint64_t discovery_prepare_nanoseconds = 0U;
 		std::uint64_t discovery_merge_nanoseconds = 0U;
 		std::uint64_t parent_order_nanoseconds = 0U;
+		std::uint64_t state_catalog_classification_nanoseconds = 0U;
+		std::uint64_t public_state_validation_nanoseconds = 0U;
+		std::uint64_t parent_transition_validation_nanoseconds = 0U;
 		std::uint64_t state_preflight_nanoseconds = 0U;
+		std::uint64_t row_state_resolution_nanoseconds = 0U;
+		std::uint64_t row_shape_validation_nanoseconds = 0U;
 		std::uint64_t row_preflight_nanoseconds = 0U;
 		std::uint64_t catalog_commit_nanoseconds = 0U;
 		std::uint64_t storage_commit_nanoseconds = 0U;
+		std::uint64_t catalog_menu_lookup_nanoseconds = 0U;
+		std::uint64_t catalog_index_merge_nanoseconds = 0U;
 		std::uint64_t catalog_index_insertion_nanoseconds = 0U;
 		std::uint64_t row_admission_nanoseconds = 0U;
 		std::vector<std::uint64_t> worker_raw_public_state_candidates_by_worker;
@@ -592,14 +610,26 @@ namespace texas::solver::multiway
 			parent_resolution_passes += other.parent_resolution_passes;
 			parent_resolution_probes += other.parent_resolution_probes;
 			descriptor_reconstructions += other.descriptor_reconstructions;
+			existing_public_state_checks += other.existing_public_state_checks;
+			new_public_state_validations += other.new_public_state_validations;
+			parent_catalog_resolutions += other.parent_catalog_resolutions;
+			row_batch_state_resolutions += other.row_batch_state_resolutions;
+			row_catalog_state_resolutions += other.row_catalog_state_resolutions;
 			lock_acquisitions += other.lock_acquisitions;
 			discovery_prepare_nanoseconds += other.discovery_prepare_nanoseconds;
 			discovery_merge_nanoseconds += other.discovery_merge_nanoseconds;
 			parent_order_nanoseconds += other.parent_order_nanoseconds;
+			state_catalog_classification_nanoseconds += other.state_catalog_classification_nanoseconds;
+			public_state_validation_nanoseconds += other.public_state_validation_nanoseconds;
+			parent_transition_validation_nanoseconds += other.parent_transition_validation_nanoseconds;
 			state_preflight_nanoseconds += other.state_preflight_nanoseconds;
+			row_state_resolution_nanoseconds += other.row_state_resolution_nanoseconds;
+			row_shape_validation_nanoseconds += other.row_shape_validation_nanoseconds;
 			row_preflight_nanoseconds += other.row_preflight_nanoseconds;
 			catalog_commit_nanoseconds += other.catalog_commit_nanoseconds;
 			storage_commit_nanoseconds += other.storage_commit_nanoseconds;
+			catalog_menu_lookup_nanoseconds += other.catalog_menu_lookup_nanoseconds;
+			catalog_index_merge_nanoseconds += other.catalog_index_merge_nanoseconds;
 			catalog_index_insertion_nanoseconds += other.catalog_index_insertion_nanoseconds;
 			row_admission_nanoseconds += other.row_admission_nanoseconds;
 			const auto append = [](std::vector<std::uint64_t>& target, const std::vector<std::uint64_t>& source) {
@@ -736,6 +766,11 @@ namespace texas::solver::multiway
 		std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
 		std::vector<std::size_t> merge_stream_cursors_;
 		std::vector<PendingMergeCell> pending_merge_cells_;
+		std::vector<std::uint8_t> admission_processed_states_;
+		std::vector<std::uint8_t> admission_new_states_;
+		std::vector<std::uint8_t> admission_new_rows_;
+		std::vector<std::uint8_t> admission_new_row_streets_;
+		std::vector<std::size_t> admission_row_state_indexes_;
 		MultiwaySolveDiagnostics diagnostics_;
 		MultiwayAdmissionDiagnostics* admission_diagnostics_ = nullptr;
 		mutable std::shared_mutex traversal_mutex_;

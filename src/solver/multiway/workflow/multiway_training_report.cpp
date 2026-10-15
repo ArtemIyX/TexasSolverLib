@@ -294,14 +294,26 @@ namespace texas::solver::multiway
 			   << ", \"parent_resolution_passes\": " << admission.parent_resolution_passes
 			   << ", \"parent_resolution_probes\": " << admission.parent_resolution_probes
 			   << ", \"descriptor_reconstructions\": " << admission.descriptor_reconstructions
+			   << ", \"existing_public_state_checks\": " << admission.existing_public_state_checks
+			   << ", \"new_public_state_validations\": " << admission.new_public_state_validations
+			   << ", \"parent_catalog_resolutions\": " << admission.parent_catalog_resolutions
+			   << ", \"row_batch_state_resolutions\": " << admission.row_batch_state_resolutions
+			   << ", \"row_catalog_state_resolutions\": " << admission.row_catalog_state_resolutions
 			   << ", \"lock_acquisitions\": " << admission.lock_acquisitions
 			   << ", \"discovery_prepare_nanoseconds\": " << admission.discovery_prepare_nanoseconds
 			   << ", \"discovery_merge_nanoseconds\": " << admission.discovery_merge_nanoseconds
 			   << ", \"parent_order_nanoseconds\": " << admission.parent_order_nanoseconds
+			   << ", \"state_catalog_classification_nanoseconds\": " << admission.state_catalog_classification_nanoseconds
+			   << ", \"public_state_validation_nanoseconds\": " << admission.public_state_validation_nanoseconds
+			   << ", \"parent_transition_validation_nanoseconds\": " << admission.parent_transition_validation_nanoseconds
 			   << ", \"state_preflight_nanoseconds\": " << admission.state_preflight_nanoseconds
+			   << ", \"row_state_resolution_nanoseconds\": " << admission.row_state_resolution_nanoseconds
+			   << ", \"row_shape_validation_nanoseconds\": " << admission.row_shape_validation_nanoseconds
 			   << ", \"row_preflight_nanoseconds\": " << admission.row_preflight_nanoseconds
 			   << ", \"catalog_commit_nanoseconds\": " << admission.catalog_commit_nanoseconds
 			   << ", \"storage_commit_nanoseconds\": " << admission.storage_commit_nanoseconds
+			   << ", \"catalog_menu_lookup_nanoseconds\": " << admission.catalog_menu_lookup_nanoseconds
+			   << ", \"catalog_index_merge_nanoseconds\": " << admission.catalog_index_merge_nanoseconds
 			   << ", \"catalog_index_insertion_nanoseconds\": " << admission.catalog_index_insertion_nanoseconds
 			   << ", \"row_admission_nanoseconds\": " << admission.row_admission_nanoseconds;
 		const auto write_admission_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
