@@ -1,5 +1,45 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Implement AD7 state preflight and catalog optimization
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commits:**
+
+- `afbf666 PB-3 Multiway: Optimize prepared admission preflight`
+- `e27f204 PB-3 Tests: Preserve admission state on capacity failure`
+
+- Replaced dynamic betting-state reconstruction in public-state and row
+  admission validation with the allocation-free fixed-state representation.
+- Reused coordinator admission scratch buffers across prepared batches.
+- Classified sorted prepared public states with one catalog-index merge while
+  preserving compatibility reconstruction and parent-first validation.
+- Added additive admission counters and phase timings for classification,
+  validation, parent resolution, row resolution, menu lookup, and index merge.
+- Added regression assertions that capacity failures leave checkpoint catalog
+  and row state unchanged.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the focused diffs and checked staged patches with `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must build, run focused tests, and repeat the Tracy 0.14.1 cold and
+  steady capture matrix to verify performance, fingerprints, checkpoint bytes,
+  and the new admission telemetry.
+
 ## 2026-10-15 - Fix AD7 admission compile error
 
 **Status:** Complete
