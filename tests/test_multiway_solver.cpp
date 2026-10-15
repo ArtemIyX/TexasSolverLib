@@ -772,16 +772,18 @@ TEST_CASE(multiway_solver_worker_delta_stream_is_bounded_finite_and_sortable)
 TEST_CASE(multiway_solver_discovery_stream_prepares_sorted_unique_candidates)
 {
 	texas::MultiwayDiscoveryStream stream(8U);
-	const auto child = checked_action_child_public_state();
-	EXPECT_TRUE(stream.try_append_public_state(child));
-	EXPECT_TRUE(stream.try_append_public_state(child));
+	const auto first_child = action_child_public_state(root_public_state(), 2, 102, 0);
+	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
+	EXPECT_TRUE(stream.try_append_public_state(second_child));
+	EXPECT_TRUE(stream.try_append_public_state(first_child));
+	EXPECT_TRUE(stream.try_append_public_state(first_child));
 	EXPECT_TRUE(stream.try_append_row(root_row()));
 	EXPECT_TRUE(stream.try_append_row(root_row()));
 
 	stream.prepare_for_merge();
-	EXPECT_EQ(stream.public_state_count(), 1U);
+	EXPECT_EQ(stream.public_state_count(), 2U);
 	EXPECT_EQ(stream.row_count(), 1U);
-	EXPECT_EQ(stream.public_states().front().id, child.id);
+	EXPECT_TRUE(stream.public_states()[0].id < stream.public_states()[1].id);
 	EXPECT_EQ(stream.rows().front().infoset, root_infoset());
 }
 
