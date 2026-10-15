@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Correct checkpoint payload hash ordering
+
+**Status:** Implemented, operator validation pending
+**Completed:** 2026-10-15
+**Implementation commit:** `ba3b7c0 PB-3 Multiway: Preserve checkpoint payload hash order`
+
+- Corrected the incremental checkpoint writer hash sequence to match the
+  existing `payload_hash()` contract.
+- Preserved the schema-2 serialized field order and bytes by deferring hashing
+  of the street-visit arrays until their historical hash order is reached.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --cached --check` passed before commit.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- The targeted round-trip and tampering test must be rerun by the operator.
+
 ## 2026-10-15 - Implement CP3-CP5 checkpoint write path
 
 **Status:** Implemented, operator validation pending
