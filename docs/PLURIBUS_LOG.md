@@ -23,6 +23,7 @@
 
 ### Files
 
+- `docs/plans/2026-10-15/01_cp1_checkpoint_telemetry.md`
 - `include/solver/multiway/engine/multiway_solver.hpp`
 - `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
 - `include/solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp`
