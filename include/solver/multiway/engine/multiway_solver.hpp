@@ -21,6 +21,7 @@ namespace texas::solver::multiway
 	class MultiwayCompactStorage;
 
 	class MultiwayTerminalAdapter;
+	struct MultiwayAdmissionDiagnostics;
 
 	// Stable numeric identities are assigned by the coordinator. Zero is reserved
 	// as an invalid identity so an omitted id cannot become a storage key.
@@ -217,13 +218,17 @@ namespace texas::solver::multiway
 		void clear() noexcept;
 		void admit(
 			const MultiwayPublicStateDescriptor& state,
-			std::uint64_t* index_insertion_nanoseconds = nullptr);
+			std::uint64_t* index_insertion_nanoseconds = nullptr,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
 		void admit_batch(
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			const std::vector<std::uint8_t>& new_state_flags,
 			std::uint64_t* index_insertion_nanoseconds = nullptr,
 			std::uint64_t* menu_lookup_nanoseconds = nullptr,
-			std::uint64_t* index_merge_nanoseconds = nullptr);
+			std::uint64_t* index_merge_nanoseconds = nullptr,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr,
+			const std::vector<std::uint64_t>* validated_menu_keys = nullptr,
+			std::vector<std::uint32_t>* resolved_menu_handles = nullptr);
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const;
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
@@ -237,8 +242,20 @@ namespace texas::solver::multiway
 			MultiwayPublicStateId id{};
 			std::size_t node_index = 0U;
 		};
+		struct MenuIndexEntry
+		{
+			std::uint64_t canonical_menu_id = 0U;
+			std::uint32_t menu_handle = 0U;
+		};
 
 		[[nodiscard]] std::size_t find_menu(const std::vector<MultiwayActionDescriptor>& menu) const noexcept;
+		[[nodiscard]] std::size_t find_menu_by_key(
+			const std::vector<MultiwayActionDescriptor>& menu,
+			std::uint64_t canonical_menu_id,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr,
+			std::uint64_t* index_lookup_nanoseconds = nullptr,
+			std::uint64_t* equality_nanoseconds = nullptr) const noexcept;
+		[[nodiscard]] static std::uint64_t menu_key(const std::vector<MultiwayActionDescriptor>& menu) noexcept;
 		void classify_new_states(
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			std::vector<std::uint8_t>& new_state_flags) const;
@@ -250,6 +267,16 @@ namespace texas::solver::multiway
 		std::vector<MultiwayPackedPublicNode> nodes_;
 		std::vector<IndexEntry> index_;
 		std::vector<std::vector<MultiwayActionDescriptor>> menus_;
+		std::vector<MenuIndexEntry> menu_index_;
+		std::vector<std::vector<MultiwayActionDescriptor>> batch_pending_menus_;
+		std::vector<std::uint64_t> batch_menu_keys_;
+		std::vector<std::uint64_t> batch_pending_menu_keys_;
+		std::vector<std::uint32_t> batch_menu_handles_;
+		std::vector<std::uint32_t> batch_pending_menu_indexes_;
+		std::vector<IndexEntry> batch_pending_index_;
+		std::vector<IndexEntry> batch_merged_index_;
+		std::vector<MenuIndexEntry> batch_pending_menu_index_;
+		std::vector<MenuIndexEntry> batch_merged_menu_index_;
 	};
 
 	// The complete public/private root needed by a future traversal. It is copied
@@ -587,8 +614,23 @@ namespace texas::solver::multiway
 		std::uint64_t catalog_commit_nanoseconds = 0U;
 		std::uint64_t storage_commit_nanoseconds = 0U;
 		std::uint64_t catalog_menu_lookup_nanoseconds = 0U;
+		std::uint64_t catalog_menu_key_nanoseconds = 0U;
+		std::uint64_t catalog_menu_index_lookup_nanoseconds = 0U;
+		std::uint64_t catalog_menu_equality_nanoseconds = 0U;
+		std::uint64_t catalog_node_pack_nanoseconds = 0U;
+		std::uint64_t catalog_reserve_nanoseconds = 0U;
+		std::uint64_t catalog_append_nanoseconds = 0U;
 		std::uint64_t catalog_index_merge_nanoseconds = 0U;
 		std::uint64_t catalog_index_insertion_nanoseconds = 0U;
+		std::uint64_t catalog_menu_index_probes = 0U;
+		std::uint64_t catalog_menu_equality_checks = 0U;
+		std::uint64_t catalog_existing_menu_hits = 0U;
+		std::uint64_t catalog_batch_menu_reuse_hits = 0U;
+		std::uint64_t catalog_new_menus = 0U;
+		std::uint64_t catalog_menu_id_collision_misses = 0U;
+		std::uint64_t public_state_betting_board_validation_nanoseconds = 0U;
+		std::uint64_t public_state_menu_validation_nanoseconds = 0U;
+		std::uint64_t public_state_history_identity_validation_nanoseconds = 0U;
 		std::uint64_t row_admission_nanoseconds = 0U;
 		std::vector<std::uint64_t> worker_raw_public_state_candidates_by_worker;
 		std::vector<std::uint64_t> worker_raw_row_candidates_by_worker;
@@ -629,8 +671,23 @@ namespace texas::solver::multiway
 			catalog_commit_nanoseconds += other.catalog_commit_nanoseconds;
 			storage_commit_nanoseconds += other.storage_commit_nanoseconds;
 			catalog_menu_lookup_nanoseconds += other.catalog_menu_lookup_nanoseconds;
+			catalog_menu_key_nanoseconds += other.catalog_menu_key_nanoseconds;
+			catalog_menu_index_lookup_nanoseconds += other.catalog_menu_index_lookup_nanoseconds;
+			catalog_menu_equality_nanoseconds += other.catalog_menu_equality_nanoseconds;
+			catalog_node_pack_nanoseconds += other.catalog_node_pack_nanoseconds;
+			catalog_reserve_nanoseconds += other.catalog_reserve_nanoseconds;
+			catalog_append_nanoseconds += other.catalog_append_nanoseconds;
 			catalog_index_merge_nanoseconds += other.catalog_index_merge_nanoseconds;
 			catalog_index_insertion_nanoseconds += other.catalog_index_insertion_nanoseconds;
+			catalog_menu_index_probes += other.catalog_menu_index_probes;
+			catalog_menu_equality_checks += other.catalog_menu_equality_checks;
+			catalog_existing_menu_hits += other.catalog_existing_menu_hits;
+			catalog_batch_menu_reuse_hits += other.catalog_batch_menu_reuse_hits;
+			catalog_new_menus += other.catalog_new_menus;
+			catalog_menu_id_collision_misses += other.catalog_menu_id_collision_misses;
+			public_state_betting_board_validation_nanoseconds += other.public_state_betting_board_validation_nanoseconds;
+			public_state_menu_validation_nanoseconds += other.public_state_menu_validation_nanoseconds;
+			public_state_history_identity_validation_nanoseconds += other.public_state_history_identity_validation_nanoseconds;
 			row_admission_nanoseconds += other.row_admission_nanoseconds;
 			const auto append = [](std::vector<std::uint64_t>& target, const std::vector<std::uint64_t>& source) {
 				if (target.size() < source.size())
@@ -771,6 +828,12 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> admission_new_rows_;
 		std::vector<std::uint8_t> admission_new_row_streets_;
 		std::vector<std::size_t> admission_row_state_indexes_;
+		std::vector<std::uint64_t> admission_state_menu_keys_;
+		std::vector<std::uint8_t> admission_state_action_counts_;
+		std::vector<std::uint8_t> admission_state_streets_;
+		std::vector<core::PlayerId> admission_state_current_players_;
+		std::vector<std::uint8_t> admission_state_next_node_kinds_;
+		std::vector<std::uint32_t> admission_state_menu_handles_;
 		MultiwaySolveDiagnostics diagnostics_;
 		MultiwayAdmissionDiagnostics* admission_diagnostics_ = nullptr;
 		mutable std::shared_mutex traversal_mutex_;

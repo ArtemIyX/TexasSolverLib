@@ -313,8 +313,23 @@ namespace texas::solver::multiway
 			   << ", \"catalog_commit_nanoseconds\": " << admission.catalog_commit_nanoseconds
 			   << ", \"storage_commit_nanoseconds\": " << admission.storage_commit_nanoseconds
 			   << ", \"catalog_menu_lookup_nanoseconds\": " << admission.catalog_menu_lookup_nanoseconds
+			   << ", \"catalog_menu_key_nanoseconds\": " << admission.catalog_menu_key_nanoseconds
+			   << ", \"catalog_menu_index_lookup_nanoseconds\": " << admission.catalog_menu_index_lookup_nanoseconds
+			   << ", \"catalog_menu_equality_nanoseconds\": " << admission.catalog_menu_equality_nanoseconds
+			   << ", \"catalog_node_pack_nanoseconds\": " << admission.catalog_node_pack_nanoseconds
+			   << ", \"catalog_reserve_nanoseconds\": " << admission.catalog_reserve_nanoseconds
+			   << ", \"catalog_append_nanoseconds\": " << admission.catalog_append_nanoseconds
 			   << ", \"catalog_index_merge_nanoseconds\": " << admission.catalog_index_merge_nanoseconds
 			   << ", \"catalog_index_insertion_nanoseconds\": " << admission.catalog_index_insertion_nanoseconds
+			   << ", \"catalog_menu_index_probes\": " << admission.catalog_menu_index_probes
+			   << ", \"catalog_menu_equality_checks\": " << admission.catalog_menu_equality_checks
+			   << ", \"catalog_existing_menu_hits\": " << admission.catalog_existing_menu_hits
+			   << ", \"catalog_batch_menu_reuse_hits\": " << admission.catalog_batch_menu_reuse_hits
+			   << ", \"catalog_new_menus\": " << admission.catalog_new_menus
+			   << ", \"catalog_menu_id_collision_misses\": " << admission.catalog_menu_id_collision_misses
+			   << ", \"public_state_betting_board_validation_nanoseconds\": " << admission.public_state_betting_board_validation_nanoseconds
+			   << ", \"public_state_menu_validation_nanoseconds\": " << admission.public_state_menu_validation_nanoseconds
+			   << ", \"public_state_history_identity_validation_nanoseconds\": " << admission.public_state_history_identity_validation_nanoseconds
 			   << ", \"row_admission_nanoseconds\": " << admission.row_admission_nanoseconds;
 		const auto write_admission_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
 			output << ", \"" << name << "\": [";
