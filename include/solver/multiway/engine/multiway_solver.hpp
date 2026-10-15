@@ -640,7 +640,8 @@ namespace texas::solver::multiway
 		void admit_prepared_batch(
 			const std::vector<MultiwayPublicStateDescriptor>& public_states,
 			const std::vector<std::size_t>& parent_order,
-			const std::vector<MultiwaySparseRowShape>& rows);
+			const std::vector<MultiwaySparseRowShape>& rows,
+			const std::vector<std::size_t>* parent_indexes = nullptr);
 		[[nodiscard]] static bool public_state_candidates_compatible(
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept;

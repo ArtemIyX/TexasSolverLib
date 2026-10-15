@@ -760,10 +760,13 @@ namespace texas::solver::multiway
 	void MultiwaySolverCoordinator::admit_prepared_batch(
 		const std::vector<MultiwayPublicStateDescriptor>& public_states,
 		const std::vector<std::size_t>& parent_order,
-		const std::vector<MultiwaySparseRowShape>& rows)
+		const std::vector<MultiwaySparseRowShape>& rows,
+		const std::vector<std::size_t>* parent_indexes)
 	{
 		if (parent_order.size() != public_states.size())
 			throw std::invalid_argument("multiway prepared admission order does not match public states");
+		if (parent_indexes != nullptr && parent_indexes->size() != public_states.size())
+			throw std::invalid_argument("multiway prepared parent indexes do not match public states");
 		if (!std::is_sorted(public_states.begin(), public_states.end(), [](const auto& left, const auto& right) {
 			return left.id < right.id;
 		}))
@@ -823,11 +826,15 @@ namespace texas::solver::multiway
 				throw std::length_error("multiway public-state admission exceeds configured capacity");
 			if (state.parent_id.value != 0U)
 			{
-				const auto parent_index = find_candidate(state.parent_id);
+				const auto parent_index = parent_indexes == nullptr
+					? find_candidate(state.parent_id)
+					: (*parent_indexes)[state_index];
 				MultiwayPublicStateDescriptor existing_parent;
 				const MultiwayPublicStateDescriptor* parent = nullptr;
 				if (parent_index != public_states.size())
 				{
+					if (parent_index >= public_states.size() || public_states[parent_index].id != state.parent_id)
+						throw std::invalid_argument("multiway prepared parent index does not match public state");
 					if (processed_states[parent_index] == 0U)
 						throw std::invalid_argument("multiway prepared admission order is not parent-first");
 					parent = &public_states[parent_index];

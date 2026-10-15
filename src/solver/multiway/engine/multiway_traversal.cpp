@@ -241,11 +241,13 @@ namespace texas::solver::multiway
 			const MultiwaySolverCoordinator& coordinator,
 			MultiwayAdmissionDiagnostics& diagnostics,
 			std::vector<std::size_t>& order,
+			std::vector<std::size_t>& parent_indexes,
 			std::vector<std::uint32_t>& depths,
 			std::vector<std::uint8_t>& colors,
 			std::vector<std::size_t>& stack)
 		{
 			order.resize(candidates.size());
+			parent_indexes.assign(candidates.size(), candidates.size());
 			depths.assign(candidates.size(), 0U);
 			colors.assign(candidates.size(), 0U);
 			stack.clear();
@@ -280,6 +282,7 @@ namespace texas::solver::multiway
 					}
 					++diagnostics.parent_resolution_probes;
 					const auto parent_index = find_candidate(parent_id);
+					parent_indexes[current] = parent_index;
 					if (parent_index == candidates.size())
 					{
 						if (!coordinator.has_public_state_epoch(parent_id))
@@ -305,7 +308,7 @@ namespace texas::solver::multiway
 					const auto candidate_index = *reverse;
 					if (colors[candidate_index] != 1U)
 						continue;
-					const auto parent_index = find_candidate(candidates[candidate_index].parent_id);
+					const auto parent_index = parent_indexes[candidate_index];
 					if (parent_index == candidates.size())
 						depths[candidate_index] = 1U;
 					else
@@ -372,7 +375,7 @@ namespace texas::solver::multiway
 			MultiwayDiscoveryParentOrderScratch& scratch)
 		{
 			build_parent_first_order(
-				candidates, coordinator, diagnostics, scratch.order, scratch.depths,
+				candidates, coordinator, diagnostics, scratch.order, scratch.parent_indexes, scratch.depths,
 				scratch.colors, scratch.stack);
 		}
 	} // namespace detail
@@ -1723,7 +1726,8 @@ namespace texas::solver::multiway
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_admit");
 				coordinator_->admit_prepared_batch(
-					discovery_public_states_, admission_order_scratch_.order, discovery_rows_);
+					discovery_public_states_, admission_order_scratch_.order, discovery_rows_,
+					&admission_order_scratch_.parent_indexes);
 			}
 			const auto public_states_after = coordinator_->diagnostics().public_states_admitted;
 			const auto rows_after = coordinator_->diagnostics().sparse_rows_admitted;

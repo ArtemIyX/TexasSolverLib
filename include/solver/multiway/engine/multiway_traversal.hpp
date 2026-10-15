@@ -84,6 +84,7 @@ namespace texas::solver::multiway
 		struct MultiwayDiscoveryParentOrderScratch
 		{
 			std::vector<std::size_t> order;
+			std::vector<std::size_t> parent_indexes;
 			std::vector<std::uint32_t> depths;
 			std::vector<std::uint8_t> colors;
 			std::vector<std::size_t> stack;
