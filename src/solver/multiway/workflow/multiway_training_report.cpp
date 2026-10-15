@@ -295,6 +295,13 @@ namespace texas::solver::multiway
 			   << ", \"parent_resolution_probes\": " << admission.parent_resolution_probes
 			   << ", \"descriptor_reconstructions\": " << admission.descriptor_reconstructions
 			   << ", \"lock_acquisitions\": " << admission.lock_acquisitions
+			   << ", \"discovery_prepare_nanoseconds\": " << admission.discovery_prepare_nanoseconds
+			   << ", \"discovery_merge_nanoseconds\": " << admission.discovery_merge_nanoseconds
+			   << ", \"parent_order_nanoseconds\": " << admission.parent_order_nanoseconds
+			   << ", \"state_preflight_nanoseconds\": " << admission.state_preflight_nanoseconds
+			   << ", \"row_preflight_nanoseconds\": " << admission.row_preflight_nanoseconds
+			   << ", \"catalog_commit_nanoseconds\": " << admission.catalog_commit_nanoseconds
+			   << ", \"storage_commit_nanoseconds\": " << admission.storage_commit_nanoseconds
 			   << ", \"catalog_index_insertion_nanoseconds\": " << admission.catalog_index_insertion_nanoseconds
 			   << ", \"row_admission_nanoseconds\": " << admission.row_admission_nanoseconds;
 		const auto write_admission_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {

@@ -792,6 +792,7 @@ namespace texas::solver::multiway
 				std::chrono::steady_clock::now() - lock_wait_start)
 				.count());
 
+		const auto state_preflight_started = std::chrono::steady_clock::now();
 		std::vector<std::uint8_t> processed_states(public_states.size(), 0U);
 		std::vector<std::uint8_t> new_states(public_states.size(), 0U);
 		std::size_t new_state_count = 0U;
@@ -845,7 +846,13 @@ namespace texas::solver::multiway
 			new_states[state_index] = 1U;
 			++new_state_count;
 		}
+		if (admission_diagnostics_ != nullptr)
+			admission_diagnostics_->state_preflight_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - state_preflight_started)
+					.count());
 
+		const auto row_preflight_started = std::chrono::steady_clock::now();
 		const auto compact = compact_storage_ != nullptr;
 		const auto current_row_count = compact ? compact_storage_->row_count() : storage_.row_count();
 		std::vector<std::uint8_t> new_rows(rows.size(), 0U);
@@ -894,7 +901,13 @@ namespace texas::solver::multiway
 		const auto value_capacity = compact ? compact_storage_->configured_cell_capacity() : storage_.value_capacity_limit();
 		if (current_value_count > value_capacity || new_value_count > value_capacity - current_value_count)
 			throw std::length_error("multiway prepared row admission exceeds configured value capacity");
+		if (admission_diagnostics_ != nullptr)
+			admission_diagnostics_->row_preflight_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - row_preflight_started)
+					.count());
 
+		const auto catalog_commit_started = std::chrono::steady_clock::now();
 		for (const auto state_index : parent_order)
 		{
 			if (new_states[state_index] == 0U)
@@ -904,6 +917,13 @@ namespace texas::solver::multiway
 				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds);
 			++diagnostics_.public_states_admitted;
 		}
+		if (admission_diagnostics_ != nullptr)
+			admission_diagnostics_->catalog_commit_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - catalog_commit_started)
+					.count());
+
+		const auto storage_commit_started = std::chrono::steady_clock::now();
 		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
 		{
 			if (new_rows[row_index] == 0U)
@@ -935,6 +955,11 @@ namespace texas::solver::multiway
 					break;
 			}
 		}
+		if (admission_diagnostics_ != nullptr)
+			admission_diagnostics_->storage_commit_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - storage_commit_started)
+					.count());
 	}
 
 	void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDescriptor& state)

@@ -1677,6 +1677,7 @@ namespace texas::solver::multiway
 			const auto public_states_before = coordinator_->diagnostics().public_states_admitted;
 			const auto rows_before = coordinator_->diagnostics().sparse_rows_admitted;
 			{
+				const auto phase_started = std::chrono::steady_clock::now();
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_prepare");
 				for (const auto& scratch : worker_scratch_)
 					if (scratch.discovery.overflowed())
@@ -1686,12 +1687,21 @@ namespace texas::solver::multiway
 						result.profile = batch_profile.snapshot();
 						return result;
 					}
+				result.admission_diagnostics.discovery_prepare_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - phase_started)
+						.count());
 			}
 			{
+				const auto phase_started = std::chrono::steady_clock::now();
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge");
 				detail::merge_multiway_discovery_streams(
 					discovery_stream_views_, discovery_public_states_, discovery_rows_,
 					discovery_merge_cursors_);
+				result.admission_diagnostics.discovery_merge_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - phase_started)
+						.count());
 			}
 			result.admission_diagnostics.globally_unique_public_state_candidates =
 				static_cast<std::uint64_t>(discovery_public_states_.size());
@@ -1700,10 +1710,15 @@ namespace texas::solver::multiway
 			MultiwayAdmissionDiagnosticsScope admission_diagnostics_scope(
 				*coordinator_, result.admission_diagnostics);
 			{
+				const auto phase_started = std::chrono::steady_clock::now();
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_parent_order");
 				detail::build_multiway_parent_first_order(
 					discovery_public_states_, *coordinator_, result.admission_diagnostics,
 					admission_order_scratch_);
+				result.admission_diagnostics.parent_order_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - phase_started)
+						.count());
 			}
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_admit");

@@ -554,6 +554,13 @@ namespace texas::solver::multiway
 		std::uint64_t parent_resolution_probes = 0U;
 		std::uint64_t descriptor_reconstructions = 0U;
 		std::uint64_t lock_acquisitions = 0U;
+		std::uint64_t discovery_prepare_nanoseconds = 0U;
+		std::uint64_t discovery_merge_nanoseconds = 0U;
+		std::uint64_t parent_order_nanoseconds = 0U;
+		std::uint64_t state_preflight_nanoseconds = 0U;
+		std::uint64_t row_preflight_nanoseconds = 0U;
+		std::uint64_t catalog_commit_nanoseconds = 0U;
+		std::uint64_t storage_commit_nanoseconds = 0U;
 		std::uint64_t catalog_index_insertion_nanoseconds = 0U;
 		std::uint64_t row_admission_nanoseconds = 0U;
 		std::vector<std::uint64_t> worker_raw_public_state_candidates_by_worker;
@@ -577,6 +584,13 @@ namespace texas::solver::multiway
 			parent_resolution_probes += other.parent_resolution_probes;
 			descriptor_reconstructions += other.descriptor_reconstructions;
 			lock_acquisitions += other.lock_acquisitions;
+			discovery_prepare_nanoseconds += other.discovery_prepare_nanoseconds;
+			discovery_merge_nanoseconds += other.discovery_merge_nanoseconds;
+			parent_order_nanoseconds += other.parent_order_nanoseconds;
+			state_preflight_nanoseconds += other.state_preflight_nanoseconds;
+			row_preflight_nanoseconds += other.row_preflight_nanoseconds;
+			catalog_commit_nanoseconds += other.catalog_commit_nanoseconds;
+			storage_commit_nanoseconds += other.storage_commit_nanoseconds;
 			catalog_index_insertion_nanoseconds += other.catalog_index_insertion_nanoseconds;
 			row_admission_nanoseconds += other.row_admission_nanoseconds;
 			const auto append = [](std::vector<std::uint64_t>& target, const std::vector<std::uint64_t>& source) {
