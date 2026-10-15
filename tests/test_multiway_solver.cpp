@@ -792,6 +792,7 @@ TEST_CASE(multiway_solver_prepared_admission_rejects_capacity_before_mutation)
 	cfr.player_count = 2;
 	texas::MultiwaySolverCoordinator coordinator(
 		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	const auto before = coordinator.checkpoint();
 	const auto first_child = action_child_public_state(root_public_state(), 2, 102, 0);
 	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
 	std::vector<texas::MultiwayPublicStateDescriptor> states = { first_child, second_child };
@@ -799,6 +800,9 @@ TEST_CASE(multiway_solver_prepared_admission_rejects_capacity_before_mutation)
 	const std::vector<std::size_t> order = { 0U, 1U };
 	EXPECT_THROW(coordinator.admit_prepared_batch(states, order, {}), std::length_error);
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 1U);
+	const auto after_state_rejection = coordinator.checkpoint();
+	EXPECT_EQ(after_state_rejection.public_states.size(), before.public_states.size());
+	EXPECT_EQ(after_state_rejection.public_states.front().id, before.public_states.front().id);
 
 	const auto child_row = texas::MultiwaySparseRowShape{
 		{ first_child.id, first_child.betting.current_player }, 1U,
@@ -808,6 +812,9 @@ TEST_CASE(multiway_solver_prepared_admission_rejects_capacity_before_mutation)
 	EXPECT_THROW(coordinator.admit_prepared_batch({ first_child }, { 0U }, rows), std::length_error);
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 1U);
 	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 0U);
+	const auto after_row_rejection = coordinator.checkpoint();
+	EXPECT_EQ(after_row_rejection.public_states.size(), before.public_states.size());
+	EXPECT_EQ(after_row_rejection.storage.shapes.size(), before.storage.shapes.size());
 }
 
 TEST_CASE(multiway_public_catalog_batch_commit_preserves_sorted_reconstruction)
