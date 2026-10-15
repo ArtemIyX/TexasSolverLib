@@ -915,15 +915,11 @@ namespace texas::solver::multiway
 					.count());
 
 		const auto catalog_commit_started = std::chrono::steady_clock::now();
-		for (const auto state_index : parent_order)
-		{
-			if (new_states[state_index] == 0U)
-				continue;
-			public_catalog_.admit(
-				public_states[state_index],
-				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds);
-			++diagnostics_.public_states_admitted;
-		}
+		public_catalog_.admit_batch(
+			public_states,
+			new_states,
+			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds);
+		diagnostics_.public_states_admitted += static_cast<std::uint64_t>(new_state_count);
 		if (admission_diagnostics_ != nullptr)
 			admission_diagnostics_->catalog_commit_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(

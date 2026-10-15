@@ -45,29 +45,9 @@ namespace texas::solver::multiway
 		return node(id) != nullptr;
 	}
 
-	void MultiwayPublicCatalog::admit(
-		const MultiwayPublicStateDescriptor& state,
-		std::uint64_t* index_insertion_nanoseconds)
+	MultiwayPackedPublicNode MultiwayPublicCatalog::pack_node(
+		const MultiwayPublicStateDescriptor& state, std::uint32_t menu_handle) const noexcept
 	{
-		if (state.id.value == 0U || state.board.size() > 5U || state.incoming_edge.dealt_cards.size() > 3U || state.incoming_edge.transition_board.size() > 5U)
-			throw std::invalid_argument("packed public catalog state is malformed");
-		if (contains(state.id))
-			return;
-		if (nodes_.size() >= max_nodes_)
-			throw std::length_error("packed public catalog capacity exceeded");
-		if (state.betting.stacks.size() > 6U || state.betting.contributions.size() != state.betting.stacks.size() || state.betting.street_contributions.size() != state.betting.stacks.size() || state.betting.folded.size() != state.betting.stacks.size() || state.betting.all_in.size() != state.betting.stacks.size() || state.betting.may_raise.size() != state.betting.stacks.size() || state.betting.pending.size() != state.betting.stacks.size() || state.betting.has_acted.size() != state.betting.stacks.size() || state.betting.bet_faced_when_acted.size() != state.betting.stacks.size())
-			throw std::invalid_argument("packed public catalog betting state is malformed");
-
-		const auto menu = find_menu(state.legal_actions);
-		std::size_t menu_handle = menu;
-		if (menu_handle == std::numeric_limits<std::size_t>::max())
-		{
-			menus_.push_back(state.legal_actions);
-			menu_handle = menus_.size() - 1U;
-		}
-		if (menu_handle > std::numeric_limits<std::uint32_t>::max())
-			throw std::length_error("packed public catalog menu handle overflow");
-
 		MultiwayPackedPublicNode packed;
 		packed.id = state.id;
 		packed.parent_id = state.parent_id;
@@ -82,7 +62,7 @@ namespace texas::solver::multiway
 		std::copy(state.incoming_edge.dealt_cards.begin(), state.incoming_edge.dealt_cards.end(), packed.dealt_cards.begin());
 		packed.transition_board_count = static_cast<std::uint8_t>(state.incoming_edge.transition_board.size());
 		std::copy(state.incoming_edge.transition_board.begin(), state.incoming_edge.transition_board.end(), packed.transition_board.begin());
-		packed.legal_menu_handle = static_cast<std::uint32_t>(menu_handle);
+		packed.legal_menu_handle = menu_handle;
 		if (!state.history.empty())
 		{
 			packed.incoming_actor = state.history.back().actor;
@@ -109,13 +89,115 @@ namespace texas::solver::multiway
 			packed.betting.has_acted[seat] = state.betting.has_acted[seat] ? 1U : 0U;
 			packed.betting.bet_faced_when_acted[seat] = state.betting.bet_faced_when_acted[seat];
 		}
+		return packed;
+	}
 
+	void MultiwayPublicCatalog::admit(
+		const MultiwayPublicStateDescriptor& state,
+		std::uint64_t* index_insertion_nanoseconds)
+	{
+		if (state.id.value == 0U || state.board.size() > 5U || state.incoming_edge.dealt_cards.size() > 3U || state.incoming_edge.transition_board.size() > 5U)
+			throw std::invalid_argument("packed public catalog state is malformed");
+		if (contains(state.id))
+			return;
+		if (nodes_.size() >= max_nodes_)
+			throw std::length_error("packed public catalog capacity exceeded");
+		if (state.betting.stacks.size() > 6U || state.betting.contributions.size() != state.betting.stacks.size() || state.betting.street_contributions.size() != state.betting.stacks.size() || state.betting.folded.size() != state.betting.stacks.size() || state.betting.all_in.size() != state.betting.stacks.size() || state.betting.may_raise.size() != state.betting.stacks.size() || state.betting.pending.size() != state.betting.stacks.size() || state.betting.has_acted.size() != state.betting.stacks.size() || state.betting.bet_faced_when_acted.size() != state.betting.stacks.size())
+			throw std::invalid_argument("packed public catalog betting state is malformed");
+
+		const auto menu = find_menu(state.legal_actions);
+		std::size_t menu_handle = menu;
+		if (menu_handle == std::numeric_limits<std::size_t>::max())
+		{
+			menus_.push_back(state.legal_actions);
+			menu_handle = menus_.size() - 1U;
+		}
+		if (menu_handle > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("packed public catalog menu handle overflow");
+
+		const auto packed = pack_node(state, static_cast<std::uint32_t>(menu_handle));
 		const auto node_index = nodes_.size();
 		nodes_.push_back(packed);
 		const auto insertion = std::lower_bound(index_.begin(), index_.end(), state.id,
 			[](const IndexEntry& entry, MultiwayPublicStateId key) { return entry.id < key; });
 		const auto index_started = std::chrono::steady_clock::now();
 		index_.insert(insertion, IndexEntry{ state.id, node_index });
+		if (index_insertion_nanoseconds != nullptr)
+			*index_insertion_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - index_started)
+					.count());
+	}
+
+	void MultiwayPublicCatalog::admit_batch(
+		const std::vector<MultiwayPublicStateDescriptor>& states,
+		const std::vector<std::uint8_t>& new_state_flags,
+		std::uint64_t* index_insertion_nanoseconds)
+	{
+		if (states.size() != new_state_flags.size())
+			throw std::invalid_argument("packed public catalog batch flags do not match states");
+		if (!std::is_sorted(states.begin(), states.end(), [](const auto& left, const auto& right) {
+			return left.id < right.id;
+		}))
+			throw std::invalid_argument("packed public catalog batch states must be sorted by id");
+		for (std::size_t index = 1U; index < states.size(); ++index)
+			if (states[index - 1U].id == states[index].id)
+				throw std::invalid_argument("packed public catalog batch states must be unique");
+
+		std::size_t new_count = 0U;
+		for (std::size_t index = 0U; index < states.size(); ++index)
+		{
+			if (new_state_flags[index] == 0U)
+				continue;
+			if (states[index].id.value == 0U || states[index].board.size() > 5U || states[index].incoming_edge.dealt_cards.size() > 3U || states[index].incoming_edge.transition_board.size() > 5U)
+				throw std::invalid_argument("packed public catalog state is malformed");
+			if (states[index].betting.stacks.size() > 6U || states[index].betting.contributions.size() != states[index].betting.stacks.size() || states[index].betting.street_contributions.size() != states[index].betting.stacks.size() || states[index].betting.folded.size() != states[index].betting.stacks.size() || states[index].betting.all_in.size() != states[index].betting.stacks.size() || states[index].betting.may_raise.size() != states[index].betting.stacks.size() || states[index].betting.pending.size() != states[index].betting.stacks.size() || states[index].betting.has_acted.size() != states[index].betting.stacks.size() || states[index].betting.bet_faced_when_acted.size() != states[index].betting.stacks.size())
+				throw std::invalid_argument("packed public catalog betting state is malformed");
+			++new_count;
+		}
+		if (nodes_.size() > max_nodes_ || new_count > max_nodes_ - nodes_.size())
+			throw std::length_error("packed public catalog capacity exceeded");
+		if (new_count == 0U)
+			return;
+
+		std::vector<MultiwayPackedPublicNode> pending_nodes;
+		std::vector<IndexEntry> pending_index;
+		pending_nodes.reserve(new_count);
+		pending_index.reserve(new_count);
+		for (std::size_t index = 0U; index < states.size(); ++index)
+		{
+			if (new_state_flags[index] == 0U)
+				continue;
+			const auto menu = find_menu(states[index].legal_actions);
+			std::size_t menu_handle = menu;
+			if (menu_handle == std::numeric_limits<std::size_t>::max())
+			{
+				menus_.push_back(states[index].legal_actions);
+				menu_handle = menus_.size() - 1U;
+			}
+			if (menu_handle > std::numeric_limits<std::uint32_t>::max())
+				throw std::length_error("packed public catalog menu handle overflow");
+			const auto node_index = nodes_.size() + pending_nodes.size();
+			pending_nodes.push_back(pack_node(states[index], static_cast<std::uint32_t>(menu_handle)));
+			pending_index.push_back({ states[index].id, node_index });
+		}
+
+		nodes_.reserve(nodes_.size() + pending_nodes.size());
+		index_.reserve(index_.size() + pending_index.size());
+		const auto index_started = std::chrono::steady_clock::now();
+		std::vector<IndexEntry> merged_index;
+		merged_index.reserve(index_.size() + pending_index.size());
+		std::size_t old_index = 0U;
+		std::size_t new_index = 0U;
+		while (old_index < index_.size() || new_index < pending_index.size())
+		{
+			if (new_index == pending_index.size() || (old_index < index_.size() && index_[old_index].id < pending_index[new_index].id))
+				merged_index.push_back(index_[old_index++]);
+			else
+				merged_index.push_back(pending_index[new_index++]);
+		}
+		nodes_.insert(nodes_.end(), pending_nodes.begin(), pending_nodes.end());
+		index_.swap(merged_index);
 		if (index_insertion_nanoseconds != nullptr)
 			*index_insertion_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(

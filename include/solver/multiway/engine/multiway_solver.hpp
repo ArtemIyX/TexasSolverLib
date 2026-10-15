@@ -218,6 +218,10 @@ namespace texas::solver::multiway
 		void admit(
 			const MultiwayPublicStateDescriptor& state,
 			std::uint64_t* index_insertion_nanoseconds = nullptr);
+		void admit_batch(
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			const std::vector<std::uint8_t>& new_state_flags,
+			std::uint64_t* index_insertion_nanoseconds = nullptr);
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const;
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
@@ -232,6 +236,8 @@ namespace texas::solver::multiway
 		};
 
 		[[nodiscard]] std::size_t find_menu(const std::vector<MultiwayActionDescriptor>& menu) const noexcept;
+		[[nodiscard]] MultiwayPackedPublicNode pack_node(
+			const MultiwayPublicStateDescriptor& state, std::uint32_t menu_handle) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
 
 		std::size_t max_nodes_ = 0U;
