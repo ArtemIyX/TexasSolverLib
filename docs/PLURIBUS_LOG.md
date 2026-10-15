@@ -1,5 +1,44 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Implement CP3-CP5 checkpoint write path
+
+**Status:** Implemented, operator validation pending
+**Completed:** 2026-10-15
+
+- Added a sealed checkpoint writer for the trusted training workflow while
+  retaining validation in the public `save_atomic()` API.
+- Replaced per-byte file output with a 64 KiB buffered stream and computed the
+  payload hash during serialization, including block-wise double-array output.
+- Added checked Windows replacement publication, restricted copy fallback to
+  destinations that do not exist, and reported the publication mode in training
+  telemetry.
+- Preserved the schema-2 serialization contract in source; runtime byte and
+  resume compatibility still require operator verification.
+
+### Files
+
+- `include/core/atomic_publish.hpp`
+- `src/core/atomic_publish.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the changed C++ with the TexasSolver C++ review rules.
+- `git diff --check` passed for the staged changes.
+- Commits: `9b32e42`, `b533176`, `15b64ac`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator byte-compatibility, save/load, existing-destination replacement,
+  publication-mode, and Windows throughput checks remain required.
+
 ## 2026-10-15 - Implement CP2 linear compact checkpoint export
 
 **Status:** Implemented, operator validation pending
