@@ -142,9 +142,19 @@ namespace texas::solver::multiway
 
 			void write_u64(std::uint64_t value)
 			{
+				write_u64_unhashed(value);
+				hash_u64(value);
+			}
+
+			void write_u64_unhashed(std::uint64_t value)
+			{
 				std::array<char, sizeof(value)> bytes{};
 				encode_u64(bytes.data(), value);
 				write_raw(bytes.data(), bytes.size());
+			}
+
+			void hash_u64(std::uint64_t value) noexcept
+			{
 				append(hash_, value);
 			}
 
@@ -587,13 +597,17 @@ namespace texas::solver::multiway
 			payload.write_u64(coverage.turn_rows);
 			payload.write_u64(coverage.river_rows);
 			for (const auto value : coverage.street_visits)
-				payload.write_u64(value);
+				payload.write_u64_unhashed(value);
 			payload.write_u64(checkpoint.coordinator.terminal_visits);
 			payload.write_u64(checkpoint.coordinator.leaf_visits);
 			payload.write_u64(checkpoint.coordinator.missing_lookup_requests);
 			payload.write_u64(checkpoint.coordinator.last_merged_stream_fingerprint);
 			for (const auto value : checkpoint.coordinator.street_visits)
-				payload.write_u64(value);
+				payload.write_u64_unhashed(value);
+			for (const auto value : coverage.street_visits)
+				payload.hash_u64(value);
+			for (const auto value : checkpoint.coordinator.street_visits)
+				payload.hash_u64(value);
 			const auto public_state_start = payload.bytes_written();
 			payload.write_u32(static_cast<std::uint32_t>(checkpoint.coordinator.public_states.size()));
 			for (const auto& state : checkpoint.coordinator.public_states)
