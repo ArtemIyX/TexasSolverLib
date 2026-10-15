@@ -775,6 +775,13 @@ TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_kno
 	EXPECT_TRUE(coordinator.has_infoset_row_epoch(child_row.infoset));
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
 	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 1U);
+	EXPECT_TRUE(diagnostics.catalog_menu_index_lookup_nanoseconds > 0U);
+	EXPECT_TRUE(diagnostics.catalog_node_pack_nanoseconds > 0U);
+	EXPECT_TRUE(diagnostics.catalog_menu_lookup_nanoseconds >= diagnostics.catalog_menu_index_lookup_nanoseconds);
+	EXPECT_TRUE(diagnostics.catalog_existing_menu_hits + diagnostics.catalog_new_menus > 0U);
+	EXPECT_TRUE(diagnostics.public_state_betting_board_validation_nanoseconds > 0U);
+	EXPECT_TRUE(diagnostics.public_state_menu_validation_nanoseconds > 0U);
+	EXPECT_TRUE(diagnostics.public_state_history_identity_validation_nanoseconds > 0U);
 
 	coordinator.admit_prepared_batch(states, order, rows);
 	EXPECT_EQ(diagnostics.lock_acquisitions, 2U);

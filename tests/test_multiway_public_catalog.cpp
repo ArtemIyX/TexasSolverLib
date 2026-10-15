@@ -65,3 +65,92 @@ TEST_CASE(multiway_public_catalog_uses_fixed_node_memory_for_repeated_menus)
 	EXPECT_EQ(catalog.size(), 8U);
 	EXPECT_TRUE(catalog.memory_bytes() < 8U * sizeof(texas::MultiwayPublicStateDescriptor));
 }
+
+TEST_CASE(multiway_public_catalog_batch_reuses_exact_menus)
+{
+	texas::MultiwayPublicCatalog catalog(4U);
+	const auto first = make_descriptor(1U);
+	const auto second = make_descriptor(2U);
+	catalog.admit_batch({ first, second }, { 1U, 1U });
+
+	texas::MultiwayPublicStateDescriptor restored_first;
+	texas::MultiwayPublicStateDescriptor restored_second;
+	EXPECT_TRUE(catalog.reconstruct(first.id, restored_first));
+	EXPECT_TRUE(catalog.reconstruct(second.id, restored_second));
+	EXPECT_EQ(restored_first.legal_actions, restored_second.legal_actions);
+	EXPECT_EQ(catalog.size(), 2U);
+}
+
+TEST_CASE(multiway_public_catalog_indexes_empty_menus)
+{
+	texas::MultiwayPublicCatalog catalog(4U);
+	auto first = make_descriptor(1U);
+	auto second = make_descriptor(2U);
+	first.legal_actions.clear();
+	second.legal_actions.clear();
+	catalog.admit_batch({ first, second }, { 1U, 1U });
+
+	texas::MultiwayPublicStateDescriptor restored;
+	EXPECT_TRUE(catalog.reconstruct(second.id, restored));
+	EXPECT_TRUE(restored.legal_actions.empty());
+}
+
+TEST_CASE(multiway_public_catalog_keeps_same_key_menus_distinct)
+{
+	texas::MultiwayPublicCatalog catalog(4U);
+	auto first = make_descriptor(1U);
+	auto second = make_descriptor(2U);
+	second.legal_actions.front().target_street_contribution = 3;
+	second.legal_actions.front().action_menu_id = first.legal_actions.front().action_menu_id;
+	catalog.admit_batch({ first, second }, { 1U, 1U });
+
+	texas::MultiwayPublicStateDescriptor restored_first;
+	texas::MultiwayPublicStateDescriptor restored_second;
+	EXPECT_TRUE(catalog.reconstruct(first.id, restored_first));
+	EXPECT_TRUE(catalog.reconstruct(second.id, restored_second));
+	EXPECT_NE(restored_first.legal_actions, restored_second.legal_actions);
+}
+
+TEST_CASE(multiway_public_catalog_batch_mixes_existing_and_new_states)
+{
+	texas::MultiwayPublicCatalog catalog(4U);
+	const auto existing = make_descriptor(1U);
+	const auto added = make_descriptor(2U, 1U);
+	catalog.admit(existing);
+	catalog.admit_batch({ existing, added }, { 0U, 1U });
+
+	EXPECT_EQ(catalog.size(), 2U);
+	EXPECT_TRUE(catalog.contains(existing.id));
+	EXPECT_TRUE(catalog.contains(added.id));
+}
+
+TEST_CASE(multiway_public_catalog_capacity_failure_preserves_catalog)
+{
+	texas::MultiwayPublicCatalog catalog(1U);
+	const auto first = make_descriptor(1U);
+	const auto second = make_descriptor(2U);
+	catalog.admit(first);
+	const auto before = catalog.memory_bytes();
+	EXPECT_THROW(catalog.admit_batch({ first, second }, { 0U, 1U }), std::length_error);
+	EXPECT_EQ(catalog.size(), 1U);
+	EXPECT_EQ(catalog.memory_bytes(), before);
+	EXPECT_TRUE(catalog.contains(first.id));
+	EXPECT_FALSE(catalog.contains(second.id));
+}
+
+TEST_CASE(multiway_public_catalog_clear_rebuilds_menu_index)
+{
+	texas::MultiwayPublicCatalog catalog(4U);
+	auto first = make_descriptor(1U);
+	auto second = make_descriptor(2U);
+	second.legal_actions.clear();
+	catalog.admit_batch({ first, second }, { 1U, 1U });
+	catalog.clear();
+
+	auto rebuilt = make_descriptor(3U);
+	rebuilt.legal_actions.clear();
+	catalog.admit(rebuilt);
+	texas::MultiwayPublicStateDescriptor restored;
+	EXPECT_TRUE(catalog.reconstruct(rebuilt.id, restored));
+	EXPECT_TRUE(restored.legal_actions.empty());
+}
