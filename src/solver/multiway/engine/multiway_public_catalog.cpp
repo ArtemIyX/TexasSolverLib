@@ -157,6 +157,16 @@ namespace texas::solver::multiway
 		}
 		if (nodes_.size() > max_nodes_ || new_count > max_nodes_ - nodes_.size())
 			throw std::length_error("packed public catalog capacity exceeded");
+		std::size_t existing_index = 0U;
+		for (std::size_t index = 0U; index < states.size(); ++index)
+		{
+			if (new_state_flags[index] == 0U)
+				continue;
+			while (existing_index < index_.size() && index_[existing_index].id < states[index].id)
+				++existing_index;
+			if (existing_index < index_.size() && index_[existing_index].id == states[index].id)
+				throw std::invalid_argument("packed public catalog batch contains an admitted state");
+		}
 		if (new_count == 0U)
 			return;
 

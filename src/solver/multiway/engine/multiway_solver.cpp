@@ -687,6 +687,13 @@ namespace texas::solver::multiway
 	{
 		if (shapes.size() != new_row_flags.size())
 			throw std::invalid_argument("multiway sparse row batch flags do not match shapes");
+		if (!std::is_sorted(shapes.begin(), shapes.end(), [](const auto& left, const auto& right) {
+			return left.infoset < right.infoset;
+		}))
+			throw std::invalid_argument("multiway sparse row batch shapes must be sorted");
+		for (std::size_t index = 1U; index < shapes.size(); ++index)
+			if (shapes[index - 1U].infoset == shapes[index].infoset)
+				throw std::invalid_argument("multiway sparse row batch shapes must be unique");
 		std::size_t new_count = 0U;
 		std::size_t new_values = 0U;
 		for (std::size_t index = 0U; index < shapes.size(); ++index)
@@ -712,10 +719,15 @@ namespace texas::solver::multiway
 		std::vector<MultiwaySparseRowMetadata> pending;
 		pending.reserve(new_count);
 		std::size_t value_offset = regret_.size();
+		std::size_t existing_index = 0U;
 		for (std::size_t index = 0U; index < shapes.size(); ++index)
 		{
 			if (new_row_flags[index] == 0U)
 				continue;
+			while (existing_index < metadata_.size() && metadata_[existing_index].shape.infoset < shapes[index].infoset)
+				++existing_index;
+			if (existing_index < metadata_.size() && metadata_[existing_index].shape.infoset == shapes[index].infoset)
+				throw std::invalid_argument("multiway sparse row batch contains an admitted row");
 			const auto values = checked_value_count(shapes[index]);
 			pending.push_back({ shapes[index], value_offset, value_offset });
 			value_offset += values;
@@ -1002,6 +1014,15 @@ namespace texas::solver::multiway
 			compact_storage_->admit_rows(rows, new_rows);
 		else
 			storage_.admit_rows(rows, new_rows);
+		const auto storage_commit_elapsed = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - storage_commit_started)
+				.count());
+		if (admission_diagnostics_ != nullptr)
+		{
+			admission_diagnostics_->storage_commit_nanoseconds += storage_commit_elapsed;
+			admission_diagnostics_->row_admission_nanoseconds += storage_commit_elapsed;
+		}
 		diagnostics_.sparse_rows_admitted += static_cast<std::uint64_t>(new_row_count);
 		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
 		{
@@ -1024,15 +1045,6 @@ namespace texas::solver::multiway
 				case Street::Showdown:
 					break;
 			}
-		}
-		if (admission_diagnostics_ != nullptr)
-		{
-			const auto elapsed = static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - storage_commit_started)
-					.count());
-			admission_diagnostics_->storage_commit_nanoseconds += elapsed;
-			admission_diagnostics_->row_admission_nanoseconds += elapsed;
 		}
 	}
 

@@ -826,8 +826,9 @@ TEST_CASE(multiway_public_catalog_batch_commit_preserves_sorted_reconstruction)
 	std::vector<texas::MultiwayPublicStateDescriptor> exported;
 	catalog.export_descriptors(exported);
 	EXPECT_EQ(exported.size(), 3U);
-	EXPECT_EQ(exported[1].id, states[0].id);
-	EXPECT_EQ(exported[2].id, states[1].id);
+	EXPECT_TRUE(std::is_sorted(exported.begin(), exported.end(), [](const auto& left, const auto& right) { return left.id < right.id; }));
+	EXPECT_TRUE(std::any_of(exported.begin(), exported.end(), [&](const auto& state) { return state.id == states[0].id; }));
+	EXPECT_TRUE(std::any_of(exported.begin(), exported.end(), [&](const auto& state) { return state.id == states[1].id; }));
 }
 
 TEST_CASE(multiway_sparse_row_batch_commit_preserves_sorted_offsets)

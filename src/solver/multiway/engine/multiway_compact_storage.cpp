@@ -160,6 +160,9 @@ namespace texas::solver::multiway
 		std::sort(pending_pages.begin(), pending_pages.end(), [](const auto& left, const auto& right) {
 			return checkpoint_infoset_less(left.infoset, right.infoset) || (left.infoset == right.infoset && left.page_index < right.page_index);
 		});
+		for (std::size_t index = 1U; index < pending_rows.size(); ++index)
+			if (pending_rows[index - 1U].shape.infoset == pending_rows[index].shape.infoset)
+				throw std::invalid_argument("compact storage row batch shapes must be unique");
 
 		rows_.reserve(rows_.size() + pending_rows.size());
 		pages_.reserve(pages_.size() + pending_pages.size());
@@ -171,6 +174,8 @@ namespace texas::solver::multiway
 		std::size_t pending_row = 0U;
 		while (existing_row < rows_.size() || pending_row < pending_rows.size())
 		{
+			if (existing_row < rows_.size() && pending_row < pending_rows.size() && rows_[existing_row].shape.infoset == pending_rows[pending_row].shape.infoset)
+				throw std::invalid_argument("compact storage row batch contains an admitted row");
 			if (pending_row == pending_rows.size() || (existing_row < rows_.size() && checkpoint_infoset_less(rows_[existing_row].shape.infoset, pending_rows[pending_row].shape.infoset)))
 				merged_rows.push_back(rows_[existing_row++]);
 			else
@@ -182,6 +187,8 @@ namespace texas::solver::multiway
 		std::size_t pending_page = 0U;
 		while (existing_page < pages_.size() || pending_page < pending_pages.size())
 		{
+			if (existing_page < pages_.size() && pending_page < pending_pages.size() && pages_[existing_page].infoset == pending_pages[pending_page].infoset && pages_[existing_page].page_index == pending_pages[pending_page].page_index)
+				throw std::invalid_argument("compact storage page batch contains an admitted page");
 			if (pending_page == pending_pages.size() || (existing_page < pages_.size() && (checkpoint_infoset_less(pages_[existing_page].infoset, pending_pages[pending_page].infoset) || (pages_[existing_page].infoset == pending_pages[pending_page].infoset && pages_[existing_page].page_index < pending_pages[pending_page].page_index))))
 				merged_pages.push_back(pages_[existing_page++]);
 			else
