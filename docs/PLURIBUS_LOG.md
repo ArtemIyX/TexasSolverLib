@@ -1,5 +1,54 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Implement AD7 admission hot-path optimization
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commits:**
+
+- `3879077 PB-3 Multiway: Add admission phase telemetry`
+- `8aa38cb PB-3 Multiway: Reuse prepared parent indexes`
+- `a6c1fd1 PB-3 Multiway: Batch public catalog admission`
+- `eb97d7a PB-3 Multiway: Batch sparse-row admission`
+- `d8ce8a5 PB-3 Tests: Cover batch admission storage`
+- `840f246 PB-3 Multiway: Guard batch admission duplicates`
+- `2b327bf PB-3 Multiway: Reuse row candidate indexes`
+
+- Added admission phase telemetry for discovery preparation, merge, parent
+  ordering, preflight, catalog commit, and storage commit.
+- Replaced per-entry public-catalog index insertion with one sorted batch
+  merge while preserving single-state admission.
+- Added float and compact sparse-row batch commits with capacity preflight,
+  stable offsets, sorted metadata, duplicate rejection, and compact pages.
+- Reused prepared parent and row candidate indexes during admission.
+- Added focused catalog, float-row, compact-row, and ordering regression
+  coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the staged diffs and ran `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must build, run focused tests, and repeat the RelWithDebInfo
+  Tracy matrix to verify the below-250-ms cold admission target and output
+  equivalence.
+
 ## 2026-10-15 - Plan AD7 admission hot-path optimization
 
 **Status:** Plan complete; implementation pending
