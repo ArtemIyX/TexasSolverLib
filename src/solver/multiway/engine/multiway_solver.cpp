@@ -401,7 +401,13 @@ namespace texas::solver::multiway
 			}
 			if (metadata != nullptr)
 			{
+				const auto menu_key_started = std::chrono::steady_clock::now();
 				metadata->canonical_menu_id = state.legal_actions.empty() ? 0U : state.legal_actions.front().action_menu_id;
+				if (diagnostics != nullptr)
+					diagnostics->catalog_menu_key_nanoseconds += static_cast<std::uint64_t>(
+						std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - menu_key_started)
+							.count());
 				metadata->action_count = static_cast<std::uint8_t>(state.legal_actions.size());
 				metadata->street = static_cast<std::uint8_t>(state.betting.street);
 				metadata->current_player = state.betting.current_player;
