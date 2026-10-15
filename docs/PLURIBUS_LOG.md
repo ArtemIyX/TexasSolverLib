@@ -1,5 +1,44 @@
 # Pluribus Roadmap Progress Log
 
+## AD7G - Catalog menu index and cold-admission follow-up
+
+**Status:** Complete for implementation; operator qualification pending
+**Completed:** 2026-10-15
+**Implementation commits:** `57c2243 PB-3 Multiway: Index canonical catalog menus`, `dd019f7 PB-3 Tests: Cover indexed catalog admission`, `16e507d PB-3 Tests: Verify catalog telemetry reporting`, `1bae7ed PB-3 Multiway: Measure validated menu key preparation`
+
+- Replaced linear catalog menu lookup with a sorted canonical-ID index and
+  full descriptor-vector equality checks for collision safety.
+- Added reusable batch menu resolution, first-occurrence handle assignment,
+  merged menu/state indexes, direct packed-node append, and pre-mutation
+  capacity/reserve preparation.
+- Reused validated public-state metadata during row preflight and added
+  additive admission and validation-phase telemetry to training reports.
+- Added catalog, coordinator, capacity, collision, clear/rebuild, telemetry,
+  and report-serialization regression coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_public_catalog.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked branch `PB-3`.
+- Reviewed focused diffs and commit boundaries.
+- No build, test, benchmark, executable, or solver script was run by Codex,
+  per session rules.
+
+### Limitations
+
+- Operator must build, run focused tests, and execute the eight Tracy 0.14.1
+  qualification captures before AD7G performance thresholds can be accepted.
+
 ## 2026-10-15 - Add AD7 catalog optimization planning prompt
 
 **Status:** Complete
