@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Fix AD1 report validation compile error
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `0959bd4 PB-3 Multiway: Fix admission report validation`
+
+- Corrected `MultiwayTrainingReport::validate()` to access its own
+  `admission_diagnostics` member instead of an undeclared local `report`.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused source diff reviewed.
+- `git diff --check` passed.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator build verification is still required.
+
 ## 2026-10-15 - Apply project C++ formatting
 
 **Status:** Complete
