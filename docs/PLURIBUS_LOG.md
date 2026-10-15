@@ -2,7 +2,7 @@
 
 ## 2026-10-15 - Accept formatted bucket checkpoint setup
 
-**Status:** Implemented, operator validation pending
+**Status:** Complete
 **Completed:** 2026-10-15
 **Implementation commit:** `721baa3 PB-3 Tests: Accept formatted checkpoint setup`
 
@@ -22,10 +22,11 @@
 - Focused source diff reviewed.
 - `git diff --check` passed.
 - No build or test was run by Codex.
+- Operator reported build and boundary test passed.
 
 ### Limitations
 
-- Operator must rerun the failing CMake boundary check.
+- None identified.
 
 ## 2026-10-15 - Fix AD1 report validation compile error
 
@@ -49,7 +50,7 @@
 
 ### Limitations
 
-- Operator build verification is still required.
+- None identified.
 
 ## 2026-10-15 - Apply project C++ formatting
 
@@ -88,7 +89,7 @@
 
 ## 2026-10-15 - AD1 coordinator admission diagnostics
 
-**Status:** Implemented, operator validation pending
+**Status:** Complete
 **Completed:** 2026-10-15
 **Implementation commit:** `ddf7827 PB-3 Multiway: Add admission diagnostics`
 
@@ -117,11 +118,23 @@
 - Source-only C++ review completed with no actionable findings.
 - `git diff --cached --check` passed before commit.
 - No build, test, benchmark, executable, or solver script was run by Codex.
+- Operator build and test passed.
+- Operator completed matching Tracy 0.14.1 one-worker and four-worker captures
+  with one batch and 1,000 trajectories using the fixed scheduler.
+- Both reports had `failed=false`, 1,000 accepted trajectories, and merge
+  fingerprint `9806774443936985566`.
+- Both reports reconciled to 85,996 raw public-state candidates, 47,173 raw
+  row candidates, 69,194 globally unique public states, and 31,070 globally
+  unique rows; already-admitted plus newly-admitted counts matched those
+  totals.
+- Parent-resolution, reconstruction, lock, and admission timing diagnostics
+  were present and nonzero. Per-worker arrays matched their worker counts.
+- Semantic model identity components matched; the runtime identity differed
+  only because the configured worker count is part of that runtime identity.
 
 ### Limitations
 
-- Operator must build the diagnostic target and run matching one-worker and
-  four-worker workloads before AD1 can be marked complete.
+- None identified.
 
 ## 2026-10-15 - Correct checkpoint payload hash ordering
 
