@@ -1,6 +1,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <limits>
 #include <stdexcept>
@@ -42,6 +43,17 @@ namespace texas::solver::multiway
 	std::uint64_t MultiwayPublicCatalog::menu_key(const std::vector<MultiwayActionDescriptor>& menu) noexcept
 	{
 		return menu.empty() ? 0U : menu.front().action_menu_id;
+	}
+
+	void MultiwayPublicCatalog::validate_menu_index_debug() const noexcept
+	{
+#ifndef NDEBUG
+		assert(std::is_sorted(menu_index_.begin(), menu_index_.end(), [](const MenuIndexEntry& left, const MenuIndexEntry& right) {
+			return left.canonical_menu_id < right.canonical_menu_id || (left.canonical_menu_id == right.canonical_menu_id && left.menu_handle < right.menu_handle);
+		}));
+		for (const auto& entry : menu_index_)
+			assert(entry.menu_handle < menus_.size());
+#endif
 	}
 
 	std::size_t MultiwayPublicCatalog::find_menu_by_key(
@@ -229,6 +241,7 @@ namespace texas::solver::multiway
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
 					std::chrono::steady_clock::now() - index_started)
 					.count());
+		validate_menu_index_debug();
 	}
 
 	void MultiwayPublicCatalog::admit_batch(
@@ -338,16 +351,19 @@ namespace texas::solver::multiway
 				diagnostics->catalog_menu_index_lookup_nanoseconds += index_lookup_nanoseconds;
 				diagnostics->catalog_menu_equality_nanoseconds += equality_nanoseconds;
 			}
-			if (menu_lookup_nanoseconds != nullptr)
-				*menu_lookup_nanoseconds += static_cast<std::uint64_t>(
-					std::chrono::duration_cast<std::chrono::nanoseconds>(
-						std::chrono::steady_clock::now() - menu_started)
-						.count());
+			const auto record_menu_lookup = [&]() {
+				if (menu_lookup_nanoseconds != nullptr)
+					*menu_lookup_nanoseconds += static_cast<std::uint64_t>(
+						std::chrono::duration_cast<std::chrono::nanoseconds>(
+							std::chrono::steady_clock::now() - menu_started)
+							.count());
+			};
 			std::size_t menu_handle = menu;
 			if (menu_handle != std::numeric_limits<std::size_t>::max())
 			{
 				batch_menu_handles_[index] = static_cast<std::uint32_t>(menu_handle);
 				++existing_menu_hits;
+				record_menu_lookup();
 				continue;
 			}
 
@@ -379,6 +395,7 @@ namespace texas::solver::multiway
 				batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_menu);
 				batch_pending_menu_indexes_[index] = static_cast<std::uint32_t>(pending_menu);
 				++batch_menu_reuse_hits;
+				record_menu_lookup();
 				continue;
 			}
 
@@ -390,6 +407,7 @@ namespace texas::solver::multiway
 			batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_index);
 			batch_pending_menu_indexes_[index] = static_cast<std::uint32_t>(pending_index);
 			batch_pending_menu_index_.push_back({ canonical_menu_id, static_cast<std::uint32_t>(menus_.size() + pending_index) });
+			record_menu_lookup();
 		}
 
 		if (diagnostics != nullptr)
@@ -481,6 +499,7 @@ namespace texas::solver::multiway
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
 					std::chrono::steady_clock::now() - index_started)
 					.count());
+		validate_menu_index_debug();
 	}
 
 	bool MultiwayPublicCatalog::reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const

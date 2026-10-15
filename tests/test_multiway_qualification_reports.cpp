@@ -90,6 +90,21 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	report.checkpoint_telemetry.public_state_bytes = 34U;
 	report.blueprint_bytes = 789U;
 	report.blueprint_export_nanoseconds = 1011U;
+	report.admission_diagnostics.catalog_menu_key_nanoseconds = 1U;
+	report.admission_diagnostics.catalog_menu_index_lookup_nanoseconds = 2U;
+	report.admission_diagnostics.catalog_menu_equality_nanoseconds = 3U;
+	report.admission_diagnostics.catalog_node_pack_nanoseconds = 4U;
+	report.admission_diagnostics.catalog_reserve_nanoseconds = 5U;
+	report.admission_diagnostics.catalog_append_nanoseconds = 6U;
+	report.admission_diagnostics.catalog_menu_index_probes = 7U;
+	report.admission_diagnostics.catalog_menu_equality_checks = 8U;
+	report.admission_diagnostics.catalog_existing_menu_hits = 9U;
+	report.admission_diagnostics.catalog_batch_menu_reuse_hits = 10U;
+	report.admission_diagnostics.catalog_new_menus = 11U;
+	report.admission_diagnostics.catalog_menu_id_collision_misses = 12U;
+	report.admission_diagnostics.public_state_betting_board_validation_nanoseconds = 13U;
+	report.admission_diagnostics.public_state_menu_validation_nanoseconds = 14U;
+	report.admission_diagnostics.public_state_history_identity_validation_nanoseconds = 15U;
 	EXPECT_EQ(report.discarded_trajectories, 3U);
 	EXPECT_EQ(report.accepted_trajectories, 17U);
 	EXPECT_EQ(report.preflop_rows, 1U);
@@ -124,6 +139,21 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_trajectory_counts\": [10,10,0,0,0,0,0,0]") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_menu_key_nanoseconds\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_menu_index_lookup_nanoseconds\": 2") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_menu_equality_nanoseconds\": 3") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_node_pack_nanoseconds\": 4") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_reserve_nanoseconds\": 5") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_append_nanoseconds\": 6") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_menu_index_probes\": 7") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_menu_equality_checks\": 8") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_existing_menu_hits\": 9") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_batch_menu_reuse_hits\": 10") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_new_menus\": 11") != std::string::npos);
+	EXPECT_TRUE(text.find("\"catalog_menu_id_collision_misses\": 12") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_state_betting_board_validation_nanoseconds\": 13") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_state_menu_validation_nanoseconds\": 14") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_state_history_identity_validation_nanoseconds\": 15") != std::string::npos);
 	std::filesystem::remove(path);
 }
 
