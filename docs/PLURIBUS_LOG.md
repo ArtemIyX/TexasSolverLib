@@ -1,5 +1,41 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Implement CP2 linear compact checkpoint export
+
+**Status:** Implemented, operator validation pending
+**Completed:** 2026-10-15
+
+- Replaced per-cell compact checkpoint page lookup with a sequential page walk.
+- Precomputed row offsets and the total logical checkpoint cell count once.
+- Allocated and zero-initialized the final regret and strategy arrays before
+  copying active page ranges into their action-major destinations.
+- Kept compact row and page indexes in public-state-major, then seat-major
+  checkpoint order so the coordinator no longer creates a second compact
+  canonical storage copy.
+- Preserved the Float64 reference export and canonicalization path unchanged.
+- Added compact action-major sparse-page coverage and compact-versus-Float64
+  checkpoint equivalence coverage.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the changed C++ diff with the TexasSolver C++ review rules.
+- `git diff --check --ignore-submodules=all` passed for the changed files.
+- Committed as `bd4cceb` (`PB-3 Multiway: Linearize compact checkpoint export`).
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator build and compact/Float64 round-trip tests remain required.
+- The large sparse-page measurement and CP1 timing comparison remain pending.
+
 ## 2026-10-15 - Implement CP1 checkpoint phase telemetry
 
 **Status:** Implemented and operator-validated
