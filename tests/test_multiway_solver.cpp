@@ -432,17 +432,28 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	texas::MultiwaySolverCoordinator coordinator(
 		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
 	coordinator.admit_infoset_row(root_row());
+	auto reference_limits = limits;
+	reference_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::Float64Reference;
+	texas::MultiwaySolverCoordinator reference(
+		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
+	reference.admit_infoset_row(root_row());
 	texas::MultiwayWorkerDeltaStream first(0, 1U);
 	texas::MultiwayWorkerDeltaStream second(1, 1U);
 	EXPECT_TRUE(first.try_append(delta(0U, 1.0, 2.0)));
 	first.sort_fixed_order();
 	second.sort_fixed_order();
 	coordinator.merge_worker_streams({ first, second });
+	reference.merge_worker_streams({ first, second });
 	EXPECT_TRUE(coordinator.compact_storage() != nullptr);
 	EXPECT_NEAR(coordinator.export_root_policy().actions[0].probability, 1.0, 1e-12);
 	const auto checkpoint = coordinator.checkpoint();
+	const auto reference_checkpoint = reference.checkpoint();
 	EXPECT_EQ(checkpoint.storage.shapes.size(), std::size_t{ 1 });
 	EXPECT_TRUE(checkpoint.storage.regrets[0] > 0.0);
+	EXPECT_EQ(checkpoint.storage.shapes.size(), reference_checkpoint.storage.shapes.size());
+	EXPECT_EQ(checkpoint.storage.shapes[0].infoset, reference_checkpoint.storage.shapes[0].infoset);
+	EXPECT_EQ(checkpoint.storage.regrets, reference_checkpoint.storage.regrets);
+	EXPECT_EQ(checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
 }
 
 TEST_CASE(multiway_solver_live_root_uses_distinct_exact_private_hand_rows)

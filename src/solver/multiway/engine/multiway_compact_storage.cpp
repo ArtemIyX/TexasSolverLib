@@ -10,6 +10,15 @@ namespace texas::solver::multiway
 
 	namespace
 	{
+		// Checkpoint rows are public-state-major, then seat-major. Keep the
+		// compact indexes in this order so export does not need a sort or copy.
+		bool checkpoint_infoset_less(const MultiwayInfosetId& left, const MultiwayInfosetId& right) noexcept
+		{
+			return left.public_state.value != right.public_state.value
+				? left.public_state.value < right.public_state.value
+				: left.seat < right.seat;
+		}
+
 		long long saturating_scaled(double value, double scale, long long minimum, long long maximum) noexcept
 		{
 			const auto scaled = static_cast<long double>(value) * static_cast<long double>(scale);
@@ -34,7 +43,7 @@ namespace texas::solver::multiway
 	const MultiwaySparseRowMetadata* MultiwayCompactStorage::metadata(MultiwayInfosetId infoset) const noexcept
 	{
 		const auto it = std::lower_bound(rows_.begin(), rows_.end(), infoset,
-			[](const auto& row, MultiwayInfosetId key) { return row.shape.infoset < key; });
+			[](const auto& row, MultiwayInfosetId key) { return checkpoint_infoset_less(row.shape.infoset, key); });
 		return it == rows_.end() || !(it->shape.infoset == infoset) ? nullptr : &*it;
 	}
 
@@ -47,7 +56,7 @@ namespace texas::solver::multiway
 	{
 		const auto it = std::lower_bound(pages_.begin(), pages_.end(), std::pair<MultiwayInfosetId, std::uint32_t>{ infoset, page_index },
 			[](const PageMetadata& candidate, const auto& key) {
-				return candidate.infoset < key.first || (candidate.infoset == key.first && candidate.page_index < key.second);
+				return checkpoint_infoset_less(candidate.infoset, key.first) || (candidate.infoset == key.first && candidate.page_index < key.second);
 			});
 		return it == pages_.end() || it->infoset != infoset || it->page_index != page_index ? nullptr : &*it;
 	}
@@ -56,7 +65,7 @@ namespace texas::solver::multiway
 	{
 		const auto it = std::lower_bound(pages_.begin(), pages_.end(), std::pair<MultiwayInfosetId, std::uint32_t>{ infoset, page_index },
 			[](const PageMetadata& candidate, const auto& key) {
-				return candidate.infoset < key.first || (candidate.infoset == key.first && candidate.page_index < key.second);
+				return checkpoint_infoset_less(candidate.infoset, key.first) || (candidate.infoset == key.first && candidate.page_index < key.second);
 			});
 		return it == pages_.end() || it->infoset != infoset || it->page_index != page_index ? nullptr : &*it;
 	}
@@ -94,7 +103,7 @@ namespace texas::solver::multiway
 			throw std::length_error("compact storage page capacity exceeded");
 		const MultiwaySparseRowMetadata row{ shape, 0U, 0U };
 		const auto it = std::lower_bound(rows_.begin(), rows_.end(), shape.infoset,
-			[](const auto& existing, MultiwayInfosetId key) { return existing.shape.infoset < key; });
+			[](const auto& existing, MultiwayInfosetId key) { return checkpoint_infoset_less(existing.shape.infoset, key); });
 		rows_.insert(it, row);
 		admit_page(shape.infoset, 0U);
 	}
@@ -116,7 +125,7 @@ namespace texas::solver::multiway
 		PageMetadata metadata{ infoset, page_index, static_cast<std::uint32_t>(page_buckets), regrets_.size(), strategy_mass_.size() };
 		const auto insertion = std::lower_bound(pages_.begin(), pages_.end(), std::pair<MultiwayInfosetId, std::uint32_t>{ infoset, page_index },
 			[](const PageMetadata& candidate, const auto& key) {
-				return candidate.infoset < key.first || (candidate.infoset == key.first && candidate.page_index < key.second);
+				return checkpoint_infoset_less(candidate.infoset, key.first) || (candidate.infoset == key.first && candidate.page_index < key.second);
 			});
 		regrets_.resize(regrets_.size() + values, 0);
 		strategy_mass_.resize(strategy_mass_.size() + values, 0);
@@ -274,33 +283,56 @@ namespace texas::solver::multiway
 
 	void MultiwayCompactStorage::export_checkpoint(MultiwaySparseStorageCheckpoint& output) const
 	{
-		output.shapes.clear();
-		output.regrets.clear();
-		output.strategy_sums.clear();
-		output.shapes.reserve(rows_.size());
-		for (const auto& row : rows_)
+		std::vector<std::size_t> row_offsets(rows_.size() + 1U, 0U);
+		for (std::size_t row_index = 0U; row_index < rows_.size(); ++row_index)
 		{
+			const auto& shape = rows_[row_index].shape;
+			const auto bucket_count = static_cast<std::size_t>(shape.bucket_count);
+			const auto action_count = static_cast<std::size_t>(shape.action_count);
+			if (action_count != 0U && bucket_count > std::numeric_limits<std::size_t>::max() / action_count)
+				throw std::length_error("compact checkpoint row size overflows");
+			const auto row_cells = bucket_count * action_count;
+			if (row_cells > std::numeric_limits<std::size_t>::max() - row_offsets[row_index])
+				throw std::length_error("compact checkpoint size overflows");
+			row_offsets[row_index + 1U] = row_offsets[row_index] + row_cells;
+		}
+
+		output.shapes.clear();
+		output.shapes.reserve(rows_.size());
+		output.regrets.assign(row_offsets.back(), 0.0);
+		output.strategy_sums.assign(row_offsets.back(), 0.0);
+
+		std::size_t page_cursor = 0U;
+		for (std::size_t row_index = 0U; row_index < rows_.size(); ++row_index)
+		{
+			const auto& row = rows_[row_index];
 			output.shapes.push_back(row.shape);
-			const auto total = static_cast<std::size_t>(row.shape.bucket_count) * row.shape.action_count;
-			output.regrets.reserve(output.regrets.size() + total);
-			output.strategy_sums.reserve(output.strategy_sums.size() + total);
-			for (std::uint8_t action = 0U; action < row.shape.action_count; ++action)
+			while (page_cursor < pages_.size() && checkpoint_infoset_less(pages_[page_cursor].infoset, row.shape.infoset))
+				throw std::logic_error("compact storage page order is inconsistent");
+			while (page_cursor < pages_.size() && pages_[page_cursor].infoset == row.shape.infoset)
 			{
-				for (std::uint32_t bucket = 0U; bucket < row.shape.bucket_count; ++bucket)
+				const auto& active_page = pages_[page_cursor];
+				const auto first_bucket = static_cast<std::size_t>(active_page.page_index) * page_width_;
+				if (first_bucket >= row.shape.bucket_count || active_page.bucket_count > row.shape.bucket_count - first_bucket)
+					throw std::logic_error("compact storage page range is inconsistent");
+				for (std::uint8_t action = 0U; action < row.shape.action_count; ++action)
 				{
-					const auto* active_page = page_for_bucket(row, bucket);
-					if (active_page == nullptr)
+					const auto source_offset = static_cast<std::size_t>(action) * active_page.bucket_count;
+					const auto destination_offset = row_offsets[row_index]
+						+ static_cast<std::size_t>(action) * row.shape.bucket_count
+						+ first_bucket;
+					for (std::uint32_t local_bucket = 0U; local_bucket < active_page.bucket_count; ++local_bucket)
 					{
-						output.regrets.push_back(0.0);
-						output.strategy_sums.push_back(0.0);
-						continue;
+						const auto source_index = active_page.regret_offset + source_offset + local_bucket;
+						output.regrets[destination_offset + local_bucket] = static_cast<double>(regrets_[source_index]) / 1024.0;
+						output.strategy_sums[destination_offset + local_bucket] = static_cast<double>(strategy_mass_[active_page.strategy_sum_offset + source_offset + local_bucket]) / static_cast<double>(kMassScale);
 					}
-					const auto index = page_cell(*active_page, bucket, action, page_width_);
-					output.regrets.push_back(static_cast<double>(regrets_[index]) / 1024.0);
-					output.strategy_sums.push_back(static_cast<double>(strategy_mass_[active_page->strategy_sum_offset + index - active_page->regret_offset]) / static_cast<double>(kMassScale));
 				}
+				++page_cursor;
 			}
 		}
+		if (page_cursor != pages_.size())
+			throw std::logic_error("compact storage contains a page without a row");
 	}
 
 	std::size_t MultiwayCompactStorage::memory_bytes() const noexcept

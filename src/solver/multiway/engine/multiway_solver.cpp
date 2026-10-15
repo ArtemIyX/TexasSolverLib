@@ -1426,35 +1426,40 @@ namespace texas::solver::multiway
 				const auto right_depth = depth_by_state.at(right.id.value);
 				return left_depth != right_depth ? left_depth < right_depth : left.id.value < right.id.value;
 			});
-			std::vector<std::size_t> offsets(result.storage.shapes.size() + 1U, 0U);
-			std::vector<std::size_t> order(result.storage.shapes.size(), 0U);
-			for (std::size_t index = 0U; index < result.storage.shapes.size(); ++index)
+			// Compact export already emits public-state-major storage rows. Keep
+			// the reference backend's canonical copy for Float64 equivalence.
+			if (compact_storage_ == nullptr)
 			{
-				offsets[index + 1U] = offsets[index] + static_cast<std::size_t>(result.storage.shapes[index].bucket_count) * result.storage.shapes[index].action_count;
-				order[index] = index;
+				std::vector<std::size_t> offsets(result.storage.shapes.size() + 1U, 0U);
+				std::vector<std::size_t> order(result.storage.shapes.size(), 0U);
+				for (std::size_t index = 0U; index < result.storage.shapes.size(); ++index)
+				{
+					offsets[index + 1U] = offsets[index] + static_cast<std::size_t>(result.storage.shapes[index].bucket_count) * result.storage.shapes[index].action_count;
+					order[index] = index;
+				}
+				std::sort(order.begin(), order.end(), [&result](std::size_t left, std::size_t right) {
+					const auto& lhs = result.storage.shapes[left].infoset;
+					const auto& rhs = result.storage.shapes[right].infoset;
+					return lhs.public_state.value != rhs.public_state.value
+						? lhs.public_state.value < rhs.public_state.value
+						: lhs.seat < rhs.seat;
+				});
+				MultiwaySparseStorageCheckpoint canonical;
+				canonical.shapes.reserve(order.size());
+				canonical.regrets.reserve(result.storage.regrets.size());
+				canonical.strategy_sums.reserve(result.storage.strategy_sums.size());
+				for (const auto index : order)
+				{
+					canonical.shapes.push_back(result.storage.shapes[index]);
+					canonical.regrets.insert(canonical.regrets.end(),
+						result.storage.regrets.begin() + static_cast<std::ptrdiff_t>(offsets[index]),
+						result.storage.regrets.begin() + static_cast<std::ptrdiff_t>(offsets[index + 1U]));
+					canonical.strategy_sums.insert(canonical.strategy_sums.end(),
+						result.storage.strategy_sums.begin() + static_cast<std::ptrdiff_t>(offsets[index]),
+						result.storage.strategy_sums.begin() + static_cast<std::ptrdiff_t>(offsets[index + 1U]));
+				}
+				result.storage = std::move(canonical);
 			}
-			std::sort(order.begin(), order.end(), [&result](std::size_t left, std::size_t right) {
-				const auto& lhs = result.storage.shapes[left].infoset;
-				const auto& rhs = result.storage.shapes[right].infoset;
-				return lhs.public_state.value != rhs.public_state.value
-					? lhs.public_state.value < rhs.public_state.value
-					: lhs.seat < rhs.seat;
-			});
-			MultiwaySparseStorageCheckpoint canonical;
-			canonical.shapes.reserve(order.size());
-			canonical.regrets.reserve(result.storage.regrets.size());
-			canonical.strategy_sums.reserve(result.storage.strategy_sums.size());
-			for (const auto index : order)
-			{
-				canonical.shapes.push_back(result.storage.shapes[index]);
-				canonical.regrets.insert(canonical.regrets.end(),
-					result.storage.regrets.begin() + static_cast<std::ptrdiff_t>(offsets[index]),
-					result.storage.regrets.begin() + static_cast<std::ptrdiff_t>(offsets[index + 1U]));
-				canonical.strategy_sums.insert(canonical.strategy_sums.end(),
-					result.storage.strategy_sums.begin() + static_cast<std::ptrdiff_t>(offsets[index]),
-					result.storage.strategy_sums.begin() + static_cast<std::ptrdiff_t>(offsets[index + 1U]));
-			}
-			result.storage = std::move(canonical);
 			result.telemetry.canonicalization_nanoseconds = static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
 					std::chrono::steady_clock::now() - started)
