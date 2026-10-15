@@ -23,6 +23,8 @@
 - Extended the analyzer to require every CP1 Tracy zone in the exported CSV.
 - Preserved exact decimal comparison for the 64-bit deterministic merge
   fingerprint in Windows PowerShell.
+- Added a checkpoint round-trip assertion that runtime telemetry is not
+  serialized into the checkpoint artifact.
 
 ### Files
 

@@ -175,6 +175,8 @@ TEST_CASE(multiway_full_training_checkpoint_round_trips_and_rejects_tampering)
 	checkpoint.training.schedule_hash = config.schedule.identity();
 	checkpoint.coverage.street_visits = { 1U, 2U, 3U, 4U };
 	checkpoint.coordinator.street_visits = checkpoint.coverage.street_visits;
+	checkpoint.telemetry.payload_hash_nanoseconds = 999U;
+	checkpoint.telemetry.public_state_bytes = 888U;
 	checkpoint.validate();
 	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_training_checkpoint_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".bin");
 	texas::MultiwayCheckpointTelemetry telemetry;
@@ -188,6 +190,8 @@ TEST_CASE(multiway_full_training_checkpoint_round_trips_and_rejects_tampering)
 		path, checkpoint.identity, checkpoint.training.schedule_hash, checkpoint.training.deterministic_seed);
 	EXPECT_EQ(loaded.training.trajectories, checkpoint.training.trajectories);
 	EXPECT_EQ(loaded.coverage.street_visits[2U], 3U);
+	EXPECT_EQ(loaded.telemetry.payload_hash_nanoseconds, 0U);
+	EXPECT_EQ(loaded.telemetry.public_state_bytes, 0U);
 	EXPECT_EQ(texas::MultiwayTrainingCheckpointArtifacts::payload_hash(loaded),
 		texas::MultiwayTrainingCheckpointArtifacts::payload_hash(checkpoint));
 	{
