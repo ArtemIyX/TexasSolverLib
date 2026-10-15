@@ -66,12 +66,28 @@ TEST_CASE(multiway_public_catalog_uses_fixed_node_memory_for_repeated_menus)
 	EXPECT_TRUE(catalog.memory_bytes() < 8U * sizeof(texas::MultiwayPublicStateDescriptor));
 }
 
+TEST_CASE(multiway_public_catalog_single_admission_reuses_exact_menu)
+{
+	texas::MultiwayPublicCatalog repeated(4U);
+	repeated.admit(make_descriptor(1U));
+	repeated.admit(make_descriptor(2U));
+
+	texas::MultiwayPublicCatalog distinct(4U);
+	distinct.admit(make_descriptor(1U));
+	auto different = make_descriptor(2U);
+	different.legal_actions.front().target_street_contribution = 3;
+	distinct.admit(different);
+
+	EXPECT_TRUE(repeated.memory_bytes() < distinct.memory_bytes());
+}
+
 TEST_CASE(multiway_public_catalog_batch_reuses_exact_menus)
 {
 	texas::MultiwayPublicCatalog catalog(4U);
 	const auto first = make_descriptor(1U);
 	const auto second = make_descriptor(2U);
-	catalog.admit_batch({ first, second }, { 1U, 1U });
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	catalog.admit_batch({ first, second }, { 1U, 1U }, nullptr, nullptr, nullptr, &diagnostics);
 
 	texas::MultiwayPublicStateDescriptor restored_first;
 	texas::MultiwayPublicStateDescriptor restored_second;
@@ -79,6 +95,8 @@ TEST_CASE(multiway_public_catalog_batch_reuses_exact_menus)
 	EXPECT_TRUE(catalog.reconstruct(second.id, restored_second));
 	EXPECT_EQ(restored_first.legal_actions, restored_second.legal_actions);
 	EXPECT_EQ(catalog.size(), 2U);
+	EXPECT_EQ(diagnostics.catalog_new_menus, 1U);
+	EXPECT_EQ(diagnostics.catalog_batch_menu_reuse_hits, 1U);
 }
 
 TEST_CASE(multiway_public_catalog_indexes_empty_menus)
