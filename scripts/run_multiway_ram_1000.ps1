@@ -235,6 +235,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     peak_worker_delta_entries = $report.peak_worker_delta_entries
     checkpoint_bytes = $report.checkpoint_bytes
     blueprint_bytes = $report.blueprint_bytes
+    checkpoint_telemetry = $report.checkpoint_telemetry
 }
 
 $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
