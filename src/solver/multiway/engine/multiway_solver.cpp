@@ -738,7 +738,7 @@ namespace texas::solver::multiway
 		strategy_sum_.reserve(strategy_sum_.size() + new_values);
 		std::vector<MultiwaySparseRowMetadata> merged;
 		merged.reserve(metadata_.size() + pending.size());
-		std::size_t existing_index = 0U;
+		existing_index = 0U;
 		std::size_t pending_index = 0U;
 		while (existing_index < metadata_.size() || pending_index < pending.size())
 		{
