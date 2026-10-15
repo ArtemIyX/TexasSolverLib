@@ -621,6 +621,9 @@ namespace texas::solver::multiway
 		~MultiwaySolverCoordinator();
 
 		void admit_public_state(const MultiwayPublicStateDescriptor& state);
+		[[nodiscard]] static bool public_state_candidates_compatible(
+			const MultiwayPublicStateDescriptor& left,
+			const MultiwayPublicStateDescriptor& right) noexcept;
 		void admit_infoset_row(const MultiwaySparseRowShape& shape);
 		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const noexcept;
 		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const noexcept;
@@ -673,6 +676,7 @@ namespace texas::solver::multiway
 			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().max_worker_delta_entries;
 		}
 		[[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
+		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
 			MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;

@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "test_harness.hpp"
@@ -766,6 +767,38 @@ TEST_CASE(multiway_solver_worker_delta_stream_is_bounded_finite_and_sortable)
 
 	texas::MultiwayWorkerDeltaStream finite_stream(1, 1);
 	EXPECT_TRUE(!finite_stream.try_append(delta(0, std::numeric_limits<double>::infinity(), 1.0)));
+}
+
+TEST_CASE(multiway_solver_discovery_stream_prepares_sorted_unique_candidates)
+{
+	texas::MultiwayDiscoveryStream stream(8U);
+	const auto child = checked_action_child_public_state();
+	EXPECT_TRUE(stream.try_append_public_state(child));
+	EXPECT_TRUE(stream.try_append_public_state(child));
+	EXPECT_TRUE(stream.try_append_row(root_row()));
+	EXPECT_TRUE(stream.try_append_row(root_row()));
+
+	stream.prepare_for_merge();
+	EXPECT_EQ(stream.public_state_count(), 1U);
+	EXPECT_EQ(stream.row_count(), 1U);
+	EXPECT_EQ(stream.public_states().front().id, child.id);
+	EXPECT_EQ(stream.rows().front().infoset, root_infoset());
+}
+
+TEST_CASE(multiway_solver_discovery_stream_rejects_conflicting_candidates)
+{
+	const auto child = checked_action_child_public_state();
+	texas::MultiwayDiscoveryStream states(4U);
+	EXPECT_TRUE(states.try_append_public_state(child));
+	auto conflicting_child = child;
+	conflicting_child.betting.current_bet += 1;
+	EXPECT_TRUE(states.try_append_public_state(conflicting_child));
+	EXPECT_THROW(states.prepare_for_merge(), std::invalid_argument);
+
+	texas::MultiwayDiscoveryStream rows(4U);
+	EXPECT_TRUE(rows.try_append_row(root_row(1U, 3U)));
+	EXPECT_TRUE(rows.try_append_row(root_row(2U, 3U)));
+	EXPECT_THROW(rows.prepare_for_merge(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_solver_merge_rejects_missing_misindexed_or_unsorted_worker_streams)

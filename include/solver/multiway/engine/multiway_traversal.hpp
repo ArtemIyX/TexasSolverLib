@@ -50,6 +50,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool try_append_row(const MultiwaySparseRowShape& shape) noexcept;
 		void rewind() noexcept;
 		void sort_fixed_order() noexcept;
+		void prepare_for_merge();
 		[[nodiscard]] bool overflowed() const noexcept { return overflowed_; }
 		[[nodiscard]] const std::vector<MultiwayPublicStateDescriptor>& public_states() const noexcept { return public_states_; }
 		[[nodiscard]] const std::vector<MultiwaySparseRowShape>& rows() const noexcept { return rows_; }
@@ -331,6 +332,14 @@ namespace texas::solver::multiway
 		std::vector<WorkerScratch> worker_scratch_;
 		std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
 		std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;
+		std::vector<const MultiwayDiscoveryStream*> discovery_stream_views_;
+		std::vector<std::size_t> discovery_merge_cursors_;
+		std::vector<MultiwayPublicStateDescriptor> discovery_public_states_;
+		std::vector<MultiwaySparseRowShape> discovery_rows_;
+		std::vector<std::size_t> admission_order_;
+		std::vector<std::uint32_t> admission_depths_;
+		std::vector<std::uint8_t> admission_colors_;
+		std::vector<std::size_t> admission_stack_;
 		std::vector<MultiwayWorkerBatch> worker_batches_;
 		std::vector<std::thread> threads_;
 		std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;

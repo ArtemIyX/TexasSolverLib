@@ -766,7 +766,7 @@ namespace texas::solver::multiway
 			const auto* existing = public_state(state.id);
 			if (existing != nullptr)
 			{
-				if (!same_public_state_descriptor(*existing, state) && !(same_public_state_payload(*existing, state) && equivalent_chance_transition_edge(*existing, state)))
+				if (!public_state_candidates_compatible(*existing, state))
 				{
 					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
 				}
@@ -785,7 +785,7 @@ namespace texas::solver::multiway
 		const auto existing = public_state(state.id);
 		if (existing != nullptr)
 		{
-			if (!same_public_state_descriptor(*existing, state) && !(same_public_state_payload(*existing, state) && equivalent_chance_transition_edge(*existing, state)))
+			if (!public_state_candidates_compatible(*existing, state))
 			{
 				throw std::invalid_argument("multiway public state id was admitted with conflicting data");
 			}
@@ -814,6 +814,14 @@ namespace texas::solver::multiway
 				? nullptr
 				: &admission_diagnostics_->catalog_index_insertion_nanoseconds);
 		++diagnostics_.public_states_admitted;
+	}
+
+	bool MultiwaySolverCoordinator::public_state_candidates_compatible(
+		const MultiwayPublicStateDescriptor& left,
+		const MultiwayPublicStateDescriptor& right) noexcept
+	{
+		return same_public_state_descriptor(left, right) ||
+			(same_public_state_payload(left, right) && equivalent_chance_transition_edge(left, right));
 	}
 
 	void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape)
@@ -1347,6 +1355,14 @@ namespace texas::solver::multiway
 		{
 			return nullptr;
 		}
+	}
+
+	bool MultiwaySolverCoordinator::has_public_state(MultiwayPublicStateId id) const noexcept
+	{
+		std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+		if (admission_diagnostics_ != nullptr)
+			++admission_diagnostics_->lock_acquisitions;
+		return public_catalog_.contains(id);
 	}
 
 	MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const
