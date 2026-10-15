@@ -1,5 +1,40 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Apply project C++ formatting
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `99157c7 PB-3 Format: Apply project C++ formatting`
+
+- Applied the repository formatter to the tracked C++ and multiway test files.
+- No runtime behavior or solver logic was intentionally changed.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/util/tracy.hpp`
+- `src/core/atomic_publish.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_allocation_probe.cpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/engine/multiway_scheduler.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_phase4.cpp`
+- `tests/test_multiway_public_catalog.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --cached --check` passed before commit.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- None identified.
+
 ## 2026-10-15 - AD1 coordinator admission diagnostics
 
 **Status:** Implemented, operator validation pending
