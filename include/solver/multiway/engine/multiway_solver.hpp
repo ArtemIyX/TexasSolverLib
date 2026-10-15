@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/atomic_publish.hpp"
 #include "games/multiway_private.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway/engine/multiway_cfr.hpp"
@@ -364,6 +365,7 @@ namespace texas::solver::multiway
 		std::uint64_t binary_encoding_write_nanoseconds = 0U;
 		std::uint64_t stream_close_or_flush_nanoseconds = 0U;
 		std::uint64_t atomic_publication_nanoseconds = 0U;
+		core::AtomicPublishMode atomic_publication_mode = core::AtomicPublishMode::Unknown;
 		std::uint64_t public_state_bytes = 0U;
 		std::uint64_t row_shape_bytes = 0U;
 		std::uint64_t regret_bytes = 0U;
@@ -381,6 +383,8 @@ namespace texas::solver::multiway
 			binary_encoding_write_nanoseconds += other.binary_encoding_write_nanoseconds;
 			stream_close_or_flush_nanoseconds += other.stream_close_or_flush_nanoseconds;
 			atomic_publication_nanoseconds += other.atomic_publication_nanoseconds;
+			if (other.atomic_publication_mode != core::AtomicPublishMode::Unknown)
+				atomic_publication_mode = other.atomic_publication_mode;
 			public_state_bytes = public_state_bytes > other.public_state_bytes ? public_state_bytes : other.public_state_bytes;
 			row_shape_bytes = row_shape_bytes > other.row_shape_bytes ? row_shape_bytes : other.row_shape_bytes;
 			regret_bytes = regret_bytes > other.regret_bytes ? regret_bytes : other.regret_bytes;

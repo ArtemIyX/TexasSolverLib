@@ -650,7 +650,9 @@ namespace texas::solver::multiway
 		const auto publication_started = std::chrono::steady_clock::now();
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.atomic_publication");
-			core::publish_atomic_replace(temporary, path, "multiway training checkpoint publish failed");
+			const auto mode = core::publish_atomic_replace(temporary, path, "multiway training checkpoint publish failed");
+			if (telemetry != nullptr)
+				telemetry->atomic_publication_mode = mode;
 		}
 		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->atomic_publication_nanoseconds, publication_started);
 	}

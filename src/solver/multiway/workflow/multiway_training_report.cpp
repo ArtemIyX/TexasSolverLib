@@ -402,6 +402,7 @@ namespace texas::solver::multiway
 			   << ", \"binary_encoding_write_nanoseconds\": " << report.checkpoint_telemetry.binary_encoding_write_nanoseconds
 			   << ", \"stream_close_or_flush_nanoseconds\": " << report.checkpoint_telemetry.stream_close_or_flush_nanoseconds
 			   << ", \"atomic_publication_nanoseconds\": " << report.checkpoint_telemetry.atomic_publication_nanoseconds
+			   << ", \"atomic_publication_mode\": \"" << core::atomic_publish_mode_name(report.checkpoint_telemetry.atomic_publication_mode) << '\"'
 			   << ", \"public_state_bytes\": " << report.checkpoint_telemetry.public_state_bytes
 			   << ", \"row_shape_bytes\": " << report.checkpoint_telemetry.row_shape_bytes
 			   << ", \"regret_bytes\": " << report.checkpoint_telemetry.regret_bytes
