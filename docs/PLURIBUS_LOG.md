@@ -1,5 +1,37 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - Plan AD7 admission hot-path optimization
+
+**Status:** Plan complete; implementation pending
+**Completed:** 2026-10-15
+
+- Analyzed the completed fixed/dynamic RelWithDebInfo Tracy captures for
+  AD5-AD6.
+- Confirmed deterministic and checkpoint equivalence across all eight runs,
+  with zero failures and zero discarded trajectories.
+- Identified the remaining gate: cold coordinator admission measured
+  1.338-1.487 seconds versus the required 250 ms maximum.
+- Planned batched public-catalog and sparse-row commits, candidate-index
+  reuse, phase telemetry, regression coverage, and operator qualification.
+
+### Files
+
+- `docs/plans/2026-10-15/10_ad7_admission_hot_path_optimization.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Inspected all eight AD5-AD6 Tracy manifests and reports.
+- Reviewed the public-catalog, sparse-storage, prepared-admission, and
+  parent-order implementation paths.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- The AD7 performance target remains unverified until implementation and
+  operator-run qualification captures are complete.
+
 ## 2026-10-15 - Implement AD5-AD6 bulk admission and epoch filtering
 
 **Status:** Implementation complete; operator validation pending
