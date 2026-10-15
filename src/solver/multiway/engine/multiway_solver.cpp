@@ -763,9 +763,9 @@ namespace texas::solver::multiway
 			std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 			if (admission_diagnostics_ != nullptr)
 				++admission_diagnostics_->lock_acquisitions;
-			const auto* existing = public_state(state.id);
-			if (existing != nullptr)
+			if (public_catalog_.contains(state.id))
 			{
+				const auto* existing = public_state(state.id);
 				if (!public_state_candidates_compatible(*existing, state))
 				{
 					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
@@ -782,9 +782,9 @@ namespace texas::solver::multiway
 				std::chrono::steady_clock::now() - lock_wait_start)
 				.count());
 		validate_public_state_descriptor(state);
-		const auto existing = public_state(state.id);
-		if (existing != nullptr)
+		if (public_catalog_.contains(state.id))
 		{
+			const auto* existing = public_state(state.id);
 			if (!public_state_candidates_compatible(*existing, state))
 			{
 				throw std::invalid_argument("multiway public state id was admitted with conflicting data");
