@@ -1,5 +1,42 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-15 - AD1 coordinator admission diagnostics
+
+**Status:** Implemented, operator validation pending
+**Completed:** 2026-10-15
+**Implementation commit:** `ddf7827 PB-3 Multiway: Add admission diagnostics`
+
+- Added cold-path admission counters for raw, worker-local unique, globally
+  unique, already-admitted, and newly admitted state and row candidates.
+- Added parent-resolution pass/probe counts, descriptor reconstruction counts,
+  lock acquisitions, catalog index insertion time, and row admission time.
+- Propagated global and per-worker candidate diagnostics into training report
+  JSON without changing strategy identity or merge behavior.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Source-only C++ review completed with no actionable findings.
+- `git diff --cached --check` passed before commit.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must build the diagnostic target and run matching one-worker and
+  four-worker workloads before AD1 can be marked complete.
+
 ## 2026-10-15 - Correct checkpoint payload hash ordering
 
 **Status:** Complete
