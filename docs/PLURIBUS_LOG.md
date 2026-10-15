@@ -10,6 +10,7 @@
 - `3ceee18 PB-3 Multiway: Avoid redundant admission reconstruction`
 - `b03caa2 PB-3 Tests: Cover shuffled discovery candidates`
 - `8bfb2dd PB-3 Tests: Cover discovery merge and parent graphs`
+- `d169820 PB-3 Tests: Stabilize discovery graph fixtures`
 
 - Added worker-local discovery preparation that sorts deterministically,
   deduplicates candidates in place, and rejects conflicting public-state or
