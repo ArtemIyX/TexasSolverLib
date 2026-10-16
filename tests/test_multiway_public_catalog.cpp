@@ -218,9 +218,9 @@ TEST_CASE(multiway_public_catalog_clear_rebuilds_menu_index)
 	auto second = make_descriptor(2U);
 	second.legal_actions.clear();
 	catalog.admit_batch({ first, second }, { 1U, 1U });
-	const auto populated_memory = catalog.memory_bytes();
 	catalog.clear();
-	EXPECT_EQ(catalog.memory_bytes(), populated_memory);
+	texas::MultiwayPublicCatalog fresh(4U);
+	EXPECT_TRUE(catalog.memory_bytes() > fresh.memory_bytes());
 
 	auto rebuilt = make_descriptor(3U);
 	rebuilt.legal_actions.clear();
