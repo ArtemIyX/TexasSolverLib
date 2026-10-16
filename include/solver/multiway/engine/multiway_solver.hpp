@@ -261,6 +261,7 @@ namespace texas::solver::multiway
 			std::uint64_t* index_lookup_nanoseconds = nullptr,
 			std::uint64_t* equality_nanoseconds = nullptr) const noexcept;
 		[[nodiscard]] static std::uint64_t menu_key(const std::vector<MultiwayActionDescriptor>& menu) noexcept;
+		void validate_menu_index_debug() const noexcept;
 		void classify_new_states(
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			std::vector<std::uint8_t>& new_state_flags) const;
