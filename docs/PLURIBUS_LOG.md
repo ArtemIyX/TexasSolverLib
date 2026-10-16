@@ -1,5 +1,41 @@
 # Pluribus Roadmap Progress Log
 
+## 2026-10-16 - AD7 state preflight identity validation optimization
+
+**Status:** Complete for implementation; operator qualification pending
+**Completed:** 2026-10-16
+**Implementation commit:** `23c64c4 PB-3 Multiway: Optimize state identity validation`
+
+- Added an allocation-free schema-v2 identity inspector that validates history
+  shape while computing history and public-state hashes in lockstep.
+- Replaced the new-state admission verifier's three history traversals with
+  the dual-hash inspector while preserving rejection ordering and identity
+  bytes.
+- Added focused identity-equivalence, malformed-history, and independent ID
+  rejection coverage.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_public_builder.hpp`
+- `src/solver/multiway/abstraction/multiway_public_builder.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_public_builder.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked branch `PB-3`.
+- Reviewed the focused diff and staged patch.
+- `git diff --cached --check` passed.
+- No build, test, benchmark, executable, or solver script was run by Codex,
+  per session rules.
+
+### Limitations
+
+- Operator must build, run focused tests, and execute the planned Tracy
+  qualification captures before accepting the performance gates.
+
 ## AD7G - Catalog menu index and cold-admission follow-up
 
 **Status:** Complete for implementation; operator qualification pending
