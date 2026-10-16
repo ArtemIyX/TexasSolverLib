@@ -5,7 +5,8 @@ param(
     [string]$CsvPath,
     [ValidateRange(0.0, 1.0)]
     [double]$MinimumPhaseCoverage = 0.95,
-    [string]$ExpectedMergeFingerprint = ''
+    [string]$ExpectedMergeFingerprint = '',
+    [switch]$AllowMissingArtifactValidation
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,21 +63,29 @@ $requiredCsvZones = @(
     'mw.checkpoint.compact_storage_export',
     'mw.checkpoint.canonicalization',
     'mw.checkpoint.training_validation',
-    'mw.checkpoint.artifact_validation',
     'mw.checkpoint.payload_hash',
     'mw.checkpoint.binary_encoding_write',
     'mw.checkpoint.stream_close_or_flush',
     'mw.checkpoint.atomic_publication'
 )
+$optionalCsvZones = @(
+    'mw.checkpoint.artifact_validation'
+)
 $csvRows = Import-Csv -LiteralPath $resolvedCsvPath
 $csvZoneTotals = [ordered]@{}
 $csvZonesPass = $true
-foreach ($zoneName in $requiredCsvZones) {
+$artifactValidationZonePresent = $false
+foreach ($zoneName in ($requiredCsvZones + $optionalCsvZones)) {
     $zoneRows = @($csvRows | Where-Object { $_.name -eq $zoneName })
     if ($zoneRows.Count -eq 0) {
-        $csvZonesPass = $false
         $csvZoneTotals[$zoneName] = $null
+        if ($requiredCsvZones -contains $zoneName -or -not $AllowMissingArtifactValidation) {
+            $csvZonesPass = $false
+        }
         continue
+    }
+    if ($zoneName -eq 'mw.checkpoint.artifact_validation') {
+        $artifactValidationZonePresent = $true
     }
     $zoneTotal = [uint64]0
     foreach ($zoneRow in $zoneRows) {
@@ -132,6 +141,8 @@ $summary = [ordered]@{
     schema_version = [uint32]$report.evidence.schema_version
     csv_zone_totals = $csvZoneTotals
     csv_zones_pass = $csvZonesPass
+    allow_missing_artifact_validation = [bool]$AllowMissingArtifactValidation
+    artifact_validation_zone_present = $artifactValidationZonePresent
     phase_nanoseconds = $phaseNanoseconds
     phase_total_nanoseconds = $phaseTotalNanoseconds
     checkpoint_write_nanoseconds = $checkpointWriteNanoseconds
