@@ -164,7 +164,7 @@ TEST_CASE(multiway_public_catalog_pending_index_reuses_collision_safe_menus)
 	EXPECT_TRUE(catalog.reconstruct(out_of_order.id, restored_out_of_order));
 	EXPECT_TRUE(catalog.reconstruct(repeated.id, restored_repeated));
 	EXPECT_EQ(restored_first.legal_actions, restored_repeated.legal_actions);
-	EXPECT_NE(restored_first.legal_actions, restored_collision.legal_actions);
+	EXPECT_TRUE(restored_first.legal_actions != restored_collision.legal_actions);
 	EXPECT_EQ(restored_out_of_order.legal_actions, out_of_order.legal_actions);
 	EXPECT_EQ(resolved_menu_handles[0], 0U);
 	EXPECT_EQ(resolved_menu_handles[1], 1U);
@@ -216,7 +216,7 @@ TEST_CASE(multiway_public_catalog_malformed_batch_preserves_catalog)
 	EXPECT_EQ(catalog.memory_bytes(), before);
 	EXPECT_EQ(catalog.size(), 1U);
 	EXPECT_TRUE(catalog.contains(first.id));
-	EXPECT_FALSE(catalog.contains(malformed.id));
+	EXPECT_TRUE(!catalog.contains(malformed.id));
 }
 
 TEST_CASE(multiway_public_catalog_clear_rebuilds_menu_index)
