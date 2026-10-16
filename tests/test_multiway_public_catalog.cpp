@@ -129,6 +129,45 @@ TEST_CASE(multiway_public_catalog_keeps_same_key_menus_distinct)
 	EXPECT_NE(restored_first.legal_actions, restored_second.legal_actions);
 }
 
+TEST_CASE(multiway_public_catalog_pending_index_reuses_collision_safe_menus)
+{
+	texas::MultiwayPublicCatalog catalog(8U);
+	auto first = make_descriptor(1U);
+	first.legal_actions.front().action_menu_id = 19U;
+	auto collision = make_descriptor(2U);
+	collision.legal_actions.front().action_menu_id = 19U;
+	collision.legal_actions.front().target_street_contribution = 3;
+	auto out_of_order = make_descriptor(3U);
+	out_of_order.legal_actions.front().action_menu_id = 7U;
+	out_of_order.legal_actions.front().target_street_contribution = 4;
+	auto repeated = make_descriptor(4U);
+	repeated.legal_actions.front().action_menu_id = 19U;
+
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	std::vector<std::uint32_t> resolved_menu_handles;
+	catalog.admit_batch({ first, collision, out_of_order, repeated }, { 1U, 1U, 1U, 1U }, nullptr, nullptr, nullptr, &diagnostics, nullptr, &resolved_menu_handles);
+
+	texas::MultiwayPublicStateDescriptor restored_first;
+	texas::MultiwayPublicStateDescriptor restored_collision;
+	texas::MultiwayPublicStateDescriptor restored_out_of_order;
+	texas::MultiwayPublicStateDescriptor restored_repeated;
+	EXPECT_TRUE(catalog.reconstruct(first.id, restored_first));
+	EXPECT_TRUE(catalog.reconstruct(collision.id, restored_collision));
+	EXPECT_TRUE(catalog.reconstruct(out_of_order.id, restored_out_of_order));
+	EXPECT_TRUE(catalog.reconstruct(repeated.id, restored_repeated));
+	EXPECT_EQ(restored_first.legal_actions, restored_repeated.legal_actions);
+	EXPECT_NE(restored_first.legal_actions, restored_collision.legal_actions);
+	EXPECT_EQ(restored_out_of_order.legal_actions, out_of_order.legal_actions);
+	EXPECT_EQ(resolved_menu_handles[0], 0U);
+	EXPECT_EQ(resolved_menu_handles[1], 1U);
+	EXPECT_EQ(resolved_menu_handles[2], 2U);
+	EXPECT_EQ(resolved_menu_handles[3], 0U);
+	EXPECT_EQ(diagnostics.catalog_new_menus, 3U);
+	EXPECT_EQ(diagnostics.catalog_batch_menu_reuse_hits, 1U);
+	EXPECT_EQ(diagnostics.catalog_menu_equality_checks, 2U);
+	EXPECT_EQ(diagnostics.catalog_menu_id_collision_misses, 1U);
+}
+
 TEST_CASE(multiway_public_catalog_batch_mixes_existing_and_new_states)
 {
 	texas::MultiwayPublicCatalog catalog(4U);
@@ -156,6 +195,22 @@ TEST_CASE(multiway_public_catalog_capacity_failure_preserves_catalog)
 	EXPECT_FALSE(catalog.contains(second.id));
 }
 
+TEST_CASE(multiway_public_catalog_malformed_batch_preserves_catalog)
+{
+	texas::MultiwayPublicCatalog catalog(4U);
+	const auto first = make_descriptor(1U);
+	catalog.admit(first);
+	const auto before = catalog.memory_bytes();
+	auto malformed = make_descriptor(2U);
+	malformed.board.assign(6U, 0U);
+
+	EXPECT_THROW(catalog.admit_batch({ first, malformed }, { 0U, 1U }), std::invalid_argument);
+	EXPECT_EQ(catalog.memory_bytes(), before);
+	EXPECT_EQ(catalog.size(), 1U);
+	EXPECT_TRUE(catalog.contains(first.id));
+	EXPECT_FALSE(catalog.contains(malformed.id));
+}
+
 TEST_CASE(multiway_public_catalog_clear_rebuilds_menu_index)
 {
 	texas::MultiwayPublicCatalog catalog(4U);
@@ -163,7 +218,9 @@ TEST_CASE(multiway_public_catalog_clear_rebuilds_menu_index)
 	auto second = make_descriptor(2U);
 	second.legal_actions.clear();
 	catalog.admit_batch({ first, second }, { 1U, 1U });
+	const auto populated_memory = catalog.memory_bytes();
 	catalog.clear();
+	EXPECT_EQ(catalog.memory_bytes(), populated_memory);
 
 	auto rebuilt = make_descriptor(3U);
 	rebuilt.legal_actions.clear();
