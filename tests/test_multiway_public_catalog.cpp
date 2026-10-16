@@ -134,7 +134,7 @@ TEST_CASE(multiway_public_catalog_keeps_same_key_menus_distinct)
 	texas::MultiwayPublicStateDescriptor restored_second;
 	EXPECT_TRUE(catalog.reconstruct(first.id, restored_first));
 	EXPECT_TRUE(catalog.reconstruct(second.id, restored_second));
-	EXPECT_NE(restored_first.legal_actions, restored_second.legal_actions);
+	EXPECT_TRUE(restored_first.legal_actions != restored_second.legal_actions);
 }
 
 TEST_CASE(multiway_public_catalog_pending_index_reuses_collision_safe_menus)
@@ -200,7 +200,7 @@ TEST_CASE(multiway_public_catalog_capacity_failure_preserves_catalog)
 	EXPECT_EQ(catalog.size(), 1U);
 	EXPECT_EQ(catalog.memory_bytes(), before);
 	EXPECT_TRUE(catalog.contains(first.id));
-	EXPECT_FALSE(catalog.contains(second.id));
+	EXPECT_TRUE(!catalog.contains(second.id));
 }
 
 TEST_CASE(multiway_public_catalog_malformed_batch_preserves_catalog)
