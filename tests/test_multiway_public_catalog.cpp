@@ -97,6 +97,9 @@ TEST_CASE(multiway_public_catalog_batch_reuses_exact_menus)
 	EXPECT_EQ(catalog.size(), 2U);
 	EXPECT_EQ(diagnostics.catalog_new_menus, 1U);
 	EXPECT_EQ(diagnostics.catalog_batch_menu_reuse_hits, 1U);
+	EXPECT_EQ(diagnostics.catalog_existing_menu_hits, 0U);
+	EXPECT_EQ(diagnostics.catalog_menu_index_probes, 0U);
+	EXPECT_EQ(diagnostics.catalog_menu_equality_checks, 1U);
 }
 
 TEST_CASE(multiway_public_catalog_indexes_empty_menus)
@@ -107,6 +110,11 @@ TEST_CASE(multiway_public_catalog_indexes_empty_menus)
 	first.legal_actions.clear();
 	second.legal_actions.clear();
 	catalog.admit_batch({ first, second }, { 1U, 1U });
+	auto third = make_descriptor(3U);
+	third.legal_actions.clear();
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	catalog.admit_batch({ third }, { 1U }, nullptr, nullptr, nullptr, &diagnostics);
+	EXPECT_EQ(diagnostics.catalog_existing_menu_hits, 1U);
 
 	texas::MultiwayPublicStateDescriptor restored;
 	EXPECT_TRUE(catalog.reconstruct(second.id, restored));
