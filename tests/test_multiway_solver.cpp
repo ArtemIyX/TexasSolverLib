@@ -618,6 +618,10 @@ TEST_CASE(multiway_solver_public_state_admission_requires_parent_and_conflict_fr
 	child.parent_id = root_public_state().id;
 	coordinator.admit_public_state(child);
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
+	const auto original_id = child.id;
+	child.id = { original_id.value + 1U };
+	EXPECT_THROW(coordinator.admit_public_state(child), std::invalid_argument);
+	child.id = original_id;
 	child.canonical_history_id = 103;
 	EXPECT_THROW(coordinator.admit_public_state(child), std::invalid_argument);
 }

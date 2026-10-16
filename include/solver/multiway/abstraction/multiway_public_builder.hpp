@@ -3,6 +3,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/abstraction/multiway_terminal_adapter.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -10,6 +11,13 @@ namespace texas::solver::multiway
 {
 
 	class MultiwayResolver;
+
+	struct MultiwayPublicIdentityInspection
+	{
+		std::uint64_t canonical_history_id = 0U;
+		MultiwayPublicStateId public_state_id{};
+		bool history_valid = false;
+	};
 
 	// Cold-path factory for coordinator-admitted public descriptors. It owns no
 	// tree storage and never selects strategic bet sizes; Phase 2 supplies target
@@ -77,6 +85,14 @@ namespace texas::solver::multiway
 			const std::vector<MultiwayPublicHistoryEntry>& history) noexcept;
 
 		[[nodiscard]] static std::uint64_t stable_public_state_id(
+			const MultiwayBettingSnapshot& betting,
+			const std::vector<std::uint8_t>& board,
+			const std::vector<MultiwayPublicHistoryEntry>& history,
+			const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept;
+
+		// Admission verifier for schema-v2 history shape and identities. It keeps
+		// the reference identity functions above independent for regression checks.
+		[[nodiscard]] static MultiwayPublicIdentityInspection inspect_schema_v2_identity(
 			const MultiwayBettingSnapshot& betting,
 			const std::vector<std::uint8_t>& board,
 			const std::vector<MultiwayPublicHistoryEntry>& history,

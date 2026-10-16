@@ -207,6 +207,24 @@ namespace texas::solver::multiway
 			}
 		}
 
+		void append_u64_pair(
+			std::uint64_t& first,
+			std::uint64_t& second,
+			std::uint64_t value) noexcept
+		{
+			for (std::uint8_t byte = 0U; byte < 8U; ++byte)
+			{
+				const auto encoded = static_cast<std::uint8_t>(value >> (byte * 8U));
+				append_byte(first, encoded);
+				append_byte(second, encoded);
+			}
+		}
+
+		bool valid_history_action(MultiwayAction action) noexcept
+		{
+			return action == MultiwayAction::Fold || action == MultiwayAction::Check || action == MultiwayAction::Call || action == MultiwayAction::Bet || action == MultiwayAction::Raise || action == MultiwayAction::AllIn;
+		}
+
 	} // namespace
 
 	std::vector<MultiwayActionDescriptor> MultiwayPublicBuilder::canonicalize_action_menu(
@@ -508,6 +526,56 @@ namespace texas::solver::multiway
 		append_history(hash, history);
 		append_action_menu(hash, legal_actions);
 		return non_zero(hash);
+	}
+
+	MultiwayPublicIdentityInspection MultiwayPublicBuilder::inspect_schema_v2_identity(
+		const MultiwayBettingSnapshot& betting,
+		const std::vector<std::uint8_t>& board,
+		const std::vector<MultiwayPublicHistoryEntry>& history,
+		const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept
+	{
+		std::uint64_t history_hash = 0U;
+		std::uint64_t public_state_hash = 0U;
+		begin_fingerprint(history_hash);
+		begin_fingerprint(public_state_hash);
+		append_ints_field(public_state_hash, FingerprintField::BettingStacks, betting.stacks);
+		append_ints_field(public_state_hash, FingerprintField::BettingContributions, betting.contributions);
+		append_ints_field(public_state_hash, FingerprintField::BettingStreetContributions, betting.street_contributions);
+		append_bools_field(public_state_hash, FingerprintField::BettingFolded, betting.folded);
+		append_bools_field(public_state_hash, FingerprintField::BettingAllIn, betting.all_in);
+		append_bools_field(public_state_hash, FingerprintField::BettingMayRaise, betting.may_raise);
+		append_bools_field(public_state_hash, FingerprintField::BettingPending, betting.pending);
+		append_bools_field(public_state_hash, FingerprintField::BettingHasActed, betting.has_acted);
+		append_ints_field(public_state_hash, FingerprintField::BettingFaced, betting.bet_faced_when_acted);
+		append_i64_field(public_state_hash, FingerprintField::CurrentPlayer, betting.current_player);
+		append_i64_field(public_state_hash, FingerprintField::LastAggressor, betting.last_aggressor);
+		append_i64_field(public_state_hash, FingerprintField::CurrentBet, betting.current_bet);
+		append_i64_field(public_state_hash, FingerprintField::LastFullRaise, betting.last_full_raise_size);
+		append_i64_field(public_state_hash, FingerprintField::BigBlind, betting.big_blind);
+		append_u64_field(public_state_hash, FingerprintField::Street, static_cast<std::uint64_t>(betting.street));
+		append_cards_field(public_state_hash, FingerprintField::Board, board);
+
+		const auto history_bytes = history.size() * 4U * sizeof(std::uint64_t);
+		append_field_prefix(history_hash, FingerprintField::History, history_bytes);
+		append_field_prefix(public_state_hash, FingerprintField::History, history_bytes);
+		const auto seat_count = betting.stacks.size();
+		for (const auto& entry : history)
+		{
+			if (entry.actor < 0 || static_cast<std::size_t>(entry.actor) >= seat_count || !valid_history_action(entry.action.action) || entry.action.action_index != 0U || entry.action.action_menu_id == 0U || entry.action.target_street_contribution < 0)
+			{
+				return {};
+			}
+			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.actor)));
+			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(entry.action.action));
+			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.action.target_street_contribution)));
+			append_u64_pair(history_hash, public_state_hash, entry.action.action_menu_id);
+		}
+		append_action_menu(public_state_hash, legal_actions);
+		return {
+			non_zero(history_hash),
+			{ non_zero(public_state_hash) },
+			true,
+		};
 	}
 
 	std::uint64_t MultiwayPublicBuilder::stable_lossless_current_round_key(

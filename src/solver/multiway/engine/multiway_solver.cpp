@@ -387,15 +387,13 @@ namespace texas::solver::multiway
 						.count());
 
 			const auto history_identity_started = std::chrono::steady_clock::now();
-			const auto seat_count = state.betting.stacks.size();
-			for (const auto& entry : state.history)
+			const auto identity = MultiwayPublicBuilder::inspect_schema_v2_identity(
+				state.betting, state.board, state.history, state.legal_actions);
+			if (!identity.history_valid)
 			{
-				if (entry.actor < 0 || static_cast<std::size_t>(entry.actor) >= seat_count || !valid_action(entry.action.action) || entry.action.action_index != 0U || entry.action.action_menu_id == 0 || entry.action.target_street_contribution < 0)
-				{
-					throw std::invalid_argument("multiway public state history contains an invalid action descriptor");
-				}
+				throw std::invalid_argument("multiway public state history contains an invalid action descriptor");
 			}
-			if (state.canonical_history_id != MultiwayPublicBuilder::stable_history_id(state.history) || state.id.value != MultiwayPublicBuilder::stable_public_state_id(state.betting, state.board, state.history, state.legal_actions))
+			if (state.canonical_history_id != identity.canonical_history_id || state.id.value != identity.public_state_id.value)
 			{
 				throw std::invalid_argument("multiway public state descriptor does not match its schema-v2 fingerprint");
 			}
