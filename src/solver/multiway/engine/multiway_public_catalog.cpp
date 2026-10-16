@@ -335,18 +335,22 @@ namespace texas::solver::multiway
 							.count());
 			}
 			batch_menu_keys_[index] = canonical_menu_id;
-			std::uint64_t index_lookup_nanoseconds = 0U;
-			std::uint64_t equality_nanoseconds = 0U;
-			const auto menu = find_menu_by_key(
-				states[index].legal_actions,
-				canonical_menu_id,
-				diagnostics,
-				&index_lookup_nanoseconds,
-				&equality_nanoseconds);
-			if (diagnostics != nullptr)
+			std::size_t menu_handle = std::numeric_limits<std::size_t>::max();
+			if (!menu_index_.empty())
 			{
-				diagnostics->catalog_menu_index_lookup_nanoseconds += index_lookup_nanoseconds;
-				diagnostics->catalog_menu_equality_nanoseconds += equality_nanoseconds;
+				std::uint64_t index_lookup_nanoseconds = 0U;
+				std::uint64_t equality_nanoseconds = 0U;
+				menu_handle = find_menu_by_key(
+					states[index].legal_actions,
+					canonical_menu_id,
+					diagnostics,
+					&index_lookup_nanoseconds,
+					&equality_nanoseconds);
+				if (diagnostics != nullptr)
+				{
+					diagnostics->catalog_menu_index_lookup_nanoseconds += index_lookup_nanoseconds;
+					diagnostics->catalog_menu_equality_nanoseconds += equality_nanoseconds;
+				}
 			}
 			const auto record_menu_lookup = [&]() {
 				if (menu_lookup_nanoseconds != nullptr)
@@ -355,7 +359,6 @@ namespace texas::solver::multiway
 							std::chrono::steady_clock::now() - menu_started)
 							.count());
 			};
-			std::size_t menu_handle = menu;
 			if (menu_handle != std::numeric_limits<std::size_t>::max())
 			{
 				batch_menu_handles_[index] = static_cast<std::uint32_t>(menu_handle);
