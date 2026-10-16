@@ -247,6 +247,11 @@ namespace texas::solver::multiway
 			std::uint64_t canonical_menu_id = 0U;
 			std::uint32_t menu_handle = 0U;
 		};
+		struct PendingMenuIndexEntry
+		{
+			std::uint64_t canonical_menu_id = 0U;
+			std::uint32_t pending_menu_index = 0U;
+		};
 
 		[[nodiscard]] std::size_t find_menu(const std::vector<MultiwayActionDescriptor>& menu) const noexcept;
 		[[nodiscard]] std::size_t find_menu_by_key(
@@ -270,12 +275,11 @@ namespace texas::solver::multiway
 		std::vector<MenuIndexEntry> menu_index_;
 		std::vector<std::vector<MultiwayActionDescriptor>> batch_pending_menus_;
 		std::vector<std::uint64_t> batch_menu_keys_;
-		std::vector<std::uint64_t> batch_pending_menu_keys_;
 		std::vector<std::uint32_t> batch_menu_handles_;
 		std::vector<std::uint32_t> batch_pending_menu_indexes_;
 		std::vector<IndexEntry> batch_pending_index_;
 		std::vector<IndexEntry> batch_merged_index_;
-		std::vector<MenuIndexEntry> batch_pending_menu_index_;
+		std::vector<PendingMenuIndexEntry> batch_pending_menu_index_;
 		std::vector<MenuIndexEntry> batch_merged_menu_index_;
 	};
 

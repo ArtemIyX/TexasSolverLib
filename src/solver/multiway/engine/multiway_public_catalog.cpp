@@ -26,7 +26,6 @@ namespace texas::solver::multiway
 		menu_index_.clear();
 		batch_pending_menus_.clear();
 		batch_menu_keys_.clear();
-		batch_pending_menu_keys_.clear();
 		batch_menu_handles_.clear();
 		batch_pending_menu_indexes_.clear();
 		batch_pending_index_.clear();
@@ -307,13 +306,11 @@ namespace texas::solver::multiway
 
 		batch_pending_menus_.clear();
 		batch_menu_keys_.assign(states.size(), 0U);
-		batch_pending_menu_keys_.clear();
 		batch_menu_handles_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
 		batch_pending_menu_indexes_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
 		batch_pending_index_.clear();
 		batch_pending_menu_index_.clear();
 		batch_pending_menus_.reserve(new_count);
-		batch_pending_menu_keys_.reserve(new_count);
 		batch_pending_index_.reserve(new_count);
 		batch_pending_menu_index_.reserve(new_count);
 
@@ -370,16 +367,18 @@ namespace texas::solver::multiway
 			std::size_t pending_menu = std::numeric_limits<std::size_t>::max();
 			bool pending_key_collision = false;
 			const auto pending_equality_started = std::chrono::steady_clock::now();
-			for (std::size_t pending_index = 0U; pending_index < batch_pending_menus_.size(); ++pending_index)
+			const auto pending_first = std::lower_bound(batch_pending_menu_index_.begin(), batch_pending_menu_index_.end(), canonical_menu_id,
+				[](const PendingMenuIndexEntry& entry, std::uint64_t key) { return entry.canonical_menu_id < key; });
+			const auto pending_last = std::upper_bound(pending_first, batch_pending_menu_index_.end(), canonical_menu_id,
+				[](std::uint64_t key, const PendingMenuIndexEntry& entry) { return key < entry.canonical_menu_id; });
+			pending_key_collision = pending_first != pending_last;
+			for (auto pending_entry = pending_first; pending_entry != pending_last; ++pending_entry)
 			{
-				if (batch_pending_menu_keys_[pending_index] != canonical_menu_id)
-					continue;
-				pending_key_collision = true;
 				if (diagnostics != nullptr)
 					++diagnostics->catalog_menu_equality_checks;
-				if (batch_pending_menus_[pending_index] == states[index].legal_actions)
+				if (batch_pending_menus_[pending_entry->pending_menu_index] == states[index].legal_actions)
 				{
-					pending_menu = pending_index;
+					pending_menu = pending_entry->pending_menu_index;
 					break;
 				}
 			}
@@ -402,11 +401,15 @@ namespace texas::solver::multiway
 			if (menus_.size() + batch_pending_menus_.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::length_error("packed public catalog menu handle overflow");
 			batch_pending_menus_.push_back(states[index].legal_actions);
-			batch_pending_menu_keys_.push_back(canonical_menu_id);
 			const auto pending_index = batch_pending_menus_.size() - 1U;
 			batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_index);
 			batch_pending_menu_indexes_[index] = static_cast<std::uint32_t>(pending_index);
-			batch_pending_menu_index_.push_back({ canonical_menu_id, static_cast<std::uint32_t>(menus_.size() + pending_index) });
+			const PendingMenuIndexEntry pending_entry{ canonical_menu_id, static_cast<std::uint32_t>(pending_index) };
+			const auto pending_index_insertion = std::lower_bound(batch_pending_menu_index_.begin(), batch_pending_menu_index_.end(), pending_entry,
+				[](const PendingMenuIndexEntry& left, const PendingMenuIndexEntry& right) {
+					return left.canonical_menu_id < right.canonical_menu_id || (left.canonical_menu_id == right.canonical_menu_id && left.pending_menu_index < right.pending_menu_index);
+				});
+			batch_pending_menu_index_.insert(pending_index_insertion, pending_entry);
 			record_menu_lookup();
 		}
 
@@ -430,10 +433,6 @@ namespace texas::solver::multiway
 				(*resolved_menu_handles)[index] = batch_menu_handles_[index];
 		}
 
-		std::sort(batch_pending_menu_index_.begin(), batch_pending_menu_index_.end(),
-			[](const MenuIndexEntry& left, const MenuIndexEntry& right) {
-				return left.canonical_menu_id < right.canonical_menu_id || (left.canonical_menu_id == right.canonical_menu_id && left.menu_handle < right.menu_handle);
-			});
 		const auto reserve_started = std::chrono::steady_clock::now();
 		nodes_.reserve(nodes_.size() + batch_pending_index_.size());
 		index_.reserve(index_.size() + batch_pending_index_.size());
@@ -464,11 +463,19 @@ namespace texas::solver::multiway
 		std::size_t new_menu_index = 0U;
 		while (old_menu_index < menu_index_.size() || new_menu_index < batch_pending_menu_index_.size())
 		{
-			const auto take_old = new_menu_index == batch_pending_menu_index_.size() || (old_menu_index < menu_index_.size() && (menu_index_[old_menu_index].canonical_menu_id < batch_pending_menu_index_[new_menu_index].canonical_menu_id || (menu_index_[old_menu_index].canonical_menu_id == batch_pending_menu_index_[new_menu_index].canonical_menu_id && menu_index_[old_menu_index].menu_handle < batch_pending_menu_index_[new_menu_index].menu_handle)));
+			bool take_old = new_menu_index == batch_pending_menu_index_.size();
+			if (!take_old && old_menu_index < menu_index_.size())
+			{
+				const auto pending_menu_handle = static_cast<std::uint32_t>(menus_.size() + batch_pending_menu_index_[new_menu_index].pending_menu_index);
+				take_old = menu_index_[old_menu_index].canonical_menu_id < batch_pending_menu_index_[new_menu_index].canonical_menu_id || (menu_index_[old_menu_index].canonical_menu_id == batch_pending_menu_index_[new_menu_index].canonical_menu_id && menu_index_[old_menu_index].menu_handle < pending_menu_handle);
+			}
 			if (take_old)
 				batch_merged_menu_index_.push_back(menu_index_[old_menu_index++]);
 			else
-				batch_merged_menu_index_.push_back(batch_pending_menu_index_[new_menu_index++]);
+			{
+				const auto& pending_entry = batch_pending_menu_index_[new_menu_index++];
+				batch_merged_menu_index_.push_back({ pending_entry.canonical_menu_id, static_cast<std::uint32_t>(menus_.size() + pending_entry.pending_menu_index) });
+			}
 		}
 		if (index_merge_nanoseconds != nullptr)
 			*index_merge_nanoseconds += static_cast<std::uint64_t>(
@@ -588,12 +595,11 @@ namespace texas::solver::multiway
 		for (const auto& menu : batch_pending_menus_)
 			bytes += menu.capacity() * sizeof(MultiwayActionDescriptor);
 		bytes += batch_menu_keys_.capacity() * sizeof(std::uint64_t);
-		bytes += batch_pending_menu_keys_.capacity() * sizeof(std::uint64_t);
 		bytes += batch_menu_handles_.capacity() * sizeof(std::uint32_t);
 		bytes += batch_pending_menu_indexes_.capacity() * sizeof(std::uint32_t);
 		bytes += batch_pending_index_.capacity() * sizeof(IndexEntry);
 		bytes += batch_merged_index_.capacity() * sizeof(IndexEntry);
-		bytes += batch_pending_menu_index_.capacity() * sizeof(MenuIndexEntry);
+		bytes += batch_pending_menu_index_.capacity() * sizeof(PendingMenuIndexEntry);
 		bytes += batch_merged_menu_index_.capacity() * sizeof(MenuIndexEntry);
 		return bytes;
 	}
