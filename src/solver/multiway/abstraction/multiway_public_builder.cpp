@@ -578,6 +578,18 @@ namespace texas::solver::multiway
 		};
 	}
 
+	bool MultiwayPublicBuilder::inspect_schema_v2_identity(
+		const MultiwayBettingSnapshot& betting,
+		const std::vector<std::uint8_t>& board,
+		const std::vector<MultiwayPublicHistoryEntry>& history,
+		const std::vector<MultiwayActionDescriptor>& legal_actions,
+		MultiwayPublicIdentityInspection& output) noexcept
+	{
+		output = {};
+		output = inspect_schema_v2_identity(betting, board, history, legal_actions);
+		return output.history_valid;
+	}
+
 	std::uint64_t MultiwayPublicBuilder::stable_lossless_current_round_key(
 		const MultiwayBettingSnapshot& betting,
 		const std::vector<std::uint8_t>& board,

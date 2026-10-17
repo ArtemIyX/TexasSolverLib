@@ -387,9 +387,9 @@ namespace texas::solver::multiway
 						.count());
 
 			const auto history_identity_started = std::chrono::steady_clock::now();
-			const auto identity = MultiwayPublicBuilder::inspect_schema_v2_identity(
-				state.betting, state.board, state.history, state.legal_actions);
-			if (!identity.history_valid)
+			MultiwayPublicIdentityInspection identity;
+			if (!MultiwayPublicBuilder::inspect_schema_v2_identity(
+					state.betting, state.board, state.history, state.legal_actions, identity))
 			{
 				throw std::invalid_argument("multiway public state history contains an invalid action descriptor");
 			}

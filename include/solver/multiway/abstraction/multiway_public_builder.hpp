@@ -98,6 +98,13 @@ namespace texas::solver::multiway
 			const std::vector<MultiwayPublicHistoryEntry>& history,
 			const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept;
 
+		[[nodiscard]] static bool inspect_schema_v2_identity(
+			const MultiwayBettingSnapshot& betting,
+			const std::vector<std::uint8_t>& board,
+			const std::vector<MultiwayPublicHistoryEntry>& history,
+			const std::vector<MultiwayActionDescriptor>& legal_actions,
+			MultiwayPublicIdentityInspection& output) noexcept;
+
 		// Lossless live-round key. This aliases the schema-v2 public-state
 		// encoding, which already includes the full current history, exact target
 		// contributions, active seats in the betting snapshot, board, and menu.

@@ -159,6 +159,31 @@ TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_rejects_malformed
 	expect_invalid([](auto& value) { value.action.target_street_contribution = -1; });
 }
 
+TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_out_parameter_is_transactional)
+{
+	const auto snapshot = root_snapshot();
+	const auto menu = texas::MultiwayPublicBuilder::make_legal_actions(snapshot, { 0, 250, 0 });
+	const auto root = texas::MultiwayPublicBuilder::make_root(
+		snapshot, { texas::card_to_int(2U, 0U), texas::card_to_int(7U, 1U), texas::card_to_int(9U, 2U) }, menu);
+	auto history = std::vector<texas::MultiwayPublicHistoryEntry>{ { 0, menu[1] } };
+	history.front().action.action_index = 0U;
+
+	texas::MultiwayPublicIdentityInspection identity;
+	EXPECT_TRUE(texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, history, root.legal_actions, identity));
+	EXPECT_TRUE(identity.history_valid);
+	EXPECT_EQ(identity.canonical_history_id, texas::MultiwayPublicBuilder::stable_history_id(history));
+	EXPECT_EQ(identity.public_state_id.value, texas::MultiwayPublicBuilder::stable_public_state_id(
+		root.betting, root.board, history, root.legal_actions));
+
+	history.front().actor = -1;
+	EXPECT_TRUE(!texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, history, root.legal_actions, identity));
+	EXPECT_EQ(identity.canonical_history_id, 0U);
+	EXPECT_EQ(identity.public_state_id.value, 0U);
+	EXPECT_TRUE(!identity.history_valid);
+}
+
 TEST_CASE(multiway_public_builder_lossless_current_round_key_tracks_exact_targets)
 {
 	const auto snapshot = root_snapshot();
