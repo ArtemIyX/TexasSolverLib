@@ -212,17 +212,47 @@ namespace texas::solver::multiway
 			std::uint64_t& second,
 			std::uint64_t value) noexcept
 		{
-			for (std::uint8_t byte = 0U; byte < 8U; ++byte)
-			{
-				const auto encoded = static_cast<std::uint8_t>(value >> (byte * 8U));
-				append_byte(first, encoded);
-				append_byte(second, encoded);
-			}
+			const auto byte0 = static_cast<std::uint8_t>(value);
+			first = (first ^ byte0) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte0) * texas::core::fingerprint::FNV1A_PRIME;
+			const auto byte1 = static_cast<std::uint8_t>(value >> 8U);
+			first = (first ^ byte1) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte1) * texas::core::fingerprint::FNV1A_PRIME;
+			const auto byte2 = static_cast<std::uint8_t>(value >> 16U);
+			first = (first ^ byte2) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte2) * texas::core::fingerprint::FNV1A_PRIME;
+			const auto byte3 = static_cast<std::uint8_t>(value >> 24U);
+			first = (first ^ byte3) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte3) * texas::core::fingerprint::FNV1A_PRIME;
+			const auto byte4 = static_cast<std::uint8_t>(value >> 32U);
+			first = (first ^ byte4) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte4) * texas::core::fingerprint::FNV1A_PRIME;
+			const auto byte5 = static_cast<std::uint8_t>(value >> 40U);
+			first = (first ^ byte5) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte5) * texas::core::fingerprint::FNV1A_PRIME;
+			const auto byte6 = static_cast<std::uint8_t>(value >> 48U);
+			first = (first ^ byte6) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte6) * texas::core::fingerprint::FNV1A_PRIME;
+			const auto byte7 = static_cast<std::uint8_t>(value >> 56U);
+			first = (first ^ byte7) * texas::core::fingerprint::FNV1A_PRIME;
+			second = (second ^ byte7) * texas::core::fingerprint::FNV1A_PRIME;
 		}
 
 		bool valid_history_action(MultiwayAction action) noexcept
 		{
 			return action == MultiwayAction::Fold || action == MultiwayAction::Check || action == MultiwayAction::Call || action == MultiwayAction::Bet || action == MultiwayAction::Raise || action == MultiwayAction::AllIn;
+		}
+
+		bool valid_schema_v2_history(
+			const std::vector<MultiwayPublicHistoryEntry>& history,
+			std::size_t seat_count) noexcept
+		{
+			for (const auto& entry : history)
+			{
+				if (entry.actor < 0 || static_cast<std::size_t>(entry.actor) >= seat_count || !valid_history_action(entry.action.action) || entry.action.action_index != 0U || entry.action.action_menu_id == 0U || entry.action.target_street_contribution < 0)
+					return false;
+			}
+			return true;
 		}
 
 	} // namespace
@@ -534,6 +564,22 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayPublicHistoryEntry>& history,
 		const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept
 	{
+		MultiwayPublicIdentityInspection output;
+		inspect_schema_v2_identity(betting, board, history, legal_actions, output);
+		return output;
+	}
+
+	bool MultiwayPublicBuilder::inspect_schema_v2_identity(
+		const MultiwayBettingSnapshot& betting,
+		const std::vector<std::uint8_t>& board,
+		const std::vector<MultiwayPublicHistoryEntry>& history,
+		const std::vector<MultiwayActionDescriptor>& legal_actions,
+		MultiwayPublicIdentityInspection& output) noexcept
+	{
+		output = {};
+		if (!valid_schema_v2_history(history, betting.stacks.size()))
+			return false;
+
 		std::uint64_t history_hash = 0U;
 		std::uint64_t public_state_hash = 0U;
 		begin_fingerprint(history_hash);
@@ -558,36 +604,20 @@ namespace texas::solver::multiway
 		const auto history_bytes = history.size() * 4U * sizeof(std::uint64_t);
 		append_field_prefix(history_hash, FingerprintField::History, history_bytes);
 		append_field_prefix(public_state_hash, FingerprintField::History, history_bytes);
-		const auto seat_count = betting.stacks.size();
 		for (const auto& entry : history)
 		{
-			if (entry.actor < 0 || static_cast<std::size_t>(entry.actor) >= seat_count || !valid_history_action(entry.action.action) || entry.action.action_index != 0U || entry.action.action_menu_id == 0U || entry.action.target_street_contribution < 0)
-			{
-				return {};
-			}
 			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.actor)));
 			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(entry.action.action));
 			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.action.target_street_contribution)));
 			append_u64_pair(history_hash, public_state_hash, entry.action.action_menu_id);
 		}
 		append_action_menu(public_state_hash, legal_actions);
-		return {
+		output = {
 			non_zero(history_hash),
 			{ non_zero(public_state_hash) },
 			true,
 		};
-	}
-
-	bool MultiwayPublicBuilder::inspect_schema_v2_identity(
-		const MultiwayBettingSnapshot& betting,
-		const std::vector<std::uint8_t>& board,
-		const std::vector<MultiwayPublicHistoryEntry>& history,
-		const std::vector<MultiwayActionDescriptor>& legal_actions,
-		MultiwayPublicIdentityInspection& output) noexcept
-	{
-		output = {};
-		output = inspect_schema_v2_identity(betting, board, history, legal_actions);
-		return output.history_valid;
+		return true;
 	}
 
 	std::uint64_t MultiwayPublicBuilder::stable_lossless_current_round_key(

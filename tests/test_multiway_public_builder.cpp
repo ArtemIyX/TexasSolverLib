@@ -153,10 +153,19 @@ TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_rejects_malformed
 	};
 
 	expect_invalid([](auto& value) { value.actor = -1; });
+	expect_invalid([](auto& value) { value.actor = 3; });
 	expect_invalid([](auto& value) { value.action.action = static_cast<texas::MultiwayAction>(255U); });
 	expect_invalid([](auto& value) { value.action.action_index = 1U; });
 	expect_invalid([](auto& value) { value.action.action_menu_id = 0U; });
 	expect_invalid([](auto& value) { value.action.target_street_contribution = -1; });
+
+	auto boundary_history = valid_history;
+	boundary_history.front().actor = 2;
+	boundary_history.front().action.target_street_contribution = 0;
+	texas::MultiwayPublicIdentityInspection boundary_identity;
+	EXPECT_TRUE(texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, boundary_history, root.legal_actions, boundary_identity));
+	EXPECT_TRUE(boundary_identity.history_valid);
 }
 
 TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_out_parameter_is_transactional)
