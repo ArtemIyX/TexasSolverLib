@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## AD7 - State identity validation fixture correction
+
+**Status:** Complete
+**Completed:** 2026-10-17
+**Implementation commit:** `4d88453 PB-3 Tests: Fix identity validation boundary fixture`
+
+- Normalized the baseline history action index before malformed-history mutations.
+- Restored meaningful coverage for the valid upper actor boundary and each isolated malformed field.
+
+### Files
+
+- `tests/test_multiway_public_builder.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the focused diff and `git diff --cached --check` passed.
+- No build or test was run, per session rules.
+
+### Limitations
+
+- The corrected test requires operator execution for runtime confirmation.
+
 ## AD7 - State identity validation redesign
 
 **Status:** Complete for implementation; operator qualification pending
