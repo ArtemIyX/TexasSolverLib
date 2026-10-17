@@ -142,7 +142,8 @@ TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_rejects_malformed
 	const auto menu = texas::MultiwayPublicBuilder::make_legal_actions(snapshot, { 0, 250, 0 });
 	const auto root = texas::MultiwayPublicBuilder::make_root(
 		snapshot, { texas::card_to_int(2U, 0U), texas::card_to_int(7U, 1U), texas::card_to_int(9U, 2U) }, menu);
-	const auto valid_history = std::vector<texas::MultiwayPublicHistoryEntry>{ { 0, menu[1] } };
+	auto valid_history = std::vector<texas::MultiwayPublicHistoryEntry>{ { 0, menu[1] } };
+	valid_history.front().action.action_index = 0U;
 
 	const auto expect_invalid = [&](auto mutate) {
 		auto history = valid_history;
