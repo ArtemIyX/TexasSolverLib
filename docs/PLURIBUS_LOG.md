@@ -1,5 +1,33 @@
 # Pluribus Roadmap Progress Log
 
+## AD7 - State identity validation redesign
+
+**Status:** Complete for implementation; operator qualification pending
+**Completed:** 2026-10-17
+**Implementation commits:** `0b59e99 PB-3 Multiway: Add transactional identity inspection API`, `60e93f4 PB-3 Multiway: Unroll dual-lane identity encoding`
+
+- Added a compatibility-preserving transactional out-parameter identity API for admission.
+- Validated every schema-v2 history entry before hashing and replaced the runtime byte loop with an explicitly unrolled scalar dual-lane FNV encoder.
+- Preserved independent reference hash paths, admission error ordering, telemetry, and catalog/storage boundaries.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_public_builder.hpp`
+- `src/solver/multiway/abstraction/multiway_public_builder.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_public_builder.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked branch `PB-3` and reviewed focused staged diffs.
+- `git diff --cached --check` passed before each implementation commit.
+- No build, test, benchmark, executable, or solver script was run, per session rules.
+
+### Limitations
+
+- Operator qualification remains required: focused tests, MSVC disassembly confirming inlining, and matched Tracy captures against the AD7 acceptance gates.
+
 ## 2026-10-16 - AD7 state preflight identity validation optimization
 
 **Status:** Complete for implementation; operator qualification pending
