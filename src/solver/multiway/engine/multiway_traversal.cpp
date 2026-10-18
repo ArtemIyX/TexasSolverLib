@@ -175,6 +175,19 @@ namespace texas::solver::multiway
 			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
 			const auto merge_started = std::chrono::steady_clock::now();
+			if (streams.size() == 1U)
+			{
+				const auto& stream = *streams.front();
+				output.assign(stream.public_states().begin(), stream.public_states().end());
+				cursors.assign(1U, stream.public_state_count());
+				diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - merge_started)
+						.count());
+				diagnostics.public_state_source_elements = static_cast<std::uint64_t>(stream.public_state_count());
+				diagnostics.public_state_duplicate_candidates = 0U;
+				return;
+			}
 			output.clear();
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
@@ -223,6 +236,19 @@ namespace texas::solver::multiway
 			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
 			const auto merge_started = std::chrono::steady_clock::now();
+			if (streams.size() == 1U)
+			{
+				const auto& stream = *streams.front();
+				output.assign(stream.rows().begin(), stream.rows().end());
+				cursors.assign(1U, stream.row_count());
+				diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - merge_started)
+						.count());
+				diagnostics.row_source_elements = static_cast<std::uint64_t>(stream.row_count());
+				diagnostics.row_duplicate_candidates = 0U;
+				return;
+			}
 			output.clear();
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
@@ -391,6 +417,7 @@ namespace texas::solver::multiway
 			std::vector<std::size_t>& cursors,
 			MultiwayAdmissionDiagnostics* diagnostics)
 		{
+			const auto one_stream = streams.size() == 1U;
 			DiscoveryMergeDiagnosticsDelta delta;
 			merge_public_state_streams(streams, public_states, cursors, delta);
 			merge_row_streams(streams, rows, cursors, delta);
@@ -402,8 +429,11 @@ namespace texas::solver::multiway
 			diagnostics->discovery_row_source_elements += delta.row_source_elements;
 			diagnostics->discovery_public_state_duplicate_candidates += delta.public_state_duplicate_candidates;
 			diagnostics->discovery_row_duplicate_candidates += delta.row_duplicate_candidates;
-			if (streams.size() == 1U)
+			if (one_stream)
+			{
 				++diagnostics->discovery_single_stream_batches;
+				++diagnostics->discovery_one_stream_fast_path_uses;
+			}
 		}
 
 		void build_multiway_parent_first_order(
