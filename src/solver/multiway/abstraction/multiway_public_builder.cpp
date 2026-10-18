@@ -207,37 +207,6 @@ namespace texas::solver::multiway
 			}
 		}
 
-		void append_u64_pair(
-			std::uint64_t& first,
-			std::uint64_t& second,
-			std::uint64_t value) noexcept
-		{
-			const auto byte0 = static_cast<std::uint8_t>(value);
-			first = (first ^ byte0) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte0) * texas::core::fingerprint::FNV1A_PRIME;
-			const auto byte1 = static_cast<std::uint8_t>(value >> 8U);
-			first = (first ^ byte1) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte1) * texas::core::fingerprint::FNV1A_PRIME;
-			const auto byte2 = static_cast<std::uint8_t>(value >> 16U);
-			first = (first ^ byte2) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte2) * texas::core::fingerprint::FNV1A_PRIME;
-			const auto byte3 = static_cast<std::uint8_t>(value >> 24U);
-			first = (first ^ byte3) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte3) * texas::core::fingerprint::FNV1A_PRIME;
-			const auto byte4 = static_cast<std::uint8_t>(value >> 32U);
-			first = (first ^ byte4) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte4) * texas::core::fingerprint::FNV1A_PRIME;
-			const auto byte5 = static_cast<std::uint8_t>(value >> 40U);
-			first = (first ^ byte5) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte5) * texas::core::fingerprint::FNV1A_PRIME;
-			const auto byte6 = static_cast<std::uint8_t>(value >> 48U);
-			first = (first ^ byte6) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte6) * texas::core::fingerprint::FNV1A_PRIME;
-			const auto byte7 = static_cast<std::uint8_t>(value >> 56U);
-			first = (first ^ byte7) * texas::core::fingerprint::FNV1A_PRIME;
-			second = (second ^ byte7) * texas::core::fingerprint::FNV1A_PRIME;
-		}
-
 		bool valid_history_action(MultiwayAction action) noexcept
 		{
 			return action == MultiwayAction::Fold || action == MultiwayAction::Check || action == MultiwayAction::Call || action == MultiwayAction::Bet || action == MultiwayAction::Raise || action == MultiwayAction::AllIn;
@@ -604,13 +573,43 @@ namespace texas::solver::multiway
 		const auto history_bytes = history.size() * 4U * sizeof(std::uint64_t);
 		append_field_prefix(history_hash, FingerprintField::History, history_bytes);
 		append_field_prefix(public_state_hash, FingerprintField::History, history_bytes);
+#define TEXAS_APPEND_DUAL_FNV(value) \
+		do \
+		{ \
+			const auto encoded = static_cast<std::uint64_t>(value); \
+			const auto byte0 = static_cast<std::uint8_t>(encoded); \
+			history_hash = (history_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte1 = static_cast<std::uint8_t>(encoded >> 8U); \
+			history_hash = (history_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte2 = static_cast<std::uint8_t>(encoded >> 16U); \
+			history_hash = (history_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte3 = static_cast<std::uint8_t>(encoded >> 24U); \
+			history_hash = (history_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte4 = static_cast<std::uint8_t>(encoded >> 32U); \
+			history_hash = (history_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte5 = static_cast<std::uint8_t>(encoded >> 40U); \
+			history_hash = (history_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte6 = static_cast<std::uint8_t>(encoded >> 48U); \
+			history_hash = (history_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte7 = static_cast<std::uint8_t>(encoded >> 56U); \
+			history_hash = (history_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME; \
+		} while (false)
 		for (const auto& entry : history)
 		{
-			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.actor)));
-			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(entry.action.action));
-			append_u64_pair(history_hash, public_state_hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.action.target_street_contribution)));
-			append_u64_pair(history_hash, public_state_hash, entry.action.action_menu_id);
+			TEXAS_APPEND_DUAL_FNV(static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.actor)));
+			TEXAS_APPEND_DUAL_FNV(static_cast<std::uint64_t>(entry.action.action));
+			TEXAS_APPEND_DUAL_FNV(static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.action.target_street_contribution)));
+			TEXAS_APPEND_DUAL_FNV(entry.action.action_menu_id);
 		}
+#undef TEXAS_APPEND_DUAL_FNV
 		append_action_menu(public_state_hash, legal_actions);
 		output = {
 			non_zero(history_hash),
