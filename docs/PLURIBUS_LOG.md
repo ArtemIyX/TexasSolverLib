@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## AD7 - Admission variance follow-up plan
+
+**Status:** Complete
+**Completed:** 2026-10-18
+
+- Recorded capture evidence showing the schema-v2 identity gate is stable while discovery merge and parent-transition work vary.
+- Defined additive telemetry and a one-candidate-at-a-time decision path for the next AD7 optimization.
+
+### Files
+
+- `docs/plans/2026-10-18/01_ad7_admission_variance_followup.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed all inline-capture manifests and reports from `a6728c8`.
+- No source, build, test, or executable was run while creating the plan.
+
+### Limitations
+
+- The selected implementation candidate depends on the planned exclusive telemetry captures.
+
 ## AD7 - State identity validation fixture correction
 
 **Status:** Complete
