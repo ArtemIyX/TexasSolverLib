@@ -158,11 +158,23 @@ namespace texas::solver::multiway
 			return left.action_count < right.action_count;
 		}
 
+		struct DiscoveryMergeDiagnosticsDelta
+		{
+			std::uint64_t public_state_merge_nanoseconds = 0U;
+			std::uint64_t row_merge_nanoseconds = 0U;
+			std::uint64_t public_state_source_elements = 0U;
+			std::uint64_t row_source_elements = 0U;
+			std::uint64_t public_state_duplicate_candidates = 0U;
+			std::uint64_t row_duplicate_candidates = 0U;
+		};
+
 		void merge_public_state_streams(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
 			std::vector<MultiwayPublicStateDescriptor>& output,
-			std::vector<std::size_t>& cursors)
+			std::vector<std::size_t>& cursors,
+			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
+			const auto merge_started = std::chrono::steady_clock::now();
 			output.clear();
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
@@ -196,13 +208,21 @@ namespace texas::solver::multiway
 					++cursors[stream_index];
 				}
 			}
+			diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - merge_started)
+					.count());
+			diagnostics.public_state_source_elements = static_cast<std::uint64_t>(total);
+			diagnostics.public_state_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
 		}
 
 		void merge_row_streams(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
 			std::vector<MultiwaySparseRowShape>& output,
-			std::vector<std::size_t>& cursors)
+			std::vector<std::size_t>& cursors,
+			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
+			const auto merge_started = std::chrono::steady_clock::now();
 			output.clear();
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
@@ -234,6 +254,12 @@ namespace texas::solver::multiway
 					++cursors[stream_index];
 				}
 			}
+			diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - merge_started)
+					.count());
+			diagnostics.row_source_elements = static_cast<std::uint64_t>(total);
+			diagnostics.row_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
 		}
 
 		void build_parent_first_order(
@@ -362,10 +388,22 @@ namespace texas::solver::multiway
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
 			std::vector<MultiwayPublicStateDescriptor>& public_states,
 			std::vector<MultiwaySparseRowShape>& rows,
-			std::vector<std::size_t>& cursors)
+			std::vector<std::size_t>& cursors,
+			MultiwayAdmissionDiagnostics* diagnostics)
 		{
-			merge_public_state_streams(streams, public_states, cursors);
-			merge_row_streams(streams, rows, cursors);
+			DiscoveryMergeDiagnosticsDelta delta;
+			merge_public_state_streams(streams, public_states, cursors, delta);
+			merge_row_streams(streams, rows, cursors, delta);
+			if (diagnostics == nullptr)
+				return;
+			diagnostics->discovery_public_state_merge_nanoseconds += delta.public_state_merge_nanoseconds;
+			diagnostics->discovery_row_merge_nanoseconds += delta.row_merge_nanoseconds;
+			diagnostics->discovery_public_state_source_elements += delta.public_state_source_elements;
+			diagnostics->discovery_row_source_elements += delta.row_source_elements;
+			diagnostics->discovery_public_state_duplicate_candidates += delta.public_state_duplicate_candidates;
+			diagnostics->discovery_row_duplicate_candidates += delta.row_duplicate_candidates;
+			if (streams.size() == 1U)
+				++diagnostics->discovery_single_stream_batches;
 		}
 
 		void build_multiway_parent_first_order(
@@ -1700,7 +1738,7 @@ namespace texas::solver::multiway
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge");
 				detail::merge_multiway_discovery_streams(
 					discovery_stream_views_, discovery_public_states_, discovery_rows_,
-					discovery_merge_cursors_);
+					discovery_merge_cursors_, &result.admission_diagnostics);
 				result.admission_diagnostics.discovery_merge_nanoseconds += static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - phase_started)

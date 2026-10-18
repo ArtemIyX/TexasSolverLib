@@ -302,6 +302,14 @@ namespace texas::solver::multiway
 			   << ", \"lock_acquisitions\": " << admission.lock_acquisitions
 			   << ", \"discovery_prepare_nanoseconds\": " << admission.discovery_prepare_nanoseconds
 			   << ", \"discovery_merge_nanoseconds\": " << admission.discovery_merge_nanoseconds
+			   << ", \"discovery_public_state_merge_nanoseconds\": " << admission.discovery_public_state_merge_nanoseconds
+			   << ", \"discovery_row_merge_nanoseconds\": " << admission.discovery_row_merge_nanoseconds
+			   << ", \"discovery_public_state_source_elements\": " << admission.discovery_public_state_source_elements
+			   << ", \"discovery_row_source_elements\": " << admission.discovery_row_source_elements
+			   << ", \"discovery_public_state_duplicate_candidates\": " << admission.discovery_public_state_duplicate_candidates
+			   << ", \"discovery_row_duplicate_candidates\": " << admission.discovery_row_duplicate_candidates
+			   << ", \"discovery_single_stream_batches\": " << admission.discovery_single_stream_batches
+			   << ", \"discovery_one_stream_fast_path_uses\": " << admission.discovery_one_stream_fast_path_uses
 			   << ", \"parent_order_nanoseconds\": " << admission.parent_order_nanoseconds
 			   << ", \"state_catalog_classification_nanoseconds\": " << admission.state_catalog_classification_nanoseconds
 			   << ", \"public_state_validation_nanoseconds\": " << admission.public_state_validation_nanoseconds
@@ -330,7 +338,16 @@ namespace texas::solver::multiway
 			   << ", \"public_state_betting_board_validation_nanoseconds\": " << admission.public_state_betting_board_validation_nanoseconds
 			   << ", \"public_state_menu_validation_nanoseconds\": " << admission.public_state_menu_validation_nanoseconds
 			   << ", \"public_state_history_identity_validation_nanoseconds\": " << admission.public_state_history_identity_validation_nanoseconds
-			   << ", \"row_admission_nanoseconds\": " << admission.row_admission_nanoseconds;
+			   << ", \"row_admission_nanoseconds\": " << admission.row_admission_nanoseconds
+			   << ", \"parent_transition_fixed_state_nanoseconds\": " << admission.parent_transition_fixed_state_nanoseconds
+			   << ", \"parent_transition_action_edge_nanoseconds\": " << admission.parent_transition_action_edge_nanoseconds
+			   << ", \"parent_transition_board_chance_edge_nanoseconds\": " << admission.parent_transition_board_chance_edge_nanoseconds
+			   << ", \"parent_transition_street_edge_nanoseconds\": " << admission.parent_transition_street_edge_nanoseconds
+			   << ", \"parent_transition_action_edges\": " << admission.parent_transition_action_edges
+			   << ", \"parent_transition_board_chance_edges\": " << admission.parent_transition_board_chance_edges
+			   << ", \"parent_transition_street_edges\": " << admission.parent_transition_street_edges
+			   << ", \"parent_transition_action_history_prefix_elements\": " << admission.parent_transition_action_history_prefix_elements
+			   << ", \"parent_transition_action_menu_probes\": " << admission.parent_transition_action_menu_probes;
 		const auto write_admission_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
 			output << ", \"" << name << "\": [";
 			for (std::size_t index = 0U; index < values.size(); ++index)

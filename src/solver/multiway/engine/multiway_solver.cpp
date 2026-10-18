@@ -157,21 +157,44 @@ namespace texas::solver::multiway
 		void validate_public_state_child_transition(
 			const MultiwayRootSnapshot& root,
 			const MultiwayPublicStateDescriptor& parent,
-			const MultiwayPublicStateDescriptor& child)
+			const MultiwayPublicStateDescriptor& child,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr)
 		{
+			const auto fixed_state_started = std::chrono::steady_clock::now();
 			const auto parent_state = make_multiway_fixed_state(parent.betting);
+			const auto fixed_state_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - fixed_state_started)
+					.count());
 			switch (child.incoming_edge.kind)
 			{
 				case MultiwayPublicParentEdgeKind::BettingAction:
 				{
-					if (child.history.size() != parent.history.size() + 1U || !std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) || child.canonical_history_id == parent.canonical_history_id || child.board != parent.board || child.board_runout.remaining_board_cards != parent.board_runout.remaining_board_cards)
+					const auto edge_started = std::chrono::steady_clock::now();
+					if (child.history.size() != parent.history.size() + 1U)
+					{
+						throw std::invalid_argument("multiway child action state does not preserve parent public data");
+					}
+					const auto history_prefix_elements = static_cast<std::uint64_t>(parent.history.size());
+					if (!std::equal(parent.history.begin(), parent.history.end(), child.history.begin()) || child.canonical_history_id == parent.canonical_history_id || child.board != parent.board || child.board_runout.remaining_board_cards != parent.board_runout.remaining_board_cards)
 					{
 						throw std::invalid_argument("multiway child action state does not preserve parent public data");
 					}
 					const auto& appended = child.history.back();
-					if (parent_state.next_node_kind() != MultiwayNextNodeKind::BettingDecision || appended.actor != parent.betting.current_player || !same_history_action(appended.action, child.incoming_edge.action) || std::none_of(parent.legal_actions.begin(), parent.legal_actions.end(), [&appended](const MultiwayActionDescriptor& action) {
+					const auto parent_next_node_kind = parent_state.next_node_kind();
+					const bool actor_matches = parent_next_node_kind == MultiwayNextNodeKind::BettingDecision && appended.actor == parent.betting.current_player;
+					const bool action_matches = actor_matches && same_history_action(appended.action, child.incoming_edge.action);
+					std::uint64_t menu_probes = 0U;
+					bool menu_contains_action = false;
+					if (action_matches)
+					{
+						const auto menu_it = std::find_if(parent.legal_actions.begin(), parent.legal_actions.end(), [&appended, &menu_probes](const MultiwayActionDescriptor& action) {
+							++menu_probes;
 							return same_history_action(action, appended.action);
-						}))
+						});
+						menu_contains_action = menu_it != parent.legal_actions.end();
+					}
+					if (parent_next_node_kind != MultiwayNextNodeKind::BettingDecision || !actor_matches || !action_matches || !menu_contains_action)
 					{
 						throw std::invalid_argument("multiway child history action is not in the parent decision menu");
 					}
@@ -181,10 +204,22 @@ namespace texas::solver::multiway
 					{
 						throw std::invalid_argument("multiway child betting snapshot does not match its parent action");
 					}
+					if (diagnostics != nullptr)
+					{
+						diagnostics->parent_transition_fixed_state_nanoseconds += fixed_state_nanoseconds;
+						diagnostics->parent_transition_action_edge_nanoseconds += static_cast<std::uint64_t>(
+							std::chrono::duration_cast<std::chrono::nanoseconds>(
+								std::chrono::steady_clock::now() - edge_started)
+								.count());
+						++diagnostics->parent_transition_action_edges;
+						diagnostics->parent_transition_action_history_prefix_elements += history_prefix_elements;
+						diagnostics->parent_transition_action_menu_probes += menu_probes;
+					}
 					return;
 				}
 				case MultiwayPublicParentEdgeKind::BoardChance:
 				{
+					const auto edge_started = std::chrono::steady_clock::now();
 					const auto parent_kind = parent_state.next_node_kind();
 					if ((parent_kind != MultiwayNextNodeKind::BoardRunout && parent_kind != MultiwayNextNodeKind::StreetTransition) || child.history != parent.history || !same_betting_snapshot(child.betting, parent.betting) || child.board.size() <= parent.board.size() || !board_contains(child.board, parent.board) || !are_valid_and_distinct_cards(child.board.data(), child.board.size()))
 					{
@@ -199,10 +234,20 @@ namespace texas::solver::multiway
 					{
 						throw std::invalid_argument("multiway child board chance has inconsistent runout metadata");
 					}
+					if (diagnostics != nullptr)
+					{
+						diagnostics->parent_transition_fixed_state_nanoseconds += fixed_state_nanoseconds;
+						diagnostics->parent_transition_board_chance_edge_nanoseconds += static_cast<std::uint64_t>(
+							std::chrono::duration_cast<std::chrono::nanoseconds>(
+								std::chrono::steady_clock::now() - edge_started)
+								.count());
+						++diagnostics->parent_transition_board_chance_edges;
+					}
 					return;
 				}
 				case MultiwayPublicParentEdgeKind::StreetTransition:
 				{
+					const auto edge_started = std::chrono::steady_clock::now();
 					if (parent_state.next_node_kind() != MultiwayNextNodeKind::StreetTransition || child.history != parent.history || child.board != child.incoming_edge.transition_board || child.board.size() != expected_board_card_count(static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U)) || child.board.size() < parent.board.size() || !board_contains(child.board, parent.board) || child.board_runout.remaining_board_cards != 5U - child.board.size() || child.board_runout.chance_only_runout)
 					{
 						throw std::invalid_argument("multiway child street transition has inconsistent public state");
@@ -213,6 +258,15 @@ namespace texas::solver::multiway
 					if (!same_fixed_betting_snapshot(expected_betting, child.betting))
 					{
 						throw std::invalid_argument("multiway child street transition does not match root seat semantics");
+					}
+					if (diagnostics != nullptr)
+					{
+						diagnostics->parent_transition_fixed_state_nanoseconds += fixed_state_nanoseconds;
+						diagnostics->parent_transition_street_edge_nanoseconds += static_cast<std::uint64_t>(
+							std::chrono::duration_cast<std::chrono::nanoseconds>(
+								std::chrono::steady_clock::now() - edge_started)
+								.count());
+						++diagnostics->parent_transition_street_edges;
 					}
 					return;
 				}
@@ -1052,7 +1106,7 @@ namespace texas::solver::multiway
 				if (parent == nullptr)
 					throw std::invalid_argument("multiway public state parent must be admitted first");
 				const auto parent_validation_started = std::chrono::steady_clock::now();
-				validate_public_state_child_transition(request_.root(), *parent, state);
+				validate_public_state_child_transition(request_.root(), *parent, state, admission_diagnostics_);
 				if (admission_diagnostics_ != nullptr)
 					admission_diagnostics_->parent_transition_validation_nanoseconds += static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -1284,7 +1338,7 @@ namespace texas::solver::multiway
 			{
 				throw std::invalid_argument("multiway public state parent must be admitted first");
 			}
-			validate_public_state_child_transition(request_.root(), *parent, state);
+			validate_public_state_child_transition(request_.root(), *parent, state, nullptr);
 		}
 		else if (state.id != request_.root().public_state.id)
 		{

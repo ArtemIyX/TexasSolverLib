@@ -608,6 +608,14 @@ namespace texas::solver::multiway
 		std::uint64_t lock_acquisitions = 0U;
 		std::uint64_t discovery_prepare_nanoseconds = 0U;
 		std::uint64_t discovery_merge_nanoseconds = 0U;
+		std::uint64_t discovery_public_state_merge_nanoseconds = 0U;
+		std::uint64_t discovery_row_merge_nanoseconds = 0U;
+		std::uint64_t discovery_public_state_source_elements = 0U;
+		std::uint64_t discovery_row_source_elements = 0U;
+		std::uint64_t discovery_public_state_duplicate_candidates = 0U;
+		std::uint64_t discovery_row_duplicate_candidates = 0U;
+		std::uint64_t discovery_single_stream_batches = 0U;
+		std::uint64_t discovery_one_stream_fast_path_uses = 0U;
 		std::uint64_t parent_order_nanoseconds = 0U;
 		std::uint64_t state_catalog_classification_nanoseconds = 0U;
 		std::uint64_t public_state_validation_nanoseconds = 0U;
@@ -637,6 +645,15 @@ namespace texas::solver::multiway
 		std::uint64_t public_state_menu_validation_nanoseconds = 0U;
 		std::uint64_t public_state_history_identity_validation_nanoseconds = 0U;
 		std::uint64_t row_admission_nanoseconds = 0U;
+		std::uint64_t parent_transition_fixed_state_nanoseconds = 0U;
+		std::uint64_t parent_transition_action_edge_nanoseconds = 0U;
+		std::uint64_t parent_transition_board_chance_edge_nanoseconds = 0U;
+		std::uint64_t parent_transition_street_edge_nanoseconds = 0U;
+		std::uint64_t parent_transition_action_edges = 0U;
+		std::uint64_t parent_transition_board_chance_edges = 0U;
+		std::uint64_t parent_transition_street_edges = 0U;
+		std::uint64_t parent_transition_action_history_prefix_elements = 0U;
+		std::uint64_t parent_transition_action_menu_probes = 0U;
 		std::vector<std::uint64_t> worker_raw_public_state_candidates_by_worker;
 		std::vector<std::uint64_t> worker_raw_row_candidates_by_worker;
 		std::vector<std::uint64_t> worker_local_unique_public_state_candidates_by_worker;
@@ -665,6 +682,14 @@ namespace texas::solver::multiway
 			lock_acquisitions += other.lock_acquisitions;
 			discovery_prepare_nanoseconds += other.discovery_prepare_nanoseconds;
 			discovery_merge_nanoseconds += other.discovery_merge_nanoseconds;
+			discovery_public_state_merge_nanoseconds += other.discovery_public_state_merge_nanoseconds;
+			discovery_row_merge_nanoseconds += other.discovery_row_merge_nanoseconds;
+			discovery_public_state_source_elements += other.discovery_public_state_source_elements;
+			discovery_row_source_elements += other.discovery_row_source_elements;
+			discovery_public_state_duplicate_candidates += other.discovery_public_state_duplicate_candidates;
+			discovery_row_duplicate_candidates += other.discovery_row_duplicate_candidates;
+			discovery_single_stream_batches += other.discovery_single_stream_batches;
+			discovery_one_stream_fast_path_uses += other.discovery_one_stream_fast_path_uses;
 			parent_order_nanoseconds += other.parent_order_nanoseconds;
 			state_catalog_classification_nanoseconds += other.state_catalog_classification_nanoseconds;
 			public_state_validation_nanoseconds += other.public_state_validation_nanoseconds;
@@ -694,6 +719,15 @@ namespace texas::solver::multiway
 			public_state_menu_validation_nanoseconds += other.public_state_menu_validation_nanoseconds;
 			public_state_history_identity_validation_nanoseconds += other.public_state_history_identity_validation_nanoseconds;
 			row_admission_nanoseconds += other.row_admission_nanoseconds;
+			parent_transition_fixed_state_nanoseconds += other.parent_transition_fixed_state_nanoseconds;
+			parent_transition_action_edge_nanoseconds += other.parent_transition_action_edge_nanoseconds;
+			parent_transition_board_chance_edge_nanoseconds += other.parent_transition_board_chance_edge_nanoseconds;
+			parent_transition_street_edge_nanoseconds += other.parent_transition_street_edge_nanoseconds;
+			parent_transition_action_edges += other.parent_transition_action_edges;
+			parent_transition_board_chance_edges += other.parent_transition_board_chance_edges;
+			parent_transition_street_edges += other.parent_transition_street_edges;
+			parent_transition_action_history_prefix_elements += other.parent_transition_action_history_prefix_elements;
+			parent_transition_action_menu_probes += other.parent_transition_action_menu_probes;
 			const auto append = [](std::vector<std::uint64_t>& target, const std::vector<std::uint64_t>& source) {
 				if (target.size() < source.size())
 					target.resize(source.size(), 0U);

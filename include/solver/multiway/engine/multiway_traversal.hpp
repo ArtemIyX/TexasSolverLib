@@ -94,7 +94,8 @@ namespace texas::solver::multiway
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
 			std::vector<MultiwayPublicStateDescriptor>& public_states,
 			std::vector<MultiwaySparseRowShape>& rows,
-			std::vector<std::size_t>& cursors);
+			std::vector<std::size_t>& cursors,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
 
 		void build_multiway_parent_first_order(
 			const std::vector<MultiwayPublicStateDescriptor>& candidates,
