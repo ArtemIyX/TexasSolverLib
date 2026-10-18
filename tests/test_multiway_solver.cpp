@@ -1157,11 +1157,81 @@ TEST_CASE(multiway_solver_discovery_merge_reports_single_stream_eligibility)
 		streams, public_states, rows, cursors, &diagnostics);
 
 	EXPECT_EQ(diagnostics.discovery_single_stream_batches, 1U);
-	EXPECT_EQ(diagnostics.discovery_one_stream_fast_path_uses, 0U);
+	EXPECT_EQ(diagnostics.discovery_one_stream_fast_path_uses, 1U);
 	EXPECT_EQ(diagnostics.discovery_public_state_source_elements, public_states.size());
 	EXPECT_EQ(diagnostics.discovery_row_source_elements, rows.size());
 	EXPECT_EQ(diagnostics.discovery_public_state_duplicate_candidates, 0U);
 	EXPECT_EQ(diagnostics.discovery_row_duplicate_candidates, 0U);
+}
+
+TEST_CASE(multiway_solver_discovery_one_stream_fast_path_matches_generic_merge)
+{
+	texas::MultiwayDiscoveryStream stream(8U);
+	texas::MultiwayDiscoveryStream empty(8U);
+	const auto child = checked_action_child_public_state();
+	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
+	EXPECT_TRUE(stream.try_append_public_state(child));
+	EXPECT_TRUE(stream.try_append_public_state(second_child));
+	EXPECT_TRUE(stream.try_append_row(root_row()));
+	EXPECT_TRUE(stream.try_append_row({ { child.id, child.betting.current_player }, 1U, static_cast<std::uint8_t>(child.legal_actions.size()) }));
+	stream.prepare_for_merge();
+	empty.prepare_for_merge();
+
+	std::vector<texas::MultiwayPublicStateDescriptor> fast_public_states;
+	std::vector<texas::MultiwaySparseRowShape> fast_rows;
+	std::vector<std::size_t> fast_cursors;
+	texas::MultiwayAdmissionDiagnostics fast_diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		{ &stream }, fast_public_states, fast_rows, fast_cursors, &fast_diagnostics);
+
+	std::vector<texas::MultiwayPublicStateDescriptor> generic_public_states;
+	std::vector<texas::MultiwaySparseRowShape> generic_rows;
+	std::vector<std::size_t> generic_cursors;
+	texas::MultiwayAdmissionDiagnostics generic_diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		{ &stream, &empty }, generic_public_states, generic_rows, generic_cursors, &generic_diagnostics);
+
+	EXPECT_EQ(fast_public_states.size(), generic_public_states.size());
+	for (std::size_t index = 0U; index < fast_public_states.size(); ++index)
+	{
+		EXPECT_EQ(fast_public_states[index].id, generic_public_states[index].id);
+		EXPECT_EQ(fast_public_states[index].history, generic_public_states[index].history);
+	}
+	EXPECT_EQ(fast_rows.size(), generic_rows.size());
+	for (std::size_t index = 0U; index < fast_rows.size(); ++index)
+	{
+		EXPECT_EQ(fast_rows[index].infoset, generic_rows[index].infoset);
+		EXPECT_EQ(fast_rows[index].bucket_count, generic_rows[index].bucket_count);
+		EXPECT_EQ(fast_rows[index].action_count, generic_rows[index].action_count);
+	}
+	EXPECT_EQ(fast_cursors.size(), 1U);
+	EXPECT_EQ(fast_cursors.front(), fast_rows.size());
+	EXPECT_EQ(generic_cursors.size(), 2U);
+	EXPECT_EQ(generic_cursors[0], generic_rows.size());
+	EXPECT_EQ(generic_cursors[1], 0U);
+	EXPECT_EQ(fast_diagnostics.discovery_single_stream_batches, 1U);
+	EXPECT_EQ(fast_diagnostics.discovery_one_stream_fast_path_uses, 1U);
+	EXPECT_EQ(generic_diagnostics.discovery_single_stream_batches, 0U);
+	EXPECT_EQ(generic_diagnostics.discovery_one_stream_fast_path_uses, 0U);
+
+	stream.rewind();
+	EXPECT_TRUE(stream.try_append_public_state(second_child));
+	EXPECT_TRUE(stream.try_append_row(root_row(2U, 3U)));
+	stream.prepare_for_merge();
+	EXPECT_TRUE(std::any_of(fast_public_states.begin(), fast_public_states.end(), [&](const auto& state) { return state.id == child.id; }));
+	EXPECT_TRUE(std::any_of(fast_rows.begin(), fast_rows.end(), [](const auto& row) { return row.bucket_count == 1U && row.action_count == 3U; }));
+
+	std::vector<texas::MultiwayPublicStateDescriptor> empty_public_states;
+	std::vector<texas::MultiwaySparseRowShape> empty_rows;
+	std::vector<std::size_t> empty_cursors;
+	texas::MultiwayAdmissionDiagnostics empty_diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		{ &empty }, empty_public_states, empty_rows, empty_cursors, &empty_diagnostics);
+	EXPECT_TRUE(empty_public_states.empty());
+	EXPECT_TRUE(empty_rows.empty());
+	EXPECT_EQ(empty_cursors.size(), 1U);
+	EXPECT_EQ(empty_cursors.front(), 0U);
+	EXPECT_EQ(empty_diagnostics.discovery_one_stream_fast_path_uses, 1U);
 }
 
 TEST_CASE(multiway_solver_discovery_merge_diagnostics_commit_only_after_both_merges)
