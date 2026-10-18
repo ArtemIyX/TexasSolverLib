@@ -105,6 +105,23 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	report.admission_diagnostics.public_state_betting_board_validation_nanoseconds = 13U;
 	report.admission_diagnostics.public_state_menu_validation_nanoseconds = 14U;
 	report.admission_diagnostics.public_state_history_identity_validation_nanoseconds = 15U;
+	report.admission_diagnostics.discovery_public_state_merge_nanoseconds = 16U;
+	report.admission_diagnostics.discovery_row_merge_nanoseconds = 17U;
+	report.admission_diagnostics.discovery_public_state_source_elements = 18U;
+	report.admission_diagnostics.discovery_row_source_elements = 19U;
+	report.admission_diagnostics.discovery_public_state_duplicate_candidates = 20U;
+	report.admission_diagnostics.discovery_row_duplicate_candidates = 21U;
+	report.admission_diagnostics.discovery_single_stream_batches = 22U;
+	report.admission_diagnostics.discovery_one_stream_fast_path_uses = 23U;
+	report.admission_diagnostics.parent_transition_fixed_state_nanoseconds = 24U;
+	report.admission_diagnostics.parent_transition_action_edge_nanoseconds = 25U;
+	report.admission_diagnostics.parent_transition_board_chance_edge_nanoseconds = 26U;
+	report.admission_diagnostics.parent_transition_street_edge_nanoseconds = 27U;
+	report.admission_diagnostics.parent_transition_action_edges = 28U;
+	report.admission_diagnostics.parent_transition_board_chance_edges = 29U;
+	report.admission_diagnostics.parent_transition_street_edges = 30U;
+	report.admission_diagnostics.parent_transition_action_history_prefix_elements = 31U;
+	report.admission_diagnostics.parent_transition_action_menu_probes = 32U;
 	EXPECT_EQ(report.discarded_trajectories, 3U);
 	EXPECT_EQ(report.accepted_trajectories, 17U);
 	EXPECT_EQ(report.preflop_rows, 1U);
@@ -154,6 +171,23 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"public_state_betting_board_validation_nanoseconds\": 13") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_state_menu_validation_nanoseconds\": 14") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_state_history_identity_validation_nanoseconds\": 15") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_public_state_merge_nanoseconds\": 16") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_row_merge_nanoseconds\": 17") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_public_state_source_elements\": 18") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_row_source_elements\": 19") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_public_state_duplicate_candidates\": 20") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_row_duplicate_candidates\": 21") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_single_stream_batches\": 22") != std::string::npos);
+	EXPECT_TRUE(text.find("\"discovery_one_stream_fast_path_uses\": 23") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_fixed_state_nanoseconds\": 24") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_action_edge_nanoseconds\": 25") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_board_chance_edge_nanoseconds\": 26") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_street_edge_nanoseconds\": 27") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_action_edges\": 28") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_board_chance_edges\": 29") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_street_edges\": 30") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_action_history_prefix_elements\": 31") != std::string::npos);
+	EXPECT_TRUE(text.find("\"parent_transition_action_menu_probes\": 32") != std::string::npos);
 	std::filesystem::remove(path);
 }
 

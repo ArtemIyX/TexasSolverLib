@@ -157,6 +157,53 @@ namespace
 
 } // namespace
 
+TEST_CASE(multiway_admission_diagnostics_accumulates_variance_fields)
+{
+	texas::MultiwayAdmissionDiagnostics first;
+	texas::MultiwayAdmissionDiagnostics second;
+	const auto seed = [](texas::MultiwayAdmissionDiagnostics& diagnostics, std::uint64_t base) {
+		diagnostics.discovery_public_state_merge_nanoseconds = base + 1U;
+		diagnostics.discovery_row_merge_nanoseconds = base + 2U;
+		diagnostics.discovery_public_state_source_elements = base + 3U;
+		diagnostics.discovery_row_source_elements = base + 4U;
+		diagnostics.discovery_public_state_duplicate_candidates = base + 5U;
+		diagnostics.discovery_row_duplicate_candidates = base + 6U;
+		diagnostics.discovery_single_stream_batches = base + 7U;
+		diagnostics.discovery_one_stream_fast_path_uses = base + 8U;
+		diagnostics.parent_transition_fixed_state_nanoseconds = base + 9U;
+		diagnostics.parent_transition_action_edge_nanoseconds = base + 10U;
+		diagnostics.parent_transition_board_chance_edge_nanoseconds = base + 11U;
+		diagnostics.parent_transition_street_edge_nanoseconds = base + 12U;
+		diagnostics.parent_transition_action_edges = base + 13U;
+		diagnostics.parent_transition_board_chance_edges = base + 14U;
+		diagnostics.parent_transition_street_edges = base + 15U;
+		diagnostics.parent_transition_action_history_prefix_elements = base + 16U;
+		diagnostics.parent_transition_action_menu_probes = base + 17U;
+	};
+	seed(first, 0U);
+	seed(second, 100U);
+
+	first.accumulate(second);
+
+	EXPECT_EQ(first.discovery_public_state_merge_nanoseconds, 102U);
+	EXPECT_EQ(first.discovery_row_merge_nanoseconds, 104U);
+	EXPECT_EQ(first.discovery_public_state_source_elements, 106U);
+	EXPECT_EQ(first.discovery_row_source_elements, 108U);
+	EXPECT_EQ(first.discovery_public_state_duplicate_candidates, 110U);
+	EXPECT_EQ(first.discovery_row_duplicate_candidates, 112U);
+	EXPECT_EQ(first.discovery_single_stream_batches, 114U);
+	EXPECT_EQ(first.discovery_one_stream_fast_path_uses, 116U);
+	EXPECT_EQ(first.parent_transition_fixed_state_nanoseconds, 118U);
+	EXPECT_EQ(first.parent_transition_action_edge_nanoseconds, 120U);
+	EXPECT_EQ(first.parent_transition_board_chance_edge_nanoseconds, 122U);
+	EXPECT_EQ(first.parent_transition_street_edge_nanoseconds, 124U);
+	EXPECT_EQ(first.parent_transition_action_edges, 126U);
+	EXPECT_EQ(first.parent_transition_board_chance_edges, 128U);
+	EXPECT_EQ(first.parent_transition_street_edges, 130U);
+	EXPECT_EQ(first.parent_transition_action_history_prefix_elements, 132U);
+	EXPECT_EQ(first.parent_transition_action_menu_probes, 134U);
+}
+
 TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot)
 {
 	auto root = valid_root();
@@ -780,6 +827,13 @@ TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_kno
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
 	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 1U);
 	EXPECT_TRUE(diagnostics.catalog_existing_menu_hits + diagnostics.catalog_new_menus > 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_edges, 1U);
+	EXPECT_EQ(diagnostics.parent_transition_board_chance_edges, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_street_edges, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_history_prefix_elements, root_public_state().history.size());
+	EXPECT_EQ(diagnostics.parent_transition_action_menu_probes, 1U);
+	EXPECT_TRUE(diagnostics.parent_transition_validation_nanoseconds >=
+		diagnostics.parent_transition_fixed_state_nanoseconds + diagnostics.parent_transition_action_edge_nanoseconds);
 	EXPECT_TRUE(diagnostics.catalog_menu_index_probes + diagnostics.catalog_menu_equality_checks >= diagnostics.catalog_existing_menu_hits);
 	EXPECT_TRUE(diagnostics.catalog_menu_lookup_nanoseconds >= diagnostics.catalog_menu_index_lookup_nanoseconds + diagnostics.catalog_menu_equality_nanoseconds);
 	EXPECT_TRUE(diagnostics.catalog_append_nanoseconds >= diagnostics.catalog_node_pack_nanoseconds);
@@ -789,6 +843,92 @@ TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_kno
 	EXPECT_EQ(diagnostics.lock_acquisitions, 2U);
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
 	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 1U);
+}
+
+TEST_CASE(multiway_solver_prepared_admission_reports_board_and_street_transition_edges)
+{
+	{
+		texas::MultiwaySolverCoordinator coordinator(valid_request());
+		const auto all_in = action_child_public_state(root_public_state(), 2, 102, 2);
+		coordinator.admit_public_state(all_in);
+		const auto runout = action_child_public_state(all_in, 4, 104, 1);
+		coordinator.admit_public_state(runout);
+		texas::MultiwayTerminalAdapter adapter(coordinator);
+		const auto deal = adapter.sample_private_deal(1U);
+		const auto edges = adapter.canonical_public_board_chance_edges(runout.id, deal);
+		const auto child = texas::MultiwayPublicBuilder::make_board_chance_child(
+			runout, edges.front(), runout.legal_actions);
+		texas::MultiwayAdmissionDiagnostics diagnostics;
+		coordinator.set_admission_diagnostics(&diagnostics);
+
+		coordinator.admit_prepared_batch({ child }, { 0U }, {});
+
+		EXPECT_EQ(diagnostics.parent_transition_action_edges, 0U);
+		EXPECT_EQ(diagnostics.parent_transition_board_chance_edges, 1U);
+		EXPECT_EQ(diagnostics.parent_transition_street_edges, 0U);
+	}
+
+	{
+		texas::MultiwaySolverCoordinator coordinator(valid_request());
+		const auto first = action_child_public_state(root_public_state(), 2, 102, 0);
+		coordinator.admit_public_state(first);
+		const auto second = action_child_public_state(first, 3, 103, 0);
+		coordinator.admit_public_state(second);
+		texas::MultiwayTerminalAdapter adapter(coordinator);
+		const auto transition = adapter.apply_public_street_transition(second.id);
+		const auto child = texas::MultiwayPublicBuilder::make_street_transition_child(
+			second, transition,
+			action_descriptors(texas::MultiwayState::from_snapshot(transition.transition.betting)));
+		texas::MultiwayAdmissionDiagnostics diagnostics;
+		coordinator.set_admission_diagnostics(&diagnostics);
+
+		coordinator.admit_prepared_batch({ child }, { 0U }, {});
+
+		EXPECT_EQ(diagnostics.parent_transition_action_edges, 0U);
+		EXPECT_EQ(diagnostics.parent_transition_board_chance_edges, 0U);
+		EXPECT_EQ(diagnostics.parent_transition_street_edges, 1U);
+	}
+}
+
+TEST_CASE(multiway_solver_prepared_admission_rejection_does_not_commit_transition_diagnostics)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	const auto before = coordinator.checkpoint();
+	auto child = checked_action_child_public_state();
+	child.incoming_edge.action.action_menu_id += 1U;
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	coordinator.set_admission_diagnostics(&diagnostics);
+
+	EXPECT_THROW(coordinator.admit_prepared_batch({ child }, { 0U }, {}), std::invalid_argument);
+
+	EXPECT_EQ(diagnostics.parent_transition_fixed_state_nanoseconds, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_edge_nanoseconds, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_board_chance_edge_nanoseconds, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_street_edge_nanoseconds, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_edges, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_board_chance_edges, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_street_edges, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_history_prefix_elements, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_menu_probes, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_validation_nanoseconds, 0U);
+	const auto after = coordinator.checkpoint();
+	EXPECT_EQ(after.public_states.size(), before.public_states.size());
+	EXPECT_EQ(after.storage.shapes.size(), before.storage.shapes.size());
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 1U);
+}
+
+TEST_CASE(multiway_solver_direct_admission_does_not_publish_transition_diagnostics)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	coordinator.set_admission_diagnostics(&diagnostics);
+
+	coordinator.admit_public_state(checked_action_child_public_state());
+
+	EXPECT_EQ(diagnostics.parent_transition_fixed_state_nanoseconds, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_edge_nanoseconds, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_action_edges, 0U);
+	EXPECT_EQ(diagnostics.parent_transition_validation_nanoseconds, 0U);
 }
 
 TEST_CASE(multiway_solver_prepared_admission_rejects_capacity_before_mutation)
@@ -962,6 +1102,97 @@ TEST_CASE(multiway_solver_discovery_merge_collapses_cross_worker_duplicates)
 	conflicting.prepare_for_merge();
 	const std::vector<const texas::MultiwayDiscoveryStream*> conflicting_streams = { &first, &conflicting };
 	EXPECT_THROW(texas::solver::multiway::detail::merge_multiway_discovery_streams(conflicting_streams, public_states, rows, cursors), std::invalid_argument);
+}
+
+TEST_CASE(multiway_solver_discovery_merge_reports_source_and_duplicates)
+{
+	texas::MultiwayDiscoveryStream first(8U);
+	texas::MultiwayDiscoveryStream second(8U);
+	const auto first_child = checked_action_child_public_state();
+	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
+	EXPECT_TRUE(first.try_append_public_state(first_child));
+	EXPECT_TRUE(second.try_append_public_state(second_child));
+	EXPECT_TRUE(second.try_append_public_state(first_child));
+	EXPECT_TRUE(first.try_append_row(root_row()));
+	EXPECT_TRUE(second.try_append_row(root_row()));
+	first.prepare_for_merge();
+	second.prepare_for_merge();
+
+	const std::vector<const texas::MultiwayDiscoveryStream*> streams = { &first, &second };
+	std::vector<texas::MultiwayPublicStateDescriptor> public_states;
+	std::vector<texas::MultiwaySparseRowShape> rows;
+	std::vector<std::size_t> cursors;
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, public_states, rows, cursors, &diagnostics);
+
+	EXPECT_EQ(public_states.size(), 2U);
+	EXPECT_EQ(rows.size(), 1U);
+	EXPECT_EQ(diagnostics.discovery_public_state_source_elements, 3U);
+	EXPECT_EQ(diagnostics.discovery_row_source_elements, 2U);
+	EXPECT_EQ(diagnostics.discovery_public_state_duplicate_candidates, 1U);
+	EXPECT_EQ(diagnostics.discovery_row_duplicate_candidates, 1U);
+	EXPECT_EQ(diagnostics.discovery_single_stream_batches, 0U);
+	EXPECT_EQ(diagnostics.discovery_one_stream_fast_path_uses, 0U);
+}
+
+TEST_CASE(multiway_solver_discovery_merge_reports_single_stream_eligibility)
+{
+	texas::MultiwayDiscoveryStream stream(8U);
+	EXPECT_TRUE(stream.try_append_public_state(checked_action_child_public_state()));
+	EXPECT_TRUE(stream.try_append_row(root_row()));
+	stream.prepare_for_merge();
+
+	const std::vector<const texas::MultiwayDiscoveryStream*> streams = { &stream };
+	std::vector<texas::MultiwayPublicStateDescriptor> public_states;
+	std::vector<texas::MultiwaySparseRowShape> rows;
+	std::vector<std::size_t> cursors;
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, public_states, rows, cursors, &diagnostics);
+
+	EXPECT_EQ(diagnostics.discovery_single_stream_batches, 1U);
+	EXPECT_EQ(diagnostics.discovery_one_stream_fast_path_uses, 0U);
+	EXPECT_EQ(diagnostics.discovery_public_state_source_elements, public_states.size());
+	EXPECT_EQ(diagnostics.discovery_row_source_elements, rows.size());
+	EXPECT_EQ(diagnostics.discovery_public_state_duplicate_candidates, 0U);
+	EXPECT_EQ(diagnostics.discovery_row_duplicate_candidates, 0U);
+}
+
+TEST_CASE(multiway_solver_discovery_merge_diagnostics_commit_only_after_both_merges)
+{
+	texas::MultiwayDiscoveryStream first(8U);
+	texas::MultiwayDiscoveryStream second(8U);
+	const auto child = checked_action_child_public_state();
+	EXPECT_TRUE(first.try_append_public_state(child));
+	EXPECT_TRUE(second.try_append_public_state(child));
+	EXPECT_TRUE(first.try_append_row(root_row(1U, 3U)));
+	EXPECT_TRUE(second.try_append_row(root_row(2U, 3U)));
+	first.prepare_for_merge();
+	second.prepare_for_merge();
+
+	const std::vector<const texas::MultiwayDiscoveryStream*> streams = { &first, &second };
+	std::vector<texas::MultiwayPublicStateDescriptor> public_states;
+	std::vector<texas::MultiwaySparseRowShape> rows;
+	std::vector<std::size_t> cursors;
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	diagnostics.discovery_public_state_merge_nanoseconds = 77U;
+	diagnostics.discovery_row_merge_nanoseconds = 77U;
+	diagnostics.discovery_public_state_source_elements = 77U;
+	diagnostics.discovery_row_source_elements = 77U;
+	diagnostics.discovery_public_state_duplicate_candidates = 77U;
+	diagnostics.discovery_row_duplicate_candidates = 77U;
+	diagnostics.discovery_single_stream_batches = 77U;
+
+	EXPECT_THROW(texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, public_states, rows, cursors, &diagnostics), std::invalid_argument);
+	EXPECT_EQ(diagnostics.discovery_public_state_merge_nanoseconds, 77U);
+	EXPECT_EQ(diagnostics.discovery_row_merge_nanoseconds, 77U);
+	EXPECT_EQ(diagnostics.discovery_public_state_source_elements, 77U);
+	EXPECT_EQ(diagnostics.discovery_row_source_elements, 77U);
+	EXPECT_EQ(diagnostics.discovery_public_state_duplicate_candidates, 77U);
+	EXPECT_EQ(diagnostics.discovery_row_duplicate_candidates, 77U);
+	EXPECT_EQ(diagnostics.discovery_single_stream_batches, 77U);
 }
 
 TEST_CASE(multiway_solver_discovery_parent_order_rejects_cycles_and_unresolved_parents)
