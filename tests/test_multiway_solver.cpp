@@ -875,9 +875,14 @@ TEST_CASE(multiway_solver_prepared_admission_reports_board_and_street_transition
 		const auto second = action_child_public_state(first, 3, 103, 0);
 		coordinator.admit_public_state(second);
 		texas::MultiwayTerminalAdapter adapter(coordinator);
-		const auto transition = adapter.apply_public_street_transition(second.id);
+		const auto deal = adapter.sample_private_deal(1U);
+		const auto board_edges = adapter.canonical_public_board_chance_edges(second.id, deal);
+		const auto board_child = texas::MultiwayPublicBuilder::make_board_chance_child(
+			second, board_edges.front(), {});
+		coordinator.admit_public_state(board_child);
+		const auto transition = adapter.apply_public_street_transition(board_child.id);
 		const auto child = texas::MultiwayPublicBuilder::make_street_transition_child(
-			second, transition,
+			board_child, transition,
 			action_descriptors(texas::MultiwayState::from_snapshot(transition.transition.betting)));
 		texas::MultiwayAdmissionDiagnostics diagnostics;
 		coordinator.set_admission_diagnostics(&diagnostics);
