@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/engine/multiway_allocation_probe.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
@@ -164,9 +165,41 @@ namespace texas::solver::multiway
 			std::uint64_t row_merge_nanoseconds = 0U;
 			std::uint64_t public_state_source_elements = 0U;
 			std::uint64_t row_source_elements = 0U;
+			std::uint64_t public_descriptor_copy_count = 0U;
+			std::uint64_t public_descriptor_copy_bytes = 0U;
+			std::uint64_t nested_descriptor_copy_count = 0U;
+			std::uint64_t nested_descriptor_copy_bytes = 0U;
+			std::uint64_t output_capacity_reuse_events = 0U;
+			std::uint64_t output_capacity_reuse_bytes = 0U;
 			std::uint64_t public_state_duplicate_candidates = 0U;
 			std::uint64_t row_duplicate_candidates = 0U;
 		};
+
+		void record_discovery_descriptor_copy(
+			const MultiwayPublicStateDescriptor& state,
+			DiscoveryMergeDiagnosticsDelta& diagnostics) noexcept
+		{
+			++diagnostics.public_descriptor_copy_count;
+			diagnostics.public_descriptor_copy_bytes += sizeof(MultiwayPublicStateDescriptor);
+			const auto record = [&diagnostics](std::size_t count, std::size_t bytes) {
+				diagnostics.nested_descriptor_copy_count += static_cast<std::uint64_t>(count);
+				diagnostics.nested_descriptor_copy_bytes += static_cast<std::uint64_t>(count * bytes);
+			};
+			record(state.board.size(), sizeof(std::uint8_t));
+			record(state.incoming_edge.dealt_cards.size(), sizeof(std::uint8_t));
+			record(state.incoming_edge.transition_board.size(), sizeof(std::uint8_t));
+			record(state.betting.stacks.size(), sizeof(int));
+			record(state.betting.contributions.size(), sizeof(int));
+			record(state.betting.street_contributions.size(), sizeof(int));
+			record(state.betting.folded.size(), sizeof(std::uint8_t));
+			record(state.betting.all_in.size(), sizeof(std::uint8_t));
+			record(state.betting.may_raise.size(), sizeof(std::uint8_t));
+			record(state.betting.pending.size(), sizeof(std::uint8_t));
+			record(state.betting.has_acted.size(), sizeof(std::uint8_t));
+			record(state.betting.bet_faced_when_acted.size(), sizeof(int));
+			record(state.history.size(), sizeof(MultiwayPublicHistoryEntry));
+			record(state.legal_actions.size(), sizeof(MultiwayActionDescriptor));
+		}
 
 		void merge_public_state_streams(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
@@ -174,10 +207,18 @@ namespace texas::solver::multiway
 			std::vector<std::size_t>& cursors,
 			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states");
 			const auto merge_started = std::chrono::steady_clock::now();
 			if (streams.size() == 1U)
 			{
 				const auto& stream = *streams.front();
+				if (output.capacity() >= stream.public_state_count())
+				{
+					++diagnostics.output_capacity_reuse_events;
+					diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(stream.public_state_count() * sizeof(MultiwayPublicStateDescriptor));
+				}
+				for (const auto& state : stream.public_states())
+					record_discovery_descriptor_copy(state, diagnostics);
 				output.assign(stream.public_states().begin(), stream.public_states().end());
 				cursors.assign(1U, stream.public_state_count());
 				diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
@@ -192,6 +233,11 @@ namespace texas::solver::multiway
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
 				total += stream->public_state_count();
+			if (output.capacity() >= total)
+			{
+				++diagnostics.output_capacity_reuse_events;
+				diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(total * sizeof(MultiwayPublicStateDescriptor));
+			}
 			output.reserve(total);
 			cursors.assign(streams.size(), 0U);
 			while (true)
@@ -207,7 +253,9 @@ namespace texas::solver::multiway
 				if (first_stream == streams.size())
 					break;
 				const auto id = streams[first_stream]->public_states()[cursors[first_stream]].id;
-				output.push_back(streams[first_stream]->public_states()[cursors[first_stream]]);
+				const auto& first_candidate = streams[first_stream]->public_states()[cursors[first_stream]];
+				record_discovery_descriptor_copy(first_candidate, diagnostics);
+				output.push_back(first_candidate);
 				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
 				{
 					const auto& stream = *streams[stream_index];
@@ -217,7 +265,10 @@ namespace texas::solver::multiway
 					if (!MultiwaySolverCoordinator::public_state_candidates_compatible(output.back(), candidate))
 						throw std::invalid_argument("multiway discovery merge found conflicting public-state descriptors");
 					if (public_state_candidate_less(candidate, output.back()))
+					{
+						record_discovery_descriptor_copy(candidate, diagnostics);
 						output.back() = candidate;
+					}
 					++cursors[stream_index];
 				}
 			}
@@ -235,6 +286,7 @@ namespace texas::solver::multiway
 			std::vector<std::size_t>& cursors,
 			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows");
 			const auto merge_started = std::chrono::steady_clock::now();
 			if (streams.size() == 1U)
 			{
@@ -298,6 +350,7 @@ namespace texas::solver::multiway
 			std::vector<std::uint8_t>& colors,
 			std::vector<std::size_t>& stack)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.parent_order.build");
 			order.resize(candidates.size());
 			parent_indexes.assign(candidates.size(), candidates.size());
 			depths.assign(candidates.size(), 0U);
@@ -427,6 +480,12 @@ namespace texas::solver::multiway
 			diagnostics->discovery_row_merge_nanoseconds += delta.row_merge_nanoseconds;
 			diagnostics->discovery_public_state_source_elements += delta.public_state_source_elements;
 			diagnostics->discovery_row_source_elements += delta.row_source_elements;
+			diagnostics->discovery_public_descriptor_copy_count += delta.public_descriptor_copy_count;
+			diagnostics->discovery_public_descriptor_copy_bytes += delta.public_descriptor_copy_bytes;
+			diagnostics->discovery_nested_descriptor_copy_count += delta.nested_descriptor_copy_count;
+			diagnostics->discovery_nested_descriptor_copy_bytes += delta.nested_descriptor_copy_bytes;
+			diagnostics->discovery_output_capacity_reuse_events += delta.output_capacity_reuse_events;
+			diagnostics->discovery_output_capacity_reuse_bytes += delta.output_capacity_reuse_bytes;
 			diagnostics->discovery_public_state_duplicate_candidates += delta.public_state_duplicate_candidates;
 			diagnostics->discovery_row_duplicate_candidates += delta.row_duplicate_candidates;
 			if (one_stream)
@@ -450,6 +509,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayDiscoveryStream::try_append_public_state(const MultiwayPublicStateDescriptor& state)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.append_public_state");
 		if (public_states_.size() >= capacity_)
 		{
 			overflowed_ = true;
@@ -461,6 +521,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayDiscoveryStream::try_append_row(const MultiwaySparseRowShape& shape) noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.append_row");
 		if (rows_.size() >= capacity_)
 		{
 			overflowed_ = true;
@@ -502,6 +563,7 @@ namespace texas::solver::multiway
 
 	void MultiwayDiscoveryStream::prepare_for_merge()
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.prepare_for_merge");
 		sort_fixed_order();
 		auto public_state_output = public_states_.begin();
 		for (auto candidate = public_states_.begin(); candidate != public_states_.end(); ++candidate)
@@ -752,6 +814,7 @@ namespace texas::solver::multiway
 		const MultiwayPublicStateDescriptor& state,
 		TraversalContext& context) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.evaluate_leaf");
 		if (context.discovery_stream != nullptr)
 			context.discovery_stream->record_leaf_visit();
 		else
@@ -858,6 +921,7 @@ namespace texas::solver::multiway
 		std::uint32_t public_chance_depth,
 		TraversalContext& context) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_decision");
 		if (!context.accepted)
 			return 0.0;
 		const auto actor = state.betting.current_player;
@@ -1136,6 +1200,7 @@ namespace texas::solver::multiway
 		std::uint32_t public_chance_depth,
 		TraversalContext& context) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_public_chance");
 		MultiwaySampledPublicBoardChance sampled;
 		{
 			MultiwaySearchProfileScope profile_scope(
@@ -1242,6 +1307,7 @@ namespace texas::solver::multiway
 		std::vector<MultiwayActionDescriptor>* action_menu_scratch,
 		MultiwayDiscoveryStream* discovery_stream) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.trajectory_run");
 		const auto& root_state = root_->public_state;
 		if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) == root_->seat_order.end() || root_state.legal_actions.empty())
 		{
@@ -1748,6 +1814,8 @@ namespace texas::solver::multiway
 			result.profile = batch_profile.snapshot();
 			return result;
 		}
+		MultiwayAllocationProbe coordinator_allocation_probe;
+		MultiwayAllocationProbeScope coordinator_allocation_scope(coordinator_allocation_probe);
 		if (immutable_epochs_)
 		{
 			const auto admission_start = std::chrono::steady_clock::now();
@@ -1761,6 +1829,9 @@ namespace texas::solver::multiway
 					{
 						result.discovery_capacity_exhausted = true;
 						result.clean = false;
+						const auto allocation_snapshot = coordinator_allocation_probe.snapshot();
+						result.coordinator_allocation_count = allocation_snapshot.allocation_count;
+						result.coordinator_allocated_bytes = allocation_snapshot.allocated_bytes;
 						result.profile = batch_profile.snapshot();
 						return result;
 					}
@@ -1844,6 +1915,9 @@ namespace texas::solver::multiway
 			coordinator_->diagnostics().last_merged_stream_fingerprint;
 		result.coordinator_lock_wait_nanoseconds =
 			coordinator_->diagnostics().coordinator_lock_wait_nanoseconds - coordinator_lock_wait_before;
+		const auto allocation_snapshot = coordinator_allocation_probe.snapshot();
+		result.coordinator_allocation_count = allocation_snapshot.allocation_count;
+		result.coordinator_allocated_bytes = allocation_snapshot.allocated_bytes;
 		result.profile = batch_profile.snapshot();
 		result.clean = result.trajectories_discarded == 0U && result.trajectories_attempted == result.trajectories_accepted && (result.delta_entries_merged == 0U || result.run.merged_stream_fingerprint != 0U);
 		return result;

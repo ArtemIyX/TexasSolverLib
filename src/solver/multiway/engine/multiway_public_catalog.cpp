@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "util/tracy.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -9,6 +10,54 @@
 
 namespace texas::solver::multiway
 {
+	namespace
+	{
+		void record_nested_descriptor_copy(
+			MultiwayAdmissionDiagnostics* diagnostics,
+			std::size_t element_count,
+			std::size_t element_size) noexcept
+		{
+			if (diagnostics == nullptr || element_count == 0U)
+				return;
+			diagnostics->catalog_nested_descriptor_copy_count += static_cast<std::uint64_t>(element_count);
+			diagnostics->catalog_nested_descriptor_copy_bytes += static_cast<std::uint64_t>(element_count * element_size);
+		}
+
+		void record_descriptor_copy(
+			const MultiwayPublicStateDescriptor& state,
+			MultiwayAdmissionDiagnostics* diagnostics) noexcept
+		{
+			if (diagnostics == nullptr)
+				return;
+			++diagnostics->catalog_public_descriptor_copy_count;
+			diagnostics->catalog_public_descriptor_copy_bytes += sizeof(MultiwayPublicStateDescriptor);
+			record_nested_descriptor_copy(diagnostics, state.board.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.incoming_edge.dealt_cards.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.incoming_edge.transition_board.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.stacks.size(), sizeof(int));
+			record_nested_descriptor_copy(diagnostics, state.betting.contributions.size(), sizeof(int));
+			record_nested_descriptor_copy(diagnostics, state.betting.street_contributions.size(), sizeof(int));
+			record_nested_descriptor_copy(diagnostics, state.betting.folded.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.all_in.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.may_raise.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.pending.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.has_acted.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.bet_faced_when_acted.size(), sizeof(int));
+		}
+
+		void record_output_capacity_reuse(
+			MultiwayAdmissionDiagnostics* diagnostics,
+			bool reused,
+			std::size_t element_count,
+			std::size_t element_size) noexcept
+		{
+			if (diagnostics != nullptr && reused)
+			{
+				++diagnostics->catalog_output_capacity_reuse_events;
+				diagnostics->catalog_output_capacity_reuse_bytes += static_cast<std::uint64_t>(element_count * element_size);
+			}
+		}
+	} // namespace
 
 	MultiwayPublicCatalog::MultiwayPublicCatalog(std::size_t max_nodes)
 		: max_nodes_(max_nodes)
@@ -62,6 +111,7 @@ namespace texas::solver::multiway
 		std::uint64_t* index_lookup_nanoseconds,
 		std::uint64_t* equality_nanoseconds) const noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.find_menu_by_key");
 		const auto index_lookup_started = std::chrono::steady_clock::now();
 		const auto first = std::lower_bound(menu_index_.begin(), menu_index_.end(), canonical_menu_id,
 			[](const MenuIndexEntry& entry, std::uint64_t key) { return entry.canonical_menu_id < key; });
@@ -104,6 +154,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayPublicStateDescriptor>& states,
 		std::vector<std::uint8_t>& new_state_flags) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.classify_new_states");
 		new_state_flags.assign(states.size(), 1U);
 		std::size_t catalog_index = 0U;
 		for (std::size_t state_index = 0U; state_index < states.size(); ++state_index)
@@ -128,8 +179,12 @@ namespace texas::solver::multiway
 	}
 
 	MultiwayPackedPublicNode MultiwayPublicCatalog::pack_node(
-		const MultiwayPublicStateDescriptor& state, std::uint32_t menu_handle) const noexcept
+		const MultiwayPublicStateDescriptor& state,
+		std::uint32_t menu_handle,
+		MultiwayAdmissionDiagnostics* diagnostics) const noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.pack_node");
+		record_descriptor_copy(state, diagnostics);
 		MultiwayPackedPublicNode packed;
 		packed.id = state.id;
 		packed.parent_id = state.parent_id;
@@ -179,6 +234,7 @@ namespace texas::solver::multiway
 		std::uint64_t* index_insertion_nanoseconds,
 		MultiwayAdmissionDiagnostics* diagnostics)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit");
 		if (state.id.value == 0U || state.board.size() > 5U || state.incoming_edge.dealt_cards.size() > 3U || state.incoming_edge.transition_board.size() > 5U)
 			throw std::invalid_argument("packed public catalog state is malformed");
 		if (contains(state.id))
@@ -202,8 +258,11 @@ namespace texas::solver::multiway
 		{
 			if (menus_.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::length_error("packed public catalog menu handle overflow");
+			record_output_capacity_reuse(diagnostics, menus_.capacity() >= menus_.size() + 1U, 1U, sizeof(menus_.front()));
+			record_output_capacity_reuse(diagnostics, menu_index_.capacity() >= menu_index_.size() + 1U, 1U, sizeof(MenuIndexEntry));
 			menus_.reserve(menus_.size() + 1U);
 			menu_index_.reserve(menu_index_.size() + 1U);
+			record_nested_descriptor_copy(diagnostics, state.legal_actions.size(), sizeof(MultiwayActionDescriptor));
 			menus_.push_back(state.legal_actions);
 			menu_handle = menus_.size() - 1U;
 			const auto insertion = std::lower_bound(menu_index_.begin(), menu_index_.end(), MenuIndexEntry{ canonical_menu_id, static_cast<std::uint32_t>(menu_handle) },
@@ -228,7 +287,9 @@ namespace texas::solver::multiway
 		if (menu_handle > std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("packed public catalog menu handle overflow");
 
-		const auto packed = pack_node(state, static_cast<std::uint32_t>(menu_handle));
+		record_output_capacity_reuse(diagnostics, nodes_.capacity() >= nodes_.size() + 1U, 1U, sizeof(MultiwayPackedPublicNode));
+		record_output_capacity_reuse(diagnostics, index_.capacity() >= index_.size() + 1U, 1U, sizeof(IndexEntry));
+		const auto packed = pack_node(state, static_cast<std::uint32_t>(menu_handle), diagnostics);
 		const auto node_index = nodes_.size();
 		nodes_.push_back(packed);
 		const auto insertion = std::lower_bound(index_.begin(), index_.end(), state.id,
@@ -253,6 +314,7 @@ namespace texas::solver::multiway
 		const std::vector<std::uint64_t>* validated_menu_keys,
 		std::vector<std::uint32_t>* resolved_menu_handles)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch");
 		if (states.size() != new_state_flags.size())
 			throw std::invalid_argument("packed public catalog batch flags do not match states");
 		if (validated_menu_keys != nullptr && validated_menu_keys->size() != states.size())
@@ -403,6 +465,7 @@ namespace texas::solver::multiway
 
 			if (menus_.size() + batch_pending_menus_.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::length_error("packed public catalog menu handle overflow");
+			record_nested_descriptor_copy(diagnostics, states[index].legal_actions.size(), sizeof(MultiwayActionDescriptor));
 			batch_pending_menus_.push_back(states[index].legal_actions);
 			const auto pending_index = batch_pending_menus_.size() - 1U;
 			batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_index);
@@ -436,6 +499,10 @@ namespace texas::solver::multiway
 				(*resolved_menu_handles)[index] = batch_menu_handles_[index];
 		}
 
+		record_output_capacity_reuse(diagnostics, nodes_.capacity() >= nodes_.size() + batch_pending_index_.size(), batch_pending_index_.size(), sizeof(MultiwayPackedPublicNode));
+		record_output_capacity_reuse(diagnostics, index_.capacity() >= index_.size() + batch_pending_index_.size(), batch_pending_index_.size(), sizeof(IndexEntry));
+		record_output_capacity_reuse(diagnostics, menus_.capacity() >= menus_.size() + batch_pending_menus_.size(), batch_pending_menus_.size(), sizeof(menus_.front()));
+		record_output_capacity_reuse(diagnostics, menu_index_.capacity() >= menu_index_.size() + batch_pending_menu_index_.size(), batch_pending_menu_index_.size(), sizeof(MenuIndexEntry));
 		const auto reserve_started = std::chrono::steady_clock::now();
 		nodes_.reserve(nodes_.size() + batch_pending_index_.size());
 		index_.reserve(index_.size() + batch_pending_index_.size());
@@ -491,7 +558,7 @@ namespace texas::solver::multiway
 			menus_.push_back(std::move(menu));
 		for (std::size_t index = 0U; index < states.size(); ++index)
 			if (new_state_flags[index] != 0U)
-				nodes_.push_back(pack_node(states[index], batch_menu_handles_[index]));
+				nodes_.push_back(pack_node(states[index], batch_menu_handles_[index], diagnostics));
 		if (diagnostics != nullptr)
 			diagnostics->catalog_node_pack_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -514,6 +581,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayPublicCatalog::reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.reconstruct");
 		const auto* packed = node(id);
 		if (packed == nullptr || packed->legal_menu_handle >= menus_.size())
 			return false;
@@ -578,6 +646,7 @@ namespace texas::solver::multiway
 
 	void MultiwayPublicCatalog::export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.export_descriptors");
 		output.clear();
 		output.reserve(index_.size());
 		for (const auto& entry : index_)

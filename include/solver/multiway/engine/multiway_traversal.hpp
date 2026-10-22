@@ -218,6 +218,8 @@ namespace texas::solver::multiway
 		std::uint64_t generated_discovery_public_state_count = 0;
 		std::uint64_t generated_discovery_row_count = 0;
 		std::uint64_t coordinator_admission_nanoseconds = 0;
+		std::uint64_t coordinator_allocation_count = 0;
+		std::uint64_t coordinator_allocated_bytes = 0;
 		MultiwayAdmissionDiagnostics admission_diagnostics{};
 		// Traversal time excluding worker delta sorting.
 		std::uint64_t worker_active_nanoseconds = 0;

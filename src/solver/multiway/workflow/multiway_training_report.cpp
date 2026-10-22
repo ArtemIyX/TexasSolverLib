@@ -308,6 +308,12 @@ namespace texas::solver::multiway
 			   << ", \"discovery_row_merge_nanoseconds\": " << admission.discovery_row_merge_nanoseconds
 			   << ", \"discovery_public_state_source_elements\": " << admission.discovery_public_state_source_elements
 			   << ", \"discovery_row_source_elements\": " << admission.discovery_row_source_elements
+			   << ", \"discovery_public_descriptor_copy_count\": " << admission.discovery_public_descriptor_copy_count
+			   << ", \"discovery_public_descriptor_copy_bytes\": " << admission.discovery_public_descriptor_copy_bytes
+			   << ", \"discovery_nested_descriptor_copy_count\": " << admission.discovery_nested_descriptor_copy_count
+			   << ", \"discovery_nested_descriptor_copy_bytes\": " << admission.discovery_nested_descriptor_copy_bytes
+			   << ", \"discovery_output_capacity_reuse_events\": " << admission.discovery_output_capacity_reuse_events
+			   << ", \"discovery_output_capacity_reuse_bytes\": " << admission.discovery_output_capacity_reuse_bytes
 			   << ", \"discovery_public_state_duplicate_candidates\": " << admission.discovery_public_state_duplicate_candidates
 			   << ", \"discovery_row_duplicate_candidates\": " << admission.discovery_row_duplicate_candidates
 			   << ", \"discovery_single_stream_batches\": " << admission.discovery_single_stream_batches
@@ -337,6 +343,12 @@ namespace texas::solver::multiway
 			   << ", \"catalog_batch_menu_reuse_hits\": " << admission.catalog_batch_menu_reuse_hits
 			   << ", \"catalog_new_menus\": " << admission.catalog_new_menus
 			   << ", \"catalog_menu_id_collision_misses\": " << admission.catalog_menu_id_collision_misses
+			   << ", \"catalog_output_capacity_reuse_events\": " << admission.catalog_output_capacity_reuse_events
+			   << ", \"catalog_output_capacity_reuse_bytes\": " << admission.catalog_output_capacity_reuse_bytes
+			   << ", \"catalog_public_descriptor_copy_count\": " << admission.catalog_public_descriptor_copy_count
+			   << ", \"catalog_public_descriptor_copy_bytes\": " << admission.catalog_public_descriptor_copy_bytes
+			   << ", \"catalog_nested_descriptor_copy_count\": " << admission.catalog_nested_descriptor_copy_count
+			   << ", \"catalog_nested_descriptor_copy_bytes\": " << admission.catalog_nested_descriptor_copy_bytes
 			   << ", \"public_state_betting_board_validation_nanoseconds\": " << admission.public_state_betting_board_validation_nanoseconds
 			   << ", \"public_state_menu_validation_nanoseconds\": " << admission.public_state_menu_validation_nanoseconds
 			   << ", \"public_state_history_identity_validation_nanoseconds\": " << admission.public_state_history_identity_validation_nanoseconds
@@ -381,6 +393,8 @@ namespace texas::solver::multiway
 				   << ", \"worker_tail_idle_nanoseconds\": " << batch.worker_tail_idle_nanoseconds
 				   << ", \"coordinator_wait_nanoseconds\": " << batch.coordinator_wait_nanoseconds
 				   << ", \"coordinator_admission_nanoseconds\": " << batch.coordinator_admission_nanoseconds
+				   << ", \"coordinator_allocation_count\": " << batch.coordinator_allocation_count
+				   << ", \"coordinator_allocated_bytes\": " << batch.coordinator_allocated_bytes
 				   << ", \"barrier_wait_nanoseconds\": " << batch.barrier_wait_nanoseconds
 				   << ", \"delta_sort_nanoseconds\": " << batch.delta_sort_nanoseconds
 				   << ", \"merge_nanoseconds\": " << batch.merge_nanoseconds
@@ -442,6 +456,8 @@ namespace texas::solver::multiway
 			   << ", \"discovery_stream_bytes\": " << report.memory_ledger.discovery_stream_bytes
 			   << ", \"worker_allocation_count\": " << report.memory_ledger.worker_allocation_count
 			   << ", \"worker_allocation_bytes\": " << report.memory_ledger.worker_allocation_bytes
+			   << ", \"coordinator_allocation_count\": " << report.memory_ledger.coordinator_allocation_count
+			   << ", \"coordinator_allocation_bytes\": " << report.memory_ledger.coordinator_allocation_bytes
 			   << ", \"merge_scratch_bytes\": " << report.memory_ledger.merge_scratch_bytes
 			   << ", \"checkpoint_peak_bytes\": " << report.memory_ledger.checkpoint_peak_bytes
 			   << ", \"export_peak_bytes\": " << report.memory_ledger.export_peak_bytes

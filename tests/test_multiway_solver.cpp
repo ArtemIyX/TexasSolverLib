@@ -179,6 +179,18 @@ TEST_CASE(multiway_admission_diagnostics_accumulates_variance_fields)
 		diagnostics.parent_transition_street_edges = base + 15U;
 		diagnostics.parent_transition_action_history_prefix_elements = base + 16U;
 		diagnostics.parent_transition_action_menu_probes = base + 17U;
+		diagnostics.discovery_public_descriptor_copy_count = base + 18U;
+		diagnostics.discovery_public_descriptor_copy_bytes = base + 19U;
+		diagnostics.discovery_nested_descriptor_copy_count = base + 20U;
+		diagnostics.discovery_nested_descriptor_copy_bytes = base + 21U;
+		diagnostics.discovery_output_capacity_reuse_events = base + 22U;
+		diagnostics.discovery_output_capacity_reuse_bytes = base + 23U;
+		diagnostics.catalog_output_capacity_reuse_events = base + 24U;
+		diagnostics.catalog_output_capacity_reuse_bytes = base + 25U;
+		diagnostics.catalog_public_descriptor_copy_count = base + 26U;
+		diagnostics.catalog_public_descriptor_copy_bytes = base + 27U;
+		diagnostics.catalog_nested_descriptor_copy_count = base + 28U;
+		diagnostics.catalog_nested_descriptor_copy_bytes = base + 29U;
 	};
 	seed(first, 0U);
 	seed(second, 100U);
@@ -202,6 +214,18 @@ TEST_CASE(multiway_admission_diagnostics_accumulates_variance_fields)
 	EXPECT_EQ(first.parent_transition_street_edges, 130U);
 	EXPECT_EQ(first.parent_transition_action_history_prefix_elements, 132U);
 	EXPECT_EQ(first.parent_transition_action_menu_probes, 134U);
+	EXPECT_EQ(first.discovery_public_descriptor_copy_count, 120U);
+	EXPECT_EQ(first.discovery_public_descriptor_copy_bytes, 122U);
+	EXPECT_EQ(first.discovery_nested_descriptor_copy_count, 124U);
+	EXPECT_EQ(first.discovery_nested_descriptor_copy_bytes, 126U);
+	EXPECT_EQ(first.discovery_output_capacity_reuse_events, 128U);
+	EXPECT_EQ(first.discovery_output_capacity_reuse_bytes, 130U);
+	EXPECT_EQ(first.catalog_output_capacity_reuse_events, 132U);
+	EXPECT_EQ(first.catalog_output_capacity_reuse_bytes, 134U);
+	EXPECT_EQ(first.catalog_public_descriptor_copy_count, 136U);
+	EXPECT_EQ(first.catalog_public_descriptor_copy_bytes, 138U);
+	EXPECT_EQ(first.catalog_nested_descriptor_copy_count, 140U);
+	EXPECT_EQ(first.catalog_nested_descriptor_copy_bytes, 142U);
 }
 
 TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot)

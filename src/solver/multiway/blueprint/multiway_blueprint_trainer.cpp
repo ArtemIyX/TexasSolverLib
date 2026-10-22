@@ -411,6 +411,8 @@ namespace texas::solver::multiway
 			status_.generated_discovery_public_state_count += batch_result.generated_discovery_public_state_count;
 			status_.generated_discovery_row_count += batch_result.generated_discovery_row_count;
 			status_.coordinator_admission_nanoseconds += batch_result.coordinator_admission_nanoseconds;
+			status_.memory_ledger.coordinator_allocation_count += batch_result.coordinator_allocation_count;
+			status_.memory_ledger.coordinator_allocation_bytes += batch_result.coordinator_allocated_bytes;
 			status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
 			status_.affinity_requested = batch_result.affinity_requested;
 			status_.cumulative_worker_delta_entries = diagnostics.worker_delta_entries_merged;
