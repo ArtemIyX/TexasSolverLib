@@ -288,6 +288,7 @@ namespace texas::solver::multiway
 			double iteration_weight = 1.0,
 			std::chrono::steady_clock::time_point deadline =
 				std::chrono::steady_clock::time_point::max());
+		[[nodiscard]] std::uint32_t dynamic_chunk_size() const noexcept { return dynamic_chunk_size_; }
 		void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 
 	private:

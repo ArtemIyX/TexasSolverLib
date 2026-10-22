@@ -1,5 +1,20 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Report scheduler balance metrics
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Report scheduler balance metrics`
+
+- Added dynamic chunk size and timed scheduler telemetry to benchmark sample output.
+- Reports barrier wait, worker wake and condition-variable wait, tail idle, worker active bounds, and process CPU time.
+
+### Validation
+
+- CMake Debug target `texas_solver_multiway_training_scaling` passed with errors-only output.
+- Benchmark `--help` passed and lists `--dynamic-chunk-sizes`.
+- No long matrix or qualification run was performed.
+
 ## TH1 - Add steady-state matrix analyzer
 
 **Status:** Complete

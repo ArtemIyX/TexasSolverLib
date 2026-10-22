@@ -44,14 +44,22 @@ namespace
 	{
 		std::uint32_t workers = 0U;
 		std::uint32_t batch_size = 0U;
+		std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
 		std::uint32_t sample = 0U;
 		std::uint64_t trajectories = 0U;
 		std::uint64_t elapsed_nanoseconds = 0U;
 		std::uint64_t worker_active_nanoseconds = 0U;
+		std::uint64_t worker_wake_latency_nanoseconds = 0U;
+		std::uint64_t worker_cv_wait_nanoseconds = 0U;
 		std::uint64_t coordinator_wait_nanoseconds = 0U;
+		std::uint64_t barrier_wait_nanoseconds = 0U;
 		std::uint64_t coordinator_lock_wait_nanoseconds = 0U;
 		std::uint64_t sort_nanoseconds = 0U;
 		std::uint64_t merge_nanoseconds = 0U;
+		std::uint64_t worker_tail_idle_nanoseconds = 0U;
+		std::uint64_t minimum_worker_active_nanoseconds = 0U;
+		std::uint64_t maximum_worker_active_nanoseconds = 0U;
+		std::uint64_t process_cpu_nanoseconds = 0U;
 		std::uint64_t minimum_worker_trajectories = 0U;
 		std::uint64_t maximum_worker_trajectories = 0U;
 		std::uint64_t peak_worker_delta_entries = 0U;
@@ -194,14 +202,22 @@ namespace
 			return {
 				workers,
 				batch_size,
+				runner_.dynamic_chunk_size(),
 				sample,
 				static_cast<std::uint64_t>(timed_batches) * batch_size,
 				static_cast<std::uint64_t>(elapsed),
 				after.worker_active_nanoseconds - before.worker_active_nanoseconds,
+				after.worker_wake_latency_nanoseconds - before.worker_wake_latency_nanoseconds,
+				after.worker_cv_wait_nanoseconds - before.worker_cv_wait_nanoseconds,
 				after.coordinator_wait_nanoseconds - before.coordinator_wait_nanoseconds,
+				after.barrier_wait_nanoseconds - before.barrier_wait_nanoseconds,
 				after.coordinator_lock_wait_nanoseconds - before.coordinator_lock_wait_nanoseconds,
 				after.delta_sort_nanoseconds - before.delta_sort_nanoseconds,
 				after.merge_nanoseconds - before.merge_nanoseconds,
+				after.worker_tail_idle_nanoseconds - before.worker_tail_idle_nanoseconds,
+				after.minimum_worker_active_nanoseconds,
+				after.maximum_worker_active_nanoseconds,
+				after.process_cpu_nanoseconds - before.process_cpu_nanoseconds,
 				after.minimum_worker_trajectories,
 				after.maximum_worker_trajectories,
 				after.peak_worker_delta_entries,
@@ -439,14 +455,22 @@ namespace
 		std::cout << "sample"
 				  << " workers=" << result.workers
 				  << " batch_size=" << result.batch_size
+				  << " dynamic_chunk_size=" << result.dynamic_chunk_size
 				  << " repeat=" << result.sample
 				  << " trajectories=" << result.trajectories
 				  << " elapsed_ns=" << result.elapsed_nanoseconds
 				  << " trajectories_per_second=" << std::fixed << std::setprecision(1)
 				  << result.trajectories_per_second()
 				  << " coordinator_wait_ns=" << result.coordinator_wait_nanoseconds
+				  << " barrier_wait_ns=" << result.barrier_wait_nanoseconds
 				  << " coordinator_lock_wait_ns=" << result.coordinator_lock_wait_nanoseconds
 				  << " worker_active_ns=" << result.worker_active_nanoseconds
+				  << " worker_wake_latency_ns=" << result.worker_wake_latency_nanoseconds
+				  << " worker_cv_wait_ns=" << result.worker_cv_wait_nanoseconds
+				  << " worker_tail_idle_ns=" << result.worker_tail_idle_nanoseconds
+				  << " worker_active_min_ns=" << result.minimum_worker_active_nanoseconds
+				  << " worker_active_max_ns=" << result.maximum_worker_active_nanoseconds
+				  << " process_cpu_ns=" << result.process_cpu_nanoseconds
 				  << " sort_ns=" << result.sort_nanoseconds
 				  << " merge_ns=" << result.merge_nanoseconds
 				  << " worker_trajectories_min=" << result.minimum_worker_trajectories
