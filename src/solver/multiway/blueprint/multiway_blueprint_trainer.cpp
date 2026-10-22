@@ -255,6 +255,7 @@ namespace texas::solver::multiway
 		append_u64(runtime_hash, limits.max_batches);
 		append_u64(runtime_hash, static_cast<std::uint8_t>(limits.storage_backend));
 		append_u64(runtime_hash, limits.compact_page_width);
+		append_u64(runtime_hash, limits.max_discovery_entries);
 		append_u64(runtime_hash, immutable_batch_epochs ? 1U : 0U);
 		append_u64(runtime_hash, schedule.identity());
 		append_u64(runtime_hash, deterministic_seed);
@@ -286,6 +287,7 @@ namespace texas::solver::multiway
 		status_.configured_max_sparse_rows = coordinator_->limits().max_sparse_rows;
 		status_.configured_max_sparse_values = coordinator_->limits().max_sparse_values;
 		status_.configured_worker_delta_capacity = coordinator_->limits().max_worker_delta_entries;
+		status_.configured_discovery_capacity = coordinator_->limits().max_discovery_entries;
 		status_.requested_worker_count = requested_worker_count == 0U
 			? coordinator_->limits().worker_count
 			: requested_worker_count;

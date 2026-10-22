@@ -86,6 +86,7 @@ namespace texas::solver::multiway
 		std::uint64_t configured_max_sparse_rows = 0;
 		std::uint64_t configured_max_sparse_values = 0;
 		std::uint64_t configured_worker_delta_capacity = 0;
+		std::uint64_t configured_discovery_capacity = 0;
 		std::uint64_t peak_public_states = 0;
 		std::uint64_t peak_sparse_rows = 0;
 		std::uint64_t peak_sparse_values = 0;

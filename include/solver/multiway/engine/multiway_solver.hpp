@@ -341,6 +341,9 @@ namespace texas::solver::multiway
 		std::uint32_t max_batches = 64;
 		StorageBackend storage_backend = StorageBackend::Float64Reference;
 		std::uint32_t compact_page_width = 16U;
+		// Per-worker bounded discovery entries. Zero preserves callers that do
+		// not enable immutable discovery epochs.
+		std::size_t max_discovery_entries = 0;
 
 		void validate() const;
 	};

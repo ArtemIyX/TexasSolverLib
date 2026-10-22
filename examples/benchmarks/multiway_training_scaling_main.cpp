@@ -158,6 +158,7 @@ namespace
 		config.limits.max_sparse_rows = 100000U;
 		config.limits.max_sparse_values = 1000000U;
 		config.limits.max_worker_delta_entries = delta_capacity;
+		config.limits.max_discovery_entries = delta_capacity * 4U;
 		config.limits.max_batches = 16U;
 		config.deterministic_seed = seed;
 		config.limits.seed = seed;
@@ -168,7 +169,7 @@ namespace
 	{
 	public:
 		BenchmarkFixture(std::uint32_t workers, std::uint32_t batch_size, std::uint64_t seed)
-			: delta_capacity_(checked_delta_capacity(batch_size, workers)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, true, true), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
+			: delta_capacity_(checked_delta_capacity(batch_size)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, true, true), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
 
 		BenchmarkResult run(
 			std::uint32_t workers,
@@ -210,13 +211,13 @@ namespace
 		// trajectory solely because the worker partition changed.
 		static constexpr std::size_t kDeltaCapacityEntriesPerTrajectory = 8U;
 
-		static std::size_t checked_delta_capacity(std::uint32_t batch_size, std::uint32_t workers)
+		static std::size_t checked_delta_capacity(std::uint32_t batch_size)
 		{
-			if (workers == 0U || batch_size > std::numeric_limits<std::size_t>::max() / kDeltaCapacityEntriesPerTrajectory / workers)
+			if (batch_size > std::numeric_limits<std::size_t>::max() / kDeltaCapacityEntriesPerTrajectory)
 			{
 				throw std::overflow_error("batch size overflows worker delta capacity");
 			}
-			return static_cast<std::size_t>(batch_size) * kDeltaCapacityEntriesPerTrajectory * workers;
+			return static_cast<std::size_t>(batch_size) * kDeltaCapacityEntriesPerTrajectory;
 		}
 
 		static texas::MultiwayCFRConfig make_cfr()
@@ -238,6 +239,7 @@ namespace
 			limits.max_sparse_rows = 100000U;
 			limits.max_sparse_values = 1000000U;
 			limits.max_worker_delta_entries = delta_capacity;
+			limits.max_discovery_entries = delta_capacity * 4U;
 			limits.max_batches = 16U;
 			limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
 			return limits;

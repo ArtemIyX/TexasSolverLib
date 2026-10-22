@@ -21,7 +21,7 @@ namespace
 			"max_public_chance_depth=3\ndeterministic_seed=1\n"
 			"reference_worker_count=1\ntarget_trajectories=100000\n"
 			"maximum_public_states=100000\nmaximum_sparse_rows=500000\n"
-			"maximum_sparse_values=2000000\nworker_delta_capacity=100000\n"
+			"maximum_sparse_values=2000000\nworker_delta_capacity=100000\ndiscovery_capacity=400000\n"
 			"trajectories_per_batch=1000\ncheckpoint_interval=10000\n"
 			"disk_space_requirement_bytes=1073741824\n"
 			"process_memory_limit_bytes=4294967296\n");

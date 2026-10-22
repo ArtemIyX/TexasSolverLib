@@ -116,6 +116,7 @@ namespace texas::solver::multiway
 		report.configured_max_sparse_rows = status.configured_max_sparse_rows;
 		report.configured_max_sparse_values = status.configured_max_sparse_values;
 		report.configured_worker_delta_capacity = status.configured_worker_delta_capacity;
+		report.configured_discovery_capacity = status.configured_discovery_capacity;
 		report.cumulative_worker_delta_entries = status.cumulative_worker_delta_entries;
 		report.worker_active_nanoseconds = status.worker_active_nanoseconds;
 		report.worker_wake_latency_nanoseconds = status.worker_wake_latency_nanoseconds;
@@ -233,6 +234,7 @@ namespace texas::solver::multiway
 			   << ",\n  \"configured_max_sparse_rows\": " << report.configured_max_sparse_rows
 			   << ",\n  \"configured_max_sparse_values\": " << report.configured_max_sparse_values
 			   << ",\n  \"configured_worker_delta_capacity\": " << report.configured_worker_delta_capacity
+			   << ",\n  \"configured_discovery_capacity\": " << report.configured_discovery_capacity
 			   << ",\n  \"cumulative_worker_delta_entries\": " << report.cumulative_worker_delta_entries
 			   << ",\n  \"worker_active_nanoseconds\": " << report.worker_active_nanoseconds
 			   << ",\n  \"worker_wake_latency_nanoseconds\": " << report.worker_wake_latency_nanoseconds
@@ -437,6 +439,7 @@ namespace texas::solver::multiway
 			   << ", \"row_metadata_bytes\": " << report.memory_ledger.row_metadata_bytes
 			   << ", \"regret_page_bytes\": " << report.memory_ledger.regret_page_bytes
 			   << ", \"worker_stream_bytes\": " << report.memory_ledger.worker_stream_bytes
+			   << ", \"discovery_stream_bytes\": " << report.memory_ledger.discovery_stream_bytes
 			   << ", \"merge_scratch_bytes\": " << report.memory_ledger.merge_scratch_bytes
 			   << ", \"checkpoint_peak_bytes\": " << report.memory_ledger.checkpoint_peak_bytes
 			   << ", \"export_peak_bytes\": " << report.memory_ledger.export_peak_bytes

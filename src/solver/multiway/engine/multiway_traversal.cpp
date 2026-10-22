@@ -1330,11 +1330,14 @@ namespace texas::solver::multiway
 		{
 			worker_work_cvs_.push_back(std::make_unique<std::condition_variable>());
 		}
-		const auto per_worker_capacity = worker_delta_capacity_ / worker_count_ + (worker_delta_capacity_ % worker_count_ == 0U ? 0U : 1U);
-		const auto discovery_capacity = immutable_epochs_ ? std::max<std::size_t>(64U, per_worker_capacity * 4U) : 0U;
+		const auto discovery_capacity = immutable_epochs_
+			? (coordinator.limits().max_discovery_entries != 0U
+				? coordinator.limits().max_discovery_entries
+				: std::max<std::size_t>(64U, worker_delta_capacity_ * 4U))
+			: 0U;
 		for (std::uint32_t worker = 0; worker < worker_count_; ++worker)
 		{
-			worker_scratch_.emplace_back(worker, per_worker_capacity, discovery_capacity);
+			worker_scratch_.emplace_back(worker, worker_delta_capacity_, discovery_capacity);
 			worker_stream_views_.push_back(&worker_scratch_.back().stream);
 			continuation_stream_views_.push_back(&worker_scratch_.back().continuation_stream);
 			discovery_stream_views_.push_back(&worker_scratch_.back().discovery);

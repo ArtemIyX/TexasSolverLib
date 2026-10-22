@@ -202,6 +202,11 @@ namespace texas::solver::multiway
 		result.estimate.worker_delta_bytes = checked_add(result.estimate.worker_delta_bytes,
 			checked_multiply(checked_multiply(limits.worker_count, limits.max_worker_delta_entries),
 				sizeof(MultiwayContinuationDelta)));
+		const auto aggregate_discovery_entries = checked_multiply(
+			limits.worker_count, limits.max_discovery_entries);
+		result.estimate.discovery_stream_bytes = checked_multiply(
+			aggregate_discovery_entries,
+			static_cast<std::uint64_t>(sizeof(MultiwayPublicStateDescriptor) + sizeof(MultiwaySparseRowShape)));
 		const auto aggregate_delta_entries = checked_multiply(
 			limits.worker_count, limits.max_worker_delta_entries);
 		result.estimate.merge_scratch_bytes = checked_multiply(
@@ -215,6 +220,7 @@ namespace texas::solver::multiway
 		result.estimate.ledger.row_metadata_bytes = result.estimate.sparse_row_bytes;
 		result.estimate.ledger.regret_page_bytes = result.estimate.sparse_value_bytes;
 		result.estimate.ledger.worker_stream_bytes = result.estimate.worker_delta_bytes;
+		result.estimate.ledger.discovery_stream_bytes = result.estimate.discovery_stream_bytes;
 		const auto transient_peak = std::max(inputs.checkpoint_peak_bytes, inputs.export_peak_bytes);
 
 		const auto root_stage = checked_add(
@@ -225,7 +231,7 @@ namespace texas::solver::multiway
 		const auto row_stage = checked_add(
 			result.estimate.sparse_row_bytes, result.estimate.sparse_value_bytes);
 		const auto delta_stage = checked_add(
-			checked_add(result.estimate.worker_delta_bytes, result.estimate.merge_scratch_bytes),
+			checked_add(checked_add(result.estimate.worker_delta_bytes, result.estimate.discovery_stream_bytes), result.estimate.merge_scratch_bytes),
 			result.estimate.continuation_scratch_bytes);
 		result.estimate.mandatory_bytes = checked_add(
 			checked_add(
