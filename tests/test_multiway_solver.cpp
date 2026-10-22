@@ -247,18 +247,18 @@ TEST_CASE(multiway_admission_diagnostics_accumulates_variance_fields)
 	EXPECT_EQ(first.parent_transition_street_edges, 130U);
 	EXPECT_EQ(first.parent_transition_action_history_prefix_elements, 132U);
 	EXPECT_EQ(first.parent_transition_action_menu_probes, 134U);
-	EXPECT_EQ(first.discovery_public_descriptor_copy_count, 120U);
-	EXPECT_EQ(first.discovery_public_descriptor_copy_bytes, 122U);
-	EXPECT_EQ(first.discovery_nested_descriptor_copy_count, 124U);
-	EXPECT_EQ(first.discovery_nested_descriptor_copy_bytes, 126U);
-	EXPECT_EQ(first.discovery_output_capacity_reuse_events, 128U);
-	EXPECT_EQ(first.discovery_output_capacity_reuse_bytes, 130U);
-	EXPECT_EQ(first.catalog_output_capacity_reuse_events, 132U);
-	EXPECT_EQ(first.catalog_output_capacity_reuse_bytes, 134U);
-	EXPECT_EQ(first.catalog_public_descriptor_copy_count, 136U);
-	EXPECT_EQ(first.catalog_public_descriptor_copy_bytes, 138U);
-	EXPECT_EQ(first.catalog_nested_descriptor_copy_count, 140U);
-	EXPECT_EQ(first.catalog_nested_descriptor_copy_bytes, 142U);
+	EXPECT_EQ(first.discovery_public_descriptor_copy_count, 136U);
+	EXPECT_EQ(first.discovery_public_descriptor_copy_bytes, 138U);
+	EXPECT_EQ(first.discovery_nested_descriptor_copy_count, 140U);
+	EXPECT_EQ(first.discovery_nested_descriptor_copy_bytes, 142U);
+	EXPECT_EQ(first.discovery_output_capacity_reuse_events, 144U);
+	EXPECT_EQ(first.discovery_output_capacity_reuse_bytes, 146U);
+	EXPECT_EQ(first.catalog_output_capacity_reuse_events, 148U);
+	EXPECT_EQ(first.catalog_output_capacity_reuse_bytes, 150U);
+	EXPECT_EQ(first.catalog_public_descriptor_copy_count, 152U);
+	EXPECT_EQ(first.catalog_public_descriptor_copy_bytes, 154U);
+	EXPECT_EQ(first.catalog_nested_descriptor_copy_count, 156U);
+	EXPECT_EQ(first.catalog_nested_descriptor_copy_bytes, 158U);
 }
 
 TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot)
