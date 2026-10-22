@@ -11,11 +11,17 @@ catalog copy/capacity counters, report serialization, focused regression
 coverage, and scoped Tracy zones around the measured admission and traversal
 phases.
 
+The one-stream discovery fast path is already present from `8b890c0`, and its
+full descriptor/nested-vector equivalence coverage is strengthened in
+`144b413`. The schema-v2 identity out-parameter and explicitly unrolled
+dual-lane encoder are already present in `0b59e99`, `60e93f4`, and `a6728c8`.
+
 Focused CMake build was attempted for `test_multiway_solver` and
 `test_multiway_qualification_reports`. It produced no diagnostics for 60
 seconds and was stopped to avoid a long-running build. Focused test execution
 and four-capture telemetry qualification remain pending. No candidate
-optimization is selected or implemented.
+qualification result is claimed; assembly inspection, focused tests, and
+captures remain pending.
 
 ## Repository state and boundary
 

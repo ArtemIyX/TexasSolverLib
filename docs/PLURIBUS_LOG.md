@@ -17,6 +17,20 @@
   `test_multiway_qualification_reports`; it produced no diagnostics for 60
   seconds and was stopped. No test executable result is claimed.
 
+## AD7 - Fast-path and identity verification coverage
+
+**Status:** Implemented; qualification pending
+**Completed:** 2026-10-22
+
+- Strengthened one-stream discovery equivalence to compare every public
+  descriptor field, nested vector, row field, cursor postcondition, and source
+  rewind result.
+- Confirmed the existing schema-v2 identity out-parameter and unrolled
+  dual-lane encoder remain in the implementation.
+- Added public-builder identity and menu Tracy zones in commit `827f129`.
+- Focused CMake builds were stopped after no diagnostics; tests, assembly
+  inspection, and captures remain pending.
+
 ## TH1-TH2 - Steady-state benchmark and per-worker capacity
 
 **Status:** Implemented; verification pending
