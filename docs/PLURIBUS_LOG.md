@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## Tooling - Analyze admission copy telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Analyze admission copy telemetry`
+
+- Added a report-only analyzer for coordinator allocations, public-state and nested descriptor copies, output-capacity reuse, and timer residuals.
+- Legacy reports remain readable and are explicitly marked incomplete when the new fields are absent.
+
+### Files
+
+- `scripts/analyze_multiway_admission_copy_telemetry.ps1`
+
+### Validation
+
+- PowerShell parser check passed.
+- Existing four admission-split reports were analyzed without rerunning workloads.
+- The analyzer correctly reported `allocation_probe_valid=false` and missing copy/allocation fields for those legacy reports.
+
+### Limitations
+
+- Fresh captures from the current telemetry-enabled binary are required to populate the missing fields.
+
 ## Verification - Full CMake build and CTest
 
 **Status:** Complete
