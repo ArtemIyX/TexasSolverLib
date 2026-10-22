@@ -1,5 +1,14 @@
 # Pluribus Roadmap Progress Log
 
+## Tooling - Report scheduler claim telemetry in qualification summaries
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Report scheduler claim telemetry`
+
+- Added aggregate and per-worker scheduler-claim fields to cold qualification and cold/steady matrix summaries.
+- Existing eight-capture matrix analysis passed.
+
 ## TH3 - Test scheduler claim accounting
 
 **Status:** Complete

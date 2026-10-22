@@ -81,6 +81,8 @@ foreach ($captureId in $captureIds) {
             id = $captureId
             acceptance_pass = [bool]$summary.acceptance_pass
             phase_coverage = [double]$summary.phase_coverage
+            scheduler_claim_ms = [math]::Round([double]$report.worker_scheduler_claim_nanoseconds / 1e6, 3)
+            scheduler_claim_nanoseconds_by_worker = ($report.worker_scheduler_claim_nanoseconds_by_worker -join ',')
             admission_ms = [math]::Round([double]$report.coordinator_admission_nanoseconds / 1e6, 3)
             identity_ms = [math]::Round([double]$diagnostics.public_state_history_identity_validation_nanoseconds / 1e6, 3)
             validation_ms = [math]::Round([double]$diagnostics.public_state_validation_nanoseconds / 1e6, 3)

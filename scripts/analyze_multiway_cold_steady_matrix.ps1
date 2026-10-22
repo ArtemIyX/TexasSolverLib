@@ -107,6 +107,8 @@ foreach ($captureId in $captureIds) {
         discovery_nested_copy_bytes = if ($copyTelemetryPresent) { [Int64]$identity.discovery_nested_descriptor_copy_bytes } else { $null }
         catalog_nested_copy_bytes = if ($copyTelemetryPresent) { [Int64]$identity.catalog_nested_descriptor_copy_bytes } else { $null }
         trajectories_per_second = [double]$report.trajectories_per_second
+        scheduler_claim_ms = [math]::Round([double]$report.worker_scheduler_claim_nanoseconds / 1e6, 3)
+        scheduler_claim_nanoseconds_by_worker = ($report.worker_scheduler_claim_nanoseconds_by_worker -join ',')
         admission_ms = [math]::Round([double]$report.coordinator_admission_nanoseconds / 1e6, 3)
         identity_ms = [math]::Round([double]$identity.public_state_history_identity_validation_nanoseconds / 1e6, 3)
         validation_ms = [math]::Round([double]$identity.public_state_validation_nanoseconds / 1e6, 3)
@@ -179,7 +181,7 @@ foreach ($group in ($results | Group-Object { "$($_.phase)|$($_.workers)" })) {
 }
 
 $summaryOutputPath = Join-Path $resolvedInputRoot 'cold_steady_matrix_summary.json'
-$results | Sort-Object phase, scheduler, workers | Format-Table id, acceptance_pass, matrix_gate_pass, scheduler_equivalent, allocation_probe_valid, trajectories_per_second, admission_ms, identity_ms, validation_ms, catalog_commit_ms, peak_process_rss_bytes, compact_storage_bytes, checkpoint_bytes, fingerprint, failed, discarded -AutoSize | Out-String | Write-Output
+$results | Sort-Object phase, scheduler, workers | Format-Table id, acceptance_pass, matrix_gate_pass, scheduler_equivalent, allocation_probe_valid, trajectories_per_second, scheduler_claim_ms, admission_ms, identity_ms, validation_ms, catalog_commit_ms, peak_process_rss_bytes, compact_storage_bytes, checkpoint_bytes, fingerprint, failed, discarded -AutoSize | Out-String | Write-Output
 $results | Sort-Object phase, scheduler, workers | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryOutputPath -Encoding utf8
 Write-Output "[matrix] summary=$summaryOutputPath"
 
