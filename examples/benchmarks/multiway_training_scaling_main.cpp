@@ -210,8 +210,7 @@ namespace
 
 	private:
 		// The depth-three fixture can emit more than four deltas per trajectory.
-		// Scale the aggregate reserve so worker right-sizing cannot discard a
-		// trajectory solely because the worker partition changed.
+		// This is a per-worker reserve; the runtime multiplies it for admission.
 		static constexpr std::size_t kDeltaCapacityEntriesPerTrajectory = 8U;
 
 		static std::size_t checked_delta_capacity(std::uint32_t batch_size)

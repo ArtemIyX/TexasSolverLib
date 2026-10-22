@@ -1330,10 +1330,13 @@ namespace texas::solver::multiway
 		{
 			worker_work_cvs_.push_back(std::make_unique<std::condition_variable>());
 		}
+		const auto legacy_discovery_capacity = worker_delta_capacity_ > std::numeric_limits<std::size_t>::max() / 4U
+			? std::numeric_limits<std::size_t>::max()
+			: worker_delta_capacity_ * 4U;
 		const auto discovery_capacity = immutable_epochs_
 			? (coordinator.limits().max_discovery_entries != 0U
 				? coordinator.limits().max_discovery_entries
-				: std::max<std::size_t>(64U, worker_delta_capacity_ * 4U))
+				: std::max<std::size_t>(64U, legacy_discovery_capacity))
 			: 0U;
 		for (std::uint32_t worker = 0; worker < worker_count_; ++worker)
 		{
