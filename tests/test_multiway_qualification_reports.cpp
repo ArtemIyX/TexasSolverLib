@@ -58,6 +58,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.peak_worker_delta_entries = 7U;
 	status.cumulative_worker_delta_entries = 55U;
 	status.worker_active_nanoseconds = 100U;
+	status.worker_scheduler_claim_nanoseconds = 15U;
 	status.minimum_worker_active_nanoseconds = 40U;
 	status.maximum_worker_active_nanoseconds = 60U;
 	status.coordinator_wait_nanoseconds = 60U;
@@ -68,6 +69,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.maximum_worker_trajectories = 3U;
 	status.worker_trajectory_counts = { 10U, 10U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.worker_active_nanoseconds_by_worker = { 40U, 60U, 0U, 0U, 0U, 0U, 0U, 0U };
+	status.worker_scheduler_claim_nanoseconds_by_worker = { 7U, 8U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.memory_preflight_estimate_bytes = 999U;
 	status.memory_ledger.resident_baseline_bytes = 111U;
 	status.memory_ledger.regret_page_bytes = 222U;
@@ -151,6 +153,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.cumulative_worker_delta_entries, 55U);
 	EXPECT_EQ(report.minimum_worker_active_nanoseconds, 40U);
 	EXPECT_EQ(report.maximum_worker_active_nanoseconds, 60U);
+	EXPECT_EQ(report.worker_scheduler_claim_nanoseconds, 15U);
 	EXPECT_EQ(report.barrier_wait_nanoseconds, 20U);
 	EXPECT_EQ(report.worker_trajectory_counts[1U], 10U);
 	EXPECT_EQ(report.worker_active_nanoseconds_by_worker[1U], 60U);
@@ -171,6 +174,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"memory_preflight_estimate_bytes\": 999") != std::string::npos);
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
+	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds\": 15") != std::string::npos);
+	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds_by_worker\": [7,8,0,0,0,0,0,0]") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_trajectory_counts\": [10,10,0,0,0,0,0,0]") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_key_nanoseconds\": 1") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_index_lookup_nanoseconds\": 2") != std::string::npos);

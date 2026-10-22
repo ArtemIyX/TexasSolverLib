@@ -1660,7 +1660,12 @@ namespace texas::solver::multiway
 								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.dynamic");
 								while (!cancelled_.load(std::memory_order_relaxed))
 								{
+									const auto claim_started = steady_now_nanoseconds();
 									const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
+									const auto claim_finished = steady_now_nanoseconds();
+									scratch.scheduler_claim_nanoseconds += claim_finished >= claim_started
+										? claim_finished - claim_started
+										: 0U;
 									if (chunk_index >= chunk_count)
 										break;
 									process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index, dynamic_chunk_size_));
@@ -1802,6 +1807,7 @@ namespace texas::solver::multiway
 		result.worker_sort_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_wake_latency_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_cv_wait_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_scheduler_claim_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_completion_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_tail_idle_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_regret_delta_entries.resize(worker_scratch_.size());
@@ -1865,6 +1871,7 @@ namespace texas::solver::multiway
 				result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
 				result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
 				result.worker_cv_wait_nanoseconds_by_worker[worker_index] = scratch.cv_wait_nanoseconds;
+				result.worker_scheduler_claim_nanoseconds_by_worker[worker_index] = scratch.scheduler_claim_nanoseconds;
 				result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
 				result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
 					batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
@@ -1888,6 +1895,7 @@ namespace texas::solver::multiway
 				result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
 				result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
 				result.worker_cv_wait_nanoseconds += scratch.cv_wait_nanoseconds;
+				result.worker_scheduler_claim_nanoseconds += scratch.scheduler_claim_nanoseconds;
 				result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
 				result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
 				result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);

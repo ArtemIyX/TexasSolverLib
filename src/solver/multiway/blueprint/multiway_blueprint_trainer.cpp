@@ -419,6 +419,7 @@ namespace texas::solver::multiway
 			status_.worker_active_nanoseconds += batch_result.worker_active_nanoseconds;
 			status_.worker_wake_latency_nanoseconds += batch_result.worker_wake_latency_nanoseconds;
 			status_.worker_cv_wait_nanoseconds += batch_result.worker_cv_wait_nanoseconds;
+			status_.worker_scheduler_claim_nanoseconds += batch_result.worker_scheduler_claim_nanoseconds;
 			status_.worker_completion_nanoseconds += batch_result.worker_completion_nanoseconds;
 			status_.worker_tail_idle_nanoseconds += batch_result.worker_tail_idle_nanoseconds;
 			status_.minimum_worker_active_nanoseconds = status_.batches == 1U
@@ -440,6 +441,7 @@ namespace texas::solver::multiway
 				status_.worker_sort_nanoseconds_by_worker.assign(batch_result.worker_sort_nanoseconds_by_worker.size(), 0U);
 				status_.worker_wake_latency_nanoseconds_by_worker.assign(batch_result.worker_wake_latency_nanoseconds_by_worker.size(), 0U);
 				status_.worker_cv_wait_nanoseconds_by_worker.assign(batch_result.worker_cv_wait_nanoseconds_by_worker.size(), 0U);
+				status_.worker_scheduler_claim_nanoseconds_by_worker.assign(batch_result.worker_scheduler_claim_nanoseconds_by_worker.size(), 0U);
 				status_.worker_completion_nanoseconds_by_worker.assign(batch_result.worker_completion_nanoseconds_by_worker.size(), 0U);
 				status_.worker_tail_idle_nanoseconds_by_worker.assign(batch_result.worker_tail_idle_nanoseconds_by_worker.size(), 0U);
 				status_.worker_regret_delta_entries.assign(batch_result.worker_regret_delta_entries.size(), 0U);
@@ -466,6 +468,8 @@ namespace texas::solver::multiway
 					batch_result.worker_wake_latency_nanoseconds_by_worker[worker_index];
 				status_.worker_cv_wait_nanoseconds_by_worker[worker_index] +=
 					batch_result.worker_cv_wait_nanoseconds_by_worker[worker_index];
+				status_.worker_scheduler_claim_nanoseconds_by_worker[worker_index] +=
+					batch_result.worker_scheduler_claim_nanoseconds_by_worker[worker_index];
 				status_.worker_completion_nanoseconds_by_worker[worker_index] +=
 					batch_result.worker_completion_nanoseconds_by_worker[worker_index];
 				status_.worker_tail_idle_nanoseconds_by_worker[worker_index] +=

@@ -1,5 +1,22 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Add dynamic scheduler claim telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (scheduler) Add dynamic scheduler claim telemetry`
+
+- Added per-worker and aggregate timing for dynamic scheduler chunk claims.
+- Propagated the metric through training status and JSON reports.
+- Added report serialization and vector-shape validation coverage.
+
+### Validation
+
+- Debug CMake targets built successfully.
+- `test_multiway_parallel_training` and `test_multiway_qualification_reports` passed.
+- Tracy RelWithDebInfo targets built successfully.
+- A 1-worker, 100-trajectory smoke run emitted the new metric.
+
 ## TH3 - Isolate timed worker bounds
 
 **Status:** Complete
