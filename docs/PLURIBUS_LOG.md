@@ -1,5 +1,22 @@
 # Pluribus Roadmap Progress Log
 
+## Verification - Current admission-copy telemetry smoke
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Ran one short current-binary Tracy smoke capture with one worker, one batch, and 100 trajectories.
+- The report emitted complete allocation and copy telemetry: 81,292 coordinator allocations, 14,750,031 coordinator bytes, 3,304,944 discovery descriptor-copy bytes, 3,701,028 discovery nested-copy bytes, 3,304,944 catalog descriptor-copy bytes, and 967,924 catalog nested-copy bytes.
+- The report passed its 100-trajectory execution gates with zero discarded trajectories and `failed=false`.
+
+### Validation
+
+- `scripts/analyze_multiway_admission_copy_telemetry.ps1` reported `telemetry_complete=true`.
+
+### Limitations
+
+- The 3-second capture ended during artifact loading, so its Tracy CSV contained no zone rows. This was not a qualification capture or worker matrix.
+
 ## Tooling - Analyze admission copy telemetry
 
 **Status:** Complete
