@@ -10,6 +10,7 @@ param(
     [int]$TimedBatches = 4,
     [ValidateRange(1, 100)]
     [int]$Repeats = 5,
+    [string]$DynamicChunkSizes = '4',
     [UInt64]$Seed = 0x77
 )
 
@@ -25,6 +26,9 @@ if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
 }
 if ($WarmupBatches + $TimedBatches -gt 16) {
     throw 'Warmup plus timed batches exceeds the benchmark capacity.'
+}
+if ($DynamicChunkSizes -notmatch '^\d+(,\d+)*$' -or @($DynamicChunkSizes -split ',' | Where-Object { [int64]$_ -lt 1 -or [int64]$_ -gt [uint32]::MaxValue }).Count -ne 0) {
+    throw 'DynamicChunkSizes must be a comma-separated list of positive uint32 values.'
 }
 if (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot $OutputDirectory
@@ -48,6 +52,7 @@ foreach ($scheduler in @('fixed', 'dynamic')) {
             '--repeats', $Repeats.ToString(),
             '--seed', $Seed.ToString(),
             '--scheduler', $scheduler,
+            '--dynamic-chunk-sizes', $DynamicChunkSizes,
             '--pin-workers', $pinValue
         )
 
@@ -82,6 +87,7 @@ $manifest = [ordered]@{
         warmup_batches = $WarmupBatches
         timed_batches = $TimedBatches
         repeats = $Repeats
+        dynamic_chunk_sizes = @($DynamicChunkSizes -split ',' | ForEach-Object { [uint32]$_ })
         seed = $Seed
         checkpoint_output = 'disabled'
         blueprint_output = 'disabled'

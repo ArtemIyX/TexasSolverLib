@@ -36,6 +36,7 @@ namespace
 		std::uint32_t repeats = 5U;
 		std::uint64_t seed = 0x77U;
 		texas::MultiwaySchedulerMode scheduler_mode = texas::MultiwaySchedulerMode::Fixed;
+		std::vector<std::uint32_t> dynamic_chunk_sizes{ texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE };
 		bool pin_workers = true;
 	};
 
@@ -171,8 +172,8 @@ namespace
 	{
 	public:
 		BenchmarkFixture(std::uint32_t workers, std::uint32_t batch_size, std::uint64_t seed,
-			texas::MultiwaySchedulerMode scheduler_mode, bool pin_workers)
-			: delta_capacity_(checked_delta_capacity(batch_size)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, pin_workers, true, scheduler_mode), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
+			texas::MultiwaySchedulerMode scheduler_mode, bool pin_workers, std::uint32_t dynamic_chunk_size)
+			: delta_capacity_(checked_delta_capacity(batch_size)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, pin_workers, true, scheduler_mode, dynamic_chunk_size), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
 
 		BenchmarkResult run(
 			std::uint32_t workers,
@@ -352,6 +353,7 @@ namespace
 						  << "  --repeats N\n"
 						  << "  --seed N\n"
 						  << "  --scheduler fixed|dynamic\n"
+				  << "  --dynamic-chunk-sizes 1,2,4,8,16\n"
 						  << "  --pin-workers true|false\n";
 				std::exit(EXIT_SUCCESS);
 			}
@@ -397,6 +399,11 @@ namespace
 			{
 				if (!parse_scheduler(value, config.scheduler_mode))
 					throw std::invalid_argument("invalid scheduler");
+			}
+			else if (option == "--dynamic-chunk-sizes")
+			{
+				if (!parse_csv(value, config.dynamic_chunk_sizes))
+					throw std::invalid_argument("invalid dynamic chunk-size list");
 			}
 			else if (option == "--pin-workers")
 			{
@@ -455,52 +462,67 @@ namespace
 				  << " hardware_concurrency=" << std::thread::hardware_concurrency()
 				  << " worker_affinity=" << (config.pin_workers ? "pinned_logical_processor" : "unrestricted")
 				  << " scheduler=" << (config.scheduler_mode == texas::MultiwaySchedulerMode::Fixed ? "fixed" : "dynamic")
+				  << " dynamic_chunk_sizes=";
+		for (std::size_t index = 0U; index < config.dynamic_chunk_sizes.size(); ++index)
+		{
+			if (index != 0U)
+				std::cout << ',';
+			std::cout << config.dynamic_chunk_sizes[index];
+		}
+		std::cout
 				  << " pin_workers=" << (config.pin_workers ? "true" : "false")
 				  << " checkpoint_output=disabled blueprint_output=disabled"
 				  << " warmup_batches=" << config.warmup_batches
 				  << " timed_batches=" << config.timed_batches
 				  << " repeats=" << config.repeats
 				  << " seed=" << config.seed << '\n';
+		const auto chunk_sizes = config.scheduler_mode == texas::MultiwaySchedulerMode::Dynamic
+			? config.dynamic_chunk_sizes
+			: std::vector<std::uint32_t>{ texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE };
 		for (const auto batch_size : config.batch_sizes)
 		{
-			std::uint64_t reference_fingerprint = 0U;
-			double previous_median = 0.0;
-			std::uint32_t previous_workers = 0U;
-			for (const auto workers : config.workers)
+			for (const auto dynamic_chunk_size : chunk_sizes)
 			{
-				std::vector<BenchmarkResult> samples;
-				samples.reserve(config.repeats);
-				for (std::uint32_t sample = 1U; sample <= config.repeats; ++sample)
+				std::uint64_t reference_fingerprint = 0U;
+				double previous_median = 0.0;
+				std::uint32_t previous_workers = 0U;
+				for (const auto workers : config.workers)
 				{
-					BenchmarkFixture fixture(workers, batch_size, config.seed, config.scheduler_mode, config.pin_workers);
-					auto result = fixture.run(
-						workers, batch_size, config.warmup_batches,
-						config.timed_batches, sample, config.seed);
-					print_sample(result);
-					if (reference_fingerprint == 0U)
-						reference_fingerprint = result.fingerprint;
-					if (result.fingerprint != reference_fingerprint)
+					std::vector<BenchmarkResult> samples;
+					samples.reserve(config.repeats);
+					for (std::uint32_t sample = 1U; sample <= config.repeats; ++sample)
 					{
-						throw std::logic_error(
-							"benchmark worker counts produced different merge fingerprints: expected="
-							+ std::to_string(reference_fingerprint) + " actual=" + std::to_string(result.fingerprint));
+						BenchmarkFixture fixture(workers, batch_size, config.seed, config.scheduler_mode, config.pin_workers, dynamic_chunk_size);
+						auto result = fixture.run(
+							workers, batch_size, config.warmup_batches,
+							config.timed_batches, sample, config.seed);
+						print_sample(result);
+						if (reference_fingerprint == 0U)
+							reference_fingerprint = result.fingerprint;
+						if (result.fingerprint != reference_fingerprint)
+						{
+							throw std::logic_error(
+								"benchmark worker counts produced different merge fingerprints: expected="
+								+ std::to_string(reference_fingerprint) + " actual=" + std::to_string(result.fingerprint));
+						}
+						samples.push_back(result);
 					}
-					samples.push_back(result);
+					const auto median = median_throughput(samples);
+					std::cout << "summary"
+							  << " workers=" << workers
+							  << " batch_size=" << batch_size
+							  << " dynamic_chunk_size=" << dynamic_chunk_size
+							  << " median_trajectories_per_second=" << std::fixed << std::setprecision(1)
+							  << median
+							  << " fingerprint=" << reference_fingerprint << '\n';
+					if (batch_size >= kScalingGateMinimumBatchSize && previous_workers != 0U && median <= previous_median)
+					{
+						throw std::runtime_error(
+							"worker scaling gate failed: throughput must increase strictly with worker count");
+					}
+					previous_workers = workers;
+					previous_median = median;
 				}
-				const auto median = median_throughput(samples);
-				std::cout << "summary"
-						  << " workers=" << workers
-						  << " batch_size=" << batch_size
-						  << " median_trajectories_per_second=" << std::fixed << std::setprecision(1)
-						  << median
-						  << " fingerprint=" << reference_fingerprint << '\n';
-				if (batch_size >= kScalingGateMinimumBatchSize && previous_workers != 0U && median <= previous_median)
-				{
-					throw std::runtime_error(
-						"worker scaling gate failed: throughput must increase strictly with worker count");
-				}
-				previous_workers = workers;
-				previous_median = median;
 			}
 		}
 		return EXIT_SUCCESS;
