@@ -15,8 +15,11 @@
   packing, worker discovery, traversal, and checkpoint phases.
 - Focused CMake builds completed for all five required targets, and the
   matching Debug CTest expression passed all five tests. The full-build helper
-  was inspected but not claimed because its MSBuild step produced no output
-  within the bounded run. No full-build result is claimed.
+  was inspected but not used because its MSBuild step produced no output
+  within the bounded run. A CMake-wide Debug build passed, and all 110 Debug
+  CTest tests passed after redirecting `TEMP`/`TMP` to the workspace. The two
+  atomic-publish tests report `Access is denied` under the default Windows
+  temp directory.
 
 ## AD7 - Fast-path and identity verification coverage
 

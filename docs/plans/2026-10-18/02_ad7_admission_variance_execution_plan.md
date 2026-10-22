@@ -16,8 +16,12 @@ full descriptor/nested-vector equivalence coverage is strengthened in
 `144b413`. The schema-v2 identity out-parameter and explicitly unrolled
 dual-lane encoder are already present in `0b59e99`, `60e93f4`, and `a6728c8`.
 
-Focused CMake Debug builds completed for all five required targets, and the
-focused CTest expression passed all five tests. The Tracy
+The CMake-wide Debug build completed successfully. The full Debug CTest set
+also passed all 110 tests when `TEMP` and `TMP` were redirected to the
+workspace; two atomic-publish tests hit `Access is denied` only under the
+default Windows temp directory. Focused CMake Debug builds completed for all
+five required targets, and the focused CTest expression passed all five tests.
+The Tracy
 `RelWithDebInfo` training target also built successfully. An isolated MSVC
 `RelWithDebInfo` assembly compile of `multiway_public_builder.cpp` confirmed
 that the schema-v2 history encoder has eight explicit byte steps with no call
