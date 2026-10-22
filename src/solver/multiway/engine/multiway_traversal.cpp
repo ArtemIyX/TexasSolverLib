@@ -212,6 +212,7 @@ namespace texas::solver::multiway
 			if (streams.size() == 1U)
 			{
 				const auto& stream = *streams.front();
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream");
 				if (output.capacity() >= stream.public_state_count())
 				{
 					++diagnostics.output_capacity_reuse_events;
@@ -233,43 +234,49 @@ namespace texas::solver::multiway
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
 				total += stream->public_state_count();
-			if (output.capacity() >= total)
 			{
-				++diagnostics.output_capacity_reuse_events;
-				diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(total * sizeof(MultiwayPublicStateDescriptor));
-			}
-			output.reserve(total);
-			cursors.assign(streams.size(), 0U);
-			while (true)
-			{
-				std::size_t first_stream = streams.size();
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.prepare_output");
+				if (output.capacity() >= total)
 				{
-					if (cursors[stream_index] == streams[stream_index]->public_state_count())
-						continue;
-					if (first_stream == streams.size() || streams[stream_index]->public_states()[cursors[stream_index]].id < streams[first_stream]->public_states()[cursors[first_stream]].id)
-						first_stream = stream_index;
+					++diagnostics.output_capacity_reuse_events;
+					diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(total * sizeof(MultiwayPublicStateDescriptor));
 				}
-				if (first_stream == streams.size())
-					break;
-				const auto id = streams[first_stream]->public_states()[cursors[first_stream]].id;
-				const auto& first_candidate = streams[first_stream]->public_states()[cursors[first_stream]];
-				record_discovery_descriptor_copy(first_candidate, diagnostics);
-				output.push_back(first_candidate);
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				output.reserve(total);
+			}
+			cursors.assign(streams.size(), 0U);
+			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.multi_stream");
+				while (true)
 				{
-					const auto& stream = *streams[stream_index];
-					if (cursors[stream_index] == stream.public_state_count() || stream.public_states()[cursors[stream_index]].id != id)
-						continue;
-					const auto& candidate = stream.public_states()[cursors[stream_index]];
-					if (!MultiwaySolverCoordinator::public_state_candidates_compatible(output.back(), candidate))
-						throw std::invalid_argument("multiway discovery merge found conflicting public-state descriptors");
-					if (public_state_candidate_less(candidate, output.back()))
+					std::size_t first_stream = streams.size();
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
 					{
-						record_discovery_descriptor_copy(candidate, diagnostics);
-						output.back() = candidate;
+						if (cursors[stream_index] == streams[stream_index]->public_state_count())
+							continue;
+						if (first_stream == streams.size() || streams[stream_index]->public_states()[cursors[stream_index]].id < streams[first_stream]->public_states()[cursors[first_stream]].id)
+							first_stream = stream_index;
 					}
-					++cursors[stream_index];
+					if (first_stream == streams.size())
+						break;
+					const auto id = streams[first_stream]->public_states()[cursors[first_stream]].id;
+					const auto& first_candidate = streams[first_stream]->public_states()[cursors[first_stream]];
+					record_discovery_descriptor_copy(first_candidate, diagnostics);
+					output.push_back(first_candidate);
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+					{
+						const auto& stream = *streams[stream_index];
+						if (cursors[stream_index] == stream.public_state_count() || stream.public_states()[cursors[stream_index]].id != id)
+							continue;
+						const auto& candidate = stream.public_states()[cursors[stream_index]];
+						if (!MultiwaySolverCoordinator::public_state_candidates_compatible(output.back(), candidate))
+							throw std::invalid_argument("multiway discovery merge found conflicting public-state descriptors");
+						if (public_state_candidate_less(candidate, output.back()))
+						{
+							record_discovery_descriptor_copy(candidate, diagnostics);
+							output.back() = candidate;
+						}
+						++cursors[stream_index];
+					}
 				}
 			}
 			diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
@@ -291,6 +298,7 @@ namespace texas::solver::multiway
 			if (streams.size() == 1U)
 			{
 				const auto& stream = *streams.front();
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.single_stream");
 				output.assign(stream.rows().begin(), stream.rows().end());
 				cursors.assign(1U, stream.row_count());
 				diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
@@ -305,31 +313,37 @@ namespace texas::solver::multiway
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
 				total += stream->row_count();
-			output.reserve(total);
-			cursors.assign(streams.size(), 0U);
-			while (true)
 			{
-				std::size_t first_stream = streams.size();
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.prepare_output");
+				output.reserve(total);
+			}
+			cursors.assign(streams.size(), 0U);
+			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.multi_stream");
+				while (true)
 				{
-					if (cursors[stream_index] == streams[stream_index]->row_count())
-						continue;
-					if (first_stream == streams.size() || streams[stream_index]->rows()[cursors[stream_index]].infoset < streams[first_stream]->rows()[cursors[first_stream]].infoset)
-						first_stream = stream_index;
-				}
-				if (first_stream == streams.size())
-					break;
-				const auto infoset = streams[first_stream]->rows()[cursors[first_stream]].infoset;
-				output.push_back(streams[first_stream]->rows()[cursors[first_stream]]);
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
-				{
-					const auto& stream = *streams[stream_index];
-					if (cursors[stream_index] == stream.row_count() || stream.rows()[cursors[stream_index]].infoset != infoset)
-						continue;
-					const auto& candidate = stream.rows()[cursors[stream_index]];
-					if (candidate.bucket_count != output.back().bucket_count || candidate.action_count != output.back().action_count)
-						throw std::invalid_argument("multiway discovery merge found conflicting row shapes");
-					++cursors[stream_index];
+					std::size_t first_stream = streams.size();
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+					{
+						if (cursors[stream_index] == streams[stream_index]->row_count())
+							continue;
+						if (first_stream == streams.size() || streams[stream_index]->rows()[cursors[stream_index]].infoset < streams[first_stream]->rows()[cursors[first_stream]].infoset)
+							first_stream = stream_index;
+					}
+					if (first_stream == streams.size())
+						break;
+					const auto infoset = streams[first_stream]->rows()[cursors[first_stream]].infoset;
+					output.push_back(streams[first_stream]->rows()[cursors[first_stream]]);
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+					{
+						const auto& stream = *streams[stream_index];
+						if (cursors[stream_index] == stream.row_count() || stream.rows()[cursors[stream_index]].infoset != infoset)
+							continue;
+						const auto& candidate = stream.rows()[cursors[stream_index]];
+						if (candidate.bucket_count != output.back().bucket_count || candidate.action_count != output.back().action_count)
+							throw std::invalid_argument("multiway discovery merge found conflicting row shapes");
+						++cursors[stream_index];
+					}
 				}
 			}
 			diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
@@ -1421,10 +1435,15 @@ namespace texas::solver::multiway
 						reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()),
 						&buffer_bytes) != FALSE)
 				{
+					const auto total_buffer_bytes = static_cast<std::size_t>(buffer_bytes);
 					std::size_t offset = 0U;
-					while (offset < buffer_bytes)
+					while (offset <= total_buffer_bytes &&
+						total_buffer_bytes - offset >= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX))
 					{
 						const auto* information = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buffer.data() + offset);
+						const auto entry_size = static_cast<std::size_t>(information->Size);
+						if (entry_size < sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) || entry_size > total_buffer_bytes - offset)
+							break;
 						if (information->Relationship == RelationProcessorCore)
 						{
 							for (WORD group_index = 0U; group_index < information->Processor.GroupCount; ++group_index)
@@ -1446,9 +1465,7 @@ namespace texas::solver::multiway
 								}
 							}
 						}
-						if (information->Size == 0U)
-							break;
-						offset += information->Size;
+						offset += entry_size;
 					}
 				}
 			}
