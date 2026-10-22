@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -51,8 +52,14 @@ def main() -> int:
     output = args.output if args.output.is_absolute() else root / args.output
     output.parent.mkdir(parents=True, exist_ok=True)
     command = ["ctest", "--test-dir", "build", "-C", "Debug", "--output-on-failure", "--parallel", str(args.parallel)]
-    print(f"started compact ctest: configuration=Debug parallel_jobs={args.parallel} root={root} log={output}")
-    result = subprocess.run(command, cwd=root, capture_output=True, text=True,
+    test_temp = root / "tmp" / "ctest_temp"
+    test_temp.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment["TEMP"] = str(test_temp)
+    environment["TMP"] = str(test_temp)
+    environment["TMPDIR"] = str(test_temp)
+    print(f"started compact ctest: configuration=Debug parallel_jobs={args.parallel} root={root} temp={test_temp} log={output}")
+    result = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True,
                             encoding="utf-8", errors="replace")
     transcript = result.stdout + result.stderr
     output.write_text(transcript, encoding="utf-8")

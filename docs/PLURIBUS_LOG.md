@@ -1,5 +1,17 @@
 # Pluribus Roadmap Progress Log
 
+## Tooling - Make compact CTest use controlled temporary storage
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Updated `scripts/compact_ctest.py` to set `TEMP`, `TMP`, and `TMPDIR` to `tmp/ctest_temp` for child tests.
+- This keeps Windows atomic-publication tests independent of the default temporary directory.
+
+### Validation
+
+- Bundled Python `scripts/compact_ctest.py --parallel 1` completed with all 110 tests passing.
+
 ## Tracy - Split one-stream discovery copy zones
 
 **Status:** Complete
