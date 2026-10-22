@@ -1,5 +1,14 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Test scheduler claim accounting
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tests) Verify scheduler claim accounting`
+
+- Added dynamic-skew coverage for per-worker scheduler-claim vector size and aggregate equality.
+- `test_multiway_parallel_training` passed.
+
 ## TH3 - Preserve legacy scheduler sample parsing
 
 **Status:** Complete

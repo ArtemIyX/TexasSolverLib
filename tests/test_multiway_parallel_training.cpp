@@ -327,6 +327,11 @@ TEST_CASE(multiway_dynamic_scheduler_exercises_skewed_chunk_assignment)
 	EXPECT_EQ(result.trajectories_discarded, 0U);
 	EXPECT_TRUE(result.maximum_worker_trajectories > result.minimum_worker_trajectories);
 	EXPECT_EQ(result.worker_trajectory_counts.size(), 4U);
+	EXPECT_EQ(result.worker_scheduler_claim_nanoseconds_by_worker.size(), 4U);
+	std::uint64_t scheduler_claim_total = 0U;
+	for (const auto value : result.worker_scheduler_claim_nanoseconds_by_worker)
+		scheduler_claim_total += value;
+	EXPECT_EQ(scheduler_claim_total, result.worker_scheduler_claim_nanoseconds);
 }
 
 TEST_CASE(multiway_blueprint_training_telemetry_retention_is_bounded)
