@@ -1,5 +1,15 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Expose scheduler claim metrics in scripts
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Expose scheduler claim metrics`
+
+- Added scheduler-claim timing and share fields to the worker-matrix output.
+- Added per-worker scheduler-claim output to the RAM-1000 runner.
+- PowerShell parser validation passed for the updated scripts.
+
 ## TH3 - Add dynamic scheduler claim telemetry
 
 **Status:** Complete

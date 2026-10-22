@@ -128,6 +128,7 @@ foreach ($pinningMode in $pinningModes) {
                 $elapsed = [double]$report.elapsed_wall_nanoseconds
                 $workerActive = [double]$report.worker_active_nanoseconds
                 $barrierShare = if ($elapsed -gt 0.0) { [double]$report.barrier_wait_nanoseconds / $elapsed } else { 0.0 }
+                $schedulerClaimShare = if ($workerActive -gt 0.0) { [double]$report.worker_scheduler_claim_nanoseconds / $workerActive } else { 0.0 }
                 $lockShare = if ($workerActive -gt 0.0) { [double]$report.coordinator_lock_wait_nanoseconds / $workerActive } else { 0.0 }
                 $mergeShare = if ($elapsed -gt 0.0) { [double]$report.merge_nanoseconds / $elapsed } else { 0.0 }
                 $normalizedCpu = if ($elapsed -gt 0.0 -and $workerCount -gt 0) {
@@ -161,6 +162,7 @@ foreach ($pinningMode in $pinningModes) {
                     active_nanoseconds_per_trajectory = ($activePerTrajectory -join ',')
                     active_time_imbalance = $activeImbalance
                     barrier_share = $barrierShare
+                    scheduler_claim_share = $schedulerClaimShare
                     lock_contention_share = $lockShare
                     serial_merge_share = $mergeShare
                     normalized_process_cpu_use = $normalizedCpu
@@ -170,6 +172,8 @@ foreach ($pinningMode in $pinningModes) {
                     worker_active_nanoseconds_by_worker = ($report.worker_active_nanoseconds_by_worker -join ',')
                     worker_wake_latency_nanoseconds_by_worker = ($report.worker_wake_latency_nanoseconds_by_worker -join ',')
                     worker_cv_wait_nanoseconds_by_worker = ($report.worker_cv_wait_nanoseconds_by_worker -join ',')
+                    worker_scheduler_claim_nanoseconds = $report.worker_scheduler_claim_nanoseconds
+                    worker_scheduler_claim_nanoseconds_by_worker = ($report.worker_scheduler_claim_nanoseconds_by_worker -join ',')
                     worker_tail_idle_nanoseconds_by_worker = ($report.worker_tail_idle_nanoseconds_by_worker -join ',')
                     worker_allocation_counts = ($report.worker_allocation_counts -join ',')
                     worker_allocated_bytes = ($report.worker_allocated_bytes -join ',')
@@ -208,7 +212,7 @@ foreach ($group in ($results | Group-Object { "$($_.pinning)|$($_.scheduler)|$($
 
 $jsonPath = Join-Path $OutputDirectory 'worker_matrix.json'
 $csvPath = Join-Path $OutputDirectory 'worker_matrix.csv'
-$results | Sort-Object pinning, scheduler, workers, repeat | Format-Table pinning, scheduler, workers, repeat, trajectories_per_second, throughput_median, active_time_imbalance, barrier_share, lock_contention_share, serial_merge_share, normalized_process_cpu_use, peak_process_rss_bytes
+$results | Sort-Object pinning, scheduler, workers, repeat | Format-Table pinning, scheduler, workers, repeat, trajectories_per_second, throughput_median, active_time_imbalance, barrier_share, scheduler_claim_share, lock_contention_share, serial_merge_share, normalized_process_cpu_use, peak_process_rss_bytes
 $results | Sort-Object pinning, scheduler, workers, repeat | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
 $results | Sort-Object pinning, scheduler, workers, repeat | Export-Csv -LiteralPath $csvPath -NoTypeInformation
 Write-Output "[matrix] JSON summary=$jsonPath"
