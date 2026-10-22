@@ -1776,7 +1776,10 @@ namespace texas::solver::multiway
 		result.run.first_trajectory_id = first_trajectory_id;
 		result.run.trajectory_count = trajectory_count;
 		result.run.schedule_fingerprint = multiway_deterministic_schedule_fingerprint(
-			worker_count_, seed, first_trajectory_id, trajectory_count);
+			worker_count_, seed, first_trajectory_id, trajectory_count,
+			scheduler_mode_, dynamic_chunk_size_);
+		result.run.scheduler_mode = scheduler_mode_;
+		result.run.dynamic_chunk_size = dynamic_chunk_size_;
 		MultiwaySearchProfile batch_profile(profile_mode_);
 		std::uint64_t terminal_visits = 0U;
 		std::uint64_t leaf_visits = 0U;

@@ -122,6 +122,13 @@ TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity)
 	EXPECT_EQ(first, repeat);
 	EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(2U, 7U, 9U, 32U));
 	EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(4U, 8U, 9U, 32U));
+	const auto dynamic_chunk_one = texas::multiway_deterministic_schedule_fingerprint(
+		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Dynamic, 1U);
+	const auto dynamic_chunk_eight = texas::multiway_deterministic_schedule_fingerprint(
+		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Dynamic, 8U);
+	EXPECT_TRUE(dynamic_chunk_one != dynamic_chunk_eight);
+	EXPECT_TRUE(dynamic_chunk_one != texas::multiway_deterministic_schedule_fingerprint(
+		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Fixed, 4U));
 }
 
 TEST_CASE(multiway_scheduler_reports_deterministic_run_metadata)

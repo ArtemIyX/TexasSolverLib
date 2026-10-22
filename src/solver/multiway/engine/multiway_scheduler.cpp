@@ -32,6 +32,19 @@ namespace texas::solver::multiway
 		std::uint64_t first_trajectory_id,
 		std::uint64_t trajectory_count) noexcept
 	{
+		return multiway_deterministic_schedule_fingerprint(
+			worker_count, base_seed, first_trajectory_id, trajectory_count,
+			MultiwaySchedulerMode::Fixed, MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+	}
+
+	std::uint64_t multiway_deterministic_schedule_fingerprint(
+		std::uint32_t worker_count,
+		std::uint64_t base_seed,
+		std::uint64_t first_trajectory_id,
+		std::uint64_t trajectory_count,
+		MultiwaySchedulerMode scheduler_mode,
+		std::uint32_t dynamic_chunk_size) noexcept
+	{
 		std::uint64_t hash = 1469598103934665603ULL;
 		hash_u64(worker_count, hash);
 		hash_u64(base_seed, hash);
@@ -42,6 +55,9 @@ namespace texas::solver::multiway
 		hash_u64(MULTIWAY_ACTION_SAMPLING_VERSION, hash);
 		hash_u64(MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION, hash);
 		hash_u64(MULTIWAY_MERGE_ORDER_VERSION, hash);
+		hash_u64(MULTIWAY_SCHEDULER_POLICY_VERSION, hash);
+		hash_u64(static_cast<std::uint64_t>(scheduler_mode), hash);
+		hash_u64(dynamic_chunk_size, hash);
 		return hash == 0U ? 1U : hash;
 	}
 
