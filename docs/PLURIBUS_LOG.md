@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## Tracy - Trace catalog reconstruction
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Trace catalog reconstruction`
+
+- Split packed public-state reconstruction into scalar, vector, betting, and history Tracy regions.
+- Added an export-output preparation region while preserving descriptor ownership and reconstruction behavior.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_public_catalog`, `test_multiway_qualification_reports`, and `test_multiway_solver`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
 ## Tracy - Trace parent transition edges
 
 **Status:** Complete
