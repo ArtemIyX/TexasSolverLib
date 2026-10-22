@@ -1053,6 +1053,7 @@ namespace texas::solver::multiway
 		};
 		for (const auto state_index : parent_order)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admission.state");
 			if (state_index >= public_states.size() || processed_states[state_index] != 0U)
 				throw std::invalid_argument("multiway prepared admission order is not a permutation");
 			const auto& state = public_states[state_index];
@@ -1090,6 +1091,7 @@ namespace texas::solver::multiway
 				throw std::length_error("multiway public-state admission exceeds configured capacity");
 			if (state.parent_id.value != 0U)
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admission.parent");
 				const auto parent_index = parent_indexes == nullptr
 					? find_candidate(state.parent_id)
 					: (*parent_indexes)[state_index];
@@ -1156,6 +1158,7 @@ namespace texas::solver::multiway
 		std::size_t new_value_count = 0U;
 		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admission.row");
 			const auto& shape = rows[row_index];
 			const auto state_index = row_state_indexes[row_index];
 			const auto row_state_started = std::chrono::steady_clock::now();

@@ -564,36 +564,45 @@ namespace texas::solver::multiway
 	void MultiwayDiscoveryStream::prepare_for_merge()
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.prepare_for_merge");
-		sort_fixed_order();
-		auto public_state_output = public_states_.begin();
-		for (auto candidate = public_states_.begin(); candidate != public_states_.end(); ++candidate)
 		{
-			if (public_state_output != public_states_.begin() && (public_state_output - 1)->id == candidate->id)
-			{
-				if (!MultiwaySolverCoordinator::public_state_candidates_compatible(*(public_state_output - 1), *candidate))
-					throw std::invalid_argument("multiway worker discovery found conflicting public-state descriptors");
-				continue;
-			}
-			if (public_state_output != candidate)
-				*public_state_output = std::move(*candidate);
-			++public_state_output;
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.sort");
+			sort_fixed_order();
 		}
-		public_states_.erase(public_state_output, public_states_.end());
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.deduplicate_public_states");
+			auto public_state_output = public_states_.begin();
+			for (auto candidate = public_states_.begin(); candidate != public_states_.end(); ++candidate)
+			{
+				if (public_state_output != public_states_.begin() && (public_state_output - 1)->id == candidate->id)
+				{
+					if (!MultiwaySolverCoordinator::public_state_candidates_compatible(*(public_state_output - 1), *candidate))
+						throw std::invalid_argument("multiway worker discovery found conflicting public-state descriptors");
+					continue;
+				}
+				if (public_state_output != candidate)
+					*public_state_output = std::move(*candidate);
+				++public_state_output;
+			}
+			public_states_.erase(public_state_output, public_states_.end());
+		}
 
-		auto row_output = rows_.begin();
-		for (auto candidate = rows_.begin(); candidate != rows_.end(); ++candidate)
 		{
-			if (row_output != rows_.begin() && (row_output - 1)->infoset == candidate->infoset)
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.deduplicate_rows");
+			auto row_output = rows_.begin();
+			for (auto candidate = rows_.begin(); candidate != rows_.end(); ++candidate)
 			{
-				if ((row_output - 1)->bucket_count != candidate->bucket_count || (row_output - 1)->action_count != candidate->action_count)
-					throw std::invalid_argument("multiway worker discovery found conflicting row shapes");
-				continue;
+				if (row_output != rows_.begin() && (row_output - 1)->infoset == candidate->infoset)
+				{
+					if ((row_output - 1)->bucket_count != candidate->bucket_count || (row_output - 1)->action_count != candidate->action_count)
+						throw std::invalid_argument("multiway worker discovery found conflicting row shapes");
+					continue;
+				}
+				if (row_output != candidate)
+					*row_output = *candidate;
+				++row_output;
 			}
-			if (row_output != candidate)
-				*row_output = *candidate;
-			++row_output;
+			rows_.erase(row_output, rows_.end());
 		}
-		rows_.erase(row_output, rows_.end());
 	}
 
 	void MultiwayTraversalPruningConfig::validate() const
@@ -1643,10 +1652,12 @@ namespace texas::solver::multiway
 							TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traversal");
 							if (scheduler_mode_ == MultiwaySchedulerMode::Fixed)
 							{
+								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.fixed");
 								process_range(worker_batches_[worker_index].trajectories);
 							}
 							else
 							{
+								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.dynamic");
 								while (!cancelled_.load(std::memory_order_relaxed))
 								{
 									const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
@@ -1813,6 +1824,7 @@ namespace texas::solver::multiway
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.collect");
 			for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.collect_worker");
 				auto& scratch = worker_scratch_[worker_index];
 				result.trajectories_attempted += scratch.attempted;
 				result.trajectories_accepted += scratch.accepted;

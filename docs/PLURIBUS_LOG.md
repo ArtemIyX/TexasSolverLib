@@ -1,5 +1,20 @@
 # Pluribus Roadmap Progress Log
 
+## Tracy - Add admission and scheduler subzones
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Add admission and scheduler subzones`
+
+- Added Tracy subzones for discovery sorting and deduplication, fixed and dynamic scheduler execution, and per-worker result collection.
+- Added per-state, parent-transition, row, catalog validation, and menu-resolution zones for admission analysis.
+
+### Validation
+
+- Debug CMake focused targets built successfully.
+- Tracy RelWithDebInfo targets built successfully.
+- `test_multiway_scheduler` and `test_multiway_parallel_training` passed.
+
 ## TH3 - Report scheduler balance metrics
 
 **Status:** Complete

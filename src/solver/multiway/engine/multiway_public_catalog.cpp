@@ -332,6 +332,7 @@ namespace texas::solver::multiway
 		std::size_t new_count = 0U;
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit.validate_state");
 			if (new_state_flags[index] == 0U)
 				continue;
 			if (states[index].id.value == 0U || states[index].board.size() > 5U || states[index].incoming_edge.dealt_cards.size() > 3U || states[index].incoming_edge.transition_board.size() > 5U)
@@ -345,6 +346,7 @@ namespace texas::solver::multiway
 		std::size_t existing_index = 0U;
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit.resolve_menu");
 			if (new_state_flags[index] == 0U)
 				continue;
 			while (existing_index < index_.size() && index_[existing_index].id < states[index].id)
