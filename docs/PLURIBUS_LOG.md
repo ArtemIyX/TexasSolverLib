@@ -1,5 +1,39 @@
 # Pluribus Roadmap Progress Log
 
+## TH3/TH5 - Configurable scheduling and topology-aware pinning
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commits:** `6840cc3`, `4720574`, `0c3b204`, `f291723`
+
+- Added runtime dynamic scheduler chunk sizes with the existing size 4 default.
+- Added benchmark and steady-state matrix controls for chunk-size sweeps.
+- Versioned the scheduler policy in run metadata and schedule fingerprints.
+- Replaced Windows logical-index pinning with physical-core-first processor-group affinity and an unpinned fallback when topology discovery is unavailable.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_scheduler.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_scheduler.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_scheduler.cpp`
+- `examples/benchmarks/multiway_training_scaling_main.cpp`
+- `scripts/run_multiway_steady_state_matrix.ps1`
+
+### Validation
+
+- CMake Debug targets built successfully.
+- `test_multiway_scheduler` passed.
+- `test_multiway_parallel_training` passed.
+- Tracy RelWithDebInfo training targets built successfully.
+- Benchmark `--help` exposed the chunk-size sweep option.
+
+### Limitations
+
+- No long scheduler or pinning matrix was started.
+- Runtime placement results still require operator captures for qualification.
+
 ## Tooling - Build Tracy targets and analyze existing matrix reports
 
 **Status:** Complete
