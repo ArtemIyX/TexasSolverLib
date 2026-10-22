@@ -69,9 +69,16 @@ namespace texas::solver::multiway
 	public:
 		[[nodiscard]] static std::size_t dynamic_chunk_count(
 			std::uint64_t trajectory_count) noexcept;
+		[[nodiscard]] static std::size_t dynamic_chunk_count(
+			std::uint64_t trajectory_count,
+			std::uint32_t chunk_size) noexcept;
 		[[nodiscard]] static MultiwayTrajectoryRange dynamic_chunk_range(
 			std::uint64_t trajectory_count,
 			std::size_t chunk_index) noexcept;
+		[[nodiscard]] static MultiwayTrajectoryRange dynamic_chunk_range(
+			std::uint64_t trajectory_count,
+			std::size_t chunk_index,
+			std::uint32_t chunk_size) noexcept;
 		// Writes a deterministic contiguous partition into caller-owned storage.
 		// Returns zero only when output is null or capacity is zero.
 		[[nodiscard]] static std::size_t partition_deterministic_into(

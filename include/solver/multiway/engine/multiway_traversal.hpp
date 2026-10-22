@@ -274,7 +274,8 @@ namespace texas::solver::multiway
 			MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled,
 			bool pin_workers = false,
 			bool immutable_epochs = false,
-			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed);
+			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
 		~MultiwayRootBatchRunner();
 
 		MultiwayRootBatchRunner(const MultiwayRootBatchRunner&) = delete;
@@ -356,6 +357,7 @@ namespace texas::solver::multiway
 		bool pin_workers_ = false;
 		bool immutable_epochs_ = false;
 		MultiwaySchedulerMode scheduler_mode_ = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size_ = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
 		std::vector<WorkerScratch> worker_scratch_;
 		std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
 		std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;

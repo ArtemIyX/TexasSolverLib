@@ -1369,8 +1369,9 @@ namespace texas::solver::multiway
 		std::uint32_t worker_count,
 		std::size_t worker_delta_capacity,
 		MultiwaySearchProfileMode profile_mode,
-		bool pin_workers, bool immutable_epochs, MultiwaySchedulerMode scheduler_mode)
-		: traversal_(std::move(traversal)), coordinator_(&coordinator), worker_count_(worker_count), worker_delta_capacity_(worker_delta_capacity), profile_mode_(profile_mode), pin_workers_(pin_workers), immutable_epochs_(immutable_epochs), scheduler_mode_(scheduler_mode)
+		bool pin_workers, bool immutable_epochs, MultiwaySchedulerMode scheduler_mode,
+		std::uint32_t dynamic_chunk_size)
+		: traversal_(std::move(traversal)), coordinator_(&coordinator), worker_count_(worker_count), worker_delta_capacity_(worker_delta_capacity), profile_mode_(profile_mode), pin_workers_(pin_workers), immutable_epochs_(immutable_epochs), scheduler_mode_(scheduler_mode), dynamic_chunk_size_(dynamic_chunk_size)
 	{
 		if (worker_count_ == 0U || worker_delta_capacity_ == 0U)
 		{
@@ -1383,6 +1384,10 @@ namespace texas::solver::multiway
 		if (scheduler_mode_ != MultiwaySchedulerMode::Fixed && scheduler_mode_ != MultiwaySchedulerMode::Dynamic)
 		{
 			throw std::invalid_argument("multiway root batch runner has an invalid scheduler mode");
+		}
+		if (dynamic_chunk_size_ == 0U)
+		{
+			throw std::invalid_argument("multiway root batch runner requires a positive dynamic chunk size");
 		}
 		worker_scratch_.reserve(worker_count_);
 		worker_stream_views_.reserve(worker_count_);
@@ -1567,7 +1572,7 @@ namespace texas::solver::multiway
 									const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
 									if (chunk_index >= chunk_count)
 										break;
-									process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index));
+									process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index, dynamic_chunk_size_));
 								}
 							}
 						}
@@ -1654,7 +1659,7 @@ namespace texas::solver::multiway
 				active_batch_count_ = batch_count;
 				active_trajectory_count_ = trajectory_count;
 				active_chunk_count_ = scheduler_mode_ == MultiwaySchedulerMode::Dynamic
-					? MultiwayScheduler::dynamic_chunk_count(trajectory_count)
+					? MultiwayScheduler::dynamic_chunk_count(trajectory_count, dynamic_chunk_size_)
 					: 0U;
 				next_dynamic_chunk_.store(0U, std::memory_order_relaxed);
 				active_first_trajectory_id_ = first_trajectory_id;

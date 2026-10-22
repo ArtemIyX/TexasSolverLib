@@ -80,15 +80,34 @@ namespace texas::solver::multiway
 	std::size_t MultiwayScheduler::dynamic_chunk_count(
 		std::uint64_t trajectory_count) noexcept
 	{
+		return dynamic_chunk_count(trajectory_count, MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+	}
+
+	std::size_t MultiwayScheduler::dynamic_chunk_count(
+		std::uint64_t trajectory_count,
+		std::uint32_t chunk_size) noexcept
+	{
+		if (chunk_size == 0U)
+			return 0U;
 		return static_cast<std::size_t>(
-			trajectory_count / MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE + (trajectory_count % MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE == 0U ? 0U : 1U));
+			trajectory_count / chunk_size + (trajectory_count % chunk_size == 0U ? 0U : 1U));
 	}
 
 	MultiwayTrajectoryRange MultiwayScheduler::dynamic_chunk_range(
 		std::uint64_t trajectory_count,
 		std::size_t chunk_index) noexcept
 	{
-		const auto chunk_size = static_cast<std::uint64_t>(MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		return dynamic_chunk_range(trajectory_count, chunk_index, MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+	}
+
+	MultiwayTrajectoryRange MultiwayScheduler::dynamic_chunk_range(
+		std::uint64_t trajectory_count,
+		std::size_t chunk_index,
+		std::uint32_t requested_chunk_size) noexcept
+	{
+		if (requested_chunk_size == 0U)
+			return { trajectory_count, trajectory_count, 1U };
+		const auto chunk_size = static_cast<std::uint64_t>(requested_chunk_size);
 		if (chunk_index > std::numeric_limits<std::uint64_t>::max() / chunk_size)
 			return { trajectory_count, trajectory_count, 1U };
 		const auto begin = std::min<std::uint64_t>(
