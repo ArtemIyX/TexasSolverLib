@@ -9,7 +9,8 @@
   both training executables expected by the capture scripts.
 - Added a bounded analyzer for the eight existing cold/steady matrix reports.
 - The analyzer verifies acceptance, fingerprints, checkpoint bytes, failed and
-  discarded counts, trajectories, and reports allocation-probe provenance.
+  discarded counts, trajectories, deterministic counts, checkpoint section
+  bytes, scheduler equivalence, and allocation-probe provenance.
 
 ### Files
 

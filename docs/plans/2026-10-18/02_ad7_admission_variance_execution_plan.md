@@ -40,7 +40,9 @@ The existing eight cold/steady matrix reports were analyzed without rerunning
 the workload. All eight passed the checkpoint acceptance, fingerprint,
 checkpoint-byte, failed/discarded, and trajectory gates. Those historical
 reports have `allocation_probe_valid=false`; the analyzer reports that fact
-explicitly rather than treating it as valid allocation evidence.
+explicitly rather than treating it as valid allocation evidence. It also
+compares fixed and dynamic deterministic counts and checkpoint section bytes
+for each phase and worker-count pair.
 
 ## Repository state and boundary
 

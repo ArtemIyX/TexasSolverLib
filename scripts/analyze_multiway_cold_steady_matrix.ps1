@@ -72,6 +72,7 @@ foreach ($captureId in $captureIds) {
     $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     $summary = Get-Content -Raw -LiteralPath $summaryPath | ConvertFrom-Json
     $identity = $report.admission_diagnostics
+    $checkpointTelemetry = $report.checkpoint_telemetry
     $correct = [bool]$summary.acceptance_pass -and
         [string]$report.deterministic_merge_fingerprint -eq $expectedFingerprint -and
         [Int64]$report.checkpoint_bytes -eq $expectedCheckpointBytes -and
@@ -97,6 +98,18 @@ foreach ($captureId in $captureIds) {
         catalog_commit_ms = [math]::Round([double]$identity.catalog_commit_nanoseconds / 1e6, 3)
         peak_process_rss_bytes = [Int64]$report.peak_process_rss_bytes
         compact_storage_bytes = [Int64]$report.peak_compact_storage_bytes
+        peak_public_states = [Int64]$report.peak_public_states
+        peak_sparse_rows = [Int64]$report.peak_sparse_rows
+        peak_sparse_values = [Int64]$report.peak_sparse_values
+        generated_update_count = [Int64]$report.generated_update_count
+        generated_discovery_public_state_count = [Int64]$report.generated_discovery_public_state_count
+        generated_discovery_row_count = [Int64]$report.generated_discovery_row_count
+        total_peak_delta_entries = [Int64]$report.total_peak_delta_entries
+        public_state_bytes = [Int64]$checkpointTelemetry.public_state_bytes
+        row_shape_bytes = [Int64]$checkpointTelemetry.row_shape_bytes
+        regret_bytes = [Int64]$checkpointTelemetry.regret_bytes
+        strategy_sum_bytes = [Int64]$checkpointTelemetry.strategy_sum_bytes
+        late_window_baseline_bytes = [Int64]$checkpointTelemetry.late_window_baseline_bytes
         checkpoint_bytes = [Int64]$report.checkpoint_bytes
         fingerprint = [string]$report.deterministic_merge_fingerprint
         discarded = [Int64]$report.discarded_trajectories
@@ -105,8 +118,53 @@ foreach ($captureId in $captureIds) {
     }
 }
 
+$equivalenceFields = @(
+    'trajectories',
+    'accepted_trajectories',
+    'discarded',
+    'failed',
+    'fingerprint',
+    'checkpoint_bytes',
+    'peak_public_states',
+    'peak_sparse_rows',
+    'peak_sparse_values',
+    'generated_update_count',
+    'generated_discovery_public_state_count',
+    'generated_discovery_row_count',
+    'total_peak_delta_entries',
+    'compact_storage_bytes',
+    'public_state_bytes',
+    'row_shape_bytes',
+    'regret_bytes',
+    'strategy_sum_bytes',
+    'late_window_baseline_bytes'
+)
+foreach ($group in ($results | Group-Object { "$($_.phase)|$($_.workers)" })) {
+    $fixed = @($group.Group | Where-Object { $_.scheduler -eq 'fixed' })
+    $dynamic = @($group.Group | Where-Object { $_.scheduler -eq 'dynamic' })
+    $equivalent = $fixed.Count -eq 1 -and $dynamic.Count -eq 1
+    if ($equivalent) {
+        foreach ($field in $equivalenceFields) {
+            if (($fixed[0].$field | ConvertTo-Json -Compress -Depth 8) -ne
+                ($dynamic[0].$field | ConvertTo-Json -Compress -Depth 8)) {
+                $equivalent = $false
+                break
+            }
+        }
+    }
+    foreach ($row in $group.Group) {
+        $row | Add-Member -NotePropertyName scheduler_equivalent -NotePropertyValue $equivalent -Force
+        if (-not $equivalent) {
+            $row.matrix_gate_pass = $false
+        }
+    }
+    if (-not $equivalent) {
+        $failures += "scheduler-equivalence:$($group.Name)"
+    }
+}
+
 $summaryOutputPath = Join-Path $resolvedInputRoot 'cold_steady_matrix_summary.json'
-$results | Sort-Object phase, scheduler, workers | Format-Table id, acceptance_pass, matrix_gate_pass, allocation_probe_valid, trajectories_per_second, admission_ms, identity_ms, validation_ms, catalog_commit_ms, peak_process_rss_bytes, compact_storage_bytes, checkpoint_bytes, fingerprint, failed, discarded -AutoSize | Out-String | Write-Output
+$results | Sort-Object phase, scheduler, workers | Format-Table id, acceptance_pass, matrix_gate_pass, scheduler_equivalent, allocation_probe_valid, trajectories_per_second, admission_ms, identity_ms, validation_ms, catalog_commit_ms, peak_process_rss_bytes, compact_storage_bytes, checkpoint_bytes, fingerprint, failed, discarded -AutoSize | Out-String | Write-Output
 $results | Sort-Object phase, scheduler, workers | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryOutputPath -Encoding utf8
 Write-Output "[matrix] summary=$summaryOutputPath"
 
