@@ -1,5 +1,22 @@
 # Pluribus Roadmap Progress Log
 
+## AD7 - Coordinator copy, allocation telemetry, and Tracy zones
+
+**Status:** Implemented; verification pending
+**Completed:** 2026-10-22
+
+- Added coordinator allocation count and byte telemetry to batch results and
+  training memory reports.
+- Added discovery and catalog output-capacity reuse counters.
+- Added public descriptor and nested vector copy counters and byte volumes for
+  discovery merge and catalog packing.
+- Added accumulation and JSON serialization regression coverage.
+- Added scoped Tracy zones for coordinator admission, discovery merge, catalog
+  packing, worker discovery, traversal, and checkpoint phases.
+- Focused CMake build was attempted for `test_multiway_solver` and
+  `test_multiway_qualification_reports`; it produced no diagnostics for 60
+  seconds and was stopped. No test executable result is claimed.
+
 ## TH1-TH2 - Steady-state benchmark and per-worker capacity
 
 **Status:** Implemented; verification pending
