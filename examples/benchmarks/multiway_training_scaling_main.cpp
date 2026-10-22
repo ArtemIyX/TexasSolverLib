@@ -29,12 +29,14 @@ namespace
 
 	struct BenchmarkConfig
 	{
-		std::vector<std::uint32_t> workers{ 1U, 2U, 4U, 8U, 16U };
-		std::vector<std::uint32_t> batch_sizes{ 1000U, 4000U, 16000U };
+		std::vector<std::uint32_t> workers{ 1U, 2U, 4U, 8U };
+		std::vector<std::uint32_t> batch_sizes{ 1000U };
 		std::uint32_t warmup_batches = 1U;
-		std::uint32_t timed_batches = 1U;
-		std::uint32_t repeats = 3U;
+		std::uint32_t timed_batches = 4U;
+		std::uint32_t repeats = 5U;
 		std::uint64_t seed = 0x77U;
+		texas::MultiwaySchedulerMode scheduler_mode = texas::MultiwaySchedulerMode::Fixed;
+		bool pin_workers = true;
 	};
 
 	struct BenchmarkResult
@@ -168,8 +170,9 @@ namespace
 	class BenchmarkFixture
 	{
 	public:
-		BenchmarkFixture(std::uint32_t workers, std::uint32_t batch_size, std::uint64_t seed)
-			: delta_capacity_(checked_delta_capacity(batch_size)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, true, true), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
+		BenchmarkFixture(std::uint32_t workers, std::uint32_t batch_size, std::uint64_t seed,
+			texas::MultiwaySchedulerMode scheduler_mode, bool pin_workers)
+			: delta_capacity_(checked_delta_capacity(batch_size)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, pin_workers, true, scheduler_mode), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
 
 		BenchmarkResult run(
 			std::uint32_t workers,
@@ -300,6 +303,17 @@ namespace
 		}
 	}
 
+	bool parse_scheduler(std::string_view text, texas::MultiwaySchedulerMode& output)
+	{
+		if (text == "fixed")
+			output = texas::MultiwaySchedulerMode::Fixed;
+		else if (text == "dynamic")
+			output = texas::MultiwaySchedulerMode::Dynamic;
+		else
+			return false;
+		return true;
+	}
+
 	bool parse_csv(std::string_view text, std::vector<std::uint32_t>& output)
 	{
 		std::vector<std::uint32_t> parsed;
@@ -337,7 +351,9 @@ namespace
 						  << "  --warmup-batches N\n"
 						  << "  --timed-batches N\n"
 						  << "  --repeats N\n"
-						  << "  --seed N\n";
+						  << "  --seed N\n"
+						  << "  --scheduler fixed|dynamic\n"
+						  << "  --pin-workers true|false\n";
 				std::exit(EXIT_SUCCESS);
 			}
 			if (index + 1 >= argc)
@@ -377,6 +393,20 @@ namespace
 			{
 				if (!parse_u64(value, config.seed))
 					throw std::invalid_argument("invalid seed");
+			}
+			else if (option == "--scheduler")
+			{
+				if (!parse_scheduler(value, config.scheduler_mode))
+					throw std::invalid_argument("invalid scheduler");
+			}
+			else if (option == "--pin-workers")
+			{
+				if (value == "true" || value == "1")
+					config.pin_workers = true;
+				else if (value == "false" || value == "0")
+					config.pin_workers = false;
+				else
+					throw std::invalid_argument("invalid pin-worker setting");
 			}
 			else
 			{
@@ -424,7 +454,10 @@ namespace
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "fixture=three_player_river_depth_one"
 				  << " hardware_concurrency=" << std::thread::hardware_concurrency()
-				  << " worker_affinity=pinned_logical_processor"
+				  << " worker_affinity=" << (config.pin_workers ? "pinned_logical_processor" : "unrestricted")
+				  << " scheduler=" << (config.scheduler_mode == texas::MultiwaySchedulerMode::Fixed ? "fixed" : "dynamic")
+				  << " pin_workers=" << (config.pin_workers ? "true" : "false")
+				  << " checkpoint_output=disabled blueprint_output=disabled"
 				  << " warmup_batches=" << config.warmup_batches
 				  << " timed_batches=" << config.timed_batches
 				  << " repeats=" << config.repeats
@@ -440,7 +473,7 @@ namespace
 				samples.reserve(config.repeats);
 				for (std::uint32_t sample = 1U; sample <= config.repeats; ++sample)
 				{
-					BenchmarkFixture fixture(workers, batch_size, config.seed);
+					BenchmarkFixture fixture(workers, batch_size, config.seed, config.scheduler_mode, config.pin_workers);
 					auto result = fixture.run(
 						workers, batch_size, config.warmup_batches,
 						config.timed_batches, sample, config.seed);

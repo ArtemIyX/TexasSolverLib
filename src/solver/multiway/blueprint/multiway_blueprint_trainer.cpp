@@ -478,6 +478,8 @@ namespace texas::solver::multiway
 					status_.worker_discovery_row_counts[worker_index], batch_result.worker_discovery_row_counts[worker_index]);
 				status_.worker_allocation_counts[worker_index] += batch_result.worker_allocation_counts[worker_index];
 				status_.worker_allocated_bytes[worker_index] += batch_result.worker_allocated_bytes[worker_index];
+				status_.memory_ledger.worker_allocation_count += batch_result.worker_allocation_counts[worker_index];
+				status_.memory_ledger.worker_allocation_bytes += batch_result.worker_allocated_bytes[worker_index];
 				status_.worker_resolved_processor[worker_index] = batch_result.worker_resolved_processor[worker_index];
 				status_.worker_affinity_masks[worker_index] = batch_result.worker_affinity_masks[worker_index];
 				status_.worker_affinity_succeeded[worker_index] = batch_result.worker_affinity_succeeded[worker_index];

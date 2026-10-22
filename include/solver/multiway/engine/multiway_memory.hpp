@@ -53,6 +53,8 @@ namespace texas::solver::multiway
 		std::uint64_t regret_page_bytes = 0U;
 		std::uint64_t worker_stream_bytes = 0U;
 		std::uint64_t discovery_stream_bytes = 0U;
+		std::uint64_t worker_allocation_count = 0U;
+		std::uint64_t worker_allocation_bytes = 0U;
 		std::uint64_t merge_scratch_bytes = 0U;
 		std::uint64_t checkpoint_peak_bytes = 0U;
 		std::uint64_t export_peak_bytes = 0U;

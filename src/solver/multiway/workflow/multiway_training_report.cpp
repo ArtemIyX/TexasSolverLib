@@ -440,6 +440,8 @@ namespace texas::solver::multiway
 			   << ", \"regret_page_bytes\": " << report.memory_ledger.regret_page_bytes
 			   << ", \"worker_stream_bytes\": " << report.memory_ledger.worker_stream_bytes
 			   << ", \"discovery_stream_bytes\": " << report.memory_ledger.discovery_stream_bytes
+			   << ", \"worker_allocation_count\": " << report.memory_ledger.worker_allocation_count
+			   << ", \"worker_allocation_bytes\": " << report.memory_ledger.worker_allocation_bytes
 			   << ", \"merge_scratch_bytes\": " << report.memory_ledger.merge_scratch_bytes
 			   << ", \"checkpoint_peak_bytes\": " << report.memory_ledger.checkpoint_peak_bytes
 			   << ", \"export_peak_bytes\": " << report.memory_ledger.export_peak_bytes
