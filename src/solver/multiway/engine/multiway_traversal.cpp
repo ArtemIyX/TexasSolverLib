@@ -213,15 +213,27 @@ namespace texas::solver::multiway
 			{
 				const auto& stream = *streams.front();
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream");
-				if (output.capacity() >= stream.public_state_count())
 				{
-					++diagnostics.output_capacity_reuse_events;
-					diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(stream.public_state_count() * sizeof(MultiwayPublicStateDescriptor));
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.capacity");
+					if (output.capacity() >= stream.public_state_count())
+					{
+						++diagnostics.output_capacity_reuse_events;
+						diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(stream.public_state_count() * sizeof(MultiwayPublicStateDescriptor));
+					}
 				}
-				for (const auto& state : stream.public_states())
-					record_discovery_descriptor_copy(state, diagnostics);
-				output.assign(stream.public_states().begin(), stream.public_states().end());
-				cursors.assign(1U, stream.public_state_count());
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.telemetry");
+					for (const auto& state : stream.public_states())
+						record_discovery_descriptor_copy(state, diagnostics);
+				}
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.copy");
+					output.assign(stream.public_states().begin(), stream.public_states().end());
+				}
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.cursor");
+					cursors.assign(1U, stream.public_state_count());
+				}
 				diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - merge_started)
@@ -299,8 +311,14 @@ namespace texas::solver::multiway
 			{
 				const auto& stream = *streams.front();
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.single_stream");
-				output.assign(stream.rows().begin(), stream.rows().end());
-				cursors.assign(1U, stream.row_count());
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.single_stream.copy");
+					output.assign(stream.rows().begin(), stream.rows().end());
+				}
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.single_stream.cursor");
+					cursors.assign(1U, stream.row_count());
+				}
 				diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - merge_started)

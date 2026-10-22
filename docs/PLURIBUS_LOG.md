@@ -1,5 +1,19 @@
 # Pluribus Roadmap Progress Log
 
+## Tracy - Split one-stream discovery copy zones
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Added coordinator Tracy subzones for one-stream public-state capacity checks, telemetry accounting, owned descriptor copying, and cursor setup.
+- Added matching row-copy and cursor subzones.
+
+### Validation
+
+- CMake Debug target `test_multiway_solver` built successfully.
+- CMake RelWithDebInfo Tracy target `texas_solver_multiway_training_scaling_tracy` built successfully.
+- CTest `test_multiway_solver` passed.
+
 ## Tooling - Report empty Tracy captures
 
 **Status:** Complete
