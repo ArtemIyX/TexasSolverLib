@@ -22,6 +22,17 @@ New-Item -ItemType Directory -Force -Path $resolvedBuildDirectory | Out-Null
 $cachePath = Join-Path $resolvedBuildDirectory 'CMakeCache.txt'
 $logPath = Join-Path $resolvedBuildDirectory 'multiway_tracy_build.log'
 
+function Invoke-CMake([string[]]$Arguments) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $cmake @Arguments *> $logPath
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
 if ($Configure -or -not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
     $configureArguments = @(
         '-S', $repoRoot,
@@ -34,10 +45,10 @@ if ($Configure -or -not (Test-Path -LiteralPath $cachePath -PathType Leaf)) {
         '-DTEXASSOLVER_TRACY_MEMORY=OFF'
     )
     Write-Output "[tracy-build] configuring $resolvedBuildDirectory"
-    & $cmake @configureArguments *> $logPath
-    if ($LASTEXITCODE -ne 0) {
+    $configureExitCode = Invoke-CMake $configureArguments
+    if ($configureExitCode -ne 0) {
         Get-Content -LiteralPath $logPath
-        throw "CMake configure failed with exit code $LASTEXITCODE"
+        throw "CMake configure failed with exit code $configureExitCode"
     }
 }
 
@@ -52,10 +63,10 @@ $buildArguments = @(
 ) + $targets + @('--parallel', $Parallel.ToString())
 
 Write-Output "[tracy-build] building $($targets -join ', ')"
-& $cmake @buildArguments *> $logPath
-if ($LASTEXITCODE -ne 0) {
+$buildExitCode = Invoke-CMake $buildArguments
+if ($buildExitCode -ne 0) {
     Get-Content -LiteralPath $logPath
-    throw "CMake Tracy build failed with exit code $LASTEXITCODE"
+    throw "CMake Tracy build failed with exit code $buildExitCode"
 }
 
 foreach ($target in $targets) {
