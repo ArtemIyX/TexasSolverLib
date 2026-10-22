@@ -544,7 +544,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept
 	{
 		MultiwayPublicIdentityInspection output;
-		inspect_schema_v2_identity(betting, board, history, legal_actions, output);
+		(void)inspect_schema_v2_identity(betting, board, history, legal_actions, output);
 		return output;
 	}
 
