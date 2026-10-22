@@ -171,6 +171,7 @@ namespace texas::solver::multiway
 			{
 				case MultiwayPublicParentEdgeKind::BettingAction:
 				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_parent_transition.action");
 					const auto edge_started = std::chrono::steady_clock::now();
 					if (child.history.size() != parent.history.size() + 1U)
 					{
@@ -220,6 +221,7 @@ namespace texas::solver::multiway
 				}
 				case MultiwayPublicParentEdgeKind::BoardChance:
 				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_parent_transition.board_chance");
 					const auto edge_started = std::chrono::steady_clock::now();
 					const auto parent_kind = parent_state.next_node_kind();
 					if ((parent_kind != MultiwayNextNodeKind::BoardRunout && parent_kind != MultiwayNextNodeKind::StreetTransition) || child.history != parent.history || !same_betting_snapshot(child.betting, parent.betting) || child.board.size() <= parent.board.size() || !board_contains(child.board, parent.board) || !are_valid_and_distinct_cards(child.board.data(), child.board.size()))
@@ -248,6 +250,7 @@ namespace texas::solver::multiway
 				}
 				case MultiwayPublicParentEdgeKind::StreetTransition:
 				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_parent_transition.street");
 					const auto edge_started = std::chrono::steady_clock::now();
 					if (parent_state.next_node_kind() != MultiwayNextNodeKind::StreetTransition || child.history != parent.history || child.board != child.incoming_edge.transition_board || child.board.size() != expected_board_card_count(static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U)) || child.board.size() < parent.board.size() || !board_contains(child.board, parent.board) || child.board_runout.remaining_board_cards != 5U - child.board.size() || child.board_runout.chance_only_runout)
 					{
