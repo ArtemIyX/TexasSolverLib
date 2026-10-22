@@ -33,7 +33,7 @@ foreach ($group in @($manifest.groups)) {
 
     $groupRows = @()
     foreach ($line in Get-Content -LiteralPath $stdoutPath) {
-        $sampleMatched = $line -match '^sample workers=(?<workers>\d+) batch_size=(?<batch>\d+) dynamic_chunk_size=(?<chunk>\d+) repeat=(?<repeat>\d+) .*? trajectories_per_second=(?<throughput>[0-9.]+) .*? barrier_wait_ns=(?<barrier>\d+) .*? worker_active_ns=(?<active>\d+) .*? worker_wake_latency_ns=(?<wake>\d+) .*? worker_cv_wait_ns=(?<cv>\d+) .*? worker_scheduler_claim_ns=(?<claim>\d+) .*? worker_tail_idle_ns=(?<tail>\d+) .*? worker_active_min_ns=(?<minimum>\d+) .*? worker_active_max_ns=(?<maximum>\d+) .*? process_cpu_ns=(?<cpu>\d+) '
+        $sampleMatched = $line -match '^sample workers=(?<workers>\d+) batch_size=(?<batch>\d+) dynamic_chunk_size=(?<chunk>\d+) repeat=(?<repeat>\d+) .*? trajectories_per_second=(?<throughput>[0-9.]+) .*? barrier_wait_ns=(?<barrier>\d+) .*? worker_active_ns=(?<active>\d+) .*? worker_wake_latency_ns=(?<wake>\d+) .*? worker_cv_wait_ns=(?<cv>\d+)(?: worker_scheduler_claim_ns=(?<claim>\d+))? .*? worker_tail_idle_ns=(?<tail>\d+) .*? worker_active_min_ns=(?<minimum>\d+) .*? worker_active_max_ns=(?<maximum>\d+) .*? process_cpu_ns=(?<cpu>\d+) '
         if ($sampleMatched) {
             $sampleRows += [pscustomobject]@{
                 id = [string]$group.id
@@ -50,7 +50,7 @@ foreach ($group in @($manifest.groups)) {
                 worker_active_nanoseconds = [uint64]$matches.active
                 worker_wake_latency_nanoseconds = [uint64]$matches.wake
                 worker_cv_wait_nanoseconds = [uint64]$matches.cv
-                worker_scheduler_claim_nanoseconds = [uint64]$matches.claim
+                worker_scheduler_claim_nanoseconds = if ([string]::IsNullOrWhiteSpace($matches.claim)) { 0U } else { [uint64]$matches.claim }
                 worker_tail_idle_nanoseconds = [uint64]$matches.tail
                 minimum_worker_active_nanoseconds = [uint64]$matches.minimum
                 maximum_worker_active_nanoseconds = [uint64]$matches.maximum

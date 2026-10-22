@@ -1,5 +1,15 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Preserve legacy scheduler sample parsing
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Preserve legacy scheduler sample parsing`
+
+- Made the scheduler-claim sample field optional in the analyzer.
+- Older sample lines now parse with a zero claim value; summary-only logs remain unchanged.
+- PowerShell parsing and existing matrix re-analysis passed.
+
 ## TH3 - Parse scheduler claim samples
 
 **Status:** Complete
