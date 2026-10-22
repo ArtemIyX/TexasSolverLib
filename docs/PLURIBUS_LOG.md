@@ -1,5 +1,15 @@
 # Pluribus Roadmap Progress Log
 
+## Verification - Current scheduler telemetry tree
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (verification) Verify current telemetry tree`
+
+- Full CMake Debug build passed with errors-only output.
+- Focused suites passed: public builder, public catalog, qualification reports, solver, and terminal adapter.
+- No long matrix or qualification capture was run.
+
 ## Tooling - Report scheduler claim telemetry in qualification summaries
 
 **Status:** Complete
