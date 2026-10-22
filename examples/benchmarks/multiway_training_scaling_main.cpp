@@ -199,6 +199,31 @@ namespace
 				std::chrono::steady_clock::now() - started)
 									 .count();
 			const auto& after = trainer_.status();
+			std::uint64_t minimum_worker_active_nanoseconds = std::numeric_limits<std::uint64_t>::max();
+			std::uint64_t maximum_worker_active_nanoseconds = 0U;
+			std::uint64_t minimum_worker_trajectories = std::numeric_limits<std::uint64_t>::max();
+			std::uint64_t maximum_worker_trajectories = 0U;
+			const auto worker_count = std::min(
+				std::min(before.worker_active_nanoseconds_by_worker.size(), after.worker_active_nanoseconds_by_worker.size()),
+				std::min(before.worker_trajectory_counts.size(), after.worker_trajectory_counts.size()));
+			for (std::size_t worker = 0U; worker < worker_count; ++worker)
+			{
+				const auto active_before = before.worker_active_nanoseconds_by_worker[worker];
+				const auto active_after = after.worker_active_nanoseconds_by_worker[worker];
+				const auto trajectories_before = before.worker_trajectory_counts[worker];
+				const auto trajectories_after = after.worker_trajectory_counts[worker];
+				const auto active = active_after >= active_before ? active_after - active_before : 0U;
+				const auto trajectories = trajectories_after >= trajectories_before ? trajectories_after - trajectories_before : 0U;
+				minimum_worker_active_nanoseconds = std::min(minimum_worker_active_nanoseconds, active);
+				maximum_worker_active_nanoseconds = std::max(maximum_worker_active_nanoseconds, active);
+				minimum_worker_trajectories = std::min(minimum_worker_trajectories, trajectories);
+				maximum_worker_trajectories = std::max(maximum_worker_trajectories, trajectories);
+			}
+			if (worker_count == 0U)
+			{
+				minimum_worker_active_nanoseconds = 0U;
+				minimum_worker_trajectories = 0U;
+			}
 			return {
 				workers,
 				batch_size,
@@ -215,11 +240,11 @@ namespace
 				after.delta_sort_nanoseconds - before.delta_sort_nanoseconds,
 				after.merge_nanoseconds - before.merge_nanoseconds,
 				after.worker_tail_idle_nanoseconds - before.worker_tail_idle_nanoseconds,
-				after.minimum_worker_active_nanoseconds,
-				after.maximum_worker_active_nanoseconds,
+				minimum_worker_active_nanoseconds,
+				maximum_worker_active_nanoseconds,
 				after.process_cpu_nanoseconds - before.process_cpu_nanoseconds,
-				after.minimum_worker_trajectories,
-				after.maximum_worker_trajectories,
+				minimum_worker_trajectories,
+				maximum_worker_trajectories,
 				after.peak_worker_delta_entries,
 				after.merged_stream_fingerprint,
 			};

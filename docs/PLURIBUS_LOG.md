@@ -1,5 +1,18 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Isolate timed worker bounds
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Isolate timed worker bounds`
+
+- Changed benchmark worker active-time and trajectory min/max metrics to use per-worker deltas from the timed interval.
+- Prevented warmup batches from contaminating scheduler balance measurements.
+
+### Validation
+
+- CMake Debug target `texas_solver_multiway_training_scaling` built successfully.
+
 ## TH3 - Analyze scheduler balance samples
 
 **Status:** Complete
