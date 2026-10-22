@@ -27,8 +27,14 @@ The Tracy
 that the schema-v2 history encoder has eight explicit byte steps with no call
 to `append_u64` or `append_u64_bytes` in the identity function's code range;
 the only branch in that region is the outer history-entry iteration. Four
-cold-capture qualification remains pending. No candidate qualification result
-is claimed.
+cold-capture qualification is complete for the existing controlled reports.
+All four admission-split captures passed `acceptance_pass`, with coordinator
+admission from `232.048` to `237.390 ms`, identity validation from `54.337` to
+`54.848 ms`, public-state validation from `94.495` to `95.688 ms`, and catalog
+commit from `22.520` to `23.221 ms`. Fingerprint, checkpoint bytes, discarded
+trajectories, phase coverage, and deterministic counts matched the required
+values. Candidate A is therefore qualified. The full cold/steady worker matrix
+is intentionally deferred to avoid an hour-scale run.
 
 ## Repository state and boundary
 

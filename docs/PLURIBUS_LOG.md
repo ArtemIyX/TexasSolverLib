@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## AD7 - Candidate A cold qualification
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Validated the four existing controlled one-worker cold reports for fixed and
+  dynamic schedulers.
+- All four passed `acceptance_pass`; coordinator admission was `232.048` to
+  `237.390 ms`, identity validation was `54.337` to `54.848 ms`, public-state
+  validation was `94.495` to `95.688 ms`, and catalog commit was `22.520` to
+  `23.221 ms`.
+- Fingerprint `9806774443936985566`, checkpoint bytes `137380835`, phase
+  coverage, byte accounting, discarded count, and deterministic counts passed.
+- Candidate A is qualified. The full cold/steady worker matrix remains
+  deferred because it is an hour-scale run.
+
+### Files
+
+- `scripts/analyze_multiway_cold_qualification.ps1`
+- `docs/plans/2026-10-18/02_ad7_admission_variance_execution_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Existing four capture reports and Tracy CSV files were analyzed successfully.
+
+### Limitations
+
+- No new 60-second captures or large worker matrix was started in this turn.
+
 ## AD7 - Coordinator copy, allocation telemetry, and Tracy zones
 
 **Status:** Implemented; verification pending
