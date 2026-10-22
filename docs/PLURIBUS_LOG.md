@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## TH1 - Add steady-state matrix analyzer
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `8af97a9 [PB-4] (benchmark) Add steady-state matrix analyzer`
+
+- Added a bounded parser for the steady-state matrix manifest and stdout logs.
+- Validates every configured worker summary, non-zero fingerprint, and chunk-size group.
+- Supports legacy logs that omit the chunk-size field by applying the default size 4.
+
+### Files
+
+- `scripts/analyze_multiway_steady_state_matrix.ps1`
+
+### Validation
+
+- Existing `tmp/multiway-steady-state` output passed with 16 summaries and one non-zero fingerprint.
+
+### Limitations
+
+- No new steady-state matrix was run.
+
 ## TH3/TH5 - Configurable scheduling and topology-aware pinning
 
 **Status:** Complete
