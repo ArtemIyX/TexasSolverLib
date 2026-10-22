@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## Tracy - Trace parent transition edges
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Trace parent transition edges`
+
+- Added typed Tracy regions for betting-action, board-chance, and street-transition validation.
+- Kept the existing validation contracts, edge timers, counters, and deterministic behavior unchanged.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_solver` and `test_multiway_parallel_training`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
 ## Tracy - Trace catalog admission phases
 
 **Status:** Complete
