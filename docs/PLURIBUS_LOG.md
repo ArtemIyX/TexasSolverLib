@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## Tracy - Split discovery merge regions and harden topology parsing
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Add discovery merge subzones`
+
+- Added Tracy regions for single-stream assignment, output preparation, and multi-stream public-state and row merges.
+- Added bounds validation before walking variable-size Windows processor-topology records.
+- Preserved merge ordering, diagnostics, and scheduler behavior.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_solver` and `test_multiway_parallel_training`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
 ## Verification - Current scheduler telemetry tree
 
 **Status:** Complete
