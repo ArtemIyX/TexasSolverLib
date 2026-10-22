@@ -368,20 +368,25 @@ namespace texas::solver::multiway
 			return;
 		}
 
-		batch_pending_menus_.clear();
-		batch_menu_keys_.assign(states.size(), 0U);
-		batch_menu_handles_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
-		batch_pending_menu_indexes_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
-		batch_pending_index_.clear();
-		batch_pending_menu_index_.clear();
-		batch_pending_menus_.reserve(new_count);
-		batch_pending_index_.reserve(new_count);
-		batch_pending_menu_index_.reserve(new_count);
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.prepare_pending");
+			batch_pending_menus_.clear();
+			batch_menu_keys_.assign(states.size(), 0U);
+			batch_menu_handles_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
+			batch_pending_menu_indexes_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
+			batch_pending_index_.clear();
+			batch_pending_menu_index_.clear();
+			batch_pending_menus_.reserve(new_count);
+			batch_pending_index_.reserve(new_count);
+			batch_pending_menu_index_.reserve(new_count);
+		}
 
 		std::size_t existing_menu_hits = 0U;
 		std::size_t batch_menu_reuse_hits = 0U;
-		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.resolve_menus");
+			for (std::size_t index = 0U; index < states.size(); ++index)
+			{
 			if (new_state_flags[index] == 0U)
 				continue;
 			const auto menu_started = std::chrono::steady_clock::now();
@@ -480,6 +485,7 @@ namespace texas::solver::multiway
 			batch_pending_menu_index_.insert(pending_index_insertion, pending_entry);
 			record_menu_lookup();
 		}
+		}
 
 		if (diagnostics != nullptr)
 		{
@@ -506,10 +512,13 @@ namespace texas::solver::multiway
 		record_output_capacity_reuse(diagnostics, menus_.capacity() >= menus_.size() + batch_pending_menus_.size(), batch_pending_menus_.size(), sizeof(menus_.front()));
 		record_output_capacity_reuse(diagnostics, menu_index_.capacity() >= menu_index_.size() + batch_pending_menu_index_.size(), batch_pending_menu_index_.size(), sizeof(MenuIndexEntry));
 		const auto reserve_started = std::chrono::steady_clock::now();
-		nodes_.reserve(nodes_.size() + batch_pending_index_.size());
-		index_.reserve(index_.size() + batch_pending_index_.size());
-		menus_.reserve(menus_.size() + batch_pending_menus_.size());
-		menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.reserve");
+			nodes_.reserve(nodes_.size() + batch_pending_index_.size());
+			index_.reserve(index_.size() + batch_pending_index_.size());
+			menus_.reserve(menus_.size() + batch_pending_menus_.size());
+			menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
+		}
 		if (diagnostics != nullptr)
 			diagnostics->catalog_reserve_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -517,62 +526,68 @@ namespace texas::solver::multiway
 					.count());
 
 		const auto index_started = std::chrono::steady_clock::now();
-		const auto index_merge_started = std::chrono::steady_clock::now();
-		batch_merged_index_.clear();
-		batch_merged_index_.reserve(index_.size() + batch_pending_index_.size());
-		std::size_t old_index = 0U;
-		std::size_t new_index = 0U;
-		while (old_index < index_.size() || new_index < batch_pending_index_.size())
 		{
-			if (new_index == batch_pending_index_.size() || (old_index < index_.size() && index_[old_index].id < batch_pending_index_[new_index].id))
-				batch_merged_index_.push_back(index_[old_index++]);
-			else
-				batch_merged_index_.push_back(batch_pending_index_[new_index++]);
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.merge_indexes");
+			const auto index_merge_started = std::chrono::steady_clock::now();
+			batch_merged_index_.clear();
+			batch_merged_index_.reserve(index_.size() + batch_pending_index_.size());
+			std::size_t old_index = 0U;
+			std::size_t new_index = 0U;
+			while (old_index < index_.size() || new_index < batch_pending_index_.size())
+			{
+				if (new_index == batch_pending_index_.size() || (old_index < index_.size() && index_[old_index].id < batch_pending_index_[new_index].id))
+					batch_merged_index_.push_back(index_[old_index++]);
+				else
+					batch_merged_index_.push_back(batch_pending_index_[new_index++]);
+			}
+			batch_merged_menu_index_.clear();
+			batch_merged_menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
+			std::size_t old_menu_index = 0U;
+			std::size_t new_menu_index = 0U;
+			while (old_menu_index < menu_index_.size() || new_menu_index < batch_pending_menu_index_.size())
+			{
+				bool take_old = new_menu_index == batch_pending_menu_index_.size();
+				if (!take_old && old_menu_index < menu_index_.size())
+				{
+					const auto pending_menu_handle = static_cast<std::uint32_t>(menus_.size() + batch_pending_menu_index_[new_menu_index].pending_menu_index);
+					take_old = menu_index_[old_menu_index].canonical_menu_id < batch_pending_menu_index_[new_menu_index].canonical_menu_id || (menu_index_[old_menu_index].canonical_menu_id == batch_pending_menu_index_[new_menu_index].canonical_menu_id && menu_index_[old_menu_index].menu_handle < pending_menu_handle);
+				}
+				if (take_old)
+					batch_merged_menu_index_.push_back(menu_index_[old_menu_index++]);
+				else
+				{
+					const auto& pending_entry = batch_pending_menu_index_[new_menu_index++];
+					batch_merged_menu_index_.push_back({ pending_entry.canonical_menu_id, static_cast<std::uint32_t>(menus_.size() + pending_entry.pending_menu_index) });
+				}
+			}
+			if (index_merge_nanoseconds != nullptr)
+				*index_merge_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - index_merge_started)
+						.count());
 		}
-		batch_merged_menu_index_.clear();
-		batch_merged_menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
-		std::size_t old_menu_index = 0U;
-		std::size_t new_menu_index = 0U;
-		while (old_menu_index < menu_index_.size() || new_menu_index < batch_pending_menu_index_.size())
 		{
-			bool take_old = new_menu_index == batch_pending_menu_index_.size();
-			if (!take_old && old_menu_index < menu_index_.size())
-			{
-				const auto pending_menu_handle = static_cast<std::uint32_t>(menus_.size() + batch_pending_menu_index_[new_menu_index].pending_menu_index);
-				take_old = menu_index_[old_menu_index].canonical_menu_id < batch_pending_menu_index_[new_menu_index].canonical_menu_id || (menu_index_[old_menu_index].canonical_menu_id == batch_pending_menu_index_[new_menu_index].canonical_menu_id && menu_index_[old_menu_index].menu_handle < pending_menu_handle);
-			}
-			if (take_old)
-				batch_merged_menu_index_.push_back(menu_index_[old_menu_index++]);
-			else
-			{
-				const auto& pending_entry = batch_pending_menu_index_[new_menu_index++];
-				batch_merged_menu_index_.push_back({ pending_entry.canonical_menu_id, static_cast<std::uint32_t>(menus_.size() + pending_entry.pending_menu_index) });
-			}
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.append");
+			const auto append_started = std::chrono::steady_clock::now();
+			const auto pack_started = std::chrono::steady_clock::now();
+			for (auto& menu : batch_pending_menus_)
+				menus_.push_back(std::move(menu));
+			for (std::size_t index = 0U; index < states.size(); ++index)
+				if (new_state_flags[index] != 0U)
+					nodes_.push_back(pack_node(states[index], batch_menu_handles_[index], diagnostics));
+			if (diagnostics != nullptr)
+				diagnostics->catalog_node_pack_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - pack_started)
+						.count());
+			index_.swap(batch_merged_index_);
+			menu_index_.swap(batch_merged_menu_index_);
+			if (diagnostics != nullptr)
+				diagnostics->catalog_append_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - append_started)
+						.count());
 		}
-		if (index_merge_nanoseconds != nullptr)
-			*index_merge_nanoseconds += static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - index_merge_started)
-					.count());
-		const auto append_started = std::chrono::steady_clock::now();
-		const auto pack_started = std::chrono::steady_clock::now();
-		for (auto& menu : batch_pending_menus_)
-			menus_.push_back(std::move(menu));
-		for (std::size_t index = 0U; index < states.size(); ++index)
-			if (new_state_flags[index] != 0U)
-				nodes_.push_back(pack_node(states[index], batch_menu_handles_[index], diagnostics));
-		if (diagnostics != nullptr)
-			diagnostics->catalog_node_pack_nanoseconds += static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - pack_started)
-					.count());
-		index_.swap(batch_merged_index_);
-		menu_index_.swap(batch_merged_menu_index_);
-		if (diagnostics != nullptr)
-			diagnostics->catalog_append_nanoseconds += static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - append_started)
-					.count());
 		if (index_insertion_nanoseconds != nullptr)
 			*index_insertion_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
