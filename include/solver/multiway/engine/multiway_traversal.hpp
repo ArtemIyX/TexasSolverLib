@@ -369,6 +369,8 @@ namespace texas::solver::multiway
 		std::vector<MultiwayWorkerBatch> worker_batches_;
 		std::vector<std::thread> threads_;
 		std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;
+		std::vector<std::uint16_t> worker_affinity_groups_;
+		std::vector<std::uint64_t> worker_affinity_masks_;
 		std::mutex pool_mutex_;
 		std::condition_variable completion_cv_;
 		std::uint64_t notification_timestamp_nanoseconds_ = 0U;

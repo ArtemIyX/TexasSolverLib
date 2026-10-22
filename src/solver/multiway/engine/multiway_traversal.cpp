@@ -1389,6 +1389,82 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway root batch runner requires a positive dynamic chunk size");
 		}
+		worker_affinity_groups_.assign(worker_count_, 0U);
+		worker_affinity_masks_.assign(worker_count_, 0U);
+#if defined(_WIN32)
+		if (pin_workers_)
+		{
+			struct ProcessorPlacement
+			{
+				std::uint16_t group = 0U;
+				std::uint16_t processor = 0U;
+				std::uint64_t mask = 0U;
+			};
+			std::vector<ProcessorPlacement> physical;
+			std::vector<ProcessorPlacement> logical;
+			DWORD buffer_bytes = 0U;
+			if (::GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &buffer_bytes) == FALSE &&
+				::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				std::vector<std::uint8_t> buffer(buffer_bytes);
+				if (::GetLogicalProcessorInformationEx(
+						RelationProcessorCore,
+						reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()),
+						&buffer_bytes) != FALSE)
+				{
+					std::size_t offset = 0U;
+					while (offset < buffer_bytes)
+					{
+						const auto* information = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buffer.data() + offset);
+						if (information->Relationship == RelationProcessorCore)
+						{
+							for (WORD group_index = 0U; group_index < information->Processor.GroupCount; ++group_index)
+							{
+								const auto group = information->Processor.GroupMask[group_index].Group;
+								const auto mask = information->Processor.GroupMask[group_index].Mask;
+								bool first_logical_processor = true;
+								for (std::uint16_t processor = 0U; processor < sizeof(KAFFINITY) * 8U; ++processor)
+								{
+									const auto bit = static_cast<KAFFINITY>(1) << processor;
+									if ((mask & bit) == 0U)
+										continue;
+									const ProcessorPlacement placement{
+										static_cast<std::uint16_t>(group), processor, static_cast<std::uint64_t>(bit) };
+									logical.push_back(placement);
+									if (first_logical_processor)
+										physical.push_back(placement);
+									first_logical_processor = false;
+								}
+							}
+						}
+						if (information->Size == 0U)
+							break;
+						offset += information->Size;
+					}
+				}
+			}
+			std::vector<ProcessorPlacement> selected;
+			selected.reserve(logical.size());
+			for (const auto& placement : physical)
+				selected.push_back(placement);
+			for (const auto& placement : logical)
+			{
+				const auto already_selected = std::find_if(selected.begin(), selected.end(), [&placement](const auto& existing) {
+					return existing.group == placement.group && existing.processor == placement.processor;
+				});
+				if (already_selected == selected.end())
+					selected.push_back(placement);
+			}
+			if (selected.size() >= worker_count_)
+			{
+				for (std::size_t worker = 0U; worker < worker_count_; ++worker)
+				{
+					worker_affinity_groups_[worker] = selected[worker].group;
+					worker_affinity_masks_[worker] = selected[worker].mask;
+				}
+			}
+		}
+#endif
 		worker_scratch_.reserve(worker_count_);
 		worker_stream_views_.reserve(worker_count_);
 		continuation_stream_views_.reserve(worker_count_);
@@ -1446,16 +1522,20 @@ namespace texas::solver::multiway
 		TEXASSOLVER_TRACY_SET_THREAD_NAME(
 			worker_index < std::size(worker_names) ? worker_names[worker_index] : "mw.worker");
 #if defined(_WIN32)
-		if (pin_workers_ && worker_index < sizeof(DWORD_PTR) * 8U)
+		if (pin_workers_ && worker_index < worker_affinity_masks_.size() && worker_affinity_masks_[worker_index] != 0U)
 		{
-			const auto mask = static_cast<DWORD_PTR>(1) << worker_index;
-			worker_scratch.affinity_mask = static_cast<std::uint64_t>(mask);
-			worker_scratch.affinity_succeeded = ::SetThreadAffinityMask(::GetCurrentThread(), mask) != 0;
+			GROUP_AFFINITY affinity{};
+			affinity.Mask = static_cast<KAFFINITY>(worker_affinity_masks_[worker_index]);
+			affinity.Group = worker_affinity_groups_[worker_index];
+			worker_scratch.affinity_mask = worker_affinity_masks_[worker_index];
+			worker_scratch.affinity_succeeded = ::SetThreadGroupAffinity(::GetCurrentThread(), &affinity, nullptr) != FALSE;
 		}
 #endif
 		auto current_processor = []() noexcept -> std::uint32_t {
 #if defined(_WIN32)
-			return static_cast<std::uint32_t>(::GetCurrentProcessorNumber());
+			PROCESSOR_NUMBER processor{};
+			::GetCurrentProcessorNumberEx(&processor);
+			return static_cast<std::uint32_t>(processor.Group) * (sizeof(KAFFINITY) * 8U) + processor.Number;
 #elif defined(__linux__)
 			const auto processor = ::sched_getcpu();
 			return processor < 0 ? 0U : static_cast<std::uint32_t>(processor);
