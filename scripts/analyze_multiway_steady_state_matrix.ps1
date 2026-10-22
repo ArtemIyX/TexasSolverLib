@@ -33,7 +33,7 @@ foreach ($group in @($manifest.groups)) {
 
     $groupRows = @()
     foreach ($line in Get-Content -LiteralPath $stdoutPath) {
-        $sampleMatched = $line -match '^sample workers=(?<workers>\d+) batch_size=(?<batch>\d+) dynamic_chunk_size=(?<chunk>\d+) repeat=(?<repeat>\d+) .*? trajectories_per_second=(?<throughput>[0-9.]+) .*? barrier_wait_ns=(?<barrier>\d+) .*? worker_active_ns=(?<active>\d+) .*? worker_wake_latency_ns=(?<wake>\d+) .*? worker_cv_wait_ns=(?<cv>\d+) .*? worker_tail_idle_ns=(?<tail>\d+) .*? worker_active_min_ns=(?<minimum>\d+) .*? worker_active_max_ns=(?<maximum>\d+) .*? process_cpu_ns=(?<cpu>\d+) '
+        $sampleMatched = $line -match '^sample workers=(?<workers>\d+) batch_size=(?<batch>\d+) dynamic_chunk_size=(?<chunk>\d+) repeat=(?<repeat>\d+) .*? trajectories_per_second=(?<throughput>[0-9.]+) .*? barrier_wait_ns=(?<barrier>\d+) .*? worker_active_ns=(?<active>\d+) .*? worker_wake_latency_ns=(?<wake>\d+) .*? worker_cv_wait_ns=(?<cv>\d+) .*? worker_scheduler_claim_ns=(?<claim>\d+) .*? worker_tail_idle_ns=(?<tail>\d+) .*? worker_active_min_ns=(?<minimum>\d+) .*? worker_active_max_ns=(?<maximum>\d+) .*? process_cpu_ns=(?<cpu>\d+) '
         if ($sampleMatched) {
             $sampleRows += [pscustomobject]@{
                 id = [string]$group.id
@@ -50,6 +50,7 @@ foreach ($group in @($manifest.groups)) {
                 worker_active_nanoseconds = [uint64]$matches.active
                 worker_wake_latency_nanoseconds = [uint64]$matches.wake
                 worker_cv_wait_nanoseconds = [uint64]$matches.cv
+                worker_scheduler_claim_nanoseconds = [uint64]$matches.claim
                 worker_tail_idle_nanoseconds = [uint64]$matches.tail
                 minimum_worker_active_nanoseconds = [uint64]$matches.minimum
                 maximum_worker_active_nanoseconds = [uint64]$matches.maximum
@@ -144,6 +145,7 @@ if ($sampleRows.Count -gt 0) {
                 median_worker_active_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.worker_active_nanoseconds })
                 median_worker_wake_latency_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.worker_wake_latency_nanoseconds })
                 median_worker_cv_wait_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.worker_cv_wait_nanoseconds })
+                median_worker_scheduler_claim_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.worker_scheduler_claim_nanoseconds })
                 median_worker_tail_idle_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.worker_tail_idle_nanoseconds })
                 median_minimum_worker_active_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.minimum_worker_active_nanoseconds })
                 median_maximum_worker_active_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.maximum_worker_active_nanoseconds })
@@ -162,7 +164,7 @@ if ($sampleRows.Count -gt 0) {
     $sampleSummary | Sort-Object id, dynamic_chunk_size, workers |
         Export-Csv -LiteralPath $sampleCsvPath -NoTypeInformation
     $sampleSummary | Sort-Object id, dynamic_chunk_size, workers |
-        Format-Table id, scheduler, workers, dynamic_chunk_size, sample_count, median_trajectories_per_second, median_worker_tail_idle_nanoseconds, median_process_cpu_nanoseconds -AutoSize |
+        Format-Table id, scheduler, workers, dynamic_chunk_size, sample_count, median_trajectories_per_second, median_worker_scheduler_claim_nanoseconds, median_worker_tail_idle_nanoseconds, median_process_cpu_nanoseconds -AutoSize |
         Out-String | Write-Output
     Write-Output "[steady-state] sample_metrics=$samplePath"
     Write-Output "[steady-state] sample_csv=$sampleCsvPath"

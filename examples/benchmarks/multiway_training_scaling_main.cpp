@@ -51,6 +51,7 @@ namespace
 		std::uint64_t worker_active_nanoseconds = 0U;
 		std::uint64_t worker_wake_latency_nanoseconds = 0U;
 		std::uint64_t worker_cv_wait_nanoseconds = 0U;
+		std::uint64_t worker_scheduler_claim_nanoseconds = 0U;
 		std::uint64_t coordinator_wait_nanoseconds = 0U;
 		std::uint64_t barrier_wait_nanoseconds = 0U;
 		std::uint64_t coordinator_lock_wait_nanoseconds = 0U;
@@ -234,6 +235,7 @@ namespace
 				after.worker_active_nanoseconds - before.worker_active_nanoseconds,
 				after.worker_wake_latency_nanoseconds - before.worker_wake_latency_nanoseconds,
 				after.worker_cv_wait_nanoseconds - before.worker_cv_wait_nanoseconds,
+				after.worker_scheduler_claim_nanoseconds - before.worker_scheduler_claim_nanoseconds,
 				after.coordinator_wait_nanoseconds - before.coordinator_wait_nanoseconds,
 				after.barrier_wait_nanoseconds - before.barrier_wait_nanoseconds,
 				after.coordinator_lock_wait_nanoseconds - before.coordinator_lock_wait_nanoseconds,
@@ -492,6 +494,7 @@ namespace
 				  << " worker_active_ns=" << result.worker_active_nanoseconds
 				  << " worker_wake_latency_ns=" << result.worker_wake_latency_nanoseconds
 				  << " worker_cv_wait_ns=" << result.worker_cv_wait_nanoseconds
+				  << " worker_scheduler_claim_ns=" << result.worker_scheduler_claim_nanoseconds
 				  << " worker_tail_idle_ns=" << result.worker_tail_idle_nanoseconds
 				  << " worker_active_min_ns=" << result.minimum_worker_active_nanoseconds
 				  << " worker_active_max_ns=" << result.maximum_worker_active_nanoseconds

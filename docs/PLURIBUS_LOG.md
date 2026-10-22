@@ -1,5 +1,14 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Parse scheduler claim samples
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Parse scheduler claim samples`
+
+- Added `worker_scheduler_claim_ns` parsing to the steady-state sample analyzer.
+- Added grouped median scheduler-claim output to JSON, CSV, and console summaries.
+
 ## TH3 - Expose scheduler claim metrics in scripts
 
 **Status:** Complete
