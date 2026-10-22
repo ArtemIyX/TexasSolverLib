@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## Tooling - Analyze Tracy zone totals
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Analyze Tracy zone totals`
+
+- Added a bounded PowerShell analyzer that ranks all `mw.*` Tracy CSV zones by total time.
+- Reports total milliseconds, event counts, source files, and source lines, with optional JSON output.
+
+### Files
+
+- `scripts/analyze_multiway_tracy_zones.ps1`
+
+### Validation
+
+- PowerShell parser check passed.
+- Existing Tracy CSV smoke analysis passed and produced a ranked JSON report.
+
+### Limitations
+
+- It analyzes completed CSV captures only; it does not start Tracy or run workloads.
+
 ## Tracy - Trace catalog reconstruction
 
 **Status:** Complete
