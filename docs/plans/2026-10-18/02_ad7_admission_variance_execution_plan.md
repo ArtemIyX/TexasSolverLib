@@ -16,12 +16,15 @@ full descriptor/nested-vector equivalence coverage is strengthened in
 `144b413`. The schema-v2 identity out-parameter and explicitly unrolled
 dual-lane encoder are already present in `0b59e99`, `60e93f4`, and `a6728c8`.
 
-Focused CMake build was attempted for `test_multiway_solver` and
-`test_multiway_qualification_reports`. It produced no diagnostics for 60
-seconds and was stopped to avoid a long-running build. Focused test execution
-and four-capture telemetry qualification remain pending. No candidate
-qualification result is claimed; assembly inspection, focused tests, and
-captures remain pending.
+Focused CMake Debug builds completed for all five required targets, and the
+focused CTest expression passed all five tests. The Tracy
+`RelWithDebInfo` training target also built successfully. An isolated MSVC
+`RelWithDebInfo` assembly compile of `multiway_public_builder.cpp` confirmed
+that the schema-v2 history encoder has eight explicit byte steps with no call
+to `append_u64` or `append_u64_bytes` in the identity function's code range;
+the only branch in that region is the outer history-entry iteration. Four
+cold-capture qualification remains pending. No candidate qualification result
+is claimed.
 
 ## Repository state and boundary
 

@@ -13,9 +13,10 @@
 - Added accumulation and JSON serialization regression coverage.
 - Added scoped Tracy zones for coordinator admission, discovery merge, catalog
   packing, worker discovery, traversal, and checkpoint phases.
-- Focused CMake build was attempted for `test_multiway_solver` and
-  `test_multiway_qualification_reports`; it produced no diagnostics for 60
-  seconds and was stopped. No test executable result is claimed.
+- Focused CMake builds completed for all five required targets, and the
+  matching Debug CTest expression passed all five tests. The full-build helper
+  was inspected but not claimed because its MSBuild step produced no output
+  within the bounded run. No full-build result is claimed.
 
 ## AD7 - Fast-path and identity verification coverage
 
@@ -28,8 +29,11 @@
 - Confirmed the existing schema-v2 identity out-parameter and unrolled
   dual-lane encoder remain in the implementation.
 - Added public-builder identity and menu Tracy zones in commit `827f129`.
-- Focused CMake builds were stopped after no diagnostics; tests, assembly
-  inspection, and captures remain pending.
+- Focused CMake builds and CTest passed for the five required suites.
+- An isolated MSVC RelWithDebInfo assembly compile confirmed the identity
+  history encoder has explicit eight-byte steps, no `append_u64` or
+  `append_u64_bytes` call in its code range, and no runtime eight-byte loop.
+- Four cold qualification captures remain pending.
 
 ## TH1-TH2 - Steady-state benchmark and per-worker capacity
 
