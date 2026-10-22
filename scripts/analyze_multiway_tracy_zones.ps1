@@ -8,6 +8,8 @@ param(
     [ValidateRange(1, 1000)]
     [int]$Top = 100,
 
+    [switch]$AllowEmpty,
+
     [string]$OutputPath = ''
 )
 
@@ -20,7 +22,32 @@ if (-not (Test-Path -LiteralPath $CsvPath -PathType Leaf)) {
 $resolvedCsvPath = (Resolve-Path -LiteralPath $CsvPath).Path
 $rows = @(Import-Csv -LiteralPath $resolvedCsvPath)
 if ($rows.Count -eq 0) {
-    throw "Tracy CSV contains no rows: $resolvedCsvPath"
+    if (-not $AllowEmpty) {
+        throw "Tracy CSV contains no rows: $resolvedCsvPath"
+    }
+
+    $report = [ordered]@{
+        csv_path = $resolvedCsvPath
+        name_prefix = $NamePrefix
+        analysis_status = 'empty'
+        empty_reason = 'no_data_rows'
+        input_row_count = 0
+        matched_row_count = 0
+        reported_zone_count = 0
+        zones = @()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
+        $outputDirectory = Split-Path -Parent $OutputPath
+        if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
+            New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
+        }
+        $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding utf8
+    }
+
+    Write-Output "No Tracy rows were captured: $resolvedCsvPath"
+    $report | ConvertTo-Json -Depth 8
+    return
 }
 
 $firstRow = $rows[0]
@@ -31,7 +58,32 @@ if (-not ($firstRow.PSObject.Properties.Name -contains 'name') -or
 
 $zoneRows = @($rows | Where-Object { $_.name -like "$NamePrefix*" })
 if ($zoneRows.Count -eq 0) {
-    throw "No Tracy zones matched prefix '$NamePrefix' in $resolvedCsvPath"
+    if (-not $AllowEmpty) {
+        throw "No Tracy zones matched prefix '$NamePrefix' in $resolvedCsvPath"
+    }
+
+    $report = [ordered]@{
+        csv_path = $resolvedCsvPath
+        name_prefix = $NamePrefix
+        analysis_status = 'empty'
+        empty_reason = 'no_matching_zones'
+        input_row_count = $rows.Count
+        matched_row_count = 0
+        reported_zone_count = 0
+        zones = @()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
+        $outputDirectory = Split-Path -Parent $OutputPath
+        if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
+            New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
+        }
+        $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding utf8
+    }
+
+    Write-Output "No Tracy zones matched prefix '$NamePrefix': $resolvedCsvPath"
+    $report | ConvertTo-Json -Depth 8
+    return
 }
 
 $zoneTotals = @(
@@ -70,6 +122,8 @@ $zoneTotals = @(
 $report = [ordered]@{
     csv_path = $resolvedCsvPath
     name_prefix = $NamePrefix
+    analysis_status = 'ok'
+    empty_reason = $null
     input_row_count = $rows.Count
     matched_row_count = $zoneRows.Count
     reported_zone_count = $zoneTotals.Count

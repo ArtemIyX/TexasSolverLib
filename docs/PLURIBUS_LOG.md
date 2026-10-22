@@ -1,5 +1,17 @@
 # Pluribus Roadmap Progress Log
 
+## Tooling - Report empty Tracy captures
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Added `-AllowEmpty` to `scripts/analyze_multiway_tracy_zones.ps1`.
+- Header-only or prefix-free captures now produce a machine-readable `analysis_status=empty` report with an explicit reason instead of failing the analysis run.
+
+### Validation
+
+- Analyzed the existing header-only short smoke capture with `empty_reason=no_data_rows`.
+
 ## Verification - Current admission-copy telemetry smoke
 
 **Status:** Complete
