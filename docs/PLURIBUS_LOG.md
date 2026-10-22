@@ -1,5 +1,20 @@
 # Pluribus Roadmap Progress Log
 
+## TH3 - Analyze scheduler balance samples
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Analyze scheduler balance samples`
+
+- Extended the steady-state analyzer to parse per-sample barrier, wake, CV-wait, tail-idle, worker-active, and process-CPU metrics.
+- Emits raw sample and grouped median JSON/CSV files when new sample lines are present.
+- Keeps legacy summary-only logs valid.
+
+### Validation
+
+- PowerShell parser validation passed.
+- Existing 16-summary steady-state output re-analyzed successfully.
+
 ## Tracy - Add admission and scheduler subzones
 
 **Status:** Complete
