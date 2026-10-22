@@ -13,6 +13,7 @@
 - CMake Debug target `test_multiway_solver` built successfully.
 - CMake RelWithDebInfo Tracy target `texas_solver_multiway_training_scaling_tracy` built successfully.
 - CTest `test_multiway_solver` passed.
+- Full CMake Debug build passed; full CTest passed all 110 tests with workspace-local `TEMP` and `TMP`.
 
 ## Tooling - Report empty Tracy captures
 
