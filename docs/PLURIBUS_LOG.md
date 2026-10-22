@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## Tracy - Trace catalog admission phases
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Trace catalog admission phases`
+
+- Added Tracy regions for pending preparation, menu resolution, reserve, index merge, and append/packing phases.
+- Kept existing catalog counters, ownership, ordering, and error behavior unchanged.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_public_catalog`, `test_multiway_qualification_reports`, and `test_multiway_solver`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
 ## Tracy - Split discovery merge regions and harden topology parsing
 
 **Status:** Complete
