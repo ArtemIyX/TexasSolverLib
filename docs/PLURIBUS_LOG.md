@@ -1,5 +1,74 @@
 # Pluribus Roadmap Progress Log
 
+## TH1-TH2 - Steady-state benchmark and per-worker capacity
+
+**Status:** Implemented; verification pending
+**Completed:** 2026-10-22
+**Implementation commits:** `2f90a96`, `81f80e0`, `5799d8c`, `e35d302`
+
+- Changed worker delta capacity to allocate the configured amount per worker.
+- Added explicit discovery capacity through solver limits, workflow configs, identity, preflight, and reports.
+- Added worker allocation count/byte accounting to the memory ledger.
+- Added TH1 benchmark controls for fixed/dynamic scheduling and pinned/unpinned groups.
+- Added dynamic-skew and allocation-accounting coverage plus a four-group matrix launcher.
+- No build, test, benchmark, or capture was run in this session.
+
+### Files
+
+- `examples/benchmarks/multiway_training_scaling_main.cpp`
+- `scripts/run_multiway_steady_state_matrix.ps1`
+- `configs/multiway/f1_dev_v1.cfg`
+- `configs/multiway/f1_sizing_v1.cfg`
+
+## AD7 - Candidate A one-stream discovery merge
+
+**Status:** Implemented; verification pending
+**Completed:** 2026-10-18
+**Implementation commit:** `8b890c0 PB-3 Multiway: Add one-stream discovery fast path`
+**Test commit:** `9098465 PB-3 Tests: Cover discovery fast path`
+
+- Selected Candidate A from four qualified fixed/dynamic one-worker captures.
+- Added prepared one-stream public-state and row copies with post-copy telemetry.
+- Preserved generic zero-stream and multi-stream merge behavior and final cursor postconditions.
+- Added equivalence, empty-range, cursor, and source-reuse coverage.
+- No build or test was run in this session; static diff review and `git diff --check` passed.
+
+## AD7 - Admission variance telemetry split
+
+**Status:** Complete
+**Completed:** 2026-10-18
+**Implementation commit:** `944b82e PB-3 Multiway: Split admission variance telemetry`
+**Test commit:** `0ff2373 PB-3 Tests: Cover admission variance diagnostics`
+
+- Added exclusive discovery-merge and parent-transition diagnostics with transactional failure accounting.
+- Preserved aggregate timers, direct-admission behavior, report schema version, and existing validation messages.
+- Added focused accumulation, merge, edge-kind, rejection, direct-admission, and JSON emission coverage.
+- Corrected the street-transition fixture to admit the complete turn board before transition validation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static diff review completed with no actionable findings.
+- `git diff --check` passed for all changed source and test files.
+- No build or test was run, per session rules.
+
+### Qualification
+
+- Four telemetry-only captures passed the deterministic gates and exposed all Phase 1 fields.
+- Candidate A qualified: one single-stream batch per capture, zero duplicates, and public-state merge dominated discovery merge time.
+- Candidate B was not selected because no parent-transition edge kind dominated the measured cost.
+- Post-optimization build, focused tests, and matched captures remain pending.
+
 ## AD7 - Admission variance follow-up plan
 
 **Status:** Complete
