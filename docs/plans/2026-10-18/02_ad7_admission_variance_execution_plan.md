@@ -36,6 +36,12 @@ trajectories, phase coverage, and deterministic counts matched the required
 values. Candidate A is therefore qualified. The full cold/steady worker matrix
 is intentionally deferred to avoid an hour-scale run.
 
+The existing eight cold/steady matrix reports were analyzed without rerunning
+the workload. All eight passed the checkpoint acceptance, fingerprint,
+checkpoint-byte, failed/discarded, and trajectory gates. Those historical
+reports have `allocation_probe_valid=false`; the analyzer reports that fact
+explicitly rather than treating it as valid allocation evidence.
+
 ## Repository state and boundary
 
 - Planning head: `PB-3` at `eda4259`.

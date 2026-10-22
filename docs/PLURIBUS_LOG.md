@@ -1,5 +1,34 @@
 # Pluribus Roadmap Progress Log
 
+## Tooling - Build Tracy targets and analyze existing matrix reports
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Added a CMake wrapper that configures Tracy diagnostics when needed and builds
+  both training executables expected by the capture scripts.
+- Added a bounded analyzer for the eight existing cold/steady matrix reports.
+- The analyzer verifies acceptance, fingerprints, checkpoint bytes, failed and
+  discarded counts, trajectories, and reports allocation-probe provenance.
+
+### Files
+
+- `scripts/build_multiway_tracy.ps1`
+- `scripts/analyze_multiway_cold_steady_matrix.ps1`
+- `docs/plans/2026-10-18/02_ad7_admission_variance_execution_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Both PowerShell scripts parsed successfully.
+- CMake wrapper built both Tracy targets successfully.
+- Analyzer passed all eight existing matrix reports.
+
+### Limitations
+
+- Historical matrix reports have `allocation_probe_valid=false`; no new matrix
+  run was started.
+
 ## AD7 - Candidate A cold qualification
 
 **Status:** Complete
