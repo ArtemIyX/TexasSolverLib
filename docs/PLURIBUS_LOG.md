@@ -1,5 +1,19 @@
 # Pluribus Roadmap Progress Log
 
+## Verification - Full CMake build and CTest
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Ran the documented `scripts/full_build.py` workflow through `codex_powershell.ps1`.
+- The complete Debug build passed and the full CTest suite passed.
+- No qualification capture or worker matrix was started.
+
+### Validation
+
+- `tmp/build_debug.log`: build PASS.
+- `tmp/ctest_debug.log`: all tests passed.
+
 ## Tooling - Analyze Tracy zone totals
 
 **Status:** Complete
