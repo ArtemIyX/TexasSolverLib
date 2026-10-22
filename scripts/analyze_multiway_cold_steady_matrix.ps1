@@ -73,6 +73,13 @@ foreach ($captureId in $captureIds) {
     $summary = Get-Content -Raw -LiteralPath $summaryPath | ConvertFrom-Json
     $identity = $report.admission_diagnostics
     $checkpointTelemetry = $report.checkpoint_telemetry
+    $memoryLedger = $report.memory_ledger
+    $allocationTelemetryPresent = $null -ne $memoryLedger -and
+        ($memoryLedger.PSObject.Properties.Name -contains 'coordinator_allocation_count') -and
+        ($memoryLedger.PSObject.Properties.Name -contains 'coordinator_allocation_bytes')
+    $copyTelemetryPresent = $null -ne $identity -and
+        ($identity.PSObject.Properties.Name -contains 'discovery_public_descriptor_copy_bytes') -and
+        ($identity.PSObject.Properties.Name -contains 'catalog_public_descriptor_copy_bytes')
     $correct = [bool]$summary.acceptance_pass -and
         [string]$report.deterministic_merge_fingerprint -eq $expectedFingerprint -and
         [Int64]$report.checkpoint_bytes -eq $expectedCheckpointBytes -and
@@ -91,6 +98,14 @@ foreach ($captureId in $captureIds) {
         acceptance_pass = [bool]$summary.acceptance_pass
         matrix_gate_pass = $correct
         allocation_probe_valid = [bool]$report.allocation_probe_valid
+        allocation_telemetry_present = $allocationTelemetryPresent
+        copy_telemetry_present = $copyTelemetryPresent
+        coordinator_allocation_count = if ($allocationTelemetryPresent) { [Int64]$memoryLedger.coordinator_allocation_count } else { $null }
+        coordinator_allocation_bytes = if ($allocationTelemetryPresent) { [Int64]$memoryLedger.coordinator_allocation_bytes } else { $null }
+        discovery_descriptor_copy_bytes = if ($copyTelemetryPresent) { [Int64]$identity.discovery_public_descriptor_copy_bytes } else { $null }
+        catalog_descriptor_copy_bytes = if ($copyTelemetryPresent) { [Int64]$identity.catalog_public_descriptor_copy_bytes } else { $null }
+        discovery_nested_copy_bytes = if ($copyTelemetryPresent) { [Int64]$identity.discovery_nested_descriptor_copy_bytes } else { $null }
+        catalog_nested_copy_bytes = if ($copyTelemetryPresent) { [Int64]$identity.catalog_nested_descriptor_copy_bytes } else { $null }
         trajectories_per_second = [double]$report.trajectories_per_second
         admission_ms = [math]::Round([double]$report.coordinator_admission_nanoseconds / 1e6, 3)
         identity_ms = [math]::Round([double]$identity.public_state_history_identity_validation_nanoseconds / 1e6, 3)

@@ -69,6 +69,13 @@ foreach ($captureId in $captureIds) {
         $summary = Get-Content -Raw -LiteralPath $summaryPath | ConvertFrom-Json
         $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
         $diagnostics = $report.admission_diagnostics
+        $memoryLedger = $report.memory_ledger
+        $allocationTelemetryPresent = $null -ne $memoryLedger -and
+            ($memoryLedger.PSObject.Properties.Name -contains 'coordinator_allocation_count') -and
+            ($memoryLedger.PSObject.Properties.Name -contains 'coordinator_allocation_bytes')
+        $copyTelemetryPresent = $null -ne $diagnostics -and
+            ($diagnostics.PSObject.Properties.Name -contains 'discovery_public_descriptor_copy_bytes') -and
+            ($diagnostics.PSObject.Properties.Name -contains 'catalog_public_descriptor_copy_bytes')
 
         $results += [pscustomobject]@{
             id = $captureId
@@ -78,6 +85,15 @@ foreach ($captureId in $captureIds) {
             identity_ms = [math]::Round([double]$diagnostics.public_state_history_identity_validation_nanoseconds / 1e6, 3)
             validation_ms = [math]::Round([double]$diagnostics.public_state_validation_nanoseconds / 1e6, 3)
             catalog_commit_ms = [math]::Round([double]$diagnostics.catalog_commit_nanoseconds / 1e6, 3)
+            allocation_probe_valid = [bool]$report.allocation_probe_valid
+            allocation_telemetry_present = $allocationTelemetryPresent
+            copy_telemetry_present = $copyTelemetryPresent
+            coordinator_allocation_count = if ($allocationTelemetryPresent) { [int64]$memoryLedger.coordinator_allocation_count } else { $null }
+            coordinator_allocation_bytes = if ($allocationTelemetryPresent) { [int64]$memoryLedger.coordinator_allocation_bytes } else { $null }
+            discovery_descriptor_copy_bytes = if ($copyTelemetryPresent) { [int64]$diagnostics.discovery_public_descriptor_copy_bytes } else { $null }
+            catalog_descriptor_copy_bytes = if ($copyTelemetryPresent) { [int64]$diagnostics.catalog_public_descriptor_copy_bytes } else { $null }
+            discovery_nested_copy_bytes = if ($copyTelemetryPresent) { [int64]$diagnostics.discovery_nested_descriptor_copy_bytes } else { $null }
+            catalog_nested_copy_bytes = if ($copyTelemetryPresent) { [int64]$diagnostics.catalog_nested_descriptor_copy_bytes } else { $null }
             checkpoint_bytes = [int64]$report.checkpoint_bytes
             fingerprint = [string]$report.deterministic_merge_fingerprint
             failed = [bool]$report.failed
