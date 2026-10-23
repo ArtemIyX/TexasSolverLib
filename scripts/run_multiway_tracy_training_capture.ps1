@@ -100,7 +100,13 @@ $env:TEXASSOLVER_BUILD_CONFIGURATION = 'RelWithDebInfo'
 $env:TEXASSOLVER_COMPILER_IDENTITY = if ([string]::IsNullOrWhiteSpace($env:VCToolsVersion)) { 'MSVC' } else { "MSVC $($env:VCToolsVersion)" }
 $env:TEXASSOLVER_TRACE_CAPTURE_ID = $CaptureId
 
-$captureArguments = @('-o', $tracePath, '-f', '-s', $CaptureSeconds.ToString())
+$captureArguments = @(
+    '-o', $tracePath,
+    '-a', '127.0.0.1',
+    '-p', '8086',
+    '-f',
+    '-s', $CaptureSeconds.ToString()
+)
 $trainingArguments = @(
     '-Workers', $Workers.ToString(),
     '-Batches', $Batches.ToString(),
