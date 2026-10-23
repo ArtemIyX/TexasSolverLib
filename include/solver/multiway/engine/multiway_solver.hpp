@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/atomic_publish.hpp"
 #include "games/multiway_private.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway/engine/multiway_cfr.hpp"
@@ -20,6 +21,7 @@ namespace texas::solver::multiway
 	class MultiwayCompactStorage;
 
 	class MultiwayTerminalAdapter;
+	struct MultiwayAdmissionDiagnostics;
 
 	// Stable numeric identities are assigned by the coordinator. Zero is reserved
 	// as an invalid identity so an omitted id cannot become a storage key.
@@ -214,7 +216,19 @@ namespace texas::solver::multiway
 		explicit MultiwayPublicCatalog(std::size_t max_nodes = 0U);
 
 		void clear() noexcept;
-		void admit(const MultiwayPublicStateDescriptor& state);
+		void admit(
+			const MultiwayPublicStateDescriptor& state,
+			std::uint64_t* index_insertion_nanoseconds = nullptr,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
+		void admit_batch(
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			const std::vector<std::uint8_t>& new_state_flags,
+			std::uint64_t* index_insertion_nanoseconds = nullptr,
+			std::uint64_t* menu_lookup_nanoseconds = nullptr,
+			std::uint64_t* index_merge_nanoseconds = nullptr,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr,
+			const std::vector<std::uint64_t>* validated_menu_keys = nullptr,
+			std::vector<std::uint32_t>* resolved_menu_handles = nullptr);
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const;
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
@@ -222,19 +236,52 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 
 	private:
+		friend class MultiwaySolverCoordinator;
 		struct IndexEntry
 		{
 			MultiwayPublicStateId id{};
 			std::size_t node_index = 0U;
 		};
+		struct MenuIndexEntry
+		{
+			std::uint64_t canonical_menu_id = 0U;
+			std::uint32_t menu_handle = 0U;
+		};
+		struct PendingMenuIndexEntry
+		{
+			std::uint64_t canonical_menu_id = 0U;
+			std::uint32_t pending_menu_index = 0U;
+		};
 
 		[[nodiscard]] std::size_t find_menu(const std::vector<MultiwayActionDescriptor>& menu) const noexcept;
+		[[nodiscard]] std::size_t find_menu_by_key(
+			const std::vector<MultiwayActionDescriptor>& menu,
+			std::uint64_t canonical_menu_id,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr,
+			std::uint64_t* index_lookup_nanoseconds = nullptr,
+			std::uint64_t* equality_nanoseconds = nullptr) const noexcept;
+		[[nodiscard]] static std::uint64_t menu_key(const std::vector<MultiwayActionDescriptor>& menu) noexcept;
+		void validate_menu_index_debug() const noexcept;
+		void classify_new_states(
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			std::vector<std::uint8_t>& new_state_flags) const;
+		[[nodiscard]] MultiwayPackedPublicNode pack_node(
+			const MultiwayPublicStateDescriptor& state, std::uint32_t menu_handle) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
 
 		std::size_t max_nodes_ = 0U;
 		std::vector<MultiwayPackedPublicNode> nodes_;
 		std::vector<IndexEntry> index_;
 		std::vector<std::vector<MultiwayActionDescriptor>> menus_;
+		std::vector<MenuIndexEntry> menu_index_;
+		std::vector<std::vector<MultiwayActionDescriptor>> batch_pending_menus_;
+		std::vector<std::uint64_t> batch_menu_keys_;
+		std::vector<std::uint32_t> batch_menu_handles_;
+		std::vector<std::uint32_t> batch_pending_menu_indexes_;
+		std::vector<IndexEntry> batch_pending_index_;
+		std::vector<IndexEntry> batch_merged_index_;
+		std::vector<PendingMenuIndexEntry> batch_pending_menu_index_;
+		std::vector<MenuIndexEntry> batch_merged_menu_index_;
 	};
 
 	// The complete public/private root needed by a future traversal. It is copied
@@ -351,6 +398,47 @@ namespace texas::solver::multiway
 		std::vector<double> strategy_sums;
 	};
 
+	// Runtime-only checkpoint diagnostics. These fields are not serialized or
+	// included in the checkpoint payload hash.
+	struct MultiwayCheckpointTelemetry
+	{
+		std::uint64_t snapshot_lock_wait_nanoseconds = 0U;
+		std::uint64_t public_catalog_export_nanoseconds = 0U;
+		std::uint64_t compact_storage_export_nanoseconds = 0U;
+		std::uint64_t canonicalization_nanoseconds = 0U;
+		std::uint64_t validation_nanoseconds = 0U;
+		std::uint64_t payload_hash_nanoseconds = 0U;
+		std::uint64_t binary_encoding_write_nanoseconds = 0U;
+		std::uint64_t stream_close_or_flush_nanoseconds = 0U;
+		std::uint64_t atomic_publication_nanoseconds = 0U;
+		core::AtomicPublishMode atomic_publication_mode = core::AtomicPublishMode::Unknown;
+		std::uint64_t public_state_bytes = 0U;
+		std::uint64_t row_shape_bytes = 0U;
+		std::uint64_t regret_bytes = 0U;
+		std::uint64_t strategy_sum_bytes = 0U;
+		std::uint64_t late_window_baseline_bytes = 0U;
+
+		void accumulate(const MultiwayCheckpointTelemetry& other) noexcept
+		{
+			snapshot_lock_wait_nanoseconds += other.snapshot_lock_wait_nanoseconds;
+			public_catalog_export_nanoseconds += other.public_catalog_export_nanoseconds;
+			compact_storage_export_nanoseconds += other.compact_storage_export_nanoseconds;
+			canonicalization_nanoseconds += other.canonicalization_nanoseconds;
+			validation_nanoseconds += other.validation_nanoseconds;
+			payload_hash_nanoseconds += other.payload_hash_nanoseconds;
+			binary_encoding_write_nanoseconds += other.binary_encoding_write_nanoseconds;
+			stream_close_or_flush_nanoseconds += other.stream_close_or_flush_nanoseconds;
+			atomic_publication_nanoseconds += other.atomic_publication_nanoseconds;
+			if (other.atomic_publication_mode != core::AtomicPublishMode::Unknown)
+				atomic_publication_mode = other.atomic_publication_mode;
+			public_state_bytes = public_state_bytes > other.public_state_bytes ? public_state_bytes : other.public_state_bytes;
+			row_shape_bytes = row_shape_bytes > other.row_shape_bytes ? row_shape_bytes : other.row_shape_bytes;
+			regret_bytes = regret_bytes > other.regret_bytes ? regret_bytes : other.regret_bytes;
+			strategy_sum_bytes = strategy_sum_bytes > other.strategy_sum_bytes ? strategy_sum_bytes : other.strategy_sum_bytes;
+			late_window_baseline_bytes = late_window_baseline_bytes > other.late_window_baseline_bytes ? late_window_baseline_bytes : other.late_window_baseline_bytes;
+		}
+	};
+
 	struct MultiwayCoordinatorCheckpoint
 	{
 		std::vector<MultiwayPublicStateDescriptor> public_states;
@@ -360,6 +448,7 @@ namespace texas::solver::multiway
 		std::uint64_t missing_lookup_requests = 0U;
 		std::uint64_t last_merged_stream_fingerprint = 0U;
 		std::array<std::uint64_t, 4> street_visits{};
+		MultiwayCheckpointTelemetry telemetry{};
 	};
 
 	// Coordinator-owned sparse rows. Values are action-major: [action][bucket].
@@ -396,6 +485,9 @@ namespace texas::solver::multiway
 			double factor, double threshold, double regret_floor) noexcept;
 		[[nodiscard]] std::size_t prune_negative_regrets(
 			double threshold = 0.0, double regret_floor = 0.0) noexcept;
+		void admit_rows(
+			const std::vector<MultiwaySparseRowShape>& shapes,
+			const std::vector<std::uint8_t>& new_row_flags);
 		[[nodiscard]] std::size_t row_count() const noexcept { return metadata_.size(); }
 		[[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 		[[nodiscard]] std::size_t value_capacity_limit() const noexcept { return max_values_; }
@@ -491,6 +583,164 @@ namespace texas::solver::multiway
 		std::optional<MultiwayNashConv> quality;
 	};
 
+	// Cold coordinator admission diagnostics. These counters are runtime-only
+	// telemetry and do not affect strategy identity or deterministic merges.
+	struct MultiwayAdmissionDiagnostics
+	{
+		std::uint64_t raw_public_state_candidates = 0U;
+		std::uint64_t raw_row_candidates = 0U;
+		std::uint64_t worker_local_unique_public_state_candidates = 0U;
+		std::uint64_t worker_local_unique_row_candidates = 0U;
+		std::uint64_t globally_unique_public_state_candidates = 0U;
+		std::uint64_t globally_unique_row_candidates = 0U;
+		std::uint64_t already_admitted_public_state_candidates = 0U;
+		std::uint64_t already_admitted_row_candidates = 0U;
+		std::uint64_t newly_admitted_public_state_candidates = 0U;
+		std::uint64_t newly_admitted_row_candidates = 0U;
+		std::uint64_t parent_resolution_passes = 0U;
+		std::uint64_t parent_resolution_probes = 0U;
+		std::uint64_t descriptor_reconstructions = 0U;
+		std::uint64_t existing_public_state_checks = 0U;
+		std::uint64_t new_public_state_validations = 0U;
+		std::uint64_t parent_catalog_resolutions = 0U;
+		std::uint64_t row_batch_state_resolutions = 0U;
+		std::uint64_t row_catalog_state_resolutions = 0U;
+		std::uint64_t lock_acquisitions = 0U;
+		std::uint64_t discovery_prepare_nanoseconds = 0U;
+		std::uint64_t discovery_merge_nanoseconds = 0U;
+		std::uint64_t discovery_public_state_merge_nanoseconds = 0U;
+		std::uint64_t discovery_row_merge_nanoseconds = 0U;
+		std::uint64_t discovery_public_state_source_elements = 0U;
+		std::uint64_t discovery_row_source_elements = 0U;
+		std::uint64_t discovery_public_state_duplicate_candidates = 0U;
+		std::uint64_t discovery_row_duplicate_candidates = 0U;
+		std::uint64_t discovery_single_stream_batches = 0U;
+		std::uint64_t discovery_one_stream_fast_path_uses = 0U;
+		std::uint64_t parent_order_nanoseconds = 0U;
+		std::uint64_t state_catalog_classification_nanoseconds = 0U;
+		std::uint64_t public_state_validation_nanoseconds = 0U;
+		std::uint64_t parent_transition_validation_nanoseconds = 0U;
+		std::uint64_t state_preflight_nanoseconds = 0U;
+		std::uint64_t row_state_resolution_nanoseconds = 0U;
+		std::uint64_t row_shape_validation_nanoseconds = 0U;
+		std::uint64_t row_preflight_nanoseconds = 0U;
+		std::uint64_t catalog_commit_nanoseconds = 0U;
+		std::uint64_t storage_commit_nanoseconds = 0U;
+		std::uint64_t catalog_menu_lookup_nanoseconds = 0U;
+		std::uint64_t catalog_menu_key_nanoseconds = 0U;
+		std::uint64_t catalog_menu_index_lookup_nanoseconds = 0U;
+		std::uint64_t catalog_menu_equality_nanoseconds = 0U;
+		std::uint64_t catalog_node_pack_nanoseconds = 0U;
+		std::uint64_t catalog_reserve_nanoseconds = 0U;
+		std::uint64_t catalog_append_nanoseconds = 0U;
+		std::uint64_t catalog_index_merge_nanoseconds = 0U;
+		std::uint64_t catalog_index_insertion_nanoseconds = 0U;
+		std::uint64_t catalog_menu_index_probes = 0U;
+		std::uint64_t catalog_menu_equality_checks = 0U;
+		std::uint64_t catalog_existing_menu_hits = 0U;
+		std::uint64_t catalog_batch_menu_reuse_hits = 0U;
+		std::uint64_t catalog_new_menus = 0U;
+		std::uint64_t catalog_menu_id_collision_misses = 0U;
+		std::uint64_t public_state_betting_board_validation_nanoseconds = 0U;
+		std::uint64_t public_state_menu_validation_nanoseconds = 0U;
+		std::uint64_t public_state_history_identity_validation_nanoseconds = 0U;
+		std::uint64_t row_admission_nanoseconds = 0U;
+		std::uint64_t parent_transition_fixed_state_nanoseconds = 0U;
+		std::uint64_t parent_transition_action_edge_nanoseconds = 0U;
+		std::uint64_t parent_transition_board_chance_edge_nanoseconds = 0U;
+		std::uint64_t parent_transition_street_edge_nanoseconds = 0U;
+		std::uint64_t parent_transition_action_edges = 0U;
+		std::uint64_t parent_transition_board_chance_edges = 0U;
+		std::uint64_t parent_transition_street_edges = 0U;
+		std::uint64_t parent_transition_action_history_prefix_elements = 0U;
+		std::uint64_t parent_transition_action_menu_probes = 0U;
+		std::vector<std::uint64_t> worker_raw_public_state_candidates_by_worker;
+		std::vector<std::uint64_t> worker_raw_row_candidates_by_worker;
+		std::vector<std::uint64_t> worker_local_unique_public_state_candidates_by_worker;
+		std::vector<std::uint64_t> worker_local_unique_row_candidates_by_worker;
+
+		void accumulate(const MultiwayAdmissionDiagnostics& other)
+		{
+			raw_public_state_candidates += other.raw_public_state_candidates;
+			raw_row_candidates += other.raw_row_candidates;
+			worker_local_unique_public_state_candidates += other.worker_local_unique_public_state_candidates;
+			worker_local_unique_row_candidates += other.worker_local_unique_row_candidates;
+			globally_unique_public_state_candidates += other.globally_unique_public_state_candidates;
+			globally_unique_row_candidates += other.globally_unique_row_candidates;
+			already_admitted_public_state_candidates += other.already_admitted_public_state_candidates;
+			already_admitted_row_candidates += other.already_admitted_row_candidates;
+			newly_admitted_public_state_candidates += other.newly_admitted_public_state_candidates;
+			newly_admitted_row_candidates += other.newly_admitted_row_candidates;
+			parent_resolution_passes += other.parent_resolution_passes;
+			parent_resolution_probes += other.parent_resolution_probes;
+			descriptor_reconstructions += other.descriptor_reconstructions;
+			existing_public_state_checks += other.existing_public_state_checks;
+			new_public_state_validations += other.new_public_state_validations;
+			parent_catalog_resolutions += other.parent_catalog_resolutions;
+			row_batch_state_resolutions += other.row_batch_state_resolutions;
+			row_catalog_state_resolutions += other.row_catalog_state_resolutions;
+			lock_acquisitions += other.lock_acquisitions;
+			discovery_prepare_nanoseconds += other.discovery_prepare_nanoseconds;
+			discovery_merge_nanoseconds += other.discovery_merge_nanoseconds;
+			discovery_public_state_merge_nanoseconds += other.discovery_public_state_merge_nanoseconds;
+			discovery_row_merge_nanoseconds += other.discovery_row_merge_nanoseconds;
+			discovery_public_state_source_elements += other.discovery_public_state_source_elements;
+			discovery_row_source_elements += other.discovery_row_source_elements;
+			discovery_public_state_duplicate_candidates += other.discovery_public_state_duplicate_candidates;
+			discovery_row_duplicate_candidates += other.discovery_row_duplicate_candidates;
+			discovery_single_stream_batches += other.discovery_single_stream_batches;
+			discovery_one_stream_fast_path_uses += other.discovery_one_stream_fast_path_uses;
+			parent_order_nanoseconds += other.parent_order_nanoseconds;
+			state_catalog_classification_nanoseconds += other.state_catalog_classification_nanoseconds;
+			public_state_validation_nanoseconds += other.public_state_validation_nanoseconds;
+			parent_transition_validation_nanoseconds += other.parent_transition_validation_nanoseconds;
+			state_preflight_nanoseconds += other.state_preflight_nanoseconds;
+			row_state_resolution_nanoseconds += other.row_state_resolution_nanoseconds;
+			row_shape_validation_nanoseconds += other.row_shape_validation_nanoseconds;
+			row_preflight_nanoseconds += other.row_preflight_nanoseconds;
+			catalog_commit_nanoseconds += other.catalog_commit_nanoseconds;
+			storage_commit_nanoseconds += other.storage_commit_nanoseconds;
+			catalog_menu_lookup_nanoseconds += other.catalog_menu_lookup_nanoseconds;
+			catalog_menu_key_nanoseconds += other.catalog_menu_key_nanoseconds;
+			catalog_menu_index_lookup_nanoseconds += other.catalog_menu_index_lookup_nanoseconds;
+			catalog_menu_equality_nanoseconds += other.catalog_menu_equality_nanoseconds;
+			catalog_node_pack_nanoseconds += other.catalog_node_pack_nanoseconds;
+			catalog_reserve_nanoseconds += other.catalog_reserve_nanoseconds;
+			catalog_append_nanoseconds += other.catalog_append_nanoseconds;
+			catalog_index_merge_nanoseconds += other.catalog_index_merge_nanoseconds;
+			catalog_index_insertion_nanoseconds += other.catalog_index_insertion_nanoseconds;
+			catalog_menu_index_probes += other.catalog_menu_index_probes;
+			catalog_menu_equality_checks += other.catalog_menu_equality_checks;
+			catalog_existing_menu_hits += other.catalog_existing_menu_hits;
+			catalog_batch_menu_reuse_hits += other.catalog_batch_menu_reuse_hits;
+			catalog_new_menus += other.catalog_new_menus;
+			catalog_menu_id_collision_misses += other.catalog_menu_id_collision_misses;
+			public_state_betting_board_validation_nanoseconds += other.public_state_betting_board_validation_nanoseconds;
+			public_state_menu_validation_nanoseconds += other.public_state_menu_validation_nanoseconds;
+			public_state_history_identity_validation_nanoseconds += other.public_state_history_identity_validation_nanoseconds;
+			row_admission_nanoseconds += other.row_admission_nanoseconds;
+			parent_transition_fixed_state_nanoseconds += other.parent_transition_fixed_state_nanoseconds;
+			parent_transition_action_edge_nanoseconds += other.parent_transition_action_edge_nanoseconds;
+			parent_transition_board_chance_edge_nanoseconds += other.parent_transition_board_chance_edge_nanoseconds;
+			parent_transition_street_edge_nanoseconds += other.parent_transition_street_edge_nanoseconds;
+			parent_transition_action_edges += other.parent_transition_action_edges;
+			parent_transition_board_chance_edges += other.parent_transition_board_chance_edges;
+			parent_transition_street_edges += other.parent_transition_street_edges;
+			parent_transition_action_history_prefix_elements += other.parent_transition_action_history_prefix_elements;
+			parent_transition_action_menu_probes += other.parent_transition_action_menu_probes;
+			const auto append = [](std::vector<std::uint64_t>& target, const std::vector<std::uint64_t>& source) {
+				if (target.size() < source.size())
+					target.resize(source.size(), 0U);
+				for (std::size_t index = 0U; index < source.size(); ++index)
+					target[index] += source[index];
+			};
+			append(worker_raw_public_state_candidates_by_worker, other.worker_raw_public_state_candidates_by_worker);
+			append(worker_raw_row_candidates_by_worker, other.worker_raw_row_candidates_by_worker);
+			append(worker_local_unique_public_state_candidates_by_worker, other.worker_local_unique_public_state_candidates_by_worker);
+			append(worker_local_unique_row_candidates_by_worker, other.worker_local_unique_row_candidates_by_worker);
+		}
+	};
+
 	// Immutable boundary output. It deliberately retains only a root policy,
 	// per-seat root values, and diagnostics; it never exports dense global policy.
 	class MultiwaySolveResult
@@ -520,9 +770,22 @@ namespace texas::solver::multiway
 		~MultiwaySolverCoordinator();
 
 		void admit_public_state(const MultiwayPublicStateDescriptor& state);
+		// Inputs must be canonical and public_states must be sorted by id. The
+		// parent_order indexes that stream in parent-first order.
+		void admit_prepared_batch(
+			const std::vector<MultiwayPublicStateDescriptor>& public_states,
+			const std::vector<std::size_t>& parent_order,
+			const std::vector<MultiwaySparseRowShape>& rows,
+			const std::vector<std::size_t>* parent_indexes = nullptr);
+		[[nodiscard]] static bool public_state_candidates_compatible(
+			const MultiwayPublicStateDescriptor& left,
+			const MultiwayPublicStateDescriptor& right) noexcept;
 		void admit_infoset_row(const MultiwaySparseRowShape& shape);
 		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const noexcept;
+		// Epoch queries are lock-free and valid only while the coordinator's
+		// immutable batch epoch is not being mutated.
 		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const noexcept;
+		[[nodiscard]] bool has_public_state_epoch(MultiwayPublicStateId id) const noexcept;
 		void regret_matched_strategy_into(
 			MultiwayInfosetId infoset,
 			std::uint32_t bucket,
@@ -563,11 +826,16 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return compact_storage_.get(); }
 		[[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
 		[[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
+		void set_admission_diagnostics(MultiwayAdmissionDiagnostics* diagnostics) noexcept
+		{
+			admission_diagnostics_ = diagnostics;
+		}
 		[[nodiscard]] std::size_t merge_scratch_capacity() const noexcept
 		{
 			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().max_worker_delta_entries;
 		}
 		[[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
+		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
 			MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;
@@ -594,7 +862,19 @@ namespace texas::solver::multiway
 		std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
 		std::vector<std::size_t> merge_stream_cursors_;
 		std::vector<PendingMergeCell> pending_merge_cells_;
+		std::vector<std::uint8_t> admission_processed_states_;
+		std::vector<std::uint8_t> admission_new_states_;
+		std::vector<std::uint8_t> admission_new_rows_;
+		std::vector<std::uint8_t> admission_new_row_streets_;
+		std::vector<std::size_t> admission_row_state_indexes_;
+		std::vector<std::uint64_t> admission_state_menu_keys_;
+		std::vector<std::uint8_t> admission_state_action_counts_;
+		std::vector<std::uint8_t> admission_state_streets_;
+		std::vector<core::PlayerId> admission_state_current_players_;
+		std::vector<std::uint8_t> admission_state_next_node_kinds_;
+		std::vector<std::uint32_t> admission_state_menu_handles_;
 		MultiwaySolveDiagnostics diagnostics_;
+		MultiwayAdmissionDiagnostics* admission_diagnostics_ = nullptr;
 		mutable std::shared_mutex traversal_mutex_;
 	};
 

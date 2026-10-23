@@ -292,7 +292,8 @@ TEST_CASE(multiway_atomic_publish_replaces_destination_without_leaving_temporary
 		new_value << "new";
 	}
 
-	texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed");
+	const auto publication_mode = texas::core::publish_atomic_replace(temporary, destination, "atomic publish failed");
+	EXPECT_TRUE(publication_mode != texas::core::AtomicPublishMode::Unknown);
 
 	std::string value;
 	{

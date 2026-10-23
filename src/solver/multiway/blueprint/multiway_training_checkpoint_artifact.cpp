@@ -3,12 +3,16 @@
 #include "core/atomic_publish.hpp"
 #include "core/fingerprint.hpp"
 #include "core/portable_binary.hpp"
+#include "util/tracy.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <limits>
+#include <streambuf>
 #include <stdexcept>
 
 namespace texas::solver::multiway
@@ -28,11 +32,215 @@ namespace texas::solver::multiway
 			if (!ok)
 				throw std::runtime_error("multiway training checkpoint is truncated");
 		}
-		void write_double(std::ostream& out, double value)
+
+		constexpr std::size_t kCheckpointWriteBufferBytes = 64U * 1024U;
+		constexpr std::size_t kDoubleWriteBlockValues = kCheckpointWriteBufferBytes / sizeof(std::uint64_t);
+
+		void append(std::uint64_t& hash, std::uint64_t value) noexcept;
+
+		class BufferedCheckpointStreambuf final : public std::streambuf
 		{
-			std::uint64_t bits;
-			std::memcpy(&bits, &value, sizeof(bits));
-			portable::write_u64(out, bits);
+		public:
+			explicit BufferedCheckpointStreambuf(std::ofstream& file) noexcept
+				: file_(file)
+			{
+				setp(buffer_.data(), buffer_.data() + buffer_.size());
+			}
+
+			bool flush_buffer() noexcept
+			{
+				const auto count = static_cast<std::streamsize>(pptr() - pbase());
+				if (count != 0)
+				{
+					file_.write(pbase(), count);
+					if (!file_)
+						return false;
+				}
+				setp(buffer_.data(), buffer_.data() + buffer_.size());
+				return true;
+			}
+
+		protected:
+			int_type overflow(int_type character) override
+			{
+				if (!flush_buffer())
+					return traits_type::eof();
+				if (!traits_type::eq_int_type(character, traits_type::eof()))
+				{
+					*pptr() = traits_type::to_char_type(character);
+					pbump(1);
+				}
+				return traits_type::not_eof(character);
+			}
+
+			std::streamsize xsputn(const char* source, std::streamsize count) override
+			{
+				std::streamsize written = 0;
+				while (written < count)
+				{
+					const auto available = static_cast<std::streamsize>(epptr() - pptr());
+					if (available == 0)
+					{
+						if (overflow(traits_type::eof()) == traits_type::eof())
+							break;
+						continue;
+					}
+					const auto chunk = std::min(available, count - written);
+					std::memcpy(pptr(), source + written, static_cast<std::size_t>(chunk));
+					pbump(static_cast<int>(chunk));
+					written += chunk;
+				}
+				return written;
+			}
+
+			int sync() override
+			{
+				return flush_buffer() ? 0 : -1;
+			}
+
+		private:
+			std::ofstream& file_;
+			std::array<char, kCheckpointWriteBufferBytes> buffer_{};
+		};
+
+		class CheckpointPayloadWriter final
+		{
+		public:
+			explicit CheckpointPayloadWriter(std::ostream& out) noexcept
+				: out_(out)
+			{
+			}
+
+			void write_u8(std::uint8_t value)
+			{
+				const auto byte = static_cast<char>(value);
+				write_raw(&byte, sizeof(byte));
+				append(hash_, value);
+			}
+
+			void write_u8_unhashed(std::uint8_t value)
+			{
+				const auto byte = static_cast<char>(value);
+				write_raw(&byte, sizeof(byte));
+			}
+
+			void write_u32(std::uint32_t value)
+			{
+				std::array<char, sizeof(value)> bytes{};
+				encode_u32(bytes.data(), value);
+				write_raw(bytes.data(), bytes.size());
+				append(hash_, value);
+			}
+
+			void write_i32(std::int32_t value)
+			{
+				std::array<char, sizeof(value)> bytes{};
+				encode_u32(bytes.data(), static_cast<std::uint32_t>(value));
+				write_raw(bytes.data(), bytes.size());
+				append(hash_, static_cast<std::uint64_t>(static_cast<std::int64_t>(value)));
+			}
+
+			void write_u64(std::uint64_t value)
+			{
+				write_u64_unhashed(value);
+				hash_u64(value);
+			}
+
+			void write_u64_unhashed(std::uint64_t value)
+			{
+				std::array<char, sizeof(value)> bytes{};
+				encode_u64(bytes.data(), value);
+				write_raw(bytes.data(), bytes.size());
+			}
+
+			void hash_u64(std::uint64_t value) noexcept
+			{
+				append(hash_, value);
+			}
+
+			void write_double(double value)
+			{
+				std::uint64_t bits = 0U;
+				std::memcpy(&bits, &value, sizeof(bits));
+				write_u64_bytes(bits);
+				append(hash_, bits);
+			}
+
+			void write_double_array(const std::vector<double>& values)
+			{
+				write_u64(values.size());
+				std::array<char, kCheckpointWriteBufferBytes> bytes{};
+				for (std::size_t offset = 0U; offset < values.size(); offset += kDoubleWriteBlockValues)
+				{
+					const auto count = std::min(kDoubleWriteBlockValues, values.size() - offset);
+					for (std::size_t index = 0U; index < count; ++index)
+					{
+						std::uint64_t bits = 0U;
+						std::memcpy(&bits, &values[offset + index], sizeof(bits));
+						encode_u64(bytes.data() + index * sizeof(bits), bits);
+						append(hash_, bits);
+					}
+					write_raw(bytes.data(), count * sizeof(std::uint64_t));
+					if (!out_)
+						throw std::runtime_error("multiway training checkpoint buffered write failed");
+				}
+			}
+
+			void write_raw(const void* data, std::size_t size)
+			{
+				out_.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
+				bytes_written_ += size;
+			}
+
+			[[nodiscard]] std::uint64_t finish_hash() const noexcept
+			{
+				return core::fingerprint::finish(hash_);
+			}
+
+			[[nodiscard]] std::uint64_t bytes_written() const noexcept
+			{
+				return bytes_written_;
+			}
+
+		private:
+			static void encode_u32(char* destination, std::uint32_t value) noexcept
+			{
+				for (std::uint8_t shift = 0U; shift < 32U; shift += 8U)
+					destination[shift / 8U] = static_cast<char>(value >> shift);
+			}
+
+			static void encode_u64(char* destination, std::uint64_t value) noexcept
+			{
+				for (std::uint8_t shift = 0U; shift < 64U; shift += 8U)
+					destination[shift / 8U] = static_cast<char>(value >> shift);
+			}
+
+			void write_u64_bytes(std::uint64_t value)
+			{
+				std::array<char, sizeof(value)> bytes{};
+				encode_u64(bytes.data(), value);
+				write_raw(bytes.data(), bytes.size());
+			}
+
+			std::ostream& out_;
+			std::uint64_t hash_ = core::fingerprint::FNV1A_OFFSET;
+			std::uint64_t bytes_written_ = 0U;
+		};
+
+		void add_elapsed(
+			std::uint64_t* target,
+			const std::chrono::steady_clock::time_point started) noexcept
+		{
+			if (target != nullptr)
+				*target += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - started)
+						.count());
+		}
+		void record_max(std::uint64_t* target, std::uint64_t value) noexcept
+		{
+			if (target != nullptr && value > *target)
+				*target = value;
 		}
 		bool read_double(std::istream& in, double& value)
 		{
@@ -42,9 +250,9 @@ namespace texas::solver::multiway
 			std::memcpy(&value, &bits, sizeof(value));
 			return true;
 		}
-		void write_identity(std::ostream& out, const MultiwayModelIdentity& value)
+		void write_identity(CheckpointPayloadWriter& out, const MultiwayModelIdentity& value)
 		{
-			visit_multiway_model_identity_fields(value, [&](std::uint64_t field) { portable::write_u64(out, field); });
+			visit_multiway_model_identity_fields(value, [&](std::uint64_t field) { out.write_u64(field); });
 		}
 		bool read_identity(std::istream& in, MultiwayModelIdentity& value)
 		{
@@ -52,12 +260,12 @@ namespace texas::solver::multiway
 			visit_multiway_model_identity_fields(value, [&](std::uint64_t& field) { if (ok) ok = portable::read_u64(in, field); });
 			return ok;
 		}
-		void write_action(std::ostream& out, const MultiwayActionDescriptor& value)
+		void write_action(CheckpointPayloadWriter& out, const MultiwayActionDescriptor& value)
 		{
-			portable::write_u8(out, static_cast<std::uint8_t>(value.action));
-			portable::write_u32(out, value.action_index);
-			portable::write_i32(out, value.target_street_contribution);
-			portable::write_u64(out, value.action_menu_id);
+			out.write_u8(static_cast<std::uint8_t>(value.action));
+			out.write_u32(value.action_index);
+			out.write_i32(value.target_street_contribution);
+			out.write_u64(value.action_menu_id);
 		}
 		bool read_action(std::istream& in, MultiwayActionDescriptor& value)
 		{
@@ -67,11 +275,11 @@ namespace texas::solver::multiway
 			value.action = static_cast<MultiwayAction>(action);
 			return true;
 		}
-		void write_ints(std::ostream& out, const std::vector<int>& values)
+		void write_ints(CheckpointPayloadWriter& out, const std::vector<int>& values)
 		{
-			portable::write_u8(out, static_cast<std::uint8_t>(values.size()));
+			out.write_u8(static_cast<std::uint8_t>(values.size()));
 			for (const auto value : values)
-				portable::write_i32(out, value);
+				out.write_i32(value);
 		}
 		bool read_ints(std::istream& in, std::vector<int>& values)
 		{
@@ -84,11 +292,11 @@ namespace texas::solver::multiway
 					return false;
 			return true;
 		}
-		void write_bools(std::ostream& out, const std::vector<bool>& values)
+		void write_bools(CheckpointPayloadWriter& out, const std::vector<bool>& values)
 		{
-			portable::write_u8(out, static_cast<std::uint8_t>(values.size()));
+			out.write_u8(static_cast<std::uint8_t>(values.size()));
 			for (const auto value : values)
-				portable::write_u8(out, value ? 1U : 0U);
+				out.write_u8(value ? 1U : 0U);
 		}
 		bool read_bools(std::istream& in, std::vector<bool>& values)
 		{
@@ -105,11 +313,11 @@ namespace texas::solver::multiway
 			}
 			return true;
 		}
-		void write_cards(std::ostream& out, const std::vector<std::uint8_t>& values)
+		void write_cards(CheckpointPayloadWriter& out, const std::vector<std::uint8_t>& values)
 		{
-			portable::write_u8(out, static_cast<std::uint8_t>(values.size()));
+			out.write_u8(static_cast<std::uint8_t>(values.size()));
 			for (const auto value : values)
-				portable::write_u8(out, value);
+				out.write_u8(value);
 		}
 		bool read_cards(std::istream& in, std::vector<std::uint8_t>& values, std::uint8_t maximum = 5U)
 		{
@@ -122,7 +330,7 @@ namespace texas::solver::multiway
 					return false;
 			return true;
 		}
-		void write_betting(std::ostream& out, const MultiwayBettingSnapshot& value)
+		void write_betting(CheckpointPayloadWriter& out, const MultiwayBettingSnapshot& value)
 		{
 			write_ints(out, value.stacks);
 			write_ints(out, value.contributions);
@@ -133,39 +341,39 @@ namespace texas::solver::multiway
 			write_bools(out, value.pending);
 			write_bools(out, value.has_acted);
 			write_ints(out, value.bet_faced_when_acted);
-			portable::write_i32(out, value.current_player);
-			portable::write_i32(out, value.last_aggressor);
-			portable::write_i32(out, value.current_bet);
-			portable::write_i32(out, value.last_full_raise_size);
-			portable::write_i32(out, value.big_blind);
-			portable::write_u8(out, static_cast<std::uint8_t>(value.street));
+			out.write_i32(value.current_player);
+			out.write_i32(value.last_aggressor);
+			out.write_i32(value.current_bet);
+			out.write_i32(value.last_full_raise_size);
+			out.write_i32(value.big_blind);
+			out.write_u8(static_cast<std::uint8_t>(value.street));
 		}
 		bool read_betting(std::istream& in, MultiwayBettingSnapshot& value)
 		{
 			std::uint8_t street = 0U;
 			return read_ints(in, value.stacks) && read_ints(in, value.contributions) && read_ints(in, value.street_contributions) && read_bools(in, value.folded) && read_bools(in, value.all_in) && read_bools(in, value.may_raise) && read_bools(in, value.pending) && read_bools(in, value.has_acted) && read_ints(in, value.bet_faced_when_acted) && portable::read_i32(in, value.current_player) && portable::read_i32(in, value.last_aggressor) && portable::read_i32(in, value.current_bet) && portable::read_i32(in, value.last_full_raise_size) && portable::read_i32(in, value.big_blind) && portable::read_u8(in, street) && ((value.street = static_cast<Street>(street)), true);
 		}
-		void write_state(std::ostream& out, const MultiwayPublicStateDescriptor& value)
+		void write_state(CheckpointPayloadWriter& out, const MultiwayPublicStateDescriptor& value)
 		{
-			portable::write_u64(out, value.id.value);
-			portable::write_u64(out, value.parent_id.value);
-			portable::write_u8(out, static_cast<std::uint8_t>(value.incoming_edge.kind));
+			out.write_u64(value.id.value);
+			out.write_u64(value.parent_id.value);
+			out.write_u8(static_cast<std::uint8_t>(value.incoming_edge.kind));
 			write_action(out, value.incoming_edge.action);
-			portable::write_u8(out, value.incoming_edge.dealt_card);
+			out.write_u8(value.incoming_edge.dealt_card);
 			write_cards(out, value.incoming_edge.dealt_cards);
 			write_cards(out, value.incoming_edge.transition_board);
-			portable::write_u64(out, value.canonical_history_id);
+			out.write_u64(value.canonical_history_id);
 			write_betting(out, value.betting);
 			write_cards(out, value.board);
-			portable::write_u8(out, value.board_runout.remaining_board_cards);
-			portable::write_u8(out, value.board_runout.chance_only_runout ? 1U : 0U);
-			portable::write_u32(out, static_cast<std::uint32_t>(value.history.size()));
+			out.write_u8(value.board_runout.remaining_board_cards);
+			out.write_u8(value.board_runout.chance_only_runout ? 1U : 0U);
+			out.write_u32(static_cast<std::uint32_t>(value.history.size()));
 			for (const auto& entry : value.history)
 			{
-				portable::write_i32(out, entry.actor);
+				out.write_i32(entry.actor);
 				write_action(out, entry.action);
 			}
-			portable::write_u8(out, static_cast<std::uint8_t>(value.legal_actions.size()));
+			out.write_u8(static_cast<std::uint8_t>(value.legal_actions.size()));
 			for (const auto& action : value.legal_actions)
 				write_action(out, action);
 		}
@@ -189,21 +397,21 @@ namespace texas::solver::multiway
 					return false;
 			return true;
 		}
-		void write_metadata(std::ostream& out, const MultiwayBlueprintTrainingMetadata& value)
+		void write_metadata(CheckpointPayloadWriter& out, const MultiwayBlueprintTrainingMetadata& value)
 		{
-			portable::write_u64(out, value.batches);
-			portable::write_u64(out, value.trajectories);
-			portable::write_u64(out, value.deterministic_seed);
-			portable::write_u64(out, value.late_window_start_batch);
-			portable::write_u64(out, value.schedule_hash);
-			portable::write_u64(out, value.pruned_negative_regrets);
-			portable::write_u64(out, value.terminal_visits);
-			portable::write_u64(out, value.leaf_visits);
-			portable::write_u64(out, value.missing_lookup_requests);
-			portable::write_u8(out, value.linear_iteration_weighting);
-			portable::write_u8(out, value.discounting_enabled);
-			portable::write_u8(out, value.negative_regret_pruning_enabled);
-			portable::write_u8(out, value.reserved);
+			out.write_u64(value.batches);
+			out.write_u64(value.trajectories);
+			out.write_u64(value.deterministic_seed);
+			out.write_u64(value.late_window_start_batch);
+			out.write_u64(value.schedule_hash);
+			out.write_u64(value.pruned_negative_regrets);
+			out.write_u64(value.terminal_visits);
+			out.write_u64(value.leaf_visits);
+			out.write_u64(value.missing_lookup_requests);
+			out.write_u8(value.linear_iteration_weighting);
+			out.write_u8(value.discounting_enabled);
+			out.write_u8(value.negative_regret_pruning_enabled);
+			out.write_u8_unhashed(value.reserved);
 		}
 		bool read_metadata(std::istream& in, MultiwayBlueprintTrainingMetadata& value)
 		{
@@ -344,61 +552,123 @@ namespace texas::solver::multiway
 		return core::fingerprint::finish(hash);
 	}
 
-	void MultiwayTrainingCheckpointArtifacts::save_atomic(const std::filesystem::path& path, const MultiwayBlueprintTrainingCheckpoint& checkpoint)
+	void MultiwayTrainingCheckpointArtifacts::save_atomic(
+		const std::filesystem::path& path,
+		const MultiwayBlueprintTrainingCheckpoint& checkpoint,
+		MultiwayCheckpointTelemetry* telemetry)
 	{
-		checkpoint.validate();
-		const auto temporary = path.string() + ".tmp";
-		std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-		if (!out)
-			throw std::runtime_error("multiway training checkpoint temporary file cannot be opened");
-		out.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
-		portable::write_u32(out, kSchema);
-		write_identity(out, checkpoint.identity);
-		write_metadata(out, checkpoint.training);
-		const auto& coverage = checkpoint.coverage;
-		portable::write_u64(out, coverage.visited_public_descriptors);
-		portable::write_u64(out, coverage.admitted_rows);
-		portable::write_u64(out, coverage.admitted_action_cells);
-		portable::write_u64(out, coverage.terminal_visits);
-		portable::write_u64(out, coverage.leaf_visits);
-		portable::write_u64(out, coverage.missing_lookup_requests);
-		portable::write_u64(out, coverage.preflop_rows);
-		portable::write_u64(out, coverage.flop_rows);
-		portable::write_u64(out, coverage.turn_rows);
-		portable::write_u64(out, coverage.river_rows);
-		for (const auto value : coverage.street_visits)
-			portable::write_u64(out, value);
-		portable::write_u64(out, checkpoint.coordinator.terminal_visits);
-		portable::write_u64(out, checkpoint.coordinator.leaf_visits);
-		portable::write_u64(out, checkpoint.coordinator.missing_lookup_requests);
-		portable::write_u64(out, checkpoint.coordinator.last_merged_stream_fingerprint);
-		for (const auto value : checkpoint.coordinator.street_visits)
-			portable::write_u64(out, value);
-		portable::write_u32(out, static_cast<std::uint32_t>(checkpoint.coordinator.public_states.size()));
-		for (const auto& state : checkpoint.coordinator.public_states)
-			write_state(out, state);
-		portable::write_u32(out, static_cast<std::uint32_t>(checkpoint.coordinator.storage.shapes.size()));
-		for (const auto& shape : checkpoint.coordinator.storage.shapes)
 		{
-			portable::write_u64(out, shape.infoset.public_state.value);
-			portable::write_i32(out, shape.infoset.seat);
-			portable::write_u32(out, shape.bucket_count);
-			portable::write_u8(out, shape.action_count);
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.artifact_validation");
+			const auto started = std::chrono::steady_clock::now();
+			checkpoint.validate();
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->validation_nanoseconds, started);
 		}
-		portable::write_u64(out, checkpoint.coordinator.storage.regrets.size());
-		for (const auto value : checkpoint.coordinator.storage.regrets)
-			write_double(out, value);
-		portable::write_u64(out, checkpoint.coordinator.storage.strategy_sums.size());
-		for (const auto value : checkpoint.coordinator.storage.strategy_sums)
-			write_double(out, value);
-		portable::write_u64(out, checkpoint.late_window_baseline.size());
-		for (const auto value : checkpoint.late_window_baseline)
-			write_double(out, value);
-		portable::write_u64(out, payload_hash(checkpoint));
-		out.close();
-		if (!out)
+		save_atomic_sealed(path, checkpoint, telemetry);
+	}
+
+	void MultiwayTrainingCheckpointArtifacts::save_atomic_sealed(
+		const std::filesystem::path& path,
+		const MultiwayBlueprintTrainingCheckpoint& checkpoint,
+		MultiwayCheckpointTelemetry* telemetry)
+	{
+		const auto temporary = path.string() + ".tmp";
+		std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+		if (!file)
+			throw std::runtime_error("multiway training checkpoint temporary file cannot be opened");
+		BufferedCheckpointStreambuf buffer(file);
+		std::ostream out(&buffer);
+		CheckpointPayloadWriter payload(out);
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.binary_encoding_write");
+			const auto encoding_started = std::chrono::steady_clock::now();
+			out.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
+			portable::write_u32(out, kSchema);
+			write_identity(payload, checkpoint.identity);
+			write_metadata(payload, checkpoint.training);
+			const auto& coverage = checkpoint.coverage;
+			payload.write_u64(coverage.visited_public_descriptors);
+			payload.write_u64(coverage.admitted_rows);
+			payload.write_u64(coverage.admitted_action_cells);
+			payload.write_u64(coverage.terminal_visits);
+			payload.write_u64(coverage.leaf_visits);
+			payload.write_u64(coverage.missing_lookup_requests);
+			payload.write_u64(coverage.preflop_rows);
+			payload.write_u64(coverage.flop_rows);
+			payload.write_u64(coverage.turn_rows);
+			payload.write_u64(coverage.river_rows);
+			for (const auto value : coverage.street_visits)
+				payload.write_u64_unhashed(value);
+			payload.write_u64(checkpoint.coordinator.terminal_visits);
+			payload.write_u64(checkpoint.coordinator.leaf_visits);
+			payload.write_u64(checkpoint.coordinator.missing_lookup_requests);
+			payload.write_u64(checkpoint.coordinator.last_merged_stream_fingerprint);
+			for (const auto value : checkpoint.coordinator.street_visits)
+				payload.write_u64_unhashed(value);
+			for (const auto value : coverage.street_visits)
+				payload.hash_u64(value);
+			for (const auto value : checkpoint.coordinator.street_visits)
+				payload.hash_u64(value);
+			const auto public_state_start = payload.bytes_written();
+			payload.write_u32(static_cast<std::uint32_t>(checkpoint.coordinator.public_states.size()));
+			for (const auto& state : checkpoint.coordinator.public_states)
+				write_state(payload, state);
+			if (telemetry != nullptr)
+				record_max(&telemetry->public_state_bytes, payload.bytes_written() - public_state_start);
+			const auto row_shape_start = payload.bytes_written();
+			payload.write_u32(static_cast<std::uint32_t>(checkpoint.coordinator.storage.shapes.size()));
+			for (const auto& shape : checkpoint.coordinator.storage.shapes)
+			{
+				payload.write_u64(shape.infoset.public_state.value);
+				payload.write_i32(shape.infoset.seat);
+				payload.write_u32(shape.bucket_count);
+				payload.write_u8(shape.action_count);
+			}
+			if (telemetry != nullptr)
+				record_max(&telemetry->row_shape_bytes, payload.bytes_written() - row_shape_start);
+			const auto regret_start = payload.bytes_written();
+			payload.write_double_array(checkpoint.coordinator.storage.regrets);
+			if (telemetry != nullptr)
+				record_max(&telemetry->regret_bytes, payload.bytes_written() - regret_start);
+			const auto strategy_start = payload.bytes_written();
+			payload.write_double_array(checkpoint.coordinator.storage.strategy_sums);
+			if (telemetry != nullptr)
+				record_max(&telemetry->strategy_sum_bytes, payload.bytes_written() - strategy_start);
+			const auto baseline_start = payload.bytes_written();
+			payload.write_double_array(checkpoint.late_window_baseline);
+			if (telemetry != nullptr)
+				record_max(&telemetry->late_window_baseline_bytes, payload.bytes_written() - baseline_start);
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->binary_encoding_write_nanoseconds, encoding_started);
+		}
+		std::uint64_t serialized_payload_hash = 0U;
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.payload_hash");
+			const auto hash_started = std::chrono::steady_clock::now();
+			serialized_payload_hash = payload.finish_hash();
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->payload_hash_nanoseconds, hash_started);
+		}
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.binary_encoding_write");
+			const auto encoding_started = std::chrono::steady_clock::now();
+			portable::write_u64(out, serialized_payload_hash);
+			add_elapsed(telemetry == nullptr ? nullptr : &telemetry->binary_encoding_write_nanoseconds, encoding_started);
+		}
+		const auto close_started = std::chrono::steady_clock::now();
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.stream_close_or_flush");
+			out.flush();
+			file.close();
+		}
+		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->stream_close_or_flush_nanoseconds, close_started);
+		if (!out || !file)
 			throw std::runtime_error("multiway training checkpoint write failed");
-		core::publish_atomic_replace(temporary, path, "multiway training checkpoint publish failed");
+		const auto publication_started = std::chrono::steady_clock::now();
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.atomic_publication");
+			const auto mode = core::publish_atomic_replace(temporary, path, "multiway training checkpoint publish failed");
+			if (telemetry != nullptr)
+				telemetry->atomic_publication_mode = mode;
+		}
+		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->atomic_publication_nanoseconds, publication_started);
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayTrainingCheckpointArtifacts::load_verified(const std::filesystem::path& path, const MultiwayModelIdentity& expected_identity, std::uint64_t expected_schedule_hash, std::uint64_t expected_seed)

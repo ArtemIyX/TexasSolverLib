@@ -97,6 +97,7 @@ namespace texas::solver::multiway
 		std::uint64_t generated_discovery_public_state_count = 0;
 		std::uint64_t generated_discovery_row_count = 0;
 		std::uint64_t coordinator_admission_nanoseconds = 0;
+		MultiwayAdmissionDiagnostics admission_diagnostics{};
 		std::uint64_t trainer_only_nanoseconds = 0;
 		std::uint64_t process_cpu_nanoseconds = 0;
 		std::uint64_t peak_working_set_bytes = 0;
@@ -175,6 +176,7 @@ namespace texas::solver::multiway
 		MultiwayBlueprintCoverageManifest coverage{};
 		MultiwayCoordinatorCheckpoint coordinator{};
 		std::vector<double> late_window_baseline;
+		MultiwayCheckpointTelemetry telemetry{};
 
 		void validate() const;
 	};

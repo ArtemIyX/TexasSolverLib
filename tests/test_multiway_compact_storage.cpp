@@ -156,3 +156,61 @@ TEST_CASE(multiway_compact_storage_checkpoint_expands_unadmitted_pages_as_zeroes
 	EXPECT_NEAR(checkpoint.strategy_sums[0], 2.0, 1e-9);
 	EXPECT_NEAR(checkpoint.strategy_sums[2], 0.0, 1e-9);
 }
+
+TEST_CASE(multiway_compact_storage_checkpoint_matches_scalar_action_major_reference)
+{
+	const texas::solver::multiway::MultiwayInfosetId later_state{ { 20U }, 1 };
+	const texas::solver::multiway::MultiwayInfosetId earlier_state{ { 10U }, 0 };
+	texas::solver::multiway::MultiwayCompactStorage storage(2U, 12U, 2U);
+	storage.admit_row({ later_state, 3U, 2U });
+	storage.admit_row({ earlier_state, 3U, 2U });
+
+	storage.apply_delta(earlier_state, 0U, 0U, 1.0, 2.0);
+	storage.apply_delta(earlier_state, 1U, 0U, -0.5, 3.0);
+	storage.apply_delta(earlier_state, 1U, 1U, 4.0, 5.0);
+	storage.apply_delta(later_state, 0U, 1U, 2.0, 7.0);
+	storage.apply_delta(later_state, 2U, 0U, -3.0, 11.0);
+	storage.apply_delta(later_state, 2U, 1U, 6.0, 13.0);
+
+	texas::solver::multiway::MultiwaySparseStorageCheckpoint checkpoint;
+	storage.export_checkpoint(checkpoint);
+	const std::array<double, 12> expected_regrets = {
+		1.0,
+		-0.5,
+		0.0,
+		0.0,
+		4.0,
+		0.0,
+		0.0,
+		0.0,
+		-3.0,
+		2.0,
+		0.0,
+		6.0,
+	};
+	const std::array<double, 12> expected_strategy_sums = {
+		2.0,
+		3.0,
+		0.0,
+		0.0,
+		5.0,
+		0.0,
+		0.0,
+		0.0,
+		11.0,
+		7.0,
+		0.0,
+		13.0,
+	};
+
+	EXPECT_EQ(checkpoint.shapes.size(), 2U);
+	EXPECT_EQ(checkpoint.shapes[0].infoset, earlier_state);
+	EXPECT_EQ(checkpoint.shapes[1].infoset, later_state);
+	EXPECT_EQ(checkpoint.regrets.size(), expected_regrets.size());
+	EXPECT_EQ(checkpoint.strategy_sums.size(), expected_strategy_sums.size());
+	for (std::size_t index = 0U; index < expected_regrets.size(); ++index)
+	{
+		EXPECT_NEAR(checkpoint.regrets[index], expected_regrets[index], 1e-12);
+		EXPECT_NEAR(checkpoint.strategy_sums[index], expected_strategy_sums[index], 1e-12);
+	}
+}

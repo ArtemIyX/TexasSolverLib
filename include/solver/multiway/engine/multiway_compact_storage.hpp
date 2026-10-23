@@ -26,6 +26,9 @@ namespace texas::solver::multiway
 			std::uint32_t page_width = kDefaultPageWidth);
 
 		void admit_row(const MultiwaySparseRowShape& shape);
+		void admit_rows(
+			const std::vector<MultiwaySparseRowShape>& shapes,
+			const std::vector<std::uint8_t>& new_row_flags);
 		void admit_page(MultiwayInfosetId infoset, std::uint32_t page_index);
 		[[nodiscard]] bool has_row(MultiwayInfosetId infoset) const noexcept;
 		[[nodiscard]] bool has_page(MultiwayInfosetId infoset, std::uint32_t page_index) const noexcept;

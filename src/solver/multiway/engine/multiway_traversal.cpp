@@ -14,6 +14,7 @@
 #include <cstring>
 #include <exception>
 #include <iterator>
+#include <limits>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -36,9 +37,10 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t steady_now_nanoseconds() noexcept
 		{
 			return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now().time_since_epoch()).count());
+				std::chrono::steady_clock::now().time_since_epoch())
+					.count());
 		}
-	}
+	} // namespace
 	namespace
 	{
 
@@ -105,7 +107,346 @@ namespace texas::solver::multiway
 			return hash == 0U ? 1U : hash;
 		}
 
+		[[nodiscard]] bool action_descriptor_less(
+			const MultiwayActionDescriptor& left,
+			const MultiwayActionDescriptor& right) noexcept
+		{
+			if (left.action != right.action)
+				return static_cast<std::uint8_t>(left.action) < static_cast<std::uint8_t>(right.action);
+			if (left.action_index != right.action_index)
+				return left.action_index < right.action_index;
+			if (left.target_street_contribution != right.target_street_contribution)
+				return left.target_street_contribution < right.target_street_contribution;
+			return left.action_menu_id < right.action_menu_id;
+		}
+
+		[[nodiscard]] bool public_state_candidate_less(
+			const MultiwayPublicStateDescriptor& left,
+			const MultiwayPublicStateDescriptor& right) noexcept
+		{
+			if (left.id != right.id)
+				return left.id < right.id;
+			if (left.parent_id != right.parent_id)
+				return left.parent_id < right.parent_id;
+			if (left.incoming_edge.kind != right.incoming_edge.kind)
+				return static_cast<std::uint8_t>(left.incoming_edge.kind) < static_cast<std::uint8_t>(right.incoming_edge.kind);
+			if (action_descriptor_less(left.incoming_edge.action, right.incoming_edge.action))
+				return true;
+			if (action_descriptor_less(right.incoming_edge.action, left.incoming_edge.action))
+				return false;
+			if (left.incoming_edge.dealt_card != right.incoming_edge.dealt_card)
+				return left.incoming_edge.dealt_card < right.incoming_edge.dealt_card;
+			if (left.incoming_edge.dealt_cards != right.incoming_edge.dealt_cards)
+				return std::lexicographical_compare(
+					left.incoming_edge.dealt_cards.begin(), left.incoming_edge.dealt_cards.end(),
+					right.incoming_edge.dealt_cards.begin(), right.incoming_edge.dealt_cards.end());
+			if (left.incoming_edge.transition_board != right.incoming_edge.transition_board)
+				return std::lexicographical_compare(
+					left.incoming_edge.transition_board.begin(), left.incoming_edge.transition_board.end(),
+					right.incoming_edge.transition_board.begin(), right.incoming_edge.transition_board.end());
+			return false;
+		}
+
+		[[nodiscard]] bool row_shape_less(
+			const MultiwaySparseRowShape& left,
+			const MultiwaySparseRowShape& right) noexcept
+		{
+			if (left.infoset != right.infoset)
+				return left.infoset < right.infoset;
+			if (left.bucket_count != right.bucket_count)
+				return left.bucket_count < right.bucket_count;
+			return left.action_count < right.action_count;
+		}
+
+		struct DiscoveryMergeDiagnosticsDelta
+		{
+			std::uint64_t public_state_merge_nanoseconds = 0U;
+			std::uint64_t row_merge_nanoseconds = 0U;
+			std::uint64_t public_state_source_elements = 0U;
+			std::uint64_t row_source_elements = 0U;
+			std::uint64_t public_state_duplicate_candidates = 0U;
+			std::uint64_t row_duplicate_candidates = 0U;
+		};
+
+		void merge_public_state_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& output,
+			std::vector<std::size_t>& cursors,
+			DiscoveryMergeDiagnosticsDelta& diagnostics)
+		{
+			const auto merge_started = std::chrono::steady_clock::now();
+			if (streams.size() == 1U)
+			{
+				const auto& stream = *streams.front();
+				output.assign(stream.public_states().begin(), stream.public_states().end());
+				cursors.assign(1U, stream.public_state_count());
+				diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - merge_started)
+						.count());
+				diagnostics.public_state_source_elements = static_cast<std::uint64_t>(stream.public_state_count());
+				diagnostics.public_state_duplicate_candidates = 0U;
+				return;
+			}
+			output.clear();
+			std::size_t total = 0U;
+			for (const auto* stream : streams)
+				total += stream->public_state_count();
+			output.reserve(total);
+			cursors.assign(streams.size(), 0U);
+			while (true)
+			{
+				std::size_t first_stream = streams.size();
+				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				{
+					if (cursors[stream_index] == streams[stream_index]->public_state_count())
+						continue;
+					if (first_stream == streams.size() || streams[stream_index]->public_states()[cursors[stream_index]].id < streams[first_stream]->public_states()[cursors[first_stream]].id)
+						first_stream = stream_index;
+				}
+				if (first_stream == streams.size())
+					break;
+				const auto id = streams[first_stream]->public_states()[cursors[first_stream]].id;
+				output.push_back(streams[first_stream]->public_states()[cursors[first_stream]]);
+				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				{
+					const auto& stream = *streams[stream_index];
+					if (cursors[stream_index] == stream.public_state_count() || stream.public_states()[cursors[stream_index]].id != id)
+						continue;
+					const auto& candidate = stream.public_states()[cursors[stream_index]];
+					if (!MultiwaySolverCoordinator::public_state_candidates_compatible(output.back(), candidate))
+						throw std::invalid_argument("multiway discovery merge found conflicting public-state descriptors");
+					if (public_state_candidate_less(candidate, output.back()))
+						output.back() = candidate;
+					++cursors[stream_index];
+				}
+			}
+			diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - merge_started)
+					.count());
+			diagnostics.public_state_source_elements = static_cast<std::uint64_t>(total);
+			diagnostics.public_state_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
+		}
+
+		void merge_row_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwaySparseRowShape>& output,
+			std::vector<std::size_t>& cursors,
+			DiscoveryMergeDiagnosticsDelta& diagnostics)
+		{
+			const auto merge_started = std::chrono::steady_clock::now();
+			if (streams.size() == 1U)
+			{
+				const auto& stream = *streams.front();
+				output.assign(stream.rows().begin(), stream.rows().end());
+				cursors.assign(1U, stream.row_count());
+				diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - merge_started)
+						.count());
+				diagnostics.row_source_elements = static_cast<std::uint64_t>(stream.row_count());
+				diagnostics.row_duplicate_candidates = 0U;
+				return;
+			}
+			output.clear();
+			std::size_t total = 0U;
+			for (const auto* stream : streams)
+				total += stream->row_count();
+			output.reserve(total);
+			cursors.assign(streams.size(), 0U);
+			while (true)
+			{
+				std::size_t first_stream = streams.size();
+				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				{
+					if (cursors[stream_index] == streams[stream_index]->row_count())
+						continue;
+					if (first_stream == streams.size() || streams[stream_index]->rows()[cursors[stream_index]].infoset < streams[first_stream]->rows()[cursors[first_stream]].infoset)
+						first_stream = stream_index;
+				}
+				if (first_stream == streams.size())
+					break;
+				const auto infoset = streams[first_stream]->rows()[cursors[first_stream]].infoset;
+				output.push_back(streams[first_stream]->rows()[cursors[first_stream]]);
+				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				{
+					const auto& stream = *streams[stream_index];
+					if (cursors[stream_index] == stream.row_count() || stream.rows()[cursors[stream_index]].infoset != infoset)
+						continue;
+					const auto& candidate = stream.rows()[cursors[stream_index]];
+					if (candidate.bucket_count != output.back().bucket_count || candidate.action_count != output.back().action_count)
+						throw std::invalid_argument("multiway discovery merge found conflicting row shapes");
+					++cursors[stream_index];
+				}
+			}
+			diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - merge_started)
+					.count());
+			diagnostics.row_source_elements = static_cast<std::uint64_t>(total);
+			diagnostics.row_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
+		}
+
+		void build_parent_first_order(
+			const std::vector<MultiwayPublicStateDescriptor>& candidates,
+			const MultiwaySolverCoordinator& coordinator,
+			MultiwayAdmissionDiagnostics& diagnostics,
+			std::vector<std::size_t>& order,
+			std::vector<std::size_t>& parent_indexes,
+			std::vector<std::uint32_t>& depths,
+			std::vector<std::uint8_t>& colors,
+			std::vector<std::size_t>& stack)
+		{
+			order.resize(candidates.size());
+			parent_indexes.assign(candidates.size(), candidates.size());
+			depths.assign(candidates.size(), 0U);
+			colors.assign(candidates.size(), 0U);
+			stack.clear();
+			if (!candidates.empty())
+				++diagnostics.parent_resolution_passes;
+			const auto find_candidate = [&candidates](MultiwayPublicStateId id) {
+				const auto it = std::lower_bound(candidates.begin(), candidates.end(), id, [](const auto& candidate, MultiwayPublicStateId value) {
+					return candidate.id < value;
+				});
+				return it == candidates.end() || it->id != id
+					? candidates.size()
+					: static_cast<std::size_t>(it - candidates.begin());
+			};
+			for (std::size_t index = 0U; index < candidates.size(); ++index)
+			{
+				if (colors[index] != 0U)
+					continue;
+				stack.clear();
+				std::size_t current = index;
+				while (colors[current] == 0U)
+				{
+					colors[current] = 1U;
+					stack.push_back(current);
+					const auto parent_id = candidates[current].parent_id;
+					if (parent_id.value == 0U)
+					{
+						if (candidates[current].id != coordinator.root().public_state.id && !coordinator.has_public_state_epoch(candidates[current].id))
+							throw std::invalid_argument("multiway discovery contains a non-root state without a parent");
+						depths[current] = 0U;
+						colors[current] = 2U;
+						break;
+					}
+					++diagnostics.parent_resolution_probes;
+					const auto parent_index = find_candidate(parent_id);
+					parent_indexes[current] = parent_index;
+					if (parent_index == candidates.size())
+					{
+						if (!coordinator.has_public_state_epoch(parent_id))
+							throw std::invalid_argument("multiway discovery contains an unresolved parent");
+						depths[current] = 1U;
+						colors[current] = 2U;
+						break;
+					}
+					if (colors[parent_index] == 1U)
+						throw std::invalid_argument("multiway discovery contains a parent cycle");
+					if (colors[parent_index] == 2U)
+					{
+						if (depths[parent_index] == std::numeric_limits<std::uint32_t>::max())
+							throw std::length_error("multiway discovery parent depth exceeds its limit");
+						depths[current] = depths[parent_index] + 1U;
+						colors[current] = 2U;
+						break;
+					}
+					current = parent_index;
+				}
+				for (auto reverse = stack.rbegin(); reverse != stack.rend(); ++reverse)
+				{
+					const auto candidate_index = *reverse;
+					if (colors[candidate_index] != 1U)
+						continue;
+					const auto parent_index = parent_indexes[candidate_index];
+					if (parent_index == candidates.size())
+						depths[candidate_index] = 1U;
+					else
+					{
+						if (depths[parent_index] == std::numeric_limits<std::uint32_t>::max())
+							throw std::length_error("multiway discovery parent depth exceeds its limit");
+						depths[candidate_index] = depths[parent_index] + 1U;
+					}
+					colors[candidate_index] = 2U;
+				}
+			}
+			for (std::size_t index = 0U; index < order.size(); ++index)
+				order[index] = index;
+			std::sort(order.begin(), order.end(), [&candidates, &depths](std::size_t left, std::size_t right) {
+				if (depths[left] != depths[right])
+					return depths[left] < depths[right];
+				if (candidates[left].id != candidates[right].id)
+					return candidates[left].id < candidates[right].id;
+				return left < right;
+			});
+		}
+
+		class MultiwayAdmissionDiagnosticsScope final
+		{
+		public:
+			MultiwayAdmissionDiagnosticsScope(
+				MultiwaySolverCoordinator& coordinator,
+				MultiwayAdmissionDiagnostics& diagnostics) noexcept
+				: coordinator_(coordinator)
+			{
+				coordinator_.set_admission_diagnostics(&diagnostics);
+			}
+
+			~MultiwayAdmissionDiagnosticsScope()
+			{
+				coordinator_.set_admission_diagnostics(nullptr);
+			}
+
+			MultiwayAdmissionDiagnosticsScope(const MultiwayAdmissionDiagnosticsScope&) = delete;
+			MultiwayAdmissionDiagnosticsScope& operator=(const MultiwayAdmissionDiagnosticsScope&) = delete;
+
+		private:
+			MultiwaySolverCoordinator& coordinator_;
+		};
+
 	} // namespace
+
+	namespace detail
+	{
+		void merge_multiway_discovery_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& public_states,
+			std::vector<MultiwaySparseRowShape>& rows,
+			std::vector<std::size_t>& cursors,
+			MultiwayAdmissionDiagnostics* diagnostics)
+		{
+			const auto one_stream = streams.size() == 1U;
+			DiscoveryMergeDiagnosticsDelta delta;
+			merge_public_state_streams(streams, public_states, cursors, delta);
+			merge_row_streams(streams, rows, cursors, delta);
+			if (diagnostics == nullptr)
+				return;
+			diagnostics->discovery_public_state_merge_nanoseconds += delta.public_state_merge_nanoseconds;
+			diagnostics->discovery_row_merge_nanoseconds += delta.row_merge_nanoseconds;
+			diagnostics->discovery_public_state_source_elements += delta.public_state_source_elements;
+			diagnostics->discovery_row_source_elements += delta.row_source_elements;
+			diagnostics->discovery_public_state_duplicate_candidates += delta.public_state_duplicate_candidates;
+			diagnostics->discovery_row_duplicate_candidates += delta.row_duplicate_candidates;
+			if (one_stream)
+			{
+				++diagnostics->discovery_single_stream_batches;
+				++diagnostics->discovery_one_stream_fast_path_uses;
+			}
+		}
+
+		void build_multiway_parent_first_order(
+			const std::vector<MultiwayPublicStateDescriptor>& candidates,
+			const MultiwaySolverCoordinator& coordinator,
+			MultiwayAdmissionDiagnostics& diagnostics,
+			MultiwayDiscoveryParentOrderScratch& scratch)
+		{
+			build_parent_first_order(
+				candidates, coordinator, diagnostics, scratch.order, scratch.parent_indexes, scratch.depths,
+				scratch.colors, scratch.stack);
+		}
+	} // namespace detail
 
 	bool MultiwayDiscoveryStream::try_append_public_state(const MultiwayPublicStateDescriptor& state)
 	{
@@ -155,10 +496,42 @@ namespace texas::solver::multiway
 
 	void MultiwayDiscoveryStream::sort_fixed_order() noexcept
 	{
-		std::sort(public_states_.begin(), public_states_.end(), [](const auto& left, const auto& right) {
-			return left.id != right.id ? left.id < right.id : left.parent_id < right.parent_id;
-		});
-		std::sort(rows_.begin(), rows_.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
+		std::sort(public_states_.begin(), public_states_.end(), public_state_candidate_less);
+		std::sort(rows_.begin(), rows_.end(), row_shape_less);
+	}
+
+	void MultiwayDiscoveryStream::prepare_for_merge()
+	{
+		sort_fixed_order();
+		auto public_state_output = public_states_.begin();
+		for (auto candidate = public_states_.begin(); candidate != public_states_.end(); ++candidate)
+		{
+			if (public_state_output != public_states_.begin() && (public_state_output - 1)->id == candidate->id)
+			{
+				if (!MultiwaySolverCoordinator::public_state_candidates_compatible(*(public_state_output - 1), *candidate))
+					throw std::invalid_argument("multiway worker discovery found conflicting public-state descriptors");
+				continue;
+			}
+			if (public_state_output != candidate)
+				*public_state_output = std::move(*candidate);
+			++public_state_output;
+		}
+		public_states_.erase(public_state_output, public_states_.end());
+
+		auto row_output = rows_.begin();
+		for (auto candidate = rows_.begin(); candidate != rows_.end(); ++candidate)
+		{
+			if (row_output != rows_.begin() && (row_output - 1)->infoset == candidate->infoset)
+			{
+				if ((row_output - 1)->bucket_count != candidate->bucket_count || (row_output - 1)->action_count != candidate->action_count)
+					throw std::invalid_argument("multiway worker discovery found conflicting row shapes");
+				continue;
+			}
+			if (row_output != candidate)
+				*row_output = *candidate;
+			++row_output;
+		}
+		rows_.erase(row_output, rows_.end());
 	}
 
 	void MultiwayTraversalPruningConfig::validate() const
@@ -608,9 +981,9 @@ namespace texas::solver::multiway
 				const bool immediate_terminal = next.next_node_kind() == MultiwayNextNodeKind::FoldTerminal || next.next_node_kind() == MultiwayNextNodeKind::ShowdownTerminal;
 				const bool below_regret = context.discovery_stream != nullptr
 					? coordinator_->action_below_regret_epoch(
-						infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold)
+						  infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold)
 					: coordinator_->action_below_regret(
-						infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold);
+						  infoset, bucket, static_cast<std::uint8_t>(action), pruning_.regret_threshold);
 				const bool random_recovery = !immediate_terminal && !below_regret && (static_cast<double>(next_random(context.random_state) % 1000000U) / 1000000.0) < explore;
 				if (pruning_.should_explore_action(context.batch_number,
 						below_regret || strategy[action] <= pruning_.action_probability_threshold || random_recovery,
@@ -948,6 +1321,8 @@ namespace texas::solver::multiway
 		worker_scratch_.reserve(worker_count_);
 		worker_stream_views_.reserve(worker_count_);
 		continuation_stream_views_.reserve(worker_count_);
+		discovery_stream_views_.reserve(worker_count_);
+		discovery_merge_cursors_.reserve(worker_count_);
 		worker_batches_.resize(worker_count_);
 		threads_.reserve(worker_count_);
 		worker_work_cvs_.reserve(worker_count_);
@@ -962,6 +1337,7 @@ namespace texas::solver::multiway
 			worker_scratch_.emplace_back(worker, per_worker_capacity, discovery_capacity);
 			worker_stream_views_.push_back(&worker_scratch_.back().stream);
 			continuation_stream_views_.push_back(&worker_scratch_.back().continuation_stream);
+			discovery_stream_views_.push_back(&worker_scratch_.back().discovery);
 			threads_.emplace_back(&MultiwayRootBatchRunner::worker_loop, this, worker);
 		}
 	}
@@ -1041,7 +1417,8 @@ namespace texas::solver::multiway
 			}
 			const auto cv_wait_end = steady_now_nanoseconds();
 			worker_scratch_[worker_index].cv_wait_nanoseconds = cv_wait_end >= cv_wait_start
-				? cv_wait_end - cv_wait_start : 0U;
+				? cv_wait_end - cv_wait_start
+				: 0U;
 			if (worker_index < batch_count)
 			{
 				const auto now = steady_now_nanoseconds();
@@ -1122,10 +1499,10 @@ namespace texas::solver::multiway
 								}
 							}
 						}
-					scratch.active_nanoseconds = static_cast<std::uint64_t>(
-						std::chrono::duration_cast<std::chrono::nanoseconds>(
-							std::chrono::steady_clock::now() - active_start)
-							.count());
+						scratch.active_nanoseconds = static_cast<std::uint64_t>(
+							std::chrono::duration_cast<std::chrono::nanoseconds>(
+								std::chrono::steady_clock::now() - active_start)
+								.count());
 					}
 					const auto sort_start = std::chrono::steady_clock::now();
 					{
@@ -1179,13 +1556,13 @@ namespace texas::solver::multiway
 		}
 		const auto batch_count = scheduler_mode_ == MultiwaySchedulerMode::Fixed
 			? MultiwayScheduler::partition_round_robin_into(
-				trajectory_count,
-				worker_count_,
-				worker_batches_.data(),
-				worker_batches_.size())
+				  trajectory_count,
+				  worker_count_,
+				  worker_batches_.data(),
+				  worker_batches_.size())
 			: trajectory_count == 0U
-				? 1U
-				: static_cast<std::size_t>(std::min<std::uint64_t>(trajectory_count, worker_count_));
+			? 1U
+			: static_cast<std::size_t>(std::min<std::uint64_t>(trajectory_count, worker_count_));
 		for (auto& scratch : worker_scratch_)
 			scratch.reset(profile_mode_);
 
@@ -1260,6 +1637,10 @@ namespace texas::solver::multiway
 		result.worker_continuation_delta_entries.resize(worker_scratch_.size());
 		result.worker_discovery_public_state_counts.resize(worker_scratch_.size());
 		result.worker_discovery_row_counts.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_raw_public_state_candidates_by_worker.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_raw_row_candidates_by_worker.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.resize(worker_scratch_.size());
+		result.admission_diagnostics.worker_local_unique_row_candidates_by_worker.resize(worker_scratch_.size());
 		result.worker_allocation_counts.resize(worker_scratch_.size());
 		result.worker_allocated_bytes.resize(worker_scratch_.size());
 		result.worker_resolved_processor.resize(worker_scratch_.size());
@@ -1272,59 +1653,76 @@ namespace texas::solver::multiway
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.collect");
 			for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
 			{
-				const auto& scratch = worker_scratch_[worker_index];
-			result.trajectories_attempted += scratch.attempted;
-			result.trajectories_accepted += scratch.accepted;
-			result.trajectories_discarded += scratch.discarded;
-			result.delta_entries_merged += scratch.stream.size();
-			const auto regret_entries = static_cast<std::uint64_t>(scratch.stream.size());
-			const auto continuation_entries = static_cast<std::uint64_t>(scratch.continuation_stream.size());
-			const auto discovery_public_states = static_cast<std::uint64_t>(scratch.discovery.public_state_count());
-			const auto discovery_rows = static_cast<std::uint64_t>(scratch.discovery.row_count());
-			result.total_peak_regret_delta_entries += scratch.peak_regret_delta_entries;
-			result.total_peak_continuation_delta_entries += scratch.peak_continuation_delta_entries;
-			result.total_peak_delta_entries += scratch.peak_regret_delta_entries + scratch.peak_continuation_delta_entries;
-			result.generated_update_count += regret_entries + continuation_entries;
-			result.generated_discovery_public_state_count += discovery_public_states;
-			result.generated_discovery_row_count += discovery_rows;
-			result.maximum_worker_delta_entries = std::max(
-				result.maximum_worker_delta_entries,
-				std::max(scratch.peak_regret_delta_entries, scratch.peak_continuation_delta_entries));
-			result.worker_active_nanoseconds += scratch.active_nanoseconds;
-			result.worker_trajectory_counts[worker_index] = scratch.attempted;
-			result.worker_active_nanoseconds_by_worker[worker_index] = scratch.active_nanoseconds;
-			result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
-			result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
-			result.worker_cv_wait_nanoseconds_by_worker[worker_index] = scratch.cv_wait_nanoseconds;
-			result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
-			result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
-				batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
-					? batch_completion_timestamp - scratch.completion_timestamp_nanoseconds : 0U;
-			result.worker_regret_delta_entries[worker_index] = scratch.peak_regret_delta_entries;
-			result.worker_continuation_delta_entries[worker_index] = scratch.peak_continuation_delta_entries;
-			result.worker_discovery_public_state_counts[worker_index] = scratch.peak_discovery_public_state_count;
-			result.worker_discovery_row_counts[worker_index] = scratch.peak_discovery_row_count;
-			const auto allocation_snapshot = scratch.allocation_probe.snapshot();
-			result.worker_allocation_counts[worker_index] = allocation_snapshot.allocation_count;
-			result.worker_allocated_bytes[worker_index] = allocation_snapshot.allocated_bytes;
-			result.worker_resolved_processor[worker_index] = scratch.resolved_processor;
-			result.worker_affinity_masks[worker_index] = scratch.affinity_mask;
-			result.worker_affinity_succeeded[worker_index] = scratch.affinity_succeeded ? 1U : 0U;
-			result.worker_profiles[worker_index] = scratch.profile.snapshot();
-			result.minimum_worker_active_nanoseconds = std::min(
-				result.minimum_worker_active_nanoseconds, scratch.active_nanoseconds);
-			result.maximum_worker_active_nanoseconds = std::max(
-				result.maximum_worker_active_nanoseconds, scratch.active_nanoseconds);
-			result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
-			result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
-			result.worker_cv_wait_nanoseconds += scratch.cv_wait_nanoseconds;
-			result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
-			result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
-			result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
-			result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
-			batch_profile.merge(scratch.profile.snapshot());
-			terminal_visits += scratch.discovery.terminal_visits();
-			leaf_visits += scratch.discovery.leaf_visits();
+				auto& scratch = worker_scratch_[worker_index];
+				result.trajectories_attempted += scratch.attempted;
+				result.trajectories_accepted += scratch.accepted;
+				result.trajectories_discarded += scratch.discarded;
+				result.delta_entries_merged += scratch.stream.size();
+				const auto regret_entries = static_cast<std::uint64_t>(scratch.stream.size());
+				const auto continuation_entries = static_cast<std::uint64_t>(scratch.continuation_stream.size());
+				const auto discovery_public_states = static_cast<std::uint64_t>(scratch.discovery.public_state_count());
+				const auto discovery_rows = static_cast<std::uint64_t>(scratch.discovery.row_count());
+				result.total_peak_regret_delta_entries += scratch.peak_regret_delta_entries;
+				result.total_peak_continuation_delta_entries += scratch.peak_continuation_delta_entries;
+				result.total_peak_delta_entries += scratch.peak_regret_delta_entries + scratch.peak_continuation_delta_entries;
+				result.generated_update_count += regret_entries + continuation_entries;
+				result.generated_discovery_public_state_count += discovery_public_states;
+				result.generated_discovery_row_count += discovery_rows;
+				result.admission_diagnostics.raw_public_state_candidates += discovery_public_states;
+				result.admission_diagnostics.raw_row_candidates += discovery_rows;
+				result.admission_diagnostics.worker_raw_public_state_candidates_by_worker[worker_index] = discovery_public_states;
+				result.admission_diagnostics.worker_raw_row_candidates_by_worker[worker_index] = discovery_rows;
+				if (immutable_epochs_)
+					scratch.discovery.prepare_for_merge();
+				const auto local_unique_public_states = immutable_epochs_
+					? static_cast<std::uint64_t>(scratch.discovery.public_state_count())
+					: 0U;
+				const auto local_unique_rows = immutable_epochs_
+					? static_cast<std::uint64_t>(scratch.discovery.row_count())
+					: 0U;
+				result.admission_diagnostics.worker_local_unique_public_state_candidates_by_worker[worker_index] = local_unique_public_states;
+				result.admission_diagnostics.worker_local_unique_row_candidates_by_worker[worker_index] = local_unique_rows;
+				result.admission_diagnostics.worker_local_unique_public_state_candidates += local_unique_public_states;
+				result.admission_diagnostics.worker_local_unique_row_candidates += local_unique_rows;
+				result.maximum_worker_delta_entries = std::max(
+					result.maximum_worker_delta_entries,
+					std::max(scratch.peak_regret_delta_entries, scratch.peak_continuation_delta_entries));
+				result.worker_active_nanoseconds += scratch.active_nanoseconds;
+				result.worker_trajectory_counts[worker_index] = scratch.attempted;
+				result.worker_active_nanoseconds_by_worker[worker_index] = scratch.active_nanoseconds;
+				result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
+				result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
+				result.worker_cv_wait_nanoseconds_by_worker[worker_index] = scratch.cv_wait_nanoseconds;
+				result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
+				result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
+					batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
+					? batch_completion_timestamp - scratch.completion_timestamp_nanoseconds
+					: 0U;
+				result.worker_regret_delta_entries[worker_index] = scratch.peak_regret_delta_entries;
+				result.worker_continuation_delta_entries[worker_index] = scratch.peak_continuation_delta_entries;
+				result.worker_discovery_public_state_counts[worker_index] = scratch.peak_discovery_public_state_count;
+				result.worker_discovery_row_counts[worker_index] = scratch.peak_discovery_row_count;
+				const auto allocation_snapshot = scratch.allocation_probe.snapshot();
+				result.worker_allocation_counts[worker_index] = allocation_snapshot.allocation_count;
+				result.worker_allocated_bytes[worker_index] = allocation_snapshot.allocated_bytes;
+				result.worker_resolved_processor[worker_index] = scratch.resolved_processor;
+				result.worker_affinity_masks[worker_index] = scratch.affinity_mask;
+				result.worker_affinity_succeeded[worker_index] = scratch.affinity_succeeded ? 1U : 0U;
+				result.worker_profiles[worker_index] = scratch.profile.snapshot();
+				result.minimum_worker_active_nanoseconds = std::min(
+					result.minimum_worker_active_nanoseconds, scratch.active_nanoseconds);
+				result.maximum_worker_active_nanoseconds = std::max(
+					result.maximum_worker_active_nanoseconds, scratch.active_nanoseconds);
+				result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
+				result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
+				result.worker_cv_wait_nanoseconds += scratch.cv_wait_nanoseconds;
+				result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
+				result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
+				result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
+				result.maximum_worker_trajectories = std::max(result.maximum_worker_trajectories, scratch.attempted);
+				batch_profile.merge(scratch.profile.snapshot());
+				terminal_visits += scratch.discovery.terminal_visits();
+				leaf_visits += scratch.discovery.leaf_visits();
 				missing_lookup_requests += scratch.discovery.missing_lookup_requests();
 			}
 		}
@@ -1347,14 +1745,12 @@ namespace texas::solver::multiway
 		if (immutable_epochs_)
 		{
 			const auto admission_start = std::chrono::steady_clock::now();
-			std::vector<MultiwayPublicStateDescriptor> discoveries;
-			std::vector<MultiwaySparseRowShape> rows;
+			const auto public_states_before = coordinator_->diagnostics().public_states_admitted;
+			const auto rows_before = coordinator_->diagnostics().sparse_rows_admitted;
 			{
-				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_copy");
+				const auto phase_started = std::chrono::steady_clock::now();
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_prepare");
 				for (const auto& scratch : worker_scratch_)
-				{
-					discoveries.insert(discoveries.end(), scratch.discovery.public_states().begin(), scratch.discovery.public_states().end());
-					rows.insert(rows.end(), scratch.discovery.rows().begin(), scratch.discovery.rows().end());
 					if (scratch.discovery.overflowed())
 					{
 						result.discovery_capacity_exhausted = true;
@@ -1362,41 +1758,66 @@ namespace texas::solver::multiway
 						result.profile = batch_profile.snapshot();
 						return result;
 					}
-				}
+				result.admission_diagnostics.discovery_prepare_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - phase_started)
+						.count());
 			}
 			{
-				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_sort");
-				std::sort(discoveries.begin(), discoveries.end(), [](const auto& left, const auto& right) {
-					return left.id != right.id ? left.id < right.id : left.parent_id < right.parent_id;
-				});
-				std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
+				const auto phase_started = std::chrono::steady_clock::now();
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge");
+				detail::merge_multiway_discovery_streams(
+					discovery_stream_views_, discovery_public_states_, discovery_rows_,
+					discovery_merge_cursors_, &result.admission_diagnostics);
+				result.admission_diagnostics.discovery_merge_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - phase_started)
+						.count());
 			}
-			std::vector<bool> admitted(discoveries.size(), false);
-			std::size_t remaining = discoveries.size();
+			result.admission_diagnostics.globally_unique_public_state_candidates =
+				static_cast<std::uint64_t>(discovery_public_states_.size());
+			result.admission_diagnostics.globally_unique_row_candidates =
+				static_cast<std::uint64_t>(discovery_rows_.size());
+			MultiwayAdmissionDiagnosticsScope admission_diagnostics_scope(
+				*coordinator_, result.admission_diagnostics);
+			{
+				const auto phase_started = std::chrono::steady_clock::now();
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_parent_order");
+				detail::build_multiway_parent_first_order(
+					discovery_public_states_, *coordinator_, result.admission_diagnostics,
+					admission_order_scratch_);
+				result.admission_diagnostics.parent_order_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - phase_started)
+						.count());
+			}
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_admit");
-				while (remaining != 0U)
-				{
-					bool progress = false;
-					for (std::size_t index = 0U; index < discoveries.size(); ++index)
-					{
-						if (admitted[index] || (discoveries[index].parent_id.value != 0U && coordinator_->find_public_state(discoveries[index].parent_id) == nullptr))
-							continue;
-						coordinator_->admit_public_state(discoveries[index]);
-						admitted[index] = true;
-						--remaining;
-						progress = true;
-					}
-					if (!progress)
-						throw std::logic_error("immutable multiway discovery epoch has an unresolved parent");
-				}
+				coordinator_->admit_prepared_batch(
+					discovery_public_states_, admission_order_scratch_.order, discovery_rows_,
+					&admission_order_scratch_.parent_indexes);
 			}
-			for (const auto& row : rows)
-				coordinator_->admit_infoset_row(row);
+			const auto public_states_after = coordinator_->diagnostics().public_states_admitted;
+			const auto rows_after = coordinator_->diagnostics().sparse_rows_admitted;
+			result.admission_diagnostics.newly_admitted_public_state_candidates =
+				public_states_after >= public_states_before
+				? public_states_after - public_states_before
+				: 0U;
+			result.admission_diagnostics.newly_admitted_row_candidates =
+				rows_after >= rows_before ? rows_after - rows_before : 0U;
+			result.admission_diagnostics.already_admitted_public_state_candidates =
+				result.admission_diagnostics.globally_unique_public_state_candidates >= result.admission_diagnostics.newly_admitted_public_state_candidates
+				? result.admission_diagnostics.globally_unique_public_state_candidates - result.admission_diagnostics.newly_admitted_public_state_candidates
+				: 0U;
+			result.admission_diagnostics.already_admitted_row_candidates =
+				result.admission_diagnostics.globally_unique_row_candidates >= result.admission_diagnostics.newly_admitted_row_candidates
+				? result.admission_diagnostics.globally_unique_row_candidates - result.admission_diagnostics.newly_admitted_row_candidates
+				: 0U;
 			coordinator_->merge_traversal_counters(terminal_visits, leaf_visits, missing_lookup_requests);
 			result.coordinator_admission_nanoseconds = static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - admission_start).count());
+					std::chrono::steady_clock::now() - admission_start)
+					.count());
 		}
 		const auto merge_start = std::chrono::steady_clock::now();
 		{
@@ -1418,9 +1839,7 @@ namespace texas::solver::multiway
 		result.coordinator_lock_wait_nanoseconds =
 			coordinator_->diagnostics().coordinator_lock_wait_nanoseconds - coordinator_lock_wait_before;
 		result.profile = batch_profile.snapshot();
-		result.clean = result.trajectories_discarded == 0U &&
-			result.trajectories_attempted == result.trajectories_accepted &&
-			(result.delta_entries_merged == 0U || result.run.merged_stream_fingerprint != 0U);
+		result.clean = result.trajectories_discarded == 0U && result.trajectories_attempted == result.trajectories_accepted && (result.delta_entries_merged == 0U || result.run.merged_stream_fingerprint != 0U);
 		return result;
 	}
 

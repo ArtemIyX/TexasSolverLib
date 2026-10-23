@@ -1,5 +1,784 @@
 # Pluribus Roadmap Progress Log
 
+## AD7 - Admission variance follow-up plan
+
+**Status:** Complete
+**Completed:** 2026-10-18
+
+- Recorded capture evidence showing the schema-v2 identity gate is stable while discovery merge and parent-transition work vary.
+- Defined additive telemetry and a one-candidate-at-a-time decision path for the next AD7 optimization.
+
+### Files
+
+- `docs/plans/2026-10-18/01_ad7_admission_variance_followup.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed all inline-capture manifests and reports from `a6728c8`.
+- No source, build, test, or executable was run while creating the plan.
+
+### Limitations
+
+- The selected implementation candidate depends on the planned exclusive telemetry captures.
+
+## AD7 - State identity validation fixture correction
+
+**Status:** Complete
+**Completed:** 2026-10-17
+**Implementation commit:** `4d88453 PB-3 Tests: Fix identity validation boundary fixture`
+
+- Normalized the baseline history action index before malformed-history mutations.
+- Restored meaningful coverage for the valid upper actor boundary and each isolated malformed field.
+
+### Files
+
+- `tests/test_multiway_public_builder.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the focused diff and `git diff --cached --check` passed.
+- No build or test was run, per session rules.
+
+### Limitations
+
+- The corrected test requires operator execution for runtime confirmation.
+
+## AD7 - State identity validation redesign
+
+**Status:** Complete for implementation; operator qualification pending
+**Completed:** 2026-10-17
+**Implementation commits:** `0b59e99 PB-3 Multiway: Add transactional identity inspection API`, `60e93f4 PB-3 Multiway: Unroll dual-lane identity encoding`
+
+- Added a compatibility-preserving transactional out-parameter identity API for admission.
+- Validated every schema-v2 history entry before hashing and replaced the runtime byte loop with an explicitly unrolled scalar dual-lane FNV encoder.
+- Preserved independent reference hash paths, admission error ordering, telemetry, and catalog/storage boundaries.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_public_builder.hpp`
+- `src/solver/multiway/abstraction/multiway_public_builder.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_public_builder.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked branch `PB-3` and reviewed focused staged diffs.
+- `git diff --cached --check` passed before each implementation commit.
+- No build, test, benchmark, executable, or solver script was run, per session rules.
+
+### Limitations
+
+- Operator qualification remains required: focused tests, MSVC disassembly confirming inlining, and matched Tracy captures against the AD7 acceptance gates.
+
+## 2026-10-16 - AD7 state preflight identity validation optimization
+
+**Status:** Complete for implementation; operator qualification pending
+**Completed:** 2026-10-16
+**Implementation commit:** `23c64c4 PB-3 Multiway: Optimize state identity validation`
+
+- Added an allocation-free schema-v2 identity inspector that validates history
+  shape while computing history and public-state hashes in lockstep.
+- Replaced the new-state admission verifier's three history traversals with
+  the dual-hash inspector while preserving rejection ordering and identity
+  bytes.
+- Added focused identity-equivalence, malformed-history, and independent ID
+  rejection coverage.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_public_builder.hpp`
+- `src/solver/multiway/abstraction/multiway_public_builder.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_public_builder.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked branch `PB-3`.
+- Reviewed the focused diff and staged patch.
+- `git diff --cached --check` passed.
+- No build, test, benchmark, executable, or solver script was run by Codex,
+  per session rules.
+
+### Limitations
+
+- Operator must build, run focused tests, and execute the planned Tracy
+  qualification captures before accepting the performance gates.
+
+## AD7G - Catalog menu index and cold-admission follow-up
+
+**Status:** Complete for implementation; operator qualification pending
+**Completed:** 2026-10-15
+**Implementation commits:** `57c2243 PB-3 Multiway: Index canonical catalog menus`, `dd019f7 PB-3 Tests: Cover indexed catalog admission`, `16e507d PB-3 Tests: Verify catalog telemetry reporting`, `1bae7ed PB-3 Multiway: Measure validated menu key preparation`, `5da74f3 PB-3 Tests: Prove catalog menu reuse counters`
+
+- Replaced linear catalog menu lookup with a sorted canonical-ID index and
+  full descriptor-vector equality checks for collision safety.
+- Added reusable batch menu resolution, first-occurrence handle assignment,
+  merged menu/state indexes, direct packed-node append, and pre-mutation
+  capacity/reserve preparation.
+- Reused validated public-state metadata during row preflight and added
+  additive admission and validation-phase telemetry to training reports.
+- Added catalog, coordinator, capacity, collision, clear/rebuild, telemetry,
+  and report-serialization regression coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_public_catalog.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Checked branch `PB-3`.
+- Reviewed focused diffs and commit boundaries.
+- No build, test, benchmark, executable, or solver script was run by Codex,
+  per session rules.
+
+### Limitations
+
+- Operator must build, run focused tests, and execute the eight Tracy 0.14.1
+  qualification captures before AD7G performance thresholds can be accepted.
+
+## 2026-10-15 - Add AD7 catalog optimization planning prompt
+
+**Status:** Complete
+**Completed:** 2026-10-15
+
+- Added a handoff prompt for the next AI agent to prepare the follow-up AD7
+  catalog menu-lookup optimization plan.
+- Recorded the latest performance evidence, correctness invariants, candidate
+  solutions, required telemetry, and session constraints.
+
+### Files
+
+- `docs/prompts/ad7_catalog_menu_lookup_followup_planning_prompt.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the new prompt and latest `tmp/tracy/ad7-post-*` reports.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- The follow-up implementation plan must be prepared by the next agent.
+
+## 2026-10-15 - Fix AD7 fixed-state transition compile error
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `b6296ba PB-3 Multiway: Fix fixed-state transition check`
+
+- Replaced the remaining dynamic-only street-transition helper call with the
+  equivalent `MultiwayFixedState::next_node_kind()` check.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the focused diff and checked it with `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must rerun the build and focused tests to confirm the compile fix.
+
+## 2026-10-15 - Implement AD7 state preflight and catalog optimization
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commits:**
+
+- `afbf666 PB-3 Multiway: Optimize prepared admission preflight`
+- `e27f204 PB-3 Tests: Preserve admission state on capacity failure`
+
+- Replaced dynamic betting-state reconstruction in public-state and row
+  admission validation with the allocation-free fixed-state representation.
+- Reused coordinator admission scratch buffers across prepared batches.
+- Classified sorted prepared public states with one catalog-index merge while
+  preserving compatibility reconstruction and parent-first validation.
+- Added additive admission counters and phase timings for classification,
+  validation, parent resolution, row resolution, menu lookup, and index merge.
+- Added regression assertions that capacity failures leave checkpoint catalog
+  and row state unchanged.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the focused diffs and checked staged patches with `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must build, run focused tests, and repeat the Tracy 0.14.1 cold and
+  steady capture matrix to verify performance, fingerprints, checkpoint bytes,
+  and the new admission telemetry.
+
+## 2026-10-15 - Fix AD7 admission compile error
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `9156d73 PB-3 Multiway: Fix admission index redeclaration`
+
+- Reset the existing sparse-row merge scan index instead of redeclaring it in
+  the same function scope.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the focused diff and ran `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must rerun the requested build and focused test to confirm the
+  compiler error is resolved.
+
+## 2026-10-15 - Implement AD7 admission hot-path optimization
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commits:**
+
+- `3879077 PB-3 Multiway: Add admission phase telemetry`
+- `8aa38cb PB-3 Multiway: Reuse prepared parent indexes`
+- `a6c1fd1 PB-3 Multiway: Batch public catalog admission`
+- `eb97d7a PB-3 Multiway: Batch sparse-row admission`
+- `d8ce8a5 PB-3 Tests: Cover batch admission storage`
+- `840f246 PB-3 Multiway: Guard batch admission duplicates`
+- `2b327bf PB-3 Multiway: Reuse row candidate indexes`
+
+- Added admission phase telemetry for discovery preparation, merge, parent
+  ordering, preflight, catalog commit, and storage commit.
+- Replaced per-entry public-catalog index insertion with one sorted batch
+  merge while preserving single-state admission.
+- Added float and compact sparse-row batch commits with capacity preflight,
+  stable offsets, sorted metadata, duplicate rejection, and compact pages.
+- Reused prepared parent and row candidate indexes during admission.
+- Added focused catalog, float-row, compact-row, and ordering regression
+  coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Reviewed the staged diffs and ran `git diff --check`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator must build, run focused tests, and repeat the RelWithDebInfo
+  Tracy matrix to verify the below-250-ms cold admission target and output
+  equivalence.
+
+## 2026-10-15 - Plan AD7 admission hot-path optimization
+
+**Status:** Plan complete; implementation pending
+**Completed:** 2026-10-15
+
+- Analyzed the completed fixed/dynamic RelWithDebInfo Tracy captures for
+  AD5-AD6.
+- Confirmed deterministic and checkpoint equivalence across all eight runs,
+  with zero failures and zero discarded trajectories.
+- Identified the remaining gate: cold coordinator admission measured
+  1.338-1.487 seconds versus the required 250 ms maximum.
+- Planned batched public-catalog and sparse-row commits, candidate-index
+  reuse, phase telemetry, regression coverage, and operator qualification.
+
+### Files
+
+- `docs/plans/2026-10-15/10_ad7_admission_hot_path_optimization.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Inspected all eight AD5-AD6 Tracy manifests and reports.
+- Reviewed the public-catalog, sparse-storage, prepared-admission, and
+  parent-order implementation paths.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- The AD7 performance target remains unverified until implementation and
+  operator-run qualification captures are complete.
+
+## 2026-10-15 - Implement AD5-AD6 bulk admission and epoch filtering
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commits:**
+
+- `ac12103 PB-3 Multiway: Add bulk epoch admission`
+- `4028346 PB-3 Tests: Cover bulk epoch admission`
+
+- Added a prepared discovery-batch admission API with one coordinator lock.
+- Preflighted public-state, row, compact-page, and value capacities before
+  mutation.
+- Preserved descriptor, parent-transition, row-shape, and duplicate-conflict
+  validation while skipping epoch-known states and rows.
+- Added lock-free immutable-epoch public-state membership queries and routed
+  parent resolution through them.
+- Added focused tests for one-lock admission, epoch filtering, and rejection
+  without partial mutation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Focused diff reviewed.
+- Static symbol and path checks completed.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+- Operator must run rejection, equivalence, capacity, and fixed/dynamic worker
+  validation, then provide admission timing and checkpoint results.
+
+### Limitations
+
+- Runtime acceptance, checkpoint equivalence, and the below-250-ms cold-batch
+  target remain unverified until operator validation.
+
+## 2026-10-15 - Implement AD2-AD4 discovery preparation and parent-first merge
+
+**Status:** Implementation complete; operator validation pending
+**Completed:** 2026-10-15
+**Implementation commits:**
+
+- `beb507f PB-3 Multiway: Implement AD2-AD4 discovery merge`
+- `3ceee18 PB-3 Multiway: Avoid redundant admission reconstruction`
+- `b03caa2 PB-3 Tests: Cover shuffled discovery candidates`
+- `8bfb2dd PB-3 Tests: Cover discovery merge and parent graphs`
+- `d169820 PB-3 Tests: Stabilize discovery graph fixtures`
+
+- Added worker-local discovery preparation that sorts deterministically,
+  deduplicates candidates in place, and rejects conflicting public-state or
+  row descriptors.
+- Replaced coordinator discovery concatenation and global sorting with direct
+  deterministic k-way merging of prepared worker streams.
+- Added binary-search parent resolution with memoized candidate depths,
+  cycle/unresolved-parent rejection before mutation, and `(depth, state_id)`
+  admission ordering.
+- Reused coordinator merge/order buffers and removed repeated parent descriptor
+  reconstruction from the admission path.
+- Added focused discovery-stream tests for shuffled input, compatible duplicate
+  collapse, cross-worker conflicts, valid parent ordering, cycles, and
+  unresolved parents.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Branch checked: `PB-3`.
+- Focused source diff reviewed.
+- `git diff --check` passed.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+- Operator must run the correctness suite and identical 1-worker/4-worker
+  admission measurements, then provide fingerprints, admitted-set comparisons,
+  and timing results.
+
+### Limitations
+
+- Runtime acceptance and the four-worker admission slowdown threshold remain
+  unverified until operator validation.
+
+## 2026-10-15 - Accept formatted bucket checkpoint setup
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `721baa3 PB-3 Tests: Accept formatted checkpoint setup`
+
+- Made the bucket workflow boundary check validate the checkpoint guard,
+  directory creation call, and writer setup order independently of C++ line
+  formatting.
+- Preserved the requirement that the checkpoint directory is created before
+  `MultiwayBucketArtifactWriter` setup.
+
+### Files
+
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused source diff reviewed.
+- `git diff --check` passed.
+- No build or test was run by Codex.
+- Operator reported build and boundary test passed.
+
+### Limitations
+
+- None identified.
+
+## 2026-10-15 - Fix AD1 report validation compile error
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `0959bd4 PB-3 Multiway: Fix admission report validation`
+
+- Corrected `MultiwayTrainingReport::validate()` to access its own
+  `admission_diagnostics` member instead of an undeclared local `report`.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused source diff reviewed.
+- `git diff --check` passed.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- None identified.
+
+## 2026-10-15 - Apply project C++ formatting
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `99157c7 PB-3 Format: Apply project C++ formatting`
+
+- Applied the repository formatter to the tracked C++ and multiway test files.
+- No runtime behavior or solver logic was intentionally changed.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/util/tracy.hpp`
+- `src/core/atomic_publish.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_allocation_probe.cpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/engine/multiway_scheduler.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_phase4.cpp`
+- `tests/test_multiway_public_catalog.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --cached --check` passed before commit.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- None identified.
+
+## 2026-10-15 - AD1 coordinator admission diagnostics
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `ddf7827 PB-3 Multiway: Add admission diagnostics`
+
+- Added cold-path admission counters for raw, worker-local unique, globally
+  unique, already-admitted, and newly admitted state and row candidates.
+- Added parent-resolution pass/probe counts, descriptor reconstruction counts,
+  lock acquisitions, catalog index insertion time, and row admission time.
+- Propagated global and per-worker candidate diagnostics into training report
+  JSON without changing strategy identity or merge behavior.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Source-only C++ review completed with no actionable findings.
+- `git diff --cached --check` passed before commit.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+- Operator build and test passed.
+- Operator completed matching Tracy 0.14.1 one-worker and four-worker captures
+  with one batch and 1,000 trajectories using the fixed scheduler.
+- Both reports had `failed=false`, 1,000 accepted trajectories, and merge
+  fingerprint `9806774443936985566`.
+- Both reports reconciled to 85,996 raw public-state candidates, 47,173 raw
+  row candidates, 69,194 globally unique public states, and 31,070 globally
+  unique rows; already-admitted plus newly-admitted counts matched those
+  totals.
+- Parent-resolution, reconstruction, lock, and admission timing diagnostics
+  were present and nonzero. Per-worker arrays matched their worker counts.
+- Semantic model identity components matched; the runtime identity differed
+  only because the configured worker count is part of that runtime identity.
+
+### Limitations
+
+- None identified.
+
+## 2026-10-15 - Correct checkpoint payload hash ordering
+
+**Status:** Complete
+**Completed:** 2026-10-15
+**Implementation commit:** `ba3b7c0 PB-3 Multiway: Preserve checkpoint payload hash order`
+
+- Corrected the incremental checkpoint writer hash sequence to match the
+  existing `payload_hash()` contract.
+- Preserved the schema-2 serialized field order and bytes by deferring hashing
+  of the street-visit arrays until their historical hash order is reached.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --cached --check` passed before commit.
+- Operator reported the targeted round-trip and tampering test passed.
+- Operator reported `acceptance_pass: true` for
+  `tmp/tracy/cp3-1w-1x1000-300s-rerun/report.json` after matching the
+  one-batch workload and expected deterministic merge fingerprint.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- None identified.
+
+## 2026-10-15 - Implement CP3-CP5 checkpoint write path
+
+**Status:** Complete
+**Completed:** 2026-10-15
+
+- Added a sealed checkpoint writer for the trusted training workflow while
+  retaining validation in the public `save_atomic()` API.
+- Replaced per-byte file output with a 64 KiB buffered stream and computed the
+  payload hash during serialization, including block-wise double-array output.
+- Added checked Windows replacement publication, restricted copy fallback to
+  destinations that do not exist, and reported the publication mode in training
+  telemetry.
+- Preserved the schema-2 serialization contract in source; runtime byte and
+  resume compatibility still require operator verification.
+
+### Files
+
+- `include/core/atomic_publish.hpp`
+- `src/core/atomic_publish.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the changed C++ with the TexasSolver C++ review rules.
+- `git diff --check` passed for the staged changes.
+- Commits: `9b32e42`, `b533176`, `15b64ac`.
+- Operator reported checkpoint save/load and tampering validation passed.
+- Operator reported CP3-CP5 Tracy acceptance passed with complete phase
+  coverage, byte accounting, zero discarded trajectories, and the expected
+  deterministic merge fingerprint.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- None identified.
+
+## 2026-10-15 - Implement CP2 linear compact checkpoint export
+
+**Status:** Implemented, operator validation pending
+**Completed:** 2026-10-15
+
+- Replaced per-cell compact checkpoint page lookup with a sequential page walk.
+- Precomputed row offsets and the total logical checkpoint cell count once.
+- Allocated and zero-initialized the final regret and strategy arrays before
+  copying active page ranges into their action-major destinations.
+- Kept compact row and page indexes in public-state-major, then seat-major
+  checkpoint order so the coordinator no longer creates a second compact
+  canonical storage copy.
+- Preserved the Float64 reference export and canonicalization path unchanged.
+- Added compact action-major sparse-page coverage and compact-versus-Float64
+  checkpoint equivalence coverage, including multiple canonical rows.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the changed C++ diff with the TexasSolver C++ review rules.
+- `git diff --check --ignore-submodules=all` passed for the changed files.
+- Committed as `bd4cceb` (`PB-3 Multiway: Linearize compact checkpoint export`).
+- Added the multirow equivalence case in commit `e0c9e37`.
+- No build, test, benchmark, executable, or solver script was run by Codex.
+
+### Limitations
+
+- Operator build and compact/Float64 round-trip tests remain required.
+- The large sparse-page measurement and CP1 timing comparison remain pending.
+
+## 2026-10-15 - Implement CP1 checkpoint phase telemetry
+
+**Status:** Implemented and operator-validated
+**Completed:** 2026-10-15
+
+- Added independent Tracy zones and report telemetry for checkpoint snapshot
+  locking, catalog export, compact storage export, canonicalization, both
+  validations, payload hashing, binary encoding, stream close/flush, and atomic
+  publication.
+- Added serialized byte counts for public states, row shapes, regrets, strategy
+  sums, and the late-window baseline without changing checkpoint payload bytes or
+  payload hashing.
+- Kept payload-hash timing separate from binary encoding timing so phase totals
+  do not double-count the nested hash operation.
+- Bumped the training report schema to 7 and updated the worker-matrix schema
+  gate.
+- Propagated the nested checkpoint telemetry object into the QA wrapper's
+  `run_metrics.json` artifact.
+- Added a non-executing report analyzer for schema, phase coverage, byte
+  accounting, discarded trajectories, and merge-fingerprint validation.
+- Extended the analyzer to require every CP1 Tracy zone in the exported CSV.
+- Preserved exact decimal comparison for the 64-bit deterministic merge
+  fingerprint in Windows PowerShell.
+- Added a checkpoint round-trip assertion that runtime telemetry is not
+  serialized into the checkpoint artifact.
+- Corrected PowerShell analyzer comparisons to use PowerShell numeric literal
+  syntax instead of C++ unsigned suffixes.
+
+### Files
+
+- `docs/plans/2026-10-15/01_cp1_checkpoint_telemetry.md`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `scripts/run_multiway_ram_1000.ps1`
+- `scripts/analyze_multiway_checkpoint_telemetry.ps1`
+- `scripts/run_multiway_worker_matrix.ps1`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the changed C++ diff with the TexasSolver C++ review rules.
+- `git diff --check` passed for tracked changes.
+- Operator capture `tmp/tracy/cp1-1w-1x1000` produced a schema-7 report and
+  Tracy 0.14.1 manifest for the current CP1 instrumentation.
+- The CP1 analyzer passed: all CSV zones present, phase total
+  `161722238900 ns` versus checkpoint total `161727571400 ns` (`99.9967%`),
+  payload sections `137380459` bytes versus checkpoint size `137380835` bytes,
+  zero discarded trajectories, and matching merge fingerprint
+  `9806774443936985566`.
+- No build, test, benchmark, executable, or solver script was run by Codex;
+  the operator supplied the runtime capture and analyzer result.
+
+### Limitations
+
+- The evidence is a bounded one-worker, one-batch, 1,000-trajectory capture;
+  it validates CP1 instrumentation and acceptance gates, not throughput scaling.
+
+## 2026-10-15 - Split Tracy scaling remediation into operator-ready tasks
+
+**Status:** Complete
+**Completed:** 2026-10-15
+
+- Split the Tracy scaling remediation plan into nine independently scoped tasks.
+- Marked source-only work that Codex can prepare and runtime validation that an
+  operator must execute because it requires builds, tests, captures, or solver
+  workflows.
+- Preserved the remediation dependencies, determinism gates, and performance
+  acceptance criteria.
+
+### Files
+
+- `docs/plans/2026-10-15/01_cp1_checkpoint_telemetry.md`
+- `docs/plans/2026-10-15/02_cp2_linear_compact_snapshot_export.md`
+- `docs/plans/2026-10-15/03_cp3_cp5_checkpoint_write_path.md`
+- `docs/plans/2026-10-15/04_ad1_admission_diagnostics.md`
+- `docs/plans/2026-10-15/05_ad2_ad4_discovery_merge.md`
+- `docs/plans/2026-10-15/06_ad5_ad6_bulk_admission_epoch_filtering.md`
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/plans/2026-10-15/08_th3_dynamic_scheduler_qualification.md`
+- `docs/plans/2026-10-15/09_th4_th5_traversal_pinning.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the generated Markdown structure and task dependencies.
+- No build, test, benchmark, executable, or solver script was run.
+
+### Limitations
+
+- The documents are execution plans. Runtime gates remain unverified until an
+  operator runs the required workflows.
+
 ## 2026-10-14 - Document application and script I/O contracts
 
 **Status:** Complete

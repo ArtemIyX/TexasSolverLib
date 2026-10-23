@@ -324,6 +324,7 @@ namespace texas::solver::multiway
 				schedule_.strategy_weight(one_based_batch));
 			if (!batch_result.clean)
 			{
+				status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
 				status_.failed_batch_available = true;
 				status_.failed_batch = batch_result;
 				if (batch_result.discovery_capacity_exhausted)
@@ -369,7 +370,8 @@ namespace texas::solver::multiway
 				}
 				status_.trainer_only_nanoseconds += static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
-						std::chrono::steady_clock::now() - trainer_phase_start).count());
+						std::chrono::steady_clock::now() - trainer_phase_start)
+						.count());
 			}
 			const auto& diagnostics = coordinator_->diagnostics();
 			status_.visited_public_descriptors = diagnostics.public_states_admitted;
@@ -407,6 +409,7 @@ namespace texas::solver::multiway
 			status_.generated_discovery_public_state_count += batch_result.generated_discovery_public_state_count;
 			status_.generated_discovery_row_count += batch_result.generated_discovery_row_count;
 			status_.coordinator_admission_nanoseconds += batch_result.coordinator_admission_nanoseconds;
+			status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
 			status_.affinity_requested = batch_result.affinity_requested;
 			status_.cumulative_worker_delta_entries = diagnostics.worker_delta_entries_merged;
 			status_.worker_active_nanoseconds += batch_result.worker_active_nanoseconds;
@@ -417,7 +420,7 @@ namespace texas::solver::multiway
 			status_.minimum_worker_active_nanoseconds = status_.batches == 1U
 				? batch_result.minimum_worker_active_nanoseconds
 				: std::min(status_.minimum_worker_active_nanoseconds,
-					batch_result.minimum_worker_active_nanoseconds);
+					  batch_result.minimum_worker_active_nanoseconds);
 			status_.maximum_worker_active_nanoseconds = std::max(
 				status_.maximum_worker_active_nanoseconds, batch_result.maximum_worker_active_nanoseconds);
 			status_.coordinator_wait_nanoseconds += batch_result.coordinator_wait_nanoseconds;
@@ -505,7 +508,8 @@ namespace texas::solver::multiway
 					status_.current_process_rss_bytes);
 				const auto process_cpu_now = observed_multiway_training_process_cpu_nanoseconds();
 				status_.process_cpu_nanoseconds = process_cpu_now >= process_cpu_started_nanoseconds_
-					? process_cpu_now - process_cpu_started_nanoseconds_ : 0U;
+					? process_cpu_now - process_cpu_started_nanoseconds_
+					: 0U;
 				status_.peak_working_set_bytes = std::max(status_.peak_working_set_bytes,
 					observed_multiway_process_peak_working_set_bytes());
 			}
@@ -540,7 +544,8 @@ namespace texas::solver::multiway
 			TEXASSOLVER_TRACY_FRAME_MARK("mw.batch");
 			TEXASSOLVER_TRACY_PLOT("mw.trajectories.accepted",
 				status_.trajectories >= status_.discarded_trajectories
-					? status_.trajectories - status_.discarded_trajectories : 0U);
+					? status_.trajectories - status_.discarded_trajectories
+					: 0U);
 			TEXASSOLVER_TRACY_PLOT("mw.worker.active_ns.total", status_.worker_active_nanoseconds);
 			TEXASSOLVER_TRACY_PLOT("mw.worker.active_ns.max", status_.maximum_worker_active_nanoseconds);
 			TEXASSOLVER_TRACY_PLOT("mw.worker.tail_idle_ns.total", status_.worker_tail_idle_nanoseconds);
@@ -663,8 +668,17 @@ namespace texas::solver::multiway
 		result.training = make_metadata(status_, schedule_, deterministic_seed_);
 		result.coverage = coverage_manifest();
 		result.coordinator = coordinator_->checkpoint();
+		result.telemetry = result.coordinator.telemetry;
 		result.late_window_baseline = late_window_baseline_;
-		result.validate();
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.checkpoint.training_validation");
+			const auto started = std::chrono::steady_clock::now();
+			result.validate();
+			result.telemetry.validation_nanoseconds += static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started)
+					.count());
+		}
 		return result;
 	}
 

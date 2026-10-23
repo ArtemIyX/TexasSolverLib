@@ -50,6 +50,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool try_append_row(const MultiwaySparseRowShape& shape) noexcept;
 		void rewind() noexcept;
 		void sort_fixed_order() noexcept;
+		void prepare_for_merge();
 		[[nodiscard]] bool overflowed() const noexcept { return overflowed_; }
 		[[nodiscard]] const std::vector<MultiwayPublicStateDescriptor>& public_states() const noexcept { return public_states_; }
 		[[nodiscard]] const std::vector<MultiwaySparseRowShape>& rows() const noexcept { return rows_; }
@@ -77,6 +78,31 @@ namespace texas::solver::multiway
 		std::uint64_t leaf_visits_ = 0U;
 		std::uint64_t missing_lookup_requests_ = 0U;
 	};
+
+	namespace detail
+	{
+		struct MultiwayDiscoveryParentOrderScratch
+		{
+			std::vector<std::size_t> order;
+			std::vector<std::size_t> parent_indexes;
+			std::vector<std::uint32_t> depths;
+			std::vector<std::uint8_t> colors;
+			std::vector<std::size_t> stack;
+		};
+
+		void merge_multiway_discovery_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& public_states,
+			std::vector<MultiwaySparseRowShape>& rows,
+			std::vector<std::size_t>& cursors,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
+
+		void build_multiway_parent_first_order(
+			const std::vector<MultiwayPublicStateDescriptor>& candidates,
+			const MultiwaySolverCoordinator& coordinator,
+			MultiwayAdmissionDiagnostics& diagnostics,
+			MultiwayDiscoveryParentOrderScratch& scratch);
+	} // namespace detail
 
 	struct MultiwayTraversalPruningConfig
 	{
@@ -192,6 +218,7 @@ namespace texas::solver::multiway
 		std::uint64_t generated_discovery_public_state_count = 0;
 		std::uint64_t generated_discovery_row_count = 0;
 		std::uint64_t coordinator_admission_nanoseconds = 0;
+		MultiwayAdmissionDiagnostics admission_diagnostics{};
 		// Traversal time excluding worker delta sorting.
 		std::uint64_t worker_active_nanoseconds = 0;
 		std::uint64_t worker_wake_latency_nanoseconds = 0;
@@ -330,6 +357,11 @@ namespace texas::solver::multiway
 		std::vector<WorkerScratch> worker_scratch_;
 		std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
 		std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;
+		std::vector<const MultiwayDiscoveryStream*> discovery_stream_views_;
+		std::vector<std::size_t> discovery_merge_cursors_;
+		std::vector<MultiwayPublicStateDescriptor> discovery_public_states_;
+		std::vector<MultiwaySparseRowShape> discovery_rows_;
+		detail::MultiwayDiscoveryParentOrderScratch admission_order_scratch_;
 		std::vector<MultiwayWorkerBatch> worker_batches_;
 		std::vector<std::thread> threads_;
 		std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;

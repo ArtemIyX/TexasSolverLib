@@ -207,6 +207,23 @@ namespace texas::solver::multiway
 			}
 		}
 
+		bool valid_history_action(MultiwayAction action) noexcept
+		{
+			return action == MultiwayAction::Fold || action == MultiwayAction::Check || action == MultiwayAction::Call || action == MultiwayAction::Bet || action == MultiwayAction::Raise || action == MultiwayAction::AllIn;
+		}
+
+		bool valid_schema_v2_history(
+			const std::vector<MultiwayPublicHistoryEntry>& history,
+			std::size_t seat_count) noexcept
+		{
+			for (const auto& entry : history)
+			{
+				if (entry.actor < 0 || static_cast<std::size_t>(entry.actor) >= seat_count || !valid_history_action(entry.action.action) || entry.action.action_index != 0U || entry.action.action_menu_id == 0U || entry.action.target_street_contribution < 0)
+					return false;
+			}
+			return true;
+		}
+
 	} // namespace
 
 	std::vector<MultiwayActionDescriptor> MultiwayPublicBuilder::canonicalize_action_menu(
@@ -508,6 +525,98 @@ namespace texas::solver::multiway
 		append_history(hash, history);
 		append_action_menu(hash, legal_actions);
 		return non_zero(hash);
+	}
+
+	MultiwayPublicIdentityInspection MultiwayPublicBuilder::inspect_schema_v2_identity(
+		const MultiwayBettingSnapshot& betting,
+		const std::vector<std::uint8_t>& board,
+		const std::vector<MultiwayPublicHistoryEntry>& history,
+		const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept
+	{
+		MultiwayPublicIdentityInspection output;
+		inspect_schema_v2_identity(betting, board, history, legal_actions, output);
+		return output;
+	}
+
+	bool MultiwayPublicBuilder::inspect_schema_v2_identity(
+		const MultiwayBettingSnapshot& betting,
+		const std::vector<std::uint8_t>& board,
+		const std::vector<MultiwayPublicHistoryEntry>& history,
+		const std::vector<MultiwayActionDescriptor>& legal_actions,
+		MultiwayPublicIdentityInspection& output) noexcept
+	{
+		output = {};
+		if (!valid_schema_v2_history(history, betting.stacks.size()))
+			return false;
+
+		std::uint64_t history_hash = 0U;
+		std::uint64_t public_state_hash = 0U;
+		begin_fingerprint(history_hash);
+		begin_fingerprint(public_state_hash);
+		append_ints_field(public_state_hash, FingerprintField::BettingStacks, betting.stacks);
+		append_ints_field(public_state_hash, FingerprintField::BettingContributions, betting.contributions);
+		append_ints_field(public_state_hash, FingerprintField::BettingStreetContributions, betting.street_contributions);
+		append_bools_field(public_state_hash, FingerprintField::BettingFolded, betting.folded);
+		append_bools_field(public_state_hash, FingerprintField::BettingAllIn, betting.all_in);
+		append_bools_field(public_state_hash, FingerprintField::BettingMayRaise, betting.may_raise);
+		append_bools_field(public_state_hash, FingerprintField::BettingPending, betting.pending);
+		append_bools_field(public_state_hash, FingerprintField::BettingHasActed, betting.has_acted);
+		append_ints_field(public_state_hash, FingerprintField::BettingFaced, betting.bet_faced_when_acted);
+		append_i64_field(public_state_hash, FingerprintField::CurrentPlayer, betting.current_player);
+		append_i64_field(public_state_hash, FingerprintField::LastAggressor, betting.last_aggressor);
+		append_i64_field(public_state_hash, FingerprintField::CurrentBet, betting.current_bet);
+		append_i64_field(public_state_hash, FingerprintField::LastFullRaise, betting.last_full_raise_size);
+		append_i64_field(public_state_hash, FingerprintField::BigBlind, betting.big_blind);
+		append_u64_field(public_state_hash, FingerprintField::Street, static_cast<std::uint64_t>(betting.street));
+		append_cards_field(public_state_hash, FingerprintField::Board, board);
+
+		const auto history_bytes = history.size() * 4U * sizeof(std::uint64_t);
+		append_field_prefix(history_hash, FingerprintField::History, history_bytes);
+		append_field_prefix(public_state_hash, FingerprintField::History, history_bytes);
+#define TEXAS_APPEND_DUAL_FNV(value) \
+		do \
+		{ \
+			const auto encoded = static_cast<std::uint64_t>(value); \
+			const auto byte0 = static_cast<std::uint8_t>(encoded); \
+			history_hash = (history_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte1 = static_cast<std::uint8_t>(encoded >> 8U); \
+			history_hash = (history_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte2 = static_cast<std::uint8_t>(encoded >> 16U); \
+			history_hash = (history_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte3 = static_cast<std::uint8_t>(encoded >> 24U); \
+			history_hash = (history_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte4 = static_cast<std::uint8_t>(encoded >> 32U); \
+			history_hash = (history_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte5 = static_cast<std::uint8_t>(encoded >> 40U); \
+			history_hash = (history_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte6 = static_cast<std::uint8_t>(encoded >> 48U); \
+			history_hash = (history_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME; \
+			const auto byte7 = static_cast<std::uint8_t>(encoded >> 56U); \
+			history_hash = (history_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME; \
+			public_state_hash = (public_state_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME; \
+		} while (false)
+		for (const auto& entry : history)
+		{
+			TEXAS_APPEND_DUAL_FNV(static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.actor)));
+			TEXAS_APPEND_DUAL_FNV(static_cast<std::uint64_t>(entry.action.action));
+			TEXAS_APPEND_DUAL_FNV(static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.action.target_street_contribution)));
+			TEXAS_APPEND_DUAL_FNV(entry.action.action_menu_id);
+		}
+#undef TEXAS_APPEND_DUAL_FNV
+		append_action_menu(public_state_hash, legal_actions);
+		output = {
+			non_zero(history_hash),
+			{ non_zero(public_state_hash) },
+			true,
+		};
+		return true;
 	}
 
 	std::uint64_t MultiwayPublicBuilder::stable_lossless_current_round_key(

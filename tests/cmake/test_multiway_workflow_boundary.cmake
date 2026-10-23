@@ -34,11 +34,11 @@ if(source_text MATCHES "install\\(")
     message(FATAL_ERROR "multiway workflow front end must remain non-installed")
 endif()
 
-string(FIND "${source_text}"
-    "if (!checkpoint_dir.empty()) std::filesystem::create_directories(checkpoint_dir);"
-    checkpoint_directory_position)
+string(FIND "${source_text}" "if (!checkpoint_dir.empty())" checkpoint_directory_guard_position)
+string(FIND "${source_text}" "std::filesystem::create_directories(checkpoint_dir);" checkpoint_directory_create_position)
 string(FIND "${source_text}" "MultiwayBucketArtifactWriter> writer;" writer_position)
-if(checkpoint_directory_position EQUAL -1 OR writer_position EQUAL -1 OR
-   checkpoint_directory_position GREATER writer_position)
+if(checkpoint_directory_guard_position EQUAL -1 OR checkpoint_directory_create_position EQUAL -1 OR
+   writer_position EQUAL -1 OR checkpoint_directory_guard_position GREATER checkpoint_directory_create_position OR
+   checkpoint_directory_create_position GREATER writer_position)
     message(FATAL_ERROR "bucket workflow must create checkpoint directory before writer setup")
 endif()

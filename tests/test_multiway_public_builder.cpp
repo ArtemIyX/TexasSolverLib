@@ -107,6 +107,93 @@ TEST_CASE(multiway_public_builder_schema_v2_changes_menu_id_for_off_tree_action)
 	}));
 }
 
+TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_matches_reference_hashes)
+{
+	const auto snapshot = root_snapshot();
+	const auto menu = texas::MultiwayPublicBuilder::make_legal_actions(snapshot, { 0, 250, 0 });
+	const auto root = texas::MultiwayPublicBuilder::make_root(
+		snapshot, { texas::card_to_int(2U, 0U), texas::card_to_int(7U, 1U), texas::card_to_int(9U, 2U) }, menu);
+	const auto root_inspection = texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, root.history, root.legal_actions);
+
+	EXPECT_TRUE(root_inspection.history_valid);
+	EXPECT_EQ(root_inspection.canonical_history_id, texas::MultiwayPublicBuilder::stable_history_id(root.history));
+	EXPECT_EQ(root_inspection.public_state_id.value, texas::MultiwayPublicBuilder::stable_public_state_id(root.betting, root.board, root.history, root.legal_actions));
+
+	auto action_child = root;
+	action_child.history.push_back({ 0, menu[1] });
+	action_child.history.back().action.action_index = 0U;
+	const auto child_inspection = texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		action_child.betting, action_child.board, action_child.history, action_child.legal_actions);
+	EXPECT_TRUE(child_inspection.history_valid);
+	EXPECT_EQ(child_inspection.canonical_history_id, texas::MultiwayPublicBuilder::stable_history_id(action_child.history));
+	EXPECT_EQ(child_inspection.public_state_id.value, texas::MultiwayPublicBuilder::stable_public_state_id(action_child.betting, action_child.board, action_child.history, action_child.legal_actions));
+
+	const std::vector<texas::MultiwayActionDescriptor> empty_menu;
+	const auto empty_menu_inspection = texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, root.history, empty_menu);
+	EXPECT_TRUE(empty_menu_inspection.history_valid);
+	EXPECT_EQ(empty_menu_inspection.public_state_id.value, texas::MultiwayPublicBuilder::stable_public_state_id(root.betting, root.board, root.history, empty_menu));
+}
+
+TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_rejects_malformed_history)
+{
+	const auto snapshot = root_snapshot();
+	const auto menu = texas::MultiwayPublicBuilder::make_legal_actions(snapshot, { 0, 250, 0 });
+	const auto root = texas::MultiwayPublicBuilder::make_root(
+		snapshot, { texas::card_to_int(2U, 0U), texas::card_to_int(7U, 1U), texas::card_to_int(9U, 2U) }, menu);
+	auto valid_history = std::vector<texas::MultiwayPublicHistoryEntry>{ { 0, menu[1] } };
+	valid_history.front().action.action_index = 0U;
+
+	const auto expect_invalid = [&](auto mutate) {
+		auto history = valid_history;
+		mutate(history.front());
+		const auto inspection = texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+			root.betting, root.board, history, root.legal_actions);
+		EXPECT_TRUE(!inspection.history_valid);
+	};
+
+	expect_invalid([](auto& value) { value.actor = -1; });
+	expect_invalid([](auto& value) { value.actor = 3; });
+	expect_invalid([](auto& value) { value.action.action = static_cast<texas::MultiwayAction>(255U); });
+	expect_invalid([](auto& value) { value.action.action_index = 1U; });
+	expect_invalid([](auto& value) { value.action.action_menu_id = 0U; });
+	expect_invalid([](auto& value) { value.action.target_street_contribution = -1; });
+
+	auto boundary_history = valid_history;
+	boundary_history.front().actor = 2;
+	boundary_history.front().action.target_street_contribution = 0;
+	texas::MultiwayPublicIdentityInspection boundary_identity;
+	EXPECT_TRUE(texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, boundary_history, root.legal_actions, boundary_identity));
+	EXPECT_TRUE(boundary_identity.history_valid);
+}
+
+TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_out_parameter_is_transactional)
+{
+	const auto snapshot = root_snapshot();
+	const auto menu = texas::MultiwayPublicBuilder::make_legal_actions(snapshot, { 0, 250, 0 });
+	const auto root = texas::MultiwayPublicBuilder::make_root(
+		snapshot, { texas::card_to_int(2U, 0U), texas::card_to_int(7U, 1U), texas::card_to_int(9U, 2U) }, menu);
+	auto history = std::vector<texas::MultiwayPublicHistoryEntry>{ { 0, menu[1] } };
+	history.front().action.action_index = 0U;
+
+	texas::MultiwayPublicIdentityInspection identity;
+	EXPECT_TRUE(texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, history, root.legal_actions, identity));
+	EXPECT_TRUE(identity.history_valid);
+	EXPECT_EQ(identity.canonical_history_id, texas::MultiwayPublicBuilder::stable_history_id(history));
+	EXPECT_EQ(identity.public_state_id.value, texas::MultiwayPublicBuilder::stable_public_state_id(
+		root.betting, root.board, history, root.legal_actions));
+
+	history.front().actor = -1;
+	EXPECT_TRUE(!texas::MultiwayPublicBuilder::inspect_schema_v2_identity(
+		root.betting, root.board, history, root.legal_actions, identity));
+	EXPECT_EQ(identity.canonical_history_id, 0U);
+	EXPECT_EQ(identity.public_state_id.value, 0U);
+	EXPECT_TRUE(!identity.history_valid);
+}
+
 TEST_CASE(multiway_public_builder_lossless_current_round_key_tracks_exact_targets)
 {
 	const auto snapshot = root_snapshot();

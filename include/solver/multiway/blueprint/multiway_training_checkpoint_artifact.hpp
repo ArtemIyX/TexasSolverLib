@@ -15,7 +15,15 @@ namespace texas::solver::multiway
 	public:
 		static void save_atomic(
 			const std::filesystem::path& path,
-			const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+			const MultiwayBlueprintTrainingCheckpoint& checkpoint,
+			MultiwayCheckpointTelemetry* telemetry = nullptr);
+
+		// The caller must validate the fully constructed checkpoint before calling
+		// this trusted training-workflow path.
+		static void save_atomic_sealed(
+			const std::filesystem::path& path,
+			const MultiwayBlueprintTrainingCheckpoint& checkpoint,
+			MultiwayCheckpointTelemetry* telemetry = nullptr);
 
 		[[nodiscard]] static MultiwayBlueprintTrainingCheckpoint load_verified(
 			const std::filesystem::path& path,
