@@ -833,11 +833,11 @@ namespace texas::solver::multiway
 			leaf_evaluator_ = *leaf_evaluator;
 		MultiwaySolveRequest request(root_, config_.cfr, config_.limits);
 		coordinator_ = std::make_unique<MultiwaySolverCoordinator>(request);
+		if (!config_.process_memory_snapshots.record_current(MultiwayMemoryPhase::AfterCoordinatorConstruction))
+			throw std::logic_error("multiway training memory snapshot phase order is invalid");
 		action_abstraction_ = std::make_unique<MultiwayActionAbstraction>(config_.action_abstraction);
 		continuation_selector_ = std::make_unique<MultiwayFixedContinuationSelector>(
 			config_.blueprint.continuation_policy);
-		if (!config_.process_memory_snapshots.record_current(MultiwayMemoryPhase::AfterCoordinatorConstruction))
-			throw std::logic_error("multiway training memory snapshot phase order is invalid");
 		MultiwayRootExternalSamplingTraversal traversal(
 			*coordinator_, root_, *action_abstraction_, *buckets_, leaf_evaluator == nullptr ? nullptr : &leaf_evaluator_,
 			config_.max_decision_depth, config_.max_public_chance_depth, nullptr, continuation_selector_.get(), nullptr,
