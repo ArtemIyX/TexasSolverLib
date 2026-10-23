@@ -4,7 +4,7 @@
 
 **Status:** Complete
 **Completed:** 2026-10-23
-**Implementation commits:** `84a3c31`, `4d0e344`
+**Implementation commits:** `84a3c31`, `787e845`
 
 - Added fixed-layout `noexcept` live and retained-capacity snapshots for all
   Task B owners, including per-worker and aggregate fields.
