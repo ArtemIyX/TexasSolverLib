@@ -3,6 +3,7 @@
 
 #include <stdexcept>
 #include <limits>
+#include <string>
 
 namespace
 {
@@ -21,6 +22,82 @@ namespace
 	}
 
 } // namespace
+
+TEST_CASE(multiway_process_memory_phase_names_round_trip_in_order)
+{
+	using namespace texas::solver::multiway;
+	static_assert(noexcept(capture_multiway_process_memory_snapshot()));
+	const char* expected_names[MULTIWAY_MEMORY_PHASE_COUNT] = {
+		"process_start",
+		"before_bucket_map",
+		"after_bucket_map_metadata",
+		"after_bucket_assignment_validation",
+		"before_memory_preflight",
+		"after_coordinator_construction",
+		"after_worker_pool_construction",
+		"after_cold_batch",
+		"after_steady_batch",
+		"before_checkpoint",
+		"after_checkpoint",
+		"before_export",
+		"after_export",
+	};
+	MultiwayProcessMemorySnapshotCollection snapshots;
+	for (std::size_t index = 0U; index < MULTIWAY_MEMORY_PHASE_COUNT; ++index)
+	{
+		const auto phase = static_cast<MultiwayMemoryPhase>(index);
+		EXPECT_TRUE(snapshots.record(phase, {}));
+		EXPECT_EQ(std::string(multiway_memory_phase_name(phase)), std::string(expected_names[index]));
+	}
+	EXPECT_TRUE(snapshots.enabled);
+	EXPECT_TRUE(snapshots.completed);
+	EXPECT_TRUE(snapshots.valid());
+}
+
+TEST_CASE(multiway_process_memory_snapshots_reject_duplicate_and_out_of_order_phases)
+{
+	using namespace texas::solver::multiway;
+	MultiwayProcessMemorySnapshotCollection snapshots;
+	EXPECT_TRUE(!snapshots.record(MultiwayMemoryPhase::AfterBucketMapMetadata, {}));
+	EXPECT_TRUE(snapshots.record(MultiwayMemoryPhase::ProcessStart, {}));
+	EXPECT_TRUE(!snapshots.record(MultiwayMemoryPhase::ProcessStart, {}));
+	EXPECT_TRUE(!snapshots.record(MultiwayMemoryPhase::AfterBucketAssignmentValidation, {}));
+	EXPECT_TRUE(snapshots.valid());
+}
+
+TEST_CASE(multiway_process_memory_snapshot_reports_supported_fields)
+{
+	using namespace texas::solver::multiway;
+	const auto snapshot = capture_multiway_process_memory_snapshot();
+#if defined(_WIN32) || defined(__linux__)
+	EXPECT_TRUE(snapshot.current_working_set_available);
+	EXPECT_TRUE(snapshot.peak_working_set_available);
+	EXPECT_TRUE(snapshot.current_working_set_bytes > 0U);
+	EXPECT_TRUE(snapshot.peak_working_set_bytes >= snapshot.current_working_set_bytes);
+#else
+	EXPECT_TRUE(!snapshot.current_working_set_available);
+	EXPECT_TRUE(!snapshot.peak_working_set_available);
+#endif
+	if (snapshot.private_committed_available)
+		EXPECT_TRUE(snapshot.private_committed_bytes > 0U);
+	if (snapshot.virtual_address_available)
+		EXPECT_TRUE(snapshot.virtual_address_bytes > 0U);
+	if (snapshot.anonymous_resident_available)
+		EXPECT_TRUE(snapshot.anonymous_resident_bytes > 0U);
+	if (snapshot.file_resident_available)
+		EXPECT_TRUE(snapshot.file_resident_bytes > 0U);
+}
+
+TEST_CASE(multiway_process_memory_snapshot_keeps_unavailable_fields_explicit)
+{
+	using namespace texas::solver::multiway;
+	MultiwayProcessMemorySnapshot snapshot;
+	EXPECT_TRUE(snapshot.valid());
+	EXPECT_TRUE(!snapshot.private_committed_available);
+	EXPECT_TRUE(!snapshot.virtual_address_available);
+	snapshot.private_committed_bytes = 1U;
+	EXPECT_TRUE(!snapshot.valid());
+}
 
 TEST_CASE(multiway_memory_preflight_reports_warning_and_rejection)
 {

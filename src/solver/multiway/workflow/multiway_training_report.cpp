@@ -43,6 +43,11 @@ namespace texas::solver::multiway
 			}
 		}
 		evidence.validate(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION);
+		if (!process_memory_snapshots.valid() ||
+			(!failed && process_memory_snapshots.enabled && !process_memory_snapshots.completed))
+		{
+			throw std::invalid_argument("invalid multiway process memory snapshots");
+		}
 		if (process_rss_available && current_process_rss_bytes == 0U)
 		{
 			throw std::invalid_argument("available process RSS must be non-zero");
@@ -157,6 +162,7 @@ namespace texas::solver::multiway
 		report.worker_profiles = status.worker_profiles;
 		report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
 		report.memory_ledger = status.memory_ledger;
+		report.process_memory_snapshots = status.process_memory_snapshots;
 		report.capacity_exhaustion_stage = status.capacity_exhaustion_stage;
 		report.failed_batch_available = status.failed_batch_available;
 		report.failed_batch = status.failed_batch;
@@ -475,6 +481,33 @@ namespace texas::solver::multiway
 			   << ", \"live_bytes\": " << report.memory_ledger.live_bytes
 			   << ", \"reserved_bytes\": " << report.memory_ledger.reserved_bytes
 			   << ", \"committed_bytes\": " << report.memory_ledger.committed_bytes << "}"
+			   << ",\n  \"memory_schema_version\": " << MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION
+			   << ",\n  \"memory_process_snapshots\": [";
+		for (std::size_t index = 0U; index < report.process_memory_snapshots.count; ++index)
+		{
+			if (index != 0U)
+				output << ',';
+			const auto& snapshot = report.process_memory_snapshots.snapshots[index];
+			output << "{\"phase_id\": " << static_cast<unsigned>(snapshot.phase_id)
+				   << ", \"phase\": \"" << multiway_memory_phase_name(snapshot.phase_id)
+				   << "\", \"current_working_set_bytes\": " << snapshot.current_working_set_bytes
+				   << ", \"peak_working_set_bytes\": " << snapshot.peak_working_set_bytes
+				   << ", \"private_committed_bytes\": " << snapshot.private_committed_bytes
+				   << ", \"peak_private_committed_bytes\": " << snapshot.peak_private_committed_bytes
+				   << ", \"virtual_address_bytes\": " << snapshot.virtual_address_bytes
+				   << ", \"anonymous_resident_bytes\": " << snapshot.anonymous_resident_bytes
+				   << ", \"file_resident_bytes\": " << snapshot.file_resident_bytes
+				   << ", \"availability\": {\"current_working_set\": "
+				   << (snapshot.current_working_set_available ? "true" : "false")
+				   << ", \"peak_working_set\": " << (snapshot.peak_working_set_available ? "true" : "false")
+				   << ", \"private_committed\": " << (snapshot.private_committed_available ? "true" : "false")
+				   << ", \"peak_private_committed\": " << (snapshot.peak_private_committed_available ? "true" : "false")
+				   << ", \"virtual_address\": " << (snapshot.virtual_address_available ? "true" : "false")
+				   << ", \"anonymous_resident\": " << (snapshot.anonymous_resident_available ? "true" : "false")
+				   << ", \"file_resident\": " << (snapshot.file_resident_available ? "true" : "false")
+				   << "}}";
+		}
+		output << "]"
 			   << ",\n  \"checkpoint_bytes\": " << report.checkpoint_bytes
 			   << ",\n  \"checkpoint_write_nanoseconds\": " << report.checkpoint_write_nanoseconds
 			   << ",\n  \"checkpoint_telemetry\": {\"snapshot_lock_wait_nanoseconds\": " << report.checkpoint_telemetry.snapshot_lock_wait_nanoseconds

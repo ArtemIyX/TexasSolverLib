@@ -75,6 +75,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.memory_ledger.regret_page_bytes = 222U;
 	status.memory_ledger.coordinator_allocation_count = 333U;
 	status.memory_ledger.coordinator_allocation_bytes = 444U;
+	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
+		EXPECT_TRUE(status.process_memory_snapshots.record(static_cast<MultiwayMemoryPhase>(phase), {}));
 	MultiwayProducerIdentity identity;
 	identity.git_commit = "test";
 	identity.build_configuration = "Debug";
@@ -178,6 +180,11 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds\": 15") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds_by_worker\": [7,8,0,0,0,0,0,0]") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_trajectory_counts\": [10,10,0,0,0,0,0,0]") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_schema_version\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_process_snapshots\": [") != std::string::npos);
+	EXPECT_TRUE(text.find("\"phase\": \"process_start\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"phase\": \"after_export\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"private_committed\": false") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_key_nanoseconds\": 1") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_index_lookup_nanoseconds\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_equality_nanoseconds\": 3") != std::string::npos);
@@ -282,6 +289,11 @@ TEST_CASE(multiway_training_report_calculates_throughput_and_rejects_bad_rss)
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 	report.admitted_rows_per_batch = { 4U, 6U };
 	report.validate();
+	report.process_memory_snapshots.enabled = true;
+	report.process_memory_snapshots.count = 2U;
+	report.process_memory_snapshots.snapshots[0U].phase_id = MultiwayMemoryPhase::ProcessStart;
+	report.process_memory_snapshots.snapshots[1U].phase_id = MultiwayMemoryPhase::AfterBucketMapMetadata;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_training_report_rejects_impossible_counters)

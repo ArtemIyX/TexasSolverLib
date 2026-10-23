@@ -514,6 +514,9 @@ namespace
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots;
+		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::ProcessStart))
+			throw std::logic_error("multiway process memory snapshot phase order is invalid");
 		TEXASSOLVER_TRACY_SET_THREAD_NAME("mw.train.main");
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
@@ -552,7 +555,9 @@ namespace
 			throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
 		}
 		log_line("training initialization: loading bucket artifact");
-		const auto buckets = load_multiway_bucket_registry(input_path);
+		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeBucketMap))
+			throw std::logic_error("multiway process memory snapshot phase order is invalid");
+		const auto buckets = load_multiway_bucket_registry(input_path, &process_memory_snapshots);
 		log_line("training initialization: bucket artifact loaded tables=" + std::to_string(buckets.tables().size()));
 		log_line("training initialization: preparing output and model identity");
 		if (!output_path.parent_path().empty())
@@ -613,6 +618,8 @@ namespace
 		memory_inputs.checkpoint_peak_bytes = estimated_blueprint_bytes;
 		memory_inputs.export_peak_bytes = estimated_blueprint_bytes;
 		log_line("training initialization: running memory preflight");
+		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeMemoryPreflight))
+			throw std::logic_error("multiway process memory snapshot phase order is invalid");
 		const auto memory_preflight = preflight_multiway_memory(
 			config.limits,
 			{ warning_bytes, workflow.process_memory_limit_bytes, operating_bytes },
@@ -623,6 +630,7 @@ namespace
 		}
 		config.memory_preflight_estimate_bytes = memory_preflight.estimate.total_bytes;
 		config.memory_ledger = memory_preflight.estimate.ledger;
+		config.process_memory_snapshots = process_memory_snapshots;
 		log_line("training workers requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective) + " memory_estimate_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
 		log_line("training initialization: loading bucket artifact bytes=" + std::to_string(std::filesystem::file_size(input_path)));
 		log_line("training initialization: constructing six-player uniform ranges");
@@ -654,6 +662,7 @@ namespace
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};
+		bool checkpoint_snapshots_recorded = false;
 		const auto publish_training_failure = [&]() {
 			auto failure_report = make_multiway_training_report(
 				session.status(), session.status().merged_stream_fingerprint,
@@ -683,6 +692,11 @@ namespace
 					{
 						std::filesystem::create_directories(checkpoint_path.parent_path());
 					}
+					const bool capture_checkpoint_phases = remaining_batches == 0U;
+					if (capture_checkpoint_phases)
+					{
+						session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
+					}
 					const auto checkpoint_start = std::chrono::steady_clock::now();
 					auto checkpoint = session.checkpoint();
 					checkpoint.validate();
@@ -697,6 +711,11 @@ namespace
 					if (checkpoint_error)
 						throw std::runtime_error("cannot measure training checkpoint");
 					checkpoint_bytes = std::max(checkpoint_bytes, static_cast<std::uint64_t>(bytes));
+					if (capture_checkpoint_phases)
+					{
+						session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
+						checkpoint_snapshots_recorded = true;
+					}
 				}
 			}
 		}
@@ -727,9 +746,16 @@ namespace
 				training_report);
 			throw std::runtime_error("training failed the F1 coverage or discard gate");
 		}
+		if (!checkpoint_snapshots_recorded)
+		{
+			session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
+			session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
+		}
+		session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeExport);
 		const auto blueprint_start = std::chrono::steady_clock::now();
 		const auto artifact = session.export_full_policy();
 		MultiwayFullBlueprintArtifacts::save_atomic(output_path, artifact);
+		session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterExport);
 		const auto blueprint_export_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - blueprint_start)

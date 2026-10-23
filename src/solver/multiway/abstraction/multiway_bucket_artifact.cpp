@@ -2,6 +2,7 @@
 #include "core/canonical_combo.hpp"
 #include "core/fingerprint.hpp"
 #include "core/poker.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -523,7 +524,9 @@ namespace texas::solver::multiway
 #endif
 	}
 
-	MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path& path)
+	MultiwayBucketRegistry load_multiway_bucket_registry(
+		const std::filesystem::path& path,
+		MultiwayProcessMemorySnapshotCollection* process_memory_snapshots)
 	{
 		constexpr std::uint64_t kHeaderBytes = 4U + 4U + kIdentityFieldCount * 8U + 4U;
 		constexpr std::uint64_t kSmallestTableBytes = 2U + 3U + 4U + MULTIWAY_HOLE_COMBINATION_COUNT * 4U;
@@ -610,7 +613,11 @@ namespace texas::solver::multiway
 			table.table_identity_ = table_hash;
 			tables.push_back(std::move(table));
 		}
+		if (process_memory_snapshots != nullptr && !process_memory_snapshots->record_current(MultiwayMemoryPhase::AfterBucketMapMetadata))
+			throw std::logic_error("multiway bucket memory snapshot phase order is invalid");
 		validate_mapped_assignments_parallel(tables);
+		if (process_memory_snapshots != nullptr && !process_memory_snapshots->record_current(MultiwayMemoryPhase::AfterBucketAssignmentValidation))
+			throw std::logic_error("multiway bucket memory snapshot phase order is invalid");
 		if (cursor != mapped->size)
 			throw std::invalid_argument("multiway bucket artifact has trailing data");
 		return MultiwayBucketRegistry(std::move(tables), std::move(mapped));

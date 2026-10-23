@@ -19,6 +19,7 @@ namespace texas::solver::multiway
 	inline constexpr std::size_t MULTIWAY_HOLE_COMBINATION_COUNT = core::CANONICAL_HOLE_COMBINATION_COUNT;
 
 	class MultiwayBucketRegistry;
+	struct MultiwayProcessMemorySnapshotCollection;
 
 	// Immutable bucket assignments for one canonical postflop board. Entries use
 	// the fixed unordered-card index; board-blocked hands retain INVALID_BUCKET.
@@ -71,7 +72,9 @@ namespace texas::solver::multiway
 		std::vector<std::uint32_t> assignments_;
 		const std::uint8_t* mapped_assignments_ = nullptr;
 		friend class MultiwayBucketRegistry;
-		friend MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path& path);
+		friend MultiwayBucketRegistry load_multiway_bucket_registry(
+			const std::filesystem::path& path,
+			MultiwayProcessMemorySnapshotCollection* process_memory_snapshots);
 	};
 
 	// Sorted immutable board registry. Lookup uses binary search, not a hash map,
@@ -120,7 +123,9 @@ namespace texas::solver::multiway
 
 		MultiwayBucketRegistry(std::vector<MultiwayBucketTable> tables,
 			std::unique_ptr<MappedArtifact> mapped_artifact);
-		friend MultiwayBucketRegistry load_multiway_bucket_registry(const std::filesystem::path& path);
+		friend MultiwayBucketRegistry load_multiway_bucket_registry(
+			const std::filesystem::path& path,
+			MultiwayProcessMemorySnapshotCollection* process_memory_snapshots);
 	};
 
 } // namespace texas::solver::multiway

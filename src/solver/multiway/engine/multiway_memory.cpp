@@ -11,14 +11,16 @@
 	#include <windows.h>
 	#include <psapi.h>
 #elif defined(__linux__)
-	#include <fstream>
+	#include <cerrno>
+	#include <cstdio>
 	#include <ctime>
+	#include <cstring>
+	#include <cstdlib>
 	#include <unistd.h>
 #endif
 
 #include <limits>
 #include <algorithm>
-#include <string>
 #include <stdexcept>
 #include <thread>
 
@@ -45,65 +47,162 @@ namespace texas::solver::multiway
 			return left + right;
 		}
 
+#if defined(__linux__)
+		void parse_linux_memory_field(
+			const char* line,
+			const char* name,
+			std::uint64_t& value,
+			bool& available) noexcept
+		{
+			const auto name_length = std::strlen(name);
+			if (std::strncmp(line, name, name_length) != 0)
+				return;
+			const char* cursor = line + name_length;
+			while (*cursor == ' ' || *cursor == '\t')
+				++cursor;
+			errno = 0;
+			char* end = nullptr;
+			const auto parsed = std::strtoull(cursor, &end, 10);
+			if (end == cursor || errno == ERANGE)
+				return;
+			while (*end == ' ' || *end == '\t')
+				++end;
+			if (std::strncmp(end, "kB", 2U) != 0)
+				return;
+			value = checked_multiply(static_cast<std::uint64_t>(parsed), 1024U);
+			available = value != std::numeric_limits<std::uint64_t>::max();
+		}
+#endif
+
 	} // namespace
 
-	std::uint64_t observed_multiway_process_memory_bytes() noexcept
+	bool MultiwayProcessMemorySnapshot::valid() const noexcept
 	{
+		if ((!current_working_set_available && current_working_set_bytes != 0U) ||
+			(!peak_working_set_available && peak_working_set_bytes != 0U) ||
+			(!private_committed_available && private_committed_bytes != 0U) ||
+			(!peak_private_committed_available && peak_private_committed_bytes != 0U) ||
+			(!virtual_address_available && virtual_address_bytes != 0U) ||
+			(!anonymous_resident_available && anonymous_resident_bytes != 0U) ||
+			(!file_resident_available && file_resident_bytes != 0U))
+		{
+			return false;
+		}
+		return (!current_working_set_available || !peak_working_set_available ||
+			peak_working_set_bytes >= current_working_set_bytes) &&
+			(!private_committed_available || !peak_private_committed_available ||
+				peak_private_committed_bytes >= private_committed_bytes);
+	}
+
+	bool MultiwayProcessMemorySnapshotCollection::record(
+		MultiwayMemoryPhase phase,
+		MultiwayProcessMemorySnapshot snapshot) noexcept
+	{
+		const auto phase_index = static_cast<std::size_t>(phase);
+		if (phase_index >= snapshots.size() || completed)
+			return false;
+		if (!enabled)
+		{
+			if (phase != MultiwayMemoryPhase::ProcessStart || count != 0U)
+				return false;
+			enabled = true;
+		}
+		if (phase_index != count || count >= snapshots.size())
+			return false;
+		snapshot.phase_id = phase;
+		if (!snapshot.valid())
+			return false;
+		snapshots[count++] = snapshot;
+		completed = phase == MultiwayMemoryPhase::AfterExport;
+		return true;
+	}
+
+	bool MultiwayProcessMemorySnapshotCollection::record_current(MultiwayMemoryPhase phase) noexcept
+	{
+		if (!enabled && phase != MultiwayMemoryPhase::ProcessStart)
+			return true;
+		return record(phase, capture_multiway_process_memory_snapshot());
+	}
+
+	bool MultiwayProcessMemorySnapshotCollection::valid() const noexcept
+	{
+		if (!enabled)
+			return count == 0U && !completed;
+		if (count > snapshots.size() || (completed && count != snapshots.size()))
+			return false;
+		for (std::size_t index = 0U; index < count; ++index)
+		{
+			if (static_cast<std::size_t>(snapshots[index].phase_id) != index || !snapshots[index].valid())
+				return false;
+		}
+		return true;
+	}
+
+	const char* multiway_memory_phase_name(MultiwayMemoryPhase phase) noexcept
+	{
+		switch (phase)
+		{
+			case MultiwayMemoryPhase::ProcessStart: return "process_start";
+			case MultiwayMemoryPhase::BeforeBucketMap: return "before_bucket_map";
+			case MultiwayMemoryPhase::AfterBucketMapMetadata: return "after_bucket_map_metadata";
+			case MultiwayMemoryPhase::AfterBucketAssignmentValidation: return "after_bucket_assignment_validation";
+			case MultiwayMemoryPhase::BeforeMemoryPreflight: return "before_memory_preflight";
+			case MultiwayMemoryPhase::AfterCoordinatorConstruction: return "after_coordinator_construction";
+			case MultiwayMemoryPhase::AfterWorkerPoolConstruction: return "after_worker_pool_construction";
+			case MultiwayMemoryPhase::AfterColdBatch: return "after_cold_batch";
+			case MultiwayMemoryPhase::AfterSteadyBatch: return "after_steady_batch";
+			case MultiwayMemoryPhase::BeforeCheckpoint: return "before_checkpoint";
+			case MultiwayMemoryPhase::AfterCheckpoint: return "after_checkpoint";
+			case MultiwayMemoryPhase::BeforeExport: return "before_export";
+			case MultiwayMemoryPhase::AfterExport: return "after_export";
+		}
+		return "unknown";
+	}
+
+	MultiwayProcessMemorySnapshot capture_multiway_process_memory_snapshot() noexcept
+	{
+		MultiwayProcessMemorySnapshot result;
 #if defined(_WIN32)
 		PROCESS_MEMORY_COUNTERS_EX counters{};
 		counters.cb = sizeof(counters);
 		if (K32GetProcessMemoryInfo(
-				GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters))
-			== 0)
+				GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) != 0)
 		{
-			return 0U;
+			result.current_working_set_bytes = static_cast<std::uint64_t>(counters.WorkingSetSize);
+			result.peak_working_set_bytes = static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
+			result.private_committed_bytes = static_cast<std::uint64_t>(counters.PrivateUsage);
+			result.current_working_set_available = true;
+			result.peak_working_set_available = true;
+			result.private_committed_available = true;
 		}
-		return static_cast<std::uint64_t>(counters.WorkingSetSize);
 #elif defined(__linux__)
-		std::ifstream input("/proc/self/statm");
-		std::uint64_t ignored_pages = 0;
-		std::uint64_t resident_pages = 0;
-		if (!(input >> ignored_pages >> resident_pages))
-			return 0U;
-		const auto page_size = sysconf(_SC_PAGESIZE);
-		if (page_size <= 0 || resident_pages > std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(page_size))
+		std::FILE* input = std::fopen("/proc/self/status", "r");
+		if (input == nullptr)
+			return result;
+		char line[256]{};
+		while (std::fgets(line, sizeof(line), input) != nullptr)
 		{
-			return 0U;
+			parse_linux_memory_field(line, "VmRSS:", result.current_working_set_bytes, result.current_working_set_available);
+			parse_linux_memory_field(line, "VmHWM:", result.peak_working_set_bytes, result.peak_working_set_available);
+			parse_linux_memory_field(line, "VmSize:", result.virtual_address_bytes, result.virtual_address_available);
+			parse_linux_memory_field(line, "RssAnon:", result.anonymous_resident_bytes, result.anonymous_resident_available);
+			parse_linux_memory_field(line, "RssFile:", result.file_resident_bytes, result.file_resident_available);
 		}
-		return resident_pages * static_cast<std::uint64_t>(page_size);
-#else
-		return 0U;
+		std::fclose(input);
 #endif
+		return result;
+	}
+
+	std::uint64_t observed_multiway_process_memory_bytes() noexcept
+	{
+		const auto snapshot = capture_multiway_process_memory_snapshot();
+		return snapshot.current_working_set_available ? snapshot.current_working_set_bytes : 0U;
 	}
 
 	std::uint64_t observed_multiway_process_peak_working_set_bytes() noexcept
 	{
-#if defined(_WIN32)
-		PROCESS_MEMORY_COUNTERS_EX counters{};
-		counters.cb = sizeof(counters);
-		if (K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) == 0)
-			return 0U;
-		return static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
-#elif defined(__linux__)
-		std::ifstream input("/proc/self/status");
-		std::string name;
-		std::uint64_t value = 0U;
-		std::string unit;
-		while (input >> name)
-		{
-			if (name != "VmHWM:")
-			{
-				std::getline(input, name);
-				continue;
-			}
-			if (!(input >> value >> unit) || unit != "kB" || value > UINT64_MAX / 1024U)
-				return 0U;
-			return value * 1024U;
-		}
-		return 0U;
-#else
-		return 0U;
-#endif
+		const auto snapshot = capture_multiway_process_memory_snapshot();
+		return snapshot.peak_working_set_available ? snapshot.peak_working_set_bytes : 0U;
 	}
 
 	std::uint64_t observed_multiway_training_process_cpu_nanoseconds() noexcept

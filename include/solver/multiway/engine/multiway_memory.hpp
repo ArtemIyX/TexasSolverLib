@@ -2,10 +2,69 @@
 
 #include "solver/multiway/engine/multiway_solver.hpp"
 
+#include <array>
 #include <cstdint>
 
 namespace texas::solver::multiway
 {
+
+	enum class MultiwayMemoryPhase : std::uint8_t
+	{
+		ProcessStart = 0U,
+		BeforeBucketMap = 1U,
+		AfterBucketMapMetadata = 2U,
+		AfterBucketAssignmentValidation = 3U,
+		BeforeMemoryPreflight = 4U,
+		AfterCoordinatorConstruction = 5U,
+		AfterWorkerPoolConstruction = 6U,
+		AfterColdBatch = 7U,
+		AfterSteadyBatch = 8U,
+		BeforeCheckpoint = 9U,
+		AfterCheckpoint = 10U,
+		BeforeExport = 11U,
+		AfterExport = 12U,
+	};
+
+	inline constexpr std::size_t MULTIWAY_MEMORY_PHASE_COUNT = 13U;
+	inline constexpr std::uint32_t MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION = 1U;
+
+	struct MultiwayProcessMemorySnapshot
+	{
+		MultiwayMemoryPhase phase_id = MultiwayMemoryPhase::ProcessStart;
+		std::uint64_t current_working_set_bytes = 0U;
+		std::uint64_t peak_working_set_bytes = 0U;
+		std::uint64_t private_committed_bytes = 0U;
+		std::uint64_t peak_private_committed_bytes = 0U;
+		std::uint64_t virtual_address_bytes = 0U;
+		std::uint64_t anonymous_resident_bytes = 0U;
+		std::uint64_t file_resident_bytes = 0U;
+		bool current_working_set_available = false;
+		bool peak_working_set_available = false;
+		bool private_committed_available = false;
+		bool peak_private_committed_available = false;
+		bool virtual_address_available = false;
+		bool anonymous_resident_available = false;
+		bool file_resident_available = false;
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayProcessMemorySnapshotCollection
+	{
+		std::array<MultiwayProcessMemorySnapshot, MULTIWAY_MEMORY_PHASE_COUNT> snapshots{};
+		std::uint8_t count = 0U;
+		bool enabled = false;
+		bool completed = false;
+
+		[[nodiscard]] bool record(
+			MultiwayMemoryPhase phase,
+			MultiwayProcessMemorySnapshot snapshot) noexcept;
+		[[nodiscard]] bool record_current(MultiwayMemoryPhase phase) noexcept;
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	[[nodiscard]] const char* multiway_memory_phase_name(MultiwayMemoryPhase phase) noexcept;
+	[[nodiscard]] MultiwayProcessMemorySnapshot capture_multiway_process_memory_snapshot() noexcept;
 
 	struct MultiwayMemoryBudget
 	{

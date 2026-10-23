@@ -273,7 +273,8 @@ namespace texas::solver::multiway
 		MultiwayBlueprintIterationSchedule schedule,
 		std::uint64_t deterministic_seed,
 		std::uint32_t requested_worker_count,
-		std::uint64_t memory_preflight_estimate_bytes, MultiwayMemoryLedger memory_ledger)
+		std::uint64_t memory_preflight_estimate_bytes, MultiwayMemoryLedger memory_ledger,
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots)
 		: identity_(identity), batch_runner_(&batch_runner), coordinator_(&coordinator), schedule_(schedule), deterministic_seed_(deterministic_seed), started_at_(std::chrono::steady_clock::now()), process_cpu_started_nanoseconds_(observed_multiway_training_process_cpu_nanoseconds())
 	{
 		identity_.validate();
@@ -296,6 +297,15 @@ namespace texas::solver::multiway
 		status_.trajectories_per_batch = coordinator_->limits().trajectories_per_batch;
 		status_.memory_preflight_estimate_bytes = memory_preflight_estimate_bytes;
 		status_.memory_ledger = memory_ledger;
+		status_.process_memory_snapshots = process_memory_snapshots;
+	}
+
+	void MultiwayBlueprintTrainer::record_process_memory_snapshot(MultiwayMemoryPhase phase)
+	{
+		if (!status_.process_memory_snapshots.enabled)
+			return;
+		if (!status_.process_memory_snapshots.record_current(phase))
+			throw std::logic_error("multiway training memory snapshot phase order is invalid");
 	}
 
 	void MultiwayBlueprintTrainer::run_batches(
@@ -515,8 +525,11 @@ namespace texas::solver::multiway
 						: 0U));
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.telemetry.process_sample");
-				status_.current_process_rss_bytes = observed_multiway_process_memory_bytes();
-				status_.process_rss_available = status_.current_process_rss_bytes != 0U;
+				const auto process_memory = capture_multiway_process_memory_snapshot();
+				status_.current_process_rss_bytes = process_memory.current_working_set_available
+					? process_memory.current_working_set_bytes
+					: 0U;
+				status_.process_rss_available = process_memory.current_working_set_available;
 				status_.peak_process_rss_bytes = std::max(status_.peak_process_rss_bytes,
 					status_.current_process_rss_bytes);
 				const auto process_cpu_now = observed_multiway_training_process_cpu_nanoseconds();
@@ -524,7 +537,20 @@ namespace texas::solver::multiway
 					? process_cpu_now - process_cpu_started_nanoseconds_
 					: 0U;
 				status_.peak_working_set_bytes = std::max(status_.peak_working_set_bytes,
-					observed_multiway_process_peak_working_set_bytes());
+					process_memory.peak_working_set_available ? process_memory.peak_working_set_bytes : 0U);
+				if (status_.process_memory_snapshots.enabled &&
+					status_.process_memory_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterColdBatch))
+				{
+					if (!status_.process_memory_snapshots.record(MultiwayMemoryPhase::AfterColdBatch, process_memory))
+						throw std::logic_error("multiway training memory snapshot phase order is invalid");
+				}
+				if (status_.process_memory_snapshots.enabled &&
+					status_.process_memory_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterSteadyBatch) &&
+					coordinator_->limits().max_batches != 0U && status_.batches >= coordinator_->limits().max_batches)
+				{
+					if (!status_.process_memory_snapshots.record(MultiwayMemoryPhase::AfterSteadyBatch, process_memory))
+						throw std::logic_error("multiway training memory snapshot phase order is invalid");
+				}
 			}
 			status_.elapsed_wall_nanoseconds = static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -570,6 +596,11 @@ namespace texas::solver::multiway
 			TEXASSOLVER_TRACY_PLOT("mw.phase.merge_ns", status_.merge_nanoseconds);
 			TEXASSOLVER_TRACY_PLOT("mw.phase.trainer_only_ns", status_.trainer_only_nanoseconds);
 			TEXASSOLVER_TRACY_PLOT("mw.memory.rss_bytes", status_.current_process_rss_bytes);
+			TEXASSOLVER_TRACY_PLOT("mw.memory.current_working_set_bytes", status_.current_process_rss_bytes);
+			TEXASSOLVER_TRACY_PLOT("mw.memory.private_committed_bytes",
+				status_.process_memory_snapshots.count == 0U || !status_.process_memory_snapshots.snapshots[status_.process_memory_snapshots.count - 1U].private_committed_available
+					? 0U
+					: status_.process_memory_snapshots.snapshots[status_.process_memory_snapshots.count - 1U].private_committed_bytes);
 			TEXASSOLVER_TRACY_PLOT("mw.memory.peak_working_set_bytes", status_.peak_working_set_bytes);
 			TEXASSOLVER_TRACY_PLOT("mw.process.cpu_ns.delta", status_.process_cpu_nanoseconds);
 		}
@@ -805,6 +836,8 @@ namespace texas::solver::multiway
 		action_abstraction_ = std::make_unique<MultiwayActionAbstraction>(config_.action_abstraction);
 		continuation_selector_ = std::make_unique<MultiwayFixedContinuationSelector>(
 			config_.blueprint.continuation_policy);
+		if (!config_.process_memory_snapshots.record_current(MultiwayMemoryPhase::AfterCoordinatorConstruction))
+			throw std::logic_error("multiway training memory snapshot phase order is invalid");
 		MultiwayRootExternalSamplingTraversal traversal(
 			*coordinator_, root_, *action_abstraction_, *buckets_, leaf_evaluator == nullptr ? nullptr : &leaf_evaluator_,
 			config_.max_decision_depth, config_.max_public_chance_depth, nullptr, continuation_selector_.get(), nullptr,
@@ -819,9 +852,12 @@ namespace texas::solver::multiway
 			config_.pin_workers,
 			config_.immutable_batch_epochs,
 			config_.scheduler_mode);
+		if (!config_.process_memory_snapshots.record_current(MultiwayMemoryPhase::AfterWorkerPoolConstruction))
+			throw std::logic_error("multiway training memory snapshot phase order is invalid");
 		trainer_ = std::make_unique<MultiwayBlueprintTrainer>(
 			identity, *batch_runner_, *coordinator_, config_.schedule, config_.deterministic_seed,
-			config_.requested_worker_count, config_.memory_preflight_estimate_bytes, config_.memory_ledger);
+			config_.requested_worker_count, config_.memory_preflight_estimate_bytes, config_.memory_ledger,
+			config_.process_memory_snapshots);
 	}
 
 	void MultiwayBlueprintTrainingSession::run_batches(std::uint64_t batch_count)
@@ -864,6 +900,11 @@ namespace texas::solver::multiway
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint() const
 	{
 		return trainer_->checkpoint();
+	}
+
+	void MultiwayBlueprintTrainingSession::record_process_memory_snapshot(MultiwayMemoryPhase phase)
+	{
+		trainer_->record_process_memory_snapshot(phase);
 	}
 
 } // namespace texas::solver::multiway

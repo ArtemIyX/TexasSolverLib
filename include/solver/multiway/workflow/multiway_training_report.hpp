@@ -88,6 +88,7 @@ namespace texas::solver::multiway
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};

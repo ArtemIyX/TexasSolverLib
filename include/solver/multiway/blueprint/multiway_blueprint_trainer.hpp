@@ -147,6 +147,7 @@ namespace texas::solver::multiway
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0;
 		MultiwayMemoryLedger memory_ledger{};
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
 		bool process_rss_available = false;
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
@@ -207,6 +208,7 @@ namespace texas::solver::multiway
 		bool pin_workers = false;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
 		bool immutable_batch_epochs = true;
 
 		void validate() const;
@@ -226,7 +228,8 @@ namespace texas::solver::multiway
 			std::uint64_t deterministic_seed = 1,
 			std::uint32_t requested_worker_count = 0U,
 			std::uint64_t memory_preflight_estimate_bytes = 0U,
-			MultiwayMemoryLedger memory_ledger = {});
+			MultiwayMemoryLedger memory_ledger = {},
+			MultiwayProcessMemorySnapshotCollection process_memory_snapshots = {});
 
 		void run_batches(
 			std::uint64_t batch_count,
@@ -243,6 +246,7 @@ namespace texas::solver::multiway
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 
 	private:
 		MultiwayModelIdentity identity_{};
@@ -277,6 +281,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 
 	private:
 		MultiwayBlueprintTrainingConfig config_{};
