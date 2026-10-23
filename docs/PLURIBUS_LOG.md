@@ -9,19 +9,19 @@
 - Froze development capacities from the bounded pinned sizing pilot.
 - Preserved compact integer regret and strategy-mass values exactly across
   checkpoint save and restore, including canonical page-order remapping.
-- Fixed training resume output so a separate --checkpoint-dir never overwrites
+- Fixed training resume output so a separate `--checkpoint-dir` never overwrites
   the input checkpoint.
 - Continuous and split/resumed 2,000-trajectory runs produced byte-identical
   334,233,264-byte blueprints with zero discards and merge fingerprint
-  13248175190465110669.
+  `13248175190465110669`.
 - The 50-million-trajectory workload and large matrices were not run.
 
 ### Files
 
-- docs/f1_human_execution_implementation_plan.md
-- configs/multiway/f1_dev_v1.cfg
-- tmp/f1/final-evidence-bundle.md
-- tmp/f1/resume-equivalence-evidence.md
+- `docs/f1_human_execution_implementation_plan.md`
+- `configs/multiway/f1_dev_v1.cfg`
+- `tmp/f1/final-evidence-bundle.md`
+- `tmp/f1/resume-equivalence-evidence.md`
 
 ### Validation
 
@@ -29,6 +29,7 @@
   checkpoint equivalence, and F1 acceptance targets.
 - Five focused tests passed, including reverse-page exact-value checkpoint
   recovery.
+
 
 ## TH1-TH2 - Bounded 20-process variance probe
 
@@ -78,6 +79,440 @@
 
 - `src/solver/multiway/engine/multiway_public_catalog.cpp`
 - `docs/PLURIBUS_LOG.md`
+
+## TH1-TH2 - Dynamic 2-worker variance review
+
+**Status:** Complete, diagnostic only
+**Completed:** 2026-10-23
+
+- Added a replay-only analyzer for the formal TH1-TH2 artifacts.
+- Compared 10 dynamic 2-worker samples with 10 fixed 2-worker control samples.
+- Derived active imbalance, barrier, condition-variable wait, wake latency,
+  scheduler-claim, tail-idle, and process-CPU shares.
+- Host boundary telemetry did not explain the variance: clock delta was zero,
+  with load deltas of `2%` pinned and `0%` unpinned.
+- Scheduler-claim and condition-variable wait shares were the strongest
+  measured associations, but no solver change is selected from this small
+  sample.
+
+### Files
+
+- `scripts/analyze_multiway_th1_th2_dynamic_variance.ps1`
+- `scripts/run_multiway_th1_th2_dynamic_variance_probe.ps1`
+- `scripts/analyze_multiway_th1_th2_dynamic_variance_probe.ps1`
+- `docs/plans/2026-10-15/14_th1_th2_dynamic_2worker_variance_review.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Replay analyzer completed successfully against
+  `tmp/th1-th2-formal-qualification`.
+- Wrote the target summary and target/control CSV artifacts.
+- Added, but did not run, a four-case per-repeat probe for future evidence.
+
+### Limitations
+
+- No new benchmark was run.
+- The correlations are diagnostic associations, not causal proof.
+- Per-repeat host snapshots and scheduler event counters remain future work.
+- The new probe is bounded to 20 short processes and is not a solver qualification.
+
+## TH1-TH2 - Formal steady-state qualification closure
+
+**Status:** Complete with variance review note
+**Completed:** 2026-10-23
+
+- Ran the formal worker set `1,2,4` for fixed/dynamic scheduling and pinned/unpinned placement.
+- Used one warmup batch, four timed batches, five repeats, and batch size `1,000`.
+- The dedicated analyzer verified `12` worker summaries and `60` samples.
+- Checkpoint and blueprint output were disabled; host context and affinity metadata were complete.
+- All groups shared fingerprint `5060116991684512043`.
+- TH2 capacity accounting had already passed the bounded smoke with valid allocation probes and zero capacity exhaustion.
+- The formal TH1-TH2 qualification is complete.
+
+### Files
+
+- `scripts/run_multiway_steady_state_matrix.ps1`
+- `scripts/analyze_multiway_steady_state_matrix.ps1`
+- `scripts/analyze_multiway_th1_th2_qualification.ps1`
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- The formal runner completed all four scheduler/placement groups.
+- The generic steady-state analyzer passed all `12` summaries.
+- The dedicated TH1-TH2 analyzer reported `PASS_WITH_VARIANCE_REVIEW`.
+
+### Limitations
+
+- Dynamic 2-worker pinned and unpinned groups exceeded the diagnostic repeat-range threshold.
+- No solver optimization is selected from that variance.
+- Worker `8` and memory qualification were intentionally excluded.
+
+## TH1-TH2 - Bounded pinned versus unpinned comparison
+
+**Status:** Bounded verification complete
+**Completed:** 2026-10-23
+
+- Ran the pinned three-repeat counterpart for fixed and dynamic scheduling with workers `1`, `2`, and `4`.
+- All six groups passed analysis with complete host context, stable variance classification, and fingerprint `5060116991684512043`.
+- Pinned throughput versus the unpinned run changed by `+0.5%`, `+11.7%`, and `+2.8%` for dynamic workers `1`, `2`, and `4`; and `+0.3%`, `+3.6%`, and `-1.7%` for fixed workers `1`, `2`, and `4`.
+- Host frequency stayed at `4,300 MHz`; pinned groups reported `pinned_logical_processor` placement on `32` logical processors.
+- No solver optimization is selected from the comparison.
+
+### Files
+
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/run_multiway_steady_state_matrix.ps1` completed both pinned scheduler phases.
+- `scripts/analyze_multiway_steady_state_matrix.ps1` passed all six groups and eighteen samples.
+
+### Limitations
+
+- This was a bounded three-repeat comparison, not the formal five-repeat qualification.
+- No 8-worker or memory qualification was run.
+
+## TH1 - Add steady-state host context and variance analysis
+
+**Status:** Complete
+**Completed:** 2026-10-23
+
+- Added per-group CPU frequency, processor load, total CPU, logical processor, and benchmark affinity snapshots to the steady-state manifest.
+- Added repeat minimum/maximum throughput, standard deviation, coefficient of variation, relative range, host deltas, and variance interpretation to the analyzer.
+- Added host-context fallback from per-processor load to total CPU load.
+- Reran the six-case, three-repeat unpinned benchmark with complete host context.
+- All six groups classified as stable; boundary frequency was `4,300 MHz`, boundary load delta was at most one percentage point, and affinity was unrestricted on `32` logical processors.
+
+### Files
+
+- `scripts/run_multiway_steady_state_matrix.ps1`
+- `scripts/analyze_multiway_steady_state_matrix.ps1`
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Both PowerShell scripts passed syntax checks.
+- The instrumented runner completed both scheduler phases.
+- The analyzer passed all six groups and eighteen samples.
+- All groups had complete host context and stable variance classifications.
+
+### Limitations
+
+- Host snapshots are group-boundary measurements, not per-repeat samples.
+- Only unpinned execution was run.
+- The full pinned/unpinned qualification remains pending.
+
+## TH1 - Three-repeat unpinned steady-state qualification
+
+**Status:** Bounded verification complete
+**Completed:** 2026-10-23
+
+- Repeated the six unpinned fixed/dynamic cases for workers `1`, `2`, and `4` three times.
+- The analyzer passed all six groups with three samples per worker count.
+- All samples shared fingerprint `5060116991684512043`.
+- Median throughput was fixed `8,426.7`, `13,235.4`, and `19,648.0`; dynamic `8,406.5`, `15,316.8`, and `22,473.5` trajectories per second for workers `1`, `2`, and `4`.
+- The repeat spread at 2 workers and fixed 4-worker tail-idle variation do not identify a stable code bottleneck.
+
+### Files
+
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/run_multiway_steady_state_matrix.ps1` completed both scheduler phases.
+- `scripts/analyze_multiway_steady_state_matrix.ps1` passed all six groups and eighteen samples.
+
+### Limitations
+
+- Only unpinned execution was run.
+- Repeat variance prevents selecting a new optimization target from this run.
+- The full five-repeat pinned/unpinned qualification remains pending.
+
+## TH1 - Bounded steady-state smoke
+
+**Status:** Bounded verification complete
+**Completed:** 2026-10-23
+
+- Ran unpinned fixed and dynamic scheduling for workers `1`, `2`, and `4`.
+- Used one warmup batch, four timed batches, one repeat, and batch size `1,000`.
+- Checkpoint and blueprint output were disabled by the benchmark binary.
+- The six worker summaries passed analysis with one common non-zero fingerprint: `5060116991684512043`.
+- Throughput ranged from `8,384.8` to `27,968.3` trajectories per second.
+
+### Files
+
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/run_multiway_steady_state_matrix.ps1` completed both scheduler phases.
+- `scripts/analyze_multiway_steady_state_matrix.ps1` passed all six worker summaries.
+
+### Limitations
+
+- Only one repeat and unpinned execution were run.
+- The full five-repeat pinned/unpinned qualification remains pending.
+
+## TH1-TH2 - Bounded capacity and accounting smoke
+
+**Status:** Bounded verification complete
+**Completed:** 2026-10-23
+
+- Ran six unpinned cases: fixed and dynamic scheduling with workers `1`, `2`, and `4`.
+- Used one batch of `100` trajectories per case.
+- All cases accepted all trajectories with zero discards, failures, and capacity exhaustion.
+- Allocation probing was valid in every report, with per-worker allocation counts and bytes recorded.
+- Configured capacities were `1,000,000` worker-delta entries per worker and `4,000,000` discovery entries.
+- Deterministic counts, checkpoint bytes `17,082,301`, and fingerprint `10519539386654739548` matched across all cases.
+
+### Files
+
+- `docs/plans/2026-10-15/07_th1_th2_steady_state_capacity.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/run_multiway_worker_matrix.ps1` completed all `6/6` phases.
+- Report gates passed for every case.
+- Independent report comparison found one unique value for every deterministic and capacity gate.
+
+### Limitations
+
+- This was a bounded smoke, not the full five-repeat pinned/unpinned TH1 matrix.
+- Checkpoint and blueprint output were not disabled by this runner, so this does not constitute final steady-state throughput qualification.
+
+## AD7F.10 - Close Candidate A validation
+
+**Status:** Complete
+**Completed:** 2026-10-23
+
+- Ran the dedicated one-stream fast-path equivalence test successfully.
+- Ran short fixed and dynamic one-worker Tracy captures.
+- Both captures accepted `1,000` trajectories with zero discards and failures.
+- Fast-path use was `1` per capture, with zero duplicate candidates.
+- Checkpoint bytes remained `137380835` and the deterministic fingerprint remained `9806774443936985566`.
+- Admission measured `241.505 ms` fixed and `249.417 ms` dynamic.
+
+### Files
+
+- `docs/plans/2026-10-18/02_ad7_admission_variance_execution_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `test_multiway_solver multiway_solver_discovery_one_stream_fast_path_matches_generic_merge` passed.
+- Two short Tracy captures passed the 1,000-trajectory report gates.
+
+### Limitations
+
+- The eight-case cold/steady matrix remains deferred.
+- Allocation telemetry remains unavailable because `allocation_probe_valid=false`.
+
+## AD7F.9 - Compare admission child timers and select candidate
+
+**Status:** Complete
+**Completed:** 2026-10-23
+
+- Compared all four fresh AD7F.8 reports using the complete capture set.
+- Confirmed that public-state merge accounts for nearly all discovery-merge time: `65.596-67.202 ms` of `65.703-67.276 ms`.
+- Confirmed one single-stream batch per capture, zero duplicate candidates, and identical source counts of `69,194` public states and `31,070` rows.
+- Selected Candidate A. No parent-transition edge kind dominated, so Candidate B was not selected.
+- Recorded identical descriptor-copy volumes and zero output-capacity reuse.
+
+### Files
+
+- `docs/plans/2026-10-18/02_ad7_admission_variance_execution_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- PowerShell comparison of all four saved `report.json` files completed.
+- No build, test, benchmark, or new solver capture was run.
+
+### Limitations
+
+- Allocation counts and bytes remain unavailable because `allocation_probe_valid=false`.
+- The eight-case cold/steady matrix remains deferred.
+
+## AD7F.8 - Controlled cold qualification tooling
+
+**Status:** Complete
+**Completed:** 2026-10-23
+**Implementation commit:** `ec05509 [PB-5] Add AD7F.8 cold qualification tooling`
+
+- Added a dedicated four-capture runner for fixed/dynamic one-worker cold runs.
+- Recorded host CPU load/frequency, Tracy artifacts, processor placement, and per-capture provenance.
+- Added an analyzer that requires every capture to pass phase coverage, byte accounting, fingerprint, checkpoint, deterministic-count, Tracy, and placement gates.
+- CMake Tracy targets and the focused five-test CTest set passed.
+- Four fresh one-worker cold captures passed with Tracy 0.14.1.
+- All captures reported `acceptance_pass=true`, phase coverage from `0.985648` to `0.987272`, checkpoint bytes `137380835`, fingerprint `9806774443936985566`, zero discarded trajectories, and equal deterministic counts.
+- Host snapshots recorded approximately 4% CPU load and 4.3 GHz current frequency; resolved processors were recorded per capture.
+
+### Files
+
+- `scripts/run_multiway_ad7f8_cold_qualification.ps1`
+- `scripts/analyze_multiway_ad7f8_cold_qualification.ps1`
+- `scripts/run_multiway_tracy_training_capture.ps1`
+
+### Execution note
+
+- Native Tracy capture required elevated local execution because the default sandbox blocked the localhost socket connection.
+- No steady-state or large matrix was run.
+
+## AD7F.5 - Reduce catalog commit copy and menu lookup cost
+
+**Status:** Complete
+**Completed:** 2026-10-23
+**Implementation commit:** `d876cd4 [PB-5] Multiway: Reuse pending admission menus`
+
+- Resolve matching pending batch menus before repeating the existing catalog menu-index search.
+- Preserve collision checks, capacity preflight, deterministic menu handles, and strong commit semantics.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+
+### Validation
+
+- CMake Debug focused build passed.
+- CTest passed the catalog, solver, qualification-report, parallel-training, and terminal-adapter suites.
+
+### Limitations
+
+- No Tracy captures or large matrices were run.
+
+## AD7F.4 - Reuse validated state metadata during parent and row checks
+
+**Status:** Complete
+**Completed:** 2026-10-23
+**Implementation commit:** `7632c5f [PB-5] Multiway: Reuse admission betting metadata`
+
+- Added allocation-free fixed betting-state scratch for the current admission batch.
+- Reused validated parent and row metadata instead of rebuilding fixed states for prepared parents and batch rows.
+- Preserved catalog-only row fallback and direct-admission behavior.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+
+### Validation
+
+- CMake Debug focused build passed in an isolated build directory.
+- CTest passed the catalog, solver, qualification-report, parallel-training, and terminal-adapter suites.
+
+### Limitations
+
+- No Tracy captures or large matrices were run.
+
+## AD7F.3 - Classify the public-state batch with one sorted merge
+
+**Status:** Complete
+**Completed:** 2026-10-23
+**Implementation commit:** `66a7c1f [PB-5] Multiway: Reuse sorted admission classification`
+
+- Reused the sorted catalog classification pass to retain non-owning existing-node views.
+- Removed the second per-existing-state catalog lookup during prepared-batch preflight.
+- Added malformed index protection and mixed existing/new admission coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+
+### Validation
+
+- CMake Debug build passed for the focused targets.
+- CTest passed `test_multiway_solver`, `test_multiway_public_catalog`, `test_multiway_qualification_reports`, `test_multiway_parallel_training`, and `test_multiway_terminal_adapter`.
+
+### Limitations
+
+- No Tracy captures or large matrices were run.
+
+## AD7F.2 - Packed existing-state compatibility
+
+**Status:** Implementation complete
+**Completed:** 2026-10-23
+
+- Added a non-owning packed-catalog compatibility check for prepared existing public states.
+- Removed descriptor reconstruction from the existing-state admission path.
+- Added compatibility-check telemetry and report serialization.
+- Added regression coverage for packed existing-state admission.
+
+### Validation
+
+- CMake Debug build passed.
+- CTest passed the focused catalog, qualification-report, solver, parallel-training, and terminal-adapter suites.
+- No Tracy capture or large matrix was run.
+
+## TH4-TH5 - Traversal profiling and topology-aware placement
+
+**Status:** Implementation complete
+**Completed:** 2026-10-23
+
+- Added nested Tracy zones for bucket lookup, action-menu buffers, public descriptor construction, street transitions, terminal resolution, and continuation/model evaluation.
+- Added Linux physical-core placement from the allowed CPU set and preserved Windows processor-group placement.
+- Excluded the coordinator processor when enough worker processors remain.
+- Added a Windows active-processor-group fallback when topology enumeration returns no logical placements, and normalized group-qualified processor IDs.
+- Added requested and resolved processor telemetry with affinity success and unpinned fallback reporting.
+- Added focused affinity and traversal-profile coverage.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `scripts/run_multiway_ram_1000.ps1`
+- `tests/test_multiway_parallel_training.cpp`
+
+### Validation
+
+- CMake Debug focused build passed.
+- CTest passed `test_multiway_parallel_training`, `test_multiway_qualification_reports`, and `test_multiway_solver`.
+- CMake RelWithDebInfo Tracy target passed.
+- The short diagnostic binary ran successfully.
+- Bounded pinned and unpinned qualification passed all 8 runs; pinned affinity resolved successfully for all selected workers and fingerprints matched.
+- Two-repeat 4-worker comparison passed all 8 runs; pinned median throughput was approximately 13-14% below unpinned for both schedulers.
+
+### Limitations
+
+- The external Tracy capture tool did not connect within 15 seconds, so no new capture-zone ranking is claimed.
+- The full repeat pinned-versus-unpinned operator comparison remains deferred; current evidence supports diagnostic-only pinning and unpinned default execution.
+- The Linux affinity path was not runtime-tested on this Windows host.
+
+## TH3 - Dynamic scheduler chunk qualification tooling
+
+**Status:** Implementation complete
+**Completed:** 2026-10-23
+
+- Covered dynamic chunk sizes 1, 2, 4, 8, and 16 in scheduler and parallel-training tests.
+- Added worker, scheduler, and pinning filters to the steady-state runner.
+- Added a TH3 analyzer for chunk coverage, scheduler metrics, fingerprints, and fixed/dynamic equivalence.
+- Fixed the steady-state sample-metric parser so scheduler claim, tail-idle, and CPU fields are captured.
+
+### Validation
+
+- CMake Debug focused build passed for `test_multiway_scheduler` and `test_multiway_parallel_training`.
+- CTest passed both focused tests.
+- CMake RelWithDebInfo benchmark target passed.
+- Bounded TH3 smoke passed for pinned workers 1 and 4, fixed and dynamic modes, and chunks 1/2/4/8/16.
+
+### Limitation
+
+- The full multi-repeat operator qualification matrix was not run.
+- No production chunk-size selection is claimed from the bounded smoke.
 
 ## Tooling - Make compact CTest use controlled temporary storage
 
@@ -592,6 +1027,31 @@
 - `scripts/run_multiway_steady_state_matrix.ps1`
 - `configs/multiway/f1_dev_v1.cfg`
 - `configs/multiway/f1_sizing_v1.cfg`
+
+## Tooling - Add cold Tracy qualification runner
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Added PowerShell wrappers for the four required cold one-worker captures and their telemetry analysis.
+- Preserved fixed and dynamic scheduler IDs, 1,000 trajectories, and separate output directories.
+- Added optional worker pinning, configurable capture timeouts, per-capture summaries, and aggregate gate reporting.
+
+### Files
+
+- `scripts/run_multiway_cold_qualification.ps1`
+- `scripts/analyze_multiway_cold_qualification.ps1`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- PowerShell parser checks passed.
+- Dedicated analysis passed for all four existing captures with `acceptance_pass=true`.
+- No build, test, or new capture was run.
+
+### Limitations
+
+- The wrapper does not analyze reports. Run `analyze_multiway_checkpoint_telemetry.ps1` separately for each output directory.
 
 ## AD7 - Candidate A one-stream discovery merge
 
