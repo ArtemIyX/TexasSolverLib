@@ -56,6 +56,9 @@ namespace texas::solver::multiway
 			MultiwayInfosetId infoset, std::uint32_t bucket) const;
 		[[nodiscard]] const std::vector<MultiwaySparseRowMetadata>& rows() const noexcept { return rows_; }
 		void export_checkpoint(MultiwaySparseStorageCheckpoint& output) const;
+		void restore_checkpoint_values(
+			const std::vector<std::int32_t>& regrets,
+			const std::vector<std::uint64_t>& strategy_masses);
 		[[nodiscard]] std::size_t row_count() const noexcept { return rows_.size(); }
 		[[nodiscard]] std::size_t value_count() const noexcept { return regrets_.size(); }
 		[[nodiscard]] std::size_t page_count() const noexcept { return pages_.size(); }

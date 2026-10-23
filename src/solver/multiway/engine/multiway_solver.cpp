@@ -2099,7 +2099,7 @@ namespace texas::solver::multiway
 
 	void MultiwaySolverCoordinator::restore_checkpoint(const MultiwayCoordinatorCheckpoint& checkpoint)
 	{
-		if (checkpoint.public_states.empty() || !same_public_state_descriptor(checkpoint.public_states.front(), request_.root().public_state) || checkpoint.storage.regrets.size() != checkpoint.storage.strategy_sums.size())
+		if (checkpoint.public_states.empty() || !same_public_state_descriptor(checkpoint.public_states.front(), request_.root().public_state) || checkpoint.storage.regrets.size() != checkpoint.storage.strategy_sums.size() || checkpoint.storage.compact_regrets.size() != checkpoint.storage.compact_strategy_masses.size())
 		{
 			throw std::invalid_argument("multiway coordinator checkpoint is incomplete");
 		}
@@ -2144,17 +2144,26 @@ namespace texas::solver::multiway
 		{
 			for (const auto& page : checkpoint.storage.active_pages)
 				compact_storage_->admit_page(page.infoset, page.page_index);
-			std::size_t offset = 0U;
-			for (const auto& shape : checkpoint.storage.shapes)
+			if (!checkpoint.storage.compact_regrets.empty())
 			{
-				for (std::uint8_t action = 0; action < shape.action_count; ++action)
+				compact_storage_->restore_checkpoint_values(
+					checkpoint.storage.compact_regrets,
+					checkpoint.storage.compact_strategy_masses);
+			}
+			else
+			{
+				std::size_t offset = 0U;
+				for (const auto& shape : checkpoint.storage.shapes)
 				{
-					for (std::uint32_t bucket = 0; bucket < shape.bucket_count; ++bucket)
+					for (std::uint8_t action = 0; action < shape.action_count; ++action)
 					{
-						if (compact_storage_->has_page(shape.infoset, bucket / compact_storage_->page_width()))
-							compact_storage_->apply_delta(shape.infoset, bucket, action,
-								checkpoint.storage.regrets[offset], checkpoint.storage.strategy_sums[offset]);
-						++offset;
+						for (std::uint32_t bucket = 0; bucket < shape.bucket_count; ++bucket)
+						{
+							if (compact_storage_->has_page(shape.infoset, bucket / compact_storage_->page_width()))
+								compact_storage_->apply_delta(shape.infoset, bucket, action,
+									checkpoint.storage.regrets[offset], checkpoint.storage.strategy_sums[offset]);
+							++offset;
+						}
 					}
 				}
 			}

@@ -229,3 +229,31 @@ TEST_CASE(multiway_compact_storage_checkpoint_preserves_active_pages)
 	EXPECT_EQ(checkpoint.active_pages[0].page_index, 0U);
 	EXPECT_EQ(checkpoint.active_pages[1].page_index, 1U);
 }
+
+TEST_CASE(multiway_compact_storage_checkpoint_preserves_raw_values)
+{
+	const texas::MultiwayInfosetId infoset{ { 22U }, 0 };
+	texas::solver::multiway::MultiwayCompactStorage source(1U, 16U, 2U);
+	source.admit_row({ infoset, 4U, 1U });
+	source.admit_page(infoset, 1U);
+	source.admit_page(infoset, 0U);
+	source.apply_delta(infoset, 0U, 0U, 1.0, 1.0e10);
+	source.apply_delta(infoset, 3U, 0U, -2.0, 3.0);
+
+	texas::solver::multiway::MultiwaySparseStorageCheckpoint checkpoint;
+	source.export_checkpoint(checkpoint);
+	EXPECT_EQ(checkpoint.compact_regrets.size(), 4U);
+	EXPECT_EQ(checkpoint.compact_strategy_masses.size(), 4U);
+	EXPECT_TRUE(checkpoint.compact_strategy_masses[0] > (1ULL << 53U));
+
+	texas::solver::multiway::MultiwayCompactStorage restored(1U, 16U, 2U);
+	restored.admit_row({ infoset, 4U, 1U });
+	for (const auto& page : checkpoint.active_pages)
+		restored.admit_page(page.infoset, page.page_index);
+	restored.restore_checkpoint_values(checkpoint.compact_regrets, checkpoint.compact_strategy_masses);
+
+	texas::solver::multiway::MultiwaySparseStorageCheckpoint restored_checkpoint;
+	restored.export_checkpoint(restored_checkpoint);
+	EXPECT_EQ(restored_checkpoint.compact_regrets, checkpoint.compact_regrets);
+	EXPECT_EQ(restored_checkpoint.compact_strategy_masses, checkpoint.compact_strategy_masses);
+}

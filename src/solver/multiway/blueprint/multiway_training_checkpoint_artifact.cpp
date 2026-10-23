@@ -22,7 +22,7 @@ namespace texas::solver::multiway
 		namespace portable = texas::core::portable;
 
 		constexpr std::array<char, 8> kMagic = { 'M', 'W', 'T', 'C', '0', '0', '0', '1' };
-		constexpr std::uint32_t kSchema = 3U;
+		constexpr std::uint32_t kSchema = 5U;
 		constexpr std::uint64_t kMaxFileBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
 		constexpr std::uint32_t kMaxStates = 100000000U;
 		constexpr std::uint32_t kMaxRows = 100000000U;
@@ -184,6 +184,20 @@ namespace texas::solver::multiway
 					if (!out_)
 						throw std::runtime_error("multiway training checkpoint buffered write failed");
 				}
+			}
+
+			void write_i32_array(const std::vector<std::int32_t>& values)
+			{
+				write_u64(values.size());
+				for (const auto value : values)
+					write_i32(value);
+			}
+
+			void write_u64_array(const std::vector<std::uint64_t>& values)
+			{
+				write_u64(values.size());
+				for (const auto value : values)
+					write_u64(value);
 			}
 
 			void write_raw(const void* data, std::size_t size)
@@ -547,6 +561,12 @@ namespace texas::solver::multiway
 			append(hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(page.infoset.seat)));
 			append(hash, page.page_index);
 		}
+		append(hash, checkpoint.coordinator.storage.compact_regrets.size());
+		for (const auto value : checkpoint.coordinator.storage.compact_regrets)
+			append(hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(value)));
+		append(hash, checkpoint.coordinator.storage.compact_strategy_masses.size());
+		for (const auto value : checkpoint.coordinator.storage.compact_strategy_masses)
+			append(hash, value);
 		append(hash, checkpoint.coordinator.storage.regrets.size());
 		for (const auto value : checkpoint.coordinator.storage.regrets)
 			append_double(hash, value);
@@ -637,6 +657,8 @@ namespace texas::solver::multiway
 				payload.write_i32(page.infoset.seat);
 				payload.write_u32(page.page_index);
 			}
+			payload.write_i32_array(checkpoint.coordinator.storage.compact_regrets);
+			payload.write_u64_array(checkpoint.coordinator.storage.compact_strategy_masses);
 			if (telemetry != nullptr)
 				record_max(&telemetry->row_shape_bytes, payload.bytes_written() - row_shape_start);
 			const auto regret_start = payload.bytes_written();
@@ -732,6 +754,15 @@ namespace texas::solver::multiway
 		for (auto& page : result.coordinator.storage.active_pages)
 			require(portable::read_u64(in, page.infoset.public_state.value) && portable::read_i32(in, page.infoset.seat) && portable::read_u32(in, page.page_index));
 		std::uint64_t values = 0U;
+		const auto maximum_compact_values = kMaxFileBytes / sizeof(std::uint64_t);
+		require(portable::read_u64(in, values) && values <= maximum_compact_values);
+		result.coordinator.storage.compact_regrets.resize(static_cast<std::size_t>(values));
+		for (auto& value : result.coordinator.storage.compact_regrets)
+			require(portable::read_i32(in, value));
+		require(portable::read_u64(in, values) && values <= maximum_compact_values);
+		result.coordinator.storage.compact_strategy_masses.resize(static_cast<std::size_t>(values));
+		for (auto& value : result.coordinator.storage.compact_strategy_masses)
+			require(portable::read_u64(in, value));
 		const auto expected_u64 = static_cast<std::uint64_t>(expected_values);
 		const auto maximum_values = kMaxFileBytes / sizeof(double);
 		require(portable::read_u64(in, values) && values == expected_u64 && values <= maximum_values);

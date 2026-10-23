@@ -46,10 +46,12 @@ as separate gates.
   checks without regeneration.
 - Focused F1 workflow, training, compact-storage, checkpoint-equivalence, and
   acceptance tests pass.
-- The bounded 2-batch continuous and 1+1-batch resumed runs both pass coverage
-  and discard gates, but their final blueprints differ in five sparse rows.
-- The 50-million-trajectory workload remains excluded until the split/resume
-  gate passes.
+- The bounded 2-batch continuous and 1+1-batch resumed runs pass coverage,
+  discard, deterministic-merge, and byte-identical blueprint gates.
+- Compact checkpoint values use exact integer storage and canonical page order;
+  the regression test covers reverse page admission.
+- The final evidence bundle is recorded in `tmp/f1/final-evidence-bundle.md`.
+- The 50-million-trajectory workload remains intentionally excluded.
 
 ## Required evidence
 
@@ -57,6 +59,7 @@ as separate gates.
 - Bucket inspection report, payload hash, and manifest.
 - Bounded sizing report with zero discarded trajectories and no capacity
   exhaustion at the selected limits.
-- Split/resume equivalence report with matching deterministic identities.
+- Split/resume equivalence evidence with matching deterministic identities and
+  byte-identical blueprints.
 - Final machine and operator reports, when the acceptance workload is
   explicitly authorized.

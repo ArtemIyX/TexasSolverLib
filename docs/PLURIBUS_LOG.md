@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## F1 - Bounded execution plan and checkpoint equivalence
+
+**Status:** Complete, bounded evidence only
+**Completed:** 2026-10-23
+
+- Restored and executed the ten-step F1 human execution plan.
+- Froze development capacities from the bounded pinned sizing pilot.
+- Preserved compact integer regret and strategy-mass values exactly across
+  checkpoint save and restore, including canonical page-order remapping.
+- Fixed training resume output so a separate --checkpoint-dir never overwrites
+  the input checkpoint.
+- Continuous and split/resumed 2,000-trajectory runs produced byte-identical
+  334,233,264-byte blueprints with zero discards and merge fingerprint
+  13248175190465110669.
+- The 50-million-trajectory workload and large matrices were not run.
+
+### Files
+
+- docs/f1_human_execution_implementation_plan.md
+- configs/multiway/f1_dev_v1.cfg
+- tmp/f1/final-evidence-bundle.md
+- tmp/f1/resume-equivalence-evidence.md
+
+### Validation
+
+- Focused build passed for training, compact storage, blueprint training,
+  checkpoint equivalence, and F1 acceptance targets.
+- Five focused tests passed, including reverse-page exact-value checkpoint
+  recovery.
+
 ## TH1-TH2 - Bounded 20-process variance probe
 
 **Status:** Complete, diagnostic only

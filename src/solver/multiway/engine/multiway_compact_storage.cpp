@@ -405,12 +405,15 @@ namespace texas::solver::multiway
 		output.active_pages.clear();
 		output.shapes.reserve(rows_.size());
 		output.active_pages.reserve(pages_.size());
+		output.compact_regrets.assign(regrets_.size(), 0);
+		output.compact_strategy_masses.assign(strategy_mass_.size(), 0);
 		output.regrets.assign(row_offsets.back(), 0.0);
 		output.strategy_sums.assign(row_offsets.back(), 0.0);
 		for (const auto& active_page : pages_)
 			output.active_pages.push_back({ active_page.infoset, active_page.page_index });
 
 		std::size_t page_cursor = 0U;
+		std::size_t compact_offset = 0U;
 		for (std::size_t row_index = 0U; row_index < rows_.size(); ++row_index)
 		{
 			const auto& row = rows_[row_index];
@@ -432,15 +435,46 @@ namespace texas::solver::multiway
 					for (std::uint32_t local_bucket = 0U; local_bucket < active_page.bucket_count; ++local_bucket)
 					{
 						const auto source_index = active_page.regret_offset + source_offset + local_bucket;
+						const auto compact_index = compact_offset + source_offset + local_bucket;
+						output.compact_regrets[compact_index] = regrets_[source_index];
+						output.compact_strategy_masses[compact_index] = strategy_mass_[active_page.strategy_sum_offset + source_offset + local_bucket];
 						output.regrets[destination_offset + local_bucket] = static_cast<double>(regrets_[source_index]) / 1024.0;
 						output.strategy_sums[destination_offset + local_bucket] = static_cast<double>(strategy_mass_[active_page.strategy_sum_offset + source_offset + local_bucket]) / static_cast<double>(kMassScale);
 					}
 				}
+				compact_offset += static_cast<std::size_t>(active_page.bucket_count) * row.shape.action_count;
 				++page_cursor;
 			}
 		}
 		if (page_cursor != pages_.size())
 			throw std::logic_error("compact storage contains a page without a row");
+	}
+
+	void MultiwayCompactStorage::restore_checkpoint_values(
+		const std::vector<std::int32_t>& regrets,
+		const std::vector<std::uint64_t>& strategy_masses)
+	{
+		if (regrets.size() != regrets_.size() || strategy_masses.size() != strategy_mass_.size())
+			throw std::invalid_argument("compact checkpoint value count does not match active storage");
+		std::size_t compact_offset = 0U;
+		for (const auto& active_page : pages_)
+		{
+			const auto* row = metadata(active_page.infoset);
+			if (row == nullptr)
+				throw std::invalid_argument("compact checkpoint page has no admitted row");
+			const auto page_values = static_cast<std::size_t>(active_page.bucket_count) * row->shape.action_count;
+			for (std::uint8_t action = 0U; action < row->shape.action_count; ++action)
+			{
+				const auto source_offset = static_cast<std::size_t>(action) * active_page.bucket_count;
+				for (std::uint32_t local_bucket = 0U; local_bucket < active_page.bucket_count; ++local_bucket)
+				{
+					const auto compact_index = compact_offset + source_offset + local_bucket;
+					regrets_[active_page.regret_offset + source_offset + local_bucket] = regrets[compact_index];
+					strategy_mass_[active_page.strategy_sum_offset + source_offset + local_bucket] = strategy_masses[compact_index];
+				}
+			}
+			compact_offset += page_values;
+		}
 	}
 
 	std::size_t MultiwayCompactStorage::memory_bytes() const noexcept

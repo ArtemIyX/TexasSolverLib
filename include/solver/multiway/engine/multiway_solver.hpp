@@ -414,6 +414,10 @@ namespace texas::solver::multiway
 
 		std::vector<MultiwaySparseRowShape> shapes;
 		std::vector<ActivePage> active_pages;
+		// Compact backend values are serialized in page/storage order so restore
+		// does not round-trip large uint64 strategy masses through double.
+		std::vector<std::int32_t> compact_regrets;
+		std::vector<std::uint64_t> compact_strategy_masses;
 		std::vector<double> regrets;
 		std::vector<double> strategy_sums;
 	};
