@@ -20,6 +20,36 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+function Get-HostSnapshot {
+    $processors = @()
+    try {
+        $processors = @(Get-CimInstance Win32_Processor -ErrorAction Stop)
+    } catch {
+    }
+
+    $currentClockValues = @($processors | Where-Object { $_.CurrentClockSpeed -gt 0 } | ForEach-Object { [double]$_.CurrentClockSpeed })
+    $maxClockValues = @($processors | Where-Object { $_.MaxClockSpeed -gt 0 } | ForEach-Object { [double]$_.MaxClockSpeed })
+    $loadValues = @($processors | Where-Object { $null -ne $_.LoadPercentage } | ForEach-Object { [double]$_.LoadPercentage })
+    $totalCpuPercent = $null
+    try {
+        $counter = Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1 -ErrorAction Stop
+        $totalCpuPercent = [math]::Round([double]$counter.CounterSamples[0].CookedValue, 2)
+    } catch {
+    }
+
+    return [ordered]@{
+        captured_at_utc = (Get-Date).ToUniversalTime().ToString('o')
+        processor_name = if ($processors.Count -gt 0) { [string]$processors[0].Name } else { $null }
+        logical_processor_count = if ($processors.Count -gt 0) { [int]$processors[0].NumberOfLogicalProcessors } else { $null }
+        current_clock_mhz = if ($currentClockValues.Count -gt 0) { [math]::Round(($currentClockValues | Measure-Object -Average).Average, 2) } else { $null }
+        max_clock_mhz = if ($maxClockValues.Count -gt 0) { [math]::Round(($maxClockValues | Measure-Object -Average).Average, 2) } else { $null }
+        processor_load_percent = if ($loadValues.Count -gt 0) { [math]::Round(($loadValues | Measure-Object -Average).Average, 2) } else { $null }
+        total_cpu_percent = $totalCpuPercent
+        load_percent = if ($loadValues.Count -gt 0) { [math]::Round(($loadValues | Measure-Object -Average).Average, 2) } else { $totalCpuPercent }
+        process_count = try { @(Get-Process -ErrorAction Stop).Count } catch { $null }
+    }
+}
 if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
     $BinaryPath = Join-Path $repoRoot 'build\RelWithDebInfo\texas_solver_multiway_training_scaling.exe'
 } elseif (-not [System.IO.Path]::IsPathRooted($BinaryPath)) {
@@ -59,6 +89,7 @@ foreach ($scheduler in $schedulerValues) {
         $groupId = 'steady-{0}-{1}' -f $scheduler, $(if ($pinWorkers) { 'pinned' } else { 'unpinned' })
         $stdoutPath = Join-Path $OutputDirectory ($groupId + '.stdout.log')
         $stderrPath = Join-Path $OutputDirectory ($groupId + '.stderr.log')
+        $hostBefore = Get-HostSnapshot
         $arguments = @(
             '--workers', $Workers,
             '--batch-sizes', $BatchSize.ToString(),
@@ -76,7 +107,16 @@ foreach ($scheduler in $schedulerValues) {
         if ($LASTEXITCODE -ne 0) {
             throw "Phase $phase failed for group $groupId (exit code $LASTEXITCODE). Details: $stderrPath"
         }
+        $hostAfter = Get-HostSnapshot
         Write-Output "Phase $phase/$totalGroups completed."
+
+        $fixtureLine = @(Get-Content -LiteralPath $stdoutPath | Where-Object { $_ -match '^fixture=' } | Select-Object -First 1)
+        $benchmarkAffinity = $null
+        $hardwareConcurrency = $null
+        if ($fixtureLine.Count -gt 0 -and $fixtureLine[0] -match 'hardware_concurrency=(?<hardware>\d+).*worker_affinity=(?<affinity>\S+)') {
+            $hardwareConcurrency = [int]$matches.hardware
+            $benchmarkAffinity = [string]$matches.affinity
+        }
 
         $groups += [ordered]@{
             id = $groupId
@@ -85,6 +125,14 @@ foreach ($scheduler in $schedulerValues) {
             arguments = $arguments
             stdout = $stdoutPath
             stderr = $stderrPath
+            host_before = $hostBefore
+            host_after = $hostAfter
+            host_context_schema_version = 1
+            processor_placement = [ordered]@{
+                requested = if ($pinWorkers) { 'pinned' } else { 'unpinned' }
+                benchmark_affinity = $benchmarkAffinity
+                hardware_concurrency = $hardwareConcurrency
+            }
         }
     }
 }

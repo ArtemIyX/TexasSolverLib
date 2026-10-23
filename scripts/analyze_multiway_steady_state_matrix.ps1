@@ -17,6 +17,14 @@ $expectedWorkers = @($manifest.protocol.workers | ForEach-Object { [int]$_ })
 if ($expectedWorkers.Count -eq 0) {
     throw 'Steady-state manifest has no worker protocol.'
 }
+$repeatCoefficientVariationThreshold = 0.10
+$repeatRelativeRangeThreshold = 0.20
+$hostClockDeltaThresholdMhz = 100.0
+$hostLoadDeltaThresholdPercent = 15.0
+$groupMetadata = @{}
+foreach ($manifestGroup in @($manifest.groups)) {
+    $groupMetadata[[string]$manifestGroup.id] = $manifestGroup
+}
 
 $rows = @()
 $sampleRows = @()
@@ -129,9 +137,49 @@ if ($sampleRows.Count -gt 0) {
         return ([double]$ordered[$middle - 1] + [double]$ordered[$middle]) / 2.0
     }
 
+    function Get-Mean([double[]]$Values) {
+        if ($Values.Count -eq 0) {
+            return 0.0
+        }
+        return [double](($Values | Measure-Object -Average).Average)
+    }
+
+    function Get-StandardDeviation([double[]]$Values, [double]$Mean) {
+        if ($Values.Count -lt 2) {
+            return 0.0
+        }
+        $sum = 0.0
+        foreach ($value in $Values) {
+            $delta = $value - $Mean
+            $sum += $delta * $delta
+        }
+        return [math]::Sqrt($sum / [double]$Values.Count)
+    }
+
     $sampleSummary = @(
         foreach ($sampleGroup in ($sampleRows | Group-Object { "$($_.id)|$($_.dynamic_chunk_size)|$($_.workers)|$($_.batch_size)" })) {
             $first = $sampleGroup.Group[0]
+            $throughputs = @($sampleGroup.Group | ForEach-Object { [double]$_.trajectories_per_second })
+            $medianThroughput = Get-Median $throughputs
+            $meanThroughput = Get-Mean $throughputs
+            $standardDeviation = Get-StandardDeviation $throughputs $meanThroughput
+            $minimumThroughput = [double](($throughputs | Measure-Object -Minimum).Minimum)
+            $maximumThroughput = [double](($throughputs | Measure-Object -Maximum).Maximum)
+            $relativeRange = if ($medianThroughput -gt 0.0) { ($maximumThroughput - $minimumThroughput) / $medianThroughput } else { 0.0 }
+            $coefficientOfVariation = if ($meanThroughput -gt 0.0) { $standardDeviation / $meanThroughput } else { 0.0 }
+            $metadata = $groupMetadata[[string]$first.id]
+            $hostBefore = $metadata.host_before
+            $hostAfter = $metadata.host_after
+            $beforeLoad = if ($null -ne $hostBefore -and $null -ne $hostBefore.load_percent) { $hostBefore.load_percent } elseif ($null -ne $hostBefore) { $hostBefore.total_cpu_percent } else { $null }
+            $afterLoad = if ($null -ne $hostAfter -and $null -ne $hostAfter.load_percent) { $hostAfter.load_percent } elseif ($null -ne $hostAfter) { $hostAfter.total_cpu_percent } else { $null }
+            $hostContextComplete = $null -ne $hostBefore -and $null -ne $hostAfter -and
+                $null -ne $hostBefore.current_clock_mhz -and $null -ne $hostAfter.current_clock_mhz -and
+                $null -ne $beforeLoad -and $null -ne $afterLoad
+            $clockDelta = if ($hostContextComplete) { [math]::Abs([double]$hostAfter.current_clock_mhz - [double]$hostBefore.current_clock_mhz) } else { $null }
+            $loadDelta = if ($hostContextComplete) { [math]::Abs([double]$afterLoad - [double]$beforeLoad) } else { $null }
+            $varianceClassification = if ($coefficientOfVariation -ge $repeatCoefficientVariationThreshold -or $relativeRange -ge $repeatRelativeRangeThreshold) { 'unstable' } else { 'stable' }
+            $hostChangeObserved = $hostContextComplete -and ($clockDelta -ge $hostClockDeltaThresholdMhz -or $loadDelta -ge $hostLoadDeltaThresholdPercent)
+            $varianceInterpretation = if ($varianceClassification -eq 'stable') { 'stable' } elseif (-not $hostContextComplete) { 'host_context_incomplete' } elseif ($hostChangeObserved) { 'host_context_changed' } else { 'scheduler_or_solver_review' }
             [pscustomobject]@{
                 id = $first.id
                 scheduler = $first.scheduler
@@ -140,7 +188,19 @@ if ($sampleRows.Count -gt 0) {
                 batch_size = $first.batch_size
                 dynamic_chunk_size = $first.dynamic_chunk_size
                 sample_count = $sampleGroup.Count
-                median_trajectories_per_second = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.trajectories_per_second })
+                median_trajectories_per_second = $medianThroughput
+                minimum_trajectories_per_second = $minimumThroughput
+                maximum_trajectories_per_second = $maximumThroughput
+                throughput_standard_deviation = $standardDeviation
+                throughput_coefficient_of_variation = $coefficientOfVariation
+                throughput_relative_range = $relativeRange
+                variance_classification = $varianceClassification
+                variance_interpretation = $varianceInterpretation
+                host_context_complete = $hostContextComplete
+                host_clock_delta_mhz = $clockDelta
+                host_load_delta_percent = $loadDelta
+                benchmark_affinity = if ($null -ne $metadata.processor_placement) { [string]$metadata.processor_placement.benchmark_affinity } else { $null }
+                hardware_concurrency = if ($null -ne $metadata.processor_placement) { $metadata.processor_placement.hardware_concurrency } else { $null }
                 median_barrier_wait_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.barrier_wait_nanoseconds })
                 median_worker_active_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.worker_active_nanoseconds })
                 median_worker_wake_latency_nanoseconds = Get-Median @($sampleGroup.Group | ForEach-Object { [double]$_.worker_wake_latency_nanoseconds })
@@ -163,11 +223,20 @@ if ($sampleRows.Count -gt 0) {
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $samplePath -Encoding UTF8
     $sampleSummary | Sort-Object id, dynamic_chunk_size, workers |
         Export-Csv -LiteralPath $sampleCsvPath -NoTypeInformation
+    $varianceSummaryPath = Join-Path $InputDirectory 'steady_state_variance_summary.json'
+    $varianceSummaryCsvPath = Join-Path $InputDirectory 'steady_state_variance_summary.csv'
+    $sampleSummary | Select-Object id, scheduler, pin_workers, workers, batch_size, dynamic_chunk_size, sample_count, median_trajectories_per_second, minimum_trajectories_per_second, maximum_trajectories_per_second, throughput_standard_deviation, throughput_coefficient_of_variation, throughput_relative_range, variance_classification, variance_interpretation, host_context_complete, host_clock_delta_mhz, host_load_delta_percent, benchmark_affinity, hardware_concurrency |
+        Sort-Object id, dynamic_chunk_size, workers |
+        ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $varianceSummaryPath -Encoding UTF8
+    $sampleSummary | Select-Object id, scheduler, pin_workers, workers, batch_size, dynamic_chunk_size, sample_count, median_trajectories_per_second, minimum_trajectories_per_second, maximum_trajectories_per_second, throughput_standard_deviation, throughput_coefficient_of_variation, throughput_relative_range, variance_classification, variance_interpretation, host_context_complete, host_clock_delta_mhz, host_load_delta_percent, benchmark_affinity, hardware_concurrency |
+        Sort-Object id, dynamic_chunk_size, workers |
+        Export-Csv -LiteralPath $varianceSummaryCsvPath -NoTypeInformation
     $sampleSummary | Sort-Object id, dynamic_chunk_size, workers |
         Format-Table id, scheduler, workers, dynamic_chunk_size, sample_count, median_trajectories_per_second, median_worker_scheduler_claim_nanoseconds, median_worker_tail_idle_nanoseconds, median_process_cpu_nanoseconds -AutoSize |
         Out-String | Write-Output
     Write-Output "[steady-state] sample_metrics=$samplePath"
     Write-Output "[steady-state] sample_csv=$sampleCsvPath"
+    Write-Output "[steady-state] variance_summary=$varianceSummaryPath"
 }
 
 $rows | Sort-Object id, dynamic_chunk_size, workers |
