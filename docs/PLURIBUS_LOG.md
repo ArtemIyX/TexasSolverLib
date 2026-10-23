@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## TH1-TH2 - Bounded 20-process variance probe
+
+**Status:** Complete, diagnostic only
+**Completed:** 2026-10-23
+
+- Ran the bounded four-case probe with 20 short processes.
+- Dynamic throughput variance was low: CV `0.48%` pinned and `0.31%` unpinned.
+- Fixed scheduling was noisier when pinned at `1.09%` CV; fixed unpinned was `0.20%`.
+- The analyzer selected `diagnostic_only_no_solver_change`.
+
+### Files
+
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `run_multiway_th1_th2_dynamic_variance_probe.ps1` completed all 20 phases.
+- `analyze_multiway_th1_th2_dynamic_variance_probe.ps1` completed and wrote `tmp/th1-th2-dynamic-variance-probe/variance_probe_summary.json`.
+
+### Limitations
+
+- Host context telemetry was incomplete, so this probe does not establish a cause.
+- Five samples per scheduler/pinning case are insufficient for solver qualification.
+
 ## Tooling - Make compact CTest use controlled temporary storage
 
 **Status:** Complete
