@@ -90,23 +90,25 @@ TEST_CASE(multiway_scheduler_dynamic_chunks_cover_each_trajectory_once)
 TEST_CASE(multiway_scheduler_dynamic_chunk_size_is_configurable)
 {
 	constexpr std::uint64_t trajectory_count = 19U;
-	constexpr std::uint32_t chunk_size = 8U;
-	const auto chunk_count = texas::MultiwayScheduler::dynamic_chunk_count(trajectory_count, chunk_size);
-	EXPECT_EQ(chunk_count, std::size_t{ 3 });
-	std::array<bool, trajectory_count> seen{};
-	for (std::size_t chunk = 0U; chunk < chunk_count; ++chunk)
+	for (const std::uint32_t chunk_size : { 1U, 2U, 4U, 8U, 16U })
 	{
-		const auto range = texas::MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk, chunk_size);
-		EXPECT_TRUE(range.size() > 0U);
-		EXPECT_TRUE(range.size() <= chunk_size);
-		for (auto trajectory = range.begin; trajectory < range.end; ++trajectory)
+		const auto chunk_count = texas::MultiwayScheduler::dynamic_chunk_count(trajectory_count, chunk_size);
+		EXPECT_EQ(chunk_count, static_cast<std::size_t>((trajectory_count + chunk_size - 1U) / chunk_size));
+		std::array<bool, trajectory_count> seen{};
+		for (std::size_t chunk = 0U; chunk < chunk_count; ++chunk)
 		{
-			EXPECT_TRUE(!seen[trajectory]);
-			seen[trajectory] = true;
+			const auto range = texas::MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk, chunk_size);
+			EXPECT_TRUE(range.size() > 0U);
+			EXPECT_TRUE(range.size() <= chunk_size);
+			for (auto trajectory = range.begin; trajectory < range.end; ++trajectory)
+			{
+				EXPECT_TRUE(!seen[trajectory]);
+				seen[trajectory] = true;
+			}
 		}
+		for (const auto value : seen)
+			EXPECT_TRUE(value);
 	}
-	for (const auto value : seen)
-		EXPECT_TRUE(value);
 	EXPECT_EQ(texas::MultiwayScheduler::dynamic_chunk_count(trajectory_count, 0U), std::size_t{ 0 });
 	EXPECT_EQ(texas::MultiwayScheduler::dynamic_chunk_range(trajectory_count, 0U, 0U).size(), std::uint64_t{ 0 });
 }
@@ -122,12 +124,17 @@ TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity)
 	EXPECT_EQ(first, repeat);
 	EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(2U, 7U, 9U, 32U));
 	EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(4U, 8U, 9U, 32U));
-	const auto dynamic_chunk_one = texas::multiway_deterministic_schedule_fingerprint(
-		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Dynamic, 1U);
-	const auto dynamic_chunk_eight = texas::multiway_deterministic_schedule_fingerprint(
-		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Dynamic, 8U);
-	EXPECT_TRUE(dynamic_chunk_one != dynamic_chunk_eight);
-	EXPECT_TRUE(dynamic_chunk_one != texas::multiway_deterministic_schedule_fingerprint(
+	std::array<std::uint64_t, 5> dynamic_fingerprints{};
+	for (std::size_t index = 0U; index < dynamic_fingerprints.size(); ++index)
+	{
+		const auto chunk_size = static_cast<std::uint32_t>(1U << index);
+		dynamic_fingerprints[index] = texas::multiway_deterministic_schedule_fingerprint(
+			4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Dynamic, chunk_size);
+		EXPECT_TRUE(dynamic_fingerprints[index] != 0U);
+		for (std::size_t previous = 0U; previous < index; ++previous)
+			EXPECT_TRUE(dynamic_fingerprints[index] != dynamic_fingerprints[previous]);
+	}
+	EXPECT_TRUE(dynamic_fingerprints[0U] != texas::multiway_deterministic_schedule_fingerprint(
 		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Fixed, 4U));
 }
 

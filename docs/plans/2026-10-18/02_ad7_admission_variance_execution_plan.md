@@ -36,6 +36,40 @@ trajectories, phase coverage, and deterministic counts matched the required
 values. Candidate A is therefore qualified. The full cold/steady worker matrix
 is intentionally deferred to avoid an hour-scale run.
 
+### AD7F.8 child-timer comparison
+
+The four fresh captures were compared using all reports, not the best run:
+
+| Metric | Observed range |
+| --- | ---: |
+| Coordinator admission | `242.151-246.964 ms` |
+| Discovery merge | `65.703-67.276 ms` |
+| Public-state merge child | `65.596-67.202 ms` |
+| Row merge child | `0.070-0.102 ms` |
+| Parent-transition validation | `23.450-24.082 ms` |
+| Action-edge child | `8.977-9.315 ms` |
+| Board-chance-edge child | `7.189-7.343 ms` |
+| Fixed-state construction | `1.189-1.296 ms` |
+| Catalog commit | `22.467-23.170 ms` |
+
+All captures had one single-stream batch, zero public-state and row
+duplicates, and identical source counts: `69,194` public states and `31,070`
+rows. The public-state merge child accounts for nearly all discovery-merge
+time and tracks the repeated discovery-merge range. The existing one-stream
+fast path was used once per capture. Candidate A is selected. No individual
+parent-transition edge kind dominates, so Candidate B is not selected.
+
+Descriptor-copy counters were identical in all four captures: `69,194`
+public descriptor copies (`32,659,568` bytes) and `4,940,696` discovery nested
+descriptor copies (`38,805,461` bytes). Output-capacity reuse was zero.
+Allocation counts and bytes remain unavailable because
+`allocation_probe_valid=false`. The focused Candidate A equivalence test
+passed, followed by short fixed and dynamic one-worker captures. Both
+captures accepted `1,000` trajectories with zero discards and failures, used
+the fast path once, preserved checkpoint bytes `137380835`, and preserved
+fingerprint `9806774443936985566`. Admission was `241.505 ms` fixed and
+`249.417 ms` dynamic. The eight-case cold/steady matrix remains deferred.
+
 The existing eight cold/steady matrix reports were analyzed without rerunning
 the workload. All eight passed the checkpoint acceptance, fingerprint,
 checkpoint-byte, failed/discarded, and trajectory gates. Those historical

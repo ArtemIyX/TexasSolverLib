@@ -57,6 +57,54 @@ namespace texas::solver::multiway
 				diagnostics->catalog_output_capacity_reuse_bytes += static_cast<std::uint64_t>(element_count * element_size);
 			}
 		}
+
+		bool same_packed_betting(
+			const MultiwayPackedBetting& packed,
+			const MultiwayBettingSnapshot& candidate) noexcept
+		{
+			if (candidate.stacks.size() != packed.seat_count ||
+				candidate.contributions.size() != packed.seat_count ||
+				candidate.street_contributions.size() != packed.seat_count ||
+				candidate.folded.size() != packed.seat_count ||
+				candidate.all_in.size() != packed.seat_count ||
+				candidate.may_raise.size() != packed.seat_count ||
+				candidate.pending.size() != packed.seat_count ||
+				candidate.has_acted.size() != packed.seat_count ||
+				candidate.bet_faced_when_acted.size() != packed.seat_count)
+				return false;
+			for (std::size_t seat = 0U; seat < packed.seat_count; ++seat)
+			{
+				if (candidate.stacks[seat] != packed.stacks[seat] ||
+					candidate.contributions[seat] != packed.contributions[seat] ||
+					candidate.street_contributions[seat] != packed.street_contributions[seat] ||
+					static_cast<std::uint8_t>(candidate.folded[seat]) != packed.folded[seat] ||
+					static_cast<std::uint8_t>(candidate.all_in[seat]) != packed.all_in[seat] ||
+					static_cast<std::uint8_t>(candidate.may_raise[seat]) != packed.may_raise[seat] ||
+					static_cast<std::uint8_t>(candidate.pending[seat]) != packed.pending[seat] ||
+					static_cast<std::uint8_t>(candidate.has_acted[seat]) != packed.has_acted[seat] ||
+					candidate.bet_faced_when_acted[seat] != packed.bet_faced_when_acted[seat])
+					return false;
+			}
+			return candidate.current_player == packed.current_player &&
+				candidate.last_aggressor == packed.last_aggressor &&
+				candidate.current_bet == packed.current_bet &&
+				candidate.last_full_raise_size == packed.last_full_raise_size &&
+				candidate.big_blind == packed.big_blind &&
+				candidate.street == packed.street;
+		}
+
+		bool same_packed_incoming_edge(
+			const MultiwayPackedPublicNode& packed,
+			const MultiwayPublicParentEdge& candidate) noexcept
+		{
+			return packed.incoming_kind == candidate.kind &&
+				packed.incoming_action == candidate.action &&
+				packed.dealt_card == candidate.dealt_card &&
+				packed.dealt_card_count == candidate.dealt_cards.size() &&
+				std::equal(candidate.dealt_cards.begin(), candidate.dealt_cards.end(), packed.dealt_cards.begin()) &&
+				packed.transition_board_count == candidate.transition_board.size() &&
+				std::equal(candidate.transition_board.begin(), candidate.transition_board.end(), packed.transition_board.begin());
+		}
 	} // namespace
 
 	MultiwayPublicCatalog::MultiwayPublicCatalog(std::size_t max_nodes)
@@ -152,17 +200,24 @@ namespace texas::solver::multiway
 
 	void MultiwayPublicCatalog::classify_new_states(
 		const std::vector<MultiwayPublicStateDescriptor>& states,
-		std::vector<std::uint8_t>& new_state_flags) const
+		std::vector<std::uint8_t>& new_state_flags,
+		std::vector<const MultiwayPackedPublicNode*>& existing_nodes) const
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.classify_new_states");
 		new_state_flags.assign(states.size(), 1U);
+		existing_nodes.assign(states.size(), nullptr);
 		std::size_t catalog_index = 0U;
 		for (std::size_t state_index = 0U; state_index < states.size(); ++state_index)
 		{
 			while (catalog_index < index_.size() && index_[catalog_index].id < states[state_index].id)
 				++catalog_index;
 			if (catalog_index < index_.size() && index_[catalog_index].id == states[state_index].id)
+			{
 				new_state_flags[state_index] = 0U;
+				const auto node_index = index_[catalog_index].node_index;
+				if (node_index < nodes_.size())
+					existing_nodes[state_index] = &nodes_[node_index];
+			}
 		}
 	}
 
@@ -170,12 +225,77 @@ namespace texas::solver::multiway
 	{
 		const auto found = std::lower_bound(index_.begin(), index_.end(), id,
 			[](const IndexEntry& entry, MultiwayPublicStateId key) { return entry.id < key; });
-		return found == index_.end() || found->id != id ? nullptr : &nodes_[found->node_index];
+		return found == index_.end() || found->id != id || found->node_index >= nodes_.size()
+			? nullptr
+			: &nodes_[found->node_index];
 	}
 
 	bool MultiwayPublicCatalog::contains(MultiwayPublicStateId id) const noexcept
 	{
 		return node(id) != nullptr;
+	}
+
+	bool MultiwayPublicCatalog::compatible_with_descriptor(
+		const MultiwayPackedPublicNode* packed,
+		const MultiwayPublicStateDescriptor& candidate) const noexcept
+	{
+		if (packed == nullptr || packed->legal_menu_handle >= menus_.size() ||
+			packed->id != candidate.id || packed->parent_id != candidate.parent_id ||
+			packed->canonical_history_id != candidate.canonical_history_id ||
+			packed->board_count != candidate.board.size() ||
+			!std::equal(candidate.board.begin(), candidate.board.end(), packed->board.begin()) ||
+			packed->board_runout != candidate.board_runout ||
+			!same_packed_betting(packed->betting, candidate.betting) ||
+			menus_[packed->legal_menu_handle] != candidate.legal_actions)
+			return false;
+
+		std::size_t history_count = 0U;
+		const auto* current = packed;
+		std::size_t guard = 0U;
+		while (current->parent_id.value != 0U)
+		{
+			if (current->incoming_kind == MultiwayPublicParentEdgeKind::BettingAction)
+				++history_count;
+			current = node(current->parent_id);
+			if (current == nullptr || ++guard > nodes_.size())
+				return false;
+		}
+		if (history_count != candidate.history.size())
+			return false;
+
+		current = packed;
+		std::size_t history_index = candidate.history.size();
+		guard = 0U;
+		while (current->parent_id.value != 0U)
+		{
+			if (current->incoming_kind == MultiwayPublicParentEdgeKind::BettingAction)
+			{
+				if (history_index == 0U)
+					return false;
+				MultiwayActionDescriptor action = current->incoming_action;
+				action.action_index = 0U;
+				--history_index;
+				if (candidate.history[history_index].actor != current->incoming_actor ||
+					candidate.history[history_index].action != action)
+					return false;
+			}
+			current = node(current->parent_id);
+			if (current == nullptr || ++guard > nodes_.size())
+				return false;
+		}
+		if (history_index != 0U)
+			return false;
+
+		return same_packed_incoming_edge(*packed, candidate.incoming_edge) ||
+			(packed->incoming_kind != MultiwayPublicParentEdgeKind::BettingAction &&
+				candidate.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction);
+	}
+
+	bool MultiwayPublicCatalog::compatible_with_descriptor(
+		MultiwayPublicStateId id,
+		const MultiwayPublicStateDescriptor& candidate) const noexcept
+	{
+		return compatible_with_descriptor(node(id), candidate);
 	}
 
 	MultiwayPackedPublicNode MultiwayPublicCatalog::pack_node(
@@ -389,7 +509,8 @@ namespace texas::solver::multiway
 			{
 			if (new_state_flags[index] == 0U)
 				continue;
-			const auto menu_started = std::chrono::steady_clock::now();
+			const bool measure_menu_lookup = menu_lookup_nanoseconds != nullptr;
+			const auto menu_started = measure_menu_lookup ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 			std::uint64_t canonical_menu_id = 0U;
 			if (validated_menu_keys != nullptr)
 				canonical_menu_id = (*validated_menu_keys)[index];
@@ -404,6 +525,47 @@ namespace texas::solver::multiway
 							.count());
 			}
 			batch_menu_keys_[index] = canonical_menu_id;
+			const auto record_menu_lookup = [&](const std::chrono::steady_clock::time_point finished_at) {
+				if (menu_lookup_nanoseconds != nullptr)
+					*menu_lookup_nanoseconds += static_cast<std::uint64_t>(
+						std::chrono::duration_cast<std::chrono::nanoseconds>(
+							finished_at - menu_started)
+							.count());
+			};
+			std::size_t pending_menu = std::numeric_limits<std::size_t>::max();
+			bool pending_key_collision = false;
+			const bool measure_menu_equality = diagnostics != nullptr;
+			const auto pending_equality_started = measure_menu_equality ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+			const auto pending_first = std::lower_bound(batch_pending_menu_index_.begin(), batch_pending_menu_index_.end(), canonical_menu_id,
+				[](const PendingMenuIndexEntry& entry, std::uint64_t key) { return entry.canonical_menu_id < key; });
+			const auto pending_last = std::upper_bound(pending_first, batch_pending_menu_index_.end(), canonical_menu_id,
+				[](std::uint64_t key, const PendingMenuIndexEntry& entry) { return key < entry.canonical_menu_id; });
+			pending_key_collision = pending_first != pending_last;
+			for (auto pending_entry = pending_first; pending_entry != pending_last; ++pending_entry)
+			{
+				if (diagnostics != nullptr)
+					++diagnostics->catalog_menu_equality_checks;
+				if (batch_pending_menus_[pending_entry->pending_menu_index] == states[index].legal_actions)
+				{
+					pending_menu = pending_entry->pending_menu_index;
+					break;
+				}
+			}
+			const auto pending_equality_finished = (measure_menu_equality || measure_menu_lookup) ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+			if (diagnostics != nullptr)
+				diagnostics->catalog_menu_equality_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						pending_equality_finished - pending_equality_started)
+						.count());
+			if (pending_menu != std::numeric_limits<std::size_t>::max())
+			{
+				batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_menu);
+				batch_pending_menu_indexes_[index] = static_cast<std::uint32_t>(pending_menu);
+				++batch_menu_reuse_hits;
+				record_menu_lookup(pending_equality_finished);
+				continue;
+			}
+
 			std::size_t menu_handle = std::numeric_limits<std::size_t>::max();
 			if (!menu_index_.empty())
 			{
@@ -421,54 +583,16 @@ namespace texas::solver::multiway
 					diagnostics->catalog_menu_equality_nanoseconds += equality_nanoseconds;
 				}
 			}
-			const auto record_menu_lookup = [&]() {
-				if (menu_lookup_nanoseconds != nullptr)
-					*menu_lookup_nanoseconds += static_cast<std::uint64_t>(
-						std::chrono::duration_cast<std::chrono::nanoseconds>(
-							std::chrono::steady_clock::now() - menu_started)
-							.count());
-			};
 			if (menu_handle != std::numeric_limits<std::size_t>::max())
 			{
 				batch_menu_handles_[index] = static_cast<std::uint32_t>(menu_handle);
 				++existing_menu_hits;
-				record_menu_lookup();
+				record_menu_lookup(measure_menu_lookup ? std::chrono::steady_clock::now() : menu_started);
 				continue;
 			}
 
-			std::size_t pending_menu = std::numeric_limits<std::size_t>::max();
-			bool pending_key_collision = false;
-			const auto pending_equality_started = std::chrono::steady_clock::now();
-			const auto pending_first = std::lower_bound(batch_pending_menu_index_.begin(), batch_pending_menu_index_.end(), canonical_menu_id,
-				[](const PendingMenuIndexEntry& entry, std::uint64_t key) { return entry.canonical_menu_id < key; });
-			const auto pending_last = std::upper_bound(pending_first, batch_pending_menu_index_.end(), canonical_menu_id,
-				[](std::uint64_t key, const PendingMenuIndexEntry& entry) { return key < entry.canonical_menu_id; });
-			pending_key_collision = pending_first != pending_last;
-			for (auto pending_entry = pending_first; pending_entry != pending_last; ++pending_entry)
-			{
-				if (diagnostics != nullptr)
-					++diagnostics->catalog_menu_equality_checks;
-				if (batch_pending_menus_[pending_entry->pending_menu_index] == states[index].legal_actions)
-				{
-					pending_menu = pending_entry->pending_menu_index;
-					break;
-				}
-			}
-			if (diagnostics != nullptr)
-				diagnostics->catalog_menu_equality_nanoseconds += static_cast<std::uint64_t>(
-					std::chrono::duration_cast<std::chrono::nanoseconds>(
-						std::chrono::steady_clock::now() - pending_equality_started)
-						.count());
 			if (diagnostics != nullptr && pending_key_collision && pending_menu == std::numeric_limits<std::size_t>::max())
 				++diagnostics->catalog_menu_id_collision_misses;
-			if (pending_menu != std::numeric_limits<std::size_t>::max())
-			{
-				batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_menu);
-				batch_pending_menu_indexes_[index] = static_cast<std::uint32_t>(pending_menu);
-				++batch_menu_reuse_hits;
-				record_menu_lookup();
-				continue;
-			}
 
 			if (menus_.size() + batch_pending_menus_.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::length_error("packed public catalog menu handle overflow");
@@ -483,7 +607,7 @@ namespace texas::solver::multiway
 					return left.canonical_menu_id < right.canonical_menu_id || (left.canonical_menu_id == right.canonical_menu_id && left.pending_menu_index < right.pending_menu_index);
 				});
 			batch_pending_menu_index_.insert(pending_index_insertion, pending_entry);
-			record_menu_lookup();
+			record_menu_lookup(measure_menu_lookup ? std::chrono::steady_clock::now() : menu_started);
 		}
 		}
 

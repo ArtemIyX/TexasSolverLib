@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/atomic_publish.hpp"
+#include "games/multiway_fixed.hpp"
 #include "games/multiway_private.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway/engine/multiway_cfr.hpp"
@@ -264,12 +265,19 @@ namespace texas::solver::multiway
 		void validate_menu_index_debug() const noexcept;
 		void classify_new_states(
 			const std::vector<MultiwayPublicStateDescriptor>& states,
-			std::vector<std::uint8_t>& new_state_flags) const;
+			std::vector<std::uint8_t>& new_state_flags,
+			std::vector<const MultiwayPackedPublicNode*>& existing_nodes) const;
 		[[nodiscard]] MultiwayPackedPublicNode pack_node(
 			const MultiwayPublicStateDescriptor& state,
 			std::uint32_t menu_handle,
 			MultiwayAdmissionDiagnostics* diagnostics) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] bool compatible_with_descriptor(
+			const MultiwayPackedPublicNode* packed,
+			const MultiwayPublicStateDescriptor& candidate) const noexcept;
+		[[nodiscard]] bool compatible_with_descriptor(
+			MultiwayPublicStateId id,
+			const MultiwayPublicStateDescriptor& candidate) const noexcept;
 
 		std::size_t max_nodes_ = 0U;
 		std::vector<MultiwayPackedPublicNode> nodes_;
@@ -398,7 +406,18 @@ namespace texas::solver::multiway
 
 	struct MultiwaySparseStorageCheckpoint
 	{
+		struct ActivePage
+		{
+			MultiwayInfosetId infoset{};
+			std::uint32_t page_index = 0U;
+		};
+
 		std::vector<MultiwaySparseRowShape> shapes;
+		std::vector<ActivePage> active_pages;
+		// Compact backend values are serialized in page/storage order so restore
+		// does not round-trip large uint64 strategy masses through double.
+		std::vector<std::int32_t> compact_regrets;
+		std::vector<std::uint64_t> compact_strategy_masses;
 		std::vector<double> regrets;
 		std::vector<double> strategy_sums;
 	};
@@ -605,6 +624,7 @@ namespace texas::solver::multiway
 		std::uint64_t parent_resolution_passes = 0U;
 		std::uint64_t parent_resolution_probes = 0U;
 		std::uint64_t descriptor_reconstructions = 0U;
+		std::uint64_t packed_public_state_compatibility_checks = 0U;
 		std::uint64_t existing_public_state_checks = 0U;
 		std::uint64_t new_public_state_validations = 0U;
 		std::uint64_t parent_catalog_resolutions = 0U;
@@ -691,6 +711,7 @@ namespace texas::solver::multiway
 			parent_resolution_passes += other.parent_resolution_passes;
 			parent_resolution_probes += other.parent_resolution_probes;
 			descriptor_reconstructions += other.descriptor_reconstructions;
+			packed_public_state_compatibility_checks += other.packed_public_state_compatibility_checks;
 			existing_public_state_checks += other.existing_public_state_checks;
 			new_public_state_validations += other.new_public_state_validations;
 			parent_catalog_resolutions += other.parent_catalog_resolutions;
@@ -893,6 +914,8 @@ namespace texas::solver::multiway
 		std::vector<PendingMergeCell> pending_merge_cells_;
 		std::vector<std::uint8_t> admission_processed_states_;
 		std::vector<std::uint8_t> admission_new_states_;
+		std::vector<const MultiwayPackedPublicNode*> admission_existing_nodes_;
+		std::vector<games::multiway::MultiwayFixedState> admission_state_fixed_states_;
 		std::vector<std::uint8_t> admission_new_rows_;
 		std::vector<std::uint8_t> admission_new_row_streets_;
 		std::vector<std::size_t> admission_row_state_indexes_;

@@ -14,11 +14,14 @@
 #include <cmath>
 #include <cstring>
 #include <exception>
+#include <fstream>
 #include <iterator>
 #include <limits>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #if defined(_WIN32)
 	#ifndef NOMINMAX
@@ -35,6 +38,29 @@ namespace texas::solver::multiway
 
 	namespace
 	{
+		struct ProcessorPlacement
+		{
+			std::uint16_t group = 0U;
+			std::uint32_t processor = 0U;
+			std::uint64_t mask = 0U;
+		};
+
+		constexpr std::uint32_t kInvalidProcessor = 0xffffffffU;
+
+		[[nodiscard]] std::uint32_t current_processor_id() noexcept
+		{
+#if defined(_WIN32)
+			PROCESSOR_NUMBER processor{};
+			::GetCurrentProcessorNumberEx(&processor);
+			return static_cast<std::uint32_t>(processor.Group) * (sizeof(KAFFINITY) * 8U) + processor.Number;
+#elif defined(__linux__)
+			const auto processor = ::sched_getcpu();
+			return processor < 0 ? kInvalidProcessor : static_cast<std::uint32_t>(processor);
+#else
+			return kInvalidProcessor;
+#endif
+		}
+
 		[[nodiscard]] std::uint64_t steady_now_nanoseconds() noexcept
 		{
 			return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -866,9 +892,13 @@ namespace texas::solver::multiway
 		}
 		const auto actor = state.betting.current_player >= 0 ? state.betting.current_player : context.traverser;
 		const auto hole = context.terminal->sampled_hole(*context.deal, actor);
-		const auto bucket = future_bucket_artifact_ != nullptr
-			? future_bucket_artifact_->lookup(state.betting.street, state.board, hole)
-			: buckets_->lookup(state.betting.street, state.board, hole);
+		std::uint32_t bucket = 0U;
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.evaluate_leaf.bucket_lookup");
+			bucket = future_bucket_artifact_ != nullptr
+				? future_bucket_artifact_->lookup(state.betting.street, state.board, hole)
+				: buckets_->lookup(state.betting.street, state.board, hole);
+		}
 		const MultiwayContinuationSelectionKey continuation_key = {
 			state.id,
 			actor,
@@ -899,6 +929,7 @@ namespace texas::solver::multiway
 		};
 		if (continuation_selector_ == nullptr)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.evaluate_leaf.model");
 			const auto value = (*leaf_evaluator_)(request);
 			if (!std::isfinite(value))
 			{
@@ -906,6 +937,7 @@ namespace texas::solver::multiway
 			}
 			return value;
 		}
+		TEXASSOLVER_TRACY_ZONE_NAMED(tracy_continuation_zone, "mw.worker.evaluate_leaf.continuation", true);
 		const auto mixture = continuation_selector_->strategy(continuation_key);
 		std::array<Value, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()> values{};
 		Value value = 0.0;
@@ -981,6 +1013,7 @@ namespace texas::solver::multiway
 		{
 			MultiwaySearchProfileScope profile_scope(
 				context.profile, MultiwaySearchProfileStage::RowLookup);
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_decision.bucket_lookup");
 			const auto same_root_street = state.betting.street == root_->public_state.betting.street;
 			const auto sampled_hole = context.terminal->sampled_hole(*context.deal, actor);
 			if (state.betting.street == Street::Preflop)
@@ -1115,6 +1148,7 @@ namespace texas::solver::multiway
 			std::size_t child_action_count = 0U;
 			if (next.current_player >= 0)
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_decision.action_menu_buffer");
 				MultiwaySearchProfileScope profile_scope(
 					context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
 				std::vector<MultiwayActionDescriptor> local_action_menu;
@@ -1133,6 +1167,7 @@ namespace texas::solver::multiway
 			}
 			MultiwayPublicStateDescriptor child;
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_decision.public_descriptor_build");
 				MultiwaySearchProfileScope profile_scope(
 					context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
 				child = MultiwayPublicBuilder::make_action_child(
@@ -1251,6 +1286,7 @@ namespace texas::solver::multiway
 		}
 		MultiwayPublicStateDescriptor chance_child;
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_public_chance.public_descriptor_build");
 			MultiwaySearchProfileScope profile_scope(
 				context.profile, MultiwaySearchProfileStage::PublicGraphAdmission);
 			chance_child = MultiwayPublicBuilder::make_board_chance_child(
@@ -1281,6 +1317,7 @@ namespace texas::solver::multiway
 					coordinator_->record_terminal_visit();
 				MultiwaySearchProfileScope profile_scope(
 					context.profile, MultiwaySearchProfileStage::TerminalSettlement);
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_public_chance.terminal");
 				value = context.terminal->resolve_admitted_terminal_value(
 					chance_child, *context.deal, context.traverser);
 			}
@@ -1292,9 +1329,11 @@ namespace texas::solver::multiway
 		}
 		else
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_public_chance.street_transition");
 			const auto transition =
 				context.terminal->apply_admitted_public_street_transition(chance_child);
 			auto next_actions = [&] {
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_public_chance.action_menu");
 				MultiwaySearchProfileScope profile_scope(
 					context.profile, MultiwaySearchProfileStage::ActionMenuGeneration);
 				return action_abstraction_->make_legal_actions(
@@ -1432,15 +1471,10 @@ namespace texas::solver::multiway
 		}
 		worker_affinity_groups_.assign(worker_count_, 0U);
 		worker_affinity_masks_.assign(worker_count_, 0U);
+		worker_affinity_processors_.assign(worker_count_, kInvalidProcessor);
 #if defined(_WIN32)
 		if (pin_workers_)
 		{
-			struct ProcessorPlacement
-			{
-				std::uint16_t group = 0U;
-				std::uint16_t processor = 0U;
-				std::uint64_t mask = 0U;
-			};
 			std::vector<ProcessorPlacement> physical;
 			std::vector<ProcessorPlacement> logical;
 			DWORD buffer_bytes = 0U;
@@ -1487,6 +1521,20 @@ namespace texas::solver::multiway
 					}
 				}
 			}
+			if (logical.empty())
+			{
+				const auto group_count = ::GetActiveProcessorGroupCount();
+				for (WORD group = 0U; group < group_count; ++group)
+				{
+					const auto processor_count = ::GetActiveProcessorCount(group);
+					for (WORD processor = 0U; processor < processor_count && processor < sizeof(KAFFINITY) * 8U; ++processor)
+					{
+						const auto bit = static_cast<KAFFINITY>(1) << processor;
+						logical.push_back(ProcessorPlacement{
+							static_cast<std::uint16_t>(group), processor, static_cast<std::uint64_t>(bit) });
+					}
+				}
+			}
 			std::vector<ProcessorPlacement> selected;
 			selected.reserve(logical.size());
 			for (const auto& placement : physical)
@@ -1499,12 +1547,88 @@ namespace texas::solver::multiway
 				if (already_selected == selected.end())
 					selected.push_back(placement);
 			}
+			const auto coordinator_processor = current_processor_id();
+			if (coordinator_processor != kInvalidProcessor)
+			{
+				const auto coordinator_group = static_cast<std::uint16_t>(
+					coordinator_processor / (sizeof(KAFFINITY) * 8U));
+				const auto coordinator_number = static_cast<std::uint16_t>(
+					coordinator_processor % (sizeof(KAFFINITY) * 8U));
+				const auto without_coordinator = std::remove_if(selected.begin(), selected.end(), [coordinator_group, coordinator_number](const auto& placement) {
+					return placement.group == coordinator_group && placement.processor == coordinator_number;
+				});
+				if (static_cast<std::size_t>(without_coordinator - selected.begin()) >= worker_count_)
+					selected.erase(without_coordinator, selected.end());
+			}
 			if (selected.size() >= worker_count_)
 			{
 				for (std::size_t worker = 0U; worker < worker_count_; ++worker)
 				{
 					worker_affinity_groups_[worker] = selected[worker].group;
 					worker_affinity_masks_[worker] = selected[worker].mask;
+					worker_affinity_processors_[worker] =
+						static_cast<std::uint32_t>(selected[worker].group) * (sizeof(KAFFINITY) * 8U) +
+						selected[worker].processor;
+				}
+			}
+		}
+#elif defined(__linux__)
+		if (pin_workers_)
+		{
+			cpu_set_t allowed{};
+			if (::sched_getaffinity(0, sizeof(allowed), &allowed) == 0)
+			{
+				std::vector<ProcessorPlacement> physical;
+				std::vector<ProcessorPlacement> logical;
+				std::set<std::pair<int, int>> physical_keys;
+				for (int processor = 0; processor < CPU_SETSIZE; ++processor)
+				{
+					if (CPU_ISSET(processor, &allowed) == 0)
+						continue;
+					int package = 0;
+					int core = processor;
+					const auto read_topology_value = [processor](const char* name, int& value) {
+						std::ifstream input(
+							std::string("/sys/devices/system/cpu/cpu") + std::to_string(processor) + "/topology/" + name);
+						return static_cast<bool>(input >> value);
+					};
+					(void)read_topology_value("physical_package_id", package);
+					(void)read_topology_value("core_id", core);
+					const auto placement = ProcessorPlacement{
+						0U,
+						static_cast<std::uint32_t>(processor),
+						processor < 64 ? (std::uint64_t{ 1U } << processor) : 0U };
+					logical.push_back(placement);
+					if (physical_keys.emplace(package, core).second)
+						physical.push_back(placement);
+				}
+				std::vector<ProcessorPlacement> selected;
+				selected.reserve(logical.size());
+				selected.insert(selected.end(), physical.begin(), physical.end());
+				for (const auto& placement : logical)
+				{
+					const auto already_selected = std::find_if(selected.begin(), selected.end(), [&placement](const auto& existing) {
+						return existing.processor == placement.processor;
+					});
+					if (already_selected == selected.end())
+						selected.push_back(placement);
+				}
+				const auto coordinator_processor = current_processor_id();
+				if (coordinator_processor != kInvalidProcessor)
+				{
+					const auto without_coordinator = std::remove_if(selected.begin(), selected.end(), [coordinator_processor](const auto& placement) {
+						return placement.processor == coordinator_processor;
+					});
+					if (static_cast<std::size_t>(without_coordinator - selected.begin()) >= worker_count_)
+						selected.erase(without_coordinator, selected.end());
+				}
+				if (selected.size() >= worker_count_)
+				{
+					for (std::size_t worker = 0U; worker < worker_count_; ++worker)
+					{
+						worker_affinity_masks_[worker] = selected[worker].mask;
+						worker_affinity_processors_[worker] = selected[worker].processor;
+					}
 				}
 			}
 		}
@@ -1565,29 +1689,27 @@ namespace texas::solver::multiway
 		};
 		TEXASSOLVER_TRACY_SET_THREAD_NAME(
 			worker_index < std::size(worker_names) ? worker_names[worker_index] : "mw.worker");
-#if defined(_WIN32)
-		if (pin_workers_ && worker_index < worker_affinity_masks_.size() && worker_affinity_masks_[worker_index] != 0U)
+		if (pin_workers_ && worker_index < worker_affinity_processors_.size() && worker_affinity_processors_[worker_index] != kInvalidProcessor)
 		{
+			worker_scratch.requested_processor = worker_affinity_processors_[worker_index];
+			worker_scratch.affinity_mask = worker_affinity_masks_[worker_index];
+#if defined(_WIN32)
 			GROUP_AFFINITY affinity{};
 			affinity.Mask = static_cast<KAFFINITY>(worker_affinity_masks_[worker_index]);
 			affinity.Group = worker_affinity_groups_[worker_index];
-			worker_scratch.affinity_mask = worker_affinity_masks_[worker_index];
 			worker_scratch.affinity_succeeded = ::SetThreadGroupAffinity(::GetCurrentThread(), &affinity, nullptr) != FALSE;
-		}
-#endif
-		auto current_processor = []() noexcept -> std::uint32_t {
-#if defined(_WIN32)
-			PROCESSOR_NUMBER processor{};
-			::GetCurrentProcessorNumberEx(&processor);
-			return static_cast<std::uint32_t>(processor.Group) * (sizeof(KAFFINITY) * 8U) + processor.Number;
 #elif defined(__linux__)
-			const auto processor = ::sched_getcpu();
-			return processor < 0 ? 0U : static_cast<std::uint32_t>(processor);
-#else
-			return 0U;
+			if (worker_scratch.requested_processor < CPU_SETSIZE)
+			{
+				cpu_set_t affinity{};
+				CPU_ZERO(&affinity);
+				CPU_SET(static_cast<int>(worker_scratch.requested_processor), &affinity);
+				worker_scratch.affinity_succeeded = ::sched_setaffinity(
+					0, sizeof(affinity), &affinity) == 0;
+			}
 #endif
-		};
-		worker_scratch.resolved_processor = current_processor();
+		}
+		worker_scratch.resolved_processor = current_processor_id();
 		std::uint64_t observed_generation = 0U;
 		while (true)
 		{
@@ -1722,7 +1844,7 @@ namespace texas::solver::multiway
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - sort_start)
 							.count());
-					scratch.resolved_processor = current_processor();
+						scratch.resolved_processor = current_processor_id();
 				}
 			}
 			catch (...)
@@ -1855,6 +1977,7 @@ namespace texas::solver::multiway
 		result.admission_diagnostics.worker_local_unique_row_candidates_by_worker.resize(worker_scratch_.size());
 		result.worker_allocation_counts.resize(worker_scratch_.size());
 		result.worker_allocated_bytes.resize(worker_scratch_.size());
+		result.worker_requested_processor.resize(worker_scratch_.size());
 		result.worker_resolved_processor.resize(worker_scratch_.size());
 		result.worker_affinity_masks.resize(worker_scratch_.size());
 		result.worker_affinity_succeeded.resize(worker_scratch_.size());
@@ -1919,6 +2042,7 @@ namespace texas::solver::multiway
 				const auto allocation_snapshot = scratch.allocation_probe.snapshot();
 				result.worker_allocation_counts[worker_index] = allocation_snapshot.allocation_count;
 				result.worker_allocated_bytes[worker_index] = allocation_snapshot.allocated_bytes;
+				result.worker_requested_processor[worker_index] = scratch.requested_processor;
 				result.worker_resolved_processor[worker_index] = scratch.resolved_processor;
 				result.worker_affinity_masks[worker_index] = scratch.affinity_mask;
 				result.worker_affinity_succeeded[worker_index] = scratch.affinity_succeeded ? 1U : 0U;

@@ -36,7 +36,7 @@ namespace texas::solver::multiway
 	void MultiwayBlueprintTrainingCheckpoint::validate() const
 	{
 		identity.validate();
-		if (training.trajectories < training.batches || coverage.admitted_rows != coordinator.storage.shapes.size() || coverage.terminal_visits != coordinator.terminal_visits || coverage.leaf_visits != coordinator.leaf_visits || coverage.missing_lookup_requests != coordinator.missing_lookup_requests || coverage.street_visits != coordinator.street_visits || coordinator.storage.regrets.size() != coordinator.storage.strategy_sums.size())
+		if (training.trajectories < training.batches || coverage.admitted_rows != coordinator.storage.shapes.size() || coverage.terminal_visits != coordinator.terminal_visits || coverage.leaf_visits != coordinator.leaf_visits || coverage.missing_lookup_requests != coordinator.missing_lookup_requests || coverage.street_visits != coordinator.street_visits || coordinator.storage.regrets.size() != coordinator.storage.strategy_sums.size() || coordinator.storage.compact_regrets.size() != coordinator.storage.compact_strategy_masses.size())
 		{
 			throw std::invalid_argument("multiway training checkpoint metadata is invalid");
 		}
@@ -252,7 +252,8 @@ namespace texas::solver::multiway
 		append_u64(runtime_hash, limits.max_sparse_rows);
 		append_u64(runtime_hash, limits.max_sparse_values);
 		append_u64(runtime_hash, limits.max_worker_delta_entries);
-		append_u64(runtime_hash, limits.max_batches);
+		// max_batches is a run horizon, not checkpoint/model semantics. Excluding
+		// it permits a checkpoint to resume with a different remaining batch count.
 		append_u64(runtime_hash, static_cast<std::uint8_t>(limits.storage_backend));
 		append_u64(runtime_hash, limits.compact_page_width);
 		append_u64(runtime_hash, limits.max_discovery_entries);
@@ -450,6 +451,7 @@ namespace texas::solver::multiway
 				status_.worker_discovery_row_counts.assign(batch_result.worker_discovery_row_counts.size(), 0U);
 				status_.worker_allocation_counts.assign(batch_result.worker_allocation_counts.size(), 0U);
 				status_.worker_allocated_bytes.assign(batch_result.worker_allocated_bytes.size(), 0U);
+				status_.worker_requested_processor.assign(batch_result.worker_requested_processor.size(), 0xffffffffU);
 				status_.worker_resolved_processor.assign(batch_result.worker_resolved_processor.size(), 0U);
 				status_.worker_affinity_masks.assign(batch_result.worker_affinity_masks.size(), 0U);
 				status_.worker_affinity_succeeded.assign(batch_result.worker_affinity_succeeded.size(), 0U);
@@ -487,6 +489,7 @@ namespace texas::solver::multiway
 				status_.memory_ledger.worker_allocation_count += batch_result.worker_allocation_counts[worker_index];
 				status_.memory_ledger.worker_allocation_bytes += batch_result.worker_allocated_bytes[worker_index];
 				status_.worker_resolved_processor[worker_index] = batch_result.worker_resolved_processor[worker_index];
+				status_.worker_requested_processor[worker_index] = batch_result.worker_requested_processor[worker_index];
 				status_.worker_affinity_masks[worker_index] = batch_result.worker_affinity_masks[worker_index];
 				status_.worker_affinity_succeeded[worker_index] = batch_result.worker_affinity_succeeded[worker_index];
 				if (batch_result.worker_profiles[worker_index].profiled())

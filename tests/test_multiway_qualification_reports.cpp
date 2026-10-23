@@ -106,6 +106,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	report.admission_diagnostics.catalog_batch_menu_reuse_hits = 10U;
 	report.admission_diagnostics.catalog_new_menus = 11U;
 	report.admission_diagnostics.catalog_menu_id_collision_misses = 12U;
+	report.admission_diagnostics.packed_public_state_compatibility_checks = 45U;
 	report.admission_diagnostics.catalog_output_capacity_reuse_events = 33U;
 	report.admission_diagnostics.catalog_output_capacity_reuse_bytes = 34U;
 	report.admission_diagnostics.catalog_public_descriptor_copy_count = 35U;
@@ -189,6 +190,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"catalog_batch_menu_reuse_hits\": 10") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_new_menus\": 11") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_id_collision_misses\": 12") != std::string::npos);
+	EXPECT_TRUE(text.find("\"packed_public_state_compatibility_checks\": 45") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_output_capacity_reuse_events\": 33") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_output_capacity_reuse_bytes\": 34") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_public_descriptor_copy_count\": 35") != std::string::npos);

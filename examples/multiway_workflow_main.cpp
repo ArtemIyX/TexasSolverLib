@@ -641,7 +641,9 @@ namespace
 		log_line("training initialization: constructing training session and worker pool");
 		MultiwayBlueprintTrainingSession session(config, root, buckets);
 		log_line("worker pool constructed: requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective));
-		const auto checkpoint_path = !resume_path.empty() ? resume_path : (checkpoint_dir.empty() ? std::filesystem::path{} : checkpoint_dir / "latest.bin");
+		const auto checkpoint_path = checkpoint_dir.empty()
+			? (resume_path.empty() ? std::filesystem::path{} : resume_path)
+			: checkpoint_dir / "latest.bin";
 		if (!resume_path.empty())
 		{
 			log_line("training initialization: loading checkpoint");
