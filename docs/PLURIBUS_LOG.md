@@ -1,5 +1,48 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Implement Task A: Process memory and phase snapshots
+
+**Status:** Complete
+**Completed:** 2026-10-23
+**Implementation commits:** `e3f702c`, `0703fa4`
+
+- Added versioned platform-aware process memory snapshots and all required
+  ordered phase boundaries from process start through export.
+- Added bounded training/report storage, stable JSON schema names, legacy report
+  compatibility, and coarse Tracy plots for current working set and private bytes.
+- Kept solver capacities, artifact validation, checkpoint bytes, and training
+  behavior unchanged.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `include/solver/multiway/abstraction/multiway_bucket_model.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- Focused Debug build passed for the four Task A targets.
+- Focused CTest passed 4/4.
+- Serial full Debug CMake build passed.
+- Repository `compact_ctest.py` passed all 110 tests.
+- `git diff --check` passed.
+- Independent C++ review found no actionable findings.
+
+### Limitations
+
+- Runtime memory conclusions and Tracy captures remain out of scope for Task A.
+- The prescribed `full_build.py` stalled before producing output; the equivalent
+  serial full CMake build and complete compact CTest run passed.
+
 ## PB-6 - Add multiway memory task tracker
 
 **Status:** Complete

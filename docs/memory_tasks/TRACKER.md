@@ -1,18 +1,18 @@
 # Multiway memory task tracker
 
 **Updated:** 2026-10-23
-**Overall status:** In progress
+**Overall status:** Complete
 **Current task:** A
-**Next action:** Implement and verify process memory phase snapshots and report compatibility.
-**Latest problem:** Current memory telemetry cannot separate private solver memory from file-backed working-set residency.
+**Next action:** Task A is complete; Task B remains unstarted.
+**Latest problem:** Runtime memory conclusions remain out of scope until the dependent attribution tasks are performed.
 
 ## Tasks
 
 | Task | Status | Last result or problem, one sentence | Depends on | Task file | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| A | In progress | Working set, private committed memory, and mapped residency are not reported as separate phase snapshots. | None | [Process memory and phase snapshots](A_process_memory_phase_snapshots.md) | Implementation pending |
-| B | Blocked | Solver-owned live and retained container capacities cannot yet be reconciled with process private memory. | A | [Retained subsystem capacity](B_retained_subsystem_capacity.md) | Waiting for A |
-| C | Blocked | Tracy memory events are disabled and Tracy reports mark allocation probes invalid. | A | [Tracy allocation lifetimes](C_tracy_allocation_lifetimes.md) | Waiting for A |
+| A | Complete | Added versioned platform-aware process snapshots, ordered phase capture, report serialization, compatibility, and tests without changing solver behavior. | None | [Process memory and phase snapshots](A_process_memory_phase_snapshots.md) | [Project log](../PLURIBUS_LOG.md#pb-6-implement-task-a-process-memory-and-phase-snapshots) |
+| B | Ready | Solver-owned live and retained container capacities still need reconciliation with process private memory. | A | [Retained subsystem capacity](B_retained_subsystem_capacity.md) | Task A complete; not started |
+| C | Ready | Tracy memory events and allocation lifetimes still need measurement. | A | [Tracy allocation lifetimes](C_tracy_allocation_lifetimes.md) | Task A complete; not started |
 | D | Blocked | No matched normal/Tracy attribution matrix exists to select the dominant memory owner. | A, B, C | [Bounded attribution matrix](D_bounded_attribution_matrix.md) | Waiting for A-C |
 | E | Blocked | Preflight can overlap resident baseline and full mapped-artifact accounting, but correction requires D evidence. | D | [Preflight accounting](E_preflight_accounting.md) | Waiting for D |
 | F | Blocked | Bucket validation is a suspected working-set cause but must be selected by D before implementation. | D selects F | [Bucket validation residency](F_bucket_validation_residency.md) | Not selected |
