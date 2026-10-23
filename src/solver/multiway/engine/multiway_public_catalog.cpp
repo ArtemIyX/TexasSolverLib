@@ -524,23 +524,6 @@ namespace texas::solver::multiway
 							.count());
 			}
 			batch_menu_keys_[index] = canonical_menu_id;
-			std::size_t menu_handle = std::numeric_limits<std::size_t>::max();
-			if (!menu_index_.empty())
-			{
-				std::uint64_t index_lookup_nanoseconds = 0U;
-				std::uint64_t equality_nanoseconds = 0U;
-				menu_handle = find_menu_by_key(
-					states[index].legal_actions,
-					canonical_menu_id,
-					diagnostics,
-					&index_lookup_nanoseconds,
-					&equality_nanoseconds);
-				if (diagnostics != nullptr)
-				{
-					diagnostics->catalog_menu_index_lookup_nanoseconds += index_lookup_nanoseconds;
-					diagnostics->catalog_menu_equality_nanoseconds += equality_nanoseconds;
-				}
-			}
 			const auto record_menu_lookup = [&]() {
 				if (menu_lookup_nanoseconds != nullptr)
 					*menu_lookup_nanoseconds += static_cast<std::uint64_t>(
@@ -548,14 +531,6 @@ namespace texas::solver::multiway
 							std::chrono::steady_clock::now() - menu_started)
 							.count());
 			};
-			if (menu_handle != std::numeric_limits<std::size_t>::max())
-			{
-				batch_menu_handles_[index] = static_cast<std::uint32_t>(menu_handle);
-				++existing_menu_hits;
-				record_menu_lookup();
-				continue;
-			}
-
 			std::size_t pending_menu = std::numeric_limits<std::size_t>::max();
 			bool pending_key_collision = false;
 			const auto pending_equality_started = std::chrono::steady_clock::now();
@@ -579,8 +554,6 @@ namespace texas::solver::multiway
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - pending_equality_started)
 						.count());
-			if (diagnostics != nullptr && pending_key_collision && pending_menu == std::numeric_limits<std::size_t>::max())
-				++diagnostics->catalog_menu_id_collision_misses;
 			if (pending_menu != std::numeric_limits<std::size_t>::max())
 			{
 				batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_menu);
@@ -589,6 +562,34 @@ namespace texas::solver::multiway
 				record_menu_lookup();
 				continue;
 			}
+
+			std::size_t menu_handle = std::numeric_limits<std::size_t>::max();
+			if (!menu_index_.empty())
+			{
+				std::uint64_t index_lookup_nanoseconds = 0U;
+				std::uint64_t equality_nanoseconds = 0U;
+				menu_handle = find_menu_by_key(
+					states[index].legal_actions,
+					canonical_menu_id,
+					diagnostics,
+					&index_lookup_nanoseconds,
+					&equality_nanoseconds);
+				if (diagnostics != nullptr)
+				{
+					diagnostics->catalog_menu_index_lookup_nanoseconds += index_lookup_nanoseconds;
+					diagnostics->catalog_menu_equality_nanoseconds += equality_nanoseconds;
+				}
+			}
+			if (menu_handle != std::numeric_limits<std::size_t>::max())
+			{
+				batch_menu_handles_[index] = static_cast<std::uint32_t>(menu_handle);
+				++existing_menu_hits;
+				record_menu_lookup();
+				continue;
+			}
+
+			if (diagnostics != nullptr && pending_key_collision && pending_menu == std::numeric_limits<std::size_t>::max())
+				++diagnostics->catalog_menu_id_collision_misses;
 
 			if (menus_.size() + batch_pending_menus_.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::length_error("packed public catalog menu handle overflow");
