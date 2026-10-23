@@ -21,6 +21,7 @@ namespace texas::solver::multiway
 		std::string tracy_version;
 		std::string trace_capture_id;
 		bool allocation_probe_valid = true;
+		bool tracy_memory_events_enabled = false;
 		std::uint64_t elapsed_wall_nanoseconds = 0U;
 		std::uint64_t current_process_rss_bytes = 0U;
 		std::uint64_t peak_process_rss_bytes = 0U;

@@ -182,12 +182,14 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(report.tracy_version.empty());
 	EXPECT_TRUE(report.trace_capture_id.empty());
 	EXPECT_TRUE(report.allocation_probe_valid);
+	EXPECT_TRUE(!report.tracy_memory_events_enabled);
 	const auto path = std::filesystem::temp_directory_path() / "texas_solver_training_report_telemetry_test.json";
 	save_multiway_training_report_atomic(path, report);
 	std::ifstream input(path);
 	const std::string text((std::istreambuf_iterator<char>(input)), {});
 	input.close();
 	EXPECT_TRUE(text.find("\"checkpoint_bytes\": 123") != std::string::npos);
+	EXPECT_TRUE(text.find("\"tracy_memory_events_enabled\": false") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_catalog_export_nanoseconds\": 12") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_state_bytes\": 34") != std::string::npos);
 	EXPECT_TRUE(text.find("\"blueprint_bytes\": 789") != std::string::npos);
@@ -275,9 +277,15 @@ TEST_CASE(multiway_training_report_separates_tracy_provenance)
 	report.tracy_version = "0.14.1";
 	report.trace_capture_id = "capture-test";
 	report.allocation_probe_valid = false;
+	report.tracy_memory_events_enabled = true;
 	report.validate();
 
 	report.allocation_probe_valid = true;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
+	report.allocation_probe_valid = false;
+	report.instrumentation_kind = "none";
+	report.tracy_version.clear();
+	report.trace_capture_id.clear();
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 

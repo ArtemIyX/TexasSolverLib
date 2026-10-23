@@ -2,6 +2,7 @@
 param(
     [string]$CaptureToolPath = '',
     [string]$CsvExportToolPath = '',
+    [string]$MemoryExportToolPath = '',
     [string]$TrainingScriptPath = '',
     [string]$OutputDirectory = '',
     [ValidatePattern('^[A-Za-z0-9._-]+$')]
@@ -56,8 +57,9 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot $OutputDirectory
 }
 
-$CaptureToolPath = Resolve-RepoPath $CaptureToolPath 'build-tracy-capture\RelWithDebInfo\tracy-capture.exe'
+$CaptureToolPath = Resolve-RepoPath $CaptureToolPath 'build-tracy-capture\RelWithDebInfo\tracy-capture-daemon.exe'
 $CsvExportToolPath = Resolve-RepoPath $CsvExportToolPath 'build-tracy-csvexport\RelWithDebInfo\tracy-csvexport.exe'
+$MemoryExportToolPath = Resolve-RepoPath $MemoryExportToolPath 'build-tracy-csvexport\RelWithDebInfo\tracy-memoryexport.exe'
 $TrainingScriptPath = Resolve-RepoPath $TrainingScriptPath 'scripts\run_multiway_ram_1000.ps1'
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -71,14 +73,14 @@ Write-ScriptLog "capture_id=$CaptureId"
 Write-ScriptLog "output_directory=$OutputDirectory"
 Write-ScriptLog "workers=$Workers batches=$Batches trajectories_per_batch=$TrajectoriesPerBatch scheduler=$Scheduler pin_workers=$($PinWorkers.IsPresent)"
 
-foreach ($requiredPath in @($CaptureToolPath, $CsvExportToolPath, $TrainingScriptPath)) {
+foreach ($requiredPath in @($CaptureToolPath, $CsvExportToolPath, $MemoryExportToolPath, $TrainingScriptPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required file not found: $requiredPath"
     }
 }
 
-$captureVersionOutput = (& $CaptureToolPath 2>&1 | Out-String)
-if ($captureVersionOutput -notmatch 'tracy-capture\s+0\.14\.1\b') {
+$captureVersionOutput = (& $CaptureToolPath -V 2>&1 | Out-String)
+if ($captureVersionOutput -notmatch 'tracy-capture(?:-daemon)?\s+0\.14\.1\b') {
     throw "Expected Tracy capture tool version 0.14.1, got: $captureVersionOutput"
 }
 Write-ScriptLog 'validated required tools and Tracy capture version 0.14.1'
@@ -100,13 +102,12 @@ $env:TEXASSOLVER_BUILD_CONFIGURATION = 'RelWithDebInfo'
 $env:TEXASSOLVER_COMPILER_IDENTITY = if ([string]::IsNullOrWhiteSpace($env:VCToolsVersion)) { 'MSVC' } else { "MSVC $($env:VCToolsVersion)" }
 $env:TEXASSOLVER_TRACE_CAPTURE_ID = $CaptureId
 
-$captureArguments = @(
-    '-o', $tracePath,
-    '-a', '127.0.0.1',
-    '-p', '8086',
-    '-f',
-    '-s', $CaptureSeconds.ToString()
-)
+$captureDaemon = [System.IO.Path]::GetFileNameWithoutExtension($CaptureToolPath) -eq 'tracy-capture-daemon'
+$captureArguments = if ($captureDaemon) {
+    @('-o', $OutputDirectory, '-p', '8086')
+} else {
+    @('-o', $tracePath, '-a', '127.0.0.1', '-p', '8086', '-f', '-s', $CaptureSeconds.ToString())
+}
 $trainingArguments = @(
     '-Workers', $Workers.ToString(),
     '-Batches', $Batches.ToString(),
@@ -157,6 +158,9 @@ try {
     Write-ScriptLog "training_wrapper_failed=$($_.Exception.Message)"
 } finally {
     if ($null -ne $captureProcess) {
+        if ($captureDaemon -and -not $captureProcess.HasExited) {
+            $captureProcess.CloseMainWindow() | Out-Null
+        }
         $captureDeadline = (Get-Date).AddSeconds($ConnectionTimeoutSeconds)
         while (-not $captureProcess.HasExited -and (Get-Date) -lt $captureDeadline) {
             Start-Sleep -Milliseconds 200
@@ -174,7 +178,16 @@ if ($null -ne $trainingFailure) {
 }
 
 $captureExitCode = Get-ProcessExitCode $captureProcess
-if ($null -ne $captureExitCode -and $captureExitCode -ne 0) {
+if ($captureDaemon) {
+    $traceCandidate = Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.tracy' -File |
+        Where-Object { $_.Length -gt 0 } |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    if ($null -ne $traceCandidate) {
+        $tracePath = $traceCandidate.FullName
+    }
+}
+if (-not $captureDaemon -and $null -ne $captureExitCode -and $captureExitCode -ne 0) {
     throw "Tracy capture tool failed with exit code $captureExitCode"
 }
 
@@ -186,6 +199,33 @@ if ($traceBytes -le 0) {
     throw "Tracy capture is empty: $tracePath"
 }
 Write-ScriptLog "capture_finished exit_code=$captureExitCode trace_bytes=$traceBytes"
+
+$memoryInspectionPath = Join-Path $OutputDirectory 'memory_events.json'
+$memoryInspectionStderrPath = Join-Path $OutputDirectory 'memory_events.stderr.log'
+Write-ScriptLog 'memory_event_inspection_started'
+$memoryInspectionProcess = Start-Process -FilePath $MemoryExportToolPath `
+    -ArgumentList @($tracePath) `
+    -WorkingDirectory $repoRoot `
+    -RedirectStandardOutput $memoryInspectionPath `
+    -RedirectStandardError $memoryInspectionStderrPath `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+$memoryInspectionExitCode = Get-ProcessExitCode $memoryInspectionProcess
+if ($null -ne $memoryInspectionExitCode -and $memoryInspectionExitCode -ne 0) {
+    throw "Tracy memory-event inspection failed with exit code $memoryInspectionExitCode"
+}
+if (-not (Test-Path -LiteralPath $memoryInspectionPath -PathType Leaf) -or
+    (Get-Item -LiteralPath $memoryInspectionPath).Length -le 0) {
+    throw "Tracy memory-event inspection produced no result: $memoryInspectionPath"
+}
+$memoryInspection = Get-Content -Raw -LiteralPath $memoryInspectionPath | ConvertFrom-Json
+$allocationEventCount = [int64]$memoryInspection.allocation_events
+$freeEventCount = [int64]$memoryInspection.free_events
+if ($allocationEventCount -le 0 -or $freeEventCount -le 0) {
+    throw "Tracy capture lacks allocation/free memory events: allocations=$allocationEventCount frees=$freeEventCount"
+}
+Write-ScriptLog "memory_event_inspection_finished exit_code=$memoryInspectionExitCode allocations=$allocationEventCount frees=$freeEventCount active=$([int64]$memoryInspection.active_allocations)"
 
 Write-ScriptLog 'csv_export_started'
 $csvProcess = Start-Process -FilePath $CsvExportToolPath `
@@ -213,12 +253,19 @@ foreach ($requiredArtifact in @($reportPath, $metricsPath, $orchestratorLogPath)
     }
 }
 
+$report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
+if (-not ($report.PSObject.Properties.Name -contains 'tracy_memory_events_enabled') -or
+    -not [bool]$report.tracy_memory_events_enabled) {
+    throw 'Training report does not prove that Tracy memory events were enabled'
+}
+
 $configPath = Join-Path $OutputDirectory 'run.cfg'
 $blueprintPath = Join-Path $OutputDirectory 'blueprint.bin'
 $checkpointDirectory = Join-Path $OutputDirectory 'checkpoints'
 $manifest = [ordered]@{
     schema_version = 1
     tracy_version = '0.14.1'
+    tracy_memory_events_enabled = [bool]$report.tracy_memory_events_enabled
     capture_id = $CaptureId
     captured_at_utc = (Get-Date).ToUniversalTime().ToString('o')
     git_commit = $gitCommit
@@ -240,6 +287,19 @@ $manifest = [ordered]@{
         path = $CsvExportToolPath
         sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $CsvExportToolPath).Hash
         arguments = @('-f', 'mw.', $tracePath)
+    }
+    memory_export_tool = [ordered]@{
+        path = $MemoryExportToolPath
+        sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $MemoryExportToolPath).Hash
+        arguments = @($tracePath)
+    }
+    memory_event_inspection = [ordered]@{
+        path = $memoryInspectionPath
+        stderr = $memoryInspectionStderrPath
+        allocation_events = $allocationEventCount
+        free_events = $freeEventCount
+        active_allocations = [int64]$memoryInspection.active_allocations
+        required = $true
     }
     training = [ordered]@{
         wrapper = $TrainingScriptPath
@@ -268,6 +328,7 @@ $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -En
 Write-ScriptLog "[tracy-training] output_directory=$OutputDirectory"
 Write-ScriptLog "[tracy-training] trace=$tracePath"
 Write-ScriptLog "[tracy-training] csv=$csvPath"
+Write-ScriptLog "[tracy-training] memory_events=$memoryInspectionPath allocations=$allocationEventCount frees=$freeEventCount"
 Write-ScriptLog "[tracy-training] report_json=$reportPath"
 Write-ScriptLog "[tracy-training] metrics_json=$metricsPath"
 Write-ScriptLog "[tracy-training] manifest=$manifestPath"

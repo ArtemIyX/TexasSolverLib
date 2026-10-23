@@ -3,11 +3,13 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/engine/multiway_allocation_probe.hpp"
+#include "util/tracy.hpp"
 #include "test_harness.hpp"
 
 #include <cstddef>
 #include <stdexcept>
 #include <limits>
+#include <new>
 #include <string>
 #include <utility>
 
@@ -128,9 +130,65 @@ TEST_CASE(multiway_memory_snapshots_are_allocation_free)
 	EXPECT_EQ(allocations.allocated_bytes, 0U);
 }
 
+TEST_CASE(multiway_tracy_memory_wrappers_are_noops_in_normal_build)
+{
+	static_assert(!texas::util::tracy_memory_events_enabled);
+	int value = 0;
+	texas::util::tracy_memory_alloc(&value, sizeof(value));
+	texas::util::tracy_memory_free(&value);
+	texas::util::tracy_memory_free(nullptr);
+}
+
+TEST_CASE(multiway_global_allocation_probe_covers_all_allocation_paths)
+{
+	using namespace texas::solver::multiway;
+	MultiwayAllocationProbe probe;
+	void* scalar = nullptr;
+	void* array = nullptr;
+	void* aligned = nullptr;
+	void* aligned_array = nullptr;
+	void* nothrow = nullptr;
+	void* nothrow_aligned = nullptr;
+	{
+		MultiwayAllocationProbeScope scope(probe);
+		scalar = ::operator new(24U);
+		array = ::operator new[](32U);
+		aligned = ::operator new(48U, std::align_val_t(64U));
+		aligned_array = ::operator new[](80U, std::align_val_t(64U));
+		nothrow = ::operator new(16U, std::nothrow);
+		nothrow_aligned = ::operator new(32U, std::align_val_t(64U), std::nothrow);
+	}
+	EXPECT_TRUE(scalar != nullptr);
+	EXPECT_TRUE(array != nullptr);
+	EXPECT_TRUE(aligned != nullptr);
+	EXPECT_TRUE(aligned_array != nullptr);
+	EXPECT_TRUE(nothrow != nullptr);
+	EXPECT_TRUE(nothrow_aligned != nullptr);
+	const auto allocations = probe.snapshot();
+	EXPECT_TRUE(allocations.allocation_count >= 6U);
+
+	::operator delete(scalar, 24U);
+	::operator delete[](array, 32U);
+	::operator delete(aligned, 48U, std::align_val_t(64U));
+	::operator delete[](aligned_array, 80U, std::align_val_t(64U));
+	::operator delete(nothrow);
+	::operator delete(nothrow_aligned, 32U, std::align_val_t(64U));
+
+	void* failed_nothrow = ::operator new(std::numeric_limits<std::size_t>::max(), std::nothrow);
+	EXPECT_TRUE(failed_nothrow == nullptr);
+	void* failed_aligned_nothrow = ::operator new(
+		std::numeric_limits<std::size_t>::max(), std::align_val_t(64U), std::nothrow);
+	EXPECT_TRUE(failed_aligned_nothrow == nullptr);
+}
+
 TEST_CASE(multiway_memory_snapshot_collection_preserves_phase_order_and_validation)
 {
 	using namespace texas::solver::multiway;
+	MultiwayMemorySubsystemSnapshotCollection empty_snapshots;
+	EXPECT_TRUE(empty_snapshots.record(MultiwayMemoryPhase::ProcessStart, {}));
+	EXPECT_TRUE(empty_snapshots.record(MultiwayMemoryPhase::BeforeBucketMap, {}));
+	EXPECT_TRUE(empty_snapshots.valid());
+
 	MultiwayMemorySubsystemSnapshotCollection snapshots;
 	for (std::size_t index = 0U; index < MULTIWAY_MEMORY_PHASE_COUNT; ++index)
 	{

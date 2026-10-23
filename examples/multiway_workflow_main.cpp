@@ -778,6 +778,11 @@ namespace
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - blueprint_start)
 				.count());
+		training_report = make_multiway_training_report(
+			session.status(), status.merged_stream_fingerprint,
+			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
+				config.identity(), workflow.fingerprint()),
+			workflow.process_memory_limit_bytes);
 		std::error_code blueprint_error;
 		const auto blueprint_bytes = std::filesystem::file_size(output_path, blueprint_error);
 		if (blueprint_error)

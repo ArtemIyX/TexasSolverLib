@@ -209,6 +209,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     tracy_version = $report.tracy_version
     trace_capture_id = $report.trace_capture_id
     allocation_probe_valid = $report.allocation_probe_valid
+    tracy_memory_events_enabled = $report.tracy_memory_events_enabled
     minimum_worker_active_nanoseconds = $report.minimum_worker_active_nanoseconds
     maximum_worker_active_nanoseconds = $report.maximum_worker_active_nanoseconds
     coordinator_wait_nanoseconds = $report.coordinator_wait_nanoseconds

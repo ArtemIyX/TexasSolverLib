@@ -36,10 +36,12 @@ namespace texas::solver::multiway
 	{
 		if (instrumentation_kind != "none" && instrumentation_kind != "tracy")
 			throw std::invalid_argument("invalid multiway training instrumentation kind");
-		if (instrumentation_kind == "none" && (!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid))
+		if (instrumentation_kind == "none" && (!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid || tracy_memory_events_enabled))
 			throw std::invalid_argument("unprofiled training report has Tracy provenance");
 		if (instrumentation_kind == "tracy" && (tracy_version.empty() || allocation_probe_valid))
 			throw std::invalid_argument("Tracy training report has invalid provenance");
+		if (tracy_memory_events_enabled && instrumentation_kind != "tracy")
+			throw std::invalid_argument("Tracy memory events require Tracy instrumentation");
 		const auto worker_vectors_match = [this] {
 			const auto worker_count = worker_trajectory_counts.size();
 			const auto matches = [worker_count](std::size_t size) {
@@ -131,6 +133,7 @@ namespace texas::solver::multiway
 		report.street_visits = status.street_visits;
 		report.deterministic_merge_fingerprint = fingerprint;
 		report.evidence = evidence;
+		report.tracy_memory_events_enabled = texas::util::tracy_memory_events_enabled;
 #if defined(TEXASSOLVER_TRACY_ENABLED) && TEXASSOLVER_TRACY_ENABLED
 		report.instrumentation_kind = "tracy";
 		report.tracy_version = texas::util::TEXASSOLVER_TRACY_VERSION;
@@ -250,6 +253,8 @@ namespace texas::solver::multiway
 			   << "\",\n  \"trace_capture_id\": \"" << report.trace_capture_id
 			   << "\",\n  \"allocation_probe_valid\": "
 			   << (report.allocation_probe_valid ? "true" : "false")
+			   << ",\n  \"tracy_memory_events_enabled\": "
+			   << (report.tracy_memory_events_enabled ? "true" : "false")
 			   << ",\n  \"batches\": " << report.batches
 			   << ",\n  \"trajectories\": " << report.trajectories
 			   << ",\n  \"accepted_trajectories\": " << report.accepted_trajectories

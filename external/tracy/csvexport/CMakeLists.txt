@@ -27,3 +27,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE TracyServer TracyGetOpt)
 set_property(DIRECTORY ${CMAKE_CURRENT_LIST_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+add_executable(tracy-memoryexport src/memoryexport.cpp ${COMMON_FILES} ${SERVER_FILES})
+add_git_ref(tracy-memoryexport)
+target_link_libraries(tracy-memoryexport PRIVATE TracyServer TracyGetOpt)

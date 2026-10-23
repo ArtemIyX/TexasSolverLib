@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Implement Task C: Tracy allocation lifetimes
+
+**Status:** Complete, diagnostic only
+**Completed:** 2026-10-23
+
+- Enabled allocation and free lifetime events only on Tracy diagnostic targets.
+- Added no-op normal-build wrappers, guarded scalar, array, aligned, sized, and nothrow paths, and report/manifest provenance.
+- Bounded capture `memory-task-c-smoke` used one worker, one batch, 1000 trajectories, fixed scheduling, and no worker pinning.
+- Trace artifact: `tmp/memory-task-c-smoke/texas_multiway_train_tracyexe_127.0.0.1_8086.tracy` with 245,879,075 bytes.
+- Memory inspection: `tmp/memory-task-c-smoke/memory_events.json` reported 43,207,267 allocations, 43,207,267 frees, and 0 active allocations.
+- The report and manifest recorded `tracy_memory_events_enabled=true` and `allocation_probe_valid=false`; no production target received Tracy memory definitions.
+
+### Validation
+
+- Normal allocation and report tests passed, including null nothrow handling, delete pairing, reentrancy coverage, no-op wrappers, and contradictory provenance rejection.
+- Focused CTest passed 2/2 and the Tracy boundary script passed.
+- Tracy diagnostic targets, capture daemon, and memory exporter built successfully.
+- Full Debug solution build passed. Full CTest passed 110/110 with normal filesystem access; two atomic-publish tests were sandbox-denied when run without elevation and passed when rerun with normal filesystem access.
+- `git diff --check` passed.
+
+### Limitations
+
+- This task adds diagnostic instrumentation only. It makes no memory-reduction claim and does not present Tracy overhead as production throughput.
+- The capture daemon returned its normal shutdown sentinel after producing the complete trace; artifact inspection verified the capture and allocation/free pairing.
+
 ## PB-6 - Implement Task B: Retained subsystem capacity attribution
 
 **Status:** Complete

@@ -287,11 +287,11 @@ namespace texas::solver::multiway
 			add(workers[index].discovery_rows);
 			add(workers[index].action_menu_scratch);
 		}
-		worker_regret_delta_stream.grouping_only = true;
-		worker_continuation_delta_stream.grouping_only = true;
-		discovery_public_state_stream.grouping_only = true;
-		discovery_row_stream.grouping_only = true;
-		worker_action_menu_scratch.grouping_only = true;
+		worker_regret_delta_stream.grouping_only = worker_count != 0U;
+		worker_continuation_delta_stream.grouping_only = worker_count != 0U;
+		discovery_public_state_stream.grouping_only = worker_count != 0U;
+		discovery_row_stream.grouping_only = worker_count != 0U;
+		worker_action_menu_scratch.grouping_only = worker_count != 0U;
 		add(coordinator_merge_scratch);
 		add(coordinator_admission_scratch);
 		add(discovery_merge_scratch);
@@ -439,11 +439,12 @@ namespace texas::solver::multiway
 				result.discovery_row_stream.accumulate(runner.workers[index].discovery_rows);
 				result.worker_action_menu_scratch.accumulate(runner.workers[index].action_menu_scratch);
 			}
-			result.worker_regret_delta_stream.grouping_only = true;
-			result.worker_continuation_delta_stream.grouping_only = true;
-			result.discovery_public_state_stream.grouping_only = true;
-			result.discovery_row_stream.grouping_only = true;
-			result.worker_action_menu_scratch.grouping_only = true;
+			const bool has_workers = result.worker_count != 0U;
+			result.worker_regret_delta_stream.grouping_only = has_workers;
+			result.worker_continuation_delta_stream.grouping_only = has_workers;
+			result.discovery_public_state_stream.grouping_only = has_workers;
+			result.discovery_row_stream.grouping_only = has_workers;
+			result.worker_action_menu_scratch.grouping_only = has_workers;
 			result.discovery_merge_scratch = runner.discovery_merge_scratch;
 			result.batch_runner_scratch = runner.stream_views;
 			result.batch_runner_scratch.accumulate(runner.discovery_outputs);
