@@ -107,7 +107,8 @@ namespace
 			std::size_t max_public_states = 256U,
 			std::size_t delta_capacity = 2048U,
 			bool immutable_epochs = false,
-			texas::MultiwaySchedulerMode scheduler_mode = texas::MultiwaySchedulerMode::Fixed)
+			texas::MultiwaySchedulerMode scheduler_mode = texas::MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE)
 			: root(make_root(abstraction)), request(root, [] {
               texas::MultiwayCFRConfig cfr;
               cfr.player_count = 3U;
@@ -125,7 +126,7 @@ namespace
               return limits; }()), coordinator(request), buckets({ texas::MultiwayBucketTable([] {
                   texas::MultiwayBlueprintConfig config;
                   config.player_count = 3U;
-                  return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, delta_capacity, texas::MultiwaySearchProfileMode::Disabled, false, immutable_epochs, scheduler_mode), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
+				   return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, delta_capacity, texas::MultiwaySearchProfileMode::Disabled, false, immutable_epochs, scheduler_mode, dynamic_chunk_size), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
 
 		texas::MultiwayActionAbstraction abstraction;
 		texas::MultiwayRootSnapshot root;
@@ -208,6 +209,27 @@ TEST_CASE(multiway_parallel_training_fixed_and_dynamic_modes_match_at_focused_wo
 		expect_same_storage(dynamic.trainer.checkpoint().coordinator, repeated_dynamic.trainer.checkpoint().coordinator);
 		expect_same_policy_rows(fixed.trainer.export_full_policy(), dynamic.trainer.export_full_policy());
 		expect_same_policy_rows(dynamic.trainer.export_full_policy(), repeated_dynamic.trainer.export_full_policy());
+	}
+}
+
+TEST_CASE(multiway_parallel_training_dynamic_chunk_sizes_match_fixed_merge)
+{
+	for (const std::uint32_t chunk_size : { 1U, 2U, 4U, 8U, 16U })
+	{
+		ParallelTrainingFixture fixed(4U, 256U, 2048U, false, texas::MultiwaySchedulerMode::Fixed);
+		ParallelTrainingFixture dynamic(4U, 256U, 2048U, false, texas::MultiwaySchedulerMode::Dynamic, chunk_size);
+		EXPECT_EQ(dynamic.runner.dynamic_chunk_size(), chunk_size);
+
+		fixed.trainer.run_batches(3U, 32U, 0x77U);
+		dynamic.trainer.run_batches(3U, 32U, 0x77U);
+
+		const auto& fixed_status = fixed.trainer.status();
+		const auto& dynamic_status = dynamic.trainer.status();
+		EXPECT_EQ(dynamic_status.trajectories, fixed_status.trajectories);
+		EXPECT_EQ(dynamic_status.discarded_trajectories, 0U);
+		EXPECT_EQ(dynamic_status.merged_stream_fingerprint, fixed_status.merged_stream_fingerprint);
+		expect_same_storage(fixed.trainer.checkpoint().coordinator, dynamic.trainer.checkpoint().coordinator);
+		expect_same_policy_rows(fixed.trainer.export_full_policy(), dynamic.trainer.export_full_policy());
 	}
 }
 
