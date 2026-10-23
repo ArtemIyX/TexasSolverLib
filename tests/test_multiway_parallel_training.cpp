@@ -3,6 +3,7 @@
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -185,6 +186,35 @@ namespace
 	}
 
 } // namespace
+
+TEST_CASE(multiway_memory_worker_attribution_scales_from_one_to_four_workers)
+{
+	ParallelTrainingFixture one(1U, 64U, 32U);
+	ParallelTrainingFixture four(4U, 64U, 32U);
+	const auto one_snapshot = texas::solver::multiway::capture_multiway_memory_subsystems(nullptr, nullptr, &one.runner);
+	const auto four_snapshot = texas::solver::multiway::capture_multiway_memory_subsystems(nullptr, nullptr, &four.runner);
+	EXPECT_EQ(one_snapshot.worker_count, 1U);
+	EXPECT_EQ(four_snapshot.worker_count, 4U);
+	EXPECT_EQ(four_snapshot.worker_regret_delta_stream.retained_capacity_bytes,
+		4U * one_snapshot.worker_regret_delta_stream.retained_capacity_bytes);
+	EXPECT_EQ(four_snapshot.worker_continuation_delta_stream.retained_capacity_bytes,
+		4U * one_snapshot.worker_continuation_delta_stream.retained_capacity_bytes);
+	EXPECT_EQ(four_snapshot.discovery_public_state_stream.retained_capacity_bytes,
+		4U * one_snapshot.discovery_public_state_stream.retained_capacity_bytes);
+	EXPECT_EQ(four_snapshot.discovery_row_stream.retained_capacity_bytes,
+		4U * one_snapshot.discovery_row_stream.retained_capacity_bytes);
+	EXPECT_EQ(four_snapshot.worker_action_menu_scratch.retained_capacity_bytes,
+		4U * one_snapshot.worker_action_menu_scratch.retained_capacity_bytes);
+	std::uint64_t per_worker_total = 0U;
+	for (std::size_t worker = 0U; worker < four_snapshot.worker_count; ++worker)
+		per_worker_total += four_snapshot.workers[worker].total.retained_capacity_bytes;
+	EXPECT_EQ(per_worker_total,
+		four_snapshot.worker_regret_delta_stream.retained_capacity_bytes +
+		four_snapshot.worker_continuation_delta_stream.retained_capacity_bytes +
+		four_snapshot.discovery_public_state_stream.retained_capacity_bytes +
+		four_snapshot.discovery_row_stream.retained_capacity_bytes +
+		four_snapshot.worker_action_menu_scratch.retained_capacity_bytes);
+}
 
 TEST_CASE(multiway_parallel_training_fixed_and_dynamic_modes_match_at_focused_worker_counts)
 {

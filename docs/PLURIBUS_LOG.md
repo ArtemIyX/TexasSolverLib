@@ -1,5 +1,55 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Implement Task B: Retained subsystem capacity attribution
+
+**Status:** Complete
+**Completed:** 2026-10-23
+**Implementation commits:** `84a3c31`, `4d0e344`
+
+- Added fixed-layout `noexcept` live and retained-capacity snapshots for all
+  Task B owners, including per-worker and aggregate fields.
+- Added checked arithmetic, grouping-only totals, phase capture, versioned JSON,
+  validation, and derived `unattributed_private_bytes` when process data is valid.
+- Kept this task telemetry-only and did not change capacities or claim memory reduction.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/abstraction/multiway_bucket_model.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_model.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_public_catalog.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+
+### Validation
+
+- Focused `scripts/compact_build.py --parallel 1` passed for all five Task B targets.
+- Focused CTest passed 5/5.
+- Serial full `scripts/compact_build.py --parallel 1` passed for all targets.
+- Serial full `scripts/compact_ctest.py --parallel 1` passed 110/110 tests.
+- `git diff --check` passed.
+- Independent C++ review found no actionable findings.
+
+### Limitations
+
+- The prescribed `scripts/full_build.py` wrapper was also attempted, but its nested default 16-job build stalled without child output in this environment; the equivalent serial repository build and complete CTest run passed.
+- Task B reports attribution only; it makes no memory-reduction claim.
+
 ## PB-6 - Implement Task A: Process memory and phase snapshots
 
 **Status:** Complete

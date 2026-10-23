@@ -77,6 +77,22 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.memory_ledger.coordinator_allocation_bytes = 444U;
 	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
 		EXPECT_TRUE(status.process_memory_snapshots.record(static_cast<MultiwayMemoryPhase>(phase), {}));
+	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
+	{
+		MultiwayMemorySubsystemSnapshot snapshot;
+		snapshot.public_catalog_nested_payloads.add_buffer(2U, 4U, sizeof(MultiwayActionDescriptor));
+		snapshot.worker_count = 1U;
+		snapshot.workers[0U].regret_delta_stream.add_buffer(1U, 2U, sizeof(MultiwayWorkerDelta));
+		snapshot.recompute_totals();
+		EXPECT_TRUE(status.memory_subsystem_snapshots.record(static_cast<MultiwayMemoryPhase>(phase), snapshot));
+	}
+	status.memory_subsystem_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].checkpoint_retained_buffers.add_buffer(0U, 100U, 1U);
+	status.memory_subsystem_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].recompute_totals();
+	const auto attributed_retained = status.memory_subsystem_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].retained_capacity_bytes;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].private_committed_available = true;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].private_committed_bytes = attributed_retained + 900U;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].peak_private_committed_available = true;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].peak_private_committed_bytes = attributed_retained + 900U;
 	MultiwayProducerIdentity identity;
 	identity.git_commit = "test";
 	identity.build_configuration = "Debug";
@@ -161,6 +177,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.worker_trajectory_counts[1U], 10U);
 	EXPECT_EQ(report.worker_active_nanoseconds_by_worker[1U], 60U);
 	EXPECT_EQ(report.instrumentation_kind, std::string("none"));
+	EXPECT_TRUE(report.unattributed_private_bytes_available);
+	EXPECT_EQ(report.unattributed_private_bytes, 900U);
 	EXPECT_TRUE(report.tracy_version.empty());
 	EXPECT_TRUE(report.trace_capture_id.empty());
 	EXPECT_TRUE(report.allocation_probe_valid);
@@ -185,6 +203,11 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"phase\": \"process_start\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"phase\": \"after_export\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"private_committed\": false") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_subsystems_schema_version\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_subsystems\": {\"enabled\": true") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_catalog_nested_payloads\":") != std::string::npos);
+	EXPECT_TRUE(text.find("\"workers\": [{") != std::string::npos);
+	EXPECT_TRUE(text.find("\"unattributed_private_bytes\": 900") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_key_nanoseconds\": 1") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_index_lookup_nanoseconds\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_equality_nanoseconds\": 3") != std::string::npos);

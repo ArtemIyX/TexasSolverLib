@@ -1,7 +1,30 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "test_harness.hpp"
 
 #include <array>
+#include <utility>
+
+TEST_CASE(multiway_compact_storage_memory_snapshot_attributes_each_storage_array)
+{
+	using namespace texas::solver::multiway;
+	static_assert(noexcept(std::declval<const MultiwayCompactStorage&>().memory_snapshot()));
+	const MultiwayInfosetId infoset{ { 33U }, 0 };
+	MultiwayCompactStorage storage(4U, 32U, 4U);
+	const auto empty = storage.memory_snapshot();
+	EXPECT_EQ(empty.row_metadata.live_element_bytes, 0U);
+	EXPECT_EQ(empty.row_metadata.retained_capacity_bytes, 4U * sizeof(MultiwaySparseRowMetadata));
+	EXPECT_EQ(empty.page_metadata.live_element_bytes, 0U);
+	storage.admit_row({ infoset, 5U, 3U });
+	const auto populated = storage.memory_snapshot();
+	EXPECT_EQ(populated.row_metadata.live_element_bytes, sizeof(MultiwaySparseRowMetadata));
+	EXPECT_TRUE(populated.page_metadata.live_element_bytes > 0U);
+	EXPECT_EQ(populated.regret_cells.live_element_bytes, 4U * 3U * sizeof(std::int32_t));
+	EXPECT_EQ(populated.strategy_cells.live_element_bytes, 4U * 3U * sizeof(std::uint64_t));
+	EXPECT_EQ(populated.total.retained_capacity_bytes,
+		populated.row_metadata.retained_capacity_bytes + populated.page_metadata.retained_capacity_bytes +
+		populated.regret_cells.retained_capacity_bytes + populated.strategy_cells.retained_capacity_bytes);
+}
 
 TEST_CASE(multiway_compact_storage_saturates_regrets_and_normalizes_policies)
 {

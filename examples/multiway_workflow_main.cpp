@@ -517,6 +517,9 @@ namespace
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots;
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::ProcessStart))
 			throw std::logic_error("multiway process memory snapshot phase order is invalid");
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots;
+		if (!memory_subsystem_snapshots.record(MultiwayMemoryPhase::ProcessStart, {}))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 		TEXASSOLVER_TRACY_SET_THREAD_NAME("mw.train.main");
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
@@ -557,7 +560,17 @@ namespace
 		log_line("training initialization: loading bucket artifact");
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeBucketMap))
 			throw std::logic_error("multiway process memory snapshot phase order is invalid");
+		if (!memory_subsystem_snapshots.record(MultiwayMemoryPhase::BeforeBucketMap, {}))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 		const auto buckets = load_multiway_bucket_registry(input_path, &process_memory_snapshots);
+		if (!memory_subsystem_snapshots.record(
+				MultiwayMemoryPhase::AfterBucketMapMetadata,
+				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
+		if (!memory_subsystem_snapshots.record(
+				MultiwayMemoryPhase::AfterBucketAssignmentValidation,
+				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 		log_line("training initialization: bucket artifact loaded tables=" + std::to_string(buckets.tables().size()));
 		log_line("training initialization: preparing output and model identity");
 		if (!output_path.parent_path().empty())
@@ -620,6 +633,10 @@ namespace
 		log_line("training initialization: running memory preflight");
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeMemoryPreflight))
 			throw std::logic_error("multiway process memory snapshot phase order is invalid");
+		if (!memory_subsystem_snapshots.record(
+				MultiwayMemoryPhase::BeforeMemoryPreflight,
+				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 		const auto memory_preflight = preflight_multiway_memory(
 			config.limits,
 			{ warning_bytes, workflow.process_memory_limit_bytes, operating_bytes },
@@ -631,6 +648,7 @@ namespace
 		config.memory_preflight_estimate_bytes = memory_preflight.estimate.total_bytes;
 		config.memory_ledger = memory_preflight.estimate.ledger;
 		config.process_memory_snapshots = process_memory_snapshots;
+		config.memory_subsystem_snapshots = memory_subsystem_snapshots;
 		log_line("training workers requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective) + " memory_estimate_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
 		log_line("training initialization: loading bucket artifact bytes=" + std::to_string(std::filesystem::file_size(input_path)));
 		log_line("training initialization: constructing six-player uniform ranges");

@@ -89,6 +89,9 @@ namespace texas::solver::multiway
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystems{};
+		bool unattributed_private_bytes_available = false;
+		std::uint64_t unattributed_private_bytes = 0U;
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};

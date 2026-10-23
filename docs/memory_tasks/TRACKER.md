@@ -1,17 +1,17 @@
 # Multiway memory task tracker
 
 **Updated:** 2026-10-23
-**Overall status:** Complete
-**Current task:** A
-**Next action:** Task A is complete; Task B remains unstarted.
-**Latest problem:** Runtime memory conclusions remain out of scope until the dependent attribution tasks are performed.
+**Overall status:** In progress
+**Current task:** B
+**Next action:** Task B is complete; Task C remains Ready and has not started.
+**Latest problem:** The default 16-job full_build.py wrapper stalled without child output, while the serial repository build and CTest scripts passed.
 
 ## Tasks
 
 | Task | Status | Last result or problem, one sentence | Depends on | Task file | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | A | Complete | Added versioned platform-aware process snapshots, ordered phase capture, report serialization, compatibility, and tests without changing solver behavior. | None | [Process memory and phase snapshots](A_process_memory_phase_snapshots.md) | [Project log](../PLURIBUS_LOG.md#pb-6-implement-task-a-process-memory-and-phase-snapshots) |
-| B | Ready | Solver-owned live and retained container capacities still need reconciliation with process private memory. | A | [Retained subsystem capacity](B_retained_subsystem_capacity.md) | Task A complete; not started |
+| B | Complete | Added allocation-free live and retained-capacity attribution, per-worker aggregates, phase snapshots, versioned JSON, validation, and tests without changing solver capacities. | A | [Retained subsystem capacity](B_retained_subsystem_capacity.md) | [Project log](../PLURIBUS_LOG.md#pb-6-implement-task-b-retained-subsystem-capacity) |
 | C | Ready | Tracy memory events and allocation lifetimes still need measurement. | A | [Tracy allocation lifetimes](C_tracy_allocation_lifetimes.md) | Task A complete; not started |
 | D | Blocked | No matched normal/Tracy attribution matrix exists to select the dominant memory owner. | A, B, C | [Bounded attribution matrix](D_bounded_attribution_matrix.md) | Waiting for A-C |
 | E | Blocked | Preflight can overlap resident baseline and full mapped-artifact accounting, but correction requires D evidence. | D | [Preflight accounting](E_preflight_accounting.md) | Waiting for D |

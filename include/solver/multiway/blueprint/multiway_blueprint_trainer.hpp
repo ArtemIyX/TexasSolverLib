@@ -148,6 +148,7 @@ namespace texas::solver::multiway
 		std::uint64_t memory_preflight_estimate_bytes = 0;
 		MultiwayMemoryLedger memory_ledger{};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
 		bool process_rss_available = false;
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
@@ -209,6 +210,7 @@ namespace texas::solver::multiway
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
 		bool immutable_batch_epochs = true;
 
 		void validate() const;
@@ -229,7 +231,10 @@ namespace texas::solver::multiway
 			std::uint32_t requested_worker_count = 0U,
 			std::uint64_t memory_preflight_estimate_bytes = 0U,
 			MultiwayMemoryLedger memory_ledger = {},
-			MultiwayProcessMemorySnapshotCollection process_memory_snapshots = {});
+			MultiwayProcessMemorySnapshotCollection process_memory_snapshots = {},
+			MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots = {},
+			const MultiwayBucketRegistry* buckets = nullptr,
+			const MultiwayFixedContinuationSelector* continuation_selector = nullptr);
 
 		void run_batches(
 			std::uint64_t batch_count,
@@ -246,7 +251,10 @@ namespace texas::solver::multiway
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
-		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
+		void record_process_memory_snapshot(
+			MultiwayMemoryPhase phase,
+			MultiwayMemoryComponent checkpoint_buffers = {},
+			MultiwayMemoryComponent export_buffers = {});
 
 	private:
 		MultiwayModelIdentity identity_{};
@@ -256,6 +264,8 @@ namespace texas::solver::multiway
 		std::uint64_t deterministic_seed_ = 1;
 		std::chrono::steady_clock::time_point started_at_{};
 		std::uint64_t process_cpu_started_nanoseconds_ = 0U;
+		const MultiwayBucketRegistry* buckets_ = nullptr;
+		const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
 		MultiwayBlueprintTrainingStatus status_{};
 		std::vector<double> late_window_baseline_;
 	};
@@ -293,6 +303,8 @@ namespace texas::solver::multiway
 		std::unique_ptr<MultiwaySolverCoordinator> coordinator_;
 		std::unique_ptr<MultiwayRootBatchRunner> batch_runner_;
 		std::unique_ptr<MultiwayBlueprintTrainer> trainer_;
+		mutable MultiwayMemoryComponent checkpoint_buffers_{};
+		mutable MultiwayMemoryComponent export_buffers_{};
 	};
 
 } // namespace texas::solver::multiway

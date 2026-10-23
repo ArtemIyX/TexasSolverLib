@@ -1,9 +1,15 @@
 #include "solver/multiway/engine/multiway_memory.hpp"
+#include "solver/multiway/continuation/multiway_continuation_selector.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/engine/multiway_allocation_probe.hpp"
 #include "test_harness.hpp"
 
+#include <cstddef>
 #include <stdexcept>
 #include <limits>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -52,6 +58,93 @@ TEST_CASE(multiway_process_memory_phase_names_round_trip_in_order)
 	EXPECT_TRUE(snapshots.enabled);
 	EXPECT_TRUE(snapshots.completed);
 	EXPECT_TRUE(snapshots.valid());
+}
+
+TEST_CASE(multiway_memory_component_is_checked_and_saturating)
+{
+	using namespace texas::solver::multiway;
+	MultiwayMemoryComponent component;
+	component.add_buffer(std::numeric_limits<std::size_t>::max(), std::numeric_limits<std::size_t>::max(), sizeof(std::uint64_t));
+	EXPECT_EQ(component.live_element_bytes, std::numeric_limits<std::uint64_t>::max());
+	EXPECT_EQ(component.retained_capacity_bytes, std::numeric_limits<std::uint64_t>::max());
+	EXPECT_TRUE(component.arithmetic_saturated);
+	EXPECT_TRUE(component.valid());
+	EXPECT_EQ(multiway_memory_saturating_add(std::numeric_limits<std::uint64_t>::max() - 1U, 2U), std::numeric_limits<std::uint64_t>::max());
+	MultiwayMemoryComponent known;
+	known.add_buffer(1U, 2U, sizeof(std::uint32_t));
+	known.add_buffer(0U, 0U, sizeof(std::uint32_t));
+	EXPECT_TRUE(known.allocation_count_known);
+	EXPECT_EQ(known.allocation_count, 1U);
+}
+
+TEST_CASE(multiway_memory_snapshots_report_live_and_retained_bytes_after_rewind)
+{
+	using namespace texas::solver::multiway;
+	static_assert(noexcept(std::declval<const MultiwayWorkerDeltaStream&>().memory_snapshot()));
+	static_assert(noexcept(std::declval<const MultiwayContinuationDeltaStream&>().memory_snapshot()));
+	static_assert(noexcept(std::declval<const MultiwayDiscoveryStream&>().memory_snapshot()));
+
+	MultiwayWorkerDeltaStream worker_stream(0U, 4U);
+	const auto empty = worker_stream.memory_snapshot();
+	EXPECT_EQ(empty.live_element_bytes, 0U);
+	EXPECT_EQ(empty.retained_capacity_bytes, 4U * sizeof(MultiwayWorkerDelta));
+	MultiwayWorkerDelta delta;
+	delta.infoset = { { 7U }, 0 };
+	delta.trajectory_id = 1U;
+	EXPECT_TRUE(worker_stream.try_append(delta));
+	const auto filled = worker_stream.memory_snapshot();
+	EXPECT_EQ(filled.live_element_bytes, sizeof(MultiwayWorkerDelta));
+	EXPECT_EQ(filled.retained_capacity_bytes, empty.retained_capacity_bytes);
+	worker_stream.rewind(0U);
+	const auto rewound = worker_stream.memory_snapshot();
+	EXPECT_EQ(rewound.live_element_bytes, 0U);
+	EXPECT_EQ(rewound.retained_capacity_bytes, empty.retained_capacity_bytes);
+
+	MultiwayDiscoveryStream discovery(3U);
+	EXPECT_TRUE(discovery.try_append_row({ { { 1U }, 0 }, 2U, 2U }));
+	const auto discovery_filled = discovery.memory_snapshot();
+	EXPECT_EQ(discovery_filled.live_element_bytes, sizeof(MultiwaySparseRowShape));
+	discovery.rewind();
+	const auto discovery_rewound = discovery.memory_snapshot();
+	EXPECT_EQ(discovery_rewound.live_element_bytes, 0U);
+	EXPECT_EQ(discovery_rewound.retained_capacity_bytes, discovery_filled.retained_capacity_bytes);
+}
+
+TEST_CASE(multiway_memory_snapshots_are_allocation_free)
+{
+	using namespace texas::solver::multiway;
+	MultiwayWorkerDeltaStream worker_stream(0U, 2U);
+	MultiwayContinuationDeltaStream continuation_stream(0U, 2U);
+	MultiwayDiscoveryStream discovery(2U);
+	MultiwayAllocationProbe probe;
+	{
+		MultiwayAllocationProbeScope scope(probe);
+		(void)worker_stream.memory_snapshot();
+		(void)continuation_stream.memory_snapshot();
+		(void)discovery.memory_snapshot();
+	}
+	const auto allocations = probe.snapshot();
+	EXPECT_EQ(allocations.allocation_count, 0U);
+	EXPECT_EQ(allocations.allocated_bytes, 0U);
+}
+
+TEST_CASE(multiway_memory_snapshot_collection_preserves_phase_order_and_validation)
+{
+	using namespace texas::solver::multiway;
+	MultiwayMemorySubsystemSnapshotCollection snapshots;
+	for (std::size_t index = 0U; index < MULTIWAY_MEMORY_PHASE_COUNT; ++index)
+	{
+		MultiwayMemorySubsystemSnapshot snapshot;
+		snapshot.worker_count = index == static_cast<std::size_t>(MultiwayMemoryPhase::AfterWorkerPoolConstruction) ? 4U : 0U;
+		snapshot.workers[0U].regret_delta_stream.add_buffer(1U, 2U, sizeof(MultiwayWorkerDelta));
+		snapshot.recompute_totals();
+		EXPECT_TRUE(snapshots.record(static_cast<MultiwayMemoryPhase>(index), snapshot));
+	}
+	EXPECT_TRUE(snapshots.completed);
+	EXPECT_TRUE(snapshots.valid());
+	EXPECT_EQ(snapshots.snapshots[6U].worker_count, 4U);
+	EXPECT_TRUE(snapshots.snapshots[6U].worker_regret_delta_stream.grouping_only);
+	EXPECT_TRUE(snapshots.snapshots[6U].retained_capacity_bytes >= snapshots.snapshots[6U].live_bytes);
 }
 
 TEST_CASE(multiway_process_memory_snapshots_reject_duplicate_and_out_of_order_phases)
