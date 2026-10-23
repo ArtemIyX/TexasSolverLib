@@ -56,6 +56,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] const std::vector<MultiwaySparseRowShape>& rows() const noexcept { return rows_; }
 		[[nodiscard]] std::size_t public_state_count() const noexcept { return public_states_.size(); }
 		[[nodiscard]] std::size_t row_count() const noexcept { return rows_.size(); }
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 		[[nodiscard]] std::uint64_t terminal_visits() const noexcept { return terminal_visits_; }
 		[[nodiscard]] std::uint64_t leaf_visits() const noexcept { return leaf_visits_; }
 		[[nodiscard]] std::uint64_t missing_lookup_requests() const noexcept { return missing_lookup_requests_; }
@@ -292,6 +293,7 @@ namespace texas::solver::multiway
 			std::chrono::steady_clock::time_point deadline =
 				std::chrono::steady_clock::time_point::max());
 		[[nodiscard]] std::uint32_t dynamic_chunk_size() const noexcept { return dynamic_chunk_size_; }
+		[[nodiscard]] MultiwayRootBatchMemorySnapshot memory_snapshot() const noexcept;
 		void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 
 	private:

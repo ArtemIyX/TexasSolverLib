@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/engine/multiway_allocation_probe.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
@@ -611,6 +612,22 @@ namespace texas::solver::multiway
 		terminal_visits_ = terminal_visits;
 		leaf_visits_ = leaf_visits;
 		missing_lookup_requests_ = missing_lookup_requests;
+	}
+
+	MultiwayMemoryComponent MultiwayDiscoveryStream::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(public_states_.size(), public_states_.capacity(), sizeof(MultiwayPublicStateDescriptor));
+		for (const auto& state : public_states_)
+		{
+			result.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+			result.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+		}
+		result.add_buffer(rows_.size(), rows_.capacity(), sizeof(MultiwaySparseRowShape));
+		return result;
 	}
 
 	void MultiwayDiscoveryStream::sort_fixed_order() noexcept
@@ -1676,6 +1693,74 @@ namespace texas::solver::multiway
 			if (thread.joinable())
 				thread.join();
 		}
+	}
+
+	MultiwayRootBatchMemorySnapshot MultiwayRootBatchRunner::memory_snapshot() const noexcept
+	{
+		MultiwayRootBatchMemorySnapshot result;
+		result.worker_count = std::min<std::uint32_t>(worker_count_, static_cast<std::uint32_t>(MULTIWAY_MEMORY_MAX_WORKERS));
+		for (std::size_t index = 0U; index < result.worker_count; ++index)
+		{
+			const auto& scratch = worker_scratch_[index];
+			result.workers[index].regret_delta_stream = scratch.stream.memory_snapshot();
+			result.workers[index].continuation_delta_stream = scratch.continuation_stream.memory_snapshot();
+			const auto& public_states = scratch.discovery.public_states();
+			const auto& rows = scratch.discovery.rows();
+			result.workers[index].discovery_public_states.add_buffer(public_states.size(), public_states.capacity(), sizeof(MultiwayPublicStateDescriptor));
+			for (const auto& state : public_states)
+			{
+				result.workers[index].discovery_public_states.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+				result.workers[index].discovery_public_states.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+				result.workers[index].discovery_public_states.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+				result.workers[index].discovery_public_states.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+				result.workers[index].discovery_public_states.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+			}
+			result.workers[index].discovery_rows.add_buffer(rows.size(), rows.capacity(), sizeof(MultiwaySparseRowShape));
+			result.workers[index].action_menu_scratch.add_buffer(
+				scratch.action_menu_scratch.size(), scratch.action_menu_scratch.capacity(), sizeof(MultiwayActionDescriptor));
+			result.workers[index].total = result.workers[index].regret_delta_stream;
+			result.workers[index].total.accumulate(result.workers[index].continuation_delta_stream);
+			result.workers[index].total.accumulate(result.workers[index].discovery_public_states);
+			result.workers[index].total.accumulate(result.workers[index].discovery_rows);
+			result.workers[index].total.accumulate(result.workers[index].action_menu_scratch);
+			result.workers[index].total.grouping_only = true;
+		}
+		result.stream_views.add_buffer(worker_stream_views_.size(), worker_stream_views_.capacity(), sizeof(const MultiwayWorkerDeltaStream*));
+		result.stream_views.add_buffer(continuation_stream_views_.size(), continuation_stream_views_.capacity(), sizeof(const MultiwayContinuationDeltaStream*));
+		result.stream_views.add_buffer(discovery_stream_views_.size(), discovery_stream_views_.capacity(), sizeof(const MultiwayDiscoveryStream*));
+		result.discovery_merge_scratch.add_buffer(discovery_merge_cursors_.size(), discovery_merge_cursors_.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.order.size(), admission_order_scratch_.order.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.parent_indexes.size(), admission_order_scratch_.parent_indexes.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.depths.size(), admission_order_scratch_.depths.capacity(), sizeof(std::uint32_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.colors.size(), admission_order_scratch_.colors.capacity(), sizeof(std::uint8_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.stack.size(), admission_order_scratch_.stack.capacity(), sizeof(std::size_t));
+		result.discovery_outputs.add_buffer(discovery_public_states_.size(), discovery_public_states_.capacity(), sizeof(MultiwayPublicStateDescriptor));
+		for (const auto& state : discovery_public_states_)
+		{
+			result.discovery_outputs.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+			result.discovery_outputs.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+			result.discovery_outputs.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+			result.discovery_outputs.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+			result.discovery_outputs.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+		}
+		result.discovery_outputs.add_buffer(discovery_rows_.size(), discovery_rows_.capacity(), sizeof(MultiwaySparseRowShape));
+		result.worker_batches.add_buffer(worker_batches_.size(), worker_batches_.capacity(), sizeof(MultiwayWorkerBatch));
+		result.thread_scratch.add_buffer(worker_scratch_.size(), worker_scratch_.capacity(), sizeof(WorkerScratch));
+		result.thread_scratch.add_buffer(threads_.size(), threads_.capacity(), sizeof(std::thread));
+		result.thread_scratch.add_buffer(worker_work_cvs_.size(), worker_work_cvs_.capacity(), sizeof(std::unique_ptr<std::condition_variable>));
+		result.thread_scratch.add_buffer(worker_affinity_groups_.size(), worker_affinity_groups_.capacity(), sizeof(std::uint16_t));
+		result.thread_scratch.add_buffer(worker_affinity_masks_.size(), worker_affinity_masks_.capacity(), sizeof(std::uint64_t));
+		result.thread_scratch.add_buffer(worker_affinity_processors_.size(), worker_affinity_processors_.capacity(), sizeof(std::uint32_t));
+		result.thread_scratch.add_buffer(worker_work_cvs_.size(), worker_work_cvs_.size(), sizeof(std::condition_variable));
+		result.total = result.stream_views;
+		result.total.accumulate(result.discovery_merge_scratch);
+		result.total.accumulate(result.discovery_outputs);
+		result.total.accumulate(result.worker_batches);
+		result.total.accumulate(result.thread_scratch);
+		for (std::size_t index = 0U; index < result.worker_count; ++index)
+			result.total.accumulate(result.workers[index].total);
+		result.total.grouping_only = true;
+		return result;
 	}
 
 	void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index)

@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "util/tracy.hpp"
 
 #include <algorithm>
@@ -816,20 +817,38 @@ namespace texas::solver::multiway
 
 	std::size_t MultiwayPublicCatalog::memory_bytes() const noexcept
 	{
-		std::size_t bytes = nodes_.capacity() * sizeof(MultiwayPackedPublicNode) + index_.capacity() * sizeof(IndexEntry) + menus_.capacity() * sizeof(std::vector<MultiwayActionDescriptor>) + menu_index_.capacity() * sizeof(MenuIndexEntry);
+		const auto snapshot = memory_snapshot();
+		return snapshot.total.retained_capacity_bytes > std::numeric_limits<std::size_t>::max()
+			? std::numeric_limits<std::size_t>::max()
+			: static_cast<std::size_t>(snapshot.total.retained_capacity_bytes);
+	}
+
+	MultiwayPublicCatalogMemorySnapshot MultiwayPublicCatalog::memory_snapshot() const noexcept
+	{
+		MultiwayPublicCatalogMemorySnapshot result;
+		result.nodes.add_buffer(nodes_.size(), nodes_.capacity(), sizeof(MultiwayPackedPublicNode));
+		result.indexes.add_buffer(index_.size(), index_.capacity(), sizeof(IndexEntry));
+		result.indexes.add_buffer(menu_index_.size(), menu_index_.capacity(), sizeof(MenuIndexEntry));
+		result.menus.add_buffer(menus_.size(), menus_.capacity(), sizeof(std::vector<MultiwayActionDescriptor>));
 		for (const auto& menu : menus_)
-			bytes += menu.capacity() * sizeof(MultiwayActionDescriptor);
-		bytes += batch_pending_menus_.capacity() * sizeof(std::vector<MultiwayActionDescriptor>);
+			result.nested_payloads.add_buffer(menu.size(), menu.capacity(), sizeof(MultiwayActionDescriptor));
+		result.scratch.add_buffer(batch_pending_menus_.size(), batch_pending_menus_.capacity(), sizeof(std::vector<MultiwayActionDescriptor>));
 		for (const auto& menu : batch_pending_menus_)
-			bytes += menu.capacity() * sizeof(MultiwayActionDescriptor);
-		bytes += batch_menu_keys_.capacity() * sizeof(std::uint64_t);
-		bytes += batch_menu_handles_.capacity() * sizeof(std::uint32_t);
-		bytes += batch_pending_menu_indexes_.capacity() * sizeof(std::uint32_t);
-		bytes += batch_pending_index_.capacity() * sizeof(IndexEntry);
-		bytes += batch_merged_index_.capacity() * sizeof(IndexEntry);
-		bytes += batch_pending_menu_index_.capacity() * sizeof(PendingMenuIndexEntry);
-		bytes += batch_merged_menu_index_.capacity() * sizeof(MenuIndexEntry);
-		return bytes;
+			result.scratch.add_buffer(menu.size(), menu.capacity(), sizeof(MultiwayActionDescriptor));
+		result.scratch.add_buffer(batch_menu_keys_.size(), batch_menu_keys_.capacity(), sizeof(std::uint64_t));
+		result.scratch.add_buffer(batch_menu_handles_.size(), batch_menu_handles_.capacity(), sizeof(std::uint32_t));
+		result.scratch.add_buffer(batch_pending_menu_indexes_.size(), batch_pending_menu_indexes_.capacity(), sizeof(std::uint32_t));
+		result.scratch.add_buffer(batch_pending_index_.size(), batch_pending_index_.capacity(), sizeof(IndexEntry));
+		result.scratch.add_buffer(batch_merged_index_.size(), batch_merged_index_.capacity(), sizeof(IndexEntry));
+		result.scratch.add_buffer(batch_pending_menu_index_.size(), batch_pending_menu_index_.capacity(), sizeof(PendingMenuIndexEntry));
+		result.scratch.add_buffer(batch_merged_menu_index_.size(), batch_merged_menu_index_.capacity(), sizeof(MenuIndexEntry));
+		result.total = result.nodes;
+		result.total.accumulate(result.indexes);
+		result.total.accumulate(result.menus);
+		result.total.accumulate(result.nested_payloads);
+		result.total.accumulate(result.scratch);
+		result.total.grouping_only = true;
+		return result;
 	}
 
 } // namespace texas::solver::multiway

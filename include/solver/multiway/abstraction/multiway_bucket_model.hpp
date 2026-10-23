@@ -20,6 +20,7 @@ namespace texas::solver::multiway
 
 	class MultiwayBucketRegistry;
 	struct MultiwayProcessMemorySnapshotCollection;
+	struct MultiwayBucketRegistryMemorySnapshot;
 
 	// Immutable bucket assignments for one canonical postflop board. Entries use
 	// the fixed unordered-card index; board-blocked hands retain INVALID_BUCKET.
@@ -106,6 +107,7 @@ namespace texas::solver::multiway
 		// owned bytes cover registry/table metadata and copied payloads.
 		[[nodiscard]] std::size_t owned_memory_bytes() const noexcept;
 		[[nodiscard]] std::size_t mapped_artifact_bytes() const noexcept;
+		[[nodiscard]] MultiwayBucketRegistryMemorySnapshot memory_snapshot() const noexcept;
 		[[nodiscard]] bool is_mapped() const noexcept { return mapped_artifact_ != nullptr; }
 
 	private:

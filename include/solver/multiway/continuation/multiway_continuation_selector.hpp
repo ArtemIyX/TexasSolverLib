@@ -49,6 +49,7 @@ namespace texas::solver::multiway
 		void rewind(std::size_t size) noexcept;
 		void sort_fixed_order() noexcept;
 		[[nodiscard]] bool is_fixed_order() const noexcept;
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 
 	private:
 		std::size_t worker_index_ = 0U;
@@ -94,6 +95,7 @@ namespace texas::solver::multiway
 
 		void merge_worker_streams(
 			const std::vector<const MultiwayContinuationDeltaStream*>& streams) const;
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 
 	private:
 		MultiwayContinuationPolicyKind policy_ = MultiwayContinuationPolicyKind::Blueprint;

@@ -1,4 +1,5 @@
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 
 #include "core/atomic_publish.hpp"
 #include "core/fingerprint.hpp"
@@ -244,6 +245,15 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway full blueprint payload hash does not match");
 		}
+	}
+
+	MultiwayMemoryComponent MultiwayFullBlueprintArtifact::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(rows.size(), rows.capacity(), sizeof(MultiwayBlueprintRow));
+		for (const auto& row : rows)
+			result.add_buffer(row.actions.size(), row.actions.capacity(), sizeof(MultiwayQuantizedRootAction));
+		return result;
 	}
 
 	std::uint64_t MultiwayFullBlueprintArtifacts::payload_hash(

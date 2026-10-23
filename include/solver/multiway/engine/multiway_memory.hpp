@@ -3,10 +3,16 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace texas::solver::multiway
 {
+
+	class MultiwayBucketRegistry;
+	class MultiwayRootBatchRunner;
+	class MultiwayFixedContinuationSelector;
+	class MultiwayContinuationCache;
 
 	enum class MultiwayMemoryPhase : std::uint8_t
 	{
@@ -27,6 +33,168 @@ namespace texas::solver::multiway
 
 	inline constexpr std::size_t MULTIWAY_MEMORY_PHASE_COUNT = 13U;
 	inline constexpr std::uint32_t MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION = 1U;
+	inline constexpr std::uint32_t MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION = 1U;
+	inline constexpr std::size_t MULTIWAY_MEMORY_MAX_WORKERS = 16U;
+
+	struct MultiwayMemoryComponent
+	{
+		std::uint64_t live_element_bytes = 0U;
+		std::uint64_t retained_capacity_bytes = 0U;
+		std::uint64_t allocation_count = 0U;
+		bool allocation_count_known = false;
+		bool arithmetic_saturated = false;
+		bool grouping_only = false;
+
+		void add_buffer(
+			std::size_t live_elements,
+			std::size_t retained_elements,
+			std::size_t element_size) noexcept;
+		void accumulate(const MultiwayMemoryComponent& other) noexcept;
+		void mark_grouping_only() noexcept { grouping_only = true; }
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	[[nodiscard]] std::uint64_t multiway_memory_saturating_add(
+		std::uint64_t left, std::uint64_t right) noexcept;
+	[[nodiscard]] std::uint64_t multiway_memory_saturating_capacity_bytes(
+		std::size_t element_count, std::size_t element_size) noexcept;
+
+	struct MultiwayBucketRegistryMemorySnapshot
+	{
+		MultiwayMemoryComponent owned_metadata{};
+		MultiwayMemoryComponent mapping_virtual{};
+		MultiwayMemoryComponent total{};
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayPublicCatalogMemorySnapshot
+	{
+		MultiwayMemoryComponent nodes{};
+		MultiwayMemoryComponent indexes{};
+		MultiwayMemoryComponent menus{};
+		MultiwayMemoryComponent nested_payloads{};
+		MultiwayMemoryComponent scratch{};
+		MultiwayMemoryComponent total{};
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwaySparseStorageMemorySnapshot
+	{
+		MultiwayMemoryComponent row_metadata{};
+		MultiwayMemoryComponent regret_cells{};
+		MultiwayMemoryComponent strategy_cells{};
+		MultiwayMemoryComponent total{};
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayCompactStorageMemorySnapshot
+	{
+		MultiwayMemoryComponent row_metadata{};
+		MultiwayMemoryComponent page_metadata{};
+		MultiwayMemoryComponent regret_cells{};
+		MultiwayMemoryComponent strategy_cells{};
+		MultiwayMemoryComponent total{};
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayWorkerMemorySnapshot
+	{
+		MultiwayMemoryComponent regret_delta_stream{};
+		MultiwayMemoryComponent continuation_delta_stream{};
+		MultiwayMemoryComponent discovery_public_states{};
+		MultiwayMemoryComponent discovery_rows{};
+		MultiwayMemoryComponent action_menu_scratch{};
+		MultiwayMemoryComponent total{};
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayCoordinatorMemorySnapshot
+	{
+		MultiwayMemoryComponent merge_scratch{};
+		MultiwayMemoryComponent admission_scratch{};
+		MultiwayMemoryComponent total{};
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayRootBatchMemorySnapshot
+	{
+		std::array<MultiwayWorkerMemorySnapshot, MULTIWAY_MEMORY_MAX_WORKERS> workers{};
+		std::uint32_t worker_count = 0U;
+		MultiwayMemoryComponent stream_views{};
+		MultiwayMemoryComponent discovery_merge_scratch{};
+		MultiwayMemoryComponent discovery_outputs{};
+		MultiwayMemoryComponent worker_batches{};
+		MultiwayMemoryComponent thread_scratch{};
+		MultiwayMemoryComponent total{};
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayMemorySubsystemSnapshot
+	{
+		std::uint32_t schema_version = MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION;
+		MultiwayMemoryPhase phase_id = MultiwayMemoryPhase::ProcessStart;
+		MultiwayMemoryComponent bucket_registry_owned{};
+		MultiwayMemoryComponent bucket_mapping_virtual{};
+		MultiwayMemoryComponent public_catalog_nodes{};
+		MultiwayMemoryComponent public_catalog_indexes{};
+		MultiwayMemoryComponent public_catalog_menus{};
+		MultiwayMemoryComponent public_catalog_nested_payloads{};
+		MultiwayMemoryComponent public_catalog_scratch{};
+		MultiwayMemoryComponent compact_row_metadata{};
+		MultiwayMemoryComponent compact_page_metadata{};
+		MultiwayMemoryComponent compact_regret_cells{};
+		MultiwayMemoryComponent compact_strategy_cells{};
+		std::array<MultiwayWorkerMemorySnapshot, MULTIWAY_MEMORY_MAX_WORKERS> workers{};
+		std::uint32_t worker_count = 0U;
+		MultiwayMemoryComponent worker_regret_delta_stream{};
+		MultiwayMemoryComponent worker_continuation_delta_stream{};
+		MultiwayMemoryComponent discovery_public_state_stream{};
+		MultiwayMemoryComponent discovery_row_stream{};
+		MultiwayMemoryComponent worker_action_menu_scratch{};
+		MultiwayMemoryComponent discovery_merge_scratch{};
+		MultiwayMemoryComponent batch_runner_scratch{};
+		MultiwayMemoryComponent coordinator_merge_scratch{};
+		MultiwayMemoryComponent coordinator_admission_scratch{};
+		MultiwayMemoryComponent checkpoint_retained_buffers{};
+		MultiwayMemoryComponent export_retained_buffers{};
+		MultiwayMemoryComponent continuation_cache{};
+		MultiwayMemoryComponent continuation_scratch{};
+		std::uint64_t live_bytes = 0U;
+		std::uint64_t retained_capacity_bytes = 0U;
+		bool arithmetic_saturated = false;
+
+		void recompute_totals() noexcept;
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayMemorySubsystemSnapshotCollection
+	{
+		std::array<MultiwayMemorySubsystemSnapshot, MULTIWAY_MEMORY_PHASE_COUNT> snapshots{};
+		std::uint8_t count = 0U;
+		bool enabled = false;
+		bool completed = false;
+
+		[[nodiscard]] bool record(
+			MultiwayMemoryPhase phase,
+			MultiwayMemorySubsystemSnapshot snapshot) noexcept;
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	[[nodiscard]] MultiwayMemorySubsystemSnapshot capture_multiway_memory_subsystems(
+		const MultiwayBucketRegistry* buckets,
+		const MultiwaySolverCoordinator* coordinator,
+		const MultiwayRootBatchRunner* batch_runner,
+		const MultiwayFixedContinuationSelector* continuation_selector = nullptr,
+		const MultiwayContinuationCache* continuation_cache = nullptr,
+		MultiwayMemoryComponent checkpoint_buffers = {},
+		MultiwayMemoryComponent export_buffers = {}) noexcept;
 
 	struct MultiwayProcessMemorySnapshot
 	{

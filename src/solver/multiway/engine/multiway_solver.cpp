@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
@@ -899,6 +900,19 @@ namespace texas::solver::multiway
 		}
 	}
 
+	MultiwaySparseStorageMemorySnapshot MultiwaySparseRowStorage::memory_snapshot() const noexcept
+	{
+		MultiwaySparseStorageMemorySnapshot result;
+		result.row_metadata.add_buffer(metadata_.size(), metadata_.capacity(), sizeof(MultiwaySparseRowMetadata));
+		result.regret_cells.add_buffer(regret_.size(), regret_.capacity(), sizeof(double));
+		result.strategy_cells.add_buffer(strategy_sum_.size(), strategy_sum_.capacity(), sizeof(double));
+		result.total = result.row_metadata;
+		result.total.accumulate(result.regret_cells);
+		result.total.accumulate(result.strategy_cells);
+		result.total.grouping_only = true;
+		return result;
+	}
+
 	void MultiwaySparseRowStorage::apply_delta(
 		MultiwayInfosetId infoset,
 		std::uint32_t bucket,
@@ -952,6 +966,13 @@ namespace texas::solver::multiway
 		return std::is_sorted(deltas_.begin(), deltas_.end(), delta_less);
 	}
 
+	MultiwayMemoryComponent MultiwayWorkerDeltaStream::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(deltas_.size(), deltas_.capacity(), sizeof(MultiwayWorkerDelta));
+		return result;
+	}
+
 	MultiwaySolveResult::MultiwaySolveResult(
 		MultiwayRootPolicy root_policy,
 		std::vector<Value> root_values,
@@ -984,6 +1005,52 @@ namespace texas::solver::multiway
 		admission_state_next_node_kinds_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_state_menu_handles_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admit_public_state(request_.root().public_state);
+	}
+
+	MultiwayCoordinatorMemorySnapshot MultiwaySolverCoordinator::memory_snapshot() const noexcept
+	{
+		MultiwayCoordinatorMemorySnapshot result;
+		result.merge_scratch.add_buffer(merge_stream_views_.size(), merge_stream_views_.capacity(), sizeof(const MultiwayWorkerDeltaStream*));
+		result.merge_scratch.add_buffer(merge_stream_cursors_.size(), merge_stream_cursors_.capacity(), sizeof(std::size_t));
+		result.merge_scratch.add_buffer(pending_merge_cells_.size(), pending_merge_cells_.capacity(), sizeof(PendingMergeCell));
+		result.admission_scratch.add_buffer(admission_processed_states_.size(), admission_processed_states_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_new_states_.size(), admission_new_states_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_existing_nodes_.size(), admission_existing_nodes_.capacity(), sizeof(const MultiwayPackedPublicNode*));
+		result.admission_scratch.add_buffer(admission_state_fixed_states_.size(), admission_state_fixed_states_.capacity(), sizeof(games::multiway::MultiwayFixedState));
+		result.admission_scratch.add_buffer(admission_new_rows_.size(), admission_new_rows_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_new_row_streets_.size(), admission_new_row_streets_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_row_state_indexes_.size(), admission_row_state_indexes_.capacity(), sizeof(std::size_t));
+		result.admission_scratch.add_buffer(admission_state_menu_keys_.size(), admission_state_menu_keys_.capacity(), sizeof(std::uint64_t));
+		result.admission_scratch.add_buffer(admission_state_action_counts_.size(), admission_state_action_counts_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_state_streets_.size(), admission_state_streets_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_state_current_players_.size(), admission_state_current_players_.capacity(), sizeof(core::PlayerId));
+		result.admission_scratch.add_buffer(admission_state_next_node_kinds_.size(), admission_state_next_node_kinds_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_state_menu_handles_.size(), admission_state_menu_handles_.capacity(), sizeof(std::uint32_t));
+		result.total = result.merge_scratch;
+		result.total.accumulate(result.admission_scratch);
+		result.total.grouping_only = true;
+		return result;
+	}
+
+	MultiwayMemoryComponent MultiwayCoordinatorCheckpoint::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(public_states.size(), public_states.capacity(), sizeof(MultiwayPublicStateDescriptor));
+		for (const auto& state : public_states)
+		{
+			result.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+			result.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+		}
+		result.add_buffer(storage.shapes.size(), storage.shapes.capacity(), sizeof(MultiwaySparseRowShape));
+		result.add_buffer(storage.active_pages.size(), storage.active_pages.capacity(), sizeof(MultiwaySparseStorageCheckpoint::ActivePage));
+		result.add_buffer(storage.compact_regrets.size(), storage.compact_regrets.capacity(), sizeof(std::int32_t));
+		result.add_buffer(storage.compact_strategy_masses.size(), storage.compact_strategy_masses.capacity(), sizeof(std::uint64_t));
+		result.add_buffer(storage.regrets.size(), storage.regrets.capacity(), sizeof(double));
+		result.add_buffer(storage.strategy_sums.size(), storage.strategy_sums.capacity(), sizeof(double));
+		return result;
 	}
 
 	void MultiwaySolverCoordinator::admit_prepared_batch(

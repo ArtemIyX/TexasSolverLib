@@ -8,6 +8,7 @@
 
 namespace texas::solver::multiway
 {
+	struct MultiwayCompactStorageMemorySnapshot;
 
 	// Bounded production accumulator. Regrets use signed fixed-point int32 cells;
 	// strategy mass uses unsigned fixed-point uint64 cells. Rows remain lazy and
@@ -66,6 +67,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t active_cell_count() const noexcept { return regrets_.size(); }
 		[[nodiscard]] std::size_t configured_cell_capacity() const noexcept { return max_values_; }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
+		[[nodiscard]] MultiwayCompactStorageMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
 		struct PageMetadata

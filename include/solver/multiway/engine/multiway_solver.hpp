@@ -20,6 +20,12 @@ namespace texas::solver::multiway
 {
 
 	class MultiwayCompactStorage;
+	struct MultiwayMemoryComponent;
+	struct MultiwayPublicCatalogMemorySnapshot;
+	struct MultiwaySparseStorageMemorySnapshot;
+	struct MultiwayCoordinatorMemorySnapshot;
+	struct MultiwayRootBatchMemorySnapshot;
+
 
 	class MultiwayTerminalAdapter;
 	struct MultiwayAdmissionDiagnostics;
@@ -235,6 +241,7 @@ namespace texas::solver::multiway
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
 		[[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
+		[[nodiscard]] MultiwayPublicCatalogMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
 		friend class MultiwaySolverCoordinator;
@@ -473,6 +480,7 @@ namespace texas::solver::multiway
 		std::uint64_t last_merged_stream_fingerprint = 0U;
 		std::array<std::uint64_t, 4> street_visits{};
 		MultiwayCheckpointTelemetry telemetry{};
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 	};
 
 	// Coordinator-owned sparse rows. Values are action-major: [action][bucket].
@@ -516,6 +524,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 		[[nodiscard]] std::size_t value_capacity_limit() const noexcept { return max_values_; }
 		[[nodiscard]] const std::vector<MultiwaySparseRowMetadata>& rows() const noexcept { return metadata_; }
+		[[nodiscard]] MultiwaySparseStorageMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
 		friend class MultiwaySolverCoordinator;
@@ -561,6 +570,7 @@ namespace texas::solver::multiway
 		void sort_fixed_order() noexcept;
 		[[nodiscard]] bool is_fixed_order() const noexcept;
 		[[nodiscard]] const std::vector<MultiwayWorkerDelta>& deltas() const noexcept { return deltas_; }
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 
 	private:
 		std::size_t worker_index_ = 0;
@@ -874,7 +884,9 @@ namespace texas::solver::multiway
 			double threshold = 0.0, double regret_floor = 0.0) noexcept;
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return compact_storage_.get(); }
+		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return public_catalog_; }
 		[[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
+		[[nodiscard]] MultiwayCoordinatorMemorySnapshot memory_snapshot() const noexcept;
 		[[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
 		void set_admission_diagnostics(MultiwayAdmissionDiagnostics* diagnostics) noexcept
 		{

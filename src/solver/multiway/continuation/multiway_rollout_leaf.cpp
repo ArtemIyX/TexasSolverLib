@@ -1,4 +1,5 @@
 #include "solver/multiway/continuation/multiway_rollout_leaf.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 
 #include "games/hunl_eval.hpp"
 #include "core/fingerprint.hpp"
@@ -517,7 +518,14 @@ namespace texas::solver::multiway
 
 	std::uint64_t MultiwayContinuationCache::memory_bytes() const noexcept
 	{
-		return static_cast<std::uint64_t>(entries_.capacity()) * entry_bytes();
+		return memory_snapshot().retained_capacity_bytes;
+	}
+
+	MultiwayMemoryComponent MultiwayContinuationCache::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(entries_.size(), entries_.capacity(), sizeof(Entry));
+		return result;
 	}
 
 	bool evaluate_multiway_rollout_profiles(const MultiwayLeafEvaluationRequest& request,
