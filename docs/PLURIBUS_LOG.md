@@ -1,5 +1,100 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Add multiway memory task tracker
+
+**Status:** Complete
+**Completed:** 2026-10-23
+
+- Added a one-page A-K tracker with current status, one-sentence problem or
+  result, dependencies, task links, evidence state, and next action.
+- Defined consistent update rules for task start, completion, failure, and
+  blocking conditions.
+
+### Files
+
+- `docs/memory_tasks/TRACKER.md`
+- `docs/memory_tasks/README.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed tracker dependencies and links against all A-K task files.
+- No build, test, benchmark, solver run, or Tracy capture was performed because
+  this task changed documentation only.
+
+### Limitations
+
+- All implementation tasks remain unstarted; Task A is the first ready task.
+
+## PB-6 - Split multiway memory work into executable agent tasks
+
+**Status:** Complete
+**Completed:** 2026-10-23
+
+- Split the memory plan into required foundation, evidence, accounting,
+  evidence-gated optimization, and final qualification tasks A through K.
+- Added standalone scope, dependencies, files, implementation instructions,
+  commands, tests, acceptance criteria, completion contracts, and stop rules.
+- Kept optimization tasks F through J conditional on the measured Task D
+  candidate decision.
+
+### Files
+
+- `docs/memory_tasks/README.md`
+- `docs/memory_tasks/A_process_memory_phase_snapshots.md`
+- `docs/memory_tasks/B_retained_subsystem_capacity.md`
+- `docs/memory_tasks/C_tracy_allocation_lifetimes.md`
+- `docs/memory_tasks/D_bounded_attribution_matrix.md`
+- `docs/memory_tasks/E_preflight_accounting.md`
+- `docs/memory_tasks/F_bucket_validation_residency.md`
+- `docs/memory_tasks/G_worker_stream_rightsizing.md`
+- `docs/memory_tasks/H_compact_row_metadata_paging.md`
+- `docs/memory_tasks/I_admission_scratch_retention.md`
+- `docs/memory_tasks/J_checkpoint_export_peak.md`
+- `docs/memory_tasks/K_final_memory_qualification.md`
+- `docs/multiway_memory_measurement_and_reduction_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed task dependencies, source/test ownership, commands, acceptance
+  gates, and stop conditions against the current repository.
+- No build, test, benchmark, solver run, or Tracy capture was performed because
+  this task changed documentation only.
+
+### Limitations
+
+- Tasks F through J remain intentionally unselected until Task D produces the
+  bounded attribution evidence.
+
+## PB-6 - Plan multiway memory measurement and reduction
+
+**Status:** Complete
+**Completed:** 2026-10-23
+
+- Documented the existing bounded RAM evidence and current measurement gaps.
+- Defined process, phase, subsystem-capacity, and Tracy allocation telemetry.
+- Ranked memory hypotheses and specified a measurement-first implementation,
+  qualification, and rollback sequence for future agents.
+
+### Files
+
+- `docs/multiway_memory_measurement_and_reduction_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the document against the current memory, bucket artifact, worker
+  scratch, compact storage, Tracy build, and report source paths.
+- No build, test, benchmark, solver run, or Tracy capture was performed because
+  this task changed documentation only.
+
+### Limitations
+
+- All proposed root causes remain hypotheses until the bounded attribution
+  matrix is run.
+- No production memory behavior changed.
+
 ## F1 - Bounded execution plan and checkpoint equivalence
 
 **Status:** Complete, bounded evidence only
