@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/atomic_publish.hpp"
+#include "games/multiway_fixed.hpp"
 #include "games/multiway_private.hpp"
 #include "games/multiway_state.hpp"
 #include "solver/multiway/engine/multiway_cfr.hpp"
@@ -903,6 +904,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> admission_processed_states_;
 		std::vector<std::uint8_t> admission_new_states_;
 		std::vector<const MultiwayPackedPublicNode*> admission_existing_nodes_;
+		std::vector<games::multiway::MultiwayFixedState> admission_state_fixed_states_;
 		std::vector<std::uint8_t> admission_new_rows_;
 		std::vector<std::uint8_t> admission_new_row_streets_;
 		std::vector<std::size_t> admission_row_state_indexes_;
