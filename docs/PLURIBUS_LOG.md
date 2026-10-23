@@ -24,6 +24,31 @@
 - Host context telemetry was incomplete, so this probe does not establish a cause.
 - Five samples per scheduler/pinning case are insufficient for solver qualification.
 
+## AD7 - Pending menu lookup timing qualification
+
+**Status:** Complete
+**Completed:** 2026-10-23
+
+- Reused the pending-menu equality completion timestamp for lookup telemetry.
+- Avoided timing-clock reads when the corresponding diagnostics are disabled.
+- Preserved collision-safe equality checks, menu handles, and catalog behavior.
+
+### Validation
+
+- Focused catalog, builder, and qualification-report tests passed.
+- Four bounded 1-worker cold captures passed for fixed and dynamic scheduling.
+- Menu lookup measured `7.183-7.428 ms`, catalog commit `21.270-22.118 ms`,
+  and coordinator admission `239.499-245.952 ms`.
+- All captures reported `failed=false`, zero discards, fingerprint
+  `9806774443936985566`, and checkpoint size `137380835` bytes.
+- No large matrix was run. Tracy reports were valid; no `.tracy` files were
+  emitted by the capture wrapper.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `docs/PLURIBUS_LOG.md`
+
 ## Tooling - Make compact CTest use controlled temporary storage
 
 **Status:** Complete
