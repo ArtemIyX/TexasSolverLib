@@ -24,7 +24,7 @@ namespace texas::solver::multiway
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			return matches(worker_active_nanoseconds_by_worker.size()) && matches(worker_sort_nanoseconds_by_worker.size()) && matches(worker_wake_latency_nanoseconds_by_worker.size()) && matches(worker_cv_wait_nanoseconds_by_worker.size()) && matches(worker_scheduler_claim_nanoseconds_by_worker.size()) && matches(worker_completion_nanoseconds_by_worker.size()) && matches(worker_tail_idle_nanoseconds_by_worker.size()) && matches(worker_regret_delta_entries.size()) && matches(worker_continuation_delta_entries.size()) && matches(worker_discovery_public_state_counts.size()) && matches(worker_discovery_row_counts.size()) && matches(admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_raw_row_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) && matches(worker_allocation_counts.size()) && matches(worker_allocated_bytes.size()) && matches(worker_resolved_processor.size()) && matches(worker_affinity_masks.size()) && matches(worker_affinity_succeeded.size()) && matches(worker_profiles.size());
+			return matches(worker_active_nanoseconds_by_worker.size()) && matches(worker_sort_nanoseconds_by_worker.size()) && matches(worker_wake_latency_nanoseconds_by_worker.size()) && matches(worker_cv_wait_nanoseconds_by_worker.size()) && matches(worker_scheduler_claim_nanoseconds_by_worker.size()) && matches(worker_completion_nanoseconds_by_worker.size()) && matches(worker_tail_idle_nanoseconds_by_worker.size()) && matches(worker_regret_delta_entries.size()) && matches(worker_continuation_delta_entries.size()) && matches(worker_discovery_public_state_counts.size()) && matches(worker_discovery_row_counts.size()) && matches(admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_raw_row_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) && matches(worker_allocation_counts.size()) && matches(worker_allocated_bytes.size()) && matches(worker_requested_processor.size()) && matches(worker_resolved_processor.size()) && matches(worker_affinity_masks.size()) && matches(worker_affinity_succeeded.size()) && matches(worker_profiles.size());
 		};
 		if (accepted_trajectories > trajectories || discarded_trajectories > trajectories || (batches != 0U && deterministic_merge_fingerprint == 0U && !failed))
 		{
@@ -37,7 +37,7 @@ namespace texas::solver::multiway
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded || !matches(batch.worker_active_nanoseconds_by_worker.size()) || !matches(batch.worker_sort_nanoseconds_by_worker.size()) || !matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) || !matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) || !matches(batch.worker_scheduler_claim_nanoseconds_by_worker.size()) || !matches(batch.worker_completion_nanoseconds_by_worker.size()) || !matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) || !matches(batch.worker_regret_delta_entries.size()) || !matches(batch.worker_continuation_delta_entries.size()) || !matches(batch.worker_discovery_public_state_counts.size()) || !matches(batch.worker_discovery_row_counts.size()) || !matches(batch.worker_allocation_counts.size()) || !matches(batch.worker_allocated_bytes.size()) || !matches(batch.worker_resolved_processor.size()) || !matches(batch.worker_affinity_masks.size()) || !matches(batch.worker_affinity_succeeded.size()))
+			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded || !matches(batch.worker_active_nanoseconds_by_worker.size()) || !matches(batch.worker_sort_nanoseconds_by_worker.size()) || !matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) || !matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) || !matches(batch.worker_scheduler_claim_nanoseconds_by_worker.size()) || !matches(batch.worker_completion_nanoseconds_by_worker.size()) || !matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) || !matches(batch.worker_regret_delta_entries.size()) || !matches(batch.worker_continuation_delta_entries.size()) || !matches(batch.worker_discovery_public_state_counts.size()) || !matches(batch.worker_discovery_row_counts.size()) || !matches(batch.worker_allocation_counts.size()) || !matches(batch.worker_allocated_bytes.size()) || !matches(batch.worker_requested_processor.size()) || !matches(batch.worker_resolved_processor.size()) || !matches(batch.worker_affinity_masks.size()) || !matches(batch.worker_affinity_succeeded.size()))
 			{
 				throw std::invalid_argument("invalid failed multiway batch telemetry");
 			}
@@ -149,6 +149,7 @@ namespace texas::solver::multiway
 		report.worker_discovery_row_counts = status.worker_discovery_row_counts;
 		report.worker_allocation_counts = status.worker_allocation_counts;
 		report.worker_allocated_bytes = status.worker_allocated_bytes;
+		report.worker_requested_processor = status.worker_requested_processor;
 		report.worker_resolved_processor = status.worker_resolved_processor;
 		report.worker_affinity_masks = status.worker_affinity_masks;
 		report.worker_affinity_succeeded = status.worker_affinity_succeeded;
@@ -283,6 +284,7 @@ namespace texas::solver::multiway
 		write_u64_array("worker_discovery_row_counts", report.worker_discovery_row_counts);
 		write_u64_array("worker_allocation_counts", report.worker_allocation_counts);
 		write_u64_array("worker_allocated_bytes", report.worker_allocated_bytes);
+		write_u64_array("worker_requested_processor", std::vector<std::uint64_t>(report.worker_requested_processor.begin(), report.worker_requested_processor.end()));
 		write_u64_array("worker_resolved_processor", std::vector<std::uint64_t>(report.worker_resolved_processor.begin(), report.worker_resolved_processor.end()));
 		write_u64_array("worker_affinity_masks", report.worker_affinity_masks);
 		write_u64_array("worker_affinity_succeeded", std::vector<std::uint64_t>(report.worker_affinity_succeeded.begin(), report.worker_affinity_succeeded.end()));
@@ -429,6 +431,7 @@ namespace texas::solver::multiway
 			write_failed_array("worker_discovery_row_counts", batch.worker_discovery_row_counts);
 			write_failed_array("worker_allocation_counts", batch.worker_allocation_counts);
 			write_failed_array("worker_allocated_bytes", batch.worker_allocated_bytes);
+			write_failed_array("worker_requested_processor", std::vector<std::uint64_t>(batch.worker_requested_processor.begin(), batch.worker_requested_processor.end()));
 			write_failed_array("worker_resolved_processor", std::vector<std::uint64_t>(batch.worker_resolved_processor.begin(), batch.worker_resolved_processor.end()));
 			write_failed_array("worker_affinity_masks", batch.worker_affinity_masks);
 			write_failed_array("worker_affinity_succeeded", std::vector<std::uint64_t>(batch.worker_affinity_succeeded.begin(), batch.worker_affinity_succeeded.end()));

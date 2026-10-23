@@ -108,7 +108,9 @@ namespace
 			std::size_t delta_capacity = 2048U,
 			bool immutable_epochs = false,
 			texas::MultiwaySchedulerMode scheduler_mode = texas::MultiwaySchedulerMode::Fixed,
-			std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE)
+			std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE,
+			bool pin_workers = false,
+			texas::MultiwaySearchProfileMode profile_mode = texas::MultiwaySearchProfileMode::Disabled)
 			: root(make_root(abstraction)), request(root, [] {
               texas::MultiwayCFRConfig cfr;
               cfr.player_count = 3U;
@@ -125,8 +127,8 @@ namespace
               limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
               return limits; }()), coordinator(request), buckets({ texas::MultiwayBucketTable([] {
                   texas::MultiwayBlueprintConfig config;
-                  config.player_count = 3U;
-				   return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, delta_capacity, texas::MultiwaySearchProfileMode::Disabled, false, immutable_epochs, scheduler_mode, dynamic_chunk_size), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
+              config.player_count = 3U;
+				   return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, delta_capacity, profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
 
 		texas::MultiwayActionAbstraction abstraction;
 		texas::MultiwayRootSnapshot root;
@@ -354,6 +356,47 @@ TEST_CASE(multiway_dynamic_scheduler_exercises_skewed_chunk_assignment)
 	for (const auto value : result.worker_scheduler_claim_nanoseconds_by_worker)
 		scheduler_claim_total += value;
 	EXPECT_EQ(scheduler_claim_total, result.worker_scheduler_claim_nanoseconds);
+}
+
+TEST_CASE(multiway_parallel_runner_reports_affinity_fallback_and_resolved_processors)
+{
+	ParallelTrainingFixture fixture(
+		2U, 256U, 2048U, false, texas::MultiwaySchedulerMode::Fixed,
+		texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE, true);
+	const auto result = fixture.runner.run(0U, 8U, 0x77U);
+	const auto repeated = fixture.runner.run(8U, 8U, 0x77U);
+	EXPECT_TRUE(result.clean);
+	EXPECT_TRUE(repeated.clean);
+	EXPECT_TRUE(result.affinity_requested);
+	EXPECT_TRUE(repeated.affinity_requested);
+	EXPECT_EQ(repeated.worker_requested_processor.size(), 2U);
+	EXPECT_EQ(repeated.worker_resolved_processor.size(), 2U);
+	EXPECT_EQ(repeated.worker_affinity_masks.size(), 2U);
+	EXPECT_EQ(repeated.worker_affinity_succeeded.size(), 2U);
+	for (std::size_t worker = 0U; worker < repeated.worker_affinity_succeeded.size(); ++worker)
+	{
+		if (repeated.worker_affinity_succeeded[worker] != 0U)
+		{
+			EXPECT_TRUE(repeated.worker_requested_processor[worker] != 0xffffffffU);
+			EXPECT_TRUE(repeated.worker_resolved_processor[worker] != 0xffffffffU);
+		}
+	}
+}
+
+TEST_CASE(multiway_parallel_runner_profiles_traversal_hot_stages)
+{
+	ParallelTrainingFixture fixture(
+		1U, 256U, 2048U, false, texas::MultiwaySchedulerMode::Fixed,
+		texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE, false,
+		texas::MultiwaySearchProfileMode::Checkpoints);
+	const auto result = fixture.runner.run(0U, 8U, 0x77U);
+	EXPECT_TRUE(result.clean);
+	EXPECT_EQ(result.worker_profiles.size(), 1U);
+	const auto& profile = result.worker_profiles[0U];
+	EXPECT_TRUE(profile.profiled());
+	EXPECT_TRUE(profile.checkpoint(texas::MultiwaySearchProfileStage::ActionMenuGeneration).calls > 0U);
+	EXPECT_TRUE(profile.checkpoint(texas::MultiwaySearchProfileStage::RowLookup).calls > 0U);
+	EXPECT_TRUE(profile.checkpoint(texas::MultiwaySearchProfileStage::ContinuationLeaf).calls > 0U);
 }
 
 TEST_CASE(multiway_blueprint_training_telemetry_retention_is_bounded)

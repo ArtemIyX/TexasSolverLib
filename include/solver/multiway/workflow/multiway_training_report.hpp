@@ -80,6 +80,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_discovery_row_counts;
 		std::vector<std::uint64_t> worker_allocation_counts;
 		std::vector<std::uint64_t> worker_allocated_bytes;
+		std::vector<std::uint32_t> worker_requested_processor;
 		std::vector<std::uint32_t> worker_resolved_processor;
 		std::vector<std::uint64_t> worker_affinity_masks;
 		std::vector<std::uint8_t> worker_affinity_succeeded;

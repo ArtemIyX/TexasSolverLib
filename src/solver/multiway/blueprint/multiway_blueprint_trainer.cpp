@@ -450,6 +450,7 @@ namespace texas::solver::multiway
 				status_.worker_discovery_row_counts.assign(batch_result.worker_discovery_row_counts.size(), 0U);
 				status_.worker_allocation_counts.assign(batch_result.worker_allocation_counts.size(), 0U);
 				status_.worker_allocated_bytes.assign(batch_result.worker_allocated_bytes.size(), 0U);
+				status_.worker_requested_processor.assign(batch_result.worker_requested_processor.size(), 0xffffffffU);
 				status_.worker_resolved_processor.assign(batch_result.worker_resolved_processor.size(), 0U);
 				status_.worker_affinity_masks.assign(batch_result.worker_affinity_masks.size(), 0U);
 				status_.worker_affinity_succeeded.assign(batch_result.worker_affinity_succeeded.size(), 0U);
@@ -487,6 +488,7 @@ namespace texas::solver::multiway
 				status_.memory_ledger.worker_allocation_count += batch_result.worker_allocation_counts[worker_index];
 				status_.memory_ledger.worker_allocation_bytes += batch_result.worker_allocated_bytes[worker_index];
 				status_.worker_resolved_processor[worker_index] = batch_result.worker_resolved_processor[worker_index];
+				status_.worker_requested_processor[worker_index] = batch_result.worker_requested_processor[worker_index];
 				status_.worker_affinity_masks[worker_index] = batch_result.worker_affinity_masks[worker_index];
 				status_.worker_affinity_succeeded[worker_index] = batch_result.worker_affinity_succeeded[worker_index];
 				if (batch_result.worker_profiles[worker_index].profiled())

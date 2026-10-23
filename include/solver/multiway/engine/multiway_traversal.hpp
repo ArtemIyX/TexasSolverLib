@@ -251,6 +251,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_discovery_row_counts;
 		std::vector<std::uint64_t> worker_allocation_counts;
 		std::vector<std::uint64_t> worker_allocated_bytes;
+		std::vector<std::uint32_t> worker_requested_processor;
 		std::vector<std::uint32_t> worker_resolved_processor;
 		std::vector<std::uint64_t> worker_affinity_masks;
 		std::vector<std::uint8_t> worker_affinity_succeeded;
@@ -321,6 +322,7 @@ namespace texas::solver::multiway
 			std::uint64_t peak_discovery_row_count = 0;
 			std::uint32_t resolved_processor = 0U;
 			std::uint64_t affinity_mask = 0U;
+			std::uint32_t requested_processor = 0xffffffffU;
 			bool affinity_succeeded = false;
 			MultiwayAllocationProbe allocation_probe;
 			std::vector<MultiwayActionDescriptor> action_menu_scratch;
@@ -346,9 +348,6 @@ namespace texas::solver::multiway
 				peak_continuation_delta_entries = 0;
 				peak_discovery_public_state_count = 0;
 				peak_discovery_row_count = 0;
-				resolved_processor = 0U;
-				affinity_mask = 0U;
-				affinity_succeeded = false;
 				allocation_probe.reset();
 				profile.reset(profile_mode);
 			}
@@ -376,6 +375,7 @@ namespace texas::solver::multiway
 		std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;
 		std::vector<std::uint16_t> worker_affinity_groups_;
 		std::vector<std::uint64_t> worker_affinity_masks_;
+		std::vector<std::uint32_t> worker_affinity_processors_;
 		std::mutex pool_mutex_;
 		std::condition_variable completion_cv_;
 		std::uint64_t notification_timestamp_nanoseconds_ = 0U;
