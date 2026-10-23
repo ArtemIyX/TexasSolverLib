@@ -302,6 +302,7 @@ namespace texas::solver::multiway
 			   << ", \"parent_resolution_passes\": " << admission.parent_resolution_passes
 			   << ", \"parent_resolution_probes\": " << admission.parent_resolution_probes
 			   << ", \"descriptor_reconstructions\": " << admission.descriptor_reconstructions
+			   << ", \"packed_public_state_compatibility_checks\": " << admission.packed_public_state_compatibility_checks
 			   << ", \"existing_public_state_checks\": " << admission.existing_public_state_checks
 			   << ", \"new_public_state_validations\": " << admission.new_public_state_validations
 			   << ", \"parent_catalog_resolutions\": " << admission.parent_catalog_resolutions

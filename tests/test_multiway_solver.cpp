@@ -902,6 +902,22 @@ TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_kno
 	EXPECT_EQ(coordinator.diagnostics().sparse_rows_admitted, 1U);
 }
 
+TEST_CASE(multiway_solver_prepared_admission_uses_packed_existing_state_compatibility)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	const auto child = checked_action_child_public_state();
+	coordinator.admit_public_state(child);
+
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	coordinator.set_admission_diagnostics(&diagnostics);
+	coordinator.admit_prepared_batch({ child }, { 0U }, {});
+
+	EXPECT_EQ(diagnostics.existing_public_state_checks, 1U);
+	EXPECT_EQ(diagnostics.packed_public_state_compatibility_checks, 1U);
+	EXPECT_EQ(diagnostics.descriptor_reconstructions, 0U);
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
+}
+
 TEST_CASE(multiway_solver_prepared_admission_reports_board_and_street_transition_edges)
 {
 	{

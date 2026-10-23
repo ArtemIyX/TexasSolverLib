@@ -1063,16 +1063,21 @@ namespace texas::solver::multiway
 			if (new_states[state_index] == 0U)
 			{
 				if (admission_diagnostics_ != nullptr)
+				{
 					++admission_diagnostics_->existing_public_state_checks;
-				MultiwayPublicStateDescriptor existing;
-				if (!public_catalog_.reconstruct(state.id, existing) || !public_state_candidates_compatible(existing, state))
+					++admission_diagnostics_->packed_public_state_compatibility_checks;
+				}
+				if (!public_catalog_.compatible_with_descriptor(state.id, state))
 					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
-				const auto existing_state = make_multiway_fixed_state(existing.betting);
+				const auto* existing = public_catalog_.node(state.id);
+				if (existing == nullptr)
+					throw std::logic_error("multiway public state classification lost its catalog node");
+				const auto existing_state = make_multiway_fixed_state(state.betting);
 				record_state_metadata(state_index, PublicStateValidationMetadata{
-					 existing.legal_actions.empty() ? 0U : existing.legal_actions.front().action_menu_id,
-					 static_cast<std::uint8_t>(existing.legal_actions.size()),
-					 static_cast<std::uint8_t>(existing.betting.street),
-					 existing.betting.current_player,
+					 state.legal_actions.empty() ? 0U : state.legal_actions.front().action_menu_id,
+					 static_cast<std::uint8_t>(state.legal_actions.size()),
+					 static_cast<std::uint8_t>(state.betting.street),
+					 state.betting.current_player,
 					 existing_state.next_node_kind() });
 				admission_processed_states_[state_index] = 1U;
 				continue;

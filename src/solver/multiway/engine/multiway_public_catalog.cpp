@@ -57,6 +57,54 @@ namespace texas::solver::multiway
 				diagnostics->catalog_output_capacity_reuse_bytes += static_cast<std::uint64_t>(element_count * element_size);
 			}
 		}
+
+		bool same_packed_betting(
+			const MultiwayPackedBetting& packed,
+			const MultiwayBettingSnapshot& candidate) noexcept
+		{
+			if (candidate.stacks.size() != packed.seat_count ||
+				candidate.contributions.size() != packed.seat_count ||
+				candidate.street_contributions.size() != packed.seat_count ||
+				candidate.folded.size() != packed.seat_count ||
+				candidate.all_in.size() != packed.seat_count ||
+				candidate.may_raise.size() != packed.seat_count ||
+				candidate.pending.size() != packed.seat_count ||
+				candidate.has_acted.size() != packed.seat_count ||
+				candidate.bet_faced_when_acted.size() != packed.seat_count)
+				return false;
+			for (std::size_t seat = 0U; seat < packed.seat_count; ++seat)
+			{
+				if (candidate.stacks[seat] != packed.stacks[seat] ||
+					candidate.contributions[seat] != packed.contributions[seat] ||
+					candidate.street_contributions[seat] != packed.street_contributions[seat] ||
+					static_cast<std::uint8_t>(candidate.folded[seat]) != packed.folded[seat] ||
+					static_cast<std::uint8_t>(candidate.all_in[seat]) != packed.all_in[seat] ||
+					static_cast<std::uint8_t>(candidate.may_raise[seat]) != packed.may_raise[seat] ||
+					static_cast<std::uint8_t>(candidate.pending[seat]) != packed.pending[seat] ||
+					static_cast<std::uint8_t>(candidate.has_acted[seat]) != packed.has_acted[seat] ||
+					candidate.bet_faced_when_acted[seat] != packed.bet_faced_when_acted[seat])
+					return false;
+			}
+			return candidate.current_player == packed.current_player &&
+				candidate.last_aggressor == packed.last_aggressor &&
+				candidate.current_bet == packed.current_bet &&
+				candidate.last_full_raise_size == packed.last_full_raise_size &&
+				candidate.big_blind == packed.big_blind &&
+				candidate.street == packed.street;
+		}
+
+		bool same_packed_incoming_edge(
+			const MultiwayPackedPublicNode& packed,
+			const MultiwayPublicParentEdge& candidate) noexcept
+		{
+			return packed.incoming_kind == candidate.kind &&
+				packed.incoming_action == candidate.action &&
+				packed.dealt_card == candidate.dealt_card &&
+				packed.dealt_card_count == candidate.dealt_cards.size() &&
+				std::equal(candidate.dealt_cards.begin(), candidate.dealt_cards.end(), packed.dealt_cards.begin()) &&
+				packed.transition_board_count == candidate.transition_board.size() &&
+				std::equal(candidate.transition_board.begin(), candidate.transition_board.end(), packed.transition_board.begin());
+		}
 	} // namespace
 
 	MultiwayPublicCatalog::MultiwayPublicCatalog(std::size_t max_nodes)
@@ -176,6 +224,63 @@ namespace texas::solver::multiway
 	bool MultiwayPublicCatalog::contains(MultiwayPublicStateId id) const noexcept
 	{
 		return node(id) != nullptr;
+	}
+
+	bool MultiwayPublicCatalog::compatible_with_descriptor(
+		MultiwayPublicStateId id,
+		const MultiwayPublicStateDescriptor& candidate) const noexcept
+	{
+		const auto* packed = node(id);
+		if (packed == nullptr || packed->legal_menu_handle >= menus_.size() ||
+			packed->id != candidate.id || packed->parent_id != candidate.parent_id ||
+			packed->canonical_history_id != candidate.canonical_history_id ||
+			packed->board_count != candidate.board.size() ||
+			!std::equal(candidate.board.begin(), candidate.board.end(), packed->board.begin()) ||
+			packed->board_runout != candidate.board_runout ||
+			!same_packed_betting(packed->betting, candidate.betting) ||
+			menus_[packed->legal_menu_handle] != candidate.legal_actions)
+			return false;
+
+		std::size_t history_count = 0U;
+		const auto* current = packed;
+		std::size_t guard = 0U;
+		while (current->parent_id.value != 0U)
+		{
+			if (current->incoming_kind == MultiwayPublicParentEdgeKind::BettingAction)
+				++history_count;
+			current = node(current->parent_id);
+			if (current == nullptr || ++guard > nodes_.size())
+				return false;
+		}
+		if (history_count != candidate.history.size())
+			return false;
+
+		current = packed;
+		std::size_t history_index = candidate.history.size();
+		guard = 0U;
+		while (current->parent_id.value != 0U)
+		{
+			if (current->incoming_kind == MultiwayPublicParentEdgeKind::BettingAction)
+			{
+				if (history_index == 0U)
+					return false;
+				MultiwayActionDescriptor action = current->incoming_action;
+				action.action_index = 0U;
+				--history_index;
+				if (candidate.history[history_index].actor != current->incoming_actor ||
+					candidate.history[history_index].action != action)
+					return false;
+			}
+			current = node(current->parent_id);
+			if (current == nullptr || ++guard > nodes_.size())
+				return false;
+		}
+		if (history_index != 0U)
+			return false;
+
+		return same_packed_incoming_edge(*packed, candidate.incoming_edge) ||
+			(packed->incoming_kind != MultiwayPublicParentEdgeKind::BettingAction &&
+				candidate.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction);
 	}
 
 	MultiwayPackedPublicNode MultiwayPublicCatalog::pack_node(

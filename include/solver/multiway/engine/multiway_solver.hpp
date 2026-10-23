@@ -270,6 +270,9 @@ namespace texas::solver::multiway
 			std::uint32_t menu_handle,
 			MultiwayAdmissionDiagnostics* diagnostics) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] bool compatible_with_descriptor(
+			MultiwayPublicStateId id,
+			const MultiwayPublicStateDescriptor& candidate) const noexcept;
 
 		std::size_t max_nodes_ = 0U;
 		std::vector<MultiwayPackedPublicNode> nodes_;
@@ -605,6 +608,7 @@ namespace texas::solver::multiway
 		std::uint64_t parent_resolution_passes = 0U;
 		std::uint64_t parent_resolution_probes = 0U;
 		std::uint64_t descriptor_reconstructions = 0U;
+		std::uint64_t packed_public_state_compatibility_checks = 0U;
 		std::uint64_t existing_public_state_checks = 0U;
 		std::uint64_t new_public_state_validations = 0U;
 		std::uint64_t parent_catalog_resolutions = 0U;
@@ -691,6 +695,7 @@ namespace texas::solver::multiway
 			parent_resolution_passes += other.parent_resolution_passes;
 			parent_resolution_probes += other.parent_resolution_probes;
 			descriptor_reconstructions += other.descriptor_reconstructions;
+			packed_public_state_compatibility_checks += other.packed_public_state_compatibility_checks;
 			existing_public_state_checks += other.existing_public_state_checks;
 			new_public_state_validations += other.new_public_state_validations;
 			parent_catalog_resolutions += other.parent_catalog_resolutions;
