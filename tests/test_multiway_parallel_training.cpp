@@ -379,6 +379,7 @@ TEST_CASE(multiway_parallel_runner_reports_affinity_fallback_and_resolved_proces
 		{
 			EXPECT_TRUE(repeated.worker_requested_processor[worker] != 0xffffffffU);
 			EXPECT_TRUE(repeated.worker_resolved_processor[worker] != 0xffffffffU);
+			EXPECT_EQ(repeated.worker_requested_processor[worker], repeated.worker_resolved_processor[worker]);
 		}
 	}
 }

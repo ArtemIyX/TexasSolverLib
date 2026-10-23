@@ -1521,6 +1521,20 @@ namespace texas::solver::multiway
 					}
 				}
 			}
+			if (logical.empty())
+			{
+				const auto group_count = ::GetActiveProcessorGroupCount();
+				for (WORD group = 0U; group < group_count; ++group)
+				{
+					const auto processor_count = ::GetActiveProcessorCount(group);
+					for (WORD processor = 0U; processor < processor_count && processor < sizeof(KAFFINITY) * 8U; ++processor)
+					{
+						const auto bit = static_cast<KAFFINITY>(1) << processor;
+						logical.push_back(ProcessorPlacement{
+							static_cast<std::uint16_t>(group), processor, static_cast<std::uint64_t>(bit) });
+					}
+				}
+			}
 			std::vector<ProcessorPlacement> selected;
 			selected.reserve(logical.size());
 			for (const auto& placement : physical)
@@ -1552,7 +1566,9 @@ namespace texas::solver::multiway
 				{
 					worker_affinity_groups_[worker] = selected[worker].group;
 					worker_affinity_masks_[worker] = selected[worker].mask;
-					worker_affinity_processors_[worker] = selected[worker].processor;
+					worker_affinity_processors_[worker] =
+						static_cast<std::uint32_t>(selected[worker].group) * (sizeof(KAFFINITY) * 8U) +
+						selected[worker].processor;
 				}
 			}
 		}
