@@ -24,7 +24,7 @@ namespace texas::solver::multiway
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			return matches(worker_active_nanoseconds_by_worker.size()) && matches(worker_sort_nanoseconds_by_worker.size()) && matches(worker_wake_latency_nanoseconds_by_worker.size()) && matches(worker_cv_wait_nanoseconds_by_worker.size()) && matches(worker_completion_nanoseconds_by_worker.size()) && matches(worker_tail_idle_nanoseconds_by_worker.size()) && matches(worker_regret_delta_entries.size()) && matches(worker_continuation_delta_entries.size()) && matches(worker_discovery_public_state_counts.size()) && matches(worker_discovery_row_counts.size()) && matches(admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_raw_row_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) && matches(worker_allocation_counts.size()) && matches(worker_allocated_bytes.size()) && matches(worker_resolved_processor.size()) && matches(worker_affinity_masks.size()) && matches(worker_affinity_succeeded.size()) && matches(worker_profiles.size());
+			return matches(worker_active_nanoseconds_by_worker.size()) && matches(worker_sort_nanoseconds_by_worker.size()) && matches(worker_wake_latency_nanoseconds_by_worker.size()) && matches(worker_cv_wait_nanoseconds_by_worker.size()) && matches(worker_scheduler_claim_nanoseconds_by_worker.size()) && matches(worker_completion_nanoseconds_by_worker.size()) && matches(worker_tail_idle_nanoseconds_by_worker.size()) && matches(worker_regret_delta_entries.size()) && matches(worker_continuation_delta_entries.size()) && matches(worker_discovery_public_state_counts.size()) && matches(worker_discovery_row_counts.size()) && matches(admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_raw_row_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) && matches(worker_allocation_counts.size()) && matches(worker_allocated_bytes.size()) && matches(worker_resolved_processor.size()) && matches(worker_affinity_masks.size()) && matches(worker_affinity_succeeded.size()) && matches(worker_profiles.size());
 		};
 		if (accepted_trajectories > trajectories || discarded_trajectories > trajectories || (batches != 0U && deterministic_merge_fingerprint == 0U && !failed))
 		{
@@ -37,7 +37,7 @@ namespace texas::solver::multiway
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded || !matches(batch.worker_active_nanoseconds_by_worker.size()) || !matches(batch.worker_sort_nanoseconds_by_worker.size()) || !matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) || !matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) || !matches(batch.worker_completion_nanoseconds_by_worker.size()) || !matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) || !matches(batch.worker_regret_delta_entries.size()) || !matches(batch.worker_continuation_delta_entries.size()) || !matches(batch.worker_discovery_public_state_counts.size()) || !matches(batch.worker_discovery_row_counts.size()) || !matches(batch.worker_allocation_counts.size()) || !matches(batch.worker_allocated_bytes.size()) || !matches(batch.worker_resolved_processor.size()) || !matches(batch.worker_affinity_masks.size()) || !matches(batch.worker_affinity_succeeded.size()))
+			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded || !matches(batch.worker_active_nanoseconds_by_worker.size()) || !matches(batch.worker_sort_nanoseconds_by_worker.size()) || !matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) || !matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) || !matches(batch.worker_scheduler_claim_nanoseconds_by_worker.size()) || !matches(batch.worker_completion_nanoseconds_by_worker.size()) || !matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) || !matches(batch.worker_regret_delta_entries.size()) || !matches(batch.worker_continuation_delta_entries.size()) || !matches(batch.worker_discovery_public_state_counts.size()) || !matches(batch.worker_discovery_row_counts.size()) || !matches(batch.worker_allocation_counts.size()) || !matches(batch.worker_allocated_bytes.size()) || !matches(batch.worker_resolved_processor.size()) || !matches(batch.worker_affinity_masks.size()) || !matches(batch.worker_affinity_succeeded.size()))
 			{
 				throw std::invalid_argument("invalid failed multiway batch telemetry");
 			}
@@ -116,10 +116,12 @@ namespace texas::solver::multiway
 		report.configured_max_sparse_rows = status.configured_max_sparse_rows;
 		report.configured_max_sparse_values = status.configured_max_sparse_values;
 		report.configured_worker_delta_capacity = status.configured_worker_delta_capacity;
+		report.configured_discovery_capacity = status.configured_discovery_capacity;
 		report.cumulative_worker_delta_entries = status.cumulative_worker_delta_entries;
 		report.worker_active_nanoseconds = status.worker_active_nanoseconds;
 		report.worker_wake_latency_nanoseconds = status.worker_wake_latency_nanoseconds;
 		report.worker_cv_wait_nanoseconds = status.worker_cv_wait_nanoseconds;
+		report.worker_scheduler_claim_nanoseconds = status.worker_scheduler_claim_nanoseconds;
 		report.worker_completion_nanoseconds = status.worker_completion_nanoseconds;
 		report.worker_tail_idle_nanoseconds = status.worker_tail_idle_nanoseconds;
 		report.minimum_worker_active_nanoseconds = status.minimum_worker_active_nanoseconds;
@@ -138,6 +140,7 @@ namespace texas::solver::multiway
 		report.worker_sort_nanoseconds_by_worker = status.worker_sort_nanoseconds_by_worker;
 		report.worker_wake_latency_nanoseconds_by_worker = status.worker_wake_latency_nanoseconds_by_worker;
 		report.worker_cv_wait_nanoseconds_by_worker = status.worker_cv_wait_nanoseconds_by_worker;
+		report.worker_scheduler_claim_nanoseconds_by_worker = status.worker_scheduler_claim_nanoseconds_by_worker;
 		report.worker_completion_nanoseconds_by_worker = status.worker_completion_nanoseconds_by_worker;
 		report.worker_tail_idle_nanoseconds_by_worker = status.worker_tail_idle_nanoseconds_by_worker;
 		report.worker_regret_delta_entries = status.worker_regret_delta_entries;
@@ -233,10 +236,12 @@ namespace texas::solver::multiway
 			   << ",\n  \"configured_max_sparse_rows\": " << report.configured_max_sparse_rows
 			   << ",\n  \"configured_max_sparse_values\": " << report.configured_max_sparse_values
 			   << ",\n  \"configured_worker_delta_capacity\": " << report.configured_worker_delta_capacity
+			   << ",\n  \"configured_discovery_capacity\": " << report.configured_discovery_capacity
 			   << ",\n  \"cumulative_worker_delta_entries\": " << report.cumulative_worker_delta_entries
 			   << ",\n  \"worker_active_nanoseconds\": " << report.worker_active_nanoseconds
 			   << ",\n  \"worker_wake_latency_nanoseconds\": " << report.worker_wake_latency_nanoseconds
 			   << ",\n  \"worker_cv_wait_nanoseconds\": " << report.worker_cv_wait_nanoseconds
+			   << ",\n  \"worker_scheduler_claim_nanoseconds\": " << report.worker_scheduler_claim_nanoseconds
 			   << ",\n  \"worker_completion_nanoseconds\": " << report.worker_completion_nanoseconds
 			   << ",\n  \"worker_tail_idle_nanoseconds\": " << report.worker_tail_idle_nanoseconds
 			   << ",\n  \"minimum_worker_active_nanoseconds\": " << report.minimum_worker_active_nanoseconds
@@ -269,6 +274,7 @@ namespace texas::solver::multiway
 		write_u64_array("worker_sort_nanoseconds_by_worker", report.worker_sort_nanoseconds_by_worker);
 		write_u64_array("worker_wake_latency_nanoseconds_by_worker", report.worker_wake_latency_nanoseconds_by_worker);
 		write_u64_array("worker_cv_wait_nanoseconds_by_worker", report.worker_cv_wait_nanoseconds_by_worker);
+		write_u64_array("worker_scheduler_claim_nanoseconds_by_worker", report.worker_scheduler_claim_nanoseconds_by_worker);
 		write_u64_array("worker_completion_nanoseconds_by_worker", report.worker_completion_nanoseconds_by_worker);
 		write_u64_array("worker_tail_idle_nanoseconds_by_worker", report.worker_tail_idle_nanoseconds_by_worker);
 		write_u64_array("worker_regret_delta_entries", report.worker_regret_delta_entries);
@@ -306,6 +312,12 @@ namespace texas::solver::multiway
 			   << ", \"discovery_row_merge_nanoseconds\": " << admission.discovery_row_merge_nanoseconds
 			   << ", \"discovery_public_state_source_elements\": " << admission.discovery_public_state_source_elements
 			   << ", \"discovery_row_source_elements\": " << admission.discovery_row_source_elements
+			   << ", \"discovery_public_descriptor_copy_count\": " << admission.discovery_public_descriptor_copy_count
+			   << ", \"discovery_public_descriptor_copy_bytes\": " << admission.discovery_public_descriptor_copy_bytes
+			   << ", \"discovery_nested_descriptor_copy_count\": " << admission.discovery_nested_descriptor_copy_count
+			   << ", \"discovery_nested_descriptor_copy_bytes\": " << admission.discovery_nested_descriptor_copy_bytes
+			   << ", \"discovery_output_capacity_reuse_events\": " << admission.discovery_output_capacity_reuse_events
+			   << ", \"discovery_output_capacity_reuse_bytes\": " << admission.discovery_output_capacity_reuse_bytes
 			   << ", \"discovery_public_state_duplicate_candidates\": " << admission.discovery_public_state_duplicate_candidates
 			   << ", \"discovery_row_duplicate_candidates\": " << admission.discovery_row_duplicate_candidates
 			   << ", \"discovery_single_stream_batches\": " << admission.discovery_single_stream_batches
@@ -335,6 +347,12 @@ namespace texas::solver::multiway
 			   << ", \"catalog_batch_menu_reuse_hits\": " << admission.catalog_batch_menu_reuse_hits
 			   << ", \"catalog_new_menus\": " << admission.catalog_new_menus
 			   << ", \"catalog_menu_id_collision_misses\": " << admission.catalog_menu_id_collision_misses
+			   << ", \"catalog_output_capacity_reuse_events\": " << admission.catalog_output_capacity_reuse_events
+			   << ", \"catalog_output_capacity_reuse_bytes\": " << admission.catalog_output_capacity_reuse_bytes
+			   << ", \"catalog_public_descriptor_copy_count\": " << admission.catalog_public_descriptor_copy_count
+			   << ", \"catalog_public_descriptor_copy_bytes\": " << admission.catalog_public_descriptor_copy_bytes
+			   << ", \"catalog_nested_descriptor_copy_count\": " << admission.catalog_nested_descriptor_copy_count
+			   << ", \"catalog_nested_descriptor_copy_bytes\": " << admission.catalog_nested_descriptor_copy_bytes
 			   << ", \"public_state_betting_board_validation_nanoseconds\": " << admission.public_state_betting_board_validation_nanoseconds
 			   << ", \"public_state_menu_validation_nanoseconds\": " << admission.public_state_menu_validation_nanoseconds
 			   << ", \"public_state_history_identity_validation_nanoseconds\": " << admission.public_state_history_identity_validation_nanoseconds
@@ -375,10 +393,13 @@ namespace texas::solver::multiway
 				   << ", \"worker_active_nanoseconds\": " << batch.worker_active_nanoseconds
 				   << ", \"worker_wake_latency_nanoseconds\": " << batch.worker_wake_latency_nanoseconds
 				   << ", \"worker_cv_wait_nanoseconds\": " << batch.worker_cv_wait_nanoseconds
+			   << ", \"worker_scheduler_claim_nanoseconds\": " << batch.worker_scheduler_claim_nanoseconds
 				   << ", \"worker_completion_nanoseconds\": " << batch.worker_completion_nanoseconds
 				   << ", \"worker_tail_idle_nanoseconds\": " << batch.worker_tail_idle_nanoseconds
 				   << ", \"coordinator_wait_nanoseconds\": " << batch.coordinator_wait_nanoseconds
 				   << ", \"coordinator_admission_nanoseconds\": " << batch.coordinator_admission_nanoseconds
+				   << ", \"coordinator_allocation_count\": " << batch.coordinator_allocation_count
+				   << ", \"coordinator_allocated_bytes\": " << batch.coordinator_allocated_bytes
 				   << ", \"barrier_wait_nanoseconds\": " << batch.barrier_wait_nanoseconds
 				   << ", \"delta_sort_nanoseconds\": " << batch.delta_sort_nanoseconds
 				   << ", \"merge_nanoseconds\": " << batch.merge_nanoseconds
@@ -399,6 +420,7 @@ namespace texas::solver::multiway
 			write_failed_array("worker_sort_nanoseconds_by_worker", batch.worker_sort_nanoseconds_by_worker);
 			write_failed_array("worker_wake_latency_nanoseconds_by_worker", batch.worker_wake_latency_nanoseconds_by_worker);
 			write_failed_array("worker_cv_wait_nanoseconds_by_worker", batch.worker_cv_wait_nanoseconds_by_worker);
+			write_failed_array("worker_scheduler_claim_nanoseconds_by_worker", batch.worker_scheduler_claim_nanoseconds_by_worker);
 			write_failed_array("worker_completion_nanoseconds_by_worker", batch.worker_completion_nanoseconds_by_worker);
 			write_failed_array("worker_tail_idle_nanoseconds_by_worker", batch.worker_tail_idle_nanoseconds_by_worker);
 			write_failed_array("worker_regret_delta_entries", batch.worker_regret_delta_entries);
@@ -437,6 +459,11 @@ namespace texas::solver::multiway
 			   << ", \"row_metadata_bytes\": " << report.memory_ledger.row_metadata_bytes
 			   << ", \"regret_page_bytes\": " << report.memory_ledger.regret_page_bytes
 			   << ", \"worker_stream_bytes\": " << report.memory_ledger.worker_stream_bytes
+			   << ", \"discovery_stream_bytes\": " << report.memory_ledger.discovery_stream_bytes
+			   << ", \"worker_allocation_count\": " << report.memory_ledger.worker_allocation_count
+			   << ", \"worker_allocation_bytes\": " << report.memory_ledger.worker_allocation_bytes
+			   << ", \"coordinator_allocation_count\": " << report.memory_ledger.coordinator_allocation_count
+			   << ", \"coordinator_allocation_bytes\": " << report.memory_ledger.coordinator_allocation_bytes
 			   << ", \"merge_scratch_bytes\": " << report.memory_ledger.merge_scratch_bytes
 			   << ", \"checkpoint_peak_bytes\": " << report.memory_ledger.checkpoint_peak_bytes
 			   << ", \"export_peak_bytes\": " << report.memory_ledger.export_peak_bytes

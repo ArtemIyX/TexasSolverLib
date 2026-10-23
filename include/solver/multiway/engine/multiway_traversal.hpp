@@ -218,11 +218,14 @@ namespace texas::solver::multiway
 		std::uint64_t generated_discovery_public_state_count = 0;
 		std::uint64_t generated_discovery_row_count = 0;
 		std::uint64_t coordinator_admission_nanoseconds = 0;
+		std::uint64_t coordinator_allocation_count = 0;
+		std::uint64_t coordinator_allocated_bytes = 0;
 		MultiwayAdmissionDiagnostics admission_diagnostics{};
 		// Traversal time excluding worker delta sorting.
 		std::uint64_t worker_active_nanoseconds = 0;
 		std::uint64_t worker_wake_latency_nanoseconds = 0;
 		std::uint64_t worker_cv_wait_nanoseconds = 0;
+		std::uint64_t worker_scheduler_claim_nanoseconds = 0;
 		std::uint64_t worker_completion_nanoseconds = 0;
 		std::uint64_t worker_tail_idle_nanoseconds = 0;
 		std::uint64_t minimum_worker_active_nanoseconds = 0;
@@ -239,6 +242,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_sort_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_wake_latency_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_cv_wait_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_scheduler_claim_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_completion_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_tail_idle_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_regret_delta_entries;
@@ -272,7 +276,8 @@ namespace texas::solver::multiway
 			MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled,
 			bool pin_workers = false,
 			bool immutable_epochs = false,
-			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed);
+			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
 		~MultiwayRootBatchRunner();
 
 		MultiwayRootBatchRunner(const MultiwayRootBatchRunner&) = delete;
@@ -285,6 +290,7 @@ namespace texas::solver::multiway
 			double iteration_weight = 1.0,
 			std::chrono::steady_clock::time_point deadline =
 				std::chrono::steady_clock::time_point::max());
+		[[nodiscard]] std::uint32_t dynamic_chunk_size() const noexcept { return dynamic_chunk_size_; }
 		void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 
 	private:
@@ -305,6 +311,7 @@ namespace texas::solver::multiway
 			std::uint64_t sort_nanoseconds = 0;
 			std::uint64_t wake_latency_nanoseconds = 0;
 			std::uint64_t cv_wait_nanoseconds = 0;
+			std::uint64_t scheduler_claim_nanoseconds = 0;
 			std::uint64_t completion_nanoseconds = 0;
 			std::uint64_t completion_timestamp_nanoseconds = 0;
 			std::uint64_t tail_idle_nanoseconds = 0;
@@ -331,6 +338,7 @@ namespace texas::solver::multiway
 				sort_nanoseconds = 0;
 				wake_latency_nanoseconds = 0;
 				cv_wait_nanoseconds = 0;
+				scheduler_claim_nanoseconds = 0;
 				completion_nanoseconds = 0;
 				completion_timestamp_nanoseconds = 0;
 				tail_idle_nanoseconds = 0;
@@ -354,6 +362,7 @@ namespace texas::solver::multiway
 		bool pin_workers_ = false;
 		bool immutable_epochs_ = false;
 		MultiwaySchedulerMode scheduler_mode_ = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size_ = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
 		std::vector<WorkerScratch> worker_scratch_;
 		std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
 		std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;
@@ -365,6 +374,8 @@ namespace texas::solver::multiway
 		std::vector<MultiwayWorkerBatch> worker_batches_;
 		std::vector<std::thread> threads_;
 		std::vector<std::unique_ptr<std::condition_variable>> worker_work_cvs_;
+		std::vector<std::uint16_t> worker_affinity_groups_;
+		std::vector<std::uint64_t> worker_affinity_masks_;
 		std::mutex pool_mutex_;
 		std::condition_variable completion_cv_;
 		std::uint64_t notification_timestamp_nanoseconds_ = 0U;

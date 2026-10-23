@@ -591,6 +591,7 @@ namespace
 		config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
 		config.limits.max_sparse_values = static_cast<std::size_t>(workflow.maximum_sparse_values);
 		config.limits.max_worker_delta_entries = static_cast<std::size_t>(workflow.worker_delta_capacity);
+		config.limits.max_discovery_entries = static_cast<std::size_t>(workflow.discovery_capacity);
 		config.limits.max_batches = batches;
 		config.limits.storage_backend = workflow.storage_backend == "CompactInt32"
 			? MultiwaySolverLimits::StorageBackend::CompactInt32
@@ -782,6 +783,7 @@ namespace
 		config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
 		config.limits.max_sparse_values = static_cast<std::size_t>(workflow.maximum_sparse_values);
 		config.limits.max_worker_delta_entries = static_cast<std::size_t>(workflow.worker_delta_capacity);
+		config.limits.max_discovery_entries = static_cast<std::size_t>(workflow.discovery_capacity);
 		config.limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
 		MultiwayPrivateConfig ranges;
 		ranges.ranges.resize(6U);

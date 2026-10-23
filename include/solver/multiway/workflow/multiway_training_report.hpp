@@ -47,10 +47,12 @@ namespace texas::solver::multiway
 		std::uint64_t configured_max_sparse_rows = 0U;
 		std::uint64_t configured_max_sparse_values = 0U;
 		std::uint64_t configured_worker_delta_capacity = 0U;
+		std::uint64_t configured_discovery_capacity = 0U;
 		std::uint64_t cumulative_worker_delta_entries = 0U;
 		std::uint64_t worker_active_nanoseconds = 0U;
 		std::uint64_t worker_wake_latency_nanoseconds = 0U;
 		std::uint64_t worker_cv_wait_nanoseconds = 0U;
+		std::uint64_t worker_scheduler_claim_nanoseconds = 0U;
 		std::uint64_t worker_completion_nanoseconds = 0U;
 		std::uint64_t worker_tail_idle_nanoseconds = 0U;
 		std::uint64_t minimum_worker_active_nanoseconds = 0U;
@@ -69,6 +71,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_sort_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_wake_latency_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_cv_wait_nanoseconds_by_worker;
+		std::vector<std::uint64_t> worker_scheduler_claim_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_completion_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_tail_idle_nanoseconds_by_worker;
 		std::vector<std::uint64_t> worker_regret_delta_entries;

@@ -16,6 +16,7 @@ namespace
 		result.max_sparse_rows = 128;
 		result.max_sparse_values = 1024;
 		result.max_worker_delta_entries = 256;
+		result.max_discovery_entries = 64;
 		return result;
 	}
 
@@ -61,6 +62,8 @@ TEST_CASE(multiway_memory_preflight_accounts_for_all_runtime_search_components)
 	EXPECT_TRUE(result.estimate.off_tree_menu_bytes > 0U);
 	EXPECT_EQ(result.estimate.continuation_scratch_bytes, 38U);
 	EXPECT_TRUE(result.estimate.merge_scratch_bytes > 0U);
+	EXPECT_TRUE(result.estimate.discovery_stream_bytes > 0U);
+	EXPECT_EQ(result.estimate.ledger.discovery_stream_bytes, result.estimate.discovery_stream_bytes);
 	EXPECT_TRUE(result.estimate.export_bytes > 0U);
 	EXPECT_EQ(result.estimate.continuation_cache_bytes, 23U);
 	EXPECT_EQ(result.estimate.admitted_bytes, result.estimate.total_bytes);
@@ -96,7 +99,7 @@ TEST_CASE(multiway_memory_preflight_stops_before_rejected_row_allocation)
 {
 	const auto roomy = texas::preflight_multiway_memory(
 		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U });
-	const auto root_bytes = roomy.estimate.mandatory_bytes - roomy.estimate.sparse_row_bytes - roomy.estimate.sparse_value_bytes - roomy.estimate.worker_delta_bytes - roomy.estimate.merge_scratch_bytes - roomy.estimate.continuation_scratch_bytes;
+	const auto root_bytes = roomy.estimate.mandatory_bytes - roomy.estimate.sparse_row_bytes - roomy.estimate.sparse_value_bytes - roomy.estimate.worker_delta_bytes - roomy.estimate.discovery_stream_bytes - roomy.estimate.merge_scratch_bytes - roomy.estimate.continuation_scratch_bytes;
 	const auto rejected = texas::preflight_multiway_memory(
 		limits(),
 		texas::MultiwayMemoryBudget{ 1U, roomy.estimate.total_bytes + 1U, root_bytes });

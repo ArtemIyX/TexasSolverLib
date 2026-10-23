@@ -266,7 +266,9 @@ namespace texas::solver::multiway
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			std::vector<std::uint8_t>& new_state_flags) const;
 		[[nodiscard]] MultiwayPackedPublicNode pack_node(
-			const MultiwayPublicStateDescriptor& state, std::uint32_t menu_handle) const noexcept;
+			const MultiwayPublicStateDescriptor& state,
+			std::uint32_t menu_handle,
+			MultiwayAdmissionDiagnostics* diagnostics) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
 
 		std::size_t max_nodes_ = 0U;
@@ -341,6 +343,9 @@ namespace texas::solver::multiway
 		std::uint32_t max_batches = 64;
 		StorageBackend storage_backend = StorageBackend::Float64Reference;
 		std::uint32_t compact_page_width = 16U;
+		// Per-worker bounded discovery entries. Zero preserves callers that do
+		// not enable immutable discovery epochs.
+		std::size_t max_discovery_entries = 0;
 
 		void validate() const;
 	};
@@ -612,6 +617,12 @@ namespace texas::solver::multiway
 		std::uint64_t discovery_row_merge_nanoseconds = 0U;
 		std::uint64_t discovery_public_state_source_elements = 0U;
 		std::uint64_t discovery_row_source_elements = 0U;
+		std::uint64_t discovery_public_descriptor_copy_count = 0U;
+		std::uint64_t discovery_public_descriptor_copy_bytes = 0U;
+		std::uint64_t discovery_nested_descriptor_copy_count = 0U;
+		std::uint64_t discovery_nested_descriptor_copy_bytes = 0U;
+		std::uint64_t discovery_output_capacity_reuse_events = 0U;
+		std::uint64_t discovery_output_capacity_reuse_bytes = 0U;
 		std::uint64_t discovery_public_state_duplicate_candidates = 0U;
 		std::uint64_t discovery_row_duplicate_candidates = 0U;
 		std::uint64_t discovery_single_stream_batches = 0U;
@@ -641,6 +652,12 @@ namespace texas::solver::multiway
 		std::uint64_t catalog_batch_menu_reuse_hits = 0U;
 		std::uint64_t catalog_new_menus = 0U;
 		std::uint64_t catalog_menu_id_collision_misses = 0U;
+		std::uint64_t catalog_output_capacity_reuse_events = 0U;
+		std::uint64_t catalog_output_capacity_reuse_bytes = 0U;
+		std::uint64_t catalog_public_descriptor_copy_count = 0U;
+		std::uint64_t catalog_public_descriptor_copy_bytes = 0U;
+		std::uint64_t catalog_nested_descriptor_copy_count = 0U;
+		std::uint64_t catalog_nested_descriptor_copy_bytes = 0U;
 		std::uint64_t public_state_betting_board_validation_nanoseconds = 0U;
 		std::uint64_t public_state_menu_validation_nanoseconds = 0U;
 		std::uint64_t public_state_history_identity_validation_nanoseconds = 0U;
@@ -686,6 +703,12 @@ namespace texas::solver::multiway
 			discovery_row_merge_nanoseconds += other.discovery_row_merge_nanoseconds;
 			discovery_public_state_source_elements += other.discovery_public_state_source_elements;
 			discovery_row_source_elements += other.discovery_row_source_elements;
+			discovery_public_descriptor_copy_count += other.discovery_public_descriptor_copy_count;
+			discovery_public_descriptor_copy_bytes += other.discovery_public_descriptor_copy_bytes;
+			discovery_nested_descriptor_copy_count += other.discovery_nested_descriptor_copy_count;
+			discovery_nested_descriptor_copy_bytes += other.discovery_nested_descriptor_copy_bytes;
+			discovery_output_capacity_reuse_events += other.discovery_output_capacity_reuse_events;
+			discovery_output_capacity_reuse_bytes += other.discovery_output_capacity_reuse_bytes;
 			discovery_public_state_duplicate_candidates += other.discovery_public_state_duplicate_candidates;
 			discovery_row_duplicate_candidates += other.discovery_row_duplicate_candidates;
 			discovery_single_stream_batches += other.discovery_single_stream_batches;
@@ -715,6 +738,12 @@ namespace texas::solver::multiway
 			catalog_batch_menu_reuse_hits += other.catalog_batch_menu_reuse_hits;
 			catalog_new_menus += other.catalog_new_menus;
 			catalog_menu_id_collision_misses += other.catalog_menu_id_collision_misses;
+			catalog_output_capacity_reuse_events += other.catalog_output_capacity_reuse_events;
+			catalog_output_capacity_reuse_bytes += other.catalog_output_capacity_reuse_bytes;
+			catalog_public_descriptor_copy_count += other.catalog_public_descriptor_copy_count;
+			catalog_public_descriptor_copy_bytes += other.catalog_public_descriptor_copy_bytes;
+			catalog_nested_descriptor_copy_count += other.catalog_nested_descriptor_copy_count;
+			catalog_nested_descriptor_copy_bytes += other.catalog_nested_descriptor_copy_bytes;
 			public_state_betting_board_validation_nanoseconds += other.public_state_betting_board_validation_nanoseconds;
 			public_state_menu_validation_nanoseconds += other.public_state_menu_validation_nanoseconds;
 			public_state_history_identity_validation_nanoseconds += other.public_state_history_identity_validation_nanoseconds;

@@ -87,6 +87,30 @@ TEST_CASE(multiway_scheduler_dynamic_chunks_cover_each_trajectory_once)
 		EXPECT_TRUE(value);
 }
 
+TEST_CASE(multiway_scheduler_dynamic_chunk_size_is_configurable)
+{
+	constexpr std::uint64_t trajectory_count = 19U;
+	constexpr std::uint32_t chunk_size = 8U;
+	const auto chunk_count = texas::MultiwayScheduler::dynamic_chunk_count(trajectory_count, chunk_size);
+	EXPECT_EQ(chunk_count, std::size_t{ 3 });
+	std::array<bool, trajectory_count> seen{};
+	for (std::size_t chunk = 0U; chunk < chunk_count; ++chunk)
+	{
+		const auto range = texas::MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk, chunk_size);
+		EXPECT_TRUE(range.size() > 0U);
+		EXPECT_TRUE(range.size() <= chunk_size);
+		for (auto trajectory = range.begin; trajectory < range.end; ++trajectory)
+		{
+			EXPECT_TRUE(!seen[trajectory]);
+			seen[trajectory] = true;
+		}
+	}
+	for (const auto value : seen)
+		EXPECT_TRUE(value);
+	EXPECT_EQ(texas::MultiwayScheduler::dynamic_chunk_count(trajectory_count, 0U), std::size_t{ 0 });
+	EXPECT_EQ(texas::MultiwayScheduler::dynamic_chunk_range(trajectory_count, 0U, 0U).size(), std::uint64_t{ 0 });
+}
+
 TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity)
 {
 	const auto first_seed = texas::multiway_deterministic_trajectory_seed(0x1234U, 17U);
@@ -98,6 +122,13 @@ TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity)
 	EXPECT_EQ(first, repeat);
 	EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(2U, 7U, 9U, 32U));
 	EXPECT_TRUE(first != texas::multiway_deterministic_schedule_fingerprint(4U, 8U, 9U, 32U));
+	const auto dynamic_chunk_one = texas::multiway_deterministic_schedule_fingerprint(
+		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Dynamic, 1U);
+	const auto dynamic_chunk_eight = texas::multiway_deterministic_schedule_fingerprint(
+		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Dynamic, 8U);
+	EXPECT_TRUE(dynamic_chunk_one != dynamic_chunk_eight);
+	EXPECT_TRUE(dynamic_chunk_one != texas::multiway_deterministic_schedule_fingerprint(
+		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Fixed, 4U));
 }
 
 TEST_CASE(multiway_scheduler_reports_deterministic_run_metadata)

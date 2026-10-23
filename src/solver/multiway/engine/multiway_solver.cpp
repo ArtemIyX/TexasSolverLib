@@ -160,6 +160,7 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& child,
 			MultiwayAdmissionDiagnostics* diagnostics = nullptr)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_parent_transition");
 			const auto fixed_state_started = std::chrono::steady_clock::now();
 			const auto parent_state = make_multiway_fixed_state(parent.betting);
 			const auto fixed_state_nanoseconds = static_cast<std::uint64_t>(
@@ -170,6 +171,7 @@ namespace texas::solver::multiway
 			{
 				case MultiwayPublicParentEdgeKind::BettingAction:
 				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_parent_transition.action");
 					const auto edge_started = std::chrono::steady_clock::now();
 					if (child.history.size() != parent.history.size() + 1U)
 					{
@@ -219,6 +221,7 @@ namespace texas::solver::multiway
 				}
 				case MultiwayPublicParentEdgeKind::BoardChance:
 				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_parent_transition.board_chance");
 					const auto edge_started = std::chrono::steady_clock::now();
 					const auto parent_kind = parent_state.next_node_kind();
 					if ((parent_kind != MultiwayNextNodeKind::BoardRunout && parent_kind != MultiwayNextNodeKind::StreetTransition) || child.history != parent.history || !same_betting_snapshot(child.betting, parent.betting) || child.board.size() <= parent.board.size() || !board_contains(child.board, parent.board) || !are_valid_and_distinct_cards(child.board.data(), child.board.size()))
@@ -247,6 +250,7 @@ namespace texas::solver::multiway
 				}
 				case MultiwayPublicParentEdgeKind::StreetTransition:
 				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_parent_transition.street");
 					const auto edge_started = std::chrono::steady_clock::now();
 					if (parent_state.next_node_kind() != MultiwayNextNodeKind::StreetTransition || child.history != parent.history || child.board != child.incoming_edge.transition_board || child.board.size() != expected_board_card_count(static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U)) || child.board.size() < parent.board.size() || !board_contains(child.board, parent.board) || child.board_runout.remaining_board_cards != 5U - child.board.size() || child.board_runout.chance_only_runout)
 					{
@@ -351,6 +355,7 @@ namespace texas::solver::multiway
 			PublicStateValidationMetadata* metadata = nullptr,
 			MultiwayAdmissionDiagnostics* diagnostics = nullptr)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.validate_public_state");
 			const auto betting_board_started = std::chrono::steady_clock::now();
 			state.betting.validate();
 			if (state.id.value == 0 || state.canonical_history_id == 0 || !valid_public_parent_edge_kind(state.incoming_edge.kind))
@@ -977,6 +982,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwaySparseRowShape>& rows,
 		const std::vector<std::size_t>* parent_indexes)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admit_prepared_batch");
 		if (parent_order.size() != public_states.size())
 			throw std::invalid_argument("multiway prepared admission order does not match public states");
 		if (parent_indexes != nullptr && parent_indexes->size() != public_states.size())
@@ -1030,7 +1036,10 @@ namespace texas::solver::multiway
 			admission_state_next_node_kinds_[state_index] = static_cast<std::uint8_t>(metadata.next_node_kind);
 		};
 		const auto classification_started = std::chrono::steady_clock::now();
-		public_catalog_.classify_new_states(public_states, admission_new_states_);
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.classify_public_states");
+			public_catalog_.classify_new_states(public_states, admission_new_states_);
+		}
 		if (admission_diagnostics_ != nullptr)
 			admission_diagnostics_->state_catalog_classification_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -1047,6 +1056,7 @@ namespace texas::solver::multiway
 		};
 		for (const auto state_index : parent_order)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admission.state");
 			if (state_index >= public_states.size() || processed_states[state_index] != 0U)
 				throw std::invalid_argument("multiway prepared admission order is not a permutation");
 			const auto& state = public_states[state_index];
@@ -1084,6 +1094,7 @@ namespace texas::solver::multiway
 				throw std::length_error("multiway public-state admission exceeds configured capacity");
 			if (state.parent_id.value != 0U)
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admission.parent");
 				const auto parent_index = parent_indexes == nullptr
 					? find_candidate(state.parent_id)
 					: (*parent_indexes)[state_index];
@@ -1150,6 +1161,7 @@ namespace texas::solver::multiway
 		std::size_t new_value_count = 0U;
 		for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admission.row");
 			const auto& shape = rows[row_index];
 			const auto state_index = row_state_indexes[row_index];
 			const auto row_state_started = std::chrono::steady_clock::now();
@@ -1238,15 +1250,18 @@ namespace texas::solver::multiway
 					.count());
 
 		const auto catalog_commit_started = std::chrono::steady_clock::now();
-		public_catalog_.admit_batch(
-			public_states,
-			new_states,
-			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds,
-			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_menu_lookup_nanoseconds,
-			admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_merge_nanoseconds,
-			admission_diagnostics_,
-			&admission_state_menu_keys_,
-			&admission_state_menu_handles_);
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.catalog_commit");
+			public_catalog_.admit_batch(
+				public_states,
+				new_states,
+				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds,
+				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_menu_lookup_nanoseconds,
+				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_merge_nanoseconds,
+				admission_diagnostics_,
+				&admission_state_menu_keys_,
+				&admission_state_menu_handles_);
+		}
 		diagnostics_.public_states_admitted += static_cast<std::uint64_t>(new_state_count);
 		if (admission_diagnostics_ != nullptr)
 			admission_diagnostics_->catalog_commit_nanoseconds += static_cast<std::uint64_t>(
@@ -1255,10 +1270,13 @@ namespace texas::solver::multiway
 					.count());
 
 		const auto storage_commit_started = std::chrono::steady_clock::now();
-		if (compact)
-			compact_storage_->admit_rows(rows, new_rows);
-		else
-			storage_.admit_rows(rows, new_rows);
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.storage_commit");
+			if (compact)
+				compact_storage_->admit_rows(rows, new_rows);
+			else
+				storage_.admit_rows(rows, new_rows);
+		}
 		const auto storage_commit_elapsed = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - storage_commit_started)
@@ -1295,6 +1313,7 @@ namespace texas::solver::multiway
 
 	void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDescriptor& state)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admit_public_state");
 		{
 			std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 			if (admission_diagnostics_ != nullptr)
@@ -1363,6 +1382,7 @@ namespace texas::solver::multiway
 
 	void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admit_infoset_row");
 		{
 			std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 			if (admission_diagnostics_ != nullptr)
@@ -1539,6 +1559,7 @@ namespace texas::solver::multiway
 	void MultiwaySolverCoordinator::merge_worker_streams_locked(
 		const std::vector<const MultiwayWorkerDeltaStream*>& streams)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.merge_worker_streams_locked");
 		if (streams.size() != request_.limits().worker_count)
 		{
 			throw std::invalid_argument("multiway merge requires one stream for every configured worker");

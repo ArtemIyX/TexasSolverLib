@@ -13,6 +13,7 @@ namespace texas::solver::multiway
 	inline constexpr std::uint32_t MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_MERGE_ORDER_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE = 4U;
+	inline constexpr std::uint32_t MULTIWAY_SCHEDULER_POLICY_VERSION = 1U;
 
 	enum class MultiwaySchedulerMode : std::uint8_t
 	{
@@ -33,6 +34,8 @@ namespace texas::solver::multiway
 		std::uint32_t action_sampling_version = MULTIWAY_ACTION_SAMPLING_VERSION;
 		std::uint32_t public_chance_order_version = MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION;
 		std::uint32_t merge_order_version = MULTIWAY_MERGE_ORDER_VERSION;
+		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
 		bool bitwise_deterministic = true;
 	};
 
@@ -45,6 +48,14 @@ namespace texas::solver::multiway
 		std::uint64_t base_seed,
 		std::uint64_t first_trajectory_id,
 		std::uint64_t trajectory_count) noexcept;
+
+	[[nodiscard]] std::uint64_t multiway_deterministic_schedule_fingerprint(
+		std::uint32_t worker_count,
+		std::uint64_t base_seed,
+		std::uint64_t first_trajectory_id,
+		std::uint64_t trajectory_count,
+		MultiwaySchedulerMode scheduler_mode,
+		std::uint32_t dynamic_chunk_size) noexcept;
 
 	struct MultiwayTrajectoryRange
 	{
@@ -69,9 +80,16 @@ namespace texas::solver::multiway
 	public:
 		[[nodiscard]] static std::size_t dynamic_chunk_count(
 			std::uint64_t trajectory_count) noexcept;
+		[[nodiscard]] static std::size_t dynamic_chunk_count(
+			std::uint64_t trajectory_count,
+			std::uint32_t chunk_size) noexcept;
 		[[nodiscard]] static MultiwayTrajectoryRange dynamic_chunk_range(
 			std::uint64_t trajectory_count,
 			std::size_t chunk_index) noexcept;
+		[[nodiscard]] static MultiwayTrajectoryRange dynamic_chunk_range(
+			std::uint64_t trajectory_count,
+			std::size_t chunk_index,
+			std::uint32_t chunk_size) noexcept;
 		// Writes a deterministic contiguous partition into caller-owned storage.
 		// Returns zero only when output is null or capacity is zero.
 		[[nodiscard]] static std::size_t partition_deterministic_into(

@@ -27,6 +27,7 @@ namespace texas::solver::multiway
 		std::uint64_t maximum_sparse_rows = 0U;
 		std::uint64_t maximum_sparse_values = 0U;
 		std::uint64_t worker_delta_capacity = 0U;
+		std::uint64_t discovery_capacity = 0U;
 		std::uint64_t trajectories_per_batch = 0U;
 		std::uint64_t checkpoint_interval = 0U;
 		std::uint64_t disk_space_requirement_bytes = 0U;

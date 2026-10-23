@@ -140,6 +140,39 @@ namespace
 		return { root_infoset(), buckets, actions };
 	}
 
+	void expect_public_state_descriptor_equal(
+		const texas::MultiwayPublicStateDescriptor& expected,
+		const texas::MultiwayPublicStateDescriptor& actual)
+	{
+		EXPECT_EQ(actual.id, expected.id);
+		EXPECT_EQ(actual.parent_id, expected.parent_id);
+		EXPECT_EQ(actual.incoming_edge.kind, expected.incoming_edge.kind);
+		EXPECT_EQ(actual.incoming_edge.action, expected.incoming_edge.action);
+		EXPECT_EQ(actual.incoming_edge.dealt_card, expected.incoming_edge.dealt_card);
+		EXPECT_EQ(actual.incoming_edge.dealt_cards, expected.incoming_edge.dealt_cards);
+		EXPECT_EQ(actual.incoming_edge.transition_board, expected.incoming_edge.transition_board);
+		EXPECT_EQ(actual.canonical_history_id, expected.canonical_history_id);
+		EXPECT_EQ(actual.betting.stacks, expected.betting.stacks);
+		EXPECT_EQ(actual.betting.contributions, expected.betting.contributions);
+		EXPECT_EQ(actual.betting.street_contributions, expected.betting.street_contributions);
+		EXPECT_EQ(actual.betting.folded, expected.betting.folded);
+		EXPECT_EQ(actual.betting.all_in, expected.betting.all_in);
+		EXPECT_EQ(actual.betting.may_raise, expected.betting.may_raise);
+		EXPECT_EQ(actual.betting.pending, expected.betting.pending);
+		EXPECT_EQ(actual.betting.has_acted, expected.betting.has_acted);
+		EXPECT_EQ(actual.betting.bet_faced_when_acted, expected.betting.bet_faced_when_acted);
+		EXPECT_EQ(actual.betting.current_player, expected.betting.current_player);
+		EXPECT_EQ(actual.betting.last_aggressor, expected.betting.last_aggressor);
+		EXPECT_EQ(actual.betting.current_bet, expected.betting.current_bet);
+		EXPECT_EQ(actual.betting.last_full_raise_size, expected.betting.last_full_raise_size);
+		EXPECT_EQ(actual.betting.big_blind, expected.betting.big_blind);
+		EXPECT_EQ(actual.betting.street, expected.betting.street);
+		EXPECT_EQ(actual.board, expected.board);
+		EXPECT_EQ(actual.board_runout, expected.board_runout);
+		EXPECT_EQ(actual.history, expected.history);
+		EXPECT_EQ(actual.legal_actions, expected.legal_actions);
+	}
+
 	texas::MultiwayWorkerDelta delta(
 		std::uint8_t action,
 		double regret,
@@ -179,6 +212,18 @@ TEST_CASE(multiway_admission_diagnostics_accumulates_variance_fields)
 		diagnostics.parent_transition_street_edges = base + 15U;
 		diagnostics.parent_transition_action_history_prefix_elements = base + 16U;
 		diagnostics.parent_transition_action_menu_probes = base + 17U;
+		diagnostics.discovery_public_descriptor_copy_count = base + 18U;
+		diagnostics.discovery_public_descriptor_copy_bytes = base + 19U;
+		diagnostics.discovery_nested_descriptor_copy_count = base + 20U;
+		diagnostics.discovery_nested_descriptor_copy_bytes = base + 21U;
+		diagnostics.discovery_output_capacity_reuse_events = base + 22U;
+		diagnostics.discovery_output_capacity_reuse_bytes = base + 23U;
+		diagnostics.catalog_output_capacity_reuse_events = base + 24U;
+		diagnostics.catalog_output_capacity_reuse_bytes = base + 25U;
+		diagnostics.catalog_public_descriptor_copy_count = base + 26U;
+		diagnostics.catalog_public_descriptor_copy_bytes = base + 27U;
+		diagnostics.catalog_nested_descriptor_copy_count = base + 28U;
+		diagnostics.catalog_nested_descriptor_copy_bytes = base + 29U;
 	};
 	seed(first, 0U);
 	seed(second, 100U);
@@ -202,6 +247,18 @@ TEST_CASE(multiway_admission_diagnostics_accumulates_variance_fields)
 	EXPECT_EQ(first.parent_transition_street_edges, 130U);
 	EXPECT_EQ(first.parent_transition_action_history_prefix_elements, 132U);
 	EXPECT_EQ(first.parent_transition_action_menu_probes, 134U);
+	EXPECT_EQ(first.discovery_public_descriptor_copy_count, 136U);
+	EXPECT_EQ(first.discovery_public_descriptor_copy_bytes, 138U);
+	EXPECT_EQ(first.discovery_nested_descriptor_copy_count, 140U);
+	EXPECT_EQ(first.discovery_nested_descriptor_copy_bytes, 142U);
+	EXPECT_EQ(first.discovery_output_capacity_reuse_events, 144U);
+	EXPECT_EQ(first.discovery_output_capacity_reuse_bytes, 146U);
+	EXPECT_EQ(first.catalog_output_capacity_reuse_events, 148U);
+	EXPECT_EQ(first.catalog_output_capacity_reuse_bytes, 150U);
+	EXPECT_EQ(first.catalog_public_descriptor_copy_count, 152U);
+	EXPECT_EQ(first.catalog_public_descriptor_copy_bytes, 154U);
+	EXPECT_EQ(first.catalog_nested_descriptor_copy_count, 156U);
+	EXPECT_EQ(first.catalog_nested_descriptor_copy_bytes, 158U);
 }
 
 TEST_CASE(multiway_solver_request_copies_the_immutable_root_snapshot)
@@ -1193,10 +1250,7 @@ TEST_CASE(multiway_solver_discovery_one_stream_fast_path_matches_generic_merge)
 
 	EXPECT_EQ(fast_public_states.size(), generic_public_states.size());
 	for (std::size_t index = 0U; index < fast_public_states.size(); ++index)
-	{
-		EXPECT_EQ(fast_public_states[index].id, generic_public_states[index].id);
-		EXPECT_EQ(fast_public_states[index].history, generic_public_states[index].history);
-	}
+		expect_public_state_descriptor_equal(generic_public_states[index], fast_public_states[index]);
 	EXPECT_EQ(fast_rows.size(), generic_rows.size());
 	for (std::size_t index = 0U; index < fast_rows.size(); ++index)
 	{
@@ -1214,12 +1268,22 @@ TEST_CASE(multiway_solver_discovery_one_stream_fast_path_matches_generic_merge)
 	EXPECT_EQ(generic_diagnostics.discovery_single_stream_batches, 0U);
 	EXPECT_EQ(generic_diagnostics.discovery_one_stream_fast_path_uses, 0U);
 
+	const auto fast_public_states_before_rewind = fast_public_states;
+	const auto fast_rows_before_rewind = fast_rows;
 	stream.rewind();
 	EXPECT_TRUE(stream.try_append_public_state(second_child));
 	EXPECT_TRUE(stream.try_append_row(root_row(2U, 3U)));
 	stream.prepare_for_merge();
-	EXPECT_TRUE(std::any_of(fast_public_states.begin(), fast_public_states.end(), [&](const auto& state) { return state.id == child.id; }));
-	EXPECT_TRUE(std::any_of(fast_rows.begin(), fast_rows.end(), [](const auto& row) { return row.bucket_count == 1U && row.action_count == 3U; }));
+	EXPECT_EQ(fast_public_states.size(), fast_public_states_before_rewind.size());
+	for (std::size_t index = 0U; index < fast_public_states.size(); ++index)
+		expect_public_state_descriptor_equal(fast_public_states_before_rewind[index], fast_public_states[index]);
+	EXPECT_EQ(fast_rows.size(), fast_rows_before_rewind.size());
+	for (std::size_t index = 0U; index < fast_rows.size(); ++index)
+	{
+		EXPECT_EQ(fast_rows[index].infoset, fast_rows_before_rewind[index].infoset);
+		EXPECT_EQ(fast_rows[index].bucket_count, fast_rows_before_rewind[index].bucket_count);
+		EXPECT_EQ(fast_rows[index].action_count, fast_rows_before_rewind[index].action_count);
+	}
 
 	std::vector<texas::MultiwayPublicStateDescriptor> empty_public_states;
 	std::vector<texas::MultiwaySparseRowShape> empty_rows;

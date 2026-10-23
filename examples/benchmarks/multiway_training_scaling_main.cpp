@@ -29,26 +29,38 @@ namespace
 
 	struct BenchmarkConfig
 	{
-		std::vector<std::uint32_t> workers{ 1U, 2U, 4U, 8U, 16U };
-		std::vector<std::uint32_t> batch_sizes{ 1000U, 4000U, 16000U };
+		std::vector<std::uint32_t> workers{ 1U, 2U, 4U, 8U };
+		std::vector<std::uint32_t> batch_sizes{ 1000U };
 		std::uint32_t warmup_batches = 1U;
-		std::uint32_t timed_batches = 1U;
-		std::uint32_t repeats = 3U;
+		std::uint32_t timed_batches = 4U;
+		std::uint32_t repeats = 5U;
 		std::uint64_t seed = 0x77U;
+		texas::MultiwaySchedulerMode scheduler_mode = texas::MultiwaySchedulerMode::Fixed;
+		std::vector<std::uint32_t> dynamic_chunk_sizes{ texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE };
+		bool pin_workers = true;
 	};
 
 	struct BenchmarkResult
 	{
 		std::uint32_t workers = 0U;
 		std::uint32_t batch_size = 0U;
+		std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
 		std::uint32_t sample = 0U;
 		std::uint64_t trajectories = 0U;
 		std::uint64_t elapsed_nanoseconds = 0U;
 		std::uint64_t worker_active_nanoseconds = 0U;
+		std::uint64_t worker_wake_latency_nanoseconds = 0U;
+		std::uint64_t worker_cv_wait_nanoseconds = 0U;
+		std::uint64_t worker_scheduler_claim_nanoseconds = 0U;
 		std::uint64_t coordinator_wait_nanoseconds = 0U;
+		std::uint64_t barrier_wait_nanoseconds = 0U;
 		std::uint64_t coordinator_lock_wait_nanoseconds = 0U;
 		std::uint64_t sort_nanoseconds = 0U;
 		std::uint64_t merge_nanoseconds = 0U;
+		std::uint64_t worker_tail_idle_nanoseconds = 0U;
+		std::uint64_t minimum_worker_active_nanoseconds = 0U;
+		std::uint64_t maximum_worker_active_nanoseconds = 0U;
+		std::uint64_t process_cpu_nanoseconds = 0U;
 		std::uint64_t minimum_worker_trajectories = 0U;
 		std::uint64_t maximum_worker_trajectories = 0U;
 		std::uint64_t peak_worker_delta_entries = 0U;
@@ -158,6 +170,7 @@ namespace
 		config.limits.max_sparse_rows = 100000U;
 		config.limits.max_sparse_values = 1000000U;
 		config.limits.max_worker_delta_entries = delta_capacity;
+		config.limits.max_discovery_entries = delta_capacity * 4U;
 		config.limits.max_batches = 16U;
 		config.deterministic_seed = seed;
 		config.limits.seed = seed;
@@ -167,8 +180,9 @@ namespace
 	class BenchmarkFixture
 	{
 	public:
-		BenchmarkFixture(std::uint32_t workers, std::uint32_t batch_size, std::uint64_t seed)
-			: delta_capacity_(checked_delta_capacity(batch_size, workers)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, true, true), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
+		BenchmarkFixture(std::uint32_t workers, std::uint32_t batch_size, std::uint64_t seed,
+			texas::MultiwaySchedulerMode scheduler_mode, bool pin_workers, std::uint32_t dynamic_chunk_size)
+			: delta_capacity_(checked_delta_capacity(batch_size)), root_(make_root(abstraction_)), request_(root_, make_cfr(), make_limits(workers, batch_size, delta_capacity_)), coordinator_(request_), buckets_(benchmark_buckets(bucket_identity())), continuation_selector_(std::make_shared<texas::MultiwayFixedContinuationSelector>(texas::MultiwayContinuationPolicyKind::Blueprint)), evaluator_{ deterministic_leaf, nullptr }, traversal_(coordinator_, request_.root(), abstraction_, buckets_, &evaluator_, 3U, 2U, nullptr, continuation_selector_.get()), runner_(traversal_, coordinator_, workers, delta_capacity_, texas::MultiwaySearchProfileMode::Disabled, pin_workers, true, scheduler_mode, dynamic_chunk_size), trainer_(training_identity(workers, batch_size, delta_capacity_, seed), runner_, coordinator_, {}, seed, workers, 0U) {}
 
 		BenchmarkResult run(
 			std::uint32_t workers,
@@ -186,19 +200,53 @@ namespace
 				std::chrono::steady_clock::now() - started)
 									 .count();
 			const auto& after = trainer_.status();
+			std::uint64_t minimum_worker_active_nanoseconds = std::numeric_limits<std::uint64_t>::max();
+			std::uint64_t maximum_worker_active_nanoseconds = 0U;
+			std::uint64_t minimum_worker_trajectories = std::numeric_limits<std::uint64_t>::max();
+			std::uint64_t maximum_worker_trajectories = 0U;
+			const auto worker_count = std::min(
+				std::min(before.worker_active_nanoseconds_by_worker.size(), after.worker_active_nanoseconds_by_worker.size()),
+				std::min(before.worker_trajectory_counts.size(), after.worker_trajectory_counts.size()));
+			for (std::size_t worker = 0U; worker < worker_count; ++worker)
+			{
+				const auto active_before = before.worker_active_nanoseconds_by_worker[worker];
+				const auto active_after = after.worker_active_nanoseconds_by_worker[worker];
+				const auto trajectories_before = before.worker_trajectory_counts[worker];
+				const auto trajectories_after = after.worker_trajectory_counts[worker];
+				const auto active = active_after >= active_before ? active_after - active_before : 0U;
+				const auto trajectories = trajectories_after >= trajectories_before ? trajectories_after - trajectories_before : 0U;
+				minimum_worker_active_nanoseconds = std::min(minimum_worker_active_nanoseconds, active);
+				maximum_worker_active_nanoseconds = std::max(maximum_worker_active_nanoseconds, active);
+				minimum_worker_trajectories = std::min(minimum_worker_trajectories, trajectories);
+				maximum_worker_trajectories = std::max(maximum_worker_trajectories, trajectories);
+			}
+			if (worker_count == 0U)
+			{
+				minimum_worker_active_nanoseconds = 0U;
+				minimum_worker_trajectories = 0U;
+			}
 			return {
 				workers,
 				batch_size,
+				runner_.dynamic_chunk_size(),
 				sample,
 				static_cast<std::uint64_t>(timed_batches) * batch_size,
 				static_cast<std::uint64_t>(elapsed),
 				after.worker_active_nanoseconds - before.worker_active_nanoseconds,
+				after.worker_wake_latency_nanoseconds - before.worker_wake_latency_nanoseconds,
+				after.worker_cv_wait_nanoseconds - before.worker_cv_wait_nanoseconds,
+				after.worker_scheduler_claim_nanoseconds - before.worker_scheduler_claim_nanoseconds,
 				after.coordinator_wait_nanoseconds - before.coordinator_wait_nanoseconds,
+				after.barrier_wait_nanoseconds - before.barrier_wait_nanoseconds,
 				after.coordinator_lock_wait_nanoseconds - before.coordinator_lock_wait_nanoseconds,
 				after.delta_sort_nanoseconds - before.delta_sort_nanoseconds,
 				after.merge_nanoseconds - before.merge_nanoseconds,
-				after.minimum_worker_trajectories,
-				after.maximum_worker_trajectories,
+				after.worker_tail_idle_nanoseconds - before.worker_tail_idle_nanoseconds,
+				minimum_worker_active_nanoseconds,
+				maximum_worker_active_nanoseconds,
+				after.process_cpu_nanoseconds - before.process_cpu_nanoseconds,
+				minimum_worker_trajectories,
+				maximum_worker_trajectories,
 				after.peak_worker_delta_entries,
 				after.merged_stream_fingerprint,
 			};
@@ -206,17 +254,16 @@ namespace
 
 	private:
 		// The depth-three fixture can emit more than four deltas per trajectory.
-		// Scale the aggregate reserve so worker right-sizing cannot discard a
-		// trajectory solely because the worker partition changed.
+		// This is a per-worker reserve; the runtime multiplies it for admission.
 		static constexpr std::size_t kDeltaCapacityEntriesPerTrajectory = 8U;
 
-		static std::size_t checked_delta_capacity(std::uint32_t batch_size, std::uint32_t workers)
+		static std::size_t checked_delta_capacity(std::uint32_t batch_size)
 		{
-			if (workers == 0U || batch_size > std::numeric_limits<std::size_t>::max() / kDeltaCapacityEntriesPerTrajectory / workers)
+			if (batch_size > std::numeric_limits<std::size_t>::max() / kDeltaCapacityEntriesPerTrajectory)
 			{
 				throw std::overflow_error("batch size overflows worker delta capacity");
 			}
-			return static_cast<std::size_t>(batch_size) * kDeltaCapacityEntriesPerTrajectory * workers;
+			return static_cast<std::size_t>(batch_size) * kDeltaCapacityEntriesPerTrajectory;
 		}
 
 		static texas::MultiwayCFRConfig make_cfr()
@@ -238,6 +285,7 @@ namespace
 			limits.max_sparse_rows = 100000U;
 			limits.max_sparse_values = 1000000U;
 			limits.max_worker_delta_entries = delta_capacity;
+			limits.max_discovery_entries = delta_capacity * 4U;
 			limits.max_batches = 16U;
 			limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
 			return limits;
@@ -298,6 +346,17 @@ namespace
 		}
 	}
 
+	bool parse_scheduler(std::string_view text, texas::MultiwaySchedulerMode& output)
+	{
+		if (text == "fixed")
+			output = texas::MultiwaySchedulerMode::Fixed;
+		else if (text == "dynamic")
+			output = texas::MultiwaySchedulerMode::Dynamic;
+		else
+			return false;
+		return true;
+	}
+
 	bool parse_csv(std::string_view text, std::vector<std::uint32_t>& output)
 	{
 		std::vector<std::uint32_t> parsed;
@@ -335,7 +394,10 @@ namespace
 						  << "  --warmup-batches N\n"
 						  << "  --timed-batches N\n"
 						  << "  --repeats N\n"
-						  << "  --seed N\n";
+						  << "  --seed N\n"
+						  << "  --scheduler fixed|dynamic\n"
+				  << "  --dynamic-chunk-sizes 1,2,4,8,16\n"
+						  << "  --pin-workers true|false\n";
 				std::exit(EXIT_SUCCESS);
 			}
 			if (index + 1 >= argc)
@@ -376,6 +438,25 @@ namespace
 				if (!parse_u64(value, config.seed))
 					throw std::invalid_argument("invalid seed");
 			}
+			else if (option == "--scheduler")
+			{
+				if (!parse_scheduler(value, config.scheduler_mode))
+					throw std::invalid_argument("invalid scheduler");
+			}
+			else if (option == "--dynamic-chunk-sizes")
+			{
+				if (!parse_csv(value, config.dynamic_chunk_sizes))
+					throw std::invalid_argument("invalid dynamic chunk-size list");
+			}
+			else if (option == "--pin-workers")
+			{
+				if (value == "true" || value == "1")
+					config.pin_workers = true;
+				else if (value == "false" || value == "0")
+					config.pin_workers = false;
+				else
+					throw std::invalid_argument("invalid pin-worker setting");
+			}
 			else
 			{
 				throw std::invalid_argument("unknown benchmark option");
@@ -401,14 +482,23 @@ namespace
 		std::cout << "sample"
 				  << " workers=" << result.workers
 				  << " batch_size=" << result.batch_size
+				  << " dynamic_chunk_size=" << result.dynamic_chunk_size
 				  << " repeat=" << result.sample
 				  << " trajectories=" << result.trajectories
 				  << " elapsed_ns=" << result.elapsed_nanoseconds
 				  << " trajectories_per_second=" << std::fixed << std::setprecision(1)
 				  << result.trajectories_per_second()
 				  << " coordinator_wait_ns=" << result.coordinator_wait_nanoseconds
+				  << " barrier_wait_ns=" << result.barrier_wait_nanoseconds
 				  << " coordinator_lock_wait_ns=" << result.coordinator_lock_wait_nanoseconds
 				  << " worker_active_ns=" << result.worker_active_nanoseconds
+				  << " worker_wake_latency_ns=" << result.worker_wake_latency_nanoseconds
+				  << " worker_cv_wait_ns=" << result.worker_cv_wait_nanoseconds
+				  << " worker_scheduler_claim_ns=" << result.worker_scheduler_claim_nanoseconds
+				  << " worker_tail_idle_ns=" << result.worker_tail_idle_nanoseconds
+				  << " worker_active_min_ns=" << result.minimum_worker_active_nanoseconds
+				  << " worker_active_max_ns=" << result.maximum_worker_active_nanoseconds
+				  << " process_cpu_ns=" << result.process_cpu_nanoseconds
 				  << " sort_ns=" << result.sort_nanoseconds
 				  << " merge_ns=" << result.merge_nanoseconds
 				  << " worker_trajectories_min=" << result.minimum_worker_trajectories
@@ -422,51 +512,69 @@ namespace
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "fixture=three_player_river_depth_one"
 				  << " hardware_concurrency=" << std::thread::hardware_concurrency()
-				  << " worker_affinity=pinned_logical_processor"
+				  << " worker_affinity=" << (config.pin_workers ? "pinned_logical_processor" : "unrestricted")
+				  << " scheduler=" << (config.scheduler_mode == texas::MultiwaySchedulerMode::Fixed ? "fixed" : "dynamic")
+				  << " dynamic_chunk_sizes=";
+		for (std::size_t index = 0U; index < config.dynamic_chunk_sizes.size(); ++index)
+		{
+			if (index != 0U)
+				std::cout << ',';
+			std::cout << config.dynamic_chunk_sizes[index];
+		}
+		std::cout
+				  << " pin_workers=" << (config.pin_workers ? "true" : "false")
+				  << " checkpoint_output=disabled blueprint_output=disabled"
 				  << " warmup_batches=" << config.warmup_batches
 				  << " timed_batches=" << config.timed_batches
 				  << " repeats=" << config.repeats
 				  << " seed=" << config.seed << '\n';
+		const auto chunk_sizes = config.scheduler_mode == texas::MultiwaySchedulerMode::Dynamic
+			? config.dynamic_chunk_sizes
+			: std::vector<std::uint32_t>{ texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE };
 		for (const auto batch_size : config.batch_sizes)
 		{
-			std::uint64_t reference_fingerprint = 0U;
-			double previous_median = 0.0;
-			std::uint32_t previous_workers = 0U;
-			for (const auto workers : config.workers)
+			for (const auto dynamic_chunk_size : chunk_sizes)
 			{
-				std::vector<BenchmarkResult> samples;
-				samples.reserve(config.repeats);
-				for (std::uint32_t sample = 1U; sample <= config.repeats; ++sample)
+				std::uint64_t reference_fingerprint = 0U;
+				double previous_median = 0.0;
+				std::uint32_t previous_workers = 0U;
+				for (const auto workers : config.workers)
 				{
-					BenchmarkFixture fixture(workers, batch_size, config.seed);
-					auto result = fixture.run(
-						workers, batch_size, config.warmup_batches,
-						config.timed_batches, sample, config.seed);
-					print_sample(result);
-					if (reference_fingerprint == 0U)
-						reference_fingerprint = result.fingerprint;
-					if (result.fingerprint != reference_fingerprint)
+					std::vector<BenchmarkResult> samples;
+					samples.reserve(config.repeats);
+					for (std::uint32_t sample = 1U; sample <= config.repeats; ++sample)
 					{
-						throw std::logic_error(
-							"benchmark worker counts produced different merge fingerprints: expected="
-							+ std::to_string(reference_fingerprint) + " actual=" + std::to_string(result.fingerprint));
+						BenchmarkFixture fixture(workers, batch_size, config.seed, config.scheduler_mode, config.pin_workers, dynamic_chunk_size);
+						auto result = fixture.run(
+							workers, batch_size, config.warmup_batches,
+							config.timed_batches, sample, config.seed);
+						print_sample(result);
+						if (reference_fingerprint == 0U)
+							reference_fingerprint = result.fingerprint;
+						if (result.fingerprint != reference_fingerprint)
+						{
+							throw std::logic_error(
+								"benchmark worker counts produced different merge fingerprints: expected="
+								+ std::to_string(reference_fingerprint) + " actual=" + std::to_string(result.fingerprint));
+						}
+						samples.push_back(result);
 					}
-					samples.push_back(result);
+					const auto median = median_throughput(samples);
+					std::cout << "summary"
+							  << " workers=" << workers
+							  << " batch_size=" << batch_size
+							  << " dynamic_chunk_size=" << dynamic_chunk_size
+							  << " median_trajectories_per_second=" << std::fixed << std::setprecision(1)
+							  << median
+							  << " fingerprint=" << reference_fingerprint << '\n';
+					if (batch_size >= kScalingGateMinimumBatchSize && previous_workers != 0U && median <= previous_median)
+					{
+						throw std::runtime_error(
+							"worker scaling gate failed: throughput must increase strictly with worker count");
+					}
+					previous_workers = workers;
+					previous_median = median;
 				}
-				const auto median = median_throughput(samples);
-				std::cout << "summary"
-						  << " workers=" << workers
-						  << " batch_size=" << batch_size
-						  << " median_trajectories_per_second=" << std::fixed << std::setprecision(1)
-						  << median
-						  << " fingerprint=" << reference_fingerprint << '\n';
-				if (batch_size >= kScalingGateMinimumBatchSize && previous_workers != 0U && median <= previous_median)
-				{
-					throw std::runtime_error(
-						"worker scaling gate failed: throughput must increase strictly with worker count");
-				}
-				previous_workers = workers;
-				previous_median = median;
 			}
 		}
 		return EXIT_SUCCESS;

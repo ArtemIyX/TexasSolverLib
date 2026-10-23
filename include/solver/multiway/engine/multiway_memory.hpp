@@ -52,6 +52,11 @@ namespace texas::solver::multiway
 		std::uint64_t row_metadata_bytes = 0U;
 		std::uint64_t regret_page_bytes = 0U;
 		std::uint64_t worker_stream_bytes = 0U;
+		std::uint64_t discovery_stream_bytes = 0U;
+		std::uint64_t worker_allocation_count = 0U;
+		std::uint64_t worker_allocation_bytes = 0U;
+		std::uint64_t coordinator_allocation_count = 0U;
+		std::uint64_t coordinator_allocation_bytes = 0U;
 		std::uint64_t merge_scratch_bytes = 0U;
 		std::uint64_t checkpoint_peak_bytes = 0U;
 		std::uint64_t export_peak_bytes = 0U;
@@ -73,6 +78,7 @@ namespace texas::solver::multiway
 		std::uint64_t off_tree_menu_bytes = 0U;
 		std::uint64_t continuation_scratch_bytes = 0U;
 		std::uint64_t worker_delta_bytes = 0;
+		std::uint64_t discovery_stream_bytes = 0U;
 		std::uint64_t merge_scratch_bytes = 0U;
 		std::uint64_t export_bytes = 0U;
 		std::uint64_t continuation_cache_bytes = 0U;

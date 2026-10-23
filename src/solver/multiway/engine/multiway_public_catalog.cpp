@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "util/tracy.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -9,6 +10,54 @@
 
 namespace texas::solver::multiway
 {
+	namespace
+	{
+		void record_nested_descriptor_copy(
+			MultiwayAdmissionDiagnostics* diagnostics,
+			std::size_t element_count,
+			std::size_t element_size) noexcept
+		{
+			if (diagnostics == nullptr || element_count == 0U)
+				return;
+			diagnostics->catalog_nested_descriptor_copy_count += static_cast<std::uint64_t>(element_count);
+			diagnostics->catalog_nested_descriptor_copy_bytes += static_cast<std::uint64_t>(element_count * element_size);
+		}
+
+		void record_descriptor_copy(
+			const MultiwayPublicStateDescriptor& state,
+			MultiwayAdmissionDiagnostics* diagnostics) noexcept
+		{
+			if (diagnostics == nullptr)
+				return;
+			++diagnostics->catalog_public_descriptor_copy_count;
+			diagnostics->catalog_public_descriptor_copy_bytes += sizeof(MultiwayPublicStateDescriptor);
+			record_nested_descriptor_copy(diagnostics, state.board.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.incoming_edge.dealt_cards.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.incoming_edge.transition_board.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.stacks.size(), sizeof(int));
+			record_nested_descriptor_copy(diagnostics, state.betting.contributions.size(), sizeof(int));
+			record_nested_descriptor_copy(diagnostics, state.betting.street_contributions.size(), sizeof(int));
+			record_nested_descriptor_copy(diagnostics, state.betting.folded.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.all_in.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.may_raise.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.pending.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.has_acted.size(), sizeof(std::uint8_t));
+			record_nested_descriptor_copy(diagnostics, state.betting.bet_faced_when_acted.size(), sizeof(int));
+		}
+
+		void record_output_capacity_reuse(
+			MultiwayAdmissionDiagnostics* diagnostics,
+			bool reused,
+			std::size_t element_count,
+			std::size_t element_size) noexcept
+		{
+			if (diagnostics != nullptr && reused)
+			{
+				++diagnostics->catalog_output_capacity_reuse_events;
+				diagnostics->catalog_output_capacity_reuse_bytes += static_cast<std::uint64_t>(element_count * element_size);
+			}
+		}
+	} // namespace
 
 	MultiwayPublicCatalog::MultiwayPublicCatalog(std::size_t max_nodes)
 		: max_nodes_(max_nodes)
@@ -62,6 +111,7 @@ namespace texas::solver::multiway
 		std::uint64_t* index_lookup_nanoseconds,
 		std::uint64_t* equality_nanoseconds) const noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.find_menu_by_key");
 		const auto index_lookup_started = std::chrono::steady_clock::now();
 		const auto first = std::lower_bound(menu_index_.begin(), menu_index_.end(), canonical_menu_id,
 			[](const MenuIndexEntry& entry, std::uint64_t key) { return entry.canonical_menu_id < key; });
@@ -104,6 +154,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayPublicStateDescriptor>& states,
 		std::vector<std::uint8_t>& new_state_flags) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.classify_new_states");
 		new_state_flags.assign(states.size(), 1U);
 		std::size_t catalog_index = 0U;
 		for (std::size_t state_index = 0U; state_index < states.size(); ++state_index)
@@ -128,8 +179,12 @@ namespace texas::solver::multiway
 	}
 
 	MultiwayPackedPublicNode MultiwayPublicCatalog::pack_node(
-		const MultiwayPublicStateDescriptor& state, std::uint32_t menu_handle) const noexcept
+		const MultiwayPublicStateDescriptor& state,
+		std::uint32_t menu_handle,
+		MultiwayAdmissionDiagnostics* diagnostics) const noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.pack_node");
+		record_descriptor_copy(state, diagnostics);
 		MultiwayPackedPublicNode packed;
 		packed.id = state.id;
 		packed.parent_id = state.parent_id;
@@ -179,6 +234,7 @@ namespace texas::solver::multiway
 		std::uint64_t* index_insertion_nanoseconds,
 		MultiwayAdmissionDiagnostics* diagnostics)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit");
 		if (state.id.value == 0U || state.board.size() > 5U || state.incoming_edge.dealt_cards.size() > 3U || state.incoming_edge.transition_board.size() > 5U)
 			throw std::invalid_argument("packed public catalog state is malformed");
 		if (contains(state.id))
@@ -202,8 +258,11 @@ namespace texas::solver::multiway
 		{
 			if (menus_.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::length_error("packed public catalog menu handle overflow");
+			record_output_capacity_reuse(diagnostics, menus_.capacity() >= menus_.size() + 1U, 1U, sizeof(menus_.front()));
+			record_output_capacity_reuse(diagnostics, menu_index_.capacity() >= menu_index_.size() + 1U, 1U, sizeof(MenuIndexEntry));
 			menus_.reserve(menus_.size() + 1U);
 			menu_index_.reserve(menu_index_.size() + 1U);
+			record_nested_descriptor_copy(diagnostics, state.legal_actions.size(), sizeof(MultiwayActionDescriptor));
 			menus_.push_back(state.legal_actions);
 			menu_handle = menus_.size() - 1U;
 			const auto insertion = std::lower_bound(menu_index_.begin(), menu_index_.end(), MenuIndexEntry{ canonical_menu_id, static_cast<std::uint32_t>(menu_handle) },
@@ -228,7 +287,9 @@ namespace texas::solver::multiway
 		if (menu_handle > std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("packed public catalog menu handle overflow");
 
-		const auto packed = pack_node(state, static_cast<std::uint32_t>(menu_handle));
+		record_output_capacity_reuse(diagnostics, nodes_.capacity() >= nodes_.size() + 1U, 1U, sizeof(MultiwayPackedPublicNode));
+		record_output_capacity_reuse(diagnostics, index_.capacity() >= index_.size() + 1U, 1U, sizeof(IndexEntry));
+		const auto packed = pack_node(state, static_cast<std::uint32_t>(menu_handle), diagnostics);
 		const auto node_index = nodes_.size();
 		nodes_.push_back(packed);
 		const auto insertion = std::lower_bound(index_.begin(), index_.end(), state.id,
@@ -253,6 +314,7 @@ namespace texas::solver::multiway
 		const std::vector<std::uint64_t>* validated_menu_keys,
 		std::vector<std::uint32_t>* resolved_menu_handles)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch");
 		if (states.size() != new_state_flags.size())
 			throw std::invalid_argument("packed public catalog batch flags do not match states");
 		if (validated_menu_keys != nullptr && validated_menu_keys->size() != states.size())
@@ -270,6 +332,7 @@ namespace texas::solver::multiway
 		std::size_t new_count = 0U;
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit.validate_state");
 			if (new_state_flags[index] == 0U)
 				continue;
 			if (states[index].id.value == 0U || states[index].board.size() > 5U || states[index].incoming_edge.dealt_cards.size() > 3U || states[index].incoming_edge.transition_board.size() > 5U)
@@ -283,6 +346,7 @@ namespace texas::solver::multiway
 		std::size_t existing_index = 0U;
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit.resolve_menu");
 			if (new_state_flags[index] == 0U)
 				continue;
 			while (existing_index < index_.size() && index_[existing_index].id < states[index].id)
@@ -304,20 +368,25 @@ namespace texas::solver::multiway
 			return;
 		}
 
-		batch_pending_menus_.clear();
-		batch_menu_keys_.assign(states.size(), 0U);
-		batch_menu_handles_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
-		batch_pending_menu_indexes_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
-		batch_pending_index_.clear();
-		batch_pending_menu_index_.clear();
-		batch_pending_menus_.reserve(new_count);
-		batch_pending_index_.reserve(new_count);
-		batch_pending_menu_index_.reserve(new_count);
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.prepare_pending");
+			batch_pending_menus_.clear();
+			batch_menu_keys_.assign(states.size(), 0U);
+			batch_menu_handles_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
+			batch_pending_menu_indexes_.assign(states.size(), std::numeric_limits<std::uint32_t>::max());
+			batch_pending_index_.clear();
+			batch_pending_menu_index_.clear();
+			batch_pending_menus_.reserve(new_count);
+			batch_pending_index_.reserve(new_count);
+			batch_pending_menu_index_.reserve(new_count);
+		}
 
 		std::size_t existing_menu_hits = 0U;
 		std::size_t batch_menu_reuse_hits = 0U;
-		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.resolve_menus");
+			for (std::size_t index = 0U; index < states.size(); ++index)
+			{
 			if (new_state_flags[index] == 0U)
 				continue;
 			const auto menu_started = std::chrono::steady_clock::now();
@@ -403,6 +472,7 @@ namespace texas::solver::multiway
 
 			if (menus_.size() + batch_pending_menus_.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::length_error("packed public catalog menu handle overflow");
+			record_nested_descriptor_copy(diagnostics, states[index].legal_actions.size(), sizeof(MultiwayActionDescriptor));
 			batch_pending_menus_.push_back(states[index].legal_actions);
 			const auto pending_index = batch_pending_menus_.size() - 1U;
 			batch_menu_handles_[index] = static_cast<std::uint32_t>(menus_.size() + pending_index);
@@ -414,6 +484,7 @@ namespace texas::solver::multiway
 				});
 			batch_pending_menu_index_.insert(pending_index_insertion, pending_entry);
 			record_menu_lookup();
+		}
 		}
 
 		if (diagnostics != nullptr)
@@ -436,11 +507,18 @@ namespace texas::solver::multiway
 				(*resolved_menu_handles)[index] = batch_menu_handles_[index];
 		}
 
+		record_output_capacity_reuse(diagnostics, nodes_.capacity() >= nodes_.size() + batch_pending_index_.size(), batch_pending_index_.size(), sizeof(MultiwayPackedPublicNode));
+		record_output_capacity_reuse(diagnostics, index_.capacity() >= index_.size() + batch_pending_index_.size(), batch_pending_index_.size(), sizeof(IndexEntry));
+		record_output_capacity_reuse(diagnostics, menus_.capacity() >= menus_.size() + batch_pending_menus_.size(), batch_pending_menus_.size(), sizeof(menus_.front()));
+		record_output_capacity_reuse(diagnostics, menu_index_.capacity() >= menu_index_.size() + batch_pending_menu_index_.size(), batch_pending_menu_index_.size(), sizeof(MenuIndexEntry));
 		const auto reserve_started = std::chrono::steady_clock::now();
-		nodes_.reserve(nodes_.size() + batch_pending_index_.size());
-		index_.reserve(index_.size() + batch_pending_index_.size());
-		menus_.reserve(menus_.size() + batch_pending_menus_.size());
-		menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.reserve");
+			nodes_.reserve(nodes_.size() + batch_pending_index_.size());
+			index_.reserve(index_.size() + batch_pending_index_.size());
+			menus_.reserve(menus_.size() + batch_pending_menus_.size());
+			menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
+		}
 		if (diagnostics != nullptr)
 			diagnostics->catalog_reserve_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -448,62 +526,68 @@ namespace texas::solver::multiway
 					.count());
 
 		const auto index_started = std::chrono::steady_clock::now();
-		const auto index_merge_started = std::chrono::steady_clock::now();
-		batch_merged_index_.clear();
-		batch_merged_index_.reserve(index_.size() + batch_pending_index_.size());
-		std::size_t old_index = 0U;
-		std::size_t new_index = 0U;
-		while (old_index < index_.size() || new_index < batch_pending_index_.size())
 		{
-			if (new_index == batch_pending_index_.size() || (old_index < index_.size() && index_[old_index].id < batch_pending_index_[new_index].id))
-				batch_merged_index_.push_back(index_[old_index++]);
-			else
-				batch_merged_index_.push_back(batch_pending_index_[new_index++]);
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.merge_indexes");
+			const auto index_merge_started = std::chrono::steady_clock::now();
+			batch_merged_index_.clear();
+			batch_merged_index_.reserve(index_.size() + batch_pending_index_.size());
+			std::size_t old_index = 0U;
+			std::size_t new_index = 0U;
+			while (old_index < index_.size() || new_index < batch_pending_index_.size())
+			{
+				if (new_index == batch_pending_index_.size() || (old_index < index_.size() && index_[old_index].id < batch_pending_index_[new_index].id))
+					batch_merged_index_.push_back(index_[old_index++]);
+				else
+					batch_merged_index_.push_back(batch_pending_index_[new_index++]);
+			}
+			batch_merged_menu_index_.clear();
+			batch_merged_menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
+			std::size_t old_menu_index = 0U;
+			std::size_t new_menu_index = 0U;
+			while (old_menu_index < menu_index_.size() || new_menu_index < batch_pending_menu_index_.size())
+			{
+				bool take_old = new_menu_index == batch_pending_menu_index_.size();
+				if (!take_old && old_menu_index < menu_index_.size())
+				{
+					const auto pending_menu_handle = static_cast<std::uint32_t>(menus_.size() + batch_pending_menu_index_[new_menu_index].pending_menu_index);
+					take_old = menu_index_[old_menu_index].canonical_menu_id < batch_pending_menu_index_[new_menu_index].canonical_menu_id || (menu_index_[old_menu_index].canonical_menu_id == batch_pending_menu_index_[new_menu_index].canonical_menu_id && menu_index_[old_menu_index].menu_handle < pending_menu_handle);
+				}
+				if (take_old)
+					batch_merged_menu_index_.push_back(menu_index_[old_menu_index++]);
+				else
+				{
+					const auto& pending_entry = batch_pending_menu_index_[new_menu_index++];
+					batch_merged_menu_index_.push_back({ pending_entry.canonical_menu_id, static_cast<std::uint32_t>(menus_.size() + pending_entry.pending_menu_index) });
+				}
+			}
+			if (index_merge_nanoseconds != nullptr)
+				*index_merge_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - index_merge_started)
+						.count());
 		}
-		batch_merged_menu_index_.clear();
-		batch_merged_menu_index_.reserve(menu_index_.size() + batch_pending_menu_index_.size());
-		std::size_t old_menu_index = 0U;
-		std::size_t new_menu_index = 0U;
-		while (old_menu_index < menu_index_.size() || new_menu_index < batch_pending_menu_index_.size())
 		{
-			bool take_old = new_menu_index == batch_pending_menu_index_.size();
-			if (!take_old && old_menu_index < menu_index_.size())
-			{
-				const auto pending_menu_handle = static_cast<std::uint32_t>(menus_.size() + batch_pending_menu_index_[new_menu_index].pending_menu_index);
-				take_old = menu_index_[old_menu_index].canonical_menu_id < batch_pending_menu_index_[new_menu_index].canonical_menu_id || (menu_index_[old_menu_index].canonical_menu_id == batch_pending_menu_index_[new_menu_index].canonical_menu_id && menu_index_[old_menu_index].menu_handle < pending_menu_handle);
-			}
-			if (take_old)
-				batch_merged_menu_index_.push_back(menu_index_[old_menu_index++]);
-			else
-			{
-				const auto& pending_entry = batch_pending_menu_index_[new_menu_index++];
-				batch_merged_menu_index_.push_back({ pending_entry.canonical_menu_id, static_cast<std::uint32_t>(menus_.size() + pending_entry.pending_menu_index) });
-			}
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.admit_batch.append");
+			const auto append_started = std::chrono::steady_clock::now();
+			const auto pack_started = std::chrono::steady_clock::now();
+			for (auto& menu : batch_pending_menus_)
+				menus_.push_back(std::move(menu));
+			for (std::size_t index = 0U; index < states.size(); ++index)
+				if (new_state_flags[index] != 0U)
+					nodes_.push_back(pack_node(states[index], batch_menu_handles_[index], diagnostics));
+			if (diagnostics != nullptr)
+				diagnostics->catalog_node_pack_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - pack_started)
+						.count());
+			index_.swap(batch_merged_index_);
+			menu_index_.swap(batch_merged_menu_index_);
+			if (diagnostics != nullptr)
+				diagnostics->catalog_append_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - append_started)
+						.count());
 		}
-		if (index_merge_nanoseconds != nullptr)
-			*index_merge_nanoseconds += static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - index_merge_started)
-					.count());
-		const auto append_started = std::chrono::steady_clock::now();
-		const auto pack_started = std::chrono::steady_clock::now();
-		for (auto& menu : batch_pending_menus_)
-			menus_.push_back(std::move(menu));
-		for (std::size_t index = 0U; index < states.size(); ++index)
-			if (new_state_flags[index] != 0U)
-				nodes_.push_back(pack_node(states[index], batch_menu_handles_[index]));
-		if (diagnostics != nullptr)
-			diagnostics->catalog_node_pack_nanoseconds += static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - pack_started)
-					.count());
-		index_.swap(batch_merged_index_);
-		menu_index_.swap(batch_merged_menu_index_);
-		if (diagnostics != nullptr)
-			diagnostics->catalog_append_nanoseconds += static_cast<std::uint64_t>(
-				std::chrono::duration_cast<std::chrono::nanoseconds>(
-					std::chrono::steady_clock::now() - append_started)
-					.count());
 		if (index_insertion_nanoseconds != nullptr)
 			*index_insertion_nanoseconds += static_cast<std::uint64_t>(
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -514,72 +598,89 @@ namespace texas::solver::multiway
 
 	bool MultiwayPublicCatalog::reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.reconstruct");
 		const auto* packed = node(id);
 		if (packed == nullptr || packed->legal_menu_handle >= menus_.size())
 			return false;
-		output = {};
-		output.id = packed->id;
-		output.parent_id = packed->parent_id;
-		output.canonical_history_id = packed->canonical_history_id;
-		output.board_runout = packed->board_runout;
-		output.board.assign(packed->board.begin(), packed->board.begin() + packed->board_count);
-		output.legal_actions = menus_[packed->legal_menu_handle];
-		output.incoming_edge.kind = packed->incoming_kind;
-		output.incoming_edge.action = packed->incoming_action;
-		output.incoming_edge.dealt_card = packed->dealt_card;
-		output.incoming_edge.dealt_cards.assign(packed->dealt_cards.begin(), packed->dealt_cards.begin() + packed->dealt_card_count);
-		output.incoming_edge.transition_board.assign(packed->transition_board.begin(), packed->transition_board.begin() + packed->transition_board_count);
-		output.betting.current_player = packed->betting.current_player;
-		output.betting.last_aggressor = packed->betting.last_aggressor;
-		output.betting.current_bet = packed->betting.current_bet;
-		output.betting.last_full_raise_size = packed->betting.last_full_raise_size;
-		output.betting.big_blind = packed->betting.big_blind;
-		output.betting.street = packed->betting.street;
-		output.betting.stacks.assign(packed->betting.stacks.begin(), packed->betting.stacks.begin() + packed->betting.seat_count);
-		output.betting.contributions.assign(packed->betting.contributions.begin(), packed->betting.contributions.begin() + packed->betting.seat_count);
-		output.betting.street_contributions.assign(packed->betting.street_contributions.begin(), packed->betting.street_contributions.begin() + packed->betting.seat_count);
-		output.betting.folded.resize(packed->betting.seat_count);
-		output.betting.all_in.resize(packed->betting.seat_count);
-		output.betting.may_raise.resize(packed->betting.seat_count);
-		output.betting.pending.resize(packed->betting.seat_count);
-		output.betting.has_acted.resize(packed->betting.seat_count);
-		output.betting.bet_faced_when_acted.assign(packed->betting.bet_faced_when_acted.begin(), packed->betting.bet_faced_when_acted.begin() + packed->betting.seat_count);
-		for (std::size_t seat = 0U; seat < packed->betting.seat_count; ++seat)
 		{
-			output.betting.folded[seat] = packed->betting.folded[seat] != 0U;
-			output.betting.all_in[seat] = packed->betting.all_in[seat] != 0U;
-			output.betting.may_raise[seat] = packed->betting.may_raise[seat] != 0U;
-			output.betting.pending[seat] = packed->betting.pending[seat] != 0U;
-			output.betting.has_acted[seat] = packed->betting.has_acted[seat] != 0U;
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.reconstruct.scalar_payload");
+			output = {};
+			output.id = packed->id;
+			output.parent_id = packed->parent_id;
+			output.canonical_history_id = packed->canonical_history_id;
+			output.board_runout = packed->board_runout;
+		}
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.reconstruct.vector_payload");
+			output.board.assign(packed->board.begin(), packed->board.begin() + packed->board_count);
+			output.legal_actions = menus_[packed->legal_menu_handle];
+			output.incoming_edge.kind = packed->incoming_kind;
+			output.incoming_edge.action = packed->incoming_action;
+			output.incoming_edge.dealt_card = packed->dealt_card;
+			output.incoming_edge.dealt_cards.assign(packed->dealt_cards.begin(), packed->dealt_cards.begin() + packed->dealt_card_count);
+			output.incoming_edge.transition_board.assign(packed->transition_board.begin(), packed->transition_board.begin() + packed->transition_board_count);
+		}
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.reconstruct.betting_payload");
+			output.betting.current_player = packed->betting.current_player;
+			output.betting.last_aggressor = packed->betting.last_aggressor;
+			output.betting.current_bet = packed->betting.current_bet;
+			output.betting.last_full_raise_size = packed->betting.last_full_raise_size;
+			output.betting.big_blind = packed->betting.big_blind;
+			output.betting.street = packed->betting.street;
+			output.betting.stacks.assign(packed->betting.stacks.begin(), packed->betting.stacks.begin() + packed->betting.seat_count);
+			output.betting.contributions.assign(packed->betting.contributions.begin(), packed->betting.contributions.begin() + packed->betting.seat_count);
+			output.betting.street_contributions.assign(packed->betting.street_contributions.begin(), packed->betting.street_contributions.begin() + packed->betting.seat_count);
+			output.betting.folded.resize(packed->betting.seat_count);
+			output.betting.all_in.resize(packed->betting.seat_count);
+			output.betting.may_raise.resize(packed->betting.seat_count);
+			output.betting.pending.resize(packed->betting.seat_count);
+			output.betting.has_acted.resize(packed->betting.seat_count);
+			output.betting.bet_faced_when_acted.assign(packed->betting.bet_faced_when_acted.begin(), packed->betting.bet_faced_when_acted.begin() + packed->betting.seat_count);
+			for (std::size_t seat = 0U; seat < packed->betting.seat_count; ++seat)
+			{
+				output.betting.folded[seat] = packed->betting.folded[seat] != 0U;
+				output.betting.all_in[seat] = packed->betting.all_in[seat] != 0U;
+				output.betting.may_raise[seat] = packed->betting.may_raise[seat] != 0U;
+				output.betting.pending[seat] = packed->betting.pending[seat] != 0U;
+				output.betting.has_acted[seat] = packed->betting.has_acted[seat] != 0U;
+			}
 		}
 
-		std::vector<MultiwayPublicHistoryEntry> reverse_history;
-		const auto* current = packed;
-		std::size_t guard = 0U;
-		while (current->parent_id.value != 0U && guard++ <= nodes_.size())
 		{
-			if (current->incoming_kind == MultiwayPublicParentEdgeKind::BettingAction)
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.reconstruct.history");
+			std::vector<MultiwayPublicHistoryEntry> reverse_history;
+			const auto* current = packed;
+			std::size_t guard = 0U;
+			while (current->parent_id.value != 0U && guard++ <= nodes_.size())
 			{
-				auto history_action = current->incoming_action;
-				// Public history canonicalizes the selected action index to zero;
-				// the incoming edge retains the original parent-menu index.
-				history_action.action_index = 0U;
-				reverse_history.push_back({ current->incoming_actor, history_action });
+				if (current->incoming_kind == MultiwayPublicParentEdgeKind::BettingAction)
+				{
+					auto history_action = current->incoming_action;
+					// Public history canonicalizes the selected action index to zero;
+					// the incoming edge retains the original parent-menu index.
+					history_action.action_index = 0U;
+					reverse_history.push_back({ current->incoming_actor, history_action });
+				}
+				current = node(current->parent_id);
+				if (current == nullptr)
+					return false;
 			}
-			current = node(current->parent_id);
-			if (current == nullptr)
+			if (guard > nodes_.size())
 				return false;
+			output.history.assign(reverse_history.rbegin(), reverse_history.rend());
 		}
-		if (guard > nodes_.size())
-			return false;
-		output.history.assign(reverse_history.rbegin(), reverse_history.rend());
 		return true;
 	}
 
 	void MultiwayPublicCatalog::export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const
 	{
-		output.clear();
-		output.reserve(index_.size());
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.export_descriptors");
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.export_descriptors.prepare_output");
+			output.clear();
+			output.reserve(index_.size());
+		}
 		for (const auto& entry : index_)
 		{
 			MultiwayPublicStateDescriptor descriptor;

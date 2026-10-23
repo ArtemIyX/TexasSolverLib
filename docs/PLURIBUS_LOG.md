@@ -1,5 +1,568 @@
 # Pluribus Roadmap Progress Log
 
+## Tooling - Make compact CTest use controlled temporary storage
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Updated `scripts/compact_ctest.py` to set `TEMP`, `TMP`, and `TMPDIR` to `tmp/ctest_temp` for child tests.
+- This keeps Windows atomic-publication tests independent of the default temporary directory.
+
+### Validation
+
+- Bundled Python `scripts/compact_ctest.py --parallel 1` completed with all 110 tests passing.
+
+## Tracy - Split one-stream discovery copy zones
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Added coordinator Tracy subzones for one-stream public-state capacity checks, telemetry accounting, owned descriptor copying, and cursor setup.
+- Added matching row-copy and cursor subzones.
+
+### Validation
+
+- CMake Debug target `test_multiway_solver` built successfully.
+- CMake RelWithDebInfo Tracy target `texas_solver_multiway_training_scaling_tracy` built successfully.
+- CTest `test_multiway_solver` passed.
+- Full CMake Debug build passed; full CTest passed all 110 tests with workspace-local `TEMP` and `TMP`.
+
+## Tooling - Report empty Tracy captures
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Added `-AllowEmpty` to `scripts/analyze_multiway_tracy_zones.ps1`.
+- Header-only or prefix-free captures now produce a machine-readable `analysis_status=empty` report with an explicit reason instead of failing the analysis run.
+
+### Validation
+
+- Analyzed the existing header-only short smoke capture with `empty_reason=no_data_rows`.
+
+## Verification - Current admission-copy telemetry smoke
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Ran one short current-binary Tracy smoke capture with one worker, one batch, and 100 trajectories.
+- The report emitted complete allocation and copy telemetry: 81,292 coordinator allocations, 14,750,031 coordinator bytes, 3,304,944 discovery descriptor-copy bytes, 3,701,028 discovery nested-copy bytes, 3,304,944 catalog descriptor-copy bytes, and 967,924 catalog nested-copy bytes.
+- The report passed its 100-trajectory execution gates with zero discarded trajectories and `failed=false`.
+
+### Validation
+
+- `scripts/analyze_multiway_admission_copy_telemetry.ps1` reported `telemetry_complete=true`.
+
+### Limitations
+
+- The 3-second capture ended during artifact loading, so its Tracy CSV contained no zone rows. This was not a qualification capture or worker matrix.
+
+## Tooling - Analyze admission copy telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Analyze admission copy telemetry`
+
+- Added a report-only analyzer for coordinator allocations, public-state and nested descriptor copies, output-capacity reuse, and timer residuals.
+- Legacy reports remain readable and are explicitly marked incomplete when the new fields are absent.
+
+### Files
+
+- `scripts/analyze_multiway_admission_copy_telemetry.ps1`
+
+### Validation
+
+- PowerShell parser check passed.
+- Existing four admission-split reports were analyzed without rerunning workloads.
+- The analyzer correctly reported `allocation_probe_valid=false` and missing copy/allocation fields for those legacy reports.
+
+### Limitations
+
+- Fresh captures from the current telemetry-enabled binary are required to populate the missing fields.
+
+## Verification - Full CMake build and CTest
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Ran the documented `scripts/full_build.py` workflow through `codex_powershell.ps1`.
+- The complete Debug build passed and the full CTest suite passed.
+- No qualification capture or worker matrix was started.
+
+### Validation
+
+- `tmp/build_debug.log`: build PASS.
+- `tmp/ctest_debug.log`: all tests passed.
+
+## Tooling - Analyze Tracy zone totals
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Analyze Tracy zone totals`
+
+- Added a bounded PowerShell analyzer that ranks all `mw.*` Tracy CSV zones by total time.
+- Reports total milliseconds, event counts, source files, and source lines, with optional JSON output.
+
+### Files
+
+- `scripts/analyze_multiway_tracy_zones.ps1`
+
+### Validation
+
+- PowerShell parser check passed.
+- Existing Tracy CSV smoke analysis passed and produced a ranked JSON report.
+
+### Limitations
+
+- It analyzes completed CSV captures only; it does not start Tracy or run workloads.
+
+## Tracy - Trace catalog reconstruction
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Trace catalog reconstruction`
+
+- Split packed public-state reconstruction into scalar, vector, betting, and history Tracy regions.
+- Added an export-output preparation region while preserving descriptor ownership and reconstruction behavior.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_public_catalog`, `test_multiway_qualification_reports`, and `test_multiway_solver`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
+## Tracy - Trace parent transition edges
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Trace parent transition edges`
+
+- Added typed Tracy regions for betting-action, board-chance, and street-transition validation.
+- Kept the existing validation contracts, edge timers, counters, and deterministic behavior unchanged.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_solver` and `test_multiway_parallel_training`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
+## Tracy - Trace catalog admission phases
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Trace catalog admission phases`
+
+- Added Tracy regions for pending preparation, menu resolution, reserve, index merge, and append/packing phases.
+- Kept existing catalog counters, ownership, ordering, and error behavior unchanged.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_public_catalog`, `test_multiway_qualification_reports`, and `test_multiway_solver`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
+## Tracy - Split discovery merge regions and harden topology parsing
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Add discovery merge subzones`
+
+- Added Tracy regions for single-stream assignment, output preparation, and multi-stream public-state and row merges.
+- Added bounds validation before walking variable-size Windows processor-topology records.
+- Preserved merge ordering, diagnostics, and scheduler behavior.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+
+### Validation
+
+- CMake Debug build passed with errors-only output.
+- Tracy RelWithDebInfo targets passed: `texas_solver_multiway_training_scaling_tracy` and `texas_multiway_train_tracy`.
+- Focused tests passed: `test_multiway_solver` and `test_multiway_parallel_training`.
+
+### Limitations
+
+- No long qualification capture or worker matrix was run.
+
+## Verification - Current scheduler telemetry tree
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (verification) Verify current telemetry tree`
+
+- Full CMake Debug build passed with errors-only output.
+- Focused suites passed: public builder, public catalog, qualification reports, solver, and terminal adapter.
+- No long matrix or qualification capture was run.
+
+## Tooling - Report scheduler claim telemetry in qualification summaries
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Report scheduler claim telemetry`
+
+- Added aggregate and per-worker scheduler-claim fields to cold qualification and cold/steady matrix summaries.
+- Existing eight-capture matrix analysis passed.
+
+## TH3 - Test scheduler claim accounting
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tests) Verify scheduler claim accounting`
+
+- Added dynamic-skew coverage for per-worker scheduler-claim vector size and aggregate equality.
+- `test_multiway_parallel_training` passed.
+
+## TH3 - Preserve legacy scheduler sample parsing
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Preserve legacy scheduler sample parsing`
+
+- Made the scheduler-claim sample field optional in the analyzer.
+- Older sample lines now parse with a zero claim value; summary-only logs remain unchanged.
+- PowerShell parsing and existing matrix re-analysis passed.
+
+## TH3 - Parse scheduler claim samples
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Parse scheduler claim samples`
+
+- Added `worker_scheduler_claim_ns` parsing to the steady-state sample analyzer.
+- Added grouped median scheduler-claim output to JSON, CSV, and console summaries.
+
+## TH3 - Expose scheduler claim metrics in scripts
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tooling) Expose scheduler claim metrics`
+
+- Added scheduler-claim timing and share fields to the worker-matrix output.
+- Added per-worker scheduler-claim output to the RAM-1000 runner.
+- PowerShell parser validation passed for the updated scripts.
+
+## TH3 - Add dynamic scheduler claim telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (scheduler) Add dynamic scheduler claim telemetry`
+
+- Added per-worker and aggregate timing for dynamic scheduler chunk claims.
+- Propagated the metric through training status and JSON reports.
+- Added report serialization and vector-shape validation coverage.
+
+### Validation
+
+- Debug CMake targets built successfully.
+- `test_multiway_parallel_training` and `test_multiway_qualification_reports` passed.
+- Tracy RelWithDebInfo targets built successfully.
+- A 1-worker, 100-trajectory smoke run emitted the new metric.
+
+## TH3 - Isolate timed worker bounds
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Isolate timed worker bounds`
+
+- Changed benchmark worker active-time and trajectory min/max metrics to use per-worker deltas from the timed interval.
+- Prevented warmup batches from contaminating scheduler balance measurements.
+
+### Validation
+
+- CMake Debug target `texas_solver_multiway_training_scaling` built successfully.
+
+## TH3 - Analyze scheduler balance samples
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Analyze scheduler balance samples`
+
+- Extended the steady-state analyzer to parse per-sample barrier, wake, CV-wait, tail-idle, worker-active, and process-CPU metrics.
+- Emits raw sample and grouped median JSON/CSV files when new sample lines are present.
+- Keeps legacy summary-only logs valid.
+
+### Validation
+
+- PowerShell parser validation passed.
+- Existing 16-summary steady-state output re-analyzed successfully.
+
+## Tracy - Add admission and scheduler subzones
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (tracy) Add admission and scheduler subzones`
+
+- Added Tracy subzones for discovery sorting and deduplication, fixed and dynamic scheduler execution, and per-worker result collection.
+- Added per-state, parent-transition, row, catalog validation, and menu-resolution zones for admission analysis.
+
+### Validation
+
+- Debug CMake focused targets built successfully.
+- Tracy RelWithDebInfo targets built successfully.
+- `test_multiway_scheduler` and `test_multiway_parallel_training` passed.
+
+## TH3 - Report scheduler balance metrics
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `[PB-4] (benchmark) Report scheduler balance metrics`
+
+- Added dynamic chunk size and timed scheduler telemetry to benchmark sample output.
+- Reports barrier wait, worker wake and condition-variable wait, tail idle, worker active bounds, and process CPU time.
+
+### Validation
+
+- CMake Debug target `texas_solver_multiway_training_scaling` passed with errors-only output.
+- Benchmark `--help` passed and lists `--dynamic-chunk-sizes`.
+- No long matrix or qualification run was performed.
+
+## TH1 - Add steady-state matrix analyzer
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commit:** `8af97a9 [PB-4] (benchmark) Add steady-state matrix analyzer`
+
+- Added a bounded parser for the steady-state matrix manifest and stdout logs.
+- Validates every configured worker summary, non-zero fingerprint, and chunk-size group.
+- Supports legacy logs that omit the chunk-size field by applying the default size 4.
+
+### Files
+
+- `scripts/analyze_multiway_steady_state_matrix.ps1`
+
+### Validation
+
+- Existing `tmp/multiway-steady-state` output passed with 16 summaries and one non-zero fingerprint.
+
+### Limitations
+
+- No new steady-state matrix was run.
+
+## TH3/TH5 - Configurable scheduling and topology-aware pinning
+
+**Status:** Complete
+**Completed:** 2026-10-22
+**Implementation commits:** `6840cc3`, `4720574`, `0c3b204`, `f291723`
+
+- Added runtime dynamic scheduler chunk sizes with the existing size 4 default.
+- Added benchmark and steady-state matrix controls for chunk-size sweeps.
+- Versioned the scheduler policy in run metadata and schedule fingerprints.
+- Replaced Windows logical-index pinning with physical-core-first processor-group affinity and an unpinned fallback when topology discovery is unavailable.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_scheduler.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_scheduler.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_scheduler.cpp`
+- `examples/benchmarks/multiway_training_scaling_main.cpp`
+- `scripts/run_multiway_steady_state_matrix.ps1`
+
+### Validation
+
+- CMake Debug targets built successfully.
+- `test_multiway_scheduler` passed.
+- `test_multiway_parallel_training` passed.
+- Tracy RelWithDebInfo training targets built successfully.
+- Benchmark `--help` exposed the chunk-size sweep option.
+
+### Limitations
+
+- No long scheduler or pinning matrix was started.
+- Runtime placement results still require operator captures for qualification.
+
+## Tooling - Build Tracy targets and analyze existing matrix reports
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Added a CMake wrapper that configures Tracy diagnostics when needed and builds
+  both training executables expected by the capture scripts.
+- Added a bounded analyzer for the eight existing cold/steady matrix reports.
+- The analyzer verifies acceptance, fingerprints, checkpoint bytes, failed and
+  discarded counts, trajectories, deterministic counts, checkpoint section
+  bytes, scheduler equivalence, and allocation-probe provenance.
+
+### Files
+
+- `scripts/build_multiway_tracy.ps1`
+- `scripts/analyze_multiway_cold_steady_matrix.ps1`
+- `docs/plans/2026-10-18/02_ad7_admission_variance_execution_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Both PowerShell scripts parsed successfully.
+- CMake wrapper built both Tracy targets successfully.
+- Analyzer passed all eight existing matrix reports.
+
+### Limitations
+
+- Historical matrix reports have `allocation_probe_valid=false`; no new matrix
+  run was started.
+
+## AD7 - Candidate A cold qualification
+
+**Status:** Complete
+**Completed:** 2026-10-22
+
+- Validated the four existing controlled one-worker cold reports for fixed and
+  dynamic schedulers.
+- All four passed `acceptance_pass`; coordinator admission was `232.048` to
+  `237.390 ms`, identity validation was `54.337` to `54.848 ms`, public-state
+  validation was `94.495` to `95.688 ms`, and catalog commit was `22.520` to
+  `23.221 ms`.
+- Fingerprint `9806774443936985566`, checkpoint bytes `137380835`, phase
+  coverage, byte accounting, discarded count, and deterministic counts passed.
+- Candidate A is qualified. The full cold/steady worker matrix remains
+  deferred because it is an hour-scale run.
+
+### Files
+
+- `scripts/analyze_multiway_cold_qualification.ps1`
+- `docs/plans/2026-10-18/02_ad7_admission_variance_execution_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Existing four capture reports and Tracy CSV files were analyzed successfully.
+
+### Limitations
+
+- No new 60-second captures or large worker matrix was started in this turn.
+
+## AD7 - Coordinator copy, allocation telemetry, and Tracy zones
+
+**Status:** Implemented; verification pending
+**Completed:** 2026-10-22
+
+- Added coordinator allocation count and byte telemetry to batch results and
+  training memory reports.
+- Added discovery and catalog output-capacity reuse counters.
+- Added public descriptor and nested vector copy counters and byte volumes for
+  discovery merge and catalog packing.
+- Added accumulation and JSON serialization regression coverage.
+- Added scoped Tracy zones for coordinator admission, discovery merge, catalog
+  packing, worker discovery, traversal, and checkpoint phases.
+- Focused CMake builds completed for all five required targets, and the
+  matching Debug CTest expression passed all five tests. The full-build helper
+  was inspected but not used because its MSBuild step produced no output
+  within the bounded run. A CMake-wide Debug build passed, and all 110 Debug
+  CTest tests passed after redirecting `TEMP`/`TMP` to the workspace. The two
+  atomic-publish tests report `Access is denied` under the default Windows
+  temp directory.
+
+## AD7 - Fast-path and identity verification coverage
+
+**Status:** Implemented; qualification pending
+**Completed:** 2026-10-22
+
+- Strengthened one-stream discovery equivalence to compare every public
+  descriptor field, nested vector, row field, cursor postcondition, and source
+  rewind result.
+- Confirmed the existing schema-v2 identity out-parameter and unrolled
+  dual-lane encoder remain in the implementation.
+- Added public-builder identity and menu Tracy zones in commit `827f129`.
+- Focused CMake builds and CTest passed for the five required suites.
+- An isolated MSVC RelWithDebInfo assembly compile confirmed the identity
+  history encoder has explicit eight-byte steps, no `append_u64` or
+  `append_u64_bytes` call in its code range, and no runtime eight-byte loop.
+- Four cold qualification captures remain pending.
+
+## TH1-TH2 - Steady-state benchmark and per-worker capacity
+
+**Status:** Implemented; verification pending
+**Completed:** 2026-10-22
+**Implementation commits:** `2f90a96`, `81f80e0`, `5799d8c`, `e35d302`
+
+- Changed worker delta capacity to allocate the configured amount per worker.
+- Added explicit discovery capacity through solver limits, workflow configs, identity, preflight, and reports.
+- Added worker allocation count/byte accounting to the memory ledger.
+- Added TH1 benchmark controls for fixed/dynamic scheduling and pinned/unpinned groups.
+- Added dynamic-skew and allocation-accounting coverage plus a four-group matrix launcher.
+- No build, test, benchmark, or capture was run in this session.
+
+### Files
+
+- `examples/benchmarks/multiway_training_scaling_main.cpp`
+- `scripts/run_multiway_steady_state_matrix.ps1`
+- `configs/multiway/f1_dev_v1.cfg`
+- `configs/multiway/f1_sizing_v1.cfg`
+
+## AD7 - Candidate A one-stream discovery merge
+
+**Status:** Implemented; verification pending
+**Completed:** 2026-10-18
+**Implementation commit:** `8b890c0 PB-3 Multiway: Add one-stream discovery fast path`
+**Test commit:** `9098465 PB-3 Tests: Cover discovery fast path`
+
+- Selected Candidate A from four qualified fixed/dynamic one-worker captures.
+- Added prepared one-stream public-state and row copies with post-copy telemetry.
+- Preserved generic zero-stream and multi-stream merge behavior and final cursor postconditions.
+- Added equivalence, empty-range, cursor, and source-reuse coverage.
+- No build or test was run in this session; static diff review and `git diff --check` passed.
+
+## AD7 - Admission variance telemetry split
+
+**Status:** Complete
+**Completed:** 2026-10-18
+**Implementation commit:** `944b82e PB-3 Multiway: Split admission variance telemetry`
+**Test commit:** `0ff2373 PB-3 Tests: Cover admission variance diagnostics`
+
+- Added exclusive discovery-merge and parent-transition diagnostics with transactional failure accounting.
+- Preserved aggregate timers, direct-admission behavior, report schema version, and existing validation messages.
+- Added focused accumulation, merge, edge-kind, rejection, direct-admission, and JSON emission coverage.
+- Corrected the street-transition fixture to admit the complete turn board before transition validation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Static diff review completed with no actionable findings.
+- `git diff --check` passed for all changed source and test files.
+- No build or test was run, per session rules.
+
+### Qualification
+
+- Four telemetry-only captures passed the deterministic gates and exposed all Phase 1 fields.
+- Candidate A qualified: one single-stream batch per capture, zero duplicates, and public-state merge dominated discovery merge time.
+- Candidate B was not selected because no parent-transition edge kind dominated the measured cost.
+- Post-optimization build, focused tests, and matched captures remain pending.
+
 ## AD7 - Admission variance follow-up plan
 
 **Status:** Complete

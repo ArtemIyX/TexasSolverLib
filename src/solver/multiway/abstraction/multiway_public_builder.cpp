@@ -1,6 +1,7 @@
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
+#include "util/tracy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -230,6 +231,7 @@ namespace texas::solver::multiway
 		const MultiwayBettingSnapshot& betting,
 		std::vector<MultiwayActionDescriptor> menu)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.canonicalize_action_menu");
 		const auto state = MultiwayState::from_snapshot(betting);
 		if (state.current_player() < 0)
 		{
@@ -295,6 +297,7 @@ namespace texas::solver::multiway
 		std::vector<std::uint8_t> board,
 		std::vector<MultiwayActionDescriptor> legal_actions)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.make_root");
 		const auto state = MultiwayState::from_snapshot(betting);
 		if (state.current_player() < 0)
 		{
@@ -317,6 +320,7 @@ namespace texas::solver::multiway
 		std::uint32_t action_index,
 		std::vector<MultiwayActionDescriptor> child_legal_actions)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.make_action_child");
 		const auto parent_state = MultiwayState::from_snapshot(parent.betting);
 		if (parent_state.current_player() < 0 || action_index >= parent.legal_actions.size())
 		{
@@ -341,6 +345,7 @@ namespace texas::solver::multiway
 		MultiwayBettingSnapshot child_betting,
 		std::vector<MultiwayActionDescriptor> child_legal_actions)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.make_action_child_with_snapshot");
 		const auto parent_state = MultiwayState::from_snapshot(parent.betting);
 		if (parent_state.current_player() < 0 || action_index >= parent.legal_actions.size())
 		{
@@ -407,6 +412,7 @@ namespace texas::solver::multiway
 		const MultiwayPublicBoardChanceEdge& edge,
 		std::vector<MultiwayActionDescriptor> child_legal_actions)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.make_board_chance_child");
 		if (edge.parent_id != parent.id || edge.incoming_edge.kind != MultiwayPublicParentEdgeKind::BoardChance)
 		{
 			throw std::invalid_argument("multiway public builder board chance edge has the wrong parent");
@@ -436,6 +442,7 @@ namespace texas::solver::multiway
 		const MultiwaySampledPublicBoardChance& edge,
 		std::vector<MultiwayActionDescriptor> child_legal_actions)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.make_sampled_chance_child");
 		if (edge.parent_id != parent.id || (edge.dealt_card_count != 1U && edge.dealt_card_count != 3U) || edge.board_count == 0U || edge.board_count > edge.board.size() || edge.dealt_card_count > edge.board_count || !std::isfinite(edge.probability) || edge.probability <= 0.0 || edge.probability > 1.0)
 		{
 			throw std::invalid_argument("multiway public builder sampled chance edge is invalid");
@@ -465,6 +472,7 @@ namespace texas::solver::multiway
 		const MultiwayPublicStreetTransition& transition,
 		std::vector<MultiwayActionDescriptor> child_legal_actions)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.make_street_transition_child");
 		if (transition.parent_id != parent.id || transition.incoming_edge.kind != MultiwayPublicParentEdgeKind::StreetTransition)
 		{
 			throw std::invalid_argument("multiway public builder street transition has the wrong parent");
@@ -492,6 +500,7 @@ namespace texas::solver::multiway
 	std::uint64_t MultiwayPublicBuilder::stable_history_id(
 		const std::vector<MultiwayPublicHistoryEntry>& history) noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.stable_history_id");
 		std::uint64_t hash = 0U;
 		begin_fingerprint(hash);
 		append_history(hash, history);
@@ -504,6 +513,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayPublicHistoryEntry>& history,
 		const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.stable_public_state_id");
 		std::uint64_t hash = 0U;
 		begin_fingerprint(hash);
 		append_ints_field(hash, FingerprintField::BettingStacks, betting.stacks);
@@ -534,7 +544,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayActionDescriptor>& legal_actions) noexcept
 	{
 		MultiwayPublicIdentityInspection output;
-		inspect_schema_v2_identity(betting, board, history, legal_actions, output);
+		(void)inspect_schema_v2_identity(betting, board, history, legal_actions, output);
 		return output;
 	}
 
@@ -545,6 +555,7 @@ namespace texas::solver::multiway
 		const std::vector<MultiwayActionDescriptor>& legal_actions,
 		MultiwayPublicIdentityInspection& output) noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.identity.inspect_schema_v2");
 		output = {};
 		if (!valid_schema_v2_history(history, betting.stacks.size()))
 			return false;

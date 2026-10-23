@@ -95,6 +95,7 @@ namespace
 		config.limits.max_sparse_rows = 128U;
 		config.limits.max_sparse_values = 1024U;
 		config.limits.max_worker_delta_entries = 2048U;
+		config.limits.max_discovery_entries = 8192U;
 		config.limits.max_batches = 1024U;
 		return config.identity();
 	}
@@ -118,6 +119,7 @@ namespace
               limits.max_sparse_rows = 128U;
               limits.max_sparse_values = 1024U;
               limits.max_worker_delta_entries = delta_capacity;
+              limits.max_discovery_entries = delta_capacity * 4U;
               limits.max_batches = 1024U;
               limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
               return limits; }()), coordinator(request), buckets({ texas::MultiwayBucketTable([] {
@@ -237,6 +239,15 @@ TEST_CASE(multiway_parallel_training_matches_one_worker_through_sixteen_workers)
 		for (const auto count : status.worker_trajectory_counts)
 			completed_trajectories += count;
 		EXPECT_EQ(completed_trajectories, status.trajectories);
+		std::uint64_t allocation_count = 0U;
+		std::uint64_t allocation_bytes = 0U;
+		for (std::size_t worker = 0U; worker < status.worker_allocation_counts.size(); ++worker)
+		{
+			allocation_count += status.worker_allocation_counts[worker];
+			allocation_bytes += status.worker_allocated_bytes[worker];
+		}
+		EXPECT_EQ(status.memory_ledger.worker_allocation_count, allocation_count);
+		EXPECT_EQ(status.memory_ledger.worker_allocation_bytes, allocation_bytes);
 		EXPECT_TRUE(status.minimum_worker_active_nanoseconds <= status.maximum_worker_active_nanoseconds);
 		EXPECT_TRUE(status.maximum_worker_active_nanoseconds > 0U);
 		EXPECT_TRUE(status.barrier_wait_nanoseconds <= status.coordinator_wait_nanoseconds);
@@ -305,6 +316,22 @@ TEST_CASE(multiway_parallel_runner_small_batch_waits_only_for_active_workers)
 	EXPECT_EQ(result.trajectories_attempted, 1U);
 	EXPECT_EQ(result.worker_trajectory_counts.size(), 16U);
 	EXPECT_EQ(result.worker_trajectory_counts[0U], 1U);
+}
+
+TEST_CASE(multiway_dynamic_scheduler_exercises_skewed_chunk_assignment)
+{
+	ParallelTrainingFixture fixture(4U, 256U, 2048U, false, texas::MultiwaySchedulerMode::Dynamic);
+	const auto result = fixture.runner.run(0U, 9U, 0x77U);
+	EXPECT_TRUE(result.clean);
+	EXPECT_EQ(result.trajectories_attempted, 9U);
+	EXPECT_EQ(result.trajectories_discarded, 0U);
+	EXPECT_TRUE(result.maximum_worker_trajectories > result.minimum_worker_trajectories);
+	EXPECT_EQ(result.worker_trajectory_counts.size(), 4U);
+	EXPECT_EQ(result.worker_scheduler_claim_nanoseconds_by_worker.size(), 4U);
+	std::uint64_t scheduler_claim_total = 0U;
+	for (const auto value : result.worker_scheduler_claim_nanoseconds_by_worker)
+		scheduler_claim_total += value;
+	EXPECT_EQ(scheduler_claim_total, result.worker_scheduler_claim_nanoseconds);
 }
 
 TEST_CASE(multiway_blueprint_training_telemetry_retention_is_bounded)

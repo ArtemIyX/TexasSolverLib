@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/engine/multiway_allocation_probe.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
@@ -164,9 +165,41 @@ namespace texas::solver::multiway
 			std::uint64_t row_merge_nanoseconds = 0U;
 			std::uint64_t public_state_source_elements = 0U;
 			std::uint64_t row_source_elements = 0U;
+			std::uint64_t public_descriptor_copy_count = 0U;
+			std::uint64_t public_descriptor_copy_bytes = 0U;
+			std::uint64_t nested_descriptor_copy_count = 0U;
+			std::uint64_t nested_descriptor_copy_bytes = 0U;
+			std::uint64_t output_capacity_reuse_events = 0U;
+			std::uint64_t output_capacity_reuse_bytes = 0U;
 			std::uint64_t public_state_duplicate_candidates = 0U;
 			std::uint64_t row_duplicate_candidates = 0U;
 		};
+
+		void record_discovery_descriptor_copy(
+			const MultiwayPublicStateDescriptor& state,
+			DiscoveryMergeDiagnosticsDelta& diagnostics) noexcept
+		{
+			++diagnostics.public_descriptor_copy_count;
+			diagnostics.public_descriptor_copy_bytes += sizeof(MultiwayPublicStateDescriptor);
+			const auto record = [&diagnostics](std::size_t count, std::size_t bytes) {
+				diagnostics.nested_descriptor_copy_count += static_cast<std::uint64_t>(count);
+				diagnostics.nested_descriptor_copy_bytes += static_cast<std::uint64_t>(count * bytes);
+			};
+			record(state.board.size(), sizeof(std::uint8_t));
+			record(state.incoming_edge.dealt_cards.size(), sizeof(std::uint8_t));
+			record(state.incoming_edge.transition_board.size(), sizeof(std::uint8_t));
+			record(state.betting.stacks.size(), sizeof(int));
+			record(state.betting.contributions.size(), sizeof(int));
+			record(state.betting.street_contributions.size(), sizeof(int));
+			record(state.betting.folded.size(), sizeof(std::uint8_t));
+			record(state.betting.all_in.size(), sizeof(std::uint8_t));
+			record(state.betting.may_raise.size(), sizeof(std::uint8_t));
+			record(state.betting.pending.size(), sizeof(std::uint8_t));
+			record(state.betting.has_acted.size(), sizeof(std::uint8_t));
+			record(state.betting.bet_faced_when_acted.size(), sizeof(int));
+			record(state.history.size(), sizeof(MultiwayPublicHistoryEntry));
+			record(state.legal_actions.size(), sizeof(MultiwayActionDescriptor));
+		}
 
 		void merge_public_state_streams(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
@@ -174,12 +207,33 @@ namespace texas::solver::multiway
 			std::vector<std::size_t>& cursors,
 			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states");
 			const auto merge_started = std::chrono::steady_clock::now();
 			if (streams.size() == 1U)
 			{
 				const auto& stream = *streams.front();
-				output.assign(stream.public_states().begin(), stream.public_states().end());
-				cursors.assign(1U, stream.public_state_count());
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream");
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.capacity");
+					if (output.capacity() >= stream.public_state_count())
+					{
+						++diagnostics.output_capacity_reuse_events;
+						diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(stream.public_state_count() * sizeof(MultiwayPublicStateDescriptor));
+					}
+				}
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.telemetry");
+					for (const auto& state : stream.public_states())
+						record_discovery_descriptor_copy(state, diagnostics);
+				}
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.copy");
+					output.assign(stream.public_states().begin(), stream.public_states().end());
+				}
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.single_stream.cursor");
+					cursors.assign(1U, stream.public_state_count());
+				}
 				diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - merge_started)
@@ -192,33 +246,49 @@ namespace texas::solver::multiway
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
 				total += stream->public_state_count();
-			output.reserve(total);
-			cursors.assign(streams.size(), 0U);
-			while (true)
 			{
-				std::size_t first_stream = streams.size();
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.prepare_output");
+				if (output.capacity() >= total)
 				{
-					if (cursors[stream_index] == streams[stream_index]->public_state_count())
-						continue;
-					if (first_stream == streams.size() || streams[stream_index]->public_states()[cursors[stream_index]].id < streams[first_stream]->public_states()[cursors[first_stream]].id)
-						first_stream = stream_index;
+					++diagnostics.output_capacity_reuse_events;
+					diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(total * sizeof(MultiwayPublicStateDescriptor));
 				}
-				if (first_stream == streams.size())
-					break;
-				const auto id = streams[first_stream]->public_states()[cursors[first_stream]].id;
-				output.push_back(streams[first_stream]->public_states()[cursors[first_stream]]);
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				output.reserve(total);
+			}
+			cursors.assign(streams.size(), 0U);
+			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.multi_stream");
+				while (true)
 				{
-					const auto& stream = *streams[stream_index];
-					if (cursors[stream_index] == stream.public_state_count() || stream.public_states()[cursors[stream_index]].id != id)
-						continue;
-					const auto& candidate = stream.public_states()[cursors[stream_index]];
-					if (!MultiwaySolverCoordinator::public_state_candidates_compatible(output.back(), candidate))
-						throw std::invalid_argument("multiway discovery merge found conflicting public-state descriptors");
-					if (public_state_candidate_less(candidate, output.back()))
-						output.back() = candidate;
-					++cursors[stream_index];
+					std::size_t first_stream = streams.size();
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+					{
+						if (cursors[stream_index] == streams[stream_index]->public_state_count())
+							continue;
+						if (first_stream == streams.size() || streams[stream_index]->public_states()[cursors[stream_index]].id < streams[first_stream]->public_states()[cursors[first_stream]].id)
+							first_stream = stream_index;
+					}
+					if (first_stream == streams.size())
+						break;
+					const auto id = streams[first_stream]->public_states()[cursors[first_stream]].id;
+					const auto& first_candidate = streams[first_stream]->public_states()[cursors[first_stream]];
+					record_discovery_descriptor_copy(first_candidate, diagnostics);
+					output.push_back(first_candidate);
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+					{
+						const auto& stream = *streams[stream_index];
+						if (cursors[stream_index] == stream.public_state_count() || stream.public_states()[cursors[stream_index]].id != id)
+							continue;
+						const auto& candidate = stream.public_states()[cursors[stream_index]];
+						if (!MultiwaySolverCoordinator::public_state_candidates_compatible(output.back(), candidate))
+							throw std::invalid_argument("multiway discovery merge found conflicting public-state descriptors");
+						if (public_state_candidate_less(candidate, output.back()))
+						{
+							record_discovery_descriptor_copy(candidate, diagnostics);
+							output.back() = candidate;
+						}
+						++cursors[stream_index];
+					}
 				}
 			}
 			diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
@@ -235,12 +305,20 @@ namespace texas::solver::multiway
 			std::vector<std::size_t>& cursors,
 			DiscoveryMergeDiagnosticsDelta& diagnostics)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows");
 			const auto merge_started = std::chrono::steady_clock::now();
 			if (streams.size() == 1U)
 			{
 				const auto& stream = *streams.front();
-				output.assign(stream.rows().begin(), stream.rows().end());
-				cursors.assign(1U, stream.row_count());
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.single_stream");
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.single_stream.copy");
+					output.assign(stream.rows().begin(), stream.rows().end());
+				}
+				{
+					TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.single_stream.cursor");
+					cursors.assign(1U, stream.row_count());
+				}
 				diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - merge_started)
@@ -253,31 +331,37 @@ namespace texas::solver::multiway
 			std::size_t total = 0U;
 			for (const auto* stream : streams)
 				total += stream->row_count();
-			output.reserve(total);
-			cursors.assign(streams.size(), 0U);
-			while (true)
 			{
-				std::size_t first_stream = streams.size();
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.prepare_output");
+				output.reserve(total);
+			}
+			cursors.assign(streams.size(), 0U);
+			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.multi_stream");
+				while (true)
 				{
-					if (cursors[stream_index] == streams[stream_index]->row_count())
-						continue;
-					if (first_stream == streams.size() || streams[stream_index]->rows()[cursors[stream_index]].infoset < streams[first_stream]->rows()[cursors[first_stream]].infoset)
-						first_stream = stream_index;
-				}
-				if (first_stream == streams.size())
-					break;
-				const auto infoset = streams[first_stream]->rows()[cursors[first_stream]].infoset;
-				output.push_back(streams[first_stream]->rows()[cursors[first_stream]]);
-				for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
-				{
-					const auto& stream = *streams[stream_index];
-					if (cursors[stream_index] == stream.row_count() || stream.rows()[cursors[stream_index]].infoset != infoset)
-						continue;
-					const auto& candidate = stream.rows()[cursors[stream_index]];
-					if (candidate.bucket_count != output.back().bucket_count || candidate.action_count != output.back().action_count)
-						throw std::invalid_argument("multiway discovery merge found conflicting row shapes");
-					++cursors[stream_index];
+					std::size_t first_stream = streams.size();
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+					{
+						if (cursors[stream_index] == streams[stream_index]->row_count())
+							continue;
+						if (first_stream == streams.size() || streams[stream_index]->rows()[cursors[stream_index]].infoset < streams[first_stream]->rows()[cursors[first_stream]].infoset)
+							first_stream = stream_index;
+					}
+					if (first_stream == streams.size())
+						break;
+					const auto infoset = streams[first_stream]->rows()[cursors[first_stream]].infoset;
+					output.push_back(streams[first_stream]->rows()[cursors[first_stream]]);
+					for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+					{
+						const auto& stream = *streams[stream_index];
+						if (cursors[stream_index] == stream.row_count() || stream.rows()[cursors[stream_index]].infoset != infoset)
+							continue;
+						const auto& candidate = stream.rows()[cursors[stream_index]];
+						if (candidate.bucket_count != output.back().bucket_count || candidate.action_count != output.back().action_count)
+							throw std::invalid_argument("multiway discovery merge found conflicting row shapes");
+						++cursors[stream_index];
+					}
 				}
 			}
 			diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
@@ -298,6 +382,7 @@ namespace texas::solver::multiway
 			std::vector<std::uint8_t>& colors,
 			std::vector<std::size_t>& stack)
 		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.parent_order.build");
 			order.resize(candidates.size());
 			parent_indexes.assign(candidates.size(), candidates.size());
 			depths.assign(candidates.size(), 0U);
@@ -427,6 +512,12 @@ namespace texas::solver::multiway
 			diagnostics->discovery_row_merge_nanoseconds += delta.row_merge_nanoseconds;
 			diagnostics->discovery_public_state_source_elements += delta.public_state_source_elements;
 			diagnostics->discovery_row_source_elements += delta.row_source_elements;
+			diagnostics->discovery_public_descriptor_copy_count += delta.public_descriptor_copy_count;
+			diagnostics->discovery_public_descriptor_copy_bytes += delta.public_descriptor_copy_bytes;
+			diagnostics->discovery_nested_descriptor_copy_count += delta.nested_descriptor_copy_count;
+			diagnostics->discovery_nested_descriptor_copy_bytes += delta.nested_descriptor_copy_bytes;
+			diagnostics->discovery_output_capacity_reuse_events += delta.output_capacity_reuse_events;
+			diagnostics->discovery_output_capacity_reuse_bytes += delta.output_capacity_reuse_bytes;
 			diagnostics->discovery_public_state_duplicate_candidates += delta.public_state_duplicate_candidates;
 			diagnostics->discovery_row_duplicate_candidates += delta.row_duplicate_candidates;
 			if (one_stream)
@@ -450,6 +541,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayDiscoveryStream::try_append_public_state(const MultiwayPublicStateDescriptor& state)
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.append_public_state");
 		if (public_states_.size() >= capacity_)
 		{
 			overflowed_ = true;
@@ -461,6 +553,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayDiscoveryStream::try_append_row(const MultiwaySparseRowShape& shape) noexcept
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.append_row");
 		if (rows_.size() >= capacity_)
 		{
 			overflowed_ = true;
@@ -502,36 +595,46 @@ namespace texas::solver::multiway
 
 	void MultiwayDiscoveryStream::prepare_for_merge()
 	{
-		sort_fixed_order();
-		auto public_state_output = public_states_.begin();
-		for (auto candidate = public_states_.begin(); candidate != public_states_.end(); ++candidate)
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.prepare_for_merge");
 		{
-			if (public_state_output != public_states_.begin() && (public_state_output - 1)->id == candidate->id)
-			{
-				if (!MultiwaySolverCoordinator::public_state_candidates_compatible(*(public_state_output - 1), *candidate))
-					throw std::invalid_argument("multiway worker discovery found conflicting public-state descriptors");
-				continue;
-			}
-			if (public_state_output != candidate)
-				*public_state_output = std::move(*candidate);
-			++public_state_output;
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.sort");
+			sort_fixed_order();
 		}
-		public_states_.erase(public_state_output, public_states_.end());
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.deduplicate_public_states");
+			auto public_state_output = public_states_.begin();
+			for (auto candidate = public_states_.begin(); candidate != public_states_.end(); ++candidate)
+			{
+				if (public_state_output != public_states_.begin() && (public_state_output - 1)->id == candidate->id)
+				{
+					if (!MultiwaySolverCoordinator::public_state_candidates_compatible(*(public_state_output - 1), *candidate))
+						throw std::invalid_argument("multiway worker discovery found conflicting public-state descriptors");
+					continue;
+				}
+				if (public_state_output != candidate)
+					*public_state_output = std::move(*candidate);
+				++public_state_output;
+			}
+			public_states_.erase(public_state_output, public_states_.end());
+		}
 
-		auto row_output = rows_.begin();
-		for (auto candidate = rows_.begin(); candidate != rows_.end(); ++candidate)
 		{
-			if (row_output != rows_.begin() && (row_output - 1)->infoset == candidate->infoset)
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.deduplicate_rows");
+			auto row_output = rows_.begin();
+			for (auto candidate = rows_.begin(); candidate != rows_.end(); ++candidate)
 			{
-				if ((row_output - 1)->bucket_count != candidate->bucket_count || (row_output - 1)->action_count != candidate->action_count)
-					throw std::invalid_argument("multiway worker discovery found conflicting row shapes");
-				continue;
+				if (row_output != rows_.begin() && (row_output - 1)->infoset == candidate->infoset)
+				{
+					if ((row_output - 1)->bucket_count != candidate->bucket_count || (row_output - 1)->action_count != candidate->action_count)
+						throw std::invalid_argument("multiway worker discovery found conflicting row shapes");
+					continue;
+				}
+				if (row_output != candidate)
+					*row_output = *candidate;
+				++row_output;
 			}
-			if (row_output != candidate)
-				*row_output = *candidate;
-			++row_output;
+			rows_.erase(row_output, rows_.end());
 		}
-		rows_.erase(row_output, rows_.end());
 	}
 
 	void MultiwayTraversalPruningConfig::validate() const
@@ -752,6 +855,7 @@ namespace texas::solver::multiway
 		const MultiwayPublicStateDescriptor& state,
 		TraversalContext& context) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.evaluate_leaf");
 		if (context.discovery_stream != nullptr)
 			context.discovery_stream->record_leaf_visit();
 		else
@@ -858,6 +962,7 @@ namespace texas::solver::multiway
 		std::uint32_t public_chance_depth,
 		TraversalContext& context) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_decision");
 		if (!context.accepted)
 			return 0.0;
 		const auto actor = state.betting.current_player;
@@ -1136,6 +1241,7 @@ namespace texas::solver::multiway
 		std::uint32_t public_chance_depth,
 		TraversalContext& context) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traverse_public_chance");
 		MultiwaySampledPublicBoardChance sampled;
 		{
 			MultiwaySearchProfileScope profile_scope(
@@ -1242,6 +1348,7 @@ namespace texas::solver::multiway
 		std::vector<MultiwayActionDescriptor>* action_menu_scratch,
 		MultiwayDiscoveryStream* discovery_stream) const
 	{
+		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.trajectory_run");
 		const auto& root_state = root_->public_state;
 		if (std::find(root_->seat_order.begin(), root_->seat_order.end(), traverser) == root_->seat_order.end() || root_state.legal_actions.empty())
 		{
@@ -1303,8 +1410,9 @@ namespace texas::solver::multiway
 		std::uint32_t worker_count,
 		std::size_t worker_delta_capacity,
 		MultiwaySearchProfileMode profile_mode,
-		bool pin_workers, bool immutable_epochs, MultiwaySchedulerMode scheduler_mode)
-		: traversal_(std::move(traversal)), coordinator_(&coordinator), worker_count_(worker_count), worker_delta_capacity_(worker_delta_capacity), profile_mode_(profile_mode), pin_workers_(pin_workers), immutable_epochs_(immutable_epochs), scheduler_mode_(scheduler_mode)
+		bool pin_workers, bool immutable_epochs, MultiwaySchedulerMode scheduler_mode,
+		std::uint32_t dynamic_chunk_size)
+		: traversal_(std::move(traversal)), coordinator_(&coordinator), worker_count_(worker_count), worker_delta_capacity_(worker_delta_capacity), profile_mode_(profile_mode), pin_workers_(pin_workers), immutable_epochs_(immutable_epochs), scheduler_mode_(scheduler_mode), dynamic_chunk_size_(dynamic_chunk_size)
 	{
 		if (worker_count_ == 0U || worker_delta_capacity_ == 0U)
 		{
@@ -1318,6 +1426,89 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway root batch runner has an invalid scheduler mode");
 		}
+		if (dynamic_chunk_size_ == 0U)
+		{
+			throw std::invalid_argument("multiway root batch runner requires a positive dynamic chunk size");
+		}
+		worker_affinity_groups_.assign(worker_count_, 0U);
+		worker_affinity_masks_.assign(worker_count_, 0U);
+#if defined(_WIN32)
+		if (pin_workers_)
+		{
+			struct ProcessorPlacement
+			{
+				std::uint16_t group = 0U;
+				std::uint16_t processor = 0U;
+				std::uint64_t mask = 0U;
+			};
+			std::vector<ProcessorPlacement> physical;
+			std::vector<ProcessorPlacement> logical;
+			DWORD buffer_bytes = 0U;
+			if (::GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &buffer_bytes) == FALSE &&
+				::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			{
+				std::vector<std::uint8_t> buffer(buffer_bytes);
+				if (::GetLogicalProcessorInformationEx(
+						RelationProcessorCore,
+						reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()),
+						&buffer_bytes) != FALSE)
+				{
+					const auto total_buffer_bytes = static_cast<std::size_t>(buffer_bytes);
+					std::size_t offset = 0U;
+					while (offset <= total_buffer_bytes &&
+						total_buffer_bytes - offset >= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX))
+					{
+						const auto* information = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buffer.data() + offset);
+						const auto entry_size = static_cast<std::size_t>(information->Size);
+						if (entry_size < sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX) || entry_size > total_buffer_bytes - offset)
+							break;
+						if (information->Relationship == RelationProcessorCore)
+						{
+							for (WORD group_index = 0U; group_index < information->Processor.GroupCount; ++group_index)
+							{
+								const auto group = information->Processor.GroupMask[group_index].Group;
+								const auto mask = information->Processor.GroupMask[group_index].Mask;
+								bool first_logical_processor = true;
+								for (std::uint16_t processor = 0U; processor < sizeof(KAFFINITY) * 8U; ++processor)
+								{
+									const auto bit = static_cast<KAFFINITY>(1) << processor;
+									if ((mask & bit) == 0U)
+										continue;
+									const ProcessorPlacement placement{
+										static_cast<std::uint16_t>(group), processor, static_cast<std::uint64_t>(bit) };
+									logical.push_back(placement);
+									if (first_logical_processor)
+										physical.push_back(placement);
+									first_logical_processor = false;
+								}
+							}
+						}
+						offset += entry_size;
+					}
+				}
+			}
+			std::vector<ProcessorPlacement> selected;
+			selected.reserve(logical.size());
+			for (const auto& placement : physical)
+				selected.push_back(placement);
+			for (const auto& placement : logical)
+			{
+				const auto already_selected = std::find_if(selected.begin(), selected.end(), [&placement](const auto& existing) {
+					return existing.group == placement.group && existing.processor == placement.processor;
+				});
+				if (already_selected == selected.end())
+					selected.push_back(placement);
+			}
+			if (selected.size() >= worker_count_)
+			{
+				for (std::size_t worker = 0U; worker < worker_count_; ++worker)
+				{
+					worker_affinity_groups_[worker] = selected[worker].group;
+					worker_affinity_masks_[worker] = selected[worker].mask;
+				}
+			}
+		}
+#endif
 		worker_scratch_.reserve(worker_count_);
 		worker_stream_views_.reserve(worker_count_);
 		continuation_stream_views_.reserve(worker_count_);
@@ -1330,11 +1521,17 @@ namespace texas::solver::multiway
 		{
 			worker_work_cvs_.push_back(std::make_unique<std::condition_variable>());
 		}
-		const auto per_worker_capacity = worker_delta_capacity_ / worker_count_ + (worker_delta_capacity_ % worker_count_ == 0U ? 0U : 1U);
-		const auto discovery_capacity = immutable_epochs_ ? std::max<std::size_t>(64U, per_worker_capacity * 4U) : 0U;
+		const auto legacy_discovery_capacity = worker_delta_capacity_ > std::numeric_limits<std::size_t>::max() / 4U
+			? std::numeric_limits<std::size_t>::max()
+			: worker_delta_capacity_ * 4U;
+		const auto discovery_capacity = immutable_epochs_
+			? (coordinator.limits().max_discovery_entries != 0U
+				? coordinator.limits().max_discovery_entries
+				: std::max<std::size_t>(64U, legacy_discovery_capacity))
+			: 0U;
 		for (std::uint32_t worker = 0; worker < worker_count_; ++worker)
 		{
-			worker_scratch_.emplace_back(worker, per_worker_capacity, discovery_capacity);
+			worker_scratch_.emplace_back(worker, worker_delta_capacity_, discovery_capacity);
 			worker_stream_views_.push_back(&worker_scratch_.back().stream);
 			continuation_stream_views_.push_back(&worker_scratch_.back().continuation_stream);
 			discovery_stream_views_.push_back(&worker_scratch_.back().discovery);
@@ -1369,16 +1566,20 @@ namespace texas::solver::multiway
 		TEXASSOLVER_TRACY_SET_THREAD_NAME(
 			worker_index < std::size(worker_names) ? worker_names[worker_index] : "mw.worker");
 #if defined(_WIN32)
-		if (pin_workers_ && worker_index < sizeof(DWORD_PTR) * 8U)
+		if (pin_workers_ && worker_index < worker_affinity_masks_.size() && worker_affinity_masks_[worker_index] != 0U)
 		{
-			const auto mask = static_cast<DWORD_PTR>(1) << worker_index;
-			worker_scratch.affinity_mask = static_cast<std::uint64_t>(mask);
-			worker_scratch.affinity_succeeded = ::SetThreadAffinityMask(::GetCurrentThread(), mask) != 0;
+			GROUP_AFFINITY affinity{};
+			affinity.Mask = static_cast<KAFFINITY>(worker_affinity_masks_[worker_index]);
+			affinity.Group = worker_affinity_groups_[worker_index];
+			worker_scratch.affinity_mask = worker_affinity_masks_[worker_index];
+			worker_scratch.affinity_succeeded = ::SetThreadGroupAffinity(::GetCurrentThread(), &affinity, nullptr) != FALSE;
 		}
 #endif
 		auto current_processor = []() noexcept -> std::uint32_t {
 #if defined(_WIN32)
-			return static_cast<std::uint32_t>(::GetCurrentProcessorNumber());
+			PROCESSOR_NUMBER processor{};
+			::GetCurrentProcessorNumberEx(&processor);
+			return static_cast<std::uint32_t>(processor.Group) * (sizeof(KAFFINITY) * 8U) + processor.Number;
 #elif defined(__linux__)
 			const auto processor = ::sched_getcpu();
 			return processor < 0 ? 0U : static_cast<std::uint32_t>(processor);
@@ -1486,16 +1687,23 @@ namespace texas::solver::multiway
 							TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.traversal");
 							if (scheduler_mode_ == MultiwaySchedulerMode::Fixed)
 							{
+								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.fixed");
 								process_range(worker_batches_[worker_index].trajectories);
 							}
 							else
 							{
+								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.dynamic");
 								while (!cancelled_.load(std::memory_order_relaxed))
 								{
+									const auto claim_started = steady_now_nanoseconds();
 									const auto chunk_index = next_dynamic_chunk_.fetch_add(1U, std::memory_order_relaxed);
+									const auto claim_finished = steady_now_nanoseconds();
+									scratch.scheduler_claim_nanoseconds += claim_finished >= claim_started
+										? claim_finished - claim_started
+										: 0U;
 									if (chunk_index >= chunk_count)
 										break;
-									process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index));
+									process_range(MultiwayScheduler::dynamic_chunk_range(trajectory_count, chunk_index, dynamic_chunk_size_));
 								}
 							}
 						}
@@ -1582,7 +1790,7 @@ namespace texas::solver::multiway
 				active_batch_count_ = batch_count;
 				active_trajectory_count_ = trajectory_count;
 				active_chunk_count_ = scheduler_mode_ == MultiwaySchedulerMode::Dynamic
-					? MultiwayScheduler::dynamic_chunk_count(trajectory_count)
+					? MultiwayScheduler::dynamic_chunk_count(trajectory_count, dynamic_chunk_size_)
 					: 0U;
 				next_dynamic_chunk_.store(0U, std::memory_order_relaxed);
 				active_first_trajectory_id_ = first_trajectory_id;
@@ -1619,7 +1827,10 @@ namespace texas::solver::multiway
 		result.run.first_trajectory_id = first_trajectory_id;
 		result.run.trajectory_count = trajectory_count;
 		result.run.schedule_fingerprint = multiway_deterministic_schedule_fingerprint(
-			worker_count_, seed, first_trajectory_id, trajectory_count);
+			worker_count_, seed, first_trajectory_id, trajectory_count,
+			scheduler_mode_, dynamic_chunk_size_);
+		result.run.scheduler_mode = scheduler_mode_;
+		result.run.dynamic_chunk_size = dynamic_chunk_size_;
 		MultiwaySearchProfile batch_profile(profile_mode_);
 		std::uint64_t terminal_visits = 0U;
 		std::uint64_t leaf_visits = 0U;
@@ -1631,6 +1842,7 @@ namespace texas::solver::multiway
 		result.worker_sort_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_wake_latency_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_cv_wait_nanoseconds_by_worker.resize(worker_scratch_.size());
+		result.worker_scheduler_claim_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_completion_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_tail_idle_nanoseconds_by_worker.resize(worker_scratch_.size());
 		result.worker_regret_delta_entries.resize(worker_scratch_.size());
@@ -1653,6 +1865,7 @@ namespace texas::solver::multiway
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.collect");
 			for (std::size_t worker_index = 0U; worker_index < worker_scratch_.size(); ++worker_index)
 			{
+				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.collect_worker");
 				auto& scratch = worker_scratch_[worker_index];
 				result.trajectories_attempted += scratch.attempted;
 				result.trajectories_accepted += scratch.accepted;
@@ -1693,6 +1906,7 @@ namespace texas::solver::multiway
 				result.worker_sort_nanoseconds_by_worker[worker_index] = scratch.sort_nanoseconds;
 				result.worker_wake_latency_nanoseconds_by_worker[worker_index] = scratch.wake_latency_nanoseconds;
 				result.worker_cv_wait_nanoseconds_by_worker[worker_index] = scratch.cv_wait_nanoseconds;
+				result.worker_scheduler_claim_nanoseconds_by_worker[worker_index] = scratch.scheduler_claim_nanoseconds;
 				result.worker_completion_nanoseconds_by_worker[worker_index] = scratch.completion_nanoseconds;
 				result.worker_tail_idle_nanoseconds_by_worker[worker_index] =
 					batch_completion_timestamp > scratch.completion_timestamp_nanoseconds
@@ -1716,6 +1930,7 @@ namespace texas::solver::multiway
 				result.delta_sort_nanoseconds += scratch.sort_nanoseconds;
 				result.worker_wake_latency_nanoseconds += scratch.wake_latency_nanoseconds;
 				result.worker_cv_wait_nanoseconds += scratch.cv_wait_nanoseconds;
+				result.worker_scheduler_claim_nanoseconds += scratch.scheduler_claim_nanoseconds;
 				result.worker_completion_nanoseconds += scratch.completion_nanoseconds;
 				result.worker_tail_idle_nanoseconds += result.worker_tail_idle_nanoseconds_by_worker[worker_index];
 				result.minimum_worker_trajectories = std::min(result.minimum_worker_trajectories, scratch.attempted);
@@ -1742,6 +1957,8 @@ namespace texas::solver::multiway
 			result.profile = batch_profile.snapshot();
 			return result;
 		}
+		MultiwayAllocationProbe coordinator_allocation_probe;
+		MultiwayAllocationProbeScope coordinator_allocation_scope(coordinator_allocation_probe);
 		if (immutable_epochs_)
 		{
 			const auto admission_start = std::chrono::steady_clock::now();
@@ -1755,6 +1972,9 @@ namespace texas::solver::multiway
 					{
 						result.discovery_capacity_exhausted = true;
 						result.clean = false;
+						const auto allocation_snapshot = coordinator_allocation_probe.snapshot();
+						result.coordinator_allocation_count = allocation_snapshot.allocation_count;
+						result.coordinator_allocated_bytes = allocation_snapshot.allocated_bytes;
 						result.profile = batch_profile.snapshot();
 						return result;
 					}
@@ -1838,6 +2058,9 @@ namespace texas::solver::multiway
 			coordinator_->diagnostics().last_merged_stream_fingerprint;
 		result.coordinator_lock_wait_nanoseconds =
 			coordinator_->diagnostics().coordinator_lock_wait_nanoseconds - coordinator_lock_wait_before;
+		const auto allocation_snapshot = coordinator_allocation_probe.snapshot();
+		result.coordinator_allocation_count = allocation_snapshot.allocation_count;
+		result.coordinator_allocated_bytes = allocation_snapshot.allocated_bytes;
 		result.profile = batch_profile.snapshot();
 		result.clean = result.trajectories_discarded == 0U && result.trajectories_attempted == result.trajectories_accepted && (result.delta_entries_merged == 0U || result.run.merged_stream_fingerprint != 0U);
 		return result;
