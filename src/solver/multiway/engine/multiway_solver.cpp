@@ -1018,6 +1018,7 @@ namespace texas::solver::multiway
 		const auto state_preflight_started = std::chrono::steady_clock::now();
 		admission_processed_states_.assign(public_states.size(), 0U);
 		admission_new_states_.assign(public_states.size(), 0U);
+		admission_existing_nodes_.assign(public_states.size(), nullptr);
 		admission_new_rows_.assign(rows.size(), 0U);
 		admission_new_row_streets_.assign(rows.size(), 0U);
 		admission_row_state_indexes_.assign(rows.size(), public_states.size());
@@ -1038,7 +1039,7 @@ namespace texas::solver::multiway
 		const auto classification_started = std::chrono::steady_clock::now();
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.classify_public_states");
-			public_catalog_.classify_new_states(public_states, admission_new_states_);
+			public_catalog_.classify_new_states(public_states, admission_new_states_, admission_existing_nodes_);
 		}
 		if (admission_diagnostics_ != nullptr)
 			admission_diagnostics_->state_catalog_classification_nanoseconds += static_cast<std::uint64_t>(
@@ -1067,9 +1068,9 @@ namespace texas::solver::multiway
 					++admission_diagnostics_->existing_public_state_checks;
 					++admission_diagnostics_->packed_public_state_compatibility_checks;
 				}
-				if (!public_catalog_.compatible_with_descriptor(state.id, state))
+				if (!public_catalog_.compatible_with_descriptor(admission_existing_nodes_[state_index], state))
 					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
-				const auto* existing = public_catalog_.node(state.id);
+				const auto* existing = admission_existing_nodes_[state_index];
 				if (existing == nullptr)
 					throw std::logic_error("multiway public state classification lost its catalog node");
 				const auto existing_state = make_multiway_fixed_state(state.betting);

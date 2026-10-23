@@ -200,17 +200,24 @@ namespace texas::solver::multiway
 
 	void MultiwayPublicCatalog::classify_new_states(
 		const std::vector<MultiwayPublicStateDescriptor>& states,
-		std::vector<std::uint8_t>& new_state_flags) const
+		std::vector<std::uint8_t>& new_state_flags,
+		std::vector<const MultiwayPackedPublicNode*>& existing_nodes) const
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.catalog.classify_new_states");
 		new_state_flags.assign(states.size(), 1U);
+		existing_nodes.assign(states.size(), nullptr);
 		std::size_t catalog_index = 0U;
 		for (std::size_t state_index = 0U; state_index < states.size(); ++state_index)
 		{
 			while (catalog_index < index_.size() && index_[catalog_index].id < states[state_index].id)
 				++catalog_index;
 			if (catalog_index < index_.size() && index_[catalog_index].id == states[state_index].id)
+			{
 				new_state_flags[state_index] = 0U;
+				const auto node_index = index_[catalog_index].node_index;
+				if (node_index < nodes_.size())
+					existing_nodes[state_index] = &nodes_[node_index];
+			}
 		}
 	}
 
@@ -218,7 +225,9 @@ namespace texas::solver::multiway
 	{
 		const auto found = std::lower_bound(index_.begin(), index_.end(), id,
 			[](const IndexEntry& entry, MultiwayPublicStateId key) { return entry.id < key; });
-		return found == index_.end() || found->id != id ? nullptr : &nodes_[found->node_index];
+		return found == index_.end() || found->id != id || found->node_index >= nodes_.size()
+			? nullptr
+			: &nodes_[found->node_index];
 	}
 
 	bool MultiwayPublicCatalog::contains(MultiwayPublicStateId id) const noexcept
@@ -227,10 +236,9 @@ namespace texas::solver::multiway
 	}
 
 	bool MultiwayPublicCatalog::compatible_with_descriptor(
-		MultiwayPublicStateId id,
+		const MultiwayPackedPublicNode* packed,
 		const MultiwayPublicStateDescriptor& candidate) const noexcept
 	{
-		const auto* packed = node(id);
 		if (packed == nullptr || packed->legal_menu_handle >= menus_.size() ||
 			packed->id != candidate.id || packed->parent_id != candidate.parent_id ||
 			packed->canonical_history_id != candidate.canonical_history_id ||
@@ -281,6 +289,13 @@ namespace texas::solver::multiway
 		return same_packed_incoming_edge(*packed, candidate.incoming_edge) ||
 			(packed->incoming_kind != MultiwayPublicParentEdgeKind::BettingAction &&
 				candidate.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction);
+	}
+
+	bool MultiwayPublicCatalog::compatible_with_descriptor(
+		MultiwayPublicStateId id,
+		const MultiwayPublicStateDescriptor& candidate) const noexcept
+	{
+		return compatible_with_descriptor(node(id), candidate);
 	}
 
 	MultiwayPackedPublicNode MultiwayPublicCatalog::pack_node(

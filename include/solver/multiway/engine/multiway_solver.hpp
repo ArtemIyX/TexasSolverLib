@@ -264,12 +264,16 @@ namespace texas::solver::multiway
 		void validate_menu_index_debug() const noexcept;
 		void classify_new_states(
 			const std::vector<MultiwayPublicStateDescriptor>& states,
-			std::vector<std::uint8_t>& new_state_flags) const;
+			std::vector<std::uint8_t>& new_state_flags,
+			std::vector<const MultiwayPackedPublicNode*>& existing_nodes) const;
 		[[nodiscard]] MultiwayPackedPublicNode pack_node(
 			const MultiwayPublicStateDescriptor& state,
 			std::uint32_t menu_handle,
 			MultiwayAdmissionDiagnostics* diagnostics) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] bool compatible_with_descriptor(
+			const MultiwayPackedPublicNode* packed,
+			const MultiwayPublicStateDescriptor& candidate) const noexcept;
 		[[nodiscard]] bool compatible_with_descriptor(
 			MultiwayPublicStateId id,
 			const MultiwayPublicStateDescriptor& candidate) const noexcept;
@@ -898,6 +902,7 @@ namespace texas::solver::multiway
 		std::vector<PendingMergeCell> pending_merge_cells_;
 		std::vector<std::uint8_t> admission_processed_states_;
 		std::vector<std::uint8_t> admission_new_states_;
+		std::vector<const MultiwayPackedPublicNode*> admission_existing_nodes_;
 		std::vector<std::uint8_t> admission_new_rows_;
 		std::vector<std::uint8_t> admission_new_row_streets_;
 		std::vector<std::size_t> admission_row_state_indexes_;

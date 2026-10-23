@@ -905,16 +905,24 @@ TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_kno
 TEST_CASE(multiway_solver_prepared_admission_uses_packed_existing_state_compatibility)
 {
 	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	const auto root = root_public_state();
 	const auto child = checked_action_child_public_state();
-	coordinator.admit_public_state(child);
+	std::vector<texas::MultiwayPublicStateDescriptor> states = { root, child };
+	std::sort(states.begin(), states.end(), [](const auto& left, const auto& right) { return left.id < right.id; });
+	const auto root_index = static_cast<std::size_t>(std::find_if(states.begin(), states.end(), [&](const auto& state) {
+		return state.id == root.id;
+	}) - states.begin());
+	const auto child_index = static_cast<std::size_t>(std::find_if(states.begin(), states.end(), [&](const auto& state) {
+		return state.id == child.id;
+	}) - states.begin());
 
 	texas::MultiwayAdmissionDiagnostics diagnostics;
 	coordinator.set_admission_diagnostics(&diagnostics);
-	coordinator.admit_prepared_batch({ child }, { 0U }, {});
+	coordinator.admit_prepared_batch(states, { root_index, child_index }, {});
 
 	EXPECT_EQ(diagnostics.existing_public_state_checks, 1U);
 	EXPECT_EQ(diagnostics.packed_public_state_compatibility_checks, 1U);
-	EXPECT_EQ(diagnostics.descriptor_reconstructions, 0U);
+	EXPECT_EQ(diagnostics.new_public_state_validations, 1U);
 	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 2U);
 }
 
