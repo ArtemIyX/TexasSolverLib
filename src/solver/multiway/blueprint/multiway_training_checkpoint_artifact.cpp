@@ -22,7 +22,7 @@ namespace texas::solver::multiway
 		namespace portable = texas::core::portable;
 
 		constexpr std::array<char, 8> kMagic = { 'M', 'W', 'T', 'C', '0', '0', '0', '1' };
-		constexpr std::uint32_t kSchema = 2U;
+		constexpr std::uint32_t kSchema = 3U;
 		constexpr std::uint64_t kMaxFileBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
 		constexpr std::uint32_t kMaxStates = 100000000U;
 		constexpr std::uint32_t kMaxRows = 100000000U;
@@ -540,6 +540,13 @@ namespace texas::solver::multiway
 			append(hash, shape.bucket_count);
 			append(hash, shape.action_count);
 		}
+		append(hash, checkpoint.coordinator.storage.active_pages.size());
+		for (const auto& page : checkpoint.coordinator.storage.active_pages)
+		{
+			append(hash, page.infoset.public_state.value);
+			append(hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(page.infoset.seat)));
+			append(hash, page.page_index);
+		}
 		append(hash, checkpoint.coordinator.storage.regrets.size());
 		for (const auto value : checkpoint.coordinator.storage.regrets)
 			append_double(hash, value);
@@ -622,6 +629,13 @@ namespace texas::solver::multiway
 				payload.write_i32(shape.infoset.seat);
 				payload.write_u32(shape.bucket_count);
 				payload.write_u8(shape.action_count);
+			}
+			payload.write_u32(static_cast<std::uint32_t>(checkpoint.coordinator.storage.active_pages.size()));
+			for (const auto& page : checkpoint.coordinator.storage.active_pages)
+			{
+				payload.write_u64(page.infoset.public_state.value);
+				payload.write_i32(page.infoset.seat);
+				payload.write_u32(page.page_index);
 			}
 			if (telemetry != nullptr)
 				record_max(&telemetry->row_shape_bytes, payload.bytes_written() - row_shape_start);
@@ -712,6 +726,11 @@ namespace texas::solver::multiway
 				throw std::length_error("multiway training checkpoint row shapes are invalid");
 			expected_values += count;
 		}
+		std::uint32_t active_pages = 0U;
+		require(portable::read_u32(in, active_pages) && active_pages <= kMaxRows);
+		result.coordinator.storage.active_pages.resize(active_pages);
+		for (auto& page : result.coordinator.storage.active_pages)
+			require(portable::read_u64(in, page.infoset.public_state.value) && portable::read_i32(in, page.infoset.seat) && portable::read_u32(in, page.page_index));
 		std::uint64_t values = 0U;
 		const auto expected_u64 = static_cast<std::uint64_t>(expected_values);
 		const auto maximum_values = kMaxFileBytes / sizeof(double);

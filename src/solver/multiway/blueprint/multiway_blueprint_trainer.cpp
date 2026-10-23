@@ -252,7 +252,8 @@ namespace texas::solver::multiway
 		append_u64(runtime_hash, limits.max_sparse_rows);
 		append_u64(runtime_hash, limits.max_sparse_values);
 		append_u64(runtime_hash, limits.max_worker_delta_entries);
-		append_u64(runtime_hash, limits.max_batches);
+		// max_batches is a run horizon, not checkpoint/model semantics. Excluding
+		// it permits a checkpoint to resume with a different remaining batch count.
 		append_u64(runtime_hash, static_cast<std::uint8_t>(limits.storage_backend));
 		append_u64(runtime_hash, limits.compact_page_width);
 		append_u64(runtime_hash, limits.max_discovery_entries);

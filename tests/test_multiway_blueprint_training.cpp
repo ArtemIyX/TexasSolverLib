@@ -40,6 +40,14 @@ TEST_CASE(multiway_training_identity_binds_storage_backend)
 	EXPECT_TRUE(reference.identity() != compact.identity());
 }
 
+TEST_CASE(multiway_training_identity_ignores_run_horizon_for_resume)
+{
+	texas::MultiwayBlueprintTrainingConfig reference;
+	auto resumed = reference;
+	resumed.limits.max_batches = reference.limits.max_batches + 7U;
+	EXPECT_EQ(reference.identity().combined_hash, resumed.identity().combined_hash);
+}
+
 TEST_CASE(multiway_initial_blueprint_root_is_six_player_preflop_state)
 {
 	texas::MultiwayPrivateConfig ranges;

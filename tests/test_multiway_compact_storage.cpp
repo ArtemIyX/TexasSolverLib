@@ -214,3 +214,18 @@ TEST_CASE(multiway_compact_storage_checkpoint_matches_scalar_action_major_refere
 		EXPECT_NEAR(checkpoint.strategy_sums[index], expected_strategy_sums[index], 1e-12);
 	}
 }
+
+TEST_CASE(multiway_compact_storage_checkpoint_preserves_active_pages)
+{
+	const texas::MultiwayInfosetId infoset{ { 21U }, 0 };
+	texas::solver::multiway::MultiwayCompactStorage storage(1U, 16U, 2U);
+	storage.admit_row({ infoset, 4U, 2U });
+	storage.admit_page(infoset, 1U);
+
+	texas::solver::multiway::MultiwaySparseStorageCheckpoint checkpoint;
+	storage.export_checkpoint(checkpoint);
+	EXPECT_EQ(checkpoint.active_pages.size(), 2U);
+	EXPECT_EQ(checkpoint.active_pages[0].infoset, infoset);
+	EXPECT_EQ(checkpoint.active_pages[0].page_index, 0U);
+	EXPECT_EQ(checkpoint.active_pages[1].page_index, 1U);
+}

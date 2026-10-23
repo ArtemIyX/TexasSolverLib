@@ -402,9 +402,13 @@ namespace texas::solver::multiway
 		}
 
 		output.shapes.clear();
+		output.active_pages.clear();
 		output.shapes.reserve(rows_.size());
+		output.active_pages.reserve(pages_.size());
 		output.regrets.assign(row_offsets.back(), 0.0);
 		output.strategy_sums.assign(row_offsets.back(), 0.0);
+		for (const auto& active_page : pages_)
+			output.active_pages.push_back({ active_page.infoset, active_page.page_index });
 
 		std::size_t page_cursor = 0U;
 		for (std::size_t row_index = 0U; row_index < rows_.size(); ++row_index)

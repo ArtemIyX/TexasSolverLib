@@ -2142,6 +2142,8 @@ namespace texas::solver::multiway
 			admit_infoset_row(shape);
 		if (compact_storage_ != nullptr)
 		{
+			for (const auto& page : checkpoint.storage.active_pages)
+				compact_storage_->admit_page(page.infoset, page.page_index);
 			std::size_t offset = 0U;
 			for (const auto& shape : checkpoint.storage.shapes)
 			{
@@ -2149,8 +2151,9 @@ namespace texas::solver::multiway
 				{
 					for (std::uint32_t bucket = 0; bucket < shape.bucket_count; ++bucket)
 					{
-						compact_storage_->apply_delta(shape.infoset, bucket, action,
-							checkpoint.storage.regrets[offset], checkpoint.storage.strategy_sums[offset]);
+						if (compact_storage_->has_page(shape.infoset, bucket / compact_storage_->page_width()))
+							compact_storage_->apply_delta(shape.infoset, bucket, action,
+								checkpoint.storage.regrets[offset], checkpoint.storage.strategy_sums[offset]);
 						++offset;
 					}
 				}

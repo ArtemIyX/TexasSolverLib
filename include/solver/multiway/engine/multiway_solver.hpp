@@ -406,7 +406,14 @@ namespace texas::solver::multiway
 
 	struct MultiwaySparseStorageCheckpoint
 	{
+		struct ActivePage
+		{
+			MultiwayInfosetId infoset{};
+			std::uint32_t page_index = 0U;
+		};
+
 		std::vector<MultiwaySparseRowShape> shapes;
+		std::vector<ActivePage> active_pages;
 		std::vector<double> regrets;
 		std::vector<double> strategy_sums;
 	};
