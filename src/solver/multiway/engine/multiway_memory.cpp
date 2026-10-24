@@ -626,6 +626,98 @@ namespace texas::solver::multiway
 		}
 	}
 
+	void MultiwayWorkingSetGateConfig::validate() const
+	{
+		if (hard_limit_bytes == 0U && resident_allowance_bytes != 0U)
+			throw std::invalid_argument("working-set resident allowance requires a hard limit");
+	}
+
+	void MultiwayWorkingSetMonitor::validate() const
+	{
+		gate.validate();
+		if (observer == nullptr && observer_context != nullptr)
+			throw std::invalid_argument("working-set observer context requires an observer");
+	}
+
+	MultiwayWorkingSetGateResult evaluate_multiway_working_set_preflight(
+		const MultiwayMemoryPreflight& preflight,
+		MultiwayWorkingSetGateConfig config) noexcept
+	{
+		MultiwayWorkingSetGateResult result;
+		result.phase = MultiwayWorkingSetGatePhase::Preflight;
+		result.hard_limit_bytes = config.hard_limit_bytes;
+		result.resident_allowance_bytes = config.resident_allowance_bytes;
+		result.estimated_working_set_bytes = preflight.estimate.estimated_working_set_peak_bytes;
+		result.compared_working_set_bytes = multiway_memory_saturating_add(
+			result.estimated_working_set_bytes, config.resident_allowance_bytes);
+		result.admission_stage = preflight.highest_admitted_stage;
+		if (preflight.status == MultiwayMemoryStatus::Rejected)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Rejected;
+			result.rejected_category = preflight.rejected_category;
+			result.message = preflight.message;
+			return result;
+		}
+		if (config.hard_limit_bytes == 0U)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Disabled;
+			result.message = "working-set gate disabled";
+			return result;
+		}
+		if (result.compared_working_set_bytes > config.hard_limit_bytes ||
+			result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwayWorkingSetGateStatus::Rejected;
+			result.rejected_category = "process working set";
+			result.message = "estimated working set plus resident allowance exceeds hard gate";
+			return result;
+		}
+		result.status = MultiwayWorkingSetGateStatus::Admitted;
+		result.message = "working-set preflight admitted";
+		return result;
+	}
+
+	MultiwayWorkingSetGateResult evaluate_multiway_working_set_runtime(
+		MultiwayProcessMemorySnapshot snapshot,
+		MultiwayWorkingSetGateConfig config) noexcept
+	{
+		MultiwayWorkingSetGateResult result;
+		result.phase = MultiwayWorkingSetGatePhase::Runtime;
+		result.hard_limit_bytes = config.hard_limit_bytes;
+		result.resident_allowance_bytes = config.resident_allowance_bytes;
+		result.observed_working_set_bytes = snapshot.current_working_set_available
+			? snapshot.current_working_set_bytes
+			: (snapshot.peak_working_set_available ? snapshot.peak_working_set_bytes : 0U);
+		if (snapshot.current_working_set_available && snapshot.peak_working_set_available)
+			result.observed_working_set_bytes = std::max(result.observed_working_set_bytes, snapshot.peak_working_set_bytes);
+		result.compared_working_set_bytes = multiway_memory_saturating_add(
+			result.observed_working_set_bytes, config.resident_allowance_bytes);
+		if (config.hard_limit_bytes == 0U)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Disabled;
+			result.message = "working-set gate disabled";
+			return result;
+		}
+		if (!snapshot.current_working_set_available && !snapshot.peak_working_set_available)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Unavailable;
+			result.rejected_category = "process working set telemetry";
+			result.message = "working-set metric unavailable";
+			return result;
+		}
+		if (result.compared_working_set_bytes > config.hard_limit_bytes ||
+			result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwayWorkingSetGateStatus::Rejected;
+			result.rejected_category = "process working set";
+			result.message = "observed working set plus resident allowance exceeds hard gate";
+			return result;
+		}
+		result.status = MultiwayWorkingSetGateStatus::Admitted;
+		result.message = "working-set runtime sample admitted";
+		return result;
+	}
+
 	MultiwayMemoryPreflight preflight_multiway_memory(
 		const MultiwaySolverLimits& limits,
 		MultiwayMemoryBudget budget)
@@ -639,24 +731,48 @@ namespace texas::solver::multiway
 		const MultiwayMemoryInputs& inputs)
 	{
 		budget.validate();
-		if (limits.worker_count != 0U && limits.max_worker_delta_entries > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count))
+		if (limits.worker_count != 0U && (limits.regret_delta_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count) || limits.continuation_delta_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count) || (limits.discovery_public_state_capacity() != 0U && limits.discovery_public_state_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count)) || (limits.discovery_row_capacity() != 0U && limits.discovery_row_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count))))
 		{
 			MultiwayMemoryPreflight result;
 			result.status = MultiwayMemoryStatus::Rejected;
 			result.estimate.total_bytes = std::numeric_limits<std::uint64_t>::max();
-			result.message = "worker-delta capacity overflows addressable memory";
+			result.rejected_category = "worker-stream capacity";
+			result.message = "worker-stream capacity overflows addressable memory";
 			return result;
 		}
 		limits.validate();
 
 		MultiwayMemoryPreflight result;
-		result.estimate.current_rss_bytes = inputs.resident_baseline_bytes;
+		const auto existing_working_set_bytes = inputs.existing_working_set_bytes != 0U
+			? inputs.existing_working_set_bytes
+			: inputs.resident_baseline_bytes;
+		const auto existing_private_committed_bytes = inputs.existing_private_committed_bytes;
+		const auto mapped_virtual_bytes = inputs.mapped_virtual_bytes != 0U
+			? inputs.mapped_virtual_bytes
+			: inputs.mapped_bucket_artifact_bytes;
+		const auto mapped_resident_allowance_bytes = inputs.mapped_resident_allowance_bytes;
+		result.estimate.current_rss_bytes = existing_working_set_bytes;
 		result.estimate.ledger.resident_baseline_bytes = inputs.resident_baseline_bytes;
 		result.estimate.ledger.bucket_registry_bytes = inputs.bucket_registry_bytes;
 		result.estimate.ledger.mapped_bucket_artifact_bytes = inputs.mapped_bucket_artifact_bytes;
 		result.estimate.ledger.checkpoint_peak_bytes = inputs.checkpoint_peak_bytes;
 		result.estimate.ledger.export_peak_bytes = inputs.export_peak_bytes;
 		result.estimate.ledger.allocator_overhead_bytes = inputs.allocator_overhead_bytes;
+		result.estimate.existing_working_set_bytes = existing_working_set_bytes;
+		result.estimate.existing_private_committed_bytes = existing_private_committed_bytes;
+		result.estimate.mapped_virtual_bytes = mapped_virtual_bytes;
+		result.estimate.mapped_resident_allowance_bytes = mapped_resident_allowance_bytes;
+		result.estimate.checkpoint_transient_bytes = inputs.checkpoint_peak_bytes;
+		result.estimate.export_transient_bytes = inputs.export_peak_bytes;
+		result.estimate.allocator_overhead_bytes = inputs.allocator_overhead_bytes;
+		result.estimate.actual_retained_capacity_bytes = inputs.retained_capacity_known ? inputs.retained_capacity_bytes : 0U;
+		result.estimate.ledger.existing_working_set_bytes = existing_working_set_bytes;
+		result.estimate.ledger.existing_private_committed_bytes = existing_private_committed_bytes;
+		result.estimate.ledger.mapped_virtual_bytes = mapped_virtual_bytes;
+		result.estimate.ledger.mapped_resident_allowance_bytes = mapped_resident_allowance_bytes;
+		result.estimate.ledger.checkpoint_transient_bytes = inputs.checkpoint_peak_bytes;
+		result.estimate.ledger.export_transient_bytes = inputs.export_peak_bytes;
+		result.estimate.ledger.actual_retained_capacity_bytes = result.estimate.actual_retained_capacity_bytes;
 		// Public descriptors contain vectors. Reserve a conservative 1 KiB per
 		// admitted state before the packed catalog replaces this compatibility
 		// representation.
@@ -677,27 +793,30 @@ namespace texas::solver::multiway
 			inputs.off_tree_menu_entries, sizeof(MultiwayActionDescriptor));
 		result.estimate.continuation_scratch_bytes = checked_multiply(
 			limits.worker_count, inputs.continuation_scratch_bytes_per_worker);
+		const auto aggregate_regret_entries = checked_multiply(
+			limits.worker_count, limits.regret_delta_capacity());
+		const auto aggregate_continuation_entries = checked_multiply(
+			limits.worker_count, limits.continuation_delta_capacity());
 		result.estimate.worker_delta_bytes = checked_add(
-			checked_multiply(
-				checked_multiply(limits.worker_count, limits.max_worker_delta_entries),
-				static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta))),
+			checked_multiply(aggregate_regret_entries, static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta))),
 			checked_multiply(
 				limits.worker_count,
 				static_cast<std::uint64_t>(
 					sizeof(MultiwayPrivateWorkerScratch) + sizeof(MultiwayWorkerDeltaStream) + sizeof(MultiwayContinuationDeltaStream) + sizeof(std::thread))));
 		result.estimate.worker_delta_bytes = checked_add(result.estimate.worker_delta_bytes,
-			checked_multiply(checked_multiply(limits.worker_count, limits.max_worker_delta_entries),
-				sizeof(MultiwayContinuationDelta)));
-		const auto aggregate_discovery_entries = checked_multiply(
-			limits.worker_count, limits.max_discovery_entries);
-		result.estimate.discovery_stream_bytes = checked_multiply(
-			aggregate_discovery_entries,
-			static_cast<std::uint64_t>(sizeof(MultiwayPublicStateDescriptor) + sizeof(MultiwaySparseRowShape)));
-		const auto aggregate_delta_entries = checked_multiply(
-			limits.worker_count, limits.max_worker_delta_entries);
-		result.estimate.merge_scratch_bytes = checked_multiply(
-			aggregate_delta_entries,
-			static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + sizeof(MultiwayContinuationDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*)));
+			checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta)));
+		const auto aggregate_public_states = checked_multiply(
+			limits.worker_count, limits.discovery_public_state_capacity());
+		const auto aggregate_rows = checked_multiply(
+			limits.worker_count, limits.discovery_row_capacity());
+		result.estimate.discovery_stream_bytes = checked_add(
+			checked_multiply(aggregate_public_states, sizeof(MultiwayPublicStateDescriptor)),
+			checked_multiply(aggregate_rows, sizeof(MultiwaySparseRowShape)));
+		result.estimate.merge_scratch_bytes = checked_add(
+			checked_multiply(
+				aggregate_regret_entries,
+				static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*))),
+			checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta)));
 		result.estimate.export_bytes = checked_multiply(
 			inputs.export_action_capacity,
 			2U * static_cast<std::uint64_t>(sizeof(MultiwayRootActionProbability)));
@@ -719,31 +838,62 @@ namespace texas::solver::multiway
 		const auto delta_stage = checked_add(
 			checked_add(checked_add(result.estimate.worker_delta_bytes, result.estimate.discovery_stream_bytes), result.estimate.merge_scratch_bytes),
 			result.estimate.continuation_scratch_bytes);
-		result.estimate.mandatory_bytes = checked_add(
+		result.estimate.configured_capacity_growth_bytes = checked_add(
+			checked_add(root_stage, row_stage), delta_stage);
+		result.estimate.ledger.configured_capacity_growth_bytes = result.estimate.configured_capacity_growth_bytes;
+		result.estimate.additional_private_capacity_bytes = inputs.retained_capacity_known
+			? inputs.retained_capacity_bytes
+			: result.estimate.configured_capacity_growth_bytes;
+		result.estimate.ledger.additional_private_capacity_bytes = result.estimate.additional_private_capacity_bytes;
+		const auto private_peak_without_optional_cache = checked_add(
 			checked_add(
-				checked_add(checked_add(inputs.resident_baseline_bytes, inputs.bucket_registry_bytes), inputs.mapped_bucket_artifact_bytes),
-				checked_add(root_stage, row_stage)),
+				checked_add(existing_private_committed_bytes, result.estimate.additional_private_capacity_bytes),
+				transient_peak),
+			inputs.allocator_overhead_bytes);
+		const auto working_set_peak_without_optional_cache = checked_add(
 			checked_add(
-				checked_add(delta_stage, transient_peak),
-				inputs.allocator_overhead_bytes));
-		result.estimate.ledger.live_bytes = result.estimate.mandatory_bytes;
+				checked_add(
+					checked_add(existing_working_set_bytes, result.estimate.additional_private_capacity_bytes),
+					mapped_resident_allowance_bytes),
+				transient_peak),
+			inputs.allocator_overhead_bytes);
+		result.estimate.estimated_private_peak_bytes = checked_add(
+			private_peak_without_optional_cache, result.estimate.continuation_cache_bytes);
+		result.estimate.estimated_working_set_peak_bytes = checked_add(
+			working_set_peak_without_optional_cache, result.estimate.continuation_cache_bytes);
+		result.estimate.ledger.estimated_private_peak_bytes = result.estimate.estimated_private_peak_bytes;
+		result.estimate.ledger.estimated_working_set_peak_bytes = result.estimate.estimated_working_set_peak_bytes;
+		result.estimate.ledger.live_bytes = result.estimate.mandatory_bytes = std::max(
+			private_peak_without_optional_cache, working_set_peak_without_optional_cache);
 		result.estimate.ledger.reserved_bytes = result.estimate.mandatory_bytes;
-		result.estimate.ledger.committed_bytes = result.estimate.mandatory_bytes;
-		result.estimate.total_bytes = checked_add(
-			result.estimate.mandatory_bytes, result.estimate.continuation_cache_bytes);
+		result.estimate.ledger.committed_bytes = private_peak_without_optional_cache;
+		result.estimate.total_bytes = std::max(
+			result.estimate.estimated_private_peak_bytes,
+			result.estimate.estimated_working_set_peak_bytes);
+		result.estimate.peak_rss_bytes = result.estimate.estimated_working_set_peak_bytes;
 
-		if (root_stage > budget.operating_bytes || root_stage >= budget.reject_bytes)
+		const auto root_private_stage = checked_add(
+			checked_add(existing_private_committed_bytes, root_stage), inputs.allocator_overhead_bytes);
+		const auto root_working_set_stage = checked_add(
+			checked_add(checked_add(existing_working_set_bytes, root_stage), mapped_resident_allowance_bytes),
+			inputs.allocator_overhead_bytes);
+		const auto root_admission_bytes = std::max(root_private_stage, root_working_set_stage);
+		if (root_admission_bytes > budget.operating_bytes || root_admission_bytes >= budget.reject_bytes)
 		{
 			result.status = MultiwayMemoryStatus::Rejected;
+			result.rejected_category = "root";
 			result.message = "root admission exceeds memory limit";
 			return result;
 		}
 		result.highest_admitted_stage = MultiwayMemoryAdmissionStage::Root;
-		const auto through_rows = checked_add(root_stage, row_stage);
+		const auto through_rows_private = checked_add(root_private_stage, row_stage);
+		const auto through_rows_working_set = checked_add(root_working_set_stage, row_stage);
+		const auto through_rows = std::max(through_rows_private, through_rows_working_set);
 		if (through_rows > budget.operating_bytes || through_rows >= budget.reject_bytes)
 		{
 			result.status = MultiwayMemoryStatus::Rejected;
-			result.estimate.admitted_bytes = root_stage;
+			result.estimate.admitted_bytes = root_admission_bytes;
+			result.rejected_category = "sparse rows";
 			result.message = "sparse-row admission exceeds memory limit";
 			return result;
 		}
@@ -752,6 +902,7 @@ namespace texas::solver::multiway
 		{
 			result.status = MultiwayMemoryStatus::Rejected;
 			result.estimate.admitted_bytes = through_rows;
+			result.rejected_category = "worker deltas";
 			result.message = "worker-delta admission exceeds memory limit";
 			return result;
 		}
@@ -762,6 +913,7 @@ namespace texas::solver::multiway
 		{
 			result.status = MultiwayMemoryStatus::Warning;
 			result.degraded = true;
+			result.rejected_category = "optional continuation cache";
 			result.message = "optional continuation cache was not admitted";
 			return result;
 		}

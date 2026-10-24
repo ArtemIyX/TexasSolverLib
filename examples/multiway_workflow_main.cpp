@@ -11,6 +11,7 @@
 #include "solver/multiway/workflow/multiway_workflow_config.hpp"
 #include "solver/multiway/workflow/multiway_training_report.hpp"
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
+#include "solver/multiway/workflow/multiway_staged_qualification.hpp"
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 #include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
@@ -94,7 +95,8 @@ namespace
 					  << "  --resume <path>        Checkpoint to resume\n";
 			std::cout << "  --threads <1..16>      Training worker override\n"
 					  << "  --pin-workers <true|false>  Pin training workers to logical processors\n"
-					  << "  --scheduler <fixed|dynamic>  Training worker scheduler\n";
+					  << "  --scheduler <fixed|dynamic>  Training worker scheduler\n"
+					  << "  --authorize-50m       Explicitly authorize the 50M qualification stage\n";
 		}
 		else if (workflow == Workflow::Buckets)
 		{
@@ -510,7 +512,8 @@ namespace
 		const std::filesystem::path& resume_path,
 		std::uint32_t worker_override,
 		bool pin_workers,
-		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode)
+		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode,
+		bool authorize_50m_stage)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
@@ -538,6 +541,16 @@ namespace
 			worker_override = workflow.training_worker_count;
 		if (batches == 0U || input_path.empty() || output_path.empty())
 			throw std::invalid_argument("train requires input_path, output_path, and batches");
+		const auto reaches_50m = [&](std::uint64_t starting_trajectories) {
+			if (starting_trajectories >= 50'000'000U)
+				return true;
+			const auto remaining_trajectories = 50'000'000U - starting_trajectories;
+			const auto full_batches = remaining_trajectories / workflow.trajectories_per_batch;
+			return batches > full_batches ||
+				(batches == full_batches && remaining_trajectories % workflow.trajectories_per_batch == 0U);
+		};
+		if (resume_path.empty() && reaches_50m(0U) && !authorize_50m_stage)
+			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
 		const auto log_path = workflow.training_log_path.empty()
 			? std::filesystem::path(report_path.empty() ? output_path.string() + ".log" : report_path.string() + ".log")
 			: workflow.training_log_path;
@@ -608,8 +621,10 @@ namespace
 		config.limits.max_public_states = static_cast<std::size_t>(workflow.maximum_public_states);
 		config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
 		config.limits.max_sparse_values = static_cast<std::size_t>(workflow.maximum_sparse_values);
-		config.limits.max_worker_delta_entries = static_cast<std::size_t>(workflow.worker_delta_capacity);
-		config.limits.max_discovery_entries = static_cast<std::size_t>(workflow.discovery_capacity);
+		config.limits.max_regret_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_regret_delta_capacity());
+		config.limits.max_continuation_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_continuation_delta_capacity());
+		config.limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_public_state_capacity());
+		config.limits.max_discovery_rows_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_row_capacity());
 		config.limits.max_batches = batches;
 		config.limits.storage_backend = workflow.storage_backend == "CompactInt32"
 			? MultiwaySolverLimits::StorageBackend::CompactInt32
@@ -622,14 +637,6 @@ namespace
 		const auto warning_bytes = std::max<std::uint64_t>(
 			1U, operating_bytes - operating_bytes / 5U);
 		MultiwayMemoryInputs memory_inputs;
-		memory_inputs.resident_baseline_bytes = observed_multiway_process_memory_bytes();
-		memory_inputs.bucket_registry_bytes = buckets.owned_memory_bytes();
-		memory_inputs.mapped_bucket_artifact_bytes = buckets.mapped_artifact_bytes();
-		memory_inputs.range_row_count = workflow.model.player_count;
-		memory_inputs.range_entry_count = static_cast<std::uint64_t>(workflow.model.player_count) * core::CANONICAL_HOLE_COMBINATION_COUNT;
-		memory_inputs.export_action_capacity = workflow.maximum_sparse_values;
-		memory_inputs.checkpoint_peak_bytes = estimated_blueprint_bytes;
-		memory_inputs.export_peak_bytes = estimated_blueprint_bytes;
 		log_line("training initialization: running memory preflight");
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeMemoryPreflight))
 			throw std::logic_error("multiway process memory snapshot phase order is invalid");
@@ -637,18 +644,47 @@ namespace
 				MultiwayMemoryPhase::BeforeMemoryPreflight,
 				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
 			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
+		const auto& memory_baseline = process_memory_snapshots.snapshots[process_memory_snapshots.count - 1U];
+		memory_inputs.existing_working_set_bytes = memory_baseline.current_working_set_available
+			? memory_baseline.current_working_set_bytes
+			: 0U;
+		memory_inputs.existing_private_committed_bytes = memory_baseline.private_committed_available
+			? memory_baseline.private_committed_bytes
+			: 0U;
+		memory_inputs.resident_baseline_bytes = memory_inputs.existing_working_set_bytes;
+		memory_inputs.bucket_registry_bytes = buckets.owned_memory_bytes();
+		memory_inputs.mapped_virtual_bytes = buckets.mapped_artifact_bytes();
+		memory_inputs.mapped_bucket_artifact_bytes = memory_inputs.mapped_virtual_bytes;
+		if (memory_baseline.file_resident_available)
+		{
+			const auto resident_mapped = std::min(
+				memory_inputs.mapped_virtual_bytes, memory_baseline.file_resident_bytes);
+			memory_inputs.mapped_resident_allowance_bytes = memory_inputs.mapped_virtual_bytes - resident_mapped;
+		}
+		memory_inputs.range_row_count = workflow.model.player_count;
+		memory_inputs.range_entry_count = static_cast<std::uint64_t>(workflow.model.player_count) * core::CANONICAL_HOLE_COMBINATION_COUNT;
+		memory_inputs.export_action_capacity = workflow.maximum_sparse_values;
+		memory_inputs.checkpoint_peak_bytes = estimated_blueprint_bytes;
+		memory_inputs.export_peak_bytes = estimated_blueprint_bytes;
 		const auto memory_preflight = preflight_multiway_memory(
 			config.limits,
 			{ warning_bytes, workflow.process_memory_limit_bytes, operating_bytes },
 			memory_inputs);
-		if (memory_preflight.status == MultiwayMemoryStatus::Rejected)
+		const auto working_set_gate = evaluate_multiway_working_set_preflight(
+			memory_preflight,
+			{ workflow.process_working_set_limit_bytes,
+				workflow.process_working_set_resident_allowance_bytes });
+		if (working_set_gate.rejected())
 		{
-			throw std::runtime_error(std::string("training memory preflight rejected: ") + memory_preflight.message + "; admission_stage=" + std::to_string(static_cast<unsigned>(memory_preflight.highest_admitted_stage)) + "; estimated_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
+			throw std::runtime_error(std::string("training memory preflight rejected: abort_phase=preflight; ") + working_set_gate.message + "; rejected_category=" + working_set_gate.rejected_category + "; admission_stage=" + std::to_string(static_cast<unsigned>(working_set_gate.admission_stage)) + "; estimated_private_peak_bytes=" + std::to_string(memory_preflight.estimate.estimated_private_peak_bytes) + "; estimated_working_set_peak_bytes=" + std::to_string(memory_preflight.estimate.estimated_working_set_peak_bytes) + "; compared_working_set_bytes=" + std::to_string(working_set_gate.compared_working_set_bytes) + "; gate_bytes=" + std::to_string(working_set_gate.hard_limit_bytes));
 		}
 		config.memory_preflight_estimate_bytes = memory_preflight.estimate.total_bytes;
 		config.memory_ledger = memory_preflight.estimate.ledger;
 		config.process_memory_snapshots = process_memory_snapshots;
 		config.memory_subsystem_snapshots = memory_subsystem_snapshots;
+		config.working_set_monitor.gate = {
+			workflow.process_working_set_limit_bytes,
+			workflow.process_working_set_resident_allowance_bytes };
 		log_line("training workers requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective) + " memory_estimate_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
 		log_line("training initialization: loading bucket artifact bytes=" + std::to_string(std::filesystem::file_size(input_path)));
 		log_line("training initialization: constructing six-player uniform ranges");
@@ -676,6 +712,8 @@ namespace
 			session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
 				resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
 		}
+		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
+			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
@@ -833,8 +871,10 @@ namespace
 		config.limits.max_public_states = static_cast<std::size_t>(workflow.maximum_public_states);
 		config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
 		config.limits.max_sparse_values = static_cast<std::size_t>(workflow.maximum_sparse_values);
-		config.limits.max_worker_delta_entries = static_cast<std::size_t>(workflow.worker_delta_capacity);
-		config.limits.max_discovery_entries = static_cast<std::size_t>(workflow.discovery_capacity);
+		config.limits.max_regret_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_regret_delta_capacity());
+		config.limits.max_continuation_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_continuation_delta_capacity());
+		config.limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_public_state_capacity());
+		config.limits.max_discovery_rows_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_row_capacity());
 		config.limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
 		MultiwayPrivateConfig ranges;
 		ranges.ranges.resize(6U);
@@ -926,6 +966,7 @@ namespace
 			texas::solver::multiway::multiway_bucket_physical_core_count());
 		bool threads_specified = false;
 		bool pin_workers = false;
+		bool authorize_50m_stage = false;
 		auto scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
 		std::uint64_t benchmark_tables = 0U;
 		std::uint64_t benchmark_start = 0U;
@@ -944,6 +985,11 @@ namespace
 			}
 			if (argument == "--tiny")
 				return run_tiny_pipeline();
+			if (argument == "--authorize-50m")
+			{
+				authorize_50m_stage = true;
+				continue;
+			}
 			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
 			{
 				if (!consume_value(index, argc, argv, argument))
@@ -1079,7 +1125,7 @@ namespace
 		if (workflow == Workflow::Train && !config_path.empty())
 		{
 			return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir,
-				resume_path, threads_specified ? threads : 0U, pin_workers, scheduler_mode);
+				resume_path, threads_specified ? threads : 0U, pin_workers, scheduler_mode, authorize_50m_stage);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{

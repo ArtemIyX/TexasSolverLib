@@ -72,7 +72,12 @@ namespace texas::solver::multiway
 
 	bool MultiwayContinuationDeltaStream::try_append(const MultiwayContinuationDelta& delta) noexcept
 	{
-		if (deltas_.size() >= capacity_ || !delta_valid(delta))
+		if (deltas_.size() >= capacity_)
+		{
+			capacity_exhausted_ = true;
+			return false;
+		}
+		if (!delta_valid(delta))
 			return false;
 		deltas_.push_back(delta);
 		return true;

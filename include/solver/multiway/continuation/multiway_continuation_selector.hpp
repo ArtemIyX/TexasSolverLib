@@ -44,6 +44,8 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] std::size_t worker_index() const noexcept { return worker_index_; }
 		[[nodiscard]] std::size_t size() const noexcept { return deltas_.size(); }
+		[[nodiscard]] bool capacity_exhausted() const noexcept { return capacity_exhausted_; }
+		void clear_capacity_exhaustion() noexcept { capacity_exhausted_ = false; }
 		[[nodiscard]] const std::vector<MultiwayContinuationDelta>& deltas() const noexcept { return deltas_; }
 		[[nodiscard]] bool try_append(const MultiwayContinuationDelta& delta) noexcept;
 		void rewind(std::size_t size) noexcept;
@@ -54,6 +56,7 @@ namespace texas::solver::multiway
 	private:
 		std::size_t worker_index_ = 0U;
 		std::size_t capacity_ = 0U;
+		bool capacity_exhausted_ = false;
 		std::vector<MultiwayContinuationDelta> deltas_;
 	};
 

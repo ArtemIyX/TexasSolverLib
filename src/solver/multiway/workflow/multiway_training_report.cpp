@@ -93,7 +93,7 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("available process RSS must be non-zero");
 		}
-		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery))
+		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache))
 		{
 			throw std::invalid_argument("invalid multiway training telemetry");
 		}
@@ -164,6 +164,10 @@ namespace texas::solver::multiway
 		report.configured_max_sparse_values = status.configured_max_sparse_values;
 		report.configured_worker_delta_capacity = status.configured_worker_delta_capacity;
 		report.configured_discovery_capacity = status.configured_discovery_capacity;
+		report.configured_max_regret_delta_entries_per_worker = status.configured_max_regret_delta_entries_per_worker;
+		report.configured_max_continuation_delta_entries_per_worker = status.configured_max_continuation_delta_entries_per_worker;
+		report.configured_max_discovery_public_states_per_worker = status.configured_max_discovery_public_states_per_worker;
+		report.configured_max_discovery_rows_per_worker = status.configured_max_discovery_rows_per_worker;
 		report.cumulative_worker_delta_entries = status.cumulative_worker_delta_entries;
 		report.worker_active_nanoseconds = status.worker_active_nanoseconds;
 		report.worker_wake_latency_nanoseconds = status.worker_wake_latency_nanoseconds;
@@ -206,6 +210,8 @@ namespace texas::solver::multiway
 		report.memory_ledger = status.memory_ledger;
 		report.process_memory_snapshots = status.process_memory_snapshots;
 		report.memory_subsystems = status.memory_subsystem_snapshots;
+		if (report.memory_subsystems.count != 0U)
+			report.memory_ledger.actual_retained_capacity_bytes = report.memory_subsystems.snapshots[report.memory_subsystems.count - 1U].retained_capacity_bytes;
 		report.capacity_exhaustion_stage = status.capacity_exhaustion_stage;
 		report.failed_batch_available = status.failed_batch_available;
 		report.failed_batch = status.failed_batch;
@@ -213,6 +219,8 @@ namespace texas::solver::multiway
 		report.current_process_rss_bytes = status.current_process_rss_bytes;
 		report.peak_process_rss_bytes = status.peak_process_rss_bytes;
 		report.process_memory_limit_bytes = process_memory_limit_bytes;
+		report.working_set_gate_config = status.working_set_gate_config;
+		report.working_set_gate = status.working_set_gate;
 		report.process_rss_available = status.process_rss_available;
 		report.started_at_preflop = status.preflop_rows > 0U;
 		report.elapsed_wall_nanoseconds = status.elapsed_wall_nanoseconds;
@@ -276,6 +284,15 @@ namespace texas::solver::multiway
 			   << ",\n  \"current_process_rss_bytes\": " << report.current_process_rss_bytes
 			   << ",\n  \"peak_process_rss_bytes\": " << report.peak_process_rss_bytes
 			   << ",\n  \"process_memory_limit_bytes\": " << report.process_memory_limit_bytes
+			   << ",\n  \"process_working_set_limit_bytes\": " << report.working_set_gate_config.hard_limit_bytes
+			   << ",\n  \"process_working_set_resident_allowance_bytes\": " << report.working_set_gate_config.resident_allowance_bytes
+			   << ",\n  \"working_set_gate_status\": " << static_cast<unsigned>(report.working_set_gate.status)
+			   << ",\n  \"working_set_gate_abort_phase\": " << static_cast<unsigned>(report.working_set_gate.phase)
+			   << ",\n  \"working_set_gate_admission_stage\": " << static_cast<unsigned>(report.working_set_gate.admission_stage)
+			   << ",\n  \"working_set_gate_estimated_bytes\": " << report.working_set_gate.estimated_working_set_bytes
+			   << ",\n  \"working_set_gate_compared_bytes\": " << report.working_set_gate.compared_working_set_bytes
+			   << ",\n  \"working_set_gate_observed_bytes\": " << report.working_set_gate.observed_working_set_bytes
+			   << ",\n  \"working_set_gate_rejected_category\": \"" << report.working_set_gate.rejected_category << "\""
 			   << ",\n  \"process_rss_available\": " << (report.process_rss_available ? "true" : "false")
 			   << ",\n  \"started_at_preflop\": " << (report.started_at_preflop ? "true" : "false")
 			   << ",\n  \"peak_public_states\": " << report.peak_public_states
@@ -299,6 +316,10 @@ namespace texas::solver::multiway
 			   << ",\n  \"configured_max_sparse_values\": " << report.configured_max_sparse_values
 			   << ",\n  \"configured_worker_delta_capacity\": " << report.configured_worker_delta_capacity
 			   << ",\n  \"configured_discovery_capacity\": " << report.configured_discovery_capacity
+			   << ",\n  \"configured_max_regret_delta_entries_per_worker\": " << report.configured_max_regret_delta_entries_per_worker
+			   << ",\n  \"configured_max_continuation_delta_entries_per_worker\": " << report.configured_max_continuation_delta_entries_per_worker
+			   << ",\n  \"configured_max_discovery_public_states_per_worker\": " << report.configured_max_discovery_public_states_per_worker
+			   << ",\n  \"configured_max_discovery_rows_per_worker\": " << report.configured_max_discovery_rows_per_worker
 			   << ",\n  \"cumulative_worker_delta_entries\": " << report.cumulative_worker_delta_entries
 			   << ",\n  \"worker_active_nanoseconds\": " << report.worker_active_nanoseconds
 			   << ",\n  \"worker_wake_latency_nanoseconds\": " << report.worker_wake_latency_nanoseconds
@@ -467,6 +488,16 @@ namespace texas::solver::multiway
 				   << ", \"barrier_wait_nanoseconds\": " << batch.barrier_wait_nanoseconds
 				   << ", \"delta_sort_nanoseconds\": " << batch.delta_sort_nanoseconds
 				   << ", \"merge_nanoseconds\": " << batch.merge_nanoseconds
+				   << ", \"regret_delta_capacity_exhausted\": "
+				   << (batch.regret_delta_capacity_exhausted ? "true" : "false")
+				   << ", \"continuation_delta_capacity_exhausted\": "
+				   << (batch.continuation_delta_capacity_exhausted ? "true" : "false")
+				   << ", \"discovery_public_state_capacity_exhausted\": "
+				   << (batch.discovery_public_state_capacity_exhausted ? "true" : "false")
+				   << ", \"discovery_row_capacity_exhausted\": "
+				   << (batch.discovery_row_capacity_exhausted ? "true" : "false")
+				   << ", \"capacity_exhausted\": "
+				   << (batch.capacity_exhausted ? "true" : "false")
 				   << ", \"discovery_capacity_exhausted\": "
 				   << (batch.discovery_capacity_exhausted ? "true" : "false");
 			const auto write_failed_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
@@ -517,7 +548,22 @@ namespace texas::solver::multiway
 		}
 		output << "]"
 			   << ",\n  \"memory_preflight_estimate_bytes\": " << report.memory_preflight_estimate_bytes
-			   << ",\n  \"memory_ledger\": {\"resident_baseline_bytes\": " << report.memory_ledger.resident_baseline_bytes
+			   << ",\n  \"memory_estimate_schema_version\": " << report.memory_ledger.schema_version
+			   << ",\n  \"memory_estimated_private_peak_bytes\": " << report.memory_ledger.estimated_private_peak_bytes
+			   << ",\n  \"memory_estimated_working_set_peak_bytes\": " << report.memory_ledger.estimated_working_set_peak_bytes
+			   << ",\n  \"memory_ledger\": {\"schema_version\": " << report.memory_ledger.schema_version
+			   << ", \"existing_working_set_bytes\": " << report.memory_ledger.existing_working_set_bytes
+			   << ", \"existing_private_committed_bytes\": " << report.memory_ledger.existing_private_committed_bytes
+			   << ", \"additional_private_capacity_bytes\": " << report.memory_ledger.additional_private_capacity_bytes
+			   << ", \"mapped_virtual_bytes\": " << report.memory_ledger.mapped_virtual_bytes
+			   << ", \"mapped_resident_allowance_bytes\": " << report.memory_ledger.mapped_resident_allowance_bytes
+			   << ", \"checkpoint_transient_bytes\": " << report.memory_ledger.checkpoint_transient_bytes
+			   << ", \"export_transient_bytes\": " << report.memory_ledger.export_transient_bytes
+			   << ", \"configured_capacity_growth_bytes\": " << report.memory_ledger.configured_capacity_growth_bytes
+			   << ", \"actual_retained_capacity_bytes\": " << report.memory_ledger.actual_retained_capacity_bytes
+			   << ", \"estimated_private_peak_bytes\": " << report.memory_ledger.estimated_private_peak_bytes
+			   << ", \"estimated_working_set_peak_bytes\": " << report.memory_ledger.estimated_working_set_peak_bytes
+			   << ", \"resident_baseline_bytes\": " << report.memory_ledger.resident_baseline_bytes
 			   << ", \"bucket_registry_bytes\": " << report.memory_ledger.bucket_registry_bytes
 			   << ", \"mapped_bucket_artifact_bytes\": " << report.memory_ledger.mapped_bucket_artifact_bytes
 			   << ", \"public_catalog_bytes\": " << report.memory_ledger.public_catalog_bytes

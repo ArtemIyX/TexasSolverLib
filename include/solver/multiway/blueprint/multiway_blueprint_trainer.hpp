@@ -87,6 +87,10 @@ namespace texas::solver::multiway
 		std::uint64_t configured_max_sparse_values = 0;
 		std::uint64_t configured_worker_delta_capacity = 0;
 		std::uint64_t configured_discovery_capacity = 0;
+		std::uint64_t configured_max_regret_delta_entries_per_worker = 0;
+		std::uint64_t configured_max_continuation_delta_entries_per_worker = 0;
+		std::uint64_t configured_max_discovery_public_states_per_worker = 0;
+		std::uint64_t configured_max_discovery_rows_per_worker = 0;
 		std::uint64_t peak_public_states = 0;
 		std::uint64_t peak_sparse_rows = 0;
 		std::uint64_t peak_sparse_values = 0;
@@ -149,6 +153,8 @@ namespace texas::solver::multiway
 		MultiwayMemoryLedger memory_ledger{};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
 		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
+		MultiwayWorkingSetGateConfig working_set_gate_config{};
+		MultiwayWorkingSetGateResult working_set_gate{};
 		bool process_rss_available = false;
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
@@ -211,6 +217,7 @@ namespace texas::solver::multiway
 		MultiwayMemoryLedger memory_ledger{};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
 		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
+		MultiwayWorkingSetMonitor working_set_monitor{};
 		bool immutable_batch_epochs = true;
 
 		void validate() const;
@@ -234,7 +241,8 @@ namespace texas::solver::multiway
 			MultiwayProcessMemorySnapshotCollection process_memory_snapshots = {},
 			MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots = {},
 			const MultiwayBucketRegistry* buckets = nullptr,
-			const MultiwayFixedContinuationSelector* continuation_selector = nullptr);
+			const MultiwayFixedContinuationSelector* continuation_selector = nullptr,
+			MultiwayWorkingSetMonitor working_set_monitor = {});
 
 		void run_batches(
 			std::uint64_t batch_count,
@@ -266,6 +274,7 @@ namespace texas::solver::multiway
 		std::uint64_t process_cpu_started_nanoseconds_ = 0U;
 		const MultiwayBucketRegistry* buckets_ = nullptr;
 		const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
+		MultiwayWorkingSetMonitor working_set_monitor_{};
 		MultiwayBlueprintTrainingStatus status_{};
 		std::vector<double> late_window_baseline_;
 	};

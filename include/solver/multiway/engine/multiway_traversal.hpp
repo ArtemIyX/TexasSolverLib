@@ -40,10 +40,13 @@ namespace texas::solver::multiway
 	{
 	public:
 		explicit MultiwayDiscoveryStream(std::size_t capacity = 0U)
-			: capacity_(capacity)
+			: MultiwayDiscoveryStream(capacity, capacity) {}
+
+		MultiwayDiscoveryStream(std::size_t public_state_capacity, std::size_t row_capacity)
+			: public_state_capacity_(public_state_capacity), row_capacity_(row_capacity)
 		{
-			public_states_.reserve(capacity_);
-			rows_.reserve(capacity_);
+			public_states_.reserve(public_state_capacity_);
+			rows_.reserve(row_capacity_);
 		}
 
 		[[nodiscard]] bool try_append_public_state(const MultiwayPublicStateDescriptor& state);
@@ -52,6 +55,8 @@ namespace texas::solver::multiway
 		void sort_fixed_order() noexcept;
 		void prepare_for_merge();
 		[[nodiscard]] bool overflowed() const noexcept { return overflowed_; }
+		[[nodiscard]] bool public_state_capacity_exhausted() const noexcept { return public_state_capacity_exhausted_; }
+		[[nodiscard]] bool row_capacity_exhausted() const noexcept { return row_capacity_exhausted_; }
 		[[nodiscard]] const std::vector<MultiwayPublicStateDescriptor>& public_states() const noexcept { return public_states_; }
 		[[nodiscard]] const std::vector<MultiwaySparseRowShape>& rows() const noexcept { return rows_; }
 		[[nodiscard]] std::size_t public_state_count() const noexcept { return public_states_.size(); }
@@ -71,8 +76,11 @@ namespace texas::solver::multiway
 			std::uint64_t missing_lookup_requests) noexcept;
 
 	private:
-		std::size_t capacity_ = 0U;
+		std::size_t public_state_capacity_ = 0U;
+		std::size_t row_capacity_ = 0U;
 		bool overflowed_ = false;
+		bool public_state_capacity_exhausted_ = false;
+		bool row_capacity_exhausted_ = false;
 		std::vector<MultiwayPublicStateDescriptor> public_states_;
 		std::vector<MultiwaySparseRowShape> rows_;
 		std::uint64_t terminal_visits_ = 0U;
@@ -260,8 +268,21 @@ namespace texas::solver::multiway
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		MultiwaySearchProfileSnapshot profile{};
 		MultiwayRunMetadata run{};
+		bool regret_delta_capacity_exhausted = false;
+		bool continuation_delta_capacity_exhausted = false;
+		bool discovery_public_state_capacity_exhausted = false;
+		bool discovery_row_capacity_exhausted = false;
+		bool capacity_exhausted = false;
 		bool discovery_capacity_exhausted = false;
 		bool clean = false;
+	};
+
+	struct MultiwayWorkerStreamCapacities
+	{
+		std::size_t regret_delta_entries = 0U;
+		std::size_t continuation_delta_entries = 0U;
+		std::size_t discovery_public_states = 0U;
+		std::size_t discovery_rows = 0U;
 	};
 
 	// Deterministic root-only batch runner. Workers are kept logically separate
@@ -275,6 +296,16 @@ namespace texas::solver::multiway
 			MultiwaySolverCoordinator& coordinator,
 			std::uint32_t worker_count,
 			std::size_t worker_delta_capacity,
+			MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled,
+			bool pin_workers = false,
+			bool immutable_epochs = false,
+			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		MultiwayRootBatchRunner(
+			MultiwayRootExternalSamplingTraversal traversal,
+			MultiwaySolverCoordinator& coordinator,
+			std::uint32_t worker_count,
+			MultiwayWorkerStreamCapacities capacities,
 			MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled,
 			bool pin_workers = false,
 			bool immutable_epochs = false,
@@ -301,8 +332,11 @@ namespace texas::solver::multiway
 
 		struct alignas(64) WorkerScratch
 		{
-			explicit WorkerScratch(std::size_t worker_index, std::size_t delta_capacity, std::size_t discovery_capacity)
-				: stream(worker_index, delta_capacity), continuation_stream(worker_index, delta_capacity), discovery(discovery_capacity) {}
+			explicit WorkerScratch(std::size_t worker_index, MultiwayWorkerStreamCapacities capacities)
+				: stream(worker_index, capacities.regret_delta_entries), continuation_stream(worker_index, capacities.continuation_delta_entries), discovery(capacities.discovery_public_states, capacities.discovery_rows)
+			{
+				action_menu_scratch.reserve(MULTIWAY_MAX_TRAVERSAL_ACTIONS);
+			}
 
 			MultiwayWorkerDeltaStream stream;
 			MultiwayContinuationDeltaStream continuation_stream;
@@ -333,7 +367,9 @@ namespace texas::solver::multiway
 			void reset(MultiwaySearchProfileMode profile_mode) noexcept
 			{
 				stream.rewind(0U);
+				stream.clear_capacity_exhaustion();
 				continuation_stream.rewind(0U);
+				continuation_stream.clear_capacity_exhaustion();
 				discovery.rewind();
 				attempted = 0;
 				accepted = 0;
@@ -358,7 +394,7 @@ namespace texas::solver::multiway
 		MultiwayRootExternalSamplingTraversal traversal_;
 		MultiwaySolverCoordinator* coordinator_ = nullptr;
 		std::uint32_t worker_count_ = 0;
-		std::size_t worker_delta_capacity_ = 0;
+		MultiwayWorkerStreamCapacities stream_capacities_{};
 		MultiwaySearchProfileMode profile_mode_ = MultiwaySearchProfileMode::Disabled;
 		bool pin_workers_ = false;
 		bool immutable_epochs_ = false;

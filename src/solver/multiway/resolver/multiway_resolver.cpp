@@ -641,7 +641,11 @@ namespace texas::solver::multiway
 					config.future_bucket_artifact.get());
 				MultiwayRootBatchRunner runner(
 					traversal, session.round().coordinator(), config.runtime_limits.solver.worker_count,
-					config.runtime_limits.solver.max_worker_delta_entries,
+					MultiwayWorkerStreamCapacities{
+						config.runtime_limits.solver.regret_delta_capacity(),
+						config.runtime_limits.solver.continuation_delta_capacity(),
+						config.runtime_limits.solver.discovery_public_state_capacity(),
+						config.runtime_limits.solver.discovery_row_capacity()},
 					config.search_profile_mode);
 				MultiwaySearchProfile search_profile(config.search_profile_mode);
 
@@ -889,7 +893,7 @@ namespace texas::solver::multiway
 			limits.max_sparse_rows = 1'024U;
 		if (limits.max_sparse_values == 0U)
 			limits.max_sparse_values = 65'536U;
-		if (limits.max_worker_delta_entries == 0U)
+		if (limits.regret_delta_capacity() == 0U)
 			limits.max_worker_delta_entries = 8'192U;
 		const auto exact_rows = std::min(limits.max_sparse_rows, limits.max_public_states);
 		const auto exact_values = saturating_multiply(

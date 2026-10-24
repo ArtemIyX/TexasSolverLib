@@ -228,6 +228,7 @@ namespace texas::solver::multiway
 		cfr.validate();
 		limits.validate();
 		schedule.validate();
+		working_set_monitor.validate();
 		if (deterministic_seed == 0U || cfr.player_count != rules.player_count || blueprint.player_count != rules.player_count || blueprint.initial_stack_chips != rules.initial_stack_chips || blueprint.small_blind_chips != rules.small_blind_chips || blueprint.big_blind_chips != rules.big_blind_chips || blueprint.ante_chips != rules.ante_chips || blueprint.rake_policy.identity() != rules.rake_policy.identity() || blueprint.rules_profile_version != rules.profile_version || blueprint.flop_bucket_count != bucket_profile.flop_bucket_count || blueprint.turn_bucket_count != bucket_profile.turn_bucket_count || blueprint.river_bucket_count != bucket_profile.river_bucket_count || max_decision_depth == 0U || max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH || max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH || (scheduler_mode != MultiwaySchedulerMode::Fixed && scheduler_mode != MultiwaySchedulerMode::Dynamic) || (requested_worker_count != 0U && requested_worker_count < limits.worker_count))
 		{
 			throw std::invalid_argument("multiway training configuration has inconsistent artifact or traversal inputs");
@@ -251,12 +252,14 @@ namespace texas::solver::multiway
 		append_u64(runtime_hash, limits.max_public_states);
 		append_u64(runtime_hash, limits.max_sparse_rows);
 		append_u64(runtime_hash, limits.max_sparse_values);
-		append_u64(runtime_hash, limits.max_worker_delta_entries);
+		append_u64(runtime_hash, limits.regret_delta_capacity());
+		append_u64(runtime_hash, limits.continuation_delta_capacity());
 		// max_batches is a run horizon, not checkpoint/model semantics. Excluding
 		// it permits a checkpoint to resume with a different remaining batch count.
 		append_u64(runtime_hash, static_cast<std::uint8_t>(limits.storage_backend));
 		append_u64(runtime_hash, limits.compact_page_width);
-		append_u64(runtime_hash, limits.max_discovery_entries);
+		append_u64(runtime_hash, limits.discovery_public_state_capacity());
+		append_u64(runtime_hash, limits.discovery_row_capacity());
 		append_u64(runtime_hash, immutable_batch_epochs ? 1U : 0U);
 		append_u64(runtime_hash, schedule.identity());
 		append_u64(runtime_hash, deterministic_seed);
@@ -277,8 +280,9 @@ namespace texas::solver::multiway
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots,
 		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots,
 		const MultiwayBucketRegistry* buckets,
-		const MultiwayFixedContinuationSelector* continuation_selector)
-		: identity_(identity), batch_runner_(&batch_runner), coordinator_(&coordinator), schedule_(schedule), deterministic_seed_(deterministic_seed), started_at_(std::chrono::steady_clock::now()), process_cpu_started_nanoseconds_(observed_multiway_training_process_cpu_nanoseconds()), buckets_(buckets), continuation_selector_(continuation_selector)
+		const MultiwayFixedContinuationSelector* continuation_selector,
+		MultiwayWorkingSetMonitor working_set_monitor)
+		: identity_(identity), batch_runner_(&batch_runner), coordinator_(&coordinator), schedule_(schedule), deterministic_seed_(deterministic_seed), started_at_(std::chrono::steady_clock::now()), process_cpu_started_nanoseconds_(observed_multiway_training_process_cpu_nanoseconds()), buckets_(buckets), continuation_selector_(continuation_selector), working_set_monitor_(working_set_monitor)
 	{
 		identity_.validate();
 		schedule_.validate();
@@ -291,8 +295,16 @@ namespace texas::solver::multiway
 		status_.configured_max_public_states = coordinator_->limits().max_public_states;
 		status_.configured_max_sparse_rows = coordinator_->limits().max_sparse_rows;
 		status_.configured_max_sparse_values = coordinator_->limits().max_sparse_values;
-		status_.configured_worker_delta_capacity = coordinator_->limits().max_worker_delta_entries;
-		status_.configured_discovery_capacity = coordinator_->limits().max_discovery_entries;
+		status_.configured_max_regret_delta_entries_per_worker = coordinator_->limits().regret_delta_capacity();
+		status_.configured_max_continuation_delta_entries_per_worker = coordinator_->limits().continuation_delta_capacity();
+		status_.configured_max_discovery_public_states_per_worker = coordinator_->limits().discovery_public_state_capacity();
+		status_.configured_max_discovery_rows_per_worker = coordinator_->limits().discovery_row_capacity();
+		status_.configured_worker_delta_capacity = std::max(
+			status_.configured_max_regret_delta_entries_per_worker,
+			status_.configured_max_continuation_delta_entries_per_worker);
+		status_.configured_discovery_capacity = std::max(
+			status_.configured_max_discovery_public_states_per_worker,
+			status_.configured_max_discovery_rows_per_worker);
 		status_.requested_worker_count = requested_worker_count == 0U
 			? coordinator_->limits().worker_count
 			: requested_worker_count;
@@ -300,6 +312,10 @@ namespace texas::solver::multiway
 		status_.trajectories_per_batch = coordinator_->limits().trajectories_per_batch;
 		status_.memory_preflight_estimate_bytes = memory_preflight_estimate_bytes;
 		status_.memory_ledger = memory_ledger;
+		status_.working_set_gate_config = working_set_monitor_.gate;
+		status_.working_set_gate.hard_limit_bytes = working_set_monitor_.gate.hard_limit_bytes;
+		status_.working_set_gate.resident_allowance_bytes = working_set_monitor_.gate.resident_allowance_bytes;
+		status_.working_set_gate.estimated_working_set_bytes = memory_ledger.estimated_working_set_peak_bytes;
 		status_.process_memory_snapshots = process_memory_snapshots;
 		status_.memory_subsystem_snapshots = memory_subsystem_snapshots;
 	}
@@ -334,6 +350,19 @@ namespace texas::solver::multiway
 		for (std::uint64_t batch = 0; batch < batch_count; ++batch)
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.trainer.batch");
+			const auto pre_batch_memory = working_set_monitor_.observer == nullptr
+				? capture_multiway_process_memory_snapshot()
+				: working_set_monitor_.observer(working_set_monitor_.observer_context);
+			const auto pre_batch_gate = evaluate_multiway_working_set_runtime(
+				pre_batch_memory, working_set_monitor_.gate);
+			if (pre_batch_gate.blocked())
+			{
+				status_.working_set_gate = pre_batch_gate;
+				throw std::runtime_error(
+					std::string("multiway blueprint training working-set abort: abort_phase=runtime; rejected_category=") +
+					pre_batch_gate.rejected_category + "; admission_stage=" +
+					std::to_string(static_cast<unsigned>(pre_batch_gate.admission_stage)));
+			}
 			const auto one_based_batch = status_.batches + 1U;
 			if (status_.late_window_start_batch != 0U && one_based_batch == status_.late_window_start_batch && late_window_baseline_.empty())
 			{
@@ -354,7 +383,14 @@ namespace texas::solver::multiway
 				status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
 				status_.failed_batch_available = true;
 				status_.failed_batch = batch_result;
-				if (batch_result.discovery_capacity_exhausted)
+				if (batch_result.capacity_exhausted)
+				{
+					if (batch_result.regret_delta_capacity_exhausted || batch_result.continuation_delta_capacity_exhausted)
+						status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::WorkerDeltas;
+					else
+						status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::Discovery;
+				}
+				else if (batch_result.discovery_capacity_exhausted)
 					status_.capacity_exhaustion_stage = MultiwayTrainingCapacityStage::Discovery;
 				throw std::runtime_error(
 					"multiway blueprint training batch did not complete cleanly: attempted="
@@ -540,6 +576,19 @@ namespace texas::solver::multiway
 			{
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.telemetry.process_sample");
 				const auto process_memory = capture_multiway_process_memory_snapshot();
+				const auto runtime_gate = evaluate_multiway_working_set_runtime(
+					working_set_monitor_.observer == nullptr
+						? process_memory
+						: working_set_monitor_.observer(working_set_monitor_.observer_context),
+					working_set_monitor_.gate);
+				status_.working_set_gate = runtime_gate;
+				if (runtime_gate.blocked())
+				{
+					throw std::runtime_error(
+						std::string("multiway blueprint training working-set abort: abort_phase=runtime; rejected_category=") +
+						runtime_gate.rejected_category + "; admission_stage=" +
+						std::to_string(static_cast<unsigned>(runtime_gate.admission_stage)));
+				}
 				status_.current_process_rss_bytes = process_memory.current_working_set_available
 					? process_memory.current_working_set_bytes
 					: 0U;
@@ -885,7 +934,11 @@ namespace texas::solver::multiway
 				config_.schedule.pruning_threshold });
 		batch_runner_ = std::make_unique<MultiwayRootBatchRunner>(
 			std::move(traversal), *coordinator_, config_.limits.worker_count,
-			config_.limits.max_worker_delta_entries,
+			MultiwayWorkerStreamCapacities{
+				config_.limits.regret_delta_capacity(),
+				config_.limits.continuation_delta_capacity(),
+				config_.limits.discovery_public_state_capacity(),
+				config_.limits.discovery_row_capacity()},
 			MultiwaySearchProfileMode::Disabled,
 			config_.pin_workers,
 			config_.immutable_batch_epochs,
@@ -903,7 +956,7 @@ namespace texas::solver::multiway
 			identity, *batch_runner_, *coordinator_, config_.schedule, config_.deterministic_seed,
 			config_.requested_worker_count, config_.memory_preflight_estimate_bytes, config_.memory_ledger,
 			config_.process_memory_snapshots, config_.memory_subsystem_snapshots,
-			buckets_, continuation_selector_.get());
+			buckets_, continuation_selector_.get(), config_.working_set_monitor);
 	}
 
 	void MultiwayBlueprintTrainingSession::run_batches(std::uint64_t batch_count)

@@ -580,13 +580,21 @@ namespace texas::solver::multiway
 
 	void MultiwaySolverLimits::validate() const
 	{
-		if (worker_count == 0U || trajectories_per_batch == 0U || max_public_states == 0U || max_sparse_rows == 0U || max_sparse_values == 0U || max_worker_delta_entries == 0U)
+		const auto regret_capacity = regret_delta_capacity();
+		const auto continuation_capacity = continuation_delta_capacity();
+		if (worker_count == 0U || trajectories_per_batch == 0U || max_public_states == 0U || max_sparse_rows == 0U || max_sparse_values == 0U || regret_capacity == 0U || continuation_capacity == 0U)
 		{
 			throw std::invalid_argument("multiway solver limits require non-zero bounded capacities");
 		}
-		if (max_worker_delta_entries > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count))
+		if (regret_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count) || continuation_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count))
 		{
 			throw std::overflow_error("multiway aggregate worker delta capacity overflows size_t");
+		}
+		const auto public_capacity = discovery_public_state_capacity();
+		const auto row_capacity = discovery_row_capacity();
+		if ((public_capacity != 0U && public_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)) || (row_capacity != 0U && row_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)))
+		{
+			throw std::overflow_error("multiway aggregate discovery capacity overflows size_t");
 		}
 		if (max_batches == 0U || compact_page_width == 0U)
 		{
@@ -944,7 +952,12 @@ namespace texas::solver::multiway
 
 	bool MultiwayWorkerDeltaStream::try_append(const MultiwayWorkerDelta& delta) noexcept
 	{
-		if (deltas_.size() >= capacity_ || !delta_is_finite(delta))
+		if (deltas_.size() >= capacity_)
+		{
+			capacity_exhausted_ = true;
+			return false;
+		}
+		if (!delta_is_finite(delta))
 			return false;
 		deltas_.push_back(delta);
 		return true;
@@ -1662,7 +1675,7 @@ namespace texas::solver::multiway
 		for (std::size_t worker = 0; worker < streams.size(); ++worker)
 		{
 			const auto* stream = streams[worker];
-			if (stream == nullptr || stream->worker_index() != worker || stream->size() > request_.limits().max_worker_delta_entries || !stream->is_fixed_order())
+			if (stream == nullptr || stream->worker_index() != worker || stream->size() > request_.limits().regret_delta_capacity() || !stream->is_fixed_order())
 			{
 				throw std::invalid_argument("multiway worker streams must be bounded and in fixed worker/row/action order");
 			}

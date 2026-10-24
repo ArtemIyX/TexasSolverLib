@@ -44,7 +44,7 @@ namespace texas::solver::multiway
 		MultiwayRootExternalSamplingTraversal traversal(
 			coordinator, root, action_abstraction, buckets, nullptr,
 			config.max_decision_depth, config.max_public_chance_depth, &provider);
-		MultiwayWorkerDeltaStream stream(0U, config.limits.max_worker_delta_entries);
+		MultiwayWorkerDeltaStream stream(0U, config.limits.regret_delta_capacity());
 		MultiwayBlueprintLookupAudit audit;
 		for (std::uint64_t trajectory = 0U; trajectory < trajectory_count; ++trajectory)
 		{
