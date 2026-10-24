@@ -1,5 +1,85 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Fix multiway chance-runout catalog equivalence
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Fixed packed public-catalog compatibility so an identical public payload reached through equivalent non-betting chance parents is accepted, matching the coordinator descriptor rule.
+- Preserved validation of public payloads, betting-action ancestry, fixed merge order, transactional failed batches, memory gates, checkpoint/export exclusion, and Task G capacities.
+- Added bounded conflicting-descriptor diagnostics containing identity, parent, canonical history, board/runout, betting snapshot, action menu, and incoming edge fields.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build and focused solver/parallel training tests passed.
+- Fixed-order worker coverage passed for 1, 2, 4, and 8 workers.
+- Reproduced the original 8-worker failure at 5,000 trajectories, then the fixed replay completed 6,000 trajectories with zero discards and `failed=false`.
+- Full Debug build and full CTest passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- The post-fix artifact replay stops after the former sixth-batch failure boundary; no large qualification workload was run.
+
+## PB-6 - Add optional training progress memory telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added `--progress-memory true|false` to opt into current working-set, peak working-set, and configured hard-gate bytes on training progress lines.
+- Reports `working_set=unavailable` when the platform telemetry is unavailable and leaves default progress output unchanged.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build and focused parallel-training test passed.
+- Full Debug build and full CTest passed.
+- `git diff --check` passed.
+
+### Limitations
+
+- Memory values are sampled at clean batch boundaries and are process working-set telemetry, not private-memory estimates.
+
+## PB-6 - Add live multiway training progress reporting
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added a batch-boundary progress callback to the multiway blueprint trainer and session.
+- Training now reports `batches_completed=1/N` style progress by default, with `--progress=false` and `--progress-every N` controls.
+- Kept checkpoint chunking, deterministic fingerprints, failed-batch behavior, and existing inspection progress compatibility unchanged.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `git diff --check` passed.
+- Focused Debug build and focused parallel-training test passed.
+- Full Debug build and full CTest passed.
+
+### Limitations
+
+- Progress is reported only after clean batch boundaries. The 50M workload remains gated and was not run.
+
 ## PB-6 - Task L staged large-F1 qualification with hard RAM safety gates
 
 **Status:** Complete with 50M authorization gate
