@@ -240,8 +240,16 @@ namespace texas::solver::multiway
 		const MultiwayPackedPublicNode* packed,
 		const MultiwayPublicStateDescriptor& candidate) const noexcept
 	{
+		const auto chance_or_transition = [](MultiwayPublicParentEdgeKind kind) {
+			return kind == MultiwayPublicParentEdgeKind::BoardChance ||
+				kind == MultiwayPublicParentEdgeKind::StreetTransition;
+		};
+		const auto equivalent_chance_transition_edge = packed != nullptr &&
+			chance_or_transition(packed->incoming_kind) &&
+			chance_or_transition(candidate.incoming_edge.kind);
 		if (packed == nullptr || packed->legal_menu_handle >= menus_.size() ||
-			packed->id != candidate.id || packed->parent_id != candidate.parent_id ||
+			packed->id != candidate.id ||
+			(packed->parent_id != candidate.parent_id && !equivalent_chance_transition_edge) ||
 			packed->canonical_history_id != candidate.canonical_history_id ||
 			packed->board_count != candidate.board.size() ||
 			!std::equal(candidate.board.begin(), candidate.board.end(), packed->board.begin()) ||
@@ -288,8 +296,7 @@ namespace texas::solver::multiway
 			return false;
 
 		return same_packed_incoming_edge(*packed, candidate.incoming_edge) ||
-			(packed->incoming_kind != MultiwayPublicParentEdgeKind::BettingAction &&
-				candidate.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction);
+			equivalent_chance_transition_edge;
 	}
 
 	bool MultiwayPublicCatalog::compatible_with_descriptor(

@@ -80,6 +80,18 @@ namespace
 		return action_child_public_state(root_public_state(), 2, 102, 0);
 	}
 
+	const texas::MultiwayPublicBoardChanceEdge& board_edge_dealing(
+		const std::vector<texas::MultiwayPublicBoardChanceEdge>& edges,
+		std::uint8_t dealt_card)
+	{
+		const auto found = std::find_if(edges.begin(), edges.end(), [dealt_card](const auto& edge) {
+			return edge.chance.dealt_cards.size() == 1U && edge.chance.dealt_cards.front() == dealt_card;
+		});
+		if (found == edges.end())
+			throw std::logic_error("board chance edge is unavailable");
+		return *found;
+	}
+
 	texas::MultiwayPrivateConfig root_ranges()
 	{
 		texas::MultiwayPrivateConfig ranges;
@@ -974,6 +986,40 @@ TEST_CASE(multiway_solver_prepared_admission_reports_board_and_street_transition
 		EXPECT_EQ(diagnostics.parent_transition_board_chance_edges, 0U);
 		EXPECT_EQ(diagnostics.parent_transition_street_edges, 1U);
 	}
+}
+
+TEST_CASE(multiway_solver_prepared_admission_accepts_equivalent_chance_runout_parents)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	const auto all_in = action_child_public_state(root_public_state(), 2, 102, 2);
+	coordinator.admit_public_state(all_in);
+	const auto runout = action_child_public_state(all_in, 4, 104, 1);
+	coordinator.admit_public_state(runout);
+	texas::MultiwayTerminalAdapter adapter(coordinator);
+	const auto deal = adapter.sample_private_deal(1U);
+	const auto first_edges = adapter.canonical_public_board_chance_edges(runout.id, deal);
+	EXPECT_TRUE(first_edges.size() >= 2U);
+	const auto first_turn = texas::MultiwayPublicBuilder::make_board_chance_child(
+		runout, first_edges[0U], {});
+	const auto second_turn = texas::MultiwayPublicBuilder::make_board_chance_child(
+		runout, first_edges[1U], {});
+	coordinator.admit_public_state(first_turn);
+	coordinator.admit_public_state(second_turn);
+
+	const auto first_river_edges = adapter.canonical_public_board_chance_edges(first_turn.id, deal);
+	const auto second_river_edges = adapter.canonical_public_board_chance_edges(second_turn.id, deal);
+	const auto first_river = texas::MultiwayPublicBuilder::make_board_chance_child(
+		first_turn, board_edge_dealing(first_river_edges, first_edges[1U].chance.dealt_card), {});
+	const auto second_river = texas::MultiwayPublicBuilder::make_board_chance_child(
+		second_turn, board_edge_dealing(second_river_edges, first_edges[0U].chance.dealt_card), {});
+	EXPECT_EQ(first_river.id, second_river.id);
+	EXPECT_TRUE(first_river.parent_id != second_river.parent_id);
+	EXPECT_EQ(first_river.board, second_river.board);
+	EXPECT_EQ(first_river.canonical_history_id, second_river.canonical_history_id);
+
+	coordinator.admit_public_state(first_river);
+	coordinator.admit_prepared_batch({ second_river }, { 0U }, {});
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 6U);
 }
 
 TEST_CASE(multiway_solver_prepared_admission_rejection_does_not_commit_transition_diagnostics)

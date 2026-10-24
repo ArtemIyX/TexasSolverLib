@@ -16,6 +16,7 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -152,7 +153,110 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept
 		{
-			return left.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction && right.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction;
+			const auto chance_or_transition = [](MultiwayPublicParentEdgeKind kind) {
+				return kind == MultiwayPublicParentEdgeKind::BoardChance ||
+					kind == MultiwayPublicParentEdgeKind::StreetTransition;
+			};
+			return chance_or_transition(left.incoming_edge.kind) &&
+				chance_or_transition(right.incoming_edge.kind);
+		}
+
+		const char* public_parent_edge_kind_name(MultiwayPublicParentEdgeKind kind) noexcept
+		{
+			switch (kind)
+			{
+				case MultiwayPublicParentEdgeKind::None: return "none";
+				case MultiwayPublicParentEdgeKind::BettingAction: return "betting";
+				case MultiwayPublicParentEdgeKind::BoardChance: return "board-chance";
+				case MultiwayPublicParentEdgeKind::StreetTransition: return "street-transition";
+			}
+			return "invalid";
+		}
+
+		template <typename T>
+		void append_bounded_values(std::ostringstream& output, const std::vector<T>& values)
+		{
+			constexpr std::size_t limit = 8U;
+			output << '[';
+			for (std::size_t index = 0U; index < values.size() && index < limit; ++index)
+			{
+				if (index != 0U)
+					output << ',';
+				output << +values[index];
+			}
+			if (values.size() > limit)
+				output << ",...";
+			output << ']';
+		}
+
+		void append_conflicting_public_state_descriptor(
+			std::ostringstream& output,
+			const char* label,
+			const MultiwayPublicStateDescriptor& state)
+		{
+			output << ' ' << label
+				<< "{id=" << state.id.value
+				<< ",parent=" << state.parent_id.value
+				<< ",history=" << state.canonical_history_id
+				<< ",board=";
+			append_bounded_values(output, state.board);
+			output << ",runout={remaining=" << +state.board_runout.remaining_board_cards
+				<< ",chance_only=" << state.board_runout.chance_only_runout
+				<< "},betting={street=" << +static_cast<std::uint8_t>(state.betting.street)
+				<< ",current=" << state.betting.current_player
+				<< ",bet=" << state.betting.current_bet
+				<< ",stacks=";
+			append_bounded_values(output, state.betting.stacks);
+			output << ",contributions=";
+			append_bounded_values(output, state.betting.contributions);
+			output << ",street_contributions=";
+			append_bounded_values(output, state.betting.street_contributions);
+			output << ",folded=";
+			append_bounded_values(output, state.betting.folded);
+			output << ",all_in=";
+			append_bounded_values(output, state.betting.all_in);
+			output << ",may_raise=";
+			append_bounded_values(output, state.betting.may_raise);
+			output << ",pending=";
+			append_bounded_values(output, state.betting.pending);
+			output << ",has_acted=";
+			append_bounded_values(output, state.betting.has_acted);
+			output << ",bet_faced=";
+			append_bounded_values(output, state.betting.bet_faced_when_acted);
+			output << "},menu=";
+			for (std::size_t index = 0U; index < state.legal_actions.size() && index < 8U; ++index)
+			{
+				const auto& action = state.legal_actions[index];
+				if (index != 0U)
+					output << ',';
+				output << '{' << action.action_index
+					<< ':' << +static_cast<std::uint8_t>(action.action)
+					<< ':' << action.target_street_contribution
+					<< ':' << action.action_menu_id << '}';
+			}
+			if (state.legal_actions.size() > 8U)
+				output << ",...";
+			output << ",edge={kind=" << public_parent_edge_kind_name(state.incoming_edge.kind)
+				<< ",action={" << +static_cast<std::uint8_t>(state.incoming_edge.action.action)
+				<< ':' << state.incoming_edge.action.target_street_contribution
+				<< ':' << state.incoming_edge.action.action_menu_id << "}"
+				<< ",dealt_card=" << +state.incoming_edge.dealt_card
+				<< ",cards=";
+			append_bounded_values(output, state.incoming_edge.dealt_cards);
+			output << ",transition_board=";
+			append_bounded_values(output, state.incoming_edge.transition_board);
+			output << "}}";
+		}
+
+		[[noreturn]] void throw_conflicting_public_state_descriptors(
+			const MultiwayPublicStateDescriptor& existing,
+			const MultiwayPublicStateDescriptor& candidate)
+		{
+			std::ostringstream output;
+			output << "multiway public state id was admitted with conflicting data:";
+			append_conflicting_public_state_descriptor(output, "existing", existing);
+			append_conflicting_public_state_descriptor(output, "candidate", candidate);
+			throw std::invalid_argument(output.str());
 		}
 
 		void validate_public_state_child_transition(
@@ -1160,7 +1264,12 @@ namespace texas::solver::multiway
 					++admission_diagnostics_->packed_public_state_compatibility_checks;
 				}
 				if (!public_catalog_.compatible_with_descriptor(admission_existing_nodes_[state_index], state))
-					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
+				{
+					MultiwayPublicStateDescriptor existing;
+					if (!public_catalog_.reconstruct(state.id, existing))
+						throw std::logic_error("multiway public state conflict could not reconstruct catalog state");
+					throw_conflicting_public_state_descriptors(existing, state);
+				}
 				const auto* existing = admission_existing_nodes_[state_index];
 				if (existing == nullptr)
 					throw std::logic_error("multiway public state classification lost its catalog node");
@@ -1447,9 +1556,7 @@ namespace texas::solver::multiway
 		{
 			const auto* existing = public_state(state.id);
 			if (!public_state_candidates_compatible(*existing, state))
-			{
-				throw std::invalid_argument("multiway public state id was admitted with conflicting data");
-			}
+				throw_conflicting_public_state_descriptors(*existing, state);
 			return;
 		}
 		if (public_catalog_.size() >= request_.limits().max_public_states)
