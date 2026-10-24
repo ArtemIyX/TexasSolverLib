@@ -1,5 +1,43 @@
 # Pluribus Roadmap Progress Log
 
+## PB-7 - Task B: Trainer streaming emission
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added allocation-free compact and Float64 `average_strategy_into()` APIs with bit-equivalent arithmetic.
+- Added an exclusive coordinator export lease and no-lock packed-menu views.
+- Added exact bounded export planning and trainer/session `save_full_policy_atomic()` using Task A's schema-2 streaming writer, without materializing a full policy artifact.
+- Preserved compact direct ordering, Float64 `uint32_t` shape ordering, quantization bytes, checkpoint behavior, and compatibility `export_full_policy()` coverage.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_compact_storage` and `test_multiway_blueprint_training`: passed.
+- Focused CTest for both targets: passed.
+- `scripts/codex_powershell.ps1` `scripts/python/full_build.py`: Debug build and compact CTest passed.
+- `scripts/codex_powershell.ps1` `scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- `cpp-code-review`: No actionable findings.
+
+### Limitations
+
+- Export memory/system gates and telemetry remain Task C.
+- Production workflow replacement and large-workload qualification remain Tasks D and E.
+
 ## PB-7 - Task A: Artifact streaming writer
 
 **Status:** Complete

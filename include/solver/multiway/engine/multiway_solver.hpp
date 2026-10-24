@@ -215,6 +215,13 @@ namespace texas::solver::multiway
 		std::uint32_t legal_menu_handle = 0U;
 	};
 
+	struct MultiwayPackedMenuView
+	{
+		const MultiwayActionDescriptor* actions = nullptr;
+		std::uint8_t action_count = 0U;
+		std::uint64_t action_menu_id = 0U;
+	};
+
 	// Append-only fixed-node public catalog. Dynamic descriptors are recreated
 	// only at cold API/checkpoint boundaries.
 	class MultiwayPublicCatalog
@@ -237,6 +244,9 @@ namespace texas::solver::multiway
 			const std::vector<std::uint64_t>* validated_menu_keys = nullptr,
 			std::vector<std::uint32_t>* resolved_menu_handles = nullptr);
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const noexcept;
+		// Valid while the coordinator's immutable epoch is held by its export
+		// lease. This view never reconstructs or allocates a descriptor.
+		[[nodiscard]] MultiwayPackedMenuView packed_menu(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id, MultiwayPublicStateDescriptor& output) const;
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
 		[[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
@@ -528,6 +538,11 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::vector<Probability> average_strategy(
 			MultiwayInfosetId infoset,
 			std::uint32_t bucket) const;
+		void average_strategy_into(
+			MultiwayInfosetId infoset,
+			std::uint32_t bucket,
+			Probability* output,
+			std::size_t output_size) const;
 		[[nodiscard]] std::vector<Probability> regret_matched_strategy(
 			MultiwayInfosetId infoset,
 			std::uint32_t bucket) const;
@@ -860,6 +875,7 @@ namespace texas::solver::multiway
 	class MultiwaySolverCoordinator
 	{
 	public:
+		class ExportLease;
 		explicit MultiwaySolverCoordinator(const MultiwaySolveRequest& request);
 		~MultiwaySolverCoordinator();
 
@@ -936,6 +952,7 @@ namespace texas::solver::multiway
 			MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;
 		void restore_checkpoint(const MultiwayCoordinatorCheckpoint& checkpoint);
+		ExportLease acquire_export_lease() const;
 
 	private:
 		friend class MultiwayTerminalAdapter;
@@ -974,6 +991,29 @@ namespace texas::solver::multiway
 		MultiwaySolveDiagnostics diagnostics_;
 		MultiwayAdmissionDiagnostics* admission_diagnostics_ = nullptr;
 		mutable std::shared_mutex traversal_mutex_;
+	};
+
+	class MultiwaySolverCoordinator::ExportLease
+	{
+	public:
+		ExportLease(ExportLease&&) noexcept = default;
+		ExportLease& operator=(ExportLease&&) noexcept = default;
+		ExportLease(const ExportLease&) = delete;
+		ExportLease& operator=(const ExportLease&) = delete;
+
+		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return coordinator_->storage_; }
+		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return coordinator_->compact_storage_.get(); }
+		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return coordinator_->public_catalog_; }
+
+	private:
+		friend class MultiwaySolverCoordinator;
+		explicit ExportLease(const MultiwaySolverCoordinator& coordinator)
+			: coordinator_(&coordinator), lock_(coordinator.traversal_mutex_)
+		{
+		}
+
+		const MultiwaySolverCoordinator* coordinator_ = nullptr;
+		std::unique_lock<std::shared_mutex> lock_;
 	};
 
 } // namespace texas::solver::multiway

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <array>
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <vector>
 
@@ -197,6 +198,28 @@ namespace texas::solver::multiway
 		void validate() const;
 	};
 
+	struct MultiwayFullBlueprintExportPlan
+	{
+		MultiwayModelIdentity identity{};
+		MultiwayBlueprintTrainingMetadata training{};
+		std::uint64_t shape_count = 0U;
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t order_index_bytes = 0U;
+		bool compact_direct_order = false;
+
+		void validate() const;
+	};
+
+	struct MultiwayFullBlueprintExportResult
+	{
+		MultiwayFullBlueprintExportPlan plan{};
+		std::uint64_t payload_hash = 0U;
+		std::uint64_t peak_scratch_bytes = 0U;
+		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
+	};
+
 	// Production composition boundary. Artifact inputs are non-owning and must
 	// outlive a training session; their model identity is validated on creation.
 	struct MultiwayBlueprintTrainingConfig
@@ -260,6 +283,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept { return status_; }
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
+			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
 		[[nodiscard]] MultiwayBlueprintSnapshot publish(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
@@ -308,6 +333,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept;
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
+			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
 		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 

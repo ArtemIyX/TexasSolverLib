@@ -3,7 +3,22 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <cstring>
+#include <cstdint>
 #include <utility>
+
+namespace
+{
+
+	std::uint64_t probability_bits(double value)
+	{
+		std::uint64_t bits = 0U;
+		static_assert(sizeof(bits) == sizeof(value));
+		std::memcpy(&bits, &value, sizeof(bits));
+		return bits;
+	}
+
+}
 
 TEST_CASE(multiway_compact_storage_memory_snapshot_attributes_each_storage_array)
 {
@@ -84,6 +99,40 @@ TEST_CASE(multiway_compact_storage_allocation_free_policy_matches_vector_api)
 	}
 	EXPECT_THROW(compact.regret_matched_strategy_into(infoset, 0U, actual.data(), 2U),
 		std::invalid_argument);
+}
+
+TEST_CASE(multiway_compact_storage_average_strategy_into_preserves_bits)
+{
+	const texas::MultiwayInfosetId infoset{ { 101U }, 0 };
+	texas::solver::multiway::MultiwayCompactStorage storage(1U, 24U, 4U);
+	storage.admit_row({ infoset, 6U, 4U });
+	storage.apply_delta(infoset, 0U, 0U, 0.0, 1.0);
+	storage.apply_delta(infoset, 0U, 1U, 0.0, 3.0);
+	storage.apply_delta(infoset, 4U, 2U, 0.0, 7.0);
+
+	for (std::uint32_t bucket : { 0U, 1U, 4U, 5U })
+	{
+		const auto expected = storage.average_strategy(infoset, bucket);
+		std::array<texas::Probability, 4U> actual{};
+		storage.average_strategy_into(infoset, bucket, actual.data(), actual.size());
+		for (std::size_t action = 0U; action < actual.size(); ++action)
+			EXPECT_EQ(probability_bits(actual[action]), probability_bits(expected[action]));
+	}
+}
+
+TEST_CASE(multiway_float64_storage_average_strategy_into_preserves_uniform_bits)
+{
+	const texas::MultiwayInfosetId infoset{ { 102U }, 0 };
+	texas::solver::multiway::MultiwaySparseRowStorage storage(1U, 6U);
+	storage.admit_rows({ { infoset, 2U, 3U } }, { 1U });
+	for (std::uint32_t bucket = 0U; bucket < 2U; ++bucket)
+	{
+		const auto expected = storage.average_strategy(infoset, bucket);
+		std::array<texas::Probability, 3U> actual{};
+		storage.average_strategy_into(infoset, bucket, actual.data(), actual.size());
+		for (std::size_t action = 0U; action < actual.size(); ++action)
+			EXPECT_EQ(probability_bits(actual[action]), probability_bits(expected[action]));
+	}
 }
 
 TEST_CASE(multiway_compact_storage_pruning_keeps_configured_floor)

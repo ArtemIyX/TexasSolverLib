@@ -17,6 +17,167 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
+		constexpr std::uint64_t kQuantizedProbabilityMax = std::numeric_limits<std::uint16_t>::max();
+
+		bool export_shape_less(
+			const MultiwaySparseRowShape& left,
+			const MultiwaySparseRowShape& right) noexcept
+		{
+			return left.infoset.public_state.value != right.infoset.public_state.value
+				? left.infoset.public_state.value < right.infoset.public_state.value
+				: left.infoset.seat < right.infoset.seat;
+		}
+
+		void validate_export_menu(
+			const MultiwaySparseRowShape& shape,
+			const MultiwayPackedMenuView& menu)
+		{
+			if (shape.infoset.public_state.value == 0U || shape.infoset.seat < 0
+				|| shape.bucket_count == 0U || shape.action_count == 0U
+				|| shape.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS
+				|| menu.actions == nullptr || menu.action_count != shape.action_count
+				|| menu.action_menu_id == 0U)
+			{
+				throw std::invalid_argument("multiway full blueprint export shape is invalid");
+			}
+			for (std::size_t action = 0U; action < menu.action_count; ++action)
+			{
+				if (menu.actions[action].action_index != action
+					|| menu.actions[action].action_menu_id != menu.action_menu_id)
+					throw std::invalid_argument("multiway full blueprint export menu is invalid");
+			}
+		}
+
+		std::uint64_t checked_export_add(std::uint64_t left, std::uint64_t right)
+		{
+			if (right > std::numeric_limits<std::uint64_t>::max() - left)
+				throw std::overflow_error("multiway full blueprint export count overflows");
+			return left + right;
+		}
+
+		std::uint64_t checked_export_multiply(std::uint64_t left, std::uint64_t right)
+		{
+			if (left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left)
+				throw std::overflow_error("multiway full blueprint export count overflows");
+			return left * right;
+		}
+
+		MultiwayFullBlueprintExportPlan make_export_plan(
+			const MultiwaySolverCoordinator::ExportLease& lease,
+			const MultiwayModelIdentity& identity,
+			const MultiwayBlueprintTrainingMetadata& training,
+			std::vector<std::uint32_t>& order)
+		{
+			const auto* compact = lease.compact_storage();
+			const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
+			if (rows.size() > std::numeric_limits<std::uint32_t>::max())
+				throw std::overflow_error("multiway full blueprint export shape index overflows");
+
+			order.clear();
+			if (compact == nullptr)
+			{
+				order.resize(rows.size());
+				for (std::uint32_t index = 0U; index < order.size(); ++index)
+					order[index] = index;
+				std::sort(order.begin(), order.end(), [&rows](std::uint32_t left, std::uint32_t right) {
+					return export_shape_less(rows[left].shape, rows[right].shape);
+				});
+			}
+
+			MultiwayFullBlueprintExportPlan plan;
+			plan.identity = identity;
+			plan.training = training;
+			plan.shape_count = rows.size();
+			plan.compact_direct_order = compact != nullptr;
+			plan.order_index_bytes = plan.compact_direct_order
+				? 0U
+				: checked_export_multiply(plan.shape_count, sizeof(std::uint32_t));
+			const auto visit_shape = [&plan, &lease](const MultiwaySparseRowShape& shape) {
+				const auto menu = lease.public_catalog().packed_menu(shape.infoset.public_state);
+				validate_export_menu(shape, menu);
+				plan.row_count = checked_export_add(plan.row_count, shape.bucket_count);
+				plan.action_count = checked_export_add(
+					plan.action_count,
+					checked_export_multiply(shape.bucket_count, shape.action_count));
+			};
+			if (compact != nullptr)
+			{
+				bool has_previous = false;
+				MultiwaySparseRowShape previous{};
+				for (const auto& metadata : rows)
+				{
+					if (has_previous && !export_shape_less(previous, metadata.shape))
+						throw std::invalid_argument("multiway compact export rows are not ordered");
+					visit_shape(metadata.shape);
+					previous = metadata.shape;
+					has_previous = true;
+				}
+			}
+			else
+			{
+				bool has_previous = false;
+				MultiwaySparseRowShape previous{};
+				for (const auto index : order)
+				{
+					const auto& shape = rows[index].shape;
+					if (has_previous && !export_shape_less(previous, shape))
+						throw std::invalid_argument("multiway Float64 export rows are not ordered");
+					visit_shape(shape);
+					previous = shape;
+					has_previous = true;
+				}
+			}
+			const auto stream = make_multiway_full_blueprint_stream_plan(
+				plan.identity, plan.training, plan.row_count, plan.action_count);
+			plan.serialized_bytes = stream.serialized_bytes;
+			plan.validate();
+			return plan;
+		}
+
+		void quantize_compact_strategy(
+			const Probability* strategy,
+			std::size_t action_count,
+			const MultiwayPackedMenuView& menu,
+			MultiwayQuantizedRootAction* output)
+		{
+			double total = 0.0;
+			for (std::size_t action = 0U; action < action_count; ++action)
+				total += strategy[action];
+			std::uint32_t assigned = 0U;
+			for (std::size_t action = 0U; action < action_count; ++action)
+			{
+				const auto remaining_actions = static_cast<std::uint32_t>(action_count - action - 1U);
+				const auto remaining_mass = std::numeric_limits<std::uint16_t>::max() - assigned;
+				const auto raw_probability = total > 0.0
+					? static_cast<std::uint32_t>(std::floor(strategy[action] / total * kQuantizedProbabilityMax))
+					: 0U;
+				const auto probability = action + 1U == action_count
+					? static_cast<std::uint16_t>(remaining_mass)
+					: static_cast<std::uint16_t>(std::clamp(raw_probability, 1U, remaining_mass - remaining_actions));
+				assigned += probability;
+				output[action] = { menu.actions[action], probability };
+			}
+		}
+
+		void quantize_float64_strategy(
+			const Probability* strategy,
+			std::size_t action_count,
+			const MultiwayPackedMenuView& menu,
+			MultiwayQuantizedRootAction* output)
+		{
+			std::uint32_t assigned = 0U;
+			for (std::size_t action = 0U; action < action_count; ++action)
+			{
+				const auto remaining_actions = static_cast<std::uint32_t>(action_count - action - 1U);
+				const auto remaining_mass = std::numeric_limits<std::uint16_t>::max() - assigned;
+				const auto raw_probability = static_cast<std::uint32_t>(std::floor(strategy[action] * kQuantizedProbabilityMax));
+				const auto probability = action + 1U == action_count
+					? static_cast<std::uint16_t>(remaining_mass)
+					: static_cast<std::uint16_t>(std::clamp(raw_probability, 1U, remaining_mass - remaining_actions));
+				assigned += probability;
+				output[action] = { menu.actions[action], probability };
+			}
+		}
 
 		void sort_blueprint_rows(std::vector<MultiwayBlueprintRow>& rows)
 		{
@@ -32,6 +193,21 @@ namespace texas::solver::multiway
 		}
 
 	} // namespace
+
+	void MultiwayFullBlueprintExportPlan::validate() const
+	{
+		identity.validate();
+		if (shape_count > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("multiway full blueprint export shape index overflows");
+		const auto stream = make_multiway_full_blueprint_stream_plan(
+			identity, training, row_count, action_count);
+		const auto expected_order_index_bytes = compact_direct_order
+			? 0U
+			: checked_export_multiply(shape_count, sizeof(std::uint32_t));
+		if (serialized_bytes != stream.serialized_bytes
+			|| order_index_bytes != expected_order_index_bytes)
+			throw std::invalid_argument("multiway full blueprint export plan is invalid");
+	}
 
 	void MultiwayBlueprintTrainingCheckpoint::validate() const
 	{
@@ -789,6 +965,62 @@ namespace texas::solver::multiway
 		return artifact;
 	}
 
+	MultiwayFullBlueprintExportResult MultiwayBlueprintTrainer::save_full_policy_atomic(
+		const std::filesystem::path& path) const
+	{
+		auto lease = coordinator_->acquire_export_lease();
+		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
+		std::vector<std::uint32_t> order;
+		const auto plan = make_export_plan(lease, identity_, training, order);
+		const auto stream_plan = make_multiway_full_blueprint_stream_plan(
+			plan.identity, plan.training, plan.row_count, plan.action_count);
+		std::array<Probability, MULTIWAY_MAX_ABSTRACTED_ACTIONS> strategy{};
+		std::array<MultiwayQuantizedRootAction, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
+		const auto peak_scratch_bytes = checked_export_add(
+			checked_export_add(plan.order_index_bytes, sizeof(strategy)), sizeof(actions));
+		MultiwayFullBlueprintStreamWriter writer(path, stream_plan);
+		const auto* compact = lease.compact_storage();
+		const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
+		const auto emit_shape = [&](const MultiwaySparseRowShape& shape) {
+			const auto menu = lease.public_catalog().packed_menu(shape.infoset.public_state);
+			for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
+			{
+				if (compact != nullptr)
+					compact->average_strategy_into(shape.infoset, bucket, strategy.data(), shape.action_count);
+				else
+					lease.storage().average_strategy_into(shape.infoset, bucket, strategy.data(), shape.action_count);
+				if (compact != nullptr)
+					quantize_compact_strategy(strategy.data(), shape.action_count, menu, actions.data());
+				else
+					quantize_float64_strategy(strategy.data(), shape.action_count, menu, actions.data());
+				MultiwayFullBlueprintRowView row;
+				row.infoset = shape.infoset;
+				row.bucket = bucket;
+				row.action_menu_id = menu.action_menu_id;
+				row.actions = actions.data();
+				row.action_count = shape.action_count;
+				writer.write_row(row);
+			}
+		};
+		if (compact != nullptr)
+		{
+			for (const auto& metadata : rows)
+				emit_shape(metadata.shape);
+		}
+		else
+		{
+			for (const auto index : order)
+				emit_shape(rows[index].shape);
+		}
+		const auto stream_result = writer.finish();
+		MultiwayFullBlueprintExportResult result;
+		result.plan = plan;
+		result.payload_hash = stream_result.payload_hash;
+		result.peak_scratch_bytes = peak_scratch_bytes;
+		result.publication_mode = stream_result.publication_mode;
+		return result;
+	}
+
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const
 	{
 		MultiwayBlueprintTrainingCheckpoint result;
@@ -1005,6 +1237,12 @@ namespace texas::solver::multiway
 		auto result = trainer_->export_full_policy();
 		export_buffers_ = result.memory_snapshot();
 		return result;
+	}
+
+	MultiwayFullBlueprintExportResult MultiwayBlueprintTrainingSession::save_full_policy_atomic(
+		const std::filesystem::path& path) const
+	{
+		return trainer_->save_full_policy_atomic(path);
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint() const

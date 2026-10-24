@@ -766,22 +766,37 @@ namespace texas::solver::multiway
 		}
 
 		std::vector<Probability> result(row->shape.action_count, 0.0);
+		average_strategy_into(infoset, bucket, result.data(), result.size());
+		return result;
+	}
+
+	void MultiwaySparseRowStorage::average_strategy_into(
+		MultiwayInfosetId infoset,
+		std::uint32_t bucket,
+		Probability* output,
+		std::size_t output_size) const
+	{
+		const auto* row = metadata(infoset);
+		if (row == nullptr || bucket >= row->shape.bucket_count || output == nullptr || output_size != row->shape.action_count)
+		{
+			throw std::out_of_range("multiway average strategy output does not match its row");
+		}
+
 		double total = 0.0;
-		for (std::size_t action = 0; action < result.size(); ++action)
+		for (std::size_t action = 0; action < output_size; ++action)
 		{
 			const auto index = row->strategy_sum_offset + action * row->shape.bucket_count + bucket;
-			result[action] = strategy_sum_[index] > 0.0 ? strategy_sum_[index] : 0.0;
-			total += result[action];
+			output[action] = strategy_sum_[index] > 0.0 ? strategy_sum_[index] : 0.0;
+			total += output[action];
 		}
 		if (total == 0.0)
 		{
-			const auto uniform = 1.0 / static_cast<double>(result.size());
-			std::fill(result.begin(), result.end(), uniform);
-			return result;
+			const auto uniform = 1.0 / static_cast<double>(output_size);
+			std::fill(output, output + output_size, uniform);
+			return;
 		}
-		for (auto& probability : result)
-			probability /= total;
-		return result;
+		for (std::size_t action = 0U; action < output_size; ++action)
+			output[action] /= total;
 	}
 
 	std::vector<Probability> MultiwaySparseRowStorage::regret_matched_strategy(
@@ -2139,6 +2154,11 @@ namespace texas::solver::multiway
 	bool MultiwaySolverCoordinator::has_public_state_epoch(MultiwayPublicStateId id) const noexcept
 	{
 		return public_catalog_.contains(id);
+	}
+
+	MultiwaySolverCoordinator::ExportLease MultiwaySolverCoordinator::acquire_export_lease() const
+	{
+		return ExportLease(*this);
 	}
 
 	MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const

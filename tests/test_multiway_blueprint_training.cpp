@@ -2,6 +2,9 @@
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_model.hpp"
+#include "solver/multiway/abstraction/multiway_public_builder.hpp"
+#include "solver/multiway/engine/multiway_traversal.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>
@@ -12,6 +15,118 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+
+namespace
+{
+
+	constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit)
+	{
+		return texas::card_to_int(rank, suit);
+	}
+
+	const std::vector<std::uint8_t> kExportBoard = {
+		card(2U, 0U), card(7U, 1U), card(9U, 2U), card(4U, 3U), card(6U, 0U)
+	};
+
+	std::vector<std::uint32_t> export_bucket_assignments()
+	{
+		std::vector<std::uint32_t> result(texas::MULTIWAY_HOLE_COMBINATION_COUNT, 0U);
+		for (std::uint8_t first = 0U; first < 52U; ++first)
+			for (std::uint8_t second = static_cast<std::uint8_t>(first + 1U); second < 52U; ++second)
+				for (const auto board_card : kExportBoard)
+					if (first == board_card || second == board_card)
+						result[texas::MultiwayBucketTable::hole_index({ first, second })] = texas::MULTIWAY_INVALID_BUCKET;
+		return result;
+	}
+
+	texas::MultiwayRootSnapshot export_root(const texas::MultiwayActionAbstraction& abstraction)
+	{
+		texas::MultiwayGameConfig game;
+		game.starting_stacks = { 1000, 1000, 1000 };
+		game.initial_contributions = { 0, 0, 0 };
+		game.initial_street_contributions = { 0, 0, 0 };
+		game.first_player = 0;
+		game.big_blind = 100;
+		game.street = texas::Street::River;
+		const auto betting = texas::MultiwayState::initial(game).snapshot();
+		texas::MultiwayRootSnapshot root;
+		root.public_state = texas::MultiwayPublicBuilder::make_root(
+			betting, kExportBoard, abstraction.make_legal_actions(betting));
+		root.root_infoset = { root.public_state.id, 0 };
+		root.root_bucket = 0U;
+		root.seat_order = { 0, 1, 2 };
+		root.next_street_first_seat = 0;
+		root.odd_chip_first_seat = 0;
+		root.private_ranges.board = kExportBoard;
+		root.private_ranges.ranges.resize(3U);
+		root.private_ranges.ranges[0U] = { { { card(14U, 0U), card(13U, 0U) }, 1.0 } };
+		root.private_ranges.ranges[1U] = { { { card(12U, 0U), card(11U, 0U) }, 1.0 } };
+		root.private_ranges.ranges[2U] = { { { card(10U, 0U), card(8U, 0U) }, 1.0 } };
+		root.action_abstraction_version = 1U;
+		root.leaf_model_version = 1U;
+		return root;
+	}
+
+	texas::Value export_leaf(const texas::MultiwayLeafEvaluationRequest& request, const void*) noexcept
+	{
+		const auto traverser = static_cast<std::size_t>(request.traverser);
+		return static_cast<texas::Value>(request.betting->contributions[traverser] - request.betting->current_bet);
+	}
+
+	texas::MultiwaySolverLimits export_limits(texas::MultiwaySolverLimits::StorageBackend backend)
+	{
+		texas::MultiwaySolverLimits limits;
+		limits.worker_count = 1U;
+		limits.trajectories_per_batch = 4U;
+		limits.max_public_states = 128U;
+		limits.max_sparse_rows = 128U;
+		limits.max_sparse_values = 1024U;
+		limits.max_worker_delta_entries = 2048U;
+		limits.max_discovery_entries = 8192U;
+		limits.max_batches = 32U;
+		limits.storage_backend = backend;
+		return limits;
+	}
+
+	texas::MultiwayModelIdentity export_identity(texas::MultiwaySolverLimits::StorageBackend backend)
+	{
+		texas::MultiwayBlueprintTrainingConfig config;
+		config.limits = export_limits(backend);
+		return config.identity();
+	}
+
+	struct StreamingExportFixture
+	{
+		texas::MultiwayActionAbstraction abstraction;
+		texas::MultiwayRootSnapshot root;
+		texas::MultiwaySolveRequest request;
+		texas::MultiwaySolverCoordinator coordinator;
+		texas::MultiwayBucketRegistry buckets;
+		texas::MultiwayLeafEvaluator evaluator;
+		texas::MultiwayRootExternalSamplingTraversal traversal;
+		texas::MultiwayRootBatchRunner runner;
+		texas::MultiwayBlueprintTrainer trainer;
+
+		explicit StreamingExportFixture(texas::MultiwaySolverLimits::StorageBackend backend)
+			: root(export_root(abstraction)),
+			  request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend)),
+			  coordinator(request),
+			  buckets({ texas::MultiwayBucketTable(export_identity(backend), texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) }),
+			  evaluator{ export_leaf, nullptr },
+			  traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U),
+			  runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }),
+			  trainer(export_identity(backend), runner, coordinator, {}, 0x77U, 1U)
+		{
+		}
+	};
+
+	std::string read_bytes(const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
+	}
+
+}
 
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts)
 {
@@ -210,4 +325,47 @@ TEST_CASE(multiway_full_training_checkpoint_round_trips_and_rejects_tampering)
 					 path, checkpoint.identity, checkpoint.training.schedule_hash, checkpoint.training.deterministic_seed),
 		std::runtime_error);
 	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_streaming_export_matches_materialized_compact_bytes_and_repeats)
+{
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto materialized = fixture.trainer.export_full_policy();
+	const auto base = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto streamed_path = base.string() + ".streamed";
+	const auto materialized_path = base.string() + ".materialized";
+	const auto first = fixture.trainer.save_full_policy_atomic(streamed_path);
+	texas::MultiwayFullBlueprintArtifacts::save_atomic(materialized_path, materialized);
+	EXPECT_TRUE(first.plan.compact_direct_order);
+	EXPECT_EQ(first.plan.order_index_bytes, 0U);
+	EXPECT_EQ(first.plan.row_count, static_cast<std::uint64_t>(materialized.rows.size()));
+	EXPECT_EQ(first.payload_hash, materialized.payload_hash);
+	EXPECT_EQ(read_bytes(streamed_path), read_bytes(materialized_path));
+	const auto first_bytes = read_bytes(streamed_path);
+	const auto second = fixture.trainer.save_full_policy_atomic(streamed_path);
+	EXPECT_EQ(second.payload_hash, first.payload_hash);
+	EXPECT_EQ(read_bytes(streamed_path), first_bytes);
+	std::filesystem::remove(streamed_path);
+	std::filesystem::remove(materialized_path);
+}
+
+TEST_CASE(multiway_streaming_export_float64_uses_bounded_order_indexes_and_matches_bytes)
+{
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::Float64Reference);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto materialized = fixture.trainer.export_full_policy();
+	const auto base = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_float64_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto streamed_path = base.string() + ".streamed";
+	const auto materialized_path = base.string() + ".materialized";
+	const auto streamed = fixture.trainer.save_full_policy_atomic(streamed_path);
+	texas::MultiwayFullBlueprintArtifacts::save_atomic(materialized_path, materialized);
+	EXPECT_TRUE(!streamed.plan.compact_direct_order);
+	EXPECT_EQ(streamed.plan.order_index_bytes, streamed.plan.shape_count * sizeof(std::uint32_t));
+	EXPECT_EQ(streamed.payload_hash, materialized.payload_hash);
+	EXPECT_EQ(read_bytes(streamed_path), read_bytes(materialized_path));
+	std::filesystem::remove(streamed_path);
+	std::filesystem::remove(materialized_path);
 }
