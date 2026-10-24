@@ -20,7 +20,7 @@ param(
     [string]$OutputDirectory = ''
 )
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $runner = Join-Path $PSScriptRoot 'run_multiway_ram_1000.ps1'
 $workerCounts = @(
     $Workers |

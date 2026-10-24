@@ -9,7 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $analyzer = Join-Path $PSScriptRoot 'analyze_multiway_checkpoint_telemetry.ps1'
 if (-not (Test-Path -LiteralPath $analyzer -PathType Leaf)) {
     throw "Telemetry analyzer was not found: $analyzer"

@@ -115,7 +115,7 @@ def main() -> int:
             parser.error(f"folder does not exist: {directory}")
         return format_files(cpp_files(directory, skip_external=False))
 
-    project_root = Path(__file__).resolve().parents[1]
+    project_root = Path(__file__).resolve().parents[2]
     return format_files(cpp_files(project_root, skip_external=True))
 
 

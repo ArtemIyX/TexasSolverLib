@@ -227,7 +227,7 @@ Relevant source:
 
 - `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
 - `examples/multiway_workflow_main.cpp`
-- `scripts/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_ram_1000.ps1`
 
 ### 7. Subsystem `memory_bytes()` coverage is incomplete
 
@@ -690,8 +690,8 @@ Likely production files:
 Likely tooling files:
 
 - `scripts/build_multiway_tracy.ps1`
-- `scripts/run_multiway_ram_1000.ps1`
-- `scripts/run_multiway_tracy_training_capture.ps1`
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_tracy_training_capture.ps1`
 - a new bounded memory analyzer under `scripts/` if existing analyzers cannot
   express the new schema cleanly.
 
@@ -714,7 +714,7 @@ commands are templates, not evidence that they were run for this plan.
 ### Build and tests
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 Use focused targets and focused CTest expressions first. Run the full build
@@ -729,7 +729,7 @@ after the focused memory tests pass.
 ### Bounded normal memory run
 
 ```powershell
-.\scripts\run_multiway_ram_1000.ps1 `
+.\scripts\run\run_multiway_ram_1000.ps1 `
   -Workers 1 `
   -Batches 1 `
   -TrajectoriesPerBatch 1000 `
@@ -741,7 +741,7 @@ after the focused memory tests pass.
 ### Bounded Tracy capture
 
 ```powershell
-.\scripts\run_multiway_tracy_training_capture.ps1 `
+.\scripts\run\run_multiway_tracy_training_capture.ps1 `
   -Workers 1 `
   -Batches 1 `
   -TrajectoriesPerBatch 1000 `

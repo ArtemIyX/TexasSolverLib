@@ -40,7 +40,7 @@ def summarize(text: str) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--parallel", type=int, default=16, metavar="N",
                         help="maximum test jobs (default: 16)")
     parser.add_argument("-o", "--output", type=Path, default=Path("tmp/ctest_debug.log"),

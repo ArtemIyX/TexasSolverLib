@@ -78,9 +78,9 @@ complete. Report the exact missing prerequisite and stop.
 Run Python scripts through the repository wrapper:
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py <arguments>
-.\scripts\codex_powershell.ps1 .\scripts\compact_ctest.py <arguments>
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py <arguments>
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_ctest.py <arguments>
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 Do not run the 50-million-trajectory workload in tasks A through J.

@@ -6,7 +6,7 @@ file(READ "${SOURCE_DIR}/CMakeLists.txt" project_cmake)
 file(READ "${SOURCE_DIR}/include/util/tracy.hpp" tracy_header)
 file(READ "${SOURCE_DIR}/src/solver/multiway/engine/multiway_allocation_probe.cpp" allocation_probe)
 file(READ "${SOURCE_DIR}/scripts/build_multiway_tracy.ps1" tracy_build_script)
-file(READ "${SOURCE_DIR}/scripts/run_multiway_tracy_training_capture.ps1" tracy_capture_script)
+file(READ "${SOURCE_DIR}/scripts/run/run_multiway_tracy_training_capture.ps1" tracy_capture_script)
 
 foreach(required_text
     "TEXASSOLVER_BUILD_TRACY_DIAGNOSTICS"

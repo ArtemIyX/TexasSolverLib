@@ -17,7 +17,7 @@ Tasks A, B, and C must be complete.
 ## Required inputs
 
 - F1 sizing configuration and bucket artifact used by
-  `scripts/run_multiway_ram_1000.ps1`;
+  `scripts/run/run_multiway_ram_1000.ps1`;
 - matching RelWithDebInfo normal and Tracy binaries;
 - functioning Tracy `0.14.1` capture/export tools;
 - Task A process snapshots;
@@ -46,7 +46,7 @@ at `1,000` unless the existing artifact requires a lower safe bound.
 
 ## Analyzer output
 
-Add `scripts/analyze_multiway_memory_matrix.ps1` or an equivalent focused
+Add `scripts/analyze/analyze_multiway_memory_matrix.ps1` or an equivalent focused
 analyzer. It must produce JSON and a concise table containing:
 
 - commit and build identity;
@@ -88,10 +88,10 @@ incomplete or no component exceeds baseline noise.
 
 Likely changes:
 
-- `scripts/run_multiway_ram_1000.ps1`
-- `scripts/run_multiway_tracy_training_capture.ps1`
-- `scripts/run_multiway_worker_matrix.ps1` or a new bounded memory runner;
-- new `scripts/analyze_multiway_memory_matrix.ps1`;
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_tracy_training_capture.ps1`
+- `scripts/run/run_multiway_worker_matrix.ps1` or a new bounded memory runner;
+- new `scripts/analyze/analyze_multiway_memory_matrix.ps1`;
 - `tests/test_multiway_qualification_reports.cpp` for schema fixtures;
 - script-level tests if the repository has an established location.
 
@@ -133,7 +133,7 @@ tmp/memory-attribution/baseline/evidence.md
 Finally run:
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 git diff --check
 ```
 

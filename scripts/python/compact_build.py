@@ -42,7 +42,7 @@ def build_command(root: Path, build_dir: Path, configuration: str, parallel: int
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1],
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2],
                         help="repository root (default: script's parent repository)")
     parser.add_argument("--build-dir", type=Path, default=Path("build"),
                         help="configured build directory (default: build)")

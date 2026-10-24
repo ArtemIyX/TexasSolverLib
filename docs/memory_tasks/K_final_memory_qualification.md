@@ -67,7 +67,7 @@ The final evidence must include:
 2. Run:
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 3. Build matching RelWithDebInfo normal and Tracy binaries.

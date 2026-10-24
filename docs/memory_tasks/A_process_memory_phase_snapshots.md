@@ -133,7 +133,7 @@ Primary test files:
 Focused build:
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_memory `
   --target test_multiway_qualification_reports `
   --target test_multiway_blueprint_training `
@@ -150,7 +150,7 @@ ctest --test-dir build -C Debug --output-on-failure `
 Then run:
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 git diff --check
 ```
 

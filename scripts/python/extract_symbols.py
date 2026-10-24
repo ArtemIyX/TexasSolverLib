@@ -24,7 +24,7 @@ CONTROL = {"if", "for", "while", "switch", "catch", "return", "sizeof"}
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("root", nargs="?", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("root", nargs="?", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--file", help="substring filter for file path")
     parser.add_argument("--module", help="substring filter for module/path, e.g. solver or src/games")
     parser.add_argument("--type", choices=("class", "struct", "enum", "namespace", "function"), action="append")

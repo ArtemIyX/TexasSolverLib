@@ -69,7 +69,7 @@ Primary tests:
 ## Execute
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_public_catalog `
   --target test_multiway_solver `
   --target test_multiway_parallel_training `
@@ -79,7 +79,7 @@ Primary tests:
 ctest --test-dir build -C Debug --output-on-failure `
   -R "^(test_multiway_public_catalog|test_multiway_solver|test_multiway_parallel_training|test_multiway_memory)$"
 
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 Rerun Task D A2, A4, and A5 for three normal repeats. Capture A4 with Tracy.

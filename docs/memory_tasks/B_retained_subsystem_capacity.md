@@ -102,7 +102,7 @@ Primary tests:
 ## Execute
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_memory `
   --target test_multiway_parallel_training `
   --target test_multiway_compact_storage `
@@ -113,7 +113,7 @@ Primary tests:
 ctest --test-dir build -C Debug --output-on-failure `
   -R "^(test_multiway_memory|test_multiway_parallel_training|test_multiway_compact_storage|test_multiway_public_catalog|test_multiway_qualification_reports)$"
 
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 git diff --check
 ```
 

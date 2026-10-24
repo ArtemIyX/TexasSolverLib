@@ -86,7 +86,7 @@ Do not make unit tests depend on exact OS page-replacement timing.
 ## Execute
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_bucket_artifact `
   --target test_multiway_bucket_generation `
   --target test_multiway_memory `
@@ -95,7 +95,7 @@ Do not make unit tests depend on exact OS page-replacement timing.
 ctest --test-dir build -C Debug --output-on-failure `
   -R "^(test_multiway_bucket_artifact|test_multiway_bucket_generation|test_multiway_memory)$"
 
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 Rerun Task D cases A1 and A3 for three normal repeats and one Tracy capture.

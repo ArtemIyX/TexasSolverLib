@@ -16,7 +16,7 @@ def git(root: Path, *args: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--commits", type=int, default=8, help="number of commits (default: 8)")
     parser.add_argument("--files", type=int, default=20, help="maximum changed files (default: 20)")
     args = parser.parse_args()

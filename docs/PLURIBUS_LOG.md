@@ -1,5 +1,56 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Restructure repository scripts
+
+**Status:** Complete, utility tooling
+**Completed:** 2026-10-24
+
+- Added `scripts/python/`, `scripts/analyze/`, and `scripts/run/` categories.
+- Moved Python utilities, analysis scripts, and run/Tracy scripts into their matching directories.
+- Updated repository-root resolution, sibling-script paths, tests, README, and workflow documentation.
+
+### Files
+
+- `scripts/python/`
+- `scripts/analyze/`
+- `scripts/run/`
+- `README.md`
+- `AGENTS.md`
+- `docs/application_and_script_io.md`
+- `docs/memory_tasks/`
+- `docs/multiway_memory_measurement_and_reduction_plan.md`
+- `tests/cmake/test_tracy_boundary.cmake`
+
+### Validation
+
+- PowerShell parser validation passed for moved PowerShell scripts.
+- Python compile validation passed for moved Python scripts.
+- No build, test, benchmark, or solver run was performed.
+
+### Limitations
+
+- Historical entries in `docs/PLURIBUS_LOG.md` retain their original script paths.
+
+## PB-6 - Add headless Tracy capture daemon launcher
+
+**Status:** Complete, utility tooling
+**Completed:** 2026-10-24
+
+- Added a foreground PowerShell launcher for the Tracy capture daemon.
+- The launcher resolves the repository-local daemon, creates a timestamped output directory, uses the standard port 8086, and preserves graceful Ctrl+C shutdown for trace flushing.
+
+### Files
+
+- `scripts/run/run_tracy_capture_daemon.ps1`
+
+### Validation
+
+- PowerShell parser validation passed.
+
+### Limitations
+
+- The daemon was not started during validation.
+
 ## PB-6 - Implement Task C: Tracy allocation lifetimes
 
 **Status:** Complete, diagnostic only

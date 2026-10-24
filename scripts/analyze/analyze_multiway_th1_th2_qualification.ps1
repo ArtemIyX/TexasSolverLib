@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 if (-not [System.IO.Path]::IsPathRooted($InputDirectory)) {
     $InputDirectory = Join-Path $repoRoot $InputDirectory
 }

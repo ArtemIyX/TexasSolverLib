@@ -72,7 +72,7 @@ Add coverage for:
 ## Execute
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_compact_storage `
   --target test_multiway_blueprint_training `
   --target test_multiway_artifact `
@@ -82,7 +82,7 @@ Add coverage for:
 ctest --test-dir build -C Debug --output-on-failure `
   -R "^(test_multiway_compact_storage|test_multiway_blueprint_training|test_multiway_artifact|test_multiway_memory)$"
 
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 Rerun Task D A1 and A2 for three normal repeats and one A1 Tracy capture.

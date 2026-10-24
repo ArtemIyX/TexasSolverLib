@@ -19,7 +19,7 @@ param(
     [UInt64]$Seed = 0x77
 )
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 function Get-HostSnapshot {
     $processors = @()

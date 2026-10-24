@@ -394,19 +394,19 @@ All Python scripts are invoked with Python 3. They print a compact result to std
 
 | Script | Inputs | Outputs and side effects |
 |---|---|---|
-| `scripts/full_build.py` | No CLI arguments. | Runs `compact_build.py`, then `compact_ctest.py`; on failure invokes the matching scanner. Creates/updates `tmp/build_debug.log`, `tmp/ctest_debug.log`, `tmp/build_errors.txt`, and `tmp/ctest_errors.txt`. This is a build/test orchestrator. |
-| `scripts/compact_build.py` | `--root`, `--build-dir`, `--configuration Debug|Release|RelWithDebInfo`, `--parallel N`, repeatable `--target`, `-o/--output`. | Invokes CMake build or MSBuild discovery on Windows. Writes the complete build transcript to the output log and prints a PASS/FAIL summary. It changes build outputs. |
-| `scripts/compact_ctest.py` | `--root`, `--parallel N`, `-o/--output`. | Runs CTest against `build` in Debug configuration, writes the full transcript, and prints a summary. |
-| `scripts/scan_build_errors.py` | Optional positional input log; `-o/--output`, `--warnings`, `--last N`, `--context N`. | Reads a build/test/runtime log and writes a deduplicated Markdown failure report, default `tmp/build_errors.txt`. Returns 1 when failures are found. |
-| `scripts/scan_ctest_errors.py` | Optional positional CTest log; `-o/--output`. | Extracts `[FAIL]` records into a Markdown report, default `tmp/ctest_errors.txt`. Returns 1 when failures are found. |
-| `scripts/list_recent_changes.py` | `--root`, `--commits N`, `--files N`. | Reads Git branch/status/history and prints a compact report. No files are written. |
-| `scripts/repo_summary.py` | Optional repository root positional argument. | Scans source/configuration areas, skips generated/vendor trees, and prints a repository map. No files are written. |
-| `scripts/cmake_summary.py` | Optional root positional argument; `--target`, `--tests`, `--all-files`. | Parses CMake files and prints target, source, link, property, and test maps. No files are written. |
-| `scripts/cpp_file_summary.py` | Required C++ file positional argument; `--members`, `--signatures`, `--top N`. | Prints includes, types, functions, and TODOs for one C++ file. No files are written. |
-| `scripts/extract_includes.py` | Optional root positional argument; `--reverse NAME`, `--modules`, `--missing`, `--top N`. | Prints include/import dependency maps, reverse dependencies, missing includes, and cycles. No files are written. |
-| `scripts/extract_symbols.py` | Optional root; `--file`, `--module`, repeatable `--type`, `--signatures`, `--inheritance`, `--public`, `--compact`, `--top N`, repeatable `--area`, `--sort`. | Prints a symbol index. No files are written. |
-| `scripts/find_large_files.py` | Optional root; `--min-size MB`, `--top N`, repeatable `--ext`, `--dir`, `--exclude`, `--include-generated`, `--all`, `--tracked`, `--sort`, `--json`, `--summary`. | Scans files and prints a table or JSON. No files are written. |
-| `scripts/format_cpp.py` | Required subcommand `file <path>`, `folder <path>`, or `project`. Requires `clang-format` on PATH. | Runs `clang-format -i` and modifies selected `.h`, `.hpp`, and `.cpp` files in place. Prints per-file results and a count. |
+| `scripts/python/full_build.py` | No CLI arguments. | Runs `compact_build.py`, then `compact_ctest.py`; on failure invokes the matching scanner. Creates/updates `tmp/build_debug.log`, `tmp/ctest_debug.log`, `tmp/build_errors.txt`, and `tmp/ctest_errors.txt`. This is a build/test orchestrator. |
+| `scripts/python/compact_build.py` | `--root`, `--build-dir`, `--configuration Debug|Release|RelWithDebInfo`, `--parallel N`, repeatable `--target`, `-o/--output`. | Invokes CMake build or MSBuild discovery on Windows. Writes the complete build transcript to the output log and prints a PASS/FAIL summary. It changes build outputs. |
+| `scripts/python/compact_ctest.py` | `--root`, `--parallel N`, `-o/--output`. | Runs CTest against `build` in Debug configuration, writes the full transcript, and prints a summary. |
+| `scripts/python/scan_build_errors.py` | Optional positional input log; `-o/--output`, `--warnings`, `--last N`, `--context N`. | Reads a build/test/runtime log and writes a deduplicated Markdown failure report, default `tmp/build_errors.txt`. Returns 1 when failures are found. |
+| `scripts/python/scan_ctest_errors.py` | Optional positional CTest log; `-o/--output`. | Extracts `[FAIL]` records into a Markdown report, default `tmp/ctest_errors.txt`. Returns 1 when failures are found. |
+| `scripts/python/list_recent_changes.py` | `--root`, `--commits N`, `--files N`. | Reads Git branch/status/history and prints a compact report. No files are written. |
+| `scripts/python/repo_summary.py` | Optional repository root positional argument. | Scans source/configuration areas, skips generated/vendor trees, and prints a repository map. No files are written. |
+| `scripts/python/cmake_summary.py` | Optional root positional argument; `--target`, `--tests`, `--all-files`. | Parses CMake files and prints target, source, link, property, and test maps. No files are written. |
+| `scripts/python/cpp_file_summary.py` | Required C++ file positional argument; `--members`, `--signatures`, `--top N`. | Prints includes, types, functions, and TODOs for one C++ file. No files are written. |
+| `scripts/python/extract_includes.py` | Optional root positional argument; `--reverse NAME`, `--modules`, `--missing`, `--top N`. | Prints include/import dependency maps, reverse dependencies, missing includes, and cycles. No files are written. |
+| `scripts/python/extract_symbols.py` | Optional root; `--file`, `--module`, repeatable `--type`, `--signatures`, `--inheritance`, `--public`, `--compact`, `--top N`, repeatable `--area`, `--sort`. | Prints a symbol index. No files are written. |
+| `scripts/python/find_large_files.py` | Optional root; `--min-size MB`, `--top N`, repeatable `--ext`, `--dir`, `--exclude`, `--include-generated`, `--all`, `--tracked`, `--sort`, `--json`, `--summary`. | Scans files and prints a table or JSON. No files are written. |
+| `scripts/python/format_cpp.py` | Required subcommand `file <path>`, `folder <path>`, or `project`. Requires `clang-format` on PATH. | Runs `clang-format -i` and modifies selected `.h`, `.hpp`, and `.cpp` files in place. Prints per-file results and a count. |
 
 `full_build.py`, `compact_build.py`, and `compact_ctest.py` execute build/test commands. They are listed here for completeness but are not part of the no-build/no-run inspection performed for this documentation task.
 
@@ -418,7 +418,7 @@ Input: one required command followed by arbitrary command arguments.
 
 Behavior: normalizes process `PATH` handling case-insensitively, invokes the requested command, and returns the child exit code. It does not create files itself.
 
-### `scripts/run_multiway_ram_1000.ps1`
+### `scripts/run/run_multiway_ram_1000.ps1`
 
 Purpose: run a bounded multiway training workload while collecting process memory and report telemetry.
 
@@ -452,7 +452,7 @@ Files written below the run directory:
 
 The script also prints configuration, live working-set samples, report gates, phase timing, worker telemetry, and the final pass/fail result. It validates expected trajectory counts, zero discards, no failure/capacity exhaustion, and required telemetry.
 
-### `scripts/run_multiway_worker_matrix.ps1`
+### `scripts/run/run_multiway_worker_matrix.ps1`
 
 Purpose: repeat bounded runs across worker, pinning, and scheduler combinations.
 
@@ -476,7 +476,7 @@ Files written:
 
 stdout prints a matrix table and the final correctness/resource gate. The script requires one non-zero deterministic merge fingerprint and checks report schema, allocations, throughput, RSS, worker telemetry, and zero discards.
 
-### `scripts/run_multiway_tracy_capture.ps1`
+### `scripts/run/run_multiway_tracy_capture.ps1`
 
 Purpose: capture the standalone multiway scaling diagnostic executable.
 
@@ -504,7 +504,7 @@ Files written:
 
 The manifest records Tracy version 0.14.1, capture ID, UTC time, Git commit, build/compiler provenance, tool paths and SHA-256 hashes, arguments, and trace size. The wrapper invokes the diagnostic with one worker, batch size 1000, one warmup batch, 15 timed batches, and one repeat.
 
-### `scripts/run_multiway_tracy_training_capture.ps1`
+### `scripts/run/run_multiway_tracy_training_capture.ps1`
 
 Purpose: capture a real Tracy-enabled multiway training run and export Tracy measurements.
 
@@ -523,7 +523,7 @@ Defaults:
 
 - Capture tool: `build-tracy-capture\RelWithDebInfo\tracy-capture.exe`
 - CSV exporter: `build-tracy-csvexport\RelWithDebInfo\tracy-csvexport.exe`
-- Training wrapper: `scripts\run_multiway_ram_1000.ps1`
+- Training wrapper: `scripts\run\run_multiway_ram_1000.ps1`
 - Output directory: `tmp\tracy\<capture-id>`
 
 Files written:
@@ -575,5 +575,7 @@ These are generated diagnostics and should not be treated as source-controlled a
 - HUNL postflop CLI: `examples/hunl_mccfr_postflop_main.cpp`
 - Benchmark CLIs: `examples/benchmarks/*.cpp`
 - Shared test harness: `tests/test_main.cpp`
-- Build and analysis utilities: `scripts/*.py`
-- Measurement and Tracy orchestration: `scripts/*.ps1`
+- Python utilities: `scripts/python/*.py`
+- Build helpers: `scripts/build_*.ps1`
+- Analysis scripts: `scripts/analyze/*.ps1`
+- Run and Tracy orchestration: `scripts/run/*.ps1`

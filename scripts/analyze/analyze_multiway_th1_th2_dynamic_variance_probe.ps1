@@ -2,7 +2,7 @@
 param([string]$InputDirectory = 'tmp\th1-th2-dynamic-variance-probe')
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 if (-not [System.IO.Path]::IsPathRooted($InputDirectory)) { $InputDirectory = Join-Path $repoRoot $InputDirectory }
 
 function Read-Json([string]$Path) {

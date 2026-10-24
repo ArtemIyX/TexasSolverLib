@@ -27,7 +27,7 @@ def module(path: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("root", nargs="?", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("root", nargs="?", type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument("--reverse", metavar="NAME", help="show files/modules that import NAME")
     parser.add_argument("--modules", action="store_true", help="aggregate dependencies by top-level folder")
     parser.add_argument("--missing", action="store_true", help="show unresolved quoted includes")

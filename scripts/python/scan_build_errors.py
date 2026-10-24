@@ -13,7 +13,7 @@ TEST = re.compile(r"(?:FAILED|Failure|FAIL)\s*(?:Test|test)?\s*[:=]?\s*([A-Za-z0
 ERROR = re.compile(r"\b(?:error|fatal error|exception|assert(?:ion)? failed|segmentation fault|access violation|undefined reference|FAILED|FAIL)\b", re.I)
 WARNING = re.compile(r"\bwarning\b", re.I)
 NOISE = re.compile(r"^(?:\s*(?:Build (?:started|finished)|Done Building|Target .* up-to-date|\d+>\s*(?:Checking|Building|Linking)|\s*\[={2,}.*))", re.I)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT_TEXT = str(PROJECT_ROOT).replace("/", "\\")
 VCXPROJ_PATH = re.compile(r"\[[^\]\r\n]*[\\/]([^\\/\]]+\.vcxproj)\]", re.I)
 

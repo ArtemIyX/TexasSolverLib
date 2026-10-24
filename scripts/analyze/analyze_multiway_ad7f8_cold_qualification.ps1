@@ -9,7 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $baseAnalyzer = Join-Path $PSScriptRoot 'analyze_multiway_checkpoint_telemetry.ps1'
 if ([System.IO.Path]::IsPathRooted($InputRoot)) {
     $resolvedInputRoot = $InputRoot

@@ -84,7 +84,7 @@ Primary tests:
 ## Execute
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_artifact `
   --target test_multiway_blueprint_training `
   --target test_multiway_compact_storage `
@@ -93,7 +93,7 @@ Primary tests:
 ctest --test-dir build -C Debug --output-on-failure `
   -R "^(test_multiway_artifact|test_multiway_blueprint_training|test_multiway_compact_storage)$"
 
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 Run at least three matched bounded checkpoint-enabled normal runs before and

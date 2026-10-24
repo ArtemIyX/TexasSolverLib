@@ -257,26 +257,26 @@ The `scripts/` directory exists to keep repository inspection and verification c
 | Script | Use case |
 |---|---|
 | `codex_powershell.ps1` | Normalize duplicate or malformed Windows `PATH` variables before executing a command |
-| `repo_summary.py` | Print a compact TexasSolver repository map, module counts, entry points, public types, and large files |
-| `cmake_summary.py` | Summarize CMake targets, links, includes, options, and registered tests |
-| `cpp_file_summary.py` | Inspect includes, namespaces, types, functions, members, and TODOs in one C++ file without dumping bodies |
-| `extract_symbols.py` | Build a compact repository-wide C++ symbol index |
-| `extract_includes.py` | Show source dependency and import relationships |
-| `find_large_files.py` | Find unexpectedly large files while excluding build, vendor, artifact, and generated directories |
-| `list_recent_changes.py` | Summarize recent commits and current working-tree changes |
-| `compact_build.py` | Run the standard compact Debug build, save the full transcript, and print useful failures |
-| `compact_ctest.py` | Run CTest, save the full transcript, and print failed tests and actionable lines |
-| `scan_build_errors.py` | Reduce an existing build, test, or runtime log to unique actionable failures |
-| `scan_ctest_errors.py` | Deduplicate the repository test harness's `[FAIL]` lines |
-| `full_build.py` | Run the repository's full build and test workflow through the compact helpers |
+| `python/repo_summary.py` | Print a compact TexasSolver repository map, module counts, entry points, public types, and large files |
+| `python/cmake_summary.py` | Summarize CMake targets, links, includes, options, and registered tests |
+| `python/cpp_file_summary.py` | Inspect includes, namespaces, types, functions, members, and TODOs in one C++ file without dumping bodies |
+| `python/extract_symbols.py` | Build a compact repository-wide C++ symbol index |
+| `python/extract_includes.py` | Show source dependency and import relationships |
+| `python/find_large_files.py` | Find unexpectedly large files while excluding build, vendor, artifact, and generated directories |
+| `python/list_recent_changes.py` | Summarize recent commits and current working-tree changes |
+| `python/compact_build.py` | Run the standard compact Debug build, save the full transcript, and print useful failures |
+| `python/compact_ctest.py` | Run CTest, save the full transcript, and print failed tests and actionable lines |
+| `python/scan_build_errors.py` | Reduce an existing build, test, or runtime log to unique actionable failures |
+| `python/scan_ctest_errors.py` | Deduplicate the repository test harness's `[FAIL]` lines |
+| `python/full_build.py` | Run the repository's full build and test workflow through the compact helpers |
 
 Examples:
 
 ```bash
-python scripts/repo_summary.py
-python scripts/cmake_summary.py
-python scripts/cpp_file_summary.py include/solver/multiway/resolver/multiway_resolver.hpp
-python scripts/list_recent_changes.py
+python scripts/python/repo_summary.py
+python scripts/python/cmake_summary.py
+python scripts/python/cpp_file_summary.py include/solver/multiway/resolver/multiway_resolver.hpp
+python scripts/python/list_recent_changes.py
 ```
 
 Build and test scripts execute real commands. Repository agents must not run builds, tests, benchmarks, installs, or long solver jobs unless the user explicitly requests them.

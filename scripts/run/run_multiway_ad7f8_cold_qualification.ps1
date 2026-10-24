@@ -9,7 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $runner = Join-Path $PSScriptRoot 'run_multiway_tracy_training_capture.ps1'
 
 if ([System.IO.Path]::IsPathRooted($OutputRoot)) {

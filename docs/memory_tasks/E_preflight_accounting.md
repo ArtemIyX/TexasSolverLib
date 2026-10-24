@@ -97,7 +97,7 @@ Primary tests:
 ## Execute
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_memory `
   --target test_multiway_workflow_config `
   --target test_multiway_qualification_reports `
@@ -107,7 +107,7 @@ Primary tests:
 ctest --test-dir build -C Debug --output-on-failure `
   -R "^(test_multiway_memory|test_multiway_workflow_config|test_multiway_qualification_reports|test_multiway_artifact_preflight)$"
 
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 ```
 
 Then rerun normal Task D cases A1 and A3 and compare the estimate with the same

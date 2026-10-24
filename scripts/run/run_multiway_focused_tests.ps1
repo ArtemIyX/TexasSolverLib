@@ -17,7 +17,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 if ([System.IO.Path]::IsPathRooted($BuildDirectory)) {
     $resolvedBuildDirectory = $BuildDirectory

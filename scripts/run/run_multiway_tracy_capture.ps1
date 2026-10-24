@@ -10,7 +10,7 @@ param(
     [int]$ConnectionTimeoutSeconds = 15
 )
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 if ([string]::IsNullOrWhiteSpace($CaptureToolPath)) {
     $CaptureToolPath = Join-Path $repoRoot 'build-tracy-capture\RelWithDebInfo\tracy-capture.exe'

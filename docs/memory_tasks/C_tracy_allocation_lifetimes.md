@@ -23,7 +23,7 @@ implementation.
 - `src/solver/multiway/engine/multiway_allocation_probe.cpp`
 - `include/solver/multiway/engine/multiway_allocation_probe.hpp`
 - `scripts/build_multiway_tracy.ps1`
-- `scripts/run_multiway_tracy_training_capture.ps1`
+- `scripts/run/run_multiway_tracy_training_capture.ps1`
 - `src/solver/multiway/workflow/multiway_training_report.cpp`
 - `tests/cmake/test_tracy_boundary.cmake`
 - Tracy `0.14.1` memory macros under `external/tracy/public/tracy/Tracy.hpp`
@@ -77,7 +77,7 @@ Do not assert exact allocator byte totals across CRT versions.
 Focused normal build and tests:
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\compact_build.py `
+.\scripts\codex_powershell.ps1 .\scripts\python\compact_build.py `
   --target test_multiway_qualification_reports `
   -o tmp\memory-task-c-normal-build.log
 
@@ -95,7 +95,7 @@ Tracy build:
 Bounded capture:
 
 ```powershell
-.\scripts\run_multiway_tracy_training_capture.ps1 `
+.\scripts\run\run_multiway_tracy_training_capture.ps1 `
   -Workers 1 -Batches 1 -TrajectoriesPerBatch 1000 `
   -Scheduler fixed `
   -CaptureId memory-task-c-smoke `
@@ -105,7 +105,7 @@ Bounded capture:
 Then:
 
 ```powershell
-.\scripts\codex_powershell.ps1 .\scripts\full_build.py
+.\scripts\codex_powershell.ps1 .\scripts\python\full_build.py
 git diff --check
 ```
 
