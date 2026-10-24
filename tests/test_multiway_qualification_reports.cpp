@@ -131,6 +131,28 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	report.checkpoint_telemetry.public_state_bytes = 34U;
 	report.blueprint_bytes = 789U;
 	report.blueprint_export_nanoseconds = 1011U;
+	report.export_telemetry.attempted = true;
+	report.export_telemetry.succeeded = true;
+	report.export_telemetry.plan.shape_count = 4U;
+	report.export_telemetry.plan.row_count = 8U;
+	report.export_telemetry.plan.action_count = 16U;
+	report.export_telemetry.plan.serialized_bytes = 321U;
+	report.export_telemetry.plan.compact_direct_order = true;
+	report.export_telemetry.scratch.strategy_scratch_bytes = 10U;
+	report.export_telemetry.scratch.action_scratch_bytes = 11U;
+	report.export_telemetry.scratch.total_bytes = 21U;
+	report.export_telemetry.process_estimate.current_working_set_available = true;
+	report.export_telemetry.process_estimate.current_working_set_bytes = 100U;
+	report.export_telemetry.process_estimate.estimated_process_export_peak_bytes = 200U;
+	report.export_telemetry.process_gate.status = MultiwayExportGateStatus::Admitted;
+	report.export_telemetry.process_gate.hard_limit_bytes = 500U;
+	report.export_telemetry.process_gate.compared_process_working_set_bytes = 200U;
+	report.export_telemetry.system_gate.status = MultiwayExportGateStatus::Disabled;
+	report.export_telemetry.result_bytes = 321U;
+	report.export_telemetry.payload_hash = 654U;
+	report.export_telemetry.duration_nanoseconds = 987U;
+	report.export_telemetry.publication_mode = texas::core::AtomicPublishMode::Rename;
+	report.export_telemetry.validate();
 	report.admission_diagnostics.catalog_menu_key_nanoseconds = 1U;
 	report.admission_diagnostics.catalog_menu_index_lookup_nanoseconds = 2U;
 	report.admission_diagnostics.catalog_menu_equality_nanoseconds = 3U;
@@ -232,6 +254,12 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"process_working_set_limit_bytes\": 64") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_abort_phase\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_rejected_category\": \"process working set\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_telemetry_schema_version\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_row_count\": 8") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_result_bytes\": 321") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_result_payload_hash\": 654") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_duration_nanoseconds\": 987") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_publication_mode\": \"rename\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds\": 15") != std::string::npos);
@@ -299,6 +327,21 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"parent_transition_action_history_prefix_elements\": 31") != std::string::npos);
 	EXPECT_TRUE(text.find("\"parent_transition_action_menu_probes\": 32") != std::string::npos);
 	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_export_telemetry_validation_rejects_bad_schema_and_success_fields)
+{
+	using namespace texas::solver::multiway;
+	MultiwayExportTelemetry telemetry;
+	telemetry.schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION + 1U;
+	EXPECT_THROW(telemetry.validate(), std::invalid_argument);
+	telemetry.schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+	telemetry.attempted = true;
+	telemetry.succeeded = true;
+	telemetry.plan.serialized_bytes = 10U;
+	telemetry.process_gate.status = MultiwayExportGateStatus::Admitted;
+	telemetry.result_bytes = 9U;
+	EXPECT_THROW(telemetry.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_training_report_separates_tracy_provenance)

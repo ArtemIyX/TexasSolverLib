@@ -34,6 +34,7 @@ namespace texas::solver::multiway
 
 	void MultiwayTrainingReport::validate() const
 	{
+		export_telemetry.validate();
 		if (instrumentation_kind != "none" && instrumentation_kind != "tracy")
 			throw std::invalid_argument("invalid multiway training instrumentation kind");
 		if (instrumentation_kind == "none" && (!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid || tracy_memory_events_enabled))
@@ -210,9 +211,11 @@ namespace texas::solver::multiway
 		report.memory_ledger = status.memory_ledger;
 		report.process_memory_snapshots = status.process_memory_snapshots;
 		report.memory_subsystems = status.memory_subsystem_snapshots;
+		report.export_telemetry = status.export_telemetry;
 		if (report.memory_subsystems.count != 0U)
 			report.memory_ledger.actual_retained_capacity_bytes = report.memory_subsystems.snapshots[report.memory_subsystems.count - 1U].retained_capacity_bytes;
 		report.capacity_exhaustion_stage = status.capacity_exhaustion_stage;
+		report.failed = status.failed;
 		report.failed_batch_available = status.failed_batch_available;
 		report.failed_batch = status.failed_batch;
 		report.admitted_rows_per_batch = status.admitted_rows_per_batch;
@@ -293,6 +296,54 @@ namespace texas::solver::multiway
 			   << ",\n  \"working_set_gate_compared_bytes\": " << report.working_set_gate.compared_working_set_bytes
 			   << ",\n  \"working_set_gate_observed_bytes\": " << report.working_set_gate.observed_working_set_bytes
 			   << ",\n  \"working_set_gate_rejected_category\": \"" << report.working_set_gate.rejected_category << "\""
+			   << ",\n  \"export_telemetry_schema_version\": " << report.export_telemetry.schema_version
+			   << ",\n  \"export_attempted\": " << (report.export_telemetry.attempted ? "true" : "false")
+			   << ",\n  \"export_succeeded\": " << (report.export_telemetry.succeeded ? "true" : "false")
+			   << ",\n  \"export_shape_count\": " << report.export_telemetry.plan.shape_count
+			   << ",\n  \"export_row_count\": " << report.export_telemetry.plan.row_count
+			   << ",\n  \"export_action_count\": " << report.export_telemetry.plan.action_count
+			   << ",\n  \"export_serialized_bytes\": " << report.export_telemetry.plan.serialized_bytes
+			   << ",\n  \"export_order_index_bytes\": " << report.export_telemetry.plan.order_index_bytes
+			   << ",\n  \"export_compact_direct_order\": " << (report.export_telemetry.plan.compact_direct_order ? "true" : "false")
+			   << ",\n  \"export_scratch_order_index_bytes\": " << report.export_telemetry.scratch.order_index_bytes
+			   << ",\n  \"export_scratch_strategy_bytes\": " << report.export_telemetry.scratch.strategy_scratch_bytes
+			   << ",\n  \"export_scratch_action_bytes\": " << report.export_telemetry.scratch.action_scratch_bytes
+			   << ",\n  \"export_scratch_encoder_buffer_bytes\": " << report.export_telemetry.scratch.encoder_buffer_bytes
+			   << ",\n  \"export_scratch_headroom_bytes\": " << report.export_telemetry.scratch.exporter_headroom_bytes
+			   << ",\n  \"export_scratch_total_bytes\": " << report.export_telemetry.scratch.total_bytes
+			   << ",\n  \"export_scratch_arithmetic_saturated\": " << (report.export_telemetry.scratch.arithmetic_saturated ? "true" : "false")
+			   << ",\n  \"export_process_gate_status\": " << static_cast<unsigned>(report.export_telemetry.process_gate.status)
+			   << ",\n  \"export_process_gate_reason\": \"" << multiway_export_process_rejection_reason_name(report.export_telemetry.process_gate.rejection_reason) << "\""
+			   << ",\n  \"export_process_gate_limit_bytes\": " << report.export_telemetry.process_gate.hard_limit_bytes
+			   << ",\n  \"export_process_gate_estimated_peak_bytes\": " << report.export_telemetry.process_gate.compared_process_working_set_bytes
+			   << ",\n  \"export_process_current_working_set_bytes\": " << report.export_telemetry.process_estimate.current_working_set_bytes
+			   << ",\n  \"export_process_order_index_bytes\": " << report.export_telemetry.process_estimate.order_index_bytes
+			   << ",\n  \"export_process_strategy_scratch_bytes\": " << report.export_telemetry.process_estimate.strategy_scratch_bytes
+			   << ",\n  \"export_process_action_scratch_bytes\": " << report.export_telemetry.process_estimate.action_scratch_bytes
+			   << ",\n  \"export_process_encoder_buffer_bytes\": " << report.export_telemetry.process_estimate.encoder_buffer_bytes
+			   << ",\n  \"export_process_headroom_bytes\": " << report.export_telemetry.process_estimate.exporter_headroom_bytes
+			   << ",\n  \"export_process_estimate_arithmetic_saturated\": " << (report.export_telemetry.process_estimate.arithmetic_saturated ? "true" : "false")
+			   << ",\n  \"export_process_gate_current_working_set_available\": " << (report.export_telemetry.process_estimate.current_working_set_available ? "true" : "false")
+			   << ",\n  \"export_process_gate_mapped_residency_allowance_bytes\": " << report.export_telemetry.process_estimate.mapped_residency_allowance_bytes
+			   << ",\n  \"export_system_gate_status\": " << static_cast<unsigned>(report.export_telemetry.system_gate.status)
+			   << ",\n  \"export_system_gate_reason\": \"" << multiway_export_system_rejection_reason_name(report.export_telemetry.system_gate.rejection_reason) << "\""
+			   << ",\n  \"export_system_before_available\": " << (report.export_telemetry.system_before.available_physical_available ? "true" : "false")
+			   << ",\n  \"export_system_after_available\": " << (report.export_telemetry.system_after.available_physical_available ? "true" : "false")
+			   << ",\n  \"export_system_available_physical_bytes\": " << report.export_telemetry.system_gate.available_physical_bytes
+			   << ",\n  \"export_system_output_bytes\": " << report.export_telemetry.system_gate.serialized_output_bytes
+			   << ",\n  \"export_system_scratch_bytes\": " << report.export_telemetry.system_gate.exporter_scratch_bytes
+			   << ",\n  \"export_system_reserve_bytes\": " << report.export_telemetry.system_gate.system_reserve_bytes
+			   << ",\n  \"export_system_required_available_bytes\": " << report.export_telemetry.system_gate.required_available_bytes
+			   << ",\n  \"export_observed_before_working_set_bytes\": " << report.export_telemetry.observed_delta.before_working_set_bytes
+			   << ",\n  \"export_observed_after_working_set_bytes\": " << report.export_telemetry.observed_delta.after_working_set_bytes
+			   << ",\n  \"export_observed_working_set_delta_bytes\": " << report.export_telemetry.observed_delta.working_set_delta_bytes
+			   << ",\n  \"export_observed_before_private_committed_bytes\": " << report.export_telemetry.observed_delta.before_private_committed_bytes
+			   << ",\n  \"export_observed_after_private_committed_bytes\": " << report.export_telemetry.observed_delta.after_private_committed_bytes
+			   << ",\n  \"export_observed_private_committed_delta_bytes\": " << report.export_telemetry.observed_delta.private_committed_delta_bytes
+			   << ",\n  \"export_result_bytes\": " << report.export_telemetry.result_bytes
+			   << ",\n  \"export_result_payload_hash\": " << report.export_telemetry.payload_hash
+			   << ",\n  \"export_duration_nanoseconds\": " << report.export_telemetry.duration_nanoseconds
+			   << ",\n  \"export_publication_mode\": \"" << core::atomic_publish_mode_name(report.export_telemetry.publication_mode) << "\""
 			   << ",\n  \"process_rss_available\": " << (report.process_rss_available ? "true" : "false")
 			   << ",\n  \"started_at_preflop\": " << (report.started_at_preflop ? "true" : "false")
 			   << ",\n  \"peak_public_states\": " << report.peak_public_states
@@ -559,6 +610,12 @@ namespace texas::solver::multiway
 			   << ", \"mapped_resident_allowance_bytes\": " << report.memory_ledger.mapped_resident_allowance_bytes
 			   << ", \"checkpoint_transient_bytes\": " << report.memory_ledger.checkpoint_transient_bytes
 			   << ", \"export_transient_bytes\": " << report.memory_ledger.export_transient_bytes
+			   << ", \"export_scratch_bytes\": " << report.memory_ledger.export_scratch_bytes
+			   << ", \"export_output_bytes\": " << report.memory_ledger.export_output_bytes
+			   << ", \"export_process_peak_bytes\": " << report.memory_ledger.export_process_peak_bytes
+			   << ", \"export_system_cache_allowance_bytes\": " << report.memory_ledger.export_system_cache_allowance_bytes
+			   << ", \"export_observed_before_working_set_bytes\": " << report.memory_ledger.export_observed_before_working_set_bytes
+			   << ", \"export_observed_after_working_set_bytes\": " << report.memory_ledger.export_observed_after_working_set_bytes
 			   << ", \"configured_capacity_growth_bytes\": " << report.memory_ledger.configured_capacity_growth_bytes
 			   << ", \"actual_retained_capacity_bytes\": " << report.memory_ledger.actual_retained_capacity_bytes
 			   << ", \"estimated_private_peak_bytes\": " << report.memory_ledger.estimated_private_peak_bytes

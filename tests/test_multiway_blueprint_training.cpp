@@ -107,7 +107,9 @@ namespace
 		texas::MultiwayRootBatchRunner runner;
 		texas::MultiwayBlueprintTrainer trainer;
 
-		explicit StreamingExportFixture(texas::MultiwaySolverLimits::StorageBackend backend)
+		explicit StreamingExportFixture(
+			texas::MultiwaySolverLimits::StorageBackend backend,
+			texas::MultiwayWorkingSetMonitor monitor = {})
 			: root(export_root(abstraction)),
 			  request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend)),
 			  coordinator(request),
@@ -115,10 +117,29 @@ namespace
 			  evaluator{ export_leaf, nullptr },
 			  traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U),
 			  runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }),
-			  trainer(export_identity(backend), runner, coordinator, {}, 0x77U, 1U)
+			  trainer(export_identity(backend), runner, coordinator, {}, 0x77U, 1U,
+				0U, {}, {}, {}, nullptr, nullptr, monitor)
 		{
 		}
 	};
+
+	struct ExportProcessObserverState
+	{
+		std::uint64_t before_bytes = 100U;
+		std::uint64_t after_bytes = 150U;
+		std::uint32_t calls = 0U;
+	};
+
+	texas::MultiwayProcessMemorySnapshot export_process_observer(const void* context) noexcept
+	{
+		auto& state = *static_cast<ExportProcessObserverState*>(const_cast<void*>(context));
+		texas::MultiwayProcessMemorySnapshot snapshot;
+		snapshot.current_working_set_available = true;
+		snapshot.private_committed_available = true;
+		snapshot.current_working_set_bytes = state.calls++ == 0U ? state.before_bytes : state.after_bytes;
+		snapshot.private_committed_bytes = snapshot.current_working_set_bytes;
+		return snapshot;
+	}
 
 	std::string read_bytes(const std::filesystem::path& path)
 	{
@@ -368,4 +389,48 @@ TEST_CASE(multiway_streaming_export_float64_uses_bounded_order_indexes_and_match
 	EXPECT_EQ(read_bytes(streamed_path), read_bytes(materialized_path));
 	std::filesystem::remove(streamed_path);
 	std::filesystem::remove(materialized_path);
+}
+
+TEST_CASE(multiway_streaming_export_process_gate_rejects_before_temp_creation)
+{
+	texas::MultiwayWorkingSetMonitor monitor;
+	monitor.export_gate.process.hard_limit_bytes = 1U;
+	monitor.export_gate.process.exporter_headroom_bytes = 0U;
+	monitor.export_gate.process.encoder_buffer_bytes = 0U;
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto path = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_gate_reject_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	std::filesystem::remove(path);
+	std::filesystem::remove(path.string() + ".tmp");
+	EXPECT_THROW(fixture.trainer.save_full_policy_atomic(path), std::runtime_error);
+	EXPECT_TRUE(!std::filesystem::exists(path));
+	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+	EXPECT_EQ(fixture.trainer.status().export_telemetry.process_gate.rejection_reason,
+		texas::MultiwayExportProcessRejectionReason::ProcessLimitExceeded);
+}
+
+TEST_CASE(multiway_streaming_export_records_fresh_memory_telemetry)
+{
+	ExportProcessObserverState observer_state;
+	texas::MultiwayWorkingSetMonitor monitor;
+	monitor.export_gate.process.hard_limit_bytes = 10'000'000U;
+	monitor.export_gate.process.exporter_headroom_bytes = 0U;
+	monitor.export_gate.process.encoder_buffer_bytes = 0U;
+	monitor.export_process_observer = export_process_observer;
+	monitor.export_observer_context = &observer_state;
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto path = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_gate_telemetry_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto result = fixture.trainer.save_full_policy_atomic(path);
+	const auto& telemetry = fixture.trainer.status().export_telemetry;
+	EXPECT_EQ(observer_state.calls, 2U);
+	EXPECT_TRUE(telemetry.attempted);
+	EXPECT_TRUE(telemetry.succeeded);
+	EXPECT_EQ(telemetry.result_bytes, telemetry.plan.serialized_bytes);
+	EXPECT_EQ(telemetry.payload_hash, result.payload_hash);
+	EXPECT_EQ(telemetry.observed_delta.working_set_delta_bytes, 50U);
+	EXPECT_EQ(telemetry.process_gate.status, texas::MultiwayExportGateStatus::Admitted);
+	std::filesystem::remove(path);
 }

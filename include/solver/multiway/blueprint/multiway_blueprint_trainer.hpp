@@ -156,10 +156,12 @@ namespace texas::solver::multiway
 		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
 		MultiwayWorkingSetGateConfig working_set_gate_config{};
 		MultiwayWorkingSetGateResult working_set_gate{};
+		MultiwayExportTelemetry export_telemetry{};
 		bool process_rss_available = false;
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
 			MultiwayTrainingCapacityStage::None;
+		bool failed = false;
 		bool failed_batch_available = false;
 		MultiwayRootBatchResult failed_batch{};
 	};
@@ -296,6 +298,11 @@ namespace texas::solver::multiway
 			MultiwayMemoryComponent export_buffers = {});
 
 	private:
+		void record_export_memory_snapshot(
+			MultiwayMemoryPhase phase,
+			MultiwayProcessMemorySnapshot snapshot,
+			MultiwayMemoryComponent export_buffers) const;
+
 		MultiwayModelIdentity identity_{};
 		MultiwayRootBatchRunner* batch_runner_ = nullptr;
 		MultiwaySolverCoordinator* coordinator_ = nullptr;
@@ -306,7 +313,7 @@ namespace texas::solver::multiway
 		const MultiwayBucketRegistry* buckets_ = nullptr;
 		const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
 		MultiwayWorkingSetMonitor working_set_monitor_{};
-		MultiwayBlueprintTrainingStatus status_{};
+		mutable MultiwayBlueprintTrainingStatus status_{};
 		std::vector<double> late_window_baseline_;
 	};
 

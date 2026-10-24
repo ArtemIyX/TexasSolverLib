@@ -1,5 +1,39 @@
 # Pluribus Roadmap Progress Log
 
+## PB-7 - Task C: Export memory gate and reporting
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added versioned export plan, bounded scratch, fresh process estimate, Windows available-physical-memory gate, distinct rejection reasons, and separate observed export deltas.
+- Integrated lease-plan-snapshot-gate ordering into streamed trainer export before temporary-file creation, while preserving schema-2 bytes, payload hashes, atomic publication, and export exclusion.
+- Added report serialization for plan, process/system values, observed deltas, result bytes/hash/duration, publication mode, and separate ledger categories.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/tasks/TRACKER.md`
+
+### Validation
+
+- Focused Debug build and CTest for `test_multiway_memory`, `test_multiway_qualification_reports`, and `test_multiway_blueprint_training`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: Debug build and compact CTest passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- Production workflow configuration replacement and large-workload qualification remain Task D and later.
+- System-gate behavior is covered with deterministic injected snapshots; no large Windows machine-memory qualification run was performed.
+
 ## PB-7 - Task B: Trainer streaming emission
 
 **Status:** Complete

@@ -514,6 +514,24 @@ namespace texas::solver::multiway
 		}
 	}
 
+	void MultiwayBlueprintTrainer::record_export_memory_snapshot(
+		MultiwayMemoryPhase phase,
+		MultiwayProcessMemorySnapshot snapshot,
+		MultiwayMemoryComponent export_buffers) const
+	{
+		if (status_.process_memory_snapshots.enabled &&
+			!status_.process_memory_snapshots.record(phase, snapshot))
+			throw std::logic_error("multiway training process memory snapshot phase order is invalid");
+		if (status_.memory_subsystem_snapshots.enabled)
+		{
+			auto subsystems = capture_multiway_memory_subsystems(
+				buckets_, coordinator_, batch_runner_, continuation_selector_, nullptr,
+				{}, export_buffers);
+			if (!status_.memory_subsystem_snapshots.record(phase, subsystems))
+				throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
+		}
+	}
+
 	void MultiwayBlueprintTrainer::run_batches(
 		std::uint64_t batch_count,
 		std::uint64_t trajectories_per_batch,
@@ -968,6 +986,7 @@ namespace texas::solver::multiway
 	MultiwayFullBlueprintExportResult MultiwayBlueprintTrainer::save_full_policy_atomic(
 		const std::filesystem::path& path) const
 	{
+		const auto export_started = std::chrono::steady_clock::now();
 		auto lease = coordinator_->acquire_export_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		std::vector<std::uint32_t> order;
@@ -978,6 +997,51 @@ namespace texas::solver::multiway
 		std::array<MultiwayQuantizedRootAction, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
 		const auto peak_scratch_bytes = checked_export_add(
 			checked_export_add(plan.order_index_bytes, sizeof(strategy)), sizeof(actions));
+		MultiwayExportTelemetry telemetry;
+		telemetry.attempted = true;
+		telemetry.plan = {
+			MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION,
+			plan.shape_count,
+			plan.row_count,
+			plan.action_count,
+			plan.serialized_bytes,
+			plan.order_index_bytes,
+			plan.compact_direct_order };
+		auto export_gate = working_set_monitor_.export_gate;
+		if (export_gate.process.mapped_residency_allowance_bytes == 0U)
+			export_gate.process.mapped_residency_allowance_bytes = status_.memory_ledger.mapped_resident_allowance_bytes;
+		telemetry.scratch = make_multiway_export_scratch_estimate(telemetry.plan, export_gate.process);
+		const auto export_component = [peak_scratch_bytes]() noexcept {
+			MultiwayMemoryComponent component;
+			component.add_buffer(1U, 1U, static_cast<std::size_t>(peak_scratch_bytes));
+			return component;
+		};
+		telemetry.system_before = working_set_monitor_.export_system_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.export_system_observer(working_set_monitor_.export_observer_context);
+		const auto before_export = working_set_monitor_.export_process_observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.export_process_observer(working_set_monitor_.export_observer_context);
+		telemetry.process_estimate = make_multiway_export_process_estimate(
+			telemetry.plan, before_export, export_gate.process);
+		status_.memory_ledger.export_scratch_bytes = telemetry.scratch.total_bytes;
+		status_.memory_ledger.export_output_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_process_peak_bytes = telemetry.process_estimate.estimated_process_export_peak_bytes;
+		record_export_memory_snapshot(MultiwayMemoryPhase::BeforeExport, before_export, export_component());
+		telemetry.process_gate = evaluate_multiway_export_process_gate(
+			telemetry.plan, before_export, export_gate.process);
+		telemetry.system_gate = evaluate_multiway_export_system_gate(
+			telemetry.plan, telemetry.scratch, telemetry.system_before, export_gate.system);
+		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+		if (telemetry.process_gate.blocked() || telemetry.system_gate.blocked())
+		{
+			status_.failed = true;
+			status_.export_telemetry = telemetry;
+			const auto reason = telemetry.process_gate.blocked()
+				? multiway_export_process_rejection_reason_name(telemetry.process_gate.rejection_reason)
+				: multiway_export_system_rejection_reason_name(telemetry.system_gate.rejection_reason);
+			throw std::runtime_error(std::string("multiway blueprint export memory gate rejected: ") + reason);
+		}
 		MultiwayFullBlueprintStreamWriter writer(path, stream_plan);
 		const auto* compact = lease.compact_storage();
 		const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
@@ -1013,6 +1077,25 @@ namespace texas::solver::multiway
 				emit_shape(rows[index].shape);
 		}
 		const auto stream_result = writer.finish();
+		const auto after_export = working_set_monitor_.export_process_observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.export_process_observer(working_set_monitor_.export_observer_context);
+		telemetry.system_after = working_set_monitor_.export_system_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.export_system_observer(working_set_monitor_.export_observer_context);
+		telemetry.observed_delta = observe_multiway_export_memory_delta(before_export, after_export);
+		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_observed_before_working_set_bytes = telemetry.observed_delta.before_working_set_bytes;
+		status_.memory_ledger.export_observed_after_working_set_bytes = telemetry.observed_delta.after_working_set_bytes;
+		telemetry.result_bytes = stream_result.serialized_bytes;
+		telemetry.payload_hash = stream_result.payload_hash;
+		telemetry.duration_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - export_started).count());
+		telemetry.publication_mode = stream_result.publication_mode;
+		telemetry.succeeded = true;
+		status_.export_telemetry = telemetry;
+		record_export_memory_snapshot(MultiwayMemoryPhase::AfterExport, after_export, export_component());
 		MultiwayFullBlueprintExportResult result;
 		result.plan = plan;
 		result.payload_hash = stream_result.payload_hash;

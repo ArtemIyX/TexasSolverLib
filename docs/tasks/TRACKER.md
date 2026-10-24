@@ -1,10 +1,10 @@
 # Streaming full-blueprint export tracker
 
 **Updated:** 2026-10-24  
-**Overall status:** B complete
+**Overall status:** C complete
 **Current task:** None
-**Next action:** Start C, export memory gate and reporting; D remains dependent on B and C.
-**Latest blocker:** None. B's focused equivalence and repository validation passed; C is ready.
+**Next action:** Start D, workflow integration and publication.
+**Latest blocker:** None. C's focused tests, full Debug build, compact CTest, and review passed.
 
 ## Tasks
 
@@ -12,8 +12,8 @@
 | --- | --- | --- | --- | --- |
 | A | Complete | Added the schema-2-compatible bounded writer, validator, hasher, and strict temporary publication path; focused and repository validation passed. | None | [Artifact streaming writer](A-artifact-streaming-writer.md) |
 | B | Complete | Added direct ordered trainer emission with bounded scratch, exact planning, and export exclusion. | A | [Trainer streaming emission](B-trainer-streaming-emission.md) |
-| C | Ready | Add an independent export memory/system gate and export telemetry schema. | None | [Export memory gate and reporting](C-export-memory-gate-reporting.md) |
-| D | Blocked | Requires the writer, trainer emission, and gate/reporting surfaces. | A, B, C | [Workflow integration and publication](D-workflow-integration-publication.md) |
+| C | Complete | Added fresh export process/system gates, separate telemetry, and versioned report serialization. | None | [Export memory gate and reporting](C-export-memory-gate-reporting.md) |
+| D | Ready | Add production workflow integration and publication/report boundary coverage. | A, B, C | [Workflow integration and publication](D-workflow-integration-publication.md) |
 | E | Blocked | Requires the production workflow and all focused regression coverage. | D | [Qualification and release evidence](E-streaming-export-qualification.md) |
 
 ## Status values

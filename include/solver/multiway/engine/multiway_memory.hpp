@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/atomic_publish.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
 
 #include <array>
@@ -35,6 +36,7 @@ namespace texas::solver::multiway
 	inline constexpr std::uint32_t MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION = 2U;
+	inline constexpr std::uint32_t MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION = 1U;
 	inline constexpr std::size_t MULTIWAY_MEMORY_MAX_WORKERS = 16U;
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES =
 		48ULL * 1024ULL * 1024ULL * 1024ULL;
@@ -239,6 +241,211 @@ namespace texas::solver::multiway
 	[[nodiscard]] const char* multiway_memory_phase_name(MultiwayMemoryPhase phase) noexcept;
 	[[nodiscard]] MultiwayProcessMemorySnapshot capture_multiway_process_memory_snapshot() noexcept;
 
+	struct MultiwayExportPlanMemoryValues
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		std::uint64_t shape_count = 0U;
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t order_index_bytes = 0U;
+		bool compact_direct_order = false;
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayExportScratchEstimate
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		std::uint64_t order_index_bytes = 0U;
+		std::uint64_t strategy_scratch_bytes = 0U;
+		std::uint64_t action_scratch_bytes = 0U;
+		std::uint64_t encoder_buffer_bytes = 0U;
+		std::uint64_t exporter_headroom_bytes = 0U;
+		std::uint64_t total_bytes = 0U;
+		bool arithmetic_saturated = false;
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORTER_HEADROOM_BYTES = 64ULL * 1024ULL * 1024ULL;
+	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORT_ENCODER_BUFFER_BYTES = 1ULL * 1024ULL * 1024ULL;
+
+	struct MultiwayExportProcessEstimate
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		std::uint64_t current_working_set_bytes = 0U;
+		std::uint64_t order_index_bytes = 0U;
+		std::uint64_t strategy_scratch_bytes = 0U;
+		std::uint64_t action_scratch_bytes = 0U;
+		std::uint64_t encoder_buffer_bytes = 0U;
+		std::uint64_t exporter_headroom_bytes = 0U;
+		std::uint64_t mapped_residency_allowance_bytes = 0U;
+		std::uint64_t estimated_process_export_peak_bytes = 0U;
+		bool current_working_set_available = false;
+		bool arithmetic_saturated = false;
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	enum class MultiwayExportGateStatus : std::uint8_t
+	{
+		Disabled = 0U,
+		Admitted = 1U,
+		Rejected = 2U,
+		Unavailable = 3U,
+	};
+
+	enum class MultiwayExportProcessRejectionReason : std::uint8_t
+	{
+		None = 0U,
+		CurrentWorkingSetUnavailable = 1U,
+		EstimateOverflow = 2U,
+		ProcessLimitExceeded = 3U,
+	};
+
+	struct MultiwayExportProcessGateConfig
+	{
+		std::uint64_t hard_limit_bytes = MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES;
+		std::uint64_t exporter_headroom_bytes = MULTIWAY_DEFAULT_EXPORTER_HEADROOM_BYTES;
+		std::uint64_t encoder_buffer_bytes = MULTIWAY_DEFAULT_EXPORT_ENCODER_BUFFER_BYTES;
+		std::uint64_t mapped_residency_allowance_bytes = 0U;
+
+		void validate() const;
+	};
+
+	struct MultiwayExportProcessGateResult
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		MultiwayExportGateStatus status = MultiwayExportGateStatus::Disabled;
+		MultiwayExportProcessRejectionReason rejection_reason = MultiwayExportProcessRejectionReason::None;
+		std::uint64_t hard_limit_bytes = 0U;
+		std::uint64_t compared_process_working_set_bytes = 0U;
+		MultiwayExportProcessEstimate estimate{};
+		const char* message = "disabled";
+
+		[[nodiscard]] bool blocked() const noexcept
+		{
+			return status == MultiwayExportGateStatus::Rejected || status == MultiwayExportGateStatus::Unavailable;
+		}
+	};
+
+	struct MultiwaySystemMemorySnapshot
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		std::uint64_t available_physical_bytes = 0U;
+		bool available_physical_available = false;
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	enum class MultiwayExportSystemRejectionReason : std::uint8_t
+	{
+		None = 0U,
+		AvailablePhysicalMemoryUnavailable = 1U,
+		AllowanceOverflow = 2U,
+		AvailablePhysicalMemoryInsufficient = 3U,
+	};
+
+	struct MultiwayExportSystemGateConfig
+	{
+		bool enabled = false;
+		std::uint64_t system_reserve_bytes = 0U;
+
+		void validate() const;
+	};
+
+	struct MultiwayExportSystemGateResult
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		MultiwayExportGateStatus status = MultiwayExportGateStatus::Disabled;
+		MultiwayExportSystemRejectionReason rejection_reason = MultiwayExportSystemRejectionReason::None;
+		std::uint64_t available_physical_bytes = 0U;
+		std::uint64_t serialized_output_bytes = 0U;
+		std::uint64_t exporter_scratch_bytes = 0U;
+		std::uint64_t system_reserve_bytes = 0U;
+		std::uint64_t required_available_bytes = 0U;
+		const char* message = "disabled";
+
+		[[nodiscard]] bool blocked() const noexcept
+		{
+			return status == MultiwayExportGateStatus::Rejected || status == MultiwayExportGateStatus::Unavailable;
+		}
+	};
+
+	struct MultiwayExportObservedMemoryDelta
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		std::uint64_t before_working_set_bytes = 0U;
+		std::uint64_t after_working_set_bytes = 0U;
+		std::uint64_t working_set_delta_bytes = 0U;
+		std::uint64_t before_private_committed_bytes = 0U;
+		std::uint64_t after_private_committed_bytes = 0U;
+		std::uint64_t private_committed_delta_bytes = 0U;
+		bool before_working_set_available = false;
+		bool after_working_set_available = false;
+		bool before_private_committed_available = false;
+		bool after_private_committed_available = false;
+		bool working_set_delta_decreased = false;
+		bool private_committed_delta_decreased = false;
+
+		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	struct MultiwayExportMemoryGateConfig
+	{
+		MultiwayExportProcessGateConfig process{};
+		MultiwayExportSystemGateConfig system{};
+
+		void validate() const;
+	};
+
+	[[nodiscard]] MultiwayExportScratchEstimate make_multiway_export_scratch_estimate(
+		const MultiwayExportPlanMemoryValues& plan,
+		MultiwayExportProcessGateConfig config) noexcept;
+	[[nodiscard]] MultiwayExportProcessEstimate make_multiway_export_process_estimate(
+		const MultiwayExportPlanMemoryValues& plan,
+		const MultiwayProcessMemorySnapshot& snapshot,
+		MultiwayExportProcessGateConfig config) noexcept;
+	[[nodiscard]] MultiwayExportProcessGateResult evaluate_multiway_export_process_gate(
+		const MultiwayExportPlanMemoryValues& plan,
+		const MultiwayProcessMemorySnapshot& snapshot,
+		MultiwayExportProcessGateConfig config) noexcept;
+	[[nodiscard]] MultiwaySystemMemorySnapshot capture_multiway_system_memory_snapshot() noexcept;
+	[[nodiscard]] MultiwayExportSystemGateResult evaluate_multiway_export_system_gate(
+		const MultiwayExportPlanMemoryValues& plan,
+		const MultiwayExportScratchEstimate& scratch,
+		const MultiwaySystemMemorySnapshot& snapshot,
+		MultiwayExportSystemGateConfig config) noexcept;
+	[[nodiscard]] MultiwayExportObservedMemoryDelta observe_multiway_export_memory_delta(
+		const MultiwayProcessMemorySnapshot& before,
+		const MultiwayProcessMemorySnapshot& after) noexcept;
+	[[nodiscard]] const char* multiway_export_process_rejection_reason_name(
+		MultiwayExportProcessRejectionReason reason) noexcept;
+	[[nodiscard]] const char* multiway_export_system_rejection_reason_name(
+		MultiwayExportSystemRejectionReason reason) noexcept;
+
+	struct MultiwayExportTelemetry
+	{
+		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		bool attempted = false;
+		bool succeeded = false;
+		MultiwayExportPlanMemoryValues plan{};
+		MultiwayExportScratchEstimate scratch{};
+		MultiwayExportProcessEstimate process_estimate{};
+		MultiwayExportProcessGateResult process_gate{};
+		MultiwaySystemMemorySnapshot system_before{};
+		MultiwaySystemMemorySnapshot system_after{};
+		MultiwayExportSystemGateResult system_gate{};
+		MultiwayExportObservedMemoryDelta observed_delta{};
+		std::uint64_t result_bytes = 0U;
+		std::uint64_t payload_hash = 0U;
+		std::uint64_t duration_nanoseconds = 0U;
+		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
+
+		void validate() const;
+	};
+
 	struct MultiwayMemoryBudget
 	{
 		std::uint64_t warning_bytes = 48ULL * 1024ULL * 1024ULL * 1024ULL;
@@ -299,6 +506,12 @@ namespace texas::solver::multiway
 		std::uint64_t mapped_resident_allowance_bytes = 0U;
 		std::uint64_t checkpoint_transient_bytes = 0U;
 		std::uint64_t export_transient_bytes = 0U;
+		std::uint64_t export_scratch_bytes = 0U;
+		std::uint64_t export_output_bytes = 0U;
+		std::uint64_t export_process_peak_bytes = 0U;
+		std::uint64_t export_system_cache_allowance_bytes = 0U;
+		std::uint64_t export_observed_before_working_set_bytes = 0U;
+		std::uint64_t export_observed_after_working_set_bytes = 0U;
 		std::uint64_t estimated_private_peak_bytes = 0U;
 		std::uint64_t estimated_working_set_peak_bytes = 0U;
 		std::uint64_t configured_capacity_growth_bytes = 0U;
@@ -437,12 +650,17 @@ namespace texas::solver::multiway
 	};
 
 	using MultiwayProcessMemoryObserver = MultiwayProcessMemorySnapshot (*)(const void*) noexcept;
+	using MultiwaySystemMemoryObserver = MultiwaySystemMemorySnapshot (*)(const void*) noexcept;
 
 	struct MultiwayWorkingSetMonitor
 	{
 		MultiwayWorkingSetGateConfig gate{};
 		MultiwayProcessMemoryObserver observer = nullptr;
 		const void* observer_context = nullptr;
+		MultiwayExportMemoryGateConfig export_gate{};
+		MultiwayProcessMemoryObserver export_process_observer = nullptr;
+		MultiwaySystemMemoryObserver export_system_observer = nullptr;
+		const void* export_observer_context = nullptr;
 
 		void validate() const;
 	};
