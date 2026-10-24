@@ -1,7 +1,6 @@
 # Streaming full-blueprint export tracker
 
-**Updated:** 2026-10-24  
-**Updated:** 2026-10-24  
+**Updated:** 2026-10-24
 **Overall status:** E in progress
 **Current task:** E, streaming export qualification
 **Next action:** Resolve the rejected 8-worker process-working-set preflight, then obtain fresh disk/time/memory authorization before repeated qualification.
