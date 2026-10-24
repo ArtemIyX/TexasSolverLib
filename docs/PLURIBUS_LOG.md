@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Add optional training progress speed telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added `--progress-speed true|false` to report interval and overall trajectories per second on clean training progress lines.
+- Kept speed measurement outside traversal and merge kernels.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `texas_multiway_train` passed.
+- `test_multiway_workflow_boundary` passed.
+
+### Limitations
+
+- Rates are batch-boundary wall-clock telemetry, not a per-worker profiler.
+
 ## PB-6 - Fix multiway chance-runout catalog equivalence
 
 **Status:** Complete

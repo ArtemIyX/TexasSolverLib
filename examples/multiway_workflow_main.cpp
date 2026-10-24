@@ -95,7 +95,8 @@ namespace
 					  << "  --resume <path>        Checkpoint to resume\n"
 					  << "  --progress <true|false>  Print training progress (default true)\n"
 					  << "  --progress-every <N>  Print training progress every N batches\n"
-					  << "  --progress-memory <true|false>  Show working-set telemetry\n";
+					  << "  --progress-memory <true|false>  Show working-set telemetry\n"
+					  << "  --progress-speed <true|false>  Show interval and overall trajectories per second\n";
 			std::cout << "  --threads <1..16>      Training worker override\n"
 					  << "  --pin-workers <true|false>  Pin training workers to logical processors\n"
 					  << "  --scheduler <fixed|dynamic>  Training worker scheduler\n"
@@ -512,11 +513,16 @@ namespace
 	{
 		bool enabled = true;
 		bool show_memory = false;
+		bool show_speed = false;
 		std::uint64_t interval = 1U;
 		std::uint64_t starting_batches = 0U;
 		std::uint64_t requested_batches = 0U;
 		std::uint32_t effective_workers = 0U;
 		std::ofstream* log = nullptr;
+		std::uint64_t starting_trajectories = 0U;
+		std::uint64_t last_reported_trajectories = 0U;
+		std::chrono::steady_clock::time_point started_at{};
+		std::chrono::steady_clock::time_point last_reported_at{};
 	};
 
 	void report_multiway_training_progress(
@@ -530,6 +536,7 @@ namespace
 		if (completed_batches == 0U ||
 			(completed_batches % progress.interval != 0U && completed_batches != progress.requested_batches))
 			return;
+		const auto now = std::chrono::steady_clock::now();
 		const auto line = std::string("training progress: batches_completed=") +
 			std::to_string(completed_batches) + "/" + std::to_string(progress.requested_batches) +
 			" trajectories=" + std::to_string(status.trajectories) +
@@ -549,6 +556,21 @@ namespace
 				output_line += " working_set=unavailable";
 			}
 		}
+		if (progress.show_speed)
+		{
+			const auto interval_seconds = std::chrono::duration<double>(now - progress.last_reported_at).count();
+			const auto overall_seconds = std::chrono::duration<double>(now - progress.started_at).count();
+			const auto interval_trajectories = status.trajectories - progress.last_reported_trajectories;
+			const auto overall_trajectories = status.trajectories - progress.starting_trajectories;
+			if (interval_seconds > 0.0)
+				output_line += " interval_trajectories_per_second=" + std::to_string(
+					static_cast<double>(interval_trajectories) / interval_seconds);
+			if (overall_seconds > 0.0)
+				output_line += " overall_trajectories_per_second=" + std::to_string(
+					static_cast<double>(overall_trajectories) / overall_seconds);
+			progress.last_reported_trajectories = status.trajectories;
+			progress.last_reported_at = now;
+		}
 		std::cout << output_line << std::endl;
 		if (progress.log != nullptr)
 			*progress.log << output_line << '\n' << std::flush;
@@ -564,6 +586,7 @@ namespace
 		bool progress_enabled,
 		std::uint64_t progress_interval,
 		bool progress_memory,
+		bool progress_speed,
 		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode,
 		bool authorize_50m_stage)
 	{
@@ -766,14 +789,20 @@ namespace
 		}
 		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
+		const auto progress_started_at = std::chrono::steady_clock::now();
 		MultiwayTrainingProgressContext progress_context{
 			progress_enabled,
 			progress_memory,
+			progress_speed,
 			progress_interval,
 			session.status().batches,
 			batches,
 			workers.effective,
-			&log};
+			&log,
+			session.status().trajectories,
+			session.status().trajectories,
+			progress_started_at,
+			progress_started_at};
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
@@ -1032,6 +1061,7 @@ namespace
 		std::string benchmark_mode = "build-only";
 		bool progress_enabled = true;
 		bool progress_memory = false;
+		bool progress_speed = false;
 		std::uint64_t inspect_progress_interval =
 			texas::solver::multiway::MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL;
 		std::uint64_t training_progress_interval = 1U;
@@ -1051,7 +1081,7 @@ namespace
 				authorize_50m_stage = true;
 				continue;
 			}
-			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
+			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
 			{
 				if (!consume_value(index, argc, argv, argument))
 				{
@@ -1140,6 +1170,16 @@ namespace
 					else
 						throw std::invalid_argument("--progress-memory must be true or false");
 				}
+				if (argument == "--progress-speed")
+				{
+					const std::string_view value(argv[index]);
+					if (value == "true")
+						progress_speed = true;
+					else if (value == "false")
+						progress_speed = false;
+					else
+						throw std::invalid_argument("--progress-speed must be true or false");
+				}
 				if (argument == "--hash")
 				{
 					const std::string_view value(argv[index]);
@@ -1199,7 +1239,7 @@ namespace
 		{
 			return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir,
 				resume_path, threads_specified ? threads : 0U, pin_workers, progress_enabled,
-				training_progress_interval, progress_memory, scheduler_mode, authorize_50m_stage);
+				training_progress_interval, progress_memory, progress_speed, scheduler_mode, authorize_50m_stage);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{

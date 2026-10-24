@@ -42,6 +42,16 @@ if(progress_memory_output_position EQUAL -1)
     message(FATAL_ERROR "training workflow does not report current working-set telemetry")
 endif()
 
+string(FIND "${source_text}" "--progress-speed <true|false>" progress_speed_option_position)
+if(progress_speed_option_position EQUAL -1)
+    message(FATAL_ERROR "training workflow does not expose progress speed telemetry")
+endif()
+
+string(FIND "${source_text}" "overall_trajectories_per_second" progress_speed_output_position)
+if(progress_speed_output_position EQUAL -1)
+    message(FATAL_ERROR "training workflow does not report overall throughput telemetry")
+endif()
+
 foreach(startup_log "texas_multiway_buckets: starting bucket generation"
         "bucket generation goal:" "effective_threads=")
     string(FIND "${source_text}" "${startup_log}" startup_log_position)
