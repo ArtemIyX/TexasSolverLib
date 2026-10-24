@@ -1,5 +1,167 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Task L staged large-F1 qualification with hard RAM safety gates
+
+**Status:** Complete with 50M authorization gate
+**Completed:** 2026-10-24
+
+- Added deterministic staged qualification at 50K, 500K, 5M, and explicitly authorized 50M trajectories; the 50M stage is not automatic.
+- Added a conservative 48 GiB process working-set gate by default, configurable resident allowance, preflight rejection reporting, and fail-closed runtime monitoring with preflight/runtime phase reporting.
+- Preserved the configurable legacy 64 GiB process limit, Task G capacities, checkpoint/export mutual exclusion, deterministic fingerprints, and transactional failed-batch behavior.
+- Documented that the approximately 21 GB private estimate is conservative accounting rather than observed RAM, bounded Task K passed, 50M remains staged, and Task E corrects accounting rather than RAM usage.
+
+### Files
+
+- `CMakeLists.txt`
+- `configs/multiway/f1_dev_v1.cfg`
+- `docs/memory_tasks/TRACKER.md`
+- `docs/memory_tasks/L_staged_large_f1_qualification.md`
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/workflow/multiway_staged_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_staged_qualification.cpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_staged_qualification.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+
+### Validation
+
+- Focused Debug build and focused CTest passed, including staged progression, preflight/runtime gates, conservative/compatibility limits, overflow saturation, compatibility, zero-discard success, determinism, and transactional failure.
+- Full Debug build passed and all 111 CTest tests passed.
+- Analyzer self-test passed.
+- `git diff --check` passed and final C++ review found no actionable findings.
+
+### Limitations
+
+- No 50M workload was executed; it remains gated by explicit user approval and fresh preflight/runtime safety checks.
+- The working-set monitor fails closed when an enabled platform metric is unavailable.
+- Runtime samples occur before and after clean batch boundaries so a rejected batch remains transactional.
+
+## PB-6 - Task K final bounded memory qualification
+
+**Status:** Complete with limitations
+**Completed:** 2026-10-24
+
+- Added baseline-versus-final qualification analysis with medians, ranges, working-set/private deltas, throughput/CPU deltas, fingerprints, Tracy allocation evidence, preflight categories, and candidate attribution.
+- Added an explicit source-config input to the bounded normal, Tracy, and matrix runners so the final matrix exercised the selected Task G capacities without changing the preserved baseline artifact.
+- Final decision: `bounded_memory_qualification_pass_with_limitations`.
+
+### Before and after
+
+| Case | Median peak private baseline -> final | Reduction | Median throughput baseline -> final |
+| --- | ---: | ---: | ---: |
+| A1 | 3441930240 -> 1379082240 | 2062848000 | 685.741 -> 687.753 trajectories/s |
+| A2 | 4449996800 -> 2373361664 | 2076635136 | 713.341 -> 714.608 trajectories/s |
+| A3 | 9948704768 -> 1691877376 | 8256827392 | 1363.18 -> 1370.69 trajectories/s |
+| A4 | 10928185344 -> 2668765184 | 8259420160 | 1346.4 -> 1386.3 trajectories/s |
+| A5 | 10985193472 -> 2672914432 | 8312279040 | 1308.63 -> 1520.21 trajectories/s |
+
+- The one-to-four-worker private slope fell from 2164262229.33 to 100242773.33 bytes, a 2064019456-byte reduction. The stream-capacity slope fell from 2160000000 to 100003264 bytes.
+- All 25 normal runs completed with zero discards and `failed=false`. All five Tracy captures contained allocation and free events. Final fingerprints matched the baseline for every case and fixed/dynamic equivalence held.
+- Final explicit preflight categories preserved the 15369522466-byte mapped virtual artifact separately. A1 estimated 21090186760 private peak and 36427740680 working-set peak bytes; A3 estimated 21405970416 private peak and 36743528432 working-set peak bytes. Checkpoint and export transients were each 10520000256 bytes and counted by maximum.
+
+### Files
+
+- `scripts/analyze/analyze_multiway_memory_matrix.ps1`
+- `scripts/run/run_multiway_memory_matrix.ps1`
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_tracy_training_capture.ps1`
+- `docs/memory_tasks/TRACKER.md`
+- `tmp/memory-attribution/final/memory_summary.json`
+- `tmp/memory-attribution/final/memory_samples.csv`
+- `tmp/memory-attribution/final/evidence.md`
+
+### Validation
+
+- Analyzer self-test passed.
+- Full Debug build and all 110 CTest tests passed.
+- RelWithDebInfo normal and Tracy binaries were built successfully.
+- `git diff --check` passed and final C++ correctness/performance review found no actionable findings.
+
+### Limitations
+
+- The qualification is bounded to the five-case matrix at 1,000 trajectories per batch and does not qualify a 50M-trajectory production run.
+- Tracy allocation counts are diagnostic evidence, not production throughput measurements.
+- Working-set peaks remained within measurement noise because the mapped artifact and validation residency were unchanged; the measured reduction is in private commitment.
+- Task E corrects accounting and is not a RAM optimization.
+
+## PB-6 - Task E correct memory preflight accounting
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Replaced overlapping preflight totals with explicit existing working-set, existing private-commitment, additional private-capacity, mapped virtual, mapped resident allowance, mutually exclusive transient, allocator-overhead, and private/working-set peak fields.
+- Preserved legacy ledger/config names, added estimate schema version 2, serialized both peak estimates, and reported rejected category plus admission stage.
+- Used Task A baselines and Task B retained allocations without treating mapped virtual bytes as private commitment. This corrects accounting and is not a RAM optimization.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/memory_tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build passed for `test_multiway_memory`, `test_multiway_workflow_config`, `test_multiway_qualification_reports`, and `test_multiway_artifact_preflight`.
+- Focused CTest passed all four tests. Full Debug build and full CTest passed.
+- RelWithDebInfo `texas_multiway_train` build passed.
+- Final normal F1 A1 and A3 runs passed with zero discards, `failed=false`, and matching fingerprint `9806774443936985566`; estimates were 38,690,515,208 and 45,794,495,472 working-set peak bytes.
+- `git diff --check` passed. C++ review found no actionable findings.
+
+### Limitations
+
+- Runtime A1/A3 evidence was collected as bounded 1,000-trajectory runs; no RAM reduction claim is made.
+
+## PB-6 - Task G worker stream right-sizing
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Replaced shared worker stream ceilings with explicit regret-delta, continuation-delta, discovery-public-state, and discovery-row capacities throughout workflow parsing, solver limits, preflight accounting, worker construction, identity, reports, and exhaustion telemetry.
+- Preserved legacy `worker_delta_capacity` and `discovery_capacity` fallback behavior and added transactional failed-batch handling with split capacity-exhaustion flags.
+- Sized the F1 development profile from all Task D captured batches and attempts: 64,000 regret entries, 1,024 continuation entries, 200,000 discovery public states, and 100,000 discovery rows per worker.
+- Task G evidence: `tmp/memory-attribution/task-g-explicit-analysis/evidence.md`.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/engine/`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/`
+- `tests/test_multiway_workflow_config.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `configs/multiway/f1_dev_v1.cfg`
+
+### Validation
+
+- Focused compact build passed for all five required targets.
+- Focused CTest passed all five tests. Full build and full CTest passed.
+- The explicit-capacity matrix passed 15 normal samples with zero discarded trajectories, zero failed reports, and no capacity exhaustion.
+- All five normal-case deterministic fingerprints match `baseline-final`; A3 and A4 Tracy fingerprints match their normal runs.
+- One-to-four-worker private-memory slope fell from 2.016 GiB to 0.093 GiB. Stream-capacity slope fell from 2.012 GiB to 0.093 GiB. Both reductions are approximately 95.4%.
+- One-worker median throughput remained within noise or improved: A1 685.94 to 689.40 trajectories/s, A2 715.33 to 716.31 trajectories/s. One-worker peak RSS remained unchanged within measurement noise.
+- `git diff --check` passed and the C++ review found no actionable findings.
+
+### Limitations
+
+- Tracy A3 and A4 captures were collected as required; the normal matrix analyzer was run with Tracy completeness disabled because only those two Tracy cases are required for Task G.
+
 ## PB-6 - Task D bounded memory attribution matrix
 
 **Status:** Complete

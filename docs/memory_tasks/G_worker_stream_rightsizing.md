@@ -41,6 +41,23 @@ Select new F1 development values from Task D observed peaks plus a documented
 safety margin. Do not guess values from current live counts alone. Include
 failed/discarded attempts and all captured batches.
 
+### F1 development sizing
+
+Task D `baseline-final` covered every captured batch in the five bounded cases,
+including failed/discarded-attempt telemetry. The maxima were 28,390 regret
+delta entries, 0 continuation delta entries, 99,262 discovery public states,
+and 47,173 discovery rows per worker. No failed batch or discarded trajectory
+was present in the evidence.
+
+The development capacities are therefore 64,000 regret entries, 1,024
+continuation entries, 200,000 discovery public states, and 100,000 discovery
+rows per worker. These are approximately 2.25x, a nonzero continuation floor,
+2.01x, and 2.12x the observed maxima respectively. The continuation floor
+also protects the separate stream from an unobserved nonzero batch while
+remaining much smaller than the legacy shared delta reservation. The values
+are based on all `report.json` files and the A3/A4 Tracy captures recorded in
+`tmp/memory-attribution/baseline-final/evidence.md`, not on live counts alone.
+
 ## Required changes
 
 1. Extend workflow config parsing, validation, and serialization.
