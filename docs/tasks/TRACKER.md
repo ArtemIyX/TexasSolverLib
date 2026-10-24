@@ -1,10 +1,11 @@
 # Streaming full-blueprint export tracker
 
 **Updated:** 2026-10-24  
-**Overall status:** D complete
-**Current task:** None
-**Next action:** Start E, qualification and release evidence.
-**Latest blocker:** None. D's focused tests, workflow boundary, full Debug build, compact CTest, and review passed.
+**Updated:** 2026-10-24  
+**Overall status:** E in progress
+**Current task:** E, streaming export qualification
+**Next action:** Resolve the rejected 8-worker process-working-set preflight, then obtain fresh disk/time/memory authorization before repeated qualification.
+**Latest blocker:** The smoke run was rejected before training: estimated working set 55,266,455,504 bytes exceeds the configured 51,539,607,552-byte gate.
 
 ## Tasks
 
@@ -14,7 +15,7 @@
 | B | Complete | Added direct ordered trainer emission with bounded scratch, exact planning, and export exclusion. | A | [Trainer streaming emission](B-trainer-streaming-emission.md) |
 | C | Complete | Added fresh export process/system gates, separate telemetry, and versioned report serialization. | None | [Export memory gate and reporting](C-export-memory-gate-reporting.md) |
 | D | Complete | Production workflow uses gated streaming publication with exact export and gate telemetry; boundary and preservation coverage passed. | A, B, C | [Workflow integration and publication](D-workflow-integration-publication.md) |
-| E | Ready | Qualification and release evidence may begin. | D | [Qualification and release evidence](E-streaming-export-qualification.md) |
+| E | In progress | Focused validation passed; qualification is stopped at the configured 8-worker process-working-set preflight rejection. | D | [Qualification and release evidence](E-streaming-export-qualification.md) |
 
 ## Status values
 

@@ -425,7 +425,7 @@ Purpose: run a bounded multiway training workload while collecting process memor
 Parameters:
 
 - `-Workers 1..16`, default 8
-- `-Batches 1..10`, default 1
+- `-Batches 1..100`, default 1
 - `-TrajectoriesPerBatch`, default 1000
 - `-PinWorkers`
 - `-Scheduler fixed|dynamic`, default fixed

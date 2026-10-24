@@ -3,7 +3,7 @@ param(
     [ValidateRange(1, 16)]
     [int]$Workers = 8,
 
-    [ValidateRange(1, 10)]
+    [ValidateRange(1, 100)]
     [int]$Batches = 1,
 
     [ValidateRange(1, [int]::MaxValue)]

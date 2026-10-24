@@ -14,7 +14,7 @@ param(
     [int]$ConnectionTimeoutSeconds = 60,
     [ValidateRange(1, 16)]
     [int]$Workers = 1,
-    [ValidateRange(1, 10)]
+    [ValidateRange(1, 100)]
     [int]$Batches = 2,
     [ValidateRange(1, [int]::MaxValue)]
     [int]$TrajectoriesPerBatch = 1000,
