@@ -341,7 +341,9 @@ namespace texas::solver::multiway
 	void MultiwayBlueprintTrainer::run_batches(
 		std::uint64_t batch_count,
 		std::uint64_t trajectories_per_batch,
-		std::uint64_t seed)
+		std::uint64_t seed,
+		MultiwayBlueprintBatchProgressCallback progress_callback,
+		void* progress_context)
 	{
 		if (trajectories_per_batch == 0U || seed != deterministic_seed_ || batch_count > (std::numeric_limits<std::uint64_t>::max() - status_.trajectories) / trajectories_per_batch || batch_count > std::numeric_limits<std::uint64_t>::max() - status_.batches || status_.batches > std::numeric_limits<std::uint64_t>::max() - seed || batch_count > std::numeric_limits<std::uint64_t>::max() - seed - status_.batches)
 		{
@@ -683,6 +685,8 @@ namespace texas::solver::multiway
 					: status_.process_memory_snapshots.snapshots[status_.process_memory_snapshots.count - 1U].private_committed_bytes);
 			TEXASSOLVER_TRACY_PLOT("mw.memory.peak_working_set_bytes", status_.peak_working_set_bytes);
 			TEXASSOLVER_TRACY_PLOT("mw.process.cpu_ns.delta", status_.process_cpu_nanoseconds);
+			if (progress_callback != nullptr)
+				progress_callback(status_, progress_context);
 		}
 	}
 
@@ -959,9 +963,14 @@ namespace texas::solver::multiway
 			buckets_, continuation_selector_.get(), config_.working_set_monitor);
 	}
 
-	void MultiwayBlueprintTrainingSession::run_batches(std::uint64_t batch_count)
+	void MultiwayBlueprintTrainingSession::run_batches(
+		std::uint64_t batch_count,
+		MultiwayBlueprintBatchProgressCallback progress_callback,
+		void* progress_context)
 	{
-		trainer_->run_batches(batch_count, config_.limits.trajectories_per_batch, config_.deterministic_seed);
+		trainer_->run_batches(
+			batch_count, config_.limits.trajectories_per_batch, config_.deterministic_seed,
+			progress_callback, progress_context);
 	}
 
 	void MultiwayBlueprintTrainingSession::resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot)

@@ -201,7 +201,44 @@ namespace
 		}
 	}
 
+	struct BatchProgressCapture
+	{
+		std::vector<std::uint64_t> batches;
+		std::vector<std::uint64_t> trajectories;
+	};
+
+	void capture_batch_progress(
+		const texas::MultiwayBlueprintTrainingStatus& status,
+		void* context)
+	{
+		auto& capture = *static_cast<BatchProgressCapture*>(context);
+		capture.batches.push_back(status.batches);
+		capture.trajectories.push_back(status.trajectories);
+	}
+
 } // namespace
+
+TEST_CASE(multiway_training_batch_progress_reports_each_completed_batch)
+{
+	ParallelTrainingFixture first(4U);
+	ParallelTrainingFixture second(4U);
+	BatchProgressCapture first_progress;
+	BatchProgressCapture second_progress;
+	first.trainer.run_batches(3U, 32U, 0x77U, capture_batch_progress, &first_progress);
+	second.trainer.run_batches(3U, 32U, 0x77U, capture_batch_progress, &second_progress);
+
+	EXPECT_EQ(first_progress.batches.size(), 3U);
+	EXPECT_EQ(first_progress.batches[0U], 1U);
+	EXPECT_EQ(first_progress.batches[1U], 2U);
+	EXPECT_EQ(first_progress.batches[2U], 3U);
+	EXPECT_EQ(first_progress.trajectories[0U], 32U);
+	EXPECT_EQ(first_progress.trajectories[1U], 64U);
+	EXPECT_EQ(first_progress.trajectories[2U], 96U);
+	EXPECT_EQ(first_progress.batches, second_progress.batches);
+	EXPECT_EQ(first_progress.trajectories, second_progress.trajectories);
+	EXPECT_EQ(first.trainer.status().merged_stream_fingerprint,
+		second.trainer.status().merged_stream_fingerprint);
+}
 
 TEST_CASE(multiway_memory_worker_attribution_scales_from_one_to_four_workers)
 {

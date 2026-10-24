@@ -163,6 +163,10 @@ namespace texas::solver::multiway
 		MultiwayRootBatchResult failed_batch{};
 	};
 
+	// Called after each clean batch, outside the traversal and merge kernels.
+	using MultiwayBlueprintBatchProgressCallback =
+		void (*)(const MultiwayBlueprintTrainingStatus&, void*);
+
 	// Public-only coverage summary for a sparse full-blueprint export. Zero
 	// counts remain meaningful: they distinguish an empty sparse table from an
 	// unavailable report without retaining private cards or ranges.
@@ -247,7 +251,9 @@ namespace texas::solver::multiway
 		void run_batches(
 			std::uint64_t batch_count,
 			std::uint64_t trajectories_per_batch,
-			std::uint64_t seed);
+			std::uint64_t seed,
+			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
+			void* progress_context = nullptr);
 
 		[[nodiscard]] std::uint64_t trajectories() const noexcept { return status_.trajectories; }
 		[[nodiscard]] std::uint64_t batches() const noexcept { return status_.batches; }
@@ -290,7 +296,10 @@ namespace texas::solver::multiway
 			const MultiwayBucketRegistry& buckets,
 			const MultiwayLeafEvaluator* leaf_evaluator = nullptr);
 
-		void run_batches(std::uint64_t batch_count);
+		void run_batches(
+			std::uint64_t batch_count,
+			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
+			void* progress_context = nullptr);
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
 		[[nodiscard]] MultiwayBlueprintSnapshot export_policy(

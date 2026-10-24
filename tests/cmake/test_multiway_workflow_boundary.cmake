@@ -22,6 +22,26 @@ if(threads_option_position EQUAL -1)
     message(FATAL_ERROR "bucket workflow front end does not expose --threads")
 endif()
 
+string(FIND "${source_text}" "Print training progress (default true)" training_progress_position)
+if(training_progress_position EQUAL -1)
+    message(FATAL_ERROR "training workflow does not expose live progress")
+endif()
+
+string(FIND "${source_text}" "report_multiway_training_progress" training_progress_callback_position)
+if(training_progress_callback_position EQUAL -1)
+    message(FATAL_ERROR "training workflow does not connect a batch progress callback")
+endif()
+
+string(FIND "${source_text}" "--progress-memory <true|false>" progress_memory_option_position)
+if(progress_memory_option_position EQUAL -1)
+    message(FATAL_ERROR "training workflow does not expose progress memory telemetry")
+endif()
+
+string(FIND "${source_text}" "working_set_current_bytes" progress_memory_output_position)
+if(progress_memory_output_position EQUAL -1)
+    message(FATAL_ERROR "training workflow does not report current working-set telemetry")
+endif()
+
 foreach(startup_log "texas_multiway_buckets: starting bucket generation"
         "bucket generation goal:" "effective_threads=")
     string(FIND "${source_text}" "${startup_log}" startup_log_position)
