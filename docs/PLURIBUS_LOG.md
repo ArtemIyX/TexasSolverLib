@@ -1,5 +1,89 @@
 # Pluribus Roadmap Progress Log
 
+## PB-7 - Task A: Artifact streaming writer
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added the bounded schema-2 streaming writer, non-owning row views, exact plan/result accounting, shared incremental logical payload hashing, in-place materialized validation, and RAII temporary cleanup.
+- Removed the materialized save deep copy and rejected non-atomic copy fallback for full-blueprint publication.
+- Preserved schema-2 bytes, payload hash ordering, and loader behavior with focused regression coverage.
+
+### Files
+
+- `include/core/atomic_publish.hpp`
+- `src/core/atomic_publish.cpp`
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug artifact build and `test_multiway_artifact`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: build and compact CTest passed.
+- Explicit `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- `cpp-code-review`: No actionable findings.
+
+### Limitations
+
+- Trainer integration, export memory gates, workflow integration, and large-workload qualification remain for Tasks B through E.
+
+## PB-7 - Split streaming full-blueprint export into tracked tasks
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Split the approved streaming-export architecture into five dependency-scoped implementation and qualification tasks.
+- Added a tracker with current status, dependencies, blockers, completion rules, and task-level acceptance/stop conditions.
+
+### Files
+
+- `docs/tasks/README.md`
+- `docs/tasks/TRACKER.md`
+- `docs/tasks/A-artifact-streaming-writer.md`
+- `docs/tasks/B-trainer-streaming-emission.md`
+- `docs/tasks/C-export-memory-gate-reporting.md`
+- `docs/tasks/D-workflow-integration-publication.md`
+- `docs/tasks/E-streaming-export-qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked task ownership, dependencies, tests, and stop conditions against `docs/multiway_streaming_full_blueprint_export_architecture.md`.
+- No build or tests were run because this task changes planning documentation only.
+
+### Limitations
+
+- No implementation task has started; A and C are ready, while B, D, and E remain dependency-blocked.
+
+## PB-7 - Architect streaming full-blueprint export
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Traced the 50K export peak to the materialized 50,112,088-row artifact, `save_atomic` deep copy, and validation's copied rows plus flattened runtime store.
+- Designed a schema-2-compatible streaming exporter with deterministic metadata ordering, incremental logical hashing, bounded validation, atomic temp cleanup, and a fresh export-phase process/system memory gate.
+- Preserved quantization semantics, checkpoint/export exclusion, loader compatibility, traversal and merge hot paths, and Task G capacities in the design.
+
+### Files
+
+- `docs/multiway_streaming_full_blueprint_export_architecture.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked the design against the current trainer, artifact, store, compact/reference storage, memory preflight, workflow, atomic publication, and artifact tests.
+- Reconciled the supplied run with `tmp/qualification/w8_50k_relwithdebinfo/report.json`: 3,921,243,000 output bytes, 7,667,360,088 retained export bytes, and 48,237,969,408 peak working-set bytes.
+- No build or tests were run because this task changes documentation only and explicitly defers implementation.
+
+### Limitations
+
+- Runtime peak reduction and byte/hash equivalence remain to be proven by implementation and matched qualification runs.
+- `core::publish_atomic_replace()` has a non-atomic direct-copy fallback for a missing destination; strict full-blueprint publication must reject or harden that mode.
+
 ## PB-6 - Add optional training progress speed telemetry
 
 **Status:** Complete
