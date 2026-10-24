@@ -896,30 +896,43 @@ namespace
 			session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
 		}
 		session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeExport);
-		const auto blueprint_start = std::chrono::steady_clock::now();
-		const auto artifact = session.export_full_policy();
-		MultiwayFullBlueprintArtifacts::save_atomic(output_path, artifact);
+		MultiwayFullBlueprintExportResult export_result;
+		try
+		{
+			export_result = session.save_full_policy_atomic(output_path);
+		}
+		catch (const std::exception& error)
+		{
+			log_line("training export failed: " + std::string(error.what()));
+			publish_training_failure();
+			throw;
+		}
+		catch (...)
+		{
+			log_line("training export failed: unknown exception");
+			publish_training_failure();
+			throw;
+		}
 		session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterExport);
-		const auto blueprint_export_nanoseconds = static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - blueprint_start)
-				.count());
 		training_report = make_multiway_training_report(
 			session.status(), status.merged_stream_fingerprint,
 			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 				config.identity(), workflow.fingerprint()),
 			workflow.process_memory_limit_bytes);
-		std::error_code blueprint_error;
-		const auto blueprint_bytes = std::filesystem::file_size(output_path, blueprint_error);
-		if (blueprint_error)
-			throw std::runtime_error("cannot measure blueprint artifact");
 		training_report.checkpoint_bytes = checkpoint_bytes;
 		training_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
-		training_report.blueprint_bytes = static_cast<std::uint64_t>(blueprint_bytes);
-		training_report.blueprint_export_nanoseconds = blueprint_export_nanoseconds;
+		training_report.blueprint_bytes = session.status().export_telemetry.result_bytes;
+		training_report.blueprint_export_nanoseconds = session.status().export_telemetry.duration_nanoseconds;
 		save_multiway_training_report_atomic(
 			report_path.empty() ? output_path.string() + ".json" : report_path,
 			training_report);
+		log_line("training export: plan_bytes=" + std::to_string(export_result.plan.serialized_bytes) +
+			" result_bytes=" + std::to_string(session.status().export_telemetry.result_bytes) +
+			" payload_hash=" + std::to_string(export_result.payload_hash) +
+			" duration_nanoseconds=" + std::to_string(session.status().export_telemetry.duration_nanoseconds) +
+			" publication_mode=" + core::atomic_publish_mode_name(export_result.publication_mode) +
+			" process_gate=" + multiway_export_process_rejection_reason_name(session.status().export_telemetry.process_gate.rejection_reason) +
+			" system_gate=" + multiway_export_system_rejection_reason_name(session.status().export_telemetry.system_gate.rejection_reason));
 		log_line("training finished: batches=" + std::to_string(batches) + " trajectories=" + std::to_string(status.trajectories) + " blueprint=" + output_path.string());
 		return EXIT_SUCCESS;
 	}

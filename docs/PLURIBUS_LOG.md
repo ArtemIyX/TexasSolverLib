@@ -1,5 +1,36 @@
 # Pluribus Roadmap Progress Log
 
+## PB-7 - Task D: Workflow integration and publication
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Replaced the production materialize-then-save workflow with `save_full_policy_atomic()` and preserved lease, exact-plan, fresh-snapshot, process/system-gate, and post-admission temporary-file ordering.
+- Preserved strict atomic publication and previous-destination retention on rejected export admission.
+- Published exact plan/result bytes, payload hash, duration, publication mode, gate reasons, and process/system telemetry through the existing report and log surfaces.
+- Preserved schema-2 bytes, ordering, quantization, loader compatibility, training behavior, task capacities, and hot-path boundaries.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for the production workflow and artifact, training, compact-storage, memory, qualification-report, and workflow-config tests: passed.
+- Focused CTest for eight targets, including the workflow boundary: 8/8 passed.
+- Report-reader compatibility and workflow boundary CTest: 2/2 passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: Debug build and compact CTest passed, 111/111 tests.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No matched large-workload Windows machine-memory qualification run was performed; that remains Task E.
+
 ## PB-7 - Task C: Export memory gate and reporting
 
 **Status:** Complete

@@ -401,13 +401,17 @@ TEST_CASE(multiway_streaming_export_process_gate_rejects_before_temp_creation)
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
 	const auto path = std::filesystem::temp_directory_path() /
 		("texas_solver_streaming_gate_reject_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-	std::filesystem::remove(path);
+	{
+		std::ofstream previous(path, std::ios::binary);
+		previous << "previous-blueprint";
+	}
 	std::filesystem::remove(path.string() + ".tmp");
 	EXPECT_THROW(fixture.trainer.save_full_policy_atomic(path), std::runtime_error);
-	EXPECT_TRUE(!std::filesystem::exists(path));
+	EXPECT_EQ(read_bytes(path), std::string("previous-blueprint"));
 	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
 	EXPECT_EQ(fixture.trainer.status().export_telemetry.process_gate.rejection_reason,
 		texas::MultiwayExportProcessRejectionReason::ProcessLimitExceeded);
+	std::filesystem::remove(path);
 }
 
 TEST_CASE(multiway_streaming_export_records_fresh_memory_telemetry)
