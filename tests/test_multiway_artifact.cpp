@@ -4,13 +4,16 @@
 #include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "test_harness.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -35,7 +38,248 @@ namespace
 		return std::filesystem::temp_directory_path() / (std::string("texas_solver_") + name + "_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".bin");
 	}
 
+	texas::MultiwayModelIdentity golden_identity()
+	{
+		texas::MultiwayModelIdentity identity;
+		identity.rules_hash = 1U;
+		identity.rules_schema_hash = 1U;
+		identity.action_abstraction_hash = 1U;
+		identity.bucket_model_hash = 1U;
+		identity.terminal_model_hash = 1U;
+		identity.resolver_schema_hash = 1U;
+		identity.code_schema_hash = 1U;
+		identity.range_semantics_hash = 1U;
+		identity.future_bucket_model_hash = 1U;
+		identity.off_tree_policy_hash = 1U;
+		identity.continuation_policy_hash = 1U;
+		identity.runtime_search_schema_hash = 1U;
+		identity.combined_hash = 1U;
+		return identity;
+	}
+
+	std::vector<texas::MultiwayBlueprintRow> full_rows(const texas::MultiwayModelIdentity& identity)
+	{
+		(void)identity;
+		return {
+			{ { { 31U }, 0 }, 0U, 17U,
+				{ { { texas::MultiwayAction::Check, 0U, 0, 17U }, 65535U } } },
+			{ { { 71U }, 0 }, 1U, 19U,
+				{ { { texas::MultiwayAction::Call, 0U, 3, 19U }, 65535U } } },
+		};
+	}
+
+	std::vector<std::uint8_t> read_bytes(const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		std::vector<std::uint8_t> bytes;
+		char value = 0;
+		while (input.get(value))
+			bytes.push_back(static_cast<std::uint8_t>(static_cast<unsigned char>(value)));
+		return bytes;
+	}
+
+	std::vector<std::uint8_t> hex_bytes(const char* text)
+	{
+		const auto digit = [](char value) -> std::uint8_t {
+			if (value >= '0' && value <= '9')
+				return static_cast<std::uint8_t>(value - '0');
+			if (value >= 'A' && value <= 'F')
+				return static_cast<std::uint8_t>(value - 'A' + 10);
+			return static_cast<std::uint8_t>(value - 'a' + 10);
+		};
+		std::string encoded(text);
+		std::vector<std::uint8_t> bytes;
+		bytes.reserve(encoded.size() / 2U);
+		for (std::size_t index = 0U; index < encoded.size(); index += 2U)
+			bytes.push_back(static_cast<std::uint8_t>((digit(encoded[index]) << 4U) | digit(encoded[index + 1U])));
+		return bytes;
+	}
+
+	bool produce_full_row(
+		std::uint64_t index,
+		texas::MultiwayFullBlueprintRowView& view,
+		void* context)
+	{
+		const auto& rows = *static_cast<const std::vector<texas::MultiwayBlueprintRow>*>(context);
+		if (index >= rows.size())
+			return false;
+		view = texas::MultiwayFullBlueprintRowView(rows[static_cast<std::size_t>(index)]);
+		return true;
+	}
+
 } // namespace
+
+TEST_CASE(multiway_full_blueprint_schema2_matches_checked_in_golden_bytes)
+{
+	texas::MultiwayFullBlueprintArtifact artifact;
+	artifact.identity = golden_identity();
+	artifact.training.batches = 2U;
+	artifact.training.trajectories = 3U;
+	artifact.training.deterministic_seed = 4U;
+	artifact.training.late_window_start_batch = 5U;
+	artifact.training.schedule_hash = 6U;
+	artifact.training.pruned_negative_regrets = 7U;
+	artifact.training.linear_iteration_weighting = 8U;
+	artifact.training.discounting_enabled = 9U;
+	artifact.training.negative_regret_pruning_enabled = 10U;
+	artifact.training.reserved = 11U;
+	artifact.rows = {
+		{ { { 0x0102030405060708ULL }, 2 }, 0x11223344U, 0x0102030405060708ULL,
+			{ { { texas::MultiwayAction::Check, 0U, -9, 0x0102030405060708ULL }, 65535U } } },
+	};
+	const auto path = artifact_path("schema2_golden");
+	texas::MultiwayFullBlueprintArtifacts::save_atomic(path, artifact);
+	auto expected = hex_bytes(
+		"4D57464230303032020000000100000000000000010000000000000001000000000000000100000000000000010000000000"
+		"0000010000000000000001000000000000000100000000000000010000000000000001000000000000000100000000000000"
+		"0100000000000000010000000000000002000000000000000300000000000000040000000000000005000000000000000600"
+		"000000000000070000000000000008090A0B0100000000000000080706050403020102000000443322110807060504030201"
+		"010000000100000000F7FFFFFF0807060504030201FFFFEDBFD0CAB509497E");
+	EXPECT_EQ(read_bytes(path), expected);
+	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_full_blueprint_materialized_and_streamed_bytes_match)
+{
+	const auto identity = snapshot().identity;
+	auto rows = full_rows(identity);
+	texas::MultiwayFullBlueprintArtifact artifact;
+	artifact.identity = identity;
+	artifact.training.batches = 12U;
+	artifact.training.trajectories = 24U;
+	artifact.rows = rows;
+	const auto materialized_path = artifact_path("materialized_equivalence");
+	const auto streamed_path = artifact_path("streamed_equivalence");
+	texas::MultiwayFullBlueprintArtifacts::save_atomic(materialized_path, artifact);
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(identity, artifact.training, 2U, 2U);
+	const auto result = texas::MultiwayFullBlueprintArtifacts::save_atomic_streaming(
+		streamed_path, plan, &produce_full_row, &rows);
+	EXPECT_EQ(read_bytes(materialized_path), read_bytes(streamed_path));
+	EXPECT_EQ(result.row_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.action_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.payload_hash, texas::MultiwayFullBlueprintArtifacts::payload_hash(artifact));
+	EXPECT_EQ(result.serialized_bytes, plan.serialized_bytes);
+	const auto loaded = texas::MultiwayFullBlueprintArtifacts::load_verified(streamed_path, identity);
+	EXPECT_EQ(loaded.rows.size(), std::size_t{ 2U });
+	{
+		std::fstream corrupt(streamed_path, std::ios::binary | std::ios::in | std::ios::out);
+		corrupt.seekp(12, std::ios::beg);
+		corrupt.put('\0');
+	}
+	EXPECT_THROW(
+		texas::MultiwayFullBlueprintArtifacts::load_verified(streamed_path, identity),
+		std::invalid_argument);
+	std::filesystem::remove(materialized_path);
+	std::filesystem::remove(streamed_path);
+}
+
+TEST_CASE(multiway_full_blueprint_incremental_hash_matches_materialized_hash)
+{
+	const auto identity = snapshot().identity;
+	const auto rows = full_rows(identity);
+	const auto training = texas::MultiwayBlueprintTrainingMetadata{};
+	const auto expected = [&]() {
+		texas::MultiwayFullBlueprintArtifact artifact;
+		artifact.identity = identity;
+		artifact.training = training;
+		artifact.rows = rows;
+		return texas::MultiwayFullBlueprintArtifacts::payload_hash(artifact);
+	}();
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(identity, training, 2U, 2U);
+	texas::MultiwayFullBlueprintPayloadHasher hasher;
+	hasher.begin(plan.schema_version, plan.identity, plan.training, plan.row_count);
+	for (const auto& row : rows)
+		hasher.append_row(texas::MultiwayFullBlueprintRowView(row));
+	EXPECT_EQ(hasher.finish(), expected);
+}
+
+TEST_CASE(multiway_full_blueprint_accepts_unsorted_materialized_rows_but_rejects_duplicate_keys)
+{
+	const auto identity = snapshot().identity;
+	const auto path = artifact_path("unsorted_compatibility");
+	texas::MultiwayFullBlueprintArtifact unsorted;
+	unsorted.identity = identity;
+	unsorted.rows = full_rows(identity);
+	std::reverse(unsorted.rows.begin(), unsorted.rows.end());
+	unsorted.payload_hash = texas::MultiwayFullBlueprintArtifacts::payload_hash(unsorted);
+	unsorted.validate();
+
+	auto duplicate = unsorted;
+	duplicate.rows.back() = duplicate.rows.front();
+	duplicate.payload_hash = texas::MultiwayFullBlueprintArtifacts::payload_hash(duplicate);
+	EXPECT_THROW(duplicate.validate(), std::invalid_argument);
+	texas::MultiwayFullBlueprintArtifacts::save_atomic(path, unsorted);
+	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_full_blueprint_stream_rejects_order_and_malformed_rows)
+{
+	const auto identity = snapshot().identity;
+	const auto rows = full_rows(identity);
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(identity, {}, 2U, 2U);
+	const auto path = artifact_path("stream_rejection");
+	{
+		std::ofstream old_value(path, std::ios::binary);
+		old_value << "previous";
+	}
+	{
+		texas::MultiwayFullBlueprintStreamWriter writer(path, plan);
+		writer.write_row(texas::MultiwayFullBlueprintRowView(rows[1]));
+		EXPECT_THROW(writer.write_row(texas::MultiwayFullBlueprintRowView(rows[0])), std::invalid_argument);
+	}
+	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+	const std::vector<std::uint8_t> previous_bytes = { 'p', 'r', 'e', 'v', 'i', 'o', 'u', 's' };
+	EXPECT_EQ(read_bytes(path), previous_bytes);
+
+	auto malformed = rows.front();
+	malformed.actions.front().probability = 65534U;
+	{
+		texas::MultiwayFullBlueprintStreamWriter writer(path, plan, { true, texas::MultiwayFullBlueprintStreamFailurePoint::None });
+		EXPECT_THROW(writer.write_row(texas::MultiwayFullBlueprintRowView(malformed)), std::invalid_argument);
+	}
+	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_full_blueprint_stream_failure_points_cleanup_and_preserve_destination)
+{
+	const auto identity = snapshot().identity;
+	const auto rows = full_rows(identity);
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(identity, {}, 1U, 1U);
+	const texas::MultiwayFullBlueprintStreamFailurePoint points[] = {
+		texas::MultiwayFullBlueprintStreamFailurePoint::Write,
+		texas::MultiwayFullBlueprintStreamFailurePoint::Close,
+		texas::MultiwayFullBlueprintStreamFailurePoint::Publication,
+	};
+	for (const auto point : points)
+	{
+		const auto path = artifact_path("stream_failure");
+		{
+			std::ofstream old_value(path, std::ios::binary);
+			old_value << "previous";
+		}
+		{
+			texas::MultiwayFullBlueprintStreamWriter writer(path, plan, { true, point });
+			if (point == texas::MultiwayFullBlueprintStreamFailurePoint::Write)
+				EXPECT_THROW(writer.write_row(texas::MultiwayFullBlueprintRowView(rows.front())), std::runtime_error);
+			else
+			{
+				writer.write_row(texas::MultiwayFullBlueprintRowView(rows.front()));
+				EXPECT_THROW(writer.finish(), std::runtime_error);
+			}
+		}
+		EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+		const std::vector<std::uint8_t> previous_bytes = { 'p', 'r', 'e', 'v', 'i', 'o', 'u', 's' };
+		EXPECT_EQ(read_bytes(path), previous_bytes);
+		std::filesystem::remove(path);
+	}
+}
+
+TEST_CASE(multiway_full_blueprint_stream_rejects_invalid_identity_plan)
+{
+	texas::MultiwayFullBlueprintStreamPlan plan;
+	EXPECT_THROW(plan.validate(), std::invalid_argument);
+}
 
 TEST_CASE(multiway_artifact_rejects_checkpoint_integrity_mismatch)
 {

@@ -15,11 +15,18 @@ namespace texas::core
 		BackupRename
 	};
 
+	enum class AtomicPublishFallbackPolicy : std::uint8_t
+	{
+		AllowCopyFallback = 0U,
+		RejectCopyFallback
+	};
+
 	[[nodiscard]] const char* atomic_publish_mode_name(AtomicPublishMode mode) noexcept;
 
 	AtomicPublishMode publish_atomic_replace(
 		const std::filesystem::path& temporary,
 		const std::filesystem::path& destination,
-		const char* failure_message);
+		const char* failure_message,
+		AtomicPublishFallbackPolicy fallback_policy = AtomicPublishFallbackPolicy::AllowCopyFallback);
 
 } // namespace texas::core

@@ -1,12 +1,15 @@
 #pragma once
 
 #include "games/multiway_replay.hpp"
+#include "core/atomic_publish.hpp"
 #include "solver/multiway/blueprint/multiway_export.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_store.hpp"
 #include "solver/multiway/resolver/multiway_resolver.hpp"
 
 #include <cstdint>
+#include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <vector>
 
 namespace texas::solver::multiway
@@ -60,10 +63,111 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 	};
 
+	struct MultiwayFullBlueprintRowView
+	{
+		MultiwayInfosetId infoset{};
+		std::uint32_t bucket = 0U;
+		std::uint64_t action_menu_id = 0U;
+		const MultiwayQuantizedRootAction* actions = nullptr;
+		std::size_t action_count = 0U;
+
+		MultiwayFullBlueprintRowView() = default;
+		explicit MultiwayFullBlueprintRowView(const MultiwayBlueprintRow& row) noexcept
+			: infoset(row.infoset), bucket(row.bucket), action_menu_id(row.action_menu_id),
+			  actions(row.actions.data()), action_count(row.actions.size())
+		{
+		}
+	};
+
+	struct MultiwayFullBlueprintStreamPlan
+	{
+		std::uint32_t schema_version = MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION;
+		MultiwayModelIdentity identity{};
+		MultiwayBlueprintTrainingMetadata training{};
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+
+		void validate() const;
+	};
+
+	[[nodiscard]] MultiwayFullBlueprintStreamPlan make_multiway_full_blueprint_stream_plan(
+		const MultiwayModelIdentity& identity,
+		const MultiwayBlueprintTrainingMetadata& training,
+		std::uint64_t row_count,
+		std::uint64_t action_count);
+
+	class MultiwayFullBlueprintPayloadHasher
+	{
+	public:
+		void begin(
+			std::uint32_t schema_version,
+			const MultiwayModelIdentity& identity,
+			const MultiwayBlueprintTrainingMetadata& training,
+			std::uint64_t row_count) noexcept;
+		void append_row(const MultiwayFullBlueprintRowView& row) noexcept;
+		[[nodiscard]] std::uint64_t finish() const noexcept;
+
+	private:
+		std::uint64_t hash_ = 0U;
+	};
+
+	enum class MultiwayFullBlueprintStreamFailurePoint : std::uint8_t
+	{
+		None = 0U,
+		Write,
+		Close,
+		Publication
+	};
+
+	struct MultiwayFullBlueprintStreamOptions
+	{
+		bool require_strict_row_order = true;
+		MultiwayFullBlueprintStreamFailurePoint failure_point =
+			MultiwayFullBlueprintStreamFailurePoint::None;
+	};
+
+	struct MultiwayFullBlueprintStreamResult
+	{
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t payload_hash = 0U;
+		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
+	};
+
+	class MultiwayFullBlueprintStreamWriter
+	{
+	public:
+		MultiwayFullBlueprintStreamWriter(
+			const std::filesystem::path& destination,
+			const MultiwayFullBlueprintStreamPlan& plan,
+			MultiwayFullBlueprintStreamOptions options = {});
+		~MultiwayFullBlueprintStreamWriter();
+
+		MultiwayFullBlueprintStreamWriter(const MultiwayFullBlueprintStreamWriter&) = delete;
+		MultiwayFullBlueprintStreamWriter& operator=(const MultiwayFullBlueprintStreamWriter&) = delete;
+
+		void write_row(const MultiwayFullBlueprintRowView& row);
+		[[nodiscard]] MultiwayFullBlueprintStreamResult finish();
+
+	private:
+		struct Impl;
+		std::unique_ptr<Impl> impl_;
+	};
+
 	class MultiwayFullBlueprintArtifacts
 	{
 	public:
 		static void save_atomic(const std::filesystem::path& path, const MultiwayFullBlueprintArtifact& artifact);
+		[[nodiscard]] static MultiwayFullBlueprintStreamResult save_atomic_streaming(
+			const std::filesystem::path& path,
+			const MultiwayFullBlueprintStreamPlan& plan,
+			bool (*produce_row)(
+				std::uint64_t index,
+				MultiwayFullBlueprintRowView& row,
+				void* context),
+			void* context = nullptr);
 		[[nodiscard]] static MultiwayFullBlueprintArtifact load_verified(
 			const std::filesystem::path& path,
 			const MultiwayModelIdentity& expected_identity);
