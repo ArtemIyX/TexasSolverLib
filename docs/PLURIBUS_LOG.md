@@ -1,5 +1,59 @@
 # Pluribus Roadmap Progress Log
 
+## PB-6 - Task D bounded memory attribution matrix
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Restored the direct Tracy capture build path and kept raw memory-event timestamps unchanged while clamping only the derived plot timeline.
+- Executed the A1-A5 matrix with three normal repeats and five Tracy captures; the analyzer selected G from the one-to-four-worker private-memory and stream-capacity slope.
+
+### Files
+
+- `external/tracy/server/TracyWorker.cpp`
+- `scripts/build_multiway_tracy.ps1`
+- `scripts/run/run_multiway_tracy_training_capture.ps1`
+- `scripts/analyze/analyze_multiway_memory_matrix.ps1`
+- `tmp/memory-attribution/baseline-final/`
+
+### Validation
+
+- Rebuilt `texas_multiway_train_tracy`, `tracy-capture`, and `tracy-memoryexport` in `RelWithDebInfo`.
+- A1 and A3 direct Tracy captures passed with non-empty traces, allocation/free events, CSV export, and `failed=false` reports.
+- Full A1-A5 matrix passed: 15 normal samples and five Tracy samples.
+- Analyzer self-test and `baseline-final` analysis passed; selected candidate G.
+- `scripts/codex_powershell.ps1 scripts/python/full_build.py` and `git diff --check` passed.
+
+### Limitations
+
+- Tracy captures stop at the configured 60-second capture window, so longer cases can retain live allocations at disconnect.
+
+## PB-6 - Fix Windows process memory snapshot capture
+
+**Status:** Complete, diagnostic infrastructure fix
+**Completed:** 2026-10-24
+
+- Normalized a transient Windows `PeakWorkingSetSize` under-report so the initial process snapshot remains valid.
+- Preserved strict phase-order and snapshot validation for malformed data.
+- Confirmed the Tracy smoke trainer creates a valid report for 1,000 trajectories.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `tests/test_multiway_memory.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Rebuilt `texas_multiway_train_tracy` in `RelWithDebInfo` successfully.
+- `test_multiway_memory.exe` passed all 16 tests.
+- Focused CTest passed `test_multiway_memory`.
+- `run_multiway_ram_1000.ps1` passed the 1,000-trajectory smoke and created `tmp/tracy/smoke-fix/training/report.json`.
+
+### Limitations
+
+- Tracy daemon capture still requires a host run because this sandbox cannot connect to localhost sockets.
+
 ## PB-6 - Restructure repository scripts
 
 **Status:** Complete, utility tooling

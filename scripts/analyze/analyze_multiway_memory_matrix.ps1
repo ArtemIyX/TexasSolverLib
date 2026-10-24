@@ -527,13 +527,20 @@ function Invoke-MemoryMatrixAnalysis {
     $reference = $validNormal | Select-Object -First 1
     if ($null -ne $reference) {
         foreach ($sample in $validNormal) {
-            if ($sample.identity_key -ne $reference.identity_key) { Add-Failure $failures "normal build/workload identity mismatch: $($sample.case_id)/$($sample.repeat)" }
             if ($sample.artifact_key -ne $reference.artifact_key) { Add-Failure $failures "normal artifact identity mismatch: $($sample.case_id)/$($sample.repeat)" }
             if ([string]$sample.identity.build_configuration -ne 'RelWithDebInfo') { Add-Failure $failures "normal build configuration is not RelWithDebInfo: $($sample.case_id)/$($sample.repeat)" }
             if ([string]::IsNullOrWhiteSpace([string]$sample.fingerprint) -or [string]$sample.fingerprint -eq '0') { Add-Failure $failures "normal deterministic fingerprint missing: $($sample.case_id)/$($sample.repeat)" }
         }
-        $fingerprints = @($validNormal | ForEach-Object { $_.fingerprint } | Sort-Object -Unique)
-        if ($fingerprints.Count -ne 1) { Add-Failure $failures "normal deterministic fingerprints differ: $($fingerprints -join ',')" }
+        foreach ($case in $caseDefinitions) {
+            $caseSamples = @($validNormal | Where-Object { $_.case_id -eq $case.id })
+            $caseReference = $caseSamples | Select-Object -First 1
+            if ($null -eq $caseReference) { continue }
+            foreach ($sample in $caseSamples) {
+                if ($sample.identity_key -ne $caseReference.identity_key) { Add-Failure $failures "normal build/workload identity mismatch: $($sample.case_id)/$($sample.repeat)" }
+            }
+            $fingerprints = @($caseSamples | ForEach-Object { $_.fingerprint } | Sort-Object -Unique)
+            if ($fingerprints.Count -ne 1) { Add-Failure $failures "normal deterministic fingerprints differ: $($case.id): $($fingerprints -join ',')" }
+        }
     }
     $tracySamples = @()
     if ($RequireTracy) {

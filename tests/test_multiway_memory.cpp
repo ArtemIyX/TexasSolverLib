@@ -225,6 +225,7 @@ TEST_CASE(multiway_process_memory_snapshot_reports_supported_fields)
 	EXPECT_TRUE(snapshot.peak_working_set_available);
 	EXPECT_TRUE(snapshot.current_working_set_bytes > 0U);
 	EXPECT_TRUE(snapshot.peak_working_set_bytes >= snapshot.current_working_set_bytes);
+	EXPECT_TRUE(snapshot.valid());
 #else
 	EXPECT_TRUE(!snapshot.current_working_set_available);
 	EXPECT_TRUE(!snapshot.peak_working_set_available);

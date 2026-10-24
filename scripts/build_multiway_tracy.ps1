@@ -96,13 +96,18 @@ if (-not (Test-Path -LiteralPath $captureCachePath -PathType Leaf)) {
         throw "Tracy capture daemon configure failed with exit code $captureConfigureExitCode"
     }
 }
+$captureTargets = @(
+    'tracy-capture',
+    'tracy-capture-daemon'
+)
 $captureBuildArguments = @(
     '--build', $captureBuildDirectory,
     '--config', $Configuration,
-    '--target', 'tracy-capture-daemon',
+    '--target'
+) + $captureTargets + @(
     '--parallel', $Parallel.ToString()
 )
-Write-Output '[tracy-build] building tracy-capture-daemon'
+Write-Output "[tracy-build] building $($captureTargets -join ', ')"
 $captureBuildExitCode = Invoke-CMake $captureBuildArguments $captureLogPath
 if ($captureBuildExitCode -ne 0) {
     Get-Content -LiteralPath $captureLogPath
@@ -113,6 +118,11 @@ if (-not (Test-Path -LiteralPath $captureDaemonPath -PathType Leaf)) {
     throw "CMake reported success, but the Tracy capture daemon was not found: $captureDaemonPath"
 }
 Write-Output "[tracy-build] capture_daemon_ready=$captureDaemonPath"
+$capturePath = Join-Path $captureBuildDirectory (Join-Path $Configuration 'tracy-capture.exe')
+if (-not (Test-Path -LiteralPath $capturePath -PathType Leaf)) {
+    throw "CMake reported success, but the Tracy capture binary was not found: $capturePath"
+}
+Write-Output "[tracy-build] capture_ready=$capturePath"
 
 $memoryExportBuildDirectory = Join-Path $repoRoot 'build-tracy-csvexport'
 $memoryExportSourceDirectory = Join-Path $repoRoot 'external\tracy\csvexport'

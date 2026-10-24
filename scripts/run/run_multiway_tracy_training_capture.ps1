@@ -57,7 +57,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot $OutputDirectory
 }
 
-$CaptureToolPath = Resolve-RepoPath $CaptureToolPath 'build-tracy-capture\RelWithDebInfo\tracy-capture-daemon.exe'
+$CaptureToolPath = Resolve-RepoPath $CaptureToolPath 'build-tracy-capture\RelWithDebInfo\tracy-capture.exe'
 $CsvExportToolPath = Resolve-RepoPath $CsvExportToolPath 'build-tracy-csvexport\RelWithDebInfo\tracy-csvexport.exe'
 $MemoryExportToolPath = Resolve-RepoPath $MemoryExportToolPath 'build-tracy-csvexport\RelWithDebInfo\tracy-memoryexport.exe'
 $TrainingScriptPath = Resolve-RepoPath $TrainingScriptPath 'scripts\run\run_multiway_ram_1000.ps1'

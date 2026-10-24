@@ -553,7 +553,10 @@ namespace texas::solver::multiway
 				GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) != 0)
 		{
 			result.current_working_set_bytes = static_cast<std::uint64_t>(counters.WorkingSetSize);
-			result.peak_working_set_bytes = static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
+			// Windows can transiently report a peak below the current working set.
+			result.peak_working_set_bytes = std::max(
+				static_cast<std::uint64_t>(counters.PeakWorkingSetSize),
+				result.current_working_set_bytes);
 			result.private_committed_bytes = static_cast<std::uint64_t>(counters.PrivateUsage);
 			result.current_working_set_available = true;
 			result.peak_working_set_available = true;
