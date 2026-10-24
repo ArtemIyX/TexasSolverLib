@@ -1123,6 +1123,83 @@ TEST_CASE(multiway_solver_worker_delta_stream_is_bounded_finite_and_sortable)
 	EXPECT_TRUE(!finite_stream.try_append(delta(0, std::numeric_limits<double>::infinity(), 1.0)));
 }
 
+TEST_CASE(multiway_solver_stream_capacities_fallback_and_exhaust_independently)
+{
+	texas::MultiwaySolverLimits legacy = valid_limits();
+	legacy.max_discovery_entries = 9U;
+	EXPECT_EQ(legacy.regret_delta_capacity(), 4U);
+	EXPECT_EQ(legacy.continuation_delta_capacity(), 4U);
+	EXPECT_EQ(legacy.discovery_public_state_capacity(), 9U);
+	EXPECT_EQ(legacy.discovery_row_capacity(), 9U);
+
+	texas::MultiwaySolverLimits explicit_limits = legacy;
+	explicit_limits.max_regret_delta_entries_per_worker = 2U;
+	explicit_limits.max_continuation_delta_entries_per_worker = 3U;
+	explicit_limits.max_discovery_public_states_per_worker = 5U;
+	explicit_limits.max_discovery_rows_per_worker = 7U;
+	EXPECT_EQ(explicit_limits.regret_delta_capacity(), 2U);
+	EXPECT_EQ(explicit_limits.continuation_delta_capacity(), 3U);
+	EXPECT_EQ(explicit_limits.discovery_public_state_capacity(), 5U);
+	EXPECT_EQ(explicit_limits.discovery_row_capacity(), 7U);
+
+	texas::MultiwayWorkerDeltaStream regret(0U, 0U);
+	EXPECT_TRUE(!regret.try_append({}));
+	EXPECT_TRUE(regret.capacity_exhausted());
+	texas::MultiwayContinuationDeltaStream continuation(0U, 0U);
+	EXPECT_TRUE(!continuation.try_append({}));
+	EXPECT_TRUE(continuation.capacity_exhausted());
+	texas::MultiwayDiscoveryStream discovery(0U, 1U);
+	EXPECT_TRUE(!discovery.try_append_public_state({}));
+	EXPECT_TRUE(discovery.public_state_capacity_exhausted());
+	EXPECT_TRUE(!discovery.row_capacity_exhausted());
+	EXPECT_TRUE(discovery.try_append_row({}));
+	texas::MultiwayDiscoveryStream rows(1U, 0U);
+	EXPECT_TRUE(!rows.try_append_row({}));
+	EXPECT_TRUE(rows.row_capacity_exhausted());
+	EXPECT_TRUE(!rows.public_state_capacity_exhausted());
+}
+
+TEST_CASE(multiway_solver_stream_capacity_validation_rejects_worker_overflow)
+{
+	const auto worker_overflow = [] {
+		auto limits = valid_limits();
+		limits.max_regret_delta_entries_per_worker = std::numeric_limits<std::size_t>::max() / limits.worker_count + 1U;
+		return limits;
+	}();
+	EXPECT_THROW(worker_overflow.validate(), std::overflow_error);
+
+	const auto continuation_overflow = [] {
+		auto limits = valid_limits();
+		limits.max_continuation_delta_entries_per_worker = std::numeric_limits<std::size_t>::max() / limits.worker_count + 1U;
+		return limits;
+	}();
+	EXPECT_THROW(continuation_overflow.validate(), std::overflow_error);
+
+	const auto discovery_overflow = [] {
+		auto limits = valid_limits();
+		limits.max_discovery_public_states_per_worker = std::numeric_limits<std::size_t>::max() / limits.worker_count + 1U;
+		return limits;
+	}();
+	EXPECT_THROW(discovery_overflow.validate(), std::overflow_error);
+}
+
+TEST_CASE(multiway_solver_bounded_stream_append_is_allocation_free_after_construction)
+{
+	texas::MultiwayWorkerDeltaStream stream(0U, 2U);
+	texas::MultiwayDiscoveryStream discovery(2U, 2U);
+	const auto worker_delta = delta(0U, 1.0, 1.0, 1U);
+	const auto row = root_row();
+	texas::MultiwayAllocationProbe probe;
+	{
+		texas::MultiwayAllocationProbeScope scope(probe);
+		EXPECT_TRUE(stream.try_append(worker_delta));
+		EXPECT_TRUE(discovery.try_append_row(row));
+	}
+	const auto allocations = probe.snapshot();
+	EXPECT_EQ(allocations.allocation_count, 0U);
+	EXPECT_EQ(allocations.allocated_bytes, 0U);
+}
+
 TEST_CASE(multiway_solver_discovery_stream_prepares_sorted_unique_candidates)
 {
 	texas::MultiwayDiscoveryStream stream(8U);

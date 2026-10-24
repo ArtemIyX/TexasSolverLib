@@ -7,10 +7,12 @@
 #include "test_harness.hpp"
 
 #include <cstddef>
+#include <array>
 #include <stdexcept>
 #include <limits>
 #include <new>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace
@@ -263,6 +265,7 @@ TEST_CASE(multiway_memory_preflight_reports_warning_and_rejection)
 
 	const auto rejected = texas::preflight_multiway_memory(input, { 1, 2 });
 	EXPECT_EQ(rejected.status, texas::MultiwayMemoryStatus::Rejected);
+	EXPECT_TRUE(std::string(rejected.rejected_category).find("root") != std::string::npos);
 }
 
 TEST_CASE(multiway_memory_budget_rejects_invalid_limits)
@@ -301,6 +304,33 @@ TEST_CASE(multiway_memory_preflight_accounts_for_all_runtime_search_components)
 		texas::MultiwayMemoryAdmissionStage::OptionalContinuationCache);
 }
 
+TEST_CASE(multiway_memory_preflight_uses_each_explicit_worker_stream_capacity)
+{
+	auto explicit_limits = limits();
+	explicit_limits.max_regret_delta_entries_per_worker = 2U;
+	explicit_limits.max_continuation_delta_entries_per_worker = 3U;
+	explicit_limits.max_discovery_public_states_per_worker = 5U;
+	explicit_limits.max_discovery_rows_per_worker = 7U;
+	const auto result = texas::preflight_multiway_memory(
+		explicit_limits, texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U });
+	const auto workers = static_cast<std::uint64_t>(explicit_limits.worker_count);
+	const auto expected_worker_bytes =
+		workers * 2U * sizeof(texas::MultiwayWorkerDelta) +
+		workers * 3U * sizeof(texas::MultiwayContinuationDelta) +
+		workers * (sizeof(texas::MultiwayPrivateWorkerScratch) +
+			sizeof(texas::MultiwayWorkerDeltaStream) +
+			sizeof(texas::MultiwayContinuationDeltaStream) + sizeof(std::thread));
+	const auto expected_discovery_bytes = workers * (
+		5U * sizeof(texas::MultiwayPublicStateDescriptor) +
+		7U * sizeof(texas::MultiwaySparseRowShape));
+	const auto expected_merge_bytes = workers * (
+		2U * (sizeof(texas::MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*)) +
+		3U * sizeof(texas::MultiwayContinuationDelta));
+	EXPECT_EQ(result.estimate.worker_delta_bytes, expected_worker_bytes);
+	EXPECT_EQ(result.estimate.discovery_stream_bytes, expected_discovery_bytes);
+	EXPECT_EQ(result.estimate.merge_scratch_bytes, expected_merge_bytes);
+}
+
 TEST_CASE(multiway_memory_preflight_drops_optional_cache_before_operating_cap)
 {
 	texas::MultiwayMemoryInputs inputs;
@@ -336,6 +366,7 @@ TEST_CASE(multiway_memory_preflight_stops_before_rejected_row_allocation)
 	EXPECT_EQ(rejected.status, texas::MultiwayMemoryStatus::Rejected);
 	EXPECT_EQ(rejected.highest_admitted_stage, texas::MultiwayMemoryAdmissionStage::Root);
 	EXPECT_EQ(rejected.estimate.admitted_bytes, root_bytes);
+	EXPECT_TRUE(std::string(rejected.rejected_category).find("sparse rows") != std::string::npos);
 }
 
 TEST_CASE(multiway_memory_preflight_rejects_synthetic_maximums_without_estimate_overflow)
@@ -349,4 +380,168 @@ TEST_CASE(multiway_memory_preflight_rejects_synthetic_maximums_without_estimate_
 	EXPECT_EQ(rejected.status, texas::MultiwayMemoryStatus::Rejected);
 	EXPECT_EQ(rejected.highest_admitted_stage, texas::MultiwayMemoryAdmissionStage::None);
 	EXPECT_EQ(rejected.estimate.total_bytes, std::numeric_limits<std::uint64_t>::max());
+}
+
+TEST_CASE(multiway_memory_estimate_separates_zero_mapping_from_baselines)
+{
+	texas::MultiwayMemoryInputs inputs;
+	inputs.existing_working_set_bytes = 100U;
+	inputs.existing_private_committed_bytes = 80U;
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
+	EXPECT_EQ(result.estimate.mapped_virtual_bytes, 0U);
+	EXPECT_EQ(result.estimate.mapped_resident_allowance_bytes, 0U);
+	EXPECT_EQ(result.estimate.existing_working_set_bytes, 100U);
+	EXPECT_EQ(result.estimate.existing_private_committed_bytes, 80U);
+	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
+		80U + result.estimate.additional_private_capacity_bytes);
+	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
+		100U + result.estimate.additional_private_capacity_bytes);
+}
+
+TEST_CASE(multiway_memory_estimate_does_not_add_cold_mapping_to_private_peak)
+{
+	texas::MultiwayMemoryInputs inputs;
+	inputs.existing_working_set_bytes = 100U;
+	inputs.existing_private_committed_bytes = 80U;
+	inputs.mapped_virtual_bytes = 1'000U;
+	inputs.mapped_resident_allowance_bytes = 1'000U;
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
+	EXPECT_EQ(result.estimate.mapped_virtual_bytes, 1'000U);
+	EXPECT_EQ(result.estimate.mapped_resident_allowance_bytes, 1'000U);
+	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
+		80U + result.estimate.additional_private_capacity_bytes);
+	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
+		100U + 1'000U + result.estimate.additional_private_capacity_bytes);
+}
+
+TEST_CASE(multiway_memory_estimate_excludes_fully_resident_mapping_from_allowance)
+{
+	texas::MultiwayMemoryInputs inputs;
+	inputs.existing_working_set_bytes = 1'100U;
+	inputs.existing_private_committed_bytes = 100U;
+	inputs.mapped_virtual_bytes = 1'000U;
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
+	EXPECT_EQ(result.estimate.mapped_resident_allowance_bytes, 0U);
+	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
+		1'100U + result.estimate.additional_private_capacity_bytes);
+}
+
+TEST_CASE(multiway_memory_estimate_counts_only_partial_mapping_residency_allowance)
+{
+	texas::MultiwayMemoryInputs inputs;
+	inputs.existing_working_set_bytes = 1'100U;
+	inputs.existing_private_committed_bytes = 100U;
+	inputs.mapped_virtual_bytes = 1'000U;
+	inputs.mapped_resident_allowance_bytes = 400U;
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
+	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
+		1'100U + 400U + result.estimate.additional_private_capacity_bytes);
+	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
+		100U + result.estimate.additional_private_capacity_bytes);
+}
+
+TEST_CASE(multiway_memory_estimate_prefers_known_retained_capacity_over_configured_growth)
+{
+	texas::MultiwayMemoryInputs inputs;
+	inputs.existing_working_set_bytes = 1'000U;
+	inputs.existing_private_committed_bytes = 500U;
+	inputs.retained_capacity_bytes = 2'500U;
+	inputs.retained_capacity_known = true;
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
+	EXPECT_EQ(result.estimate.additional_private_capacity_bytes, 2'500U);
+	EXPECT_EQ(result.estimate.actual_retained_capacity_bytes, 2'500U);
+	EXPECT_TRUE(result.estimate.configured_capacity_growth_bytes != 2'500U);
+	EXPECT_EQ(result.estimate.estimated_private_peak_bytes, 3'000U);
+}
+
+TEST_CASE(multiway_memory_estimate_counts_checkpoint_and_export_maximum_once)
+{
+	texas::MultiwayMemoryInputs baseline_inputs;
+	baseline_inputs.existing_working_set_bytes = 100U;
+	baseline_inputs.existing_private_committed_bytes = 100U;
+	const auto baseline = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, baseline_inputs);
+	texas::MultiwayMemoryInputs inputs = baseline_inputs;
+	inputs.checkpoint_peak_bytes = 700U;
+	inputs.export_peak_bytes = 900U;
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
+	EXPECT_EQ(result.estimate.checkpoint_transient_bytes, 700U);
+	EXPECT_EQ(result.estimate.export_transient_bytes, 900U);
+	EXPECT_EQ(
+		result.estimate.estimated_private_peak_bytes - baseline.estimate.estimated_private_peak_bytes,
+		900U);
+	EXPECT_EQ(
+		result.estimate.estimated_working_set_peak_bytes - baseline.estimate.estimated_working_set_peak_bytes,
+		900U);
+}
+
+TEST_CASE(multiway_memory_estimate_accounts_for_allocator_overhead_in_both_peaks)
+{
+	texas::MultiwayMemoryInputs inputs;
+	inputs.existing_working_set_bytes = 100U;
+	inputs.existing_private_committed_bytes = 80U;
+	inputs.allocator_overhead_bytes = 33U;
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U }, inputs);
+	EXPECT_EQ(result.estimate.allocator_overhead_bytes, 33U);
+	EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
+		80U + result.estimate.additional_private_capacity_bytes + 33U);
+	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
+		100U + result.estimate.additional_private_capacity_bytes + 33U);
+}
+
+TEST_CASE(multiway_memory_estimate_saturates_each_peak_on_overflow)
+{
+	texas::MultiwayMemoryInputs inputs;
+	inputs.existing_working_set_bytes = std::numeric_limits<std::uint64_t>::max();
+	inputs.existing_private_committed_bytes = std::numeric_limits<std::uint64_t>::max();
+	const auto result = texas::preflight_multiway_memory(
+		limits(), texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
+	EXPECT_EQ(result.estimate.estimated_private_peak_bytes, std::numeric_limits<std::uint64_t>::max());
+	EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes, std::numeric_limits<std::uint64_t>::max());
+	EXPECT_EQ(result.estimate.total_bytes, std::numeric_limits<std::uint64_t>::max());
+}
+
+TEST_CASE(multiway_memory_estimate_matches_task_d_f1_a1_and_a3_baselines)
+{
+	struct Fixture
+	{
+		std::uint32_t workers;
+		std::uint64_t working_set;
+		std::uint64_t private_committed;
+	};
+	const std::array<Fixture, 2> fixtures = {{
+		{ 1U, 16'575'430'656ULL, 3'441'930'240ULL },
+		{ 4U, 16'586'776'576ULL, 9'948'704'768ULL },
+	}};
+	for (const auto& fixture : fixtures)
+	{
+		auto f1_limits = limits();
+		f1_limits.worker_count = fixture.workers;
+		f1_limits.max_public_states = 2'000'000U;
+		f1_limits.max_sparse_rows = 5'000'000U;
+		f1_limits.max_sparse_values = 100'000'000U;
+		f1_limits.max_regret_delta_entries_per_worker = 64'000U;
+		f1_limits.max_continuation_delta_entries_per_worker = 1'024U;
+		f1_limits.max_discovery_public_states_per_worker = 200'000U;
+		f1_limits.max_discovery_rows_per_worker = 100'000U;
+		f1_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+		texas::MultiwayMemoryInputs inputs;
+		inputs.existing_working_set_bytes = fixture.working_set;
+		inputs.existing_private_committed_bytes = fixture.private_committed;
+		inputs.mapped_virtual_bytes = 15'369'522'466ULL;
+		const auto result = texas::preflight_multiway_memory(
+			f1_limits, texas::MultiwayMemoryBudget{ 1U, std::numeric_limits<std::uint64_t>::max(), std::numeric_limits<std::uint64_t>::max() - 1U }, inputs);
+		EXPECT_EQ(result.estimate.mapped_virtual_bytes, 15'369'522'466ULL);
+		EXPECT_EQ(result.estimate.estimated_private_peak_bytes,
+			fixture.private_committed + result.estimate.configured_capacity_growth_bytes);
+		EXPECT_EQ(result.estimate.estimated_working_set_peak_bytes,
+			fixture.working_set + result.estimate.configured_capacity_growth_bytes);
+	}
 }

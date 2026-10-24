@@ -56,6 +56,10 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.effective_worker_count = 8U;
 	status.trajectories_per_batch = 20U;
 	status.peak_worker_delta_entries = 7U;
+	status.configured_max_regret_delta_entries_per_worker = 64U;
+	status.configured_max_continuation_delta_entries_per_worker = 8U;
+	status.configured_max_discovery_public_states_per_worker = 128U;
+	status.configured_max_discovery_rows_per_worker = 96U;
 	status.cumulative_worker_delta_entries = 55U;
 	status.worker_active_nanoseconds = 100U;
 	status.worker_scheduler_claim_nanoseconds = 15U;
@@ -71,10 +75,25 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.worker_active_nanoseconds_by_worker = { 40U, 60U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.worker_scheduler_claim_nanoseconds_by_worker = { 7U, 8U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.memory_preflight_estimate_bytes = 999U;
+	status.memory_ledger.existing_working_set_bytes = 111U;
+	status.memory_ledger.existing_private_committed_bytes = 222U;
+	status.memory_ledger.additional_private_capacity_bytes = 333U;
+	status.memory_ledger.mapped_virtual_bytes = 444U;
+	status.memory_ledger.mapped_resident_allowance_bytes = 555U;
+	status.memory_ledger.checkpoint_transient_bytes = 666U;
+	status.memory_ledger.export_transient_bytes = 777U;
+	status.memory_ledger.estimated_private_peak_bytes = 888U;
+	status.memory_ledger.estimated_working_set_peak_bytes = 999U;
 	status.memory_ledger.resident_baseline_bytes = 111U;
 	status.memory_ledger.regret_page_bytes = 222U;
 	status.memory_ledger.coordinator_allocation_count = 333U;
 	status.memory_ledger.coordinator_allocation_bytes = 444U;
+	status.working_set_gate_config = { 64U, 5U };
+	MultiwayProcessMemorySnapshot working_set_snapshot;
+	working_set_snapshot.current_working_set_available = true;
+	working_set_snapshot.current_working_set_bytes = 70U;
+	status.working_set_gate = evaluate_multiway_working_set_runtime(
+		working_set_snapshot, status.working_set_gate_config);
 	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
 		EXPECT_TRUE(status.process_memory_snapshots.record(static_cast<MultiwayMemoryPhase>(phase), {}));
 	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
@@ -168,7 +187,19 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.memory_ledger.regret_page_bytes, 222U);
 	EXPECT_EQ(report.memory_ledger.coordinator_allocation_count, 333U);
 	EXPECT_EQ(report.memory_ledger.coordinator_allocation_bytes, 444U);
+	EXPECT_EQ(report.memory_ledger.schema_version, MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION);
+	EXPECT_EQ(report.memory_ledger.estimated_private_peak_bytes, 888U);
+	EXPECT_EQ(report.memory_ledger.estimated_working_set_peak_bytes, 999U);
+	EXPECT_EQ(report.working_set_gate_config.hard_limit_bytes, 64U);
+	EXPECT_EQ(report.working_set_gate.resident_allowance_bytes, 5U);
+	EXPECT_EQ(report.working_set_gate.compared_working_set_bytes, 75U);
+	EXPECT_EQ(report.working_set_gate.status, MultiwayWorkingSetGateStatus::Rejected);
+	EXPECT_EQ(report.working_set_gate.phase, MultiwayWorkingSetGatePhase::Runtime);
 	EXPECT_EQ(report.peak_worker_delta_entries, 7U);
+	EXPECT_EQ(report.configured_max_regret_delta_entries_per_worker, 64U);
+	EXPECT_EQ(report.configured_max_continuation_delta_entries_per_worker, 8U);
+	EXPECT_EQ(report.configured_max_discovery_public_states_per_worker, 128U);
+	EXPECT_EQ(report.configured_max_discovery_rows_per_worker, 96U);
 	EXPECT_EQ(report.cumulative_worker_delta_entries, 55U);
 	EXPECT_EQ(report.minimum_worker_active_nanoseconds, 40U);
 	EXPECT_EQ(report.maximum_worker_active_nanoseconds, 60U);
@@ -195,9 +226,19 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"blueprint_bytes\": 789") != std::string::npos);
 	EXPECT_TRUE(text.find("\"requested_worker_count\": 16") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_preflight_estimate_bytes\": 999") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_estimate_schema_version\": 2") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_estimated_private_peak_bytes\": 888") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_estimated_working_set_peak_bytes\": 999") != std::string::npos);
+	EXPECT_TRUE(text.find("\"process_working_set_limit_bytes\": 64") != std::string::npos);
+	EXPECT_TRUE(text.find("\"working_set_gate_abort_phase\": 2") != std::string::npos);
+	EXPECT_TRUE(text.find("\"working_set_gate_rejected_category\": \"process working set\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds\": 15") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_regret_delta_entries_per_worker\": 64") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_continuation_delta_entries_per_worker\": 8") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_discovery_public_states_per_worker\": 128") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_discovery_rows_per_worker\": 96") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds_by_worker\": [7,8,0,0,0,0,0,0]") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_trajectory_counts\": [10,10,0,0,0,0,0,0]") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_schema_version\": 1") != std::string::npos);

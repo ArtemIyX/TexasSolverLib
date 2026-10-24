@@ -111,11 +111,15 @@ namespace
 			texas::MultiwaySchedulerMode scheduler_mode = texas::MultiwaySchedulerMode::Fixed,
 			std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE,
 			bool pin_workers = false,
-			texas::MultiwaySearchProfileMode profile_mode = texas::MultiwaySearchProfileMode::Disabled)
+			texas::MultiwaySearchProfileMode profile_mode = texas::MultiwaySearchProfileMode::Disabled,
+			std::size_t explicit_regret_capacity = 0U,
+			std::size_t explicit_continuation_capacity = 0U,
+			std::size_t explicit_discovery_public_state_capacity = 0U,
+			std::size_t explicit_discovery_row_capacity = 0U)
 			: root(make_root(abstraction)), request(root, [] {
               texas::MultiwayCFRConfig cfr;
               cfr.player_count = 3U;
-              return cfr; }(), [workers, max_public_states, delta_capacity] {
+			return cfr; }(), [workers, max_public_states, delta_capacity, explicit_regret_capacity, explicit_continuation_capacity, explicit_discovery_public_state_capacity, explicit_discovery_row_capacity] {
               texas::MultiwaySolverLimits limits;
               limits.worker_count = workers;
               limits.trajectories_per_batch = 32U;
@@ -124,12 +128,24 @@ namespace
               limits.max_sparse_values = 1024U;
               limits.max_worker_delta_entries = delta_capacity;
               limits.max_discovery_entries = delta_capacity * 4U;
+              if (explicit_regret_capacity != 0U)
+                  limits.max_regret_delta_entries_per_worker = explicit_regret_capacity;
+              if (explicit_continuation_capacity != 0U)
+                  limits.max_continuation_delta_entries_per_worker = explicit_continuation_capacity;
+              if (explicit_discovery_public_state_capacity != 0U)
+                  limits.max_discovery_public_states_per_worker = explicit_discovery_public_state_capacity;
+              if (explicit_discovery_row_capacity != 0U)
+                  limits.max_discovery_rows_per_worker = explicit_discovery_row_capacity;
               limits.max_batches = 1024U;
               limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
               return limits; }()), coordinator(request), buckets({ texas::MultiwayBucketTable([] {
                   texas::MultiwayBlueprintConfig config;
               config.player_count = 3U;
-				   return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, delta_capacity, profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
+				   return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, texas::MultiwayWorkerStreamCapacities{
+              explicit_regret_capacity == 0U ? delta_capacity : explicit_regret_capacity,
+              explicit_continuation_capacity == 0U ? delta_capacity : explicit_continuation_capacity,
+              explicit_discovery_public_state_capacity,
+              explicit_discovery_row_capacity }, profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
 
 		texas::MultiwayActionAbstraction abstraction;
 		texas::MultiwayRootSnapshot root;
@@ -214,6 +230,28 @@ TEST_CASE(multiway_memory_worker_attribution_scales_from_one_to_four_workers)
 		four_snapshot.discovery_public_state_stream.retained_capacity_bytes +
 		four_snapshot.discovery_row_stream.retained_capacity_bytes +
 		four_snapshot.worker_action_menu_scratch.retained_capacity_bytes);
+}
+
+TEST_CASE(multiway_memory_worker_streams_use_distinct_explicit_capacities)
+{
+	ParallelTrainingFixture fixture(
+		2U, 256U, 2048U, true, texas::MultiwaySchedulerMode::Fixed,
+		texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE, false,
+		texas::MultiwaySearchProfileMode::Disabled, 7U, 3U, 11U, 5U);
+	const auto snapshot = fixture.runner.memory_snapshot();
+	EXPECT_EQ(snapshot.worker_count, 2U);
+	EXPECT_EQ(snapshot.workers[0U].regret_delta_stream.retained_capacity_bytes,
+		7U * sizeof(texas::MultiwayWorkerDelta));
+	EXPECT_EQ(snapshot.workers[0U].continuation_delta_stream.retained_capacity_bytes,
+		3U * sizeof(texas::MultiwayContinuationDelta));
+	EXPECT_EQ(snapshot.workers[0U].discovery_public_states.retained_capacity_bytes,
+		11U * sizeof(texas::MultiwayPublicStateDescriptor));
+	EXPECT_EQ(snapshot.workers[0U].discovery_rows.retained_capacity_bytes,
+		5U * sizeof(texas::MultiwaySparseRowShape));
+
+	const auto result = fixture.runner.run(0U, 1U, 0x77U);
+	EXPECT_TRUE(result.clean);
+	EXPECT_TRUE(!result.capacity_exhausted);
 }
 
 TEST_CASE(multiway_parallel_training_fixed_and_dynamic_modes_match_at_focused_worker_counts)
@@ -456,7 +494,8 @@ TEST_CASE(multiway_parallel_runner_reports_worker_capacity_discards)
 
 TEST_CASE(multiway_blueprint_training_retains_failed_batch_telemetry_without_committing_it)
 {
-	ParallelTrainingFixture fixture(4U, 256U, 1U);
+	ParallelTrainingFixture fixture(4U, 256U, 1U, true);
+	const auto before = fixture.coordinator.checkpoint();
 	EXPECT_THROW(fixture.trainer.run_batches(1U, 8U, 0x77U), std::runtime_error);
 	const auto& status = fixture.trainer.status();
 	EXPECT_EQ(status.batches, 0U);
@@ -464,7 +503,23 @@ TEST_CASE(multiway_blueprint_training_retains_failed_batch_telemetry_without_com
 	EXPECT_TRUE(status.failed_batch_available);
 	EXPECT_EQ(status.failed_batch.trajectories_attempted, 8U);
 	EXPECT_TRUE(status.failed_batch.trajectories_discarded > 0U);
+	EXPECT_TRUE(status.failed_batch.capacity_exhausted);
+	EXPECT_TRUE(status.failed_batch.regret_delta_capacity_exhausted);
 	EXPECT_TRUE(status.failed_batch.worker_trajectory_counts.size() == 4U);
+	const auto after = fixture.coordinator.checkpoint();
+	EXPECT_EQ(after.storage.shapes.size(), before.storage.shapes.size());
+	for (std::size_t index = 0U; index < before.storage.shapes.size(); ++index)
+	{
+		EXPECT_EQ(after.storage.shapes[index].infoset, before.storage.shapes[index].infoset);
+		EXPECT_EQ(after.storage.shapes[index].bucket_count, before.storage.shapes[index].bucket_count);
+		EXPECT_EQ(after.storage.shapes[index].action_count, before.storage.shapes[index].action_count);
+	}
+	EXPECT_EQ(after.storage.regrets, before.storage.regrets);
+	EXPECT_EQ(after.storage.strategy_sums, before.storage.strategy_sums);
+	EXPECT_EQ(after.storage.compact_regrets, before.storage.compact_regrets);
+	EXPECT_EQ(after.storage.compact_strategy_masses, before.storage.compact_strategy_masses);
+	EXPECT_EQ(after.terminal_visits, before.terminal_visits);
+	EXPECT_EQ(after.leaf_visits, before.leaf_visits);
 }
 
 TEST_CASE(multiway_parallel_training_scaling_smoke)
