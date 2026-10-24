@@ -895,7 +895,6 @@ namespace
 			session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
 			session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
 		}
-		session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeExport);
 		MultiwayFullBlueprintExportResult export_result;
 		try
 		{
@@ -913,7 +912,6 @@ namespace
 			publish_training_failure();
 			throw;
 		}
-		session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterExport);
 		training_report = make_multiway_training_report(
 			session.status(), status.merged_stream_fingerprint,
 			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,

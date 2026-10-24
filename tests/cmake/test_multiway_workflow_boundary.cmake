@@ -70,7 +70,10 @@ endif()
 
 string(FIND "${source_text}" "session.save_full_policy_atomic(output_path)" streaming_call_position)
 string(FIND "${source_text}" "session.export_full_policy()" materialized_call_position)
-if(streaming_call_position EQUAL -1 OR materialized_call_position GREATER_EQUAL 0)
+string(FIND "${source_text}" "session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeExport)" workflow_before_export_position)
+string(FIND "${source_text}" "session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterExport)" workflow_after_export_position)
+if(streaming_call_position EQUAL -1 OR materialized_call_position GREATER_EQUAL 0 OR
+   workflow_before_export_position GREATER_EQUAL 0 OR workflow_after_export_position GREATER_EQUAL 0)
     message(FATAL_ERROR "production training workflow must use only the streaming export path")
 endif()
 
