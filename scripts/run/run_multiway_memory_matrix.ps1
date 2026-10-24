@@ -10,6 +10,8 @@ param(
 
     [string]$NormalBinaryPath = '',
 
+    [string]$SourceConfigPath = '',
+
     [string]$TracyCaptureScriptPath = '',
 
     [switch]$SkipTracy
@@ -35,6 +37,9 @@ if ([string]::IsNullOrWhiteSpace($NormalBinaryPath)) {
     $NormalBinaryPath = Join-Path $repoRoot 'build\RelWithDebInfo\texas_multiway_train.exe'
 } elseif (-not [System.IO.Path]::IsPathRooted($NormalBinaryPath)) {
     $NormalBinaryPath = Join-Path $repoRoot $NormalBinaryPath
+}
+if (-not [string]::IsNullOrWhiteSpace($SourceConfigPath) -and -not [System.IO.Path]::IsPathRooted($SourceConfigPath)) {
+    $SourceConfigPath = Join-Path $repoRoot $SourceConfigPath
 }
 
 if (-not (Test-Path -LiteralPath $normalRunner -PathType Leaf)) {
@@ -78,6 +83,9 @@ foreach ($case in $cases) {
             '-BinaryPath', $NormalBinaryPath,
             '-RunDirectory', $runDirectory
         )
+        if (-not [string]::IsNullOrWhiteSpace($SourceConfigPath)) {
+            $arguments += @('-SourceConfigPath', $SourceConfigPath)
+        }
         & powershell.exe @arguments
         if ($LASTEXITCODE -ne 0) {
             throw "Normal matrix run failed for case=$($case.id) repeat=$repeat with exit code $LASTEXITCODE"
@@ -99,6 +107,9 @@ foreach ($case in $cases) {
             '-CaptureId', $captureId,
             '-OutputDirectory', $tracyDirectory
         )
+        if (-not [string]::IsNullOrWhiteSpace($SourceConfigPath)) {
+            $tracyArguments += @('-SourceConfigPath', $SourceConfigPath)
+        }
         & powershell.exe @tracyArguments
         if ($LASTEXITCODE -ne 0) {
             throw "Tracy matrix run failed for case=$($case.id) with exit code $LASTEXITCODE"
@@ -125,6 +136,7 @@ $matrixManifestPath = Join-Path $OutputDirectory 'matrix_manifest.json'
         }
     })
     normal_binary = $NormalBinaryPath
+    source_config = $SourceConfigPath
     tracy_capture_required = (-not $SkipTracy)
 } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $matrixManifestPath -Encoding UTF8
 

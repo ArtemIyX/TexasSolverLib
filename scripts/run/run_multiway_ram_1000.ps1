@@ -22,6 +22,8 @@ param(
 
     [string]$BinaryPath = '',
 
+    [string]$SourceConfigPath = '',
+
     [string]$TraceCaptureId = '',
 
     [string]$RunDirectory = ''
@@ -54,7 +56,13 @@ if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
     $BinaryPath = Join-Path $repoRoot $BinaryPath
 }
 $executable = $BinaryPath
-$sourceConfig = Join-Path $repoRoot 'artifacts\f1_sizing_v1\pilot_batch1.cfg'
+$sourceConfig = if ([string]::IsNullOrWhiteSpace($SourceConfigPath)) {
+    Join-Path $repoRoot 'artifacts\f1_sizing_v1\pilot_batch1.cfg'
+} elseif ([System.IO.Path]::IsPathRooted($SourceConfigPath)) {
+    $SourceConfigPath
+} else {
+    Join-Path $repoRoot $SourceConfigPath
+}
 $bucketArtifact = Join-Path $repoRoot 'artifacts\f1_sizing_v1\buckets\buckets.bin'
 
 $gitCommit = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
@@ -70,7 +78,7 @@ if ($BinaryKind -eq 'tracy') {
     Remove-Item Env:TEXASSOLVER_TRACE_CAPTURE_ID -ErrorAction SilentlyContinue
 }
 
-Write-Output '[ram1000] validating executable, expanded pilot config, and bucket artifact'
+Write-Output '[ram1000] validating executable, source config, and bucket artifact'
 foreach ($requiredPath in @($executable, $sourceConfig, $bucketArtifact)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
         throw "Required file not found: $requiredPath"
@@ -262,6 +270,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     checkpoint_telemetry = $report.checkpoint_telemetry
     build_identity = $buildIdentity
     artifact_identity = $artifactIdentity
+    source_config_path = $sourceConfig
 }
 
 $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
@@ -285,6 +294,7 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     peak_working_set_bytes = $peakWorkingSetBytes
     report_path = $reportPath
     artifact_identity = $artifactIdentity
+    source_config_path = $sourceConfig
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $metricsPath -Encoding UTF8
 
 $runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
@@ -295,6 +305,7 @@ $runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
     compiler_identity = $env:TEXASSOLVER_COMPILER_IDENTITY
     binary = $buildIdentity
     artifact = $artifactIdentity
+    source_config_path = $sourceConfig
     workload = [ordered]@{
         workers = $Workers
         batches = $Batches

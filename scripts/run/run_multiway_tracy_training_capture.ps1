@@ -4,6 +4,7 @@ param(
     [string]$CsvExportToolPath = '',
     [string]$MemoryExportToolPath = '',
     [string]$TrainingScriptPath = '',
+    [string]$SourceConfigPath = '',
     [string]$OutputDirectory = '',
     [ValidatePattern('^[A-Za-z0-9._-]+$')]
     [string]$CaptureId = '',
@@ -127,6 +128,10 @@ $trainingParameters = @{
     TraceCaptureId = $CaptureId
     Scheduler = $Scheduler
     RunDirectory = $OutputDirectory
+}
+if (-not [string]::IsNullOrWhiteSpace($SourceConfigPath)) {
+    $trainingArguments += @('-SourceConfigPath', $SourceConfigPath)
+    $trainingParameters.SourceConfigPath = $SourceConfigPath
 }
 if ($PinWorkers.IsPresent) {
     $trainingArguments += '-PinWorkers'

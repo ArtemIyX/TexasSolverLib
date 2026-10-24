@@ -10,6 +10,11 @@ param(
     [ValidateRange(1, 1000)]
     [int]$TrajectoriesPerBatch = 1000,
 
+    [string]$BaselineDirectory = '',
+
+    [ValidateRange(1, 20)]
+    [int]$BaselineRepeats = 3,
+
     [switch]$SkipTracy,
 
     [switch]$SelfTest
@@ -57,6 +62,7 @@ function Add-Failure {
 
 function Test-Property {
     param([object]$Object, [string]$Name)
+    if ($Object -is [System.Collections.IDictionary]) { return $Object.Contains($Name) }
     return $null -ne $Object -and $Object.PSObject.Properties.Name -contains $Name
 }
 
@@ -149,6 +155,85 @@ function Get-WorkerCapacity {
         }
     }
     return $total
+}
+
+function Get-PreflightEstimate {
+    param(
+        [object]$Report,
+        [object]$Memory,
+        [System.Collections.Generic.List[string]]$Failures,
+        [string]$Label
+    )
+    $ledger = if ($null -ne $Report -and (Test-Property $Report 'memory_ledger')) { $Report.memory_ledger } else { $null }
+    $fields = @(
+        'existing_working_set_bytes',
+        'existing_private_committed_bytes',
+        'additional_private_capacity_bytes',
+        'mapped_virtual_bytes',
+        'mapped_resident_allowance_bytes',
+        'checkpoint_transient_bytes',
+        'export_transient_bytes',
+        'allocator_overhead_bytes',
+        'estimated_private_peak_bytes',
+        'estimated_working_set_peak_bytes'
+    )
+    $hasExplicitFields = $null -ne $ledger -and @($fields | Where-Object { -not (Test-Property $ledger $_) }).Count -eq 0
+    if ($hasExplicitFields) {
+        foreach ($field in $fields) {
+            if ([int64]$ledger.$field -lt 0) { Add-Failure $Failures "$Label negative preflight category: $field" }
+        }
+        if ([int64]$ledger.estimated_private_peak_bytes -lt ([int64]$ledger.existing_private_committed_bytes + [int64]$ledger.additional_private_capacity_bytes + [int64](Get-Maximum @($ledger.checkpoint_transient_bytes, $ledger.export_transient_bytes)) + [int64]$ledger.allocator_overhead_bytes)) {
+            Add-Failure $Failures "$Label private preflight peak below explicit category sum"
+        }
+        if ([int64]$ledger.estimated_working_set_peak_bytes -lt ([int64]$ledger.existing_working_set_bytes + [int64]$ledger.additional_private_capacity_bytes + [int64](Get-Maximum @($ledger.checkpoint_transient_bytes, $ledger.export_transient_bytes)) + [int64]$ledger.allocator_overhead_bytes)) {
+            Add-Failure $Failures "$Label working-set preflight peak below explicit category sum"
+        }
+        return [pscustomobject]@{
+            schema_version = if (Test-Property $ledger 'schema_version') { [int]$ledger.schema_version } else { 2 }
+            compatibility = 'explicit'
+            existing_working_set_bytes = [int64]$ledger.existing_working_set_bytes
+            existing_private_committed_bytes = [int64]$ledger.existing_private_committed_bytes
+            additional_private_capacity_bytes = [int64]$ledger.additional_private_capacity_bytes
+            mapped_virtual_bytes = [int64]$ledger.mapped_virtual_bytes
+            mapped_resident_allowance_bytes = [int64]$ledger.mapped_resident_allowance_bytes
+            checkpoint_transient_bytes = [int64]$ledger.checkpoint_transient_bytes
+            export_transient_bytes = [int64]$ledger.export_transient_bytes
+            allocator_overhead_bytes = [int64]$ledger.allocator_overhead_bytes
+            estimated_private_peak_bytes = [int64]$ledger.estimated_private_peak_bytes
+            estimated_working_set_peak_bytes = [int64]$ledger.estimated_working_set_peak_bytes
+            configured_capacity_growth_bytes = if (Test-Property $ledger 'configured_capacity_growth_bytes') { [int64]$ledger.configured_capacity_growth_bytes } else { $null }
+            actual_retained_capacity_bytes = if (Test-Property $ledger 'actual_retained_capacity_bytes') { [int64]$ledger.actual_retained_capacity_bytes } else { $null }
+        }
+    }
+
+    $phaseMap = Get-PhaseMap $(if ($null -ne $Memory) { $Memory.process_snapshots } else { @() })
+    $metadata = $phaseMap['after_bucket_map_metadata']
+    $preflight = $phaseMap['before_memory_preflight']
+    $existingWorkingSet = if ($null -ne $ledger -and (Test-Property $ledger 'resident_baseline_bytes')) { [int64]$ledger.resident_baseline_bytes } elseif ($null -ne $preflight) { [int64]$preflight.current_working_set_bytes } else { [int64]0 }
+    $existingPrivate = if ($null -ne $metadata) { [int64]$metadata.private_committed_bytes } else { [int64]0 }
+    $mappedVirtual = if ($null -ne $ledger -and (Test-Property $ledger 'mapped_bucket_artifact_bytes')) { [int64]$ledger.mapped_bucket_artifact_bytes } else { [int64]0 }
+    $additionalCapacity = if ($null -ne $ledger) { [int64]$ledger.worker_stream_bytes + [int64]$ledger.discovery_stream_bytes } else { [int64]0 }
+    $checkpoint = if ($null -ne $ledger -and (Test-Property $ledger 'checkpoint_peak_bytes')) { [int64]$ledger.checkpoint_peak_bytes } else { [int64]0 }
+    $export = if ($null -ne $ledger -and (Test-Property $ledger 'export_peak_bytes')) { [int64]$ledger.export_peak_bytes } else { [int64]0 }
+    $allocator = if ($null -ne $ledger -and (Test-Property $ledger 'allocator_overhead_bytes')) { [int64]$ledger.allocator_overhead_bytes } else { [int64]0 }
+    $privatePeak = if ($null -ne $ledger -and (Test-Property $ledger 'committed_bytes')) { [int64]$ledger.committed_bytes } elseif ($null -ne $Memory) { [int64]$Memory.peak_private_committed_bytes } else { [int64]0 }
+    $workingSetPeak = if ($null -ne $Report -and (Test-Property $Report 'memory_preflight_estimate_bytes')) { [int64]$Report.memory_preflight_estimate_bytes } elseif ($null -ne $ledger -and (Test-Property $ledger 'live_bytes')) { [int64]$ledger.live_bytes } else { [int64]0 }
+    return [pscustomobject]@{
+        schema_version = 2
+        compatibility = 'legacy_fallback'
+        existing_working_set_bytes = $existingWorkingSet
+        existing_private_committed_bytes = $existingPrivate
+        additional_private_capacity_bytes = $additionalCapacity
+        mapped_virtual_bytes = $mappedVirtual
+        mapped_resident_allowance_bytes = [int64]0
+        checkpoint_transient_bytes = $checkpoint
+        export_transient_bytes = $export
+        allocator_overhead_bytes = $allocator
+        estimated_private_peak_bytes = $privatePeak
+        estimated_working_set_peak_bytes = $workingSetPeak
+        configured_capacity_growth_bytes = $null
+        actual_retained_capacity_bytes = $null
+    }
 }
 
 function Get-ReportMemoryData {
@@ -374,6 +459,7 @@ function Read-NormalSample {
     $identity = if ($null -ne $report) { Get-ReportIdentity $report $metrics $manifest } else { $null }
     $artifact = Get-ArtifactIdentity $metrics $manifest
     if ($null -eq $artifact) { Add-Failure $failures "normal $($Case.id)/$Repeat artifact identity missing" }
+    $preflight = if ($null -ne $report) { Get-PreflightEstimate $report $memory $failures "normal $($Case.id)/$Repeat" } else { $null }
     return [pscustomobject]@{
         kind = 'normal'
         case_id = $Case.id
@@ -390,6 +476,10 @@ function Read-NormalSample {
         artifact = $artifact
         artifact_key = Get-IdentityKey $artifact
         fingerprint = if ($null -ne $report) { [string]$report.deterministic_merge_fingerprint } else { '' }
+        throughput_trajectories_per_second = if ($null -ne $report -and (Test-Property $report 'trajectories_per_second')) { [double]$report.trajectories_per_second } else { $null }
+        elapsed_wall_nanoseconds = if ($null -ne $report -and (Test-Property $report 'elapsed_wall_nanoseconds')) { [int64]$report.elapsed_wall_nanoseconds } else { $null }
+        process_cpu_nanoseconds = if ($null -ne $report -and (Test-Property $report 'process_cpu_nanoseconds')) { [int64]$report.process_cpu_nanoseconds } else { $null }
+        preflight = $preflight
         memory = $memory
         failure_reasons = @($failures)
         valid = $failures.Count -eq 0 -and $null -ne $memory -and $memory.valid
@@ -446,6 +536,7 @@ function Read-TracySample {
     $identity = if ($null -ne $report) { Get-ReportIdentity $report $metrics $manifest } else { $null }
     $artifact = Get-ArtifactIdentity $metrics $manifest
     if ($null -eq $artifact) { Add-Failure $failures "Tracy $($Case.id) artifact identity missing" }
+    $preflight = if ($null -ne $report) { Get-PreflightEstimate $report $memory $failures "Tracy $($Case.id)" } else { $null }
     return [pscustomobject]@{
         kind = 'tracy'
         case_id = $Case.id
@@ -459,6 +550,10 @@ function Read-TracySample {
         artifact = $artifact
         artifact_key = Get-IdentityKey $artifact
         memory = $memory
+        throughput_trajectories_per_second = if ($null -ne $report -and (Test-Property $report 'trajectories_per_second')) { [double]$report.trajectories_per_second } else { $null }
+        elapsed_wall_nanoseconds = if ($null -ne $report -and (Test-Property $report 'elapsed_wall_nanoseconds')) { [int64]$report.elapsed_wall_nanoseconds } else { $null }
+        process_cpu_nanoseconds = if ($null -ne $report -and (Test-Property $report 'process_cpu_nanoseconds')) { [int64]$report.process_cpu_nanoseconds } else { $null }
+        preflight = $preflight
         allocation_events = if ($null -ne $events) { [int64]$events.allocation_events } else { $null }
         free_events = if ($null -ne $events) { [int64]$events.free_events } else { $null }
         allocated_bytes = if ($null -ne $events -and (Test-Property $events 'allocated_bytes')) { [int64]$events.allocated_bytes } else { $null }
@@ -484,18 +579,185 @@ function Get-CaseSummary {
         }
     }
     $metricNames = @('current_working_set_bytes', 'current_private_committed_bytes', 'peak_working_set_bytes', 'peak_private_committed_bytes', 'bucket_mapping_virtual_bytes', 'bucket_validation_working_set_delta_bytes', 'bucket_validation_private_delta_bytes', 'coordinator_construction_private_delta_bytes', 'worker_construction_private_delta_bytes', 'worker_construction_capacity_bytes', 'cold_to_steady_retained_capacity_delta_bytes', 'cold_admission_scratch_capacity_bytes', 'steady_admission_scratch_capacity_bytes', 'compact_row_metadata_construction_capacity_bytes', 'training_private_peak_extra_bytes', 'training_working_set_peak_extra_bytes', 'checkpoint_export_capacity_bytes', 'final_subsystem_live_bytes', 'final_subsystem_capacity_bytes', 'unexplained_private_bytes')
+    $performanceNames = @('throughput_trajectories_per_second', 'elapsed_wall_nanoseconds', 'process_cpu_nanoseconds')
+    $preflightNames = @('existing_working_set_bytes', 'existing_private_committed_bytes', 'additional_private_capacity_bytes', 'mapped_virtual_bytes', 'mapped_resident_allowance_bytes', 'checkpoint_transient_bytes', 'export_transient_bytes', 'allocator_overhead_bytes', 'estimated_private_peak_bytes', 'estimated_working_set_peak_bytes', 'configured_capacity_growth_bytes', 'actual_retained_capacity_bytes')
     $summary = [ordered]@{ id = $Case.id; workers = $Case.workers; batches = $Case.batches; scheduler = $Case.scheduler; repeat_count = $group.Count; phase_deltas = $phaseDeltaSummary }
     foreach ($name in $metricNames) {
         $summary[$name] = Get-Median @($group | ForEach-Object { $_.memory.$name })
         $summary[($name + '_minimum')] = Get-Minimum @($group | ForEach-Object { $_.memory.$name })
         $summary[($name + '_maximum')] = Get-Maximum @($group | ForEach-Object { $_.memory.$name })
     }
+    foreach ($name in $performanceNames) {
+        $summary[$name] = Get-Median @($group | ForEach-Object { $_.$name })
+        $summary[($name + '_minimum')] = Get-Minimum @($group | ForEach-Object { $_.$name })
+        $summary[($name + '_maximum')] = Get-Maximum @($group | ForEach-Object { $_.$name })
+    }
+    $preflightSummary = [ordered]@{}
+    foreach ($name in $preflightNames) {
+        $preflightSummary[$name] = Get-Median @($group | ForEach-Object { if ($null -ne $_.preflight) { $_.preflight.$name } else { $null } })
+        $preflightSummary[($name + '_minimum')] = Get-Minimum @($group | ForEach-Object { if ($null -ne $_.preflight) { $_.preflight.$name } else { $null } })
+        $preflightSummary[($name + '_maximum')] = Get-Maximum @($group | ForEach-Object { if ($null -ne $_.preflight) { $_.preflight.$name } else { $null } })
+    }
+    $preflightSummary.compatibility = @($group | ForEach-Object { if ($null -ne $_.preflight) { $_.preflight.compatibility } } | Sort-Object -Unique) -join ','
+    $summary.preflight_estimates = $preflightSummary
     return [pscustomobject]$summary
 }
 
 function Get-GroupMedian {
     param([object[]]$CaseSummaries, [string[]]$CaseIds, [string]$Property)
     return Get-Median @($CaseSummaries | Where-Object { $CaseIds -contains $_.id } | ForEach-Object { $_.$Property })
+}
+
+function Get-SummaryMetricRange {
+    param([object]$Summary, [string]$Property)
+    if ($null -eq $Summary) {
+        return [ordered]@{ median = $null; minimum = $null; maximum = $null }
+    }
+    return [ordered]@{
+        median = if (Test-Property $Summary $Property) { $Summary.$Property } else { $null }
+        minimum = if (Test-Property $Summary ($Property + '_minimum')) { $Summary.($Property + '_minimum') } else { $null }
+        maximum = if (Test-Property $Summary ($Property + '_maximum')) { $Summary.($Property + '_maximum') } else { $null }
+    }
+}
+
+function Get-ComparableArtifactKey {
+    param([object]$Artifact)
+    if ($null -eq $Artifact) { return '' }
+    return [ordered]@{
+        path = if (Test-Property $Artifact 'path') { [string]$Artifact.path } else { '' }
+        bytes = if (Test-Property $Artifact 'bytes') { [int64]$Artifact.bytes } else { $null }
+        last_write_time_utc = if (Test-Property $Artifact 'last_write_time_utc') { [string]$Artifact.last_write_time_utc } else { '' }
+    } | ConvertTo-Json -Compress
+}
+
+function Compare-MemoryQualification {
+    param(
+        [object]$Baseline,
+        [object]$Final,
+        [string]$BaselineDirectory,
+        [string]$FinalDirectory
+    )
+    $failures = New-FailureList
+    if ($Baseline.acceptance.status -ne 'pass') { Add-Failure $failures 'baseline analysis did not pass' }
+    if ($Final.acceptance.status -ne 'pass') { Add-Failure $failures 'final analysis did not pass' }
+    $baselineArtifactKey = Get-ComparableArtifactKey $Baseline.artifact_identity
+    $finalArtifactKey = Get-ComparableArtifactKey $Final.artifact_identity
+    $artifactMatch = $baselineArtifactKey -eq $finalArtifactKey
+    if (-not $artifactMatch) { Add-Failure $failures 'baseline/final artifact identity mismatch' }
+    $caseComparisons = @()
+    $memoryFields = @('current_working_set_bytes', 'peak_working_set_bytes', 'current_private_committed_bytes', 'peak_private_committed_bytes', 'unexplained_private_bytes', 'bucket_mapping_virtual_bytes', 'bucket_validation_working_set_delta_bytes', 'cold_to_steady_retained_capacity_delta_bytes')
+    $performanceFields = @('throughput_trajectories_per_second', 'elapsed_wall_nanoseconds', 'process_cpu_nanoseconds')
+    foreach ($case in $caseDefinitions) {
+        $baselineCase = @($Baseline.normal_case_summaries | Where-Object { $_.id -eq $case.id } | Select-Object -First 1)
+        $finalCase = @($Final.normal_case_summaries | Where-Object { $_.id -eq $case.id } | Select-Object -First 1)
+        if ($baselineCase.Count -ne 1 -or $finalCase.Count -ne 1) {
+            Add-Failure $failures "missing baseline/final case summary: $($case.id)"
+            continue
+        }
+        $baselineFingerprints = @($Baseline.samples | Where-Object { $_.case -eq $case.id } | ForEach-Object { [string]$_.fingerprint } | Sort-Object -Unique)
+        $finalFingerprints = @($Final.samples | Where-Object { $_.case -eq $case.id } | ForEach-Object { [string]$_.fingerprint } | Sort-Object -Unique)
+        $fingerprintsMatch = (Get-IdentityKey $baselineFingerprints) -eq (Get-IdentityKey $finalFingerprints)
+        if (-not $fingerprintsMatch) { Add-Failure $failures "baseline/final fingerprint mismatch: $($case.id)" }
+        $memory = [ordered]@{}
+        foreach ($field in $memoryFields) {
+            $before = Get-SummaryMetricRange $baselineCase[0] $field
+            $after = Get-SummaryMetricRange $finalCase[0] $field
+            $memory[$field] = [ordered]@{
+                baseline = $before
+                final = $after
+                reduction_bytes = if ($null -ne $before.median -and $null -ne $after.median) { [double]$before.median - [double]$after.median } else { $null }
+            }
+        }
+        $performance = [ordered]@{}
+        foreach ($field in $performanceFields) {
+            $before = Get-SummaryMetricRange $baselineCase[0] $field
+            $after = Get-SummaryMetricRange $finalCase[0] $field
+            $performance[$field] = [ordered]@{
+                baseline = $before
+                final = $after
+                final_minus_baseline = if ($null -ne $before.median -and $null -ne $after.median) { [double]$after.median - [double]$before.median } else { $null }
+            }
+        }
+        $baselinePreflight = if (Test-Property $baselineCase[0] 'preflight_estimates') { $baselineCase[0].preflight_estimates } else { $null }
+        $finalPreflight = if (Test-Property $finalCase[0] 'preflight_estimates') { $finalCase[0].preflight_estimates } else { $null }
+        $caseComparisons += [ordered]@{
+            case = $case.id
+            workers = $case.workers
+            batches = $case.batches
+            scheduler = $case.scheduler
+            fingerprints_match = $fingerprintsMatch
+            baseline_fingerprints = $baselineFingerprints
+            final_fingerprints = $finalFingerprints
+            memory = $memory
+            performance = $performance
+            preflight = [ordered]@{ baseline = $baselinePreflight; final = $finalPreflight }
+        }
+    }
+    $baselineZeroDiscards = @($Baseline.samples | Where-Object { [bool]$_.valid -and $_.failure_reasons.Count -eq 0 }).Count -eq $Baseline.acceptance.valid_normal_sample_count
+    $finalZeroDiscards = @($Final.samples | Where-Object { [bool]$_.valid -and $_.failure_reasons.Count -eq 0 }).Count -eq $Final.acceptance.valid_normal_sample_count
+    $tracyComplete = $Final.acceptance.valid_tracy_sample_count -eq $caseDefinitions.Count
+    if (-not $baselineZeroDiscards -or -not $finalZeroDiscards) { Add-Failure $failures 'normal qualification samples are not all valid and discard-free' }
+    if (-not $tracyComplete) { Add-Failure $failures 'final Tracy matrix is incomplete' }
+    $peakPrivateReductions = @($caseComparisons | ForEach-Object { $_.memory.peak_private_committed_bytes.reduction_bytes } | Where-Object { $null -ne $_ })
+    $peakWorkingSetReductions = @($caseComparisons | ForEach-Object { $_.memory.peak_working_set_bytes.reduction_bytes } | Where-Object { $null -ne $_ })
+    $throughputRegressions = @($caseComparisons | ForEach-Object {
+        $baselineThroughput = $_.performance.throughput_trajectories_per_second.baseline.median
+        $finalThroughput = $_.performance.throughput_trajectories_per_second.final.median
+        if ($null -ne $baselineThroughput -and $baselineThroughput -gt 0 -and $null -ne $finalThroughput) { 1.0 - ([double]$finalThroughput / [double]$baselineThroughput) }
+    })
+    $maxThroughputRegression = Get-Maximum $throughputRegressions
+    $memoryReductionExceedsNoise = ($null -ne (Get-Maximum $peakPrivateReductions) -and (Get-Maximum $peakPrivateReductions) -gt [double]$memoryNoiseFloorBytes) -or ($null -ne (Get-Maximum $peakWorkingSetReductions) -and (Get-Maximum $peakWorkingSetReductions) -gt [double]$memoryNoiseFloorBytes)
+    if (-not $memoryReductionExceedsNoise) { Add-Failure $failures 'no measured peak memory reduction exceeded the noise floor' }
+    if ($null -ne $maxThroughputRegression -and $maxThroughputRegression -gt 0.20) { Add-Failure $failures "throughput regression exceeded 20 percent: $maxThroughputRegression" }
+
+    $candidateAttribution = @()
+    foreach ($candidate in @('F', 'G', 'H', 'I', 'J')) {
+        $baselineCandidate = @($Baseline.candidate_decision.ranked_candidates | Where-Object { $_.candidate -eq $candidate } | Select-Object -First 1)
+        $finalCandidate = @($Final.candidate_decision.ranked_candidates | Where-Object { $_.candidate -eq $candidate } | Select-Object -First 1)
+        $baselineScore = if ($candidate -eq 'G') { [double]$Baseline.derived.one_to_four_worker_private_memory_slope_bytes } elseif ($baselineCandidate.Count -eq 1) { [double]$baselineCandidate[0].score_bytes } else { $null }
+        $finalScore = if ($candidate -eq 'G') { [double]$Final.derived.one_to_four_worker_private_memory_slope_bytes } elseif ($finalCandidate.Count -eq 1) { [double]$finalCandidate[0].score_bytes } else { $null }
+        $reduction = if ($null -ne $baselineScore -and $null -ne $finalScore) { $baselineScore - $finalScore } else { $null }
+        $candidateAttribution += [ordered]@{
+            candidate = $candidate
+            implemented = $candidate -eq 'G'
+            baseline_score_bytes = $baselineScore
+            final_score_bytes = $finalScore
+            attributable_reduction_bytes = $reduction
+            exceeds_noise = $null -ne $reduction -and $reduction -gt [double]$memoryNoiseFloorBytes
+            status = if ($candidate -eq 'G') { 'implemented_and_measured' } else { 'not_implemented_in_task_k' }
+        }
+    }
+    $slopeAttribution = [ordered]@{
+        baseline_private_slope_bytes = $Baseline.derived.one_to_four_worker_private_memory_slope_bytes
+        final_private_slope_bytes = $Final.derived.one_to_four_worker_private_memory_slope_bytes
+        reduction_bytes = [double]$Baseline.derived.one_to_four_worker_private_memory_slope_bytes - [double]$Final.derived.one_to_four_worker_private_memory_slope_bytes
+        baseline_capacity_slope_bytes = $Baseline.derived.one_to_four_worker_stream_capacity_slope_bytes
+        final_capacity_slope_bytes = $Final.derived.one_to_four_worker_stream_capacity_slope_bytes
+        reduction_capacity_bytes = [double]$Baseline.derived.one_to_four_worker_stream_capacity_slope_bytes - [double]$Final.derived.one_to_four_worker_stream_capacity_slope_bytes
+    }
+    $allChecksPass = $failures.Count -eq 0
+    return [ordered]@{
+        decision = if ($allChecksPass) { 'bounded_memory_qualification_pass_with_limitations' } else { 'bounded_memory_qualification_fail' }
+        baseline_directory = $BaselineDirectory
+        final_directory = $FinalDirectory
+        baseline_commit = $Baseline.commit
+        final_commit = $Final.commit
+        artifact_match = $artifactMatch
+        source_config_changed = (Get-IdentityKey $Baseline.artifact_identity) -ne (Get-IdentityKey $Final.artifact_identity)
+        fixed_dynamic_equivalent = $caseComparisons.Count -eq $caseDefinitions.Count -and @($caseComparisons | Where-Object { -not $_.fingerprints_match }).Count -eq 0
+        baseline_zero_discards = $baselineZeroDiscards
+        final_zero_discards = $finalZeroDiscards
+        tracy_complete = $tracyComplete
+        memory_reduction_exceeds_noise = $memoryReductionExceedsNoise
+        maximum_throughput_regression_fraction = $maxThroughputRegression
+        working_set_reduction_exceeds_noise = $null -ne (Get-Maximum $peakWorkingSetReductions) -and (Get-Maximum $peakWorkingSetReductions) -gt [double]$memoryNoiseFloorBytes
+        measurement_noise_floor_bytes = $memoryNoiseFloorBytes
+        case_comparisons = $caseComparisons
+        slope_attribution = $slopeAttribution
+        candidate_attribution = $candidateAttribution
+        limitations = @('Qualification uses the bounded five-case matrix at 1,000 trajectories per batch and is not a 50M-trajectory production claim.', 'Tracy allocation counts are instrumentation evidence and are not production throughput measurements.', 'Working-set peaks remained within measurement noise because the mapped artifact and validation residency were unchanged; the measured reduction is in private commitment.', 'Task E corrects accounting categories; it is not a RAM optimization.')
+        failure_reasons = @($failures)
+    }
 }
 
 function Invoke-MemoryMatrixAnalysis {
@@ -663,6 +925,10 @@ function Invoke-MemoryMatrixAnalysis {
                 current_private_committed_bytes = if ($null -ne $_.memory) { $_.memory.current_private_committed_bytes } else { $null }
                 peak_private_committed_bytes = if ($null -ne $_.memory) { $_.memory.peak_private_committed_bytes } else { $null }
                 unexplained_private_bytes = if ($null -ne $_.memory) { $_.memory.unexplained_private_bytes } else { $null }
+                throughput_trajectories_per_second = $_.throughput_trajectories_per_second
+                elapsed_wall_nanoseconds = $_.elapsed_wall_nanoseconds
+                process_cpu_nanoseconds = $_.process_cpu_nanoseconds
+                preflight = $_.preflight
                 phase_deltas = if ($null -ne $_.memory) { $_.memory.phase_deltas } else { @() }
                 failure_reasons = $_.failure_reasons
             }
@@ -674,6 +940,12 @@ function Format-Bytes {
     param([object]$Value)
     if ($null -eq $Value) { return 'n/a' }
     return ('{0:N2} GiB' -f ([double]$Value / 1GB))
+}
+
+function Format-Seconds {
+    param([object]$Value)
+    if ($null -eq $Value) { return 'n/a' }
+    return ('{0:N3} s' -f ([double]$Value))
 }
 
 function Write-MemoryEvidence {
@@ -702,6 +974,10 @@ function Write-MemoryEvidence {
             current_private_committed_bytes = $sample.current_private_committed_bytes
             peak_private_committed_bytes = $sample.peak_private_committed_bytes
             unexplained_private_bytes = $sample.unexplained_private_bytes
+            throughput_trajectories_per_second = $sample.throughput_trajectories_per_second
+            elapsed_wall_nanoseconds = $sample.elapsed_wall_nanoseconds
+            process_cpu_nanoseconds = $sample.process_cpu_nanoseconds
+            preflight_json = ($sample.preflight | ConvertTo-Json -Compress -Depth 8)
             tracy_allocation_count = if ($tracy.Count -eq 1) { $tracy[0].allocation_count } else { $null }
             tracy_allocated_bytes = if ($tracy.Count -eq 1) { $tracy[0].allocated_bytes } else { $null }
             tracy_free_count = if ($tracy.Count -eq 1) { $tracy[0].free_count } else { $null }
@@ -719,14 +995,18 @@ function Write-MemoryEvidence {
     [void]$lines.Add("- Commit: $($Summary.commit)")
     [void]$lines.Add("- Normal build: $($Summary.build_identity.build_configuration) / $($Summary.build_identity.compiler_identity)")
     [void]$lines.Add("- Candidate decision: **$($Summary.candidate_decision.status)**, selected $($Summary.candidate_decision.selected_candidate)")
+    if (Test-Property $Summary 'qualification') {
+        [void]$lines.Add("- Production decision: **$($Summary.qualification.decision)**")
+        [void]$lines.Add("- Baseline/final artifact match: $($Summary.qualification.artifact_match); fixed/dynamic fingerprints equivalent: $($Summary.qualification.fixed_dynamic_equivalent)")
+    }
     [void]$lines.Add('')
-    [void]$lines.Add('| Case | Workers | Batches | Scheduler | Median current WS | Median peak WS | Median current private | Fingerprint | Tracy alloc/free |')
-    [void]$lines.Add('| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |')
+    [void]$lines.Add('| Case | Workers | Batches | Scheduler | Median current WS | Median peak WS | Median current private | Median peak private | Throughput/s | CPU | Fingerprint | Tracy alloc/free |')
+    [void]$lines.Add('| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |')
     foreach ($case in @($Summary.normal_case_summaries)) {
         $tracy = @($Summary.tracy | Where-Object { $_.case -eq $case.id } | Select-Object -First 1)
         $events = if ($tracy.Count -eq 1) { "$($tracy[0].allocation_count)/$($tracy[0].free_count)" } else { 'n/a' }
         $fingerprint = @($Summary.samples | Where-Object { $_.case -eq $case.id } | Select-Object -First 1).fingerprint
-        [void]$lines.Add("| $($case.id) | $($case.workers) | $($case.batches) | $($case.scheduler) | $(Format-Bytes $case.current_working_set_bytes) | $(Format-Bytes $case.peak_working_set_bytes) | $(Format-Bytes $case.current_private_committed_bytes) | $fingerprint | $events |")
+        [void]$lines.Add("| $($case.id) | $($case.workers) | $($case.batches) | $($case.scheduler) | $(Format-Bytes $case.current_working_set_bytes) | $(Format-Bytes $case.peak_working_set_bytes) | $(Format-Bytes $case.current_private_committed_bytes) | $(Format-Bytes $case.peak_private_committed_bytes) | $([double]$case.throughput_trajectories_per_second) | $(Format-Seconds ([double]$case.process_cpu_nanoseconds / 1e9)) | $fingerprint | $events |")
     }
     [void]$lines.Add('')
     [void]$lines.Add('## Derived attribution')
@@ -738,6 +1018,35 @@ function Write-MemoryEvidence {
     [void]$lines.Add("- Mapped artifact virtual size: $(Format-Bytes $Summary.derived.mapped_artifact_virtual_size_bytes)")
     [void]$lines.Add("- Unexplained private remainder: $(Format-Bytes $Summary.derived.unexplained_private_remainder_bytes)")
     [void]$lines.Add('')
+    [void]$lines.Add('## Preflight estimate categories')
+    [void]$lines.Add('')
+    [void]$lines.Add('| Case | Compatibility | Existing WS | Existing private | Additional private capacity | Mapped virtual | Mapped resident allowance | Checkpoint transient | Export transient | Allocator overhead | Estimated private peak | Estimated WS peak |')
+    [void]$lines.Add('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |')
+    foreach ($case in @($Summary.normal_case_summaries)) {
+        $preflight = $case.preflight_estimates
+        [void]$lines.Add("| $($case.id) | $($preflight.compatibility) | $(Format-Bytes $preflight.existing_working_set_bytes) | $(Format-Bytes $preflight.existing_private_committed_bytes) | $(Format-Bytes $preflight.additional_private_capacity_bytes) | $(Format-Bytes $preflight.mapped_virtual_bytes) | $(Format-Bytes $preflight.mapped_resident_allowance_bytes) | $(Format-Bytes $preflight.checkpoint_transient_bytes) | $(Format-Bytes $preflight.export_transient_bytes) | $(Format-Bytes $preflight.allocator_overhead_bytes) | $(Format-Bytes $preflight.estimated_private_peak_bytes) | $(Format-Bytes $preflight.estimated_working_set_peak_bytes) |")
+    }
+    [void]$lines.Add('')
+    if (Test-Property $Summary 'qualification') {
+        [void]$lines.Add('## Baseline versus final')
+        [void]$lines.Add('')
+        [void]$lines.Add('| Case | Peak private reduction | Peak WS reduction | Throughput delta | CPU delta | Fingerprints |')
+        [void]$lines.Add('| --- | ---: | ---: | ---: | ---: | --- |')
+        foreach ($comparison in @($Summary.qualification.case_comparisons)) {
+            [void]$lines.Add("| $($comparison.case) | $(Format-Bytes $comparison.memory.peak_private_committed_bytes.reduction_bytes) | $(Format-Bytes $comparison.memory.peak_working_set_bytes.reduction_bytes) | $([double]$comparison.performance.throughput_trajectories_per_second.final_minus_baseline) | $(Format-Seconds ([double]$comparison.performance.process_cpu_nanoseconds.final_minus_baseline / 1e9)) | $($comparison.fingerprints_match) |")
+        }
+        [void]$lines.Add('')
+        [void]$lines.Add('## Candidate attributable reductions')
+        [void]$lines.Add('')
+        [void]$lines.Add('| Candidate | Implemented | Baseline score | Final score | Attributable reduction | Exceeds noise | Status |')
+        [void]$lines.Add('| --- | --- | ---: | ---: | ---: | --- | --- |')
+        foreach ($candidate in @($Summary.qualification.candidate_attribution)) {
+            [void]$lines.Add("| $($candidate.candidate) | $($candidate.implemented) | $(Format-Bytes $candidate.baseline_score_bytes) | $(Format-Bytes $candidate.final_score_bytes) | $(Format-Bytes $candidate.attributable_reduction_bytes) | $($candidate.exceeds_noise) | $($candidate.status) |")
+        }
+        [void]$lines.Add('')
+        [void]$lines.Add('Qualification limitations:')
+        foreach ($limitation in @($Summary.qualification.limitations)) { [void]$lines.Add("- $limitation") }
+    }
     [void]$lines.Add('## Candidate ranking')
     [void]$lines.Add('')
     foreach ($candidate in @($Summary.candidate_decision.ranked_candidates)) {
@@ -905,11 +1214,21 @@ if (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory = 
 if (-not (Test-Path -LiteralPath $InputDirectory -PathType Container)) { throw "Input directory not found: $InputDirectory" }
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $summary = Invoke-MemoryMatrixAnalysis $InputDirectory $Repeats $TrajectoriesPerBatch (-not $SkipTracy)
+if (-not [string]::IsNullOrWhiteSpace($BaselineDirectory)) {
+    if (-not [System.IO.Path]::IsPathRooted($BaselineDirectory)) { $BaselineDirectory = Join-Path $repoRoot $BaselineDirectory }
+    if (-not (Test-Path -LiteralPath $BaselineDirectory -PathType Container)) { throw "Baseline directory not found: $BaselineDirectory" }
+    $baselineSummary = Invoke-MemoryMatrixAnalysis $BaselineDirectory $BaselineRepeats $TrajectoriesPerBatch (-not $SkipTracy)
+    $summary.qualification = Compare-MemoryQualification $baselineSummary $summary $BaselineDirectory $InputDirectory
+}
 Write-MemoryEvidence $summary $OutputDirectory
 Write-Output "[memory-analyzer] summary=$OutputDirectory\memory_summary.json"
 Write-Output "[memory-analyzer] samples=$OutputDirectory\memory_samples.csv"
 Write-Output "[memory-analyzer] evidence=$OutputDirectory\evidence.md"
 Write-Output "[memory-analyzer] acceptance=$($summary.acceptance.status) candidate_status=$($summary.candidate_decision.status) selected=$($summary.candidate_decision.selected_candidate)"
+if (Test-Property $summary 'qualification') { Write-Output "[memory-analyzer] production_decision=$($summary.qualification.decision)" }
 if ($summary.acceptance.status -ne 'pass') {
     throw "Memory matrix acceptance failed: $($summary.acceptance.failure_reasons -join '; ')"
+}
+if ((Test-Property $summary 'qualification') -and [string]$summary.qualification.decision -eq 'bounded_memory_qualification_fail') {
+    throw "Bounded memory qualification failed: $($summary.qualification.failure_reasons -join '; ')"
 }
