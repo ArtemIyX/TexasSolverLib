@@ -17,6 +17,9 @@ param(
     [ValidateSet('normal', 'tracy')]
     [string]$BinaryKind = 'normal',
 
+    [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
+    [string]$BuildConfiguration = 'Debug',
+
     [string]$BinaryPath = '',
 
     [string]$TraceCaptureId = '',
@@ -24,7 +27,7 @@ param(
     [string]$RunDirectory = ''
 )
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 Write-Output '[ram1000] starting bounded RAM measurement'
 Write-Output "[ram1000] repository_root=$repoRoot"
@@ -45,7 +48,7 @@ if ([string]::IsNullOrWhiteSpace($BinaryPath)) {
     $BinaryPath = if ($BinaryKind -eq 'tracy') {
         Join-Path $repoRoot 'build-tracy\RelWithDebInfo\texas_multiway_train_tracy.exe'
     } else {
-        Join-Path $repoRoot 'build\Debug\texas_multiway_train.exe'
+        Join-Path $repoRoot ("build\{0}\texas_multiway_train.exe" -f $BuildConfiguration)
     }
 } elseif (-not [System.IO.Path]::IsPathRooted($BinaryPath)) {
     $BinaryPath = Join-Path $repoRoot $BinaryPath
@@ -59,7 +62,7 @@ if ([string]::IsNullOrWhiteSpace($gitCommit)) {
     throw 'Could not determine git commit for run provenance'
 }
 $env:TEXASSOLVER_GIT_COMMIT = $gitCommit
-$env:TEXASSOLVER_BUILD_CONFIGURATION = if ($BinaryKind -eq 'tracy') { 'RelWithDebInfo' } else { 'Debug' }
+$env:TEXASSOLVER_BUILD_CONFIGURATION = $BuildConfiguration
 $env:TEXASSOLVER_COMPILER_IDENTITY = if ([string]::IsNullOrWhiteSpace($env:VCToolsVersion)) { 'MSVC' } else { "MSVC $($env:VCToolsVersion)" }
 if ($BinaryKind -eq 'tracy') {
     $env:TEXASSOLVER_TRACE_CAPTURE_ID = if ([string]::IsNullOrWhiteSpace($TraceCaptureId)) { 'not-captured' } else { $TraceCaptureId }
@@ -74,6 +77,24 @@ foreach ($requiredPath in @($executable, $sourceConfig, $bucketArtifact)) {
     }
     $requiredBytes = (Get-Item -LiteralPath $requiredPath).Length
     Write-Output "[ram1000] validated path=$requiredPath bytes=$requiredBytes"
+}
+$binaryFile = Get-Item -LiteralPath $executable
+$bucketFile = Get-Item -LiteralPath $bucketArtifact
+$binarySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $executable).Hash
+$configSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceConfig).Hash
+$artifactIdentity = [ordered]@{
+    path = $bucketArtifact
+    bytes = [int64]$bucketFile.Length
+    last_write_time_utc = $bucketFile.LastWriteTimeUtc.ToString('o')
+    source_config_sha256 = $configSha256
+}
+$buildIdentity = [ordered]@{
+    git_commit = $gitCommit
+    configuration = $BuildConfiguration
+    compiler = $env:TEXASSOLVER_COMPILER_IDENTITY
+    binary_path = $executable
+    binary_bytes = [int64]$binaryFile.Length
+    binary_sha256 = $binarySha256
 }
 
 $configValues = @{}
@@ -191,6 +212,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     pin_workers = $PinWorkers.IsPresent
     scheduler = $Scheduler
     binary_kind = $BinaryKind
+    build_configuration = $BuildConfiguration
     binary_path = $executable
     chunk_size = 4
     trajectories_per_batch = $TrajectoriesPerBatch
@@ -238,6 +260,8 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     checkpoint_bytes = $report.checkpoint_bytes
     blueprint_bytes = $report.blueprint_bytes
     checkpoint_telemetry = $report.checkpoint_telemetry
+    build_identity = $buildIdentity
+    artifact_identity = $artifactIdentity
 }
 
 $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
@@ -247,6 +271,12 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     pinning = if ($PinWorkers.IsPresent) { 'pinned' } else { 'unpinned' }
     scheduler = $Scheduler
     chunk_size = 4
+    binary_kind = $BinaryKind
+    build_configuration = $BuildConfiguration
+    git_commit = $gitCommit
+    compiler_identity = $env:TEXASSOLVER_COMPILER_IDENTITY
+    binary_sha256 = $binarySha256
+    binary_bytes = [int64]$binaryFile.Length
     workers = $Workers
     batches = $Batches
     trajectories_per_batch = $TrajectoriesPerBatch
@@ -254,7 +284,27 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     process_cpu_nanoseconds = $processCpuNanoseconds
     peak_working_set_bytes = $peakWorkingSetBytes
     report_path = $reportPath
+    artifact_identity = $artifactIdentity
 } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $metricsPath -Encoding UTF8
+
+$runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
+[ordered]@{
+    schema_version = 2
+    git_commit = $gitCommit
+    build_configuration = $BuildConfiguration
+    compiler_identity = $env:TEXASSOLVER_COMPILER_IDENTITY
+    binary = $buildIdentity
+    artifact = $artifactIdentity
+    workload = [ordered]@{
+        workers = $Workers
+        batches = $Batches
+        trajectories_per_batch = $TrajectoriesPerBatch
+        scheduler = $Scheduler
+        pin_workers = $PinWorkers.IsPresent
+    }
+    report_json = $reportPath
+    metrics_json = $metricsPath
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $runManifestPath -Encoding UTF8
 
 Write-Output "[ram1000] report: trajectories=$($report.trajectories) accepted=$($report.accepted_trajectories) discarded=$($report.discarded_trajectories) failed=$($report.failed)"
 Write-Output "[ram1000] report: peak_process_rss_bytes=$($report.peak_process_rss_bytes) memory_preflight_estimate_bytes=$($report.memory_preflight_estimate_bytes)"

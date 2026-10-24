@@ -2,9 +2,9 @@
 
 **Updated:** 2026-10-23
 **Overall status:** In progress
-**Current task:** C complete
-**Next action:** No further action for Task C; do not infer memory reduction from diagnostic events.
-**Latest problem:** Resolved: bounded Tracy capture contains paired allocation and free events with zero active allocations.
+**Current task:** D
+**Next action:** Restore a working current-commit Tracy client connection, then rerun the matched matrix.
+**Latest problem:** The current RelWithDebInfo Tracy trainer opens no profiler socket, so both the daemon and direct capture complete with zero clients and no trace.
 
 ## Tasks
 
@@ -13,7 +13,7 @@
 | A | Complete | Added versioned platform-aware process snapshots, ordered phase capture, report serialization, compatibility, and tests without changing solver behavior. | None | [Process memory and phase snapshots](A_process_memory_phase_snapshots.md) | [Project log](../PLURIBUS_LOG.md#pb-6-implement-task-a-process-memory-and-phase-snapshots) |
 | B | Complete | Added allocation-free live and retained-capacity attribution, per-worker aggregates, phase snapshots, versioned JSON, validation, and tests without changing solver capacities. | A | [Retained subsystem capacity](B_retained_subsystem_capacity.md) | [Project log](../PLURIBUS_LOG.md#pb-6-implement-task-b-retained-subsystem-capacity) |
 | C | Complete | Tracy-only allocation/free events were captured and inspected in a bounded diagnostic run without changing production targets. | A | [Tracy allocation lifetimes](C_tracy_allocation_lifetimes.md) | [Project log](../PLURIBUS_LOG.md#pb-6-implement-task-c-tracy-allocation-lifetimes) |
-| D | Blocked | No matched normal/Tracy attribution matrix exists to select the dominant memory owner. | A, B, C | [Bounded attribution matrix](D_bounded_attribution_matrix.md) | Waiting for A-C |
+| D | Blocked | The current RelWithDebInfo Tracy trainer opens no profiler socket, so both the daemon and direct capture complete with zero clients and no trace. | A, B, C | [Bounded attribution matrix](D_bounded_attribution_matrix.md) | Tracy capture blocker |
 | E | Blocked | Preflight can overlap resident baseline and full mapped-artifact accounting, but correction requires D evidence. | D | [Preflight accounting](E_preflight_accounting.md) | Waiting for D |
 | F | Blocked | Bucket validation is a suspected working-set cause but must be selected by D before implementation. | D selects F | [Bucket validation residency](F_bucket_validation_residency.md) | Not selected |
 | G | Blocked | Worker stream over-reservation is a suspected private-memory cause but must be selected by D. | D selects G | [Worker stream right-sizing](G_worker_stream_rightsizing.md) | Not selected |

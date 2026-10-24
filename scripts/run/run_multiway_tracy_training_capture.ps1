@@ -10,7 +10,7 @@ param(
     [ValidateRange(1, 300)]
     [int]$CaptureSeconds = 60,
     [ValidateRange(2, 120)]
-    [int]$ConnectionTimeoutSeconds = 30,
+    [int]$ConnectionTimeoutSeconds = 60,
     [ValidateRange(1, 16)]
     [int]$Workers = 1,
     [ValidateRange(1, 10)]
@@ -23,7 +23,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 function Resolve-RepoPath([string]$Path, [string]$DefaultRelativePath) {
     if ([string]::IsNullOrWhiteSpace($Path)) {
@@ -60,7 +60,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 $CaptureToolPath = Resolve-RepoPath $CaptureToolPath 'build-tracy-capture\RelWithDebInfo\tracy-capture-daemon.exe'
 $CsvExportToolPath = Resolve-RepoPath $CsvExportToolPath 'build-tracy-csvexport\RelWithDebInfo\tracy-csvexport.exe'
 $MemoryExportToolPath = Resolve-RepoPath $MemoryExportToolPath 'build-tracy-csvexport\RelWithDebInfo\tracy-memoryexport.exe'
-$TrainingScriptPath = Resolve-RepoPath $TrainingScriptPath 'scripts\run_multiway_ram_1000.ps1'
+$TrainingScriptPath = Resolve-RepoPath $TrainingScriptPath 'scripts\run\run_multiway_ram_1000.ps1'
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $scriptLogPath = Join-Path $OutputDirectory 'capture_wrapper.log'
@@ -113,6 +113,7 @@ $trainingArguments = @(
     '-Batches', $Batches.ToString(),
     '-TrajectoriesPerBatch', $TrajectoriesPerBatch.ToString(),
     '-BinaryKind', 'tracy',
+    '-BuildConfiguration', 'RelWithDebInfo',
     '-TraceCaptureId', $CaptureId,
     '-Scheduler', $Scheduler,
     '-RunDirectory', $OutputDirectory
@@ -122,6 +123,7 @@ $trainingParameters = @{
     Batches = $Batches
     TrajectoriesPerBatch = $TrajectoriesPerBatch
     BinaryKind = 'tracy'
+    BuildConfiguration = 'RelWithDebInfo'
     TraceCaptureId = $CaptureId
     Scheduler = $Scheduler
     RunDirectory = $OutputDirectory
@@ -158,9 +160,6 @@ try {
     Write-ScriptLog "training_wrapper_failed=$($_.Exception.Message)"
 } finally {
     if ($null -ne $captureProcess) {
-        if ($captureDaemon -and -not $captureProcess.HasExited) {
-            $captureProcess.CloseMainWindow() | Out-Null
-        }
         $captureDeadline = (Get-Date).AddSeconds($ConnectionTimeoutSeconds)
         while (-not $captureProcess.HasExited -and (Get-Date) -lt $captureDeadline) {
             Start-Sleep -Milliseconds 200
@@ -254,6 +253,7 @@ foreach ($requiredArtifact in @($reportPath, $metricsPath, $orchestratorLogPath)
 }
 
 $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
+$runMetrics = Get-Content -Raw -LiteralPath $metricsPath | ConvertFrom-Json
 if (-not ($report.PSObject.Properties.Name -contains 'tracy_memory_events_enabled') -or
     -not [bool]$report.tracy_memory_events_enabled) {
     throw 'Training report does not prove that Tracy memory events were enabled'
@@ -271,6 +271,8 @@ $manifest = [ordered]@{
     git_commit = $gitCommit
     build_configuration = $env:TEXASSOLVER_BUILD_CONFIGURATION
     compiler_identity = $env:TEXASSOLVER_COMPILER_IDENTITY
+    build = $runMetrics.build_identity
+    artifact = $runMetrics.artifact_identity
     workload = [ordered]@{
         workers = $Workers
         batches = $Batches
