@@ -1,5 +1,49 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.05 - Deterministic scheduler balance
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `90e9510 PB-9 Add deterministic scheduler balance: Version static blocks and expose dynamic chunk evidence`
+
+- Added versioned static-block scheduling while preserving the default fixed round-robin behavior.
+- Exposed scheduler mode and dynamic chunk size through workflow configuration, CLI, identity, checkpoint compatibility, run metadata, and JSON reports.
+- Preserved trajectory seeds, worker-index tie order, deterministic partitioning, globally ordered merges, exact storage, policy rows, fingerprints, and Float64 accumulation order.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_scheduler.hpp`
+- `src/solver/multiway/engine/multiway_scheduler.cpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_scheduler.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/tasks/PB9_16_05_deterministic_scheduler_balance.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused scheduler, parallel-training, workflow-config, blueprint-training, and qualification-report tests passed.
+- Fixed, static-block, and dynamic modes matched exact storage and policy rows across 1, 2, 4, 8, and 16 workers.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py` passed.
+- `git diff --check` passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No benchmarks, qualification matrix, tournament merges, policy-content hashing, or solver training were run.
+
 ## PB9.16.04 - Safe placement policies
 
 **Status:** Complete
