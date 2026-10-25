@@ -1,5 +1,43 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.02 - Authoritative phase telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `6d85d5f PB-9 Add authoritative phase telemetry: Split phase timings and validate process snapshots`
+
+- Added distinct training, checkpoint, export, and total-wrapper durations. Training throughput remains based only on training time.
+- Added phase-boundary working-set, private-commit, and page-fault telemetry with explicit unsupported-counter availability.
+- Preserved legacy report fields, checkpoint bytes, artifact hashes, scheduler behavior, topology policy, merge order, and hot paths.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/tasks/PB9_16_02_authoritative_phase_telemetry.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Full build wrapper: passed.
+- Compact CTest: passed.
+- Focused multiway memory, qualification-report, blueprint-training, and workflow-boundary tests: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- Linux reports minor and major page faults; Windows reports the supported total page-fault counter. Unsupported counters remain unavailable.
+- No qualification matrix, benchmark, or solver training was run.
+
 ## PB9.16.01 - Compile-time provenance and runner gate
 
 **Status:** Complete
