@@ -1369,6 +1369,101 @@ TEST_CASE(multiway_solver_discovery_merge_reports_single_stream_eligibility)
 	EXPECT_EQ(diagnostics.discovery_row_duplicate_candidates, 0U);
 }
 
+TEST_CASE(multiway_solver_discovery_merge_reference_and_tournament_match_duplicate_heavy_streams)
+{
+	const auto first_child = checked_action_child_public_state();
+	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
+	std::vector<texas::MultiwayDiscoveryStream> worker_streams;
+	worker_streams.reserve(6U);
+	for (std::size_t worker = 0U; worker < 6U; ++worker)
+	{
+		worker_streams.emplace_back(8U, 8U);
+		EXPECT_TRUE(worker_streams.back().try_append_public_state(second_child));
+		EXPECT_TRUE(worker_streams.back().try_append_public_state(first_child));
+		EXPECT_TRUE(worker_streams.back().try_append_row(root_row()));
+		EXPECT_TRUE(worker_streams.back().try_append_row({ { first_child.id, first_child.betting.current_player }, 1U, static_cast<std::uint8_t>(first_child.legal_actions.size()) }));
+		worker_streams.back().prepare_for_merge();
+	}
+	std::vector<const texas::MultiwayDiscoveryStream*> streams;
+	streams.reserve(worker_streams.size());
+	for (const auto& stream : worker_streams)
+		streams.push_back(&stream);
+
+	texas::solver::multiway::detail::MultiwayDiscoveryMergeScratch reference_scratch;
+	reference_scratch.reserve(streams.size());
+	texas::solver::multiway::detail::MultiwayDiscoveryMergeScratch tournament_scratch;
+	tournament_scratch.reserve(streams.size());
+	std::vector<texas::MultiwayPublicStateDescriptor> reference_states;
+	std::vector<texas::MultiwaySparseRowShape> reference_rows;
+	std::vector<texas::MultiwayPublicStateDescriptor> tournament_states;
+	std::vector<texas::MultiwaySparseRowShape> tournament_rows;
+	texas::MultiwayAdmissionDiagnostics reference_diagnostics;
+	texas::MultiwayAdmissionDiagnostics tournament_diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, reference_states, reference_rows, reference_scratch,
+		texas::solver::multiway::detail::MultiwayDiscoveryMergePath::Reference,
+		&reference_diagnostics);
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, tournament_states, tournament_rows, tournament_scratch,
+		texas::solver::multiway::detail::MultiwayDiscoveryMergePath::Tournament,
+		&tournament_diagnostics);
+
+	EXPECT_EQ(reference_states.size(), 2U);
+	EXPECT_EQ(reference_rows.size(), 2U);
+	EXPECT_EQ(tournament_states.size(), reference_states.size());
+	EXPECT_EQ(tournament_rows.size(), reference_rows.size());
+	for (std::size_t index = 0U; index < reference_states.size(); ++index)
+		expect_public_state_descriptor_equal(reference_states[index], tournament_states[index]);
+	for (std::size_t index = 0U; index < reference_rows.size(); ++index)
+	{
+		EXPECT_EQ(reference_rows[index].infoset, tournament_rows[index].infoset);
+		EXPECT_EQ(reference_rows[index].bucket_count, tournament_rows[index].bucket_count);
+		EXPECT_EQ(reference_rows[index].action_count, tournament_rows[index].action_count);
+	}
+	EXPECT_EQ(reference_diagnostics.discovery_public_state_source_elements, 12U);
+	EXPECT_EQ(reference_diagnostics.discovery_row_source_elements, 12U);
+	EXPECT_EQ(reference_diagnostics.discovery_public_state_duplicate_candidates, 10U);
+	EXPECT_EQ(reference_diagnostics.discovery_row_duplicate_candidates, 10U);
+	EXPECT_EQ(tournament_diagnostics.discovery_public_state_source_elements, reference_diagnostics.discovery_public_state_source_elements);
+	EXPECT_EQ(tournament_diagnostics.discovery_row_source_elements, reference_diagnostics.discovery_row_source_elements);
+	EXPECT_EQ(tournament_diagnostics.discovery_public_state_duplicate_candidates, reference_diagnostics.discovery_public_state_duplicate_candidates);
+	EXPECT_EQ(tournament_diagnostics.discovery_row_duplicate_candidates, reference_diagnostics.discovery_row_duplicate_candidates);
+	EXPECT_EQ(tournament_diagnostics.discovery_public_descriptor_copy_count, reference_diagnostics.discovery_public_descriptor_copy_count);
+	EXPECT_EQ(tournament_scratch.cursors.capacity(), streams.size());
+	EXPECT_EQ(tournament_scratch.tournament.capacity(), streams.size());
+}
+
+TEST_CASE(multiway_solver_discovery_merge_selects_tournament_only_above_threshold)
+{
+	using texas::solver::multiway::detail::MultiwayDiscoveryMergePath;
+	using texas::solver::multiway::detail::MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD;
+	EXPECT_EQ(
+		texas::solver::multiway::detail::select_multiway_discovery_merge_path(
+			MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD),
+		MultiwayDiscoveryMergePath::Reference);
+	EXPECT_EQ(
+		texas::solver::multiway::detail::select_multiway_discovery_merge_path(
+			MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD + 1U),
+		MultiwayDiscoveryMergePath::Tournament);
+}
+
+TEST_CASE(multiway_solver_discovery_merge_tournament_handles_empty_inputs)
+{
+	const std::vector<const texas::MultiwayDiscoveryStream*> streams;
+	texas::solver::multiway::detail::MultiwayDiscoveryMergeScratch scratch;
+	scratch.reserve(0U);
+	std::vector<texas::MultiwayPublicStateDescriptor> public_states;
+	std::vector<texas::MultiwaySparseRowShape> rows;
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, public_states, rows, scratch,
+		texas::solver::multiway::detail::MultiwayDiscoveryMergePath::Tournament,
+		&diagnostics);
+	EXPECT_TRUE(public_states.empty());
+	EXPECT_TRUE(rows.empty());
+	EXPECT_TRUE(scratch.cursors.empty());
+}
+
 TEST_CASE(multiway_solver_discovery_one_stream_fast_path_matches_generic_merge)
 {
 	texas::MultiwayDiscoveryStream stream(8U);

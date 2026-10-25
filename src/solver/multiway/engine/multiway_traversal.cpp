@@ -244,7 +244,7 @@ namespace texas::solver::multiway
 			record(state.legal_actions.size(), sizeof(MultiwayActionDescriptor));
 		}
 
-		void merge_public_state_streams(
+		void merge_public_state_streams_reference(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
 			std::vector<MultiwayPublicStateDescriptor>& output,
 			std::vector<std::size_t>& cursors,
@@ -342,7 +342,7 @@ namespace texas::solver::multiway
 			diagnostics.public_state_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
 		}
 
-		void merge_row_streams(
+		void merge_row_streams_reference(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
 			std::vector<MultiwaySparseRowShape>& output,
 			std::vector<std::size_t>& cursors,
@@ -405,6 +405,200 @@ namespace texas::solver::multiway
 							throw std::invalid_argument("multiway discovery merge found conflicting row shapes");
 						++cursors[stream_index];
 					}
+				}
+			}
+			diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - merge_started)
+					.count());
+			diagnostics.row_source_elements = static_cast<std::uint64_t>(total);
+			diagnostics.row_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
+		}
+
+		template <typename StreamKeyLess>
+		void tournament_push(
+			std::vector<std::size_t>& tournament,
+			std::size_t& active_count,
+			std::size_t stream_index,
+			StreamKeyLess less)
+		{
+			tournament[active_count] = stream_index;
+			std::size_t current = active_count;
+			++active_count;
+			while (current != 0U)
+			{
+				const auto parent = (current - 1U) / 2U;
+				if (!less(tournament[current], tournament[parent]))
+					break;
+				std::swap(tournament[current], tournament[parent]);
+				current = parent;
+			}
+		}
+
+		template <typename StreamKeyLess>
+		void tournament_advance(
+			std::vector<std::size_t>& tournament,
+			std::size_t& active_count,
+			bool exhausted,
+			StreamKeyLess less)
+		{
+			if (exhausted)
+			{
+				--active_count;
+				if (active_count == 0U)
+					return;
+				tournament[0U] = tournament[active_count];
+			}
+			std::size_t current = 0U;
+			while (true)
+			{
+				const auto left = current * 2U + 1U;
+				if (left >= active_count)
+					break;
+				const auto right = left + 1U;
+				const auto child = right < active_count && less(tournament[right], tournament[left])
+					? right
+					: left;
+				if (!less(tournament[child], tournament[current]))
+					break;
+				std::swap(tournament[current], tournament[child]);
+				current = child;
+			}
+		}
+
+		void merge_public_state_streams_tournament(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& output,
+			std::vector<std::size_t>& cursors,
+			std::vector<std::size_t>& tournament,
+			DiscoveryMergeDiagnosticsDelta& diagnostics)
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.public_states.tournament");
+			if (streams.size() <= 1U)
+			{
+				merge_public_state_streams_reference(streams, output, cursors, diagnostics);
+				return;
+			}
+			const auto merge_started = std::chrono::steady_clock::now();
+			output.clear();
+			std::size_t total = 0U;
+			for (const auto* stream : streams)
+				total += stream->public_state_count();
+			if (output.capacity() >= total)
+			{
+				++diagnostics.output_capacity_reuse_events;
+				diagnostics.output_capacity_reuse_bytes += static_cast<std::uint64_t>(total * sizeof(MultiwayPublicStateDescriptor));
+			}
+			output.reserve(total);
+			cursors.resize(streams.size());
+			std::fill(cursors.begin(), cursors.end(), 0U);
+			std::size_t active_count = 0U;
+			const auto less = [&streams, &cursors](std::size_t left, std::size_t right) {
+				const auto& left_stream = *streams[left];
+				const auto& right_stream = *streams[right];
+				const auto& left_state = left_stream.public_states()[cursors[left]];
+				const auto& right_state = right_stream.public_states()[cursors[right]];
+				return left_state.id != right_state.id ? left_state.id < right_state.id : left < right;
+			};
+			for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+			{
+				if (streams[stream_index]->public_state_count() != 0U)
+					tournament_push(tournament, active_count, stream_index, less);
+			}
+			while (active_count != 0U)
+			{
+				const auto id = streams[tournament[0U]]->public_states()[cursors[tournament[0U]]].id;
+				const auto first_stream = tournament[0U];
+				const auto& first_candidate = streams[first_stream]->public_states()[cursors[first_stream]];
+				record_discovery_descriptor_copy(first_candidate, diagnostics);
+				output.push_back(first_candidate);
+				bool first_candidate_in_group = true;
+				while (active_count != 0U)
+				{
+					const auto stream_index = tournament[0U];
+					const auto& stream = *streams[stream_index];
+					if (stream.public_states()[cursors[stream_index]].id != id)
+						break;
+					const auto& candidate = stream.public_states()[cursors[stream_index]];
+					if (!first_candidate_in_group)
+					{
+						if (!MultiwaySolverCoordinator::public_state_candidates_compatible(output.back(), candidate))
+							throw std::invalid_argument("multiway discovery merge found conflicting public-state descriptors");
+						if (public_state_candidate_less(candidate, output.back()))
+						{
+							record_discovery_descriptor_copy(candidate, diagnostics);
+							output.back() = candidate;
+						}
+					}
+					first_candidate_in_group = false;
+					++cursors[stream_index];
+					tournament_advance(
+						tournament, active_count,
+						cursors[stream_index] == stream.public_state_count(), less);
+				}
+			}
+			diagnostics.public_state_merge_nanoseconds = static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - merge_started)
+					.count());
+			diagnostics.public_state_source_elements = static_cast<std::uint64_t>(total);
+			diagnostics.public_state_duplicate_candidates = static_cast<std::uint64_t>(total - output.size());
+		}
+
+		void merge_row_streams_tournament(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwaySparseRowShape>& output,
+			std::vector<std::size_t>& cursors,
+			std::vector<std::size_t>& tournament,
+			DiscoveryMergeDiagnosticsDelta& diagnostics)
+		{
+			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge.rows.tournament");
+			if (streams.size() <= 1U)
+			{
+				merge_row_streams_reference(streams, output, cursors, diagnostics);
+				return;
+			}
+			const auto merge_started = std::chrono::steady_clock::now();
+			output.clear();
+			std::size_t total = 0U;
+			for (const auto* stream : streams)
+				total += stream->row_count();
+			output.reserve(total);
+			cursors.resize(streams.size());
+			std::fill(cursors.begin(), cursors.end(), 0U);
+			std::size_t active_count = 0U;
+			const auto less = [&streams, &cursors](std::size_t left, std::size_t right) {
+				const auto& left_stream = *streams[left];
+				const auto& right_stream = *streams[right];
+				const auto& left_row = left_stream.rows()[cursors[left]];
+				const auto& right_row = right_stream.rows()[cursors[right]];
+				return left_row.infoset != right_row.infoset ? left_row.infoset < right_row.infoset : left < right;
+			};
+			for (std::size_t stream_index = 0U; stream_index < streams.size(); ++stream_index)
+			{
+				if (streams[stream_index]->row_count() != 0U)
+					tournament_push(tournament, active_count, stream_index, less);
+			}
+			while (active_count != 0U)
+			{
+				const auto infoset = streams[tournament[0U]]->rows()[cursors[tournament[0U]]].infoset;
+				const auto first_stream = tournament[0U];
+				output.push_back(streams[first_stream]->rows()[cursors[first_stream]]);
+				bool first_candidate_in_group = true;
+				while (active_count != 0U)
+				{
+					const auto stream_index = tournament[0U];
+					const auto& stream = *streams[stream_index];
+					if (stream.rows()[cursors[stream_index]].infoset != infoset)
+						break;
+					const auto& candidate = stream.rows()[cursors[stream_index]];
+					if (!first_candidate_in_group && (candidate.bucket_count != output.back().bucket_count || candidate.action_count != output.back().action_count))
+						throw std::invalid_argument("multiway discovery merge found conflicting row shapes");
+					first_candidate_in_group = false;
+					++cursors[stream_index];
+					tournament_advance(
+						tournament, active_count,
+						cursors[stream_index] == stream.row_count(), less);
 				}
 			}
 			diagnostics.row_merge_nanoseconds = static_cast<std::uint64_t>(
@@ -538,6 +732,14 @@ namespace texas::solver::multiway
 
 	namespace detail
 	{
+		MultiwayDiscoveryMergePath select_multiway_discovery_merge_path(
+			std::size_t stream_count) noexcept
+		{
+			return stream_count > MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD
+				? MultiwayDiscoveryMergePath::Tournament
+				: MultiwayDiscoveryMergePath::Reference;
+		}
+
 		void merge_multiway_discovery_streams(
 			const std::vector<const MultiwayDiscoveryStream*>& streams,
 			std::vector<MultiwayPublicStateDescriptor>& public_states,
@@ -547,8 +749,56 @@ namespace texas::solver::multiway
 		{
 			const auto one_stream = streams.size() == 1U;
 			DiscoveryMergeDiagnosticsDelta delta;
-			merge_public_state_streams(streams, public_states, cursors, delta);
-			merge_row_streams(streams, rows, cursors, delta);
+			merge_public_state_streams_reference(streams, public_states, cursors, delta);
+			merge_row_streams_reference(streams, rows, cursors, delta);
+			if (diagnostics == nullptr)
+				return;
+			diagnostics->discovery_public_state_merge_nanoseconds += delta.public_state_merge_nanoseconds;
+			diagnostics->discovery_row_merge_nanoseconds += delta.row_merge_nanoseconds;
+			diagnostics->discovery_public_state_source_elements += delta.public_state_source_elements;
+			diagnostics->discovery_row_source_elements += delta.row_source_elements;
+			diagnostics->discovery_public_descriptor_copy_count += delta.public_descriptor_copy_count;
+			diagnostics->discovery_public_descriptor_copy_bytes += delta.public_descriptor_copy_bytes;
+			diagnostics->discovery_nested_descriptor_copy_count += delta.nested_descriptor_copy_count;
+			diagnostics->discovery_nested_descriptor_copy_bytes += delta.nested_descriptor_copy_bytes;
+			diagnostics->discovery_output_capacity_reuse_events += delta.output_capacity_reuse_events;
+			diagnostics->discovery_output_capacity_reuse_bytes += delta.output_capacity_reuse_bytes;
+			diagnostics->discovery_public_state_duplicate_candidates += delta.public_state_duplicate_candidates;
+			diagnostics->discovery_row_duplicate_candidates += delta.row_duplicate_candidates;
+			if (one_stream)
+			{
+				++diagnostics->discovery_single_stream_batches;
+				++diagnostics->discovery_one_stream_fast_path_uses;
+			}
+		}
+
+		void merge_multiway_discovery_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& public_states,
+			std::vector<MultiwaySparseRowShape>& rows,
+			MultiwayDiscoveryMergeScratch& scratch,
+			MultiwayDiscoveryMergePath path,
+			MultiwayAdmissionDiagnostics* diagnostics)
+		{
+			const auto one_stream = streams.size() == 1U;
+			if (path == MultiwayDiscoveryMergePath::Automatic)
+				path = select_multiway_discovery_merge_path(streams.size());
+			if (scratch.cursors.capacity() < streams.size() || (path == MultiwayDiscoveryMergePath::Tournament && scratch.tournament.capacity() < streams.size()))
+				throw std::length_error("multiway discovery merge scratch is not preallocated for the stream count");
+			scratch.cursors.resize(streams.size());
+			if (path == MultiwayDiscoveryMergePath::Tournament)
+				scratch.tournament.resize(streams.size());
+			DiscoveryMergeDiagnosticsDelta delta;
+			if (path == MultiwayDiscoveryMergePath::Tournament)
+			{
+				merge_public_state_streams_tournament(streams, public_states, scratch.cursors, scratch.tournament, delta);
+				merge_row_streams_tournament(streams, rows, scratch.cursors, scratch.tournament, delta);
+			}
+			else
+			{
+				merge_public_state_streams_reference(streams, public_states, scratch.cursors, delta);
+				merge_row_streams_reference(streams, rows, scratch.cursors, delta);
+			}
 			if (diagnostics == nullptr)
 				return;
 			diagnostics->discovery_public_state_merge_nanoseconds += delta.public_state_merge_nanoseconds;
@@ -1578,7 +1828,7 @@ namespace texas::solver::multiway
 		worker_stream_views_.reserve(worker_count_);
 		continuation_stream_views_.reserve(worker_count_);
 		discovery_stream_views_.reserve(worker_count_);
-		discovery_merge_cursors_.reserve(worker_count_);
+		discovery_merge_scratch_.reserve(worker_count_);
 		worker_batches_.resize(worker_count_);
 		threads_.reserve(worker_count_);
 		worker_work_cvs_.reserve(worker_count_);
@@ -1607,6 +1857,13 @@ namespace texas::solver::multiway
 		{
 			stream_capacities_.discovery_public_states = 0U;
 			stream_capacities_.discovery_rows = 0U;
+		}
+		if (immutable_epochs_)
+		{
+			if (stream_capacities_.discovery_public_states > std::numeric_limits<std::size_t>::max() / worker_count_ || stream_capacities_.discovery_rows > std::numeric_limits<std::size_t>::max() / worker_count_)
+				throw std::overflow_error("multiway root batch runner discovery output capacity overflows size_t");
+			discovery_public_states_.reserve(static_cast<std::size_t>(worker_count_) * stream_capacities_.discovery_public_states);
+			discovery_rows_.reserve(static_cast<std::size_t>(worker_count_) * stream_capacities_.discovery_rows);
 		}
 		for (std::uint32_t worker = 0; worker < worker_count_; ++worker)
 		{
@@ -1666,7 +1923,8 @@ namespace texas::solver::multiway
 		result.stream_views.add_buffer(worker_stream_views_.size(), worker_stream_views_.capacity(), sizeof(const MultiwayWorkerDeltaStream*));
 		result.stream_views.add_buffer(continuation_stream_views_.size(), continuation_stream_views_.capacity(), sizeof(const MultiwayContinuationDeltaStream*));
 		result.stream_views.add_buffer(discovery_stream_views_.size(), discovery_stream_views_.capacity(), sizeof(const MultiwayDiscoveryStream*));
-		result.discovery_merge_scratch.add_buffer(discovery_merge_cursors_.size(), discovery_merge_cursors_.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(discovery_merge_scratch_.cursors.size(), discovery_merge_scratch_.cursors.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(discovery_merge_scratch_.tournament.size(), discovery_merge_scratch_.tournament.capacity(), sizeof(std::size_t));
 		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.order.size(), admission_order_scratch_.order.capacity(), sizeof(std::size_t));
 		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.parent_indexes.size(), admission_order_scratch_.parent_indexes.capacity(), sizeof(std::size_t));
 		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.depths.size(), admission_order_scratch_.depths.capacity(), sizeof(std::uint32_t));
@@ -2205,7 +2463,8 @@ namespace texas::solver::multiway
 				TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.discovery_merge");
 				detail::merge_multiway_discovery_streams(
 					discovery_stream_views_, discovery_public_states_, discovery_rows_,
-					discovery_merge_cursors_, &result.admission_diagnostics);
+					discovery_merge_scratch_, detail::MultiwayDiscoveryMergePath::Automatic,
+					&result.admission_diagnostics);
 				result.admission_diagnostics.discovery_merge_nanoseconds += static_cast<std::uint64_t>(
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - phase_started)

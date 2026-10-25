@@ -91,6 +91,30 @@ namespace texas::solver::multiway
 
 	namespace detail
 	{
+		inline constexpr std::size_t MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD = 4U;
+
+		enum class MultiwayDiscoveryMergePath : std::uint8_t
+		{
+			Automatic,
+			Reference,
+			Tournament,
+		};
+
+		struct MultiwayDiscoveryMergeScratch
+		{
+			std::vector<std::size_t> cursors;
+			std::vector<std::size_t> tournament;
+
+			void reserve(std::size_t stream_count)
+			{
+				cursors.reserve(stream_count);
+				tournament.reserve(stream_count);
+			}
+		};
+
+		[[nodiscard]] MultiwayDiscoveryMergePath select_multiway_discovery_merge_path(
+			std::size_t stream_count) noexcept;
+
 		struct MultiwayDiscoveryParentOrderScratch
 		{
 			std::vector<std::size_t> order;
@@ -105,6 +129,14 @@ namespace texas::solver::multiway
 			std::vector<MultiwayPublicStateDescriptor>& public_states,
 			std::vector<MultiwaySparseRowShape>& rows,
 			std::vector<std::size_t>& cursors,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
+
+		void merge_multiway_discovery_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& public_states,
+			std::vector<MultiwaySparseRowShape>& rows,
+			MultiwayDiscoveryMergeScratch& scratch,
+			MultiwayDiscoveryMergePath path = MultiwayDiscoveryMergePath::Automatic,
 			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
 
 		void build_multiway_parent_first_order(
@@ -446,7 +478,7 @@ namespace texas::solver::multiway
 		std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
 		std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;
 		std::vector<const MultiwayDiscoveryStream*> discovery_stream_views_;
-		std::vector<std::size_t> discovery_merge_cursors_;
+		detail::MultiwayDiscoveryMergeScratch discovery_merge_scratch_;
 		std::vector<MultiwayPublicStateDescriptor> discovery_public_states_;
 		std::vector<MultiwaySparseRowShape> discovery_rows_;
 		detail::MultiwayDiscoveryParentOrderScratch admission_order_scratch_;
