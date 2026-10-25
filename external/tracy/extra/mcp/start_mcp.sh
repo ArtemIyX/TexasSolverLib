@@ -12,6 +12,9 @@ export PYTHONPATH
 # this file to set TRACY_CAPTURES_DIR, TRACY_MCP_PORT, or any other env var:
 #   export TRACY_CAPTURES_DIR=/path/to/captures
 #   export TRACY_MCP_PORT=47380
+#   export TRACY_MCP_BIND_HOST=192.0.2.10
+#   export TRACY_MCP_ALLOW_REMOTE=1
+# Remote binding is rejected unless both explicit settings are present.
 if [ -f "$(dirname "$0")/start_mcp.local.sh" ]; then
     . "$(dirname "$0")/start_mcp.local.sh"
 fi

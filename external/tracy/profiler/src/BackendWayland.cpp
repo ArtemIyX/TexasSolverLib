@@ -1319,7 +1319,7 @@ void Backend::SetIcon( uint8_t* data, int w, int h )
     size_t size = 0;
     for( auto sz : s_iconSizes )
     {
-        size += sz * sz;
+        size += static_cast<size_t>( sz ) * static_cast<size_t>( sz );
     }
     size *= 4;
 

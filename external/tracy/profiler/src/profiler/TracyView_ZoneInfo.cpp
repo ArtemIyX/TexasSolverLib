@@ -1158,7 +1158,7 @@ void View::DrawZoneInfoWindow()
                             ImGui::TextUnformatted( TimeToString( v->second.time ) );
                             ImGui::SameLine();
                             char buf[64];
-                            PrintStringPercent( buf, v->second.time * m_timeDist.fztime );
+                            PrintStringPercent( buf, static_cast<double>( v->second.time ) * m_timeDist.fztime );
                             TextDisabledUnformatted( buf );
                             ImGui::TableNextColumn();
                             ImGui::TextUnformatted( TimeToString( v->second.time / v->second.count ) );
