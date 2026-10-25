@@ -227,6 +227,16 @@ namespace texas::solver::multiway
 	class MultiwayPublicCatalog
 	{
 	public:
+		// Non-owning checkpoint access. These views are valid only while the
+		// coordinator's exclusive checkpoint lease is held.
+		[[nodiscard]] const MultiwayPackedPublicNode* checkpoint_node_at(
+			std::size_t index) const noexcept
+		{
+			return index < nodes_.size() ? &nodes_[index] : nullptr;
+		}
+		[[nodiscard]] const MultiwayPackedPublicNode* checkpoint_node(
+			MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] std::size_t checkpoint_node_count() const noexcept { return nodes_.size(); }
 		explicit MultiwayPublicCatalog(std::size_t max_nodes = 0U);
 
 		void clear() noexcept;
@@ -531,6 +541,14 @@ namespace texas::solver::multiway
 	class MultiwaySparseRowStorage
 	{
 	public:
+		struct CheckpointRowView
+		{
+			const MultiwaySparseRowMetadata* metadata = nullptr;
+			const double* regrets = nullptr;
+			const double* strategy_sums = nullptr;
+			std::size_t value_count = 0U;
+		};
+
 		MultiwaySparseRowStorage(std::size_t max_rows, std::size_t max_values);
 
 		[[nodiscard]] bool has_row(MultiwayInfosetId infoset) const noexcept;
@@ -569,6 +587,14 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 		[[nodiscard]] std::size_t value_capacity_limit() const noexcept { return max_values_; }
 		[[nodiscard]] const std::vector<MultiwaySparseRowMetadata>& rows() const noexcept { return metadata_; }
+		[[nodiscard]] CheckpointRowView checkpoint_row(std::size_t index) const noexcept
+		{
+			if (index >= metadata_.size())
+				return {};
+			const auto& row = metadata_[index];
+			return { &row, regret_.data() + row.regret_offset,
+				strategy_sum_.data() + row.strategy_sum_offset, row.value_count() };
+		}
 		[[nodiscard]] MultiwaySparseStorageMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
@@ -953,6 +979,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;
 		void restore_checkpoint(const MultiwayCoordinatorCheckpoint& checkpoint);
 		ExportLease acquire_export_lease() const;
+		ExportLease acquire_checkpoint_lease() const;
 
 	private:
 		friend class MultiwayTerminalAdapter;
@@ -1004,6 +1031,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return coordinator_->storage_; }
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return coordinator_->compact_storage_.get(); }
 		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return coordinator_->public_catalog_; }
+		[[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return coordinator_->diagnostics_; }
 
 	private:
 		friend class MultiwaySolverCoordinator;

@@ -359,6 +359,83 @@ TEST_CASE(multiway_full_training_checkpoint_round_trips_and_rejects_tampering)
 	std::filesystem::remove(path);
 }
 
+TEST_CASE(multiway_streaming_checkpoint_matches_materialized_bytes_and_loader)
+{
+	for (const auto backend : { texas::MultiwaySolverLimits::StorageBackend::CompactInt32,
+		texas::MultiwaySolverLimits::StorageBackend::Float64Reference })
+	{
+		StreamingExportFixture fixture(backend);
+		fixture.trainer.run_batches(1U, 4U, 0x77U);
+		const auto checkpoint = fixture.trainer.checkpoint();
+		const auto base = std::filesystem::temp_directory_path() /
+			("texas_solver_streaming_checkpoint_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+		const auto streamed_path = base.string() + ".streamed";
+		const auto materialized_path = base.string() + ".materialized";
+		const auto streamed = fixture.trainer.save_checkpoint_atomic(streamed_path);
+		texas::MultiwayTrainingCheckpointArtifacts::save_atomic(materialized_path, checkpoint);
+		EXPECT_EQ(streamed.plan.serialized_bytes, streamed.serialized_bytes);
+		EXPECT_EQ(streamed.serialized_bytes, static_cast<std::uint64_t>(read_bytes(streamed_path).size()));
+		EXPECT_EQ(streamed.payload_hash, texas::MultiwayTrainingCheckpointArtifacts::payload_hash(checkpoint));
+		EXPECT_EQ(read_bytes(streamed_path), read_bytes(materialized_path));
+		const auto loaded = texas::MultiwayTrainingCheckpointArtifacts::load_verified(
+			streamed_path, checkpoint.identity, checkpoint.training.schedule_hash, checkpoint.training.deterministic_seed);
+		EXPECT_EQ(texas::MultiwayTrainingCheckpointArtifacts::payload_hash(loaded), streamed.payload_hash);
+		std::filesystem::remove(streamed_path);
+		std::filesystem::remove(materialized_path);
+	}
+}
+
+TEST_CASE(multiway_streaming_checkpoint_gate_rejects_before_temp_creation)
+{
+	texas::MultiwayWorkingSetMonitor monitor;
+	monitor.export_gate.process.hard_limit_bytes = 1U;
+	monitor.export_gate.process.exporter_headroom_bytes = 0U;
+	monitor.export_gate.process.encoder_buffer_bytes = 0U;
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto path = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_checkpoint_gate_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	EXPECT_THROW(fixture.trainer.save_checkpoint_atomic(path), std::runtime_error);
+	EXPECT_TRUE(!std::filesystem::exists(path));
+	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+}
+
+TEST_CASE(multiway_streaming_checkpoint_failures_keep_destination_and_remove_temp)
+{
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto checkpoint = fixture.trainer.checkpoint();
+	auto lease = fixture.coordinator.acquire_checkpoint_lease();
+	texas::MultiwayTrainingCheckpointStreamSource source;
+	source.identity = &checkpoint.identity;
+	source.training = &checkpoint.training;
+	source.coverage = &checkpoint.coverage;
+	source.catalog = &lease.public_catalog();
+	source.storage = &lease.storage();
+	source.compact_storage = lease.compact_storage();
+	source.late_window_baseline = &checkpoint.late_window_baseline;
+	source.terminal_visits = checkpoint.coordinator.terminal_visits;
+	source.leaf_visits = checkpoint.coordinator.leaf_visits;
+	source.missing_lookup_requests = checkpoint.coordinator.missing_lookup_requests;
+	source.last_merged_stream_fingerprint = checkpoint.coordinator.last_merged_stream_fingerprint;
+	source.street_visits = checkpoint.coordinator.street_visits;
+	const auto path = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_checkpoint_failure_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const std::string original = "previous-checkpoint";
+	{
+		std::ofstream output(path, std::ios::binary);
+		output.write(original.data(), static_cast<std::streamsize>(original.size()));
+	}
+	for (const auto options : { texas::MultiwayTrainingCheckpointWriteOptions{ true, false },
+		texas::MultiwayTrainingCheckpointWriteOptions{ false, true } })
+	{
+		EXPECT_THROW(texas::MultiwayTrainingCheckpointArtifacts::save_atomic_streamed(path, source, nullptr, options), std::runtime_error);
+		EXPECT_EQ(read_bytes(path), original);
+		EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+	}
+	std::filesystem::remove(path);
+}
+
 TEST_CASE(multiway_streaming_export_matches_materialized_compact_bytes_and_repeats)
 {
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);

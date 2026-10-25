@@ -18,7 +18,8 @@ namespace texas::core
 	enum class AtomicPublishFallbackPolicy : std::uint8_t
 	{
 		AllowCopyFallback = 0U,
-		RejectCopyFallback
+		RejectCopyFallback,
+		RejectNonAtomicFallback
 	};
 
 	[[nodiscard]] const char* atomic_publish_mode_name(AtomicPublishMode mode) noexcept;

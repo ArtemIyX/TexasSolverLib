@@ -16,6 +16,15 @@ namespace texas::solver::multiway
 	class MultiwayCompactStorage
 	{
 	public:
+		struct CheckpointPageView
+		{
+			MultiwayInfosetId infoset{};
+			std::uint32_t page_index = 0U;
+			std::uint32_t bucket_count = 0U;
+			const std::int32_t* regrets = nullptr;
+			const std::uint64_t* strategy_masses = nullptr;
+		};
+
 		static constexpr std::int32_t kRegretMin = -2'000'000'000;
 		static constexpr std::int32_t kRegretMax = 2'000'000'000;
 		static constexpr std::uint64_t kMassScale = 1ULL << 20U;
@@ -59,6 +68,15 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::vector<double> strategy_sums(
 			MultiwayInfosetId infoset, std::uint32_t bucket) const;
 		[[nodiscard]] const std::vector<MultiwaySparseRowMetadata>& rows() const noexcept { return rows_; }
+		[[nodiscard]] CheckpointPageView checkpoint_page(std::size_t index) const noexcept
+		{
+			if (index >= pages_.size())
+				return {};
+			const auto& page = pages_[index];
+			return { page.infoset, page.page_index, page.bucket_count,
+				regrets_.data() + page.regret_offset,
+				strategy_mass_.data() + page.strategy_sum_offset };
+		}
 		void export_checkpoint(MultiwaySparseStorageCheckpoint& output) const;
 		void restore_checkpoint_values(
 			const std::vector<std::int32_t>& regrets,

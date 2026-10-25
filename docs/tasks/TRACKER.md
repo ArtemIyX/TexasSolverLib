@@ -1,10 +1,10 @@
 # Streaming full-blueprint export tracker
 
 **Updated:** 2026-10-25
-**Overall status:** E complete for isolated streaming-export qualification
+**Overall status:** PB-8 complete; checkpoint-enabled qualification passed
 **Current task:** None
-**Next action:** If checkpointed training must also meet the 20 GiB target, implement a separately scoped bounded checkpoint writer.
-**Latest limitation:** The isolated streaming-export qualification passed below 20 GiB; the optional full checkpoint snapshot remains a higher-memory path and is not changed by Tasks A-E.
+**Next action:** Rebuild the current RelWithDebInfo binary and repeat only if runtime checkpoint telemetry fields are required as qualification evidence.
+**Latest limitation:** The successful large run used the existing RelWithDebInfo binary built before the final checkpoint-report telemetry commit; focused tests cover the extended report fields.
 
 ## Tasks
 
@@ -14,7 +14,7 @@
 | B | Complete | Added direct ordered trainer emission with bounded scratch, exact planning, and export exclusion. | A | [Trainer streaming emission](B-trainer-streaming-emission.md) |
 | C | Complete | Added fresh export process/system gates, separate telemetry, and versioned report serialization. | None | [Export memory gate and reporting](C-export-memory-gate-reporting.md) |
 | D | Complete | Production workflow uses gated streaming publication with exact export and gate telemetry; boundary and preservation coverage passed. | A, B, C | [Workflow integration and publication](D-workflow-integration-publication.md) |
-| E | Complete | Guarded 50,000-trajectory streaming-export qualification passed bytes/hash, atomic publication, system guard, Tracy evidence, and the 20 GiB process-peak target with checkpoint creation disabled. | D | [Qualification and release evidence](E-streaming-export-qualification.md) |
+| E | Complete | Guarded 50,000-trajectory checkpoint-enabled qualification passed bytes/hash, atomic publication, memory gates, and the 20 GiB process-peak target. | D | [Qualification and release evidence](E-streaming-export-qualification.md) |
 
 ## Status values
 

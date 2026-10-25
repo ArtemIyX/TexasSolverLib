@@ -36,6 +36,15 @@ Stop and report if bytes/hash differ, loader compatibility breaks, publication i
 - System guard telemetry reported 66,156,724,224 total physical bytes and 64,546,111,488 maximum used bytes, below the 1.5 GiB reserve threshold.
 - Tracy evidence smoke completed with allocation events, CSV export, and a 222,261,090-byte trace. Free events are optional because capture may end with active allocations.
 
+### Checkpoint-enabled follow-up
+
+- Run directory: `tmp/task-e-qualification-checkpointed`.
+- Checkpoint creation was enabled. The run accepted all 50,000 trajectories and wrote a 4,576,234,700-byte checkpoint.
+- Checkpoint file SHA-256: `936BDD5AB1F5923B81FF60D0A8C54E214AAA6B911B4332657C621C72C9BACC50`.
+- Checkpoint write duration: 63,375,287,700 ns. Publication completed without temporary-file residue.
+- Observed peak working set was 18,706,137,088 bytes and peak RSS was 17,932,279,808 bytes.
+- Process and system gates passed; the final policy remained 3,921,243,000 bytes with payload hash `5946562739452589295`.
+
 ### Limitation
 
-The default checkpoint-enabled path still materializes the existing full checkpoint snapshot and previously measured above 20 GiB during checkpointing. Tasks A-E preserve that behavior; reducing that separate peak requires a bounded checkpoint-writer task.
+The qualification used the existing RelWithDebInfo binary `B6E36BFAF97740C13BF0E5B68103BED083E9F1772FC485C2E3C72AD015A253CB`, built before the final checkpoint-report telemetry commit. Its runtime report contains checkpoint size and write duration, while focused report tests cover the newer planned-size, scratch-size, payload-hash, publication, and gate fields. Rebuild and repeat the large run only if those extended runtime fields are required.

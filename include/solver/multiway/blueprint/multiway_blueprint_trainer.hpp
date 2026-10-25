@@ -17,6 +17,7 @@
 
 namespace texas::solver::multiway
 {
+	struct MultiwayTrainingCheckpointWriteResult;
 
 	enum class MultiwayTrainingCapacityStage : std::uint8_t
 	{
@@ -289,6 +290,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
 		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
 			const std::filesystem::path& path) const;
+		[[nodiscard]] MultiwayTrainingCheckpointWriteResult save_checkpoint_atomic(
+			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
 		[[nodiscard]] MultiwayBlueprintSnapshot publish(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
@@ -343,6 +346,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
 		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
+			const std::filesystem::path& path) const;
+		[[nodiscard]] MultiwayTrainingCheckpointWriteResult save_checkpoint_atomic(
 			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
 		void record_process_memory_snapshot(MultiwayMemoryPhase phase);

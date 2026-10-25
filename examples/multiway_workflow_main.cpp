@@ -810,6 +810,7 @@ namespace
 			progress_started_at};
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
+		MultiwayTrainingCheckpointWriteResult last_checkpoint_write{};
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};
 		bool checkpoint_snapshots_recorded = false;
@@ -847,19 +848,16 @@ namespace
 						session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
 					}
 					const auto checkpoint_start = std::chrono::steady_clock::now();
-					auto checkpoint = session.checkpoint();
-					checkpoint.validate();
+					const auto checkpoint = session.save_checkpoint_atomic(checkpoint_path);
+					last_checkpoint_write = checkpoint;
 					checkpoint_telemetry.accumulate(checkpoint.telemetry);
-					MultiwayTrainingCheckpointArtifacts::save_atomic_sealed(checkpoint_path, checkpoint, &checkpoint_telemetry);
 					checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - checkpoint_start)
 							.count());
-					std::error_code checkpoint_error;
-					const auto bytes = std::filesystem::file_size(checkpoint_path, checkpoint_error);
-					if (checkpoint_error)
+					if (checkpoint.serialized_bytes == 0U)
 						throw std::runtime_error("cannot measure training checkpoint");
-					checkpoint_bytes = std::max(checkpoint_bytes, static_cast<std::uint64_t>(bytes));
+					checkpoint_bytes = std::max(checkpoint_bytes, checkpoint.serialized_bytes);
 					if (capture_checkpoint_phases)
 					{
 						session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
@@ -923,6 +921,12 @@ namespace
 				config.identity(), workflow.fingerprint()),
 			workflow.process_memory_limit_bytes);
 		training_report.checkpoint_bytes = checkpoint_bytes;
+		training_report.checkpoint_planned_bytes = last_checkpoint_write.plan.serialized_bytes;
+		training_report.checkpoint_scratch_bytes = last_checkpoint_write.peak_scratch_bytes;
+		training_report.checkpoint_payload_hash = last_checkpoint_write.payload_hash;
+		training_report.checkpoint_publication_mode = last_checkpoint_write.publication_mode;
+		training_report.checkpoint_process_gate_status = last_checkpoint_write.process_gate.status;
+		training_report.checkpoint_system_gate_status = last_checkpoint_write.system_gate.status;
 		training_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
 		training_report.blueprint_bytes = session.status().export_telemetry.result_bytes;
 		training_report.blueprint_export_nanoseconds = session.status().export_telemetry.duration_nanoseconds;

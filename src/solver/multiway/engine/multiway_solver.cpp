@@ -2161,6 +2161,11 @@ namespace texas::solver::multiway
 		return ExportLease(*this);
 	}
 
+	MultiwaySolverCoordinator::ExportLease MultiwaySolverCoordinator::acquire_checkpoint_lease() const
+	{
+		return ExportLease(*this);
+	}
+
 	MultiwayCoordinatorCheckpoint MultiwaySolverCoordinator::checkpoint() const
 	{
 		MultiwayCoordinatorCheckpoint result;

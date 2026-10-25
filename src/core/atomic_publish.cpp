@@ -96,6 +96,11 @@ namespace texas::core
 		if (windows_replace(temporary, destination, destination_exists, windows_error))
 			return AtomicPublishMode::WindowsReplace;
 #endif
+		if (fallback_policy == AtomicPublishFallbackPolicy::RejectNonAtomicFallback)
+		{
+			remove_temporary(temporary);
+			throw std::runtime_error(fail(error));
+		}
 
 		if (!destination_exists)
 		{
