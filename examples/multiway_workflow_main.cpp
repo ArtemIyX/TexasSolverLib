@@ -255,26 +255,26 @@ namespace
 	}
 
 	int run_buckets(const std::filesystem::path& config_path, const std::filesystem::path& output_path,
-		const std::filesystem::path& checkpoint_dir, std::uint32_t requested_threads)
+		const std::filesystem::path& requested_checkpoint_dir, std::uint32_t requested_threads)
 	{
 		using namespace texas::solver::multiway;
 		const auto path_policy = make_default_multiway_workflow_path_policy();
 		const auto authorized_output_path = authorize_multiway_workflow_path(
 			path_policy, output_path, MultiwayWorkflowPathKind::OutputFile);
-		const auto authorized_checkpoint_dir = checkpoint_dir.empty()
+		const auto checkpoint_dir = requested_checkpoint_dir.empty()
 			? std::filesystem::path{}
 			: authorize_multiway_workflow_path(
-				path_policy, checkpoint_dir, MultiwayWorkflowPathKind::OutputDirectory);
+				path_policy, requested_checkpoint_dir, MultiwayWorkflowPathKind::OutputDirectory);
 		const auto authorized_temporary = authorize_multiway_workflow_path(
 			path_policy, authorized_output_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
 		auto manifest_path = authorized_output_path;
 		manifest_path.replace_extension(".manifest");
 		manifest_path = authorize_multiway_workflow_path(
 			path_policy, manifest_path, MultiwayWorkflowPathKind::OutputFile);
-		const auto authorized_progress_path = authorized_checkpoint_dir.empty()
+		const auto authorized_progress_path = checkpoint_dir.empty()
 			? std::filesystem::path{}
 			: authorize_multiway_workflow_path(
-				path_policy, authorized_checkpoint_dir / "latest.progress", MultiwayWorkflowPathKind::AppendFile);
+				path_policy, checkpoint_dir / "latest.progress", MultiwayWorkflowPathKind::AppendFile);
 		const auto authorized_manifest_temporary = authorize_multiway_workflow_path(
 			path_policy, manifest_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
 		const auto authorized_progress_temporary = authorized_progress_path.empty()
@@ -284,7 +284,7 @@ namespace
 		(void)authorized_manifest_temporary;
 		(void)authorized_progress_temporary;
 		const auto resolved_output_path = authorized_output_path;
-		const auto resolved_checkpoint_dir = authorized_checkpoint_dir;
+		const auto resolved_checkpoint_dir = checkpoint_dir;
 		std::cout << "texas_multiway_buckets: starting bucket generation\n"
 				  << "  config=" << config_path.string() << "\n"
 				  << "  output=" << resolved_output_path.string() << "\n"
@@ -320,8 +320,8 @@ namespace
 				  << " hardware_threads=" << hardware_threads
 				  << " physical_cores=" << multiway_bucket_physical_core_count()
 				  << " effective_threads=" << effective_threads << std::endl;
-		if (!resolved_checkpoint_dir.empty())
-			std::filesystem::create_directories(resolved_checkpoint_dir);
+		if (!checkpoint_dir.empty())
+			std::filesystem::create_directories(checkpoint_dir);
 		constexpr std::uint64_t max_table_bytes = 2U + 5U + 4U + static_cast<std::uint64_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * 4U;
 		if (expected_tables > (std::numeric_limits<std::uint64_t>::max() - 116U) / max_table_bytes)
 		{
