@@ -38,6 +38,24 @@ TEST_CASE(multiway_workflow_config_round_trips_opt_in_placement_policy)
 	EXPECT_THROW(parse_multiway_workflow_config(std::string(valid_config) + "placement_policy=hard-affinity\n"), std::invalid_argument);
 }
 
+TEST_CASE(multiway_workflow_config_round_trips_scheduler_policy_and_chunk_size)
+{
+	using namespace texas::solver::multiway;
+	const auto text = std::string(valid_config) + "scheduler_mode=dynamic\ndynamic_chunk_size=8\n";
+	const auto config = parse_multiway_workflow_config(text);
+	EXPECT_EQ(config.scheduler_mode, MultiwaySchedulerMode::Dynamic);
+	EXPECT_EQ(config.dynamic_chunk_size, 8U);
+	const auto round_trip = parse_multiway_workflow_config(serialize_multiway_workflow_config(config));
+	EXPECT_EQ(round_trip.scheduler_mode, MultiwaySchedulerMode::Dynamic);
+	EXPECT_EQ(round_trip.dynamic_chunk_size, 8U);
+	EXPECT_EQ(round_trip.fingerprint(), config.fingerprint());
+
+	const auto changed_mode = parse_multiway_workflow_config(
+		std::string(valid_config) + "scheduler_mode=static-block\n");
+	EXPECT_TRUE(changed_mode.fingerprint() != config.fingerprint());
+	EXPECT_THROW(parse_multiway_workflow_config(std::string(valid_config) + "dynamic_chunk_size=0\n"), std::invalid_argument);
+}
+
 TEST_CASE(multiway_workflow_config_accepts_legacy_64_gib_working_set_gate)
 {
 	auto text = std::string(valid_config) + "process_working_set_limit_bytes=68719476736\n";

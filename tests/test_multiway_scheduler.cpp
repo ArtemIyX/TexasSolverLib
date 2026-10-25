@@ -3,6 +3,7 @@
 #include "test_harness.hpp"
 
 #include <array>
+#include <string>
 
 TEST_CASE(multiway_scheduler_partitions_trajectories_in_fixed_order)
 {
@@ -45,6 +46,23 @@ TEST_CASE(multiway_scheduler_writes_reusable_fixed_partition_storage)
 	EXPECT_EQ(batches[0].trajectories.size(), 1U);
 	EXPECT_EQ(batches[1].trajectories.size(), 1U);
 	EXPECT_EQ(texas::MultiwayScheduler::partition_deterministic_into(1U, 1U, nullptr, 0U), 0U);
+}
+
+TEST_CASE(multiway_scheduler_static_block_partition_is_contiguous_and_versioned)
+{
+	texas::MultiwayWorkerBatch batches[4] = {};
+	const auto count = texas::MultiwayScheduler::partition_static_block_into(
+		17U, 4U, batches, 4U);
+	EXPECT_EQ(count, 4U);
+	EXPECT_EQ(batches[0].worker_index, std::size_t{ 0 });
+	EXPECT_EQ(batches[0].trajectories.begin, 0U);
+	EXPECT_EQ(batches[0].trajectories.end, 5U);
+	EXPECT_EQ(batches[1].trajectories.begin, 5U);
+	EXPECT_EQ(batches[1].trajectories.end, 9U);
+	EXPECT_EQ(batches[3].trajectories.begin, 13U);
+	EXPECT_EQ(batches[3].trajectories.end, 17U);
+	EXPECT_TRUE(texas::MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION != 0U);
+	EXPECT_TRUE(std::string(texas::multiway_scheduler_mode_name(texas::MultiwaySchedulerMode::StaticBlock)) == "static-block");
 }
 
 TEST_CASE(multiway_scheduler_round_robin_partitions_cover_each_trajectory_once)
@@ -135,6 +153,9 @@ TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity)
 			EXPECT_TRUE(dynamic_fingerprints[index] != dynamic_fingerprints[previous]);
 	}
 	EXPECT_TRUE(dynamic_fingerprints[0U] != texas::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Fixed, 4U));
+	EXPECT_TRUE(dynamic_fingerprints[0U] != texas::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::StaticBlock, 4U));
+	EXPECT_TRUE(texas::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Fixed, 4U) !=
+		texas::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::StaticBlock, 4U));
 }
 
 TEST_CASE(multiway_scheduler_reports_deterministic_run_metadata)

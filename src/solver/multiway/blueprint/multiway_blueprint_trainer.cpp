@@ -432,7 +432,7 @@ namespace texas::solver::multiway
 		schedule.validate();
 		placement.validate();
 		working_set_monitor.validate();
-		if (deterministic_seed == 0U || cfr.player_count != rules.player_count || blueprint.player_count != rules.player_count || blueprint.initial_stack_chips != rules.initial_stack_chips || blueprint.small_blind_chips != rules.small_blind_chips || blueprint.big_blind_chips != rules.big_blind_chips || blueprint.ante_chips != rules.ante_chips || blueprint.rake_policy.identity() != rules.rake_policy.identity() || blueprint.rules_profile_version != rules.profile_version || blueprint.flop_bucket_count != bucket_profile.flop_bucket_count || blueprint.turn_bucket_count != bucket_profile.turn_bucket_count || blueprint.river_bucket_count != bucket_profile.river_bucket_count || max_decision_depth == 0U || max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH || max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH || (scheduler_mode != MultiwaySchedulerMode::Fixed && scheduler_mode != MultiwaySchedulerMode::Dynamic) || (requested_worker_count != 0U && requested_worker_count < limits.worker_count))
+		if (deterministic_seed == 0U || cfr.player_count != rules.player_count || blueprint.player_count != rules.player_count || blueprint.initial_stack_chips != rules.initial_stack_chips || blueprint.small_blind_chips != rules.small_blind_chips || blueprint.big_blind_chips != rules.big_blind_chips || blueprint.ante_chips != rules.ante_chips || blueprint.rake_policy.identity() != rules.rake_policy.identity() || blueprint.rules_profile_version != rules.profile_version || blueprint.flop_bucket_count != bucket_profile.flop_bucket_count || blueprint.turn_bucket_count != bucket_profile.turn_bucket_count || blueprint.river_bucket_count != bucket_profile.river_bucket_count || max_decision_depth == 0U || max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH || max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH || !multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || (requested_worker_count != 0U && requested_worker_count < limits.worker_count))
 		{
 			throw std::invalid_argument("multiway training configuration has inconsistent artifact or traversal inputs");
 		}
@@ -464,6 +464,11 @@ namespace texas::solver::multiway
 		append_u64(runtime_hash, limits.discovery_public_state_capacity());
 		append_u64(runtime_hash, limits.discovery_row_capacity());
 		append_u64(runtime_hash, immutable_batch_epochs ? 1U : 0U);
+		append_u64(runtime_hash, MULTIWAY_PARTITION_VERSION);
+		append_u64(runtime_hash, MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION);
+		append_u64(runtime_hash, MULTIWAY_SCHEDULER_POLICY_VERSION);
+		append_u64(runtime_hash, static_cast<std::uint64_t>(scheduler_mode));
+		append_u64(runtime_hash, dynamic_chunk_size);
 		append_u64(runtime_hash, schedule.identity());
 		append_u64(runtime_hash, deterministic_seed);
 		identity.runtime_search_schema_hash = runtime_hash == 0U ? 1U : runtime_hash;
@@ -494,6 +499,12 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("multiway blueprint trainer requires a non-zero deterministic seed");
 		}
 		status_.late_window_start_batch = schedule_.late_window_start_batch;
+		status_.scheduler_mode = batch_runner_->scheduler_mode();
+		status_.dynamic_chunk_size = batch_runner_->dynamic_chunk_size();
+		status_.scheduler_policy_version = MULTIWAY_SCHEDULER_POLICY_VERSION;
+		status_.static_block_scheduler_version = MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION;
+		status_.partition_version = MULTIWAY_PARTITION_VERSION;
+		status_.merge_order_version = MULTIWAY_MERGE_ORDER_VERSION;
 		status_.admitted_rows_per_batch.reserve(256U);
 		status_.configured_max_public_states = coordinator_->limits().max_public_states;
 		status_.configured_max_sparse_rows = coordinator_->limits().max_sparse_rows;
@@ -684,6 +695,7 @@ namespace texas::solver::multiway
 			status_.missing_lookup_requests = diagnostics.missing_lookup_requests;
 			status_.discarded_trajectories = diagnostics.trajectories_discarded;
 			status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
+			status_.schedule_fingerprint = batch_result.run.schedule_fingerprint;
 			status_.peak_public_states = std::max(status_.peak_public_states,
 				diagnostics.public_states_admitted);
 			status_.peak_sparse_rows = std::max(status_.peak_sparse_rows,
@@ -1354,7 +1366,8 @@ namespace texas::solver::multiway
 				? MultiwayWorkerPlacementConfig{ MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity, 0U }
 				: config_.placement,
 			config_.immutable_batch_epochs,
-			config_.scheduler_mode);
+			config_.scheduler_mode,
+			config_.dynamic_chunk_size);
 		if (!config_.process_memory_snapshots.record_current(MultiwayMemoryPhase::AfterWorkerPoolConstruction))
 			throw std::logic_error("multiway training memory snapshot phase order is invalid");
 		if (config_.memory_subsystem_snapshots.enabled)

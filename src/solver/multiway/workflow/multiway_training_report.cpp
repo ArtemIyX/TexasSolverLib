@@ -88,6 +88,10 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("invalid multiway training report");
 		}
+		if (!multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || scheduler_policy_version == 0U || static_block_scheduler_version == 0U || partition_version == 0U || merge_order_version == 0U)
+		{
+			throw std::invalid_argument("invalid multiway scheduler evidence");
+		}
 		if (failed_batch_available)
 		{
 			const auto& batch = failed_batch;
@@ -165,6 +169,13 @@ namespace texas::solver::multiway
 		report.accepted_trajectories = status.trajectories >= status.discarded_trajectories
 			? status.trajectories - status.discarded_trajectories
 			: 0U;
+		report.scheduler_mode = status.scheduler_mode;
+		report.dynamic_chunk_size = status.dynamic_chunk_size;
+		report.scheduler_policy_version = status.scheduler_policy_version;
+		report.static_block_scheduler_version = status.static_block_scheduler_version;
+		report.schedule_fingerprint = status.schedule_fingerprint;
+		report.partition_version = status.partition_version;
+		report.merge_order_version = status.merge_order_version;
 		report.preflop_rows = status.preflop_rows;
 		report.flop_rows = status.flop_rows;
 		report.turn_rows = status.turn_rows;
@@ -333,6 +344,13 @@ namespace texas::solver::multiway
 			   << ",\n  \"batches\": " << report.batches
 			   << ",\n  \"trajectories\": " << report.trajectories
 			   << ",\n  \"accepted_trajectories\": " << report.accepted_trajectories
+			   << ",\n  \"scheduler_mode\": \"" << multiway_scheduler_mode_name(report.scheduler_mode) << '\"'
+			   << ",\n  \"dynamic_chunk_size\": " << report.dynamic_chunk_size
+			   << ",\n  \"scheduler_policy_version\": " << report.scheduler_policy_version
+			   << ",\n  \"static_block_scheduler_version\": " << report.static_block_scheduler_version
+			   << ",\n  \"schedule_fingerprint\": " << report.schedule_fingerprint
+			   << ",\n  \"partition_version\": " << report.partition_version
+			   << ",\n  \"merge_order_version\": " << report.merge_order_version
 			   << ",\n  \"preflop_rows\": " << report.preflop_rows
 			   << ",\n  \"flop_rows\": " << report.flop_rows
 			   << ",\n  \"turn_rows\": " << report.turn_rows

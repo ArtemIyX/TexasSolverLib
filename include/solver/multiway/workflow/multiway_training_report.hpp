@@ -155,6 +155,13 @@ namespace texas::solver::multiway
 		std::uint64_t batches = 0U;
 		std::uint64_t trajectories = 0U;
 		std::uint64_t accepted_trajectories = 0U;
+		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
+		std::uint32_t scheduler_policy_version = MULTIWAY_SCHEDULER_POLICY_VERSION;
+		std::uint32_t static_block_scheduler_version = MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION;
+		std::uint64_t schedule_fingerprint = 0U;
+		std::uint32_t partition_version = MULTIWAY_PARTITION_VERSION;
+		std::uint32_t merge_order_version = MULTIWAY_MERGE_ORDER_VERSION;
 		std::uint64_t preflop_rows = 0U;
 		std::uint64_t flop_rows = 0U;
 		std::uint64_t turn_rows = 0U;

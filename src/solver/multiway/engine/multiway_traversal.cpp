@@ -1541,7 +1541,7 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway root batch runner limits must fit its coordinator");
 		}
-		if (scheduler_mode_ != MultiwaySchedulerMode::Fixed && scheduler_mode_ != MultiwaySchedulerMode::Dynamic)
+		if (!multiway_scheduler_mode_valid(scheduler_mode_))
 		{
 			throw std::invalid_argument("multiway root batch runner has an invalid scheduler mode");
 		}
@@ -1851,6 +1851,11 @@ namespace texas::solver::multiway
 								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.fixed");
 								process_range(worker_batches_[worker_index].trajectories);
 							}
+							else if (scheduler_mode_ == MultiwaySchedulerMode::StaticBlock)
+							{
+								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.static_block");
+								process_range(worker_batches_[worker_index].trajectories);
+							}
 							else
 							{
 								TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.scheduler.dynamic");
@@ -1935,6 +1940,12 @@ namespace texas::solver::multiway
 		}
 		const auto batch_count = scheduler_mode_ == MultiwaySchedulerMode::Fixed
 			? MultiwayScheduler::partition_round_robin_into(
+				  trajectory_count,
+				  worker_count_,
+				  worker_batches_.data(),
+				  worker_batches_.size())
+			: scheduler_mode_ == MultiwaySchedulerMode::StaticBlock
+			? MultiwayScheduler::partition_static_block_into(
 				  trajectory_count,
 				  worker_count_,
 				  worker_batches_.data(),

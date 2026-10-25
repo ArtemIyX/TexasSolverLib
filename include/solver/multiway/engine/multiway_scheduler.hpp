@@ -13,13 +13,22 @@ namespace texas::solver::multiway
 	inline constexpr std::uint32_t MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_MERGE_ORDER_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE = 4U;
-	inline constexpr std::uint32_t MULTIWAY_SCHEDULER_POLICY_VERSION = 1U;
+	inline constexpr std::uint32_t MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION = 1U;
+	inline constexpr std::uint32_t MULTIWAY_SCHEDULER_POLICY_VERSION = 2U;
 
 	enum class MultiwaySchedulerMode : std::uint8_t
 	{
 		Fixed = 0U,
-		Dynamic = 1U,
+		StaticBlock = 1U,
+		Dynamic = 2U,
 	};
+
+	[[nodiscard]] constexpr bool multiway_scheduler_mode_valid(MultiwaySchedulerMode mode) noexcept
+	{
+		return mode == MultiwaySchedulerMode::Fixed || mode == MultiwaySchedulerMode::StaticBlock || mode == MultiwaySchedulerMode::Dynamic;
+	}
+
+	[[nodiscard]] const char* multiway_scheduler_mode_name(MultiwaySchedulerMode mode) noexcept;
 
 	struct MultiwayRunMetadata
 	{
@@ -93,6 +102,11 @@ namespace texas::solver::multiway
 		// Writes a deterministic contiguous partition into caller-owned storage.
 		// Returns zero only when output is null or capacity is zero.
 		[[nodiscard]] static std::size_t partition_deterministic_into(
+			std::uint64_t trajectory_count,
+			std::size_t requested_workers,
+			MultiwayWorkerBatch* output,
+			std::size_t output_capacity) noexcept;
+		[[nodiscard]] static std::size_t partition_static_block_into(
 			std::uint64_t trajectory_count,
 			std::size_t requested_workers,
 			MultiwayWorkerBatch* output,

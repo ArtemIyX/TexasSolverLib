@@ -356,6 +356,7 @@ namespace texas::solver::multiway
 			std::chrono::steady_clock::time_point deadline =
 				std::chrono::steady_clock::time_point::max());
 		[[nodiscard]] std::uint32_t dynamic_chunk_size() const noexcept { return dynamic_chunk_size_; }
+		[[nodiscard]] MultiwaySchedulerMode scheduler_mode() const noexcept { return scheduler_mode_; }
 		[[nodiscard]] MultiwayRootBatchMemorySnapshot memory_snapshot() const noexcept;
 		void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 

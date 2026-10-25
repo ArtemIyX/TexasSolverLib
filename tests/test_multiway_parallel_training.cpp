@@ -335,6 +335,29 @@ TEST_CASE(multiway_parallel_training_dynamic_chunk_sizes_match_fixed_merge)
 	}
 }
 
+TEST_CASE(multiway_parallel_training_all_schedulers_match_across_supported_workers)
+{
+	ParallelTrainingFixture reference(1U, 256U, 2048U, false, texas::MultiwaySchedulerMode::Fixed, 4U);
+	reference.trainer.run_batches(2U, 32U, 0x77U);
+	const auto expected = reference.trainer.checkpoint().coordinator;
+	const auto expected_policy = reference.trainer.export_full_policy();
+	for (const auto mode : { texas::MultiwaySchedulerMode::Fixed, texas::MultiwaySchedulerMode::StaticBlock, texas::MultiwaySchedulerMode::Dynamic })
+	{
+		for (const auto workers : { 1U, 2U, 4U, 8U, 16U })
+		{
+			ParallelTrainingFixture fixture(workers, 256U, 2048U, false, mode, 4U);
+			fixture.trainer.run_batches(2U, 32U, 0x77U);
+			expect_same_storage(expected, fixture.trainer.checkpoint().coordinator);
+			expect_same_policy_rows(expected_policy, fixture.trainer.export_full_policy());
+			const auto& status = fixture.trainer.status();
+			EXPECT_EQ(status.scheduler_mode, mode);
+			EXPECT_EQ(status.dynamic_chunk_size, 4U);
+			EXPECT_TRUE(status.schedule_fingerprint != 0U);
+			EXPECT_EQ(status.worker_trajectory_counts.size(), workers);
+		}
+	}
+}
+
 TEST_CASE(multiway_parallel_training_matches_one_worker_through_sixteen_workers)
 {
 	ParallelTrainingFixture reference(1U);

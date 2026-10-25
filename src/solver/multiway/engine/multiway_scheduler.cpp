@@ -16,6 +16,17 @@ namespace texas::solver::multiway
 
 	} // namespace
 
+	const char* multiway_scheduler_mode_name(MultiwaySchedulerMode mode) noexcept
+	{
+		switch (mode)
+		{
+		case MultiwaySchedulerMode::Fixed: return "fixed";
+		case MultiwaySchedulerMode::StaticBlock: return "static-block";
+		case MultiwaySchedulerMode::Dynamic: return "dynamic";
+		}
+		return "invalid";
+	}
+
 	std::uint64_t multiway_deterministic_trajectory_seed(
 		std::uint64_t base_seed,
 		std::uint64_t trajectory_id) noexcept
@@ -56,6 +67,7 @@ namespace texas::solver::multiway
 		hash_u64(MULTIWAY_PUBLIC_CHANCE_ORDER_VERSION, hash);
 		hash_u64(MULTIWAY_MERGE_ORDER_VERSION, hash);
 		hash_u64(MULTIWAY_SCHEDULER_POLICY_VERSION, hash);
+		hash_u64(MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION, hash);
 		hash_u64(static_cast<std::uint64_t>(scheduler_mode), hash);
 		hash_u64(dynamic_chunk_size, hash);
 		return hash == 0U ? 1U : hash;
@@ -91,6 +103,16 @@ namespace texas::solver::multiway
 			begin += count;
 		}
 		return static_cast<std::size_t>(worker_count_u64);
+	}
+
+	std::size_t MultiwayScheduler::partition_static_block_into(
+		std::uint64_t trajectory_count,
+		std::size_t requested_workers,
+		MultiwayWorkerBatch* output,
+		std::size_t output_capacity) noexcept
+	{
+		return partition_deterministic_into(
+			trajectory_count, requested_workers, output, output_capacity);
 	}
 
 	std::size_t MultiwayScheduler::dynamic_chunk_count(

@@ -82,6 +82,13 @@ namespace texas::solver::multiway
 		std::uint64_t missing_lookup_requests = 0;
 		std::uint64_t late_window_start_batch = 0;
 		bool late_window_active = false;
+		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
+		std::uint32_t scheduler_policy_version = MULTIWAY_SCHEDULER_POLICY_VERSION;
+		std::uint32_t static_block_scheduler_version = MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION;
+		std::uint64_t schedule_fingerprint = 0U;
+		std::uint32_t partition_version = MULTIWAY_PARTITION_VERSION;
+		std::uint32_t merge_order_version = MULTIWAY_MERGE_ORDER_VERSION;
 		// Batch-boundary telemetry. These fields are diagnostic and are not part
 		// of the strategy identity or deterministic merge state.
 		std::uint64_t configured_max_public_states = 0;
@@ -258,6 +265,7 @@ namespace texas::solver::multiway
 		// Diagnostic execution metadata. Zero uses the effective runtime value.
 		std::uint32_t requested_worker_count = 0U;
 		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
 		MultiwayWorkerPlacementConfig placement{};
 		bool pin_workers = false;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;

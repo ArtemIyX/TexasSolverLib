@@ -50,6 +50,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	texas::solver::multiway::MultiwayBlueprintTrainingStatus status;
 	status.trajectories = 20U;
 	status.discarded_trajectories = 3U;
+	status.scheduler_mode = MultiwaySchedulerMode::Dynamic;
+	status.dynamic_chunk_size = 8U;
 	status.preflop_rows = 1U;
 	status.street_visits = { 10U, 20U, 30U, 40U };
 	status.requested_worker_count = 16U;
@@ -138,6 +140,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	};
 	auto report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);
 	EXPECT_EQ(report.training_wall_nanoseconds, 100U);
+	EXPECT_EQ(report.scheduler_mode, MultiwaySchedulerMode::Dynamic);
+	EXPECT_EQ(report.dynamic_chunk_size, 8U);
 	EXPECT_EQ(report.checkpoint_wall_nanoseconds, 200U);
 	EXPECT_EQ(report.export_wall_nanoseconds, 300U);
 	EXPECT_TRUE(report.total_wrapper_wall_available);
@@ -298,6 +302,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds\": 15") != std::string::npos);
+	EXPECT_TRUE(text.find("\"scheduler_mode\": \"dynamic\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"dynamic_chunk_size\": 8") != std::string::npos);
 	EXPECT_TRUE(text.find("\"configured_max_regret_delta_entries_per_worker\": 64") != std::string::npos);
 	EXPECT_TRUE(text.find("\"configured_max_continuation_delta_entries_per_worker\": 8") != std::string::npos);
 	EXPECT_TRUE(text.find("\"configured_max_discovery_public_states_per_worker\": 128") != std::string::npos);
