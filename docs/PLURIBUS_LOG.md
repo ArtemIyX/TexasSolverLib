@@ -1,5 +1,79 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.01 - Compile-time provenance and runner gate
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `66f6690eded19dc4002a9e0d1d122f75b8fc9be4`
+
+- Embedded source commit, dirty state, compiler, configuration, report schema, and checkpoint schema at compile time.
+- Separated binary provenance from runtime checkout identity and added executable SHA-256 stability gates to the RAM runner and worker matrix.
+- Preserved legacy report fields and checkpoint bytes.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/multiway/workflow/multiway_binary_provenance.hpp`
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `src/solver/multiway/workflow/multiway_evidence.cpp`
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_worker_matrix.ps1`
+- `tests/test_multiway_evidence.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/tasks/PB9_16_01_provenance_runner_gate.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Full build wrapper: passed.
+- Compact CTest: passed.
+- Focused evidence and workflow boundary tests: passed.
+- PowerShell syntax checks: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No qualification benchmark, matrix run, or solver training was performed.
+
+## PB-9.16 - Worker scaling work breakdown
+
+**Status:** Complete
+**Completed:** 2026-10-25
+
+- Split the PB-9.16 scaling analysis into ten independently trackable implementation and qualification tasks.
+- Added a task manager with dependencies, state, blockers, invariants, and completion procedure.
+- Kept performance experiments blocked pending explicit authorization.
+
+### Files
+
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/tasks/PB9_16_01_AGENT_PROMPT.md`
+- `docs/tasks/PB9_16_01_provenance_runner_gate.md`
+- `docs/tasks/PB9_16_02_authoritative_phase_telemetry.md`
+- `docs/tasks/PB9_16_03_topology_inventory.md`
+- `docs/tasks/PB9_16_04_safe_placement_policies.md`
+- `docs/tasks/PB9_16_05_deterministic_scheduler_balance.md`
+- `docs/tasks/PB9_16_06_tournament_discovery_merge.md`
+- `docs/tasks/PB9_16_07_tournament_delta_merge.md`
+- `docs/tasks/PB9_16_08_policy_content_hash.md`
+- `docs/tasks/PB9_16_09_qualification_tooling.md`
+- `docs/tasks/PB9_16_10_authorized_qualification_experiments.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Documentation structure and links were reviewed.
+- Build and tests were not run because this task changes documentation only.
+
+### Limitations
+
+- No implementation, build, benchmark, or training qualification was performed.
+
 ## CI - Build, test, and formatting workflows
 
 **Status:** Complete
