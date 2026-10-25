@@ -453,6 +453,7 @@ namespace texas::solver::multiway
 			   << ",\n  \"export_observed_private_committed_delta_bytes\": " << report.export_telemetry.observed_delta.private_committed_delta_bytes
 			   << ",\n  \"export_result_bytes\": " << report.export_telemetry.result_bytes
 			   << ",\n  \"export_result_payload_hash\": " << report.export_telemetry.payload_hash
+			   << ",\n  \"export_policy_content_hash\": " << report.export_telemetry.policy_content_hash
 			   << ",\n  \"export_duration_nanoseconds\": " << report.export_telemetry.duration_nanoseconds
 			   << ",\n  \"export_publication_mode\": \"" << core::atomic_publish_mode_name(report.export_telemetry.publication_mode) << "\""
 			   << ",\n  \"process_rss_available\": " << (report.process_rss_available ? "true" : "false")
