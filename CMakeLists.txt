@@ -63,6 +63,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
     include/core/atomic_publish.hpp
     include/core/canonical_combo.hpp
+    include/core/checked_arithmetic.hpp
     include/core/game.hpp
     include/core/fingerprint.hpp
     include/core/lib.hpp
