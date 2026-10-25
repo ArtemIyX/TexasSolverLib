@@ -110,6 +110,29 @@ foreach(matrix_provenance_field "BuildConfiguration" "BinaryPath" "binary_sha256
     endif()
 endforeach()
 
+foreach(matrix_qualification_field "DynamicChunkSize" "PlacementPolicy" "CheckpointMode"
+        "WarmupRuns" "WarmColdOrder" "RandomizeCaseOrder" "CaseOrderSeed"
+        "worker_matrix_summary.json" "Get-StandardDeviation" "binary_identity"
+        "worker_migration_detected" "total_page_faults")
+    string(FIND "${matrix_runner_text}" "${matrix_qualification_field}" matrix_qualification_position)
+    if(matrix_qualification_position EQUAL -1)
+        message(FATAL_ERROR "worker matrix is missing qualification tooling field: ${matrix_qualification_field}")
+    endif()
+endforeach()
+
+if(matrix_runner_text MATCHES "multiway_training_scaling")
+    message(FATAL_ERROR "qualification worker matrix must not invoke benchmark binaries")
+endif()
+
+foreach(runner_configuration_field "DynamicChunkSize" "--dynamic-chunk-size" "PlacementPolicy"
+        "CheckpointMode" "dynamic_chunk_size" "placement_policy" "checkpoint_mode"
+        "export_result_payload_hash" "export_policy_content_hash")
+    string(FIND "${runner_text}" "${runner_configuration_field}" runner_configuration_position)
+    if(runner_configuration_position EQUAL -1)
+        message(FATAL_ERROR "RAM runner is missing qualification configuration field: ${runner_configuration_field}")
+    endif()
+endforeach()
+
 string(FIND "${trainer_text}" "acquire_export_lease()" lease_position)
 string(FIND "${trainer_text}" "const auto plan = make_export_plan(" plan_position)
 string(FIND "${trainer_text}" "const auto before_export = working_set_monitor_.export_process_observer" process_snapshot_position)

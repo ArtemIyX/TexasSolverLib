@@ -13,8 +13,17 @@ param(
 
     [switch]$DisableCheckpoint,
 
-    [ValidateSet('fixed', 'dynamic')]
+    [ValidateSet('fixed', 'static-block', 'dynamic')]
     [string]$Scheduler = 'fixed',
+
+    [ValidateRange(1, [int]::MaxValue)]
+    [int]$DynamicChunkSize = 4,
+
+    [ValidateSet('os-default', 'physical-compact', 'physical-spread', 'cpu-set-hint', 'diagnostic-hard-affinity')]
+    [string]$PlacementPolicy = 'os-default',
+
+    [ValidateSet('enabled', 'disabled')]
+    [string]$CheckpointMode = 'enabled',
 
     [ValidateSet('normal', 'tracy')]
     [string]$BinaryKind = 'normal',
@@ -41,7 +50,15 @@ Write-Output "[ram1000] trajectories_per_batch=$TrajectoriesPerBatch"
 Write-Output "[ram1000] pin_workers=$($PinWorkers.IsPresent)"
 Write-Output "[ram1000] disable_checkpoint=$($DisableCheckpoint.IsPresent)"
 Write-Output "[ram1000] scheduler=$Scheduler"
+Write-Output "[ram1000] dynamic_chunk_size=$DynamicChunkSize"
+Write-Output "[ram1000] placement_policy=$PlacementPolicy"
 Write-Output "[ram1000] binary_kind=$BinaryKind"
+
+if ($DisableCheckpoint.IsPresent -and $CheckpointMode -ne 'enabled') {
+    throw 'DisableCheckpoint cannot be combined with CheckpointMode=disabled'
+}
+$effectiveCheckpointMode = if ($DisableCheckpoint.IsPresent) { 'disabled' } else { $CheckpointMode }
+Write-Output "[ram1000] checkpoint_mode=$effectiveCheckpointMode"
 
 if ([string]::IsNullOrWhiteSpace($RunDirectory)) {
     $RunDirectory = Join-Path $repoRoot ("tmp\ram_{0}_after" -f ($Batches * $TrajectoriesPerBatch))
@@ -153,13 +170,26 @@ New-Item -ItemType Directory -Force -Path $RunDirectory | Out-Null
 $config = Join-Path $RunDirectory 'pilot_batch.cfg'
 Copy-Item -LiteralPath $sourceConfig -Destination $config -Force
 $configText = Get-Content -Raw -LiteralPath $config
-$updatedConfigText = $configText -replace '(?m)^[ \t]*trajectories_per_batch[ \t]*=[ \t]*\d+[ \t]*\r?$', "trajectories_per_batch=$TrajectoriesPerBatch"
-if ($updatedConfigText -eq $configText -and [int]$configValues['trajectories_per_batch'] -ne $TrajectoriesPerBatch) {
-    throw "Could not replace trajectories_per_batch in run-local config: $config"
+function Set-RunConfigValue {
+    param(
+        [string]$Text,
+        [string]$Key,
+        [string]$Value
+    )
+    $pattern = '(?m)^[ \t]*' + [regex]::Escape($Key) + '[ \t]*=[^\r\n]*'
+    $replacement = "$Key=$Value"
+    $updated = [regex]::Replace($Text, $pattern, $replacement)
+    if ($updated -eq $Text) {
+        $updated = $updated.TrimEnd() + [Environment]::NewLine + $replacement + [Environment]::NewLine
+    }
+    return $updated
 }
+$updatedConfigText = Set-RunConfigValue $configText 'trajectories_per_batch' $TrajectoriesPerBatch
+$updatedConfigText = Set-RunConfigValue $updatedConfigText 'dynamic_chunk_size' $DynamicChunkSize
+$updatedConfigText = Set-RunConfigValue $updatedConfigText 'placement_policy' $PlacementPolicy
 Set-Content -LiteralPath $config -Value $updatedConfigText -NoNewline
 $checkpointDirectory = Join-Path $RunDirectory 'checkpoints'
-if (-not $DisableCheckpoint.IsPresent) {
+if ($effectiveCheckpointMode -eq 'enabled') {
     New-Item -ItemType Directory -Force -Path $checkpointDirectory | Out-Null
 }
 
@@ -180,9 +210,10 @@ $trainArguments = @(
     '--report', $reportPath,
     '--batches', $Batches.ToString(),
     '--threads', $Workers.ToString(),
-    '--scheduler', $Scheduler
+    '--scheduler', $Scheduler,
+    '--dynamic-chunk-size', $DynamicChunkSize.ToString()
 )
-if (-not $DisableCheckpoint.IsPresent) {
+if ($effectiveCheckpointMode -eq 'enabled') {
     $trainArguments = @('--checkpoint-dir', $checkpointDirectory) + $trainArguments
 }
 if ($PinWorkers.IsPresent) {
@@ -331,16 +362,26 @@ if ([string]$report.evidence.producer.binary_source_commit -ne [string]$embedded
     [string]$report.evidence.producer.run_checkout_commit -ne $gitCommit) {
     throw 'Training report provenance does not match the verified executable and checkout'
 }
+if ([int]$report.dynamic_chunk_size -ne $DynamicChunkSize -or
+    [string]$report.placement_policy -ne $PlacementPolicy) {
+    throw "Training report configuration mismatch: expected chunk=$DynamicChunkSize placement=$PlacementPolicy actual chunk=$($report.dynamic_chunk_size) placement=$($report.placement_policy)"
+}
+if ([int64]$report.export_result_payload_hash -eq 0 -or [int64]$report.export_policy_content_hash -eq 0) {
+    throw 'Training report lacks non-zero full payload and policy-content hashes'
+}
 [pscustomobject]@{
     exit_code = $exitCode
     exit_code_available = $exitCodeKnown
     pin_workers = $PinWorkers.IsPresent
-    disable_checkpoint = $DisableCheckpoint.IsPresent
+    disable_checkpoint = ($effectiveCheckpointMode -eq 'disabled')
+    checkpoint_mode = $effectiveCheckpointMode
     scheduler = $Scheduler
     binary_kind = $BinaryKind
     build_configuration = $BuildConfiguration
     binary_path = $executable
-    chunk_size = 4
+    dynamic_chunk_size = $DynamicChunkSize
+    chunk_size = $DynamicChunkSize
+    placement_policy = $PlacementPolicy
     trajectories_per_batch = $TrajectoriesPerBatch
     process_cpu_nanoseconds = $processCpuNanoseconds
     trajectories = $report.trajectories
@@ -367,6 +408,12 @@ if ([string]$report.evidence.producer.binary_source_commit -ne [string]$embedded
     merge_nanoseconds = $report.merge_nanoseconds
     coordinator_admission_nanoseconds = $report.coordinator_admission_nanoseconds
     trainer_only_nanoseconds = $report.trainer_only_nanoseconds
+    training_wall_nanoseconds = $report.training_wall_nanoseconds
+    checkpoint_wall_nanoseconds = $report.checkpoint_wall_nanoseconds
+    export_wall_nanoseconds = $report.export_wall_nanoseconds
+    total_wrapper_wall_nanoseconds = $report.total_wrapper_wall_nanoseconds
+    export_result_payload_hash = $report.export_result_payload_hash
+    export_policy_content_hash = $report.export_policy_content_hash
     worker_trajectory_counts = ($report.worker_trajectory_counts -join ',')
     worker_active_nanoseconds_by_worker = ($report.worker_active_nanoseconds_by_worker -join ',')
     worker_wake_latency_nanoseconds_by_worker = ($report.worker_wake_latency_nanoseconds_by_worker -join ',')
@@ -378,6 +425,20 @@ if ([string]$report.evidence.producer.binary_source_commit -ne [string]$embedded
     worker_resolved_processor = ($report.worker_resolved_processor -join ',')
     worker_affinity_masks = ($report.worker_affinity_masks -join ',')
     worker_affinity_succeeded = ($report.worker_affinity_succeeded -join ',')
+    worker_requested_cpu_set = ($report.worker_requested_cpu_set -join ',')
+    worker_resolved_cpu_set = ($report.worker_resolved_cpu_set -join ',')
+    worker_requested_physical_core = ($report.worker_requested_physical_core -join ',')
+    worker_resolved_physical_core = ($report.worker_resolved_physical_core -join ',')
+    worker_requested_cache_domain = ($report.worker_requested_cache_domain -join ',')
+    worker_resolved_cache_domain = ($report.worker_resolved_cache_domain -join ',')
+    worker_migration_sampled = ($report.worker_migration_sampled -join ',')
+    worker_migration_detected = ($report.worker_migration_detected -join ',')
+    minor_page_faults = $report.minor_page_faults
+    major_page_faults = $report.major_page_faults
+    total_page_faults = $report.total_page_faults
+    minor_page_faults_available = $report.authoritative_memory_availability.minor_page_faults
+    major_page_faults_available = $report.authoritative_memory_availability.major_page_faults
+    total_page_faults_available = $report.authoritative_memory_availability.total_page_faults
     affinity_requested = $report.affinity_requested
     peak_public_states = $report.peak_public_states
     peak_sparse_rows = $report.peak_sparse_rows
@@ -396,9 +457,12 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     exit_code = $exitCode
     exit_code_available = $exitCodeKnown
     pinning = if ($PinWorkers.IsPresent) { 'pinned' } else { 'unpinned' }
-    disable_checkpoint = $DisableCheckpoint.IsPresent
+    disable_checkpoint = ($effectiveCheckpointMode -eq 'disabled')
+    checkpoint_mode = $effectiveCheckpointMode
     scheduler = $Scheduler
-    chunk_size = 4
+    dynamic_chunk_size = $DynamicChunkSize
+    chunk_size = $DynamicChunkSize
+    placement_policy = $PlacementPolicy
     binary_kind = $BinaryKind
     build_configuration = $BuildConfiguration
     git_commit = $gitCommit
@@ -410,6 +474,14 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     binary_dirty_state = [string]$embeddedProvenance.binary_dirty_state
     binary_sha256 = $binarySha256
     binary_bytes = [int64]$binaryFile.Length
+    binary_path = $executable
+    binary_identity = [ordered]@{
+        sha256 = $binarySha256
+        source_commit = [string]$embeddedProvenance.binary_source_commit
+        dirty_state = [string]$embeddedProvenance.binary_dirty_state
+        compiler_identity = [string]$embeddedProvenance.binary_compiler_identity
+        build_configuration = [string]$embeddedProvenance.binary_build_configuration
+    }
     workers = $Workers
     batches = $Batches
     trajectories_per_batch = $TrajectoriesPerBatch
@@ -423,7 +495,7 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
 
 $runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
 [ordered]@{
-    schema_version = 2
+    schema_version = 3
     git_commit = $gitCommit
     run_checkout_commit = $gitCommit
     run_checkout_dirty_state = $checkoutDirtyState
@@ -438,8 +510,11 @@ $runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
         batches = $Batches
         trajectories_per_batch = $TrajectoriesPerBatch
         scheduler = $Scheduler
+        dynamic_chunk_size = $DynamicChunkSize
+        placement_policy = $PlacementPolicy
         pin_workers = $PinWorkers.IsPresent
-        disable_checkpoint = $DisableCheckpoint.IsPresent
+        checkpoint_mode = $effectiveCheckpointMode
+        disable_checkpoint = ($effectiveCheckpointMode -eq 'disabled')
     }
     report_json = $reportPath
     metrics_json = $metricsPath
