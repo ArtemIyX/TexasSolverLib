@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 CPP_SUFFIXES = {".h", ".hpp", ".cpp"}
+MAX_FORMAT_PASSES = 128
 SKIPPED_DIRECTORIES = {
     ".git",
     ".idea",
@@ -69,22 +70,44 @@ def format_files(files: list[Path], *, check: bool) -> int:
 
     failures = 0
     for path in files:
-        command = [formatter, "--dry-run", "--Werror", str(path)] if check else [formatter, "-i", str(path)]
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        if result.returncode != 0:
-            failures += 1
-            detail = result.stderr.strip() or "formatting differs"
-            verb = "Needs formatting" if check else "Failed"
-            print(f"{verb}: {path}: {detail}", file=sys.stderr)
+        if check:
+            result = subprocess.run(
+                [formatter, "--dry-run", "--Werror", str(path)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if result.returncode != 0:
+                failures += 1
+                detail = result.stderr.strip() or "formatting differs"
+                print(f"Needs formatting: {path}: {detail}", file=sys.stderr)
+            else:
+                print(f"Checked: {path}")
+            continue
+
+        for _ in range(MAX_FORMAT_PASSES):
+            before = path.read_bytes()
+            result = subprocess.run(
+                [formatter, "-i", str(path)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if result.returncode != 0:
+                failures += 1
+                detail = result.stderr.strip() or f"exit code {result.returncode}"
+                print(f"Failed: {path}: {detail}", file=sys.stderr)
+                break
+            if path.read_bytes() == before:
+                print(f"Formatted: {path}")
+                break
         else:
-            print(f"Checked: {path}" if check else f"Formatted: {path}")
+            failures += 1
+            print(f"Failed: {path}: did not stabilize after {MAX_FORMAT_PASSES} passes", file=sys.stderr)
 
     action = "Checked" if check else "Formatted"
     print(f"{action} {len(files) - failures} of {len(files)} file(s).")
