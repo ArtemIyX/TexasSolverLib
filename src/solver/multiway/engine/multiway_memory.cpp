@@ -5,6 +5,7 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/blueprint/multiway_export.hpp"
 
 #if defined(_WIN32)
 	#ifndef NOMINMAX
@@ -580,6 +581,365 @@ namespace texas::solver::multiway
 		return result;
 	}
 
+	bool MultiwayExportPlanMemoryValues::valid() const noexcept
+	{
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
+			(compact_direct_order ? order_index_bytes == 0U : true);
+	}
+
+	bool MultiwayExportScratchEstimate::valid() const noexcept
+	{
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
+			(total_bytes == std::numeric_limits<std::uint64_t>::max() ||
+				total_bytes >= order_index_bytes && total_bytes >= strategy_scratch_bytes &&
+				total_bytes >= action_scratch_bytes && total_bytes >= encoder_buffer_bytes &&
+				total_bytes >= exporter_headroom_bytes);
+	}
+
+	bool MultiwayExportProcessEstimate::valid() const noexcept
+	{
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
+			(current_working_set_available || current_working_set_bytes == 0U) &&
+			(estimated_process_export_peak_bytes == std::numeric_limits<std::uint64_t>::max() ||
+				estimated_process_export_peak_bytes >= current_working_set_bytes);
+	}
+
+	bool MultiwaySystemMemorySnapshot::valid() const noexcept
+	{
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
+			(total_physical_available || total_physical_bytes == 0U) &&
+			(available_physical_available || available_physical_bytes == 0U);
+	}
+
+	void MultiwaySystemMemoryGuardConfig::validate() const
+	{
+		if (enabled && minimum_available_physical_bytes == 0U)
+			throw std::invalid_argument("enabled system memory guard requires a non-zero reserve");
+	}
+
+	bool MultiwayExportObservedMemoryDelta::valid() const noexcept
+	{
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
+			(!before_working_set_available || before_working_set_bytes != 0U || working_set_delta_bytes == 0U) &&
+			(!after_working_set_available || after_working_set_bytes != 0U || working_set_delta_bytes == 0U) &&
+			(!before_private_committed_available || before_private_committed_bytes != 0U || private_committed_delta_bytes == 0U) &&
+			(!after_private_committed_available || after_private_committed_bytes != 0U || private_committed_delta_bytes == 0U);
+	}
+
+	void MultiwayExportProcessGateConfig::validate() const
+	{
+	}
+
+	void MultiwayExportSystemGateConfig::validate() const
+	{
+		if (!enabled && system_reserve_bytes != 0U)
+			throw std::invalid_argument("disabled export system gate cannot configure a system reserve");
+	}
+
+	void MultiwayExportMemoryGateConfig::validate() const
+	{
+		process.validate();
+		system.validate();
+	}
+
+	MultiwayExportScratchEstimate make_multiway_export_scratch_estimate(
+		const MultiwayExportPlanMemoryValues& plan,
+		MultiwayExportProcessGateConfig config) noexcept
+	{
+		MultiwayExportScratchEstimate result;
+		result.order_index_bytes = plan.order_index_bytes;
+		result.strategy_scratch_bytes = multiway_memory_saturating_capacity_bytes(
+			MULTIWAY_MAX_ABSTRACTED_ACTIONS, sizeof(Probability));
+		result.action_scratch_bytes = multiway_memory_saturating_capacity_bytes(
+			MULTIWAY_MAX_ABSTRACTED_ACTIONS, sizeof(MultiwayQuantizedRootAction));
+		result.encoder_buffer_bytes = config.encoder_buffer_bytes;
+		result.exporter_headroom_bytes = config.exporter_headroom_bytes;
+		const auto add = [&result](std::uint64_t value) noexcept {
+			const auto next = multiway_memory_saturating_add(result.total_bytes, value);
+			result.arithmetic_saturated = result.arithmetic_saturated ||
+				next == std::numeric_limits<std::uint64_t>::max();
+			result.total_bytes = next;
+		};
+		add(result.order_index_bytes);
+		add(result.strategy_scratch_bytes);
+		add(result.action_scratch_bytes);
+		add(result.encoder_buffer_bytes);
+		add(result.exporter_headroom_bytes);
+		return result;
+	}
+
+	MultiwayExportProcessEstimate make_multiway_export_process_estimate(
+		const MultiwayExportPlanMemoryValues& plan,
+		const MultiwayProcessMemorySnapshot& snapshot,
+		MultiwayExportProcessGateConfig config) noexcept
+	{
+		const auto scratch = make_multiway_export_scratch_estimate(plan, config);
+		MultiwayExportProcessEstimate result;
+		result.current_working_set_available = snapshot.current_working_set_available;
+		result.current_working_set_bytes = snapshot.current_working_set_bytes;
+		result.order_index_bytes = scratch.order_index_bytes;
+		result.strategy_scratch_bytes = scratch.strategy_scratch_bytes;
+		result.action_scratch_bytes = scratch.action_scratch_bytes;
+		result.encoder_buffer_bytes = scratch.encoder_buffer_bytes;
+		result.exporter_headroom_bytes = scratch.exporter_headroom_bytes;
+		result.mapped_residency_allowance_bytes = config.mapped_residency_allowance_bytes;
+		const auto add = [&result](std::uint64_t value) noexcept {
+			const auto next = multiway_memory_saturating_add(
+				result.estimated_process_export_peak_bytes, value);
+			result.arithmetic_saturated = result.arithmetic_saturated ||
+				next == std::numeric_limits<std::uint64_t>::max();
+			result.estimated_process_export_peak_bytes = next;
+		};
+		add(result.current_working_set_bytes);
+		add(result.order_index_bytes);
+		add(result.strategy_scratch_bytes);
+		add(result.action_scratch_bytes);
+		add(result.encoder_buffer_bytes);
+		add(result.exporter_headroom_bytes);
+		add(result.mapped_residency_allowance_bytes);
+		result.arithmetic_saturated = result.arithmetic_saturated || scratch.arithmetic_saturated;
+		return result;
+	}
+
+	MultiwayExportProcessGateResult evaluate_multiway_export_process_gate(
+		const MultiwayExportPlanMemoryValues& plan,
+		const MultiwayProcessMemorySnapshot& snapshot,
+		MultiwayExportProcessGateConfig config) noexcept
+	{
+		MultiwayExportProcessGateResult result;
+		result.hard_limit_bytes = config.hard_limit_bytes;
+		result.estimate = make_multiway_export_process_estimate(plan, snapshot, config);
+		result.compared_process_working_set_bytes = result.estimate.estimated_process_export_peak_bytes;
+		if (config.hard_limit_bytes == 0U)
+		{
+			result.status = MultiwayExportGateStatus::Disabled;
+			result.message = "export process gate disabled";
+			return result;
+		}
+		if (!snapshot.current_working_set_available)
+		{
+			result.status = MultiwayExportGateStatus::Unavailable;
+			result.rejection_reason = MultiwayExportProcessRejectionReason::CurrentWorkingSetUnavailable;
+			result.message = "current working-set metric unavailable";
+			return result;
+		}
+		if (result.estimate.arithmetic_saturated)
+		{
+			result.status = MultiwayExportGateStatus::Rejected;
+			result.rejection_reason = MultiwayExportProcessRejectionReason::EstimateOverflow;
+			result.message = "export process estimate saturated";
+			return result;
+		}
+		if (result.compared_process_working_set_bytes > config.hard_limit_bytes)
+		{
+			result.status = MultiwayExportGateStatus::Rejected;
+			result.rejection_reason = MultiwayExportProcessRejectionReason::ProcessLimitExceeded;
+			result.message = "estimated export process working set exceeds hard limit";
+			return result;
+		}
+		result.status = MultiwayExportGateStatus::Admitted;
+		result.message = "export process gate admitted";
+		return result;
+	}
+
+	MultiwaySystemMemorySnapshot capture_multiway_system_memory_snapshot() noexcept
+	{
+		MultiwaySystemMemorySnapshot result;
+#if defined(_WIN32)
+		MEMORYSTATUSEX status{};
+		status.dwLength = sizeof(status);
+		if (GlobalMemoryStatusEx(&status) != 0)
+		{
+			result.total_physical_bytes = static_cast<std::uint64_t>(status.ullTotalPhys);
+			result.available_physical_bytes = static_cast<std::uint64_t>(status.ullAvailPhys);
+			result.total_physical_available = true;
+			result.available_physical_available = true;
+			result.used_physical_bytes = result.total_physical_bytes >= result.available_physical_bytes
+				? result.total_physical_bytes - result.available_physical_bytes
+				: std::numeric_limits<std::uint64_t>::max();
+		}
+#elif defined(__linux__)
+		std::FILE* input = std::fopen("/proc/meminfo", "r");
+		if (input == nullptr)
+			return result;
+		char line[256]{};
+		while (std::fgets(line, sizeof(line), input) != nullptr)
+		{
+			parse_linux_memory_field(line, "MemTotal:", result.total_physical_bytes, result.total_physical_available);
+			parse_linux_memory_field(line, "MemAvailable:", result.available_physical_bytes, result.available_physical_available);
+		}
+		std::fclose(input);
+		if (result.total_physical_available && result.available_physical_available)
+			result.used_physical_bytes = result.total_physical_bytes >= result.available_physical_bytes
+				? result.total_physical_bytes - result.available_physical_bytes
+				: std::numeric_limits<std::uint64_t>::max();
+#endif
+		return result;
+	}
+
+	MultiwaySystemMemoryGuardResult evaluate_multiway_system_memory_guard(
+		MultiwaySystemMemorySnapshot snapshot,
+		MultiwaySystemMemoryGuardConfig config) noexcept
+	{
+		MultiwaySystemMemoryGuardResult result;
+		result.total_physical_bytes = snapshot.total_physical_bytes;
+		result.available_physical_bytes = snapshot.available_physical_bytes;
+		result.used_physical_bytes = snapshot.used_physical_bytes;
+		result.minimum_available_physical_bytes = config.minimum_available_physical_bytes;
+		result.maximum_used_physical_bytes = snapshot.total_physical_available &&
+			snapshot.total_physical_bytes >= config.minimum_available_physical_bytes
+			? snapshot.total_physical_bytes - config.minimum_available_physical_bytes
+			: 0U;
+		if (!config.enabled)
+		{
+			result.status = MultiwaySystemMemoryGuardStatus::Disabled;
+			result.message = "system memory guard disabled";
+			return result;
+		}
+		if (!snapshot.total_physical_available || !snapshot.available_physical_available ||
+			snapshot.used_physical_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwaySystemMemoryGuardStatus::Unavailable;
+			result.rejected_category = "system memory telemetry";
+			result.message = "total or available physical memory metric unavailable";
+			return result;
+		}
+		if (snapshot.available_physical_bytes < config.minimum_available_physical_bytes)
+		{
+			result.status = MultiwaySystemMemoryGuardStatus::Rejected;
+			result.rejected_category = "system physical memory ceiling";
+			result.message = "system memory usage exceeds maximum minus reserve";
+			return result;
+		}
+		result.status = MultiwaySystemMemoryGuardStatus::Admitted;
+		result.message = "system memory guard admitted";
+		return result;
+	}
+
+	MultiwayExportSystemGateResult evaluate_multiway_export_system_gate(
+		const MultiwayExportPlanMemoryValues& plan,
+		const MultiwayExportScratchEstimate& scratch,
+		const MultiwaySystemMemorySnapshot& snapshot,
+		MultiwayExportSystemGateConfig config) noexcept
+	{
+		MultiwayExportSystemGateResult result;
+		result.available_physical_bytes = snapshot.available_physical_bytes;
+		result.serialized_output_bytes = plan.serialized_bytes;
+		result.exporter_scratch_bytes = scratch.total_bytes;
+		result.system_reserve_bytes = config.system_reserve_bytes;
+		if (!config.enabled)
+		{
+			result.status = MultiwayExportGateStatus::Disabled;
+			result.message = "export system gate disabled";
+			return result;
+		}
+		if (!snapshot.available_physical_available)
+		{
+			result.status = MultiwayExportGateStatus::Unavailable;
+			result.rejection_reason = MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryUnavailable;
+			result.message = "available physical memory metric unavailable";
+			return result;
+		}
+		result.required_available_bytes = multiway_memory_saturating_add(
+			multiway_memory_saturating_add(plan.serialized_bytes, scratch.total_bytes),
+			config.system_reserve_bytes);
+		if (result.required_available_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwayExportGateStatus::Rejected;
+			result.rejection_reason = MultiwayExportSystemRejectionReason::AllowanceOverflow;
+			result.message = "export system allowance saturated";
+			return result;
+		}
+		if (snapshot.available_physical_bytes < result.required_available_bytes)
+		{
+			result.status = MultiwayExportGateStatus::Rejected;
+			result.rejection_reason = MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient;
+			result.message = "available physical memory is below export allowance";
+			return result;
+		}
+		result.status = MultiwayExportGateStatus::Admitted;
+		result.message = "export system gate admitted";
+		return result;
+	}
+
+	MultiwayExportObservedMemoryDelta observe_multiway_export_memory_delta(
+		const MultiwayProcessMemorySnapshot& before,
+		const MultiwayProcessMemorySnapshot& after) noexcept
+	{
+		MultiwayExportObservedMemoryDelta result;
+		result.before_working_set_available = before.current_working_set_available;
+		result.after_working_set_available = after.current_working_set_available;
+		result.before_private_committed_available = before.private_committed_available;
+		result.after_private_committed_available = after.private_committed_available;
+		result.before_working_set_bytes = before.current_working_set_bytes;
+		result.after_working_set_bytes = after.current_working_set_bytes;
+		result.before_private_committed_bytes = before.private_committed_bytes;
+		result.after_private_committed_bytes = after.private_committed_bytes;
+		if (result.before_working_set_available && result.after_working_set_available)
+		{
+			if (after.current_working_set_bytes >= before.current_working_set_bytes)
+				result.working_set_delta_bytes = after.current_working_set_bytes - before.current_working_set_bytes;
+			else
+				result.working_set_delta_decreased = true;
+		}
+		if (result.before_private_committed_available && result.after_private_committed_available)
+		{
+			if (after.private_committed_bytes >= before.private_committed_bytes)
+				result.private_committed_delta_bytes = after.private_committed_bytes - before.private_committed_bytes;
+			else
+				result.private_committed_delta_decreased = true;
+		}
+		return result;
+	}
+
+	const char* multiway_export_process_rejection_reason_name(
+		MultiwayExportProcessRejectionReason reason) noexcept
+	{
+		switch (reason)
+		{
+			case MultiwayExportProcessRejectionReason::None: return "none";
+			case MultiwayExportProcessRejectionReason::CurrentWorkingSetUnavailable: return "current_working_set_unavailable";
+			case MultiwayExportProcessRejectionReason::EstimateOverflow: return "estimate_overflow";
+			case MultiwayExportProcessRejectionReason::ProcessLimitExceeded: return "process_limit_exceeded";
+		}
+		return "invalid";
+	}
+
+	const char* multiway_export_system_rejection_reason_name(
+		MultiwayExportSystemRejectionReason reason) noexcept
+	{
+		switch (reason)
+		{
+			case MultiwayExportSystemRejectionReason::None: return "none";
+			case MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryUnavailable: return "available_physical_memory_unavailable";
+			case MultiwayExportSystemRejectionReason::AllowanceOverflow: return "allowance_overflow";
+			case MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient: return "available_physical_memory_insufficient";
+		}
+		return "invalid";
+	}
+
+	void MultiwayExportTelemetry::validate() const
+	{
+		if (schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION)
+			throw std::invalid_argument("invalid multiway export telemetry schema");
+		if (!attempted)
+			return;
+		if (!plan.valid() || !scratch.valid() || !process_estimate.valid() ||
+			!system_before.valid() || !system_after.valid() || !observed_delta.valid() ||
+			process_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION ||
+			system_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION ||
+			static_cast<unsigned>(process_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) ||
+			static_cast<unsigned>(system_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) ||
+			static_cast<unsigned>(process_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportProcessRejectionReason::ProcessLimitExceeded) ||
+			static_cast<unsigned>(system_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient) ||
+			static_cast<unsigned>(publication_mode) > static_cast<unsigned>(core::AtomicPublishMode::BackupRename))
+			throw std::invalid_argument("invalid multiway export telemetry values");
+		if (succeeded && (process_gate.blocked() || system_gate.blocked() ||
+			result_bytes != plan.serialized_bytes || payload_hash == 0U ||
+			publication_mode == core::AtomicPublishMode::Unknown))
+			throw std::invalid_argument("successful multiway export telemetry is incomplete");
+	}
+
 	std::uint64_t observed_multiway_process_memory_bytes() noexcept
 	{
 		const auto snapshot = capture_multiway_process_memory_snapshot();
@@ -635,8 +995,14 @@ namespace texas::solver::multiway
 	void MultiwayWorkingSetMonitor::validate() const
 	{
 		gate.validate();
+		export_gate.validate();
+		system_memory_guard.validate();
 		if (observer == nullptr && observer_context != nullptr)
 			throw std::invalid_argument("working-set observer context requires an observer");
+		if (export_process_observer == nullptr && export_system_observer == nullptr && export_observer_context != nullptr)
+			throw std::invalid_argument("export observer context requires an export observer");
+		if (system_memory_observer == nullptr && system_memory_observer_context != nullptr)
+			throw std::invalid_argument("system memory observer context requires an observer");
 	}
 
 	MultiwayWorkingSetGateResult evaluate_multiway_working_set_preflight(

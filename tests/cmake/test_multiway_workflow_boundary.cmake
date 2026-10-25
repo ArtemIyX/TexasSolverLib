@@ -4,6 +4,11 @@ endif()
 
 file(READ "${SOURCE_DIR}/CMakeLists.txt" cmake_text)
 file(READ "${SOURCE_DIR}/examples/multiway_workflow_main.cpp" source_text)
+file(READ "${SOURCE_DIR}/src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp" trainer_text)
+file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_training_report.cpp" report_text)
+file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_f1_acceptance.cpp" report_reader_text)
+file(READ "${SOURCE_DIR}/tests/test_multiway_blueprint_training.cpp" export_test_text)
+file(READ "${SOURCE_DIR}/scripts/run/run_multiway_ram_1000.ps1" runner_text)
 
 string(FIND "${cmake_text}" "foreach(_multiway_workflow train buckets inspect evaluate finalize)" target_position)
 if(target_position EQUAL -1)
@@ -62,6 +67,64 @@ endforeach()
 
 if(source_text MATCHES "install\\(")
     message(FATAL_ERROR "multiway workflow front end must remain non-installed")
+endif()
+
+string(FIND "${source_text}" "session.save_full_policy_atomic(output_path)" streaming_call_position)
+string(FIND "${source_text}" "session.export_full_policy()" materialized_call_position)
+string(FIND "${source_text}" "session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeExport)" workflow_before_export_position)
+string(FIND "${source_text}" "session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterExport)" workflow_after_export_position)
+if(streaming_call_position EQUAL -1 OR materialized_call_position GREATER_EQUAL 0 OR
+   workflow_before_export_position GREATER_EQUAL 0 OR workflow_after_export_position GREATER_EQUAL 0)
+    message(FATAL_ERROR "production training workflow must use only the streaming export path")
+endif()
+
+foreach(guard_field "system_memory_guard" "MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES" "export_gate.system")
+    string(FIND "${source_text}" "${guard_field}" guard_position)
+    if(guard_position EQUAL -1)
+        message(FATAL_ERROR "production workflow is missing system memory guard field: ${guard_field}")
+    endif()
+endforeach()
+
+foreach(runner_guard_field "systemMemoryReserveBytes" "systemMemoryGuardTriggered" "Stop-Process")
+    string(FIND "${runner_text}" "${runner_guard_field}" runner_guard_position)
+    if(runner_guard_position EQUAL -1)
+        message(FATAL_ERROR "RAM runner is missing hard system memory guard field: ${runner_guard_field}")
+    endif()
+endforeach()
+
+string(FIND "${trainer_text}" "acquire_export_lease()" lease_position)
+string(FIND "${trainer_text}" "const auto plan = make_export_plan(" plan_position)
+string(FIND "${trainer_text}" "const auto before_export = working_set_monitor_.export_process_observer" process_snapshot_position)
+string(FIND "${trainer_text}" "evaluate_multiway_export_process_gate(" process_gate_position)
+string(FIND "${trainer_text}" "evaluate_multiway_export_system_gate(" system_gate_position)
+string(FIND "${trainer_text}" "MultiwayFullBlueprintStreamWriter writer(path, stream_plan)" writer_position)
+if(lease_position EQUAL -1 OR plan_position EQUAL -1 OR process_snapshot_position EQUAL -1 OR
+   process_gate_position EQUAL -1 OR system_gate_position EQUAL -1 OR writer_position EQUAL -1 OR
+   lease_position GREATER plan_position OR plan_position GREATER process_snapshot_position OR
+   process_snapshot_position GREATER process_gate_position OR process_gate_position GREATER writer_position OR
+   system_gate_position GREATER writer_position)
+    message(FATAL_ERROR "streaming export must admit lease, plan, snapshots, and gates before temp creation")
+endif()
+
+foreach(report_field "export_serialized_bytes" "export_result_bytes" "export_result_payload_hash"
+        "export_duration_nanoseconds" "export_publication_mode" "export_process_gate_reason"
+        "export_system_gate_reason")
+    string(FIND "${report_text}" "${report_field}" report_field_position)
+    if(report_field_position EQUAL -1)
+        message(FATAL_ERROR "training report is missing export field: ${report_field}")
+    endif()
+endforeach()
+
+string(FIND "${report_reader_text}" "load_training(" report_reader_position)
+string(FIND "${report_reader_text}" "parse_header(text, MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION)" report_reader_schema_position)
+if(report_reader_position EQUAL -1 OR report_reader_schema_position EQUAL -1)
+    message(FATAL_ERROR "existing training report reader compatibility surface is missing")
+endif()
+
+string(FIND "${export_test_text}" "previous-blueprint" previous_destination_test_position)
+string(FIND "${export_test_text}" "multiway_streaming_export_process_gate_rejects_before_temp_creation" rejected_gate_test_position)
+if(previous_destination_test_position EQUAL -1 OR rejected_gate_test_position EQUAL -1)
+    message(FATAL_ERROR "workflow export regression test must preserve the previous destination after gate rejection")
 endif()
 
 string(FIND "${source_text}" "if (!checkpoint_dir.empty())" checkpoint_directory_guard_position)

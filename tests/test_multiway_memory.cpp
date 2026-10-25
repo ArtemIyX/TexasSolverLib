@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_memory.hpp"
+#include "solver/multiway/blueprint/multiway_export.hpp"
 #include "solver/multiway/continuation/multiway_continuation_selector.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
@@ -272,6 +273,142 @@ TEST_CASE(multiway_memory_budget_rejects_invalid_limits)
 {
 	const texas::MultiwayMemoryBudget invalid{ 2, 1 };
 	EXPECT_THROW(invalid.validate(), std::invalid_argument);
+}
+
+TEST_CASE(multiway_export_memory_plan_and_scratch_use_exact_checked_values)
+{
+	using namespace texas::solver::multiway;
+	MultiwayExportPlanMemoryValues plan;
+	plan.shape_count = 3U;
+	plan.row_count = 12U;
+	plan.action_count = 48U;
+	plan.serialized_bytes = 4096U;
+	plan.order_index_bytes = 12U;
+	MultiwayExportProcessGateConfig config;
+	config.exporter_headroom_bytes = 64U;
+	config.encoder_buffer_bytes = 32U;
+	const auto scratch = make_multiway_export_scratch_estimate(plan, config);
+	EXPECT_EQ(scratch.order_index_bytes, 12U);
+	EXPECT_EQ(scratch.strategy_scratch_bytes,
+		static_cast<std::uint64_t>(MULTIWAY_MAX_ABSTRACTED_ACTIONS * sizeof(double)));
+	EXPECT_EQ(scratch.action_scratch_bytes,
+		static_cast<std::uint64_t>(MULTIWAY_MAX_ABSTRACTED_ACTIONS * sizeof(MultiwayQuantizedRootAction)));
+	EXPECT_EQ(scratch.total_bytes,
+		scratch.order_index_bytes + scratch.strategy_scratch_bytes + scratch.action_scratch_bytes + 32U + 64U);
+}
+
+TEST_CASE(multiway_export_memory_gates_saturate_and_fail_closed)
+{
+	using namespace texas::solver::multiway;
+	MultiwayExportPlanMemoryValues plan;
+	plan.serialized_bytes = std::numeric_limits<std::uint64_t>::max();
+	plan.order_index_bytes = std::numeric_limits<std::uint64_t>::max();
+	MultiwayProcessMemorySnapshot process;
+	process.current_working_set_available = true;
+	process.current_working_set_bytes = 1U;
+	MultiwayExportProcessGateConfig process_config;
+	process_config.hard_limit_bytes = std::numeric_limits<std::uint64_t>::max();
+	process_config.exporter_headroom_bytes = 0U;
+	process_config.encoder_buffer_bytes = 0U;
+	const auto process_gate = evaluate_multiway_export_process_gate(plan, process, process_config);
+	EXPECT_EQ(process_gate.status, MultiwayExportGateStatus::Rejected);
+	EXPECT_EQ(process_gate.rejection_reason, MultiwayExportProcessRejectionReason::EstimateOverflow);
+
+	MultiwayExportSystemGateConfig system_config;
+	system_config.enabled = true;
+	MultiwaySystemMemorySnapshot unavailable;
+	const auto system_gate = evaluate_multiway_export_system_gate(
+		plan, {}, unavailable, system_config);
+	EXPECT_EQ(system_gate.status, MultiwayExportGateStatus::Unavailable);
+	EXPECT_EQ(system_gate.rejection_reason, MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryUnavailable);
+}
+
+TEST_CASE(multiway_export_memory_gates_honor_process_and_system_boundaries)
+{
+	using namespace texas::solver::multiway;
+	MultiwayExportPlanMemoryValues plan;
+	plan.serialized_bytes = 100U;
+	MultiwayProcessMemorySnapshot process;
+	process.current_working_set_available = true;
+	process.current_working_set_bytes = 500U;
+	MultiwayExportProcessGateConfig process_config;
+	process_config.exporter_headroom_bytes = 0U;
+	process_config.encoder_buffer_bytes = 0U;
+	const auto estimate = make_multiway_export_process_estimate(plan, process, process_config);
+	process_config.hard_limit_bytes = estimate.estimated_process_export_peak_bytes;
+	EXPECT_EQ(evaluate_multiway_export_process_gate(plan, process, process_config).status,
+		MultiwayExportGateStatus::Admitted);
+	process_config.hard_limit_bytes -= 1U;
+	const auto process_rejected = evaluate_multiway_export_process_gate(plan, process, process_config);
+	EXPECT_EQ(process_rejected.status, MultiwayExportGateStatus::Rejected);
+	EXPECT_EQ(process_rejected.rejection_reason, MultiwayExportProcessRejectionReason::ProcessLimitExceeded);
+
+	const auto scratch = make_multiway_export_scratch_estimate(plan, process_config);
+	MultiwaySystemMemorySnapshot system;
+	system.available_physical_available = true;
+	MultiwayExportSystemGateConfig system_config;
+	system_config.enabled = true;
+	system_config.system_reserve_bytes = 7U;
+	const auto required = plan.serialized_bytes + scratch.total_bytes + system_config.system_reserve_bytes;
+	system.available_physical_bytes = required;
+	EXPECT_EQ(evaluate_multiway_export_system_gate(plan, scratch, system, system_config).status,
+		MultiwayExportGateStatus::Admitted);
+	system.available_physical_bytes = required - 1U;
+	const auto system_rejected = evaluate_multiway_export_system_gate(plan, scratch, system, system_config);
+	EXPECT_EQ(system_rejected.status, MultiwayExportGateStatus::Rejected);
+	EXPECT_EQ(system_rejected.rejection_reason, MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient);
+	EXPECT_TRUE(std::string(multiway_export_process_rejection_reason_name(process_rejected.rejection_reason)) !=
+		std::string(multiway_export_system_rejection_reason_name(system_rejected.rejection_reason)));
+}
+
+TEST_CASE(multiway_system_memory_guard_enforces_total_memory_minus_reserve)
+{
+	using namespace texas::solver::multiway;
+	MultiwaySystemMemoryGuardConfig config;
+	config.enabled = true;
+	config.minimum_available_physical_bytes = 1'500U;
+	config.validate();
+
+	MultiwaySystemMemorySnapshot snapshot;
+	snapshot.total_physical_available = true;
+	snapshot.available_physical_available = true;
+	snapshot.total_physical_bytes = 64'000U;
+	snapshot.available_physical_bytes = config.minimum_available_physical_bytes;
+	snapshot.used_physical_bytes = snapshot.total_physical_bytes - snapshot.available_physical_bytes;
+	const auto admitted = evaluate_multiway_system_memory_guard(snapshot, config);
+	EXPECT_EQ(admitted.status, MultiwaySystemMemoryGuardStatus::Admitted);
+	EXPECT_EQ(admitted.maximum_used_physical_bytes, 62'500U);
+	EXPECT_EQ(admitted.used_physical_bytes, 62'500U);
+
+	snapshot.available_physical_bytes = config.minimum_available_physical_bytes - 1U;
+	snapshot.used_physical_bytes = snapshot.total_physical_bytes - snapshot.available_physical_bytes;
+	const auto rejected = evaluate_multiway_system_memory_guard(snapshot, config);
+	EXPECT_EQ(rejected.status, MultiwaySystemMemoryGuardStatus::Rejected);
+	EXPECT_EQ(std::string(rejected.rejected_category), "system physical memory ceiling");
+	EXPECT_TRUE(rejected.used_physical_bytes > rejected.maximum_used_physical_bytes);
+
+	MultiwaySystemMemorySnapshot unavailable;
+	const auto unavailable_result = evaluate_multiway_system_memory_guard(unavailable, config);
+	EXPECT_EQ(unavailable_result.status, MultiwaySystemMemoryGuardStatus::Unavailable);
+}
+
+TEST_CASE(multiway_export_memory_delta_preserves_process_and_private_categories)
+{
+	using namespace texas::solver::multiway;
+	MultiwayProcessMemorySnapshot before;
+	before.current_working_set_available = true;
+	before.current_working_set_bytes = 100U;
+	before.private_committed_available = true;
+	before.private_committed_bytes = 80U;
+	MultiwayProcessMemorySnapshot after = before;
+	after.current_working_set_bytes = 135U;
+	after.private_committed_bytes = 92U;
+	const auto delta = observe_multiway_export_memory_delta(before, after);
+	EXPECT_EQ(delta.working_set_delta_bytes, 35U);
+	EXPECT_EQ(delta.private_committed_delta_bytes, 12U);
+	EXPECT_EQ(delta.before_working_set_bytes, 100U);
+	EXPECT_EQ(delta.after_private_committed_bytes, 92U);
+	EXPECT_TRUE(delta.valid());
 }
 
 TEST_CASE(multiway_memory_preflight_accounts_for_all_runtime_search_components)

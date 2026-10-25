@@ -17,6 +17,167 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
+		constexpr std::uint64_t kQuantizedProbabilityMax = std::numeric_limits<std::uint16_t>::max();
+
+		bool export_shape_less(
+			const MultiwaySparseRowShape& left,
+			const MultiwaySparseRowShape& right) noexcept
+		{
+			return left.infoset.public_state.value != right.infoset.public_state.value
+				? left.infoset.public_state.value < right.infoset.public_state.value
+				: left.infoset.seat < right.infoset.seat;
+		}
+
+		void validate_export_menu(
+			const MultiwaySparseRowShape& shape,
+			const MultiwayPackedMenuView& menu)
+		{
+			if (shape.infoset.public_state.value == 0U || shape.infoset.seat < 0
+				|| shape.bucket_count == 0U || shape.action_count == 0U
+				|| shape.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS
+				|| menu.actions == nullptr || menu.action_count != shape.action_count
+				|| menu.action_menu_id == 0U)
+			{
+				throw std::invalid_argument("multiway full blueprint export shape is invalid");
+			}
+			for (std::size_t action = 0U; action < menu.action_count; ++action)
+			{
+				if (menu.actions[action].action_index != action
+					|| menu.actions[action].action_menu_id != menu.action_menu_id)
+					throw std::invalid_argument("multiway full blueprint export menu is invalid");
+			}
+		}
+
+		std::uint64_t checked_export_add(std::uint64_t left, std::uint64_t right)
+		{
+			if (right > std::numeric_limits<std::uint64_t>::max() - left)
+				throw std::overflow_error("multiway full blueprint export count overflows");
+			return left + right;
+		}
+
+		std::uint64_t checked_export_multiply(std::uint64_t left, std::uint64_t right)
+		{
+			if (left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left)
+				throw std::overflow_error("multiway full blueprint export count overflows");
+			return left * right;
+		}
+
+		MultiwayFullBlueprintExportPlan make_export_plan(
+			const MultiwaySolverCoordinator::ExportLease& lease,
+			const MultiwayModelIdentity& identity,
+			const MultiwayBlueprintTrainingMetadata& training,
+			std::vector<std::uint32_t>& order)
+		{
+			const auto* compact = lease.compact_storage();
+			const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
+			if (rows.size() > std::numeric_limits<std::uint32_t>::max())
+				throw std::overflow_error("multiway full blueprint export shape index overflows");
+
+			order.clear();
+			if (compact == nullptr)
+			{
+				order.resize(rows.size());
+				for (std::uint32_t index = 0U; index < order.size(); ++index)
+					order[index] = index;
+				std::sort(order.begin(), order.end(), [&rows](std::uint32_t left, std::uint32_t right) {
+					return export_shape_less(rows[left].shape, rows[right].shape);
+				});
+			}
+
+			MultiwayFullBlueprintExportPlan plan;
+			plan.identity = identity;
+			plan.training = training;
+			plan.shape_count = rows.size();
+			plan.compact_direct_order = compact != nullptr;
+			plan.order_index_bytes = plan.compact_direct_order
+				? 0U
+				: checked_export_multiply(plan.shape_count, sizeof(std::uint32_t));
+			const auto visit_shape = [&plan, &lease](const MultiwaySparseRowShape& shape) {
+				const auto menu = lease.public_catalog().packed_menu(shape.infoset.public_state);
+				validate_export_menu(shape, menu);
+				plan.row_count = checked_export_add(plan.row_count, shape.bucket_count);
+				plan.action_count = checked_export_add(
+					plan.action_count,
+					checked_export_multiply(shape.bucket_count, shape.action_count));
+			};
+			if (compact != nullptr)
+			{
+				bool has_previous = false;
+				MultiwaySparseRowShape previous{};
+				for (const auto& metadata : rows)
+				{
+					if (has_previous && !export_shape_less(previous, metadata.shape))
+						throw std::invalid_argument("multiway compact export rows are not ordered");
+					visit_shape(metadata.shape);
+					previous = metadata.shape;
+					has_previous = true;
+				}
+			}
+			else
+			{
+				bool has_previous = false;
+				MultiwaySparseRowShape previous{};
+				for (const auto index : order)
+				{
+					const auto& shape = rows[index].shape;
+					if (has_previous && !export_shape_less(previous, shape))
+						throw std::invalid_argument("multiway Float64 export rows are not ordered");
+					visit_shape(shape);
+					previous = shape;
+					has_previous = true;
+				}
+			}
+			const auto stream = make_multiway_full_blueprint_stream_plan(
+				plan.identity, plan.training, plan.row_count, plan.action_count);
+			plan.serialized_bytes = stream.serialized_bytes;
+			plan.validate();
+			return plan;
+		}
+
+		void quantize_compact_strategy(
+			const Probability* strategy,
+			std::size_t action_count,
+			const MultiwayPackedMenuView& menu,
+			MultiwayQuantizedRootAction* output)
+		{
+			double total = 0.0;
+			for (std::size_t action = 0U; action < action_count; ++action)
+				total += strategy[action];
+			std::uint32_t assigned = 0U;
+			for (std::size_t action = 0U; action < action_count; ++action)
+			{
+				const auto remaining_actions = static_cast<std::uint32_t>(action_count - action - 1U);
+				const auto remaining_mass = std::numeric_limits<std::uint16_t>::max() - assigned;
+				const auto raw_probability = total > 0.0
+					? static_cast<std::uint32_t>(std::floor(strategy[action] / total * kQuantizedProbabilityMax))
+					: 0U;
+				const auto probability = action + 1U == action_count
+					? static_cast<std::uint16_t>(remaining_mass)
+					: static_cast<std::uint16_t>(std::clamp(raw_probability, 1U, remaining_mass - remaining_actions));
+				assigned += probability;
+				output[action] = { menu.actions[action], probability };
+			}
+		}
+
+		void quantize_float64_strategy(
+			const Probability* strategy,
+			std::size_t action_count,
+			const MultiwayPackedMenuView& menu,
+			MultiwayQuantizedRootAction* output)
+		{
+			std::uint32_t assigned = 0U;
+			for (std::size_t action = 0U; action < action_count; ++action)
+			{
+				const auto remaining_actions = static_cast<std::uint32_t>(action_count - action - 1U);
+				const auto remaining_mass = std::numeric_limits<std::uint16_t>::max() - assigned;
+				const auto raw_probability = static_cast<std::uint32_t>(std::floor(strategy[action] * kQuantizedProbabilityMax));
+				const auto probability = action + 1U == action_count
+					? static_cast<std::uint16_t>(remaining_mass)
+					: static_cast<std::uint16_t>(std::clamp(raw_probability, 1U, remaining_mass - remaining_actions));
+				assigned += probability;
+				output[action] = { menu.actions[action], probability };
+			}
+		}
 
 		void sort_blueprint_rows(std::vector<MultiwayBlueprintRow>& rows)
 		{
@@ -32,6 +193,21 @@ namespace texas::solver::multiway
 		}
 
 	} // namespace
+
+	void MultiwayFullBlueprintExportPlan::validate() const
+	{
+		identity.validate();
+		if (shape_count > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("multiway full blueprint export shape index overflows");
+		const auto stream = make_multiway_full_blueprint_stream_plan(
+			identity, training, row_count, action_count);
+		const auto expected_order_index_bytes = compact_direct_order
+			? 0U
+			: checked_export_multiply(shape_count, sizeof(std::uint32_t));
+		if (serialized_bytes != stream.serialized_bytes
+			|| order_index_bytes != expected_order_index_bytes)
+			throw std::invalid_argument("multiway full blueprint export plan is invalid");
+	}
 
 	void MultiwayBlueprintTrainingCheckpoint::validate() const
 	{
@@ -316,6 +492,7 @@ namespace texas::solver::multiway
 		status_.working_set_gate.hard_limit_bytes = working_set_monitor_.gate.hard_limit_bytes;
 		status_.working_set_gate.resident_allowance_bytes = working_set_monitor_.gate.resident_allowance_bytes;
 		status_.working_set_gate.estimated_working_set_bytes = memory_ledger.estimated_working_set_peak_bytes;
+		status_.system_memory_guard_config = working_set_monitor_.system_memory_guard;
 		status_.process_memory_snapshots = process_memory_snapshots;
 		status_.memory_subsystem_snapshots = memory_subsystem_snapshots;
 	}
@@ -338,6 +515,24 @@ namespace texas::solver::multiway
 		}
 	}
 
+	void MultiwayBlueprintTrainer::record_export_memory_snapshot(
+		MultiwayMemoryPhase phase,
+		MultiwayProcessMemorySnapshot snapshot,
+		MultiwayMemoryComponent export_buffers) const
+	{
+		if (status_.process_memory_snapshots.enabled &&
+			!status_.process_memory_snapshots.record(phase, snapshot))
+			throw std::logic_error("multiway training process memory snapshot phase order is invalid");
+		if (status_.memory_subsystem_snapshots.enabled)
+		{
+			auto subsystems = capture_multiway_memory_subsystems(
+				buckets_, coordinator_, batch_runner_, continuation_selector_, nullptr,
+				{}, export_buffers);
+			if (!status_.memory_subsystem_snapshots.record(phase, subsystems))
+				throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
+		}
+	}
+
 	void MultiwayBlueprintTrainer::run_batches(
 		std::uint64_t batch_count,
 		std::uint64_t trajectories_per_batch,
@@ -352,6 +547,24 @@ namespace texas::solver::multiway
 		for (std::uint64_t batch = 0; batch < batch_count; ++batch)
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.trainer.batch");
+			const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
+				? capture_multiway_system_memory_snapshot()
+				: working_set_monitor_.system_memory_observer(working_set_monitor_.system_memory_observer_context);
+			const auto system_memory_guard = evaluate_multiway_system_memory_guard(
+				system_memory, working_set_monitor_.system_memory_guard);
+			status_.system_memory_guard = system_memory_guard;
+			if (system_memory_guard.blocked())
+			{
+				status_.failed = true;
+				throw std::runtime_error(
+					std::string("multiway blueprint training system memory abort: abort_phase=runtime; rejected_category=") +
+					system_memory_guard.rejected_category + "; message=" + system_memory_guard.message +
+					"; used_physical_bytes=" + std::to_string(system_memory_guard.used_physical_bytes) +
+					"; maximum_used_physical_bytes=" + std::to_string(system_memory_guard.maximum_used_physical_bytes) +
+					"; total_physical_bytes=" + std::to_string(system_memory_guard.total_physical_bytes) +
+					"; available_physical_bytes=" + std::to_string(system_memory_guard.available_physical_bytes) +
+					"; minimum_available_physical_bytes=" + std::to_string(system_memory_guard.minimum_available_physical_bytes));
+			}
 			const auto pre_batch_memory = working_set_monitor_.observer == nullptr
 				? capture_multiway_process_memory_snapshot()
 				: working_set_monitor_.observer(working_set_monitor_.observer_context);
@@ -789,6 +1002,141 @@ namespace texas::solver::multiway
 		return artifact;
 	}
 
+	MultiwayFullBlueprintExportResult MultiwayBlueprintTrainer::save_full_policy_atomic(
+		const std::filesystem::path& path) const
+	{
+		const auto export_started = std::chrono::steady_clock::now();
+		auto lease = coordinator_->acquire_export_lease();
+		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
+		std::vector<std::uint32_t> order;
+		const auto plan = make_export_plan(lease, identity_, training, order);
+		const auto stream_plan = make_multiway_full_blueprint_stream_plan(
+			plan.identity, plan.training, plan.row_count, plan.action_count);
+		std::array<Probability, MULTIWAY_MAX_ABSTRACTED_ACTIONS> strategy{};
+		std::array<MultiwayQuantizedRootAction, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
+		const auto peak_scratch_bytes = checked_export_add(
+			checked_export_add(plan.order_index_bytes, sizeof(strategy)), sizeof(actions));
+		MultiwayExportTelemetry telemetry;
+		telemetry.attempted = true;
+		telemetry.plan = {
+			MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION,
+			plan.shape_count,
+			plan.row_count,
+			plan.action_count,
+			plan.serialized_bytes,
+			plan.order_index_bytes,
+			plan.compact_direct_order };
+		auto export_gate = working_set_monitor_.export_gate;
+		if (export_gate.process.mapped_residency_allowance_bytes == 0U)
+			export_gate.process.mapped_residency_allowance_bytes = status_.memory_ledger.mapped_resident_allowance_bytes;
+		telemetry.scratch = make_multiway_export_scratch_estimate(telemetry.plan, export_gate.process);
+		const auto export_component = [peak_scratch_bytes]() noexcept {
+			MultiwayMemoryComponent component;
+			component.add_buffer(1U, 1U, static_cast<std::size_t>(peak_scratch_bytes));
+			return component;
+		};
+		telemetry.system_before = working_set_monitor_.export_system_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.export_system_observer(working_set_monitor_.export_observer_context);
+		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
+			telemetry.system_before, working_set_monitor_.system_memory_guard);
+		if (status_.system_memory_guard.blocked())
+		{
+			status_.failed = true;
+			status_.export_telemetry = telemetry;
+			throw std::runtime_error(
+				std::string("multiway blueprint export system memory abort: rejected_category=") +
+				status_.system_memory_guard.rejected_category + "; message=" +
+				status_.system_memory_guard.message + "; used_physical_bytes=" +
+				std::to_string(status_.system_memory_guard.used_physical_bytes) +
+				"; maximum_used_physical_bytes=" +
+				std::to_string(status_.system_memory_guard.maximum_used_physical_bytes));
+		}
+		const auto before_export = working_set_monitor_.export_process_observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.export_process_observer(working_set_monitor_.export_observer_context);
+		telemetry.process_estimate = make_multiway_export_process_estimate(
+			telemetry.plan, before_export, export_gate.process);
+		status_.memory_ledger.export_scratch_bytes = telemetry.scratch.total_bytes;
+		status_.memory_ledger.export_output_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_process_peak_bytes = telemetry.process_estimate.estimated_process_export_peak_bytes;
+		record_export_memory_snapshot(MultiwayMemoryPhase::BeforeExport, before_export, export_component());
+		telemetry.process_gate = evaluate_multiway_export_process_gate(
+			telemetry.plan, before_export, export_gate.process);
+		telemetry.system_gate = evaluate_multiway_export_system_gate(
+			telemetry.plan, telemetry.scratch, telemetry.system_before, export_gate.system);
+		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+		if (telemetry.process_gate.blocked() || telemetry.system_gate.blocked())
+		{
+			status_.failed = true;
+			status_.export_telemetry = telemetry;
+			const auto reason = telemetry.process_gate.blocked()
+				? multiway_export_process_rejection_reason_name(telemetry.process_gate.rejection_reason)
+				: multiway_export_system_rejection_reason_name(telemetry.system_gate.rejection_reason);
+			throw std::runtime_error(std::string("multiway blueprint export memory gate rejected: ") + reason);
+		}
+		MultiwayFullBlueprintStreamWriter writer(path, stream_plan);
+		const auto* compact = lease.compact_storage();
+		const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
+		const auto emit_shape = [&](const MultiwaySparseRowShape& shape) {
+			const auto menu = lease.public_catalog().packed_menu(shape.infoset.public_state);
+			for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
+			{
+				if (compact != nullptr)
+					compact->average_strategy_into(shape.infoset, bucket, strategy.data(), shape.action_count);
+				else
+					lease.storage().average_strategy_into(shape.infoset, bucket, strategy.data(), shape.action_count);
+				if (compact != nullptr)
+					quantize_compact_strategy(strategy.data(), shape.action_count, menu, actions.data());
+				else
+					quantize_float64_strategy(strategy.data(), shape.action_count, menu, actions.data());
+				MultiwayFullBlueprintRowView row;
+				row.infoset = shape.infoset;
+				row.bucket = bucket;
+				row.action_menu_id = menu.action_menu_id;
+				row.actions = actions.data();
+				row.action_count = shape.action_count;
+				writer.write_row(row);
+			}
+		};
+		if (compact != nullptr)
+		{
+			for (const auto& metadata : rows)
+				emit_shape(metadata.shape);
+		}
+		else
+		{
+			for (const auto index : order)
+				emit_shape(rows[index].shape);
+		}
+		const auto stream_result = writer.finish();
+		const auto after_export = working_set_monitor_.export_process_observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.export_process_observer(working_set_monitor_.export_observer_context);
+		telemetry.system_after = working_set_monitor_.export_system_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.export_system_observer(working_set_monitor_.export_observer_context);
+		telemetry.observed_delta = observe_multiway_export_memory_delta(before_export, after_export);
+		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_observed_before_working_set_bytes = telemetry.observed_delta.before_working_set_bytes;
+		status_.memory_ledger.export_observed_after_working_set_bytes = telemetry.observed_delta.after_working_set_bytes;
+		telemetry.result_bytes = stream_result.serialized_bytes;
+		telemetry.payload_hash = stream_result.payload_hash;
+		telemetry.duration_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - export_started).count());
+		telemetry.publication_mode = stream_result.publication_mode;
+		telemetry.succeeded = true;
+		status_.export_telemetry = telemetry;
+		record_export_memory_snapshot(MultiwayMemoryPhase::AfterExport, after_export, export_component());
+		MultiwayFullBlueprintExportResult result;
+		result.plan = plan;
+		result.payload_hash = stream_result.payload_hash;
+		result.peak_scratch_bytes = peak_scratch_bytes;
+		result.publication_mode = stream_result.publication_mode;
+		return result;
+	}
+
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const
 	{
 		MultiwayBlueprintTrainingCheckpoint result;
@@ -1005,6 +1353,12 @@ namespace texas::solver::multiway
 		auto result = trainer_->export_full_policy();
 		export_buffers_ = result.memory_snapshot();
 		return result;
+	}
+
+	MultiwayFullBlueprintExportResult MultiwayBlueprintTrainingSession::save_full_policy_atomic(
+		const std::filesystem::path& path) const
+	{
+		return trainer_->save_full_policy_atomic(path);
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint() const

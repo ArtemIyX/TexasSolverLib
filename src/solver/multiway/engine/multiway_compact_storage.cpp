@@ -347,20 +347,36 @@ namespace texas::solver::multiway
 		if (row == nullptr || bucket >= row->shape.bucket_count)
 			throw std::out_of_range("compact storage lookup");
 		std::vector<Probability> result(row->shape.action_count);
+		average_strategy_into(infoset, bucket, result.data(), result.size());
+		return result;
+	}
+
+	void MultiwayCompactStorage::average_strategy_into(
+		MultiwayInfosetId infoset, std::uint32_t bucket,
+		Probability* output, std::size_t output_size) const
+	{
+		const auto* row = metadata(infoset);
+		if (row == nullptr || bucket >= row->shape.bucket_count)
+			throw std::out_of_range("compact storage lookup");
+		if (output == nullptr || output_size != row->shape.action_count)
+			throw std::invalid_argument("compact average strategy output size mismatch");
 		const auto* active_page = page_for_bucket(*row, bucket);
 		std::uint64_t total = 0U;
 		for (std::uint8_t action = 0U; action < row->shape.action_count; ++action)
 		{
+			output[action] = 0.0;
 			if (active_page != nullptr)
-				result[action] = static_cast<double>(strategy_mass_[active_page->strategy_sum_offset + (page_cell(*active_page, bucket, action, page_width_) - active_page->regret_offset)]) / static_cast<double>(kMassScale);
+				output[action] = static_cast<double>(strategy_mass_[active_page->strategy_sum_offset + (page_cell(*active_page, bucket, action, page_width_) - active_page->regret_offset)]) / static_cast<double>(kMassScale);
 			total += active_page == nullptr ? 0U : strategy_mass_[active_page->strategy_sum_offset + (page_cell(*active_page, bucket, action, page_width_) - active_page->regret_offset)];
 		}
 		if (total == 0U)
-			std::fill(result.begin(), result.end(), 1.0 / result.size());
+			std::fill(output, output + output_size, 1.0 / output_size);
 		else
-			for (auto& probability : result)
+			for (std::size_t action = 0U; action < output_size; ++action)
+			{
+				auto& probability = output[action];
 				probability /= static_cast<double>(total) / static_cast<double>(kMassScale);
-		return result;
+			}
 	}
 
 	bool MultiwayCompactStorage::action_below_regret(MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action, double threshold) const noexcept

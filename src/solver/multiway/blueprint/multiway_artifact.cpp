@@ -6,12 +6,15 @@
 #include "core/portable_binary.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace texas::solver::multiway
 {
@@ -23,8 +26,34 @@ namespace texas::solver::multiway
 		constexpr std::array<char, 8> kManifestMagic = { 'M', 'W', 'M', 'F', '0', '0', '0', '4' };
 		constexpr std::array<char, 8> kFullBlueprintMagic = { 'M', 'W', 'F', 'B', '0', '0', '0', '2' };
 		constexpr std::uint64_t kFullBlueprintOperatingBytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
+		constexpr std::size_t kMaximumActionsPerRow = 64U;
+		constexpr std::size_t kStreamBufferBytes = 64U * 1024U;
+		constexpr std::uint64_t kSerializedHeaderBytes = 176U;
+		constexpr std::uint64_t kSerializedRowFixedBytes = 28U;
+		constexpr std::uint64_t kSerializedActionBytes = 19U;
+		constexpr std::uint64_t kSerializedTrailerBytes = 8U;
 		using texas::core::fingerprint::append_u64;
 		using texas::core::fingerprint::finish;
+
+		std::uint64_t checked_add(
+			std::uint64_t left,
+			std::uint64_t right,
+			const char* message)
+		{
+			if (right > std::numeric_limits<std::uint64_t>::max() - left)
+				throw std::length_error(message);
+			return left + right;
+		}
+
+		std::uint64_t checked_multiply(
+			std::uint64_t left,
+			std::uint64_t right,
+			const char* message)
+		{
+			if (left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left)
+				throw std::length_error(message);
+			return left * right;
+		}
 
 		void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity)
 		{
@@ -48,20 +77,6 @@ namespace texas::solver::multiway
 			return identity;
 		}
 
-		void write_training(std::ofstream& out, const MultiwayBlueprintTrainingMetadata& training)
-		{
-			portable::write_u64(out, training.batches);
-			portable::write_u64(out, training.trajectories);
-			portable::write_u64(out, training.deterministic_seed);
-			portable::write_u64(out, training.late_window_start_batch);
-			portable::write_u64(out, training.schedule_hash);
-			portable::write_u64(out, training.pruned_negative_regrets);
-			portable::write_u8(out, training.linear_iteration_weighting);
-			portable::write_u8(out, training.discounting_enabled);
-			portable::write_u8(out, training.negative_regret_pruning_enabled);
-			portable::write_u8(out, training.reserved);
-		}
-
 		MultiwayBlueprintTrainingMetadata read_training(std::ifstream& in)
 		{
 			MultiwayBlueprintTrainingMetadata training;
@@ -72,12 +87,6 @@ namespace texas::solver::multiway
 			return training;
 		}
 
-		void write_infoset(std::ofstream& out, const MultiwayInfosetId& infoset)
-		{
-			portable::write_u64(out, infoset.public_state.value);
-			portable::write_i32(out, infoset.seat);
-		}
-
 		MultiwayInfosetId read_infoset(std::ifstream& in)
 		{
 			MultiwayInfosetId infoset;
@@ -86,15 +95,6 @@ namespace texas::solver::multiway
 				throw std::runtime_error("multiway artifact is truncated");
 			}
 			return infoset;
-		}
-
-		void write_action(std::ofstream& out, const MultiwayQuantizedRootAction& action)
-		{
-			portable::write_u8(out, static_cast<std::uint8_t>(action.action.action));
-			portable::write_u32(out, action.action.action_index);
-			portable::write_i32(out, action.action.target_street_contribution);
-			portable::write_u64(out, action.action.action_menu_id);
-			portable::write_u16(out, action.probability);
 		}
 
 		MultiwayQuantizedRootAction read_action(std::ifstream& in)
@@ -168,6 +168,199 @@ namespace texas::solver::multiway
 			append_u64(hash, action.action_menu_id);
 		}
 
+		void append_training(
+			std::uint64_t& hash,
+			const MultiwayBlueprintTrainingMetadata& training) noexcept
+		{
+			append_u64(hash, training.batches);
+			append_u64(hash, training.trajectories);
+			append_u64(hash, training.deterministic_seed);
+			append_u64(hash, training.late_window_start_batch);
+			append_u64(hash, training.schedule_hash);
+			append_u64(hash, training.pruned_negative_regrets);
+			append_u64(hash, training.linear_iteration_weighting);
+			append_u64(hash, training.discounting_enabled);
+			append_u64(hash, training.negative_regret_pruning_enabled);
+		}
+
+		struct RowKey
+		{
+			std::uint64_t public_state = 0U;
+			core::PlayerId seat = -1;
+			std::uint32_t bucket = 0U;
+			std::uint64_t action_menu_id = 0U;
+		};
+
+		RowKey row_key(const MultiwayFullBlueprintRowView& row) noexcept
+		{
+			return { row.infoset.public_state.value, row.infoset.seat, row.bucket, row.action_menu_id };
+		}
+
+		bool row_key_less(const RowKey& left, const RowKey& right) noexcept
+		{
+			if (left.public_state != right.public_state)
+				return left.public_state < right.public_state;
+			if (left.seat != right.seat)
+				return left.seat < right.seat;
+			if (left.bucket != right.bucket)
+				return left.bucket < right.bucket;
+			return left.action_menu_id < right.action_menu_id;
+		}
+
+		bool row_key_equal(const RowKey& left, const RowKey& right) noexcept
+		{
+			return left.public_state == right.public_state && left.seat == right.seat
+				&& left.bucket == right.bucket && left.action_menu_id == right.action_menu_id;
+		}
+
+		void validate_row(const MultiwayFullBlueprintRowView& row)
+		{
+			if (row.infoset.public_state.value == 0U || row.infoset.seat < 0
+				|| row.action_menu_id == 0U || row.actions == nullptr || row.action_count == 0U
+				|| row.action_count > kMaximumActionsPerRow)
+			{
+				throw std::invalid_argument("multiway full blueprint row is incomplete");
+			}
+
+			std::uint32_t total = 0U;
+			for (std::size_t index = 0U; index < row.action_count; ++index)
+			{
+				const auto& action = row.actions[index];
+				if (action.action.action_index != index || action.action.action_menu_id != row.action_menu_id
+					|| action.probability == 0U)
+				{
+					throw std::invalid_argument("multiway full blueprint row has invalid action data");
+				}
+				if (action.probability > 65535U - total)
+					throw std::invalid_argument("multiway full blueprint row probability sum overflows");
+				total += action.probability;
+			}
+			if (total != 65535U)
+				throw std::invalid_argument("multiway full blueprint row is not normalized");
+		}
+
+		std::uint64_t materialized_action_count(const std::vector<MultiwayBlueprintRow>& rows)
+		{
+			std::uint64_t action_count = 0U;
+			for (const auto& row : rows)
+			{
+				validate_row(MultiwayFullBlueprintRowView(row));
+				action_count = checked_add(
+					action_count,
+					static_cast<std::uint64_t>(row.actions.size()),
+					"multiway full blueprint action count is too large");
+			}
+			return action_count;
+		}
+
+		void validate_materialized_rows(
+			const std::vector<MultiwayBlueprintRow>& rows)
+		{
+			if (rows.size() > std::numeric_limits<std::uint32_t>::max())
+				throw std::length_error("multiway full blueprint row count exceeds the index width");
+
+			bool already_sorted = true;
+			RowKey previous{};
+			bool has_previous = false;
+			for (const auto& row : rows)
+			{
+				const MultiwayFullBlueprintRowView view(row);
+				validate_row(view);
+				const auto current = row_key(view);
+				if (has_previous && !row_key_less(previous, current))
+					already_sorted = false;
+				previous = current;
+				has_previous = true;
+			}
+
+			if (already_sorted)
+				return;
+
+			std::vector<std::uint32_t> row_indices(rows.size());
+			for (std::uint32_t index = 0U; index < row_indices.size(); ++index)
+				row_indices[index] = index;
+			std::sort(row_indices.begin(), row_indices.end(), [&](std::uint32_t left, std::uint32_t right) {
+				return row_key_less(
+					row_key(MultiwayFullBlueprintRowView(rows[left])),
+					row_key(MultiwayFullBlueprintRowView(rows[right])));
+			});
+			for (std::size_t index = 1U; index < row_indices.size(); ++index)
+			{
+				const auto previous_key = row_key(MultiwayFullBlueprintRowView(rows[row_indices[index - 1U]]));
+				const auto current_key = row_key(MultiwayFullBlueprintRowView(rows[row_indices[index]]));
+				if (row_key_equal(previous_key, current_key))
+					throw std::invalid_argument("multiway full blueprint has duplicate row keys");
+			}
+		}
+
+		std::uint64_t serialized_size(
+			std::uint64_t row_count,
+			std::uint64_t action_count)
+		{
+			auto bytes = checked_add(kSerializedHeaderBytes, kSerializedTrailerBytes, "multiway full blueprint size is too large");
+			bytes = checked_add(bytes, checked_multiply(row_count, kSerializedRowFixedBytes, "multiway full blueprint size is too large"), "multiway full blueprint size is too large");
+			bytes = checked_add(bytes, checked_multiply(action_count, kSerializedActionBytes, "multiway full blueprint size is too large"), "multiway full blueprint size is too large");
+			return bytes;
+		}
+
+		class BufferedEncoder
+		{
+		public:
+			explicit BufferedEncoder(std::ofstream& out) noexcept : out_(out) {}
+
+			void bytes(const char* data, std::size_t count)
+			{
+				for (std::size_t index = 0U; index < count; ++index)
+					byte(static_cast<std::uint8_t>(data[index]));
+			}
+
+			void byte(std::uint8_t value)
+			{
+				buffer_[used_++] = static_cast<char>(value);
+				++encoded_bytes_;
+				if (used_ == buffer_.size())
+					flush();
+			}
+
+			void u16(std::uint16_t value)
+			{
+				byte(static_cast<std::uint8_t>(value));
+				byte(static_cast<std::uint8_t>(value >> 8U));
+			}
+
+			void u32(std::uint32_t value)
+			{
+				for (std::uint8_t shift = 0U; shift < 32U; shift += 8U)
+					byte(static_cast<std::uint8_t>(value >> shift));
+			}
+
+			void u64(std::uint64_t value)
+			{
+				for (std::uint8_t shift = 0U; shift < 64U; shift += 8U)
+					byte(static_cast<std::uint8_t>(value >> shift));
+			}
+
+			void i32(std::int32_t value) { u32(static_cast<std::uint32_t>(value)); }
+
+			void flush()
+			{
+				if (used_ == 0U)
+					return;
+				out_.write(buffer_.data(), static_cast<std::streamsize>(used_));
+				if (!out_)
+					throw std::runtime_error("multiway full blueprint write failed");
+				used_ = 0U;
+			}
+
+			[[nodiscard]] std::uint64_t encoded_bytes() const noexcept { return encoded_bytes_; }
+
+		private:
+			std::ofstream& out_;
+			std::array<char, kStreamBufferBytes> buffer_{};
+			std::size_t used_ = 0U;
+			std::uint64_t encoded_bytes_ = 0U;
+		};
+
 		void append_initial_config(std::uint64_t& hash, const MultiwayGameConfig& config) noexcept
 		{
 			append_u64(hash, config.starting_stacks.size());
@@ -232,6 +425,160 @@ namespace texas::solver::multiway
 
 	} // namespace
 
+	void MultiwayFullBlueprintStreamPlan::validate() const
+	{
+		if (schema_version != MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION)
+			throw std::invalid_argument("multiway full blueprint stream has invalid schema");
+		identity.validate();
+		if (serialized_bytes != serialized_size(row_count, action_count))
+			throw std::invalid_argument("multiway full blueprint stream size plan is invalid");
+	}
+
+	MultiwayFullBlueprintStreamPlan make_multiway_full_blueprint_stream_plan(
+		const MultiwayModelIdentity& identity,
+		const MultiwayBlueprintTrainingMetadata& training,
+		std::uint64_t row_count,
+		std::uint64_t action_count)
+	{
+		MultiwayFullBlueprintStreamPlan plan;
+		plan.identity = identity;
+		plan.training = training;
+		plan.row_count = row_count;
+		plan.action_count = action_count;
+		plan.serialized_bytes = serialized_size(row_count, action_count);
+		plan.validate();
+		return plan;
+	}
+
+	void MultiwayFullBlueprintPayloadHasher::begin(
+		std::uint32_t schema_version,
+		const MultiwayModelIdentity& identity,
+		const MultiwayBlueprintTrainingMetadata& training,
+		std::uint64_t row_count) noexcept
+	{
+		hash_ = texas::core::fingerprint::FNV1A_OFFSET;
+		append_u64(hash_, schema_version);
+		append_identity(hash_, identity);
+		append_training(hash_, training);
+		append_u64(hash_, row_count);
+	}
+
+	void MultiwayFullBlueprintPayloadHasher::append_row(
+		const MultiwayFullBlueprintRowView& row) noexcept
+	{
+		append_u64(hash_, row.infoset.public_state.value);
+		append_u64(hash_, static_cast<std::uint64_t>(row.infoset.seat));
+		append_u64(hash_, row.bucket);
+		append_u64(hash_, row.action_menu_id);
+		append_u64(hash_, row.action_count);
+		for (std::size_t index = 0U; index < row.action_count; ++index)
+		{
+			append_action(hash_, row.actions[index].action);
+			append_u64(hash_, row.actions[index].probability);
+		}
+	}
+
+	std::uint64_t MultiwayFullBlueprintPayloadHasher::finish() const noexcept
+	{
+		return texas::core::fingerprint::finish(hash_);
+	}
+
+	void write_stream_header(
+		BufferedEncoder& encoder,
+		const MultiwayFullBlueprintStreamPlan& plan)
+	{
+		encoder.bytes(kFullBlueprintMagic.data(), kFullBlueprintMagic.size());
+		encoder.u32(plan.schema_version);
+		visit_multiway_model_identity_fields(plan.identity, [&](std::uint64_t field) {
+			encoder.u64(field);
+		});
+		encoder.u64(plan.training.batches);
+		encoder.u64(plan.training.trajectories);
+		encoder.u64(plan.training.deterministic_seed);
+		encoder.u64(plan.training.late_window_start_batch);
+		encoder.u64(plan.training.schedule_hash);
+		encoder.u64(plan.training.pruned_negative_regrets);
+		encoder.byte(plan.training.linear_iteration_weighting);
+		encoder.byte(plan.training.discounting_enabled);
+		encoder.byte(plan.training.negative_regret_pruning_enabled);
+		encoder.byte(plan.training.reserved);
+		encoder.u64(plan.row_count);
+	}
+
+	void write_stream_row(
+		BufferedEncoder& encoder,
+		const MultiwayFullBlueprintRowView& row)
+	{
+		encoder.u64(row.infoset.public_state.value);
+		encoder.i32(row.infoset.seat);
+		encoder.u32(row.bucket);
+		encoder.u64(row.action_menu_id);
+		encoder.u32(static_cast<std::uint32_t>(row.action_count));
+		for (std::size_t index = 0U; index < row.action_count; ++index)
+		{
+			const auto& action = row.actions[index];
+			encoder.byte(static_cast<std::uint8_t>(action.action.action));
+			encoder.u32(action.action.action_index);
+			encoder.i32(action.action.target_street_contribution);
+			encoder.u64(action.action.action_menu_id);
+			encoder.u16(action.probability);
+		}
+	}
+
+	struct TemporaryFileCleanup
+	{
+		explicit TemporaryFileCleanup(std::filesystem::path file) : file(std::move(file)) {}
+		~TemporaryFileCleanup() noexcept
+		{
+			if (!active)
+				return;
+			std::error_code error;
+			std::filesystem::remove(file, error);
+		}
+
+		std::filesystem::path file;
+		bool active = true;
+	};
+
+	struct MultiwayFullBlueprintStreamWriter::Impl
+	{
+		Impl(
+			const std::filesystem::path& destination_path,
+			const MultiwayFullBlueprintStreamPlan& stream_plan,
+			MultiwayFullBlueprintStreamOptions stream_options)
+			: destination(destination_path), temporary(destination_path.string() + ".tmp"),
+			  plan(stream_plan), options(stream_options), encoder(output)
+		{
+			plan.validate();
+			cleanup = std::make_unique<TemporaryFileCleanup>(temporary);
+			output.open(temporary, std::ios::binary | std::ios::trunc);
+			if (!output)
+				throw std::runtime_error("multiway full blueprint temporary file cannot be opened");
+			hasher.begin(plan.schema_version, plan.identity, plan.training, plan.row_count);
+			write_stream_header(encoder, plan);
+		}
+
+		~Impl()
+		{
+			if (output.is_open())
+				output.close();
+		}
+
+		std::filesystem::path destination;
+		std::filesystem::path temporary;
+		MultiwayFullBlueprintStreamPlan plan;
+		MultiwayFullBlueprintStreamOptions options;
+		std::ofstream output;
+		BufferedEncoder encoder;
+		std::unique_ptr<TemporaryFileCleanup> cleanup;
+		MultiwayFullBlueprintPayloadHasher hasher;
+		RowKey previous_key{};
+		bool has_previous_key = false;
+		bool finished = false;
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+	};
+
 	void MultiwayFullBlueprintArtifact::validate() const
 	{
 		if (schema_version != MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION || payload_hash == 0U)
@@ -239,8 +586,7 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("multiway full blueprint has invalid schema or hash");
 		}
 		identity.validate();
-		const MultiwayBlueprintStore store(identity, rows);
-		(void)store;
+		validate_materialized_rows(rows);
 		if (payload_hash != MultiwayFullBlueprintArtifacts::payload_hash(*this))
 		{
 			throw std::invalid_argument("multiway full blueprint payload hash does not match");
@@ -259,67 +605,126 @@ namespace texas::solver::multiway
 	std::uint64_t MultiwayFullBlueprintArtifacts::payload_hash(
 		const MultiwayFullBlueprintArtifact& artifact) noexcept
 	{
-		auto hash = texas::core::fingerprint::FNV1A_OFFSET;
-		append_u64(hash, artifact.schema_version);
-		append_identity(hash, artifact.identity);
-		append_u64(hash, artifact.training.batches);
-		append_u64(hash, artifact.training.trajectories);
-		append_u64(hash, artifact.training.deterministic_seed);
-		append_u64(hash, artifact.training.late_window_start_batch);
-		append_u64(hash, artifact.training.schedule_hash);
-		append_u64(hash, artifact.training.pruned_negative_regrets);
-		append_u64(hash, artifact.training.linear_iteration_weighting);
-		append_u64(hash, artifact.training.discounting_enabled);
-		append_u64(hash, artifact.training.negative_regret_pruning_enabled);
-		append_u64(hash, artifact.rows.size());
+		MultiwayFullBlueprintPayloadHasher hasher;
+		hasher.begin(artifact.schema_version, artifact.identity, artifact.training, artifact.rows.size());
 		for (const auto& row : artifact.rows)
+			hasher.append_row(MultiwayFullBlueprintRowView(row));
+		return hasher.finish();
+	}
+
+	MultiwayFullBlueprintStreamWriter::MultiwayFullBlueprintStreamWriter(
+		const std::filesystem::path& destination,
+		const MultiwayFullBlueprintStreamPlan& plan,
+		MultiwayFullBlueprintStreamOptions options)
+		: impl_(std::make_unique<Impl>(destination, plan, options))
+	{
+	}
+
+	MultiwayFullBlueprintStreamWriter::~MultiwayFullBlueprintStreamWriter() = default;
+
+	void MultiwayFullBlueprintStreamWriter::write_row(
+		const MultiwayFullBlueprintRowView& row)
+	{
+		if (impl_ == nullptr || impl_->finished)
+			throw std::logic_error("multiway full blueprint stream is already finished");
+		if (impl_->options.failure_point == MultiwayFullBlueprintStreamFailurePoint::Write)
+			throw std::runtime_error("injected multiway full blueprint write failure");
+		validate_row(row);
+		if (impl_->row_count >= impl_->plan.row_count)
+			throw std::length_error("multiway full blueprint emitted too many rows");
+		const auto row_actions = static_cast<std::uint64_t>(row.action_count);
+		if (row_actions > impl_->plan.action_count - impl_->action_count)
+			throw std::length_error("multiway full blueprint emitted too many actions");
+		const auto current_key = row_key(row);
+		if (impl_->options.require_strict_row_order && impl_->has_previous_key
+			&& !row_key_less(impl_->previous_key, current_key))
 		{
-			append_u64(hash, row.infoset.public_state.value);
-			append_u64(hash, static_cast<std::uint64_t>(row.infoset.seat));
-			append_u64(hash, row.bucket);
-			append_u64(hash, row.action_menu_id);
-			append_u64(hash, row.actions.size());
-			for (const auto& action : row.actions)
-			{
-				append_action(hash, action.action);
-				append_u64(hash, action.probability);
-			}
+			throw std::invalid_argument("multiway full blueprint emitted row keys are not strictly increasing");
 		}
-		return finish(hash);
+
+		impl_->hasher.append_row(row);
+		write_stream_row(impl_->encoder, row);
+		impl_->previous_key = current_key;
+		impl_->has_previous_key = true;
+		++impl_->row_count;
+		impl_->action_count += row_actions;
+	}
+
+	MultiwayFullBlueprintStreamResult MultiwayFullBlueprintStreamWriter::finish()
+	{
+		if (impl_ == nullptr || impl_->finished)
+			throw std::logic_error("multiway full blueprint stream is already finished");
+		if (impl_->row_count != impl_->plan.row_count || impl_->action_count != impl_->plan.action_count)
+			throw std::invalid_argument("multiway full blueprint emitted counts do not match the plan");
+
+		const auto payload_hash = impl_->hasher.finish();
+		impl_->encoder.u64(payload_hash);
+		impl_->encoder.flush();
+		if (impl_->encoder.encoded_bytes() != impl_->plan.serialized_bytes)
+			throw std::runtime_error("multiway full blueprint serialized size does not match the plan");
+		impl_->output.flush();
+		if (!impl_->output)
+			throw std::runtime_error("multiway full blueprint write flush failed");
+		if (impl_->options.failure_point == MultiwayFullBlueprintStreamFailurePoint::Close)
+			throw std::runtime_error("injected multiway full blueprint close failure");
+		impl_->output.close();
+		if (!impl_->output)
+			throw std::runtime_error("multiway full blueprint close failed");
+		if (impl_->options.failure_point == MultiwayFullBlueprintStreamFailurePoint::Publication)
+			throw std::runtime_error("injected multiway full blueprint publication failure");
+
+		const auto publication_mode = texas::core::publish_atomic_replace(
+			impl_->temporary,
+			impl_->destination,
+			"multiway full blueprint publish failed",
+			texas::core::AtomicPublishFallbackPolicy::RejectCopyFallback);
+		if (publication_mode == texas::core::AtomicPublishMode::CopyFallback)
+			throw std::runtime_error("multiway full blueprint publication was not atomic");
+		impl_->cleanup->active = false;
+		impl_->finished = true;
+		return { impl_->row_count, impl_->action_count, impl_->encoder.encoded_bytes(), payload_hash, publication_mode };
+	}
+
+	MultiwayFullBlueprintStreamResult MultiwayFullBlueprintArtifacts::save_atomic_streaming(
+		const std::filesystem::path& path,
+		const MultiwayFullBlueprintStreamPlan& plan,
+		bool (*produce_row)(std::uint64_t, MultiwayFullBlueprintRowView&, void*),
+		void* context)
+	{
+		plan.validate();
+		if (produce_row == nullptr)
+			throw std::invalid_argument("multiway full blueprint row producer is missing");
+		MultiwayFullBlueprintStreamWriter writer(path, plan);
+		for (std::uint64_t index = 0U; index < plan.row_count; ++index)
+		{
+			MultiwayFullBlueprintRowView row;
+			if (!produce_row(index, row, context))
+				throw std::runtime_error("multiway full blueprint row production failed");
+			writer.write_row(row);
+		}
+		return writer.finish();
 	}
 
 	void MultiwayFullBlueprintArtifacts::save_atomic(
 		const std::filesystem::path& path,
 		const MultiwayFullBlueprintArtifact& artifact)
 	{
-		auto sealed = artifact;
-		sealed.payload_hash = payload_hash(sealed);
-		sealed.validate();
-		const auto temporary = path.string() + ".tmp";
-		std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-		if (!out)
-			throw std::runtime_error("multiway full blueprint temporary file cannot be opened");
-		out.write(kFullBlueprintMagic.data(), static_cast<std::streamsize>(kFullBlueprintMagic.size()));
-		portable::write_u32(out, sealed.schema_version);
-		write_identity(out, sealed.identity);
-		write_training(out, sealed.training);
-		const auto rows = static_cast<std::uint64_t>(sealed.rows.size());
-		portable::write_u64(out, rows);
-		for (const auto& row : sealed.rows)
-		{
-			write_infoset(out, row.infoset);
-			portable::write_u32(out, row.bucket);
-			portable::write_u64(out, row.action_menu_id);
-			const auto actions = static_cast<std::uint32_t>(row.actions.size());
-			portable::write_u32(out, actions);
-			for (const auto& action : row.actions)
-				write_action(out, action);
-		}
-		portable::write_u64(out, sealed.payload_hash);
-		out.close();
-		if (!out)
-			throw std::runtime_error("multiway full blueprint write failed");
-		texas::core::publish_atomic_replace(temporary, path, "multiway full blueprint publish failed");
+		if (artifact.schema_version != MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION)
+			throw std::invalid_argument("multiway full blueprint has invalid schema");
+		artifact.identity.validate();
+		validate_materialized_rows(artifact.rows);
+		const auto plan = make_multiway_full_blueprint_stream_plan(
+			artifact.identity,
+			artifact.training,
+			artifact.rows.size(),
+			materialized_action_count(artifact.rows));
+		MultiwayFullBlueprintStreamWriter writer(
+			path,
+			plan,
+			{ false });
+		for (const auto& row : artifact.rows)
+			writer.write_row(MultiwayFullBlueprintRowView(row));
+		(void)writer.finish();
 	}
 
 	MultiwayFullBlueprintArtifact MultiwayFullBlueprintArtifacts::load_verified(

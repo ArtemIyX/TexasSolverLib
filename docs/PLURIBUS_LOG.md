@@ -1,5 +1,227 @@
 # Pluribus Roadmap Progress Log
 
+## PB-7 - Task E: Streaming export qualification
+
+**Status:** Complete
+**Completed:** 2026-10-25
+
+- Added an explicit checkpoint-disabled qualification mode to the RAM runner so the measured workload isolates the integrated bounded streaming export path.
+- Relaxed Tracy evidence validation to require allocation events while documenting free events as optional for captures that end with active allocations.
+- Preserved the schema-2 artifact bytes, payload hash, loader/report-reader surfaces, system guard, atomic rename publication, and all existing training behavior.
+
+### Files
+
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_tracy_training_capture.ps1`
+- `scripts/analyze/analyze_multiway_memory_matrix.ps1`
+- `tests/cmake/test_tracy_boundary.cmake`
+- `docs/application_and_script_io.md`
+- `docs/tasks/E-streaming-export-qualification.md`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Authorized RelWithDebInfo run: 8 workers, 50 batches, 50,000 trajectories; 50,000 accepted and no failures.
+- Output bytes: `3,921,243,000`; payload hash: `5946562739452589295`; SHA-256: `96F9FD460B1FFF68407A8D2163E0A28DA7D079767021E62680B92BF1D93DAFA2`.
+- Publication mode: `rename`; process and system export gates passed; external peak working set: `18,618,073,088` bytes; report peak: `18,700,632,064` bytes.
+- Tracy evidence smoke produced allocation events, CSV output, and a `222,261,090`-byte trace.
+- Focused RelWithDebInfo CTest: 5/5 passed, including workflow and Tracy boundaries.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: Debug build and compact CTest passed.
+- `git diff --check`: passed.
+- C++ review: no new C++ changes; existing Task E guard code remained unchanged.
+
+### Limitations
+
+- The default checkpoint-enabled path retains the existing full checkpoint snapshot and previously exceeded 20 GiB during checkpointing. Tasks A-E do not change checkpoint serialization; a bounded checkpoint writer would be a separate task.
+
+## PB-7 - Task D: Workflow integration and publication
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Replaced the production materialize-then-save workflow with `save_full_policy_atomic()` and preserved lease, exact-plan, fresh-snapshot, process/system-gate, and post-admission temporary-file ordering.
+- Preserved strict atomic publication and previous-destination retention on rejected export admission.
+- Published exact plan/result bytes, payload hash, duration, publication mode, gate reasons, and process/system telemetry through the existing report and log surfaces.
+- Preserved schema-2 bytes, ordering, quantization, loader compatibility, training behavior, task capacities, and hot-path boundaries.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for the production workflow and artifact, training, compact-storage, memory, qualification-report, and workflow-config tests: passed.
+- Focused CTest for eight targets, including the workflow boundary: 8/8 passed.
+- Report-reader compatibility and workflow boundary CTest: 2/2 passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: Debug build and compact CTest passed, 111/111 tests.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No matched large-workload Windows machine-memory qualification run was performed; that remains Task E.
+
+## PB-7 - Task C: Export memory gate and reporting
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added versioned export plan, bounded scratch, fresh process estimate, Windows available-physical-memory gate, distinct rejection reasons, and separate observed export deltas.
+- Integrated lease-plan-snapshot-gate ordering into streamed trainer export before temporary-file creation, while preserving schema-2 bytes, payload hashes, atomic publication, and export exclusion.
+- Added report serialization for plan, process/system values, observed deltas, result bytes/hash/duration, publication mode, and separate ledger categories.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/tasks/TRACKER.md`
+
+### Validation
+
+- Focused Debug build and CTest for `test_multiway_memory`, `test_multiway_qualification_reports`, and `test_multiway_blueprint_training`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: Debug build and compact CTest passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- Production workflow configuration replacement and large-workload qualification remain Task D and later.
+- System-gate behavior is covered with deterministic injected snapshots; no large Windows machine-memory qualification run was performed.
+
+## PB-7 - Task B: Trainer streaming emission
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added allocation-free compact and Float64 `average_strategy_into()` APIs with bit-equivalent arithmetic.
+- Added an exclusive coordinator export lease and no-lock packed-menu views.
+- Added exact bounded export planning and trainer/session `save_full_policy_atomic()` using Task A's schema-2 streaming writer, without materializing a full policy artifact.
+- Preserved compact direct ordering, Float64 `uint32_t` shape ordering, quantization bytes, checkpoint behavior, and compatibility `export_full_policy()` coverage.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `tests/test_multiway_compact_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_compact_storage` and `test_multiway_blueprint_training`: passed.
+- Focused CTest for both targets: passed.
+- `scripts/codex_powershell.ps1` `scripts/python/full_build.py`: Debug build and compact CTest passed.
+- `scripts/codex_powershell.ps1` `scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- `cpp-code-review`: No actionable findings.
+
+### Limitations
+
+- Export memory/system gates and telemetry remain Task C.
+- Production workflow replacement and large-workload qualification remain Tasks D and E.
+
+## PB-7 - Task A: Artifact streaming writer
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Added the bounded schema-2 streaming writer, non-owning row views, exact plan/result accounting, shared incremental logical payload hashing, in-place materialized validation, and RAII temporary cleanup.
+- Removed the materialized save deep copy and rejected non-atomic copy fallback for full-blueprint publication.
+- Preserved schema-2 bytes, payload hash ordering, and loader behavior with focused regression coverage.
+
+### Files
+
+- `include/core/atomic_publish.hpp`
+- `src/core/atomic_publish.cpp`
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug artifact build and `test_multiway_artifact`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: build and compact CTest passed.
+- Explicit `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- `cpp-code-review`: No actionable findings.
+
+### Limitations
+
+- Trainer integration, export memory gates, workflow integration, and large-workload qualification remain for Tasks B through E.
+
+## PB-7 - Split streaming full-blueprint export into tracked tasks
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Split the approved streaming-export architecture into five dependency-scoped implementation and qualification tasks.
+- Added a tracker with current status, dependencies, blockers, completion rules, and task-level acceptance/stop conditions.
+
+### Files
+
+- `docs/tasks/README.md`
+- `docs/tasks/TRACKER.md`
+- `docs/tasks/A-artifact-streaming-writer.md`
+- `docs/tasks/B-trainer-streaming-emission.md`
+- `docs/tasks/C-export-memory-gate-reporting.md`
+- `docs/tasks/D-workflow-integration-publication.md`
+- `docs/tasks/E-streaming-export-qualification.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked task ownership, dependencies, tests, and stop conditions against `docs/multiway_streaming_full_blueprint_export_architecture.md`.
+- No build or tests were run because this task changes planning documentation only.
+
+### Limitations
+
+- No implementation task has started; A and C are ready, while B, D, and E remain dependency-blocked.
+
+## PB-7 - Architect streaming full-blueprint export
+
+**Status:** Complete
+**Completed:** 2026-10-24
+
+- Traced the 50K export peak to the materialized 50,112,088-row artifact, `save_atomic` deep copy, and validation's copied rows plus flattened runtime store.
+- Designed a schema-2-compatible streaming exporter with deterministic metadata ordering, incremental logical hashing, bounded validation, atomic temp cleanup, and a fresh export-phase process/system memory gate.
+- Preserved quantization semantics, checkpoint/export exclusion, loader compatibility, traversal and merge hot paths, and Task G capacities in the design.
+
+### Files
+
+- `docs/multiway_streaming_full_blueprint_export_architecture.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Cross-checked the design against the current trainer, artifact, store, compact/reference storage, memory preflight, workflow, atomic publication, and artifact tests.
+- Reconciled the supplied run with `tmp/qualification/w8_50k_relwithdebinfo/report.json`: 3,921,243,000 output bytes, 7,667,360,088 retained export bytes, and 48,237,969,408 peak working-set bytes.
+- No build or tests were run because this task changes documentation only and explicitly defers implementation.
+
+### Limitations
+
+- Runtime peak reduction and byte/hash equivalence remain to be proven by implementation and matched qualification runs.
+- `core::publish_atomic_replace()` has a non-atomic direct-copy fallback for a missing destination; strict full-blueprint publication must reject or harden that mode.
+
 ## PB-6 - Add optional training progress speed telemetry
 
 **Status:** Complete

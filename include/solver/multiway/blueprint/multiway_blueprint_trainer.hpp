@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <array>
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <vector>
 
@@ -155,10 +156,14 @@ namespace texas::solver::multiway
 		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
 		MultiwayWorkingSetGateConfig working_set_gate_config{};
 		MultiwayWorkingSetGateResult working_set_gate{};
+		MultiwaySystemMemoryGuardConfig system_memory_guard_config{};
+		MultiwaySystemMemoryGuardResult system_memory_guard{};
+		MultiwayExportTelemetry export_telemetry{};
 		bool process_rss_available = false;
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
 			MultiwayTrainingCapacityStage::None;
+		bool failed = false;
 		bool failed_batch_available = false;
 		MultiwayRootBatchResult failed_batch{};
 	};
@@ -195,6 +200,28 @@ namespace texas::solver::multiway
 		MultiwayCheckpointTelemetry telemetry{};
 
 		void validate() const;
+	};
+
+	struct MultiwayFullBlueprintExportPlan
+	{
+		MultiwayModelIdentity identity{};
+		MultiwayBlueprintTrainingMetadata training{};
+		std::uint64_t shape_count = 0U;
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t order_index_bytes = 0U;
+		bool compact_direct_order = false;
+
+		void validate() const;
+	};
+
+	struct MultiwayFullBlueprintExportResult
+	{
+		MultiwayFullBlueprintExportPlan plan{};
+		std::uint64_t payload_hash = 0U;
+		std::uint64_t peak_scratch_bytes = 0U;
+		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
 
 	// Production composition boundary. Artifact inputs are non-owning and must
@@ -260,6 +287,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept { return status_; }
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
+			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
 		[[nodiscard]] MultiwayBlueprintSnapshot publish(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
@@ -271,6 +300,11 @@ namespace texas::solver::multiway
 			MultiwayMemoryComponent export_buffers = {});
 
 	private:
+		void record_export_memory_snapshot(
+			MultiwayMemoryPhase phase,
+			MultiwayProcessMemorySnapshot snapshot,
+			MultiwayMemoryComponent export_buffers) const;
+
 		MultiwayModelIdentity identity_{};
 		MultiwayRootBatchRunner* batch_runner_ = nullptr;
 		MultiwaySolverCoordinator* coordinator_ = nullptr;
@@ -281,7 +315,7 @@ namespace texas::solver::multiway
 		const MultiwayBucketRegistry* buckets_ = nullptr;
 		const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
 		MultiwayWorkingSetMonitor working_set_monitor_{};
-		MultiwayBlueprintTrainingStatus status_{};
+		mutable MultiwayBlueprintTrainingStatus status_{};
 		std::vector<double> late_window_baseline_;
 	};
 
@@ -308,6 +342,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayBlueprintTrainingStatus& status() const noexcept;
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
+		[[nodiscard]] MultiwayFullBlueprintExportResult save_full_policy_atomic(
+			const std::filesystem::path& path) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
 		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 

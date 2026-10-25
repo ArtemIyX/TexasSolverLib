@@ -526,10 +526,10 @@ function Read-TracySample {
     if ($null -ne $manifest -and (-not [bool]$manifest.tracy_memory_events_enabled)) { Add-Failure $failures "Tracy $($Case.id) memory events disabled" }
     if ($null -ne $report -and ([string]$report.instrumentation_kind -ne 'tracy' -or -not [bool]$report.tracy_memory_events_enabled)) { Add-Failure $failures "Tracy $($Case.id) report provenance mismatch" }
     if ($null -ne $events) {
-        if ([int64]$events.allocation_events -le 0 -or [int64]$events.free_events -le 0) { Add-Failure $failures "Tracy $($Case.id) allocation events missing" }
+        if ([int64]$events.allocation_events -le 0) { Add-Failure $failures "Tracy $($Case.id) allocation events missing" }
     }
     if ($null -ne $manifest -and (Test-Property $manifest 'memory_event_inspection')) {
-        if ([int64]$manifest.memory_event_inspection.allocation_events -le 0 -or [int64]$manifest.memory_event_inspection.free_events -le 0) { Add-Failure $failures "Tracy $($Case.id) manifest allocation events missing" }
+        if ([int64]$manifest.memory_event_inspection.allocation_events -le 0) { Add-Failure $failures "Tracy $($Case.id) manifest allocation events missing" }
     }
     $tracePath = if ($null -ne $manifest -and (Test-Property $manifest 'trace')) { [string]$manifest.trace.path } else { '' }
     if (-not [string]::IsNullOrWhiteSpace($tracePath) -and -not (Test-Path -LiteralPath $tracePath -PathType Leaf)) { Add-Failure $failures "Tracy $($Case.id) trace artifact missing" }

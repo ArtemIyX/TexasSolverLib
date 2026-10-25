@@ -236,6 +236,18 @@ namespace texas::solver::multiway
 		return node(id) != nullptr;
 	}
 
+	MultiwayPackedMenuView MultiwayPublicCatalog::packed_menu(MultiwayPublicStateId id) const noexcept
+	{
+		const auto* packed = node(id);
+		if (packed == nullptr || packed->legal_menu_handle >= menus_.size())
+			return {};
+		const auto& menu = menus_[packed->legal_menu_handle];
+		return {
+			menu.data(),
+			static_cast<std::uint8_t>(menu.size()),
+			menu.empty() ? 0U : menu.front().action_menu_id};
+	}
+
 	bool MultiwayPublicCatalog::compatible_with_descriptor(
 		const MultiwayPackedPublicNode* packed,
 		const MultiwayPublicStateDescriptor& candidate) const noexcept

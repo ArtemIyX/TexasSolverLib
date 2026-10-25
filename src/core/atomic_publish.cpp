@@ -72,7 +72,8 @@ namespace texas::core
 	AtomicPublishMode publish_atomic_replace(
 		const std::filesystem::path& temporary,
 		const std::filesystem::path& destination,
-		const char* failure_message)
+		const char* failure_message,
+		AtomicPublishFallbackPolicy fallback_policy)
 	{
 		const auto fail = [failure_message](const std::error_code& error) {
 			return std::string(failure_message) + ": " + (error ? error.message() : std::string("unknown filesystem error"));
@@ -98,6 +99,12 @@ namespace texas::core
 
 		if (!destination_exists)
 		{
+			if (fallback_policy == AtomicPublishFallbackPolicy::RejectCopyFallback)
+			{
+				remove_temporary(temporary);
+				throw std::runtime_error(fail(error));
+			}
+
 			// Some Windows volume/sandbox combinations deny both rename and the
 			// checked replacement operation. Preserve the publish contract with
 			// one checked copy when no destination can be replaced.

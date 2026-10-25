@@ -28,6 +28,8 @@ namespace texas::solver::multiway
 		std::uint64_t process_memory_limit_bytes = 0U;
 		MultiwayWorkingSetGateConfig working_set_gate_config{};
 		MultiwayWorkingSetGateResult working_set_gate{};
+		MultiwaySystemMemoryGuardConfig system_memory_guard_config{};
+		MultiwaySystemMemoryGuardResult system_memory_guard{};
 		bool process_rss_available = false;
 		bool started_at_preflop = false;
 		std::uint64_t peak_public_states = 0U;
@@ -97,6 +99,7 @@ namespace texas::solver::multiway
 		MultiwayMemoryLedger memory_ledger{};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
 		MultiwayMemorySubsystemSnapshotCollection memory_subsystems{};
+		MultiwayExportTelemetry export_telemetry{};
 		bool unattributed_private_bytes_available = false;
 		std::uint64_t unattributed_private_bytes = 0U;
 		std::uint64_t checkpoint_bytes = 0U;

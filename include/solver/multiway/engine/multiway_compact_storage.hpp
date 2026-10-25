@@ -50,6 +50,9 @@ namespace texas::solver::multiway
 			Probability* output, std::size_t output_size) const;
 		[[nodiscard]] std::vector<Probability> average_strategy(
 			MultiwayInfosetId infoset, std::uint32_t bucket) const;
+		void average_strategy_into(
+			MultiwayInfosetId infoset, std::uint32_t bucket,
+			Probability* output, std::size_t output_size) const;
 		[[nodiscard]] bool action_below_regret(
 			MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
 			double threshold) const noexcept;
