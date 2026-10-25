@@ -7,6 +7,7 @@
 
 - Enabled the normal CTest suite in CI and made an empty test registration fail.
 - Added Debug and Release coverage on Ubuntu and Windows.
+- Ordered the workflow as format, four builds, then tests on the archived Ubuntu Debug build.
 - Added a changed-file clang-format gate and a manually dispatched formatter that commits formatting changes.
 
 ### Files
@@ -20,7 +21,7 @@
 
 - `python -m py_compile scripts/python/format_cpp.py`: passed.
 - `git diff --check`: passed.
-- `format_cpp.py project --check`: detected 30 pre-existing formatting differences across 344 C++ files; the CI gate checks changed files until that baseline is cleaned.
+- `format_cpp.py project --check`: passed for all 344 C++ files after the formatting baseline commit.
 - Build and CTest were not run locally because this task did not request them.
 
 ### Limitations
