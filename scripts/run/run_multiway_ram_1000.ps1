@@ -42,6 +42,25 @@ param(
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
+function Get-FileSha256 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '')
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha256.Dispose()
+    }
+}
+
 Write-Output '[ram1000] starting bounded RAM measurement'
 Write-Output "[ram1000] repository_root=$repoRoot"
 Write-Output "[ram1000] requested_workers=$Workers"
@@ -110,7 +129,7 @@ foreach ($requiredPath in @($executable, $sourceConfig, $bucketArtifact)) {
 }
 $binaryFile = Get-Item -LiteralPath $executable
 $bucketFile = Get-Item -LiteralPath $bucketArtifact
-$binarySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $executable).Hash
+$binarySha256 = Get-FileSha256 -Path $executable
 $embeddedProvenanceText = (& $executable --provenance 2>&1 | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($embeddedProvenanceText)) {
     throw "Executable provenance query failed: $executable"
@@ -129,7 +148,7 @@ if ([string]$embeddedProvenance.binary_source_commit -ne $gitCommit -or
     throw "Executable/source provenance mismatch: binary=$embeddedProvenanceText checkout_commit=$gitCommit checkout_dirty_state=$checkoutDirtyState requested_configuration=$BuildConfiguration"
 }
 Write-Output "[ram1000] binary provenance passed: source_commit=$($embeddedProvenance.binary_source_commit) dirty_state=$($embeddedProvenance.binary_dirty_state) compiler=$($embeddedProvenance.binary_compiler_identity) build_configuration=$($embeddedProvenance.binary_build_configuration)"
-$configSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceConfig).Hash
+$configSha256 = Get-FileSha256 -Path $sourceConfig
 $artifactIdentity = [ordered]@{
     path = $bucketArtifact
     bytes = [int64]$bucketFile.Length
@@ -159,7 +178,13 @@ foreach ($configLine in Get-Content -LiteralPath $sourceConfig) {
     }
 }
 
-$configWorkerCount = [int]$configValues['training_worker_count']
+$configWorkerCount = if ($configValues.ContainsKey('training_worker_count')) {
+    [int]$configValues['training_worker_count']
+} elseif ($configValues.ContainsKey('reference_worker_count')) {
+    [int]$configValues['reference_worker_count']
+} else {
+    0
+}
 Write-Output "[ram1000] config passed: schema_version=$($configValues['schema_version']) profile_kind=$($configValues['profile_kind']) profile_id=$($configValues['profile_id'])"
 Write-Output "[ram1000] config passed: seed=$($configValues['deterministic_seed']) configured_workers=$configWorkerCount source_trajectories_per_batch=$($configValues['trajectories_per_batch']) target_trajectories=$($configValues['target_trajectories'])"
 Write-Output "[ram1000] config passed: maximum_public_states=$($configValues['maximum_public_states']) maximum_sparse_rows=$($configValues['maximum_sparse_rows']) maximum_sparse_values=$($configValues['maximum_sparse_values'])"
@@ -178,11 +203,10 @@ function Set-RunConfigValue {
     )
     $pattern = '(?m)^[ \t]*' + [regex]::Escape($Key) + '[ \t]*=[^\r\n]*'
     $replacement = "$Key=$Value"
-    $updated = [regex]::Replace($Text, $pattern, $replacement)
-    if ($updated -eq $Text) {
-        $updated = $updated.TrimEnd() + [Environment]::NewLine + $replacement + [Environment]::NewLine
+    if ([regex]::IsMatch($Text, $pattern)) {
+        return [regex]::Replace($Text, $pattern, $replacement)
     }
-    return $updated
+    return $Text.TrimEnd() + [Environment]::NewLine + $replacement + [Environment]::NewLine
 }
 $updatedConfigText = Set-RunConfigValue $configText 'trajectories_per_batch' $TrajectoriesPerBatch
 $updatedConfigText = Set-RunConfigValue $updatedConfigText 'dynamic_chunk_size' $DynamicChunkSize
@@ -310,7 +334,7 @@ while (-not $process.HasExited) {
 
 $process.WaitForExit()
 $process.Refresh()
-$binarySha256After = (Get-FileHash -Algorithm SHA256 -LiteralPath $executable).Hash
+$binarySha256After = Get-FileSha256 -Path $executable
 if ($binarySha256After -ne $binarySha256) {
     throw "Executable SHA-256 changed during run: before=$binarySha256 after=$binarySha256After"
 }
@@ -366,7 +390,7 @@ if ([int]$report.dynamic_chunk_size -ne $DynamicChunkSize -or
     [string]$report.placement_policy -ne $PlacementPolicy) {
     throw "Training report configuration mismatch: expected chunk=$DynamicChunkSize placement=$PlacementPolicy actual chunk=$($report.dynamic_chunk_size) placement=$($report.placement_policy)"
 }
-if ([int64]$report.export_result_payload_hash -eq 0 -or [int64]$report.export_policy_content_hash -eq 0) {
+if ([uint64]$report.export_result_payload_hash -eq 0 -or [uint64]$report.export_policy_content_hash -eq 0) {
     throw 'Training report lacks non-zero full payload and policy-content hashes'
 }
 [pscustomobject]@{

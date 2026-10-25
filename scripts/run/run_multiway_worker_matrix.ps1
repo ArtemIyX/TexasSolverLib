@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateRange(1, 10)]
+    [ValidateRange(1, 100)]
     [int]$Batches = 3,
 
     [ValidateRange(1, [int]::MaxValue)]
@@ -198,8 +198,8 @@ for ($caseIndex = 0; $caseIndex -lt $cases.Count; ++$caseIndex) {
                 }
                 if ([string]$report.placement_policy -ne $PlacementPolicy -or
                     [int]$report.dynamic_chunk_size -ne $DynamicChunkSize -or
-                    [int64]$report.export_result_payload_hash -eq 0 -or
-                    [int64]$report.export_policy_content_hash -eq 0) {
+                    [uint64]$report.export_result_payload_hash -eq 0 -or
+                    [uint64]$report.export_policy_content_hash -eq 0) {
                     throw "Qualification evidence mismatch for case_index=$caseIndex"
                 }
                 if ($report.peak_process_rss_bytes -gt $report.memory_preflight_estimate_bytes) {
