@@ -94,6 +94,15 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	working_set_snapshot.current_working_set_bytes = 70U;
 	status.working_set_gate = evaluate_multiway_working_set_runtime(
 		working_set_snapshot, status.working_set_gate_config);
+	status.system_memory_guard_config = { true, 1'500U };
+	MultiwaySystemMemorySnapshot system_memory_snapshot;
+	system_memory_snapshot.total_physical_available = true;
+	system_memory_snapshot.available_physical_available = true;
+	system_memory_snapshot.total_physical_bytes = 64'000U;
+	system_memory_snapshot.available_physical_bytes = 1'500U;
+	system_memory_snapshot.used_physical_bytes = 62'500U;
+	status.system_memory_guard = evaluate_multiway_system_memory_guard(
+		system_memory_snapshot, status.system_memory_guard_config);
 	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
 		EXPECT_TRUE(status.process_memory_snapshots.record(static_cast<MultiwayMemoryPhase>(phase), {}));
 	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
@@ -217,6 +226,10 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.working_set_gate.compared_working_set_bytes, 75U);
 	EXPECT_EQ(report.working_set_gate.status, MultiwayWorkingSetGateStatus::Rejected);
 	EXPECT_EQ(report.working_set_gate.phase, MultiwayWorkingSetGatePhase::Runtime);
+	EXPECT_TRUE(report.system_memory_guard_config.enabled);
+	EXPECT_EQ(report.system_memory_guard_config.minimum_available_physical_bytes, 1'500U);
+	EXPECT_EQ(report.system_memory_guard.status, MultiwaySystemMemoryGuardStatus::Admitted);
+	EXPECT_EQ(report.system_memory_guard.maximum_used_physical_bytes, 62'500U);
 	EXPECT_EQ(report.peak_worker_delta_entries, 7U);
 	EXPECT_EQ(report.configured_max_regret_delta_entries_per_worker, 64U);
 	EXPECT_EQ(report.configured_max_continuation_delta_entries_per_worker, 8U);
@@ -254,6 +267,9 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"process_working_set_limit_bytes\": 64") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_abort_phase\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_rejected_category\": \"process working set\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"system_memory_guard_enabled\": true") != std::string::npos);
+	EXPECT_TRUE(text.find("\"system_memory_guard_status\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"system_memory_maximum_used_physical_bytes\": 62500") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_telemetry_schema_version\": 1") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_row_count\": 8") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_result_bytes\": 321") != std::string::npos);

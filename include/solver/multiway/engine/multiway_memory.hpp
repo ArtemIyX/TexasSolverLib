@@ -42,6 +42,8 @@ namespace texas::solver::multiway
 		48ULL * 1024ULL * 1024ULL * 1024ULL;
 	inline constexpr std::uint64_t MULTIWAY_COMPAT_PROCESS_WORKING_SET_LIMIT_BYTES =
 		64ULL * 1024ULL * 1024ULL * 1024ULL;
+	inline constexpr std::uint64_t MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES =
+		1536ULL * 1024ULL * 1024ULL;
 
 	struct MultiwayMemoryComponent
 	{
@@ -333,10 +335,47 @@ namespace texas::solver::multiway
 	struct MultiwaySystemMemorySnapshot
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
+		std::uint64_t total_physical_bytes = 0U;
 		std::uint64_t available_physical_bytes = 0U;
+		std::uint64_t used_physical_bytes = 0U;
+		bool total_physical_available = false;
 		bool available_physical_available = false;
 
 		[[nodiscard]] bool valid() const noexcept;
+	};
+
+	enum class MultiwaySystemMemoryGuardStatus : std::uint8_t
+	{
+		Disabled = 0U,
+		Admitted = 1U,
+		Rejected = 2U,
+		Unavailable = 3U,
+	};
+
+	struct MultiwaySystemMemoryGuardConfig
+	{
+		bool enabled = false;
+		std::uint64_t minimum_available_physical_bytes = MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES;
+
+		void validate() const;
+	};
+
+	struct MultiwaySystemMemoryGuardResult
+	{
+		MultiwaySystemMemoryGuardStatus status = MultiwaySystemMemoryGuardStatus::Disabled;
+		std::uint64_t total_physical_bytes = 0U;
+		std::uint64_t available_physical_bytes = 0U;
+		std::uint64_t used_physical_bytes = 0U;
+		std::uint64_t maximum_used_physical_bytes = 0U;
+		std::uint64_t minimum_available_physical_bytes = 0U;
+		const char* rejected_category = "none";
+		const char* message = "disabled";
+
+		[[nodiscard]] bool blocked() const noexcept
+		{
+			return status == MultiwaySystemMemoryGuardStatus::Rejected ||
+				status == MultiwaySystemMemoryGuardStatus::Unavailable;
+		}
 	};
 
 	enum class MultiwayExportSystemRejectionReason : std::uint8_t
@@ -412,6 +451,9 @@ namespace texas::solver::multiway
 		const MultiwayProcessMemorySnapshot& snapshot,
 		MultiwayExportProcessGateConfig config) noexcept;
 	[[nodiscard]] MultiwaySystemMemorySnapshot capture_multiway_system_memory_snapshot() noexcept;
+	[[nodiscard]] MultiwaySystemMemoryGuardResult evaluate_multiway_system_memory_guard(
+		MultiwaySystemMemorySnapshot snapshot,
+		MultiwaySystemMemoryGuardConfig config) noexcept;
 	[[nodiscard]] MultiwayExportSystemGateResult evaluate_multiway_export_system_gate(
 		const MultiwayExportPlanMemoryValues& plan,
 		const MultiwayExportScratchEstimate& scratch,
@@ -660,7 +702,10 @@ namespace texas::solver::multiway
 		MultiwayExportMemoryGateConfig export_gate{};
 		MultiwayProcessMemoryObserver export_process_observer = nullptr;
 		MultiwaySystemMemoryObserver export_system_observer = nullptr;
+		MultiwaySystemMemoryGuardConfig system_memory_guard{};
+		MultiwaySystemMemoryObserver system_memory_observer = nullptr;
 		const void* export_observer_context = nullptr;
+		const void* system_memory_observer_context = nullptr;
 
 		void validate() const;
 	};

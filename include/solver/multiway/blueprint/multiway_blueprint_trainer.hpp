@@ -156,6 +156,8 @@ namespace texas::solver::multiway
 		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
 		MultiwayWorkingSetGateConfig working_set_gate_config{};
 		MultiwayWorkingSetGateResult working_set_gate{};
+		MultiwaySystemMemoryGuardConfig system_memory_guard_config{};
+		MultiwaySystemMemoryGuardResult system_memory_guard{};
 		MultiwayExportTelemetry export_telemetry{};
 		bool process_rss_available = false;
 		std::vector<std::uint64_t> admitted_rows_per_batch;

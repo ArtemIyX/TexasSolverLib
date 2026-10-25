@@ -361,6 +361,37 @@ TEST_CASE(multiway_export_memory_gates_honor_process_and_system_boundaries)
 		std::string(multiway_export_system_rejection_reason_name(system_rejected.rejection_reason)));
 }
 
+TEST_CASE(multiway_system_memory_guard_enforces_total_memory_minus_reserve)
+{
+	using namespace texas::solver::multiway;
+	MultiwaySystemMemoryGuardConfig config;
+	config.enabled = true;
+	config.minimum_available_physical_bytes = 1'500U;
+	config.validate();
+
+	MultiwaySystemMemorySnapshot snapshot;
+	snapshot.total_physical_available = true;
+	snapshot.available_physical_available = true;
+	snapshot.total_physical_bytes = 64'000U;
+	snapshot.available_physical_bytes = config.minimum_available_physical_bytes;
+	snapshot.used_physical_bytes = snapshot.total_physical_bytes - snapshot.available_physical_bytes;
+	const auto admitted = evaluate_multiway_system_memory_guard(snapshot, config);
+	EXPECT_EQ(admitted.status, MultiwaySystemMemoryGuardStatus::Admitted);
+	EXPECT_EQ(admitted.maximum_used_physical_bytes, 62'500U);
+	EXPECT_EQ(admitted.used_physical_bytes, 62'500U);
+
+	snapshot.available_physical_bytes = config.minimum_available_physical_bytes - 1U;
+	snapshot.used_physical_bytes = snapshot.total_physical_bytes - snapshot.available_physical_bytes;
+	const auto rejected = evaluate_multiway_system_memory_guard(snapshot, config);
+	EXPECT_EQ(rejected.status, MultiwaySystemMemoryGuardStatus::Rejected);
+	EXPECT_EQ(std::string(rejected.rejected_category), "system physical memory ceiling");
+	EXPECT_TRUE(rejected.used_physical_bytes > rejected.maximum_used_physical_bytes);
+
+	MultiwaySystemMemorySnapshot unavailable;
+	const auto unavailable_result = evaluate_multiway_system_memory_guard(unavailable, config);
+	EXPECT_EQ(unavailable_result.status, MultiwaySystemMemoryGuardStatus::Unavailable);
+}
+
 TEST_CASE(multiway_export_memory_delta_preserves_process_and_private_categories)
 {
 	using namespace texas::solver::multiway;

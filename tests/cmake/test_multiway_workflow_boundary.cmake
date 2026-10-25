@@ -8,6 +8,7 @@ file(READ "${SOURCE_DIR}/src/solver/multiway/blueprint/multiway_blueprint_traine
 file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_training_report.cpp" report_text)
 file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_f1_acceptance.cpp" report_reader_text)
 file(READ "${SOURCE_DIR}/tests/test_multiway_blueprint_training.cpp" export_test_text)
+file(READ "${SOURCE_DIR}/scripts/run/run_multiway_ram_1000.ps1" runner_text)
 
 string(FIND "${cmake_text}" "foreach(_multiway_workflow train buckets inspect evaluate finalize)" target_position)
 if(target_position EQUAL -1)
@@ -76,6 +77,20 @@ if(streaming_call_position EQUAL -1 OR materialized_call_position GREATER_EQUAL 
    workflow_before_export_position GREATER_EQUAL 0 OR workflow_after_export_position GREATER_EQUAL 0)
     message(FATAL_ERROR "production training workflow must use only the streaming export path")
 endif()
+
+foreach(guard_field "system_memory_guard" "MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES" "export_gate.system")
+    string(FIND "${source_text}" "${guard_field}" guard_position)
+    if(guard_position EQUAL -1)
+        message(FATAL_ERROR "production workflow is missing system memory guard field: ${guard_field}")
+    endif()
+endforeach()
+
+foreach(runner_guard_field "systemMemoryReserveBytes" "systemMemoryGuardTriggered" "Stop-Process")
+    string(FIND "${runner_text}" "${runner_guard_field}" runner_guard_position)
+    if(runner_guard_position EQUAL -1)
+        message(FATAL_ERROR "RAM runner is missing hard system memory guard field: ${runner_guard_field}")
+    endif()
+endforeach()
 
 string(FIND "${trainer_text}" "acquire_export_lease()" lease_position)
 string(FIND "${trainer_text}" "const auto plan = make_export_plan(" plan_position)

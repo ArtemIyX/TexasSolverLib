@@ -43,6 +43,7 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("Tracy training report has invalid provenance");
 		if (tracy_memory_events_enabled && instrumentation_kind != "tracy")
 			throw std::invalid_argument("Tracy memory events require Tracy instrumentation");
+		system_memory_guard_config.validate();
 		const auto worker_vectors_match = [this] {
 			const auto worker_count = worker_trajectory_counts.size();
 			const auto matches = [worker_count](std::size_t size) {
@@ -94,7 +95,7 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("available process RSS must be non-zero");
 		}
-		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache))
+		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache) || static_cast<unsigned>(system_memory_guard.status) > static_cast<unsigned>(MultiwaySystemMemoryGuardStatus::Unavailable))
 		{
 			throw std::invalid_argument("invalid multiway training telemetry");
 		}
@@ -224,6 +225,8 @@ namespace texas::solver::multiway
 		report.process_memory_limit_bytes = process_memory_limit_bytes;
 		report.working_set_gate_config = status.working_set_gate_config;
 		report.working_set_gate = status.working_set_gate;
+		report.system_memory_guard_config = status.system_memory_guard_config;
+		report.system_memory_guard = status.system_memory_guard;
 		report.process_rss_available = status.process_rss_available;
 		report.started_at_preflop = status.preflop_rows > 0U;
 		report.elapsed_wall_nanoseconds = status.elapsed_wall_nanoseconds;
@@ -296,6 +299,14 @@ namespace texas::solver::multiway
 			   << ",\n  \"working_set_gate_compared_bytes\": " << report.working_set_gate.compared_working_set_bytes
 			   << ",\n  \"working_set_gate_observed_bytes\": " << report.working_set_gate.observed_working_set_bytes
 			   << ",\n  \"working_set_gate_rejected_category\": \"" << report.working_set_gate.rejected_category << "\""
+			   << ",\n  \"system_memory_guard_enabled\": " << (report.system_memory_guard_config.enabled ? "true" : "false")
+			   << ",\n  \"system_memory_guard_minimum_available_bytes\": " << report.system_memory_guard_config.minimum_available_physical_bytes
+			   << ",\n  \"system_memory_guard_status\": " << static_cast<unsigned>(report.system_memory_guard.status)
+			   << ",\n  \"system_memory_guard_rejected_category\": \"" << report.system_memory_guard.rejected_category << "\""
+			   << ",\n  \"system_memory_total_physical_bytes\": " << report.system_memory_guard.total_physical_bytes
+			   << ",\n  \"system_memory_available_physical_bytes\": " << report.system_memory_guard.available_physical_bytes
+			   << ",\n  \"system_memory_used_physical_bytes\": " << report.system_memory_guard.used_physical_bytes
+			   << ",\n  \"system_memory_maximum_used_physical_bytes\": " << report.system_memory_guard.maximum_used_physical_bytes
 			   << ",\n  \"export_telemetry_schema_version\": " << report.export_telemetry.schema_version
 			   << ",\n  \"export_attempted\": " << (report.export_telemetry.attempted ? "true" : "false")
 			   << ",\n  \"export_succeeded\": " << (report.export_telemetry.succeeded ? "true" : "false")

@@ -452,6 +452,8 @@ Files written below the run directory:
 
 The script also prints configuration, live working-set samples, report gates, phase timing, worker telemetry, and the final pass/fail result. It validates expected trajectory counts, zero discards, no failure/capacity exhaustion, and required telemetry.
 
+The runner has a hard system-memory ceiling: it samples total and available physical memory while the child is running and stops the child when used physical memory exceeds total physical memory minus 1.5 GiB. Missing or invalid runner telemetry also stops the child. The production trainer applies the same fail-closed guard at batch and export boundaries and records the total, available, used, and maximum permitted values in the training report.
+
 ### `scripts/run/run_multiway_worker_matrix.ps1`
 
 Purpose: repeat bounded runs across worker, pinning, and scheduler combinations.

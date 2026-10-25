@@ -760,7 +760,12 @@ namespace
 		config.working_set_monitor.gate = {
 			workflow.process_working_set_limit_bytes,
 			workflow.process_working_set_resident_allowance_bytes };
+		config.working_set_monitor.system_memory_guard = {
+			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES };
+		config.working_set_monitor.export_gate.system = {
+			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES };
 		log_line("training workers requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective) + " memory_estimate_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
+		log_line("system memory guard: minimum_available_physical_bytes=" + std::to_string(MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES));
 		log_line("training initialization: loading bucket artifact bytes=" + std::to_string(std::filesystem::file_size(input_path)));
 		log_line("training initialization: constructing six-player uniform ranges");
 		MultiwayPrivateConfig ranges;

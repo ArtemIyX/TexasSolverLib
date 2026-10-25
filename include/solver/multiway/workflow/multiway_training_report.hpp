@@ -28,6 +28,8 @@ namespace texas::solver::multiway
 		std::uint64_t process_memory_limit_bytes = 0U;
 		MultiwayWorkingSetGateConfig working_set_gate_config{};
 		MultiwayWorkingSetGateResult working_set_gate{};
+		MultiwaySystemMemoryGuardConfig system_memory_guard_config{};
+		MultiwaySystemMemoryGuardResult system_memory_guard{};
 		bool process_rss_available = false;
 		bool started_at_preflop = false;
 		std::uint64_t peak_public_states = 0U;

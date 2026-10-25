@@ -607,7 +607,14 @@ namespace texas::solver::multiway
 	bool MultiwaySystemMemorySnapshot::valid() const noexcept
 	{
 		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
+			(total_physical_available || total_physical_bytes == 0U) &&
 			(available_physical_available || available_physical_bytes == 0U);
+	}
+
+	void MultiwaySystemMemoryGuardConfig::validate() const
+	{
+		if (enabled && minimum_available_physical_bytes == 0U)
+			throw std::invalid_argument("enabled system memory guard requires a non-zero reserve");
 	}
 
 	bool MultiwayExportObservedMemoryDelta::valid() const noexcept
@@ -743,10 +750,69 @@ namespace texas::solver::multiway
 		status.dwLength = sizeof(status);
 		if (GlobalMemoryStatusEx(&status) != 0)
 		{
+			result.total_physical_bytes = static_cast<std::uint64_t>(status.ullTotalPhys);
 			result.available_physical_bytes = static_cast<std::uint64_t>(status.ullAvailPhys);
+			result.total_physical_available = true;
 			result.available_physical_available = true;
+			result.used_physical_bytes = result.total_physical_bytes >= result.available_physical_bytes
+				? result.total_physical_bytes - result.available_physical_bytes
+				: std::numeric_limits<std::uint64_t>::max();
 		}
+#elif defined(__linux__)
+		std::FILE* input = std::fopen("/proc/meminfo", "r");
+		if (input == nullptr)
+			return result;
+		char line[256]{};
+		while (std::fgets(line, sizeof(line), input) != nullptr)
+		{
+			parse_linux_memory_field(line, "MemTotal:", result.total_physical_bytes, result.total_physical_available);
+			parse_linux_memory_field(line, "MemAvailable:", result.available_physical_bytes, result.available_physical_available);
+		}
+		std::fclose(input);
+		if (result.total_physical_available && result.available_physical_available)
+			result.used_physical_bytes = result.total_physical_bytes >= result.available_physical_bytes
+				? result.total_physical_bytes - result.available_physical_bytes
+				: std::numeric_limits<std::uint64_t>::max();
 #endif
+		return result;
+	}
+
+	MultiwaySystemMemoryGuardResult evaluate_multiway_system_memory_guard(
+		MultiwaySystemMemorySnapshot snapshot,
+		MultiwaySystemMemoryGuardConfig config) noexcept
+	{
+		MultiwaySystemMemoryGuardResult result;
+		result.total_physical_bytes = snapshot.total_physical_bytes;
+		result.available_physical_bytes = snapshot.available_physical_bytes;
+		result.used_physical_bytes = snapshot.used_physical_bytes;
+		result.minimum_available_physical_bytes = config.minimum_available_physical_bytes;
+		result.maximum_used_physical_bytes = snapshot.total_physical_available &&
+			snapshot.total_physical_bytes >= config.minimum_available_physical_bytes
+			? snapshot.total_physical_bytes - config.minimum_available_physical_bytes
+			: 0U;
+		if (!config.enabled)
+		{
+			result.status = MultiwaySystemMemoryGuardStatus::Disabled;
+			result.message = "system memory guard disabled";
+			return result;
+		}
+		if (!snapshot.total_physical_available || !snapshot.available_physical_available ||
+			snapshot.used_physical_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwaySystemMemoryGuardStatus::Unavailable;
+			result.rejected_category = "system memory telemetry";
+			result.message = "total or available physical memory metric unavailable";
+			return result;
+		}
+		if (snapshot.available_physical_bytes < config.minimum_available_physical_bytes)
+		{
+			result.status = MultiwaySystemMemoryGuardStatus::Rejected;
+			result.rejected_category = "system physical memory ceiling";
+			result.message = "system memory usage exceeds maximum minus reserve";
+			return result;
+		}
+		result.status = MultiwaySystemMemoryGuardStatus::Admitted;
+		result.message = "system memory guard admitted";
 		return result;
 	}
 
@@ -930,10 +996,13 @@ namespace texas::solver::multiway
 	{
 		gate.validate();
 		export_gate.validate();
+		system_memory_guard.validate();
 		if (observer == nullptr && observer_context != nullptr)
 			throw std::invalid_argument("working-set observer context requires an observer");
 		if (export_process_observer == nullptr && export_system_observer == nullptr && export_observer_context != nullptr)
 			throw std::invalid_argument("export observer context requires an export observer");
+		if (system_memory_observer == nullptr && system_memory_observer_context != nullptr)
+			throw std::invalid_argument("system memory observer context requires an observer");
 	}
 
 	MultiwayWorkingSetGateResult evaluate_multiway_working_set_preflight(

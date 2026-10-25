@@ -141,6 +141,17 @@ namespace
 		return snapshot;
 	}
 
+	texas::MultiwaySystemMemorySnapshot rejected_system_memory_observer(const void*) noexcept
+	{
+		texas::MultiwaySystemMemorySnapshot snapshot;
+		snapshot.total_physical_available = true;
+		snapshot.available_physical_available = true;
+		snapshot.total_physical_bytes = 64'000U;
+		snapshot.available_physical_bytes = 1'499U;
+		snapshot.used_physical_bytes = snapshot.total_physical_bytes - snapshot.available_physical_bytes;
+		return snapshot;
+	}
+
 	std::string read_bytes(const std::filesystem::path& path)
 	{
 		std::ifstream input(path, std::ios::binary);
@@ -412,6 +423,22 @@ TEST_CASE(multiway_streaming_export_process_gate_rejects_before_temp_creation)
 	EXPECT_EQ(fixture.trainer.status().export_telemetry.process_gate.rejection_reason,
 		texas::MultiwayExportProcessRejectionReason::ProcessLimitExceeded);
 	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_training_system_memory_guard_rejects_before_batch)
+{
+	using namespace texas::solver::multiway;
+	MultiwayWorkingSetMonitor monitor;
+	monitor.system_memory_guard.enabled = true;
+	monitor.system_memory_guard.minimum_available_physical_bytes = 1'500U;
+	monitor.system_memory_observer = rejected_system_memory_observer;
+	StreamingExportFixture fixture(MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
+	EXPECT_THROW(fixture.trainer.run_batches(1U, 4U, 0x77U), std::runtime_error);
+	EXPECT_EQ(fixture.trainer.status().batches, 0U);
+	EXPECT_EQ(fixture.trainer.status().system_memory_guard.status,
+		MultiwaySystemMemoryGuardStatus::Rejected);
+	EXPECT_EQ(std::string(fixture.trainer.status().system_memory_guard.rejected_category),
+		"system physical memory ceiling");
 }
 
 TEST_CASE(multiway_streaming_export_records_fresh_memory_telemetry)

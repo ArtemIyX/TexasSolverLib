@@ -169,12 +169,72 @@ Write-Output "[ram1000] trainer started: pid=$($process.Id)"
 
 $peakWorkingSetBytes = [int64]0
 $processCpuNanoseconds = [int64]0
+$systemMemoryReserveBytes = [int64]1536 * 1024 * 1024
+$systemMemoryGuardTriggered = $false
+$systemMemoryGuardSnapshot = $null
+$systemMemoryGuardReason = 'used_physical_memory_exceeded_total_minus_reserve'
+$lastSystemMemoryCheck = Get-Date
 $lastProgressAt = Get-Date
 while (-not $process.HasExited) {
     try {
         $sample = Get-Process -Id $process.Id -ErrorAction Stop
         $peakWorkingSetBytes = [Math]::Max($peakWorkingSetBytes, [int64]$sample.WorkingSet64)
         $now = Get-Date
+        if (($now - $lastSystemMemoryCheck).TotalSeconds -ge 1) {
+            try {
+                $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            } catch {
+                $systemMemoryGuardTriggered = $true
+                $systemMemoryGuardReason = 'system_memory_telemetry_unavailable'
+                $systemMemoryGuardSnapshot = [pscustomobject]@{
+                    status = 'unavailable'
+                    total_physical_bytes = 0
+                    available_physical_bytes = 0
+                    used_physical_bytes = 0
+                    maximum_used_physical_bytes = 0
+                    minimum_available_physical_bytes = $systemMemoryReserveBytes
+                }
+                Write-Output '[ram1000] system memory guard rejected run: system memory telemetry unavailable'
+                Stop-Process -Id $process.Id -Force
+                break
+            }
+            $totalPhysicalBytes = [int64]$os.TotalVisibleMemorySize * 1024
+            $availablePhysicalBytes = [int64]$os.FreePhysicalMemory * 1024
+            if ($totalPhysicalBytes -gt 0 -and $availablePhysicalBytes -ge 0) {
+                $usedPhysicalBytes = [Math]::Max([int64]0, $totalPhysicalBytes - $availablePhysicalBytes)
+                $maximumUsedPhysicalBytes = [Math]::Max([int64]0, $totalPhysicalBytes - $systemMemoryReserveBytes)
+                $systemMemoryGuardSnapshot = [pscustomobject]@{
+                    status = 'admitted'
+                    total_physical_bytes = $totalPhysicalBytes
+                    available_physical_bytes = $availablePhysicalBytes
+                    used_physical_bytes = $usedPhysicalBytes
+                    maximum_used_physical_bytes = $maximumUsedPhysicalBytes
+                    minimum_available_physical_bytes = $systemMemoryReserveBytes
+                }
+                if ($usedPhysicalBytes -gt $maximumUsedPhysicalBytes) {
+                    $systemMemoryGuardTriggered = $true
+                    $systemMemoryGuardSnapshot.status = 'rejected'
+                    Write-Output ("[ram1000] system memory guard rejected run: used_physical_bytes={0} maximum_used_physical_bytes={1} total_physical_bytes={2} available_physical_bytes={3} minimum_available_physical_bytes={4}" -f $usedPhysicalBytes, $maximumUsedPhysicalBytes, $totalPhysicalBytes, $availablePhysicalBytes, $systemMemoryReserveBytes)
+                    Stop-Process -Id $process.Id -Force
+                    break
+                }
+            } else {
+                $systemMemoryGuardTriggered = $true
+                $systemMemoryGuardReason = 'system_memory_telemetry_invalid'
+                $systemMemoryGuardSnapshot = [pscustomobject]@{
+                    status = 'unavailable'
+                    total_physical_bytes = $totalPhysicalBytes
+                    available_physical_bytes = $availablePhysicalBytes
+                    used_physical_bytes = 0
+                    maximum_used_physical_bytes = 0
+                    minimum_available_physical_bytes = $systemMemoryReserveBytes
+                }
+                Write-Output '[ram1000] system memory guard rejected run: system memory telemetry invalid'
+                Stop-Process -Id $process.Id -Force
+                break
+            }
+            $lastSystemMemoryCheck = $now
+        }
         if (($now - $lastProgressAt).TotalSeconds -ge 2) {
             Write-Output "[ram1000] trainer running: pid=$($process.Id) working_set_bytes=$([int64]$sample.WorkingSet64) peak_working_set_bytes=$peakWorkingSetBytes"
             $lastProgressAt = $now
@@ -186,6 +246,21 @@ while (-not $process.HasExited) {
 
 $process.WaitForExit()
 $process.Refresh()
+if ($systemMemoryGuardTriggered) {
+    $guardEvidencePath = Join-Path $RunDirectory 'system_memory_guard.json'
+    [ordered]@{
+        schema_version = 1
+        reason = $systemMemoryGuardReason
+        workload = [ordered]@{
+            workers = $Workers
+            batches = $Batches
+            trajectories_per_batch = $TrajectoriesPerBatch
+        }
+        snapshot = $systemMemoryGuardSnapshot
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $guardEvidencePath -Encoding UTF8
+    Write-Output "[ram1000] system memory guard evidence=$guardEvidencePath"
+    throw "Multiway system memory guard stopped the process: $systemMemoryGuardReason"
+}
 try {
     $processCpuNanoseconds = [int64]$process.TotalProcessorTime.Ticks * 100
 } catch {

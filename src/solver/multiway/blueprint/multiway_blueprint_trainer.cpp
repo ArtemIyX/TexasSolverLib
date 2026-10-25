@@ -492,6 +492,7 @@ namespace texas::solver::multiway
 		status_.working_set_gate.hard_limit_bytes = working_set_monitor_.gate.hard_limit_bytes;
 		status_.working_set_gate.resident_allowance_bytes = working_set_monitor_.gate.resident_allowance_bytes;
 		status_.working_set_gate.estimated_working_set_bytes = memory_ledger.estimated_working_set_peak_bytes;
+		status_.system_memory_guard_config = working_set_monitor_.system_memory_guard;
 		status_.process_memory_snapshots = process_memory_snapshots;
 		status_.memory_subsystem_snapshots = memory_subsystem_snapshots;
 	}
@@ -546,6 +547,24 @@ namespace texas::solver::multiway
 		for (std::uint64_t batch = 0; batch < batch_count; ++batch)
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.trainer.batch");
+			const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
+				? capture_multiway_system_memory_snapshot()
+				: working_set_monitor_.system_memory_observer(working_set_monitor_.system_memory_observer_context);
+			const auto system_memory_guard = evaluate_multiway_system_memory_guard(
+				system_memory, working_set_monitor_.system_memory_guard);
+			status_.system_memory_guard = system_memory_guard;
+			if (system_memory_guard.blocked())
+			{
+				status_.failed = true;
+				throw std::runtime_error(
+					std::string("multiway blueprint training system memory abort: abort_phase=runtime; rejected_category=") +
+					system_memory_guard.rejected_category + "; message=" + system_memory_guard.message +
+					"; used_physical_bytes=" + std::to_string(system_memory_guard.used_physical_bytes) +
+					"; maximum_used_physical_bytes=" + std::to_string(system_memory_guard.maximum_used_physical_bytes) +
+					"; total_physical_bytes=" + std::to_string(system_memory_guard.total_physical_bytes) +
+					"; available_physical_bytes=" + std::to_string(system_memory_guard.available_physical_bytes) +
+					"; minimum_available_physical_bytes=" + std::to_string(system_memory_guard.minimum_available_physical_bytes));
+			}
 			const auto pre_batch_memory = working_set_monitor_.observer == nullptr
 				? capture_multiway_process_memory_snapshot()
 				: working_set_monitor_.observer(working_set_monitor_.observer_context);
@@ -1019,6 +1038,20 @@ namespace texas::solver::multiway
 		telemetry.system_before = working_set_monitor_.export_system_observer == nullptr
 			? capture_multiway_system_memory_snapshot()
 			: working_set_monitor_.export_system_observer(working_set_monitor_.export_observer_context);
+		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
+			telemetry.system_before, working_set_monitor_.system_memory_guard);
+		if (status_.system_memory_guard.blocked())
+		{
+			status_.failed = true;
+			status_.export_telemetry = telemetry;
+			throw std::runtime_error(
+				std::string("multiway blueprint export system memory abort: rejected_category=") +
+				status_.system_memory_guard.rejected_category + "; message=" +
+				status_.system_memory_guard.message + "; used_physical_bytes=" +
+				std::to_string(status_.system_memory_guard.used_physical_bytes) +
+				"; maximum_used_physical_bytes=" +
+				std::to_string(status_.system_memory_guard.maximum_used_physical_bytes));
+		}
 		const auto before_export = working_set_monitor_.export_process_observer == nullptr
 			? capture_multiway_process_memory_snapshot()
 			: working_set_monitor_.export_process_observer(working_set_monitor_.export_observer_context);
