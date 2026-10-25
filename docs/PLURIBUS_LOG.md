@@ -1,5 +1,34 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.06 - Tournament discovery merge
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `ca8cc80 PB-9 Add tournament discovery merge: Preserve deterministic public-state and row streams`
+
+- Added caller-owned preallocated reference and tournament merge paths for public-state and row discovery streams.
+- Selected the tournament path only above the four-stream threshold while preserving worker-index ties, duplicate handling, ordered outputs, diagnostics, and production output reuse.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/tasks/PB9_16_06_tournament_discovery_merge.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused solver and parallel-training tests passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed, 111/111 tests.
+- `git diff --check`: passed.
+- Independent C++ review: no actionable findings.
+- The requested full-build script was attempted but hit MSVC PDB contention (`C1041`) across unrelated translation units.
+
+### Limitations
+
+- No tournament delta merge, benchmarks, policy-content hashing, qualification matrices, or solver training were run.
+
 ## PB9.16.05 - Deterministic scheduler balance
 
 **Status:** Complete
