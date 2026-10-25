@@ -639,6 +639,11 @@ namespace
 			worker_override = workflow.training_worker_count;
 		if (batches == 0U || input_path.empty() || output_path.empty())
 			throw std::invalid_argument("train requires input_path, output_path, and batches");
+		if (!workflow.capacities_resolved())
+			throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
+		const auto resource_preflight = preflight_multiway_workflow(workflow, worker_override, batches);
+		if (!resource_preflight.accepted)
+			throw std::runtime_error(std::string("training resource preflight rejected: category=") + resource_preflight.rejected_category + "; " + resource_preflight.message + "; requested_trajectories=" + std::to_string(resource_preflight.requested_training_trajectories) + "; estimated_memory_bytes=" + std::to_string(resource_preflight.memory.estimate.total_bytes));
 		const auto reaches_50m = [&](std::uint64_t starting_trajectories) {
 			if (starting_trajectories >= 50'000'000U)
 				return true;
@@ -667,10 +672,6 @@ namespace
 		log_line("run checkout identity: commit=" + std::string(run_checkout_commit == nullptr ? "unknown" : run_checkout_commit));
 		log_line("training configured: input=" + input_path.string() + " output=" + output_path.string() + " batches=" + std::to_string(batches) + " threads=" + std::to_string(worker_override) + " scheduler=" + std::string(multiway_scheduler_mode_name(effective_scheduler_mode)) + " dynamic_chunk_size=" + std::to_string(effective_dynamic_chunk_size) + " placement_policy=" + std::string(multiway_worker_placement_policy_name(workflow.placement_policy)) + " pin_workers=" + (pin_workers ? "true" : "false"));
 		log_line("training initialization: validating resolved capacities");
-		if (!workflow.capacities_resolved())
-		{
-			throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
-		}
 		log_line("training initialization: loading bucket artifact");
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeBucketMap))
 			throw std::logic_error("multiway process memory snapshot phase order is invalid");
@@ -712,8 +713,7 @@ namespace
 		config.max_public_chance_depth = workflow.max_public_chance_depth;
 		config.deterministic_seed = workflow.deterministic_seed;
 		config.limits.seed = workflow.deterministic_seed;
-		const auto workers = resolve_multiway_training_workers(
-			workflow.training_worker_count, worker_override, workflow.trajectories_per_batch);
+		const auto workers = resource_preflight.workers;
 		config.requested_worker_count = workers.requested;
 		config.scheduler_mode = effective_scheduler_mode;
 		config.dynamic_chunk_size = effective_dynamic_chunk_size;
