@@ -1,5 +1,37 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.09 - Qualification tooling
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `94e12d7 PB-9 Extend qualification tooling: Preserve comparable matrix evidence`
+
+- Extended the RAM and worker-matrix runners with explicit scheduler chunk, placement, checkpoint, warmup/order, and deterministic randomized case controls.
+- Added strict one-binary provenance validation and run gates for comparable configuration, payload hashes, and policy-content hashes.
+- Added median/dispersion, phase, placement, migration, page-fault, and provenance summaries without starting benchmark or solver-training runs.
+
+### Files
+
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_worker_matrix.ps1`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/application_and_script_io.md`
+- `docs/tasks/PB9_16_09_qualification_tooling.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- PowerShell parser validation passed for both qualification runners.
+- Focused `test_multiway_qualification_reports` and `test_multiway_workflow_boundary` passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed with the build-only `/FS` configuration.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed; all tests passed.
+- `git diff --check`: passed.
+- No C++ files changed; cpp-code-review boundary was empty.
+
+### Limitations
+
+- No worker matrix, benchmark, or solver training run was started.
+
 ## PB9.16.08 - Policy-content hash
 
 **Status:** Complete
