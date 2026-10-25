@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "test_harness.hpp"
 
 namespace
@@ -53,6 +54,23 @@ TEST_CASE(multiway_public_catalog_reconstructs_parent_linked_state)
 	EXPECT_EQ(restored.betting.stacks, child.betting.stacks);
 	EXPECT_EQ(restored.legal_actions, child.legal_actions);
 	EXPECT_EQ(restored.history, child.history);
+}
+
+TEST_CASE(multiway_public_catalog_memory_snapshot_counts_nested_menus_once)
+{
+	using namespace texas::solver::multiway;
+	MultiwayPublicCatalog catalog(8U);
+	auto first = make_descriptor(1U);
+	first.incoming_edge.dealt_cards = { 1U, 2U, 3U };
+	first.incoming_edge.transition_board = { 4U, 5U };
+	catalog.admit(first);
+	const auto snapshot = catalog.memory_snapshot();
+	EXPECT_EQ(snapshot.nodes.live_element_bytes, sizeof(MultiwayPackedPublicNode));
+	EXPECT_EQ(snapshot.menus.live_element_bytes, sizeof(std::vector<MultiwayActionDescriptor>));
+	EXPECT_EQ(snapshot.nested_payloads.live_element_bytes, sizeof(MultiwayActionDescriptor));
+	EXPECT_EQ(snapshot.nested_payloads.retained_capacity_bytes, sizeof(MultiwayActionDescriptor));
+	EXPECT_TRUE(snapshot.indexes.live_element_bytes > 0U);
+	EXPECT_TRUE(snapshot.total.valid());
 }
 
 TEST_CASE(multiway_public_catalog_uses_fixed_node_memory_for_repeated_menus)

@@ -10,15 +10,38 @@
 
 namespace texas::solver::multiway
 {
+	namespace
+	{
+		void derive_unattributed_private_bytes(MultiwayTrainingReport& report) noexcept
+		{
+			report.unattributed_private_bytes_available = false;
+			report.unattributed_private_bytes = 0U;
+			if (!report.process_memory_snapshots.valid() || !report.memory_subsystems.valid() ||
+				report.process_memory_snapshots.count == 0U ||
+				report.memory_subsystems.count == 0U ||
+				report.process_memory_snapshots.count != report.memory_subsystems.count)
+				return;
+			const auto process_index = static_cast<std::size_t>(report.process_memory_snapshots.count - 1U);
+			const auto& process = report.process_memory_snapshots.snapshots[process_index];
+			const auto& subsystems = report.memory_subsystems.snapshots[process_index];
+			if (process.phase_id != subsystems.phase_id || !process.private_committed_available ||
+				process.private_committed_bytes < subsystems.retained_capacity_bytes)
+				return;
+			report.unattributed_private_bytes = process.private_committed_bytes - subsystems.retained_capacity_bytes;
+			report.unattributed_private_bytes_available = true;
+		}
+	}
 
 	void MultiwayTrainingReport::validate() const
 	{
 		if (instrumentation_kind != "none" && instrumentation_kind != "tracy")
 			throw std::invalid_argument("invalid multiway training instrumentation kind");
-		if (instrumentation_kind == "none" && (!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid))
+		if (instrumentation_kind == "none" && (!tracy_version.empty() || !trace_capture_id.empty() || !allocation_probe_valid || tracy_memory_events_enabled))
 			throw std::invalid_argument("unprofiled training report has Tracy provenance");
 		if (instrumentation_kind == "tracy" && (tracy_version.empty() || allocation_probe_valid))
 			throw std::invalid_argument("Tracy training report has invalid provenance");
+		if (tracy_memory_events_enabled && instrumentation_kind != "tracy")
+			throw std::invalid_argument("Tracy memory events require Tracy instrumentation");
 		const auto worker_vectors_match = [this] {
 			const auto worker_count = worker_trajectory_counts.size();
 			const auto matches = [worker_count](std::size_t size) {
@@ -43,11 +66,34 @@ namespace texas::solver::multiway
 			}
 		}
 		evidence.validate(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION);
+		if (!process_memory_snapshots.valid() ||
+			(!failed && process_memory_snapshots.enabled && !process_memory_snapshots.completed))
+		{
+			throw std::invalid_argument("invalid multiway process memory snapshots");
+		}
+		if (!memory_subsystems.valid() ||
+			(!failed && memory_subsystems.enabled && !memory_subsystems.completed))
+		{
+			throw std::invalid_argument("invalid multiway subsystem memory snapshots");
+		}
+		if (unattributed_private_bytes_available)
+		{
+			if (process_memory_snapshots.count == 0U || memory_subsystems.count == 0U ||
+				process_memory_snapshots.count != memory_subsystems.count)
+				throw std::invalid_argument("unattributed private bytes lack matching snapshots");
+			const auto index = static_cast<std::size_t>(process_memory_snapshots.count - 1U);
+			const auto& process = process_memory_snapshots.snapshots[index];
+			const auto& subsystems = memory_subsystems.snapshots[index];
+			if (!process.private_committed_available || process.phase_id != subsystems.phase_id ||
+				process.private_committed_bytes < subsystems.retained_capacity_bytes ||
+				unattributed_private_bytes != process.private_committed_bytes - subsystems.retained_capacity_bytes)
+				throw std::invalid_argument("invalid unattributed private bytes derivation");
+		}
 		if (process_rss_available && current_process_rss_bytes == 0U)
 		{
 			throw std::invalid_argument("available process RSS must be non-zero");
 		}
-		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery))
+		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache))
 		{
 			throw std::invalid_argument("invalid multiway training telemetry");
 		}
@@ -87,6 +133,7 @@ namespace texas::solver::multiway
 		report.street_visits = status.street_visits;
 		report.deterministic_merge_fingerprint = fingerprint;
 		report.evidence = evidence;
+		report.tracy_memory_events_enabled = texas::util::tracy_memory_events_enabled;
 #if defined(TEXASSOLVER_TRACY_ENABLED) && TEXASSOLVER_TRACY_ENABLED
 		report.instrumentation_kind = "tracy";
 		report.tracy_version = texas::util::TEXASSOLVER_TRACY_VERSION;
@@ -117,6 +164,10 @@ namespace texas::solver::multiway
 		report.configured_max_sparse_values = status.configured_max_sparse_values;
 		report.configured_worker_delta_capacity = status.configured_worker_delta_capacity;
 		report.configured_discovery_capacity = status.configured_discovery_capacity;
+		report.configured_max_regret_delta_entries_per_worker = status.configured_max_regret_delta_entries_per_worker;
+		report.configured_max_continuation_delta_entries_per_worker = status.configured_max_continuation_delta_entries_per_worker;
+		report.configured_max_discovery_public_states_per_worker = status.configured_max_discovery_public_states_per_worker;
+		report.configured_max_discovery_rows_per_worker = status.configured_max_discovery_rows_per_worker;
 		report.cumulative_worker_delta_entries = status.cumulative_worker_delta_entries;
 		report.worker_active_nanoseconds = status.worker_active_nanoseconds;
 		report.worker_wake_latency_nanoseconds = status.worker_wake_latency_nanoseconds;
@@ -157,6 +208,10 @@ namespace texas::solver::multiway
 		report.worker_profiles = status.worker_profiles;
 		report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
 		report.memory_ledger = status.memory_ledger;
+		report.process_memory_snapshots = status.process_memory_snapshots;
+		report.memory_subsystems = status.memory_subsystem_snapshots;
+		if (report.memory_subsystems.count != 0U)
+			report.memory_ledger.actual_retained_capacity_bytes = report.memory_subsystems.snapshots[report.memory_subsystems.count - 1U].retained_capacity_bytes;
 		report.capacity_exhaustion_stage = status.capacity_exhaustion_stage;
 		report.failed_batch_available = status.failed_batch_available;
 		report.failed_batch = status.failed_batch;
@@ -164,9 +219,12 @@ namespace texas::solver::multiway
 		report.current_process_rss_bytes = status.current_process_rss_bytes;
 		report.peak_process_rss_bytes = status.peak_process_rss_bytes;
 		report.process_memory_limit_bytes = process_memory_limit_bytes;
+		report.working_set_gate_config = status.working_set_gate_config;
+		report.working_set_gate = status.working_set_gate;
 		report.process_rss_available = status.process_rss_available;
 		report.started_at_preflop = status.preflop_rows > 0U;
 		report.elapsed_wall_nanoseconds = status.elapsed_wall_nanoseconds;
+		derive_unattributed_private_bytes(report);
 		return report;
 	}
 
@@ -188,12 +246,23 @@ namespace texas::solver::multiway
 			}
 			output << ']';
 		};
+		const auto write_memory_component = [&output](const char* name, const MultiwayMemoryComponent& component, bool leading_comma = true) {
+			output << (leading_comma ? ", \"" : "\"") << name << "\": {\"live_element_bytes\": "
+				   << component.live_element_bytes << ", \"retained_capacity_bytes\": "
+				   << component.retained_capacity_bytes << ", \"allocation_count\": "
+				   << component.allocation_count << ", \"allocation_count_known\": "
+				   << (component.allocation_count_known ? "true" : "false")
+				   << ", \"arithmetic_saturated\": " << (component.arithmetic_saturated ? "true" : "false")
+				   << ", \"grouping_only\": " << (component.grouping_only ? "true" : "false") << '}';
+		};
 		output << "{\n  \"evidence\": " << serialize_multiway_evidence_header(report.evidence)
 			   << ",\n  \"instrumentation_kind\": \"" << report.instrumentation_kind
 			   << "\",\n  \"tracy_version\": \"" << report.tracy_version
 			   << "\",\n  \"trace_capture_id\": \"" << report.trace_capture_id
 			   << "\",\n  \"allocation_probe_valid\": "
 			   << (report.allocation_probe_valid ? "true" : "false")
+			   << ",\n  \"tracy_memory_events_enabled\": "
+			   << (report.tracy_memory_events_enabled ? "true" : "false")
 			   << ",\n  \"batches\": " << report.batches
 			   << ",\n  \"trajectories\": " << report.trajectories
 			   << ",\n  \"accepted_trajectories\": " << report.accepted_trajectories
@@ -215,6 +284,15 @@ namespace texas::solver::multiway
 			   << ",\n  \"current_process_rss_bytes\": " << report.current_process_rss_bytes
 			   << ",\n  \"peak_process_rss_bytes\": " << report.peak_process_rss_bytes
 			   << ",\n  \"process_memory_limit_bytes\": " << report.process_memory_limit_bytes
+			   << ",\n  \"process_working_set_limit_bytes\": " << report.working_set_gate_config.hard_limit_bytes
+			   << ",\n  \"process_working_set_resident_allowance_bytes\": " << report.working_set_gate_config.resident_allowance_bytes
+			   << ",\n  \"working_set_gate_status\": " << static_cast<unsigned>(report.working_set_gate.status)
+			   << ",\n  \"working_set_gate_abort_phase\": " << static_cast<unsigned>(report.working_set_gate.phase)
+			   << ",\n  \"working_set_gate_admission_stage\": " << static_cast<unsigned>(report.working_set_gate.admission_stage)
+			   << ",\n  \"working_set_gate_estimated_bytes\": " << report.working_set_gate.estimated_working_set_bytes
+			   << ",\n  \"working_set_gate_compared_bytes\": " << report.working_set_gate.compared_working_set_bytes
+			   << ",\n  \"working_set_gate_observed_bytes\": " << report.working_set_gate.observed_working_set_bytes
+			   << ",\n  \"working_set_gate_rejected_category\": \"" << report.working_set_gate.rejected_category << "\""
 			   << ",\n  \"process_rss_available\": " << (report.process_rss_available ? "true" : "false")
 			   << ",\n  \"started_at_preflop\": " << (report.started_at_preflop ? "true" : "false")
 			   << ",\n  \"peak_public_states\": " << report.peak_public_states
@@ -238,6 +316,10 @@ namespace texas::solver::multiway
 			   << ",\n  \"configured_max_sparse_values\": " << report.configured_max_sparse_values
 			   << ",\n  \"configured_worker_delta_capacity\": " << report.configured_worker_delta_capacity
 			   << ",\n  \"configured_discovery_capacity\": " << report.configured_discovery_capacity
+			   << ",\n  \"configured_max_regret_delta_entries_per_worker\": " << report.configured_max_regret_delta_entries_per_worker
+			   << ",\n  \"configured_max_continuation_delta_entries_per_worker\": " << report.configured_max_continuation_delta_entries_per_worker
+			   << ",\n  \"configured_max_discovery_public_states_per_worker\": " << report.configured_max_discovery_public_states_per_worker
+			   << ",\n  \"configured_max_discovery_rows_per_worker\": " << report.configured_max_discovery_rows_per_worker
 			   << ",\n  \"cumulative_worker_delta_entries\": " << report.cumulative_worker_delta_entries
 			   << ",\n  \"worker_active_nanoseconds\": " << report.worker_active_nanoseconds
 			   << ",\n  \"worker_wake_latency_nanoseconds\": " << report.worker_wake_latency_nanoseconds
@@ -406,6 +488,16 @@ namespace texas::solver::multiway
 				   << ", \"barrier_wait_nanoseconds\": " << batch.barrier_wait_nanoseconds
 				   << ", \"delta_sort_nanoseconds\": " << batch.delta_sort_nanoseconds
 				   << ", \"merge_nanoseconds\": " << batch.merge_nanoseconds
+				   << ", \"regret_delta_capacity_exhausted\": "
+				   << (batch.regret_delta_capacity_exhausted ? "true" : "false")
+				   << ", \"continuation_delta_capacity_exhausted\": "
+				   << (batch.continuation_delta_capacity_exhausted ? "true" : "false")
+				   << ", \"discovery_public_state_capacity_exhausted\": "
+				   << (batch.discovery_public_state_capacity_exhausted ? "true" : "false")
+				   << ", \"discovery_row_capacity_exhausted\": "
+				   << (batch.discovery_row_capacity_exhausted ? "true" : "false")
+				   << ", \"capacity_exhausted\": "
+				   << (batch.capacity_exhausted ? "true" : "false")
 				   << ", \"discovery_capacity_exhausted\": "
 				   << (batch.discovery_capacity_exhausted ? "true" : "false");
 			const auto write_failed_array = [&output](const char* name, const std::vector<std::uint64_t>& values) {
@@ -456,7 +548,22 @@ namespace texas::solver::multiway
 		}
 		output << "]"
 			   << ",\n  \"memory_preflight_estimate_bytes\": " << report.memory_preflight_estimate_bytes
-			   << ",\n  \"memory_ledger\": {\"resident_baseline_bytes\": " << report.memory_ledger.resident_baseline_bytes
+			   << ",\n  \"memory_estimate_schema_version\": " << report.memory_ledger.schema_version
+			   << ",\n  \"memory_estimated_private_peak_bytes\": " << report.memory_ledger.estimated_private_peak_bytes
+			   << ",\n  \"memory_estimated_working_set_peak_bytes\": " << report.memory_ledger.estimated_working_set_peak_bytes
+			   << ",\n  \"memory_ledger\": {\"schema_version\": " << report.memory_ledger.schema_version
+			   << ", \"existing_working_set_bytes\": " << report.memory_ledger.existing_working_set_bytes
+			   << ", \"existing_private_committed_bytes\": " << report.memory_ledger.existing_private_committed_bytes
+			   << ", \"additional_private_capacity_bytes\": " << report.memory_ledger.additional_private_capacity_bytes
+			   << ", \"mapped_virtual_bytes\": " << report.memory_ledger.mapped_virtual_bytes
+			   << ", \"mapped_resident_allowance_bytes\": " << report.memory_ledger.mapped_resident_allowance_bytes
+			   << ", \"checkpoint_transient_bytes\": " << report.memory_ledger.checkpoint_transient_bytes
+			   << ", \"export_transient_bytes\": " << report.memory_ledger.export_transient_bytes
+			   << ", \"configured_capacity_growth_bytes\": " << report.memory_ledger.configured_capacity_growth_bytes
+			   << ", \"actual_retained_capacity_bytes\": " << report.memory_ledger.actual_retained_capacity_bytes
+			   << ", \"estimated_private_peak_bytes\": " << report.memory_ledger.estimated_private_peak_bytes
+			   << ", \"estimated_working_set_peak_bytes\": " << report.memory_ledger.estimated_working_set_peak_bytes
+			   << ", \"resident_baseline_bytes\": " << report.memory_ledger.resident_baseline_bytes
 			   << ", \"bucket_registry_bytes\": " << report.memory_ledger.bucket_registry_bytes
 			   << ", \"mapped_bucket_artifact_bytes\": " << report.memory_ledger.mapped_bucket_artifact_bytes
 			   << ", \"public_catalog_bytes\": " << report.memory_ledger.public_catalog_bytes
@@ -475,6 +582,105 @@ namespace texas::solver::multiway
 			   << ", \"live_bytes\": " << report.memory_ledger.live_bytes
 			   << ", \"reserved_bytes\": " << report.memory_ledger.reserved_bytes
 			   << ", \"committed_bytes\": " << report.memory_ledger.committed_bytes << "}"
+			   << ",\n  \"memory_schema_version\": " << MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION
+			   << ",\n  \"memory_process_snapshots\": [";
+		for (std::size_t index = 0U; index < report.process_memory_snapshots.count; ++index)
+		{
+			if (index != 0U)
+				output << ',';
+			const auto& snapshot = report.process_memory_snapshots.snapshots[index];
+			output << "{\"phase_id\": " << static_cast<unsigned>(snapshot.phase_id)
+				   << ", \"phase\": \"" << multiway_memory_phase_name(snapshot.phase_id)
+				   << "\", \"current_working_set_bytes\": " << snapshot.current_working_set_bytes
+				   << ", \"peak_working_set_bytes\": " << snapshot.peak_working_set_bytes
+				   << ", \"private_committed_bytes\": " << snapshot.private_committed_bytes
+				   << ", \"peak_private_committed_bytes\": " << snapshot.peak_private_committed_bytes
+				   << ", \"virtual_address_bytes\": " << snapshot.virtual_address_bytes
+				   << ", \"anonymous_resident_bytes\": " << snapshot.anonymous_resident_bytes
+				   << ", \"file_resident_bytes\": " << snapshot.file_resident_bytes
+				   << ", \"availability\": {\"current_working_set\": "
+				   << (snapshot.current_working_set_available ? "true" : "false")
+				   << ", \"peak_working_set\": " << (snapshot.peak_working_set_available ? "true" : "false")
+				   << ", \"private_committed\": " << (snapshot.private_committed_available ? "true" : "false")
+				   << ", \"peak_private_committed\": " << (snapshot.peak_private_committed_available ? "true" : "false")
+				   << ", \"virtual_address\": " << (snapshot.virtual_address_available ? "true" : "false")
+				   << ", \"anonymous_resident\": " << (snapshot.anonymous_resident_available ? "true" : "false")
+				   << ", \"file_resident\": " << (snapshot.file_resident_available ? "true" : "false")
+				   << "}}";
+		}
+		output << "]"
+			   << ",\n  \"memory_subsystems_schema_version\": " << MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION
+			   << ",\n  \"memory_subsystems\": {\"enabled\": "
+			   << (report.memory_subsystems.enabled ? "true" : "false")
+			   << ", \"completed\": " << (report.memory_subsystems.completed ? "true" : "false")
+			   << ", \"snapshots\": [";
+		for (std::size_t index = 0U; index < report.memory_subsystems.count; ++index)
+		{
+			if (index != 0U)
+				output << ',';
+			const auto& snapshot = report.memory_subsystems.snapshots[index];
+			output << "{\"phase_id\": " << static_cast<unsigned>(snapshot.phase_id)
+				   << ", \"phase\": \"" << multiway_memory_phase_name(snapshot.phase_id)
+				   << "\", \"worker_count\": " << snapshot.worker_count
+				   << ", \"live_bytes\": " << snapshot.live_bytes
+				   << ", \"retained_capacity_bytes\": " << snapshot.retained_capacity_bytes
+				   << ", \"arithmetic_saturated\": " << (snapshot.arithmetic_saturated ? "true" : "false")
+				   << ", \"components\": {";
+			bool first_component = true;
+			const auto write_component = [&first_component, &write_memory_component](const char* name, const MultiwayMemoryComponent& component) {
+				write_memory_component(name, component, !first_component);
+				first_component = false;
+			};
+			write_component("bucket_registry_owned", snapshot.bucket_registry_owned);
+			write_component("bucket_mapping_virtual", snapshot.bucket_mapping_virtual);
+			write_component("public_catalog_nodes", snapshot.public_catalog_nodes);
+			write_component("public_catalog_indexes", snapshot.public_catalog_indexes);
+			write_component("public_catalog_menus", snapshot.public_catalog_menus);
+			write_component("public_catalog_nested_payloads", snapshot.public_catalog_nested_payloads);
+			write_component("public_catalog_scratch", snapshot.public_catalog_scratch);
+			write_component("compact_row_metadata", snapshot.compact_row_metadata);
+			write_component("compact_page_metadata", snapshot.compact_page_metadata);
+			write_component("compact_regret_cells", snapshot.compact_regret_cells);
+			write_component("compact_strategy_cells", snapshot.compact_strategy_cells);
+			write_component("worker_regret_delta_stream", snapshot.worker_regret_delta_stream);
+			write_component("worker_continuation_delta_stream", snapshot.worker_continuation_delta_stream);
+			write_component("discovery_public_state_stream", snapshot.discovery_public_state_stream);
+			write_component("discovery_row_stream", snapshot.discovery_row_stream);
+			write_component("worker_action_menu_scratch", snapshot.worker_action_menu_scratch);
+			write_component("discovery_merge_scratch", snapshot.discovery_merge_scratch);
+			write_component("batch_runner_scratch", snapshot.batch_runner_scratch);
+			write_component("coordinator_merge_scratch", snapshot.coordinator_merge_scratch);
+			write_component("coordinator_admission_scratch", snapshot.coordinator_admission_scratch);
+			write_component("checkpoint_retained_buffers", snapshot.checkpoint_retained_buffers);
+			write_component("export_retained_buffers", snapshot.export_retained_buffers);
+			write_component("continuation_cache", snapshot.continuation_cache);
+			write_component("continuation_scratch", snapshot.continuation_scratch);
+			output << "}, \"workers\": [";
+			for (std::size_t worker = 0U; worker < snapshot.worker_count; ++worker)
+			{
+				if (worker != 0U)
+					output << ',';
+				output << '{';
+				bool first_worker_component = true;
+				const auto write_worker_component = [&first_worker_component, &write_memory_component](const char* name, const MultiwayMemoryComponent& component) {
+					write_memory_component(name, component, !first_worker_component);
+					first_worker_component = false;
+				};
+				const auto& worker_snapshot = snapshot.workers[worker];
+				write_worker_component("regret_delta_stream", worker_snapshot.regret_delta_stream);
+				write_worker_component("continuation_delta_stream", worker_snapshot.continuation_delta_stream);
+				write_worker_component("discovery_public_states", worker_snapshot.discovery_public_states);
+				write_worker_component("discovery_rows", worker_snapshot.discovery_rows);
+				write_worker_component("action_menu_scratch", worker_snapshot.action_menu_scratch);
+				write_worker_component("total", worker_snapshot.total);
+				output << '}';
+			}
+			output << "]}";
+		}
+		output << "]}"
+			   << (report.unattributed_private_bytes_available
+					? ",\n  \"unattributed_private_bytes\": " + std::to_string(report.unattributed_private_bytes)
+					: std::string{})
 			   << ",\n  \"checkpoint_bytes\": " << report.checkpoint_bytes
 			   << ",\n  \"checkpoint_write_nanoseconds\": " << report.checkpoint_write_nanoseconds
 			   << ",\n  \"checkpoint_telemetry\": {\"snapshot_lock_wait_nanoseconds\": " << report.checkpoint_telemetry.snapshot_lock_wait_nanoseconds

@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -479,7 +480,25 @@ namespace texas::solver::multiway
 
 	std::size_t MultiwayCompactStorage::memory_bytes() const noexcept
 	{
-		return rows_.capacity() * sizeof(MultiwaySparseRowMetadata) + pages_.capacity() * sizeof(PageMetadata) + regrets_.capacity() * sizeof(std::int32_t) + strategy_mass_.capacity() * sizeof(std::uint64_t);
+		const auto snapshot = memory_snapshot();
+		return snapshot.total.retained_capacity_bytes > std::numeric_limits<std::size_t>::max()
+			? std::numeric_limits<std::size_t>::max()
+			: static_cast<std::size_t>(snapshot.total.retained_capacity_bytes);
+	}
+
+	MultiwayCompactStorageMemorySnapshot MultiwayCompactStorage::memory_snapshot() const noexcept
+	{
+		MultiwayCompactStorageMemorySnapshot result;
+		result.row_metadata.add_buffer(rows_.size(), rows_.capacity(), sizeof(MultiwaySparseRowMetadata));
+		result.page_metadata.add_buffer(pages_.size(), pages_.capacity(), sizeof(PageMetadata));
+		result.regret_cells.add_buffer(regrets_.size(), regrets_.capacity(), sizeof(std::int32_t));
+		result.strategy_cells.add_buffer(strategy_mass_.size(), strategy_mass_.capacity(), sizeof(std::uint64_t));
+		result.total = result.row_metadata;
+		result.total.accumulate(result.page_metadata);
+		result.total.accumulate(result.regret_cells);
+		result.total.accumulate(result.strategy_cells);
+		result.total.grouping_only = true;
+		return result;
 	}
 
 } // namespace texas::solver::multiway

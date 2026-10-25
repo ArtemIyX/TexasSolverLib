@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/engine/multiway_allocation_probe.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
@@ -568,9 +569,10 @@ namespace texas::solver::multiway
 	bool MultiwayDiscoveryStream::try_append_public_state(const MultiwayPublicStateDescriptor& state)
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.append_public_state");
-		if (public_states_.size() >= capacity_)
+		if (public_states_.size() >= public_state_capacity_)
 		{
 			overflowed_ = true;
+			public_state_capacity_exhausted_ = true;
 			return false;
 		}
 		public_states_.push_back(state);
@@ -580,9 +582,10 @@ namespace texas::solver::multiway
 	bool MultiwayDiscoveryStream::try_append_row(const MultiwaySparseRowShape& shape) noexcept
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.worker.discovery.append_row");
-		if (rows_.size() >= capacity_)
+		if (rows_.size() >= row_capacity_)
 		{
 			overflowed_ = true;
+			row_capacity_exhausted_ = true;
 			return false;
 		}
 		rows_.push_back(shape);
@@ -594,6 +597,8 @@ namespace texas::solver::multiway
 		public_states_.clear();
 		rows_.clear();
 		overflowed_ = false;
+		public_state_capacity_exhausted_ = false;
+		row_capacity_exhausted_ = false;
 		terminal_visits_ = 0U;
 		leaf_visits_ = 0U;
 		missing_lookup_requests_ = 0U;
@@ -611,6 +616,22 @@ namespace texas::solver::multiway
 		terminal_visits_ = terminal_visits;
 		leaf_visits_ = leaf_visits;
 		missing_lookup_requests_ = missing_lookup_requests;
+	}
+
+	MultiwayMemoryComponent MultiwayDiscoveryStream::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(public_states_.size(), public_states_.capacity(), sizeof(MultiwayPublicStateDescriptor));
+		for (const auto& state : public_states_)
+		{
+			result.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+			result.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+		}
+		result.add_buffer(rows_.size(), rows_.capacity(), sizeof(MultiwaySparseRowShape));
+		return result;
 	}
 
 	void MultiwayDiscoveryStream::sort_fixed_order() noexcept
@@ -812,7 +833,10 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("multiway allocation-free update has invalid inputs");
 			}
 			if (stream.capacity() - stream.size() < action_count)
+			{
+				stream.mark_capacity_exhausted();
 				return false;
+			}
 
 			Probability counterfactual_reach = chance_reach;
 			for (std::size_t player = 0; player < player_count; ++player)
@@ -1451,13 +1475,27 @@ namespace texas::solver::multiway
 		MultiwaySearchProfileMode profile_mode,
 		bool pin_workers, bool immutable_epochs, MultiwaySchedulerMode scheduler_mode,
 		std::uint32_t dynamic_chunk_size)
-		: traversal_(std::move(traversal)), coordinator_(&coordinator), worker_count_(worker_count), worker_delta_capacity_(worker_delta_capacity), profile_mode_(profile_mode), pin_workers_(pin_workers), immutable_epochs_(immutable_epochs), scheduler_mode_(scheduler_mode), dynamic_chunk_size_(dynamic_chunk_size)
+		: MultiwayRootBatchRunner(
+			std::move(traversal), coordinator, worker_count,
+			{ worker_delta_capacity, worker_delta_capacity, 0U, 0U },
+			profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size)
+	{}
+
+	MultiwayRootBatchRunner::MultiwayRootBatchRunner(
+		MultiwayRootExternalSamplingTraversal traversal,
+		MultiwaySolverCoordinator& coordinator,
+		std::uint32_t worker_count,
+		MultiwayWorkerStreamCapacities capacities,
+		MultiwaySearchProfileMode profile_mode,
+		bool pin_workers, bool immutable_epochs, MultiwaySchedulerMode scheduler_mode,
+		std::uint32_t dynamic_chunk_size)
+		: traversal_(std::move(traversal)), coordinator_(&coordinator), worker_count_(worker_count), stream_capacities_(capacities), profile_mode_(profile_mode), pin_workers_(pin_workers), immutable_epochs_(immutable_epochs), scheduler_mode_(scheduler_mode), dynamic_chunk_size_(dynamic_chunk_size)
 	{
-		if (worker_count_ == 0U || worker_delta_capacity_ == 0U)
+		if (worker_count_ == 0U || stream_capacities_.regret_delta_entries == 0U || stream_capacities_.continuation_delta_entries == 0U)
 		{
 			throw std::invalid_argument("multiway root batch runner requires positive worker limits");
 		}
-		if (worker_count_ != coordinator.limits().worker_count || worker_delta_capacity_ > coordinator.limits().max_worker_delta_entries)
+		if (worker_count_ != coordinator.limits().worker_count || stream_capacities_.regret_delta_entries > coordinator.limits().regret_delta_capacity() || stream_capacities_.continuation_delta_entries > coordinator.limits().continuation_delta_capacity())
 		{
 			throw std::invalid_argument("multiway root batch runner limits must fit its coordinator");
 		}
@@ -1645,17 +1683,31 @@ namespace texas::solver::multiway
 		{
 			worker_work_cvs_.push_back(std::make_unique<std::condition_variable>());
 		}
-		const auto legacy_discovery_capacity = worker_delta_capacity_ > std::numeric_limits<std::size_t>::max() / 4U
+		const auto legacy_discovery_capacity = stream_capacities_.regret_delta_entries > std::numeric_limits<std::size_t>::max() / 4U
 			? std::numeric_limits<std::size_t>::max()
-			: worker_delta_capacity_ * 4U;
-		const auto discovery_capacity = immutable_epochs_
-			? (coordinator.limits().max_discovery_entries != 0U
-				? coordinator.limits().max_discovery_entries
-				: std::max<std::size_t>(64U, legacy_discovery_capacity))
-			: 0U;
+			: stream_capacities_.regret_delta_entries * 4U;
+		if (immutable_epochs_)
+		{
+			const auto fallback_discovery_capacity = std::max<std::size_t>(64U, legacy_discovery_capacity);
+			if (stream_capacities_.discovery_public_states == 0U)
+				stream_capacities_.discovery_public_states = coordinator.limits().discovery_public_state_capacity() != 0U
+					? coordinator.limits().discovery_public_state_capacity()
+					: fallback_discovery_capacity;
+			if (stream_capacities_.discovery_rows == 0U)
+				stream_capacities_.discovery_rows = coordinator.limits().discovery_row_capacity() != 0U
+					? coordinator.limits().discovery_row_capacity()
+					: fallback_discovery_capacity;
+			if (stream_capacities_.discovery_public_states == 0U || stream_capacities_.discovery_rows == 0U || stream_capacities_.discovery_public_states > coordinator.limits().discovery_public_state_capacity() && coordinator.limits().discovery_public_state_capacity() != 0U || stream_capacities_.discovery_rows > coordinator.limits().discovery_row_capacity() && coordinator.limits().discovery_row_capacity() != 0U)
+				throw std::invalid_argument("multiway root batch runner discovery limits must fit its coordinator");
+		}
+		else
+		{
+			stream_capacities_.discovery_public_states = 0U;
+			stream_capacities_.discovery_rows = 0U;
+		}
 		for (std::uint32_t worker = 0; worker < worker_count_; ++worker)
 		{
-			worker_scratch_.emplace_back(worker, worker_delta_capacity_, discovery_capacity);
+			worker_scratch_.emplace_back(worker, stream_capacities_);
 			worker_stream_views_.push_back(&worker_scratch_.back().stream);
 			continuation_stream_views_.push_back(&worker_scratch_.back().continuation_stream);
 			discovery_stream_views_.push_back(&worker_scratch_.back().discovery);
@@ -1676,6 +1728,74 @@ namespace texas::solver::multiway
 			if (thread.joinable())
 				thread.join();
 		}
+	}
+
+	MultiwayRootBatchMemorySnapshot MultiwayRootBatchRunner::memory_snapshot() const noexcept
+	{
+		MultiwayRootBatchMemorySnapshot result;
+		result.worker_count = std::min<std::uint32_t>(worker_count_, static_cast<std::uint32_t>(MULTIWAY_MEMORY_MAX_WORKERS));
+		for (std::size_t index = 0U; index < result.worker_count; ++index)
+		{
+			const auto& scratch = worker_scratch_[index];
+			result.workers[index].regret_delta_stream = scratch.stream.memory_snapshot();
+			result.workers[index].continuation_delta_stream = scratch.continuation_stream.memory_snapshot();
+			const auto& public_states = scratch.discovery.public_states();
+			const auto& rows = scratch.discovery.rows();
+			result.workers[index].discovery_public_states.add_buffer(public_states.size(), public_states.capacity(), sizeof(MultiwayPublicStateDescriptor));
+			for (const auto& state : public_states)
+			{
+				result.workers[index].discovery_public_states.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+				result.workers[index].discovery_public_states.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+				result.workers[index].discovery_public_states.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+				result.workers[index].discovery_public_states.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+				result.workers[index].discovery_public_states.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+			}
+			result.workers[index].discovery_rows.add_buffer(rows.size(), rows.capacity(), sizeof(MultiwaySparseRowShape));
+			result.workers[index].action_menu_scratch.add_buffer(
+				scratch.action_menu_scratch.size(), scratch.action_menu_scratch.capacity(), sizeof(MultiwayActionDescriptor));
+			result.workers[index].total = result.workers[index].regret_delta_stream;
+			result.workers[index].total.accumulate(result.workers[index].continuation_delta_stream);
+			result.workers[index].total.accumulate(result.workers[index].discovery_public_states);
+			result.workers[index].total.accumulate(result.workers[index].discovery_rows);
+			result.workers[index].total.accumulate(result.workers[index].action_menu_scratch);
+			result.workers[index].total.grouping_only = true;
+		}
+		result.stream_views.add_buffer(worker_stream_views_.size(), worker_stream_views_.capacity(), sizeof(const MultiwayWorkerDeltaStream*));
+		result.stream_views.add_buffer(continuation_stream_views_.size(), continuation_stream_views_.capacity(), sizeof(const MultiwayContinuationDeltaStream*));
+		result.stream_views.add_buffer(discovery_stream_views_.size(), discovery_stream_views_.capacity(), sizeof(const MultiwayDiscoveryStream*));
+		result.discovery_merge_scratch.add_buffer(discovery_merge_cursors_.size(), discovery_merge_cursors_.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.order.size(), admission_order_scratch_.order.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.parent_indexes.size(), admission_order_scratch_.parent_indexes.capacity(), sizeof(std::size_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.depths.size(), admission_order_scratch_.depths.capacity(), sizeof(std::uint32_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.colors.size(), admission_order_scratch_.colors.capacity(), sizeof(std::uint8_t));
+		result.discovery_merge_scratch.add_buffer(admission_order_scratch_.stack.size(), admission_order_scratch_.stack.capacity(), sizeof(std::size_t));
+		result.discovery_outputs.add_buffer(discovery_public_states_.size(), discovery_public_states_.capacity(), sizeof(MultiwayPublicStateDescriptor));
+		for (const auto& state : discovery_public_states_)
+		{
+			result.discovery_outputs.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+			result.discovery_outputs.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+			result.discovery_outputs.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+			result.discovery_outputs.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+			result.discovery_outputs.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+		}
+		result.discovery_outputs.add_buffer(discovery_rows_.size(), discovery_rows_.capacity(), sizeof(MultiwaySparseRowShape));
+		result.worker_batches.add_buffer(worker_batches_.size(), worker_batches_.capacity(), sizeof(MultiwayWorkerBatch));
+		result.thread_scratch.add_buffer(worker_scratch_.size(), worker_scratch_.capacity(), sizeof(WorkerScratch));
+		result.thread_scratch.add_buffer(threads_.size(), threads_.capacity(), sizeof(std::thread));
+		result.thread_scratch.add_buffer(worker_work_cvs_.size(), worker_work_cvs_.capacity(), sizeof(std::unique_ptr<std::condition_variable>));
+		result.thread_scratch.add_buffer(worker_affinity_groups_.size(), worker_affinity_groups_.capacity(), sizeof(std::uint16_t));
+		result.thread_scratch.add_buffer(worker_affinity_masks_.size(), worker_affinity_masks_.capacity(), sizeof(std::uint64_t));
+		result.thread_scratch.add_buffer(worker_affinity_processors_.size(), worker_affinity_processors_.capacity(), sizeof(std::uint32_t));
+		result.thread_scratch.add_buffer(worker_work_cvs_.size(), worker_work_cvs_.size(), sizeof(std::condition_variable));
+		result.total = result.stream_views;
+		result.total.accumulate(result.discovery_merge_scratch);
+		result.total.accumulate(result.discovery_outputs);
+		result.total.accumulate(result.worker_batches);
+		result.total.accumulate(result.thread_scratch);
+		for (std::size_t index = 0U; index < result.worker_count; ++index)
+			result.total.accumulate(result.workers[index].total);
+		result.total.grouping_only = true;
+		return result;
 	}
 
 	void MultiwayRootBatchRunner::worker_loop(std::size_t worker_index)
@@ -2046,6 +2166,10 @@ namespace texas::solver::multiway
 				result.worker_resolved_processor[worker_index] = scratch.resolved_processor;
 				result.worker_affinity_masks[worker_index] = scratch.affinity_mask;
 				result.worker_affinity_succeeded[worker_index] = scratch.affinity_succeeded ? 1U : 0U;
+				result.regret_delta_capacity_exhausted = result.regret_delta_capacity_exhausted || scratch.stream.capacity_exhausted();
+				result.continuation_delta_capacity_exhausted = result.continuation_delta_capacity_exhausted || scratch.continuation_stream.capacity_exhausted();
+				result.discovery_public_state_capacity_exhausted = result.discovery_public_state_capacity_exhausted || scratch.discovery.public_state_capacity_exhausted();
+				result.discovery_row_capacity_exhausted = result.discovery_row_capacity_exhausted || scratch.discovery.row_capacity_exhausted();
 				result.worker_profiles[worker_index] = scratch.profile.snapshot();
 				result.minimum_worker_active_nanoseconds = std::min(
 					result.minimum_worker_active_nanoseconds, scratch.active_nanoseconds);
@@ -2073,11 +2197,19 @@ namespace texas::solver::multiway
 		{
 			result.minimum_worker_active_nanoseconds = 0U;
 		}
+		result.discovery_capacity_exhausted = result.discovery_public_state_capacity_exhausted || result.discovery_row_capacity_exhausted;
+		result.capacity_exhausted = result.regret_delta_capacity_exhausted || result.continuation_delta_capacity_exhausted || result.discovery_capacity_exhausted;
 		result.barrier_wait_nanoseconds = result.coordinator_wait_nanoseconds > result.maximum_worker_active_nanoseconds
 			? result.coordinator_wait_nanoseconds - result.maximum_worker_active_nanoseconds
 			: 0U;
 		if (cancelled_.load(std::memory_order_acquire))
 		{
+			result.profile = batch_profile.snapshot();
+			return result;
+		}
+		if (result.trajectories_discarded != 0U || result.trajectories_attempted != result.trajectories_accepted)
+		{
+			result.clean = false;
 			result.profile = batch_profile.snapshot();
 			return result;
 		}

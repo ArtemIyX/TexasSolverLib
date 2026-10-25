@@ -11,6 +11,7 @@
 #include "solver/multiway/workflow/multiway_workflow_config.hpp"
 #include "solver/multiway/workflow/multiway_training_report.hpp"
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
+#include "solver/multiway/workflow/multiway_staged_qualification.hpp"
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 #include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
@@ -91,10 +92,15 @@ namespace
 					  << "  --output <path>        Full blueprint artifact\n"
 					  << "  --report <path>        JSON training report\n"
 					  << "  --checkpoint-dir <dir> Output directory for incomplete runs\n"
-					  << "  --resume <path>        Checkpoint to resume\n";
+					  << "  --resume <path>        Checkpoint to resume\n"
+					  << "  --progress <true|false>  Print training progress (default true)\n"
+					  << "  --progress-every <N>  Print training progress every N batches\n"
+					  << "  --progress-memory <true|false>  Show working-set telemetry\n"
+					  << "  --progress-speed <true|false>  Show interval and overall trajectories per second\n";
 			std::cout << "  --threads <1..16>      Training worker override\n"
 					  << "  --pin-workers <true|false>  Pin training workers to logical processors\n"
-					  << "  --scheduler <fixed|dynamic>  Training worker scheduler\n";
+					  << "  --scheduler <fixed|dynamic>  Training worker scheduler\n"
+					  << "  --authorize-50m       Explicitly authorize the 50M qualification stage\n";
 		}
 		else if (workflow == Workflow::Buckets)
 		{
@@ -503,6 +509,73 @@ namespace
 		return EXIT_SUCCESS;
 	}
 
+	struct MultiwayTrainingProgressContext
+	{
+		bool enabled = true;
+		bool show_memory = false;
+		bool show_speed = false;
+		std::uint64_t interval = 1U;
+		std::uint64_t starting_batches = 0U;
+		std::uint64_t requested_batches = 0U;
+		std::uint32_t effective_workers = 0U;
+		std::ofstream* log = nullptr;
+		std::uint64_t starting_trajectories = 0U;
+		std::uint64_t last_reported_trajectories = 0U;
+		std::chrono::steady_clock::time_point started_at{};
+		std::chrono::steady_clock::time_point last_reported_at{};
+	};
+
+	void report_multiway_training_progress(
+		const texas::solver::multiway::MultiwayBlueprintTrainingStatus& status,
+		void* context)
+	{
+		auto& progress = *static_cast<MultiwayTrainingProgressContext*>(context);
+		if (!progress.enabled || progress.interval == 0U || status.batches < progress.starting_batches)
+			return;
+		const auto completed_batches = status.batches - progress.starting_batches;
+		if (completed_batches == 0U ||
+			(completed_batches % progress.interval != 0U && completed_batches != progress.requested_batches))
+			return;
+		const auto now = std::chrono::steady_clock::now();
+		const auto line = std::string("training progress: batches_completed=") +
+			std::to_string(completed_batches) + "/" + std::to_string(progress.requested_batches) +
+			" trajectories=" + std::to_string(status.trajectories) +
+			" discarded=" + std::to_string(status.discarded_trajectories) +
+			" effective_workers=" + std::to_string(progress.effective_workers);
+		auto output_line = line;
+		if (progress.show_memory)
+		{
+			if (status.process_rss_available)
+			{
+				output_line += " working_set_current_bytes=" + std::to_string(status.current_process_rss_bytes) +
+					" working_set_peak_bytes=" + std::to_string(status.peak_process_rss_bytes) +
+					" working_set_gate_bytes=" + std::to_string(status.working_set_gate_config.hard_limit_bytes);
+			}
+			else
+			{
+				output_line += " working_set=unavailable";
+			}
+		}
+		if (progress.show_speed)
+		{
+			const auto interval_seconds = std::chrono::duration<double>(now - progress.last_reported_at).count();
+			const auto overall_seconds = std::chrono::duration<double>(now - progress.started_at).count();
+			const auto interval_trajectories = status.trajectories - progress.last_reported_trajectories;
+			const auto overall_trajectories = status.trajectories - progress.starting_trajectories;
+			if (interval_seconds > 0.0)
+				output_line += " interval_trajectories_per_second=" + std::to_string(
+					static_cast<double>(interval_trajectories) / interval_seconds);
+			if (overall_seconds > 0.0)
+				output_line += " overall_trajectories_per_second=" + std::to_string(
+					static_cast<double>(overall_trajectories) / overall_seconds);
+			progress.last_reported_trajectories = status.trajectories;
+			progress.last_reported_at = now;
+		}
+		std::cout << output_line << std::endl;
+		if (progress.log != nullptr)
+			*progress.log << output_line << '\n' << std::flush;
+	}
+
 	int run_train(const std::filesystem::path& config_path, std::filesystem::path input_path,
 		std::filesystem::path output_path, std::uint64_t batches,
 		std::filesystem::path report_path,
@@ -510,10 +583,21 @@ namespace
 		const std::filesystem::path& resume_path,
 		std::uint32_t worker_override,
 		bool pin_workers,
-		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode)
+		bool progress_enabled,
+		std::uint64_t progress_interval,
+		bool progress_memory,
+		bool progress_speed,
+		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode,
+		bool authorize_50m_stage)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots;
+		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::ProcessStart))
+			throw std::logic_error("multiway process memory snapshot phase order is invalid");
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots;
+		if (!memory_subsystem_snapshots.record(MultiwayMemoryPhase::ProcessStart, {}))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 		TEXASSOLVER_TRACY_SET_THREAD_NAME("mw.train.main");
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
@@ -532,6 +616,16 @@ namespace
 			worker_override = workflow.training_worker_count;
 		if (batches == 0U || input_path.empty() || output_path.empty())
 			throw std::invalid_argument("train requires input_path, output_path, and batches");
+		const auto reaches_50m = [&](std::uint64_t starting_trajectories) {
+			if (starting_trajectories >= 50'000'000U)
+				return true;
+			const auto remaining_trajectories = 50'000'000U - starting_trajectories;
+			const auto full_batches = remaining_trajectories / workflow.trajectories_per_batch;
+			return batches > full_batches ||
+				(batches == full_batches && remaining_trajectories % workflow.trajectories_per_batch == 0U);
+		};
+		if (resume_path.empty() && reaches_50m(0U) && !authorize_50m_stage)
+			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
 		const auto log_path = workflow.training_log_path.empty()
 			? std::filesystem::path(report_path.empty() ? output_path.string() + ".log" : report_path.string() + ".log")
 			: workflow.training_log_path;
@@ -552,7 +646,19 @@ namespace
 			throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
 		}
 		log_line("training initialization: loading bucket artifact");
-		const auto buckets = load_multiway_bucket_registry(input_path);
+		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeBucketMap))
+			throw std::logic_error("multiway process memory snapshot phase order is invalid");
+		if (!memory_subsystem_snapshots.record(MultiwayMemoryPhase::BeforeBucketMap, {}))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
+		const auto buckets = load_multiway_bucket_registry(input_path, &process_memory_snapshots);
+		if (!memory_subsystem_snapshots.record(
+				MultiwayMemoryPhase::AfterBucketMapMetadata,
+				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
+		if (!memory_subsystem_snapshots.record(
+				MultiwayMemoryPhase::AfterBucketAssignmentValidation,
+				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 		log_line("training initialization: bucket artifact loaded tables=" + std::to_string(buckets.tables().size()));
 		log_line("training initialization: preparing output and model identity");
 		if (!output_path.parent_path().empty())
@@ -590,8 +696,10 @@ namespace
 		config.limits.max_public_states = static_cast<std::size_t>(workflow.maximum_public_states);
 		config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
 		config.limits.max_sparse_values = static_cast<std::size_t>(workflow.maximum_sparse_values);
-		config.limits.max_worker_delta_entries = static_cast<std::size_t>(workflow.worker_delta_capacity);
-		config.limits.max_discovery_entries = static_cast<std::size_t>(workflow.discovery_capacity);
+		config.limits.max_regret_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_regret_delta_capacity());
+		config.limits.max_continuation_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_continuation_delta_capacity());
+		config.limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_public_state_capacity());
+		config.limits.max_discovery_rows_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_row_capacity());
 		config.limits.max_batches = batches;
 		config.limits.storage_backend = workflow.storage_backend == "CompactInt32"
 			? MultiwaySolverLimits::StorageBackend::CompactInt32
@@ -604,25 +712,54 @@ namespace
 		const auto warning_bytes = std::max<std::uint64_t>(
 			1U, operating_bytes - operating_bytes / 5U);
 		MultiwayMemoryInputs memory_inputs;
-		memory_inputs.resident_baseline_bytes = observed_multiway_process_memory_bytes();
+		log_line("training initialization: running memory preflight");
+		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::BeforeMemoryPreflight))
+			throw std::logic_error("multiway process memory snapshot phase order is invalid");
+		if (!memory_subsystem_snapshots.record(
+				MultiwayMemoryPhase::BeforeMemoryPreflight,
+				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
+			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
+		const auto& memory_baseline = process_memory_snapshots.snapshots[process_memory_snapshots.count - 1U];
+		memory_inputs.existing_working_set_bytes = memory_baseline.current_working_set_available
+			? memory_baseline.current_working_set_bytes
+			: 0U;
+		memory_inputs.existing_private_committed_bytes = memory_baseline.private_committed_available
+			? memory_baseline.private_committed_bytes
+			: 0U;
+		memory_inputs.resident_baseline_bytes = memory_inputs.existing_working_set_bytes;
 		memory_inputs.bucket_registry_bytes = buckets.owned_memory_bytes();
-		memory_inputs.mapped_bucket_artifact_bytes = buckets.mapped_artifact_bytes();
+		memory_inputs.mapped_virtual_bytes = buckets.mapped_artifact_bytes();
+		memory_inputs.mapped_bucket_artifact_bytes = memory_inputs.mapped_virtual_bytes;
+		if (memory_baseline.file_resident_available)
+		{
+			const auto resident_mapped = std::min(
+				memory_inputs.mapped_virtual_bytes, memory_baseline.file_resident_bytes);
+			memory_inputs.mapped_resident_allowance_bytes = memory_inputs.mapped_virtual_bytes - resident_mapped;
+		}
 		memory_inputs.range_row_count = workflow.model.player_count;
 		memory_inputs.range_entry_count = static_cast<std::uint64_t>(workflow.model.player_count) * core::CANONICAL_HOLE_COMBINATION_COUNT;
 		memory_inputs.export_action_capacity = workflow.maximum_sparse_values;
 		memory_inputs.checkpoint_peak_bytes = estimated_blueprint_bytes;
 		memory_inputs.export_peak_bytes = estimated_blueprint_bytes;
-		log_line("training initialization: running memory preflight");
 		const auto memory_preflight = preflight_multiway_memory(
 			config.limits,
 			{ warning_bytes, workflow.process_memory_limit_bytes, operating_bytes },
 			memory_inputs);
-		if (memory_preflight.status == MultiwayMemoryStatus::Rejected)
+		const auto working_set_gate = evaluate_multiway_working_set_preflight(
+			memory_preflight,
+			{ workflow.process_working_set_limit_bytes,
+				workflow.process_working_set_resident_allowance_bytes });
+		if (working_set_gate.rejected())
 		{
-			throw std::runtime_error(std::string("training memory preflight rejected: ") + memory_preflight.message + "; admission_stage=" + std::to_string(static_cast<unsigned>(memory_preflight.highest_admitted_stage)) + "; estimated_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
+			throw std::runtime_error(std::string("training memory preflight rejected: abort_phase=preflight; ") + working_set_gate.message + "; rejected_category=" + working_set_gate.rejected_category + "; admission_stage=" + std::to_string(static_cast<unsigned>(working_set_gate.admission_stage)) + "; estimated_private_peak_bytes=" + std::to_string(memory_preflight.estimate.estimated_private_peak_bytes) + "; estimated_working_set_peak_bytes=" + std::to_string(memory_preflight.estimate.estimated_working_set_peak_bytes) + "; compared_working_set_bytes=" + std::to_string(working_set_gate.compared_working_set_bytes) + "; gate_bytes=" + std::to_string(working_set_gate.hard_limit_bytes));
 		}
 		config.memory_preflight_estimate_bytes = memory_preflight.estimate.total_bytes;
 		config.memory_ledger = memory_preflight.estimate.ledger;
+		config.process_memory_snapshots = process_memory_snapshots;
+		config.memory_subsystem_snapshots = memory_subsystem_snapshots;
+		config.working_set_monitor.gate = {
+			workflow.process_working_set_limit_bytes,
+			workflow.process_working_set_resident_allowance_bytes };
 		log_line("training workers requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective) + " memory_estimate_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
 		log_line("training initialization: loading bucket artifact bytes=" + std::to_string(std::filesystem::file_size(input_path)));
 		log_line("training initialization: constructing six-player uniform ranges");
@@ -650,10 +787,27 @@ namespace
 			session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
 				resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
 		}
+		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
+			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
+		const auto progress_started_at = std::chrono::steady_clock::now();
+		MultiwayTrainingProgressContext progress_context{
+			progress_enabled,
+			progress_memory,
+			progress_speed,
+			progress_interval,
+			session.status().batches,
+			batches,
+			workers.effective,
+			&log,
+			session.status().trajectories,
+			session.status().trajectories,
+			progress_started_at,
+			progress_started_at};
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};
+		bool checkpoint_snapshots_recorded = false;
 		const auto publish_training_failure = [&]() {
 			auto failure_report = make_multiway_training_report(
 				session.status(), session.status().merged_stream_fingerprint,
@@ -674,14 +828,18 @@ namespace
 			{
 				const auto next = std::min(remaining_batches, workflow.checkpoint_interval);
 				log_line("training started: running batches " + std::to_string(batches - remaining_batches + 1U) + "-" + std::to_string(batches - remaining_batches + next));
-				session.run_batches(next);
+				session.run_batches(next, report_multiway_training_progress, &progress_context);
 				remaining_batches -= next;
-				log_line("training progress: batches_completed=" + std::to_string(batches - remaining_batches) + "/" + std::to_string(batches) + " trajectories=" + std::to_string(session.status().trajectories) + " discarded=" + std::to_string(session.status().discarded_trajectories) + " effective_workers=" + std::to_string(workers.effective));
 				if (!checkpoint_path.empty())
 				{
 					if (!checkpoint_path.parent_path().empty())
 					{
 						std::filesystem::create_directories(checkpoint_path.parent_path());
+					}
+					const bool capture_checkpoint_phases = remaining_batches == 0U;
+					if (capture_checkpoint_phases)
+					{
+						session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
 					}
 					const auto checkpoint_start = std::chrono::steady_clock::now();
 					auto checkpoint = session.checkpoint();
@@ -697,6 +855,11 @@ namespace
 					if (checkpoint_error)
 						throw std::runtime_error("cannot measure training checkpoint");
 					checkpoint_bytes = std::max(checkpoint_bytes, static_cast<std::uint64_t>(bytes));
+					if (capture_checkpoint_phases)
+					{
+						session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
+						checkpoint_snapshots_recorded = true;
+					}
 				}
 			}
 		}
@@ -727,13 +890,25 @@ namespace
 				training_report);
 			throw std::runtime_error("training failed the F1 coverage or discard gate");
 		}
+		if (!checkpoint_snapshots_recorded)
+		{
+			session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
+			session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
+		}
+		session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeExport);
 		const auto blueprint_start = std::chrono::steady_clock::now();
 		const auto artifact = session.export_full_policy();
 		MultiwayFullBlueprintArtifacts::save_atomic(output_path, artifact);
+		session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterExport);
 		const auto blueprint_export_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - blueprint_start)
 				.count());
+		training_report = make_multiway_training_report(
+			session.status(), status.merged_stream_fingerprint,
+			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
+				config.identity(), workflow.fingerprint()),
+			workflow.process_memory_limit_bytes);
 		std::error_code blueprint_error;
 		const auto blueprint_bytes = std::filesystem::file_size(output_path, blueprint_error);
 		if (blueprint_error)
@@ -784,8 +959,10 @@ namespace
 		config.limits.max_public_states = static_cast<std::size_t>(workflow.maximum_public_states);
 		config.limits.max_sparse_rows = static_cast<std::size_t>(workflow.maximum_sparse_rows);
 		config.limits.max_sparse_values = static_cast<std::size_t>(workflow.maximum_sparse_values);
-		config.limits.max_worker_delta_entries = static_cast<std::size_t>(workflow.worker_delta_capacity);
-		config.limits.max_discovery_entries = static_cast<std::size_t>(workflow.discovery_capacity);
+		config.limits.max_regret_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_regret_delta_capacity());
+		config.limits.max_continuation_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_continuation_delta_capacity());
+		config.limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_public_state_capacity());
+		config.limits.max_discovery_rows_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_row_capacity());
 		config.limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
 		MultiwayPrivateConfig ranges;
 		ranges.ranges.resize(6U);
@@ -877,13 +1054,17 @@ namespace
 			texas::solver::multiway::multiway_bucket_physical_core_count());
 		bool threads_specified = false;
 		bool pin_workers = false;
+		bool authorize_50m_stage = false;
 		auto scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
 		std::uint64_t benchmark_tables = 0U;
 		std::uint64_t benchmark_start = 0U;
 		std::string benchmark_mode = "build-only";
-		bool inspect_progress = true;
+		bool progress_enabled = true;
+		bool progress_memory = false;
+		bool progress_speed = false;
 		std::uint64_t inspect_progress_interval =
 			texas::solver::multiway::MULTIWAY_BUCKET_INSPECTION_DEFAULT_PROGRESS_INTERVAL;
+		std::uint64_t training_progress_interval = 1U;
 		auto inspect_hash_mode = texas::solver::multiway::MultiwayBucketInspectionHashMode::Parallel;
 		for (int index = 1; index < argc; ++index)
 		{
@@ -895,7 +1076,12 @@ namespace
 			}
 			if (argument == "--tiny")
 				return run_tiny_pipeline();
-			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
+			if (argument == "--authorize-50m")
+			{
+				authorize_50m_stage = true;
+				continue;
+			}
+			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
 			{
 				if (!consume_value(index, argc, argv, argument))
 				{
@@ -960,17 +1146,39 @@ namespace
 				{
 					const std::string_view value(argv[index]);
 					if (value == "true")
-						inspect_progress = true;
+						progress_enabled = true;
 					else if (value == "false")
-						inspect_progress = false;
+						progress_enabled = false;
 					else
 						throw std::invalid_argument("--progress must be true or false");
 				}
 				if (argument == "--progress-every")
 				{
-					inspect_progress_interval = std::stoull(argv[index]);
-					if (inspect_progress_interval == 0U)
+					const auto interval = std::stoull(argv[index]);
+					if (interval == 0U)
 						throw std::invalid_argument("--progress-every must be positive");
+					inspect_progress_interval = interval;
+					training_progress_interval = interval;
+				}
+				if (argument == "--progress-memory")
+				{
+					const std::string_view value(argv[index]);
+					if (value == "true")
+						progress_memory = true;
+					else if (value == "false")
+						progress_memory = false;
+					else
+						throw std::invalid_argument("--progress-memory must be true or false");
+				}
+				if (argument == "--progress-speed")
+				{
+					const std::string_view value(argv[index]);
+					if (value == "true")
+						progress_speed = true;
+					else if (value == "false")
+						progress_speed = false;
+					else
+						throw std::invalid_argument("--progress-speed must be true or false");
 				}
 				if (argument == "--hash")
 				{
@@ -1025,12 +1233,13 @@ namespace
 		}
 		if (workflow == Workflow::Inspect && !config_path.empty() && !input_path.empty())
 		{
-			return run_inspect(config_path, input_path, report_path, inspect_progress, inspect_progress_interval, threads, inspect_hash_mode);
+			return run_inspect(config_path, input_path, report_path, progress_enabled, inspect_progress_interval, threads, inspect_hash_mode);
 		}
 		if (workflow == Workflow::Train && !config_path.empty())
 		{
 			return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir,
-				resume_path, threads_specified ? threads : 0U, pin_workers, scheduler_mode);
+				resume_path, threads_specified ? threads : 0U, pin_workers, progress_enabled,
+				training_progress_interval, progress_memory, progress_speed, scheduler_mode, authorize_50m_stage);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{

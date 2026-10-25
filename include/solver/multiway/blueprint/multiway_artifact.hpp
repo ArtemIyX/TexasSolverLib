@@ -12,6 +12,8 @@
 namespace texas::solver::multiway
 {
 
+	struct MultiwayMemoryComponent;
+
 	inline constexpr std::uint32_t MULTIWAY_BLUEPRINT_MANIFEST_SCHEMA_VERSION = 4U;
 	inline constexpr std::uint32_t MULTIWAY_PUBLIC_DECISION_LOG_SCHEMA_VERSION = 3U;
 	inline constexpr std::uint32_t MULTIWAY_PROTECTED_REPLAY_SCHEMA_VERSION = 1U;
@@ -55,6 +57,7 @@ namespace texas::solver::multiway
 		std::uint64_t payload_hash = 0U;
 
 		void validate() const;
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 	};
 
 	class MultiwayFullBlueprintArtifacts

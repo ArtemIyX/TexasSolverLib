@@ -1,4 +1,5 @@
 #include "solver/multiway/continuation/multiway_continuation_selector.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -71,7 +72,12 @@ namespace texas::solver::multiway
 
 	bool MultiwayContinuationDeltaStream::try_append(const MultiwayContinuationDelta& delta) noexcept
 	{
-		if (deltas_.size() >= capacity_ || !delta_valid(delta))
+		if (deltas_.size() >= capacity_)
+		{
+			capacity_exhausted_ = true;
+			return false;
+		}
+		if (!delta_valid(delta))
 			return false;
 		deltas_.push_back(delta);
 		return true;
@@ -93,6 +99,13 @@ namespace texas::solver::multiway
 		return std::is_sorted(deltas_.begin(), deltas_.end(), delta_less);
 	}
 
+	MultiwayMemoryComponent MultiwayContinuationDeltaStream::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(deltas_.size(), deltas_.capacity(), sizeof(MultiwayContinuationDelta));
+		return result;
+	}
+
 	bool MultiwayContinuationSelectionKey::valid() const noexcept
 	{
 		return public_state.value != 0U && actor >= 0 && street >= Street::Flop && street <= Street::River && action_abstraction_version != 0U && leaf_model_version != 0U;
@@ -101,6 +114,13 @@ namespace texas::solver::multiway
 	bool MultiwayFixedContinuationSelector::valid() const noexcept
 	{
 		return is_valid_multiway_continuation_policy(policy_);
+	}
+
+	MultiwayMemoryComponent MultiwayFixedContinuationSelector::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(rows_.size(), rows_.capacity(), sizeof(Row));
+		return result;
 	}
 
 	std::array<double, MULTIWAY_FIXED_CONTINUATION_POLICIES.size()>

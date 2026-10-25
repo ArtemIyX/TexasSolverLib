@@ -12,6 +12,8 @@
 namespace texas::solver::multiway
 {
 
+	struct MultiwayMemoryComponent;
+
 	// Bounded continuation leaf evaluation. All storage is caller-owned so each
 	// worker can retain one context and scratch instance without shared mutation.
 	inline constexpr std::size_t MULTIWAY_ROLLOUT_MAX_ACTIONS = 8U;
@@ -163,6 +165,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
 		[[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
 		[[nodiscard]] std::uint64_t memory_bytes() const noexcept;
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 		[[nodiscard]] static constexpr std::uint64_t entry_bytes() noexcept;
 
 	private:

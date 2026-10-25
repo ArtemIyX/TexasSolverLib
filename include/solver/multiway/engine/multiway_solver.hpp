@@ -20,6 +20,12 @@ namespace texas::solver::multiway
 {
 
 	class MultiwayCompactStorage;
+	struct MultiwayMemoryComponent;
+	struct MultiwayPublicCatalogMemorySnapshot;
+	struct MultiwaySparseStorageMemorySnapshot;
+	struct MultiwayCoordinatorMemorySnapshot;
+	struct MultiwayRootBatchMemorySnapshot;
+
 
 	class MultiwayTerminalAdapter;
 	struct MultiwayAdmissionDiagnostics;
@@ -235,6 +241,7 @@ namespace texas::solver::multiway
 		void export_descriptors(std::vector<MultiwayPublicStateDescriptor>& output) const;
 		[[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
+		[[nodiscard]] MultiwayPublicCatalogMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
 		friend class MultiwaySolverCoordinator;
@@ -354,8 +361,38 @@ namespace texas::solver::multiway
 		// Per-worker bounded discovery entries. Zero preserves callers that do
 		// not enable immutable discovery epochs.
 		std::size_t max_discovery_entries = 0;
+		// Explicit per-worker stream capacities. A zero value falls back to the
+		// corresponding legacy aggregate field above.
+		std::size_t max_regret_delta_entries_per_worker = 0;
+		std::size_t max_continuation_delta_entries_per_worker = 0;
+		std::size_t max_discovery_public_states_per_worker = 0;
+		std::size_t max_discovery_rows_per_worker = 0;
 
 		void validate() const;
+		[[nodiscard]] std::size_t regret_delta_capacity() const noexcept
+		{
+			return max_regret_delta_entries_per_worker != 0U
+				? max_regret_delta_entries_per_worker
+				: max_worker_delta_entries;
+		}
+		[[nodiscard]] std::size_t continuation_delta_capacity() const noexcept
+		{
+			return max_continuation_delta_entries_per_worker != 0U
+				? max_continuation_delta_entries_per_worker
+				: max_worker_delta_entries;
+		}
+		[[nodiscard]] std::size_t discovery_public_state_capacity() const noexcept
+		{
+			return max_discovery_public_states_per_worker != 0U
+				? max_discovery_public_states_per_worker
+				: max_discovery_entries;
+		}
+		[[nodiscard]] std::size_t discovery_row_capacity() const noexcept
+		{
+			return max_discovery_rows_per_worker != 0U
+				? max_discovery_rows_per_worker
+				: max_discovery_entries;
+		}
 	};
 
 	// Immutable boundary input. Traversal must treat this request as a batch
@@ -473,6 +510,7 @@ namespace texas::solver::multiway
 		std::uint64_t last_merged_stream_fingerprint = 0U;
 		std::array<std::uint64_t, 4> street_visits{};
 		MultiwayCheckpointTelemetry telemetry{};
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 	};
 
 	// Coordinator-owned sparse rows. Values are action-major: [action][bucket].
@@ -516,6 +554,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t value_count() const noexcept { return regret_.size(); }
 		[[nodiscard]] std::size_t value_capacity_limit() const noexcept { return max_values_; }
 		[[nodiscard]] const std::vector<MultiwaySparseRowMetadata>& rows() const noexcept { return metadata_; }
+		[[nodiscard]] MultiwaySparseStorageMemorySnapshot memory_snapshot() const noexcept;
 
 	private:
 		friend class MultiwaySolverCoordinator;
@@ -556,15 +595,20 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t worker_index() const noexcept { return worker_index_; }
 		[[nodiscard]] std::size_t capacity() const noexcept { return capacity_; }
 		[[nodiscard]] std::size_t size() const noexcept { return deltas_.size(); }
+		[[nodiscard]] bool capacity_exhausted() const noexcept { return capacity_exhausted_; }
+		void mark_capacity_exhausted() noexcept { capacity_exhausted_ = true; }
+		void clear_capacity_exhaustion() noexcept { capacity_exhausted_ = false; }
 		[[nodiscard]] bool try_append(const MultiwayWorkerDelta& delta) noexcept;
 		void rewind(std::size_t size) noexcept;
 		void sort_fixed_order() noexcept;
 		[[nodiscard]] bool is_fixed_order() const noexcept;
 		[[nodiscard]] const std::vector<MultiwayWorkerDelta>& deltas() const noexcept { return deltas_; }
+		[[nodiscard]] MultiwayMemoryComponent memory_snapshot() const noexcept;
 
 	private:
 		std::size_t worker_index_ = 0;
 		std::size_t capacity_ = 0;
+		bool capacity_exhausted_ = false;
 		std::vector<MultiwayWorkerDelta> deltas_;
 	};
 
@@ -874,7 +918,9 @@ namespace texas::solver::multiway
 			double threshold = 0.0, double regret_floor = 0.0) noexcept;
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return compact_storage_.get(); }
+		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return public_catalog_; }
 		[[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return diagnostics_; }
+		[[nodiscard]] MultiwayCoordinatorMemorySnapshot memory_snapshot() const noexcept;
 		[[nodiscard]] const MultiwaySolverLimits& limits() const noexcept { return request_.limits(); }
 		void set_admission_diagnostics(MultiwayAdmissionDiagnostics* diagnostics) noexcept
 		{
@@ -882,7 +928,7 @@ namespace texas::solver::multiway
 		}
 		[[nodiscard]] std::size_t merge_scratch_capacity() const noexcept
 		{
-			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().max_worker_delta_entries;
+			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().regret_delta_capacity();
 		}
 		[[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
 		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const noexcept;

@@ -1,5 +1,10 @@
 #include "solver/multiway/engine/multiway_memory.hpp"
+#include "solver/multiway/abstraction/multiway_bucket_model.hpp"
+#include "solver/multiway/continuation/multiway_rollout_leaf.hpp"
 #include "solver/multiway/continuation/multiway_continuation_selector.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/engine/multiway_solver.hpp"
 
 #if defined(_WIN32)
 	#ifndef NOMINMAX
@@ -11,14 +16,16 @@
 	#include <windows.h>
 	#include <psapi.h>
 #elif defined(__linux__)
-	#include <fstream>
+	#include <cerrno>
+	#include <cstdio>
 	#include <ctime>
+	#include <cstring>
+	#include <cstdlib>
 	#include <unistd.h>
 #endif
 
 #include <limits>
 #include <algorithm>
-#include <string>
 #include <stdexcept>
 #include <thread>
 
@@ -45,65 +52,544 @@ namespace texas::solver::multiway
 			return left + right;
 		}
 
+#if defined(__linux__)
+		void parse_linux_memory_field(
+			const char* line,
+			const char* name,
+			std::uint64_t& value,
+			bool& available) noexcept
+		{
+			const auto name_length = std::strlen(name);
+			if (std::strncmp(line, name, name_length) != 0)
+				return;
+			const char* cursor = line + name_length;
+			while (*cursor == ' ' || *cursor == '\t')
+				++cursor;
+			errno = 0;
+			char* end = nullptr;
+			const auto parsed = std::strtoull(cursor, &end, 10);
+			if (end == cursor || errno == ERANGE)
+				return;
+			while (*end == ' ' || *end == '\t')
+				++end;
+			if (std::strncmp(end, "kB", 2U) != 0)
+				return;
+			value = checked_multiply(static_cast<std::uint64_t>(parsed), 1024U);
+			available = value != std::numeric_limits<std::uint64_t>::max();
+		}
+#endif
+
 	} // namespace
 
-	std::uint64_t observed_multiway_process_memory_bytes() noexcept
+	std::uint64_t multiway_memory_saturating_add(
+		std::uint64_t left, std::uint64_t right) noexcept
 	{
+		if (right > std::numeric_limits<std::uint64_t>::max() - left)
+			return std::numeric_limits<std::uint64_t>::max();
+		return left + right;
+	}
+
+	std::uint64_t multiway_memory_saturating_capacity_bytes(
+		std::size_t element_count, std::size_t element_size) noexcept
+	{
+		if (element_count == 0U || element_size == 0U)
+			return 0U;
+		if (element_count > std::numeric_limits<std::uint64_t>::max() / element_size)
+			return std::numeric_limits<std::uint64_t>::max();
+		return static_cast<std::uint64_t>(element_count) * static_cast<std::uint64_t>(element_size);
+	}
+
+	void MultiwayMemoryComponent::add_buffer(
+		std::size_t live_elements,
+		std::size_t retained_elements,
+		std::size_t element_size) noexcept
+	{
+		const auto live = multiway_memory_saturating_capacity_bytes(live_elements, element_size);
+		const auto retained = multiway_memory_saturating_capacity_bytes(retained_elements, element_size);
+		const auto next_live = multiway_memory_saturating_add(live_element_bytes, live);
+		const auto next_retained = multiway_memory_saturating_add(retained_capacity_bytes, retained);
+		arithmetic_saturated = arithmetic_saturated || next_live == std::numeric_limits<std::uint64_t>::max() || next_retained == std::numeric_limits<std::uint64_t>::max();
+		live_element_bytes = next_live;
+		retained_capacity_bytes = next_retained;
+		allocation_count_known = true;
+		if (retained_elements != 0U)
+			allocation_count = multiway_memory_saturating_add(allocation_count, 1U);
+	}
+
+	void MultiwayMemoryComponent::accumulate(const MultiwayMemoryComponent& other) noexcept
+	{
+		const auto next_live = multiway_memory_saturating_add(live_element_bytes, other.live_element_bytes);
+		const auto next_retained = multiway_memory_saturating_add(retained_capacity_bytes, other.retained_capacity_bytes);
+		arithmetic_saturated = arithmetic_saturated || other.arithmetic_saturated || next_live == std::numeric_limits<std::uint64_t>::max() || next_retained == std::numeric_limits<std::uint64_t>::max();
+		live_element_bytes = next_live;
+		retained_capacity_bytes = next_retained;
+		const bool empty_unknown = !allocation_count_known && allocation_count == 0U &&
+			live_element_bytes == 0U && retained_capacity_bytes == 0U && !arithmetic_saturated;
+		if (empty_unknown && other.allocation_count_known)
+		{
+			allocation_count = other.allocation_count;
+			allocation_count_known = true;
+		}
+		else if (allocation_count_known && other.allocation_count_known)
+			allocation_count = multiway_memory_saturating_add(allocation_count, other.allocation_count);
+		else
+		{
+			allocation_count = 0U;
+			allocation_count_known = false;
+		}
+		grouping_only = grouping_only || other.grouping_only;
+	}
+
+	bool MultiwayMemoryComponent::valid() const noexcept
+	{
+		return live_element_bytes <= retained_capacity_bytes || grouping_only;
+	}
+
+	namespace
+	{
+		bool same_component(
+			const MultiwayMemoryComponent& left,
+			const MultiwayMemoryComponent& right) noexcept
+		{
+			return left.live_element_bytes == right.live_element_bytes &&
+				left.retained_capacity_bytes == right.retained_capacity_bytes &&
+				left.allocation_count == right.allocation_count &&
+				left.allocation_count_known == right.allocation_count_known &&
+				left.arithmetic_saturated == right.arithmetic_saturated &&
+				left.grouping_only == right.grouping_only;
+		}
+
+	}
+
+	bool MultiwayBucketRegistryMemorySnapshot::valid() const noexcept
+	{
+		if (!owned_metadata.valid() || !mapping_virtual.valid() || !total.valid() || !total.grouping_only)
+			return false;
+		MultiwayMemoryComponent expected = owned_metadata;
+		expected.accumulate(mapping_virtual);
+		expected.grouping_only = true;
+		return same_component(expected, total);
+	}
+
+	bool MultiwayPublicCatalogMemorySnapshot::valid() const noexcept
+	{
+		if (!nodes.valid() || !indexes.valid() || !menus.valid() || !nested_payloads.valid() || !scratch.valid() || !total.valid() || !total.grouping_only)
+			return false;
+		MultiwayMemoryComponent expected = nodes;
+		expected.accumulate(indexes);
+		expected.accumulate(menus);
+		expected.accumulate(nested_payloads);
+		expected.accumulate(scratch);
+		expected.grouping_only = true;
+		return same_component(expected, total);
+	}
+
+	bool MultiwaySparseStorageMemorySnapshot::valid() const noexcept
+	{
+		if (!row_metadata.valid() || !regret_cells.valid() || !strategy_cells.valid() || !total.valid() || !total.grouping_only)
+			return false;
+		MultiwayMemoryComponent expected = row_metadata;
+		expected.accumulate(regret_cells);
+		expected.accumulate(strategy_cells);
+		expected.grouping_only = true;
+		return same_component(expected, total);
+	}
+
+	bool MultiwayCompactStorageMemorySnapshot::valid() const noexcept
+	{
+		if (!row_metadata.valid() || !page_metadata.valid() || !regret_cells.valid() || !strategy_cells.valid() || !total.valid() || !total.grouping_only)
+			return false;
+		MultiwayMemoryComponent expected = row_metadata;
+		expected.accumulate(page_metadata);
+		expected.accumulate(regret_cells);
+		expected.accumulate(strategy_cells);
+		expected.grouping_only = true;
+		return same_component(expected, total);
+	}
+
+	bool MultiwayWorkerMemorySnapshot::valid() const noexcept
+	{
+		if (!regret_delta_stream.valid() || !continuation_delta_stream.valid() || !discovery_public_states.valid() || !discovery_rows.valid() || !action_menu_scratch.valid() || !total.valid() || !total.grouping_only)
+			return false;
+		MultiwayMemoryComponent expected = regret_delta_stream;
+		expected.accumulate(continuation_delta_stream);
+		expected.accumulate(discovery_public_states);
+		expected.accumulate(discovery_rows);
+		expected.accumulate(action_menu_scratch);
+		expected.grouping_only = true;
+		return same_component(expected, total);
+	}
+
+	bool MultiwayCoordinatorMemorySnapshot::valid() const noexcept
+	{
+		if (!merge_scratch.valid() || !admission_scratch.valid() || !total.valid() || !total.grouping_only)
+			return false;
+		MultiwayMemoryComponent expected = merge_scratch;
+		expected.accumulate(admission_scratch);
+		expected.grouping_only = true;
+		return same_component(expected, total);
+	}
+
+	bool MultiwayRootBatchMemorySnapshot::valid() const noexcept
+	{
+		if (worker_count > MULTIWAY_MEMORY_MAX_WORKERS || !stream_views.valid() || !discovery_merge_scratch.valid() || !discovery_outputs.valid() || !worker_batches.valid() || !thread_scratch.valid() || !total.valid() || !total.grouping_only)
+			return false;
+		for (std::size_t index = 0U; index < worker_count; ++index)
+			if (!workers[index].valid())
+				return false;
+		MultiwayMemoryComponent expected = stream_views;
+		expected.accumulate(discovery_merge_scratch);
+		expected.accumulate(discovery_outputs);
+		expected.accumulate(worker_batches);
+		expected.accumulate(thread_scratch);
+		for (std::size_t index = 0U; index < worker_count; ++index)
+			expected.accumulate(workers[index].total);
+		expected.grouping_only = true;
+		return same_component(expected, total);
+	}
+
+	void MultiwayMemorySubsystemSnapshot::recompute_totals() noexcept
+	{
+		MultiwayMemoryComponent total{};
+		total.grouping_only = true;
+		const auto add = [&total](const MultiwayMemoryComponent& component) noexcept { total.accumulate(component); };
+		add(bucket_registry_owned);
+		add(public_catalog_nodes);
+		add(public_catalog_indexes);
+		add(public_catalog_menus);
+		add(public_catalog_nested_payloads);
+		add(public_catalog_scratch);
+		add(compact_row_metadata);
+		add(compact_page_metadata);
+		add(compact_regret_cells);
+		add(compact_strategy_cells);
+		worker_regret_delta_stream = {};
+		worker_continuation_delta_stream = {};
+		discovery_public_state_stream = {};
+		discovery_row_stream = {};
+		worker_action_menu_scratch = {};
+		for (std::size_t index = 0U; index < worker_count && index < MULTIWAY_MEMORY_MAX_WORKERS; ++index)
+		{
+			workers[index].total = workers[index].regret_delta_stream;
+			workers[index].total.accumulate(workers[index].continuation_delta_stream);
+			workers[index].total.accumulate(workers[index].discovery_public_states);
+			workers[index].total.accumulate(workers[index].discovery_rows);
+			workers[index].total.accumulate(workers[index].action_menu_scratch);
+			workers[index].total.grouping_only = true;
+			worker_regret_delta_stream.accumulate(workers[index].regret_delta_stream);
+			worker_continuation_delta_stream.accumulate(workers[index].continuation_delta_stream);
+			discovery_public_state_stream.accumulate(workers[index].discovery_public_states);
+			discovery_row_stream.accumulate(workers[index].discovery_rows);
+			worker_action_menu_scratch.accumulate(workers[index].action_menu_scratch);
+			add(workers[index].regret_delta_stream);
+			add(workers[index].continuation_delta_stream);
+			add(workers[index].discovery_public_states);
+			add(workers[index].discovery_rows);
+			add(workers[index].action_menu_scratch);
+		}
+		worker_regret_delta_stream.grouping_only = worker_count != 0U;
+		worker_continuation_delta_stream.grouping_only = worker_count != 0U;
+		discovery_public_state_stream.grouping_only = worker_count != 0U;
+		discovery_row_stream.grouping_only = worker_count != 0U;
+		worker_action_menu_scratch.grouping_only = worker_count != 0U;
+		add(coordinator_merge_scratch);
+		add(coordinator_admission_scratch);
+		add(discovery_merge_scratch);
+		add(batch_runner_scratch);
+		add(checkpoint_retained_buffers);
+		add(export_retained_buffers);
+		add(continuation_cache);
+		add(continuation_scratch);
+		live_bytes = total.live_element_bytes;
+		retained_capacity_bytes = total.retained_capacity_bytes;
+		arithmetic_saturated = total.arithmetic_saturated;
+	}
+
+	bool MultiwayMemorySubsystemSnapshot::valid() const noexcept
+	{
+		if (schema_version != MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION || worker_count > MULTIWAY_MEMORY_MAX_WORKERS)
+			return false;
+		const MultiwayMemoryComponent* components[] = {
+			&bucket_registry_owned, &bucket_mapping_virtual,
+			&public_catalog_nodes, &public_catalog_indexes, &public_catalog_menus,
+			&public_catalog_nested_payloads, &public_catalog_scratch,
+			&compact_row_metadata, &compact_page_metadata, &compact_regret_cells,
+			&compact_strategy_cells, &worker_regret_delta_stream,
+			&worker_continuation_delta_stream, &discovery_public_state_stream,
+			&discovery_row_stream, &worker_action_menu_scratch,
+			&discovery_merge_scratch, &batch_runner_scratch,
+			&coordinator_merge_scratch, &coordinator_admission_scratch,
+			&checkpoint_retained_buffers, &export_retained_buffers,
+			&continuation_cache, &continuation_scratch };
+		for (const auto* component : components)
+			if (!component->valid())
+				return false;
+		for (std::size_t index = 0U; index < worker_count; ++index)
+			if (!workers[index].valid())
+				return false;
+		MultiwayMemorySubsystemSnapshot expected = *this;
+		expected.recompute_totals();
+		if (expected.live_bytes != live_bytes || expected.retained_capacity_bytes != retained_capacity_bytes || expected.arithmetic_saturated != arithmetic_saturated)
+			return false;
+		if (!same_component(expected.worker_regret_delta_stream, worker_regret_delta_stream) ||
+			!same_component(expected.worker_continuation_delta_stream, worker_continuation_delta_stream) ||
+			!same_component(expected.discovery_public_state_stream, discovery_public_state_stream) ||
+			!same_component(expected.discovery_row_stream, discovery_row_stream) ||
+			!same_component(expected.worker_action_menu_scratch, worker_action_menu_scratch))
+			return false;
+		for (std::size_t index = 0U; index < worker_count; ++index)
+			if (!same_component(expected.workers[index].total, workers[index].total))
+				return false;
+		return true;
+	}
+
+	bool MultiwayMemorySubsystemSnapshotCollection::record(
+		MultiwayMemoryPhase phase,
+		MultiwayMemorySubsystemSnapshot snapshot) noexcept
+	{
+		const auto phase_index = static_cast<std::size_t>(phase);
+		if (phase_index >= snapshots.size() || completed || phase_index != count || !snapshot.valid())
+			return false;
+		if (!enabled)
+		{
+			if (phase != MultiwayMemoryPhase::ProcessStart || count != 0U)
+				return false;
+			enabled = true;
+		}
+		snapshot.phase_id = phase;
+		snapshots[count++] = snapshot;
+		completed = phase == MultiwayMemoryPhase::AfterExport;
+		return true;
+	}
+
+	bool MultiwayMemorySubsystemSnapshotCollection::valid() const noexcept
+	{
+		if (!enabled)
+			return count == 0U && !completed;
+		if (count > snapshots.size() || (completed && count != snapshots.size()))
+			return false;
+		for (std::size_t index = 0U; index < count; ++index)
+		{
+			if (static_cast<std::size_t>(snapshots[index].phase_id) != index || static_cast<std::size_t>(snapshots[index].schema_version) == 0U || !snapshots[index].valid())
+				return false;
+		}
+		return true;
+	}
+
+	MultiwayMemorySubsystemSnapshot capture_multiway_memory_subsystems(
+		const MultiwayBucketRegistry* buckets,
+		const MultiwaySolverCoordinator* coordinator,
+		const MultiwayRootBatchRunner* batch_runner,
+		const MultiwayFixedContinuationSelector* continuation_selector,
+		const MultiwayContinuationCache* continuation_cache,
+		MultiwayMemoryComponent checkpoint_buffers,
+		MultiwayMemoryComponent export_buffers) noexcept
+	{
+		MultiwayMemorySubsystemSnapshot result;
+		result.checkpoint_retained_buffers = checkpoint_buffers;
+		result.export_retained_buffers = export_buffers;
+		if (buckets != nullptr)
+		{
+			const auto snapshot = buckets->memory_snapshot();
+			result.bucket_registry_owned = snapshot.owned_metadata;
+			result.bucket_mapping_virtual = snapshot.mapping_virtual;
+		}
+		if (coordinator != nullptr)
+		{
+			const auto catalog = coordinator->public_catalog().memory_snapshot();
+			result.public_catalog_nodes = catalog.nodes;
+			result.public_catalog_indexes = catalog.indexes;
+			result.public_catalog_menus = catalog.menus;
+			result.public_catalog_nested_payloads = catalog.nested_payloads;
+			result.public_catalog_scratch = catalog.scratch;
+			const auto coordinator_memory = coordinator->memory_snapshot();
+			result.coordinator_merge_scratch = coordinator_memory.merge_scratch;
+			result.coordinator_admission_scratch = coordinator_memory.admission_scratch;
+			if (const auto* compact = coordinator->compact_storage(); compact != nullptr)
+			{
+				const auto storage = compact->memory_snapshot();
+				result.compact_row_metadata = storage.row_metadata;
+				result.compact_page_metadata = storage.page_metadata;
+				result.compact_regret_cells = storage.regret_cells;
+				result.compact_strategy_cells = storage.strategy_cells;
+			}
+			else
+			{
+				const auto storage = coordinator->storage().memory_snapshot();
+				result.compact_row_metadata = storage.row_metadata;
+				result.compact_regret_cells = storage.regret_cells;
+				result.compact_strategy_cells = storage.strategy_cells;
+			}
+		}
+		if (batch_runner != nullptr)
+		{
+			const auto runner = batch_runner->memory_snapshot();
+			result.worker_count = runner.worker_count;
+			result.worker_regret_delta_stream = {};
+			result.worker_continuation_delta_stream = {};
+			result.discovery_public_state_stream = {};
+			result.discovery_row_stream = {};
+			result.worker_action_menu_scratch = {};
+			for (std::size_t index = 0U; index < runner.worker_count; ++index)
+			{
+				result.workers[index] = runner.workers[index];
+				result.worker_regret_delta_stream.accumulate(runner.workers[index].regret_delta_stream);
+				result.worker_continuation_delta_stream.accumulate(runner.workers[index].continuation_delta_stream);
+				result.discovery_public_state_stream.accumulate(runner.workers[index].discovery_public_states);
+				result.discovery_row_stream.accumulate(runner.workers[index].discovery_rows);
+				result.worker_action_menu_scratch.accumulate(runner.workers[index].action_menu_scratch);
+			}
+			const bool has_workers = result.worker_count != 0U;
+			result.worker_regret_delta_stream.grouping_only = has_workers;
+			result.worker_continuation_delta_stream.grouping_only = has_workers;
+			result.discovery_public_state_stream.grouping_only = has_workers;
+			result.discovery_row_stream.grouping_only = has_workers;
+			result.worker_action_menu_scratch.grouping_only = has_workers;
+			result.discovery_merge_scratch = runner.discovery_merge_scratch;
+			result.batch_runner_scratch = runner.stream_views;
+			result.batch_runner_scratch.accumulate(runner.discovery_outputs);
+			result.batch_runner_scratch.accumulate(runner.worker_batches);
+			result.batch_runner_scratch.accumulate(runner.thread_scratch);
+			result.batch_runner_scratch.grouping_only = true;
+		}
+		if (continuation_selector != nullptr)
+			result.continuation_cache = continuation_selector->memory_snapshot();
+		if (continuation_cache != nullptr)
+			result.continuation_cache.accumulate(continuation_cache->memory_snapshot());
+		result.recompute_totals();
+		return result;
+	}
+
+	bool MultiwayProcessMemorySnapshot::valid() const noexcept
+	{
+		if ((!current_working_set_available && current_working_set_bytes != 0U) ||
+			(!peak_working_set_available && peak_working_set_bytes != 0U) ||
+			(!private_committed_available && private_committed_bytes != 0U) ||
+			(!peak_private_committed_available && peak_private_committed_bytes != 0U) ||
+			(!virtual_address_available && virtual_address_bytes != 0U) ||
+			(!anonymous_resident_available && anonymous_resident_bytes != 0U) ||
+			(!file_resident_available && file_resident_bytes != 0U))
+		{
+			return false;
+		}
+		return (!current_working_set_available || !peak_working_set_available ||
+			peak_working_set_bytes >= current_working_set_bytes) &&
+			(!private_committed_available || !peak_private_committed_available ||
+				peak_private_committed_bytes >= private_committed_bytes);
+	}
+
+	bool MultiwayProcessMemorySnapshotCollection::record(
+		MultiwayMemoryPhase phase,
+		MultiwayProcessMemorySnapshot snapshot) noexcept
+	{
+		const auto phase_index = static_cast<std::size_t>(phase);
+		if (phase_index >= snapshots.size() || completed)
+			return false;
+		if (!enabled)
+		{
+			if (phase != MultiwayMemoryPhase::ProcessStart || count != 0U)
+				return false;
+			enabled = true;
+		}
+		if (phase_index != count || count >= snapshots.size())
+			return false;
+		snapshot.phase_id = phase;
+		if (!snapshot.valid())
+			return false;
+		snapshots[count++] = snapshot;
+		completed = phase == MultiwayMemoryPhase::AfterExport;
+		return true;
+	}
+
+	bool MultiwayProcessMemorySnapshotCollection::record_current(MultiwayMemoryPhase phase) noexcept
+	{
+		if (!enabled && phase != MultiwayMemoryPhase::ProcessStart)
+			return true;
+		return record(phase, capture_multiway_process_memory_snapshot());
+	}
+
+	bool MultiwayProcessMemorySnapshotCollection::valid() const noexcept
+	{
+		if (!enabled)
+			return count == 0U && !completed;
+		if (count > snapshots.size() || (completed && count != snapshots.size()))
+			return false;
+		for (std::size_t index = 0U; index < count; ++index)
+		{
+			if (static_cast<std::size_t>(snapshots[index].phase_id) != index || !snapshots[index].valid())
+				return false;
+		}
+		return true;
+	}
+
+	const char* multiway_memory_phase_name(MultiwayMemoryPhase phase) noexcept
+	{
+		switch (phase)
+		{
+			case MultiwayMemoryPhase::ProcessStart: return "process_start";
+			case MultiwayMemoryPhase::BeforeBucketMap: return "before_bucket_map";
+			case MultiwayMemoryPhase::AfterBucketMapMetadata: return "after_bucket_map_metadata";
+			case MultiwayMemoryPhase::AfterBucketAssignmentValidation: return "after_bucket_assignment_validation";
+			case MultiwayMemoryPhase::BeforeMemoryPreflight: return "before_memory_preflight";
+			case MultiwayMemoryPhase::AfterCoordinatorConstruction: return "after_coordinator_construction";
+			case MultiwayMemoryPhase::AfterWorkerPoolConstruction: return "after_worker_pool_construction";
+			case MultiwayMemoryPhase::AfterColdBatch: return "after_cold_batch";
+			case MultiwayMemoryPhase::AfterSteadyBatch: return "after_steady_batch";
+			case MultiwayMemoryPhase::BeforeCheckpoint: return "before_checkpoint";
+			case MultiwayMemoryPhase::AfterCheckpoint: return "after_checkpoint";
+			case MultiwayMemoryPhase::BeforeExport: return "before_export";
+			case MultiwayMemoryPhase::AfterExport: return "after_export";
+		}
+		return "unknown";
+	}
+
+	MultiwayProcessMemorySnapshot capture_multiway_process_memory_snapshot() noexcept
+	{
+		MultiwayProcessMemorySnapshot result;
 #if defined(_WIN32)
 		PROCESS_MEMORY_COUNTERS_EX counters{};
 		counters.cb = sizeof(counters);
 		if (K32GetProcessMemoryInfo(
-				GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters))
-			== 0)
+				GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) != 0)
 		{
-			return 0U;
+			result.current_working_set_bytes = static_cast<std::uint64_t>(counters.WorkingSetSize);
+			// Windows can transiently report a peak below the current working set.
+			result.peak_working_set_bytes = std::max(
+				static_cast<std::uint64_t>(counters.PeakWorkingSetSize),
+				result.current_working_set_bytes);
+			result.private_committed_bytes = static_cast<std::uint64_t>(counters.PrivateUsage);
+			result.current_working_set_available = true;
+			result.peak_working_set_available = true;
+			result.private_committed_available = true;
 		}
-		return static_cast<std::uint64_t>(counters.WorkingSetSize);
 #elif defined(__linux__)
-		std::ifstream input("/proc/self/statm");
-		std::uint64_t ignored_pages = 0;
-		std::uint64_t resident_pages = 0;
-		if (!(input >> ignored_pages >> resident_pages))
-			return 0U;
-		const auto page_size = sysconf(_SC_PAGESIZE);
-		if (page_size <= 0 || resident_pages > std::numeric_limits<std::uint64_t>::max() / static_cast<std::uint64_t>(page_size))
+		std::FILE* input = std::fopen("/proc/self/status", "r");
+		if (input == nullptr)
+			return result;
+		char line[256]{};
+		while (std::fgets(line, sizeof(line), input) != nullptr)
 		{
-			return 0U;
+			parse_linux_memory_field(line, "VmRSS:", result.current_working_set_bytes, result.current_working_set_available);
+			parse_linux_memory_field(line, "VmHWM:", result.peak_working_set_bytes, result.peak_working_set_available);
+			parse_linux_memory_field(line, "VmSize:", result.virtual_address_bytes, result.virtual_address_available);
+			parse_linux_memory_field(line, "RssAnon:", result.anonymous_resident_bytes, result.anonymous_resident_available);
+			parse_linux_memory_field(line, "RssFile:", result.file_resident_bytes, result.file_resident_available);
 		}
-		return resident_pages * static_cast<std::uint64_t>(page_size);
-#else
-		return 0U;
+		std::fclose(input);
 #endif
+		return result;
+	}
+
+	std::uint64_t observed_multiway_process_memory_bytes() noexcept
+	{
+		const auto snapshot = capture_multiway_process_memory_snapshot();
+		return snapshot.current_working_set_available ? snapshot.current_working_set_bytes : 0U;
 	}
 
 	std::uint64_t observed_multiway_process_peak_working_set_bytes() noexcept
 	{
-#if defined(_WIN32)
-		PROCESS_MEMORY_COUNTERS_EX counters{};
-		counters.cb = sizeof(counters);
-		if (K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) == 0)
-			return 0U;
-		return static_cast<std::uint64_t>(counters.PeakWorkingSetSize);
-#elif defined(__linux__)
-		std::ifstream input("/proc/self/status");
-		std::string name;
-		std::uint64_t value = 0U;
-		std::string unit;
-		while (input >> name)
-		{
-			if (name != "VmHWM:")
-			{
-				std::getline(input, name);
-				continue;
-			}
-			if (!(input >> value >> unit) || unit != "kB" || value > UINT64_MAX / 1024U)
-				return 0U;
-			return value * 1024U;
-		}
-		return 0U;
-#else
-		return 0U;
-#endif
+		const auto snapshot = capture_multiway_process_memory_snapshot();
+		return snapshot.peak_working_set_available ? snapshot.peak_working_set_bytes : 0U;
 	}
 
 	std::uint64_t observed_multiway_training_process_cpu_nanoseconds() noexcept
@@ -140,6 +626,98 @@ namespace texas::solver::multiway
 		}
 	}
 
+	void MultiwayWorkingSetGateConfig::validate() const
+	{
+		if (hard_limit_bytes == 0U && resident_allowance_bytes != 0U)
+			throw std::invalid_argument("working-set resident allowance requires a hard limit");
+	}
+
+	void MultiwayWorkingSetMonitor::validate() const
+	{
+		gate.validate();
+		if (observer == nullptr && observer_context != nullptr)
+			throw std::invalid_argument("working-set observer context requires an observer");
+	}
+
+	MultiwayWorkingSetGateResult evaluate_multiway_working_set_preflight(
+		const MultiwayMemoryPreflight& preflight,
+		MultiwayWorkingSetGateConfig config) noexcept
+	{
+		MultiwayWorkingSetGateResult result;
+		result.phase = MultiwayWorkingSetGatePhase::Preflight;
+		result.hard_limit_bytes = config.hard_limit_bytes;
+		result.resident_allowance_bytes = config.resident_allowance_bytes;
+		result.estimated_working_set_bytes = preflight.estimate.estimated_working_set_peak_bytes;
+		result.compared_working_set_bytes = multiway_memory_saturating_add(
+			result.estimated_working_set_bytes, config.resident_allowance_bytes);
+		result.admission_stage = preflight.highest_admitted_stage;
+		if (preflight.status == MultiwayMemoryStatus::Rejected)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Rejected;
+			result.rejected_category = preflight.rejected_category;
+			result.message = preflight.message;
+			return result;
+		}
+		if (config.hard_limit_bytes == 0U)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Disabled;
+			result.message = "working-set gate disabled";
+			return result;
+		}
+		if (result.compared_working_set_bytes > config.hard_limit_bytes ||
+			result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwayWorkingSetGateStatus::Rejected;
+			result.rejected_category = "process working set";
+			result.message = "estimated working set plus resident allowance exceeds hard gate";
+			return result;
+		}
+		result.status = MultiwayWorkingSetGateStatus::Admitted;
+		result.message = "working-set preflight admitted";
+		return result;
+	}
+
+	MultiwayWorkingSetGateResult evaluate_multiway_working_set_runtime(
+		MultiwayProcessMemorySnapshot snapshot,
+		MultiwayWorkingSetGateConfig config) noexcept
+	{
+		MultiwayWorkingSetGateResult result;
+		result.phase = MultiwayWorkingSetGatePhase::Runtime;
+		result.hard_limit_bytes = config.hard_limit_bytes;
+		result.resident_allowance_bytes = config.resident_allowance_bytes;
+		result.observed_working_set_bytes = snapshot.current_working_set_available
+			? snapshot.current_working_set_bytes
+			: (snapshot.peak_working_set_available ? snapshot.peak_working_set_bytes : 0U);
+		if (snapshot.current_working_set_available && snapshot.peak_working_set_available)
+			result.observed_working_set_bytes = std::max(result.observed_working_set_bytes, snapshot.peak_working_set_bytes);
+		result.compared_working_set_bytes = multiway_memory_saturating_add(
+			result.observed_working_set_bytes, config.resident_allowance_bytes);
+		if (config.hard_limit_bytes == 0U)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Disabled;
+			result.message = "working-set gate disabled";
+			return result;
+		}
+		if (!snapshot.current_working_set_available && !snapshot.peak_working_set_available)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Unavailable;
+			result.rejected_category = "process working set telemetry";
+			result.message = "working-set metric unavailable";
+			return result;
+		}
+		if (result.compared_working_set_bytes > config.hard_limit_bytes ||
+			result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwayWorkingSetGateStatus::Rejected;
+			result.rejected_category = "process working set";
+			result.message = "observed working set plus resident allowance exceeds hard gate";
+			return result;
+		}
+		result.status = MultiwayWorkingSetGateStatus::Admitted;
+		result.message = "working-set runtime sample admitted";
+		return result;
+	}
+
 	MultiwayMemoryPreflight preflight_multiway_memory(
 		const MultiwaySolverLimits& limits,
 		MultiwayMemoryBudget budget)
@@ -153,24 +731,48 @@ namespace texas::solver::multiway
 		const MultiwayMemoryInputs& inputs)
 	{
 		budget.validate();
-		if (limits.worker_count != 0U && limits.max_worker_delta_entries > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count))
+		if (limits.worker_count != 0U && (limits.regret_delta_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count) || limits.continuation_delta_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count) || (limits.discovery_public_state_capacity() != 0U && limits.discovery_public_state_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count)) || (limits.discovery_row_capacity() != 0U && limits.discovery_row_capacity() > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(limits.worker_count))))
 		{
 			MultiwayMemoryPreflight result;
 			result.status = MultiwayMemoryStatus::Rejected;
 			result.estimate.total_bytes = std::numeric_limits<std::uint64_t>::max();
-			result.message = "worker-delta capacity overflows addressable memory";
+			result.rejected_category = "worker-stream capacity";
+			result.message = "worker-stream capacity overflows addressable memory";
 			return result;
 		}
 		limits.validate();
 
 		MultiwayMemoryPreflight result;
-		result.estimate.current_rss_bytes = inputs.resident_baseline_bytes;
+		const auto existing_working_set_bytes = inputs.existing_working_set_bytes != 0U
+			? inputs.existing_working_set_bytes
+			: inputs.resident_baseline_bytes;
+		const auto existing_private_committed_bytes = inputs.existing_private_committed_bytes;
+		const auto mapped_virtual_bytes = inputs.mapped_virtual_bytes != 0U
+			? inputs.mapped_virtual_bytes
+			: inputs.mapped_bucket_artifact_bytes;
+		const auto mapped_resident_allowance_bytes = inputs.mapped_resident_allowance_bytes;
+		result.estimate.current_rss_bytes = existing_working_set_bytes;
 		result.estimate.ledger.resident_baseline_bytes = inputs.resident_baseline_bytes;
 		result.estimate.ledger.bucket_registry_bytes = inputs.bucket_registry_bytes;
 		result.estimate.ledger.mapped_bucket_artifact_bytes = inputs.mapped_bucket_artifact_bytes;
 		result.estimate.ledger.checkpoint_peak_bytes = inputs.checkpoint_peak_bytes;
 		result.estimate.ledger.export_peak_bytes = inputs.export_peak_bytes;
 		result.estimate.ledger.allocator_overhead_bytes = inputs.allocator_overhead_bytes;
+		result.estimate.existing_working_set_bytes = existing_working_set_bytes;
+		result.estimate.existing_private_committed_bytes = existing_private_committed_bytes;
+		result.estimate.mapped_virtual_bytes = mapped_virtual_bytes;
+		result.estimate.mapped_resident_allowance_bytes = mapped_resident_allowance_bytes;
+		result.estimate.checkpoint_transient_bytes = inputs.checkpoint_peak_bytes;
+		result.estimate.export_transient_bytes = inputs.export_peak_bytes;
+		result.estimate.allocator_overhead_bytes = inputs.allocator_overhead_bytes;
+		result.estimate.actual_retained_capacity_bytes = inputs.retained_capacity_known ? inputs.retained_capacity_bytes : 0U;
+		result.estimate.ledger.existing_working_set_bytes = existing_working_set_bytes;
+		result.estimate.ledger.existing_private_committed_bytes = existing_private_committed_bytes;
+		result.estimate.ledger.mapped_virtual_bytes = mapped_virtual_bytes;
+		result.estimate.ledger.mapped_resident_allowance_bytes = mapped_resident_allowance_bytes;
+		result.estimate.ledger.checkpoint_transient_bytes = inputs.checkpoint_peak_bytes;
+		result.estimate.ledger.export_transient_bytes = inputs.export_peak_bytes;
+		result.estimate.ledger.actual_retained_capacity_bytes = result.estimate.actual_retained_capacity_bytes;
 		// Public descriptors contain vectors. Reserve a conservative 1 KiB per
 		// admitted state before the packed catalog replaces this compatibility
 		// representation.
@@ -191,27 +793,30 @@ namespace texas::solver::multiway
 			inputs.off_tree_menu_entries, sizeof(MultiwayActionDescriptor));
 		result.estimate.continuation_scratch_bytes = checked_multiply(
 			limits.worker_count, inputs.continuation_scratch_bytes_per_worker);
+		const auto aggregate_regret_entries = checked_multiply(
+			limits.worker_count, limits.regret_delta_capacity());
+		const auto aggregate_continuation_entries = checked_multiply(
+			limits.worker_count, limits.continuation_delta_capacity());
 		result.estimate.worker_delta_bytes = checked_add(
-			checked_multiply(
-				checked_multiply(limits.worker_count, limits.max_worker_delta_entries),
-				static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta))),
+			checked_multiply(aggregate_regret_entries, static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta))),
 			checked_multiply(
 				limits.worker_count,
 				static_cast<std::uint64_t>(
 					sizeof(MultiwayPrivateWorkerScratch) + sizeof(MultiwayWorkerDeltaStream) + sizeof(MultiwayContinuationDeltaStream) + sizeof(std::thread))));
 		result.estimate.worker_delta_bytes = checked_add(result.estimate.worker_delta_bytes,
-			checked_multiply(checked_multiply(limits.worker_count, limits.max_worker_delta_entries),
-				sizeof(MultiwayContinuationDelta)));
-		const auto aggregate_discovery_entries = checked_multiply(
-			limits.worker_count, limits.max_discovery_entries);
-		result.estimate.discovery_stream_bytes = checked_multiply(
-			aggregate_discovery_entries,
-			static_cast<std::uint64_t>(sizeof(MultiwayPublicStateDescriptor) + sizeof(MultiwaySparseRowShape)));
-		const auto aggregate_delta_entries = checked_multiply(
-			limits.worker_count, limits.max_worker_delta_entries);
-		result.estimate.merge_scratch_bytes = checked_multiply(
-			aggregate_delta_entries,
-			static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + sizeof(MultiwayContinuationDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*)));
+			checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta)));
+		const auto aggregate_public_states = checked_multiply(
+			limits.worker_count, limits.discovery_public_state_capacity());
+		const auto aggregate_rows = checked_multiply(
+			limits.worker_count, limits.discovery_row_capacity());
+		result.estimate.discovery_stream_bytes = checked_add(
+			checked_multiply(aggregate_public_states, sizeof(MultiwayPublicStateDescriptor)),
+			checked_multiply(aggregate_rows, sizeof(MultiwaySparseRowShape)));
+		result.estimate.merge_scratch_bytes = checked_add(
+			checked_multiply(
+				aggregate_regret_entries,
+				static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*))),
+			checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta)));
 		result.estimate.export_bytes = checked_multiply(
 			inputs.export_action_capacity,
 			2U * static_cast<std::uint64_t>(sizeof(MultiwayRootActionProbability)));
@@ -233,31 +838,62 @@ namespace texas::solver::multiway
 		const auto delta_stage = checked_add(
 			checked_add(checked_add(result.estimate.worker_delta_bytes, result.estimate.discovery_stream_bytes), result.estimate.merge_scratch_bytes),
 			result.estimate.continuation_scratch_bytes);
-		result.estimate.mandatory_bytes = checked_add(
+		result.estimate.configured_capacity_growth_bytes = checked_add(
+			checked_add(root_stage, row_stage), delta_stage);
+		result.estimate.ledger.configured_capacity_growth_bytes = result.estimate.configured_capacity_growth_bytes;
+		result.estimate.additional_private_capacity_bytes = inputs.retained_capacity_known
+			? inputs.retained_capacity_bytes
+			: result.estimate.configured_capacity_growth_bytes;
+		result.estimate.ledger.additional_private_capacity_bytes = result.estimate.additional_private_capacity_bytes;
+		const auto private_peak_without_optional_cache = checked_add(
 			checked_add(
-				checked_add(checked_add(inputs.resident_baseline_bytes, inputs.bucket_registry_bytes), inputs.mapped_bucket_artifact_bytes),
-				checked_add(root_stage, row_stage)),
+				checked_add(existing_private_committed_bytes, result.estimate.additional_private_capacity_bytes),
+				transient_peak),
+			inputs.allocator_overhead_bytes);
+		const auto working_set_peak_without_optional_cache = checked_add(
 			checked_add(
-				checked_add(delta_stage, transient_peak),
-				inputs.allocator_overhead_bytes));
-		result.estimate.ledger.live_bytes = result.estimate.mandatory_bytes;
+				checked_add(
+					checked_add(existing_working_set_bytes, result.estimate.additional_private_capacity_bytes),
+					mapped_resident_allowance_bytes),
+				transient_peak),
+			inputs.allocator_overhead_bytes);
+		result.estimate.estimated_private_peak_bytes = checked_add(
+			private_peak_without_optional_cache, result.estimate.continuation_cache_bytes);
+		result.estimate.estimated_working_set_peak_bytes = checked_add(
+			working_set_peak_without_optional_cache, result.estimate.continuation_cache_bytes);
+		result.estimate.ledger.estimated_private_peak_bytes = result.estimate.estimated_private_peak_bytes;
+		result.estimate.ledger.estimated_working_set_peak_bytes = result.estimate.estimated_working_set_peak_bytes;
+		result.estimate.ledger.live_bytes = result.estimate.mandatory_bytes = std::max(
+			private_peak_without_optional_cache, working_set_peak_without_optional_cache);
 		result.estimate.ledger.reserved_bytes = result.estimate.mandatory_bytes;
-		result.estimate.ledger.committed_bytes = result.estimate.mandatory_bytes;
-		result.estimate.total_bytes = checked_add(
-			result.estimate.mandatory_bytes, result.estimate.continuation_cache_bytes);
+		result.estimate.ledger.committed_bytes = private_peak_without_optional_cache;
+		result.estimate.total_bytes = std::max(
+			result.estimate.estimated_private_peak_bytes,
+			result.estimate.estimated_working_set_peak_bytes);
+		result.estimate.peak_rss_bytes = result.estimate.estimated_working_set_peak_bytes;
 
-		if (root_stage > budget.operating_bytes || root_stage >= budget.reject_bytes)
+		const auto root_private_stage = checked_add(
+			checked_add(existing_private_committed_bytes, root_stage), inputs.allocator_overhead_bytes);
+		const auto root_working_set_stage = checked_add(
+			checked_add(checked_add(existing_working_set_bytes, root_stage), mapped_resident_allowance_bytes),
+			inputs.allocator_overhead_bytes);
+		const auto root_admission_bytes = std::max(root_private_stage, root_working_set_stage);
+		if (root_admission_bytes > budget.operating_bytes || root_admission_bytes >= budget.reject_bytes)
 		{
 			result.status = MultiwayMemoryStatus::Rejected;
+			result.rejected_category = "root";
 			result.message = "root admission exceeds memory limit";
 			return result;
 		}
 		result.highest_admitted_stage = MultiwayMemoryAdmissionStage::Root;
-		const auto through_rows = checked_add(root_stage, row_stage);
+		const auto through_rows_private = checked_add(root_private_stage, row_stage);
+		const auto through_rows_working_set = checked_add(root_working_set_stage, row_stage);
+		const auto through_rows = std::max(through_rows_private, through_rows_working_set);
 		if (through_rows > budget.operating_bytes || through_rows >= budget.reject_bytes)
 		{
 			result.status = MultiwayMemoryStatus::Rejected;
-			result.estimate.admitted_bytes = root_stage;
+			result.estimate.admitted_bytes = root_admission_bytes;
+			result.rejected_category = "sparse rows";
 			result.message = "sparse-row admission exceeds memory limit";
 			return result;
 		}
@@ -266,6 +902,7 @@ namespace texas::solver::multiway
 		{
 			result.status = MultiwayMemoryStatus::Rejected;
 			result.estimate.admitted_bytes = through_rows;
+			result.rejected_category = "worker deltas";
 			result.message = "worker-delta admission exceeds memory limit";
 			return result;
 		}
@@ -276,6 +913,7 @@ namespace texas::solver::multiway
 		{
 			result.status = MultiwayMemoryStatus::Warning;
 			result.degraded = true;
+			result.rejected_category = "optional continuation cache";
 			result.message = "optional continuation cache was not admitted";
 			return result;
 		}

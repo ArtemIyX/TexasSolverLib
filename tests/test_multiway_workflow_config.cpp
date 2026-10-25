@@ -20,6 +20,18 @@ TEST_CASE(multiway_workflow_config_parses_f1_profile)
 	EXPECT_EQ(config.model.player_count, 6U);
 	EXPECT_EQ(config.model.flop_bucket_count, 12U);
 	EXPECT_EQ(config.target_trajectories, 50000000U);
+	EXPECT_EQ(config.process_memory_limit_bytes, 0U);
+	EXPECT_EQ(config.process_working_set_limit_bytes,
+		texas::MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES);
+}
+
+TEST_CASE(multiway_workflow_config_accepts_legacy_64_gib_working_set_gate)
+{
+	auto text = std::string(valid_config) +
+		"process_working_set_limit_bytes=68719476736\n";
+	const auto config = texas::solver::multiway::parse_multiway_workflow_config(text);
+	EXPECT_EQ(config.process_working_set_limit_bytes,
+		texas::MULTIWAY_COMPAT_PROCESS_WORKING_SET_LIMIT_BYTES);
 }
 
 TEST_CASE(multiway_workflow_config_accepts_distinct_bucket_counts)
@@ -72,6 +84,75 @@ TEST_CASE(multiway_workflow_config_requires_all_or_no_capacity_limits)
 	auto partial = std::string(valid_config);
 	partial += "maximum_public_states=1000\n";
 	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(partial), std::invalid_argument);
+}
+
+TEST_CASE(multiway_workflow_config_legacy_capacity_fallback_and_round_trip)
+{
+	using namespace texas::solver::multiway;
+	auto text = std::string(valid_config) + "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+		"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+		"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
+		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	const auto legacy = parse_multiway_workflow_config(text);
+	EXPECT_EQ(legacy.resolved_regret_delta_capacity(), 10000U);
+	EXPECT_EQ(legacy.resolved_continuation_delta_capacity(), 10000U);
+	EXPECT_EQ(legacy.resolved_discovery_public_state_capacity(), 40000U);
+	EXPECT_EQ(legacy.resolved_discovery_row_capacity(), 40000U);
+	const auto round_trip = parse_multiway_workflow_config(serialize_multiway_workflow_config(legacy));
+	EXPECT_EQ(round_trip.worker_delta_capacity, legacy.worker_delta_capacity);
+	EXPECT_EQ(round_trip.discovery_capacity, legacy.discovery_capacity);
+	EXPECT_EQ(round_trip.explicit_stream_capacity_mask, 0U);
+	EXPECT_EQ(round_trip.fingerprint(), legacy.fingerprint());
+}
+
+TEST_CASE(multiway_workflow_config_explicit_capacity_round_trip_and_identity)
+{
+	using namespace texas::solver::multiway;
+	auto text = std::string(valid_config) + "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+		"max_regret_delta_entries_per_worker=64000\nmax_continuation_delta_entries_per_worker=1024\n"
+		"max_discovery_public_states_per_worker=200000\nmax_discovery_rows_per_worker=100000\n"
+		"trajectories_per_batch=10\ncheckpoint_interval=1\ndisk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
+		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	const auto explicit_config = parse_multiway_workflow_config(text);
+	EXPECT_EQ(explicit_config.resolved_regret_delta_capacity(), 64000U);
+	EXPECT_EQ(explicit_config.resolved_continuation_delta_capacity(), 1024U);
+	EXPECT_EQ(explicit_config.resolved_discovery_public_state_capacity(), 200000U);
+	EXPECT_EQ(explicit_config.resolved_discovery_row_capacity(), 100000U);
+	const auto round_trip = parse_multiway_workflow_config(serialize_multiway_workflow_config(explicit_config));
+	EXPECT_EQ(round_trip.max_regret_delta_entries_per_worker, 64000U);
+	EXPECT_EQ(round_trip.max_continuation_delta_entries_per_worker, 1024U);
+	EXPECT_EQ(round_trip.max_discovery_public_states_per_worker, 200000U);
+	EXPECT_EQ(round_trip.max_discovery_rows_per_worker, 100000U);
+	EXPECT_EQ(round_trip.fingerprint(), explicit_config.fingerprint());
+
+	auto changed = text;
+	changed.replace(changed.find("max_regret_delta_entries_per_worker=64000"),
+		std::strlen("max_regret_delta_entries_per_worker=64000"),
+		"max_regret_delta_entries_per_worker=64001");
+	EXPECT_TRUE(parse_multiway_workflow_config(changed).fingerprint() != explicit_config.fingerprint());
+}
+
+TEST_CASE(multiway_workflow_config_rejects_zero_and_overflow_explicit_capacities)
+{
+	auto text = std::string(valid_config) + "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+		"max_regret_delta_entries_per_worker=64000\nmax_continuation_delta_entries_per_worker=1024\n"
+		"max_discovery_public_states_per_worker=200000\nmax_discovery_rows_per_worker=100000\n"
+		"trajectories_per_batch=10\ncheckpoint_interval=1\ndisk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
+		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	auto zero = text;
+	zero.replace(zero.find("max_continuation_delta_entries_per_worker=1024"),
+		std::strlen("max_continuation_delta_entries_per_worker=1024"),
+		"max_continuation_delta_entries_per_worker=0");
+	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(zero), std::invalid_argument);
+
+	auto overflow = text;
+	overflow.replace(overflow.find("max_regret_delta_entries_per_worker=64000"),
+		std::strlen("max_regret_delta_entries_per_worker=64000"),
+		"max_regret_delta_entries_per_worker=18446744073709551616");
+	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(overflow), std::invalid_argument);
 }
 
 TEST_CASE(multiway_workflow_config_separates_sizing_and_acceptance_profiles)

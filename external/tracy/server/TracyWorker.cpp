@@ -7551,11 +7551,14 @@ void Worker::MemAllocChanged( MemData& memdata, int64_t time )
     else
     {
         assert( !memdata.plot->data.empty() );
-        assert( memdata.plot->data.back().time.Val() <= time );
+        // Allocation events from multiple client threads can arrive slightly
+        // out of timestamp order. Keep the derived plot monotonic while
+        // preserving the original event timestamps in the memory data.
+        const auto plotTime = std::max( memdata.plot->data.back().time.Val(), time );
         if( memdata.plot->min > val ) memdata.plot->min = val;
         else if( memdata.plot->max < val ) memdata.plot->max = val;
         memdata.plot->sum += val;
-        memdata.plot->data.push_back( { time, val } );
+        memdata.plot->data.push_back( { plotTime, val } );
     }
 }
 

@@ -21,21 +21,21 @@ Use project skills to complete the task at hand
 
 Use ``scripts/`` to streamline your work on the project.
 
-Use ``full_build.py`` to ensure that project compiles successfuly.
+Use ``scripts/python/full_build.py`` to ensure that project compiles successfuly.
 
 |Script|When to use|
 |--------|-------|
-|codex_powershell.ps1|Execute any python script|
-|full_build.py|Execute compact build end-to-end|
-|cpp_file_summary.py|Retrieve information about cpp file|
-|extract_includes.pu|Retrieve includes from cpp file|
-|extract_symbols.py|Retrieve symbols from cpp file|
-|list_recent_changes.py|List git changes|
-|cmake_summary.py|Retrieve information about CMakeLists|
-|compact_build.py|Run only build|
-|scan_build_errors.py|Scan compilation errors|
-|compact_ctest.py|Run only ctest|
-|scan_ctest_errors.py|Scan ctest errors|
+|scripts/codex_powershell.ps1|Execute any python script|
+|scripts/python/full_build.py|Execute compact build end-to-end|
+|scripts/python/cpp_file_summary.py|Retrieve information about cpp file|
+|scripts/python/extract_includes.py|Retrieve includes from cpp file|
+|scripts/python/extract_symbols.py|Retrieve symbols from cpp file|
+|scripts/python/list_recent_changes.py|List git changes|
+|scripts/python/cmake_summary.py|Retrieve information about CMakeLists|
+|scripts/python/compact_build.py|Run only build|
+|scripts/python/scan_build_errors.py|Scan compilation errors|
+|scripts/python/compact_ctest.py|Run only ctest|
+|scripts/python/scan_ctest_errors.py|Scan ctest errors|
 
 ## General rules
 

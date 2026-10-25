@@ -25,7 +25,15 @@ namespace texas::solver::multiway
 			if (value.empty() || value[0] == '-')
 				throw std::invalid_argument(std::string("invalid value for ") + key);
 			std::size_t consumed = 0U;
-			const auto result = std::stoull(value, &consumed, 10);
+			std::uint64_t result = 0U;
+			try
+			{
+				result = std::stoull(value, &consumed, 10);
+			}
+			catch (const std::out_of_range&)
+			{
+				throw std::invalid_argument(std::string("value overflows ") + key);
+			}
 			if (consumed != value.size())
 				throw std::invalid_argument(std::string("invalid value for ") + key);
 			return result;
@@ -35,6 +43,10 @@ namespace texas::solver::multiway
 			if (actual != expected)
 				throw std::invalid_argument(std::string("invalid value for ") + key);
 		}
+		constexpr std::uint8_t kRegretCapacity = 1U;
+		constexpr std::uint8_t kContinuationCapacity = 2U;
+		constexpr std::uint8_t kDiscoveryPublicCapacity = 4U;
+		constexpr std::uint8_t kDiscoveryRowsCapacity = 8U;
 	} // namespace
 
 	void MultiwayWorkflowConfig::validate() const
@@ -46,20 +58,46 @@ namespace texas::solver::multiway
 		model.validate();
 		if (model.player_count != 6U || model.initial_stack_chips != 10000 || model.small_blind_chips != 50 || model.big_blind_chips != 100 || model.ante_chips != 0)
 			throw std::invalid_argument("F1 game rules profile mismatch");
-		const auto any_capacity = maximum_public_states != 0U || maximum_sparse_rows != 0U || maximum_sparse_values != 0U || worker_delta_capacity != 0U || discovery_capacity != 0U || trajectories_per_batch != 0U || checkpoint_interval != 0U || disk_space_requirement_bytes != 0U || process_memory_limit_bytes != 0U;
+		const auto any_capacity = maximum_public_states != 0U || maximum_sparse_rows != 0U || maximum_sparse_values != 0U || worker_delta_capacity != 0U || discovery_capacity != 0U || explicit_stream_capacity_mask != 0U || max_regret_delta_entries_per_worker != 0U || max_continuation_delta_entries_per_worker != 0U || max_discovery_public_states_per_worker != 0U || max_discovery_rows_per_worker != 0U || trajectories_per_batch != 0U || checkpoint_interval != 0U || disk_space_requirement_bytes != 0U || process_memory_limit_bytes != 0U;
 		if (any_capacity && !capacities_resolved())
 		{
 			throw std::invalid_argument("F1 workflow capacities must be fully resolved together");
 		}
-		if (capacities_resolved() && (trajectories_per_batch > std::numeric_limits<std::uint32_t>::max() || maximum_public_states > std::numeric_limits<std::size_t>::max() || maximum_sparse_rows > std::numeric_limits<std::size_t>::max() || maximum_sparse_values > std::numeric_limits<std::size_t>::max() || worker_delta_capacity > std::numeric_limits<std::size_t>::max() || discovery_capacity > std::numeric_limits<std::size_t>::max()))
+		if (capacities_resolved() && (trajectories_per_batch > std::numeric_limits<std::uint32_t>::max() || maximum_public_states > std::numeric_limits<std::size_t>::max() || maximum_sparse_rows > std::numeric_limits<std::size_t>::max() || maximum_sparse_values > std::numeric_limits<std::size_t>::max() || resolved_regret_delta_capacity() > std::numeric_limits<std::size_t>::max() || resolved_continuation_delta_capacity() > std::numeric_limits<std::size_t>::max() || resolved_discovery_public_state_capacity() > std::numeric_limits<std::size_t>::max() || resolved_discovery_row_capacity() > std::numeric_limits<std::size_t>::max()))
 		{
 			throw std::invalid_argument("F1 workflow capacity exceeds the runtime type");
 		}
+		if (process_working_set_limit_bytes == 0U && process_working_set_resident_allowance_bytes != 0U)
+			throw std::invalid_argument("working-set resident allowance requires a hard limit");
 	}
 
 	bool MultiwayWorkflowConfig::capacities_resolved() const noexcept
 	{
-		return maximum_public_states != 0U && maximum_sparse_rows != 0U && maximum_sparse_values != 0U && worker_delta_capacity != 0U && discovery_capacity != 0U && trajectories_per_batch != 0U && checkpoint_interval != 0U && disk_space_requirement_bytes != 0U && process_memory_limit_bytes != 0U;
+		return maximum_public_states != 0U && maximum_sparse_rows != 0U && maximum_sparse_values != 0U && resolved_regret_delta_capacity() != 0U && resolved_continuation_delta_capacity() != 0U && resolved_discovery_public_state_capacity() != 0U && resolved_discovery_row_capacity() != 0U && trajectories_per_batch != 0U && checkpoint_interval != 0U && disk_space_requirement_bytes != 0U && process_memory_limit_bytes != 0U;
+	}
+
+	std::uint64_t MultiwayWorkflowConfig::resolved_regret_delta_capacity() const noexcept
+	{
+		return (explicit_stream_capacity_mask & kRegretCapacity) != 0U || max_regret_delta_entries_per_worker != 0U
+			? max_regret_delta_entries_per_worker : worker_delta_capacity;
+	}
+
+	std::uint64_t MultiwayWorkflowConfig::resolved_continuation_delta_capacity() const noexcept
+	{
+		return (explicit_stream_capacity_mask & kContinuationCapacity) != 0U || max_continuation_delta_entries_per_worker != 0U
+			? max_continuation_delta_entries_per_worker : worker_delta_capacity;
+	}
+
+	std::uint64_t MultiwayWorkflowConfig::resolved_discovery_public_state_capacity() const noexcept
+	{
+		return (explicit_stream_capacity_mask & kDiscoveryPublicCapacity) != 0U || max_discovery_public_states_per_worker != 0U
+			? max_discovery_public_states_per_worker : discovery_capacity;
+	}
+
+	std::uint64_t MultiwayWorkflowConfig::resolved_discovery_row_capacity() const noexcept
+	{
+		return (explicit_stream_capacity_mask & kDiscoveryRowsCapacity) != 0U || max_discovery_rows_per_worker != 0U
+			? max_discovery_rows_per_worker : discovery_capacity;
 	}
 
 	MultiwayTrainingWorkerResolution resolve_multiway_training_workers(
@@ -103,12 +141,24 @@ namespace texas::solver::multiway
 		append(maximum_public_states);
 		append(maximum_sparse_rows);
 		append(maximum_sparse_values);
-		append(worker_delta_capacity);
-		append(discovery_capacity);
+		if (explicit_stream_capacity_mask != 0U || max_regret_delta_entries_per_worker != 0U || max_continuation_delta_entries_per_worker != 0U || max_discovery_public_states_per_worker != 0U || max_discovery_rows_per_worker != 0U)
+		{
+			append(resolved_regret_delta_capacity());
+			append(resolved_continuation_delta_capacity());
+			append(resolved_discovery_public_state_capacity());
+			append(resolved_discovery_row_capacity());
+		}
+		else
+		{
+			append(worker_delta_capacity);
+			append(discovery_capacity);
+		}
 		append(trajectories_per_batch);
 		append(checkpoint_interval);
 		append(disk_space_requirement_bytes);
 		append(process_memory_limit_bytes);
+		append(process_working_set_limit_bytes);
+		append(process_working_set_resident_allowance_bytes);
 		return core::fingerprint::finish(hash);
 	}
 
@@ -181,7 +231,7 @@ namespace texas::solver::multiway
 			}
 			else if (key == "target_trajectories")
 				result.target_trajectories = n();
-			else if (key == "maximum_public_states" || key == "maximum_sparse_rows" || key == "maximum_sparse_values" || key == "worker_delta_capacity" || key == "discovery_capacity" || key == "trajectories_per_batch" || key == "checkpoint_interval" || key == "disk_space_requirement_bytes" || key == "process_memory_limit_bytes")
+			else if (key == "maximum_public_states" || key == "maximum_sparse_rows" || key == "maximum_sparse_values" || key == "worker_delta_capacity" || key == "discovery_capacity" || key == "max_regret_delta_entries_per_worker" || key == "max_continuation_delta_entries_per_worker" || key == "max_discovery_public_states_per_worker" || key == "max_discovery_rows_per_worker" || key == "trajectories_per_batch" || key == "checkpoint_interval" || key == "disk_space_requirement_bytes" || key == "process_memory_limit_bytes" || key == "process_working_set_limit_bytes" || key == "process_working_set_resident_allowance_bytes")
 			{
 				const auto capacity = value == "UNRESOLVED" ? 0U : number(value, key.c_str());
 				if (key == "maximum_public_states")
@@ -194,12 +244,36 @@ namespace texas::solver::multiway
 					result.worker_delta_capacity = capacity;
 				else if (key == "discovery_capacity")
 					result.discovery_capacity = capacity;
+				else if (key == "max_regret_delta_entries_per_worker")
+				{
+					result.max_regret_delta_entries_per_worker = capacity;
+					result.explicit_stream_capacity_mask |= kRegretCapacity;
+				}
+				else if (key == "max_continuation_delta_entries_per_worker")
+				{
+					result.max_continuation_delta_entries_per_worker = capacity;
+					result.explicit_stream_capacity_mask |= kContinuationCapacity;
+				}
+				else if (key == "max_discovery_public_states_per_worker")
+				{
+					result.max_discovery_public_states_per_worker = capacity;
+					result.explicit_stream_capacity_mask |= kDiscoveryPublicCapacity;
+				}
+				else if (key == "max_discovery_rows_per_worker")
+				{
+					result.max_discovery_rows_per_worker = capacity;
+					result.explicit_stream_capacity_mask |= kDiscoveryRowsCapacity;
+				}
 				else if (key == "trajectories_per_batch")
 					result.trajectories_per_batch = capacity;
 				else if (key == "checkpoint_interval")
 					result.checkpoint_interval = capacity;
 				else if (key == "disk_space_requirement_bytes")
 					result.disk_space_requirement_bytes = capacity;
+				else if (key == "process_working_set_limit_bytes")
+					result.process_working_set_limit_bytes = capacity;
+				else if (key == "process_working_set_resident_allowance_bytes")
+					result.process_working_set_resident_allowance_bytes = capacity;
 				else
 					result.process_memory_limit_bytes = capacity;
 			}
@@ -234,6 +308,65 @@ namespace texas::solver::multiway
 		}
 		result.validate();
 		return result;
+	}
+
+	std::string serialize_multiway_workflow_config(const MultiwayWorkflowConfig& config)
+	{
+		config.validate();
+		std::ostringstream output;
+		const auto line = [&output](const char* key, const auto& value) { output << key << '=' << value << '\n'; };
+		line("schema_version", config.schema_version);
+		line("profile_kind", config.profile_kind == MultiwayWorkflowProfileKind::Sizing ? "sizing" : "acceptance");
+		line("profile_id", config.profile_id);
+		line("players", static_cast<unsigned>(config.model.player_count));
+		line("initial_stack_chips", config.model.initial_stack_chips);
+		line("small_blind_chips", config.model.small_blind_chips);
+		line("big_blind_chips", config.model.big_blind_chips);
+		line("ante_chips", config.model.ante_chips);
+		line("rake", 0U);
+		line("preflop_classes", config.preflop_classes);
+		line("flop_buckets", config.model.flop_bucket_count);
+		line("turn_buckets", config.model.turn_bucket_count);
+		line("river_buckets", config.model.river_bucket_count);
+		line("storage_backend", config.storage_backend);
+		line("max_decision_depth", config.max_decision_depth);
+		line("max_public_chance_depth", config.max_public_chance_depth);
+		line("deterministic_seed", config.deterministic_seed);
+		if (config.schema_version == 1U)
+			line("reference_worker_count", config.training_worker_count);
+		else
+			line("training_worker_count", config.training_worker_count);
+		line("target_trajectories", config.target_trajectories);
+		const auto unresolved = [](std::uint64_t value) { return value == 0U ? std::string("UNRESOLVED") : std::to_string(value); };
+		line("maximum_public_states", unresolved(config.maximum_public_states));
+		line("maximum_sparse_rows", unresolved(config.maximum_sparse_rows));
+		line("maximum_sparse_values", unresolved(config.maximum_sparse_values));
+		const bool explicit_capacities = config.explicit_stream_capacity_mask != 0U || config.max_regret_delta_entries_per_worker != 0U || config.max_continuation_delta_entries_per_worker != 0U || config.max_discovery_public_states_per_worker != 0U || config.max_discovery_rows_per_worker != 0U;
+		if (explicit_capacities)
+		{
+			line("max_regret_delta_entries_per_worker", config.resolved_regret_delta_capacity());
+			line("max_continuation_delta_entries_per_worker", config.resolved_continuation_delta_capacity());
+			line("max_discovery_public_states_per_worker", config.resolved_discovery_public_state_capacity());
+			line("max_discovery_rows_per_worker", config.resolved_discovery_row_capacity());
+		}
+		else
+		{
+			line("worker_delta_capacity", unresolved(config.worker_delta_capacity));
+			line("discovery_capacity", unresolved(config.discovery_capacity));
+		}
+		line("trajectories_per_batch", unresolved(config.trajectories_per_batch));
+		line("checkpoint_interval", unresolved(config.checkpoint_interval));
+		line("disk_space_requirement_bytes", unresolved(config.disk_space_requirement_bytes));
+		line("process_memory_limit_bytes", unresolved(config.process_memory_limit_bytes));
+		line("process_working_set_limit_bytes", config.process_working_set_limit_bytes);
+		line("process_working_set_resident_allowance_bytes", config.process_working_set_resident_allowance_bytes);
+		if (!config.training_input_path.empty()) line("input_path", config.training_input_path.string());
+		if (!config.training_output_path.empty()) line("output_path", config.training_output_path.string());
+		if (!config.training_report_path.empty()) line("report_path", config.training_report_path.string());
+		if (!config.training_checkpoint_dir.empty()) line("checkpoint_dir", config.training_checkpoint_dir.string());
+		if (config.training_batches != 0U) line("batches", config.training_batches);
+		if (!config.training_log_path.empty()) line("log_path", config.training_log_path.string());
+		return output.str();
 	}
 
 	MultiwayWorkflowConfig load_multiway_workflow_config(const std::filesystem::path& path)

@@ -21,10 +21,13 @@ namespace texas::solver::multiway
 		std::string tracy_version;
 		std::string trace_capture_id;
 		bool allocation_probe_valid = true;
+		bool tracy_memory_events_enabled = false;
 		std::uint64_t elapsed_wall_nanoseconds = 0U;
 		std::uint64_t current_process_rss_bytes = 0U;
 		std::uint64_t peak_process_rss_bytes = 0U;
 		std::uint64_t process_memory_limit_bytes = 0U;
+		MultiwayWorkingSetGateConfig working_set_gate_config{};
+		MultiwayWorkingSetGateResult working_set_gate{};
 		bool process_rss_available = false;
 		bool started_at_preflop = false;
 		std::uint64_t peak_public_states = 0U;
@@ -48,6 +51,10 @@ namespace texas::solver::multiway
 		std::uint64_t configured_max_sparse_values = 0U;
 		std::uint64_t configured_worker_delta_capacity = 0U;
 		std::uint64_t configured_discovery_capacity = 0U;
+		std::uint64_t configured_max_regret_delta_entries_per_worker = 0U;
+		std::uint64_t configured_max_continuation_delta_entries_per_worker = 0U;
+		std::uint64_t configured_max_discovery_public_states_per_worker = 0U;
+		std::uint64_t configured_max_discovery_rows_per_worker = 0U;
 		std::uint64_t cumulative_worker_delta_entries = 0U;
 		std::uint64_t worker_active_nanoseconds = 0U;
 		std::uint64_t worker_wake_latency_nanoseconds = 0U;
@@ -88,6 +95,10 @@ namespace texas::solver::multiway
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystems{};
+		bool unattributed_private_bytes_available = false;
+		std::uint64_t unattributed_private_bytes = 0U;
 		std::uint64_t checkpoint_bytes = 0U;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};

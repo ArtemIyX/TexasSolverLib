@@ -87,6 +87,10 @@ namespace texas::solver::multiway
 		std::uint64_t configured_max_sparse_values = 0;
 		std::uint64_t configured_worker_delta_capacity = 0;
 		std::uint64_t configured_discovery_capacity = 0;
+		std::uint64_t configured_max_regret_delta_entries_per_worker = 0;
+		std::uint64_t configured_max_continuation_delta_entries_per_worker = 0;
+		std::uint64_t configured_max_discovery_public_states_per_worker = 0;
+		std::uint64_t configured_max_discovery_rows_per_worker = 0;
 		std::uint64_t peak_public_states = 0;
 		std::uint64_t peak_sparse_rows = 0;
 		std::uint64_t peak_sparse_values = 0;
@@ -147,6 +151,10 @@ namespace texas::solver::multiway
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0;
 		MultiwayMemoryLedger memory_ledger{};
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
+		MultiwayWorkingSetGateConfig working_set_gate_config{};
+		MultiwayWorkingSetGateResult working_set_gate{};
 		bool process_rss_available = false;
 		std::vector<std::uint64_t> admitted_rows_per_batch;
 		MultiwayTrainingCapacityStage capacity_exhaustion_stage =
@@ -154,6 +162,10 @@ namespace texas::solver::multiway
 		bool failed_batch_available = false;
 		MultiwayRootBatchResult failed_batch{};
 	};
+
+	// Called after each clean batch, outside the traversal and merge kernels.
+	using MultiwayBlueprintBatchProgressCallback =
+		void (*)(const MultiwayBlueprintTrainingStatus&, void*);
 
 	// Public-only coverage summary for a sparse full-blueprint export. Zero
 	// counts remain meaningful: they distinguish an empty sparse table from an
@@ -207,6 +219,9 @@ namespace texas::solver::multiway
 		bool pin_workers = false;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};
+		MultiwayProcessMemorySnapshotCollection process_memory_snapshots{};
+		MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots{};
+		MultiwayWorkingSetMonitor working_set_monitor{};
 		bool immutable_batch_epochs = true;
 
 		void validate() const;
@@ -226,12 +241,19 @@ namespace texas::solver::multiway
 			std::uint64_t deterministic_seed = 1,
 			std::uint32_t requested_worker_count = 0U,
 			std::uint64_t memory_preflight_estimate_bytes = 0U,
-			MultiwayMemoryLedger memory_ledger = {});
+			MultiwayMemoryLedger memory_ledger = {},
+			MultiwayProcessMemorySnapshotCollection process_memory_snapshots = {},
+			MultiwayMemorySubsystemSnapshotCollection memory_subsystem_snapshots = {},
+			const MultiwayBucketRegistry* buckets = nullptr,
+			const MultiwayFixedContinuationSelector* continuation_selector = nullptr,
+			MultiwayWorkingSetMonitor working_set_monitor = {});
 
 		void run_batches(
 			std::uint64_t batch_count,
 			std::uint64_t trajectories_per_batch,
-			std::uint64_t seed);
+			std::uint64_t seed,
+			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
+			void* progress_context = nullptr);
 
 		[[nodiscard]] std::uint64_t trajectories() const noexcept { return status_.trajectories; }
 		[[nodiscard]] std::uint64_t batches() const noexcept { return status_.batches; }
@@ -243,6 +265,10 @@ namespace texas::solver::multiway
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
+		void record_process_memory_snapshot(
+			MultiwayMemoryPhase phase,
+			MultiwayMemoryComponent checkpoint_buffers = {},
+			MultiwayMemoryComponent export_buffers = {});
 
 	private:
 		MultiwayModelIdentity identity_{};
@@ -252,6 +278,9 @@ namespace texas::solver::multiway
 		std::uint64_t deterministic_seed_ = 1;
 		std::chrono::steady_clock::time_point started_at_{};
 		std::uint64_t process_cpu_started_nanoseconds_ = 0U;
+		const MultiwayBucketRegistry* buckets_ = nullptr;
+		const MultiwayFixedContinuationSelector* continuation_selector_ = nullptr;
+		MultiwayWorkingSetMonitor working_set_monitor_{};
 		MultiwayBlueprintTrainingStatus status_{};
 		std::vector<double> late_window_baseline_;
 	};
@@ -267,7 +296,10 @@ namespace texas::solver::multiway
 			const MultiwayBucketRegistry& buckets,
 			const MultiwayLeafEvaluator* leaf_evaluator = nullptr);
 
-		void run_batches(std::uint64_t batch_count);
+		void run_batches(
+			std::uint64_t batch_count,
+			MultiwayBlueprintBatchProgressCallback progress_callback = nullptr,
+			void* progress_context = nullptr);
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
 		void resume_from_checkpoint(const MultiwayBlueprintTrainingCheckpoint& checkpoint);
 		[[nodiscard]] MultiwayBlueprintSnapshot export_policy(
@@ -277,6 +309,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayBlueprintCoverageManifest coverage_manifest() const noexcept;
 		[[nodiscard]] MultiwayFullBlueprintArtifact export_full_policy() const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 
 	private:
 		MultiwayBlueprintTrainingConfig config_{};
@@ -288,6 +321,8 @@ namespace texas::solver::multiway
 		std::unique_ptr<MultiwaySolverCoordinator> coordinator_;
 		std::unique_ptr<MultiwayRootBatchRunner> batch_runner_;
 		std::unique_ptr<MultiwayBlueprintTrainer> trainer_;
+		mutable MultiwayMemoryComponent checkpoint_buffers_{};
+		mutable MultiwayMemoryComponent export_buffers_{};
 	};
 
 } // namespace texas::solver::multiway

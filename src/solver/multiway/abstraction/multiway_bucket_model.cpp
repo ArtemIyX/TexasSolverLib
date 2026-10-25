@@ -1,9 +1,11 @@
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 
 #include "core/canonical_combo.hpp"
 #include "core/fingerprint.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -221,18 +223,43 @@ namespace texas::solver::multiway
 
 	std::size_t MultiwayBucketRegistry::owned_memory_bytes() const noexcept
 	{
-		std::size_t bytes = sizeof(*this) + tables_.capacity() * sizeof(MultiwayBucketTable);
+		std::uint64_t bytes = multiway_memory_saturating_capacity_bytes(tables_.capacity(), sizeof(MultiwayBucketTable));
 		for (const auto& table : tables_)
 		{
-			bytes += table.canonical_board().capacity() * sizeof(std::uint8_t);
-			bytes += table.assignments().capacity() * sizeof(std::uint32_t);
+			bytes = multiway_memory_saturating_add(bytes,
+				multiway_memory_saturating_capacity_bytes(table.canonical_board().capacity(), sizeof(std::uint8_t)));
+			bytes = multiway_memory_saturating_add(bytes,
+				multiway_memory_saturating_capacity_bytes(table.assignments().capacity(), sizeof(std::uint32_t)));
 		}
-		return bytes;
+		return bytes > std::numeric_limits<std::size_t>::max()
+			? std::numeric_limits<std::size_t>::max()
+			: static_cast<std::size_t>(bytes);
 	}
 
 	std::size_t MultiwayBucketRegistry::mapped_artifact_bytes() const noexcept
 	{
 		return mapped_artifact_ == nullptr ? 0U : mapped_artifact_->size;
+	}
+
+	MultiwayBucketRegistryMemorySnapshot MultiwayBucketRegistry::memory_snapshot() const noexcept
+	{
+		MultiwayBucketRegistryMemorySnapshot result;
+		result.owned_metadata.add_buffer(tables_.size(), tables_.capacity(), sizeof(MultiwayBucketTable));
+		for (const auto& table : tables_)
+		{
+			result.owned_metadata.add_buffer(
+				table.canonical_board().size(), table.canonical_board().capacity(), sizeof(std::uint8_t));
+			result.owned_metadata.add_buffer(
+				table.assignments().size(), table.assignments().capacity(), sizeof(std::uint32_t));
+		}
+		const auto mapped = mapped_artifact_bytes();
+		result.mapping_virtual.live_element_bytes = mapped;
+		result.mapping_virtual.retained_capacity_bytes = mapped;
+		result.mapping_virtual.grouping_only = true;
+		result.total = result.owned_metadata;
+		result.total.accumulate(result.mapping_virtual);
+		result.total.grouping_only = true;
+		return result;
 	}
 
 } // namespace texas::solver::multiway

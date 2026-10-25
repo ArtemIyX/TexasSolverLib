@@ -11,6 +11,7 @@
 
 namespace texas::solver::multiway
 {
+	struct MultiwayProcessMemorySnapshotCollection;
 
 	inline constexpr std::uint32_t MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION = 4U;
 
@@ -92,7 +93,8 @@ namespace texas::solver::multiway
 	// Streaming load avoids materializing a second serialized copy alongside the
 	// immutable registry required by traversal.
 	[[nodiscard]] MultiwayBucketRegistry load_multiway_bucket_registry(
-		const std::filesystem::path& path);
+		const std::filesystem::path& path,
+		MultiwayProcessMemorySnapshotCollection* process_memory_snapshots = nullptr);
 
 	enum class MultiwayBucketInspectionHashMode : std::uint8_t
 	{

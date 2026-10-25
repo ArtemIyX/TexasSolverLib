@@ -56,6 +56,10 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.effective_worker_count = 8U;
 	status.trajectories_per_batch = 20U;
 	status.peak_worker_delta_entries = 7U;
+	status.configured_max_regret_delta_entries_per_worker = 64U;
+	status.configured_max_continuation_delta_entries_per_worker = 8U;
+	status.configured_max_discovery_public_states_per_worker = 128U;
+	status.configured_max_discovery_rows_per_worker = 96U;
 	status.cumulative_worker_delta_entries = 55U;
 	status.worker_active_nanoseconds = 100U;
 	status.worker_scheduler_claim_nanoseconds = 15U;
@@ -71,10 +75,43 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.worker_active_nanoseconds_by_worker = { 40U, 60U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.worker_scheduler_claim_nanoseconds_by_worker = { 7U, 8U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.memory_preflight_estimate_bytes = 999U;
+	status.memory_ledger.existing_working_set_bytes = 111U;
+	status.memory_ledger.existing_private_committed_bytes = 222U;
+	status.memory_ledger.additional_private_capacity_bytes = 333U;
+	status.memory_ledger.mapped_virtual_bytes = 444U;
+	status.memory_ledger.mapped_resident_allowance_bytes = 555U;
+	status.memory_ledger.checkpoint_transient_bytes = 666U;
+	status.memory_ledger.export_transient_bytes = 777U;
+	status.memory_ledger.estimated_private_peak_bytes = 888U;
+	status.memory_ledger.estimated_working_set_peak_bytes = 999U;
 	status.memory_ledger.resident_baseline_bytes = 111U;
 	status.memory_ledger.regret_page_bytes = 222U;
 	status.memory_ledger.coordinator_allocation_count = 333U;
 	status.memory_ledger.coordinator_allocation_bytes = 444U;
+	status.working_set_gate_config = { 64U, 5U };
+	MultiwayProcessMemorySnapshot working_set_snapshot;
+	working_set_snapshot.current_working_set_available = true;
+	working_set_snapshot.current_working_set_bytes = 70U;
+	status.working_set_gate = evaluate_multiway_working_set_runtime(
+		working_set_snapshot, status.working_set_gate_config);
+	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
+		EXPECT_TRUE(status.process_memory_snapshots.record(static_cast<MultiwayMemoryPhase>(phase), {}));
+	for (std::size_t phase = 0U; phase < MULTIWAY_MEMORY_PHASE_COUNT; ++phase)
+	{
+		MultiwayMemorySubsystemSnapshot snapshot;
+		snapshot.public_catalog_nested_payloads.add_buffer(2U, 4U, sizeof(MultiwayActionDescriptor));
+		snapshot.worker_count = 1U;
+		snapshot.workers[0U].regret_delta_stream.add_buffer(1U, 2U, sizeof(MultiwayWorkerDelta));
+		snapshot.recompute_totals();
+		EXPECT_TRUE(status.memory_subsystem_snapshots.record(static_cast<MultiwayMemoryPhase>(phase), snapshot));
+	}
+	status.memory_subsystem_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].checkpoint_retained_buffers.add_buffer(0U, 100U, 1U);
+	status.memory_subsystem_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].recompute_totals();
+	const auto attributed_retained = status.memory_subsystem_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].retained_capacity_bytes;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].private_committed_available = true;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].private_committed_bytes = attributed_retained + 900U;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].peak_private_committed_available = true;
+	status.process_memory_snapshots.snapshots[MULTIWAY_MEMORY_PHASE_COUNT - 1U].peak_private_committed_bytes = attributed_retained + 900U;
 	MultiwayProducerIdentity identity;
 	identity.git_commit = "test";
 	identity.build_configuration = "Debug";
@@ -150,7 +187,19 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.memory_ledger.regret_page_bytes, 222U);
 	EXPECT_EQ(report.memory_ledger.coordinator_allocation_count, 333U);
 	EXPECT_EQ(report.memory_ledger.coordinator_allocation_bytes, 444U);
+	EXPECT_EQ(report.memory_ledger.schema_version, MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION);
+	EXPECT_EQ(report.memory_ledger.estimated_private_peak_bytes, 888U);
+	EXPECT_EQ(report.memory_ledger.estimated_working_set_peak_bytes, 999U);
+	EXPECT_EQ(report.working_set_gate_config.hard_limit_bytes, 64U);
+	EXPECT_EQ(report.working_set_gate.resident_allowance_bytes, 5U);
+	EXPECT_EQ(report.working_set_gate.compared_working_set_bytes, 75U);
+	EXPECT_EQ(report.working_set_gate.status, MultiwayWorkingSetGateStatus::Rejected);
+	EXPECT_EQ(report.working_set_gate.phase, MultiwayWorkingSetGatePhase::Runtime);
 	EXPECT_EQ(report.peak_worker_delta_entries, 7U);
+	EXPECT_EQ(report.configured_max_regret_delta_entries_per_worker, 64U);
+	EXPECT_EQ(report.configured_max_continuation_delta_entries_per_worker, 8U);
+	EXPECT_EQ(report.configured_max_discovery_public_states_per_worker, 128U);
+	EXPECT_EQ(report.configured_max_discovery_rows_per_worker, 96U);
 	EXPECT_EQ(report.cumulative_worker_delta_entries, 55U);
 	EXPECT_EQ(report.minimum_worker_active_nanoseconds, 40U);
 	EXPECT_EQ(report.maximum_worker_active_nanoseconds, 60U);
@@ -159,25 +208,49 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.worker_trajectory_counts[1U], 10U);
 	EXPECT_EQ(report.worker_active_nanoseconds_by_worker[1U], 60U);
 	EXPECT_EQ(report.instrumentation_kind, std::string("none"));
+	EXPECT_TRUE(report.unattributed_private_bytes_available);
+	EXPECT_EQ(report.unattributed_private_bytes, 900U);
 	EXPECT_TRUE(report.tracy_version.empty());
 	EXPECT_TRUE(report.trace_capture_id.empty());
 	EXPECT_TRUE(report.allocation_probe_valid);
+	EXPECT_TRUE(!report.tracy_memory_events_enabled);
 	const auto path = std::filesystem::temp_directory_path() / "texas_solver_training_report_telemetry_test.json";
 	save_multiway_training_report_atomic(path, report);
 	std::ifstream input(path);
 	const std::string text((std::istreambuf_iterator<char>(input)), {});
 	input.close();
 	EXPECT_TRUE(text.find("\"checkpoint_bytes\": 123") != std::string::npos);
+	EXPECT_TRUE(text.find("\"tracy_memory_events_enabled\": false") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_catalog_export_nanoseconds\": 12") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_state_bytes\": 34") != std::string::npos);
 	EXPECT_TRUE(text.find("\"blueprint_bytes\": 789") != std::string::npos);
 	EXPECT_TRUE(text.find("\"requested_worker_count\": 16") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_preflight_estimate_bytes\": 999") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_estimate_schema_version\": 2") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_estimated_private_peak_bytes\": 888") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_estimated_working_set_peak_bytes\": 999") != std::string::npos);
+	EXPECT_TRUE(text.find("\"process_working_set_limit_bytes\": 64") != std::string::npos);
+	EXPECT_TRUE(text.find("\"working_set_gate_abort_phase\": 2") != std::string::npos);
+	EXPECT_TRUE(text.find("\"working_set_gate_rejected_category\": \"process working set\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
 	EXPECT_TRUE(text.find("\"barrier_wait_nanoseconds\": 20") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds\": 15") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_regret_delta_entries_per_worker\": 64") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_continuation_delta_entries_per_worker\": 8") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_discovery_public_states_per_worker\": 128") != std::string::npos);
+	EXPECT_TRUE(text.find("\"configured_max_discovery_rows_per_worker\": 96") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds_by_worker\": [7,8,0,0,0,0,0,0]") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_trajectory_counts\": [10,10,0,0,0,0,0,0]") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_schema_version\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_process_snapshots\": [") != std::string::npos);
+	EXPECT_TRUE(text.find("\"phase\": \"process_start\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"phase\": \"after_export\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"private_committed\": false") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_subsystems_schema_version\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_subsystems\": {\"enabled\": true") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_catalog_nested_payloads\":") != std::string::npos);
+	EXPECT_TRUE(text.find("\"workers\": [{") != std::string::npos);
+	EXPECT_TRUE(text.find("\"unattributed_private_bytes\": 900") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_key_nanoseconds\": 1") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_index_lookup_nanoseconds\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"catalog_menu_equality_nanoseconds\": 3") != std::string::npos);
@@ -245,9 +318,15 @@ TEST_CASE(multiway_training_report_separates_tracy_provenance)
 	report.tracy_version = "0.14.1";
 	report.trace_capture_id = "capture-test";
 	report.allocation_probe_valid = false;
+	report.tracy_memory_events_enabled = true;
 	report.validate();
 
 	report.allocation_probe_valid = true;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
+	report.allocation_probe_valid = false;
+	report.instrumentation_kind = "none";
+	report.tracy_version.clear();
+	report.trace_capture_id.clear();
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 
@@ -282,6 +361,11 @@ TEST_CASE(multiway_training_report_calculates_throughput_and_rejects_bad_rss)
 	EXPECT_THROW(report.validate(), std::invalid_argument);
 	report.admitted_rows_per_batch = { 4U, 6U };
 	report.validate();
+	report.process_memory_snapshots.enabled = true;
+	report.process_memory_snapshots.count = 2U;
+	report.process_memory_snapshots.snapshots[0U].phase_id = MultiwayMemoryPhase::ProcessStart;
+	report.process_memory_snapshots.snapshots[1U].phase_id = MultiwayMemoryPhase::AfterBucketMapMetadata;
+	EXPECT_THROW(report.validate(), std::invalid_argument);
 }
 
 TEST_CASE(multiway_training_report_rejects_impossible_counters)

@@ -80,6 +80,18 @@ namespace
 		return action_child_public_state(root_public_state(), 2, 102, 0);
 	}
 
+	const texas::MultiwayPublicBoardChanceEdge& board_edge_dealing(
+		const std::vector<texas::MultiwayPublicBoardChanceEdge>& edges,
+		std::uint8_t dealt_card)
+	{
+		const auto found = std::find_if(edges.begin(), edges.end(), [dealt_card](const auto& edge) {
+			return edge.chance.dealt_cards.size() == 1U && edge.chance.dealt_cards.front() == dealt_card;
+		});
+		if (found == edges.end())
+			throw std::logic_error("board chance edge is unavailable");
+		return *found;
+	}
+
 	texas::MultiwayPrivateConfig root_ranges()
 	{
 		texas::MultiwayPrivateConfig ranges;
@@ -976,6 +988,40 @@ TEST_CASE(multiway_solver_prepared_admission_reports_board_and_street_transition
 	}
 }
 
+TEST_CASE(multiway_solver_prepared_admission_accepts_equivalent_chance_runout_parents)
+{
+	texas::MultiwaySolverCoordinator coordinator(valid_request());
+	const auto all_in = action_child_public_state(root_public_state(), 2, 102, 2);
+	coordinator.admit_public_state(all_in);
+	const auto runout = action_child_public_state(all_in, 4, 104, 1);
+	coordinator.admit_public_state(runout);
+	texas::MultiwayTerminalAdapter adapter(coordinator);
+	const auto deal = adapter.sample_private_deal(1U);
+	const auto first_edges = adapter.canonical_public_board_chance_edges(runout.id, deal);
+	EXPECT_TRUE(first_edges.size() >= 2U);
+	const auto first_turn = texas::MultiwayPublicBuilder::make_board_chance_child(
+		runout, first_edges[0U], {});
+	const auto second_turn = texas::MultiwayPublicBuilder::make_board_chance_child(
+		runout, first_edges[1U], {});
+	coordinator.admit_public_state(first_turn);
+	coordinator.admit_public_state(second_turn);
+
+	const auto first_river_edges = adapter.canonical_public_board_chance_edges(first_turn.id, deal);
+	const auto second_river_edges = adapter.canonical_public_board_chance_edges(second_turn.id, deal);
+	const auto first_river = texas::MultiwayPublicBuilder::make_board_chance_child(
+		first_turn, board_edge_dealing(first_river_edges, first_edges[1U].chance.dealt_card), {});
+	const auto second_river = texas::MultiwayPublicBuilder::make_board_chance_child(
+		second_turn, board_edge_dealing(second_river_edges, first_edges[0U].chance.dealt_card), {});
+	EXPECT_EQ(first_river.id, second_river.id);
+	EXPECT_TRUE(first_river.parent_id != second_river.parent_id);
+	EXPECT_EQ(first_river.board, second_river.board);
+	EXPECT_EQ(first_river.canonical_history_id, second_river.canonical_history_id);
+
+	coordinator.admit_public_state(first_river);
+	coordinator.admit_prepared_batch({ second_river }, { 0U }, {});
+	EXPECT_EQ(coordinator.diagnostics().public_states_admitted, 6U);
+}
+
 TEST_CASE(multiway_solver_prepared_admission_rejection_does_not_commit_transition_diagnostics)
 {
 	texas::MultiwaySolverCoordinator coordinator(valid_request());
@@ -1121,6 +1167,83 @@ TEST_CASE(multiway_solver_worker_delta_stream_is_bounded_finite_and_sortable)
 
 	texas::MultiwayWorkerDeltaStream finite_stream(1, 1);
 	EXPECT_TRUE(!finite_stream.try_append(delta(0, std::numeric_limits<double>::infinity(), 1.0)));
+}
+
+TEST_CASE(multiway_solver_stream_capacities_fallback_and_exhaust_independently)
+{
+	texas::MultiwaySolverLimits legacy = valid_limits();
+	legacy.max_discovery_entries = 9U;
+	EXPECT_EQ(legacy.regret_delta_capacity(), 4U);
+	EXPECT_EQ(legacy.continuation_delta_capacity(), 4U);
+	EXPECT_EQ(legacy.discovery_public_state_capacity(), 9U);
+	EXPECT_EQ(legacy.discovery_row_capacity(), 9U);
+
+	texas::MultiwaySolverLimits explicit_limits = legacy;
+	explicit_limits.max_regret_delta_entries_per_worker = 2U;
+	explicit_limits.max_continuation_delta_entries_per_worker = 3U;
+	explicit_limits.max_discovery_public_states_per_worker = 5U;
+	explicit_limits.max_discovery_rows_per_worker = 7U;
+	EXPECT_EQ(explicit_limits.regret_delta_capacity(), 2U);
+	EXPECT_EQ(explicit_limits.continuation_delta_capacity(), 3U);
+	EXPECT_EQ(explicit_limits.discovery_public_state_capacity(), 5U);
+	EXPECT_EQ(explicit_limits.discovery_row_capacity(), 7U);
+
+	texas::MultiwayWorkerDeltaStream regret(0U, 0U);
+	EXPECT_TRUE(!regret.try_append({}));
+	EXPECT_TRUE(regret.capacity_exhausted());
+	texas::MultiwayContinuationDeltaStream continuation(0U, 0U);
+	EXPECT_TRUE(!continuation.try_append({}));
+	EXPECT_TRUE(continuation.capacity_exhausted());
+	texas::MultiwayDiscoveryStream discovery(0U, 1U);
+	EXPECT_TRUE(!discovery.try_append_public_state({}));
+	EXPECT_TRUE(discovery.public_state_capacity_exhausted());
+	EXPECT_TRUE(!discovery.row_capacity_exhausted());
+	EXPECT_TRUE(discovery.try_append_row({}));
+	texas::MultiwayDiscoveryStream rows(1U, 0U);
+	EXPECT_TRUE(!rows.try_append_row({}));
+	EXPECT_TRUE(rows.row_capacity_exhausted());
+	EXPECT_TRUE(!rows.public_state_capacity_exhausted());
+}
+
+TEST_CASE(multiway_solver_stream_capacity_validation_rejects_worker_overflow)
+{
+	const auto worker_overflow = [] {
+		auto limits = valid_limits();
+		limits.max_regret_delta_entries_per_worker = std::numeric_limits<std::size_t>::max() / limits.worker_count + 1U;
+		return limits;
+	}();
+	EXPECT_THROW(worker_overflow.validate(), std::overflow_error);
+
+	const auto continuation_overflow = [] {
+		auto limits = valid_limits();
+		limits.max_continuation_delta_entries_per_worker = std::numeric_limits<std::size_t>::max() / limits.worker_count + 1U;
+		return limits;
+	}();
+	EXPECT_THROW(continuation_overflow.validate(), std::overflow_error);
+
+	const auto discovery_overflow = [] {
+		auto limits = valid_limits();
+		limits.max_discovery_public_states_per_worker = std::numeric_limits<std::size_t>::max() / limits.worker_count + 1U;
+		return limits;
+	}();
+	EXPECT_THROW(discovery_overflow.validate(), std::overflow_error);
+}
+
+TEST_CASE(multiway_solver_bounded_stream_append_is_allocation_free_after_construction)
+{
+	texas::MultiwayWorkerDeltaStream stream(0U, 2U);
+	texas::MultiwayDiscoveryStream discovery(2U, 2U);
+	const auto worker_delta = delta(0U, 1.0, 1.0, 1U);
+	const auto row = root_row();
+	texas::MultiwayAllocationProbe probe;
+	{
+		texas::MultiwayAllocationProbeScope scope(probe);
+		EXPECT_TRUE(stream.try_append(worker_delta));
+		EXPECT_TRUE(discovery.try_append_row(row));
+	}
+	const auto allocations = probe.snapshot();
+	EXPECT_EQ(allocations.allocation_count, 0U);
+	EXPECT_EQ(allocations.allocated_bytes, 0U);
 }
 
 TEST_CASE(multiway_solver_discovery_stream_prepares_sorted_unique_candidates)

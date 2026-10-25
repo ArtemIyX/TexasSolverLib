@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
@@ -15,6 +16,7 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -151,7 +153,110 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept
 		{
-			return left.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction && right.incoming_edge.kind != MultiwayPublicParentEdgeKind::BettingAction;
+			const auto chance_or_transition = [](MultiwayPublicParentEdgeKind kind) {
+				return kind == MultiwayPublicParentEdgeKind::BoardChance ||
+					kind == MultiwayPublicParentEdgeKind::StreetTransition;
+			};
+			return chance_or_transition(left.incoming_edge.kind) &&
+				chance_or_transition(right.incoming_edge.kind);
+		}
+
+		const char* public_parent_edge_kind_name(MultiwayPublicParentEdgeKind kind) noexcept
+		{
+			switch (kind)
+			{
+				case MultiwayPublicParentEdgeKind::None: return "none";
+				case MultiwayPublicParentEdgeKind::BettingAction: return "betting";
+				case MultiwayPublicParentEdgeKind::BoardChance: return "board-chance";
+				case MultiwayPublicParentEdgeKind::StreetTransition: return "street-transition";
+			}
+			return "invalid";
+		}
+
+		template <typename T>
+		void append_bounded_values(std::ostringstream& output, const std::vector<T>& values)
+		{
+			constexpr std::size_t limit = 8U;
+			output << '[';
+			for (std::size_t index = 0U; index < values.size() && index < limit; ++index)
+			{
+				if (index != 0U)
+					output << ',';
+				output << +values[index];
+			}
+			if (values.size() > limit)
+				output << ",...";
+			output << ']';
+		}
+
+		void append_conflicting_public_state_descriptor(
+			std::ostringstream& output,
+			const char* label,
+			const MultiwayPublicStateDescriptor& state)
+		{
+			output << ' ' << label
+				<< "{id=" << state.id.value
+				<< ",parent=" << state.parent_id.value
+				<< ",history=" << state.canonical_history_id
+				<< ",board=";
+			append_bounded_values(output, state.board);
+			output << ",runout={remaining=" << +state.board_runout.remaining_board_cards
+				<< ",chance_only=" << state.board_runout.chance_only_runout
+				<< "},betting={street=" << +static_cast<std::uint8_t>(state.betting.street)
+				<< ",current=" << state.betting.current_player
+				<< ",bet=" << state.betting.current_bet
+				<< ",stacks=";
+			append_bounded_values(output, state.betting.stacks);
+			output << ",contributions=";
+			append_bounded_values(output, state.betting.contributions);
+			output << ",street_contributions=";
+			append_bounded_values(output, state.betting.street_contributions);
+			output << ",folded=";
+			append_bounded_values(output, state.betting.folded);
+			output << ",all_in=";
+			append_bounded_values(output, state.betting.all_in);
+			output << ",may_raise=";
+			append_bounded_values(output, state.betting.may_raise);
+			output << ",pending=";
+			append_bounded_values(output, state.betting.pending);
+			output << ",has_acted=";
+			append_bounded_values(output, state.betting.has_acted);
+			output << ",bet_faced=";
+			append_bounded_values(output, state.betting.bet_faced_when_acted);
+			output << "},menu=";
+			for (std::size_t index = 0U; index < state.legal_actions.size() && index < 8U; ++index)
+			{
+				const auto& action = state.legal_actions[index];
+				if (index != 0U)
+					output << ',';
+				output << '{' << action.action_index
+					<< ':' << +static_cast<std::uint8_t>(action.action)
+					<< ':' << action.target_street_contribution
+					<< ':' << action.action_menu_id << '}';
+			}
+			if (state.legal_actions.size() > 8U)
+				output << ",...";
+			output << ",edge={kind=" << public_parent_edge_kind_name(state.incoming_edge.kind)
+				<< ",action={" << +static_cast<std::uint8_t>(state.incoming_edge.action.action)
+				<< ':' << state.incoming_edge.action.target_street_contribution
+				<< ':' << state.incoming_edge.action.action_menu_id << "}"
+				<< ",dealt_card=" << +state.incoming_edge.dealt_card
+				<< ",cards=";
+			append_bounded_values(output, state.incoming_edge.dealt_cards);
+			output << ",transition_board=";
+			append_bounded_values(output, state.incoming_edge.transition_board);
+			output << "}}";
+		}
+
+		[[noreturn]] void throw_conflicting_public_state_descriptors(
+			const MultiwayPublicStateDescriptor& existing,
+			const MultiwayPublicStateDescriptor& candidate)
+		{
+			std::ostringstream output;
+			output << "multiway public state id was admitted with conflicting data:";
+			append_conflicting_public_state_descriptor(output, "existing", existing);
+			append_conflicting_public_state_descriptor(output, "candidate", candidate);
+			throw std::invalid_argument(output.str());
 		}
 
 		void validate_public_state_child_transition(
@@ -579,13 +684,21 @@ namespace texas::solver::multiway
 
 	void MultiwaySolverLimits::validate() const
 	{
-		if (worker_count == 0U || trajectories_per_batch == 0U || max_public_states == 0U || max_sparse_rows == 0U || max_sparse_values == 0U || max_worker_delta_entries == 0U)
+		const auto regret_capacity = regret_delta_capacity();
+		const auto continuation_capacity = continuation_delta_capacity();
+		if (worker_count == 0U || trajectories_per_batch == 0U || max_public_states == 0U || max_sparse_rows == 0U || max_sparse_values == 0U || regret_capacity == 0U || continuation_capacity == 0U)
 		{
 			throw std::invalid_argument("multiway solver limits require non-zero bounded capacities");
 		}
-		if (max_worker_delta_entries > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count))
+		if (regret_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count) || continuation_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count))
 		{
 			throw std::overflow_error("multiway aggregate worker delta capacity overflows size_t");
+		}
+		const auto public_capacity = discovery_public_state_capacity();
+		const auto row_capacity = discovery_row_capacity();
+		if ((public_capacity != 0U && public_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)) || (row_capacity != 0U && row_capacity > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(worker_count)))
+		{
+			throw std::overflow_error("multiway aggregate discovery capacity overflows size_t");
 		}
 		if (max_batches == 0U || compact_page_width == 0U)
 		{
@@ -899,6 +1012,19 @@ namespace texas::solver::multiway
 		}
 	}
 
+	MultiwaySparseStorageMemorySnapshot MultiwaySparseRowStorage::memory_snapshot() const noexcept
+	{
+		MultiwaySparseStorageMemorySnapshot result;
+		result.row_metadata.add_buffer(metadata_.size(), metadata_.capacity(), sizeof(MultiwaySparseRowMetadata));
+		result.regret_cells.add_buffer(regret_.size(), regret_.capacity(), sizeof(double));
+		result.strategy_cells.add_buffer(strategy_sum_.size(), strategy_sum_.capacity(), sizeof(double));
+		result.total = result.row_metadata;
+		result.total.accumulate(result.regret_cells);
+		result.total.accumulate(result.strategy_cells);
+		result.total.grouping_only = true;
+		return result;
+	}
+
 	void MultiwaySparseRowStorage::apply_delta(
 		MultiwayInfosetId infoset,
 		std::uint32_t bucket,
@@ -930,7 +1056,12 @@ namespace texas::solver::multiway
 
 	bool MultiwayWorkerDeltaStream::try_append(const MultiwayWorkerDelta& delta) noexcept
 	{
-		if (deltas_.size() >= capacity_ || !delta_is_finite(delta))
+		if (deltas_.size() >= capacity_)
+		{
+			capacity_exhausted_ = true;
+			return false;
+		}
+		if (!delta_is_finite(delta))
 			return false;
 		deltas_.push_back(delta);
 		return true;
@@ -950,6 +1081,13 @@ namespace texas::solver::multiway
 	bool MultiwayWorkerDeltaStream::is_fixed_order() const noexcept
 	{
 		return std::is_sorted(deltas_.begin(), deltas_.end(), delta_less);
+	}
+
+	MultiwayMemoryComponent MultiwayWorkerDeltaStream::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(deltas_.size(), deltas_.capacity(), sizeof(MultiwayWorkerDelta));
+		return result;
 	}
 
 	MultiwaySolveResult::MultiwaySolveResult(
@@ -984,6 +1122,52 @@ namespace texas::solver::multiway
 		admission_state_next_node_kinds_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_state_menu_handles_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admit_public_state(request_.root().public_state);
+	}
+
+	MultiwayCoordinatorMemorySnapshot MultiwaySolverCoordinator::memory_snapshot() const noexcept
+	{
+		MultiwayCoordinatorMemorySnapshot result;
+		result.merge_scratch.add_buffer(merge_stream_views_.size(), merge_stream_views_.capacity(), sizeof(const MultiwayWorkerDeltaStream*));
+		result.merge_scratch.add_buffer(merge_stream_cursors_.size(), merge_stream_cursors_.capacity(), sizeof(std::size_t));
+		result.merge_scratch.add_buffer(pending_merge_cells_.size(), pending_merge_cells_.capacity(), sizeof(PendingMergeCell));
+		result.admission_scratch.add_buffer(admission_processed_states_.size(), admission_processed_states_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_new_states_.size(), admission_new_states_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_existing_nodes_.size(), admission_existing_nodes_.capacity(), sizeof(const MultiwayPackedPublicNode*));
+		result.admission_scratch.add_buffer(admission_state_fixed_states_.size(), admission_state_fixed_states_.capacity(), sizeof(games::multiway::MultiwayFixedState));
+		result.admission_scratch.add_buffer(admission_new_rows_.size(), admission_new_rows_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_new_row_streets_.size(), admission_new_row_streets_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_row_state_indexes_.size(), admission_row_state_indexes_.capacity(), sizeof(std::size_t));
+		result.admission_scratch.add_buffer(admission_state_menu_keys_.size(), admission_state_menu_keys_.capacity(), sizeof(std::uint64_t));
+		result.admission_scratch.add_buffer(admission_state_action_counts_.size(), admission_state_action_counts_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_state_streets_.size(), admission_state_streets_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_state_current_players_.size(), admission_state_current_players_.capacity(), sizeof(core::PlayerId));
+		result.admission_scratch.add_buffer(admission_state_next_node_kinds_.size(), admission_state_next_node_kinds_.capacity(), sizeof(std::uint8_t));
+		result.admission_scratch.add_buffer(admission_state_menu_handles_.size(), admission_state_menu_handles_.capacity(), sizeof(std::uint32_t));
+		result.total = result.merge_scratch;
+		result.total.accumulate(result.admission_scratch);
+		result.total.grouping_only = true;
+		return result;
+	}
+
+	MultiwayMemoryComponent MultiwayCoordinatorCheckpoint::memory_snapshot() const noexcept
+	{
+		MultiwayMemoryComponent result;
+		result.add_buffer(public_states.size(), public_states.capacity(), sizeof(MultiwayPublicStateDescriptor));
+		for (const auto& state : public_states)
+		{
+			result.add_buffer(state.incoming_edge.dealt_cards.size(), state.incoming_edge.dealt_cards.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.incoming_edge.transition_board.size(), state.incoming_edge.transition_board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.board.size(), state.board.capacity(), sizeof(std::uint8_t));
+			result.add_buffer(state.history.size(), state.history.capacity(), sizeof(MultiwayPublicHistoryEntry));
+			result.add_buffer(state.legal_actions.size(), state.legal_actions.capacity(), sizeof(MultiwayActionDescriptor));
+		}
+		result.add_buffer(storage.shapes.size(), storage.shapes.capacity(), sizeof(MultiwaySparseRowShape));
+		result.add_buffer(storage.active_pages.size(), storage.active_pages.capacity(), sizeof(MultiwaySparseStorageCheckpoint::ActivePage));
+		result.add_buffer(storage.compact_regrets.size(), storage.compact_regrets.capacity(), sizeof(std::int32_t));
+		result.add_buffer(storage.compact_strategy_masses.size(), storage.compact_strategy_masses.capacity(), sizeof(std::uint64_t));
+		result.add_buffer(storage.regrets.size(), storage.regrets.capacity(), sizeof(double));
+		result.add_buffer(storage.strategy_sums.size(), storage.strategy_sums.capacity(), sizeof(double));
+		return result;
 	}
 
 	void MultiwaySolverCoordinator::admit_prepared_batch(
@@ -1080,7 +1264,12 @@ namespace texas::solver::multiway
 					++admission_diagnostics_->packed_public_state_compatibility_checks;
 				}
 				if (!public_catalog_.compatible_with_descriptor(admission_existing_nodes_[state_index], state))
-					throw std::invalid_argument("multiway public state id was admitted with conflicting data");
+				{
+					MultiwayPublicStateDescriptor existing;
+					if (!public_catalog_.reconstruct(state.id, existing))
+						throw std::logic_error("multiway public state conflict could not reconstruct catalog state");
+					throw_conflicting_public_state_descriptors(existing, state);
+				}
 				const auto* existing = admission_existing_nodes_[state_index];
 				if (existing == nullptr)
 					throw std::logic_error("multiway public state classification lost its catalog node");
@@ -1367,9 +1556,7 @@ namespace texas::solver::multiway
 		{
 			const auto* existing = public_state(state.id);
 			if (!public_state_candidates_compatible(*existing, state))
-			{
-				throw std::invalid_argument("multiway public state id was admitted with conflicting data");
-			}
+				throw_conflicting_public_state_descriptors(*existing, state);
 			return;
 		}
 		if (public_catalog_.size() >= request_.limits().max_public_states)
@@ -1595,7 +1782,7 @@ namespace texas::solver::multiway
 		for (std::size_t worker = 0; worker < streams.size(); ++worker)
 		{
 			const auto* stream = streams[worker];
-			if (stream == nullptr || stream->worker_index() != worker || stream->size() > request_.limits().max_worker_delta_entries || !stream->is_fixed_order())
+			if (stream == nullptr || stream->worker_index() != worker || stream->size() > request_.limits().regret_delta_capacity() || !stream->is_fixed_order())
 			{
 				throw std::invalid_argument("multiway worker streams must be bounded and in fixed worker/row/action order");
 			}
