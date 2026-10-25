@@ -4,6 +4,7 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
+#include "solver/multiway/engine/multiway_worker_topology.hpp"
 #include "test_harness.hpp"
 
 #include <array>
@@ -11,6 +12,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -519,6 +521,91 @@ TEST_CASE(multiway_parallel_runner_reports_worker_capacity_discards)
 	EXPECT_TRUE(!result.clean);
 	EXPECT_TRUE(result.trajectories_discarded > 0U);
 	EXPECT_TRUE(result.maximum_worker_delta_entries <= 1U);
+}
+
+TEST_CASE(multiway_topology_synthetic_records_have_unique_logical_identity)
+{
+	texas::solver::multiway::MultiwayWorkerTopologyRecord second;
+	second.processor_group = 1U;
+	second.logical_processor_index = 3U;
+	texas::solver::multiway::MultiwayWorkerTopologyRecord first;
+	first.processor_group = 0U;
+	first.logical_processor_index = 7U;
+
+	const auto inventory = texas::solver::multiway::make_multiway_worker_topology(
+		{ second, first });
+	EXPECT_EQ(inventory.processors.size(), 2U);
+	EXPECT_TRUE(inventory.processors[0U].logical_processor_identity() !=
+		inventory.processors[1U].logical_processor_identity());
+	EXPECT_TRUE(inventory.find(0U, 7U) != nullptr);
+	EXPECT_TRUE(inventory.find(1U, 3U) != nullptr);
+	EXPECT_TRUE(inventory.find(0U, 3U) == nullptr);
+
+	second.logical_processor_index = 7U;
+	second.processor_group = 0U;
+	EXPECT_THROW(
+		texas::solver::multiway::make_multiway_worker_topology({ first, second }),
+		std::invalid_argument);
+}
+
+TEST_CASE(multiway_topology_synthetic_records_distinguish_physical_core_and_smt_sibling)
+{
+	texas::solver::multiway::MultiwayWorkerTopologyRecord sibling_zero;
+	sibling_zero.logical_processor_index = 4U;
+	sibling_zero.physical_core_id = 12U;
+	sibling_zero.smt_sibling_index = 0U;
+	texas::solver::multiway::MultiwayWorkerTopologyRecord sibling_one = sibling_zero;
+	sibling_one.logical_processor_index = 5U;
+	sibling_one.smt_sibling_index = 1U;
+	texas::solver::multiway::MultiwayWorkerTopologyRecord other_core = sibling_zero;
+	other_core.logical_processor_index = 6U;
+	other_core.physical_core_id = 13U;
+	other_core.smt_sibling_index = 0U;
+
+	const auto inventory = texas::solver::multiway::make_multiway_worker_topology(
+		{ sibling_one, other_core, sibling_zero });
+	EXPECT_EQ(inventory.processors[0U].physical_core_id, 12U);
+	EXPECT_EQ(inventory.processors[1U].physical_core_id, 12U);
+	EXPECT_EQ(inventory.processors[0U].smt_sibling_index, 0U);
+	EXPECT_EQ(inventory.processors[1U].smt_sibling_index, 1U);
+	EXPECT_TRUE(inventory.processors[0U].physical_core_id !=
+		inventory.processors[2U].physical_core_id);
+}
+
+TEST_CASE(multiway_topology_synthetic_records_preserve_numa_and_cache_domain_facts)
+{
+	texas::solver::multiway::MultiwayWorkerTopologyRecord record;
+	record.processor_group = 2U;
+	record.logical_processor_index = 9U;
+	record.numa_node_id = 4U;
+	record.cache_domain_id = 17U;
+
+	const auto inventory = texas::solver::multiway::make_multiway_worker_topology({ record });
+	const auto* found = inventory.find(2U, 9U);
+	EXPECT_TRUE(found != nullptr);
+	EXPECT_EQ(found->numa_node_id, 4U);
+	EXPECT_EQ(found->cache_domain_id, 17U);
+	EXPECT_TRUE(!inventory.has_complete_windows_topology());
+}
+
+TEST_CASE(multiway_topology_fallback_keeps_only_unique_logical_identities)
+{
+	const auto inventory = texas::solver::multiway::make_multiway_worker_topology_fallback(3U);
+	EXPECT_TRUE(inventory.is_fallback());
+	EXPECT_EQ(inventory.processors.size(), 3U);
+	for (std::uint16_t logical = 0U; logical < 3U; ++logical)
+	{
+		const auto* record = inventory.find(0U, logical);
+		EXPECT_TRUE(record != nullptr);
+		EXPECT_EQ(record->cpu_set_id, texas::solver::multiway::kMultiwayUnknownTopologyId);
+		EXPECT_EQ(record->physical_core_id, texas::solver::multiway::kMultiwayUnknownTopologyId);
+		EXPECT_EQ(record->smt_sibling_index,
+			texas::solver::multiway::kMultiwayUnknownTopologyIndex);
+		EXPECT_EQ(record->numa_node_id,
+			texas::solver::multiway::kMultiwayUnknownTopologyIndex);
+		EXPECT_EQ(record->cache_domain_id,
+			texas::solver::multiway::kMultiwayUnknownTopologyIndex);
+	}
 }
 
 TEST_CASE(multiway_blueprint_training_retains_failed_batch_telemetry_without_committing_it)
