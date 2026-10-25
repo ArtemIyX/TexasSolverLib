@@ -1163,6 +1163,7 @@ namespace texas::solver::multiway
 		status_.memory_ledger.export_observed_after_working_set_bytes = telemetry.observed_delta.after_working_set_bytes;
 		telemetry.result_bytes = stream_result.serialized_bytes;
 		telemetry.payload_hash = stream_result.payload_hash;
+		telemetry.policy_content_hash = stream_result.policy_content_hash;
 		telemetry.duration_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - export_started)
@@ -1174,6 +1175,7 @@ namespace texas::solver::multiway
 		MultiwayFullBlueprintExportResult result;
 		result.plan = plan;
 		result.payload_hash = stream_result.payload_hash;
+		result.policy_content_hash = stream_result.policy_content_hash;
 		result.peak_scratch_bytes = peak_scratch_bytes;
 		result.publication_mode = stream_result.publication_mode;
 		return result;

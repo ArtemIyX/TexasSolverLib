@@ -487,6 +487,7 @@ namespace texas::solver::multiway
 		MultiwayExportObservedMemoryDelta observed_delta{};
 		std::uint64_t result_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
+		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t duration_nanoseconds = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 

@@ -242,6 +242,7 @@ namespace texas::solver::multiway
 	{
 		MultiwayFullBlueprintExportPlan plan{};
 		std::uint64_t payload_hash = 0U;
+		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t peak_scratch_bytes = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};

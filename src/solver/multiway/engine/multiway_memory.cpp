@@ -963,7 +963,7 @@ namespace texas::solver::multiway
 			return;
 		if (!plan.valid() || !scratch.valid() || !process_estimate.valid() || !system_before.valid() || !system_after.valid() || !observed_delta.valid() || process_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION || system_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION || static_cast<unsigned>(process_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) || static_cast<unsigned>(system_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) || static_cast<unsigned>(process_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportProcessRejectionReason::ProcessLimitExceeded) || static_cast<unsigned>(system_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient) || static_cast<unsigned>(publication_mode) > static_cast<unsigned>(core::AtomicPublishMode::BackupRename))
 			throw std::invalid_argument("invalid multiway export telemetry values");
-		if (succeeded && (process_gate.blocked() || system_gate.blocked() || result_bytes != plan.serialized_bytes || payload_hash == 0U || publication_mode == core::AtomicPublishMode::Unknown))
+		if (succeeded && (process_gate.blocked() || system_gate.blocked() || result_bytes != plan.serialized_bytes || payload_hash == 0U || policy_content_hash == 0U || publication_mode == core::AtomicPublishMode::Unknown))
 			throw std::invalid_argument("successful multiway export telemetry is incomplete");
 	}
 

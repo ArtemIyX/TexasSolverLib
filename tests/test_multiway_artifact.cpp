@@ -158,6 +158,7 @@ TEST_CASE(multiway_full_blueprint_materialized_and_streamed_bytes_match)
 	EXPECT_EQ(result.row_count, std::uint64_t{ 2U });
 	EXPECT_EQ(result.action_count, std::uint64_t{ 2U });
 	EXPECT_EQ(result.payload_hash, texas::MultiwayFullBlueprintArtifacts::payload_hash(artifact));
+	EXPECT_EQ(result.policy_content_hash, texas::MultiwayFullBlueprintArtifacts::policy_content_hash(artifact));
 	EXPECT_EQ(result.serialized_bytes, plan.serialized_bytes);
 	const auto loaded = texas::MultiwayFullBlueprintArtifacts::load_verified(streamed_path, identity);
 	EXPECT_EQ(loaded.rows.size(), std::size_t{ 2U });
@@ -191,6 +192,31 @@ TEST_CASE(multiway_full_blueprint_incremental_hash_matches_materialized_hash)
 	for (const auto& row : rows)
 		hasher.append_row(texas::MultiwayFullBlueprintRowView(row));
 	EXPECT_EQ(hasher.finish(), expected);
+}
+
+TEST_CASE(multiway_full_blueprint_policy_content_hash_ignores_execution_metadata_and_row_order)
+{
+	const auto identity = snapshot().identity;
+	const auto rows = full_rows(identity);
+	texas::MultiwayFullBlueprintArtifact first;
+	first.identity = identity;
+	first.training.batches = 1U;
+	first.rows = rows;
+	texas::MultiwayFullBlueprintArtifact second = first;
+	second.identity.rules_hash = 99U;
+	second.training.batches = 99U;
+	std::reverse(second.rows.begin(), second.rows.end());
+	EXPECT_EQ(
+		texas::MultiwayFullBlueprintArtifacts::policy_content_hash(first),
+		texas::MultiwayFullBlueprintArtifacts::policy_content_hash(second));
+	EXPECT_TRUE(
+		texas::MultiwayFullBlueprintArtifacts::payload_hash(first)
+		!= texas::MultiwayFullBlueprintArtifacts::payload_hash(second));
+	second.rows.front().action_menu_id = 20U;
+	second.rows.front().actions.front().action.action_menu_id = 20U;
+	EXPECT_TRUE(
+		texas::MultiwayFullBlueprintArtifacts::policy_content_hash(first)
+		!= texas::MultiwayFullBlueprintArtifacts::policy_content_hash(second));
 }
 
 TEST_CASE(multiway_full_blueprint_accepts_unsorted_materialized_rows_but_rejects_duplicate_keys)

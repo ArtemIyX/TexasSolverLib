@@ -33,6 +33,7 @@ TEST_CASE(multiway_qualification_reports_publish_atomically)
 		return identity;
 	}();
 	lookup.lookup_hits = 4U;
+	lookup.policy_content_hash = 8U;
 	lookup.replay_fingerprint = 9U;
 	lookup.second_replay_fingerprint = 9U;
 	save_multiway_lookup_qualification_report_atomic(path, lookup);
@@ -41,6 +42,7 @@ TEST_CASE(multiway_qualification_reports_publish_atomically)
 	input.close();
 	EXPECT_TRUE(text.find("\"passed\": true") != std::string::npos);
 	EXPECT_TRUE(text.find("\"second_replay_fingerprint\": 9") != std::string::npos);
+	EXPECT_TRUE(text.find("\"policy_content_hash\": 8") != std::string::npos);
 	std::filesystem::remove(path);
 }
 
@@ -176,6 +178,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	report.export_telemetry.system_gate.status = MultiwayExportGateStatus::Disabled;
 	report.export_telemetry.result_bytes = 321U;
 	report.export_telemetry.payload_hash = 654U;
+	report.export_telemetry.policy_content_hash = 655U;
 	report.export_telemetry.duration_nanoseconds = 987U;
 	report.export_telemetry.publication_mode = texas::core::AtomicPublishMode::Rename;
 	report.export_telemetry.validate();
@@ -297,6 +300,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"export_row_count\": 8") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_result_bytes\": 321") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_result_payload_hash\": 654") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_policy_content_hash\": 655") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_duration_nanoseconds\": 987") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_publication_mode\": \"rename\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"regret_page_bytes\": 222") != std::string::npos);
