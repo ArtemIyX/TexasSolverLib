@@ -430,6 +430,7 @@ namespace texas::solver::multiway
 		cfr.validate();
 		limits.validate();
 		schedule.validate();
+		placement.validate();
 		working_set_monitor.validate();
 		if (deterministic_seed == 0U || cfr.player_count != rules.player_count || blueprint.player_count != rules.player_count || blueprint.initial_stack_chips != rules.initial_stack_chips || blueprint.small_blind_chips != rules.small_blind_chips || blueprint.big_blind_chips != rules.big_blind_chips || blueprint.ante_chips != rules.ante_chips || blueprint.rake_policy.identity() != rules.rake_policy.identity() || blueprint.rules_profile_version != rules.profile_version || blueprint.flop_bucket_count != bucket_profile.flop_bucket_count || blueprint.turn_bucket_count != bucket_profile.turn_bucket_count || blueprint.river_bucket_count != bucket_profile.river_bucket_count || max_decision_depth == 0U || max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH || max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH || (scheduler_mode != MultiwaySchedulerMode::Fixed && scheduler_mode != MultiwaySchedulerMode::Dynamic) || (requested_worker_count != 0U && requested_worker_count < limits.worker_count))
 		{
@@ -706,6 +707,7 @@ namespace texas::solver::multiway
 			status_.memory_ledger.coordinator_allocation_count += batch_result.coordinator_allocation_count;
 			status_.memory_ledger.coordinator_allocation_bytes += batch_result.coordinator_allocated_bytes;
 			status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
+			status_.placement_policy = batch_result.placement_policy;
 			status_.affinity_requested = batch_result.affinity_requested;
 			status_.cumulative_worker_delta_entries = diagnostics.worker_delta_entries_merged;
 			status_.worker_active_nanoseconds += batch_result.worker_active_nanoseconds;
@@ -744,6 +746,16 @@ namespace texas::solver::multiway
 				status_.worker_allocated_bytes.assign(batch_result.worker_allocated_bytes.size(), 0U);
 				status_.worker_requested_processor.assign(batch_result.worker_requested_processor.size(), 0xffffffffU);
 				status_.worker_resolved_processor.assign(batch_result.worker_resolved_processor.size(), 0U);
+				status_.worker_requested_cpu_set.assign(batch_result.worker_requested_cpu_set.size(), kMultiwayUnknownTopologyId);
+				status_.worker_resolved_cpu_set.assign(batch_result.worker_resolved_cpu_set.size(), kMultiwayUnknownTopologyId);
+				status_.worker_requested_physical_core.assign(batch_result.worker_requested_physical_core.size(), kMultiwayUnknownTopologyId);
+				status_.worker_resolved_physical_core.assign(batch_result.worker_resolved_physical_core.size(), kMultiwayUnknownTopologyId);
+				status_.worker_requested_smt_sibling.assign(batch_result.worker_requested_smt_sibling.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_resolved_smt_sibling.assign(batch_result.worker_resolved_smt_sibling.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_requested_cache_domain.assign(batch_result.worker_requested_cache_domain.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_resolved_cache_domain.assign(batch_result.worker_resolved_cache_domain.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_migration_sampled.assign(batch_result.worker_migration_sampled.size(), 0U);
+				status_.worker_migration_detected.assign(batch_result.worker_migration_detected.size(), 0U);
 				status_.worker_affinity_masks.assign(batch_result.worker_affinity_masks.size(), 0U);
 				status_.worker_affinity_succeeded.assign(batch_result.worker_affinity_succeeded.size(), 0U);
 				status_.worker_profiles.assign(batch_result.worker_profiles.size(), MultiwaySearchProfileSnapshot{});
@@ -783,6 +795,18 @@ namespace texas::solver::multiway
 				status_.worker_requested_processor[worker_index] = batch_result.worker_requested_processor[worker_index];
 				status_.worker_affinity_masks[worker_index] = batch_result.worker_affinity_masks[worker_index];
 				status_.worker_affinity_succeeded[worker_index] = batch_result.worker_affinity_succeeded[worker_index];
+				status_.worker_requested_cpu_set[worker_index] = batch_result.worker_requested_cpu_set[worker_index];
+				status_.worker_resolved_cpu_set[worker_index] = batch_result.worker_resolved_cpu_set[worker_index];
+				status_.worker_requested_physical_core[worker_index] = batch_result.worker_requested_physical_core[worker_index];
+				status_.worker_resolved_physical_core[worker_index] = batch_result.worker_resolved_physical_core[worker_index];
+				status_.worker_requested_smt_sibling[worker_index] = batch_result.worker_requested_smt_sibling[worker_index];
+				status_.worker_resolved_smt_sibling[worker_index] = batch_result.worker_resolved_smt_sibling[worker_index];
+				status_.worker_requested_cache_domain[worker_index] = batch_result.worker_requested_cache_domain[worker_index];
+				status_.worker_resolved_cache_domain[worker_index] = batch_result.worker_resolved_cache_domain[worker_index];
+				status_.worker_migration_sampled[worker_index] = std::max(
+					status_.worker_migration_sampled[worker_index], batch_result.worker_migration_sampled[worker_index]);
+				status_.worker_migration_detected[worker_index] = std::max(
+					status_.worker_migration_detected[worker_index], batch_result.worker_migration_detected[worker_index]);
 				if (batch_result.worker_profiles[worker_index].profiled())
 				{
 					status_.worker_profiles[worker_index].mode = batch_result.worker_profiles[worker_index].mode;
@@ -1326,7 +1350,9 @@ namespace texas::solver::multiway
 				config_.limits.discovery_public_state_capacity(),
 				config_.limits.discovery_row_capacity() },
 			MultiwaySearchProfileMode::Disabled,
-			config_.pin_workers,
+			config_.pin_workers
+				? MultiwayWorkerPlacementConfig{ MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity, 0U }
+				: config_.placement,
 			config_.immutable_batch_epochs,
 			config_.scheduler_mode);
 		if (!config_.process_memory_snapshots.record_current(MultiwayMemoryPhase::AfterWorkerPoolConstruction))

@@ -282,6 +282,7 @@ TEST_CASE(multiway_memory_worker_streams_use_distinct_explicit_capacities)
 
 	const auto result = fixture.runner.run(0U, 1U, 0x77U);
 	EXPECT_TRUE(result.clean);
+	EXPECT_TRUE(!result.affinity_requested);
 	EXPECT_TRUE(!result.capacity_exhausted);
 }
 
@@ -606,6 +607,100 @@ TEST_CASE(multiway_topology_fallback_keeps_only_unique_logical_identities)
 		EXPECT_EQ(record->cache_domain_id,
 			texas::solver::multiway::kMultiwayUnknownTopologyIndex);
 	}
+}
+
+TEST_CASE(multiway_placement_os_default_does_not_request_affinity)
+{
+	using namespace texas::solver::multiway;
+	const auto inventory = make_multiway_worker_topology({
+		MultiwayWorkerTopologyRecord{ 1U, 0U, 0U, 10U, 0U },
+		MultiwayWorkerTopologyRecord{ 2U, 0U, 1U, 10U, 1U } });
+	const auto plan = resolve_multiway_worker_placement(
+		inventory, 2U, MultiwayWorkerPlacementPolicy::OsDefault, 0U);
+	EXPECT_EQ(plan.requested.size(), 0U);
+	EXPECT_EQ(plan.resolved_worker_count, 0U);
+}
+
+TEST_CASE(multiway_placement_physical_policies_use_unique_cores_before_siblings)
+{
+	using namespace texas::solver::multiway;
+	std::vector<MultiwayWorkerTopologyRecord> records;
+	for (std::uint16_t core = 10U; core < 14U; ++core)
+	{
+		for (std::uint16_t sibling = 0U; sibling < 2U; ++sibling)
+		{
+			records.push_back(MultiwayWorkerTopologyRecord{
+				static_cast<std::uint32_t>(core * 2U + sibling), 0U,
+				static_cast<std::uint16_t>((core - 10U) * 2U + sibling), core, sibling, 0U, core / 2U });
+		}
+	}
+	const auto inventory = make_multiway_worker_topology(std::move(records));
+	for (const auto policy : { MultiwayWorkerPlacementPolicy::PhysicalCompact,
+			MultiwayWorkerPlacementPolicy::PhysicalSpread, MultiwayWorkerPlacementPolicy::CpuSetHint,
+			MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity })
+	{
+		const auto plan = resolve_multiway_worker_placement(inventory, 4U, policy, kMultiwayUnknownTopologyId);
+		EXPECT_EQ(plan.requested.size(), 4U);
+		for (std::size_t first = 0U; first < plan.requested.size(); ++first)
+			for (std::size_t second = first + 1U; second < plan.requested.size(); ++second)
+				EXPECT_TRUE(plan.requested[first].physical_core_id != plan.requested[second].physical_core_id);
+
+		const auto with_siblings = resolve_multiway_worker_placement(inventory, 6U, policy, kMultiwayUnknownTopologyId);
+		EXPECT_EQ(with_siblings.requested.size(), 6U);
+		EXPECT_EQ(with_siblings.requested[4U].physical_core_id, with_siblings.requested[0U].physical_core_id);
+	}
+}
+
+TEST_CASE(multiway_placement_coordinator_reserves_entire_physical_core)
+{
+	using namespace texas::solver::multiway;
+	const auto inventory = make_multiway_worker_topology({
+		MultiwayWorkerTopologyRecord{ 100U, 0U, 0U, 10U, 0U },
+		MultiwayWorkerTopologyRecord{ 101U, 0U, 1U, 10U, 1U },
+		MultiwayWorkerTopologyRecord{ 102U, 0U, 2U, 11U, 0U },
+		MultiwayWorkerTopologyRecord{ 103U, 0U, 3U, 11U, 1U },
+		MultiwayWorkerTopologyRecord{ 104U, 0U, 4U, 12U, 0U },
+		MultiwayWorkerTopologyRecord{ 105U, 0U, 5U, 12U, 1U } });
+	const auto plan = resolve_multiway_worker_placement(
+		inventory, 2U, MultiwayWorkerPlacementPolicy::PhysicalCompact,
+		inventory.processors[0U].logical_processor_identity());
+	EXPECT_TRUE(plan.coordinator_reserved);
+	EXPECT_EQ(plan.coordinator_physical_core_id, 10U);
+	EXPECT_EQ(plan.requested.size(), 2U);
+	for (const auto& record : plan.requested)
+		EXPECT_TRUE(record.physical_core_id != 10U);
+}
+
+TEST_CASE(multiway_placement_fallback_is_deterministic_without_physical_identity)
+{
+	using namespace texas::solver::multiway;
+	const auto inventory = make_multiway_worker_topology_fallback(4U);
+	const auto plan = resolve_multiway_worker_placement(
+		inventory, 3U, MultiwayWorkerPlacementPolicy::PhysicalCompact, 0U);
+	EXPECT_TRUE(!plan.topology_available);
+	EXPECT_EQ(plan.requested.size(), 3U);
+	EXPECT_EQ(plan.requested[0U].logical_processor_index, 1U);
+	EXPECT_EQ(plan.requested[1U].logical_processor_index, 2U);
+	EXPECT_EQ(plan.requested[2U].logical_processor_index, 3U);
+	for (const auto& record : plan.requested)
+		EXPECT_EQ(record.physical_core_id, kMultiwayUnknownTopologyId);
+}
+
+TEST_CASE(multiway_placement_reports_cpu_set_and_hard_affinity_requests)
+{
+	using namespace texas::solver::multiway;
+	const auto inventory = make_multiway_worker_topology({
+		MultiwayWorkerTopologyRecord{ 50U, 0U, 0U, 10U, 0U },
+		MultiwayWorkerTopologyRecord{ 51U, 0U, 1U, 11U, 0U },
+		MultiwayWorkerTopologyRecord{ 52U, 0U, 2U, 12U, 0U } });
+	const auto cpu_sets = resolve_multiway_worker_placement(
+		inventory, 2U, MultiwayWorkerPlacementPolicy::CpuSetHint, kMultiwayUnknownTopologyId);
+	const auto hard_affinity = resolve_multiway_worker_placement(
+		inventory, 2U, MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity, kMultiwayUnknownTopologyId);
+	EXPECT_EQ(cpu_sets.requested[0U].cpu_set_id, 50U);
+	EXPECT_EQ(hard_affinity.requested[0U].physical_core_id, 10U);
+	EXPECT_TRUE(std::string(multiway_worker_placement_policy_name(cpu_sets.policy)) == "cpu-set-hint");
+	EXPECT_TRUE(std::string(multiway_worker_placement_policy_name(hard_affinity.policy)) == "diagnostic-hard-affinity");
 }
 
 TEST_CASE(multiway_blueprint_training_retains_failed_batch_telemetry_without_committing_it)

@@ -11,6 +11,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/abstraction/multiway_terminal_adapter.hpp"
 #include "solver/multiway/engine/multiway_allocation_probe.hpp"
+#include "solver/multiway/engine/multiway_worker_topology.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -262,8 +263,19 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_allocated_bytes;
 		std::vector<std::uint32_t> worker_requested_processor;
 		std::vector<std::uint32_t> worker_resolved_processor;
+		std::vector<std::uint32_t> worker_requested_cpu_set;
+		std::vector<std::uint32_t> worker_resolved_cpu_set;
+		std::vector<std::uint32_t> worker_requested_physical_core;
+		std::vector<std::uint32_t> worker_resolved_physical_core;
+		std::vector<std::uint32_t> worker_requested_smt_sibling;
+		std::vector<std::uint32_t> worker_resolved_smt_sibling;
+		std::vector<std::uint32_t> worker_requested_cache_domain;
+		std::vector<std::uint32_t> worker_resolved_cache_domain;
+		std::vector<std::uint8_t> worker_migration_sampled;
+		std::vector<std::uint8_t> worker_migration_detected;
 		std::vector<std::uint64_t> worker_affinity_masks;
 		std::vector<std::uint8_t> worker_affinity_succeeded;
+		MultiwayWorkerPlacementPolicy placement_policy = MultiwayWorkerPlacementPolicy::OsDefault;
 		bool affinity_requested = false;
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		MultiwaySearchProfileSnapshot profile{};
@@ -296,8 +308,28 @@ namespace texas::solver::multiway
 			MultiwaySolverCoordinator& coordinator,
 			std::uint32_t worker_count,
 			std::size_t worker_delta_capacity,
+			MultiwaySearchProfileMode profile_mode,
+			MultiwayWorkerPlacementConfig placement,
+			bool immutable_epochs = false,
+			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		MultiwayRootBatchRunner(
+			MultiwayRootExternalSamplingTraversal traversal,
+			MultiwaySolverCoordinator& coordinator,
+			std::uint32_t worker_count,
+			std::size_t worker_delta_capacity,
 			MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled,
 			bool pin_workers = false,
+			bool immutable_epochs = false,
+			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		MultiwayRootBatchRunner(
+			MultiwayRootExternalSamplingTraversal traversal,
+			MultiwaySolverCoordinator& coordinator,
+			std::uint32_t worker_count,
+			MultiwayWorkerStreamCapacities capacities,
+			MultiwaySearchProfileMode profile_mode,
+			MultiwayWorkerPlacementConfig placement,
 			bool immutable_epochs = false,
 			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
 			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
@@ -357,6 +389,10 @@ namespace texas::solver::multiway
 			std::uint64_t peak_discovery_public_state_count = 0;
 			std::uint64_t peak_discovery_row_count = 0;
 			std::uint32_t resolved_processor = 0U;
+			MultiwayWorkerTopologyRecord requested_placement{};
+			MultiwayWorkerTopologyRecord resolved_placement{};
+			bool migration_sampled = false;
+			bool migration_detected = false;
 			std::uint64_t affinity_mask = 0U;
 			std::uint32_t requested_processor = 0xffffffffU;
 			bool affinity_succeeded = false;
@@ -386,6 +422,9 @@ namespace texas::solver::multiway
 				peak_continuation_delta_entries = 0;
 				peak_discovery_public_state_count = 0;
 				peak_discovery_row_count = 0;
+				resolved_placement = {};
+				migration_sampled = false;
+				migration_detected = false;
 				allocation_probe.reset();
 				profile.reset(profile_mode);
 			}
@@ -396,7 +435,9 @@ namespace texas::solver::multiway
 		std::uint32_t worker_count_ = 0;
 		MultiwayWorkerStreamCapacities stream_capacities_{};
 		MultiwaySearchProfileMode profile_mode_ = MultiwaySearchProfileMode::Disabled;
-		bool pin_workers_ = false;
+		MultiwayWorkerPlacementConfig placement_config_{};
+		MultiwayWorkerTopologyInventory placement_inventory_{};
+		MultiwayWorkerPlacementPlan placement_plan_{};
 		bool immutable_epochs_ = false;
 		MultiwaySchedulerMode scheduler_mode_ = MultiwaySchedulerMode::Fixed;
 		std::uint32_t dynamic_chunk_size_ = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <string>
 #include <thread>
 #include <utility>
 
@@ -205,6 +206,150 @@ namespace texas::solver::multiway
 #endif
 
 	} // namespace
+
+	const char* multiway_worker_placement_policy_name(
+		MultiwayWorkerPlacementPolicy policy) noexcept
+	{
+		switch (policy)
+		{
+		case MultiwayWorkerPlacementPolicy::OsDefault: return "os-default";
+		case MultiwayWorkerPlacementPolicy::PhysicalCompact: return "physical-compact";
+		case MultiwayWorkerPlacementPolicy::PhysicalSpread: return "physical-spread";
+		case MultiwayWorkerPlacementPolicy::CpuSetHint: return "cpu-set-hint";
+		case MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity: return "diagnostic-hard-affinity";
+		}
+		return "os-default";
+	}
+
+	MultiwayWorkerPlacementPolicy parse_multiway_worker_placement_policy(const char* value)
+	{
+		if (value == nullptr)
+			throw std::invalid_argument("missing multiway worker placement policy");
+		const std::string name(value);
+		if (name == "os-default")
+			return MultiwayWorkerPlacementPolicy::OsDefault;
+		if (name == "physical-compact")
+			return MultiwayWorkerPlacementPolicy::PhysicalCompact;
+		if (name == "physical-spread")
+			return MultiwayWorkerPlacementPolicy::PhysicalSpread;
+		if (name == "cpu-set-hint")
+			return MultiwayWorkerPlacementPolicy::CpuSetHint;
+		if (name == "diagnostic-hard-affinity")
+			return MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity;
+		throw std::invalid_argument("invalid multiway worker placement policy");
+	}
+
+	void MultiwayWorkerPlacementConfig::validate() const
+	{
+		if (static_cast<unsigned>(policy) > static_cast<unsigned>(MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity))
+			throw std::invalid_argument("invalid multiway worker placement policy");
+	}
+
+	MultiwayWorkerPlacementPlan resolve_multiway_worker_placement(
+		const MultiwayWorkerTopologyInventory& inventory,
+		std::uint32_t worker_count,
+		MultiwayWorkerPlacementPolicy policy,
+		std::uint32_t coordinator_logical_processor_identity)
+	{
+		MultiwayWorkerPlacementConfig{ policy, 0U }.validate();
+		MultiwayWorkerPlacementPlan plan;
+		plan.policy = policy;
+		plan.requested_worker_count = worker_count;
+		plan.coordinator_logical_processor_identity = coordinator_logical_processor_identity;
+		if (policy == MultiwayWorkerPlacementPolicy::OsDefault || worker_count == 0U || inventory.empty())
+			return plan;
+
+		plan.topology_available = !inventory.is_fallback();
+		const auto* coordinator = coordinator_logical_processor_identity == kMultiwayUnknownTopologyId
+			? nullptr
+			: inventory.find(
+				static_cast<std::uint16_t>(coordinator_logical_processor_identity >> 16U),
+				static_cast<std::uint16_t>(coordinator_logical_processor_identity & 0xffffU));
+		if (coordinator != nullptr && coordinator->physical_core_id != kMultiwayUnknownTopologyId)
+		{
+			plan.coordinator_physical_core_id = coordinator->physical_core_id;
+			plan.coordinator_reserved = true;
+		}
+
+		std::vector<MultiwayWorkerTopologyRecord> candidates;
+		candidates.reserve(inventory.processors.size());
+		for (const auto& processor : inventory.processors)
+		{
+			if (processor.is_parked)
+				continue;
+			if (plan.coordinator_reserved && processor.physical_core_id == plan.coordinator_physical_core_id)
+				continue;
+			if (!plan.coordinator_reserved && processor.logical_processor_identity() == coordinator_logical_processor_identity)
+				continue;
+			candidates.push_back(processor);
+		}
+
+		const auto physical_first = policy == MultiwayWorkerPlacementPolicy::PhysicalCompact ||
+			policy == MultiwayWorkerPlacementPolicy::PhysicalSpread ||
+			policy == MultiwayWorkerPlacementPolicy::CpuSetHint ||
+			policy == MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity;
+		if (policy == MultiwayWorkerPlacementPolicy::PhysicalCompact || policy == MultiwayWorkerPlacementPolicy::CpuSetHint)
+		{
+			std::sort(candidates.begin(), candidates.end(), [](const auto& left, const auto& right) {
+				if (left.cache_domain_id != right.cache_domain_id)
+					return left.cache_domain_id < right.cache_domain_id;
+				if (left.numa_node_id != right.numa_node_id)
+					return left.numa_node_id < right.numa_node_id;
+				if (left.physical_core_id != right.physical_core_id)
+					return left.physical_core_id < right.physical_core_id;
+				if (left.smt_sibling_index != right.smt_sibling_index)
+					return left.smt_sibling_index < right.smt_sibling_index;
+				return left.logical_processor_identity() < right.logical_processor_identity();
+			});
+		}
+		else if (policy == MultiwayWorkerPlacementPolicy::PhysicalSpread)
+		{
+			std::sort(candidates.begin(), candidates.end(), [](const auto& left, const auto& right) {
+				if (left.smt_sibling_index != right.smt_sibling_index)
+					return left.smt_sibling_index < right.smt_sibling_index;
+				if (left.cache_domain_id != right.cache_domain_id)
+					return left.cache_domain_id < right.cache_domain_id;
+				if (left.numa_node_id != right.numa_node_id)
+					return left.numa_node_id < right.numa_node_id;
+				if (left.physical_core_id != right.physical_core_id)
+					return left.physical_core_id < right.physical_core_id;
+				return left.logical_processor_identity() < right.logical_processor_identity();
+			});
+		}
+
+		std::vector<std::uint32_t> selected_physical_cores;
+		selected_physical_cores.reserve(candidates.size());
+		const auto append_if_new_core = [&plan, &selected_physical_cores](const auto& candidate) {
+			if (candidate.physical_core_id != kMultiwayUnknownTopologyId)
+			{
+				if (std::find(selected_physical_cores.begin(), selected_physical_cores.end(), candidate.physical_core_id) != selected_physical_cores.end())
+					return false;
+				selected_physical_cores.push_back(candidate.physical_core_id);
+			}
+			plan.requested.push_back(candidate);
+			return true;
+		};
+		if (physical_first)
+		{
+			for (const auto& candidate : candidates)
+			{
+				if (plan.requested.size() >= worker_count)
+					break;
+				(void)append_if_new_core(candidate);
+			}
+		}
+		for (const auto& candidate : candidates)
+		{
+			if (plan.requested.size() >= worker_count)
+				break;
+			if (std::find_if(plan.requested.begin(), plan.requested.end(), [&candidate](const auto& selected) {
+				return selected.logical_processor_identity() == candidate.logical_processor_identity();
+			}) == plan.requested.end())
+				plan.requested.push_back(candidate);
+		}
+		plan.resolved_worker_count = static_cast<std::uint32_t>(plan.requested.size());
+		return plan;
+	}
 
 	bool MultiwayWorkerTopologyInventory::has_complete_windows_topology() const noexcept
 	{

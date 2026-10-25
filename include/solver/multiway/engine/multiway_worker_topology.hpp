@@ -62,6 +62,42 @@ namespace texas::solver::multiway
 			std::uint16_t processor_group, std::uint16_t logical_processor_index) const noexcept;
 };
 
+	enum class MultiwayWorkerPlacementPolicy : std::uint8_t
+	{
+		OsDefault,
+		PhysicalCompact,
+		PhysicalSpread,
+		CpuSetHint,
+		DiagnosticHardAffinity,
+	};
+
+	[[nodiscard]] const char* multiway_worker_placement_policy_name(
+		MultiwayWorkerPlacementPolicy policy) noexcept;
+	[[nodiscard]] MultiwayWorkerPlacementPolicy parse_multiway_worker_placement_policy(
+		const char* value);
+
+	struct MultiwayWorkerPlacementConfig
+	{
+		MultiwayWorkerPlacementPolicy policy = MultiwayWorkerPlacementPolicy::OsDefault;
+		// Zero disables migration sampling. Sampling is performed only at batch
+		// boundaries, never from traversal or merge code.
+		std::uint32_t migration_sample_interval_batches = 0U;
+
+		void validate() const;
+	};
+
+	struct MultiwayWorkerPlacementPlan
+	{
+		MultiwayWorkerPlacementPolicy policy = MultiwayWorkerPlacementPolicy::OsDefault;
+		bool topology_available = false;
+		bool coordinator_reserved = false;
+		std::uint32_t requested_worker_count = 0U;
+		std::uint32_t resolved_worker_count = 0U;
+		std::uint32_t coordinator_logical_processor_identity = kMultiwayUnknownTopologyId;
+		std::uint32_t coordinator_physical_core_id = kMultiwayUnknownTopologyId;
+		std::vector<MultiwayWorkerTopologyRecord> requested;
+};
+
 	[[nodiscard]] MultiwayWorkerTopologyInventory make_multiway_worker_topology(
 		std::vector<MultiwayWorkerTopologyRecord> records,
 		MultiwayWorkerTopologySource source = MultiwayWorkerTopologySource::Synthetic);
@@ -74,5 +110,13 @@ namespace texas::solver::multiway
 	// Cold-path discovery. It has no callers in traversal, row-update, terminal,
 	// or merge loops.
 	[[nodiscard]] MultiwayWorkerTopologyInventory discover_multiway_worker_topology();
+
+	// Cold-path, deterministic placement selection. The coordinator identity is
+	// excluded by physical core when that identity is available.
+	[[nodiscard]] MultiwayWorkerPlacementPlan resolve_multiway_worker_placement(
+		const MultiwayWorkerTopologyInventory& inventory,
+		std::uint32_t worker_count,
+		MultiwayWorkerPlacementPolicy policy,
+		std::uint32_t coordinator_logical_processor_identity = kMultiwayUnknownTopologyId);
 
 } // namespace texas::solver::multiway

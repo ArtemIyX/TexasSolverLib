@@ -82,7 +82,7 @@ namespace texas::solver::multiway
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			return matches(worker_active_nanoseconds_by_worker.size()) && matches(worker_sort_nanoseconds_by_worker.size()) && matches(worker_wake_latency_nanoseconds_by_worker.size()) && matches(worker_cv_wait_nanoseconds_by_worker.size()) && matches(worker_scheduler_claim_nanoseconds_by_worker.size()) && matches(worker_completion_nanoseconds_by_worker.size()) && matches(worker_tail_idle_nanoseconds_by_worker.size()) && matches(worker_regret_delta_entries.size()) && matches(worker_continuation_delta_entries.size()) && matches(worker_discovery_public_state_counts.size()) && matches(worker_discovery_row_counts.size()) && matches(admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_raw_row_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) && matches(worker_allocation_counts.size()) && matches(worker_allocated_bytes.size()) && matches(worker_requested_processor.size()) && matches(worker_resolved_processor.size()) && matches(worker_affinity_masks.size()) && matches(worker_affinity_succeeded.size()) && matches(worker_profiles.size());
+			return matches(worker_active_nanoseconds_by_worker.size()) && matches(worker_sort_nanoseconds_by_worker.size()) && matches(worker_wake_latency_nanoseconds_by_worker.size()) && matches(worker_cv_wait_nanoseconds_by_worker.size()) && matches(worker_scheduler_claim_nanoseconds_by_worker.size()) && matches(worker_completion_nanoseconds_by_worker.size()) && matches(worker_tail_idle_nanoseconds_by_worker.size()) && matches(worker_regret_delta_entries.size()) && matches(worker_continuation_delta_entries.size()) && matches(worker_discovery_public_state_counts.size()) && matches(worker_discovery_row_counts.size()) && matches(admission_diagnostics.worker_raw_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_raw_row_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_public_state_candidates_by_worker.size()) && matches(admission_diagnostics.worker_local_unique_row_candidates_by_worker.size()) && matches(worker_allocation_counts.size()) && matches(worker_allocated_bytes.size()) && matches(worker_requested_processor.size()) && matches(worker_resolved_processor.size()) && matches(worker_requested_cpu_set.size()) && matches(worker_resolved_cpu_set.size()) && matches(worker_requested_physical_core.size()) && matches(worker_resolved_physical_core.size()) && matches(worker_requested_smt_sibling.size()) && matches(worker_resolved_smt_sibling.size()) && matches(worker_requested_cache_domain.size()) && matches(worker_resolved_cache_domain.size()) && matches(worker_migration_sampled.size()) && matches(worker_migration_detected.size()) && matches(worker_affinity_masks.size()) && matches(worker_affinity_succeeded.size()) && matches(worker_profiles.size());
 		};
 		if (accepted_trajectories > trajectories || discarded_trajectories > trajectories || (batches != 0U && deterministic_merge_fingerprint == 0U && !failed))
 		{
@@ -95,7 +95,7 @@ namespace texas::solver::multiway
 			const auto matches = [worker_count](std::size_t size) {
 				return size == 0U || size == worker_count;
 			};
-			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded || !matches(batch.worker_active_nanoseconds_by_worker.size()) || !matches(batch.worker_sort_nanoseconds_by_worker.size()) || !matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) || !matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) || !matches(batch.worker_scheduler_claim_nanoseconds_by_worker.size()) || !matches(batch.worker_completion_nanoseconds_by_worker.size()) || !matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) || !matches(batch.worker_regret_delta_entries.size()) || !matches(batch.worker_continuation_delta_entries.size()) || !matches(batch.worker_discovery_public_state_counts.size()) || !matches(batch.worker_discovery_row_counts.size()) || !matches(batch.worker_allocation_counts.size()) || !matches(batch.worker_allocated_bytes.size()) || !matches(batch.worker_requested_processor.size()) || !matches(batch.worker_resolved_processor.size()) || !matches(batch.worker_affinity_masks.size()) || !matches(batch.worker_affinity_succeeded.size()))
+			if (batch.trajectories_attempted != batch.trajectories_accepted + batch.trajectories_discarded || !matches(batch.worker_active_nanoseconds_by_worker.size()) || !matches(batch.worker_sort_nanoseconds_by_worker.size()) || !matches(batch.worker_wake_latency_nanoseconds_by_worker.size()) || !matches(batch.worker_cv_wait_nanoseconds_by_worker.size()) || !matches(batch.worker_scheduler_claim_nanoseconds_by_worker.size()) || !matches(batch.worker_completion_nanoseconds_by_worker.size()) || !matches(batch.worker_tail_idle_nanoseconds_by_worker.size()) || !matches(batch.worker_regret_delta_entries.size()) || !matches(batch.worker_continuation_delta_entries.size()) || !matches(batch.worker_discovery_public_state_counts.size()) || !matches(batch.worker_discovery_row_counts.size()) || !matches(batch.worker_allocation_counts.size()) || !matches(batch.worker_allocated_bytes.size()) || !matches(batch.worker_requested_processor.size()) || !matches(batch.worker_resolved_processor.size()) || !matches(batch.worker_requested_cpu_set.size()) || !matches(batch.worker_resolved_cpu_set.size()) || !matches(batch.worker_requested_physical_core.size()) || !matches(batch.worker_resolved_physical_core.size()) || !matches(batch.worker_requested_smt_sibling.size()) || !matches(batch.worker_resolved_smt_sibling.size()) || !matches(batch.worker_requested_cache_domain.size()) || !matches(batch.worker_resolved_cache_domain.size()) || !matches(batch.worker_migration_sampled.size()) || !matches(batch.worker_migration_detected.size()) || !matches(batch.worker_affinity_masks.size()) || !matches(batch.worker_affinity_succeeded.size()))
 			{
 				throw std::invalid_argument("invalid failed multiway batch telemetry");
 			}
@@ -130,7 +130,7 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("invalid authoritative multiway phase telemetry");
 		}
-		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache) || static_cast<unsigned>(system_memory_guard.status) > static_cast<unsigned>(MultiwaySystemMemoryGuardStatus::Unavailable))
+		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(placement_policy) > static_cast<unsigned>(MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache) || static_cast<unsigned>(system_memory_guard.status) > static_cast<unsigned>(MultiwaySystemMemoryGuardStatus::Unavailable))
 		{
 			throw std::invalid_argument("invalid multiway training telemetry");
 		}
@@ -243,8 +243,19 @@ namespace texas::solver::multiway
 		report.worker_allocated_bytes = status.worker_allocated_bytes;
 		report.worker_requested_processor = status.worker_requested_processor;
 		report.worker_resolved_processor = status.worker_resolved_processor;
+		report.worker_requested_cpu_set = status.worker_requested_cpu_set;
+		report.worker_resolved_cpu_set = status.worker_resolved_cpu_set;
+		report.worker_requested_physical_core = status.worker_requested_physical_core;
+		report.worker_resolved_physical_core = status.worker_resolved_physical_core;
+		report.worker_requested_smt_sibling = status.worker_requested_smt_sibling;
+		report.worker_resolved_smt_sibling = status.worker_resolved_smt_sibling;
+		report.worker_requested_cache_domain = status.worker_requested_cache_domain;
+		report.worker_resolved_cache_domain = status.worker_resolved_cache_domain;
+		report.worker_migration_sampled = status.worker_migration_sampled;
+		report.worker_migration_detected = status.worker_migration_detected;
 		report.worker_affinity_masks = status.worker_affinity_masks;
 		report.worker_affinity_succeeded = status.worker_affinity_succeeded;
+		report.placement_policy = status.placement_policy;
 		report.affinity_requested = status.affinity_requested;
 		report.worker_profiles = status.worker_profiles;
 		report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
@@ -442,6 +453,7 @@ namespace texas::solver::multiway
 			   << ",\n  \"trainer_only_nanoseconds\": " << report.trainer_only_nanoseconds
 			   << ",\n  \"process_cpu_nanoseconds\": " << report.process_cpu_nanoseconds
 			   << ",\n  \"peak_working_set_bytes\": " << report.peak_working_set_bytes
+			   << ",\n  \"placement_policy\": \"" << multiway_worker_placement_policy_name(report.placement_policy) << "\""
 			   << ",\n  \"affinity_requested\": " << (report.affinity_requested ? "true" : "false")
 			   << ",\n  \"peak_compact_storage_bytes\": " << report.peak_compact_storage_bytes
 			   << ",\n  \"configured_max_public_states\": " << report.configured_max_public_states
@@ -501,6 +513,16 @@ namespace texas::solver::multiway
 		write_u64_array("worker_allocated_bytes", report.worker_allocated_bytes);
 		write_u64_array("worker_requested_processor", std::vector<std::uint64_t>(report.worker_requested_processor.begin(), report.worker_requested_processor.end()));
 		write_u64_array("worker_resolved_processor", std::vector<std::uint64_t>(report.worker_resolved_processor.begin(), report.worker_resolved_processor.end()));
+		write_u64_array("worker_requested_cpu_set", std::vector<std::uint64_t>(report.worker_requested_cpu_set.begin(), report.worker_requested_cpu_set.end()));
+		write_u64_array("worker_resolved_cpu_set", std::vector<std::uint64_t>(report.worker_resolved_cpu_set.begin(), report.worker_resolved_cpu_set.end()));
+		write_u64_array("worker_requested_physical_core", std::vector<std::uint64_t>(report.worker_requested_physical_core.begin(), report.worker_requested_physical_core.end()));
+		write_u64_array("worker_resolved_physical_core", std::vector<std::uint64_t>(report.worker_resolved_physical_core.begin(), report.worker_resolved_physical_core.end()));
+		write_u64_array("worker_requested_smt_sibling", std::vector<std::uint64_t>(report.worker_requested_smt_sibling.begin(), report.worker_requested_smt_sibling.end()));
+		write_u64_array("worker_resolved_smt_sibling", std::vector<std::uint64_t>(report.worker_resolved_smt_sibling.begin(), report.worker_resolved_smt_sibling.end()));
+		write_u64_array("worker_requested_cache_domain", std::vector<std::uint64_t>(report.worker_requested_cache_domain.begin(), report.worker_requested_cache_domain.end()));
+		write_u64_array("worker_resolved_cache_domain", std::vector<std::uint64_t>(report.worker_resolved_cache_domain.begin(), report.worker_resolved_cache_domain.end()));
+		write_u64_array("worker_migration_sampled", std::vector<std::uint64_t>(report.worker_migration_sampled.begin(), report.worker_migration_sampled.end()));
+		write_u64_array("worker_migration_detected", std::vector<std::uint64_t>(report.worker_migration_detected.begin(), report.worker_migration_detected.end()));
 		write_u64_array("worker_affinity_masks", report.worker_affinity_masks);
 		write_u64_array("worker_affinity_succeeded", std::vector<std::uint64_t>(report.worker_affinity_succeeded.begin(), report.worker_affinity_succeeded.end()));
 		const auto& admission = report.admission_diagnostics;
@@ -659,6 +681,16 @@ namespace texas::solver::multiway
 			write_failed_array("worker_allocated_bytes", batch.worker_allocated_bytes);
 			write_failed_array("worker_requested_processor", std::vector<std::uint64_t>(batch.worker_requested_processor.begin(), batch.worker_requested_processor.end()));
 			write_failed_array("worker_resolved_processor", std::vector<std::uint64_t>(batch.worker_resolved_processor.begin(), batch.worker_resolved_processor.end()));
+			write_failed_array("worker_requested_cpu_set", std::vector<std::uint64_t>(batch.worker_requested_cpu_set.begin(), batch.worker_requested_cpu_set.end()));
+			write_failed_array("worker_resolved_cpu_set", std::vector<std::uint64_t>(batch.worker_resolved_cpu_set.begin(), batch.worker_resolved_cpu_set.end()));
+			write_failed_array("worker_requested_physical_core", std::vector<std::uint64_t>(batch.worker_requested_physical_core.begin(), batch.worker_requested_physical_core.end()));
+			write_failed_array("worker_resolved_physical_core", std::vector<std::uint64_t>(batch.worker_resolved_physical_core.begin(), batch.worker_resolved_physical_core.end()));
+			write_failed_array("worker_requested_smt_sibling", std::vector<std::uint64_t>(batch.worker_requested_smt_sibling.begin(), batch.worker_requested_smt_sibling.end()));
+			write_failed_array("worker_resolved_smt_sibling", std::vector<std::uint64_t>(batch.worker_resolved_smt_sibling.begin(), batch.worker_resolved_smt_sibling.end()));
+			write_failed_array("worker_requested_cache_domain", std::vector<std::uint64_t>(batch.worker_requested_cache_domain.begin(), batch.worker_requested_cache_domain.end()));
+			write_failed_array("worker_resolved_cache_domain", std::vector<std::uint64_t>(batch.worker_resolved_cache_domain.begin(), batch.worker_resolved_cache_domain.end()));
+			write_failed_array("worker_migration_sampled", std::vector<std::uint64_t>(batch.worker_migration_sampled.begin(), batch.worker_migration_sampled.end()));
+			write_failed_array("worker_migration_detected", std::vector<std::uint64_t>(batch.worker_migration_detected.begin(), batch.worker_migration_detected.end()));
 			write_failed_array("worker_affinity_masks", batch.worker_affinity_masks);
 			write_failed_array("worker_affinity_succeeded", std::vector<std::uint64_t>(batch.worker_affinity_succeeded.begin(), batch.worker_affinity_succeeded.end()));
 			output << '}';

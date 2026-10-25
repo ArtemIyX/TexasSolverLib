@@ -23,6 +23,19 @@ TEST_CASE(multiway_workflow_config_parses_f1_profile)
 	EXPECT_EQ(config.process_memory_limit_bytes, 0U);
 	EXPECT_EQ(config.process_working_set_limit_bytes,
 		texas::MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES);
+	EXPECT_TRUE(config.placement_policy == texas::MultiwayWorkerPlacementPolicy::OsDefault);
+}
+
+TEST_CASE(multiway_workflow_config_round_trips_opt_in_placement_policy)
+{
+	using namespace texas::solver::multiway;
+	auto text = std::string(valid_config) + "placement_policy=physical-spread\n";
+	const auto config = parse_multiway_workflow_config(text);
+	EXPECT_TRUE(config.placement_policy == MultiwayWorkerPlacementPolicy::PhysicalSpread);
+	const auto round_trip = parse_multiway_workflow_config(serialize_multiway_workflow_config(config));
+	EXPECT_TRUE(round_trip.placement_policy == MultiwayWorkerPlacementPolicy::PhysicalSpread);
+	EXPECT_EQ(round_trip.fingerprint(), config.fingerprint());
+	EXPECT_THROW(parse_multiway_workflow_config(std::string(valid_config) + "placement_policy=hard-affinity\n"), std::invalid_argument);
 }
 
 TEST_CASE(multiway_workflow_config_accepts_legacy_64_gib_working_set_gate)

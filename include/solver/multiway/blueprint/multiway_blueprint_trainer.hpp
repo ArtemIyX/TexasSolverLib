@@ -150,8 +150,19 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_allocated_bytes;
 		std::vector<std::uint32_t> worker_requested_processor;
 		std::vector<std::uint32_t> worker_resolved_processor;
+		std::vector<std::uint32_t> worker_requested_cpu_set;
+		std::vector<std::uint32_t> worker_resolved_cpu_set;
+		std::vector<std::uint32_t> worker_requested_physical_core;
+		std::vector<std::uint32_t> worker_resolved_physical_core;
+		std::vector<std::uint32_t> worker_requested_smt_sibling;
+		std::vector<std::uint32_t> worker_resolved_smt_sibling;
+		std::vector<std::uint32_t> worker_requested_cache_domain;
+		std::vector<std::uint32_t> worker_resolved_cache_domain;
+		std::vector<std::uint8_t> worker_migration_sampled;
+		std::vector<std::uint8_t> worker_migration_detected;
 		std::vector<std::uint64_t> worker_affinity_masks;
 		std::vector<std::uint8_t> worker_affinity_succeeded;
+		MultiwayWorkerPlacementPolicy placement_policy = MultiwayWorkerPlacementPolicy::OsDefault;
 		bool affinity_requested = false;
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0;
@@ -247,6 +258,7 @@ namespace texas::solver::multiway
 		// Diagnostic execution metadata. Zero uses the effective runtime value.
 		std::uint32_t requested_worker_count = 0U;
 		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		MultiwayWorkerPlacementConfig placement{};
 		bool pin_workers = false;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};

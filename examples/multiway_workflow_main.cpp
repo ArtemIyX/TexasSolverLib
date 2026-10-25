@@ -659,7 +659,7 @@ namespace
 		const auto* run_checkout_commit = std::getenv("TEXASSOLVER_RUN_CHECKOUT_COMMIT");
 		log_line("binary provenance: source_commit=" + std::string(binary.source_commit) + " dirty_state=" + std::string(binary.dirty_state) + " compiler=" + std::string(binary.compiler_identity) + " build_configuration=" + std::string(binary.build_configuration));
 		log_line("run checkout identity: commit=" + std::string(run_checkout_commit == nullptr ? "unknown" : run_checkout_commit));
-		log_line("training configured: input=" + input_path.string() + " output=" + output_path.string() + " batches=" + std::to_string(batches) + " threads=" + std::to_string(worker_override) + " pin_workers=" + (pin_workers ? "true" : "false"));
+		log_line("training configured: input=" + input_path.string() + " output=" + output_path.string() + " batches=" + std::to_string(batches) + " threads=" + std::to_string(worker_override) + " placement_policy=" + std::string(multiway_worker_placement_policy_name(workflow.placement_policy)) + " pin_workers=" + (pin_workers ? "true" : "false"));
 		log_line("training initialization: validating resolved capacities");
 		if (!workflow.capacities_resolved())
 		{
@@ -710,6 +710,7 @@ namespace
 			workflow.training_worker_count, worker_override, workflow.trajectories_per_batch);
 		config.requested_worker_count = workers.requested;
 		config.scheduler_mode = scheduler_mode;
+		config.placement.policy = workflow.placement_policy;
 		config.pin_workers = pin_workers;
 		config.limits.worker_count = workers.effective;
 		config.limits.trajectories_per_batch = static_cast<std::uint32_t>(workflow.trajectories_per_batch);
