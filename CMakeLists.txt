@@ -373,7 +373,7 @@ function(texassolver_configure_core_target target)
         TEXASSOLVER_BINARY_COMPILER_IDENTITY_TOKEN=${TEXASSOLVER_BINARY_COMPILER_IDENTITY_TOKEN}
         TEXASSOLVER_BINARY_BUILD_CONFIGURATION_TOKEN=${TEXASSOLVER_BINARY_BUILD_CONFIGURATION_TOKEN})
     if (MSVC)
-        target_compile_options(${target} PRIVATE /W4)
+        target_compile_options(${target} PRIVATE /W4 /FS)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()

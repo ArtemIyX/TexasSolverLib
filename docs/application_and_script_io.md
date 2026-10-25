@@ -465,7 +465,7 @@ Purpose: repeat bounded runs across worker, pinning, and scheduler combinations.
 
 Parameters:
 
-- `-Batches`, default 3
+- `-Batches 1..100`, default 3
 - `-TrajectoriesPerBatch`, default 200
 - `-Pinning pinned|unpinned`, default pinned
 - `-Scheduling both|fixed|static-block|dynamic`, default both
