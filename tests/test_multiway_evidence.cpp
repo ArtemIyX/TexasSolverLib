@@ -73,6 +73,42 @@ TEST_CASE(multiway_evidence_identity_serial_components_compare_deterministically
 	EXPECT_TRUE(serialize_multiway_evidence_header(first).find("producer_schema_version") != std::string::npos);
 }
 
+TEST_CASE(multiway_evidence_separates_binary_and_run_checkout_identity)
+{
+	using namespace texas::solver::multiway;
+	auto binary = valid_identity();
+	binary.git_commit = "binary-commit";
+	binary.binary_source_commit = "binary-commit";
+	binary.binary_dirty_state = "clean";
+	binary.run_checkout_commit = "checkout-commit";
+	auto same_binary = binary;
+	same_binary.run_checkout_commit = "different-checkout-commit";
+	EXPECT_TRUE(binary == same_binary);
+	validate_matching_producer_identity(binary, same_binary);
+
+	const MultiwayEvidenceHeader header{
+		MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
+		MultiwayWorkflowProfileKind::Acceptance,
+		binary
+	};
+	const auto serialized = serialize_multiway_evidence_header(header);
+	EXPECT_TRUE(serialized.find("binary_source_commit") != std::string::npos);
+	EXPECT_TRUE(serialized.find("binary_dirty_state") != std::string::npos);
+	EXPECT_TRUE(serialized.find("run_checkout_commit") != std::string::npos);
+}
+
+TEST_CASE(multiway_binary_provenance_exposes_compile_time_schema_contract)
+{
+	const auto provenance = texas::solver::multiway::multiway_binary_provenance();
+	EXPECT_TRUE(!provenance.source_commit.empty());
+	EXPECT_TRUE(!provenance.dirty_state.empty());
+	EXPECT_TRUE(!provenance.compiler_identity.empty());
+	EXPECT_TRUE(!provenance.build_configuration.empty());
+	EXPECT_EQ(provenance.evidence_schema_version, texas::solver::multiway::MULTIWAY_EVIDENCE_SCHEMA_VERSION);
+	EXPECT_EQ(provenance.training_report_schema_version, texas::solver::multiway::MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION);
+	EXPECT_EQ(provenance.checkpoint_artifact_schema_version, texas::solver::multiway::MULTIWAY_TRAINING_CHECKPOINT_ARTIFACT_SCHEMA_VERSION);
+}
+
 TEST_CASE(multiway_evidence_serialization_rejects_unknown_schema)
 {
 	using namespace texas::solver::multiway;

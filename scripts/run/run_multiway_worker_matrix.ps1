@@ -17,6 +17,13 @@ param(
 
     [string[]]$Workers = @('4', '8'),
 
+    [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
+    [string]$BuildConfiguration = 'Debug',
+
+    [string]$BinaryPath = '',
+
+    [string]$SourceConfigPath = '',
+
     [string]$OutputDirectory = ''
 )
 
@@ -56,6 +63,8 @@ Write-Output "[matrix] repository_root=$repoRoot"
 Write-Output "[matrix] pinning=$($pinningModes -join ',') workers=$($workerCounts -join ',') scheduling=$($schedulingModes -join ',') repeats=$Repeats batches=$Batches trajectories_per_batch=$TrajectoriesPerBatch"
 
 $results = @()
+$matrixBinarySha256 = $null
+$matrixBinaryProvenance = $null
 foreach ($pinningMode in $pinningModes) {
     foreach ($schedulerMode in $schedulingModes) {
         foreach ($workerCount in $workerCounts) {
@@ -71,8 +80,15 @@ foreach ($pinningMode in $pinningModes) {
                     '-Batches', $Batches.ToString(),
                     '-TrajectoriesPerBatch', $TrajectoriesPerBatch.ToString(),
                     '-Scheduler', $schedulerMode,
+                    '-BuildConfiguration', $BuildConfiguration,
                     '-RunDirectory', $runDirectory
                 )
+                if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
+                    $runnerArguments += @('-BinaryPath', $BinaryPath)
+                }
+                if (-not [string]::IsNullOrWhiteSpace($SourceConfigPath)) {
+                    $runnerArguments += @('-SourceConfigPath', $SourceConfigPath)
+                }
                 if ($pinningMode -eq 'pinned') {
                     $runnerArguments += '-PinWorkers'
                 }
@@ -89,6 +105,14 @@ foreach ($pinningMode in $pinningModes) {
 
                 $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
                 $metrics = Get-Content -Raw -LiteralPath $metricsPath | ConvertFrom-Json
+                $runBinarySha256 = [string]$metrics.binary_sha256
+                $runBinaryProvenance = [string]$metrics.binary_source_commit + '|' + [string]$metrics.binary_dirty_state + '|' + [string]$metrics.binary_provenance.binary_compiler_identity + '|' + [string]$metrics.binary_provenance.binary_build_configuration
+                if ($null -eq $matrixBinarySha256) {
+                    $matrixBinarySha256 = $runBinarySha256
+                    $matrixBinaryProvenance = $runBinaryProvenance
+                } elseif ($runBinarySha256 -ne $matrixBinarySha256 -or $runBinaryProvenance -ne $matrixBinaryProvenance) {
+                    throw "Worker matrix provenance gate failed: expected sha256=$matrixBinarySha256 provenance=$matrixBinaryProvenance actual sha256=$runBinarySha256 provenance=$runBinaryProvenance"
+                }
                 $expectedTrajectories = $Batches * $TrajectoriesPerBatch
                 if ($metrics.scheduler -ne $schedulerMode -or $metrics.chunk_size -ne 4) {
                     throw "Run metadata mismatch for pinning=$pinningMode scheduler=$schedulerMode workers=$workerCount repeat=$repeat"

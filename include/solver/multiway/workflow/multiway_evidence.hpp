@@ -1,20 +1,13 @@
 #pragma once
 
 #include "solver/multiway/abstraction/multiway_model_identity.hpp"
+#include "solver/multiway/workflow/multiway_binary_provenance.hpp"
 
 #include <cstdint>
 #include <string>
 
 namespace texas::solver::multiway
 {
-
-	constexpr std::uint32_t MULTIWAY_EVIDENCE_SCHEMA_VERSION = 1U;
-	constexpr std::uint32_t MULTIWAY_SIZING_REPORT_SCHEMA_VERSION = 1U;
-	constexpr std::uint32_t MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION = 7U;
-	constexpr std::uint32_t MULTIWAY_CHECKPOINT_EQUIVALENCE_SCHEMA_VERSION = 1U;
-	constexpr std::uint32_t MULTIWAY_BUCKET_INSPECTION_REPORT_SCHEMA_VERSION = 2U;
-	constexpr std::uint32_t MULTIWAY_LOOKUP_QUALIFICATION_SCHEMA_VERSION = 2U;
-	constexpr std::uint32_t MULTIWAY_ACCEPTANCE_REPORT_SCHEMA_VERSION = 1U;
 
 	enum class MultiwayWorkflowProfileKind : std::uint8_t
 	{
@@ -38,9 +31,13 @@ namespace texas::solver::multiway
 	struct MultiwayProducerIdentity
 	{
 		std::uint32_t schema_version = MULTIWAY_EVIDENCE_SCHEMA_VERSION;
+		// git_commit remains the legacy serialized name for the binary source commit.
 		std::string git_commit;
+		std::string binary_source_commit;
+		std::string binary_dirty_state = "unknown";
 		std::string build_configuration;
 		std::string compiler_identity;
+		std::string run_checkout_commit;
 		MultiwayModelIdentity model_identity{};
 		std::uint64_t workflow_config_fingerprint = 0U;
 		MultiwayArtifactSchemaVersions artifact_schemas{};
@@ -48,7 +45,9 @@ namespace texas::solver::multiway
 		void validate() const;
 		bool operator==(const MultiwayProducerIdentity& other) const noexcept
 		{
-			return schema_version == other.schema_version && git_commit == other.git_commit && build_configuration == other.build_configuration && compiler_identity == other.compiler_identity && model_identity == other.model_identity && workflow_config_fingerprint == other.workflow_config_fingerprint && artifact_schemas == other.artifact_schemas;
+			const auto source_commit = binary_source_commit.empty() ? git_commit : binary_source_commit;
+			const auto other_source_commit = other.binary_source_commit.empty() ? other.git_commit : other.binary_source_commit;
+			return schema_version == other.schema_version && source_commit == other_source_commit && binary_dirty_state == other.binary_dirty_state && build_configuration == other.build_configuration && compiler_identity == other.compiler_identity && model_identity == other.model_identity && workflow_config_fingerprint == other.workflow_config_fingerprint && artifact_schemas == other.artifact_schemas;
 		}
 	};
 

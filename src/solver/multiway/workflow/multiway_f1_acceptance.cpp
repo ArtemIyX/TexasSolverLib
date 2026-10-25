@@ -100,6 +100,14 @@ namespace texas::solver::multiway
 			return text.substr(position, end - position);
 		}
 
+		std::string json_value_or_default(const std::string& text, std::string_view key, std::string default_value)
+		{
+			const std::string marker = std::string("\"") + std::string(key) + "\"";
+			if (text.find(marker) == std::string::npos)
+				return default_value;
+			return json_value(text, key);
+		}
+
 		std::uint64_t json_u64(const std::string& text, std::string_view key)
 		{
 			const auto value = json_value(text, key);
@@ -131,8 +139,13 @@ namespace texas::solver::multiway
 			header.producer.schema_version = static_cast<std::uint32_t>(
 				json_u64(text, "producer_schema_version"));
 			header.producer.git_commit = json_value(text, "git_commit");
+			header.producer.binary_source_commit = json_value_or_default(text, "binary_source_commit", {});
+			header.producer.binary_dirty_state = json_value_or_default(text, "binary_dirty_state", "unknown");
 			header.producer.build_configuration = json_value(text, "build_configuration");
+			header.producer.build_configuration = json_value_or_default(text, "binary_build_configuration", header.producer.build_configuration);
 			header.producer.compiler_identity = json_value(text, "compiler_identity");
+			header.producer.compiler_identity = json_value_or_default(text, "binary_compiler_identity", header.producer.compiler_identity);
+			header.producer.run_checkout_commit = json_value_or_default(text, "run_checkout_commit", {});
 			header.producer.workflow_config_fingerprint = json_u64(text, "workflow_config_fingerprint");
 			auto& identity = header.producer.model_identity;
 			identity.combined_hash = json_u64(text, "model_identity");

@@ -26,31 +26,23 @@ namespace texas::solver::multiway
 
 	void MultiwayProducerIdentity::validate() const
 	{
-		if (schema_version != MULTIWAY_EVIDENCE_SCHEMA_VERSION || git_commit.empty() || build_configuration.empty() || compiler_identity.empty() || workflow_config_fingerprint == 0U)
+		const auto& source_commit = binary_source_commit.empty() ? git_commit : binary_source_commit;
+		if (!binary_source_commit.empty() && !git_commit.empty() && binary_source_commit != git_commit)
+			throw std::invalid_argument("multiway evidence binary source commit aliases disagree");
+		if (schema_version != MULTIWAY_EVIDENCE_SCHEMA_VERSION || source_commit.empty() || binary_dirty_state.empty() || build_configuration.empty() || compiler_identity.empty() || workflow_config_fingerprint == 0U)
 		{
 			throw std::invalid_argument("multiway evidence producer identity is incomplete");
 		}
 		model_identity.validate();
 		artifact_schemas.validate();
-		for (const char character : git_commit)
+		for (const auto* value : { &source_commit, &binary_dirty_state, &build_configuration, &compiler_identity, &run_checkout_commit })
 		{
-			if (static_cast<unsigned char>(character) < 0x20U)
+			for (const char character : *value)
 			{
-				throw std::invalid_argument("multiway evidence identity contains control characters");
-			}
-		}
-		for (const char character : build_configuration)
-		{
-			if (static_cast<unsigned char>(character) < 0x20U)
-			{
-				throw std::invalid_argument("multiway evidence identity contains control characters");
-			}
-		}
-		for (const char character : compiler_identity)
-		{
-			if (static_cast<unsigned char>(character) < 0x20U)
-			{
-				throw std::invalid_argument("multiway evidence identity contains control characters");
+				if (static_cast<unsigned char>(character) < 0x20U)
+				{
+					throw std::invalid_argument("multiway evidence identity contains control characters");
+				}
 			}
 		}
 	}
@@ -107,6 +99,9 @@ namespace texas::solver::multiway
 	std::string serialize_multiway_evidence_header(const MultiwayEvidenceHeader& header)
 	{
 		header.validate(header.schema_version);
+		const auto source_commit = header.producer.binary_source_commit.empty()
+			? header.producer.git_commit
+			: header.producer.binary_source_commit;
 		std::string output = "{\"schema_version\":" + std::to_string(header.schema_version) + ",\"profile_kind\":" + std::to_string(static_cast<unsigned>(header.profile_kind)) + ",\"producer\":{";
 		bool first = true;
 		append_json_u64(output, "producer_schema_version", header.producer.schema_version, first);
@@ -119,9 +114,14 @@ namespace texas::solver::multiway
 			output += "\":";
 			append_json_string(output, value);
 		};
-		append_string("git_commit", header.producer.git_commit);
+		append_string("git_commit", source_commit);
+		append_string("binary_source_commit", source_commit);
+		append_string("binary_dirty_state", header.producer.binary_dirty_state);
 		append_string("build_configuration", header.producer.build_configuration);
+		append_string("binary_build_configuration", header.producer.build_configuration);
 		append_string("compiler_identity", header.producer.compiler_identity);
+		append_string("binary_compiler_identity", header.producer.compiler_identity);
+		append_string("run_checkout_commit", header.producer.run_checkout_commit);
 		append_json_u64(output, "workflow_config_fingerprint", header.producer.workflow_config_fingerprint, first);
 		append_json_u64(output, "model_identity", header.producer.model_identity.combined_hash, first);
 		append_json_u64(output, "rules_hash", header.producer.model_identity.rules_hash, first);

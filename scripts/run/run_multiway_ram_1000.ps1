@@ -72,7 +72,9 @@ $gitCommit = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
 if ([string]::IsNullOrWhiteSpace($gitCommit)) {
     throw 'Could not determine git commit for run provenance'
 }
-$env:TEXASSOLVER_GIT_COMMIT = $gitCommit
+$gitStatus = (& git -C $repoRoot status --porcelain --untracked-files=all 2>$null | Out-String).Trim()
+$checkoutDirtyState = if ([string]::IsNullOrWhiteSpace($gitStatus)) { 'clean' } else { 'dirty' }
+$env:TEXASSOLVER_RUN_CHECKOUT_COMMIT = $gitCommit
 $env:TEXASSOLVER_BUILD_CONFIGURATION = $BuildConfiguration
 $env:TEXASSOLVER_COMPILER_IDENTITY = if ([string]::IsNullOrWhiteSpace($env:VCToolsVersion)) { 'MSVC' } else { "MSVC $($env:VCToolsVersion)" }
 if ($BinaryKind -eq 'tracy') {
@@ -92,6 +94,24 @@ foreach ($requiredPath in @($executable, $sourceConfig, $bucketArtifact)) {
 $binaryFile = Get-Item -LiteralPath $executable
 $bucketFile = Get-Item -LiteralPath $bucketArtifact
 $binarySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $executable).Hash
+$embeddedProvenanceText = (& $executable --provenance 2>&1 | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($embeddedProvenanceText)) {
+    throw "Executable provenance query failed: $executable"
+}
+try {
+    $embeddedProvenance = $embeddedProvenanceText | ConvertFrom-Json
+} catch {
+    throw "Executable provenance is not valid JSON: $executable"
+}
+if ([string]$embeddedProvenance.binary_source_commit -ne $gitCommit -or
+    [string]$embeddedProvenance.binary_dirty_state -ne $checkoutDirtyState -or
+    [string]$embeddedProvenance.binary_build_configuration -ne $BuildConfiguration -or
+    [int]$embeddedProvenance.evidence_schema_version -ne 1 -or
+    [int]$embeddedProvenance.training_report_schema_version -ne 7 -or
+    [int]$embeddedProvenance.checkpoint_artifact_schema_version -ne 5) {
+    throw "Executable/source provenance mismatch: binary=$embeddedProvenanceText checkout_commit=$gitCommit checkout_dirty_state=$checkoutDirtyState requested_configuration=$BuildConfiguration"
+}
+Write-Output "[ram1000] binary provenance passed: source_commit=$($embeddedProvenance.binary_source_commit) dirty_state=$($embeddedProvenance.binary_dirty_state) compiler=$($embeddedProvenance.binary_compiler_identity) build_configuration=$($embeddedProvenance.binary_build_configuration)"
 $configSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceConfig).Hash
 $artifactIdentity = [ordered]@{
     path = $bucketArtifact
@@ -101,8 +121,14 @@ $artifactIdentity = [ordered]@{
 }
 $buildIdentity = [ordered]@{
     git_commit = $gitCommit
+    run_checkout_commit = $gitCommit
+    run_checkout_dirty_state = $checkoutDirtyState
+    binary_source_commit = [string]$embeddedProvenance.binary_source_commit
+    binary_dirty_state = [string]$embeddedProvenance.binary_dirty_state
+    binary_compiler_identity = [string]$embeddedProvenance.binary_compiler_identity
+    binary_build_configuration = [string]$embeddedProvenance.binary_build_configuration
     configuration = $BuildConfiguration
-    compiler = $env:TEXASSOLVER_COMPILER_IDENTITY
+    compiler = [string]$embeddedProvenance.binary_compiler_identity
     binary_path = $executable
     binary_bytes = [int64]$binaryFile.Length
     binary_sha256 = $binarySha256
@@ -253,6 +279,10 @@ while (-not $process.HasExited) {
 
 $process.WaitForExit()
 $process.Refresh()
+$binarySha256After = (Get-FileHash -Algorithm SHA256 -LiteralPath $executable).Hash
+if ($binarySha256After -ne $binarySha256) {
+    throw "Executable SHA-256 changed during run: before=$binarySha256 after=$binarySha256After"
+}
 if ($systemMemoryGuardTriggered) {
     $guardEvidencePath = Join-Path $RunDirectory 'system_memory_guard.json'
     [ordered]@{
@@ -296,6 +326,11 @@ if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
 
 Write-Output '[ram1000] training report found, reading metrics'
 $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
+if ([string]$report.evidence.producer.binary_source_commit -ne [string]$embeddedProvenance.binary_source_commit -or
+    [string]$report.evidence.producer.binary_dirty_state -ne [string]$embeddedProvenance.binary_dirty_state -or
+    [string]$report.evidence.producer.run_checkout_commit -ne $gitCommit) {
+    throw 'Training report provenance does not match the verified executable and checkout'
+}
 [pscustomobject]@{
     exit_code = $exitCode
     exit_code_available = $exitCodeKnown
@@ -367,7 +402,12 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     binary_kind = $BinaryKind
     build_configuration = $BuildConfiguration
     git_commit = $gitCommit
+    run_checkout_commit = $gitCommit
+    run_checkout_dirty_state = $checkoutDirtyState
     compiler_identity = $env:TEXASSOLVER_COMPILER_IDENTITY
+    binary_provenance = $embeddedProvenance
+    binary_source_commit = [string]$embeddedProvenance.binary_source_commit
+    binary_dirty_state = [string]$embeddedProvenance.binary_dirty_state
     binary_sha256 = $binarySha256
     binary_bytes = [int64]$binaryFile.Length
     workers = $Workers
@@ -385,8 +425,11 @@ $runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
 [ordered]@{
     schema_version = 2
     git_commit = $gitCommit
+    run_checkout_commit = $gitCommit
+    run_checkout_dirty_state = $checkoutDirtyState
     build_configuration = $BuildConfiguration
     compiler_identity = $env:TEXASSOLVER_COMPILER_IDENTITY
+    binary_provenance = $embeddedProvenance
     binary = $buildIdentity
     artifact = $artifactIdentity
     source_config_path = $sourceConfig

@@ -54,13 +54,31 @@ namespace
 		};
 		MultiwayEvidenceHeader header;
 		header.schema_version = schema_version;
-		header.producer.git_commit = environment("TEXASSOLVER_GIT_COMMIT");
-		header.producer.build_configuration = environment("TEXASSOLVER_BUILD_CONFIGURATION");
-		header.producer.compiler_identity = environment("TEXASSOLVER_COMPILER_IDENTITY");
+		const auto binary = multiway_binary_provenance();
+		header.producer.git_commit = std::string(binary.source_commit);
+		header.producer.binary_source_commit = std::string(binary.source_commit);
+		header.producer.binary_dirty_state = std::string(binary.dirty_state);
+		header.producer.build_configuration = std::string(binary.build_configuration);
+		header.producer.compiler_identity = std::string(binary.compiler_identity);
+		header.producer.run_checkout_commit = environment("TEXASSOLVER_RUN_CHECKOUT_COMMIT");
 		header.producer.model_identity = model_identity;
 		header.producer.workflow_config_fingerprint = workflow_fingerprint;
 		header.producer.artifact_schemas = { 4U, 2U, 1U };
 		return header;
+	}
+
+	int print_binary_provenance()
+	{
+		const auto provenance = texas::solver::multiway::multiway_binary_provenance();
+		std::cout << "{\"binary_source_commit\":\"" << provenance.source_commit
+				  << "\",\"binary_dirty_state\":\"" << provenance.dirty_state
+				  << "\",\"binary_compiler_identity\":\"" << provenance.compiler_identity
+				  << "\",\"binary_build_configuration\":\"" << provenance.build_configuration
+				  << "\",\"evidence_schema_version\":" << provenance.evidence_schema_version
+				  << ",\"training_report_schema_version\":" << provenance.training_report_schema_version
+				  << ",\"checkpoint_artifact_schema_version\":" << provenance.checkpoint_artifact_schema_version
+				  << "}\n";
+		return EXIT_SUCCESS;
 	}
 
 	Workflow workflow_from_name(std::string_view name)
@@ -630,6 +648,10 @@ namespace
 			log << line << '\n'
 				<< std::flush;
 		};
+		const auto binary = multiway_binary_provenance();
+		const auto* run_checkout_commit = std::getenv("TEXASSOLVER_RUN_CHECKOUT_COMMIT");
+		log_line("binary provenance: source_commit=" + std::string(binary.source_commit) + " dirty_state=" + std::string(binary.dirty_state) + " compiler=" + std::string(binary.compiler_identity) + " build_configuration=" + std::string(binary.build_configuration));
+		log_line("run checkout identity: commit=" + std::string(run_checkout_commit == nullptr ? "unknown" : run_checkout_commit));
 		log_line("training configured: input=" + input_path.string() + " output=" + output_path.string() + " batches=" + std::to_string(batches) + " threads=" + std::to_string(worker_override) + " pin_workers=" + (pin_workers ? "true" : "false"));
 		log_line("training initialization: validating resolved capacities");
 		if (!workflow.capacities_resolved())
@@ -1270,6 +1292,8 @@ int main(int argc, char** argv) noexcept
 {
 	try
 	{
+		if (argc > 1 && std::string_view(argv[1]) == "--provenance")
+			return print_binary_provenance();
 		const std::string_view executable = argc == 0 ? "multiway" : argv[0];
 		const auto slash = executable.find_last_of("/\\");
 		auto name = executable.substr(slash == std::string_view::npos ? 0 : slash + 1);
