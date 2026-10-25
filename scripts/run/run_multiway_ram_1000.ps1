@@ -11,6 +11,8 @@ param(
 
     [switch]$PinWorkers,
 
+    [switch]$DisableCheckpoint,
+
     [ValidateSet('fixed', 'dynamic')]
     [string]$Scheduler = 'fixed',
 
@@ -37,6 +39,7 @@ Write-Output "[ram1000] requested_workers=$Workers"
 Write-Output "[ram1000] requested_batches=$Batches"
 Write-Output "[ram1000] trajectories_per_batch=$TrajectoriesPerBatch"
 Write-Output "[ram1000] pin_workers=$($PinWorkers.IsPresent)"
+Write-Output "[ram1000] disable_checkpoint=$($DisableCheckpoint.IsPresent)"
 Write-Output "[ram1000] scheduler=$Scheduler"
 Write-Output "[ram1000] binary_kind=$BinaryKind"
 
@@ -130,7 +133,9 @@ if ($updatedConfigText -eq $configText -and [int]$configValues['trajectories_per
 }
 Set-Content -LiteralPath $config -Value $updatedConfigText -NoNewline
 $checkpointDirectory = Join-Path $RunDirectory 'checkpoints'
-New-Item -ItemType Directory -Force -Path $checkpointDirectory | Out-Null
+if (-not $DisableCheckpoint.IsPresent) {
+    New-Item -ItemType Directory -Force -Path $checkpointDirectory | Out-Null
+}
 
 $outputPath = Join-Path $RunDirectory 'blueprint.bin'
 $reportPath = Join-Path $RunDirectory 'report.json'
@@ -147,11 +152,13 @@ $trainArguments = @(
     '--input', $bucketArtifact,
     '--output', $outputPath,
     '--report', $reportPath,
-    '--checkpoint-dir', $checkpointDirectory,
     '--batches', $Batches.ToString(),
     '--threads', $Workers.ToString(),
     '--scheduler', $Scheduler
 )
+if (-not $DisableCheckpoint.IsPresent) {
+    $trainArguments = @('--checkpoint-dir', $checkpointDirectory) + $trainArguments
+}
 if ($PinWorkers.IsPresent) {
     $trainArguments += @('--pin-workers', 'true')
 } else {
@@ -293,6 +300,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
     exit_code = $exitCode
     exit_code_available = $exitCodeKnown
     pin_workers = $PinWorkers.IsPresent
+    disable_checkpoint = $DisableCheckpoint.IsPresent
     scheduler = $Scheduler
     binary_kind = $BinaryKind
     build_configuration = $BuildConfiguration
@@ -353,6 +361,7 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     exit_code = $exitCode
     exit_code_available = $exitCodeKnown
     pinning = if ($PinWorkers.IsPresent) { 'pinned' } else { 'unpinned' }
+    disable_checkpoint = $DisableCheckpoint.IsPresent
     scheduler = $Scheduler
     chunk_size = 4
     binary_kind = $BinaryKind
@@ -387,6 +396,7 @@ $runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
         trajectories_per_batch = $TrajectoriesPerBatch
         scheduler = $Scheduler
         pin_workers = $PinWorkers.IsPresent
+        disable_checkpoint = $DisableCheckpoint.IsPresent
     }
     report_json = $reportPath
     metrics_json = $metricsPath

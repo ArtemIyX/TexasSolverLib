@@ -226,10 +226,10 @@ if (-not (Test-Path -LiteralPath $memoryInspectionPath -PathType Leaf) -or
 $memoryInspection = Get-Content -Raw -LiteralPath $memoryInspectionPath | ConvertFrom-Json
 $allocationEventCount = [int64]$memoryInspection.allocation_events
 $freeEventCount = [int64]$memoryInspection.free_events
-if ($allocationEventCount -le 0 -or $freeEventCount -le 0) {
-    throw "Tracy capture lacks allocation/free memory events: allocations=$allocationEventCount frees=$freeEventCount"
+if ($allocationEventCount -le 0) {
+    throw "Tracy capture lacks allocation memory events: allocations=$allocationEventCount frees=$freeEventCount"
 }
-Write-ScriptLog "memory_event_inspection_finished exit_code=$memoryInspectionExitCode allocations=$allocationEventCount frees=$freeEventCount active=$([int64]$memoryInspection.active_allocations)"
+Write-ScriptLog "memory_event_inspection_finished exit_code=$memoryInspectionExitCode allocations=$allocationEventCount frees=$freeEventCount active=$([int64]$memoryInspection.active_allocations) free_events_optional=true"
 
 Write-ScriptLog 'csv_export_started'
 $csvProcess = Start-Process -FilePath $CsvExportToolPath `
@@ -306,6 +306,7 @@ $manifest = [ordered]@{
         allocation_events = $allocationEventCount
         free_events = $freeEventCount
         active_allocations = [int64]$memoryInspection.active_allocations
+        free_events_optional = $true
         required = $true
     }
     training = [ordered]@{

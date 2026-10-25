@@ -428,6 +428,7 @@ Parameters:
 - `-Batches 1..100`, default 1
 - `-TrajectoriesPerBatch`, default 1000
 - `-PinWorkers`
+- `-DisableCheckpoint`: omit checkpoint creation for isolated streaming-export qualification
 - `-Scheduler fixed|dynamic`, default fixed
 - `-BinaryKind normal|tracy`, default normal
 - `-BinaryPath`

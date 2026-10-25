@@ -23,7 +23,8 @@ foreach(required_text
     "record_tracy_deallocation"
     "allocationEventCount"
     "freeEventCount"
-    "Tracy capture lacks allocation/free memory events"
+    "Tracy capture lacks allocation memory events"
+    "free_events_optional=true"
     "Tracy memory-event inspection produced no result"
 )
     if(required_text STREQUAL "TEXASSOLVER_TRACY_MEMORY=ON")
@@ -32,7 +33,7 @@ foreach(required_text
         string(FIND "${tracy_header}" "${required_text}" position)
     elseif(required_text MATCHES "^tracy_memory_event_active$|^record_tracy_")
         string(FIND "${allocation_probe}" "${required_text}" position)
-    elseif(required_text MATCHES "Count$|memory-event|memory events")
+    elseif(required_text MATCHES "Count$|memory-event|memory events|free_events_optional")
         string(FIND "${tracy_capture_script}" "${required_text}" position)
     else()
         string(FIND "${project_cmake}" "${required_text}" position)

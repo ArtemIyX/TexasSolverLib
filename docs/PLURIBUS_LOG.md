@@ -1,5 +1,40 @@
 # Pluribus Roadmap Progress Log
 
+## PB-7 - Task E: Streaming export qualification
+
+**Status:** Complete
+**Completed:** 2026-10-25
+
+- Added an explicit checkpoint-disabled qualification mode to the RAM runner so the measured workload isolates the integrated bounded streaming export path.
+- Relaxed Tracy evidence validation to require allocation events while documenting free events as optional for captures that end with active allocations.
+- Preserved the schema-2 artifact bytes, payload hash, loader/report-reader surfaces, system guard, atomic rename publication, and all existing training behavior.
+
+### Files
+
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_tracy_training_capture.ps1`
+- `scripts/analyze/analyze_multiway_memory_matrix.ps1`
+- `tests/cmake/test_tracy_boundary.cmake`
+- `docs/application_and_script_io.md`
+- `docs/tasks/E-streaming-export-qualification.md`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Authorized RelWithDebInfo run: 8 workers, 50 batches, 50,000 trajectories; 50,000 accepted and no failures.
+- Output bytes: `3,921,243,000`; payload hash: `5946562739452589295`; SHA-256: `96F9FD460B1FFF68407A8D2163E0A28DA7D079767021E62680B92BF1D93DAFA2`.
+- Publication mode: `rename`; process and system export gates passed; external peak working set: `18,618,073,088` bytes; report peak: `18,700,632,064` bytes.
+- Tracy evidence smoke produced allocation events, CSV output, and a `222,261,090`-byte trace.
+- Focused RelWithDebInfo CTest: 5/5 passed, including workflow and Tracy boundaries.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: Debug build and compact CTest passed.
+- `git diff --check`: passed.
+- C++ review: no new C++ changes; existing Task E guard code remained unchanged.
+
+### Limitations
+
+- The default checkpoint-enabled path retains the existing full checkpoint snapshot and previously exceeded 20 GiB during checkpointing. Tasks A-E do not change checkpoint serialization; a bounded checkpoint writer would be a separate task.
+
 ## PB-7 - Task D: Workflow integration and publication
 
 **Status:** Complete
