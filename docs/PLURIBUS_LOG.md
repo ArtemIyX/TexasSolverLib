@@ -1,5 +1,38 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.03 - Topology inventory
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `1014b4d PB-9 Add topology inventory: Discover Windows and synthetic identities`
+
+- Added a cold-path topology inventory with structured CPU-set, logical processor, physical-core, SMT-sibling, NUMA, cache-domain, efficiency, and allocation fields.
+- Added Windows CPU-set and processor-core relationship discovery with an explicit logical-only fallback when topology APIs are unavailable.
+- Preserved OS-reported `LastLevelCacheIndex` values without inferring V-Cache labels or changing worker placement and scheduler behavior.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/multiway/engine/multiway_worker_topology.hpp`
+- `src/solver/multiway/engine/multiway_worker_topology.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `docs/tasks/PB9_16_03_topology_inventory.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused `test_multiway_parallel_training`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No placement policy, scheduler change, benchmark, qualification matrix, or solver training was implemented or run.
+- Existing worker behavior and PB9.16.02 telemetry compatibility remain unchanged because the inventory has no runtime consumer in this task.
+
 ## PB9.16.02 - Authoritative phase telemetry
 
 **Status:** Complete
