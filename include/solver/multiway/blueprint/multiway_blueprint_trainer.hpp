@@ -111,8 +111,11 @@ namespace texas::solver::multiway
 		std::uint64_t cumulative_worker_delta_entries = 0;
 		std::uint64_t peak_compact_storage_bytes = 0;
 		std::uint64_t current_process_rss_bytes = 0;
+		// Legacy batch-boundary sample retained for progress diagnostics.
 		std::uint64_t peak_process_rss_bytes = 0;
 		std::uint64_t elapsed_wall_nanoseconds = 0;
+		std::uint64_t checkpoint_wall_nanoseconds = 0;
+		std::uint64_t export_wall_nanoseconds = 0;
 		std::uint64_t worker_active_nanoseconds = 0;
 		std::uint64_t worker_wake_latency_nanoseconds = 0;
 		std::uint64_t worker_cv_wait_nanoseconds = 0;

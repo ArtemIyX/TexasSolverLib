@@ -23,8 +23,30 @@ namespace texas::solver::multiway
 		bool allocation_probe_valid = true;
 		bool tracy_memory_events_enabled = false;
 		std::uint64_t elapsed_wall_nanoseconds = 0U;
+		std::uint64_t training_wall_nanoseconds = 0U;
+		std::uint64_t checkpoint_wall_nanoseconds = 0U;
+		std::uint64_t export_wall_nanoseconds = 0U;
+		std::uint64_t total_wrapper_wall_nanoseconds = 0U;
+		bool total_wrapper_wall_available = false;
 		std::uint64_t current_process_rss_bytes = 0U;
+		// Legacy field. With phase snapshots, this is the authoritative process
+		// working-set high-water mark, not a sampled current-working-set peak.
 		std::uint64_t peak_process_rss_bytes = 0U;
+		std::uint64_t sampled_process_working_set_peak_bytes = 0U;
+		std::uint64_t current_working_set_bytes = 0U;
+		std::uint64_t peak_process_working_set_bytes = 0U;
+		std::uint64_t private_committed_bytes = 0U;
+		std::uint64_t peak_private_committed_bytes = 0U;
+		std::uint64_t minor_page_faults = 0U;
+		std::uint64_t major_page_faults = 0U;
+		std::uint64_t total_page_faults = 0U;
+		bool current_working_set_available = false;
+		bool peak_process_working_set_available = false;
+		bool private_committed_available = false;
+		bool peak_private_committed_available = false;
+		bool minor_page_faults_available = false;
+		bool major_page_faults_available = false;
+		bool total_page_faults_available = false;
 		std::uint64_t process_memory_limit_bytes = 0U;
 		MultiwayWorkingSetGateConfig working_set_gate_config{};
 		MultiwayWorkingSetGateResult working_set_gate{};
@@ -140,7 +162,8 @@ namespace texas::solver::multiway
 		const MultiwayBlueprintTrainingStatus& status,
 		std::uint64_t deterministic_merge_fingerprint,
 		MultiwayEvidenceHeader evidence,
-		std::uint64_t process_memory_limit_bytes = 0U) noexcept;
+		std::uint64_t process_memory_limit_bytes = 0U,
+		std::uint64_t total_wrapper_wall_nanoseconds = 0U) noexcept;
 	void save_multiway_training_report_atomic(
 		const std::filesystem::path& path,
 		const MultiwayTrainingReport& report);

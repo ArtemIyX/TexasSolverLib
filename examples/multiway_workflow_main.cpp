@@ -602,6 +602,13 @@ namespace
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
+		const auto wrapper_started_at = std::chrono::steady_clock::now();
+		const auto wrapper_elapsed_nanoseconds = [&wrapper_started_at]() noexcept {
+			return static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - wrapper_started_at)
+					.count());
+		};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots;
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::ProcessStart))
 			throw std::logic_error("multiway process memory snapshot phase order is invalid");
@@ -836,7 +843,7 @@ namespace
 				session.status(), session.status().merged_stream_fingerprint,
 				make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 					config.identity(), workflow.fingerprint()),
-				workflow.process_memory_limit_bytes);
+				workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 			failure_report.checkpoint_bytes = checkpoint_bytes;
 			failure_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
 			failure_report.checkpoint_telemetry = checkpoint_telemetry;
@@ -900,7 +907,7 @@ namespace
 			status, status.merged_stream_fingerprint,
 			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 				config.identity(), workflow.fingerprint()),
-			workflow.process_memory_limit_bytes);
+			workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 		training_report.checkpoint_telemetry = checkpoint_telemetry;
 		if (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U)
 		{
@@ -936,7 +943,7 @@ namespace
 			session.status(), status.merged_stream_fingerprint,
 			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 				config.identity(), workflow.fingerprint()),
-			workflow.process_memory_limit_bytes);
+			workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 		training_report.checkpoint_bytes = checkpoint_bytes;
 		training_report.checkpoint_planned_bytes = last_checkpoint_write.plan.serialized_bytes;
 		training_report.checkpoint_scratch_bytes = last_checkpoint_write.peak_scratch_bytes;

@@ -20,6 +20,31 @@ namespace texas::solver::multiway
 	{
 		constexpr std::uint64_t kQuantizedProbabilityMax = std::numeric_limits<std::uint16_t>::max();
 
+		class MultiwayDurationRecorder final
+		{
+		public:
+			explicit MultiwayDurationRecorder(std::uint64_t& target) noexcept
+				: target_(target), started_at_(std::chrono::steady_clock::now())
+			{
+			}
+
+			~MultiwayDurationRecorder() noexcept
+			{
+				const auto elapsed = static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - started_at_)
+						.count());
+				if (elapsed > std::numeric_limits<std::uint64_t>::max() - target_)
+					target_ = std::numeric_limits<std::uint64_t>::max();
+				else
+					target_ += elapsed;
+			}
+
+		private:
+			std::uint64_t& target_;
+			std::chrono::steady_clock::time_point started_at_;
+		};
+
 		bool export_shape_less(
 			const MultiwaySparseRowShape& left,
 			const MultiwaySparseRowShape& right) noexcept
@@ -989,6 +1014,7 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path) const
 	{
 		const auto export_started = std::chrono::steady_clock::now();
+		MultiwayDurationRecorder export_duration(status_.export_wall_nanoseconds);
 		auto lease = coordinator_->acquire_export_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		std::vector<std::uint32_t> order;
@@ -1120,6 +1146,7 @@ namespace texas::solver::multiway
 	MultiwayTrainingCheckpointWriteResult MultiwayBlueprintTrainer::save_checkpoint_atomic(
 		const std::filesystem::path& path) const
 	{
+		MultiwayDurationRecorder checkpoint_duration(status_.checkpoint_wall_nanoseconds);
 		auto lease = coordinator_->acquire_checkpoint_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		const auto coverage = coverage_manifest();

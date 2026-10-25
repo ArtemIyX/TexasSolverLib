@@ -4,6 +4,7 @@
 #include "util/tracy.hpp"
 
 #include <fstream>
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <stdexcept>
@@ -12,6 +13,42 @@ namespace texas::solver::multiway
 {
 	namespace
 	{
+		void derive_process_summary(MultiwayTrainingReport& report) noexcept
+		{
+			if (!report.process_memory_snapshots.valid() || report.process_memory_snapshots.count == 0U)
+				return;
+			const auto last = static_cast<std::size_t>(report.process_memory_snapshots.count - 1U);
+			const auto& final = report.process_memory_snapshots.snapshots[last];
+			report.current_working_set_available = final.current_working_set_available;
+			report.current_working_set_bytes = final.current_working_set_available ? final.current_working_set_bytes : 0U;
+			report.private_committed_available = final.private_committed_available;
+			report.private_committed_bytes = final.private_committed_available ? final.private_committed_bytes : 0U;
+			report.peak_private_committed_available = final.peak_private_committed_available;
+			report.peak_private_committed_bytes = final.peak_private_committed_available ? final.peak_private_committed_bytes : 0U;
+			report.minor_page_faults_available = final.minor_page_faults_available;
+			report.minor_page_faults = final.minor_page_faults_available ? final.minor_page_faults : 0U;
+			report.major_page_faults_available = final.major_page_faults_available;
+			report.major_page_faults = final.major_page_faults_available ? final.major_page_faults : 0U;
+			report.total_page_faults_available = final.total_page_faults_available;
+			report.total_page_faults = final.total_page_faults_available ? final.total_page_faults : 0U;
+			for (std::size_t index = 0U; index < report.process_memory_snapshots.count; ++index)
+			{
+				const auto& snapshot = report.process_memory_snapshots.snapshots[index];
+				if (snapshot.peak_working_set_available)
+				{
+					report.peak_process_working_set_available = true;
+					report.peak_process_working_set_bytes = std::max(
+						report.peak_process_working_set_bytes, snapshot.peak_working_set_bytes);
+				}
+			}
+			report.current_process_rss_bytes = report.current_working_set_bytes;
+			report.process_rss_available = report.current_working_set_available;
+			if (report.peak_process_working_set_available)
+			{
+				report.peak_working_set_bytes = report.peak_process_working_set_bytes;
+				report.peak_process_rss_bytes = report.peak_process_working_set_bytes;
+			}
+		}
 		void derive_unattributed_private_bytes(MultiwayTrainingReport& report) noexcept
 		{
 			report.unattributed_private_bytes_available = false;
@@ -86,6 +123,13 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("available process RSS must be non-zero");
 		}
+		const auto check_available = [](bool available, std::uint64_t value) {
+			return available || value == 0U;
+		};
+		if (!check_available(current_working_set_available, current_working_set_bytes) || !check_available(peak_process_working_set_available, peak_process_working_set_bytes) || !check_available(private_committed_available, private_committed_bytes) || !check_available(peak_private_committed_available, peak_private_committed_bytes) || !check_available(minor_page_faults_available, minor_page_faults) || !check_available(major_page_faults_available, major_page_faults) || !check_available(total_page_faults_available, total_page_faults) || (peak_process_working_set_available && current_working_set_available && peak_process_working_set_bytes < current_working_set_bytes) || (total_page_faults_available && minor_page_faults_available && major_page_faults_available && total_page_faults < multiway_memory_saturating_add(minor_page_faults, major_page_faults)) || (total_wrapper_wall_available && total_wrapper_wall_nanoseconds < multiway_memory_saturating_add(multiway_memory_saturating_add(training_wall_nanoseconds, checkpoint_wall_nanoseconds), export_wall_nanoseconds)))
+		{
+			throw std::invalid_argument("invalid authoritative multiway phase telemetry");
+		}
 		if (peak_process_rss_bytes < current_process_rss_bytes || requested_worker_count > 16U || effective_worker_count > requested_worker_count || ((requested_worker_count != 0U || effective_worker_count != 0U) && (requested_worker_count == 0U || effective_worker_count == 0U || trajectories_per_batch == 0U)) || minimum_worker_trajectories > maximum_worker_trajectories || minimum_worker_active_nanoseconds > maximum_worker_active_nanoseconds || barrier_wait_nanoseconds > coordinator_wait_nanoseconds || !worker_vectors_match() || (batches != 0U && effective_worker_count != 0U && worker_trajectory_counts.size() != effective_worker_count) || !std::isfinite(trajectories_per_second()) || static_cast<unsigned>(capacity_exhaustion_stage) > static_cast<unsigned>(MultiwayTrainingCapacityStage::Discovery) || static_cast<unsigned>(working_set_gate.phase) > static_cast<unsigned>(MultiwayWorkingSetGatePhase::Runtime) || static_cast<unsigned>(working_set_gate.status) > static_cast<unsigned>(MultiwayWorkingSetGateStatus::Unavailable) || static_cast<unsigned>(working_set_gate.admission_stage) > static_cast<unsigned>(MultiwayMemoryAdmissionStage::OptionalContinuationCache) || static_cast<unsigned>(system_memory_guard.status) > static_cast<unsigned>(MultiwaySystemMemoryGuardStatus::Unavailable))
 		{
 			throw std::invalid_argument("invalid multiway training telemetry");
@@ -101,14 +145,18 @@ namespace texas::solver::multiway
 
 	double MultiwayTrainingReport::trajectories_per_second() const noexcept
 	{
-		if (elapsed_wall_nanoseconds == 0U)
+		const auto training_wall = training_wall_nanoseconds != 0U
+			? training_wall_nanoseconds
+			: elapsed_wall_nanoseconds;
+		if (training_wall == 0U)
 			return 0.0;
-		return static_cast<double>(trajectories) * 1'000'000'000.0 / static_cast<double>(elapsed_wall_nanoseconds);
+		return static_cast<double>(trajectories) * 1'000'000'000.0 / static_cast<double>(training_wall);
 	}
 
 	MultiwayTrainingReport make_multiway_training_report(
 		const MultiwayBlueprintTrainingStatus& status, std::uint64_t fingerprint,
-		MultiwayEvidenceHeader evidence, std::uint64_t process_memory_limit_bytes) noexcept
+		MultiwayEvidenceHeader evidence, std::uint64_t process_memory_limit_bytes,
+		std::uint64_t total_wrapper_wall_nanoseconds) noexcept
 	{
 		MultiwayTrainingReport report;
 		report.batches = status.batches;
@@ -202,6 +250,11 @@ namespace texas::solver::multiway
 		report.memory_preflight_estimate_bytes = status.memory_preflight_estimate_bytes;
 		report.memory_ledger = status.memory_ledger;
 		report.process_memory_snapshots = status.process_memory_snapshots;
+		report.training_wall_nanoseconds = status.elapsed_wall_nanoseconds;
+		report.checkpoint_wall_nanoseconds = status.checkpoint_wall_nanoseconds;
+		report.export_wall_nanoseconds = status.export_wall_nanoseconds;
+		report.total_wrapper_wall_nanoseconds = total_wrapper_wall_nanoseconds;
+		report.total_wrapper_wall_available = total_wrapper_wall_nanoseconds != 0U;
 		report.memory_subsystems = status.memory_subsystem_snapshots;
 		report.export_telemetry = status.export_telemetry;
 		if (report.memory_subsystems.count != 0U)
@@ -213,6 +266,7 @@ namespace texas::solver::multiway
 		report.admitted_rows_per_batch = status.admitted_rows_per_batch;
 		report.current_process_rss_bytes = status.current_process_rss_bytes;
 		report.peak_process_rss_bytes = status.peak_process_rss_bytes;
+		report.sampled_process_working_set_peak_bytes = status.peak_process_rss_bytes;
 		report.process_memory_limit_bytes = process_memory_limit_bytes;
 		report.working_set_gate_config = status.working_set_gate_config;
 		report.working_set_gate = status.working_set_gate;
@@ -221,6 +275,11 @@ namespace texas::solver::multiway
 		report.process_rss_available = status.process_rss_available;
 		report.started_at_preflop = status.preflop_rows > 0U;
 		report.elapsed_wall_nanoseconds = status.elapsed_wall_nanoseconds;
+		if (report.checkpoint_wall_nanoseconds != 0U)
+			report.checkpoint_write_nanoseconds = report.checkpoint_wall_nanoseconds;
+		if (report.export_wall_nanoseconds != 0U)
+			report.blueprint_export_nanoseconds = report.export_wall_nanoseconds;
+		derive_process_summary(report);
 		derive_unattributed_private_bytes(report);
 		return report;
 	}
@@ -277,9 +336,30 @@ namespace texas::solver::multiway
 			   << ",\n  \"failed\": " << (report.failed ? "true" : "false")
 			   << ",\n  \"failed_batch_available\": " << (report.failed_batch_available ? "true" : "false")
 			   << ",\n  \"elapsed_wall_nanoseconds\": " << report.elapsed_wall_nanoseconds
+			   << ",\n  \"training_wall_nanoseconds\": " << report.training_wall_nanoseconds
+			   << ",\n  \"checkpoint_wall_nanoseconds\": " << report.checkpoint_wall_nanoseconds
+			   << ",\n  \"export_wall_nanoseconds\": " << report.export_wall_nanoseconds
+			   << ",\n  \"total_wrapper_wall_nanoseconds\": " << report.total_wrapper_wall_nanoseconds
+			   << ",\n  \"total_wrapper_wall_available\": " << (report.total_wrapper_wall_available ? "true" : "false")
 			   << ",\n  \"trajectories_per_second\": " << report.trajectories_per_second()
 			   << ",\n  \"current_process_rss_bytes\": " << report.current_process_rss_bytes
 			   << ",\n  \"peak_process_rss_bytes\": " << report.peak_process_rss_bytes
+			   << ",\n  \"sampled_process_working_set_peak_bytes\": " << report.sampled_process_working_set_peak_bytes
+			   << ",\n  \"current_working_set_bytes\": " << report.current_working_set_bytes
+			   << ",\n  \"peak_process_working_set_bytes\": " << report.peak_process_working_set_bytes
+			   << ",\n  \"private_committed_bytes\": " << report.private_committed_bytes
+			   << ",\n  \"peak_private_committed_bytes\": " << report.peak_private_committed_bytes
+			   << ",\n  \"minor_page_faults\": " << report.minor_page_faults
+			   << ",\n  \"major_page_faults\": " << report.major_page_faults
+			   << ",\n  \"total_page_faults\": " << report.total_page_faults
+			   << ",\n  \"authoritative_memory_availability\": {\"current_working_set\": "
+			   << (report.current_working_set_available ? "true" : "false")
+			   << ", \"peak_process_working_set\": " << (report.peak_process_working_set_available ? "true" : "false")
+			   << ", \"private_committed\": " << (report.private_committed_available ? "true" : "false")
+			   << ", \"peak_private_committed\": " << (report.peak_private_committed_available ? "true" : "false")
+			   << ", \"minor_page_faults\": " << (report.minor_page_faults_available ? "true" : "false")
+			   << ", \"major_page_faults\": " << (report.major_page_faults_available ? "true" : "false")
+			   << ", \"total_page_faults\": " << (report.total_page_faults_available ? "true" : "false") << "}"
 			   << ",\n  \"process_memory_limit_bytes\": " << report.process_memory_limit_bytes
 			   << ",\n  \"process_working_set_limit_bytes\": " << report.working_set_gate_config.hard_limit_bytes
 			   << ",\n  \"process_working_set_resident_allowance_bytes\": " << report.working_set_gate_config.resident_allowance_bytes
@@ -657,6 +737,9 @@ namespace texas::solver::multiway
 				   << ", \"virtual_address_bytes\": " << snapshot.virtual_address_bytes
 				   << ", \"anonymous_resident_bytes\": " << snapshot.anonymous_resident_bytes
 				   << ", \"file_resident_bytes\": " << snapshot.file_resident_bytes
+			   << ", \"minor_page_faults\": " << snapshot.minor_page_faults
+			   << ", \"major_page_faults\": " << snapshot.major_page_faults
+			   << ", \"total_page_faults\": " << snapshot.total_page_faults
 				   << ", \"availability\": {\"current_working_set\": "
 				   << (snapshot.current_working_set_available ? "true" : "false")
 				   << ", \"peak_working_set\": " << (snapshot.peak_working_set_available ? "true" : "false")
@@ -665,6 +748,9 @@ namespace texas::solver::multiway
 				   << ", \"virtual_address\": " << (snapshot.virtual_address_available ? "true" : "false")
 				   << ", \"anonymous_resident\": " << (snapshot.anonymous_resident_available ? "true" : "false")
 				   << ", \"file_resident\": " << (snapshot.file_resident_available ? "true" : "false")
+			   << ", \"minor_page_faults\": " << (snapshot.minor_page_faults_available ? "true" : "false")
+			   << ", \"major_page_faults\": " << (snapshot.major_page_faults_available ? "true" : "false")
+			   << ", \"total_page_faults\": " << (snapshot.total_page_faults_available ? "true" : "false")
 				   << "}}";
 		}
 		output << "]"

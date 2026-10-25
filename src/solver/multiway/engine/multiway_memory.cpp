@@ -78,6 +78,47 @@ namespace texas::solver::multiway
 			value = checked_multiply(static_cast<std::uint64_t>(parsed), 1024U);
 			available = value != std::numeric_limits<std::uint64_t>::max();
 		}
+
+		void capture_linux_page_faults(MultiwayProcessMemorySnapshot& result) noexcept
+		{
+			std::FILE* input = std::fopen("/proc/self/stat", "r");
+			if (input == nullptr)
+				return;
+			char line[4096]{};
+			if (std::fgets(line, sizeof(line), input) == nullptr)
+			{
+				std::fclose(input);
+				return;
+			}
+			std::fclose(input);
+			const char* cursor = std::strrchr(line, ')');
+			if (cursor == nullptr)
+				return;
+			++cursor;
+			std::uint64_t minor = 0U;
+			std::uint64_t major = 0U;
+			for (unsigned field = 3U; field <= 12U; ++field)
+			{
+				while (*cursor == ' ' || *cursor == '\t')
+					++cursor;
+				errno = 0;
+				char* end = nullptr;
+				const auto value = std::strtoull(cursor, &end, 10);
+				if (end == cursor || errno == ERANGE)
+					return;
+				if (field == 10U)
+					minor = static_cast<std::uint64_t>(value);
+				else if (field == 12U)
+					major = static_cast<std::uint64_t>(value);
+				cursor = end;
+			}
+			result.minor_page_faults = minor;
+			result.major_page_faults = major;
+			result.total_page_faults = checked_add(minor, major);
+			result.minor_page_faults_available = true;
+			result.major_page_faults_available = true;
+			result.total_page_faults_available = true;
+		}
 #endif
 
 	} // namespace
@@ -454,11 +495,11 @@ namespace texas::solver::multiway
 
 	bool MultiwayProcessMemorySnapshot::valid() const noexcept
 	{
-		if ((!current_working_set_available && current_working_set_bytes != 0U) || (!peak_working_set_available && peak_working_set_bytes != 0U) || (!private_committed_available && private_committed_bytes != 0U) || (!peak_private_committed_available && peak_private_committed_bytes != 0U) || (!virtual_address_available && virtual_address_bytes != 0U) || (!anonymous_resident_available && anonymous_resident_bytes != 0U) || (!file_resident_available && file_resident_bytes != 0U))
+		if ((!current_working_set_available && current_working_set_bytes != 0U) || (!peak_working_set_available && peak_working_set_bytes != 0U) || (!private_committed_available && private_committed_bytes != 0U) || (!peak_private_committed_available && peak_private_committed_bytes != 0U) || (!virtual_address_available && virtual_address_bytes != 0U) || (!anonymous_resident_available && anonymous_resident_bytes != 0U) || (!file_resident_available && file_resident_bytes != 0U) || (!minor_page_faults_available && minor_page_faults != 0U) || (!major_page_faults_available && major_page_faults != 0U) || (!total_page_faults_available && total_page_faults != 0U))
 		{
 			return false;
 		}
-		return (!current_working_set_available || !peak_working_set_available || peak_working_set_bytes >= current_working_set_bytes) && (!private_committed_available || !peak_private_committed_available || peak_private_committed_bytes >= private_committed_bytes);
+		return (!current_working_set_available || !peak_working_set_available || peak_working_set_bytes >= current_working_set_bytes) && (!private_committed_available || !peak_private_committed_available || peak_private_committed_bytes >= private_committed_bytes) && (!minor_page_faults_available || !major_page_faults_available || !total_page_faults_available || total_page_faults >= multiway_memory_saturating_add(minor_page_faults, major_page_faults));
 	}
 
 	bool MultiwayProcessMemorySnapshotCollection::record(
@@ -501,6 +542,13 @@ namespace texas::solver::multiway
 		{
 			if (static_cast<std::size_t>(snapshots[index].phase_id) != index || !snapshots[index].valid())
 				return false;
+			if (index != 0U)
+			{
+				const auto& previous = snapshots[index - 1U];
+				const auto& current = snapshots[index];
+				if ((previous.minor_page_faults_available && current.minor_page_faults_available && current.minor_page_faults < previous.minor_page_faults) || (previous.major_page_faults_available && current.major_page_faults_available && current.major_page_faults < previous.major_page_faults) || (previous.total_page_faults_available && current.total_page_faults_available && current.total_page_faults < previous.total_page_faults))
+					return false;
+			}
 		}
 		return true;
 	}
@@ -555,9 +603,11 @@ namespace texas::solver::multiway
 				static_cast<std::uint64_t>(counters.PeakWorkingSetSize),
 				result.current_working_set_bytes);
 			result.private_committed_bytes = static_cast<std::uint64_t>(counters.PrivateUsage);
+			result.total_page_faults = static_cast<std::uint64_t>(counters.PageFaultCount);
 			result.current_working_set_available = true;
 			result.peak_working_set_available = true;
 			result.private_committed_available = true;
+			result.total_page_faults_available = true;
 		}
 #elif defined(__linux__)
 		std::FILE* input = std::fopen("/proc/self/status", "r");
@@ -573,6 +623,7 @@ namespace texas::solver::multiway
 			parse_linux_memory_field(line, "RssFile:", result.file_resident_bytes, result.file_resident_available);
 		}
 		std::fclose(input);
+		capture_linux_page_faults(result);
 #endif
 		return result;
 	}

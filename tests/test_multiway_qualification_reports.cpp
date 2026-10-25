@@ -75,6 +75,9 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.worker_active_nanoseconds_by_worker = { 40U, 60U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.worker_scheduler_claim_nanoseconds_by_worker = { 7U, 8U, 0U, 0U, 0U, 0U, 0U, 0U };
 	status.memory_preflight_estimate_bytes = 999U;
+	status.elapsed_wall_nanoseconds = 100U;
+	status.checkpoint_wall_nanoseconds = 200U;
+	status.export_wall_nanoseconds = 300U;
 	status.memory_ledger.existing_working_set_bytes = 111U;
 	status.memory_ledger.existing_private_committed_bytes = 222U;
 	status.memory_ledger.additional_private_capacity_bytes = 333U;
@@ -133,7 +136,11 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 		MultiwayWorkflowProfileKind::Acceptance,
 		identity
 	};
-	auto report = make_multiway_training_report(status, 77U, evidence);
+	auto report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);
+	EXPECT_EQ(report.training_wall_nanoseconds, 100U);
+	EXPECT_EQ(report.checkpoint_wall_nanoseconds, 200U);
+	EXPECT_EQ(report.export_wall_nanoseconds, 300U);
+	EXPECT_TRUE(report.total_wrapper_wall_available);
 	report.checkpoint_bytes = 123U;
 	report.checkpoint_planned_bytes = 122U;
 	report.checkpoint_scratch_bytes = 121U;
@@ -261,6 +268,10 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	const std::string text((std::istreambuf_iterator<char>(input)), {});
 	input.close();
 	EXPECT_TRUE(text.find("\"checkpoint_bytes\": 123") != std::string::npos);
+	EXPECT_TRUE(text.find("\"training_wall_nanoseconds\": 100") != std::string::npos);
+	EXPECT_TRUE(text.find("\"checkpoint_wall_nanoseconds\": 200") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_wall_nanoseconds\": 300") != std::string::npos);
+	EXPECT_TRUE(text.find("\"total_wrapper_wall_nanoseconds\": 1000") != std::string::npos);
 	EXPECT_TRUE(text.find("\"checkpoint_planned_bytes\": 122") != std::string::npos);
 	EXPECT_TRUE(text.find("\"checkpoint_payload_hash\": 120") != std::string::npos);
 	EXPECT_TRUE(text.find("\"tracy_memory_events_enabled\": false") != std::string::npos);
@@ -293,7 +304,7 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"configured_max_discovery_rows_per_worker\": 96") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_scheduler_claim_nanoseconds_by_worker\": [7,8,0,0,0,0,0,0]") != std::string::npos);
 	EXPECT_TRUE(text.find("\"worker_trajectory_counts\": [10,10,0,0,0,0,0,0]") != std::string::npos);
-	EXPECT_TRUE(text.find("\"memory_schema_version\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_schema_version\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_process_snapshots\": [") != std::string::npos);
 	EXPECT_TRUE(text.find("\"phase\": \"process_start\"") != std::string::npos);
 	EXPECT_TRUE(text.find("\"phase\": \"after_export\"") != std::string::npos);
