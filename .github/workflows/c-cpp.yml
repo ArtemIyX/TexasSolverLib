@@ -15,6 +15,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  format:
+    runs-on: ubuntu-24.04
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+    - uses: actions/checkout@v4
+    - run: sudo apt-get update && sudo apt-get install --yes clang-format
+    - name: Check changed C++ files
+      shell: bash
+      run: |
+        if [ -z "$BASE_SHA" ] || printf '%s' "$BASE_SHA" | grep -Eq '^0+$'; then
+          exit 0
+        fi
+        git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- '*.h' '*.hpp' '*.cpp' |
+          while IFS= read -r path; do
+            [ -z "$path" ] || python3 scripts/python/format_cpp.py file "$path" --check
+          done
+
   build-and-test:
     strategy:
       fail-fast: false
