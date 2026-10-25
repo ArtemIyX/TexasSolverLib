@@ -1,5 +1,47 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.04 - Safe placement policies
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `c7f7a15 PB-9 Add safe placement policies: Use topology-backed opt-in worker placement`
+
+- Added topology-backed opt-in OS-default, physical-compact, physical-spread, CPU-set-hint, and diagnostic hard-affinity policies.
+- Reserved the coordinator's physical core, selected unique physical cores before SMT siblings, preferred Windows CPU Sets for desktop policies, and added fallback plus amortized batch-boundary migration sampling.
+- Added requested/resolved CPU-set, physical-core, SMT-sibling, and cache-domain report identities while preserving scheduler behavior, merge ordering, checkpoint bytes, artifact hashing, and PB9.16.02 telemetry compatibility.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_worker_topology.hpp`
+- `src/solver/multiway/engine/multiway_worker_topology.cpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/tasks/PB9_16_04_safe_placement_policies.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused multiway parallel-training, workflow-config, and blueprint-training tests: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No benchmark, qualification matrix, placement-performance measurement, or solver training was run.
+- OS APIs can leave physical, CPU-set, SMT, or cache-domain identities unavailable; later scheduler balance, tournament merges, policy-content hashing, and qualification tasks are deferred.
+
 ## PB9.16.03 - Topology inventory
 
 **Status:** Complete

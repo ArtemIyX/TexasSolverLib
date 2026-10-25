@@ -1,7 +1,7 @@
 # PB-9.16 worker scaling task manager
 
 Source: `docs/tasks/pb9_16_worker_scaling_analysis_and_implementation_plan.md`
-Status: PB9.16.03 complete; remaining PB9.16 tasks active planning
+Status: PB9.16.04 complete; remaining PB9.16 tasks active planning
 Last updated: 2026-10-25
 
 ## Goal
@@ -19,7 +19,7 @@ Make 16-worker multiway training measurable, provenance-safe, deterministic, and
 | PB9.16.01 | [Compile-time provenance and runner gate](PB9_16_01_provenance_runner_gate.md) | DONE | None | Commit `66f6690eded19dc4002a9e0d1d122f75b8fc9be4`; runner rejects binary/source mismatch. |
 | PB9.16.02 | [Authoritative phase telemetry](PB9_16_02_authoritative_phase_telemetry.md) | DONE | PB9.16.01 | Commit `6d85d5f`; phase timings and process snapshots serialize and validate. |
 | PB9.16.03 | [Topology inventory](PB9_16_03_topology_inventory.md) | DONE | PB9.16.01 | Commit `1014b4d`; synthetic topology tests pass. |
-| PB9.16.04 | [Safe placement policies](PB9_16_04_safe_placement_policies.md) | TODO | PB9.16.03 | OS-default stays unchanged; physical-core selection is unique. |
+| PB9.16.04 | [Safe placement policies](PB9_16_04_safe_placement_policies.md) | DONE | PB9.16.03 | Commit `c7f7a15`; OS-default stays unchanged; physical-core selection is unique. |
 | PB9.16.05 | [Deterministic scheduler balance](PB9_16_05_deterministic_scheduler_balance.md) | TODO | PB9.16.01 | Exactness holds for 1/2/4/8/16 workers. |
 | PB9.16.06 | [Tournament discovery merge](PB9_16_06_tournament_discovery_merge.md) | TODO | PB9.16.05 | Reference and optimized outputs are identical. |
 | PB9.16.07 | [Tournament delta merge](PB9_16_07_tournament_delta_merge.md) | TODO | PB9.16.05 | Accumulation order and fingerprint are identical. |
