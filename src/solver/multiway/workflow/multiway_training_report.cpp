@@ -750,6 +750,12 @@ namespace texas::solver::multiway
 					? ",\n  \"unattributed_private_bytes\": " + std::to_string(report.unattributed_private_bytes)
 					: std::string{})
 			   << ",\n  \"checkpoint_bytes\": " << report.checkpoint_bytes
+			   << ",\n  \"checkpoint_planned_bytes\": " << report.checkpoint_planned_bytes
+			   << ",\n  \"checkpoint_scratch_bytes\": " << report.checkpoint_scratch_bytes
+			   << ",\n  \"checkpoint_payload_hash\": " << report.checkpoint_payload_hash
+			   << ",\n  \"checkpoint_publication_mode\": \"" << core::atomic_publish_mode_name(report.checkpoint_publication_mode) << '\"'
+			   << ",\n  \"checkpoint_process_gate_status\": " << static_cast<unsigned>(report.checkpoint_process_gate_status)
+			   << ",\n  \"checkpoint_system_gate_status\": " << static_cast<unsigned>(report.checkpoint_system_gate_status)
 			   << ",\n  \"checkpoint_write_nanoseconds\": " << report.checkpoint_write_nanoseconds
 			   << ",\n  \"checkpoint_telemetry\": {\"snapshot_lock_wait_nanoseconds\": " << report.checkpoint_telemetry.snapshot_lock_wait_nanoseconds
 			   << ", \"public_catalog_export_nanoseconds\": " << report.checkpoint_telemetry.public_catalog_export_nanoseconds

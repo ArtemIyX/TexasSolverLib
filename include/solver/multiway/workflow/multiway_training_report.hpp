@@ -103,6 +103,12 @@ namespace texas::solver::multiway
 		bool unattributed_private_bytes_available = false;
 		std::uint64_t unattributed_private_bytes = 0U;
 		std::uint64_t checkpoint_bytes = 0U;
+		std::uint64_t checkpoint_planned_bytes = 0U;
+		std::uint64_t checkpoint_scratch_bytes = 0U;
+		std::uint64_t checkpoint_payload_hash = 0U;
+		core::AtomicPublishMode checkpoint_publication_mode = core::AtomicPublishMode::Unknown;
+		MultiwayExportGateStatus checkpoint_process_gate_status = MultiwayExportGateStatus::Disabled;
+		MultiwayExportGateStatus checkpoint_system_gate_status = MultiwayExportGateStatus::Disabled;
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};
 		std::uint64_t blueprint_bytes = 0U;

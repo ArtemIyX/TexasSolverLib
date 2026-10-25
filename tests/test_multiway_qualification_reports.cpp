@@ -135,6 +135,12 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	};
 	auto report = make_multiway_training_report(status, 77U, evidence);
 	report.checkpoint_bytes = 123U;
+	report.checkpoint_planned_bytes = 122U;
+	report.checkpoint_scratch_bytes = 121U;
+	report.checkpoint_payload_hash = 120U;
+	report.checkpoint_publication_mode = texas::core::AtomicPublishMode::Rename;
+	report.checkpoint_process_gate_status = texas::MultiwayExportGateStatus::Admitted;
+	report.checkpoint_system_gate_status = texas::MultiwayExportGateStatus::Admitted;
 	report.checkpoint_write_nanoseconds = 456U;
 	report.checkpoint_telemetry.public_catalog_export_nanoseconds = 12U;
 	report.checkpoint_telemetry.public_state_bytes = 34U;
@@ -255,6 +261,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	const std::string text((std::istreambuf_iterator<char>(input)), {});
 	input.close();
 	EXPECT_TRUE(text.find("\"checkpoint_bytes\": 123") != std::string::npos);
+	EXPECT_TRUE(text.find("\"checkpoint_planned_bytes\": 122") != std::string::npos);
+	EXPECT_TRUE(text.find("\"checkpoint_payload_hash\": 120") != std::string::npos);
 	EXPECT_TRUE(text.find("\"tracy_memory_events_enabled\": false") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_catalog_export_nanoseconds\": 12") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_state_bytes\": 34") != std::string::npos);

@@ -810,6 +810,7 @@ namespace
 			progress_started_at};
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
+		MultiwayTrainingCheckpointWriteResult last_checkpoint_write{};
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};
 		bool checkpoint_snapshots_recorded = false;
@@ -848,6 +849,7 @@ namespace
 					}
 					const auto checkpoint_start = std::chrono::steady_clock::now();
 					const auto checkpoint = session.save_checkpoint_atomic(checkpoint_path);
+					last_checkpoint_write = checkpoint;
 					checkpoint_telemetry.accumulate(checkpoint.telemetry);
 					checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -919,6 +921,12 @@ namespace
 				config.identity(), workflow.fingerprint()),
 			workflow.process_memory_limit_bytes);
 		training_report.checkpoint_bytes = checkpoint_bytes;
+		training_report.checkpoint_planned_bytes = last_checkpoint_write.plan.serialized_bytes;
+		training_report.checkpoint_scratch_bytes = last_checkpoint_write.peak_scratch_bytes;
+		training_report.checkpoint_payload_hash = last_checkpoint_write.payload_hash;
+		training_report.checkpoint_publication_mode = last_checkpoint_write.publication_mode;
+		training_report.checkpoint_process_gate_status = last_checkpoint_write.process_gate.status;
+		training_report.checkpoint_system_gate_status = last_checkpoint_write.system_gate.status;
 		training_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
 		training_report.blueprint_bytes = session.status().export_telemetry.result_bytes;
 		training_report.blueprint_export_nanoseconds = session.status().export_telemetry.duration_nanoseconds;
