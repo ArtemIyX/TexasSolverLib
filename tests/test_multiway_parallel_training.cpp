@@ -141,11 +141,7 @@ namespace
               return limits; }()), coordinator(request), buckets({ texas::MultiwayBucketTable([] {
                   texas::MultiwayBlueprintConfig config;
               config.player_count = 3U;
-				   return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, texas::MultiwayWorkerStreamCapacities{
-              explicit_regret_capacity == 0U ? delta_capacity : explicit_regret_capacity,
-              explicit_continuation_capacity == 0U ? delta_capacity : explicit_continuation_capacity,
-              explicit_discovery_public_state_capacity,
-              explicit_discovery_row_capacity }, profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
+				   return texas::make_multiway_model_identity(config); }(), texas::Street::River, kBoard, 1U, one_bucket_assignments()) }), evaluator{ deterministic_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, workers, texas::MultiwayWorkerStreamCapacities{ explicit_regret_capacity == 0U ? delta_capacity : explicit_regret_capacity, explicit_continuation_capacity == 0U ? delta_capacity : explicit_continuation_capacity, explicit_discovery_public_state_capacity, explicit_discovery_row_capacity }, profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size), trainer(training_identity(workers), runner, coordinator, {}, 0x77U, workers, 123456U) {}
 
 		texas::MultiwayActionAbstraction abstraction;
 		texas::MultiwayRootSnapshot root;
@@ -262,11 +258,7 @@ TEST_CASE(multiway_memory_worker_attribution_scales_from_one_to_four_workers)
 	for (std::size_t worker = 0U; worker < four_snapshot.worker_count; ++worker)
 		per_worker_total += four_snapshot.workers[worker].total.retained_capacity_bytes;
 	EXPECT_EQ(per_worker_total,
-		four_snapshot.worker_regret_delta_stream.retained_capacity_bytes +
-		four_snapshot.worker_continuation_delta_stream.retained_capacity_bytes +
-		four_snapshot.discovery_public_state_stream.retained_capacity_bytes +
-		four_snapshot.discovery_row_stream.retained_capacity_bytes +
-		four_snapshot.worker_action_menu_scratch.retained_capacity_bytes);
+		four_snapshot.worker_regret_delta_stream.retained_capacity_bytes + four_snapshot.worker_continuation_delta_stream.retained_capacity_bytes + four_snapshot.discovery_public_state_stream.retained_capacity_bytes + four_snapshot.discovery_row_stream.retained_capacity_bytes + four_snapshot.worker_action_menu_scratch.retained_capacity_bytes);
 }
 
 TEST_CASE(multiway_memory_worker_streams_use_distinct_explicit_capacities)

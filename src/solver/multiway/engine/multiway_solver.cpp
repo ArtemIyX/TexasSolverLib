@@ -154,21 +154,23 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& right) noexcept
 		{
 			const auto chance_or_transition = [](MultiwayPublicParentEdgeKind kind) {
-				return kind == MultiwayPublicParentEdgeKind::BoardChance ||
-					kind == MultiwayPublicParentEdgeKind::StreetTransition;
+				return kind == MultiwayPublicParentEdgeKind::BoardChance || kind == MultiwayPublicParentEdgeKind::StreetTransition;
 			};
-			return chance_or_transition(left.incoming_edge.kind) &&
-				chance_or_transition(right.incoming_edge.kind);
+			return chance_or_transition(left.incoming_edge.kind) && chance_or_transition(right.incoming_edge.kind);
 		}
 
 		const char* public_parent_edge_kind_name(MultiwayPublicParentEdgeKind kind) noexcept
 		{
 			switch (kind)
 			{
-				case MultiwayPublicParentEdgeKind::None: return "none";
-				case MultiwayPublicParentEdgeKind::BettingAction: return "betting";
-				case MultiwayPublicParentEdgeKind::BoardChance: return "board-chance";
-				case MultiwayPublicParentEdgeKind::StreetTransition: return "street-transition";
+				case MultiwayPublicParentEdgeKind::None:
+					return "none";
+				case MultiwayPublicParentEdgeKind::BettingAction:
+					return "betting";
+				case MultiwayPublicParentEdgeKind::BoardChance:
+					return "board-chance";
+				case MultiwayPublicParentEdgeKind::StreetTransition:
+					return "street-transition";
 			}
 			return "invalid";
 		}
@@ -195,17 +197,17 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& state)
 		{
 			output << ' ' << label
-				<< "{id=" << state.id.value
-				<< ",parent=" << state.parent_id.value
-				<< ",history=" << state.canonical_history_id
-				<< ",board=";
+				   << "{id=" << state.id.value
+				   << ",parent=" << state.parent_id.value
+				   << ",history=" << state.canonical_history_id
+				   << ",board=";
 			append_bounded_values(output, state.board);
 			output << ",runout={remaining=" << +state.board_runout.remaining_board_cards
-				<< ",chance_only=" << state.board_runout.chance_only_runout
-				<< "},betting={street=" << +static_cast<std::uint8_t>(state.betting.street)
-				<< ",current=" << state.betting.current_player
-				<< ",bet=" << state.betting.current_bet
-				<< ",stacks=";
+				   << ",chance_only=" << state.board_runout.chance_only_runout
+				   << "},betting={street=" << +static_cast<std::uint8_t>(state.betting.street)
+				   << ",current=" << state.betting.current_player
+				   << ",bet=" << state.betting.current_bet
+				   << ",stacks=";
 			append_bounded_values(output, state.betting.stacks);
 			output << ",contributions=";
 			append_bounded_values(output, state.betting.contributions);
@@ -230,18 +232,18 @@ namespace texas::solver::multiway
 				if (index != 0U)
 					output << ',';
 				output << '{' << action.action_index
-					<< ':' << +static_cast<std::uint8_t>(action.action)
-					<< ':' << action.target_street_contribution
-					<< ':' << action.action_menu_id << '}';
+					   << ':' << +static_cast<std::uint8_t>(action.action)
+					   << ':' << action.target_street_contribution
+					   << ':' << action.action_menu_id << '}';
 			}
 			if (state.legal_actions.size() > 8U)
 				output << ",...";
 			output << ",edge={kind=" << public_parent_edge_kind_name(state.incoming_edge.kind)
-				<< ",action={" << +static_cast<std::uint8_t>(state.incoming_edge.action.action)
-				<< ':' << state.incoming_edge.action.target_street_contribution
-				<< ':' << state.incoming_edge.action.action_menu_id << "}"
-				<< ",dealt_card=" << +state.incoming_edge.dealt_card
-				<< ",cards=";
+				   << ",action={" << +static_cast<std::uint8_t>(state.incoming_edge.action.action)
+				   << ':' << state.incoming_edge.action.target_street_contribution
+				   << ':' << state.incoming_edge.action.action_menu_id << "}"
+				   << ",dealt_card=" << +state.incoming_edge.dealt_card
+				   << ",cards=";
 			append_bounded_values(output, state.incoming_edge.dealt_cards);
 			output << ",transition_board=";
 			append_bounded_values(output, state.incoming_edge.transition_board);
@@ -370,7 +372,7 @@ namespace texas::solver::multiway
 					}
 					const auto next_street = static_cast<Street>(static_cast<std::uint8_t>(parent.betting.street) + 1U);
 					const auto expected_betting = parent_state->begin_next_street(
-						 next_street, root.next_street_first_seat);
+						next_street, root.next_street_first_seat);
 					if (!same_fixed_betting_snapshot(expected_betting, child.betting))
 					{
 						throw std::invalid_argument("multiway child street transition does not match root seat semantics");
@@ -951,8 +953,8 @@ namespace texas::solver::multiway
 		if (shapes.size() != new_row_flags.size())
 			throw std::invalid_argument("multiway sparse row batch flags do not match shapes");
 		if (!std::is_sorted(shapes.begin(), shapes.end(), [](const auto& left, const auto& right) {
-			return left.infoset < right.infoset;
-		}))
+				return left.infoset < right.infoset;
+			}))
 			throw std::invalid_argument("multiway sparse row batch shapes must be sorted");
 		for (std::size_t index = 1U; index < shapes.size(); ++index)
 			if (shapes[index - 1U].infoset == shapes[index].infoset)
@@ -1197,8 +1199,8 @@ namespace texas::solver::multiway
 		if (parent_indexes != nullptr && parent_indexes->size() != public_states.size())
 			throw std::invalid_argument("multiway prepared parent indexes do not match public states");
 		if (!std::is_sorted(public_states.begin(), public_states.end(), [](const auto& left, const auto& right) {
-			return left.id < right.id;
-		}))
+				return left.id < right.id;
+			}))
 			throw std::invalid_argument("multiway prepared public states must be sorted by id");
 		for (std::size_t index = 1U; index < public_states.size(); ++index)
 		{
@@ -1206,8 +1208,8 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("multiway prepared public states must be unique");
 		}
 		if (!std::is_sorted(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
-			return left.infoset < right.infoset;
-		}))
+				return left.infoset < right.infoset;
+			}))
 			throw std::invalid_argument("multiway prepared rows must be sorted by infoset");
 		for (std::size_t index = 1U; index < rows.size(); ++index)
 		{
@@ -1289,12 +1291,7 @@ namespace texas::solver::multiway
 				if (existing == nullptr)
 					throw std::logic_error("multiway public state classification lost its catalog node");
 				admission_state_fixed_states_[state_index] = make_multiway_fixed_state(state.betting);
-				record_state_metadata(state_index, PublicStateValidationMetadata{
-					 state.legal_actions.empty() ? 0U : state.legal_actions.front().action_menu_id,
-					 static_cast<std::uint8_t>(state.legal_actions.size()),
-					 static_cast<std::uint8_t>(state.betting.street),
-					 state.betting.current_player,
-					 admission_state_fixed_states_[state_index].next_node_kind() });
+				record_state_metadata(state_index, PublicStateValidationMetadata{ state.legal_actions.empty() ? 0U : state.legal_actions.front().action_menu_id, static_cast<std::uint8_t>(state.legal_actions.size()), static_cast<std::uint8_t>(state.betting.street), state.betting.current_player, admission_state_fixed_states_[state_index].next_node_kind() });
 				admission_processed_states_[state_index] = 1U;
 				continue;
 			}
@@ -1314,8 +1311,7 @@ namespace texas::solver::multiway
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - validation_started)
 						.count());
-			if (public_catalog_.size() >= request_.limits().max_public_states ||
-				new_state_count >= request_.limits().max_public_states - public_catalog_.size())
+			if (public_catalog_.size() >= request_.limits().max_public_states || new_state_count >= request_.limits().max_public_states - public_catalog_.size())
 				throw std::length_error("multiway public-state admission exceeds configured capacity");
 			if (state.parent_id.value != 0U)
 			{
@@ -1604,8 +1600,7 @@ namespace texas::solver::multiway
 		const MultiwayPublicStateDescriptor& left,
 		const MultiwayPublicStateDescriptor& right) noexcept
 	{
-		return same_public_state_descriptor(left, right) ||
-			(same_public_state_payload(left, right) && equivalent_chance_transition_edge(left, right));
+		return same_public_state_descriptor(left, right) || (same_public_state_payload(left, right) && equivalent_chance_transition_edge(left, right));
 	}
 
 	void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape)

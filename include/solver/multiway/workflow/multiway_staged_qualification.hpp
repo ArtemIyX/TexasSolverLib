@@ -25,14 +25,14 @@ namespace texas::solver::multiway
 	};
 
 	[[nodiscard]] constexpr std::array<MultiwayQualificationStageSpec, 4U>
-		multiway_default_qualification_stages() noexcept
+	multiway_default_qualification_stages() noexcept
 	{
-		return {{
+		return { {
 			{ MultiwayQualificationStageId::FiftyThousand, 50'000U, false },
 			{ MultiwayQualificationStageId::FiveHundredThousand, 500'000U, false },
 			{ MultiwayQualificationStageId::FiveMillion, 5'000'000U, false },
 			{ MultiwayQualificationStageId::FiftyMillion, 50'000'000U, true },
-		}};
+		} };
 	}
 
 	struct MultiwayStagedQualificationPlan

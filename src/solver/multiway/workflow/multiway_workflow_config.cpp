@@ -79,25 +79,29 @@ namespace texas::solver::multiway
 	std::uint64_t MultiwayWorkflowConfig::resolved_regret_delta_capacity() const noexcept
 	{
 		return (explicit_stream_capacity_mask & kRegretCapacity) != 0U || max_regret_delta_entries_per_worker != 0U
-			? max_regret_delta_entries_per_worker : worker_delta_capacity;
+			? max_regret_delta_entries_per_worker
+			: worker_delta_capacity;
 	}
 
 	std::uint64_t MultiwayWorkflowConfig::resolved_continuation_delta_capacity() const noexcept
 	{
 		return (explicit_stream_capacity_mask & kContinuationCapacity) != 0U || max_continuation_delta_entries_per_worker != 0U
-			? max_continuation_delta_entries_per_worker : worker_delta_capacity;
+			? max_continuation_delta_entries_per_worker
+			: worker_delta_capacity;
 	}
 
 	std::uint64_t MultiwayWorkflowConfig::resolved_discovery_public_state_capacity() const noexcept
 	{
 		return (explicit_stream_capacity_mask & kDiscoveryPublicCapacity) != 0U || max_discovery_public_states_per_worker != 0U
-			? max_discovery_public_states_per_worker : discovery_capacity;
+			? max_discovery_public_states_per_worker
+			: discovery_capacity;
 	}
 
 	std::uint64_t MultiwayWorkflowConfig::resolved_discovery_row_capacity() const noexcept
 	{
 		return (explicit_stream_capacity_mask & kDiscoveryRowsCapacity) != 0U || max_discovery_rows_per_worker != 0U
-			? max_discovery_rows_per_worker : discovery_capacity;
+			? max_discovery_rows_per_worker
+			: discovery_capacity;
 	}
 
 	MultiwayTrainingWorkerResolution resolve_multiway_training_workers(
@@ -360,12 +364,18 @@ namespace texas::solver::multiway
 		line("process_memory_limit_bytes", unresolved(config.process_memory_limit_bytes));
 		line("process_working_set_limit_bytes", config.process_working_set_limit_bytes);
 		line("process_working_set_resident_allowance_bytes", config.process_working_set_resident_allowance_bytes);
-		if (!config.training_input_path.empty()) line("input_path", config.training_input_path.string());
-		if (!config.training_output_path.empty()) line("output_path", config.training_output_path.string());
-		if (!config.training_report_path.empty()) line("report_path", config.training_report_path.string());
-		if (!config.training_checkpoint_dir.empty()) line("checkpoint_dir", config.training_checkpoint_dir.string());
-		if (config.training_batches != 0U) line("batches", config.training_batches);
-		if (!config.training_log_path.empty()) line("log_path", config.training_log_path.string());
+		if (!config.training_input_path.empty())
+			line("input_path", config.training_input_path.string());
+		if (!config.training_output_path.empty())
+			line("output_path", config.training_output_path.string());
+		if (!config.training_report_path.empty())
+			line("report_path", config.training_report_path.string());
+		if (!config.training_checkpoint_dir.empty())
+			line("checkpoint_dir", config.training_checkpoint_dir.string());
+		if (config.training_batches != 0U)
+			line("batches", config.training_batches);
+		if (!config.training_log_path.empty())
+			line("log_path", config.training_log_path.string());
 		return output.str();
 	}
 

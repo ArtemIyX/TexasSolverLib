@@ -80,7 +80,8 @@ namespace
 		return MultiwayStagedQualificationRunner(
 			plan, preflight,
 			{ &fake, &FakeQualification::progress, &FakeQualification::run_one_batch,
-				&FakeQualification::observe, &fake }).run();
+				&FakeQualification::observe, &fake })
+			.run();
 	}
 
 } // namespace

@@ -884,7 +884,8 @@ TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_kno
 	const std::vector<std::size_t> order = { 0U };
 	const texas::MultiwaySparseRowShape child_row{
 		{ child.id, child.betting.current_player }, 1U,
-		static_cast<std::uint8_t>(child.legal_actions.size()) };
+		static_cast<std::uint8_t>(child.legal_actions.size())
+	};
 	const std::vector<texas::MultiwaySparseRowShape> rows = { child_row };
 	texas::MultiwayAdmissionDiagnostics diagnostics;
 	coordinator.set_admission_diagnostics(&diagnostics);
@@ -901,8 +902,7 @@ TEST_CASE(multiway_solver_prepared_admission_uses_one_lock_and_filters_epoch_kno
 	EXPECT_EQ(diagnostics.parent_transition_street_edges, 0U);
 	EXPECT_EQ(diagnostics.parent_transition_action_history_prefix_elements, root_public_state().history.size());
 	EXPECT_EQ(diagnostics.parent_transition_action_menu_probes, 1U);
-	EXPECT_TRUE(diagnostics.parent_transition_validation_nanoseconds >=
-		diagnostics.parent_transition_fixed_state_nanoseconds + diagnostics.parent_transition_action_edge_nanoseconds);
+	EXPECT_TRUE(diagnostics.parent_transition_validation_nanoseconds >= diagnostics.parent_transition_fixed_state_nanoseconds + diagnostics.parent_transition_action_edge_nanoseconds);
 	EXPECT_TRUE(diagnostics.catalog_menu_index_probes + diagnostics.catalog_menu_equality_checks >= diagnostics.catalog_existing_menu_hits);
 	EXPECT_TRUE(diagnostics.catalog_menu_lookup_nanoseconds >= diagnostics.catalog_menu_index_lookup_nanoseconds + diagnostics.catalog_menu_equality_nanoseconds);
 	EXPECT_TRUE(diagnostics.catalog_append_nanoseconds >= diagnostics.catalog_node_pack_nanoseconds);
@@ -1087,7 +1087,8 @@ TEST_CASE(multiway_solver_prepared_admission_rejects_capacity_before_mutation)
 
 	const auto child_row = texas::MultiwaySparseRowShape{
 		{ first_child.id, first_child.betting.current_player }, 1U,
-		static_cast<std::uint8_t>(first_child.legal_actions.size()) };
+		static_cast<std::uint8_t>(first_child.legal_actions.size())
+	};
 	std::vector<texas::MultiwaySparseRowShape> rows = { root_row(), child_row };
 	std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) { return left.infoset < right.infoset; });
 	EXPECT_THROW(coordinator.admit_prepared_batch({ first_child }, { 0U }, rows), std::length_error);
@@ -1471,7 +1472,8 @@ TEST_CASE(multiway_solver_discovery_merge_diagnostics_commit_only_after_both_mer
 	diagnostics.discovery_single_stream_batches = 77U;
 
 	EXPECT_THROW(texas::solver::multiway::detail::merge_multiway_discovery_streams(
-		streams, public_states, rows, cursors, &diagnostics), std::invalid_argument);
+					 streams, public_states, rows, cursors, &diagnostics),
+		std::invalid_argument);
 	EXPECT_EQ(diagnostics.discovery_public_state_merge_nanoseconds, 77U);
 	EXPECT_EQ(diagnostics.discovery_row_merge_nanoseconds, 77U);
 	EXPECT_EQ(diagnostics.discovery_public_state_source_elements, 77U);

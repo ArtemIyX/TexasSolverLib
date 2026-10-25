@@ -26,7 +26,6 @@ namespace texas::solver::multiway
 	struct MultiwayCoordinatorMemorySnapshot;
 	struct MultiwayRootBatchMemorySnapshot;
 
-
 	class MultiwayTerminalAdapter;
 	struct MultiwayAdmissionDiagnostics;
 

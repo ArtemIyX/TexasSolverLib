@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 CPP_SUFFIXES = {".h", ".hpp", ".cpp"}
+MAX_FORMAT_PASSES = 128
 SKIPPED_DIRECTORIES = {
     ".git",
     ".idea",
@@ -57,7 +58,7 @@ def cpp_files(directory: Path, *, skip_external: bool) -> list[Path]:
     return sorted(files)
 
 
-def format_files(files: list[Path]) -> int:
+def format_files(files: list[Path], *, check: bool) -> int:
     if not files:
         print("No C++ files found to format.")
         return 0
@@ -69,22 +70,47 @@ def format_files(files: list[Path]) -> int:
 
     failures = 0
     for path in files:
-        result = subprocess.run(
-            [formatter, "-i", str(path)],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-        if result.returncode != 0:
-            failures += 1
-            detail = result.stderr.strip() or f"exit code {result.returncode}"
-            print(f"Failed: {path}: {detail}", file=sys.stderr)
-        else:
-            print(f"Formatted: {path}")
+        if check:
+            result = subprocess.run(
+                [formatter, "--dry-run", "--Werror", str(path)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if result.returncode != 0:
+                failures += 1
+                detail = result.stderr.strip() or "formatting differs"
+                print(f"Needs formatting: {path}: {detail}", file=sys.stderr)
+            else:
+                print(f"Checked: {path}")
+            continue
 
-    print(f"Formatted {len(files) - failures} of {len(files)} file(s).")
+        for _ in range(MAX_FORMAT_PASSES):
+            before = path.read_bytes()
+            result = subprocess.run(
+                [formatter, "-i", str(path)],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            )
+            if result.returncode != 0:
+                failures += 1
+                detail = result.stderr.strip() or f"exit code {result.returncode}"
+                print(f"Failed: {path}: {detail}", file=sys.stderr)
+                break
+            if path.read_bytes() == before:
+                print(f"Formatted: {path}")
+                break
+        else:
+            failures += 1
+            print(f"Failed: {path}: did not stabilize after {MAX_FORMAT_PASSES} passes", file=sys.stderr)
+
+    action = "Checked" if check else "Formatted"
+    print(f"{action} {len(files) - failures} of {len(files)} file(s).")
     return 1 if failures else 0
 
 
@@ -94,11 +120,17 @@ def main() -> int:
 
     file_mode = modes.add_parser("file", help="format one C++ file")
     file_mode.add_argument("path", type=Path, help="path to a .h, .hpp, or .cpp file")
+    file_mode.add_argument("--check", action="store_true",
+                           help="fail if clang-format would modify a file")
 
     folder_mode = modes.add_parser("folder", help="format C++ files under a folder")
     folder_mode.add_argument("path", type=Path, help="folder to scan recursively")
+    folder_mode.add_argument("--check", action="store_true",
+                             help="fail if clang-format would modify a file")
 
-    modes.add_parser("project", help="format C++ files in this repository")
+    project_mode = modes.add_parser("project", help="format C++ files in this repository")
+    project_mode.add_argument("--check", action="store_true",
+                              help="fail if clang-format would modify a file")
     args = parser.parse_args()
 
     if args.mode == "file":
@@ -107,16 +139,16 @@ def main() -> int:
             parser.error(f"file does not exist: {path}")
         if path.suffix.casefold() not in CPP_SUFFIXES:
             parser.error(f"unsupported file type: {path.suffix or '(no extension)'}")
-        return format_files([path])
+        return format_files([path], check=args.check)
 
     if args.mode == "folder":
         directory = args.path.resolve()
         if not directory.is_dir():
             parser.error(f"folder does not exist: {directory}")
-        return format_files(cpp_files(directory, skip_external=False))
+        return format_files(cpp_files(directory, skip_external=False), check=args.check)
 
     project_root = Path(__file__).resolve().parents[2]
-    return format_files(cpp_files(project_root, skip_external=True))
+    return format_files(cpp_files(project_root, skip_external=True), check=args.check)
 
 
 if __name__ == "__main__":

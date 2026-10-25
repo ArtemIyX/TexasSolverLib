@@ -73,8 +73,7 @@ namespace texas::solver::multiway
 
 		MultiwayFullBlueprintRowView() = default;
 		explicit MultiwayFullBlueprintRowView(const MultiwayBlueprintRow& row) noexcept
-			: infoset(row.infoset), bucket(row.bucket), action_menu_id(row.action_menu_id),
-			  actions(row.actions.data()), action_count(row.actions.size())
+			: infoset(row.infoset), bucket(row.bucket), action_menu_id(row.action_menu_id), actions(row.actions.data()), action_count(row.actions.size())
 		{
 		}
 	};

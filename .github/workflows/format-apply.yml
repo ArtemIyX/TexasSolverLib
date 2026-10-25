@@ -1,0 +1,35 @@
+name: Apply C++ Format
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        ref: ${{ github.ref }}
+    - name: Install clang-format 23
+      run: |
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key |
+          sudo tee /etc/apt/keyrings/llvm-snapshot.gpg.key > /dev/null
+        echo "deb [signed-by=/etc/apt/keyrings/llvm-snapshot.gpg.key] https://apt.llvm.org/noble/ llvm-toolchain-noble-23 main" |
+          sudo tee /etc/apt/sources.list.d/llvm-23.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install --yes clang-format-23
+        sudo ln -sf /usr/bin/clang-format-23 /usr/local/bin/clang-format
+        clang-format --version
+    - run: python3 scripts/python/format_cpp.py project
+    - name: Commit formatting changes
+      run: |
+        git diff --quiet && exit 0
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -- '*.h' '*.hpp' '*.cpp'
+        git commit -m "ci: apply clang-format"
+        git push

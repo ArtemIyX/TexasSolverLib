@@ -37,7 +37,7 @@ namespace texas::solver::multiway
 		private:
 			bool& active_;
 		};
-	}
+	} // namespace
 
 	void MultiwayAllocationProbe::record(std::size_t bytes) noexcept
 	{

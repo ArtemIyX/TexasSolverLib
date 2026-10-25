@@ -357,8 +357,7 @@ TEST_CASE(multiway_export_memory_gates_honor_process_and_system_boundaries)
 	const auto system_rejected = evaluate_multiway_export_system_gate(plan, scratch, system, system_config);
 	EXPECT_EQ(system_rejected.status, MultiwayExportGateStatus::Rejected);
 	EXPECT_EQ(system_rejected.rejection_reason, MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient);
-	EXPECT_TRUE(std::string(multiway_export_process_rejection_reason_name(process_rejected.rejection_reason)) !=
-		std::string(multiway_export_system_rejection_reason_name(system_rejected.rejection_reason)));
+	EXPECT_TRUE(std::string(multiway_export_process_rejection_reason_name(process_rejected.rejection_reason)) != std::string(multiway_export_system_rejection_reason_name(system_rejected.rejection_reason)));
 }
 
 TEST_CASE(multiway_system_memory_guard_enforces_total_memory_minus_reserve)
@@ -452,17 +451,9 @@ TEST_CASE(multiway_memory_preflight_uses_each_explicit_worker_stream_capacity)
 		explicit_limits, texas::MultiwayMemoryBudget{ 1U, 10'000'000U, 9'000'000U });
 	const auto workers = static_cast<std::uint64_t>(explicit_limits.worker_count);
 	const auto expected_worker_bytes =
-		workers * 2U * sizeof(texas::MultiwayWorkerDelta) +
-		workers * 3U * sizeof(texas::MultiwayContinuationDelta) +
-		workers * (sizeof(texas::MultiwayPrivateWorkerScratch) +
-			sizeof(texas::MultiwayWorkerDeltaStream) +
-			sizeof(texas::MultiwayContinuationDeltaStream) + sizeof(std::thread));
-	const auto expected_discovery_bytes = workers * (
-		5U * sizeof(texas::MultiwayPublicStateDescriptor) +
-		7U * sizeof(texas::MultiwaySparseRowShape));
-	const auto expected_merge_bytes = workers * (
-		2U * (sizeof(texas::MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*)) +
-		3U * sizeof(texas::MultiwayContinuationDelta));
+		workers * 2U * sizeof(texas::MultiwayWorkerDelta) + workers * 3U * sizeof(texas::MultiwayContinuationDelta) + workers * (sizeof(texas::MultiwayPrivateWorkerScratch) + sizeof(texas::MultiwayWorkerDeltaStream) + sizeof(texas::MultiwayContinuationDeltaStream) + sizeof(std::thread));
+	const auto expected_discovery_bytes = workers * (5U * sizeof(texas::MultiwayPublicStateDescriptor) + 7U * sizeof(texas::MultiwaySparseRowShape));
+	const auto expected_merge_bytes = workers * (2U * (sizeof(texas::MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*)) + 3U * sizeof(texas::MultiwayContinuationDelta));
 	EXPECT_EQ(result.estimate.worker_delta_bytes, expected_worker_bytes);
 	EXPECT_EQ(result.estimate.discovery_stream_bytes, expected_discovery_bytes);
 	EXPECT_EQ(result.estimate.merge_scratch_bytes, expected_merge_bytes);
@@ -653,10 +644,10 @@ TEST_CASE(multiway_memory_estimate_matches_task_d_f1_a1_and_a3_baselines)
 		std::uint64_t working_set;
 		std::uint64_t private_committed;
 	};
-	const std::array<Fixture, 2> fixtures = {{
+	const std::array<Fixture, 2> fixtures = { {
 		{ 1U, 16'575'430'656ULL, 3'441'930'240ULL },
 		{ 4U, 16'586'776'576ULL, 9'948'704'768ULL },
-	}};
+	} };
 	for (const auto& fixture : fixtures)
 	{
 		auto f1_limits = limits();

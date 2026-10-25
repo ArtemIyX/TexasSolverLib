@@ -396,7 +396,7 @@ namespace
 						  << "  --repeats N\n"
 						  << "  --seed N\n"
 						  << "  --scheduler fixed|dynamic\n"
-				  << "  --dynamic-chunk-sizes 1,2,4,8,16\n"
+						  << "  --dynamic-chunk-sizes 1,2,4,8,16\n"
 						  << "  --pin-workers true|false\n";
 				std::exit(EXIT_SUCCESS);
 			}
@@ -522,12 +522,12 @@ namespace
 			std::cout << config.dynamic_chunk_sizes[index];
 		}
 		std::cout
-				  << " pin_workers=" << (config.pin_workers ? "true" : "false")
-				  << " checkpoint_output=disabled blueprint_output=disabled"
-				  << " warmup_batches=" << config.warmup_batches
-				  << " timed_batches=" << config.timed_batches
-				  << " repeats=" << config.repeats
-				  << " seed=" << config.seed << '\n';
+			<< " pin_workers=" << (config.pin_workers ? "true" : "false")
+			<< " checkpoint_output=disabled blueprint_output=disabled"
+			<< " warmup_batches=" << config.warmup_batches
+			<< " timed_batches=" << config.timed_batches
+			<< " repeats=" << config.repeats
+			<< " seed=" << config.seed << '\n';
 		const auto chunk_sizes = config.scheduler_mode == texas::MultiwaySchedulerMode::Dynamic
 			? config.dynamic_chunk_sizes
 			: std::vector<std::uint32_t>{ texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE };

@@ -503,8 +503,7 @@ namespace texas::solver::multiway
 		MultiwayMemoryComponent checkpoint_buffers,
 		MultiwayMemoryComponent export_buffers)
 	{
-		if (status_.process_memory_snapshots.enabled &&
-			!status_.process_memory_snapshots.record_current(phase))
+		if (status_.process_memory_snapshots.enabled && !status_.process_memory_snapshots.record_current(phase))
 			throw std::logic_error("multiway training process memory snapshot phase order is invalid");
 		if (status_.memory_subsystem_snapshots.enabled)
 		{
@@ -521,8 +520,7 @@ namespace texas::solver::multiway
 		MultiwayProcessMemorySnapshot snapshot,
 		MultiwayMemoryComponent export_buffers) const
 	{
-		if (status_.process_memory_snapshots.enabled &&
-			!status_.process_memory_snapshots.record(phase, snapshot))
+		if (status_.process_memory_snapshots.enabled && !status_.process_memory_snapshots.record(phase, snapshot))
 			throw std::logic_error("multiway training process memory snapshot phase order is invalid");
 		if (status_.memory_subsystem_snapshots.enabled)
 		{
@@ -558,13 +556,7 @@ namespace texas::solver::multiway
 			{
 				status_.failed = true;
 				throw std::runtime_error(
-					std::string("multiway blueprint training system memory abort: abort_phase=runtime; rejected_category=") +
-					system_memory_guard.rejected_category + "; message=" + system_memory_guard.message +
-					"; used_physical_bytes=" + std::to_string(system_memory_guard.used_physical_bytes) +
-					"; maximum_used_physical_bytes=" + std::to_string(system_memory_guard.maximum_used_physical_bytes) +
-					"; total_physical_bytes=" + std::to_string(system_memory_guard.total_physical_bytes) +
-					"; available_physical_bytes=" + std::to_string(system_memory_guard.available_physical_bytes) +
-					"; minimum_available_physical_bytes=" + std::to_string(system_memory_guard.minimum_available_physical_bytes));
+					std::string("multiway blueprint training system memory abort: abort_phase=runtime; rejected_category=") + system_memory_guard.rejected_category + "; message=" + system_memory_guard.message + "; used_physical_bytes=" + std::to_string(system_memory_guard.used_physical_bytes) + "; maximum_used_physical_bytes=" + std::to_string(system_memory_guard.maximum_used_physical_bytes) + "; total_physical_bytes=" + std::to_string(system_memory_guard.total_physical_bytes) + "; available_physical_bytes=" + std::to_string(system_memory_guard.available_physical_bytes) + "; minimum_available_physical_bytes=" + std::to_string(system_memory_guard.minimum_available_physical_bytes));
 			}
 			const auto pre_batch_memory = working_set_monitor_.observer == nullptr
 				? capture_multiway_process_memory_snapshot()
@@ -575,9 +567,7 @@ namespace texas::solver::multiway
 			{
 				status_.working_set_gate = pre_batch_gate;
 				throw std::runtime_error(
-					std::string("multiway blueprint training working-set abort: abort_phase=runtime; rejected_category=") +
-					pre_batch_gate.rejected_category + "; admission_stage=" +
-					std::to_string(static_cast<unsigned>(pre_batch_gate.admission_stage)));
+					std::string("multiway blueprint training working-set abort: abort_phase=runtime; rejected_category=") + pre_batch_gate.rejected_category + "; admission_stage=" + std::to_string(static_cast<unsigned>(pre_batch_gate.admission_stage)));
 			}
 			const auto one_based_batch = status_.batches + 1U;
 			if (status_.late_window_start_batch != 0U && one_based_batch == status_.late_window_start_batch && late_window_baseline_.empty())
@@ -801,9 +791,7 @@ namespace texas::solver::multiway
 				if (runtime_gate.blocked())
 				{
 					throw std::runtime_error(
-						std::string("multiway blueprint training working-set abort: abort_phase=runtime; rejected_category=") +
-						runtime_gate.rejected_category + "; admission_stage=" +
-						std::to_string(static_cast<unsigned>(runtime_gate.admission_stage)));
+						std::string("multiway blueprint training working-set abort: abort_phase=runtime; rejected_category=") + runtime_gate.rejected_category + "; admission_stage=" + std::to_string(static_cast<unsigned>(runtime_gate.admission_stage)));
 				}
 				status_.current_process_rss_bytes = process_memory.current_working_set_available
 					? process_memory.current_working_set_bytes
@@ -817,34 +805,28 @@ namespace texas::solver::multiway
 					: 0U;
 				status_.peak_working_set_bytes = std::max(status_.peak_working_set_bytes,
 					process_memory.peak_working_set_available ? process_memory.peak_working_set_bytes : 0U);
-				if (status_.process_memory_snapshots.enabled &&
-					status_.process_memory_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterColdBatch))
+				if (status_.process_memory_snapshots.enabled && status_.process_memory_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterColdBatch))
 				{
 					if (!status_.process_memory_snapshots.record(MultiwayMemoryPhase::AfterColdBatch, process_memory))
 						throw std::logic_error("multiway training memory snapshot phase order is invalid");
 				}
-				if (status_.memory_subsystem_snapshots.enabled &&
-					status_.memory_subsystem_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterColdBatch))
+				if (status_.memory_subsystem_snapshots.enabled && status_.memory_subsystem_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterColdBatch))
 				{
 					if (!status_.memory_subsystem_snapshots.record(
-						MultiwayMemoryPhase::AfterColdBatch,
-						capture_multiway_memory_subsystems(buckets_, coordinator_, batch_runner_, continuation_selector_)))
+							MultiwayMemoryPhase::AfterColdBatch,
+							capture_multiway_memory_subsystems(buckets_, coordinator_, batch_runner_, continuation_selector_)))
 						throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 				}
-				if (status_.process_memory_snapshots.enabled &&
-					status_.process_memory_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterSteadyBatch) &&
-					coordinator_->limits().max_batches != 0U && status_.batches >= coordinator_->limits().max_batches)
+				if (status_.process_memory_snapshots.enabled && status_.process_memory_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterSteadyBatch) && coordinator_->limits().max_batches != 0U && status_.batches >= coordinator_->limits().max_batches)
 				{
 					if (!status_.process_memory_snapshots.record(MultiwayMemoryPhase::AfterSteadyBatch, process_memory))
 						throw std::logic_error("multiway training memory snapshot phase order is invalid");
 				}
-				if (status_.memory_subsystem_snapshots.enabled &&
-					status_.memory_subsystem_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterSteadyBatch) &&
-					coordinator_->limits().max_batches != 0U && status_.batches >= coordinator_->limits().max_batches)
+				if (status_.memory_subsystem_snapshots.enabled && status_.memory_subsystem_snapshots.count == static_cast<std::uint8_t>(MultiwayMemoryPhase::AfterSteadyBatch) && coordinator_->limits().max_batches != 0U && status_.batches >= coordinator_->limits().max_batches)
 				{
 					if (!status_.memory_subsystem_snapshots.record(
-						MultiwayMemoryPhase::AfterSteadyBatch,
-						capture_multiway_memory_subsystems(buckets_, coordinator_, batch_runner_, continuation_selector_)))
+							MultiwayMemoryPhase::AfterSteadyBatch,
+							capture_multiway_memory_subsystems(buckets_, coordinator_, batch_runner_, continuation_selector_)))
 						throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
 				}
 			}
@@ -1026,7 +1008,8 @@ namespace texas::solver::multiway
 			plan.action_count,
 			plan.serialized_bytes,
 			plan.order_index_bytes,
-			plan.compact_direct_order };
+			plan.compact_direct_order
+		};
 		auto export_gate = working_set_monitor_.export_gate;
 		if (export_gate.process.mapped_residency_allowance_bytes == 0U)
 			export_gate.process.mapped_residency_allowance_bytes = status_.memory_ledger.mapped_resident_allowance_bytes;
@@ -1046,12 +1029,7 @@ namespace texas::solver::multiway
 			status_.failed = true;
 			status_.export_telemetry = telemetry;
 			throw std::runtime_error(
-				std::string("multiway blueprint export system memory abort: rejected_category=") +
-				status_.system_memory_guard.rejected_category + "; message=" +
-				status_.system_memory_guard.message + "; used_physical_bytes=" +
-				std::to_string(status_.system_memory_guard.used_physical_bytes) +
-				"; maximum_used_physical_bytes=" +
-				std::to_string(status_.system_memory_guard.maximum_used_physical_bytes));
+				std::string("multiway blueprint export system memory abort: rejected_category=") + status_.system_memory_guard.rejected_category + "; message=" + status_.system_memory_guard.message + "; used_physical_bytes=" + std::to_string(status_.system_memory_guard.used_physical_bytes) + "; maximum_used_physical_bytes=" + std::to_string(status_.system_memory_guard.maximum_used_physical_bytes));
 		}
 		const auto before_export = working_set_monitor_.export_process_observer == nullptr
 			? capture_multiway_process_memory_snapshot()
@@ -1125,7 +1103,8 @@ namespace texas::solver::multiway
 		telemetry.payload_hash = stream_result.payload_hash;
 		telemetry.duration_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - export_started).count());
+				std::chrono::steady_clock::now() - export_started)
+				.count());
 		telemetry.publication_mode = stream_result.publication_mode;
 		telemetry.succeeded = true;
 		status_.export_telemetry = telemetry;
@@ -1318,7 +1297,7 @@ namespace texas::solver::multiway
 				config_.limits.regret_delta_capacity(),
 				config_.limits.continuation_delta_capacity(),
 				config_.limits.discovery_public_state_capacity(),
-				config_.limits.discovery_row_capacity()},
+				config_.limits.discovery_row_capacity() },
 			MultiwaySearchProfileMode::Disabled,
 			config_.pin_workers,
 			config_.immutable_batch_epochs,
