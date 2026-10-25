@@ -1,5 +1,44 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.08 - Policy-content hash
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commits:** `d60654c PB-9 Add policy-content hash: Preserve full payload compatibility`, `4583804 PB-9 Add policy-content report field: Expose canonical hash`
+
+- Added a versioned canonical policy-content hash over row identity, action descriptors, and quantized probabilities.
+- Preserved the existing full payload hash, worker-sensitive execution identity, schema-2 artifact bytes, and checkpoint compatibility rules.
+- Propagated and validated both hashes in full-blueprint export telemetry, training reports, and lookup qualification reports.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+- `docs/tasks/PB9_16_08_policy_content_hash.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused artifact, blueprint-training, qualification-report, and F1 acceptance tests passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed with the build-only `/FS` configuration.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed; all tests passed.
+- `git diff --check`: passed.
+- Independent C++ review: no actionable findings.
+
+### Limitations
+
+- No qualification matrices, benchmarks, or solver training were run.
+
 ## PB9.16.07 - Tournament delta merge
 
 **Status:** Complete
