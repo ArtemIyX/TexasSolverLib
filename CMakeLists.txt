@@ -7,6 +7,40 @@ include(CMakePackageConfigHelpers)
 include(CTest)
 find_package(Threads REQUIRED)
 
+find_package(Git QUIET)
+set(TEXASSOLVER_BINARY_SOURCE_COMMIT unknown)
+set(TEXASSOLVER_BINARY_SOURCE_DIRTY_STATE unknown)
+if (GIT_FOUND)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse HEAD
+        OUTPUT_VARIABLE TEXASSOLVER_BINARY_SOURCE_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_CURRENT_SOURCE_DIR}" status --porcelain --untracked-files=all
+        OUTPUT_VARIABLE _texassolver_git_status
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if (_texassolver_git_status STREQUAL "")
+        set(TEXASSOLVER_BINARY_SOURCE_DIRTY_STATE clean)
+    else()
+        set(TEXASSOLVER_BINARY_SOURCE_DIRTY_STATE dirty)
+    endif()
+endif()
+if (TEXASSOLVER_BINARY_SOURCE_COMMIT STREQUAL "")
+    set(TEXASSOLVER_BINARY_SOURCE_COMMIT unknown)
+endif()
+string(REGEX REPLACE "[^A-Za-z0-9_]" "_" TEXASSOLVER_BINARY_COMPILER_IDENTITY_TOKEN
+    "${CMAKE_CXX_COMPILER_ID}_${CMAKE_CXX_COMPILER_VERSION}")
+if (CMAKE_CONFIGURATION_TYPES)
+    set(TEXASSOLVER_BINARY_BUILD_CONFIGURATION_TOKEN "$<CONFIG>")
+elseif (CMAKE_BUILD_TYPE)
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" TEXASSOLVER_BINARY_BUILD_CONFIGURATION_TOKEN
+        "${CMAKE_BUILD_TYPE}")
+else()
+    set(TEXASSOLVER_BINARY_BUILD_CONFIGURATION_TOKEN unknown)
+endif()
+
 option(TEXASSOLVER_BUILD_TESTS "Build TexasSolver tests" OFF)
 option(TEXASSOLVER_BUILD_HEAVY_TESTS "Register heavyweight CMake boundary tests" OFF)
 option(TEXASSOLVER_BUILD_EXAMPLES "Build TexasSolver examples" OFF)
@@ -83,6 +117,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_bucket_generation.hpp
     include/solver/multiway/workflow/multiway_workflow_config.hpp
     include/solver/multiway/workflow/multiway_evidence.hpp
+    include/solver/multiway/workflow/multiway_binary_provenance.hpp
     include/solver/multiway/workflow/multiway_artifact_preflight.hpp
     include/solver/multiway/workflow/multiway_checkpoint_equivalence.hpp
     include/solver/multiway/workflow/multiway_f1_acceptance.hpp
@@ -102,6 +137,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/continuation/multiway_leaf_evaluator.hpp
     include/solver/multiway/engine/multiway_memory.hpp
     include/solver/multiway/engine/multiway_allocation_probe.hpp
+    include/solver/multiway/engine/multiway_worker_topology.hpp
     include/solver/multiway/abstraction/multiway_model_identity.hpp
     include/solver/multiway/abstraction/multiway_public_builder.hpp
     include/solver/multiway/session/multiway_range_belief.hpp
@@ -223,6 +259,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/abstraction/multiway_future_bucket.cpp
     src/solver/multiway/engine/multiway_memory.cpp
     src/solver/multiway/engine/multiway_allocation_probe.cpp
+    src/solver/multiway/engine/multiway_worker_topology.cpp
     src/solver/multiway/abstraction/multiway_model_identity.cpp
     src/solver/multiway/abstraction/multiway_public_builder.cpp
     src/solver/multiway/session/multiway_range_belief.cpp
@@ -330,8 +367,13 @@ function(texassolver_configure_core_target target)
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
     target_compile_features(${target} PUBLIC cxx_std_17)
+    target_compile_definitions(${target} PUBLIC
+        TEXASSOLVER_BINARY_SOURCE_COMMIT_TOKEN=${TEXASSOLVER_BINARY_SOURCE_COMMIT}
+        TEXASSOLVER_BINARY_SOURCE_DIRTY_STATE_TOKEN=${TEXASSOLVER_BINARY_SOURCE_DIRTY_STATE}
+        TEXASSOLVER_BINARY_COMPILER_IDENTITY_TOKEN=${TEXASSOLVER_BINARY_COMPILER_IDENTITY_TOKEN}
+        TEXASSOLVER_BINARY_BUILD_CONFIGURATION_TOKEN=${TEXASSOLVER_BINARY_BUILD_CONFIGURATION_TOKEN})
     if (MSVC)
-        target_compile_options(${target} PRIVATE /W4)
+        target_compile_options(${target} PRIVATE /W4 /FS)
     else()
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
     endif()

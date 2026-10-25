@@ -54,13 +54,31 @@ namespace
 		};
 		MultiwayEvidenceHeader header;
 		header.schema_version = schema_version;
-		header.producer.git_commit = environment("TEXASSOLVER_GIT_COMMIT");
-		header.producer.build_configuration = environment("TEXASSOLVER_BUILD_CONFIGURATION");
-		header.producer.compiler_identity = environment("TEXASSOLVER_COMPILER_IDENTITY");
+		const auto binary = multiway_binary_provenance();
+		header.producer.git_commit = std::string(binary.source_commit);
+		header.producer.binary_source_commit = std::string(binary.source_commit);
+		header.producer.binary_dirty_state = std::string(binary.dirty_state);
+		header.producer.build_configuration = std::string(binary.build_configuration);
+		header.producer.compiler_identity = std::string(binary.compiler_identity);
+		header.producer.run_checkout_commit = environment("TEXASSOLVER_RUN_CHECKOUT_COMMIT");
 		header.producer.model_identity = model_identity;
 		header.producer.workflow_config_fingerprint = workflow_fingerprint;
 		header.producer.artifact_schemas = { 4U, 2U, 1U };
 		return header;
+	}
+
+	int print_binary_provenance()
+	{
+		const auto provenance = texas::solver::multiway::multiway_binary_provenance();
+		std::cout << "{\"binary_source_commit\":\"" << provenance.source_commit
+				  << "\",\"binary_dirty_state\":\"" << provenance.dirty_state
+				  << "\",\"binary_compiler_identity\":\"" << provenance.compiler_identity
+				  << "\",\"binary_build_configuration\":\"" << provenance.build_configuration
+				  << "\",\"evidence_schema_version\":" << provenance.evidence_schema_version
+				  << ",\"training_report_schema_version\":" << provenance.training_report_schema_version
+				  << ",\"checkpoint_artifact_schema_version\":" << provenance.checkpoint_artifact_schema_version
+				  << "}\n";
+		return EXIT_SUCCESS;
 	}
 
 	Workflow workflow_from_name(std::string_view name)
@@ -99,7 +117,8 @@ namespace
 					  << "  --progress-speed <true|false>  Show interval and overall trajectories per second\n";
 			std::cout << "  --threads <1..16>      Training worker override\n"
 					  << "  --pin-workers <true|false>  Pin training workers to logical processors\n"
-					  << "  --scheduler <fixed|dynamic>  Training worker scheduler\n"
+					  << "  --scheduler <fixed|static-block|dynamic>  Training worker scheduler\n"
+					  << "  --dynamic-chunk-size <N>  Dynamic scheduler chunk size\n"
 					  << "  --authorize-50m       Explicitly authorize the 50M qualification stage\n";
 		}
 		else if (workflow == Workflow::Buckets)
@@ -580,10 +599,20 @@ namespace
 		bool progress_memory,
 		bool progress_speed,
 		texas::solver::multiway::MultiwaySchedulerMode scheduler_mode,
+		bool scheduler_specified,
+		std::uint32_t dynamic_chunk_size,
+		bool dynamic_chunk_size_specified,
 		bool authorize_50m_stage)
 	{
 		using namespace texas;
 		using namespace texas::solver::multiway;
+		const auto wrapper_started_at = std::chrono::steady_clock::now();
+		const auto wrapper_elapsed_nanoseconds = [&wrapper_started_at]() noexcept {
+			return static_cast<std::uint64_t>(
+				std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - wrapper_started_at)
+					.count());
+		};
 		MultiwayProcessMemorySnapshotCollection process_memory_snapshots;
 		if (!process_memory_snapshots.record_current(MultiwayMemoryPhase::ProcessStart))
 			throw std::logic_error("multiway process memory snapshot phase order is invalid");
@@ -594,6 +623,8 @@ namespace
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.train.run");
 		std::cout << "training starting: config=" << config_path.string() << std::endl;
 		const auto workflow = load_multiway_workflow_config(config_path);
+		const auto effective_scheduler_mode = scheduler_specified ? scheduler_mode : workflow.scheduler_mode;
+		const auto effective_dynamic_chunk_size = dynamic_chunk_size_specified ? dynamic_chunk_size : workflow.dynamic_chunk_size;
 		if (input_path.empty())
 			input_path = workflow.training_input_path;
 		if (output_path.empty())
@@ -630,7 +661,11 @@ namespace
 			log << line << '\n'
 				<< std::flush;
 		};
-		log_line("training configured: input=" + input_path.string() + " output=" + output_path.string() + " batches=" + std::to_string(batches) + " threads=" + std::to_string(worker_override) + " pin_workers=" + (pin_workers ? "true" : "false"));
+		const auto binary = multiway_binary_provenance();
+		const auto* run_checkout_commit = std::getenv("TEXASSOLVER_RUN_CHECKOUT_COMMIT");
+		log_line("binary provenance: source_commit=" + std::string(binary.source_commit) + " dirty_state=" + std::string(binary.dirty_state) + " compiler=" + std::string(binary.compiler_identity) + " build_configuration=" + std::string(binary.build_configuration));
+		log_line("run checkout identity: commit=" + std::string(run_checkout_commit == nullptr ? "unknown" : run_checkout_commit));
+		log_line("training configured: input=" + input_path.string() + " output=" + output_path.string() + " batches=" + std::to_string(batches) + " threads=" + std::to_string(worker_override) + " scheduler=" + std::string(multiway_scheduler_mode_name(effective_scheduler_mode)) + " dynamic_chunk_size=" + std::to_string(effective_dynamic_chunk_size) + " placement_policy=" + std::string(multiway_worker_placement_policy_name(workflow.placement_policy)) + " pin_workers=" + (pin_workers ? "true" : "false"));
 		log_line("training initialization: validating resolved capacities");
 		if (!workflow.capacities_resolved())
 		{
@@ -680,7 +715,9 @@ namespace
 		const auto workers = resolve_multiway_training_workers(
 			workflow.training_worker_count, worker_override, workflow.trajectories_per_batch);
 		config.requested_worker_count = workers.requested;
-		config.scheduler_mode = scheduler_mode;
+		config.scheduler_mode = effective_scheduler_mode;
+		config.dynamic_chunk_size = effective_dynamic_chunk_size;
+		config.placement.policy = workflow.placement_policy;
 		config.pin_workers = pin_workers;
 		config.limits.worker_count = workers.effective;
 		config.limits.trajectories_per_batch = static_cast<std::uint32_t>(workflow.trajectories_per_batch);
@@ -814,7 +851,7 @@ namespace
 				session.status(), session.status().merged_stream_fingerprint,
 				make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 					config.identity(), workflow.fingerprint()),
-				workflow.process_memory_limit_bytes);
+				workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 			failure_report.checkpoint_bytes = checkpoint_bytes;
 			failure_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
 			failure_report.checkpoint_telemetry = checkpoint_telemetry;
@@ -878,7 +915,7 @@ namespace
 			status, status.merged_stream_fingerprint,
 			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 				config.identity(), workflow.fingerprint()),
-			workflow.process_memory_limit_bytes);
+			workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 		training_report.checkpoint_telemetry = checkpoint_telemetry;
 		if (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U)
 		{
@@ -914,7 +951,7 @@ namespace
 			session.status(), status.merged_stream_fingerprint,
 			make_evidence_header(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION,
 				config.identity(), workflow.fingerprint()),
-			workflow.process_memory_limit_bytes);
+			workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 		training_report.checkpoint_bytes = checkpoint_bytes;
 		training_report.checkpoint_planned_bytes = last_checkpoint_write.plan.serialized_bytes;
 		training_report.checkpoint_scratch_bytes = last_checkpoint_write.peak_scratch_bytes;
@@ -1065,6 +1102,9 @@ namespace
 		bool pin_workers = false;
 		bool authorize_50m_stage = false;
 		auto scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
+		bool scheduler_specified = false;
+		std::uint32_t dynamic_chunk_size = texas::MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
+		bool dynamic_chunk_size_specified = false;
 		std::uint64_t benchmark_tables = 0U;
 		std::uint64_t benchmark_start = 0U;
 		std::string benchmark_mode = "build-only";
@@ -1090,7 +1130,7 @@ namespace
 				authorize_50m_stage = true;
 				continue;
 			}
-			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
+			if (argument == "--config" || argument == "--seed" || argument == "--batches" || argument == "--checkpoint-dir" || argument == "--resume" || argument == "--output" || argument == "--input" || argument == "--report" || argument == "--artifacts" || argument == "--duplicates" || argument == "--threads" || argument == "--pin-workers" || argument == "--scheduler" || argument == "--dynamic-chunk-size" || argument == "--benchmark-start" || argument == "--benchmark-tables" || argument == "--benchmark-mode" || argument == "--progress" || argument == "--progress-every" || argument == "--progress-memory" || argument == "--progress-speed" || argument == "--hash" || argument == "--bucket-report" || argument == "--training-report" || argument == "--equivalence-report" || argument == "--lookup-first" || argument == "--lookup-second" || argument == "--operator" || argument == "--start-utc" || argument == "--end-utc" || argument == "--command" || argument == "--machine-report" || argument == "--exit-code")
 			{
 				if (!consume_value(index, argc, argv, argument))
 				{
@@ -1140,10 +1180,21 @@ namespace
 					const std::string_view value(argv[index]);
 					if (value == "fixed")
 						scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Fixed;
+					else if (value == "static-block")
+						scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::StaticBlock;
 					else if (value == "dynamic")
 						scheduler_mode = texas::solver::multiway::MultiwaySchedulerMode::Dynamic;
 					else
-						throw std::invalid_argument("--scheduler must be fixed or dynamic");
+						throw std::invalid_argument("--scheduler must be fixed, static-block, or dynamic");
+					scheduler_specified = true;
+				}
+				if (argument == "--dynamic-chunk-size")
+				{
+					const auto parsed = std::stoull(argv[index]);
+					if (parsed == 0U || parsed > std::numeric_limits<std::uint32_t>::max())
+						throw std::invalid_argument("--dynamic-chunk-size must be in uint32 range and non-zero");
+					dynamic_chunk_size = static_cast<std::uint32_t>(parsed);
+					dynamic_chunk_size_specified = true;
 				}
 				if (argument == "--benchmark-tables")
 					benchmark_tables = std::stoull(argv[index]);
@@ -1248,7 +1299,8 @@ namespace
 		{
 			return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir,
 				resume_path, threads_specified ? threads : 0U, pin_workers, progress_enabled,
-				training_progress_interval, progress_memory, progress_speed, scheduler_mode, authorize_50m_stage);
+				training_progress_interval, progress_memory, progress_speed, scheduler_mode, scheduler_specified,
+				dynamic_chunk_size, dynamic_chunk_size_specified, authorize_50m_stage);
 		}
 		if (workflow == Workflow::Evaluate && !config_path.empty())
 		{
@@ -1270,6 +1322,8 @@ int main(int argc, char** argv) noexcept
 {
 	try
 	{
+		if (argc > 1 && std::string_view(argv[1]) == "--provenance")
+			return print_binary_provenance();
 		const std::string_view executable = argc == 0 ? "multiway" : argv[0];
 		const auto slash = executable.find_last_of("/\\");
 		auto name = executable.substr(slash == std::string_view::npos ? 0 : slash + 1);

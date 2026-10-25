@@ -23,6 +23,13 @@
 
 namespace texas::solver::multiway
 {
+	MultiwayDeltaMergePath select_multiway_delta_merge_path(std::size_t stream_count) noexcept
+	{
+		return stream_count > MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD
+			? MultiwayDeltaMergePath::Tournament
+			: MultiwayDeltaMergePath::Reference;
+	}
+
 	namespace
 	{
 
@@ -424,6 +431,55 @@ namespace texas::solver::multiway
 		bool delta_is_finite(const MultiwayWorkerDelta& delta) noexcept
 		{
 			return std::isfinite(delta.regret) && std::isfinite(delta.strategy_sum);
+		}
+
+		template <typename Less>
+		void tournament_push(
+			std::vector<std::size_t>& heap,
+			std::size_t& active_count,
+			std::size_t stream,
+			const Less& less)
+		{
+			std::size_t position = active_count++;
+			while (position > 0U)
+			{
+				const auto parent = (position - 1U) / 2U;
+				if (!less(stream, heap[parent]))
+					break;
+				heap[position] = heap[parent];
+				position = parent;
+			}
+			heap[position] = stream;
+		}
+
+		template <typename Less>
+		void tournament_advance(
+			std::vector<std::size_t>& heap,
+			std::size_t& active_count,
+			bool exhausted,
+			const Less& less)
+		{
+			if (exhausted)
+			{
+				--active_count;
+				if (active_count == 0U)
+					return;
+				heap[0] = heap[active_count];
+			}
+
+			std::size_t position = 0U;
+			while (true)
+			{
+				const auto left = position * 2U + 1U;
+				if (left >= active_count)
+					break;
+				const auto right = left + 1U;
+				const auto child = right < active_count && less(heap[right], heap[left]) ? right : left;
+				if (!less(heap[child], heap[position]))
+					break;
+				std::swap(heap[position], heap[child]);
+				position = child;
+			}
 		}
 
 		void hash_u64(std::uint64_t value, std::uint64_t& hash) noexcept
@@ -1123,10 +1179,9 @@ namespace texas::solver::multiway
 		}
 		merge_stream_views_.reserve(request.limits().worker_count);
 		merge_stream_cursors_.reserve(request.limits().worker_count);
-		// Pending cells contain one entry per distinct merged cell, not one entry
-		// per worker delta. Keep only a small warm reserve and grow for unusually
-		// broad batches.
-		pending_merge_cells_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_values));
+		merge_tournament_.reserve(request.limits().worker_count);
+		// Pending cells are bounded by the admitted sparse value capacity.
+		pending_merge_cells_.reserve(request.limits().max_sparse_values);
 		admission_processed_states_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_new_states_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_new_rows_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_rows));
@@ -1146,6 +1201,7 @@ namespace texas::solver::multiway
 		MultiwayCoordinatorMemorySnapshot result;
 		result.merge_scratch.add_buffer(merge_stream_views_.size(), merge_stream_views_.capacity(), sizeof(const MultiwayWorkerDeltaStream*));
 		result.merge_scratch.add_buffer(merge_stream_cursors_.size(), merge_stream_cursors_.capacity(), sizeof(std::size_t));
+		result.merge_scratch.add_buffer(merge_tournament_.size(), merge_tournament_.capacity(), sizeof(std::size_t));
 		result.merge_scratch.add_buffer(pending_merge_cells_.size(), pending_merge_cells_.capacity(), sizeof(PendingMergeCell));
 		result.admission_scratch.add_buffer(admission_processed_states_.size(), admission_processed_states_.capacity(), sizeof(std::uint8_t));
 		result.admission_scratch.add_buffer(admission_new_states_.size(), admission_new_states_.capacity(), sizeof(std::uint8_t));
@@ -1761,26 +1817,41 @@ namespace texas::solver::multiway
 
 	void MultiwaySolverCoordinator::merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams)
 	{
+		merge_worker_streams(streams, MultiwayDeltaMergePath::Automatic);
+	}
+
+	void MultiwaySolverCoordinator::merge_worker_streams(
+		const std::vector<MultiwayWorkerDeltaStream>& streams,
+		MultiwayDeltaMergePath path)
+	{
 		std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
 		if (streams.size() != request_.limits().worker_count)
 		{
 			throw std::invalid_argument("multiway merge requires one stream for every configured worker");
 		}
-		merge_stream_views_.clear();
-		for (const auto& stream : streams)
-			merge_stream_views_.push_back(&stream);
-		merge_worker_streams_locked(merge_stream_views_);
+		merge_stream_views_.resize(streams.size());
+		for (std::size_t worker = 0U; worker < streams.size(); ++worker)
+			merge_stream_views_[worker] = &streams[worker];
+		merge_worker_streams_locked(merge_stream_views_, path);
 	}
 
 	void MultiwaySolverCoordinator::merge_worker_streams(
 		const std::vector<const MultiwayWorkerDeltaStream*>& streams)
 	{
+		merge_worker_streams(streams, MultiwayDeltaMergePath::Automatic);
+	}
+
+	void MultiwaySolverCoordinator::merge_worker_streams(
+		const std::vector<const MultiwayWorkerDeltaStream*>& streams,
+		MultiwayDeltaMergePath path)
+	{
 		std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
-		merge_worker_streams_locked(streams);
+		merge_worker_streams_locked(streams, path);
 	}
 
 	void MultiwaySolverCoordinator::merge_worker_streams_locked(
-		const std::vector<const MultiwayWorkerDeltaStream*>& streams)
+		const std::vector<const MultiwayWorkerDeltaStream*>& streams,
+		MultiwayDeltaMergePath path)
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.merge_worker_streams_locked");
 		if (streams.size() != request_.limits().worker_count)
@@ -1803,8 +1874,33 @@ namespace texas::solver::multiway
 			delta_count += stream->size();
 		}
 
+		if (path == MultiwayDeltaMergePath::Automatic)
+			path = select_multiway_delta_merge_path(streams.size());
+		if (path != MultiwayDeltaMergePath::Reference && path != MultiwayDeltaMergePath::Tournament)
+			throw std::invalid_argument("multiway merge path is invalid");
+
 		pending_merge_cells_.clear();
-		merge_stream_cursors_.assign(streams.size(), 0U);
+		merge_stream_cursors_.resize(streams.size());
+		std::fill(merge_stream_cursors_.begin(), merge_stream_cursors_.end(), 0U);
+		std::size_t active_tournament_streams = 0U;
+		const auto tournament_less = [&](std::size_t left, std::size_t right) {
+			const auto& left_delta = streams[left]->deltas()[merge_stream_cursors_[left]];
+			const auto& right_delta = streams[right]->deltas()[merge_stream_cursors_[right]];
+			if (delta_less(left_delta, right_delta))
+				return true;
+			if (delta_less(right_delta, left_delta))
+				return false;
+			return left < right;
+		};
+		if (path == MultiwayDeltaMergePath::Tournament)
+		{
+			merge_tournament_.resize(streams.size());
+			for (std::size_t worker = 0U; worker < streams.size(); ++worker)
+			{
+				if (!streams[worker]->deltas().empty())
+					tournament_push(merge_tournament_, active_tournament_streams, worker, tournament_less);
+			}
+		}
 		std::uint64_t stream_fingerprint = 1469598103934665603ULL;
 		hash_u64(MULTIWAY_MERGE_ORDER_VERSION, stream_fingerprint);
 		hash_u64(delta_count, stream_fingerprint);
@@ -1833,14 +1929,25 @@ namespace texas::solver::multiway
 		{
 			const MultiwayWorkerDelta* next = nullptr;
 			std::size_t next_worker = 0U;
-			for (std::size_t worker = 0U; worker < streams.size(); ++worker)
+			if (path == MultiwayDeltaMergePath::Tournament)
 			{
-				const auto cursor = merge_stream_cursors_[worker];
-				const auto& deltas = streams[worker]->deltas();
-				if (cursor < deltas.size() && (next == nullptr || delta_less(deltas[cursor], *next)))
+				if (active_tournament_streams != 0U)
 				{
-					next = &deltas[cursor];
-					next_worker = worker;
+					next_worker = merge_tournament_[0];
+					next = &streams[next_worker]->deltas()[merge_stream_cursors_[next_worker]];
+				}
+			}
+			else
+			{
+				for (std::size_t worker = 0U; worker < streams.size(); ++worker)
+				{
+					const auto cursor = merge_stream_cursors_[worker];
+					const auto& deltas = streams[worker]->deltas();
+					if (cursor < deltas.size() && (next == nullptr || delta_less(deltas[cursor], *next)))
+					{
+						next = &deltas[cursor];
+						next_worker = worker;
+					}
 				}
 			}
 			if (next == nullptr)
@@ -1902,6 +2009,12 @@ namespace texas::solver::multiway
 				cell_strategy_sum = next_strategy_sum;
 			}
 			++merge_stream_cursors_[next_worker];
+			if (path == MultiwayDeltaMergePath::Tournament)
+				tournament_advance(
+					merge_tournament_,
+					active_tournament_streams,
+					merge_stream_cursors_[next_worker] == streams[next_worker]->size(),
+					tournament_less);
 			++merged_count;
 		}
 		flush_cell();

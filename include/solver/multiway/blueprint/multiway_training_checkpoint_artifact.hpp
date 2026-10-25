@@ -1,6 +1,7 @@
 #pragma once
 
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
+#include "solver/multiway/workflow/multiway_binary_provenance.hpp"
 
 #include <cstdint>
 #include <filesystem>

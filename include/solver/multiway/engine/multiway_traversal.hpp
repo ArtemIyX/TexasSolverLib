@@ -11,6 +11,7 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/abstraction/multiway_terminal_adapter.hpp"
 #include "solver/multiway/engine/multiway_allocation_probe.hpp"
+#include "solver/multiway/engine/multiway_worker_topology.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -90,6 +91,30 @@ namespace texas::solver::multiway
 
 	namespace detail
 	{
+		inline constexpr std::size_t MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD = 4U;
+
+		enum class MultiwayDiscoveryMergePath : std::uint8_t
+		{
+			Automatic,
+			Reference,
+			Tournament,
+		};
+
+		struct MultiwayDiscoveryMergeScratch
+		{
+			std::vector<std::size_t> cursors;
+			std::vector<std::size_t> tournament;
+
+			void reserve(std::size_t stream_count)
+			{
+				cursors.reserve(stream_count);
+				tournament.reserve(stream_count);
+			}
+		};
+
+		[[nodiscard]] MultiwayDiscoveryMergePath select_multiway_discovery_merge_path(
+			std::size_t stream_count) noexcept;
+
 		struct MultiwayDiscoveryParentOrderScratch
 		{
 			std::vector<std::size_t> order;
@@ -104,6 +129,14 @@ namespace texas::solver::multiway
 			std::vector<MultiwayPublicStateDescriptor>& public_states,
 			std::vector<MultiwaySparseRowShape>& rows,
 			std::vector<std::size_t>& cursors,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
+
+		void merge_multiway_discovery_streams(
+			const std::vector<const MultiwayDiscoveryStream*>& streams,
+			std::vector<MultiwayPublicStateDescriptor>& public_states,
+			std::vector<MultiwaySparseRowShape>& rows,
+			MultiwayDiscoveryMergeScratch& scratch,
+			MultiwayDiscoveryMergePath path = MultiwayDiscoveryMergePath::Automatic,
 			MultiwayAdmissionDiagnostics* diagnostics = nullptr);
 
 		void build_multiway_parent_first_order(
@@ -262,8 +295,19 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_allocated_bytes;
 		std::vector<std::uint32_t> worker_requested_processor;
 		std::vector<std::uint32_t> worker_resolved_processor;
+		std::vector<std::uint32_t> worker_requested_cpu_set;
+		std::vector<std::uint32_t> worker_resolved_cpu_set;
+		std::vector<std::uint32_t> worker_requested_physical_core;
+		std::vector<std::uint32_t> worker_resolved_physical_core;
+		std::vector<std::uint32_t> worker_requested_smt_sibling;
+		std::vector<std::uint32_t> worker_resolved_smt_sibling;
+		std::vector<std::uint32_t> worker_requested_cache_domain;
+		std::vector<std::uint32_t> worker_resolved_cache_domain;
+		std::vector<std::uint8_t> worker_migration_sampled;
+		std::vector<std::uint8_t> worker_migration_detected;
 		std::vector<std::uint64_t> worker_affinity_masks;
 		std::vector<std::uint8_t> worker_affinity_succeeded;
+		MultiwayWorkerPlacementPolicy placement_policy = MultiwayWorkerPlacementPolicy::OsDefault;
 		bool affinity_requested = false;
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		MultiwaySearchProfileSnapshot profile{};
@@ -296,8 +340,28 @@ namespace texas::solver::multiway
 			MultiwaySolverCoordinator& coordinator,
 			std::uint32_t worker_count,
 			std::size_t worker_delta_capacity,
+			MultiwaySearchProfileMode profile_mode,
+			MultiwayWorkerPlacementConfig placement,
+			bool immutable_epochs = false,
+			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		MultiwayRootBatchRunner(
+			MultiwayRootExternalSamplingTraversal traversal,
+			MultiwaySolverCoordinator& coordinator,
+			std::uint32_t worker_count,
+			std::size_t worker_delta_capacity,
 			MultiwaySearchProfileMode profile_mode = MultiwaySearchProfileMode::Disabled,
 			bool pin_workers = false,
+			bool immutable_epochs = false,
+			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
+			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
+		MultiwayRootBatchRunner(
+			MultiwayRootExternalSamplingTraversal traversal,
+			MultiwaySolverCoordinator& coordinator,
+			std::uint32_t worker_count,
+			MultiwayWorkerStreamCapacities capacities,
+			MultiwaySearchProfileMode profile_mode,
+			MultiwayWorkerPlacementConfig placement,
 			bool immutable_epochs = false,
 			MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed,
 			std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE);
@@ -324,6 +388,7 @@ namespace texas::solver::multiway
 			std::chrono::steady_clock::time_point deadline =
 				std::chrono::steady_clock::time_point::max());
 		[[nodiscard]] std::uint32_t dynamic_chunk_size() const noexcept { return dynamic_chunk_size_; }
+		[[nodiscard]] MultiwaySchedulerMode scheduler_mode() const noexcept { return scheduler_mode_; }
 		[[nodiscard]] MultiwayRootBatchMemorySnapshot memory_snapshot() const noexcept;
 		void set_batch_number(std::uint64_t batch_number) noexcept { active_batch_number_ = batch_number; }
 
@@ -357,6 +422,10 @@ namespace texas::solver::multiway
 			std::uint64_t peak_discovery_public_state_count = 0;
 			std::uint64_t peak_discovery_row_count = 0;
 			std::uint32_t resolved_processor = 0U;
+			MultiwayWorkerTopologyRecord requested_placement{};
+			MultiwayWorkerTopologyRecord resolved_placement{};
+			bool migration_sampled = false;
+			bool migration_detected = false;
 			std::uint64_t affinity_mask = 0U;
 			std::uint32_t requested_processor = 0xffffffffU;
 			bool affinity_succeeded = false;
@@ -386,6 +455,9 @@ namespace texas::solver::multiway
 				peak_continuation_delta_entries = 0;
 				peak_discovery_public_state_count = 0;
 				peak_discovery_row_count = 0;
+				resolved_placement = {};
+				migration_sampled = false;
+				migration_detected = false;
 				allocation_probe.reset();
 				profile.reset(profile_mode);
 			}
@@ -396,7 +468,9 @@ namespace texas::solver::multiway
 		std::uint32_t worker_count_ = 0;
 		MultiwayWorkerStreamCapacities stream_capacities_{};
 		MultiwaySearchProfileMode profile_mode_ = MultiwaySearchProfileMode::Disabled;
-		bool pin_workers_ = false;
+		MultiwayWorkerPlacementConfig placement_config_{};
+		MultiwayWorkerTopologyInventory placement_inventory_{};
+		MultiwayWorkerPlacementPlan placement_plan_{};
 		bool immutable_epochs_ = false;
 		MultiwaySchedulerMode scheduler_mode_ = MultiwaySchedulerMode::Fixed;
 		std::uint32_t dynamic_chunk_size_ = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
@@ -404,7 +478,7 @@ namespace texas::solver::multiway
 		std::vector<const MultiwayWorkerDeltaStream*> worker_stream_views_;
 		std::vector<const MultiwayContinuationDeltaStream*> continuation_stream_views_;
 		std::vector<const MultiwayDiscoveryStream*> discovery_stream_views_;
-		std::vector<std::size_t> discovery_merge_cursors_;
+		detail::MultiwayDiscoveryMergeScratch discovery_merge_scratch_;
 		std::vector<MultiwayPublicStateDescriptor> discovery_public_states_;
 		std::vector<MultiwaySparseRowShape> discovery_rows_;
 		detail::MultiwayDiscoveryParentOrderScratch admission_order_scratch_;

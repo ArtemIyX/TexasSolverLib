@@ -21,6 +21,7 @@ namespace texas::solver::multiway
 		std::uint64_t missing_infosets = 0U;
 		std::uint64_t missing_buckets = 0U;
 		std::uint64_t action_menu_mismatches = 0U;
+		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t replay_fingerprint = 0U;
 		std::uint64_t second_replay_fingerprint = 0U;
 
@@ -28,7 +29,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool passed() const noexcept
 		{
-			return missing_infosets == 0U && missing_buckets == 0U && action_menu_mismatches == 0U && (second_replay_fingerprint == 0U || replay_fingerprint == second_replay_fingerprint);
+			return missing_infosets == 0U && missing_buckets == 0U && action_menu_mismatches == 0U && (lookup_hits == 0U || policy_content_hash != 0U) && (second_replay_fingerprint == 0U || replay_fingerprint == second_replay_fingerprint);
 		}
 	};
 

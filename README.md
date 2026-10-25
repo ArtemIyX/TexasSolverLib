@@ -49,6 +49,11 @@ Implemented:
 - normal, fold-heavy, call-heavy, and raise-heavy continuation policies;
 - staged memory admission, deadlines, cancellation, and fallback behavior;
 - differential evaluation adapters and AIVAT-compatible records.
+- bounded schema-2 policy export and schema-5 checkpoint publication with
+  immutable leases, pre-write memory gates, strict atomic replacement, and
+  loader-compatible bytes and hashes;
+- qualification and scaling evidence for the 2-, 4-, 8-, and 16-worker
+  multiway training configurations.
 
 Not yet established by repository evidence:
 
@@ -58,11 +63,16 @@ Not yet established by repository evidence:
 - end-to-end playing strength, convergence, or low exploitability;
 - statistically significant cross-play results against independent strong agents.
 
-The latest implementation validation on 2026-08-31 passed the Debug build,
-research workflow targets, and all 107 registered tests. This does not qualify
-the production F1 artifacts or replace the required human execution evidence.
+The latest implementation validation is recorded in
+[the progress log](docs/PLURIBUS_LOG.md). PB-9 worker-scaling findings are
+documented in [the scaling report](docs/pb9_multiway_training_scaling_findings.md).
+The 8-worker configuration was the fastest observed in the recorded 50,000-
+trajectory comparison. The checkpoint phase still produced an approximately
+25.3 GB external working-set peak, so this does not establish a universal
+target-hardware memory budget or production strategy quality.
 
-See [project state](docs/project_state.md) for the current evidence-based status and [the progress log](docs/PLURIBUS_LOG.md) for implementation history.
+See [the progress log](docs/PLURIBUS_LOG.md) for implementation history and
+qualification limitations.
 
 ## How the Pluribus path works
 
@@ -328,10 +338,10 @@ The token-efficient repository workflow is documented in [CODEX_TOKEN_EFFICIENT_
 
 ## Documentation
 
-- [Current project state](docs/project_state.md): authoritative maturity, subsystem coverage, remaining gaps, and recommended next work.
+- [Application and script I/O](docs/application_and_script_io.md): workflow arguments, reports, and runner behavior.
 - [Pluribus technical report](docs/pluribus_technical_report.md): public research background and reconstructed requirements.
 - [Pluribus progress log](docs/PLURIBUS_LOG.md): newest-first implementation, audit, validation, and limitation history.
-- [Solver layout migration plan](docs/solver_layout_migration_plan.md): ownership and path migration record.
+- [PB-9 scaling findings](docs/pb9_multiway_training_scaling_findings.md): observed worker throughput and memory behavior.
 - [Contributing guide](CONTRIBUTING.md): code organization, build, tests, and contribution expectations.
 
 ## Recommended next milestones

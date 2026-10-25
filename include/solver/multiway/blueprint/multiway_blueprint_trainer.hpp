@@ -82,6 +82,13 @@ namespace texas::solver::multiway
 		std::uint64_t missing_lookup_requests = 0;
 		std::uint64_t late_window_start_batch = 0;
 		bool late_window_active = false;
+		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
+		std::uint32_t scheduler_policy_version = MULTIWAY_SCHEDULER_POLICY_VERSION;
+		std::uint32_t static_block_scheduler_version = MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION;
+		std::uint64_t schedule_fingerprint = 0U;
+		std::uint32_t partition_version = MULTIWAY_PARTITION_VERSION;
+		std::uint32_t merge_order_version = MULTIWAY_MERGE_ORDER_VERSION;
 		// Batch-boundary telemetry. These fields are diagnostic and are not part
 		// of the strategy identity or deterministic merge state.
 		std::uint64_t configured_max_public_states = 0;
@@ -111,8 +118,11 @@ namespace texas::solver::multiway
 		std::uint64_t cumulative_worker_delta_entries = 0;
 		std::uint64_t peak_compact_storage_bytes = 0;
 		std::uint64_t current_process_rss_bytes = 0;
+		// Legacy batch-boundary sample retained for progress diagnostics.
 		std::uint64_t peak_process_rss_bytes = 0;
 		std::uint64_t elapsed_wall_nanoseconds = 0;
+		std::uint64_t checkpoint_wall_nanoseconds = 0;
+		std::uint64_t export_wall_nanoseconds = 0;
 		std::uint64_t worker_active_nanoseconds = 0;
 		std::uint64_t worker_wake_latency_nanoseconds = 0;
 		std::uint64_t worker_cv_wait_nanoseconds = 0;
@@ -147,8 +157,19 @@ namespace texas::solver::multiway
 		std::vector<std::uint64_t> worker_allocated_bytes;
 		std::vector<std::uint32_t> worker_requested_processor;
 		std::vector<std::uint32_t> worker_resolved_processor;
+		std::vector<std::uint32_t> worker_requested_cpu_set;
+		std::vector<std::uint32_t> worker_resolved_cpu_set;
+		std::vector<std::uint32_t> worker_requested_physical_core;
+		std::vector<std::uint32_t> worker_resolved_physical_core;
+		std::vector<std::uint32_t> worker_requested_smt_sibling;
+		std::vector<std::uint32_t> worker_resolved_smt_sibling;
+		std::vector<std::uint32_t> worker_requested_cache_domain;
+		std::vector<std::uint32_t> worker_resolved_cache_domain;
+		std::vector<std::uint8_t> worker_migration_sampled;
+		std::vector<std::uint8_t> worker_migration_detected;
 		std::vector<std::uint64_t> worker_affinity_masks;
 		std::vector<std::uint8_t> worker_affinity_succeeded;
+		MultiwayWorkerPlacementPolicy placement_policy = MultiwayWorkerPlacementPolicy::OsDefault;
 		bool affinity_requested = false;
 		std::vector<MultiwaySearchProfileSnapshot> worker_profiles;
 		std::uint64_t memory_preflight_estimate_bytes = 0;
@@ -221,6 +242,7 @@ namespace texas::solver::multiway
 	{
 		MultiwayFullBlueprintExportPlan plan{};
 		std::uint64_t payload_hash = 0U;
+		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t peak_scratch_bytes = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
@@ -244,6 +266,8 @@ namespace texas::solver::multiway
 		// Diagnostic execution metadata. Zero uses the effective runtime value.
 		std::uint32_t requested_worker_count = 0U;
 		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
+		MultiwayWorkerPlacementConfig placement{};
 		bool pin_workers = false;
 		std::uint64_t memory_preflight_estimate_bytes = 0U;
 		MultiwayMemoryLedger memory_ledger{};

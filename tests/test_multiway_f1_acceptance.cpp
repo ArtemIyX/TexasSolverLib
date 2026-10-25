@@ -146,6 +146,7 @@ namespace
 		lookup.evidence = { MULTIWAY_LOOKUP_QUALIFICATION_SCHEMA_VERSION,
 			MultiwayWorkflowProfileKind::Acceptance, lookup_identity };
 		lookup.lookup_hits = 1U;
+		lookup.policy_content_hash = 8U;
 		lookup.replay_fingerprint = 11U;
 		save_multiway_lookup_qualification_report_atomic(paths.first_lookup_report, lookup);
 		if (mismatch)

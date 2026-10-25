@@ -429,7 +429,10 @@ Parameters:
 - `-TrajectoriesPerBatch`, default 1000
 - `-PinWorkers`
 - `-DisableCheckpoint`: omit checkpoint creation for isolated streaming-export qualification
-- `-Scheduler fixed|dynamic`, default fixed
+- `-Scheduler fixed|static-block|dynamic`, default fixed
+- `-DynamicChunkSize`, positive scheduler chunk size, default 4
+- `-PlacementPolicy os-default|physical-compact|physical-spread|cpu-set-hint|diagnostic-hard-affinity`, default `os-default`
+- `-CheckpointMode enabled|disabled`, default `enabled`; `-DisableCheckpoint` remains a compatibility alias
 - `-BinaryKind normal|tracy`, default normal
 - `-BinaryPath`
 - `-TraceCaptureId`
@@ -448,6 +451,7 @@ Files written below the run directory:
 - `blueprint.bin`: trainer output.
 - `report.json`: trainer report.
 - `run_metrics.json`: wrapper metrics including exit code, CPU time, peak working set, and report path.
+- `run_metrics.json`: also records the resolved scheduler chunk, placement policy, checkpoint mode, binary path, and binary identity.
 - `checkpoints\`: trainer checkpoint files.
 - `stdout.log` and `stderr.log`: redirected trainer streams.
 
@@ -461,12 +465,19 @@ Purpose: repeat bounded runs across worker, pinning, and scheduler combinations.
 
 Parameters:
 
-- `-Batches`, default 3
+- `-Batches 1..100`, default 3
 - `-TrajectoriesPerBatch`, default 200
 - `-Pinning pinned|unpinned`, default pinned
-- `-Scheduling both|fixed|dynamic`, default both
+- `-Scheduling both|fixed|static-block|dynamic`, default both
 - `-Repeats 1..20`, default 3
 - `-Workers`, string array default `4`, `8`
+- `-DynamicChunkSize`, positive scheduler chunk size, default 4
+- `-PlacementPolicy os-default|physical-compact|physical-spread|cpu-set-hint|diagnostic-hard-affinity`, default `os-default`
+- `-CheckpointMode enabled|disabled`, default `enabled`
+- `-WarmupRuns`, default 0; warmup samples are excluded from summaries
+- `-WarmColdOrder cold-first|warm-first`, default `cold-first`
+- `-RandomizeCaseOrder`, deterministic case shuffling switch
+- `-CaseOrderSeed`, deterministic ordering seed, default 1
 - `-OutputDirectory`, default `tmp\multiway_scheduler_<total>`
 
 Inputs: the same config, bucket artifact, and trainer selected by `run_multiway_ram_1000.ps1`.
@@ -476,8 +487,9 @@ Files written:
 - One child run directory per matrix cell/repeat, containing the RAM script outputs.
 - `worker_matrix.json`: normalized result rows and median/min/max throughput.
 - `worker_matrix.csv`: the same result rows in CSV form.
+- `worker_matrix_summary.json`: one-binary provenance, protocol/order metadata, median and dispersion summaries, phase timing, placement, migration, and page-fault summaries.
 
-stdout prints a matrix table and the final correctness/resource gate. The script requires one non-zero deterministic merge fingerprint and checks report schema, allocations, throughput, RSS, worker telemetry, and zero discards.
+stdout prints a matrix table and the final correctness/resource gate. The script requires one non-zero deterministic merge fingerprint and checks report schema, allocations, throughput, RSS, worker telemetry, scheduler chunk, placement, checkpoint mode, payload hashes, and zero discards. A matrix fails if any run has a different binary SHA-256 or embedded binary provenance.
 
 ### `scripts/run/run_multiway_tracy_capture.ps1`
 

@@ -241,6 +241,13 @@ TEST_CASE(multiway_process_memory_snapshot_reports_supported_fields)
 		EXPECT_TRUE(snapshot.anonymous_resident_bytes > 0U);
 	if (snapshot.file_resident_available)
 		EXPECT_TRUE(snapshot.file_resident_bytes > 0U);
+	if (snapshot.total_page_faults_available)
+		EXPECT_TRUE(snapshot.total_page_faults > 0U);
+#if defined(__linux__)
+	EXPECT_TRUE(snapshot.minor_page_faults_available);
+	EXPECT_TRUE(snapshot.major_page_faults_available);
+	EXPECT_TRUE(snapshot.total_page_faults_available);
+#endif
 }
 
 TEST_CASE(multiway_process_memory_snapshot_keeps_unavailable_fields_explicit)
@@ -252,6 +259,27 @@ TEST_CASE(multiway_process_memory_snapshot_keeps_unavailable_fields_explicit)
 	EXPECT_TRUE(!snapshot.virtual_address_available);
 	snapshot.private_committed_bytes = 1U;
 	EXPECT_TRUE(!snapshot.valid());
+	snapshot.private_committed_bytes = 0U;
+	snapshot.total_page_faults = 1U;
+	EXPECT_TRUE(!snapshot.valid());
+}
+
+TEST_CASE(multiway_process_memory_snapshot_validates_page_fault_order)
+{
+	using namespace texas::solver::multiway;
+	MultiwayProcessMemorySnapshotCollection snapshots;
+	MultiwayProcessMemorySnapshot first;
+	first.minor_page_faults_available = true;
+	first.major_page_faults_available = true;
+	first.total_page_faults_available = true;
+	first.minor_page_faults = 4U;
+	first.major_page_faults = 2U;
+	first.total_page_faults = 6U;
+	EXPECT_TRUE(snapshots.record(MultiwayMemoryPhase::ProcessStart, first));
+	first.minor_page_faults = 3U;
+	first.total_page_faults = 5U;
+	EXPECT_TRUE(snapshots.record(MultiwayMemoryPhase::BeforeBucketMap, first));
+	EXPECT_TRUE(!snapshots.valid());
 }
 
 TEST_CASE(multiway_memory_preflight_reports_warning_and_rejection)

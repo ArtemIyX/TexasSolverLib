@@ -187,6 +187,20 @@ TEST_CASE(multiway_training_identity_ignores_run_horizon_for_resume)
 	EXPECT_EQ(reference.identity().combined_hash, resumed.identity().combined_hash);
 }
 
+TEST_CASE(multiway_training_identity_binds_scheduler_policy_and_chunk_size)
+{
+	texas::MultiwayBlueprintTrainingConfig reference;
+	const auto fixed = reference.identity();
+	reference.scheduler_mode = texas::MultiwaySchedulerMode::StaticBlock;
+	EXPECT_TRUE(reference.identity() != fixed);
+	reference.scheduler_mode = texas::MultiwaySchedulerMode::Dynamic;
+	reference.dynamic_chunk_size = 8U;
+	EXPECT_TRUE(reference.identity() != fixed);
+	const auto dynamic = reference.identity();
+	reference.dynamic_chunk_size = 16U;
+	EXPECT_TRUE(reference.identity() != dynamic);
+}
+
 TEST_CASE(multiway_initial_blueprint_root_is_six_player_preflop_state)
 {
 	texas::MultiwayPrivateConfig ranges;

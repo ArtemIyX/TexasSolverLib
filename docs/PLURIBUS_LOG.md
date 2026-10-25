@@ -1,5 +1,365 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.09 - Qualification tooling
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `94e12d7 PB-9 Extend qualification tooling: Preserve comparable matrix evidence`
+
+- Extended the RAM and worker-matrix runners with explicit scheduler chunk, placement, checkpoint, warmup/order, and deterministic randomized case controls.
+- Added strict one-binary provenance validation and run gates for comparable configuration, payload hashes, and policy-content hashes.
+- Added median/dispersion, phase, placement, migration, page-fault, and provenance summaries without starting benchmark or solver-training runs.
+
+### Files
+
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_worker_matrix.ps1`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/application_and_script_io.md`
+- `docs/tasks/PB9_16_09_qualification_tooling.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- PowerShell parser validation passed for both qualification runners.
+- Focused `test_multiway_qualification_reports` and `test_multiway_workflow_boundary` passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed with the build-only `/FS` configuration.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed; all tests passed.
+- `git diff --check`: passed.
+- No C++ files changed; cpp-code-review boundary was empty.
+
+### Limitations
+
+- No worker matrix, benchmark, or solver training run was started.
+
+## PB9.16.08 - Policy-content hash
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commits:** `d60654c PB-9 Add policy-content hash: Preserve full payload compatibility`, `4583804 PB-9 Add policy-content report field: Expose canonical hash`
+
+- Added a versioned canonical policy-content hash over row identity, action descriptors, and quantized probabilities.
+- Preserved the existing full payload hash, worker-sensitive execution identity, schema-2 artifact bytes, and checkpoint compatibility rules.
+- Propagated and validated both hashes in full-blueprint export telemetry, training reports, and lookup qualification reports.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_f1_acceptance.cpp`
+- `docs/tasks/PB9_16_08_policy_content_hash.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused artifact, blueprint-training, qualification-report, and F1 acceptance tests passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed with the build-only `/FS` configuration.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed; all tests passed.
+- `git diff --check`: passed.
+- Independent C++ review: no actionable findings.
+
+### Limitations
+
+- No qualification matrices, benchmarks, or solver training were run.
+
+## PB9.16.07 - Tournament delta merge
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `fac02ea PB-9 Add tournament delta merge: Preserve exact worker accumulation order`
+
+- Added explicit reference and deterministic tournament merge paths for worker delta streams, with automatic selection only above the four-stream threshold.
+- Preserved worker-index ties, duplicate rejection, Float64 accumulation order, compact storage, policy output, fingerprints, and preallocated merge scratch.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/tasks/PB9_16_07_tournament_delta_merge.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused solver, parallel-training, and traversal-boundary tests passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed with the build-only `/FS` configuration.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed; all tests passed.
+- `git diff --check`: passed.
+- Independent C++ review: no actionable findings.
+
+### Limitations
+
+- No policy-content hashing, qualification matrices, benchmarks, or solver training were run.
+
+## PB9.16.06 - Tournament discovery merge
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `ca8cc80 PB-9 Add tournament discovery merge: Preserve deterministic public-state and row streams`
+
+- Added caller-owned preallocated reference and tournament merge paths for public-state and row discovery streams.
+- Selected the tournament path only above the four-stream threshold while preserving worker-index ties, duplicate handling, ordered outputs, diagnostics, and production output reuse.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/tasks/PB9_16_06_tournament_discovery_merge.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused solver and parallel-training tests passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed, 111/111 tests.
+- `git diff --check`: passed.
+- Independent C++ review: no actionable findings.
+- The requested full-build script was attempted but hit MSVC PDB contention (`C1041`) across unrelated translation units.
+
+### Limitations
+
+- No tournament delta merge, benchmarks, policy-content hashing, qualification matrices, or solver training were run.
+
+## PB9.16.05 - Deterministic scheduler balance
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `90e9510 PB-9 Add deterministic scheduler balance: Version static blocks and expose dynamic chunk evidence`
+
+- Added versioned static-block scheduling while preserving the default fixed round-robin behavior.
+- Exposed scheduler mode and dynamic chunk size through workflow configuration, CLI, identity, checkpoint compatibility, run metadata, and JSON reports.
+- Preserved trajectory seeds, worker-index tie order, deterministic partitioning, globally ordered merges, exact storage, policy rows, fingerprints, and Float64 accumulation order.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_scheduler.hpp`
+- `src/solver/multiway/engine/multiway_scheduler.cpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_scheduler.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/tasks/PB9_16_05_deterministic_scheduler_balance.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused scheduler, parallel-training, workflow-config, blueprint-training, and qualification-report tests passed.
+- Fixed, static-block, and dynamic modes matched exact storage and policy rows across 1, 2, 4, 8, and 16 workers.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py` passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py` passed.
+- `git diff --check` passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No benchmarks, qualification matrix, tournament merges, policy-content hashing, or solver training were run.
+
+## PB9.16.04 - Safe placement policies
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `c7f7a15 PB-9 Add safe placement policies: Use topology-backed opt-in worker placement`
+
+- Added topology-backed opt-in OS-default, physical-compact, physical-spread, CPU-set-hint, and diagnostic hard-affinity policies.
+- Reserved the coordinator's physical core, selected unique physical cores before SMT siblings, preferred Windows CPU Sets for desktop policies, and added fallback plus amortized batch-boundary migration sampling.
+- Added requested/resolved CPU-set, physical-core, SMT-sibling, and cache-domain report identities while preserving scheduler behavior, merge ordering, checkpoint bytes, artifact hashing, and PB9.16.02 telemetry compatibility.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_worker_topology.hpp`
+- `src/solver/multiway/engine/multiway_worker_topology.cpp`
+- `include/solver/multiway/engine/multiway_traversal.hpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/tasks/PB9_16_04_safe_placement_policies.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused multiway parallel-training, workflow-config, and blueprint-training tests: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No benchmark, qualification matrix, placement-performance measurement, or solver training was run.
+- OS APIs can leave physical, CPU-set, SMT, or cache-domain identities unavailable; later scheduler balance, tournament merges, policy-content hashing, and qualification tasks are deferred.
+
+## PB9.16.03 - Topology inventory
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `1014b4d PB-9 Add topology inventory: Discover Windows and synthetic identities`
+
+- Added a cold-path topology inventory with structured CPU-set, logical processor, physical-core, SMT-sibling, NUMA, cache-domain, efficiency, and allocation fields.
+- Added Windows CPU-set and processor-core relationship discovery with an explicit logical-only fallback when topology APIs are unavailable.
+- Preserved OS-reported `LastLevelCacheIndex` values without inferring V-Cache labels or changing worker placement and scheduler behavior.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/multiway/engine/multiway_worker_topology.hpp`
+- `src/solver/multiway/engine/multiway_worker_topology.cpp`
+- `tests/test_multiway_parallel_training.cpp`
+- `docs/tasks/PB9_16_03_topology_inventory.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused `test_multiway_parallel_training`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No placement policy, scheduler change, benchmark, qualification matrix, or solver training was implemented or run.
+- Existing worker behavior and PB9.16.02 telemetry compatibility remain unchanged because the inventory has no runtime consumer in this task.
+
+## PB9.16.02 - Authoritative phase telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `6d85d5f PB-9 Add authoritative phase telemetry: Split phase timings and validate process snapshots`
+
+- Added distinct training, checkpoint, export, and total-wrapper durations. Training throughput remains based only on training time.
+- Added phase-boundary working-set, private-commit, and page-fault telemetry with explicit unsupported-counter availability.
+- Preserved legacy report fields, checkpoint bytes, artifact hashes, scheduler behavior, topology policy, merge order, and hot paths.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/tasks/PB9_16_02_authoritative_phase_telemetry.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Full build wrapper: passed.
+- Compact CTest: passed.
+- Focused multiway memory, qualification-report, blueprint-training, and workflow-boundary tests: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- Linux reports minor and major page faults; Windows reports the supported total page-fault counter. Unsupported counters remain unavailable.
+- No qualification matrix, benchmark, or solver training was run.
+
+## PB9.16.01 - Compile-time provenance and runner gate
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `66f6690eded19dc4002a9e0d1d122f75b8fc9be4`
+
+- Embedded source commit, dirty state, compiler, configuration, report schema, and checkpoint schema at compile time.
+- Separated binary provenance from runtime checkout identity and added executable SHA-256 stability gates to the RAM runner and worker matrix.
+- Preserved legacy report fields and checkpoint bytes.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/multiway/workflow/multiway_binary_provenance.hpp`
+- `include/solver/multiway/workflow/multiway_evidence.hpp`
+- `src/solver/multiway/workflow/multiway_evidence.cpp`
+- `src/solver/multiway/workflow/multiway_f1_acceptance.cpp`
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `scripts/run/run_multiway_worker_matrix.ps1`
+- `tests/test_multiway_evidence.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/tasks/PB9_16_01_provenance_runner_gate.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Full build wrapper: passed.
+- Compact CTest: passed.
+- Focused evidence and workflow boundary tests: passed.
+- PowerShell syntax checks: passed.
+- `git diff --check`: passed.
+- C++ review: no actionable findings.
+
+### Limitations
+
+- No qualification benchmark, matrix run, or solver training was performed.
+
+## PB-9.16 - Worker scaling work breakdown
+
+**Status:** Complete
+**Completed:** 2026-10-25
+
+- Split the PB-9.16 scaling analysis into ten independently trackable implementation and qualification tasks.
+- Added a task manager with dependencies, state, blockers, invariants, and completion procedure.
+- Kept performance experiments blocked pending explicit authorization.
+
+### Files
+
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+- `docs/tasks/PB9_16_01_AGENT_PROMPT.md`
+- `docs/tasks/PB9_16_01_provenance_runner_gate.md`
+- `docs/tasks/PB9_16_02_authoritative_phase_telemetry.md`
+- `docs/tasks/PB9_16_03_topology_inventory.md`
+- `docs/tasks/PB9_16_04_safe_placement_policies.md`
+- `docs/tasks/PB9_16_05_deterministic_scheduler_balance.md`
+- `docs/tasks/PB9_16_06_tournament_discovery_merge.md`
+- `docs/tasks/PB9_16_07_tournament_delta_merge.md`
+- `docs/tasks/PB9_16_08_policy_content_hash.md`
+- `docs/tasks/PB9_16_09_qualification_tooling.md`
+- `docs/tasks/PB9_16_10_authorized_qualification_experiments.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Documentation structure and links were reviewed.
+- Build and tests were not run because this task changes documentation only.
+
+### Limitations
+
+- No implementation, build, benchmark, or training qualification was performed.
+
 ## CI - Build, test, and formatting workflows
 
 **Status:** Complete

@@ -51,11 +51,12 @@ namespace texas::solver::multiway
 
 	void MultiwayWorkflowConfig::validate() const
 	{
-		if ((schema_version != 1U && schema_version != 2U) || profile_id.empty() || preflop_classes != 169U || storage_backend != "CompactInt32" || (profile_kind != MultiwayWorkflowProfileKind::Sizing && profile_kind != MultiwayWorkflowProfileKind::Acceptance) || max_decision_depth != 64U || max_public_chance_depth != 3U || deterministic_seed != 1U || training_worker_count == 0U || training_worker_count > 16U || (schema_version == 1U && training_worker_count != 1U) || target_trajectories == 0U || (profile_kind == MultiwayWorkflowProfileKind::Acceptance && target_trajectories != 50'000'000U) || (profile_kind == MultiwayWorkflowProfileKind::Sizing && target_trajectories >= 50'000'000U))
+		if ((schema_version != 1U && schema_version != 2U) || profile_id.empty() || preflop_classes != 169U || storage_backend != "CompactInt32" || (profile_kind != MultiwayWorkflowProfileKind::Sizing && profile_kind != MultiwayWorkflowProfileKind::Acceptance) || max_decision_depth != 64U || max_public_chance_depth != 3U || deterministic_seed != 1U || training_worker_count == 0U || training_worker_count > 16U || !multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || (schema_version == 1U && training_worker_count != 1U) || target_trajectories == 0U || (profile_kind == MultiwayWorkflowProfileKind::Acceptance && target_trajectories != 50'000'000U) || (profile_kind == MultiwayWorkflowProfileKind::Sizing && target_trajectories >= 50'000'000U))
 		{
 			throw std::invalid_argument("invalid F1 workflow configuration");
 		}
 		model.validate();
+		MultiwayWorkerPlacementConfig{ placement_policy, 0U }.validate();
 		if (model.player_count != 6U || model.initial_stack_chips != 10000 || model.small_blind_chips != 50 || model.big_blind_chips != 100 || model.ante_chips != 0)
 			throw std::invalid_argument("F1 game rules profile mismatch");
 		const auto any_capacity = maximum_public_states != 0U || maximum_sparse_rows != 0U || maximum_sparse_values != 0U || worker_delta_capacity != 0U || discovery_capacity != 0U || explicit_stream_capacity_mask != 0U || max_regret_delta_entries_per_worker != 0U || max_continuation_delta_entries_per_worker != 0U || max_discovery_public_states_per_worker != 0U || max_discovery_rows_per_worker != 0U || trajectories_per_batch != 0U || checkpoint_interval != 0U || disk_space_requirement_bytes != 0U || process_memory_limit_bytes != 0U;
@@ -141,6 +142,10 @@ namespace texas::solver::multiway
 		append(max_public_chance_depth);
 		append(deterministic_seed);
 		append(training_worker_count);
+		append(MULTIWAY_SCHEDULER_POLICY_VERSION);
+		append(MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION);
+		append(static_cast<std::uint64_t>(scheduler_mode));
+		append(dynamic_chunk_size);
 		append(target_trajectories);
 		append(maximum_public_states);
 		append(maximum_sparse_rows);
@@ -233,6 +238,26 @@ namespace texas::solver::multiway
 					throw std::invalid_argument("training worker count exceeds 16");
 				result.training_worker_count = static_cast<std::uint32_t>(workers);
 			}
+			else if (key == "scheduler_mode")
+			{
+				if (value == "fixed")
+					result.scheduler_mode = MultiwaySchedulerMode::Fixed;
+				else if (value == "static-block")
+					result.scheduler_mode = MultiwaySchedulerMode::StaticBlock;
+				else if (value == "dynamic")
+					result.scheduler_mode = MultiwaySchedulerMode::Dynamic;
+				else
+					throw std::invalid_argument("invalid scheduler_mode");
+			}
+			else if (key == "dynamic_chunk_size")
+			{
+				const auto chunk_size = n();
+				if (chunk_size > std::numeric_limits<std::uint32_t>::max())
+					throw std::invalid_argument("dynamic_chunk_size exceeds uint32 range");
+				result.dynamic_chunk_size = static_cast<std::uint32_t>(chunk_size);
+			}
+			else if (key == "placement_policy")
+				result.placement_policy = parse_multiway_worker_placement_policy(value.c_str());
 			else if (key == "target_trajectories")
 				result.target_trajectories = n();
 			else if (key == "maximum_public_states" || key == "maximum_sparse_rows" || key == "maximum_sparse_values" || key == "worker_delta_capacity" || key == "discovery_capacity" || key == "max_regret_delta_entries_per_worker" || key == "max_continuation_delta_entries_per_worker" || key == "max_discovery_public_states_per_worker" || key == "max_discovery_rows_per_worker" || key == "trajectories_per_batch" || key == "checkpoint_interval" || key == "disk_space_requirement_bytes" || key == "process_memory_limit_bytes" || key == "process_working_set_limit_bytes" || key == "process_working_set_resident_allowance_bytes")
@@ -340,6 +365,9 @@ namespace texas::solver::multiway
 			line("reference_worker_count", config.training_worker_count);
 		else
 			line("training_worker_count", config.training_worker_count);
+		line("scheduler_mode", multiway_scheduler_mode_name(config.scheduler_mode));
+		line("dynamic_chunk_size", config.dynamic_chunk_size);
+		line("placement_policy", multiway_worker_placement_policy_name(config.placement_policy));
 		line("target_trajectories", config.target_trajectories);
 		const auto unresolved = [](std::uint64_t value) { return value == 0U ? std::string("UNRESOLVED") : std::to_string(value); };
 		line("maximum_public_states", unresolved(config.maximum_public_states));

@@ -691,6 +691,17 @@ namespace texas::solver::multiway
 		std::optional<MultiwayNashConv> quality;
 	};
 
+	inline constexpr std::size_t MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD = 4U;
+
+	enum class MultiwayDeltaMergePath : std::uint8_t
+	{
+		Automatic,
+		Reference,
+		Tournament
+	};
+
+	[[nodiscard]] MultiwayDeltaMergePath select_multiway_delta_merge_path(std::size_t stream_count) noexcept;
+
 	// Cold coordinator admission diagnostics. These counters are runtime-only
 	// telemetry and do not affect strategy identity or deterministic merges.
 	struct MultiwayAdmissionDiagnostics
@@ -928,6 +939,12 @@ namespace texas::solver::multiway
 			std::size_t output_size) const;
 		void merge_worker_streams(const std::vector<MultiwayWorkerDeltaStream>& streams);
 		void merge_worker_streams(const std::vector<const MultiwayWorkerDeltaStream*>& streams);
+		void merge_worker_streams(
+			const std::vector<MultiwayWorkerDeltaStream>& streams,
+			MultiwayDeltaMergePath path);
+		void merge_worker_streams(
+			const std::vector<const MultiwayWorkerDeltaStream*>& streams,
+			MultiwayDeltaMergePath path);
 
 		[[nodiscard]] MultiwayRootPolicy export_root_policy() const;
 		[[nodiscard]] MultiwayRootPolicy export_root_current_policy() const;
@@ -971,6 +988,10 @@ namespace texas::solver::multiway
 		{
 			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().regret_delta_capacity();
 		}
+		[[nodiscard]] std::size_t merge_tournament_scratch_capacity() const noexcept
+		{
+			return merge_tournament_.capacity();
+		}
 		[[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
 		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
@@ -992,7 +1013,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] const MultiwayPublicStateDescriptor* public_state(
 			MultiwayPublicStateId id) const;
 		void merge_worker_streams_locked(
-			const std::vector<const MultiwayWorkerDeltaStream*>& streams);
+			const std::vector<const MultiwayWorkerDeltaStream*>& streams,
+			MultiwayDeltaMergePath path);
 
 		MultiwaySolveRequest request_;
 		MultiwaySparseRowStorage storage_;
@@ -1000,6 +1022,7 @@ namespace texas::solver::multiway
 		MultiwayPublicCatalog public_catalog_;
 		std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
 		std::vector<std::size_t> merge_stream_cursors_;
+		std::vector<std::size_t> merge_tournament_;
 		std::vector<PendingMergeCell> pending_merge_cells_;
 		std::vector<std::uint8_t> admission_processed_states_;
 		std::vector<std::uint8_t> admission_new_states_;

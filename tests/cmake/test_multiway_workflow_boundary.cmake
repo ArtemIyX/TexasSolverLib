@@ -9,6 +9,7 @@ file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_training_report.c
 file(READ "${SOURCE_DIR}/src/solver/multiway/workflow/multiway_f1_acceptance.cpp" report_reader_text)
 file(READ "${SOURCE_DIR}/tests/test_multiway_blueprint_training.cpp" export_test_text)
 file(READ "${SOURCE_DIR}/scripts/run/run_multiway_ram_1000.ps1" runner_text)
+file(READ "${SOURCE_DIR}/scripts/run/run_multiway_worker_matrix.ps1" matrix_runner_text)
 
 string(FIND "${cmake_text}" "foreach(_multiway_workflow train buckets inspect evaluate finalize)" target_position)
 if(target_position EQUAL -1)
@@ -89,6 +90,46 @@ foreach(runner_guard_field "systemMemoryReserveBytes" "systemMemoryGuardTriggere
     string(FIND "${runner_text}" "${runner_guard_field}" runner_guard_position)
     if(runner_guard_position EQUAL -1)
         message(FATAL_ERROR "RAM runner is missing hard system memory guard field: ${runner_guard_field}")
+    endif()
+endforeach()
+
+foreach(provenance_field "TEXASSOLVER_RUN_CHECKOUT_COMMIT" "--provenance"
+        "binary_source_commit" "binary_dirty_state" "binarySha256After"
+        "Executable/source provenance mismatch" "Executable SHA-256 changed during run")
+    string(FIND "${runner_text}" "${provenance_field}" provenance_position)
+    if(provenance_position EQUAL -1)
+        message(FATAL_ERROR "RAM runner is missing provenance gate field: ${provenance_field}")
+    endif()
+endforeach()
+
+foreach(matrix_provenance_field "BuildConfiguration" "BinaryPath" "binary_sha256"
+        "matrixBinarySha256" "Worker matrix provenance gate failed")
+    string(FIND "${matrix_runner_text}" "${matrix_provenance_field}" matrix_provenance_position)
+    if(matrix_provenance_position EQUAL -1)
+        message(FATAL_ERROR "worker matrix is missing provenance gate field: ${matrix_provenance_field}")
+    endif()
+endforeach()
+
+foreach(matrix_qualification_field "DynamicChunkSize" "PlacementPolicy" "CheckpointMode"
+        "WarmupRuns" "WarmColdOrder" "RandomizeCaseOrder" "CaseOrderSeed"
+        "worker_matrix_summary.json" "Get-StandardDeviation" "binary_identity"
+        "worker_migration_detected" "total_page_faults")
+    string(FIND "${matrix_runner_text}" "${matrix_qualification_field}" matrix_qualification_position)
+    if(matrix_qualification_position EQUAL -1)
+        message(FATAL_ERROR "worker matrix is missing qualification tooling field: ${matrix_qualification_field}")
+    endif()
+endforeach()
+
+if(matrix_runner_text MATCHES "multiway_training_scaling")
+    message(FATAL_ERROR "qualification worker matrix must not invoke benchmark binaries")
+endif()
+
+foreach(runner_configuration_field "DynamicChunkSize" "--dynamic-chunk-size" "PlacementPolicy"
+        "CheckpointMode" "dynamic_chunk_size" "placement_policy" "checkpoint_mode"
+        "export_result_payload_hash" "export_policy_content_hash")
+    string(FIND "${runner_text}" "${runner_configuration_field}" runner_configuration_position)
+    if(runner_configuration_position EQUAL -1)
+        message(FATAL_ERROR "RAM runner is missing qualification configuration field: ${runner_configuration_field}")
     endif()
 endforeach()
 

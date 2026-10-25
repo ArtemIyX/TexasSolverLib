@@ -33,7 +33,7 @@ namespace texas::solver::multiway
 	};
 
 	inline constexpr std::size_t MULTIWAY_MEMORY_PHASE_COUNT = 13U;
-	inline constexpr std::uint32_t MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION = 1U;
+	inline constexpr std::uint32_t MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION = 2U;
 	inline constexpr std::uint32_t MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION = 1U;
 	inline constexpr std::uint32_t MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION = 2U;
 	inline constexpr std::uint32_t MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION = 1U;
@@ -215,6 +215,9 @@ namespace texas::solver::multiway
 		std::uint64_t virtual_address_bytes = 0U;
 		std::uint64_t anonymous_resident_bytes = 0U;
 		std::uint64_t file_resident_bytes = 0U;
+		std::uint64_t minor_page_faults = 0U;
+		std::uint64_t major_page_faults = 0U;
+		std::uint64_t total_page_faults = 0U;
 		bool current_working_set_available = false;
 		bool peak_working_set_available = false;
 		bool private_committed_available = false;
@@ -222,6 +225,9 @@ namespace texas::solver::multiway
 		bool virtual_address_available = false;
 		bool anonymous_resident_available = false;
 		bool file_resident_available = false;
+		bool minor_page_faults_available = false;
+		bool major_page_faults_available = false;
+		bool total_page_faults_available = false;
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
@@ -481,6 +487,7 @@ namespace texas::solver::multiway
 		MultiwayExportObservedMemoryDelta observed_delta{};
 		std::uint64_t result_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
+		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t duration_nanoseconds = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 

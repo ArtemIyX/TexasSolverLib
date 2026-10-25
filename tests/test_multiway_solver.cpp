@@ -200,7 +200,49 @@ namespace
 		return result;
 	}
 
+	void expect_checkpoints_equal(
+		const texas::MultiwayCoordinatorCheckpoint& expected,
+		const texas::MultiwayCoordinatorCheckpoint& actual)
+	{
+		EXPECT_EQ(actual.public_states.size(), expected.public_states.size());
+		EXPECT_EQ(actual.storage.shapes.size(), expected.storage.shapes.size());
+		for (std::size_t index = 0U; index < expected.storage.shapes.size(); ++index)
+		{
+			EXPECT_EQ(actual.storage.shapes[index].infoset, expected.storage.shapes[index].infoset);
+			EXPECT_EQ(actual.storage.shapes[index].bucket_count, expected.storage.shapes[index].bucket_count);
+			EXPECT_EQ(actual.storage.shapes[index].action_count, expected.storage.shapes[index].action_count);
+		}
+		EXPECT_EQ(actual.storage.regrets, expected.storage.regrets);
+		EXPECT_EQ(actual.storage.strategy_sums, expected.storage.strategy_sums);
+		EXPECT_EQ(actual.storage.compact_regrets, expected.storage.compact_regrets);
+		EXPECT_EQ(actual.storage.compact_strategy_masses, expected.storage.compact_strategy_masses);
+	}
+
+	std::vector<texas::MultiwayWorkerDeltaStream> make_differential_delta_streams(std::size_t worker_count)
+	{
+		std::vector<texas::MultiwayWorkerDeltaStream> streams;
+		streams.reserve(worker_count);
+		for (std::size_t worker = 0U; worker < worker_count; ++worker)
+			streams.emplace_back(worker, 8U);
+		for (std::size_t worker = 0U; worker < worker_count; ++worker)
+		{
+			for (std::uint64_t entry = 0U; entry < 5U; ++entry)
+			{
+				const auto sequence = static_cast<std::uint64_t>(worker * 5U + entry);
+				EXPECT_TRUE(streams[worker].try_append(delta(
+					static_cast<std::uint8_t>((sequence * 7U + 1U) % 3U),
+					static_cast<double>((sequence * 11U) % 17U) - 8.0,
+					static_cast<double>((sequence * 13U) % 19U) + 0.25,
+					sequence + 1U)));
+			}
+			streams[worker].sort_fixed_order();
+		}
+		return streams;
+	}
+
 } // namespace
+
+using texas::solver::multiway::MultiwayDeltaMergePath;
 
 TEST_CASE(multiway_admission_diagnostics_accumulates_variance_fields)
 {
@@ -1369,6 +1411,101 @@ TEST_CASE(multiway_solver_discovery_merge_reports_single_stream_eligibility)
 	EXPECT_EQ(diagnostics.discovery_row_duplicate_candidates, 0U);
 }
 
+TEST_CASE(multiway_solver_discovery_merge_reference_and_tournament_match_duplicate_heavy_streams)
+{
+	const auto first_child = checked_action_child_public_state();
+	const auto second_child = action_child_public_state(root_public_state(), 2, 102, 1);
+	std::vector<texas::MultiwayDiscoveryStream> worker_streams;
+	worker_streams.reserve(6U);
+	for (std::size_t worker = 0U; worker < 6U; ++worker)
+	{
+		worker_streams.emplace_back(8U, 8U);
+		EXPECT_TRUE(worker_streams.back().try_append_public_state(second_child));
+		EXPECT_TRUE(worker_streams.back().try_append_public_state(first_child));
+		EXPECT_TRUE(worker_streams.back().try_append_row(root_row()));
+		EXPECT_TRUE(worker_streams.back().try_append_row({ { first_child.id, first_child.betting.current_player }, 1U, static_cast<std::uint8_t>(first_child.legal_actions.size()) }));
+		worker_streams.back().prepare_for_merge();
+	}
+	std::vector<const texas::MultiwayDiscoveryStream*> streams;
+	streams.reserve(worker_streams.size());
+	for (const auto& stream : worker_streams)
+		streams.push_back(&stream);
+
+	texas::solver::multiway::detail::MultiwayDiscoveryMergeScratch reference_scratch;
+	reference_scratch.reserve(streams.size());
+	texas::solver::multiway::detail::MultiwayDiscoveryMergeScratch tournament_scratch;
+	tournament_scratch.reserve(streams.size());
+	std::vector<texas::MultiwayPublicStateDescriptor> reference_states;
+	std::vector<texas::MultiwaySparseRowShape> reference_rows;
+	std::vector<texas::MultiwayPublicStateDescriptor> tournament_states;
+	std::vector<texas::MultiwaySparseRowShape> tournament_rows;
+	texas::MultiwayAdmissionDiagnostics reference_diagnostics;
+	texas::MultiwayAdmissionDiagnostics tournament_diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, reference_states, reference_rows, reference_scratch,
+		texas::solver::multiway::detail::MultiwayDiscoveryMergePath::Reference,
+		&reference_diagnostics);
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, tournament_states, tournament_rows, tournament_scratch,
+		texas::solver::multiway::detail::MultiwayDiscoveryMergePath::Tournament,
+		&tournament_diagnostics);
+
+	EXPECT_EQ(reference_states.size(), 2U);
+	EXPECT_EQ(reference_rows.size(), 2U);
+	EXPECT_EQ(tournament_states.size(), reference_states.size());
+	EXPECT_EQ(tournament_rows.size(), reference_rows.size());
+	for (std::size_t index = 0U; index < reference_states.size(); ++index)
+		expect_public_state_descriptor_equal(reference_states[index], tournament_states[index]);
+	for (std::size_t index = 0U; index < reference_rows.size(); ++index)
+	{
+		EXPECT_EQ(reference_rows[index].infoset, tournament_rows[index].infoset);
+		EXPECT_EQ(reference_rows[index].bucket_count, tournament_rows[index].bucket_count);
+		EXPECT_EQ(reference_rows[index].action_count, tournament_rows[index].action_count);
+	}
+	EXPECT_EQ(reference_diagnostics.discovery_public_state_source_elements, 12U);
+	EXPECT_EQ(reference_diagnostics.discovery_row_source_elements, 12U);
+	EXPECT_EQ(reference_diagnostics.discovery_public_state_duplicate_candidates, 10U);
+	EXPECT_EQ(reference_diagnostics.discovery_row_duplicate_candidates, 10U);
+	EXPECT_EQ(tournament_diagnostics.discovery_public_state_source_elements, reference_diagnostics.discovery_public_state_source_elements);
+	EXPECT_EQ(tournament_diagnostics.discovery_row_source_elements, reference_diagnostics.discovery_row_source_elements);
+	EXPECT_EQ(tournament_diagnostics.discovery_public_state_duplicate_candidates, reference_diagnostics.discovery_public_state_duplicate_candidates);
+	EXPECT_EQ(tournament_diagnostics.discovery_row_duplicate_candidates, reference_diagnostics.discovery_row_duplicate_candidates);
+	EXPECT_EQ(tournament_diagnostics.discovery_public_descriptor_copy_count, reference_diagnostics.discovery_public_descriptor_copy_count);
+	EXPECT_EQ(tournament_scratch.cursors.capacity(), streams.size());
+	EXPECT_EQ(tournament_scratch.tournament.capacity(), streams.size());
+}
+
+TEST_CASE(multiway_solver_discovery_merge_selects_tournament_only_above_threshold)
+{
+	using texas::solver::multiway::detail::MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD;
+	using texas::solver::multiway::detail::MultiwayDiscoveryMergePath;
+	EXPECT_EQ(
+		texas::solver::multiway::detail::select_multiway_discovery_merge_path(
+			MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD),
+		MultiwayDiscoveryMergePath::Reference);
+	EXPECT_EQ(
+		texas::solver::multiway::detail::select_multiway_discovery_merge_path(
+			MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD + 1U),
+		MultiwayDiscoveryMergePath::Tournament);
+}
+
+TEST_CASE(multiway_solver_discovery_merge_tournament_handles_empty_inputs)
+{
+	const std::vector<const texas::MultiwayDiscoveryStream*> streams;
+	texas::solver::multiway::detail::MultiwayDiscoveryMergeScratch scratch;
+	scratch.reserve(0U);
+	std::vector<texas::MultiwayPublicStateDescriptor> public_states;
+	std::vector<texas::MultiwaySparseRowShape> rows;
+	texas::MultiwayAdmissionDiagnostics diagnostics;
+	texas::solver::multiway::detail::merge_multiway_discovery_streams(
+		streams, public_states, rows, scratch,
+		texas::solver::multiway::detail::MultiwayDiscoveryMergePath::Tournament,
+		&diagnostics);
+	EXPECT_TRUE(public_states.empty());
+	EXPECT_TRUE(rows.empty());
+	EXPECT_TRUE(scratch.cursors.empty());
+}
+
 TEST_CASE(multiway_solver_discovery_one_stream_fast_path_matches_generic_merge)
 {
 	texas::MultiwayDiscoveryStream stream(8U);
@@ -1640,6 +1777,184 @@ TEST_CASE(multiway_solver_preallocates_and_reuses_bounded_merge_scratch)
 		second.sort_fixed_order();
 		coordinator.merge_worker_streams({ first, second });
 		EXPECT_EQ(coordinator.merge_scratch_capacity(), 8U);
+	}
+}
+
+TEST_CASE(multiway_solver_delta_merge_selects_tournament_only_above_threshold)
+{
+	using texas::solver::multiway::MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD;
+	using texas::solver::multiway::MultiwayDeltaMergePath;
+	EXPECT_EQ(
+		texas::solver::multiway::select_multiway_delta_merge_path(MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD),
+		MultiwayDeltaMergePath::Reference);
+	EXPECT_EQ(
+		texas::solver::multiway::select_multiway_delta_merge_path(MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD + 1U),
+		MultiwayDeltaMergePath::Tournament);
+}
+
+TEST_CASE(multiway_solver_reference_and_tournament_delta_merges_are_bitwise_identical)
+{
+	constexpr std::size_t worker_count = 6U;
+	auto limits = valid_limits();
+	limits.worker_count = static_cast<std::uint32_t>(worker_count);
+	limits.max_worker_delta_entries = 8U;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	texas::MultiwaySolverCoordinator reference(
+		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	texas::MultiwaySolverCoordinator tournament(
+		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	reference.admit_infoset_row(root_row());
+	tournament.admit_infoset_row(root_row());
+	auto streams = make_differential_delta_streams(worker_count);
+	reference.merge_worker_streams(streams, MultiwayDeltaMergePath::Reference);
+	tournament.merge_worker_streams(streams, MultiwayDeltaMergePath::Tournament);
+	expect_checkpoints_equal(reference.checkpoint(), tournament.checkpoint());
+	EXPECT_EQ(
+		reference.diagnostics().worker_delta_entries_merged,
+		tournament.diagnostics().worker_delta_entries_merged);
+	EXPECT_EQ(
+		reference.diagnostics().last_merged_stream_fingerprint,
+		tournament.diagnostics().last_merged_stream_fingerprint);
+	const auto reference_policy = reference.export_root_policy();
+	const auto tournament_policy = tournament.export_root_policy();
+	EXPECT_EQ(reference_policy.actions.size(), tournament_policy.actions.size());
+	for (std::size_t action = 0U; action < reference_policy.actions.size(); ++action)
+	{
+		EXPECT_EQ(reference_policy.actions[action].action, tournament_policy.actions[action].action);
+		EXPECT_EQ(reference_policy.actions[action].probability, tournament_policy.actions[action].probability);
+	}
+}
+
+TEST_CASE(multiway_solver_tournament_delta_merge_handles_empty_and_singleton_streams)
+{
+	constexpr std::size_t worker_count = 6U;
+	auto limits = valid_limits();
+	limits.worker_count = static_cast<std::uint32_t>(worker_count);
+	limits.max_worker_delta_entries = 2U;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	std::vector<texas::MultiwayWorkerDeltaStream> empty_streams;
+	empty_streams.reserve(worker_count);
+	for (std::size_t worker = 0U; worker < worker_count; ++worker)
+	{
+		empty_streams.emplace_back(worker, 2U);
+		empty_streams.back().sort_fixed_order();
+	}
+	texas::MultiwaySolverCoordinator empty(
+		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	empty.merge_worker_streams(empty_streams, MultiwayDeltaMergePath::Tournament);
+	EXPECT_EQ(empty.diagnostics().worker_delta_entries_merged, 0U);
+
+	std::vector<texas::MultiwayWorkerDeltaStream> singleton_streams;
+	singleton_streams.reserve(worker_count);
+	for (std::size_t worker = 0U; worker < worker_count; ++worker)
+	{
+		singleton_streams.emplace_back(worker, 2U);
+		if (worker == 4U)
+			EXPECT_TRUE(singleton_streams.back().try_append(delta(1U, 2.0, 3.0, 17U)));
+		singleton_streams.back().sort_fixed_order();
+	}
+	texas::MultiwaySolverCoordinator singleton(
+		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	singleton.admit_infoset_row(root_row());
+	singleton.merge_worker_streams(singleton_streams, MultiwayDeltaMergePath::Tournament);
+	EXPECT_EQ(singleton.diagnostics().worker_delta_entries_merged, 1U);
+	EXPECT_NEAR(singleton.export_root_policy().actions[1].probability, 1.0, 1e-12);
+}
+
+TEST_CASE(multiway_solver_reference_and_tournament_delta_merges_reject_identical_trajectory_duplicates)
+{
+	constexpr std::size_t worker_count = 6U;
+	auto limits = valid_limits();
+	limits.worker_count = static_cast<std::uint32_t>(worker_count);
+	limits.max_worker_delta_entries = 2U;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	std::vector<texas::MultiwayWorkerDeltaStream> streams;
+	streams.reserve(worker_count);
+	for (std::size_t worker = 0U; worker < worker_count; ++worker)
+	{
+		streams.emplace_back(worker, 2U);
+		if (worker < 2U)
+			EXPECT_TRUE(streams.back().try_append(delta(0U, 1.0, 1.0, 42U)));
+		streams.back().sort_fixed_order();
+	}
+	for (const auto path : { MultiwayDeltaMergePath::Reference, MultiwayDeltaMergePath::Tournament })
+	{
+		texas::MultiwaySolverCoordinator coordinator(
+			texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+		coordinator.admit_infoset_row(root_row());
+		EXPECT_THROW(coordinator.merge_worker_streams(streams, path), std::invalid_argument);
+		EXPECT_EQ(coordinator.diagnostics().worker_delta_entries_merged, 0U);
+	}
+}
+
+TEST_CASE(multiway_solver_tournament_delta_merge_preserves_compact_storage_and_float64_overflow)
+{
+	constexpr std::size_t worker_count = 6U;
+	auto limits = valid_limits();
+	limits.worker_count = static_cast<std::uint32_t>(worker_count);
+	limits.max_worker_delta_entries = 8U;
+	limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	texas::MultiwaySolverCoordinator compact(
+		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	compact.admit_infoset_row(root_row());
+	auto streams = make_differential_delta_streams(worker_count);
+	compact.merge_worker_streams(streams, MultiwayDeltaMergePath::Tournament);
+	const auto checkpoint = compact.checkpoint();
+	EXPECT_TRUE(compact.compact_storage() != nullptr);
+	EXPECT_TRUE(!checkpoint.storage.compact_regrets.empty());
+
+	auto overflow_limits = limits;
+	overflow_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::Float64Reference;
+	overflow_limits.max_worker_delta_entries = 2U;
+	texas::MultiwaySolverCoordinator overflow(
+		texas::MultiwaySolveRequest(valid_root(), cfr, overflow_limits));
+	overflow.admit_infoset_row(root_row());
+	std::vector<texas::MultiwayWorkerDeltaStream> overflow_streams;
+	overflow_streams.reserve(worker_count);
+	for (std::size_t worker = 0U; worker < worker_count; ++worker)
+	{
+		overflow_streams.emplace_back(worker, 2U);
+		if (worker == 0U)
+		{
+			const auto large = std::ldexp(1.0, 53);
+			EXPECT_TRUE(overflow_streams.back().try_append(delta(0U, large, large, 0U)));
+			EXPECT_TRUE(overflow_streams.back().try_append(delta(0U, 1.0, 1.0, 1U)));
+		}
+		overflow_streams.back().sort_fixed_order();
+	}
+	EXPECT_THROW(
+		overflow.merge_worker_streams(overflow_streams, MultiwayDeltaMergePath::Tournament),
+		std::overflow_error);
+}
+
+TEST_CASE(multiway_solver_tournament_delta_merge_reuses_preallocated_heap_scratch)
+{
+	constexpr std::size_t worker_count = 6U;
+	auto limits = valid_limits();
+	limits.worker_count = static_cast<std::uint32_t>(worker_count);
+	limits.max_worker_delta_entries = 2U;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	texas::MultiwaySolverCoordinator coordinator(
+		texas::MultiwaySolveRequest(valid_root(), cfr, limits));
+	coordinator.admit_infoset_row(root_row());
+	const auto capacity = coordinator.merge_tournament_scratch_capacity();
+	EXPECT_EQ(capacity, worker_count);
+	for (std::uint64_t trajectory = 0U; trajectory < 2U; ++trajectory)
+	{
+		auto streams = make_differential_delta_streams(worker_count);
+		for (auto& stream : streams)
+			stream.rewind(0U);
+		streams[trajectory].try_append(delta(trajectory % 3U, 1.0, 1.0, 100U + trajectory));
+		for (auto& stream : streams)
+			stream.sort_fixed_order();
+		coordinator.merge_worker_streams(streams, MultiwayDeltaMergePath::Tournament);
+		EXPECT_EQ(coordinator.merge_tournament_scratch_capacity(), capacity);
 	}
 }
 

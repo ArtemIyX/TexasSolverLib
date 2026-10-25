@@ -168,6 +168,22 @@ namespace texas::solver::multiway
 			append_u64(hash, action.action_menu_id);
 		}
 
+		void append_policy_row(
+			std::uint64_t& hash,
+			const MultiwayFullBlueprintRowView& row) noexcept
+		{
+			append_u64(hash, row.infoset.public_state.value);
+			append_u64(hash, static_cast<std::uint64_t>(row.infoset.seat));
+			append_u64(hash, row.bucket);
+			append_u64(hash, row.action_menu_id);
+			append_u64(hash, row.action_count);
+			for (std::size_t index = 0U; index < row.action_count; ++index)
+			{
+				append_action(hash, row.actions[index].action);
+				append_u64(hash, row.actions[index].probability);
+			}
+		}
+
 		void append_training(
 			std::uint64_t& hash,
 			const MultiwayBlueprintTrainingMetadata& training) noexcept
@@ -466,19 +482,28 @@ namespace texas::solver::multiway
 	void MultiwayFullBlueprintPayloadHasher::append_row(
 		const MultiwayFullBlueprintRowView& row) noexcept
 	{
-		append_u64(hash_, row.infoset.public_state.value);
-		append_u64(hash_, static_cast<std::uint64_t>(row.infoset.seat));
-		append_u64(hash_, row.bucket);
-		append_u64(hash_, row.action_menu_id);
-		append_u64(hash_, row.action_count);
-		for (std::size_t index = 0U; index < row.action_count; ++index)
-		{
-			append_action(hash_, row.actions[index].action);
-			append_u64(hash_, row.actions[index].probability);
-		}
+		append_policy_row(hash_, row);
 	}
 
 	std::uint64_t MultiwayFullBlueprintPayloadHasher::finish() const noexcept
+	{
+		return texas::core::fingerprint::finish(hash_);
+	}
+
+	void MultiwayFullBlueprintPolicyContentHasher::begin(std::uint64_t row_count) noexcept
+	{
+		hash_ = texas::core::fingerprint::FNV1A_OFFSET;
+		append_u64(hash_, MULTIWAY_POLICY_CONTENT_HASH_VERSION);
+		append_u64(hash_, row_count);
+	}
+
+	void MultiwayFullBlueprintPolicyContentHasher::append_row(
+		const MultiwayFullBlueprintRowView& row) noexcept
+	{
+		append_policy_row(hash_, row);
+	}
+
+	std::uint64_t MultiwayFullBlueprintPolicyContentHasher::finish() const noexcept
 	{
 		return texas::core::fingerprint::finish(hash_);
 	}
@@ -554,6 +579,7 @@ namespace texas::solver::multiway
 			if (!output)
 				throw std::runtime_error("multiway full blueprint temporary file cannot be opened");
 			hasher.begin(plan.schema_version, plan.identity, plan.training, plan.row_count);
+			policy_hasher.begin(plan.row_count);
 			write_stream_header(encoder, plan);
 		}
 
@@ -571,6 +597,7 @@ namespace texas::solver::multiway
 		BufferedEncoder encoder;
 		std::unique_ptr<TemporaryFileCleanup> cleanup;
 		MultiwayFullBlueprintPayloadHasher hasher;
+		MultiwayFullBlueprintPolicyContentHasher policy_hasher;
 		RowKey previous_key{};
 		bool has_previous_key = false;
 		bool finished = false;
@@ -590,6 +617,10 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway full blueprint payload hash does not match");
 		}
+		if (MultiwayFullBlueprintArtifacts::policy_content_hash(*this) == 0U)
+		{
+			throw std::invalid_argument("multiway full blueprint policy content hash is invalid");
+		}
 	}
 
 	MultiwayMemoryComponent MultiwayFullBlueprintArtifact::memory_snapshot() const noexcept
@@ -608,6 +639,29 @@ namespace texas::solver::multiway
 		hasher.begin(artifact.schema_version, artifact.identity, artifact.training, artifact.rows.size());
 		for (const auto& row : artifact.rows)
 			hasher.append_row(MultiwayFullBlueprintRowView(row));
+		return hasher.finish();
+	}
+
+	std::uint64_t MultiwayFullBlueprintArtifacts::policy_content_hash(
+		const MultiwayFullBlueprintArtifact& artifact)
+	{
+		validate_materialized_rows(artifact.rows);
+		std::vector<std::size_t> row_indices(artifact.rows.size());
+		for (std::size_t index = 0U; index < row_indices.size(); ++index)
+			row_indices[index] = index;
+		std::sort(row_indices.begin(), row_indices.end(), [&](std::size_t left, std::size_t right) {
+			const auto left_key = row_key(MultiwayFullBlueprintRowView(artifact.rows[left]));
+			const auto right_key = row_key(MultiwayFullBlueprintRowView(artifact.rows[right]));
+			if (row_key_less(left_key, right_key))
+				return true;
+			if (row_key_less(right_key, left_key))
+				return false;
+			return left < right;
+		});
+		MultiwayFullBlueprintPolicyContentHasher hasher;
+		hasher.begin(row_indices.size());
+		for (const auto index : row_indices)
+			hasher.append_row(MultiwayFullBlueprintRowView(artifact.rows[index]));
 		return hasher.finish();
 	}
 
@@ -642,6 +696,7 @@ namespace texas::solver::multiway
 		}
 
 		impl_->hasher.append_row(row);
+		impl_->policy_hasher.append_row(row);
 		write_stream_row(impl_->encoder, row);
 		impl_->previous_key = current_key;
 		impl_->has_previous_key = true;
@@ -681,7 +736,7 @@ namespace texas::solver::multiway
 			throw std::runtime_error("multiway full blueprint publication was not atomic");
 		impl_->cleanup->active = false;
 		impl_->finished = true;
-		return { impl_->row_count, impl_->action_count, impl_->encoder.encoded_bytes(), payload_hash, publication_mode };
+		return { impl_->row_count, impl_->action_count, impl_->encoder.encoded_bytes(), payload_hash, impl_->policy_hasher.finish(), publication_mode };
 	}
 
 	MultiwayFullBlueprintStreamResult MultiwayFullBlueprintArtifacts::save_atomic_streaming(

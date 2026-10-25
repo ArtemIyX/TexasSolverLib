@@ -48,6 +48,7 @@ namespace texas::solver::multiway
 	};
 
 	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 2U;
+	inline constexpr std::uint32_t MULTIWAY_POLICY_CONTENT_HASH_VERSION = 1U;
 
 	// Full runtime lookup payload. It is independent of the compact root
 	// snapshot so hosts can retain the latter as a compatible fallback.
@@ -111,6 +112,17 @@ namespace texas::solver::multiway
 		std::uint64_t hash_ = 0U;
 	};
 
+	class MultiwayFullBlueprintPolicyContentHasher
+	{
+	public:
+		void begin(std::uint64_t row_count) noexcept;
+		void append_row(const MultiwayFullBlueprintRowView& row) noexcept;
+		[[nodiscard]] std::uint64_t finish() const noexcept;
+
+	private:
+		std::uint64_t hash_ = 0U;
+	};
+
 	enum class MultiwayFullBlueprintStreamFailurePoint : std::uint8_t
 	{
 		None = 0U,
@@ -132,6 +144,7 @@ namespace texas::solver::multiway
 		std::uint64_t action_count = 0U;
 		std::uint64_t serialized_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
+		std::uint64_t policy_content_hash = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
 
@@ -171,6 +184,7 @@ namespace texas::solver::multiway
 			const std::filesystem::path& path,
 			const MultiwayModelIdentity& expected_identity);
 		[[nodiscard]] static std::uint64_t payload_hash(const MultiwayFullBlueprintArtifact& artifact) noexcept;
+		[[nodiscard]] static std::uint64_t policy_content_hash(const MultiwayFullBlueprintArtifact& artifact);
 	};
 
 	class MultiwayBlueprintArtifacts

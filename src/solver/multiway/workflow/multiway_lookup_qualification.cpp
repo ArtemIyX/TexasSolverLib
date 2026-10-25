@@ -19,6 +19,8 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway lookup replay fingerprints differ");
 		}
+		if (lookup_hits != 0U && policy_content_hash == 0U)
+			throw std::invalid_argument("multiway lookup qualification lacks policy content hash");
 	}
 
 	MultiwayLookupQualificationReport qualify_multiway_required_lookups(
@@ -63,6 +65,7 @@ namespace texas::solver::multiway
 		report.missing_infosets = audit.missing_infosets;
 		report.missing_buckets = audit.missing_buckets;
 		report.action_menu_mismatches = audit.action_menu_mismatches;
+		report.policy_content_hash = MultiwayFullBlueprintArtifacts::policy_content_hash(blueprint);
 		report.replay_fingerprint = audit.fingerprint();
 		return report;
 	}
@@ -80,6 +83,7 @@ namespace texas::solver::multiway
 			   << ",\n  \"missing_infosets\": " << report.missing_infosets
 			   << ",\n  \"missing_buckets\": " << report.missing_buckets
 			   << ",\n  \"action_menu_mismatches\": " << report.action_menu_mismatches
+			   << ",\n  \"policy_content_hash\": " << report.policy_content_hash
 			   << ",\n  \"replay_fingerprint\": " << report.replay_fingerprint
 			   << ",\n  \"second_replay_fingerprint\": " << report.second_replay_fingerprint
 			   << ",\n  \"passed\": " << (report.passed() ? "true" : "false") << "\n}\n";

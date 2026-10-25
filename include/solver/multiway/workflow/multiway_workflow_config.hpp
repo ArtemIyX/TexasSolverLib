@@ -2,6 +2,7 @@
 
 #include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
+#include "solver/multiway/engine/multiway_worker_topology.hpp"
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 
 #include <cstdint>
@@ -23,6 +24,9 @@ namespace texas::solver::multiway
 		std::uint32_t max_public_chance_depth = 0U;
 		std::uint64_t deterministic_seed = 0U;
 		std::uint32_t training_worker_count = 0U;
+		MultiwaySchedulerMode scheduler_mode = MultiwaySchedulerMode::Fixed;
+		std::uint32_t dynamic_chunk_size = MULTIWAY_DYNAMIC_SCHEDULER_CHUNK_SIZE;
+		MultiwayWorkerPlacementPolicy placement_policy = MultiwayWorkerPlacementPolicy::OsDefault;
 		std::uint64_t target_trajectories = 0U;
 		std::uint64_t maximum_public_states = 0U;
 		std::uint64_t maximum_sparse_rows = 0U;

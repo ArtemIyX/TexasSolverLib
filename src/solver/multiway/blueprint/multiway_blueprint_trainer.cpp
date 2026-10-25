@@ -20,6 +20,31 @@ namespace texas::solver::multiway
 	{
 		constexpr std::uint64_t kQuantizedProbabilityMax = std::numeric_limits<std::uint16_t>::max();
 
+		class MultiwayDurationRecorder final
+		{
+		public:
+			explicit MultiwayDurationRecorder(std::uint64_t& target) noexcept
+				: target_(target), started_at_(std::chrono::steady_clock::now())
+			{
+			}
+
+			~MultiwayDurationRecorder() noexcept
+			{
+				const auto elapsed = static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - started_at_)
+						.count());
+				if (elapsed > std::numeric_limits<std::uint64_t>::max() - target_)
+					target_ = std::numeric_limits<std::uint64_t>::max();
+				else
+					target_ += elapsed;
+			}
+
+		private:
+			std::uint64_t& target_;
+			std::chrono::steady_clock::time_point started_at_;
+		};
+
 		bool export_shape_less(
 			const MultiwaySparseRowShape& left,
 			const MultiwaySparseRowShape& right) noexcept
@@ -405,8 +430,9 @@ namespace texas::solver::multiway
 		cfr.validate();
 		limits.validate();
 		schedule.validate();
+		placement.validate();
 		working_set_monitor.validate();
-		if (deterministic_seed == 0U || cfr.player_count != rules.player_count || blueprint.player_count != rules.player_count || blueprint.initial_stack_chips != rules.initial_stack_chips || blueprint.small_blind_chips != rules.small_blind_chips || blueprint.big_blind_chips != rules.big_blind_chips || blueprint.ante_chips != rules.ante_chips || blueprint.rake_policy.identity() != rules.rake_policy.identity() || blueprint.rules_profile_version != rules.profile_version || blueprint.flop_bucket_count != bucket_profile.flop_bucket_count || blueprint.turn_bucket_count != bucket_profile.turn_bucket_count || blueprint.river_bucket_count != bucket_profile.river_bucket_count || max_decision_depth == 0U || max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH || max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH || (scheduler_mode != MultiwaySchedulerMode::Fixed && scheduler_mode != MultiwaySchedulerMode::Dynamic) || (requested_worker_count != 0U && requested_worker_count < limits.worker_count))
+		if (deterministic_seed == 0U || cfr.player_count != rules.player_count || blueprint.player_count != rules.player_count || blueprint.initial_stack_chips != rules.initial_stack_chips || blueprint.small_blind_chips != rules.small_blind_chips || blueprint.big_blind_chips != rules.big_blind_chips || blueprint.ante_chips != rules.ante_chips || blueprint.rake_policy.identity() != rules.rake_policy.identity() || blueprint.rules_profile_version != rules.profile_version || blueprint.flop_bucket_count != bucket_profile.flop_bucket_count || blueprint.turn_bucket_count != bucket_profile.turn_bucket_count || blueprint.river_bucket_count != bucket_profile.river_bucket_count || max_decision_depth == 0U || max_decision_depth > MULTIWAY_MAX_DECISION_DEPTH || max_public_chance_depth > MULTIWAY_MAX_PUBLIC_CHANCE_DEPTH || !multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || (requested_worker_count != 0U && requested_worker_count < limits.worker_count))
 		{
 			throw std::invalid_argument("multiway training configuration has inconsistent artifact or traversal inputs");
 		}
@@ -438,6 +464,11 @@ namespace texas::solver::multiway
 		append_u64(runtime_hash, limits.discovery_public_state_capacity());
 		append_u64(runtime_hash, limits.discovery_row_capacity());
 		append_u64(runtime_hash, immutable_batch_epochs ? 1U : 0U);
+		append_u64(runtime_hash, MULTIWAY_PARTITION_VERSION);
+		append_u64(runtime_hash, MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION);
+		append_u64(runtime_hash, MULTIWAY_SCHEDULER_POLICY_VERSION);
+		append_u64(runtime_hash, static_cast<std::uint64_t>(scheduler_mode));
+		append_u64(runtime_hash, dynamic_chunk_size);
 		append_u64(runtime_hash, schedule.identity());
 		append_u64(runtime_hash, deterministic_seed);
 		identity.runtime_search_schema_hash = runtime_hash == 0U ? 1U : runtime_hash;
@@ -468,6 +499,12 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("multiway blueprint trainer requires a non-zero deterministic seed");
 		}
 		status_.late_window_start_batch = schedule_.late_window_start_batch;
+		status_.scheduler_mode = batch_runner_->scheduler_mode();
+		status_.dynamic_chunk_size = batch_runner_->dynamic_chunk_size();
+		status_.scheduler_policy_version = MULTIWAY_SCHEDULER_POLICY_VERSION;
+		status_.static_block_scheduler_version = MULTIWAY_STATIC_BLOCK_SCHEDULER_VERSION;
+		status_.partition_version = MULTIWAY_PARTITION_VERSION;
+		status_.merge_order_version = MULTIWAY_MERGE_ORDER_VERSION;
 		status_.admitted_rows_per_batch.reserve(256U);
 		status_.configured_max_public_states = coordinator_->limits().max_public_states;
 		status_.configured_max_sparse_rows = coordinator_->limits().max_sparse_rows;
@@ -658,6 +695,7 @@ namespace texas::solver::multiway
 			status_.missing_lookup_requests = diagnostics.missing_lookup_requests;
 			status_.discarded_trajectories = diagnostics.trajectories_discarded;
 			status_.merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
+			status_.schedule_fingerprint = batch_result.run.schedule_fingerprint;
 			status_.peak_public_states = std::max(status_.peak_public_states,
 				diagnostics.public_states_admitted);
 			status_.peak_sparse_rows = std::max(status_.peak_sparse_rows,
@@ -681,6 +719,7 @@ namespace texas::solver::multiway
 			status_.memory_ledger.coordinator_allocation_count += batch_result.coordinator_allocation_count;
 			status_.memory_ledger.coordinator_allocation_bytes += batch_result.coordinator_allocated_bytes;
 			status_.admission_diagnostics.accumulate(batch_result.admission_diagnostics);
+			status_.placement_policy = batch_result.placement_policy;
 			status_.affinity_requested = batch_result.affinity_requested;
 			status_.cumulative_worker_delta_entries = diagnostics.worker_delta_entries_merged;
 			status_.worker_active_nanoseconds += batch_result.worker_active_nanoseconds;
@@ -719,6 +758,16 @@ namespace texas::solver::multiway
 				status_.worker_allocated_bytes.assign(batch_result.worker_allocated_bytes.size(), 0U);
 				status_.worker_requested_processor.assign(batch_result.worker_requested_processor.size(), 0xffffffffU);
 				status_.worker_resolved_processor.assign(batch_result.worker_resolved_processor.size(), 0U);
+				status_.worker_requested_cpu_set.assign(batch_result.worker_requested_cpu_set.size(), kMultiwayUnknownTopologyId);
+				status_.worker_resolved_cpu_set.assign(batch_result.worker_resolved_cpu_set.size(), kMultiwayUnknownTopologyId);
+				status_.worker_requested_physical_core.assign(batch_result.worker_requested_physical_core.size(), kMultiwayUnknownTopologyId);
+				status_.worker_resolved_physical_core.assign(batch_result.worker_resolved_physical_core.size(), kMultiwayUnknownTopologyId);
+				status_.worker_requested_smt_sibling.assign(batch_result.worker_requested_smt_sibling.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_resolved_smt_sibling.assign(batch_result.worker_resolved_smt_sibling.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_requested_cache_domain.assign(batch_result.worker_requested_cache_domain.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_resolved_cache_domain.assign(batch_result.worker_resolved_cache_domain.size(), kMultiwayUnknownTopologyIndex);
+				status_.worker_migration_sampled.assign(batch_result.worker_migration_sampled.size(), 0U);
+				status_.worker_migration_detected.assign(batch_result.worker_migration_detected.size(), 0U);
 				status_.worker_affinity_masks.assign(batch_result.worker_affinity_masks.size(), 0U);
 				status_.worker_affinity_succeeded.assign(batch_result.worker_affinity_succeeded.size(), 0U);
 				status_.worker_profiles.assign(batch_result.worker_profiles.size(), MultiwaySearchProfileSnapshot{});
@@ -758,6 +807,18 @@ namespace texas::solver::multiway
 				status_.worker_requested_processor[worker_index] = batch_result.worker_requested_processor[worker_index];
 				status_.worker_affinity_masks[worker_index] = batch_result.worker_affinity_masks[worker_index];
 				status_.worker_affinity_succeeded[worker_index] = batch_result.worker_affinity_succeeded[worker_index];
+				status_.worker_requested_cpu_set[worker_index] = batch_result.worker_requested_cpu_set[worker_index];
+				status_.worker_resolved_cpu_set[worker_index] = batch_result.worker_resolved_cpu_set[worker_index];
+				status_.worker_requested_physical_core[worker_index] = batch_result.worker_requested_physical_core[worker_index];
+				status_.worker_resolved_physical_core[worker_index] = batch_result.worker_resolved_physical_core[worker_index];
+				status_.worker_requested_smt_sibling[worker_index] = batch_result.worker_requested_smt_sibling[worker_index];
+				status_.worker_resolved_smt_sibling[worker_index] = batch_result.worker_resolved_smt_sibling[worker_index];
+				status_.worker_requested_cache_domain[worker_index] = batch_result.worker_requested_cache_domain[worker_index];
+				status_.worker_resolved_cache_domain[worker_index] = batch_result.worker_resolved_cache_domain[worker_index];
+				status_.worker_migration_sampled[worker_index] = std::max(
+					status_.worker_migration_sampled[worker_index], batch_result.worker_migration_sampled[worker_index]);
+				status_.worker_migration_detected[worker_index] = std::max(
+					status_.worker_migration_detected[worker_index], batch_result.worker_migration_detected[worker_index]);
 				if (batch_result.worker_profiles[worker_index].profiled())
 				{
 					status_.worker_profiles[worker_index].mode = batch_result.worker_profiles[worker_index].mode;
@@ -989,6 +1050,7 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path) const
 	{
 		const auto export_started = std::chrono::steady_clock::now();
+		MultiwayDurationRecorder export_duration(status_.export_wall_nanoseconds);
 		auto lease = coordinator_->acquire_export_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		std::vector<std::uint32_t> order;
@@ -1101,6 +1163,7 @@ namespace texas::solver::multiway
 		status_.memory_ledger.export_observed_after_working_set_bytes = telemetry.observed_delta.after_working_set_bytes;
 		telemetry.result_bytes = stream_result.serialized_bytes;
 		telemetry.payload_hash = stream_result.payload_hash;
+		telemetry.policy_content_hash = stream_result.policy_content_hash;
 		telemetry.duration_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - export_started)
@@ -1112,6 +1175,7 @@ namespace texas::solver::multiway
 		MultiwayFullBlueprintExportResult result;
 		result.plan = plan;
 		result.payload_hash = stream_result.payload_hash;
+		result.policy_content_hash = stream_result.policy_content_hash;
 		result.peak_scratch_bytes = peak_scratch_bytes;
 		result.publication_mode = stream_result.publication_mode;
 		return result;
@@ -1120,6 +1184,7 @@ namespace texas::solver::multiway
 	MultiwayTrainingCheckpointWriteResult MultiwayBlueprintTrainer::save_checkpoint_atomic(
 		const std::filesystem::path& path) const
 	{
+		MultiwayDurationRecorder checkpoint_duration(status_.checkpoint_wall_nanoseconds);
 		auto lease = coordinator_->acquire_checkpoint_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		const auto coverage = coverage_manifest();
@@ -1299,9 +1364,12 @@ namespace texas::solver::multiway
 				config_.limits.discovery_public_state_capacity(),
 				config_.limits.discovery_row_capacity() },
 			MultiwaySearchProfileMode::Disabled,
-			config_.pin_workers,
+			config_.pin_workers
+				? MultiwayWorkerPlacementConfig{ MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity, 0U }
+				: config_.placement,
 			config_.immutable_batch_epochs,
-			config_.scheduler_mode);
+			config_.scheduler_mode,
+			config_.dynamic_chunk_size);
 		if (!config_.process_memory_snapshots.record_current(MultiwayMemoryPhase::AfterWorkerPoolConstruction))
 			throw std::logic_error("multiway training memory snapshot phase order is invalid");
 		if (config_.memory_subsystem_snapshots.enabled)

@@ -23,7 +23,7 @@ namespace texas::solver::multiway
 		namespace portable = texas::core::portable;
 
 		constexpr std::array<char, 8> kMagic = { 'M', 'W', 'T', 'C', '0', '0', '0', '1' };
-		constexpr std::uint32_t kSchema = 5U;
+		constexpr std::uint32_t kSchema = MULTIWAY_TRAINING_CHECKPOINT_ARTIFACT_SCHEMA_VERSION;
 		constexpr std::uint64_t kMaxFileBytes = 60ULL * 1024ULL * 1024ULL * 1024ULL;
 		constexpr std::uint32_t kMaxStates = 100000000U;
 		constexpr std::uint32_t kMaxRows = 100000000U;
