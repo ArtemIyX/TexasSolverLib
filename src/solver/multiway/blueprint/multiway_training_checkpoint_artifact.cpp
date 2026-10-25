@@ -750,7 +750,8 @@ namespace texas::solver::multiway
 	MultiwayTrainingCheckpointWriteResult MultiwayTrainingCheckpointArtifacts::save_atomic_streamed(
 		const std::filesystem::path& path,
 		const MultiwayTrainingCheckpointStreamSource& source,
-		MultiwayCheckpointTelemetry* telemetry)
+		MultiwayCheckpointTelemetry* telemetry,
+		MultiwayTrainingCheckpointWriteOptions options)
 	{
 		if (source.identity == nullptr || source.training == nullptr || source.coverage == nullptr ||
 			source.catalog == nullptr || source.storage == nullptr || source.late_window_baseline == nullptr)
@@ -1020,12 +1021,16 @@ namespace texas::solver::multiway
 		emit(payload, out);
 		const auto hash = payload.finish_hash();
 		portable::write_u64(out, hash);
+		if (options.fail_before_close)
+			throw std::runtime_error("multiway training checkpoint injected close failure");
 		out.flush();
 		file.close();
 		std::error_code size_error;
 		const auto actual_bytes = std::filesystem::file_size(temporary, size_error);
 		if (!out || !file || size_error || actual_bytes != plan_bytes)
 			throw std::runtime_error("multiway training checkpoint streamed write failed");
+		if (options.fail_before_publication)
+			throw std::runtime_error("multiway training checkpoint injected publication failure");
 		const auto mode = core::publish_atomic_replace(temporary, path,
 			"multiway training checkpoint publish failed",
 			core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);

@@ -47,6 +47,12 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, 4U> street_visits{};
 	};
 
+	struct MultiwayTrainingCheckpointWriteOptions
+	{
+		bool fail_before_close = false;
+		bool fail_before_publication = false;
+	};
+
 	// Versioned, lossless process-resume artifact. It is separate from the
 	// root-policy deployment artifact because it retains all sparse accumulators.
 	class MultiwayTrainingCheckpointArtifacts
@@ -67,7 +73,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] static MultiwayTrainingCheckpointWriteResult save_atomic_streamed(
 			const std::filesystem::path& path,
 			const MultiwayTrainingCheckpointStreamSource& source,
-			MultiwayCheckpointTelemetry* telemetry = nullptr);
+			MultiwayCheckpointTelemetry* telemetry = nullptr,
+			MultiwayTrainingCheckpointWriteOptions options = {});
 
 		[[nodiscard]] static MultiwayBlueprintTrainingCheckpoint load_verified(
 			const std::filesystem::path& path,

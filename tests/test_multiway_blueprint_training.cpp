@@ -399,6 +399,42 @@ TEST_CASE(multiway_streaming_checkpoint_gate_rejects_before_temp_creation)
 	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
 }
 
+TEST_CASE(multiway_streaming_checkpoint_failures_keep_destination_and_remove_temp)
+{
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto checkpoint = fixture.trainer.checkpoint();
+	auto lease = fixture.coordinator.acquire_checkpoint_lease();
+	texas::MultiwayTrainingCheckpointStreamSource source;
+	source.identity = &checkpoint.identity;
+	source.training = &checkpoint.training;
+	source.coverage = &checkpoint.coverage;
+	source.catalog = &lease.public_catalog();
+	source.storage = &lease.storage();
+	source.compact_storage = lease.compact_storage();
+	source.late_window_baseline = &checkpoint.late_window_baseline;
+	source.terminal_visits = checkpoint.coordinator.terminal_visits;
+	source.leaf_visits = checkpoint.coordinator.leaf_visits;
+	source.missing_lookup_requests = checkpoint.coordinator.missing_lookup_requests;
+	source.last_merged_stream_fingerprint = checkpoint.coordinator.last_merged_stream_fingerprint;
+	source.street_visits = checkpoint.coordinator.street_visits;
+	const auto path = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_checkpoint_failure_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const std::string original = "previous-checkpoint";
+	{
+		std::ofstream output(path, std::ios::binary);
+		output.write(original.data(), static_cast<std::streamsize>(original.size()));
+	}
+	for (const auto options : { texas::MultiwayTrainingCheckpointWriteOptions{ true, false },
+		texas::MultiwayTrainingCheckpointWriteOptions{ false, true } })
+	{
+		EXPECT_THROW(texas::MultiwayTrainingCheckpointArtifacts::save_atomic_streamed(path, source, nullptr, options), std::runtime_error);
+		EXPECT_EQ(read_bytes(path), original);
+		EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+	}
+	std::filesystem::remove(path);
+}
+
 TEST_CASE(multiway_streaming_export_matches_materialized_compact_bytes_and_repeats)
 {
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
