@@ -1,5 +1,34 @@
 # Pluribus Roadmap Progress Log
 
+## PB9.16.07 - Tournament delta merge
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commit:** `fac02ea PB-9 Add tournament delta merge: Preserve exact worker accumulation order`
+
+- Added explicit reference and deterministic tournament merge paths for worker delta streams, with automatic selection only above the four-stream threshold.
+- Preserved worker-index ties, duplicate rejection, Float64 accumulation order, compact storage, policy output, fingerprints, and preallocated merge scratch.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/tasks/PB9_16_07_tournament_delta_merge.md`
+- `docs/tasks/PB9_16_TASK_MANAGER.md`
+
+### Validation
+
+- Focused solver, parallel-training, and traversal-boundary tests passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed with the build-only `/FS` configuration.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed; all tests passed.
+- `git diff --check`: passed.
+- Independent C++ review: no actionable findings.
+
+### Limitations
+
+- No policy-content hashing, qualification matrices, benchmarks, or solver training were run.
+
 ## PB9.16.06 - Tournament discovery merge
 
 **Status:** Complete

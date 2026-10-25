@@ -1,7 +1,7 @@
 # PB-9.16 worker scaling task manager
 
 Source: `docs/tasks/pb9_16_worker_scaling_analysis_and_implementation_plan.md`
-Status: PB9.16.06 complete; remaining PB9.16 tasks active planning
+Status: PB9.16.07 complete; remaining PB9.16 tasks active planning
 Last updated: 2026-10-25
 
 ## Goal
@@ -22,7 +22,7 @@ Make 16-worker multiway training measurable, provenance-safe, deterministic, and
 | PB9.16.04 | [Safe placement policies](PB9_16_04_safe_placement_policies.md) | DONE | PB9.16.03 | Commit `c7f7a15`; OS-default stays unchanged; physical-core selection is unique. |
 | PB9.16.05 | [Deterministic scheduler balance](PB9_16_05_deterministic_scheduler_balance.md) | DONE | PB9.16.01 | Commit `90e9510`; exactness holds for 1/2/4/8/16 workers. |
 | PB9.16.06 | [Tournament discovery merge](PB9_16_06_tournament_discovery_merge.md) | DONE | PB9.16.05 | Commit `ca8cc80`; reference and tournament outputs match with deterministic duplicate diagnostics. |
-| PB9.16.07 | [Tournament delta merge](PB9_16_07_tournament_delta_merge.md) | TODO | PB9.16.05 | Accumulation order and fingerprint are identical. |
+| PB9.16.07 | [Tournament delta merge](PB9_16_07_tournament_delta_merge.md) | DONE | PB9.16.05 | Commit `fac02ea`; reference and tournament accumulation, storage, policies, and fingerprints are identical. |
 | PB9.16.08 | [Policy-content hash](PB9_16_08_policy_content_hash.md) | TODO | PB9.16.01 | Full payload compatibility is preserved. |
 | PB9.16.09 | [Qualification tooling](PB9_16_09_qualification_tooling.md) | TODO | PB9.16.02, PB9.16.04, PB9.16.05, PB9.16.06, PB9.16.07, PB9.16.08 | Matrix emits provenance, dispersion, phase, and placement evidence. |
 | PB9.16.10 | [Authorized qualification experiments](PB9_16_10_authorized_qualification_experiments.md) | BLOCKED | PB9.16.09 | Explicit authorization is required before benchmarks or training runs. |
