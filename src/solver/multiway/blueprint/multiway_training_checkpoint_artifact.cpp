@@ -3,6 +3,7 @@
 #include "core/atomic_publish.hpp"
 #include "core/fingerprint.hpp"
 #include "core/portable_binary.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "util/tracy.hpp"
 
 #include <algorithm>
@@ -101,6 +102,45 @@ namespace texas::solver::multiway
 		private:
 			std::ofstream& file_;
 			std::array<char, kCheckpointWriteBufferBytes> buffer_{};
+		};
+
+		class CountingCheckpointStreambuf final : public std::streambuf
+		{
+		protected:
+			int_type overflow(int_type character) override
+			{
+				return traits_type::eq_int_type(character, traits_type::eof())
+					? traits_type::not_eof(character) : character;
+			}
+
+			std::streamsize xsputn(const char*, std::streamsize count) override
+			{
+				return count;
+			}
+		};
+
+		class TemporaryCheckpointFile final
+		{
+		public:
+			explicit TemporaryCheckpointFile(std::filesystem::path path) noexcept
+				: path_(std::move(path))
+			{
+			}
+
+			~TemporaryCheckpointFile()
+			{
+				if (active_)
+				{
+					std::error_code error;
+					std::filesystem::remove(path_, error);
+				}
+			}
+
+			void release() noexcept { active_ = false; }
+
+		private:
+			std::filesystem::path path_;
+			bool active_ = true;
 		};
 
 		class CheckpointPayloadWriter final
@@ -705,6 +745,256 @@ namespace texas::solver::multiway
 				telemetry->atomic_publication_mode = mode;
 		}
 		add_elapsed(telemetry == nullptr ? nullptr : &telemetry->atomic_publication_nanoseconds, publication_started);
+	}
+
+	MultiwayTrainingCheckpointWriteResult MultiwayTrainingCheckpointArtifacts::save_atomic_streamed(
+		const std::filesystem::path& path,
+		const MultiwayTrainingCheckpointStreamSource& source,
+		MultiwayCheckpointTelemetry* telemetry)
+	{
+		if (source.identity == nullptr || source.training == nullptr || source.coverage == nullptr ||
+			source.catalog == nullptr || source.storage == nullptr || source.late_window_baseline == nullptr)
+		{
+			throw std::invalid_argument("multiway training checkpoint stream source is incomplete");
+		}
+		const auto state_count = source.catalog->checkpoint_node_count();
+		if (state_count == 0U || state_count > kMaxStates || state_count > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("multiway training checkpoint state count is invalid");
+		const auto& source_rows = source.compact_storage == nullptr
+			? source.storage->rows() : source.compact_storage->rows();
+		if (source_rows.size() > kMaxRows || source_rows.size() > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("multiway training checkpoint row count is invalid");
+
+		std::vector<std::uint32_t> state_order(state_count);
+		std::vector<std::uint32_t> state_depth(state_count, 0U);
+		for (std::size_t index = 0U; index < state_count; ++index)
+		{
+			const auto* node = source.catalog->checkpoint_node_at(index);
+			if (node == nullptr || node->id.value == 0U)
+				throw std::invalid_argument("multiway training checkpoint packed state is invalid");
+			std::uint32_t depth = 0U;
+			for (auto current = node; current->parent_id.value != 0U; ++depth)
+			{
+				if (depth >= state_count)
+					throw std::invalid_argument("multiway training checkpoint public-state parent chain is invalid");
+				current = source.catalog->checkpoint_node(current->parent_id);
+				if (current == nullptr)
+					throw std::invalid_argument("multiway training checkpoint public-state parent is missing");
+			}
+			state_order[index] = static_cast<std::uint32_t>(index);
+			state_depth[index] = depth;
+		}
+		std::sort(state_order.begin(), state_order.end(), [&source, &state_depth](std::uint32_t left, std::uint32_t right) {
+			const auto* lhs = source.catalog->checkpoint_node_at(left);
+			const auto* rhs = source.catalog->checkpoint_node_at(right);
+			return state_depth[left] != state_depth[right]
+				? state_depth[left] < state_depth[right] : lhs->id.value < rhs->id.value;
+		});
+
+		std::vector<std::uint32_t> row_order;
+		if (source.compact_storage == nullptr)
+		{
+			row_order.resize(source_rows.size());
+			for (std::size_t index = 0U; index < row_order.size(); ++index)
+				row_order[index] = static_cast<std::uint32_t>(index);
+			std::sort(row_order.begin(), row_order.end(), [&source](std::uint32_t left, std::uint32_t right) {
+				const auto& lhs = source.storage->rows()[left].shape.infoset;
+				const auto& rhs = source.storage->rows()[right].shape.infoset;
+				return lhs.public_state.value != rhs.public_state.value
+					? lhs.public_state.value < rhs.public_state.value : lhs.seat < rhs.seat;
+			});
+		}
+
+		std::uint64_t dense_values = 0U;
+		for (const auto& row : source_rows)
+		{
+			const auto values = static_cast<std::uint64_t>(row.shape.bucket_count) * row.shape.action_count;
+			if (row.shape.bucket_count == 0U || row.shape.action_count == 0U ||
+				values > kMaxFileBytes / sizeof(double) || dense_values > kMaxFileBytes / sizeof(double) - values)
+			{
+				throw std::length_error("multiway training checkpoint value count is invalid");
+			}
+			dense_values += values;
+		}
+		std::uint64_t compact_values = 0U;
+		const auto page_count = source.compact_storage == nullptr ? 0U : source.compact_storage->page_count();
+		for (std::size_t index = 0U; index < page_count; ++index)
+		{
+			const auto page = source.compact_storage->checkpoint_page(index);
+			const auto* row = source.compact_storage->metadata(page.infoset);
+			if (page.regrets == nullptr || page.strategy_masses == nullptr || row == nullptr ||
+				page.bucket_count == 0U || page.page_index * source.compact_storage->page_width() >= row->shape.bucket_count)
+			{
+				throw std::invalid_argument("multiway training checkpoint compact page is invalid");
+			}
+			const auto values = static_cast<std::uint64_t>(page.bucket_count) * row->shape.action_count;
+			if (values > kMaxFileBytes / sizeof(std::uint64_t) || compact_values > kMaxFileBytes / sizeof(std::uint64_t) - values)
+				throw std::length_error("multiway training checkpoint compact value count is invalid");
+			compact_values += values;
+		}
+
+		MultiwayPublicStateDescriptor reusable_state;
+		auto emit = [&](CheckpointPayloadWriter& payload, std::ostream& out) {
+			out.write(kMagic.data(), static_cast<std::streamsize>(kMagic.size()));
+			portable::write_u32(out, kSchema);
+			write_identity(payload, *source.identity);
+			write_metadata(payload, *source.training);
+			const auto& coverage = *source.coverage;
+			payload.write_u64(coverage.visited_public_descriptors);
+			payload.write_u64(coverage.admitted_rows);
+			payload.write_u64(coverage.admitted_action_cells);
+			payload.write_u64(coverage.terminal_visits);
+			payload.write_u64(coverage.leaf_visits);
+			payload.write_u64(coverage.missing_lookup_requests);
+			payload.write_u64(coverage.preflop_rows);
+			payload.write_u64(coverage.flop_rows);
+			payload.write_u64(coverage.turn_rows);
+			payload.write_u64(coverage.river_rows);
+			for (const auto value : coverage.street_visits)
+				payload.write_u64_unhashed(value);
+			payload.write_u64(source.terminal_visits);
+			payload.write_u64(source.leaf_visits);
+			payload.write_u64(source.missing_lookup_requests);
+			payload.write_u64(source.last_merged_stream_fingerprint);
+			for (const auto value : source.street_visits)
+				payload.write_u64_unhashed(value);
+			for (const auto value : coverage.street_visits)
+				payload.hash_u64(value);
+			for (const auto value : source.street_visits)
+				payload.hash_u64(value);
+			payload.write_u32(static_cast<std::uint32_t>(state_order.size()));
+			for (const auto index : state_order)
+			{
+				const auto* node = source.catalog->checkpoint_node_at(index);
+				if (node == nullptr || !source.catalog->reconstruct(node->id, reusable_state))
+					throw std::runtime_error("multiway training checkpoint state reconstruction failed");
+				write_state(payload, reusable_state);
+			}
+			payload.write_u32(static_cast<std::uint32_t>(source_rows.size()));
+			const auto write_shape = [&payload](const MultiwaySparseRowShape& shape) {
+				payload.write_u64(shape.infoset.public_state.value);
+				payload.write_i32(shape.infoset.seat);
+				payload.write_u32(shape.bucket_count);
+				payload.write_u8(shape.action_count);
+			};
+			if (source.compact_storage != nullptr)
+				for (const auto& row : source_rows) write_shape(row.shape);
+			else
+				for (const auto index : row_order) write_shape(source_rows[index].shape);
+			payload.write_u32(static_cast<std::uint32_t>(page_count));
+			for (std::size_t index = 0U; index < page_count; ++index)
+			{
+				const auto page = source.compact_storage->checkpoint_page(index);
+				payload.write_u64(page.infoset.public_state.value);
+				payload.write_i32(page.infoset.seat);
+				payload.write_u32(page.page_index);
+			}
+			payload.write_u64(compact_values);
+			for (std::size_t index = 0U; index < page_count; ++index)
+			{
+				const auto page = source.compact_storage->checkpoint_page(index);
+				const auto actions = source.compact_storage->metadata(page.infoset)->shape.action_count;
+				for (std::size_t value = 0U; value < static_cast<std::size_t>(page.bucket_count) * actions; ++value)
+					payload.write_i32(page.regrets[value]);
+			}
+			payload.write_u64(compact_values);
+			for (std::size_t index = 0U; index < page_count; ++index)
+			{
+				const auto page = source.compact_storage->checkpoint_page(index);
+				const auto actions = source.compact_storage->metadata(page.infoset)->shape.action_count;
+				for (std::size_t value = 0U; value < static_cast<std::size_t>(page.bucket_count) * actions; ++value)
+					payload.write_u64(page.strategy_masses[value]);
+			}
+			payload.write_u64(dense_values);
+			const auto write_dense = [&](bool strategies) {
+				const auto emit_row = [&](const MultiwaySparseRowMetadata& row, const double* values) {
+					for (std::size_t value = 0U; value < row.value_count(); ++value)
+						payload.write_double(values[value]);
+				};
+				if (source.compact_storage == nullptr)
+				{
+					for (const auto index : row_order)
+					{
+						const auto view = source.storage->checkpoint_row(index);
+						emit_row(*view.metadata, strategies ? view.strategy_sums : view.regrets);
+					}
+					return;
+				}
+				std::size_t page_cursor = 0U;
+				for (const auto& row : source_rows)
+				{
+					const auto first_page = page_cursor;
+					while (page_cursor < page_count && source.compact_storage->checkpoint_page(page_cursor).infoset == row.shape.infoset)
+						++page_cursor;
+					for (std::uint8_t action = 0U; action < row.shape.action_count; ++action)
+					{
+						for (std::uint32_t bucket = 0U; bucket < row.shape.bucket_count; ++bucket)
+						{
+							double value = 0.0;
+							for (std::size_t page_index = first_page; page_index < page_cursor; ++page_index)
+							{
+								const auto page = source.compact_storage->checkpoint_page(page_index);
+								const auto first_bucket = page.page_index * source.compact_storage->page_width();
+								if (bucket >= first_bucket && bucket < first_bucket + page.bucket_count)
+								{
+									const auto offset = static_cast<std::size_t>(action) * page.bucket_count + bucket - first_bucket;
+									value = strategies
+										? static_cast<double>(page.strategy_masses[offset]) / static_cast<double>(MultiwayCompactStorage::kMassScale)
+										: static_cast<double>(page.regrets[offset]) / 1024.0;
+									break;
+								}
+							}
+							payload.write_double(value);
+						}
+					}
+				}
+			};
+			write_dense(false);
+			payload.write_u64(dense_values);
+			write_dense(true);
+			payload.write_double_array(*source.late_window_baseline);
+		};
+
+		CountingCheckpointStreambuf counting_buffer;
+		std::ostream counting_out(&counting_buffer);
+		CheckpointPayloadWriter counting_payload(counting_out);
+		emit(counting_payload, counting_out);
+		const auto plan_bytes = 12U + counting_payload.bytes_written() + sizeof(std::uint64_t);
+		if (!counting_out || plan_bytes > kMaxFileBytes)
+			throw std::length_error("multiway training checkpoint planned size is invalid");
+
+		const auto temporary = path.string() + ".tmp";
+		TemporaryCheckpointFile cleanup(temporary);
+		std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+		if (!file)
+			throw std::runtime_error("multiway training checkpoint temporary file cannot be opened");
+		BufferedCheckpointStreambuf buffer(file);
+		std::ostream out(&buffer);
+		CheckpointPayloadWriter payload(out);
+		emit(payload, out);
+		const auto hash = payload.finish_hash();
+		portable::write_u64(out, hash);
+		out.flush();
+		file.close();
+		std::error_code size_error;
+		const auto actual_bytes = std::filesystem::file_size(temporary, size_error);
+		if (!out || !file || size_error || actual_bytes != plan_bytes)
+			throw std::runtime_error("multiway training checkpoint streamed write failed");
+		const auto mode = core::publish_atomic_replace(temporary, path,
+			"multiway training checkpoint publish failed",
+			core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+		cleanup.release();
+		if (telemetry != nullptr)
+			telemetry->atomic_publication_mode = mode;
+		MultiwayTrainingCheckpointWriteResult result;
+		result.plan = { static_cast<std::uint64_t>(state_count), static_cast<std::uint64_t>(source_rows.size()),
+			static_cast<std::uint64_t>(page_count), compact_values, dense_values, plan_bytes,
+			static_cast<std::uint64_t>((state_order.size() + state_depth.size() + row_order.size()) * sizeof(std::uint32_t)) };
+		result.payload_hash = hash;
+		result.serialized_bytes = actual_bytes;
+		result.peak_scratch_bytes = result.plan.retained_scratch_bytes + kCheckpointWriteBufferBytes;
+		result.publication_mode = mode;
+		return result;
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayTrainingCheckpointArtifacts::load_verified(const std::filesystem::path& path, const MultiwayModelIdentity& expected_identity, std::uint64_t expected_schedule_hash, std::uint64_t expected_seed)

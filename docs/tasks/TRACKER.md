@@ -2,9 +2,9 @@
 
 **Updated:** 2026-10-25
 **Overall status:** E complete for isolated streaming-export qualification
-**Current task:** None
-**Next action:** If checkpointed training must also meet the 20 GiB target, implement a separately scoped bounded checkpoint writer.
-**Latest limitation:** The isolated streaming-export qualification passed below 20 GiB; the optional full checkpoint snapshot remains a higher-memory path and is not changed by Tasks A-E.
+**Current task:** Bounded schema-5 checkpoint writer
+**Next action:** Implement the checkpoint writer, gates, and workflow integration without changing streaming policy export.
+**Latest limitation:** Checkpoint creation currently materializes the full snapshot; bounded checkpoint writing is in progress.
 
 ## Tasks
 

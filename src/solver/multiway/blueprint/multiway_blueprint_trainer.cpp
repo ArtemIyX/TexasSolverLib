@@ -1,5 +1,6 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
+#include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "games/multiway_state.hpp"
@@ -1137,6 +1138,32 @@ namespace texas::solver::multiway
 		return result;
 	}
 
+	MultiwayTrainingCheckpointWriteResult MultiwayBlueprintTrainer::save_checkpoint_atomic(
+		const std::filesystem::path& path) const
+	{
+		auto lease = coordinator_->acquire_checkpoint_lease();
+		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
+		const auto coverage = coverage_manifest();
+		const auto& diagnostics = lease.diagnostics();
+		MultiwayTrainingCheckpointStreamSource source;
+		source.identity = &identity_;
+		source.training = &training;
+		source.coverage = &coverage;
+		source.catalog = &lease.public_catalog();
+		source.storage = &lease.storage();
+		source.compact_storage = lease.compact_storage();
+		source.late_window_baseline = &late_window_baseline_;
+		source.terminal_visits = diagnostics.terminal_visits;
+		source.leaf_visits = diagnostics.leaf_visits;
+		source.missing_lookup_requests = diagnostics.missing_lookup_requests;
+		source.last_merged_stream_fingerprint = diagnostics.last_merged_stream_fingerprint;
+		source.street_visits = diagnostics.street_visits;
+		MultiwayCheckpointTelemetry telemetry;
+		auto result = MultiwayTrainingCheckpointArtifacts::save_atomic_streamed(path, source, &telemetry);
+		result.telemetry = telemetry;
+		return result;
+	}
+
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const
 	{
 		MultiwayBlueprintTrainingCheckpoint result;
@@ -1359,6 +1386,12 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path) const
 	{
 		return trainer_->save_full_policy_atomic(path);
+	}
+
+	MultiwayTrainingCheckpointWriteResult MultiwayBlueprintTrainingSession::save_checkpoint_atomic(
+		const std::filesystem::path& path) const
+	{
+		return trainer_->save_checkpoint_atomic(path);
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint() const

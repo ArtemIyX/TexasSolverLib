@@ -116,6 +116,12 @@ namespace texas::solver::multiway
 		menu_index_.reserve(std::min<std::size_t>(max_nodes_, 256U));
 	}
 
+	const MultiwayPackedPublicNode* MultiwayPublicCatalog::checkpoint_node(
+		MultiwayPublicStateId id) const noexcept
+	{
+		return node(id);
+	}
+
 	void MultiwayPublicCatalog::clear() noexcept
 	{
 		nodes_.clear();
