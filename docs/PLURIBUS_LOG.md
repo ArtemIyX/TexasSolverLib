@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## CI - Build, test, and formatting workflows
+
+**Status:** Complete
+**Completed:** 2026-10-25
+
+- Enabled the normal CTest suite in CI and made an empty test registration fail.
+- Added Debug and Release coverage on Ubuntu and Windows.
+- Added a changed-file clang-format gate and a manually dispatched formatter that commits formatting changes.
+
+### Files
+
+- `.github/workflows/c-cpp.yml`
+- `.github/workflows/format-apply.yml`
+- `scripts/python/format_cpp.py`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `python -m py_compile scripts/python/format_cpp.py`: passed.
+- `git diff --check`: passed.
+- `format_cpp.py project --check`: detected 30 pre-existing formatting differences across 344 C++ files; the CI gate checks changed files until that baseline is cleaned.
+- Build and CTest were not run locally because this task did not request them.
+
+### Limitations
+
+- The formatter workflow is manually dispatched and can create a broad formatting-only commit when run against the entire repository.
+
 ## PB-8 - Bounded schema-5 checkpoint writer
 
 **Status:** Complete
