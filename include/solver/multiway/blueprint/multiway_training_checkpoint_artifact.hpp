@@ -26,6 +26,8 @@ namespace texas::solver::multiway
 		std::uint64_t peak_scratch_bytes = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 		MultiwayCheckpointTelemetry telemetry{};
+		MultiwayExportProcessGateResult process_gate{};
+		MultiwayExportSystemGateResult system_gate{};
 	};
 
 	struct MultiwayTrainingCheckpointStreamSource
@@ -37,6 +39,7 @@ namespace texas::solver::multiway
 		const MultiwaySparseRowStorage* storage = nullptr;
 		const MultiwayCompactStorage* compact_storage = nullptr;
 		const std::vector<double>* late_window_baseline = nullptr;
+		const MultiwayExportMemoryGateConfig* gate = nullptr;
 		std::uint64_t terminal_visits = 0U;
 		std::uint64_t leaf_visits = 0U;
 		std::uint64_t missing_lookup_requests = 0U;

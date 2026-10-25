@@ -384,6 +384,21 @@ TEST_CASE(multiway_streaming_checkpoint_matches_materialized_bytes_and_loader)
 	}
 }
 
+TEST_CASE(multiway_streaming_checkpoint_gate_rejects_before_temp_creation)
+{
+	texas::MultiwayWorkingSetMonitor monitor;
+	monitor.export_gate.process.hard_limit_bytes = 1U;
+	monitor.export_gate.process.exporter_headroom_bytes = 0U;
+	monitor.export_gate.process.encoder_buffer_bytes = 0U;
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto path = std::filesystem::temp_directory_path() /
+		("texas_solver_streaming_checkpoint_gate_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	EXPECT_THROW(fixture.trainer.save_checkpoint_atomic(path), std::runtime_error);
+	EXPECT_TRUE(!std::filesystem::exists(path));
+	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+}
+
 TEST_CASE(multiway_streaming_export_matches_materialized_compact_bytes_and_repeats)
 {
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);

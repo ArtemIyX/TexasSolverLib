@@ -1153,6 +1153,7 @@ namespace texas::solver::multiway
 		source.storage = &lease.storage();
 		source.compact_storage = lease.compact_storage();
 		source.late_window_baseline = &late_window_baseline_;
+		source.gate = &working_set_monitor_.export_gate;
 		source.terminal_visits = diagnostics.terminal_visits;
 		source.leaf_visits = diagnostics.leaf_visits;
 		source.missing_lookup_requests = diagnostics.missing_lookup_requests;
