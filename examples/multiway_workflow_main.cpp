@@ -15,6 +15,7 @@
 #include "solver/multiway/workflow/multiway_evidence.hpp"
 #include "solver/multiway/workflow/multiway_artifact_preflight.hpp"
 #include "solver/multiway/workflow/multiway_f1_acceptance.hpp"
+#include "solver/multiway/workflow/multiway_workflow_path_policy.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/canonical_combo.hpp"
 #include "util/tracy.hpp"
@@ -257,11 +258,38 @@ namespace
 		const std::filesystem::path& checkpoint_dir, std::uint32_t requested_threads)
 	{
 		using namespace texas::solver::multiway;
+		const auto path_policy = make_default_multiway_workflow_path_policy();
+		const auto authorized_output_path = authorize_multiway_workflow_path(
+			path_policy, output_path, MultiwayWorkflowPathKind::OutputFile);
+		const auto authorized_checkpoint_dir = checkpoint_dir.empty()
+			? std::filesystem::path{}
+			: authorize_multiway_workflow_path(
+				path_policy, checkpoint_dir, MultiwayWorkflowPathKind::OutputDirectory);
+		const auto authorized_temporary = authorize_multiway_workflow_path(
+			path_policy, authorized_output_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		auto manifest_path = authorized_output_path;
+		manifest_path.replace_extension(".manifest");
+		manifest_path = authorize_multiway_workflow_path(
+			path_policy, manifest_path, MultiwayWorkflowPathKind::OutputFile);
+		const auto authorized_progress_path = authorized_checkpoint_dir.empty()
+			? std::filesystem::path{}
+			: authorize_multiway_workflow_path(
+				path_policy, authorized_checkpoint_dir / "latest.progress", MultiwayWorkflowPathKind::AppendFile);
+		const auto authorized_manifest_temporary = authorize_multiway_workflow_path(
+			path_policy, manifest_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		const auto authorized_progress_temporary = authorized_progress_path.empty()
+			? std::filesystem::path{}
+			: authorize_multiway_workflow_path(
+				path_policy, authorized_progress_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		(void)authorized_manifest_temporary;
+		(void)authorized_progress_temporary;
+		const auto resolved_output_path = authorized_output_path;
+		const auto resolved_checkpoint_dir = authorized_checkpoint_dir;
 		std::cout << "texas_multiway_buckets: starting bucket generation\n"
 				  << "  config=" << config_path.string() << "\n"
-				  << "  output=" << output_path.string() << "\n"
+				  << "  output=" << resolved_output_path.string() << "\n"
 				  << "  checkpoint_dir="
-				  << (checkpoint_dir.empty() ? std::string("<disabled>") : checkpoint_dir.string()) << "\n"
+				  << (resolved_checkpoint_dir.empty() ? std::string("<disabled>") : resolved_checkpoint_dir.string()) << "\n"
 				  << "  requested_threads=" << requested_threads << std::endl;
 		const auto workflow = load_multiway_workflow_config(config_path);
 		const auto identity = make_multiway_model_identity(workflow.model);
@@ -269,11 +297,9 @@ namespace
 		profile.flop_bucket_count = workflow.model.flop_bucket_count;
 		profile.turn_bucket_count = workflow.model.turn_bucket_count;
 		profile.river_bucket_count = workflow.model.river_bucket_count;
-		const auto temporary = output_path.string() + ".tmp";
-		if (std::filesystem::exists(output_path))
-			throw std::runtime_error("bucket artifact already exists; refusing overwrite");
-		if (!output_path.parent_path().empty())
-			std::filesystem::create_directories(output_path.parent_path());
+		const auto temporary = authorized_temporary;
+		if (!resolved_output_path.parent_path().empty())
+			std::filesystem::create_directories(resolved_output_path.parent_path());
 		const auto expected_tables = multiway_bucket_board_count(texas::core::Street::Flop) + multiway_bucket_board_count(texas::core::Street::Turn) + multiway_bucket_board_count(texas::core::Street::River);
 		const auto hardware_threads = multiway_bucket_hardware_thread_count();
 		const auto effective_threads = resolve_multiway_bucket_thread_count(
@@ -294,17 +320,17 @@ namespace
 				  << " hardware_threads=" << hardware_threads
 				  << " physical_cores=" << multiway_bucket_physical_core_count()
 				  << " effective_threads=" << effective_threads << std::endl;
-		if (!checkpoint_dir.empty())
-			std::filesystem::create_directories(checkpoint_dir);
+		if (!resolved_checkpoint_dir.empty())
+			std::filesystem::create_directories(resolved_checkpoint_dir);
 		constexpr std::uint64_t max_table_bytes = 2U + 5U + 4U + static_cast<std::uint64_t>(MULTIWAY_HOLE_COMBINATION_COUNT) * 4U;
 		if (expected_tables > (std::numeric_limits<std::uint64_t>::max() - 116U) / max_table_bytes)
 		{
 			throw std::length_error("bucket artifact size estimate overflows");
 		}
 		const auto estimated_bytes = 116U + expected_tables * max_table_bytes;
-		const auto progress_path = checkpoint_dir.empty() ? std::filesystem::path{} : checkpoint_dir / "latest.progress";
-		preflight_multiway_artifact({ output_path,
-			output_path.string() + ".tmp",
+		const auto progress_path = authorized_progress_path;
+		preflight_multiway_artifact({ resolved_output_path,
+			temporary,
 			progress_path,
 			identity,
 			expected_tables,
@@ -316,7 +342,7 @@ namespace
 				requested_threads, hardware_threads, MULTIWAY_BUCKET_GENERATION_CHUNK_SIZE),
 			workflow.process_memory_limit_bytes });
 		std::unique_ptr<MultiwayBucketArtifactWriter> writer;
-		if (!checkpoint_dir.empty() && std::filesystem::exists(temporary) && std::filesystem::exists(progress_path))
+		if (!resolved_checkpoint_dir.empty() && std::filesystem::exists(temporary) && std::filesystem::exists(progress_path))
 		{
 			writer = std::make_unique<MultiwayBucketArtifactWriter>(MultiwayBucketArtifactWriter::resume(
 				temporary, identity, expected_tables,
@@ -333,10 +359,10 @@ namespace
 		const auto already_written = writer->progress().table_count;
 		const auto progress_start = std::chrono::steady_clock::now();
 		const auto publish_checkpoint = [&]() {
-			if (checkpoint_dir.empty())
+			if (resolved_checkpoint_dir.empty())
 				return;
 			writer->flush_checkpoint();
-			save_multiway_bucket_progress_atomic(checkpoint_dir / "latest.progress", identity,
+			save_multiway_bucket_progress_atomic(resolved_checkpoint_dir / "latest.progress", identity,
 				expected_tables, writer->progress());
 			const auto completed = writer->progress().table_count;
 			const auto elapsed = std::chrono::duration<double>(
@@ -383,7 +409,7 @@ namespace
 					const auto completed = begin_index + table_count;
 					const auto flop_end = multiway_bucket_board_count(texas::core::Street::Flop);
 					const auto turn_end = flop_end + multiway_bucket_board_count(texas::core::Street::Turn);
-					if (!checkpoint_dir.empty() && (completed % 4096U == 0U || completed == flop_end || completed == turn_end || completed == expected_tables))
+					if (!resolved_checkpoint_dir.empty() && (completed % 4096U == 0U || completed == flop_end || completed == turn_end || completed == expected_tables))
 					{
 						publish_checkpoint();
 					}
@@ -400,15 +426,13 @@ namespace
 			}
 			throw;
 		}
-		writer->finish(output_path);
-		const auto inspection = inspect_multiway_bucket_artifact(output_path, identity);
+		writer->finish(resolved_output_path);
+		const auto inspection = inspect_multiway_bucket_artifact(resolved_output_path, identity);
 		if (inspection.flop_tables != multiway_bucket_board_count(texas::core::Street::Flop) || inspection.turn_tables != multiway_bucket_board_count(texas::core::Street::Turn) || inspection.river_tables != multiway_bucket_board_count(texas::core::Street::River))
 		{
 			throw std::runtime_error("published bucket artifact has incomplete canonical coverage");
 		}
-		auto manifest_path = output_path;
-		manifest_path.replace_extension(".manifest");
-		save_bucket_manifest_atomic(manifest_path, workflow, inspection, std::filesystem::file_size(output_path));
+		save_bucket_manifest_atomic(manifest_path, workflow, inspection, std::filesystem::file_size(resolved_output_path));
 		std::cout << "published bucket artifact: tables=" << writer->progress().table_count
 				  << " bytes=" << writer->progress().byte_length << "\n";
 		return EXIT_SUCCESS;
@@ -471,12 +495,21 @@ namespace
 		texas::solver::multiway::MultiwayBucketInspectionHashMode hash_mode)
 	{
 		using namespace texas::solver::multiway;
+		const auto path_policy = make_default_multiway_workflow_path_policy();
+		const auto authorized_input_path = authorize_multiway_workflow_path(
+			path_policy, input_path, MultiwayWorkflowPathKind::InputFile);
+		const auto authorized_report_path = report_path.empty()
+			? std::filesystem::path{}
+			: authorize_multiway_workflow_path(
+				path_policy, report_path, MultiwayWorkflowPathKind::OutputFile);
+		if (!authorized_report_path.empty() && authorized_report_path == authorized_input_path)
+			throw std::invalid_argument("inspection input and report paths must differ");
 		const auto workflow = load_multiway_workflow_config(config_path);
 		auto progress_phase = hash_mode == MultiwayBucketInspectionHashMode::Legacy || requested_threads == 1U
 			? "legacy-stream"
 			: "parallel-tree";
 		const auto report = inspect_multiway_bucket_artifact(
-			input_path, make_multiway_model_identity(workflow.model),
+			authorized_input_path, make_multiway_model_identity(workflow.model),
 			MultiwayBucketInspectionOptions{ requested_threads, hash_mode },
 			progress_enabled ? MultiwayBucketInspectionProgressCallback(
 								   [&progress_phase](std::uint64_t completed, std::uint64_t total) {
@@ -497,12 +530,14 @@ namespace
 			throw std::runtime_error("bucket artifact has incomplete street coverage");
 		}
 		const auto text = std::string("{\n  \"identity\": ") + std::to_string(report.identity.combined_hash) + ",\n  \"evidence\": " + serialize_multiway_evidence_header(make_evidence_header(MULTIWAY_BUCKET_INSPECTION_REPORT_SCHEMA_VERSION, make_multiway_model_identity(workflow.model), workflow.fingerprint())) + ",\n  \"flop_tables\": " + std::to_string(report.flop_tables) + ",\n  \"turn_tables\": " + std::to_string(report.turn_tables) + ",\n  \"river_tables\": " + std::to_string(report.river_tables) + ",\n  \"live_assignments\": " + std::to_string(report.live_assignments) + ",\n  \"payload_hash\": " + std::to_string(report.payload_hash) + ",\n  \"parallel_payload_hash\": " + std::to_string(report.parallel_payload_hash) + ",\n  \"hash_algorithm\": \"" + std::string(hash_algorithm) + "\"" + ",\n  \"effective_threads\": " + std::to_string(report.effective_threads) + ",\n  \"identity_matches\": " + (report.identity == make_multiway_model_identity(workflow.model) ? "true" : "false") + ",\n  \"payload_hash_matches\": " + (report.payload_hash != 0U ? "true" : "false") + "\n}\n";
-		if (!report_path.empty())
+		if (!authorized_report_path.empty())
 		{
-			if (!report_path.parent_path().empty())
-				std::filesystem::create_directories(report_path.parent_path());
-			preflight_multiway_artifact({ report_path,
-				report_path.string() + ".tmp",
+			if (!authorized_report_path.parent_path().empty())
+				std::filesystem::create_directories(authorized_report_path.parent_path());
+			const auto report_temporary = authorize_multiway_workflow_path(
+				path_policy, authorized_report_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+			preflight_multiway_artifact({ authorized_report_path,
+				report_temporary,
 				{},
 				make_multiway_model_identity(workflow.model),
 				1U,
@@ -510,13 +545,12 @@ namespace
 				4096U,
 				0U,
 				0U });
-			const auto temporary = report_path.string() + ".tmp";
-			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+			std::ofstream output(report_temporary, std::ios::binary | std::ios::trunc);
 			if (!output)
 				throw std::runtime_error("cannot open inspection report");
 			output << text;
 			output.close();
-			texas::core::publish_atomic_replace(temporary, report_path, "cannot publish inspection report");
+			texas::core::publish_atomic_replace(report_temporary, authorized_report_path, "cannot publish inspection report");
 		}
 		std::cout << "flop_tables=" << report.flop_tables << "\n"
 				  << "turn_tables=" << report.turn_tables << "\n"
@@ -591,7 +625,7 @@ namespace
 		std::filesystem::path output_path, std::uint64_t batches,
 		std::filesystem::path report_path,
 		std::filesystem::path checkpoint_dir,
-		const std::filesystem::path& resume_path,
+		std::filesystem::path resume_path,
 		std::uint32_t worker_override,
 		bool pin_workers,
 		bool progress_enabled,
@@ -639,6 +673,48 @@ namespace
 			worker_override = workflow.training_worker_count;
 		if (batches == 0U || input_path.empty() || output_path.empty())
 			throw std::invalid_argument("train requires input_path, output_path, and batches");
+		const auto path_policy = make_default_multiway_workflow_path_policy();
+		input_path = authorize_multiway_workflow_path(
+			path_policy, input_path, MultiwayWorkflowPathKind::InputFile);
+		output_path = authorize_multiway_workflow_path(
+			path_policy, output_path, MultiwayWorkflowPathKind::OutputFile);
+		if (report_path.empty())
+			report_path = output_path.string() + ".json";
+		report_path = authorize_multiway_workflow_path(
+			path_policy, report_path, MultiwayWorkflowPathKind::OutputFile);
+		if (!checkpoint_dir.empty())
+			checkpoint_dir = authorize_multiway_workflow_path(
+				path_policy, checkpoint_dir, MultiwayWorkflowPathKind::OutputDirectory);
+		if (!resume_path.empty())
+			resume_path = authorize_multiway_workflow_path(
+				path_policy, resume_path, MultiwayWorkflowPathKind::InputFile);
+		if (input_path == output_path || input_path == report_path || output_path == report_path)
+			throw std::invalid_argument("training input and output paths must be distinct");
+		const auto log_candidate = workflow.training_log_path.empty()
+			? std::filesystem::path(report_path.string() + ".log")
+			: workflow.training_log_path;
+		const auto log_path = authorize_multiway_workflow_path(
+			path_policy, log_candidate, MultiwayWorkflowPathKind::AppendFile);
+		if (log_path == input_path || log_path == output_path || log_path == report_path)
+			throw std::invalid_argument("training log path aliases a training artifact");
+		auto checkpoint_output_policy = path_policy;
+		checkpoint_output_policy.allow_output_overwrite = true;
+		const auto checkpoint_path = checkpoint_dir.empty()
+			? (resume_path.empty() ? std::filesystem::path{} : resume_path)
+			: authorize_multiway_workflow_path(
+				checkpoint_output_policy, checkpoint_dir / "latest.bin", MultiwayWorkflowPathKind::OutputFile);
+		if (!resume_path.empty() && (resume_path == input_path || resume_path == output_path || resume_path == report_path || resume_path == log_path))
+			throw std::invalid_argument("training resume path aliases a non-checkpoint artifact");
+		const auto output_temporary = authorize_multiway_workflow_path(
+			path_policy, output_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		const auto report_temporary = authorize_multiway_workflow_path(
+			path_policy, report_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		const auto checkpoint_temporary = checkpoint_path.empty()
+			? std::filesystem::path{}
+			: authorize_multiway_workflow_path(
+				checkpoint_output_policy, checkpoint_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		(void)report_temporary;
+		(void)checkpoint_temporary;
 		if (!workflow.capacities_resolved())
 			throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
 		const auto resource_preflight = preflight_multiway_workflow(workflow, worker_override, batches);
@@ -653,9 +729,6 @@ namespace
 		};
 		if (resume_path.empty() && reaches_50m(0U) && !authorize_50m_stage)
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
-		const auto log_path = workflow.training_log_path.empty()
-			? std::filesystem::path(report_path.empty() ? output_path.string() + ".log" : report_path.string() + ".log")
-			: workflow.training_log_path;
 		if (!log_path.parent_path().empty())
 			std::filesystem::create_directories(log_path.parent_path());
 		std::ofstream log(log_path, std::ios::app);
@@ -694,7 +767,7 @@ namespace
 		const auto estimated_blueprint_bytes = estimate_full_blueprint_bytes(workflow);
 		log_line("training initialization: running artifact preflight");
 		preflight_multiway_artifact({ output_path,
-			output_path.string() + ".tmp",
+			output_temporary,
 			{},
 			identity,
 			1U,
@@ -814,9 +887,6 @@ namespace
 		log_line("training initialization: constructing training session and worker pool");
 		MultiwayBlueprintTrainingSession session(config, root, buckets);
 		log_line("worker pool constructed: requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective));
-		const auto checkpoint_path = checkpoint_dir.empty()
-			? (resume_path.empty() ? std::filesystem::path{} : resume_path)
-			: checkpoint_dir / "latest.bin";
 		if (!resume_path.empty())
 		{
 			log_line("training initialization: loading checkpoint");
@@ -981,15 +1051,22 @@ namespace
 		{
 			throw std::invalid_argument("evaluate requires --artifacts and --duplicates");
 		}
+		const auto path_policy = make_default_multiway_workflow_path_policy();
+		const auto authorized_artifacts_path = authorize_multiway_workflow_path(
+			path_policy, artifacts_path, MultiwayWorkflowPathKind::InputDirectory);
+		const auto buckets_path = authorize_multiway_workflow_path(
+			path_policy, authorized_artifacts_path / "buckets.bin", MultiwayWorkflowPathKind::InputFile);
+		const auto blueprint_path = authorize_multiway_workflow_path(
+			path_policy, authorized_artifacts_path / "blueprint.bin", MultiwayWorkflowPathKind::InputFile);
 		const auto workflow = load_multiway_workflow_config(config_path);
 		if (!workflow.capacities_resolved())
 		{
 			throw std::invalid_argument("evaluate requires a sizing-frozen workflow configuration");
 		}
 		const auto identity = make_multiway_model_identity(workflow.model);
-		const auto buckets = load_multiway_bucket_registry(artifacts_path / "buckets.bin");
+		const auto buckets = load_multiway_bucket_registry(buckets_path);
 		const auto blueprint = MultiwayFullBlueprintArtifacts::load_verified(
-			artifacts_path / "blueprint.bin", identity);
+			blueprint_path, identity);
 		MultiwayBlueprintTrainingConfig config;
 		config.blueprint = workflow.model;
 		config.bucket_profile.flop_bucket_count = workflow.model.flop_bucket_count;
@@ -1031,7 +1108,13 @@ namespace
 		const auto repeat = qualify_multiway_required_lookups(
 			config, root, buckets, blueprint, trajectories, evidence);
 		report.second_replay_fingerprint = repeat.replay_fingerprint;
-		const auto output = report_path.empty() ? artifacts_path / "lookup_report.json" : report_path;
+		const auto output = authorize_multiway_workflow_path(
+			path_policy,
+			report_path.empty() ? authorized_artifacts_path / "lookup_report.json" : report_path,
+			MultiwayWorkflowPathKind::OutputFile);
+		const auto output_temporary = authorize_multiway_workflow_path(
+			path_policy, output.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		(void)output_temporary;
 		if (!output.parent_path().empty())
 			std::filesystem::create_directories(output.parent_path());
 		save_multiway_lookup_qualification_report_atomic(output, report);
@@ -1053,15 +1136,38 @@ namespace
 		using namespace texas::solver::multiway;
 		if (output_path.empty())
 			throw std::invalid_argument("finalize requires --output");
+		const auto path_policy = make_default_multiway_workflow_path_policy();
+		const auto authorized_output_path = authorize_multiway_workflow_path(
+			path_policy, output_path, MultiwayWorkflowPathKind::OutputFile);
+		const auto output_temporary = authorize_multiway_workflow_path(
+			path_policy, authorized_output_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		(void)output_temporary;
+		const auto authorize_input = [&path_policy](const std::filesystem::path& path) {
+			return path.empty()
+				? std::filesystem::path{}
+				: authorize_multiway_workflow_path(
+					path_policy, path, MultiwayWorkflowPathKind::InputFile);
+		};
+		const auto authorized_bucket_report = authorize_input(bucket_report);
+		const auto authorized_training_report = authorize_input(training_report);
+		const auto authorized_equivalence_report = authorize_input(equivalence_report);
+		const auto authorized_lookup_first = authorize_input(lookup_first);
+		const auto authorized_lookup_second = authorize_input(lookup_second);
+		if ((!authorized_bucket_report.empty() && authorized_bucket_report == authorized_output_path) ||
+			(!authorized_training_report.empty() && authorized_training_report == authorized_output_path) ||
+			(!authorized_equivalence_report.empty() && authorized_equivalence_report == authorized_output_path) ||
+			(!authorized_lookup_first.empty() && authorized_lookup_first == authorized_output_path) ||
+			(!authorized_lookup_second.empty() && authorized_lookup_second == authorized_output_path))
+			throw std::invalid_argument("finalize input and output paths must be distinct");
 		MultiwayF1AcceptanceInputPaths paths;
-		paths.bucket_inspection_report = bucket_report;
-		paths.training_report = training_report;
-		paths.checkpoint_equivalence_report = equivalence_report;
-		paths.first_lookup_report = lookup_first;
-		paths.second_lookup_report = lookup_second;
+		paths.bucket_inspection_report = authorized_bucket_report;
+		paths.training_report = authorized_training_report;
+		paths.checkpoint_equivalence_report = authorized_equivalence_report;
+		paths.first_lookup_report = authorized_lookup_first;
+		paths.second_lookup_report = authorized_lookup_second;
 		paths.human_run = std::move(human_run);
-		finalize_multiway_f1_acceptance_atomic(output_path, paths);
-		std::cout << "published F1 acceptance report: " << output_path.string() << "\n";
+		finalize_multiway_f1_acceptance_atomic(authorized_output_path, paths);
+		std::cout << "published F1 acceptance report: " << authorized_output_path.string() << "\n";
 		return EXIT_SUCCESS;
 	}
 
@@ -1278,6 +1384,13 @@ namespace
 			}
 			std::cerr << "unknown option: " << argument << "\n";
 			return EXIT_FAILURE;
+		}
+		if (workflow != Workflow::Finalize && !config_path.empty())
+		{
+			const auto path_policy = texas::solver::multiway::make_default_multiway_workflow_path_policy();
+			config_path = texas::solver::multiway::authorize_multiway_workflow_path(
+				path_policy, config_path,
+				texas::solver::multiway::MultiwayWorkflowPathKind::InputFile);
 		}
 		if (workflow == Workflow::Buckets && !config_path.empty() && benchmark_tables != 0U)
 		{
