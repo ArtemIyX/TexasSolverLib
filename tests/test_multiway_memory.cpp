@@ -170,12 +170,12 @@ TEST_CASE(multiway_global_allocation_probe_covers_all_allocation_paths)
 	const auto allocations = probe.snapshot();
 	EXPECT_TRUE(allocations.allocation_count >= 6U);
 
-	::operator delete(scalar, 24U);
-	::operator delete[](array, 32U);
-	::operator delete(aligned, 48U, std::align_val_t(64U));
-	::operator delete[](aligned_array, 80U, std::align_val_t(64U));
+	::operator delete(scalar);
+	::operator delete[](array);
+	::operator delete(aligned, std::align_val_t(64U));
+	::operator delete[](aligned_array, std::align_val_t(64U));
 	::operator delete(nothrow);
-	::operator delete(nothrow_aligned, 32U, std::align_val_t(64U));
+	::operator delete(nothrow_aligned, std::align_val_t(64U));
 
 	void* failed_nothrow = ::operator new(std::numeric_limits<std::size_t>::max(), std::nothrow);
 	EXPECT_TRUE(failed_nothrow == nullptr);
