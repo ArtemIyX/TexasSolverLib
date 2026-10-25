@@ -1,9 +1,9 @@
 # PB9.16.09 Qualification tooling
 
-Status: DONE  
-Owner: Codex  
-Started: 2026-10-25  
-Completed: 2026-10-25  
+Status: DONE
+Owner: Codex
+Started: 2026-10-25
+Completed: 2026-10-25
 Depends on: PB9.16.02, PB9.16.04, PB9.16.05, PB9.16.06, PB9.16.07, PB9.16.08
 
 ## Scope
