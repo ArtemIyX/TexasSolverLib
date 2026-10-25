@@ -66,8 +66,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint32_t make_windows_physical_core_id(
 			std::uint16_t group, std::uint16_t core_index) noexcept
 		{
-			return (static_cast<std::uint32_t>(group) << 16U) |
-				static_cast<std::uint32_t>(core_index);
+			return (static_cast<std::uint32_t>(group) << 16U) | static_cast<std::uint32_t>(core_index);
 		}
 
 		[[nodiscard]] bool query_windows_cpu_sets(
@@ -75,14 +74,14 @@ namespace texas::solver::multiway
 		{
 			records.clear();
 			DWORD buffer_bytes = 0U;
-			if (::GetSystemCpuSetInformation(nullptr, 0U, &buffer_bytes, nullptr, 0U) != FALSE ||
-				::GetLastError() != ERROR_INSUFFICIENT_BUFFER || buffer_bytes == 0U)
+			if (::GetSystemCpuSetInformation(nullptr, 0U, &buffer_bytes, nullptr, 0U) != FALSE || ::GetLastError() != ERROR_INSUFFICIENT_BUFFER || buffer_bytes == 0U)
 				return false;
 
 			std::vector<std::uint8_t> buffer(buffer_bytes);
 			if (::GetSystemCpuSetInformation(
 					reinterpret_cast<PSYSTEM_CPU_SET_INFORMATION>(buffer.data()),
-					buffer_bytes, &buffer_bytes, nullptr, 0U) == FALSE)
+					buffer_bytes, &buffer_bytes, nullptr, 0U)
+				== FALSE)
 				return false;
 
 			const auto total_bytes = static_cast<std::size_t>(buffer_bytes);
@@ -126,15 +125,15 @@ namespace texas::solver::multiway
 		{
 			placements.clear();
 			DWORD buffer_bytes = 0U;
-			if (::GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &buffer_bytes) != FALSE ||
-				::GetLastError() != ERROR_INSUFFICIENT_BUFFER || buffer_bytes == 0U)
+			if (::GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &buffer_bytes) != FALSE || ::GetLastError() != ERROR_INSUFFICIENT_BUFFER || buffer_bytes == 0U)
 				return false;
 
 			std::vector<std::uint8_t> buffer(buffer_bytes);
 			if (::GetLogicalProcessorInformationEx(
 					RelationProcessorCore,
 					reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()),
-					&buffer_bytes) == FALSE)
+					&buffer_bytes)
+				== FALSE)
 				return false;
 
 			const auto total_bytes = static_cast<std::size_t>(buffer_bytes);
@@ -183,8 +182,7 @@ namespace texas::solver::multiway
 			for (const auto& placement : placements)
 			{
 				auto record = std::find_if(records.begin(), records.end(), [&placement](const auto& candidate) {
-					return candidate.processor_group == placement.processor_group &&
-						candidate.logical_processor_index == placement.logical_processor_index;
+					return candidate.processor_group == placement.processor_group && candidate.logical_processor_index == placement.logical_processor_index;
 				});
 				if (record != records.end())
 				{
@@ -212,11 +210,16 @@ namespace texas::solver::multiway
 	{
 		switch (policy)
 		{
-		case MultiwayWorkerPlacementPolicy::OsDefault: return "os-default";
-		case MultiwayWorkerPlacementPolicy::PhysicalCompact: return "physical-compact";
-		case MultiwayWorkerPlacementPolicy::PhysicalSpread: return "physical-spread";
-		case MultiwayWorkerPlacementPolicy::CpuSetHint: return "cpu-set-hint";
-		case MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity: return "diagnostic-hard-affinity";
+			case MultiwayWorkerPlacementPolicy::OsDefault:
+				return "os-default";
+			case MultiwayWorkerPlacementPolicy::PhysicalCompact:
+				return "physical-compact";
+			case MultiwayWorkerPlacementPolicy::PhysicalSpread:
+				return "physical-spread";
+			case MultiwayWorkerPlacementPolicy::CpuSetHint:
+				return "cpu-set-hint";
+			case MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity:
+				return "diagnostic-hard-affinity";
 		}
 		return "os-default";
 	}
@@ -263,8 +266,8 @@ namespace texas::solver::multiway
 		const auto* coordinator = coordinator_logical_processor_identity == kMultiwayUnknownTopologyId
 			? nullptr
 			: inventory.find(
-				static_cast<std::uint16_t>(coordinator_logical_processor_identity >> 16U),
-				static_cast<std::uint16_t>(coordinator_logical_processor_identity & 0xffffU));
+				  static_cast<std::uint16_t>(coordinator_logical_processor_identity >> 16U),
+				  static_cast<std::uint16_t>(coordinator_logical_processor_identity & 0xffffU));
 		if (coordinator != nullptr && coordinator->physical_core_id != kMultiwayUnknownTopologyId)
 		{
 			plan.coordinator_physical_core_id = coordinator->physical_core_id;
@@ -284,10 +287,7 @@ namespace texas::solver::multiway
 			candidates.push_back(processor);
 		}
 
-		const auto physical_first = policy == MultiwayWorkerPlacementPolicy::PhysicalCompact ||
-			policy == MultiwayWorkerPlacementPolicy::PhysicalSpread ||
-			policy == MultiwayWorkerPlacementPolicy::CpuSetHint ||
-			policy == MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity;
+		const auto physical_first = policy == MultiwayWorkerPlacementPolicy::PhysicalCompact || policy == MultiwayWorkerPlacementPolicy::PhysicalSpread || policy == MultiwayWorkerPlacementPolicy::CpuSetHint || policy == MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity;
 		if (policy == MultiwayWorkerPlacementPolicy::PhysicalCompact || policy == MultiwayWorkerPlacementPolicy::CpuSetHint)
 		{
 			std::sort(candidates.begin(), candidates.end(), [](const auto& left, const auto& right) {
@@ -343,8 +343,9 @@ namespace texas::solver::multiway
 			if (plan.requested.size() >= worker_count)
 				break;
 			if (std::find_if(plan.requested.begin(), plan.requested.end(), [&candidate](const auto& selected) {
-				return selected.logical_processor_identity() == candidate.logical_processor_identity();
-			}) == plan.requested.end())
+					return selected.logical_processor_identity() == candidate.logical_processor_identity();
+				})
+				== plan.requested.end())
 				plan.requested.push_back(candidate);
 		}
 		plan.resolved_worker_count = static_cast<std::uint32_t>(plan.requested.size());
@@ -357,9 +358,7 @@ namespace texas::solver::multiway
 			return false;
 		for (const auto& processor : processors)
 		{
-			if (!is_known(processor.cpu_set_id) || !is_known(processor.physical_core_id) ||
-				!is_known(processor.smt_sibling_index) || !is_known(processor.numa_node_id) ||
-				!is_known(processor.cache_domain_id))
+			if (!is_known(processor.cpu_set_id) || !is_known(processor.physical_core_id) || !is_known(processor.smt_sibling_index) || !is_known(processor.numa_node_id) || !is_known(processor.cache_domain_id))
 				return false;
 		}
 		return true;
@@ -368,8 +367,7 @@ namespace texas::solver::multiway
 	const MultiwayWorkerTopologyRecord* MultiwayWorkerTopologyInventory::find(
 		std::uint16_t processor_group, std::uint16_t logical_processor_index) const noexcept
 	{
-		const auto identity = (static_cast<std::uint32_t>(processor_group) << 16U) |
-			static_cast<std::uint32_t>(logical_processor_index);
+		const auto identity = (static_cast<std::uint32_t>(processor_group) << 16U) | static_cast<std::uint32_t>(logical_processor_index);
 		const auto record = std::lower_bound(processors.begin(), processors.end(), identity,
 			[](const auto& candidate, std::uint32_t value) {
 				return candidate.logical_processor_identity() < value;

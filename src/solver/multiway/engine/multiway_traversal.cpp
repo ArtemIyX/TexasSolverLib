@@ -58,8 +58,7 @@ namespace texas::solver::multiway
 #if defined(_WIN32)
 			PROCESSOR_NUMBER processor{};
 			::GetCurrentProcessorNumberEx(&processor);
-			return (static_cast<std::uint32_t>(processor.Group) << 16U) |
-				static_cast<std::uint32_t>(processor.Number);
+			return (static_cast<std::uint32_t>(processor.Group) << 16U) | static_cast<std::uint32_t>(processor.Number);
 #elif defined(__linux__)
 			const auto processor = ::sched_getcpu();
 			return processor < 0 ? kInvalidProcessor : static_cast<std::uint32_t>(processor);
@@ -1819,8 +1818,7 @@ namespace texas::solver::multiway
 			const auto& requested = placement_plan_.requested[worker];
 			worker_affinity_groups_[worker] = requested.processor_group;
 			worker_affinity_processors_[worker] =
-				static_cast<std::uint32_t>(requested.processor_group) * (sizeof(std::uint64_t) * 8U) +
-				requested.logical_processor_index;
+				static_cast<std::uint32_t>(requested.processor_group) * (sizeof(std::uint64_t) * 8U) + requested.logical_processor_index;
 			if (requested.logical_processor_index < sizeof(std::uint64_t) * 8U)
 				worker_affinity_masks_[worker] = std::uint64_t{ 1U } << requested.logical_processor_index;
 		}
@@ -1970,8 +1968,7 @@ namespace texas::solver::multiway
 		};
 		TEXASSOLVER_TRACY_SET_THREAD_NAME(
 			worker_index < std::size(worker_names) ? worker_names[worker_index] : "mw.worker");
-		if (placement_config_.policy != MultiwayWorkerPlacementPolicy::OsDefault &&
-			worker_index < placement_plan_.requested.size())
+		if (placement_config_.policy != MultiwayWorkerPlacementPolicy::OsDefault && worker_index < placement_plan_.requested.size())
 		{
 			worker_scratch.requested_placement = placement_plan_.requested[worker_index];
 			worker_scratch.requested_processor = worker_affinity_processors_[worker_index];
@@ -1982,18 +1979,17 @@ namespace texas::solver::multiway
 				GROUP_AFFINITY affinity{};
 				affinity.Mask = static_cast<KAFFINITY>(worker_affinity_masks_[worker_index]);
 				affinity.Group = worker_affinity_groups_[worker_index];
-				worker_scratch.affinity_succeeded = affinity.Mask != 0U &&
-					::SetThreadGroupAffinity(::GetCurrentThread(), &affinity, nullptr) != FALSE;
+				worker_scratch.affinity_succeeded = affinity.Mask != 0U && ::SetThreadGroupAffinity(::GetCurrentThread(), &affinity, nullptr) != FALSE;
 			}
 			else if (worker_scratch.requested_placement.cpu_set_id != kMultiwayUnknownTopologyId)
 			{
 				const ULONG cpu_set_id = static_cast<ULONG>(worker_scratch.requested_placement.cpu_set_id);
 				worker_scratch.affinity_succeeded = ::SetThreadSelectedCpuSets(
-					::GetCurrentThread(), &cpu_set_id, 1U) != FALSE;
+														::GetCurrentThread(), &cpu_set_id, 1U)
+					!= FALSE;
 			}
 #elif defined(__linux__)
-			if (placement_config_.policy == MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity &&
-				worker_scratch.requested_processor < CPU_SETSIZE)
+			if (placement_config_.policy == MultiwayWorkerPlacementPolicy::DiagnosticHardAffinity && worker_scratch.requested_processor < CPU_SETSIZE)
 			{
 				cpu_set_t affinity{};
 				CPU_ZERO(&affinity);
@@ -2146,8 +2142,7 @@ namespace texas::solver::multiway
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - sort_start)
 							.count());
-					if (placement_config_.migration_sample_interval_batches != 0U &&
-						active_batch_number_ % placement_config_.migration_sample_interval_batches == 0U)
+					if (placement_config_.migration_sample_interval_batches != 0U && active_batch_number_ % placement_config_.migration_sample_interval_batches == 0U)
 					{
 						scratch.migration_sampled = true;
 						const auto before = scratch.resolved_processor;

@@ -36,8 +36,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] constexpr std::uint32_t logical_processor_identity() const noexcept
 		{
-			return (static_cast<std::uint32_t>(processor_group) << 16U) |
-				static_cast<std::uint32_t>(logical_processor_index);
+			return (static_cast<std::uint32_t>(processor_group) << 16U) | static_cast<std::uint32_t>(logical_processor_index);
 		}
 	};
 
@@ -60,7 +59,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] const MultiwayWorkerTopologyRecord* find(
 			std::uint16_t processor_group, std::uint16_t logical_processor_index) const noexcept;
-};
+	};
 
 	enum class MultiwayWorkerPlacementPolicy : std::uint8_t
 	{
@@ -96,7 +95,7 @@ namespace texas::solver::multiway
 		std::uint32_t coordinator_logical_processor_identity = kMultiwayUnknownTopologyId;
 		std::uint32_t coordinator_physical_core_id = kMultiwayUnknownTopologyId;
 		std::vector<MultiwayWorkerTopologyRecord> requested;
-};
+	};
 
 	[[nodiscard]] MultiwayWorkerTopologyInventory make_multiway_worker_topology(
 		std::vector<MultiwayWorkerTopologyRecord> records,

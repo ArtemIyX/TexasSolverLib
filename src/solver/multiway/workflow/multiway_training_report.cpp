@@ -788,9 +788,9 @@ namespace texas::solver::multiway
 				   << ", \"virtual_address_bytes\": " << snapshot.virtual_address_bytes
 				   << ", \"anonymous_resident_bytes\": " << snapshot.anonymous_resident_bytes
 				   << ", \"file_resident_bytes\": " << snapshot.file_resident_bytes
-						   << ", \"minor_page_faults\": " << snapshot.minor_page_faults
-						   << ", \"major_page_faults\": " << snapshot.major_page_faults
-						   << ", \"total_page_faults\": " << snapshot.total_page_faults
+				   << ", \"minor_page_faults\": " << snapshot.minor_page_faults
+				   << ", \"major_page_faults\": " << snapshot.major_page_faults
+				   << ", \"total_page_faults\": " << snapshot.total_page_faults
 				   << ", \"availability\": {\"current_working_set\": "
 				   << (snapshot.current_working_set_available ? "true" : "false")
 				   << ", \"peak_working_set\": " << (snapshot.peak_working_set_available ? "true" : "false")
@@ -799,9 +799,9 @@ namespace texas::solver::multiway
 				   << ", \"virtual_address\": " << (snapshot.virtual_address_available ? "true" : "false")
 				   << ", \"anonymous_resident\": " << (snapshot.anonymous_resident_available ? "true" : "false")
 				   << ", \"file_resident\": " << (snapshot.file_resident_available ? "true" : "false")
-						   << ", \"minor_page_faults\": " << (snapshot.minor_page_faults_available ? "true" : "false")
-						   << ", \"major_page_faults\": " << (snapshot.major_page_faults_available ? "true" : "false")
-						   << ", \"total_page_faults\": " << (snapshot.total_page_faults_available ? "true" : "false")
+				   << ", \"minor_page_faults\": " << (snapshot.minor_page_faults_available ? "true" : "false")
+				   << ", \"major_page_faults\": " << (snapshot.major_page_faults_available ? "true" : "false")
+				   << ", \"total_page_faults\": " << (snapshot.total_page_faults_available ? "true" : "false")
 				   << "}}";
 		}
 		output << "]"

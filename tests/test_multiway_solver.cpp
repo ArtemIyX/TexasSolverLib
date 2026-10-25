@@ -1477,8 +1477,8 @@ TEST_CASE(multiway_solver_discovery_merge_reference_and_tournament_match_duplica
 
 TEST_CASE(multiway_solver_discovery_merge_selects_tournament_only_above_threshold)
 {
-	using texas::solver::multiway::detail::MultiwayDiscoveryMergePath;
 	using texas::solver::multiway::detail::MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD;
+	using texas::solver::multiway::detail::MultiwayDiscoveryMergePath;
 	EXPECT_EQ(
 		texas::solver::multiway::detail::select_multiway_discovery_merge_path(
 			MULTIWAY_DISCOVERY_TOURNAMENT_STREAM_THRESHOLD),
@@ -1782,8 +1782,8 @@ TEST_CASE(multiway_solver_preallocates_and_reuses_bounded_merge_scratch)
 
 TEST_CASE(multiway_solver_delta_merge_selects_tournament_only_above_threshold)
 {
-	using texas::solver::multiway::MultiwayDeltaMergePath;
 	using texas::solver::multiway::MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD;
+	using texas::solver::multiway::MultiwayDeltaMergePath;
 	EXPECT_EQ(
 		texas::solver::multiway::select_multiway_delta_merge_path(MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD),
 		MultiwayDeltaMergePath::Reference);

@@ -20,9 +20,12 @@ namespace texas::solver::multiway
 	{
 		switch (mode)
 		{
-		case MultiwaySchedulerMode::Fixed: return "fixed";
-		case MultiwaySchedulerMode::StaticBlock: return "static-block";
-		case MultiwaySchedulerMode::Dynamic: return "dynamic";
+			case MultiwaySchedulerMode::Fixed:
+				return "fixed";
+			case MultiwaySchedulerMode::StaticBlock:
+				return "static-block";
+			case MultiwaySchedulerMode::Dynamic:
+				return "dynamic";
 		}
 		return "invalid";
 	}
