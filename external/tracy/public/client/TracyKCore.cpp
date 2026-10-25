@@ -29,7 +29,9 @@ KCore::KCore()
     for( elf_half i=0; i<ehdr.e_phnum; i++ )
     {
         elf_phdr phdr;
-        if( lseek( m_fd, ehdr.e_phoff + i * ehdr.e_phentsize, SEEK_SET ) == -1 ) goto err;
+        const auto headerOffset = static_cast<off_t>( ehdr.e_phoff )
+            + static_cast<off_t>( i ) * static_cast<off_t>( ehdr.e_phentsize );
+        if( lseek( m_fd, headerOffset, SEEK_SET ) == -1 ) goto err;
         if( read( m_fd, &phdr, sizeof( phdr ) ) != sizeof( phdr ) ) goto err;
         if( phdr.p_type != 1 ) continue;
 

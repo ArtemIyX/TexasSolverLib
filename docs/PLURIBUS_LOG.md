@@ -1,5 +1,62 @@
 # Pluribus Roadmap Progress Log
 
+## Security remediation findings
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commits:** `1614db4`, `3accd7a`, `f4d60cf`, `368f59d`, `6976bc4`, `f928768`, `b8bb30e`, `ab781b5`
+
+- Fixed test allocation ownership and added checked first-party arithmetic.
+- Added configuration-driven workflow resource preflight and centralized path authorization with traversal, link, overwrite, and alias checks.
+- Replaced the flagged symbol-parser regex with bounded linear parsing.
+- Applied tracked minimal Tracy arithmetic patches and made Tracy MCP loopback-only by default with explicit remote opt-in.
+- Preserved exact-mode behavior and deterministic workflow interfaces.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/core/checked_arithmetic.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_path_policy.hpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_path_policy.cpp`
+- `examples/benchmarks/hunl_mccfr_scaling_main.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_checked_arithmetic.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `tests/test_multiway_workflow_path_policy.cpp`
+- `scripts/python/extract_symbols.py`
+- `scripts/python/test_extract_symbols.py`
+- `external/tracy/extra/mcp/start_mcp.sh`
+- `external/tracy/extra/mcp/tracy_mcp.py`
+- `external/tracy/extra/mcp/tracy_mcp_bind.py`
+- `external/tracy/extra/mcp/test_tracy_mcp_bind.py`
+- `external/tracy/profiler/src/BackendWayland.cpp`
+- `external/tracy/profiler/src/profiler/TracyView_ZoneInfo.cpp`
+- `external/tracy/profiler/src/stb_image.h`
+- `external/tracy/profiler/src/stb_image_resize.h`
+- `external/tracy/public/client/TracyKCore.cpp`
+- `docs/security_findings_dispositions_2026-10-25.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused CTest for arithmetic, ownership, workflow configuration, and path policy: 4/4 passed.
+- Workflow boundary/configuration/path tests: 3/3 passed.
+- MSVC AddressSanitizer ownership test: passed with `ASAN_OPTIONS=allocator_may_return_null=1`.
+- Tracy MCP tests: 4/4 passed.
+- Symbol-parser tests and pathological-input checks: 3/3 passed.
+- Tracy diagnostics targets compiled successfully.
+- `scripts/codex_powershell.ps1 scripts/python/full_build.py`: build passed and all 113 tests passed.
+- Independent C++ review: no remaining actionable findings.
+
+### Limitations
+
+- CodeQL was unavailable locally, so alert closure was not rerun.
+- Symlink coverage is conditional when the host denies symlink creation.
+- Path policy remains a preflight around existing path-based APIs and cannot make every concurrent filesystem race atomic.
+
 ## PB9.16.09 - Qualification tooling
 
 **Status:** Complete

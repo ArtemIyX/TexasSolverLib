@@ -1,4 +1,5 @@
 #include "games/hunl_flat_graph.hpp"
+#include "core/checked_arithmetic.hpp"
 #include "solver/hunl/flat/hunl_flat_expected_value.hpp"
 #include "solver/hunl/flat/hunl_flat_mccfr.hpp"
 #include "solver/hunl/sampled/hunl_sampled_config.hpp"
@@ -386,6 +387,31 @@ namespace
 
 	texas::HUNLFlatSolveGraph make_benchmark_graph(const GraphPresetSpec& spec)
 	{
+		const auto checked_product = [](auto left, auto right, const char* message) {
+			std::size_t result = 0U;
+			if (!texas::core::checked_multiply_to_size(left, right, result))
+				throw std::length_error(message);
+			return result;
+		};
+		const auto checked_sum = [](auto left, auto right, const char* message) {
+			std::size_t result = 0U;
+			if (!texas::core::checked_add_to_size(left, right, result))
+				throw std::length_error(message);
+			return result;
+		};
+		const auto root_chance = checked_product(spec.root_actions, spec.chance_outcomes, "benchmark graph size overflows");
+		const auto root_chance_opponent = checked_product(root_chance, spec.opponent_actions, "benchmark graph size overflows");
+		const auto terminal_count = checked_product(root_chance_opponent, spec.reply_actions, "benchmark graph size overflows");
+		const auto opponent_begin = checked_sum(1U, spec.root_actions, "benchmark graph size overflows");
+		const auto reply_begin = checked_sum(opponent_begin, root_chance, "benchmark graph size overflows");
+		const auto terminal_begin = checked_sum(reply_begin, root_chance_opponent, "benchmark graph size overflows");
+		const auto total_nodes = checked_sum(terminal_begin, terminal_count, "benchmark graph size overflows");
+		const auto child_capacity = checked_sum(
+			checked_sum(spec.root_actions, root_chance_opponent, "benchmark graph size overflows"),
+			terminal_count, "benchmark graph size overflows");
+		const auto infoset_capacity = checked_sum(1U, checked_sum(root_chance, root_chance_opponent, "benchmark graph size overflows"), "benchmark graph size overflows");
+		if (total_nodes > std::numeric_limits<std::uint32_t>::max() || opponent_begin > std::numeric_limits<std::uint32_t>::max() || reply_begin > std::numeric_limits<std::uint32_t>::max() || terminal_begin > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("benchmark graph index exceeds uint32 range");
 		texas::HUNLFlatSolveGraph graph;
 		graph.root = 0;
 		graph.max_depth = 4;
@@ -409,7 +435,7 @@ namespace
 		graph.infosets.push_back(texas::HUNLFlatInfoset{
 			opponent_infoset,
 			1U,
-			spec.root_actions * spec.chance_outcomes,
+			static_cast<std::uint32_t>(root_chance),
 			{},
 			1,
 			1,
@@ -418,8 +444,8 @@ namespace
 		});
 		graph.infosets.push_back(texas::HUNLFlatInfoset{
 			reply_infoset,
-			1U + spec.root_actions * spec.chance_outcomes,
-			spec.root_actions * spec.chance_outcomes * spec.opponent_actions,
+			static_cast<std::uint32_t>(reply_begin),
+			static_cast<std::uint32_t>(root_chance_opponent),
 			{},
 			2,
 			0,
@@ -429,19 +455,12 @@ namespace
 		graph.infoset_debug_keys = { "root-p0", "opp-p1", "reply-p0" };
 
 		const std::uint32_t chance_begin = 1;
-		const std::uint32_t opponent_begin = chance_begin + spec.root_actions;
-		const std::uint32_t reply_begin = opponent_begin + spec.root_actions * spec.chance_outcomes;
-		const std::uint32_t terminal_begin = reply_begin + spec.root_actions * spec.chance_outcomes * spec.opponent_actions;
-		const std::uint32_t total_nodes =
-			terminal_begin + spec.root_actions * spec.chance_outcomes * spec.opponent_actions * spec.reply_actions;
-
 		graph.node_meta.resize(total_nodes);
 		graph.node_depths.resize(total_nodes, 0U);
 		graph.children.reserve(
-			spec.root_actions + spec.root_actions * spec.chance_outcomes * spec.opponent_actions + spec.root_actions * spec.chance_outcomes * spec.opponent_actions * spec.reply_actions);
-		graph.chance_outcomes.reserve(spec.root_actions * spec.chance_outcomes);
-		graph.infoset_nodes.reserve(
-			1U + spec.root_actions * spec.chance_outcomes + spec.root_actions * spec.chance_outcomes * spec.opponent_actions);
+			child_capacity);
+		graph.chance_outcomes.reserve(root_chance);
+		graph.infoset_nodes.reserve(infoset_capacity);
 
 		graph.node_meta[0].child_begin = 0;
 		graph.node_meta[0].child_count = spec.root_actions;
@@ -453,24 +472,24 @@ namespace
 		graph.node_meta[0].has_infoset = true;
 		graph.infoset_nodes.push_back(0);
 
-		for (std::uint32_t root_action = 0; root_action < spec.root_actions; ++root_action)
+		for (std::size_t root_action = 0U; root_action < spec.root_actions; ++root_action)
 		{
 			const auto chance_node = chance_begin + root_action;
-			graph.children.push_back(chance_node);
+			graph.children.push_back(static_cast<std::uint32_t>(chance_node));
 			graph.node_meta[chance_node].chance_begin = static_cast<std::uint32_t>(graph.chance_outcomes.size());
 			graph.node_meta[chance_node].chance_count = spec.chance_outcomes;
 			graph.node_meta[chance_node].type = texas::HUNLFlatNodeType::Chance;
 			graph.node_meta[chance_node].street = texas::Street::Flop;
 			graph.node_depths[chance_node] = 1;
 
-			for (std::uint32_t outcome = 0; outcome < spec.chance_outcomes; ++outcome)
+			for (std::size_t outcome = 0U; outcome < spec.chance_outcomes; ++outcome)
 			{
-				const auto opponent_index = root_action * spec.chance_outcomes + outcome;
+				const auto opponent_index = root_action * static_cast<std::size_t>(spec.chance_outcomes) + outcome;
 				const auto opponent_node = opponent_begin + opponent_index;
 				graph.chance_outcomes.push_back(texas::HUNLFlatChanceOutcome{
 					static_cast<std::uint8_t>(outcome),
 					1.0 / static_cast<double>(spec.chance_outcomes),
-					opponent_node,
+					static_cast<std::uint32_t>(opponent_node),
 					1U,
 				});
 
@@ -485,11 +504,11 @@ namespace
 				graph.node_depths[opponent_node] = 2;
 				graph.infoset_nodes.push_back(opponent_node);
 
-				for (std::uint32_t opponent_action = 0; opponent_action < spec.opponent_actions; ++opponent_action)
+				for (std::size_t opponent_action = 0U; opponent_action < spec.opponent_actions; ++opponent_action)
 				{
-					const auto reply_index = opponent_index * spec.opponent_actions + opponent_action;
+					const auto reply_index = opponent_index * static_cast<std::size_t>(spec.opponent_actions) + opponent_action;
 					const auto reply_node = reply_begin + reply_index;
-					graph.children.push_back(reply_node);
+					graph.children.push_back(static_cast<std::uint32_t>(reply_node));
 
 					graph.node_meta[reply_node].child_begin = static_cast<std::uint32_t>(graph.children.size());
 					graph.node_meta[reply_node].child_count = spec.reply_actions;
@@ -502,11 +521,11 @@ namespace
 					graph.node_depths[reply_node] = 3;
 					graph.infoset_nodes.push_back(reply_node);
 
-					for (std::uint32_t reply_action = 0; reply_action < spec.reply_actions; ++reply_action)
+					for (std::size_t reply_action = 0U; reply_action < spec.reply_actions; ++reply_action)
 					{
-						const auto terminal_index = reply_index * spec.reply_actions + reply_action;
+						const auto terminal_index = reply_index * static_cast<std::size_t>(spec.reply_actions) + reply_action;
 						const auto terminal_node = terminal_begin + terminal_index;
-						graph.children.push_back(terminal_node);
+						graph.children.push_back(static_cast<std::uint32_t>(terminal_node));
 
 						const auto root_term = static_cast<double>((root_action + 1U) * 6U);
 						const auto outcome_term = outcome == 0U ? 1.5 : -0.75;
@@ -541,15 +560,15 @@ namespace
 		graph.depth_slices = {
 			texas::HUNLFlatSlice{ 0, 1 },
 			texas::HUNLFlatSlice{ 1, spec.root_actions },
-			texas::HUNLFlatSlice{ opponent_begin, spec.root_actions * spec.chance_outcomes },
-			texas::HUNLFlatSlice{ reply_begin, spec.root_actions * spec.chance_outcomes * spec.opponent_actions },
+			texas::HUNLFlatSlice{ static_cast<std::uint32_t>(opponent_begin), static_cast<std::uint32_t>(root_chance) },
+			texas::HUNLFlatSlice{ static_cast<std::uint32_t>(reply_begin), static_cast<std::uint32_t>(root_chance_opponent) },
 			texas::HUNLFlatSlice{
-				terminal_begin,
-				spec.root_actions * spec.chance_outcomes * spec.opponent_actions * spec.reply_actions,
+				static_cast<std::uint32_t>(terminal_begin),
+				static_cast<std::uint32_t>(terminal_count),
 			},
 		};
 		graph.street_slices[static_cast<std::size_t>(texas::Street::Flop)] =
-			texas::HUNLFlatSlice{ 0, total_nodes };
+			texas::HUNLFlatSlice{ 0, static_cast<std::uint32_t>(total_nodes) };
 		return graph;
 	}
 

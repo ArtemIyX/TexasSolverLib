@@ -22,6 +22,11 @@ from contextlib import asynccontextmanager, redirect_stdout
 
 from mcp.server.mcpserver import MCPServer
 
+try:
+    from tracy_mcp_bind import resolve_bind_host
+except ImportError:
+    from .tracy_mcp_bind import resolve_bind_host
+
 # Suppress noisy ASGI shutdown errors known to occur with SSE and Control-C.
 # These occur when Starlette attempts to send a 500 error after the loop is cancelled
 # but after the SSE 200 OK headers have already been sent. Global level suppression
@@ -35,6 +40,12 @@ _PID_FILE  = os.path.join(_HERE, "tracy_mcp.pid")
 _CRASH_LOG_FILE = os.path.join(_HERE, "tracy_mcp.crash.log")
 _PREFERRED_PORT = int(os.environ.get("TRACY_MCP_PORT", "47380"))
 _TRANSPORT = os.environ.get("TRACY_MCP_TRANSPORT", "streamable-http").strip().lower()
+try:
+    _BIND_HOST = resolve_bind_host()
+except ValueError as exc:
+    print(f"Invalid Tracy MCP bind configuration: {exc}", file=sys.stderr)
+    raise SystemExit(2) from exc
+_REMOTE_BIND_ENABLED = _BIND_HOST != "127.0.0.1"
 # MCPServer.run()'s own defaults -- tracked here too since v2's Settings no
 # longer exposes them for us to read back (SDK v1 -> v2 migration).
 _SSE_PATH = "/sse"
@@ -138,7 +149,7 @@ async def _listen_broadcasts(timeout_s: float = 1.5) -> list[dict]:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
-        s.bind(("", _BROADCAST_PORT))
+        s.bind((_BIND_HOST, _BROADCAST_PORT))
     except OSError:
         s.close()
         return []
@@ -924,11 +935,17 @@ if __name__ == "__main__":
     _write_pid_and_port(port)
 
     path = _SSE_PATH if _TRANSPORT == "sse" else _STREAMABLE_HTTP_PATH
-    print(f"Tracy MCP listening on http://127.0.0.1:{port}{path}", file=sys.stderr)
+    if _REMOTE_BIND_ENABLED:
+        print(
+            "WARNING: Tracy MCP remote binding is enabled without authentication; "
+            "protect the listener with network access controls.",
+            file=sys.stderr,
+        )
+    print(f"Tracy MCP listening on http://{_BIND_HOST}:{port}{path}", file=sys.stderr)
 
     # v2's MCPServer takes transport options on run(), not the constructor
     # or a mutable settings object (SDK v1 -> v2 migration).
-    run_kwargs = {"host": "127.0.0.1", "port": port}
+    run_kwargs = {"host": _BIND_HOST, "port": port}
     if _TRANSPORT == "sse":
         run_kwargs["sse_path"] = _SSE_PATH
     else:

@@ -1816,7 +1816,7 @@ static stbi__uint16 *stbi__convert_format16(stbi__uint16 *data, int img_n, int r
    if (req_comp == img_n) return data;
    STBI_ASSERT(req_comp >= 1 && req_comp <= 4);
 
-   good = (stbi__uint16 *) stbi__malloc(req_comp * x * y * 2);
+   good = (stbi__uint16 *) stbi__malloc((size_t) req_comp * (size_t) x * (size_t) y * 2);
    if (good == NULL) {
       STBI_FREE(data);
       return (stbi__uint16 *) stbi__errpuc("outofmem", "Out of memory");
@@ -4714,7 +4714,7 @@ static int stbi__create_png_image_raw(stbi__png *a, stbi_uc *raw, stbi__uint32 r
    // note: error exits here don't need to clean up a->out individually,
    // stbi__do_png always does on error.
    if (!stbi__mad3sizes_valid(img_n, x, depth, 7)) return stbi__err("too large", "Corrupt PNG");
-   img_width_bytes = (((img_n * x * depth) + 7) >> 3);
+   img_width_bytes = ((((size_t) img_n * (size_t) x * (size_t) depth) + 7) >> 3);
    if (!stbi__mad2sizes_valid(img_width_bytes, y, img_width_bytes)) return stbi__err("too large", "Corrupt PNG");
    img_len = (img_width_bytes + 1) * y;
 

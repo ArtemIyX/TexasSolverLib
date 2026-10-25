@@ -63,6 +63,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/core/arena.hpp
     include/core/atomic_publish.hpp
     include/core/canonical_combo.hpp
+    include/core/checked_arithmetic.hpp
     include/core/game.hpp
     include/core/fingerprint.hpp
     include/core/lib.hpp
@@ -116,6 +117,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp
     include/solver/multiway/abstraction/multiway_bucket_generation.hpp
     include/solver/multiway/workflow/multiway_workflow_config.hpp
+    include/solver/multiway/workflow/multiway_workflow_path_policy.hpp
     include/solver/multiway/workflow/multiway_evidence.hpp
     include/solver/multiway/workflow/multiway_binary_provenance.hpp
     include/solver/multiway/workflow/multiway_artifact_preflight.hpp
@@ -241,6 +243,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/abstraction/multiway_bucket_generation.cpp
     src/solver/multiway/abstraction/multiway_bucket_inspector.cpp
     src/solver/multiway/workflow/multiway_workflow_config.cpp
+    src/solver/multiway/workflow/multiway_workflow_path_policy.cpp
     src/solver/multiway/workflow/multiway_evidence.cpp
     src/solver/multiway/workflow/multiway_artifact_preflight.cpp
     src/solver/multiway/workflow/multiway_checkpoint_equivalence.cpp

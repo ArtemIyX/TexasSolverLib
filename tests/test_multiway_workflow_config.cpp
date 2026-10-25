@@ -185,6 +185,50 @@ TEST_CASE(multiway_workflow_config_rejects_zero_and_overflow_explicit_capacities
 	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(overflow), std::invalid_argument);
 }
 
+TEST_CASE(multiway_workflow_config_rejects_capacity_above_resource_policy)
+{
+	auto text = std::string(valid_config) + "maximum_public_states=8000001\nmaximum_sparse_values=10000\n"
+											"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+											"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
+		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(text), std::invalid_argument);
+}
+
+TEST_CASE(multiway_workflow_resource_preflight_rejects_aggregate_memory)
+{
+	using namespace texas::solver::multiway;
+	auto text = std::string(valid_config) + "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+											"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+											"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
+		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	const auto config = parse_multiway_workflow_config(text);
+	const auto admitted = preflight_multiway_workflow(config, 1U, 1U);
+	EXPECT_TRUE(admitted.accepted);
+	EXPECT_EQ(admitted.requested_training_trajectories, 10U);
+
+	auto constrained = config;
+	constrained.process_memory_limit_bytes = admitted.memory.estimate.total_bytes - 1U;
+	const auto rejected = preflight_multiway_workflow(constrained, 1U, 1U);
+	EXPECT_TRUE(!rejected.accepted);
+	EXPECT_EQ(std::string(rejected.rejected_category), "worker deltas");
+}
+
+TEST_CASE(multiway_workflow_resource_preflight_rejects_excess_workload)
+{
+	using namespace texas::solver::multiway;
+	auto text = std::string(valid_config) + "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+											"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+											"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
+		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	const auto config = parse_multiway_workflow_config(text);
+	const auto rejected = preflight_multiway_workflow(config, 1U, 5'000'001U);
+	EXPECT_TRUE(!rejected.accepted);
+	EXPECT_EQ(std::string(rejected.rejected_category), "workload");
+}
+
 TEST_CASE(multiway_workflow_config_separates_sizing_and_acceptance_profiles)
 {
 	using namespace texas::solver::multiway;

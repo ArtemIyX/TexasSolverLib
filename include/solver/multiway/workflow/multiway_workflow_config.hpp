@@ -12,6 +12,37 @@
 namespace texas::solver::multiway
 {
 
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_PUBLIC_STATES = 8'000'000U;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_SPARSE_ROWS = 8'000'000U;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_SPARSE_VALUES = 200'000'000U;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_STREAM_ENTRIES_PER_WORKER = 1'000'000U;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_TRAJECTORIES_PER_BATCH = 1'000'000U;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_CHECKPOINT_INTERVAL = 1'000'000'000U;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_DISK_SPACE_BYTES = 1ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_PROCESS_MEMORY_BYTES =
+		MULTIWAY_COMPAT_PROCESS_WORKING_SET_LIMIT_BYTES;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_WORKING_SET_BYTES =
+		MULTIWAY_COMPAT_PROCESS_WORKING_SET_LIMIT_BYTES;
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_BATCHES = 50'000'000U;
+
+	struct MultiwayWorkflowResourceLimits
+	{
+		std::uint32_t max_training_workers = 16U;
+		std::uint64_t max_public_states = MULTIWAY_WORKFLOW_MAX_PUBLIC_STATES;
+		std::uint64_t max_sparse_rows = MULTIWAY_WORKFLOW_MAX_SPARSE_ROWS;
+		std::uint64_t max_sparse_values = MULTIWAY_WORKFLOW_MAX_SPARSE_VALUES;
+		std::uint64_t max_stream_entries_per_worker = MULTIWAY_WORKFLOW_MAX_STREAM_ENTRIES_PER_WORKER;
+		std::uint64_t max_trajectories_per_batch = MULTIWAY_WORKFLOW_MAX_TRAJECTORIES_PER_BATCH;
+		std::uint64_t max_checkpoint_interval = MULTIWAY_WORKFLOW_MAX_CHECKPOINT_INTERVAL;
+		std::uint64_t max_disk_space_requirement_bytes = MULTIWAY_WORKFLOW_MAX_DISK_SPACE_BYTES;
+		std::uint64_t max_process_memory_limit_bytes = MULTIWAY_WORKFLOW_MAX_PROCESS_MEMORY_BYTES;
+		std::uint64_t max_process_working_set_limit_bytes = MULTIWAY_WORKFLOW_MAX_WORKING_SET_BYTES;
+		std::uint64_t max_process_working_set_resident_allowance_bytes = MULTIWAY_WORKFLOW_MAX_WORKING_SET_BYTES;
+		std::uint64_t max_training_batches = MULTIWAY_WORKFLOW_MAX_BATCHES;
+
+		void validate() const;
+	};
+
 	struct MultiwayWorkflowConfig
 	{
 		std::uint32_t schema_version = 0U;
@@ -53,6 +84,7 @@ namespace texas::solver::multiway
 		std::filesystem::path training_log_path;
 
 		void validate() const;
+		void validate(const MultiwayWorkflowResourceLimits& resource_limits) const;
 		[[nodiscard]] bool capacities_resolved() const noexcept;
 		[[nodiscard]] std::uint64_t fingerprint() const noexcept;
 		[[nodiscard]] std::uint64_t resolved_regret_delta_capacity() const noexcept;
@@ -69,10 +101,26 @@ namespace texas::solver::multiway
 		std::uint32_t effective = 0U;
 	};
 
+	struct MultiwayWorkflowResourcePreflight
+	{
+		MultiwayTrainingWorkerResolution workers{};
+		std::uint64_t requested_training_trajectories = 0U;
+		MultiwayMemoryPreflight memory{};
+		bool accepted = false;
+		const char* rejected_category = "none";
+		const char* message = "not run";
+	};
+
 	[[nodiscard]] MultiwayTrainingWorkerResolution resolve_multiway_training_workers(
 		std::uint32_t configured_workers,
 		std::uint32_t override_workers,
 		std::uint64_t trajectories_per_batch);
+
+	[[nodiscard]] MultiwayWorkflowResourcePreflight preflight_multiway_workflow(
+		const MultiwayWorkflowConfig& config,
+		std::uint32_t worker_override,
+		std::uint64_t batches,
+		const MultiwayWorkflowResourceLimits& resource_limits = {});
 
 	[[nodiscard]] MultiwayWorkflowConfig parse_multiway_workflow_config(const std::string& text);
 	[[nodiscard]] std::string serialize_multiway_workflow_config(const MultiwayWorkflowConfig& config);

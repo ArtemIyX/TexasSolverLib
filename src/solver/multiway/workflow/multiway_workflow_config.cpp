@@ -47,10 +47,32 @@ namespace texas::solver::multiway
 		constexpr std::uint8_t kContinuationCapacity = 2U;
 		constexpr std::uint8_t kDiscoveryPublicCapacity = 4U;
 		constexpr std::uint8_t kDiscoveryRowsCapacity = 8U;
+
+		std::uint64_t checked_multiply(
+			std::uint64_t left, std::uint64_t right, const char* message)
+		{
+			if (left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left)
+				throw std::length_error(message);
+			return left * right;
+		}
 	} // namespace
 
 	void MultiwayWorkflowConfig::validate() const
 	{
+		validate(MultiwayWorkflowResourceLimits{});
+	}
+
+	void MultiwayWorkflowResourceLimits::validate() const
+	{
+		if (max_training_workers == 0U || max_training_workers > 16U || max_public_states == 0U || max_sparse_rows == 0U || max_sparse_values == 0U || max_stream_entries_per_worker == 0U || max_trajectories_per_batch == 0U || max_checkpoint_interval == 0U || max_disk_space_requirement_bytes == 0U || max_process_memory_limit_bytes == 0U || max_process_working_set_limit_bytes == 0U || max_training_batches == 0U)
+			throw std::invalid_argument("workflow resource limits must be positive and use at most 16 workers");
+		if (max_process_working_set_resident_allowance_bytes > max_process_working_set_limit_bytes)
+			throw std::invalid_argument("workflow resident allowance exceeds its working-set limit");
+	}
+
+	void MultiwayWorkflowConfig::validate(const MultiwayWorkflowResourceLimits& resource_limits) const
+	{
+		resource_limits.validate();
 		if ((schema_version != 1U && schema_version != 2U) || profile_id.empty() || preflop_classes != 169U || storage_backend != "CompactInt32" || (profile_kind != MultiwayWorkflowProfileKind::Sizing && profile_kind != MultiwayWorkflowProfileKind::Acceptance) || max_decision_depth != 64U || max_public_chance_depth != 3U || deterministic_seed != 1U || training_worker_count == 0U || training_worker_count > 16U || !multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || (schema_version == 1U && training_worker_count != 1U) || target_trajectories == 0U || (profile_kind == MultiwayWorkflowProfileKind::Acceptance && target_trajectories != 50'000'000U) || (profile_kind == MultiwayWorkflowProfileKind::Sizing && target_trajectories >= 50'000'000U))
 		{
 			throw std::invalid_argument("invalid F1 workflow configuration");
@@ -70,6 +92,24 @@ namespace texas::solver::multiway
 		}
 		if (process_working_set_limit_bytes == 0U && process_working_set_resident_allowance_bytes != 0U)
 			throw std::invalid_argument("working-set resident allowance requires a hard limit");
+		const auto reject_above = [](std::uint64_t value, std::uint64_t maximum, const char* key) {
+			if (value != 0U && value > maximum)
+				throw std::invalid_argument(std::string(key) + " exceeds resource limit: requested=" + std::to_string(value) + ", maximum=" + std::to_string(maximum));
+		};
+		reject_above(maximum_public_states, resource_limits.max_public_states, "maximum_public_states");
+		reject_above(maximum_sparse_rows, resource_limits.max_sparse_rows, "maximum_sparse_rows");
+		reject_above(maximum_sparse_values, resource_limits.max_sparse_values, "maximum_sparse_values");
+		reject_above(resolved_regret_delta_capacity(), resource_limits.max_stream_entries_per_worker, "regret_delta_capacity");
+		reject_above(resolved_continuation_delta_capacity(), resource_limits.max_stream_entries_per_worker, "continuation_delta_capacity");
+		reject_above(resolved_discovery_public_state_capacity(), resource_limits.max_stream_entries_per_worker, "discovery_public_state_capacity");
+		reject_above(resolved_discovery_row_capacity(), resource_limits.max_stream_entries_per_worker, "discovery_row_capacity");
+		reject_above(trajectories_per_batch, resource_limits.max_trajectories_per_batch, "trajectories_per_batch");
+		reject_above(checkpoint_interval, resource_limits.max_checkpoint_interval, "checkpoint_interval");
+		reject_above(disk_space_requirement_bytes, resource_limits.max_disk_space_requirement_bytes, "disk_space_requirement_bytes");
+		reject_above(process_memory_limit_bytes, resource_limits.max_process_memory_limit_bytes, "process_memory_limit_bytes");
+		reject_above(process_working_set_limit_bytes, resource_limits.max_process_working_set_limit_bytes, "process_working_set_limit_bytes");
+		reject_above(process_working_set_resident_allowance_bytes, resource_limits.max_process_working_set_resident_allowance_bytes, "process_working_set_resident_allowance_bytes");
+		reject_above(training_batches, resource_limits.max_training_batches, "batches");
 	}
 
 	bool MultiwayWorkflowConfig::capacities_resolved() const noexcept
@@ -116,6 +156,56 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("training worker count must be in [1, 16] with a positive batch size");
 		}
 		return { requested, static_cast<std::uint32_t>(std::min<std::uint64_t>(requested, trajectories_per_batch)) };
+	}
+
+	MultiwayWorkflowResourcePreflight preflight_multiway_workflow(
+		const MultiwayWorkflowConfig& config,
+		std::uint32_t worker_override,
+		std::uint64_t batches,
+		const MultiwayWorkflowResourceLimits& resource_limits)
+	{
+		config.validate(resource_limits);
+		if (!config.capacities_resolved())
+			throw std::invalid_argument("workflow resource preflight requires resolved capacities");
+		if (batches == 0U)
+			throw std::invalid_argument("workflow resource preflight requires positive batches");
+		if (batches > resource_limits.max_training_batches)
+			throw std::invalid_argument("batches exceeds resource limit: requested=" + std::to_string(batches) + ", maximum=" + std::to_string(resource_limits.max_training_batches));
+
+		MultiwayWorkflowResourcePreflight result;
+		result.workers = resolve_multiway_training_workers(
+			config.training_worker_count, worker_override, config.trajectories_per_batch);
+		if (result.workers.requested > resource_limits.max_training_workers)
+			throw std::invalid_argument("training workers exceed resource limit: requested=" + std::to_string(result.workers.requested) + ", maximum=" + std::to_string(resource_limits.max_training_workers));
+		result.requested_training_trajectories = checked_multiply(
+			batches, config.trajectories_per_batch, "workflow trajectory count overflows uint64");
+		if (result.requested_training_trajectories > config.target_trajectories)
+		{
+			result.rejected_category = "workload";
+			result.message = "requested training workload exceeds target trajectories";
+			return result;
+		}
+		if (config.process_memory_limit_bytes < 3U)
+			throw std::invalid_argument("process_memory_limit_bytes must be at least 3 bytes");
+		const auto operating_bytes = config.process_memory_limit_bytes - 1U;
+		const auto warning_bytes = std::max<std::uint64_t>(1U, operating_bytes - operating_bytes / 5U);
+		MultiwaySolverLimits solver_limits;
+		solver_limits.worker_count = result.workers.effective;
+		solver_limits.trajectories_per_batch = static_cast<std::uint32_t>(config.trajectories_per_batch);
+		solver_limits.max_public_states = static_cast<std::size_t>(config.maximum_public_states);
+		solver_limits.max_sparse_rows = static_cast<std::size_t>(config.maximum_sparse_rows);
+		solver_limits.max_sparse_values = static_cast<std::size_t>(config.maximum_sparse_values);
+		solver_limits.max_regret_delta_entries_per_worker = static_cast<std::size_t>(config.resolved_regret_delta_capacity());
+		solver_limits.max_continuation_delta_entries_per_worker = static_cast<std::size_t>(config.resolved_continuation_delta_capacity());
+		solver_limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(config.resolved_discovery_public_state_capacity());
+		solver_limits.max_discovery_rows_per_worker = static_cast<std::size_t>(config.resolved_discovery_row_capacity());
+		solver_limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
+		result.memory = preflight_multiway_memory(
+			solver_limits, { warning_bytes, config.process_memory_limit_bytes, operating_bytes });
+		result.accepted = result.memory.status != MultiwayMemoryStatus::Rejected;
+		result.rejected_category = result.accepted ? "none" : result.memory.rejected_category;
+		result.message = result.accepted ? "workflow resource preflight admitted" : result.memory.message;
+		return result;
 	}
 
 	std::uint64_t MultiwayWorkflowConfig::fingerprint() const noexcept
