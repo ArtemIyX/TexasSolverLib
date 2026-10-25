@@ -410,10 +410,7 @@ namespace
 			checked_sum(spec.root_actions, root_chance_opponent, "benchmark graph size overflows"),
 			terminal_count, "benchmark graph size overflows");
 		const auto infoset_capacity = checked_sum(1U, checked_sum(root_chance, root_chance_opponent, "benchmark graph size overflows"), "benchmark graph size overflows");
-		if (total_nodes > std::numeric_limits<std::uint32_t>::max() ||
-			opponent_begin > std::numeric_limits<std::uint32_t>::max() ||
-			reply_begin > std::numeric_limits<std::uint32_t>::max() ||
-			terminal_begin > std::numeric_limits<std::uint32_t>::max())
+		if (total_nodes > std::numeric_limits<std::uint32_t>::max() || opponent_begin > std::numeric_limits<std::uint32_t>::max() || reply_begin > std::numeric_limits<std::uint32_t>::max() || terminal_begin > std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("benchmark graph index exceeds uint32 range");
 		texas::HUNLFlatSolveGraph graph;
 		graph.root = 0;

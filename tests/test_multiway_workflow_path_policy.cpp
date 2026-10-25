@@ -13,9 +13,7 @@ namespace
 
 		TemporaryWorkflowRoot()
 		{
-			path = std::filesystem::temp_directory_path() /
-				("texas_solver_path_policy_" +
-					std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+			path = std::filesystem::temp_directory_path() / ("texas_solver_path_policy_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 			std::filesystem::create_directories(path);
 		}
 
@@ -33,7 +31,7 @@ namespace
 		policy.root = std::filesystem::weakly_canonical(root);
 		return policy;
 	}
-}
+} // namespace
 
 TEST_CASE(multiway_workflow_path_policy_authorizes_in_root_paths)
 {
@@ -63,12 +61,14 @@ TEST_CASE(multiway_workflow_path_policy_rejects_traversal_and_outside_absolute_p
 	const auto policy = policy_for(temporary.path);
 
 	EXPECT_THROW(authorize_multiway_workflow_path(
-		policy, "../texas_solver_path_policy_outside.bin", MultiwayWorkflowPathKind::InputFile),
+					 policy, "../texas_solver_path_policy_outside.bin", MultiwayWorkflowPathKind::InputFile),
 		std::invalid_argument);
 	EXPECT_THROW(authorize_multiway_workflow_path(
-		policy, outside, MultiwayWorkflowPathKind::InputFile), std::invalid_argument);
+					 policy, outside, MultiwayWorkflowPathKind::InputFile),
+		std::invalid_argument);
 	EXPECT_THROW(authorize_multiway_workflow_path(
-		policy, "invalid:stream", MultiwayWorkflowPathKind::OutputFile), std::invalid_argument);
+					 policy, "invalid:stream", MultiwayWorkflowPathKind::OutputFile),
+		std::invalid_argument);
 
 	std::error_code error;
 	std::filesystem::remove(outside, error);
@@ -89,7 +89,7 @@ TEST_CASE(multiway_workflow_path_policy_rejects_symlink_escape)
 	{
 		const auto policy = policy_for(temporary.path);
 		EXPECT_THROW(authorize_multiway_workflow_path(
-			policy, link / "input.bin", MultiwayWorkflowPathKind::InputFile),
+						 policy, link / "input.bin", MultiwayWorkflowPathKind::InputFile),
 			std::invalid_argument);
 	}
 	std::filesystem::remove_all(outside, error);
@@ -104,16 +104,18 @@ TEST_CASE(multiway_workflow_path_policy_enforces_overwrite_and_alias_boundaries)
 	const auto policy = policy_for(temporary.path);
 
 	EXPECT_THROW(authorize_multiway_workflow_path(
-		policy, existing, MultiwayWorkflowPathKind::OutputFile), std::invalid_argument);
+					 policy, existing, MultiwayWorkflowPathKind::OutputFile),
+		std::invalid_argument);
 	auto overwrite_policy = policy;
 	overwrite_policy.allow_output_overwrite = true;
 	EXPECT_EQ(authorize_multiway_workflow_path(
-		overwrite_policy, existing, MultiwayWorkflowPathKind::OutputFile),
+				  overwrite_policy, existing, MultiwayWorkflowPathKind::OutputFile),
 		std::filesystem::weakly_canonical(existing));
 
 	const auto append_target = authorize_multiway_workflow_path(
 		policy, existing, MultiwayWorkflowPathKind::AppendFile);
 	EXPECT_EQ(append_target, std::filesystem::weakly_canonical(existing));
 	EXPECT_THROW(authorize_multiway_workflow_path(
-		policy, existing, MultiwayWorkflowPathKind::OutputDirectory), std::invalid_argument);
+					 policy, existing, MultiwayWorkflowPathKind::OutputDirectory),
+		std::invalid_argument);
 }

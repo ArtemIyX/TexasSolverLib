@@ -188,8 +188,8 @@ TEST_CASE(multiway_workflow_config_rejects_zero_and_overflow_explicit_capacities
 TEST_CASE(multiway_workflow_config_rejects_capacity_above_resource_policy)
 {
 	auto text = std::string(valid_config) + "maximum_public_states=8000001\nmaximum_sparse_values=10000\n"
-										"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
-										"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
+											"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+											"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
 	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
 		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
 	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(text), std::invalid_argument);
@@ -199,8 +199,8 @@ TEST_CASE(multiway_workflow_resource_preflight_rejects_aggregate_memory)
 {
 	using namespace texas::solver::multiway;
 	auto text = std::string(valid_config) + "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
-										"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
-										"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
+											"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+											"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
 	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
 		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
 	const auto config = parse_multiway_workflow_config(text);
@@ -219,8 +219,8 @@ TEST_CASE(multiway_workflow_resource_preflight_rejects_excess_workload)
 {
 	using namespace texas::solver::multiway;
 	auto text = std::string(valid_config) + "maximum_public_states=1000\nmaximum_sparse_values=10000\n"
-										"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
-										"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
+											"worker_delta_capacity=10000\ndiscovery_capacity=40000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+											"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=100000000\n";
 	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"),
 		std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
 	const auto config = parse_multiway_workflow_config(text);

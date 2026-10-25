@@ -4,7 +4,7 @@
 #include <string>
 
 #ifdef _WIN32
-#include <windows.h>
+	#include <windows.h>
 #endif
 
 namespace texas::solver::multiway
@@ -112,26 +112,25 @@ namespace texas::solver::multiway
 		{
 			switch (kind)
 			{
-			case MultiwayWorkflowPathKind::InputFile:
-				return "input file";
-			case MultiwayWorkflowPathKind::InputDirectory:
-				return "input directory";
-			case MultiwayWorkflowPathKind::OutputFile:
-				return "output file";
-			case MultiwayWorkflowPathKind::OutputDirectory:
-				return "output directory";
-			case MultiwayWorkflowPathKind::AppendFile:
-				return "append file";
+				case MultiwayWorkflowPathKind::InputFile:
+					return "input file";
+				case MultiwayWorkflowPathKind::InputDirectory:
+					return "input directory";
+				case MultiwayWorkflowPathKind::OutputFile:
+					return "output file";
+				case MultiwayWorkflowPathKind::OutputDirectory:
+					return "output directory";
+				case MultiwayWorkflowPathKind::AppendFile:
+					return "append file";
 			}
 			return "workflow path";
 		}
 
 		[[nodiscard]] bool status_exists(const std::filesystem::file_status& status)
 		{
-			return status.type() != std::filesystem::file_type::not_found &&
-				status.type() != std::filesystem::file_type::none;
+			return status.type() != std::filesystem::file_type::not_found && status.type() != std::filesystem::file_type::none;
 		}
-	}
+	} // namespace
 
 	void MultiwayWorkflowPathPolicy::validate() const
 	{
@@ -183,26 +182,26 @@ namespace texas::solver::multiway
 
 		switch (kind)
 		{
-		case MultiwayWorkflowPathKind::InputFile:
-			if (!present || !std::filesystem::is_regular_file(status))
-				throw std::invalid_argument("workflow input file is not a regular file");
-			break;
-		case MultiwayWorkflowPathKind::InputDirectory:
-			if (!present || !std::filesystem::is_directory(status))
-				throw std::invalid_argument("workflow input directory is unavailable");
-			break;
-		case MultiwayWorkflowPathKind::OutputFile:
-			if (present && (!std::filesystem::is_regular_file(status) || !policy.allow_output_overwrite))
-				throw std::invalid_argument("workflow output file already exists or is not regular");
-			break;
-		case MultiwayWorkflowPathKind::OutputDirectory:
-			if (present && !std::filesystem::is_directory(status))
-				throw std::invalid_argument("workflow output directory is not a directory");
-			break;
-		case MultiwayWorkflowPathKind::AppendFile:
-			if (present && !std::filesystem::is_regular_file(status))
-				throw std::invalid_argument("workflow append target is not a regular file");
-			break;
+			case MultiwayWorkflowPathKind::InputFile:
+				if (!present || !std::filesystem::is_regular_file(status))
+					throw std::invalid_argument("workflow input file is not a regular file");
+				break;
+			case MultiwayWorkflowPathKind::InputDirectory:
+				if (!present || !std::filesystem::is_directory(status))
+					throw std::invalid_argument("workflow input directory is unavailable");
+				break;
+			case MultiwayWorkflowPathKind::OutputFile:
+				if (present && (!std::filesystem::is_regular_file(status) || !policy.allow_output_overwrite))
+					throw std::invalid_argument("workflow output file already exists or is not regular");
+				break;
+			case MultiwayWorkflowPathKind::OutputDirectory:
+				if (present && !std::filesystem::is_directory(status))
+					throw std::invalid_argument("workflow output directory is not a directory");
+				break;
+			case MultiwayWorkflowPathKind::AppendFile:
+				if (present && !std::filesystem::is_regular_file(status))
+					throw std::invalid_argument("workflow append target is not a regular file");
+				break;
 		}
 		return resolved;
 	}

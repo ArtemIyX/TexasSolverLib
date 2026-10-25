@@ -264,7 +264,7 @@ namespace
 		const auto checkpoint_dir = requested_checkpoint_dir.empty()
 			? std::filesystem::path{}
 			: authorize_multiway_workflow_path(
-				path_policy, requested_checkpoint_dir, MultiwayWorkflowPathKind::OutputDirectory);
+				  path_policy, requested_checkpoint_dir, MultiwayWorkflowPathKind::OutputDirectory);
 		const auto authorized_temporary = authorize_multiway_workflow_path(
 			path_policy, authorized_output_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
 		auto manifest_path = authorized_output_path;
@@ -274,13 +274,13 @@ namespace
 		const auto authorized_progress_path = checkpoint_dir.empty()
 			? std::filesystem::path{}
 			: authorize_multiway_workflow_path(
-				path_policy, checkpoint_dir / "latest.progress", MultiwayWorkflowPathKind::AppendFile);
+				  path_policy, checkpoint_dir / "latest.progress", MultiwayWorkflowPathKind::AppendFile);
 		const auto authorized_manifest_temporary = authorize_multiway_workflow_path(
 			path_policy, manifest_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
 		const auto authorized_progress_temporary = authorized_progress_path.empty()
 			? std::filesystem::path{}
 			: authorize_multiway_workflow_path(
-				path_policy, authorized_progress_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+				  path_policy, authorized_progress_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
 		(void)authorized_manifest_temporary;
 		(void)authorized_progress_temporary;
 		const auto resolved_output_path = authorized_output_path;
@@ -501,7 +501,7 @@ namespace
 		const auto authorized_report_path = report_path.empty()
 			? std::filesystem::path{}
 			: authorize_multiway_workflow_path(
-				path_policy, report_path, MultiwayWorkflowPathKind::OutputFile);
+				  path_policy, report_path, MultiwayWorkflowPathKind::OutputFile);
 		if (!authorized_report_path.empty() && authorized_report_path == authorized_input_path)
 			throw std::invalid_argument("inspection input and report paths must differ");
 		const auto workflow = load_multiway_workflow_config(config_path);
@@ -702,9 +702,8 @@ namespace
 		const auto checkpoint_path = checkpoint_dir.empty()
 			? (resume_path.empty() ? std::filesystem::path{} : resume_path)
 			: authorize_multiway_workflow_path(
-				checkpoint_output_policy, checkpoint_dir / "latest.bin", MultiwayWorkflowPathKind::OutputFile);
-		if (!checkpoint_path.empty() &&
-			(checkpoint_path == input_path || checkpoint_path == output_path || checkpoint_path == report_path || checkpoint_path == log_path))
+				  checkpoint_output_policy, checkpoint_dir / "latest.bin", MultiwayWorkflowPathKind::OutputFile);
+		if (!checkpoint_path.empty() && (checkpoint_path == input_path || checkpoint_path == output_path || checkpoint_path == report_path || checkpoint_path == log_path))
 			throw std::invalid_argument("training checkpoint path aliases a training artifact");
 		if (!resume_path.empty() && (resume_path == input_path || resume_path == output_path || resume_path == report_path || resume_path == log_path))
 			throw std::invalid_argument("training resume path aliases a non-checkpoint artifact");
@@ -715,7 +714,7 @@ namespace
 		const auto checkpoint_temporary = checkpoint_path.empty()
 			? std::filesystem::path{}
 			: authorize_multiway_workflow_path(
-				checkpoint_output_policy, checkpoint_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+				  checkpoint_output_policy, checkpoint_path.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
 		(void)report_temporary;
 		(void)checkpoint_temporary;
 		if (!workflow.capacities_resolved())
@@ -1149,18 +1148,14 @@ namespace
 			return path.empty()
 				? std::filesystem::path{}
 				: authorize_multiway_workflow_path(
-					path_policy, path, MultiwayWorkflowPathKind::InputFile);
+					  path_policy, path, MultiwayWorkflowPathKind::InputFile);
 		};
 		const auto authorized_bucket_report = authorize_input(bucket_report);
 		const auto authorized_training_report = authorize_input(training_report);
 		const auto authorized_equivalence_report = authorize_input(equivalence_report);
 		const auto authorized_lookup_first = authorize_input(lookup_first);
 		const auto authorized_lookup_second = authorize_input(lookup_second);
-		if ((!authorized_bucket_report.empty() && authorized_bucket_report == authorized_output_path) ||
-			(!authorized_training_report.empty() && authorized_training_report == authorized_output_path) ||
-			(!authorized_equivalence_report.empty() && authorized_equivalence_report == authorized_output_path) ||
-			(!authorized_lookup_first.empty() && authorized_lookup_first == authorized_output_path) ||
-			(!authorized_lookup_second.empty() && authorized_lookup_second == authorized_output_path))
+		if ((!authorized_bucket_report.empty() && authorized_bucket_report == authorized_output_path) || (!authorized_training_report.empty() && authorized_training_report == authorized_output_path) || (!authorized_equivalence_report.empty() && authorized_equivalence_report == authorized_output_path) || (!authorized_lookup_first.empty() && authorized_lookup_first == authorized_output_path) || (!authorized_lookup_second.empty() && authorized_lookup_second == authorized_output_path))
 			throw std::invalid_argument("finalize input and output paths must be distinct");
 		MultiwayF1AcceptanceInputPaths paths;
 		paths.bucket_inspection_report = authorized_bucket_report;
