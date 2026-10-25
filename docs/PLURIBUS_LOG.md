@@ -4,11 +4,12 @@
 
 **Status:** Complete
 **Completed:** 2026-10-25
-**Implementation commits:** `94d7446`, `2c05b50`, `ca5cae9`, `ba31520`
+**Implementation commits:** `94d7446`, `2c05b50`, `ca5cae9`, `ba31520`, `dd2ad03`
 
 - Replaced the production materialized checkpoint workflow with direct schema-5 streaming from an immutable coordinator lease.
 - Preserved materialized compatibility APIs, checkpoint bytes, payload hashes, loader behavior, and strict atomic publication.
 - Added exact pre-write planning, process/system gates, transactional cleanup coverage, and checkpoint write telemetry in reports.
+- Completed the authorized checkpoint-enabled qualification: 50,000/50,000 trajectories accepted, 4,576,234,700-byte checkpoint, 18,706,137,088-byte peak working set, and unchanged final policy bytes/hash.
 
 ### Files
 
@@ -25,10 +26,13 @@
 - `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
 - `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
 - `git diff --check`: passed.
+- Authorized RelWithDebInfo qualification: 8 workers, 50 batches, 50,000 trajectories; passed with checkpoint creation enabled.
+- Qualification output: 3,921,243,000 bytes, payload hash `5946562739452589295`, final policy SHA-256 `96F9FD460B1FFF68407A8D2163E0A28DA7D079767021E62680B92BF1D93DAFA2`, checkpoint SHA-256 `936BDD5AB1F5923B81FF60D0A8C54E214AAA6B911B4332657C621C72C9BACC50`.
+- Qualification peak working set: 18,706,137,088 bytes; peak RSS: 17,932,279,808 bytes; no temporary files remained.
 
 ### Limitations
 
-- No large checkpoint-enabled qualification run was authorized.
+- The large run used the existing RelWithDebInfo binary `B6E36BFAF97740C13BF0E5B68103BED083E9F1772FC485C2E3C72AD015A253CB`, built before `dd2ad03`; its runtime report did not include the newer extended checkpoint telemetry fields. Focused report tests cover those fields. Rebuild and repeat only if runtime telemetry evidence is required.
 
 ## PB-7 - Task E: Streaming export qualification
 
