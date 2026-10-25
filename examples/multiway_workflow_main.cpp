@@ -703,6 +703,9 @@ namespace
 			? (resume_path.empty() ? std::filesystem::path{} : resume_path)
 			: authorize_multiway_workflow_path(
 				checkpoint_output_policy, checkpoint_dir / "latest.bin", MultiwayWorkflowPathKind::OutputFile);
+		if (!checkpoint_path.empty() &&
+			(checkpoint_path == input_path || checkpoint_path == output_path || checkpoint_path == report_path || checkpoint_path == log_path))
+			throw std::invalid_argument("training checkpoint path aliases a training artifact");
 		if (!resume_path.empty() && (resume_path == input_path || resume_path == output_path || resume_path == report_path || resume_path == log_path))
 			throw std::invalid_argument("training resume path aliases a non-checkpoint artifact");
 		const auto output_temporary = authorize_multiway_workflow_path(
@@ -1058,6 +1061,13 @@ namespace
 			path_policy, authorized_artifacts_path / "buckets.bin", MultiwayWorkflowPathKind::InputFile);
 		const auto blueprint_path = authorize_multiway_workflow_path(
 			path_policy, authorized_artifacts_path / "blueprint.bin", MultiwayWorkflowPathKind::InputFile);
+		const auto output = authorize_multiway_workflow_path(
+			path_policy,
+			report_path.empty() ? authorized_artifacts_path / "lookup_report.json" : report_path,
+			MultiwayWorkflowPathKind::OutputFile);
+		const auto output_temporary = authorize_multiway_workflow_path(
+			path_policy, output.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
+		(void)output_temporary;
 		const auto workflow = load_multiway_workflow_config(config_path);
 		if (!workflow.capacities_resolved())
 		{
@@ -1108,13 +1118,6 @@ namespace
 		const auto repeat = qualify_multiway_required_lookups(
 			config, root, buckets, blueprint, trajectories, evidence);
 		report.second_replay_fingerprint = repeat.replay_fingerprint;
-		const auto output = authorize_multiway_workflow_path(
-			path_policy,
-			report_path.empty() ? authorized_artifacts_path / "lookup_report.json" : report_path,
-			MultiwayWorkflowPathKind::OutputFile);
-		const auto output_temporary = authorize_multiway_workflow_path(
-			path_policy, output.string() + ".tmp", MultiwayWorkflowPathKind::AppendFile);
-		(void)output_temporary;
 		if (!output.parent_path().empty())
 			std::filesystem::create_directories(output.parent_path());
 		save_multiway_lookup_qualification_report_atomic(output, report);
