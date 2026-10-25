@@ -2,9 +2,9 @@
 
 **Updated:** 2026-10-25
 **Overall status:** E complete for isolated streaming-export qualification
-**Current task:** Bounded schema-5 checkpoint writer
-**Next action:** Implement the checkpoint writer, gates, and workflow integration without changing streaming policy export.
-**Latest limitation:** Checkpoint creation currently materializes the full snapshot; bounded checkpoint writing is in progress.
+**Current task:** None
+**Next action:** Qualify checkpoint-enabled training separately before making a peak-memory claim.
+**Latest limitation:** The bounded writer is validated on focused and repository tests; no large checkpoint-enabled qualification was authorized.
 
 ## Tasks
 

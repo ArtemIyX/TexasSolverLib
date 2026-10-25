@@ -373,6 +373,7 @@ TEST_CASE(multiway_streaming_checkpoint_matches_materialized_bytes_and_loader)
 		const auto materialized_path = base.string() + ".materialized";
 		const auto streamed = fixture.trainer.save_checkpoint_atomic(streamed_path);
 		texas::MultiwayTrainingCheckpointArtifacts::save_atomic(materialized_path, checkpoint);
+		EXPECT_EQ(streamed.plan.serialized_bytes, streamed.serialized_bytes);
 		EXPECT_EQ(streamed.serialized_bytes, static_cast<std::uint64_t>(read_bytes(streamed_path).size()));
 		EXPECT_EQ(streamed.payload_hash, texas::MultiwayTrainingCheckpointArtifacts::payload_hash(checkpoint));
 		EXPECT_EQ(read_bytes(streamed_path), read_bytes(materialized_path));

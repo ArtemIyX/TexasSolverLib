@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## PB-8 - Bounded schema-5 checkpoint writer
+
+**Status:** Complete
+**Completed:** 2026-10-25
+**Implementation commits:** `94d7446`, `2c05b50`, `ca5cae9`, `ba31520`
+
+- Replaced the production materialized checkpoint workflow with direct schema-5 streaming from an immutable coordinator lease.
+- Preserved materialized compatibility APIs, checkpoint bytes, payload hashes, loader behavior, and strict atomic publication.
+- Added exact pre-write planning, process/system gates, transactional cleanup coverage, and checkpoint write telemetry in reports.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `docs/tasks/TRACKER.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused streamed checkpoint byte/hash, loader, gate, and transactional-failure tests passed.
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
+- `scripts/codex_powershell.ps1 python scripts/python/compact_ctest.py`: passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- No large checkpoint-enabled qualification run was authorized.
+
 ## PB-7 - Task E: Streaming export qualification
 
 **Status:** Complete
