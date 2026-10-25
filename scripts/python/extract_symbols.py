@@ -10,9 +10,10 @@ from pathlib import Path
 
 SKIP = {".git", "build", "external", "artifacts", "vcpkg_installed", "generated", "Generated", "__pycache__"}
 EXTS = {".h", ".hpp", ".hh", ".cpp", ".cc", ".cxx"}
+MAX_SCAN_LINE_LENGTH = 1_000_000
 SYMBOL_RE = re.compile(
-    r"^\s*(?:(?:template\s*<.*>\s*)?)(class|struct|enum(?:\s+class)?|namespace)\s+([A-Za-z_]\w*)"
-    r"(?:\s*:\s*(?:public|protected|private)\s+([^\{]+))?"
+    r"^\s*(class|struct|enum(?:\s+class)?|namespace)\s+([A-Za-z_]\w*)"
+    r"(?:\s*:\s*(?:public|protected|private)\s+([^\{\}\r\n]*))?"
 )
 FUNCTION_RE = re.compile(
     r"^\s*(?:(?:static|inline|virtual|constexpr|consteval|explicit|friend|extern|inline)\s+)*"
@@ -20,6 +21,37 @@ FUNCTION_RE = re.compile(
     r"\s*(?:const\s*)?(?:noexcept\b[^;{}]*)?(?:;|\{|=)"
 )
 CONTROL = {"if", "for", "while", "switch", "catch", "return", "sizeof"}
+
+
+def _strip_template_prefix(line: str) -> str | None:
+    """Remove one balanced template declaration without backtracking."""
+    leading = line[:len(line) - len(line.lstrip())]
+    text = line[len(leading):]
+    if not text.startswith("template"):
+        return line
+    index = len("template")
+    while index < len(text) and text[index].isspace():
+        index += 1
+    if index == len(text) or text[index] != "<":
+        return None
+    depth = 0
+    for position in range(index, len(text)):
+        character = text[position]
+        if character == "<":
+            depth += 1
+        elif character == ">":
+            depth -= 1
+            if depth == 0:
+                return leading + text[position + 1:].lstrip()
+    return None
+
+
+def parse_symbol_line(line: str) -> re.Match[str] | None:
+    """Parse a symbol declaration with bounded, linear preprocessing."""
+    if len(line) > MAX_SCAN_LINE_LENGTH:
+        return None
+    normalized = _strip_template_prefix(line)
+    return None if normalized is None else SYMBOL_RE.match(normalized)
 
 
 def main() -> int:
@@ -57,7 +89,9 @@ def main() -> int:
         except OSError:
             continue
         for number, line in enumerate(lines, 1):
-            match = SYMBOL_RE.match(line)
+            if len(line) > MAX_SCAN_LINE_LENGTH:
+                continue
+            match = parse_symbol_line(line)
             if match:
                 kind = "enum" if match.group(1).startswith("enum") else match.group(1)
                 bases = re.sub(r"\s+", " ", match.group(3).strip()) if match.group(3) else ""
