@@ -584,35 +584,36 @@ namespace texas::solver::multiway
 		const auto history_bytes = history.size() * 4U * sizeof(std::uint64_t);
 		append_field_prefix(history_hash, FingerprintField::History, history_bytes);
 		append_field_prefix(public_state_hash, FingerprintField::History, history_bytes);
-#define TEXAS_APPEND_DUAL_FNV(value) \
-		do \
-		{ \
-			const auto encoded = static_cast<std::uint64_t>(value); \
-			const auto byte0 = static_cast<std::uint8_t>(encoded); \
-			history_hash = (history_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME; \
-			const auto byte1 = static_cast<std::uint8_t>(encoded >> 8U); \
-			history_hash = (history_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME; \
-			const auto byte2 = static_cast<std::uint8_t>(encoded >> 16U); \
-			history_hash = (history_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME; \
-			const auto byte3 = static_cast<std::uint8_t>(encoded >> 24U); \
-			history_hash = (history_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME; \
-			const auto byte4 = static_cast<std::uint8_t>(encoded >> 32U); \
-			history_hash = (history_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME; \
-			const auto byte5 = static_cast<std::uint8_t>(encoded >> 40U); \
-			history_hash = (history_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME; \
-			const auto byte6 = static_cast<std::uint8_t>(encoded >> 48U); \
-			history_hash = (history_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME; \
-			const auto byte7 = static_cast<std::uint8_t>(encoded >> 56U); \
-			history_hash = (history_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME; \
-			public_state_hash = (public_state_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME; \
-		} while (false)
+#define TEXAS_APPEND_DUAL_FNV(value)                                                             \
+	do                                                                                           \
+	{                                                                                            \
+		const auto encoded = static_cast<std::uint64_t>(value);                                  \
+		const auto byte0 = static_cast<std::uint8_t>(encoded);                                   \
+		history_hash = (history_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte0) * texas::core::fingerprint::FNV1A_PRIME; \
+		const auto byte1 = static_cast<std::uint8_t>(encoded >> 8U);                             \
+		history_hash = (history_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte1) * texas::core::fingerprint::FNV1A_PRIME; \
+		const auto byte2 = static_cast<std::uint8_t>(encoded >> 16U);                            \
+		history_hash = (history_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte2) * texas::core::fingerprint::FNV1A_PRIME; \
+		const auto byte3 = static_cast<std::uint8_t>(encoded >> 24U);                            \
+		history_hash = (history_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte3) * texas::core::fingerprint::FNV1A_PRIME; \
+		const auto byte4 = static_cast<std::uint8_t>(encoded >> 32U);                            \
+		history_hash = (history_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte4) * texas::core::fingerprint::FNV1A_PRIME; \
+		const auto byte5 = static_cast<std::uint8_t>(encoded >> 40U);                            \
+		history_hash = (history_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte5) * texas::core::fingerprint::FNV1A_PRIME; \
+		const auto byte6 = static_cast<std::uint8_t>(encoded >> 48U);                            \
+		history_hash = (history_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte6) * texas::core::fingerprint::FNV1A_PRIME; \
+		const auto byte7 = static_cast<std::uint8_t>(encoded >> 56U);                            \
+		history_hash = (history_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME;           \
+		public_state_hash = (public_state_hash ^ byte7) * texas::core::fingerprint::FNV1A_PRIME; \
+	}                                                                                            \
+	while (false)
 		for (const auto& entry : history)
 		{
 			TEXAS_APPEND_DUAL_FNV(static_cast<std::uint64_t>(static_cast<std::int64_t>(entry.actor)));

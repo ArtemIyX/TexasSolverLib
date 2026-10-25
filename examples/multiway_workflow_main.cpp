@@ -533,23 +533,16 @@ namespace
 		if (!progress.enabled || progress.interval == 0U || status.batches < progress.starting_batches)
 			return;
 		const auto completed_batches = status.batches - progress.starting_batches;
-		if (completed_batches == 0U ||
-			(completed_batches % progress.interval != 0U && completed_batches != progress.requested_batches))
+		if (completed_batches == 0U || (completed_batches % progress.interval != 0U && completed_batches != progress.requested_batches))
 			return;
 		const auto now = std::chrono::steady_clock::now();
-		const auto line = std::string("training progress: batches_completed=") +
-			std::to_string(completed_batches) + "/" + std::to_string(progress.requested_batches) +
-			" trajectories=" + std::to_string(status.trajectories) +
-			" discarded=" + std::to_string(status.discarded_trajectories) +
-			" effective_workers=" + std::to_string(progress.effective_workers);
+		const auto line = std::string("training progress: batches_completed=") + std::to_string(completed_batches) + "/" + std::to_string(progress.requested_batches) + " trajectories=" + std::to_string(status.trajectories) + " discarded=" + std::to_string(status.discarded_trajectories) + " effective_workers=" + std::to_string(progress.effective_workers);
 		auto output_line = line;
 		if (progress.show_memory)
 		{
 			if (status.process_rss_available)
 			{
-				output_line += " working_set_current_bytes=" + std::to_string(status.current_process_rss_bytes) +
-					" working_set_peak_bytes=" + std::to_string(status.peak_process_rss_bytes) +
-					" working_set_gate_bytes=" + std::to_string(status.working_set_gate_config.hard_limit_bytes);
+				output_line += " working_set_current_bytes=" + std::to_string(status.current_process_rss_bytes) + " working_set_peak_bytes=" + std::to_string(status.peak_process_rss_bytes) + " working_set_gate_bytes=" + std::to_string(status.working_set_gate_config.hard_limit_bytes);
 			}
 			else
 			{
@@ -563,17 +556,16 @@ namespace
 			const auto interval_trajectories = status.trajectories - progress.last_reported_trajectories;
 			const auto overall_trajectories = status.trajectories - progress.starting_trajectories;
 			if (interval_seconds > 0.0)
-				output_line += " interval_trajectories_per_second=" + std::to_string(
-					static_cast<double>(interval_trajectories) / interval_seconds);
+				output_line += " interval_trajectories_per_second=" + std::to_string(static_cast<double>(interval_trajectories) / interval_seconds);
 			if (overall_seconds > 0.0)
-				output_line += " overall_trajectories_per_second=" + std::to_string(
-					static_cast<double>(overall_trajectories) / overall_seconds);
+				output_line += " overall_trajectories_per_second=" + std::to_string(static_cast<double>(overall_trajectories) / overall_seconds);
 			progress.last_reported_trajectories = status.trajectories;
 			progress.last_reported_at = now;
 		}
 		std::cout << output_line << std::endl;
 		if (progress.log != nullptr)
-			*progress.log << output_line << '\n' << std::flush;
+			*progress.log << output_line << '\n'
+						  << std::flush;
 	}
 
 	int run_train(const std::filesystem::path& config_path, std::filesystem::path input_path,
@@ -621,8 +613,7 @@ namespace
 				return true;
 			const auto remaining_trajectories = 50'000'000U - starting_trajectories;
 			const auto full_batches = remaining_trajectories / workflow.trajectories_per_batch;
-			return batches > full_batches ||
-				(batches == full_batches && remaining_trajectories % workflow.trajectories_per_batch == 0U);
+			return batches > full_batches || (batches == full_batches && remaining_trajectories % workflow.trajectories_per_batch == 0U);
 		};
 		if (resume_path.empty() && reaches_50m(0U) && !authorize_50m_stage)
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
@@ -759,11 +750,14 @@ namespace
 		config.memory_subsystem_snapshots = memory_subsystem_snapshots;
 		config.working_set_monitor.gate = {
 			workflow.process_working_set_limit_bytes,
-			workflow.process_working_set_resident_allowance_bytes };
+			workflow.process_working_set_resident_allowance_bytes
+		};
 		config.working_set_monitor.system_memory_guard = {
-			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES };
+			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES
+		};
 		config.working_set_monitor.export_gate.system = {
-			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES };
+			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES
+		};
 		log_line("training workers requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective) + " memory_estimate_bytes=" + std::to_string(memory_preflight.estimate.total_bytes));
 		log_line("system memory guard: minimum_available_physical_bytes=" + std::to_string(MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES));
 		log_line("training initialization: loading bucket artifact bytes=" + std::to_string(std::filesystem::file_size(input_path)));
@@ -807,7 +801,8 @@ namespace
 			session.status().trajectories,
 			session.status().trajectories,
 			progress_started_at,
-			progress_started_at};
+			progress_started_at
+		};
 		std::uint64_t remaining_batches = batches;
 		std::uint64_t checkpoint_bytes = 0U;
 		MultiwayTrainingCheckpointWriteResult last_checkpoint_write{};
@@ -933,13 +928,7 @@ namespace
 		save_multiway_training_report_atomic(
 			report_path.empty() ? output_path.string() + ".json" : report_path,
 			training_report);
-		log_line("training export: plan_bytes=" + std::to_string(export_result.plan.serialized_bytes) +
-			" result_bytes=" + std::to_string(session.status().export_telemetry.result_bytes) +
-			" payload_hash=" + std::to_string(export_result.payload_hash) +
-			" duration_nanoseconds=" + std::to_string(session.status().export_telemetry.duration_nanoseconds) +
-			" publication_mode=" + core::atomic_publish_mode_name(export_result.publication_mode) +
-			" process_gate=" + multiway_export_process_rejection_reason_name(session.status().export_telemetry.process_gate.rejection_reason) +
-			" system_gate=" + multiway_export_system_rejection_reason_name(session.status().export_telemetry.system_gate.rejection_reason));
+		log_line("training export: plan_bytes=" + std::to_string(export_result.plan.serialized_bytes) + " result_bytes=" + std::to_string(session.status().export_telemetry.result_bytes) + " payload_hash=" + std::to_string(export_result.payload_hash) + " duration_nanoseconds=" + std::to_string(session.status().export_telemetry.duration_nanoseconds) + " publication_mode=" + core::atomic_publish_mode_name(export_result.publication_mode) + " process_gate=" + multiway_export_process_rejection_reason_name(session.status().export_telemetry.process_gate.rejection_reason) + " system_gate=" + multiway_export_system_rejection_reason_name(session.status().export_telemetry.system_gate.rejection_reason));
 		log_line("training finished: batches=" + std::to_string(batches) + " trajectories=" + std::to_string(status.trajectories) + " blueprint=" + output_path.string());
 		return EXIT_SUCCESS;
 	}

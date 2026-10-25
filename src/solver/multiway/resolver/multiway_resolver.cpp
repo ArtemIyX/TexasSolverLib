@@ -645,7 +645,7 @@ namespace texas::solver::multiway
 						config.runtime_limits.solver.regret_delta_capacity(),
 						config.runtime_limits.solver.continuation_delta_capacity(),
 						config.runtime_limits.solver.discovery_public_state_capacity(),
-						config.runtime_limits.solver.discovery_row_capacity()},
+						config.runtime_limits.solver.discovery_row_capacity() },
 					config.search_profile_mode);
 				MultiwaySearchProfile search_profile(config.search_profile_mode);
 

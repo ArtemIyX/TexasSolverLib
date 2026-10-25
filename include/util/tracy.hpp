@@ -23,7 +23,7 @@ namespace texas::util
 	#define TEXASSOLVER_TRACY_MESSAGE(name, size) TracyMessage(name, size)
 	#define TEXASSOLVER_TRACY_FRAME_MARK(name) FrameMarkNamed(name)
 
-#if defined(TEXASSOLVER_TRACY_MEMORY) && TEXASSOLVER_TRACY_MEMORY
+	#if defined(TEXASSOLVER_TRACY_MEMORY) && TEXASSOLVER_TRACY_MEMORY
 	inline constexpr bool tracy_memory_events_enabled = true;
 
 	inline void tracy_memory_alloc(const void* pointer, std::size_t bytes) noexcept
@@ -36,7 +36,7 @@ namespace texas::util
 		if (pointer != nullptr)
 			TracyFree(pointer);
 	}
-#else
+	#else
 	inline constexpr bool tracy_memory_events_enabled = false;
 
 	inline void tracy_memory_alloc(const void*, std::size_t) noexcept
@@ -46,7 +46,7 @@ namespace texas::util
 	inline void tracy_memory_free(const void*) noexcept
 	{
 	}
-#endif
+	#endif
 
 #else
 

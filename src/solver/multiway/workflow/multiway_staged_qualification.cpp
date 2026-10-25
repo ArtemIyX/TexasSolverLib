@@ -15,8 +15,7 @@ namespace texas::solver::multiway
 			const auto& stage = stages[index];
 			if (stage.target_trajectories == 0U || (index != 0U && stage.target_trajectories <= stages[index - 1U].target_trajectories))
 				throw std::invalid_argument("staged qualification targets must increase");
-			if (stage.id == MultiwayQualificationStageId::FiftyMillion &&
-				!stage.requires_explicit_authorization)
+			if (stage.id == MultiwayQualificationStageId::FiftyMillion && !stage.requires_explicit_authorization)
 				throw std::invalid_argument("the 50M qualification stage requires explicit authorization");
 		}
 	}
@@ -81,8 +80,7 @@ namespace texas::solver::multiway
 				stage_result.after = stage_result.before;
 				continue;
 			}
-			if (stage_result.before.batch_trajectories == 0U ||
-				(stage_result.stage.target_trajectories - stage_result.before.trajectories) % stage_result.before.batch_trajectories != 0U)
+			if (stage_result.before.batch_trajectories == 0U || (stage_result.stage.target_trajectories - stage_result.before.trajectories) % stage_result.before.batch_trajectories != 0U)
 			{
 				stage_result.status = MultiwayQualificationStageStatus::Failed;
 				stage_result.after = stage_result.before;
@@ -126,9 +124,7 @@ namespace texas::solver::multiway
 					result.stopped = true;
 					break;
 				}
-				if (progress_after_batch.trajectories < progress_before_batch.trajectories ||
-					progress_after_batch.trajectories > stage_result.stage.target_trajectories ||
-					progress_after_batch.discarded_trajectories != 0U)
+				if (progress_after_batch.trajectories < progress_before_batch.trajectories || progress_after_batch.trajectories > stage_result.stage.target_trajectories || progress_after_batch.discarded_trajectories != 0U)
 				{
 					stage_result.status = MultiwayQualificationStageStatus::Failed;
 					stage_result.after = progress_after_batch;
@@ -139,8 +135,7 @@ namespace texas::solver::multiway
 			if (result.stopped)
 				break;
 			stage_result.after = callbacks_.progress(callbacks_.context);
-			if (stage_result.after.trajectories != stage_result.stage.target_trajectories ||
-				stage_result.after.discarded_trajectories != 0U)
+			if (stage_result.after.trajectories != stage_result.stage.target_trajectories || stage_result.after.discarded_trajectories != 0U)
 			{
 				stage_result.status = MultiwayQualificationStageStatus::Failed;
 				result.stopped = true;

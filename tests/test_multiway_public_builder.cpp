@@ -183,8 +183,7 @@ TEST_CASE(multiway_public_builder_schema_v2_identity_inspector_out_parameter_is_
 		root.betting, root.board, history, root.legal_actions, identity));
 	EXPECT_TRUE(identity.history_valid);
 	EXPECT_EQ(identity.canonical_history_id, texas::MultiwayPublicBuilder::stable_history_id(history));
-	EXPECT_EQ(identity.public_state_id.value, texas::MultiwayPublicBuilder::stable_public_state_id(
-		root.betting, root.board, history, root.legal_actions));
+	EXPECT_EQ(identity.public_state_id.value, texas::MultiwayPublicBuilder::stable_public_state_id(root.betting, root.board, history, root.legal_actions));
 
 	history.front().actor = -1;
 	EXPECT_TRUE(!texas::MultiwayPublicBuilder::inspect_schema_v2_identity(

@@ -110,7 +110,8 @@ namespace texas::solver::multiway
 			int_type overflow(int_type character) override
 			{
 				return traits_type::eq_int_type(character, traits_type::eof())
-					? traits_type::not_eof(character) : character;
+					? traits_type::not_eof(character)
+					: character;
 			}
 
 			std::streamsize xsputn(const char*, std::streamsize count) override
@@ -753,19 +754,12 @@ namespace texas::solver::multiway
 		MultiwayCheckpointTelemetry* telemetry,
 		MultiwayTrainingCheckpointWriteOptions options)
 	{
-		if (source.identity == nullptr || source.training == nullptr || source.coverage == nullptr ||
-			source.catalog == nullptr || source.storage == nullptr || source.late_window_baseline == nullptr)
+		if (source.identity == nullptr || source.training == nullptr || source.coverage == nullptr || source.catalog == nullptr || source.storage == nullptr || source.late_window_baseline == nullptr)
 		{
 			throw std::invalid_argument("multiway training checkpoint stream source is incomplete");
 		}
 		source.identity->validate();
-		if (source.training->trajectories < source.training->batches ||
-			source.coverage->admitted_rows != (source.compact_storage == nullptr
-				? source.storage->row_count() : source.compact_storage->row_count()) ||
-			source.coverage->terminal_visits != source.terminal_visits ||
-			source.coverage->leaf_visits != source.leaf_visits ||
-			source.coverage->missing_lookup_requests != source.missing_lookup_requests ||
-			source.coverage->street_visits != source.street_visits)
+		if (source.training->trajectories < source.training->batches || source.coverage->admitted_rows != (source.compact_storage == nullptr ? source.storage->row_count() : source.compact_storage->row_count()) || source.coverage->terminal_visits != source.terminal_visits || source.coverage->leaf_visits != source.leaf_visits || source.coverage->missing_lookup_requests != source.missing_lookup_requests || source.coverage->street_visits != source.street_visits)
 		{
 			throw std::invalid_argument("multiway training checkpoint streamed metadata is invalid");
 		}
@@ -776,7 +770,8 @@ namespace texas::solver::multiway
 		if (state_count == 0U || state_count > kMaxStates || state_count > std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("multiway training checkpoint state count is invalid");
 		const auto& source_rows = source.compact_storage == nullptr
-			? source.storage->rows() : source.compact_storage->rows();
+			? source.storage->rows()
+			: source.compact_storage->rows();
 		if (source_rows.size() > kMaxRows || source_rows.size() > std::numeric_limits<std::uint32_t>::max())
 			throw std::length_error("multiway training checkpoint row count is invalid");
 
@@ -803,7 +798,8 @@ namespace texas::solver::multiway
 			const auto* lhs = source.catalog->checkpoint_node_at(left);
 			const auto* rhs = source.catalog->checkpoint_node_at(right);
 			return state_depth[left] != state_depth[right]
-				? state_depth[left] < state_depth[right] : lhs->id.value < rhs->id.value;
+				? state_depth[left] < state_depth[right]
+				: lhs->id.value < rhs->id.value;
 		});
 
 		std::vector<std::uint32_t> row_order;
@@ -816,7 +812,8 @@ namespace texas::solver::multiway
 				const auto& lhs = source.storage->rows()[left].shape.infoset;
 				const auto& rhs = source.storage->rows()[right].shape.infoset;
 				return lhs.public_state.value != rhs.public_state.value
-					? lhs.public_state.value < rhs.public_state.value : lhs.seat < rhs.seat;
+					? lhs.public_state.value < rhs.public_state.value
+					: lhs.seat < rhs.seat;
 			});
 		}
 
@@ -824,8 +821,7 @@ namespace texas::solver::multiway
 		for (const auto& row : source_rows)
 		{
 			const auto values = static_cast<std::uint64_t>(row.shape.bucket_count) * row.shape.action_count;
-			if (row.shape.bucket_count == 0U || row.shape.action_count == 0U ||
-				values > kMaxFileBytes / sizeof(double) || dense_values > kMaxFileBytes / sizeof(double) - values)
+			if (row.shape.bucket_count == 0U || row.shape.action_count == 0U || values > kMaxFileBytes / sizeof(double) || dense_values > kMaxFileBytes / sizeof(double) - values)
 			{
 				throw std::length_error("multiway training checkpoint value count is invalid");
 			}
@@ -849,8 +845,7 @@ namespace texas::solver::multiway
 		{
 			const auto page = source.compact_storage->checkpoint_page(index);
 			const auto* row = source.compact_storage->metadata(page.infoset);
-			if (page.regrets == nullptr || page.strategy_masses == nullptr || row == nullptr ||
-				page.bucket_count == 0U || page.page_index * source.compact_storage->page_width() >= row->shape.bucket_count)
+			if (page.regrets == nullptr || page.strategy_masses == nullptr || row == nullptr || page.bucket_count == 0U || page.page_index * source.compact_storage->page_width() >= row->shape.bucket_count)
 			{
 				throw std::invalid_argument("multiway training checkpoint compact page is invalid");
 			}
@@ -905,9 +900,11 @@ namespace texas::solver::multiway
 				payload.write_u8(shape.action_count);
 			};
 			if (source.compact_storage != nullptr)
-				for (const auto& row : source_rows) write_shape(row.shape);
+				for (const auto& row : source_rows)
+					write_shape(row.shape);
 			else
-				for (const auto index : row_order) write_shape(source_rows[index].shape);
+				for (const auto index : row_order)
+					write_shape(source_rows[index].shape);
 			payload.write_u32(static_cast<std::uint32_t>(page_count));
 			for (std::size_t index = 0U; index < page_count; ++index)
 			{
@@ -1000,7 +997,8 @@ namespace texas::solver::multiway
 				dense_values,
 				plan_bytes,
 				static_cast<std::uint64_t>((state_order.size() + state_depth.size() + row_order.size()) * sizeof(std::uint32_t)),
-				source.compact_storage != nullptr };
+				source.compact_storage != nullptr
+			};
 			const auto scratch = make_multiway_export_scratch_estimate(gate_plan, source.gate->process);
 			const auto process = capture_multiway_process_memory_snapshot();
 			process_gate = evaluate_multiway_export_process_gate(gate_plan, process, source.gate->process);

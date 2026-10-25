@@ -110,15 +110,7 @@ namespace
 		explicit StreamingExportFixture(
 			texas::MultiwaySolverLimits::StorageBackend backend,
 			texas::MultiwayWorkingSetMonitor monitor = {})
-			: root(export_root(abstraction)),
-			  request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend)),
-			  coordinator(request),
-			  buckets({ texas::MultiwayBucketTable(export_identity(backend), texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) }),
-			  evaluator{ export_leaf, nullptr },
-			  traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U),
-			  runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }),
-			  trainer(export_identity(backend), runner, coordinator, {}, 0x77U, 1U,
-				0U, {}, {}, {}, nullptr, nullptr, monitor)
+			: root(export_root(abstraction)), request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend)), coordinator(request), buckets({ texas::MultiwayBucketTable(export_identity(backend), texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) }), evaluator{ export_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }), trainer(export_identity(backend), runner, coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor)
 		{
 		}
 	};
@@ -158,7 +150,7 @@ namespace
 		return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
 	}
 
-}
+} // namespace
 
 TEST_CASE(multiway_training_config_binds_default_rules_and_artifacts)
 {
@@ -362,13 +354,12 @@ TEST_CASE(multiway_full_training_checkpoint_round_trips_and_rejects_tampering)
 TEST_CASE(multiway_streaming_checkpoint_matches_materialized_bytes_and_loader)
 {
 	for (const auto backend : { texas::MultiwaySolverLimits::StorageBackend::CompactInt32,
-		texas::MultiwaySolverLimits::StorageBackend::Float64Reference })
+			 texas::MultiwaySolverLimits::StorageBackend::Float64Reference })
 	{
 		StreamingExportFixture fixture(backend);
 		fixture.trainer.run_batches(1U, 4U, 0x77U);
 		const auto checkpoint = fixture.trainer.checkpoint();
-		const auto base = std::filesystem::temp_directory_path() /
-			("texas_solver_streaming_checkpoint_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+		const auto base = std::filesystem::temp_directory_path() / ("texas_solver_streaming_checkpoint_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 		const auto streamed_path = base.string() + ".streamed";
 		const auto materialized_path = base.string() + ".materialized";
 		const auto streamed = fixture.trainer.save_checkpoint_atomic(streamed_path);
@@ -393,8 +384,7 @@ TEST_CASE(multiway_streaming_checkpoint_gate_rejects_before_temp_creation)
 	monitor.export_gate.process.encoder_buffer_bytes = 0U;
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
-	const auto path = std::filesystem::temp_directory_path() /
-		("texas_solver_streaming_checkpoint_gate_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_checkpoint_gate_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	EXPECT_THROW(fixture.trainer.save_checkpoint_atomic(path), std::runtime_error);
 	EXPECT_TRUE(!std::filesystem::exists(path));
 	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
@@ -419,15 +409,14 @@ TEST_CASE(multiway_streaming_checkpoint_failures_keep_destination_and_remove_tem
 	source.missing_lookup_requests = checkpoint.coordinator.missing_lookup_requests;
 	source.last_merged_stream_fingerprint = checkpoint.coordinator.last_merged_stream_fingerprint;
 	source.street_visits = checkpoint.coordinator.street_visits;
-	const auto path = std::filesystem::temp_directory_path() /
-		("texas_solver_streaming_checkpoint_failure_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_checkpoint_failure_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	const std::string original = "previous-checkpoint";
 	{
 		std::ofstream output(path, std::ios::binary);
 		output.write(original.data(), static_cast<std::streamsize>(original.size()));
 	}
 	for (const auto options : { texas::MultiwayTrainingCheckpointWriteOptions{ true, false },
-		texas::MultiwayTrainingCheckpointWriteOptions{ false, true } })
+			 texas::MultiwayTrainingCheckpointWriteOptions{ false, true } })
 	{
 		EXPECT_THROW(texas::MultiwayTrainingCheckpointArtifacts::save_atomic_streamed(path, source, nullptr, options), std::runtime_error);
 		EXPECT_EQ(read_bytes(path), original);
@@ -441,8 +430,7 @@ TEST_CASE(multiway_streaming_export_matches_materialized_compact_bytes_and_repea
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
 	const auto materialized = fixture.trainer.export_full_policy();
-	const auto base = std::filesystem::temp_directory_path() /
-		("texas_solver_streaming_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto base = std::filesystem::temp_directory_path() / ("texas_solver_streaming_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	const auto streamed_path = base.string() + ".streamed";
 	const auto materialized_path = base.string() + ".materialized";
 	const auto first = fixture.trainer.save_full_policy_atomic(streamed_path);
@@ -465,8 +453,7 @@ TEST_CASE(multiway_streaming_export_float64_uses_bounded_order_indexes_and_match
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::Float64Reference);
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
 	const auto materialized = fixture.trainer.export_full_policy();
-	const auto base = std::filesystem::temp_directory_path() /
-		("texas_solver_streaming_float64_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto base = std::filesystem::temp_directory_path() / ("texas_solver_streaming_float64_export_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	const auto streamed_path = base.string() + ".streamed";
 	const auto materialized_path = base.string() + ".materialized";
 	const auto streamed = fixture.trainer.save_full_policy_atomic(streamed_path);
@@ -487,8 +474,7 @@ TEST_CASE(multiway_streaming_export_process_gate_rejects_before_temp_creation)
 	monitor.export_gate.process.encoder_buffer_bytes = 0U;
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
-	const auto path = std::filesystem::temp_directory_path() /
-		("texas_solver_streaming_gate_reject_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_gate_reject_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	{
 		std::ofstream previous(path, std::ios::binary);
 		previous << "previous-blueprint";
@@ -529,8 +515,7 @@ TEST_CASE(multiway_streaming_export_records_fresh_memory_telemetry)
 	monitor.export_observer_context = &observer_state;
 	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
 	fixture.trainer.run_batches(1U, 4U, 0x77U);
-	const auto path = std::filesystem::temp_directory_path() /
-		("texas_solver_streaming_gate_telemetry_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_gate_telemetry_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 	const auto result = fixture.trainer.save_full_policy_atomic(path);
 	const auto& telemetry = fixture.trainer.status().export_telemetry;
 	EXPECT_EQ(observer_state.calls, 2U);

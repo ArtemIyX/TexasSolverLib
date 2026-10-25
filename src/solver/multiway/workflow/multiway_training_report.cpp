@@ -16,21 +16,17 @@ namespace texas::solver::multiway
 		{
 			report.unattributed_private_bytes_available = false;
 			report.unattributed_private_bytes = 0U;
-			if (!report.process_memory_snapshots.valid() || !report.memory_subsystems.valid() ||
-				report.process_memory_snapshots.count == 0U ||
-				report.memory_subsystems.count == 0U ||
-				report.process_memory_snapshots.count != report.memory_subsystems.count)
+			if (!report.process_memory_snapshots.valid() || !report.memory_subsystems.valid() || report.process_memory_snapshots.count == 0U || report.memory_subsystems.count == 0U || report.process_memory_snapshots.count != report.memory_subsystems.count)
 				return;
 			const auto process_index = static_cast<std::size_t>(report.process_memory_snapshots.count - 1U);
 			const auto& process = report.process_memory_snapshots.snapshots[process_index];
 			const auto& subsystems = report.memory_subsystems.snapshots[process_index];
-			if (process.phase_id != subsystems.phase_id || !process.private_committed_available ||
-				process.private_committed_bytes < subsystems.retained_capacity_bytes)
+			if (process.phase_id != subsystems.phase_id || !process.private_committed_available || process.private_committed_bytes < subsystems.retained_capacity_bytes)
 				return;
 			report.unattributed_private_bytes = process.private_committed_bytes - subsystems.retained_capacity_bytes;
 			report.unattributed_private_bytes_available = true;
 		}
-	}
+	} // namespace
 
 	void MultiwayTrainingReport::validate() const
 	{
@@ -68,27 +64,22 @@ namespace texas::solver::multiway
 			}
 		}
 		evidence.validate(MULTIWAY_TRAINING_REPORT_SCHEMA_VERSION);
-		if (!process_memory_snapshots.valid() ||
-			(!failed && process_memory_snapshots.enabled && !process_memory_snapshots.completed))
+		if (!process_memory_snapshots.valid() || (!failed && process_memory_snapshots.enabled && !process_memory_snapshots.completed))
 		{
 			throw std::invalid_argument("invalid multiway process memory snapshots");
 		}
-		if (!memory_subsystems.valid() ||
-			(!failed && memory_subsystems.enabled && !memory_subsystems.completed))
+		if (!memory_subsystems.valid() || (!failed && memory_subsystems.enabled && !memory_subsystems.completed))
 		{
 			throw std::invalid_argument("invalid multiway subsystem memory snapshots");
 		}
 		if (unattributed_private_bytes_available)
 		{
-			if (process_memory_snapshots.count == 0U || memory_subsystems.count == 0U ||
-				process_memory_snapshots.count != memory_subsystems.count)
+			if (process_memory_snapshots.count == 0U || memory_subsystems.count == 0U || process_memory_snapshots.count != memory_subsystems.count)
 				throw std::invalid_argument("unattributed private bytes lack matching snapshots");
 			const auto index = static_cast<std::size_t>(process_memory_snapshots.count - 1U);
 			const auto& process = process_memory_snapshots.snapshots[index];
 			const auto& subsystems = memory_subsystems.snapshots[index];
-			if (!process.private_committed_available || process.phase_id != subsystems.phase_id ||
-				process.private_committed_bytes < subsystems.retained_capacity_bytes ||
-				unattributed_private_bytes != process.private_committed_bytes - subsystems.retained_capacity_bytes)
+			if (!process.private_committed_available || process.phase_id != subsystems.phase_id || process.private_committed_bytes < subsystems.retained_capacity_bytes || unattributed_private_bytes != process.private_committed_bytes - subsystems.retained_capacity_bytes)
 				throw std::invalid_argument("invalid unattributed private bytes derivation");
 		}
 		if (process_rss_available && current_process_rss_bytes == 0U)
@@ -540,7 +531,7 @@ namespace texas::solver::multiway
 				   << ", \"worker_active_nanoseconds\": " << batch.worker_active_nanoseconds
 				   << ", \"worker_wake_latency_nanoseconds\": " << batch.worker_wake_latency_nanoseconds
 				   << ", \"worker_cv_wait_nanoseconds\": " << batch.worker_cv_wait_nanoseconds
-			   << ", \"worker_scheduler_claim_nanoseconds\": " << batch.worker_scheduler_claim_nanoseconds
+				   << ", \"worker_scheduler_claim_nanoseconds\": " << batch.worker_scheduler_claim_nanoseconds
 				   << ", \"worker_completion_nanoseconds\": " << batch.worker_completion_nanoseconds
 				   << ", \"worker_tail_idle_nanoseconds\": " << batch.worker_tail_idle_nanoseconds
 				   << ", \"coordinator_wait_nanoseconds\": " << batch.coordinator_wait_nanoseconds
@@ -747,8 +738,8 @@ namespace texas::solver::multiway
 		}
 		output << "]}"
 			   << (report.unattributed_private_bytes_available
-					? ",\n  \"unattributed_private_bytes\": " + std::to_string(report.unattributed_private_bytes)
-					: std::string{})
+						  ? ",\n  \"unattributed_private_bytes\": " + std::to_string(report.unattributed_private_bytes)
+						  : std::string{})
 			   << ",\n  \"checkpoint_bytes\": " << report.checkpoint_bytes
 			   << ",\n  \"checkpoint_planned_bytes\": " << report.checkpoint_planned_bytes
 			   << ",\n  \"checkpoint_scratch_bytes\": " << report.checkpoint_scratch_bytes

@@ -1476,10 +1476,11 @@ namespace texas::solver::multiway
 		bool pin_workers, bool immutable_epochs, MultiwaySchedulerMode scheduler_mode,
 		std::uint32_t dynamic_chunk_size)
 		: MultiwayRootBatchRunner(
-			std::move(traversal), coordinator, worker_count,
-			{ worker_delta_capacity, worker_delta_capacity, 0U, 0U },
-			profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size)
-	{}
+			  std::move(traversal), coordinator, worker_count,
+			  { worker_delta_capacity, worker_delta_capacity, 0U, 0U },
+			  profile_mode, pin_workers, immutable_epochs, scheduler_mode, dynamic_chunk_size)
+	{
+	}
 
 	MultiwayRootBatchRunner::MultiwayRootBatchRunner(
 		MultiwayRootExternalSamplingTraversal traversal,
@@ -1516,19 +1517,18 @@ namespace texas::solver::multiway
 			std::vector<ProcessorPlacement> physical;
 			std::vector<ProcessorPlacement> logical;
 			DWORD buffer_bytes = 0U;
-			if (::GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &buffer_bytes) == FALSE &&
-				::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+			if (::GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &buffer_bytes) == FALSE && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER)
 			{
 				std::vector<std::uint8_t> buffer(buffer_bytes);
 				if (::GetLogicalProcessorInformationEx(
 						RelationProcessorCore,
 						reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()),
-						&buffer_bytes) != FALSE)
+						&buffer_bytes)
+					!= FALSE)
 				{
 					const auto total_buffer_bytes = static_cast<std::size_t>(buffer_bytes);
 					std::size_t offset = 0U;
-					while (offset <= total_buffer_bytes &&
-						total_buffer_bytes - offset >= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX))
+					while (offset <= total_buffer_bytes && total_buffer_bytes - offset >= sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX))
 					{
 						const auto* information = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(buffer.data() + offset);
 						const auto entry_size = static_cast<std::size_t>(information->Size);
@@ -1547,7 +1547,8 @@ namespace texas::solver::multiway
 									if ((mask & bit) == 0U)
 										continue;
 									const ProcessorPlacement placement{
-										static_cast<std::uint16_t>(group), processor, static_cast<std::uint64_t>(bit) };
+										static_cast<std::uint16_t>(group), processor, static_cast<std::uint64_t>(bit)
+									};
 									logical.push_back(placement);
 									if (first_logical_processor)
 										physical.push_back(placement);
@@ -1605,8 +1606,7 @@ namespace texas::solver::multiway
 					worker_affinity_groups_[worker] = selected[worker].group;
 					worker_affinity_masks_[worker] = selected[worker].mask;
 					worker_affinity_processors_[worker] =
-						static_cast<std::uint32_t>(selected[worker].group) * (sizeof(KAFFINITY) * 8U) +
-						selected[worker].processor;
+						static_cast<std::uint32_t>(selected[worker].group) * (sizeof(KAFFINITY) * 8U) + selected[worker].processor;
 				}
 			}
 		}
@@ -1635,7 +1635,8 @@ namespace texas::solver::multiway
 					const auto placement = ProcessorPlacement{
 						0U,
 						static_cast<std::uint32_t>(processor),
-						processor < 64 ? (std::uint64_t{ 1U } << processor) : 0U };
+						processor < 64 ? (std::uint64_t{ 1U } << processor) : 0U
+					};
 					logical.push_back(placement);
 					if (physical_keys.emplace(package, core).second)
 						physical.push_back(placement);
@@ -1825,7 +1826,8 @@ namespace texas::solver::multiway
 				CPU_ZERO(&affinity);
 				CPU_SET(static_cast<int>(worker_scratch.requested_processor), &affinity);
 				worker_scratch.affinity_succeeded = ::sched_setaffinity(
-					0, sizeof(affinity), &affinity) == 0;
+														0, sizeof(affinity), &affinity)
+					== 0;
 			}
 #endif
 		}
@@ -1964,7 +1966,7 @@ namespace texas::solver::multiway
 						std::chrono::duration_cast<std::chrono::nanoseconds>(
 							std::chrono::steady_clock::now() - sort_start)
 							.count());
-						scratch.resolved_processor = current_processor_id();
+					scratch.resolved_processor = current_processor_id();
 				}
 			}
 			catch (...)

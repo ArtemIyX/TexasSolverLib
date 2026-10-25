@@ -546,8 +546,7 @@ namespace texas::solver::multiway
 			const std::filesystem::path& destination_path,
 			const MultiwayFullBlueprintStreamPlan& stream_plan,
 			MultiwayFullBlueprintStreamOptions stream_options)
-			: destination(destination_path), temporary(destination_path.string() + ".tmp"),
-			  plan(stream_plan), options(stream_options), encoder(output)
+			: destination(destination_path), temporary(destination_path.string() + ".tmp"), plan(stream_plan), options(stream_options), encoder(output)
 		{
 			plan.validate();
 			cleanup = std::make_unique<TemporaryFileCleanup>(temporary);

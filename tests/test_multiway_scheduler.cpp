@@ -134,8 +134,7 @@ TEST_CASE(multiway_scheduler_fixes_trajectory_seeds_and_versioned_run_identity)
 		for (std::size_t previous = 0U; previous < index; ++previous)
 			EXPECT_TRUE(dynamic_fingerprints[index] != dynamic_fingerprints[previous]);
 	}
-	EXPECT_TRUE(dynamic_fingerprints[0U] != texas::multiway_deterministic_schedule_fingerprint(
-		4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Fixed, 4U));
+	EXPECT_TRUE(dynamic_fingerprints[0U] != texas::multiway_deterministic_schedule_fingerprint(4U, 7U, 9U, 32U, texas::MultiwaySchedulerMode::Fixed, 4U));
 }
 
 TEST_CASE(multiway_scheduler_reports_deterministic_run_metadata)

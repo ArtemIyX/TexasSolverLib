@@ -18,7 +18,7 @@ namespace
 		return bits;
 	}
 
-}
+} // namespace
 
 TEST_CASE(multiway_compact_storage_memory_snapshot_attributes_each_storage_array)
 {
@@ -37,8 +37,7 @@ TEST_CASE(multiway_compact_storage_memory_snapshot_attributes_each_storage_array
 	EXPECT_EQ(populated.regret_cells.live_element_bytes, 4U * 3U * sizeof(std::int32_t));
 	EXPECT_EQ(populated.strategy_cells.live_element_bytes, 4U * 3U * sizeof(std::uint64_t));
 	EXPECT_EQ(populated.total.retained_capacity_bytes,
-		populated.row_metadata.retained_capacity_bytes + populated.page_metadata.retained_capacity_bytes +
-		populated.regret_cells.retained_capacity_bytes + populated.strategy_cells.retained_capacity_bytes);
+		populated.row_metadata.retained_capacity_bytes + populated.page_metadata.retained_capacity_bytes + populated.regret_cells.retained_capacity_bytes + populated.strategy_cells.retained_capacity_bytes);
 }
 
 TEST_CASE(multiway_compact_storage_saturates_regrets_and_normalizes_policies)

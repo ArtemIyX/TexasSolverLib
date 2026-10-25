@@ -373,8 +373,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool blocked() const noexcept
 		{
-			return status == MultiwaySystemMemoryGuardStatus::Rejected ||
-				status == MultiwaySystemMemoryGuardStatus::Unavailable;
+			return status == MultiwaySystemMemoryGuardStatus::Rejected || status == MultiwaySystemMemoryGuardStatus::Unavailable;
 		}
 	};
 
@@ -686,8 +685,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] bool blocked() const noexcept
 		{
-			return status == MultiwayWorkingSetGateStatus::Rejected ||
-				status == MultiwayWorkingSetGateStatus::Unavailable;
+			return status == MultiwayWorkingSetGateStatus::Rejected || status == MultiwayWorkingSetGateStatus::Unavailable;
 		}
 	};
 

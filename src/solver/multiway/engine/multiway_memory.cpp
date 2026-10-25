@@ -124,8 +124,7 @@ namespace texas::solver::multiway
 		arithmetic_saturated = arithmetic_saturated || other.arithmetic_saturated || next_live == std::numeric_limits<std::uint64_t>::max() || next_retained == std::numeric_limits<std::uint64_t>::max();
 		live_element_bytes = next_live;
 		retained_capacity_bytes = next_retained;
-		const bool empty_unknown = !allocation_count_known && allocation_count == 0U &&
-			live_element_bytes == 0U && retained_capacity_bytes == 0U && !arithmetic_saturated;
+		const bool empty_unknown = !allocation_count_known && allocation_count == 0U && live_element_bytes == 0U && retained_capacity_bytes == 0U && !arithmetic_saturated;
 		if (empty_unknown && other.allocation_count_known)
 		{
 			allocation_count = other.allocation_count;
@@ -152,15 +151,10 @@ namespace texas::solver::multiway
 			const MultiwayMemoryComponent& left,
 			const MultiwayMemoryComponent& right) noexcept
 		{
-			return left.live_element_bytes == right.live_element_bytes &&
-				left.retained_capacity_bytes == right.retained_capacity_bytes &&
-				left.allocation_count == right.allocation_count &&
-				left.allocation_count_known == right.allocation_count_known &&
-				left.arithmetic_saturated == right.arithmetic_saturated &&
-				left.grouping_only == right.grouping_only;
+			return left.live_element_bytes == right.live_element_bytes && left.retained_capacity_bytes == right.retained_capacity_bytes && left.allocation_count == right.allocation_count && left.allocation_count_known == right.allocation_count_known && left.arithmetic_saturated == right.arithmetic_saturated && left.grouping_only == right.grouping_only;
 		}
 
-	}
+	} // namespace
 
 	bool MultiwayBucketRegistryMemorySnapshot::valid() const noexcept
 	{
@@ -321,7 +315,8 @@ namespace texas::solver::multiway
 			&discovery_merge_scratch, &batch_runner_scratch,
 			&coordinator_merge_scratch, &coordinator_admission_scratch,
 			&checkpoint_retained_buffers, &export_retained_buffers,
-			&continuation_cache, &continuation_scratch };
+			&continuation_cache, &continuation_scratch
+		};
 		for (const auto* component : components)
 			if (!component->valid())
 				return false;
@@ -332,11 +327,7 @@ namespace texas::solver::multiway
 		expected.recompute_totals();
 		if (expected.live_bytes != live_bytes || expected.retained_capacity_bytes != retained_capacity_bytes || expected.arithmetic_saturated != arithmetic_saturated)
 			return false;
-		if (!same_component(expected.worker_regret_delta_stream, worker_regret_delta_stream) ||
-			!same_component(expected.worker_continuation_delta_stream, worker_continuation_delta_stream) ||
-			!same_component(expected.discovery_public_state_stream, discovery_public_state_stream) ||
-			!same_component(expected.discovery_row_stream, discovery_row_stream) ||
-			!same_component(expected.worker_action_menu_scratch, worker_action_menu_scratch))
+		if (!same_component(expected.worker_regret_delta_stream, worker_regret_delta_stream) || !same_component(expected.worker_continuation_delta_stream, worker_continuation_delta_stream) || !same_component(expected.discovery_public_state_stream, discovery_public_state_stream) || !same_component(expected.discovery_row_stream, discovery_row_stream) || !same_component(expected.worker_action_menu_scratch, worker_action_menu_scratch))
 			return false;
 		for (std::size_t index = 0U; index < worker_count; ++index)
 			if (!same_component(expected.workers[index].total, workers[index].total))
@@ -463,20 +454,11 @@ namespace texas::solver::multiway
 
 	bool MultiwayProcessMemorySnapshot::valid() const noexcept
 	{
-		if ((!current_working_set_available && current_working_set_bytes != 0U) ||
-			(!peak_working_set_available && peak_working_set_bytes != 0U) ||
-			(!private_committed_available && private_committed_bytes != 0U) ||
-			(!peak_private_committed_available && peak_private_committed_bytes != 0U) ||
-			(!virtual_address_available && virtual_address_bytes != 0U) ||
-			(!anonymous_resident_available && anonymous_resident_bytes != 0U) ||
-			(!file_resident_available && file_resident_bytes != 0U))
+		if ((!current_working_set_available && current_working_set_bytes != 0U) || (!peak_working_set_available && peak_working_set_bytes != 0U) || (!private_committed_available && private_committed_bytes != 0U) || (!peak_private_committed_available && peak_private_committed_bytes != 0U) || (!virtual_address_available && virtual_address_bytes != 0U) || (!anonymous_resident_available && anonymous_resident_bytes != 0U) || (!file_resident_available && file_resident_bytes != 0U))
 		{
 			return false;
 		}
-		return (!current_working_set_available || !peak_working_set_available ||
-			peak_working_set_bytes >= current_working_set_bytes) &&
-			(!private_committed_available || !peak_private_committed_available ||
-				peak_private_committed_bytes >= private_committed_bytes);
+		return (!current_working_set_available || !peak_working_set_available || peak_working_set_bytes >= current_working_set_bytes) && (!private_committed_available || !peak_private_committed_available || peak_private_committed_bytes >= private_committed_bytes);
 	}
 
 	bool MultiwayProcessMemorySnapshotCollection::record(
@@ -527,19 +509,32 @@ namespace texas::solver::multiway
 	{
 		switch (phase)
 		{
-			case MultiwayMemoryPhase::ProcessStart: return "process_start";
-			case MultiwayMemoryPhase::BeforeBucketMap: return "before_bucket_map";
-			case MultiwayMemoryPhase::AfterBucketMapMetadata: return "after_bucket_map_metadata";
-			case MultiwayMemoryPhase::AfterBucketAssignmentValidation: return "after_bucket_assignment_validation";
-			case MultiwayMemoryPhase::BeforeMemoryPreflight: return "before_memory_preflight";
-			case MultiwayMemoryPhase::AfterCoordinatorConstruction: return "after_coordinator_construction";
-			case MultiwayMemoryPhase::AfterWorkerPoolConstruction: return "after_worker_pool_construction";
-			case MultiwayMemoryPhase::AfterColdBatch: return "after_cold_batch";
-			case MultiwayMemoryPhase::AfterSteadyBatch: return "after_steady_batch";
-			case MultiwayMemoryPhase::BeforeCheckpoint: return "before_checkpoint";
-			case MultiwayMemoryPhase::AfterCheckpoint: return "after_checkpoint";
-			case MultiwayMemoryPhase::BeforeExport: return "before_export";
-			case MultiwayMemoryPhase::AfterExport: return "after_export";
+			case MultiwayMemoryPhase::ProcessStart:
+				return "process_start";
+			case MultiwayMemoryPhase::BeforeBucketMap:
+				return "before_bucket_map";
+			case MultiwayMemoryPhase::AfterBucketMapMetadata:
+				return "after_bucket_map_metadata";
+			case MultiwayMemoryPhase::AfterBucketAssignmentValidation:
+				return "after_bucket_assignment_validation";
+			case MultiwayMemoryPhase::BeforeMemoryPreflight:
+				return "before_memory_preflight";
+			case MultiwayMemoryPhase::AfterCoordinatorConstruction:
+				return "after_coordinator_construction";
+			case MultiwayMemoryPhase::AfterWorkerPoolConstruction:
+				return "after_worker_pool_construction";
+			case MultiwayMemoryPhase::AfterColdBatch:
+				return "after_cold_batch";
+			case MultiwayMemoryPhase::AfterSteadyBatch:
+				return "after_steady_batch";
+			case MultiwayMemoryPhase::BeforeCheckpoint:
+				return "before_checkpoint";
+			case MultiwayMemoryPhase::AfterCheckpoint:
+				return "after_checkpoint";
+			case MultiwayMemoryPhase::BeforeExport:
+				return "before_export";
+			case MultiwayMemoryPhase::AfterExport:
+				return "after_export";
 		}
 		return "unknown";
 	}
@@ -551,7 +546,8 @@ namespace texas::solver::multiway
 		PROCESS_MEMORY_COUNTERS_EX counters{};
 		counters.cb = sizeof(counters);
 		if (K32GetProcessMemoryInfo(
-				GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters)) != 0)
+				GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters))
+			!= 0)
 		{
 			result.current_working_set_bytes = static_cast<std::uint64_t>(counters.WorkingSetSize);
 			// Windows can transiently report a peak below the current working set.
@@ -583,32 +579,22 @@ namespace texas::solver::multiway
 
 	bool MultiwayExportPlanMemoryValues::valid() const noexcept
 	{
-		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
-			(compact_direct_order ? order_index_bytes == 0U : true);
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (compact_direct_order ? order_index_bytes == 0U : true);
 	}
 
 	bool MultiwayExportScratchEstimate::valid() const noexcept
 	{
-		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
-			(total_bytes == std::numeric_limits<std::uint64_t>::max() ||
-				total_bytes >= order_index_bytes && total_bytes >= strategy_scratch_bytes &&
-				total_bytes >= action_scratch_bytes && total_bytes >= encoder_buffer_bytes &&
-				total_bytes >= exporter_headroom_bytes);
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (total_bytes == std::numeric_limits<std::uint64_t>::max() || total_bytes >= order_index_bytes && total_bytes >= strategy_scratch_bytes && total_bytes >= action_scratch_bytes && total_bytes >= encoder_buffer_bytes && total_bytes >= exporter_headroom_bytes);
 	}
 
 	bool MultiwayExportProcessEstimate::valid() const noexcept
 	{
-		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
-			(current_working_set_available || current_working_set_bytes == 0U) &&
-			(estimated_process_export_peak_bytes == std::numeric_limits<std::uint64_t>::max() ||
-				estimated_process_export_peak_bytes >= current_working_set_bytes);
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (current_working_set_available || current_working_set_bytes == 0U) && (estimated_process_export_peak_bytes == std::numeric_limits<std::uint64_t>::max() || estimated_process_export_peak_bytes >= current_working_set_bytes);
 	}
 
 	bool MultiwaySystemMemorySnapshot::valid() const noexcept
 	{
-		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
-			(total_physical_available || total_physical_bytes == 0U) &&
-			(available_physical_available || available_physical_bytes == 0U);
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (total_physical_available || total_physical_bytes == 0U) && (available_physical_available || available_physical_bytes == 0U);
 	}
 
 	void MultiwaySystemMemoryGuardConfig::validate() const
@@ -619,11 +605,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayExportObservedMemoryDelta::valid() const noexcept
 	{
-		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION &&
-			(!before_working_set_available || before_working_set_bytes != 0U || working_set_delta_bytes == 0U) &&
-			(!after_working_set_available || after_working_set_bytes != 0U || working_set_delta_bytes == 0U) &&
-			(!before_private_committed_available || before_private_committed_bytes != 0U || private_committed_delta_bytes == 0U) &&
-			(!after_private_committed_available || after_private_committed_bytes != 0U || private_committed_delta_bytes == 0U);
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (!before_working_set_available || before_working_set_bytes != 0U || working_set_delta_bytes == 0U) && (!after_working_set_available || after_working_set_bytes != 0U || working_set_delta_bytes == 0U) && (!before_private_committed_available || before_private_committed_bytes != 0U || private_committed_delta_bytes == 0U) && (!after_private_committed_available || after_private_committed_bytes != 0U || private_committed_delta_bytes == 0U);
 	}
 
 	void MultiwayExportProcessGateConfig::validate() const
@@ -656,8 +638,7 @@ namespace texas::solver::multiway
 		result.exporter_headroom_bytes = config.exporter_headroom_bytes;
 		const auto add = [&result](std::uint64_t value) noexcept {
 			const auto next = multiway_memory_saturating_add(result.total_bytes, value);
-			result.arithmetic_saturated = result.arithmetic_saturated ||
-				next == std::numeric_limits<std::uint64_t>::max();
+			result.arithmetic_saturated = result.arithmetic_saturated || next == std::numeric_limits<std::uint64_t>::max();
 			result.total_bytes = next;
 		};
 		add(result.order_index_bytes);
@@ -686,8 +667,7 @@ namespace texas::solver::multiway
 		const auto add = [&result](std::uint64_t value) noexcept {
 			const auto next = multiway_memory_saturating_add(
 				result.estimated_process_export_peak_bytes, value);
-			result.arithmetic_saturated = result.arithmetic_saturated ||
-				next == std::numeric_limits<std::uint64_t>::max();
+			result.arithmetic_saturated = result.arithmetic_saturated || next == std::numeric_limits<std::uint64_t>::max();
 			result.estimated_process_export_peak_bytes = next;
 		};
 		add(result.current_working_set_bytes);
@@ -786,8 +766,7 @@ namespace texas::solver::multiway
 		result.available_physical_bytes = snapshot.available_physical_bytes;
 		result.used_physical_bytes = snapshot.used_physical_bytes;
 		result.minimum_available_physical_bytes = config.minimum_available_physical_bytes;
-		result.maximum_used_physical_bytes = snapshot.total_physical_available &&
-			snapshot.total_physical_bytes >= config.minimum_available_physical_bytes
+		result.maximum_used_physical_bytes = snapshot.total_physical_available && snapshot.total_physical_bytes >= config.minimum_available_physical_bytes
 			? snapshot.total_physical_bytes - config.minimum_available_physical_bytes
 			: 0U;
 		if (!config.enabled)
@@ -796,8 +775,7 @@ namespace texas::solver::multiway
 			result.message = "system memory guard disabled";
 			return result;
 		}
-		if (!snapshot.total_physical_available || !snapshot.available_physical_available ||
-			snapshot.used_physical_bytes == std::numeric_limits<std::uint64_t>::max())
+		if (!snapshot.total_physical_available || !snapshot.available_physical_available || snapshot.used_physical_bytes == std::numeric_limits<std::uint64_t>::max())
 		{
 			result.status = MultiwaySystemMemoryGuardStatus::Unavailable;
 			result.rejected_category = "system memory telemetry";
@@ -897,10 +875,14 @@ namespace texas::solver::multiway
 	{
 		switch (reason)
 		{
-			case MultiwayExportProcessRejectionReason::None: return "none";
-			case MultiwayExportProcessRejectionReason::CurrentWorkingSetUnavailable: return "current_working_set_unavailable";
-			case MultiwayExportProcessRejectionReason::EstimateOverflow: return "estimate_overflow";
-			case MultiwayExportProcessRejectionReason::ProcessLimitExceeded: return "process_limit_exceeded";
+			case MultiwayExportProcessRejectionReason::None:
+				return "none";
+			case MultiwayExportProcessRejectionReason::CurrentWorkingSetUnavailable:
+				return "current_working_set_unavailable";
+			case MultiwayExportProcessRejectionReason::EstimateOverflow:
+				return "estimate_overflow";
+			case MultiwayExportProcessRejectionReason::ProcessLimitExceeded:
+				return "process_limit_exceeded";
 		}
 		return "invalid";
 	}
@@ -910,10 +892,14 @@ namespace texas::solver::multiway
 	{
 		switch (reason)
 		{
-			case MultiwayExportSystemRejectionReason::None: return "none";
-			case MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryUnavailable: return "available_physical_memory_unavailable";
-			case MultiwayExportSystemRejectionReason::AllowanceOverflow: return "allowance_overflow";
-			case MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient: return "available_physical_memory_insufficient";
+			case MultiwayExportSystemRejectionReason::None:
+				return "none";
+			case MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryUnavailable:
+				return "available_physical_memory_unavailable";
+			case MultiwayExportSystemRejectionReason::AllowanceOverflow:
+				return "allowance_overflow";
+			case MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient:
+				return "available_physical_memory_insufficient";
 		}
 		return "invalid";
 	}
@@ -924,19 +910,9 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("invalid multiway export telemetry schema");
 		if (!attempted)
 			return;
-		if (!plan.valid() || !scratch.valid() || !process_estimate.valid() ||
-			!system_before.valid() || !system_after.valid() || !observed_delta.valid() ||
-			process_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION ||
-			system_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION ||
-			static_cast<unsigned>(process_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) ||
-			static_cast<unsigned>(system_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) ||
-			static_cast<unsigned>(process_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportProcessRejectionReason::ProcessLimitExceeded) ||
-			static_cast<unsigned>(system_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient) ||
-			static_cast<unsigned>(publication_mode) > static_cast<unsigned>(core::AtomicPublishMode::BackupRename))
+		if (!plan.valid() || !scratch.valid() || !process_estimate.valid() || !system_before.valid() || !system_after.valid() || !observed_delta.valid() || process_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION || system_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION || static_cast<unsigned>(process_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) || static_cast<unsigned>(system_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) || static_cast<unsigned>(process_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportProcessRejectionReason::ProcessLimitExceeded) || static_cast<unsigned>(system_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient) || static_cast<unsigned>(publication_mode) > static_cast<unsigned>(core::AtomicPublishMode::BackupRename))
 			throw std::invalid_argument("invalid multiway export telemetry values");
-		if (succeeded && (process_gate.blocked() || system_gate.blocked() ||
-			result_bytes != plan.serialized_bytes || payload_hash == 0U ||
-			publication_mode == core::AtomicPublishMode::Unknown))
+		if (succeeded && (process_gate.blocked() || system_gate.blocked() || result_bytes != plan.serialized_bytes || payload_hash == 0U || publication_mode == core::AtomicPublishMode::Unknown))
 			throw std::invalid_argument("successful multiway export telemetry is incomplete");
 	}
 
@@ -1030,8 +1006,7 @@ namespace texas::solver::multiway
 			result.message = "working-set gate disabled";
 			return result;
 		}
-		if (result.compared_working_set_bytes > config.hard_limit_bytes ||
-			result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
+		if (result.compared_working_set_bytes > config.hard_limit_bytes || result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
 		{
 			result.status = MultiwayWorkingSetGateStatus::Rejected;
 			result.rejected_category = "process working set";
@@ -1071,8 +1046,7 @@ namespace texas::solver::multiway
 			result.message = "working-set metric unavailable";
 			return result;
 		}
-		if (result.compared_working_set_bytes > config.hard_limit_bytes ||
-			result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
+		if (result.compared_working_set_bytes > config.hard_limit_bytes || result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())
 		{
 			result.status = MultiwayWorkingSetGateStatus::Rejected;
 			result.rejected_category = "process working set";
