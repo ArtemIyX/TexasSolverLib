@@ -41,7 +41,15 @@ jobs:
         fi
         git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- '*.h' '*.hpp' '*.cpp' |
           while IFS= read -r path; do
-            [ -z "$path" ] || python3 scripts/python/format_cpp.py file "$path" --check
+            [ -z "$path" ] && continue
+            case "$path" in
+              external/*)
+                echo "Skipping clang-format for vendored file: $path"
+                ;;
+              *)
+                python3 scripts/python/format_cpp.py file "$path" --check
+                ;;
+            esac
           done
 
   build:
