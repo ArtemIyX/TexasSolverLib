@@ -341,10 +341,11 @@ namespace texas::solver::multiway
 		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability)
 	{
 		if (directory.empty() || manifest.generation == 0U || manifest.committed_batch_number == 0U ||
-			manifest.merge_fingerprint == 0U)
+			manifest.merge_fingerprint == 0U ||
+			((manifest.row_count == 0U) != (manifest.logical_value_count == 0U)))
 			throw std::invalid_argument("external generation manifest identity is invalid");
 		std::vector<std::uint8_t> bytes{ 'T','X','M','W','G','E','N','1' };
-		append_u32(bytes, 1U);
+		append_u32(bytes, 2U);
 		append_u32(bytes, 0U);
 		append_u64(bytes, manifest.generation);
 		append_u64(bytes, manifest.committed_batch_number);
@@ -355,6 +356,7 @@ namespace texas::solver::multiway
 		append_u64(bytes, manifest.row_count);
 		append_u64(bytes, manifest.page_generation);
 		append_u64(bytes, manifest.page_count);
+		append_u64(bytes, manifest.logical_value_count);
 		append_u64(bytes, manifest.content_hash);
 		auto checksum = kHashOffset;
 		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
@@ -410,15 +412,17 @@ namespace texas::solver::multiway
 			if (error) throw std::runtime_error("external training manifest cannot be inspected");
 			return false;
 		}
-		constexpr std::size_t manifest_size = 104U;
-		if (std::filesystem::file_size(path, error) != manifest_size || error)
+		const auto manifest_size = std::filesystem::file_size(path, error);
+		if (error || (manifest_size != 104U && manifest_size != 112U))
 			throw std::invalid_argument("external training manifest size is invalid");
-		std::array<std::uint8_t, manifest_size> bytes{};
+		std::vector<std::uint8_t> bytes(static_cast<std::size_t>(manifest_size));
 		std::ifstream input(path, std::ios::binary);
 		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 		constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','G','E','N','1' };
+		const auto schema = bytes.size() >= 12U ? read_u32(bytes.data() + 8U) : 0U;
 		if (!input || !std::equal(magic.begin(), magic.end(), bytes.begin()) ||
-			read_u32(bytes.data() + 8U) != 1U || read_u32(bytes.data() + 12U) != 0U)
+			(schema != 1U && schema != 2U) || (schema == 1U && bytes.size() != 104U) ||
+			(schema == 2U && bytes.size() != 112U) || read_u32(bytes.data() + 12U) != 0U)
 			throw std::invalid_argument("external training manifest header is invalid");
 		auto checksum = kHashOffset;
 		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
@@ -437,9 +441,14 @@ namespace texas::solver::multiway
 		decoded.row_count = read_field();
 		decoded.page_generation = read_field();
 		decoded.page_count = read_field();
+		if (schema >= 2U)
+			decoded.logical_value_count = read_field();
+		else if (decoded.row_count != 0U)
+			decoded.logical_value_count = std::numeric_limits<std::uint64_t>::max();
 		decoded.content_hash = read_field();
 		if (cursor != bytes.size() - 8U || decoded.generation == 0U ||
-			decoded.committed_batch_number == 0U || decoded.merge_fingerprint == 0U)
+			decoded.committed_batch_number == 0U || decoded.merge_fingerprint == 0U ||
+			(schema >= 2U && ((decoded.row_count == 0U) != (decoded.logical_value_count == 0U))))
 			throw std::invalid_argument("external training manifest identity is invalid");
 		manifest = decoded;
 		return true;
@@ -2478,7 +2487,7 @@ namespace texas::solver::multiway
 			append_catalog(root_seed_fingerprint,
 				{ MultiwayPublicCatalog::pack_node(root) }, { root });
 			begin_page_batch();
-			commit_batch(root_seed_fingerprint, 0U);
+			commit_batch(root_seed_fingerprint, 0U, 0U);
 		}
 		catch (...)
 		{
@@ -2543,7 +2552,8 @@ namespace texas::solver::multiway
 	}
 
 	void MultiwayExternalTrainingStorage::commit_batch(
-		std::uint64_t merge_fingerprint, std::uint64_t row_count)
+		std::uint64_t merge_fingerprint, std::uint64_t row_count,
+		std::uint64_t logical_value_count)
 	{
 		if (batch_number_ == 0U || !page_batch_open_ || merge_fingerprint == 0U)
 			throw std::logic_error("external training batch is not ready to commit");
@@ -2553,6 +2563,11 @@ namespace texas::solver::multiway
 		const auto& current = transaction_.current_manifest();
 		if (current.generation == std::numeric_limits<std::uint64_t>::max())
 			throw std::overflow_error("external training generation overflows");
+		if (current.logical_value_count == std::numeric_limits<std::uint64_t>::max())
+			throw std::invalid_argument("legacy external generation has no exact value count");
+		if (row_count < current.row_count || logical_value_count < current.logical_value_count ||
+			((row_count == 0U) != (logical_value_count == 0U)))
+			throw std::invalid_argument("external training row or value counts are inconsistent");
 		MultiwayExternalGenerationManifest next{};
 		next.generation = current.generation + 1U;
 		next.committed_batch_number = batch_number_;
@@ -2563,6 +2578,7 @@ namespace texas::solver::multiway
 		next.row_count = row_count;
 		next.page_generation = compact_->page_generation();
 		next.page_count = compact_->next_page_id() - 1U;
+		next.logical_value_count = logical_value_count;
 		next.content_hash = content_hash();
 		transaction_.commit_batch(next);
 		batch_number_ = 0U;

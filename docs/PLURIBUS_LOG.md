@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.21 - Persist exact external logical value counts
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a 64-bit logical value count to schema 2 aggregate generation manifests and enforced row/value count consistency and monotonic commits.
+- Kept schema 1 manifest loading. Legacy manifests with rows receive an unknown-count sentinel and fail closed on the next commit instead of undercounting existing values.
+- Added schema 1 compatibility and schema 2 round-trip coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug builds for `test_multiway_external_storage` and `test_multiway_solver`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator does not yet supply or consume this persisted count for external row preflight.
+
 ## PB-12 Phase 3.4 - Attach external storage to coordinator
 
 **Status:** Complete

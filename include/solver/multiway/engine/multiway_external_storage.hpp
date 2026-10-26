@@ -71,6 +71,7 @@ namespace texas::solver::multiway
 		std::uint64_t row_count = 0U;
 		std::uint64_t page_generation = 0U;
 		std::uint64_t page_count = 0U;
+		std::uint64_t logical_value_count = 0U;
 		std::uint64_t content_hash = 0U;
 	};
 
@@ -444,7 +445,8 @@ namespace texas::solver::multiway
 			const std::vector<MultiwaySparseRowShape>& rows);
 		void begin_page_batch();
 		void compact_components();
-		void commit_batch(std::uint64_t merge_fingerprint, std::uint64_t row_count);
+		void commit_batch(std::uint64_t merge_fingerprint, std::uint64_t row_count,
+			std::uint64_t logical_value_count);
 		void abort_batch();
 		[[nodiscard]] MultiwayExternalPublicCatalog& catalog() noexcept { return *catalog_; }
 		[[nodiscard]] MultiwayExternalCompactStorage& compact_storage() noexcept { return *compact_; }

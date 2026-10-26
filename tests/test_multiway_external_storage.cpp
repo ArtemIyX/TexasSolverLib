@@ -2,6 +2,7 @@
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
+#include "core/fingerprint.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -118,6 +120,7 @@ TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
 	first.row_count = 40U;
 	first.page_generation = 4U;
 	first.page_count = 75U;
+	first.logical_value_count = 123U;
 	first.content_hash = 0x9876U;
 	publish_multiway_external_generation(directory.path(), first, false);
 	MultiwayExternalGenerationManifest loaded{};
@@ -126,6 +129,7 @@ TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
 	EXPECT_EQ(loaded.committed_batch_number, first.committed_batch_number);
 	EXPECT_EQ(loaded.public_state_count, first.public_state_count);
 	EXPECT_EQ(loaded.page_count, first.page_count);
+	EXPECT_EQ(loaded.logical_value_count, first.logical_value_count);
 	EXPECT_EQ(loaded.content_hash, first.content_hash);
 
 	auto second = first;
@@ -155,6 +159,49 @@ TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
 	EXPECT_TRUE(corruption_rejected);
 }
 
+TEST_CASE(multiway_external_generation_manifest_loads_schema_one_fail_closed)
+{
+	using namespace texas::solver::multiway;
+	const auto legacy_bytes = [](std::uint64_t row_count) {
+		std::vector<std::uint8_t> bytes{ 'T','X','M','W','G','E','N','1' };
+		const auto append_u32 = [&bytes](std::uint32_t value) {
+			for (unsigned shift = 0U; shift < 32U; shift += 8U)
+				bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+		};
+		const auto append_u64 = [&bytes](std::uint64_t value) {
+			for (unsigned shift = 0U; shift < 64U; shift += 8U)
+				bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+		};
+		append_u32(1U);
+		append_u32(0U);
+		for (const auto field : std::array<std::uint64_t, 10U>{
+			1U, 1U, 7U, 0U, 0U, 0U, row_count, 0U, 0U, 9U })
+			append_u64(field);
+		auto checksum = texas::core::fingerprint::FNV1A_OFFSET;
+		for (const auto byte : bytes)
+			texas::core::fingerprint::append_u8(checksum, byte);
+		append_u64(texas::core::fingerprint::finish(checksum));
+		return bytes;
+	};
+	const auto write_legacy = [&legacy_bytes](const std::filesystem::path& directory,
+		std::uint64_t row_count) {
+		std::filesystem::create_directories(directory);
+		const auto bytes = legacy_bytes(row_count);
+		std::ofstream output(directory / "TRAINING_CURRENT", std::ios::binary);
+		output.write(reinterpret_cast<const char*>(bytes.data()),
+			static_cast<std::streamsize>(bytes.size()));
+	};
+	TestDirectory empty_rows_directory;
+	write_legacy(empty_rows_directory.path(), 0U);
+	MultiwayExternalGenerationManifest loaded{};
+	EXPECT_TRUE(load_multiway_external_generation(empty_rows_directory.path(), loaded));
+	EXPECT_EQ(loaded.logical_value_count, 0U);
+	TestDirectory existing_rows_directory;
+	write_legacy(existing_rows_directory.path(), 1U);
+	EXPECT_TRUE(load_multiway_external_generation(existing_rows_directory.path(), loaded));
+	EXPECT_EQ(loaded.logical_value_count, std::numeric_limits<std::uint64_t>::max());
+}
+
 TEST_CASE(multiway_external_batch_transaction_rolls_back_partial_component_publication)
 {
 	using namespace texas::solver::multiway;
@@ -174,6 +221,7 @@ TEST_CASE(multiway_external_batch_transaction_rolls_back_partial_component_publi
 	first.merge_fingerprint = 0x111U;
 	first.catalog_generation = first.row_generation = first.page_generation = 1U;
 	first.public_state_count = first.row_count = first.page_count = 1U;
+	first.logical_value_count = 1U;
 	publish_multiway_external_generation(directory.path(), first, false);
 	{
 		MultiwayExternalBatchTransaction transaction(directory.path(), false);
@@ -227,6 +275,7 @@ TEST_CASE(multiway_external_batch_transaction_publishes_one_verified_commit_poin
 	second.merge_fingerprint = 0x222U;
 	second.catalog_generation = second.row_generation = second.page_generation = 2U;
 	second.public_state_count = second.row_count = second.page_count = 2U;
+	second.logical_value_count = 2U;
 	transaction.set_merge_fingerprint(0x222U);
 	transaction.commit_batch(second);
 	EXPECT_TRUE(!transaction.batch_open());
@@ -265,6 +314,8 @@ TEST_CASE(multiway_external_batch_transaction_rolls_back_when_global_publish_fai
 	second.committed_batch_number = 2U;
 	second.merge_fingerprint = 0x222U;
 	second.catalog_generation = second.row_generation = second.page_generation = 2U;
+	second.public_state_count = second.row_count = second.page_count = 2U;
+	second.logical_value_count = 2U;
 	std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
 	bool commit_rejected = false;
 	try { transaction.commit_batch(second); }
@@ -350,11 +401,12 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		EXPECT_EQ(binding.public_state().value, 0U);
 		EXPECT_EQ(binding.seat(), -1);
 		EXPECT_EQ(binding.bucket_count(), 0U);
-		storage.commit_batch(0xabcU, 1U);
+		storage.commit_batch(0xabcU, 1U, 4U);
 		EXPECT_EQ(storage.current_manifest().generation, 1U);
 		EXPECT_EQ(storage.current_manifest().public_state_count, 1U);
 		EXPECT_EQ(storage.current_manifest().row_count, 1U);
 		EXPECT_EQ(storage.current_manifest().page_count, 1U);
+		EXPECT_EQ(storage.current_manifest().logical_value_count, 4U);
 		EXPECT_TRUE(storage.current_manifest().content_hash != 0U);
 		committed_content_hash = storage.current_manifest().content_hash;
 	}
@@ -388,7 +440,7 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		reopened.compact_storage().unpin_bucket(dirty_page);
 		std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
 		bool publication_failed = false;
-		try { reopened.commit_batch(0xdefU, 2U); }
+		try { reopened.commit_batch(0xdefU, 2U, 5U); }
 		catch (const std::runtime_error&) { publication_failed = true; }
 		EXPECT_TRUE(publication_failed);
 		reopened.abort_batch();
@@ -456,7 +508,7 @@ TEST_CASE(multiway_external_training_generation_hash_is_deterministic)
 		auto page = storage.compact_storage().pin_bucket(binding, 1U, true);
 		storage.compact_storage().apply_delta(page, 1U, 2.0, 3.0);
 		storage.compact_storage().unpin_bucket(page);
-		storage.commit_batch(0xabcU, 1U);
+		storage.commit_batch(0xabcU, 1U, 4U);
 		return storage.current_manifest().content_hash;
 	};
 	EXPECT_EQ(run(), run());
@@ -480,6 +532,7 @@ TEST_CASE(multiway_external_batch_transaction_keeps_published_generation_after_c
 	first.merge_fingerprint = 0x111U;
 	first.catalog_generation = first.row_generation = first.page_generation = 1U;
 	first.public_state_count = first.row_count = first.page_count = 1U;
+	first.logical_value_count = 1U;
 	publish_multiway_external_generation(directory.path(), first, false);
 	MultiwayExternalBatchTransaction transaction(directory.path(), false);
 	transaction.begin_batch(2U, 0x222U);
@@ -494,6 +547,7 @@ TEST_CASE(multiway_external_batch_transaction_keeps_published_generation_after_c
 	second.merge_fingerprint = 0x222U;
 	second.catalog_generation = second.row_generation = second.page_generation = 2U;
 	second.public_state_count = second.row_count = second.page_count = 2U;
+	second.logical_value_count = 2U;
 	const auto catalog_backup = directory.path() / "CATALOG_CURRENT.previous";
 	std::filesystem::remove(catalog_backup);
 	std::filesystem::create_directory(catalog_backup);
