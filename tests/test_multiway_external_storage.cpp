@@ -399,6 +399,38 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 	}
 }
 
+TEST_CASE(multiway_external_training_storage_seeds_root_as_a_durable_generation)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto catalog_config = config(directory.path() / "catalog");
+	auto row_config = config(directory.path() / "rows");
+	auto page_config = config(directory.path() / "pages");
+	page_config.compaction_scratch_bytes = 32768U;
+	MultiwayPublicStateDescriptor root{};
+	root.id.value = 0x1234U;
+	root.canonical_history_id = 0x5678U;
+	{
+		MultiwayExternalTrainingStorage storage(directory.path(), catalog_config,
+			row_config, page_config, 16U, 65536U, 8U, false);
+		storage.initialize_root(root);
+		EXPECT_EQ(storage.current_manifest().generation, 1U);
+		EXPECT_EQ(storage.current_manifest().committed_batch_number, 1U);
+		EXPECT_EQ(storage.current_manifest().public_state_count, 1U);
+		EXPECT_EQ(storage.current_manifest().row_count, 0U);
+		EXPECT_EQ(storage.next_batch_number(), 2U);
+		storage.initialize_root(root);
+		EXPECT_EQ(storage.current_manifest().generation, 1U);
+	}
+	MultiwayExternalTrainingStorage reopened(directory.path(), catalog_config,
+		row_config, page_config, 16U, 65536U, 8U, false);
+	reopened.initialize_root(root);
+	EXPECT_EQ(reopened.next_batch_number(), 2U);
+	auto conflicting_root = root;
+	conflicting_root.canonical_history_id++;
+	EXPECT_THROW(reopened.initialize_root(conflicting_root), std::invalid_argument);
+}
+
 TEST_CASE(multiway_external_training_generation_hash_is_deterministic)
 {
 	using namespace texas::solver::multiway;

@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 3.3 - Seed external root generation
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added idempotent external root initialization as durable generation 1, reserving batch 1 for the root seed and exposing the next aggregate batch number.
+- Reopen validates catalog counts, row/page generations, page allocation, and root identity against the aggregate manifest.
+- Tested first initialization, repeat initialization, reopen, next-batch sequencing, and rejection of a conflicting root.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- `MultiwaySolverCoordinator` does not yet own or call the external training facade.
+
 ## PB-12 Phase 5.20 - Invalidate missing external row bindings
 
 **Status:** Complete

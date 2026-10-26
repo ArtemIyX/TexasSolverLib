@@ -431,6 +431,8 @@ namespace texas::solver::multiway
 			MultiwayExternalStorageConfig page_config,
 			std::uint32_t page_width, std::uint64_t row_page_cache_bytes,
 			std::size_t maximum_ancestry_depth, bool synchronous_durability);
+		void initialize_root(const MultiwayPublicStateDescriptor& root);
+		[[nodiscard]] std::uint64_t next_batch_number() const;
 		void begin_batch(std::uint64_t batch_number);
 		void append_catalog(std::uint64_t component_fingerprint,
 			const std::vector<MultiwayPackedPublicNode>& nodes,

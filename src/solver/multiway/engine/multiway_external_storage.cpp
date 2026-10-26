@@ -2449,6 +2449,53 @@ namespace texas::solver::multiway
 		batch_number_ = batch_number;
 	}
 
+	void MultiwayExternalTrainingStorage::initialize_root(
+		const MultiwayPublicStateDescriptor& root)
+	{
+		if (root.id.value == 0U)
+			throw std::invalid_argument("external training root identity is invalid");
+		const auto& manifest = transaction_.current_manifest();
+		MultiwayPublicStateDescriptor existing;
+		if (manifest.generation != 0U)
+		{
+			if (manifest.public_state_count != catalog_->record_count() ||
+				manifest.row_generation != compact_->row_generation() ||
+				manifest.page_generation != compact_->page_generation() ||
+				compact_->next_page_id() == 0U ||
+				manifest.page_count != compact_->next_page_id() - 1U ||
+				!catalog_->reconstruct(root.id, existing) ||
+				!MultiwaySolverCoordinator::public_state_candidates_compatible(existing, root))
+				throw std::invalid_argument("external training root does not match its committed catalog generation");
+			return;
+		}
+		if (catalog_->record_count() != 0U || compact_->row_generation() != 0U ||
+			compact_->page_generation() != 0U || compact_->next_page_id() != 1U)
+			throw std::invalid_argument("external training components exist without an aggregate generation");
+		constexpr std::uint64_t root_seed_fingerprint = 0x524f4f5453454544ULL;
+		begin_batch(1U);
+		try
+		{
+			append_catalog(root_seed_fingerprint,
+				{ MultiwayPublicCatalog::pack_node(root) }, { root });
+			begin_page_batch();
+			commit_batch(root_seed_fingerprint, 0U);
+		}
+		catch (...)
+		{
+			try { abort_batch(); }
+			catch (...) {}
+			throw;
+		}
+	}
+
+	std::uint64_t MultiwayExternalTrainingStorage::next_batch_number() const
+	{
+		const auto committed = transaction_.current_manifest().committed_batch_number;
+		if (committed == std::numeric_limits<std::uint64_t>::max())
+			throw std::overflow_error("external training batch number overflows");
+		return committed + 1U;
+	}
+
 	void MultiwayExternalTrainingStorage::append_catalog(std::uint64_t component_fingerprint,
 		const std::vector<MultiwayPackedPublicNode>& nodes,
 		const std::vector<MultiwayPublicStateDescriptor>& descriptors)
