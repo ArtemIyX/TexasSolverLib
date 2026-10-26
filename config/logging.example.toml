@@ -1,0 +1,42 @@
+schema_version = 1
+
+[logging]
+enabled = true
+default_level = "info"
+flush_level = "warning"
+
+[logging.console]
+enabled = true
+stream = "stdout"
+level = "info"
+color = "auto"
+pattern = "[%H:%M:%S.%e] [%^%l%$] [%n] %v"
+
+[logging.file]
+enabled = false
+level = "debug"
+path = "logs/texassolver.log"
+required = false
+append = true
+rotate_size_mb = 20
+rotate_files = 5
+pattern = "[%Y-%m-%d %H:%M:%S.%e] [%l] [%n] [%t] %v"
+
+[logging.categories]
+Core = "info"
+Config = "info"
+Workflow = "info"
+Solver = "warning"
+Storage = "debug"
+Checkpoint = "info"
+Performance = "off"
+Validation = "warning"
+
+[progress]
+enabled = true
+mode = "auto"
+refresh_ms = 100
+line_interval = 1
+show_elapsed = true
+show_eta = true
+show_rate = true

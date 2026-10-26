@@ -53,6 +53,12 @@ option(TEXASSOLVER_TRACY_SAMPLING "Enable Tracy statistical sampling" OFF)
 option(TEXASSOLVER_TRACY_CALLSTACKS "Enable Tracy call stacks" OFF)
 option(TEXASSOLVER_TRACY_LOCKS "Enable selected Tracy lock instrumentation" OFF)
 option(TEXASSOLVER_TRACY_MEMORY "Enable explicit Tracy solver allocation events" OFF)
+option(TEXASSOLVER_ENABLE_LOGGING "Build application logging support" ON)
+
+if (TEXASSOLVER_ENABLE_LOGGING)
+    find_package(spdlog CONFIG REQUIRED)
+    find_package(tomlplusplus CONFIG REQUIRED)
+endif()
 
 if (TEXASSOLVER_BUILD_RESEARCH_EXAMPLES AND NOT TEXASSOLVER_BUILD_EXAMPLES)
     message(FATAL_ERROR
@@ -179,6 +185,9 @@ set(TEXASSOLVER_COMPATIBILITY_HEADERS
     include/core/legacy_namespace_compat.hpp
 )
 set(TEXASSOLVER_STABLE_INTERNAL_HEADERS
+    include/logging/config.hpp
+    include/logging/log.hpp
+    include/logging/progress.hpp
     include/util/tracy.hpp
     include/solver/hunl/sampled/hunl_sampled_trajectory.hpp
     include/solver/multiway/resolver/multiway_resolver_policy.hpp
@@ -292,6 +301,17 @@ set(TEXASSOLVER_PLATFORM_SOURCES
     src/util/abstraction.cpp
     src/util/abstraction_stub.cpp
 )
+set(TEXASSOLVER_APPLICATION_SOURCES
+    src/logging/config.cpp
+    src/logging/log.cpp
+    src/logging/progress.cpp
+    src/logging/terminal.cpp
+)
+set(TEXASSOLVER_APPLICATION_DISABLED_SOURCES
+    src/logging/config_stub.cpp
+    src/logging/log_stub.cpp
+    src/logging/progress_stub.cpp
+)
 set(TEXASSOLVER_TEST_SUPPORT_SOURCES
     src/solver/multiway/evaluation/multiway_baseline.cpp
 )
@@ -321,7 +341,8 @@ function(texassolver_verify_source_classification)
     set(source_categories
         TEXASSOLVER_SOURCES TEXASSOLVER_PLATFORM_SOURCES TEXASSOLVER_TEST_SUPPORT_SOURCES
         TEXASSOLVER_LEGACY_RESEARCH_SOURCES TEXASSOLVER_FIXED_RESEARCH_SOURCES
-        TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES)
+        TEXASSOLVER_FLAT_MCCFR_RESEARCH_SOURCES TEXASSOLVER_APPLICATION_SOURCES
+        TEXASSOLVER_APPLICATION_DISABLED_SOURCES)
     foreach(source IN LISTS sources)
         set(matches 0)
         foreach(category IN LISTS source_categories)
@@ -428,6 +449,24 @@ unset(_texassolver_evaluator_options)
 add_library(texas STATIC)
 add_library(TexasSolver::texas ALIAS texas)
 texassolver_configure_core_target(texas)
+
+if (TEXASSOLVER_ENABLE_LOGGING)
+    add_library(texas_logging STATIC ${TEXASSOLVER_APPLICATION_SOURCES})
+    add_library(TexasSolver::logging ALIAS texas_logging)
+    texassolver_configure_internal_target(texas_logging)
+    target_link_libraries(texas_logging PUBLIC spdlog::spdlog PRIVATE tomlplusplus::tomlplusplus)
+    target_compile_definitions(texas_logging PUBLIC TEXASSOLVER_ENABLE_LOGGING=1)
+    if (MSVC)
+        target_compile_options(texas_logging PRIVATE /W4 /FS)
+    else()
+        target_compile_options(texas_logging PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+else()
+    add_library(texas_logging STATIC ${TEXASSOLVER_APPLICATION_DISABLED_SOURCES})
+    add_library(TexasSolver::logging ALIAS texas_logging)
+    texassolver_configure_internal_target(texas_logging)
+    target_compile_definitions(texas_logging PUBLIC TEXASSOLVER_ENABLE_LOGGING=0)
+endif()
 
 set_target_properties(texas PROPERTIES
     EXPORT_NAME texas
@@ -553,6 +592,7 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
                 examples/multiway_workflow_main.cpp
             )
             target_link_libraries(texas_multiway_${_multiway_workflow} PRIVATE texas)
+            target_link_libraries(texas_multiway_${_multiway_workflow} PRIVATE TexasSolver::logging)
             texassolver_configure_example_target(texas_multiway_${_multiway_workflow})
         endforeach()
 
@@ -600,6 +640,7 @@ if (TEXASSOLVER_BUILD_EXAMPLES)
                 examples/multiway_workflow_main.cpp
             )
             target_link_libraries(texas_multiway_train_tracy PRIVATE texas_tracy Tracy::TracyClient)
+            target_link_libraries(texas_multiway_train_tracy PRIVATE TexasSolver::logging)
             target_compile_definitions(texas_multiway_train_tracy PRIVATE TEXASSOLVER_TRACY_ENABLED=1)
             if (TEXASSOLVER_TRACY_MEMORY)
                 target_compile_definitions(texas_multiway_train_tracy PRIVATE TEXASSOLVER_TRACY_MEMORY=1)
@@ -654,6 +695,10 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             NOT TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH)
             continue()
         endif()
+        if ((test_name STREQUAL "test_logging_config" OR test_name STREQUAL "test_logging" OR
+             test_name STREQUAL "test_logging_progress") AND NOT TEXASSOLVER_ENABLE_LOGGING)
+            continue()
+        endif()
         if (NOT TEXASSOLVER_BUILD_HEAVY_TESTS AND
             test_name IN_LIST TEXASSOLVER_HEAVY_TESTS)
             continue()
@@ -681,6 +726,13 @@ if (TEXASSOLVER_BUILD_TESTS AND BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests
         )
         target_link_libraries(${test_name} PRIVATE texas)
+        if (test_name STREQUAL "test_logging_config" OR test_name STREQUAL "test_logging" OR
+            test_name STREQUAL "test_logging_progress")
+            target_link_libraries(${test_name} PRIVATE TexasSolver::logging)
+        endif()
+        if (test_name STREQUAL "test_logging_disabled")
+            target_compile_definitions(${test_name} PRIVATE TEXASSOLVER_ENABLE_LOGGING=0)
+        endif()
         if (test_name STREQUAL "test_hunl_flat_mccfr" OR
             test_name STREQUAL "test_dcfr_discount_contract")
             target_link_libraries(${test_name} PRIVATE texas_hunl_flat_mccfr_research)
