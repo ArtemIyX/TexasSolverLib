@@ -392,12 +392,14 @@ namespace texas::solver::multiway
 			   << ",\n  \"process_memory_limit_bytes\": " << report.process_memory_limit_bytes
 			   << ",\n  \"process_working_set_limit_bytes\": " << report.working_set_gate_config.hard_limit_bytes
 			   << ",\n  \"process_working_set_resident_allowance_bytes\": " << report.working_set_gate_config.resident_allowance_bytes
+			   << ",\n  \"process_private_commit_limit_bytes\": " << report.working_set_gate_config.private_commit_limit_bytes
 			   << ",\n  \"working_set_gate_status\": " << static_cast<unsigned>(report.working_set_gate.status)
 			   << ",\n  \"working_set_gate_abort_phase\": " << static_cast<unsigned>(report.working_set_gate.phase)
 			   << ",\n  \"working_set_gate_admission_stage\": " << static_cast<unsigned>(report.working_set_gate.admission_stage)
 			   << ",\n  \"working_set_gate_estimated_bytes\": " << report.working_set_gate.estimated_working_set_bytes
 			   << ",\n  \"working_set_gate_compared_bytes\": " << report.working_set_gate.compared_working_set_bytes
 			   << ",\n  \"working_set_gate_observed_bytes\": " << report.working_set_gate.observed_working_set_bytes
+			   << ",\n  \"working_set_gate_observed_private_commit_bytes\": " << report.working_set_gate.observed_private_commit_bytes
 			   << ",\n  \"working_set_gate_rejected_category\": \"" << report.working_set_gate.rejected_category << "\""
 			   << ",\n  \"system_memory_guard_enabled\": " << (report.system_memory_guard_config.enabled ? "true" : "false")
 			   << ",\n  \"system_memory_guard_minimum_available_bytes\": " << report.system_memory_guard_config.minimum_available_physical_bytes

@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 8.4 - Report private-commit guard state
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added the configured private-commit limit and observed peak private-commit bytes to training JSON reports.
+- Added report serialization assertions for the new fields.
+
+### Files
+
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build and focused CTest for `test_multiway_qualification_reports`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External storage backend, disk, and checkpoint telemetry are not yet integrated into workflow reports.
+
 ## PB-12 Phase 8.3 - Fail closed on private-commit telemetry
 
 **Status:** Complete

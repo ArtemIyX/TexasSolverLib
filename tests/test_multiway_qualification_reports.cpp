@@ -100,10 +100,12 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.memory_ledger.regret_page_bytes = 222U;
 	status.memory_ledger.coordinator_allocation_count = 333U;
 	status.memory_ledger.coordinator_allocation_bytes = 444U;
-	status.working_set_gate_config = { 64U, 5U };
+	status.working_set_gate_config = { 64U, 5U, 128U };
 	MultiwayProcessMemorySnapshot working_set_snapshot;
 	working_set_snapshot.current_working_set_available = true;
 	working_set_snapshot.current_working_set_bytes = 70U;
+	working_set_snapshot.private_committed_available = true;
+	working_set_snapshot.private_committed_bytes = 90U;
 	status.working_set_gate = evaluate_multiway_working_set_runtime(
 		working_set_snapshot, status.working_set_gate_config);
 	status.system_memory_guard_config = { true, 1'500U };
@@ -252,6 +254,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_EQ(report.memory_ledger.estimated_working_set_peak_bytes, 999U);
 	EXPECT_EQ(report.working_set_gate_config.hard_limit_bytes, 64U);
 	EXPECT_EQ(report.working_set_gate.resident_allowance_bytes, 5U);
+	EXPECT_EQ(report.working_set_gate_config.private_commit_limit_bytes, 128U);
+	EXPECT_EQ(report.working_set_gate.observed_private_commit_bytes, 90U);
 	EXPECT_EQ(report.working_set_gate.compared_working_set_bytes, 75U);
 	EXPECT_EQ(report.working_set_gate.status, MultiwayWorkingSetGateStatus::Rejected);
 	EXPECT_EQ(report.working_set_gate.phase, MultiwayWorkingSetGatePhase::Runtime);
@@ -314,6 +318,8 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"process_working_set_limit_bytes\": 64") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_abort_phase\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_rejected_category\": \"process working set\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"process_private_commit_limit_bytes\": 128") != std::string::npos);
+	EXPECT_TRUE(text.find("\"working_set_gate_observed_private_commit_bytes\": 90") != std::string::npos);
 	EXPECT_TRUE(text.find("\"system_memory_guard_enabled\": true") != std::string::npos);
 	EXPECT_TRUE(text.find("\"system_memory_guard_status\": 1") != std::string::npos);
 	EXPECT_TRUE(text.find("\"system_memory_maximum_used_physical_bytes\": 62500") != std::string::npos);
