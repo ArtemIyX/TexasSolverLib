@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
@@ -632,6 +633,23 @@ TEST_CASE(multiway_solver_external_backend_remains_fail_closed_until_coordinator
 	texas::MultiwayCFRConfig cfr;
 	cfr.player_count = 2;
 	EXPECT_THROW(texas::MultiwaySolveRequest(valid_root(), cfr, limits), std::invalid_argument);
+}
+
+TEST_CASE(multiway_public_catalog_packs_external_node_without_catalog_state)
+{
+	const auto state = valid_root().public_state;
+	texas::MultiwayPublicCatalog catalog(1U);
+	catalog.admit(state);
+	const auto* in_memory_node = catalog.checkpoint_node_at(0U);
+	EXPECT_TRUE(in_memory_node != nullptr);
+	if (in_memory_node == nullptr) return;
+	const auto external_node = texas::MultiwayPublicCatalog::pack_node(
+		state, in_memory_node->legal_menu_handle);
+	std::vector<std::uint8_t> expected_bytes;
+	std::vector<std::uint8_t> external_bytes;
+	texas::encode_external_public_node(*in_memory_node, expected_bytes);
+	texas::encode_external_public_node(external_node, external_bytes);
+	EXPECT_EQ(external_bytes, expected_bytes);
 }
 
 TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canonical_rows)

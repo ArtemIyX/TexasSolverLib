@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 3.2 - Pack public nodes without catalog retention
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Exposed the existing packed-node conversion as a stateless catalog utility so external admission can persist validated records without retaining them in a `MultiwayPublicCatalog`.
+- Added an encoding comparison proving the stateless conversion matches the in-memory catalog's packed node for the same root descriptor.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_public_catalog.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator has not yet switched catalog ownership to the external backend.
+
 ## PB-12 Phase 4.6 - Classify external catalog batches
 
 **Status:** Complete

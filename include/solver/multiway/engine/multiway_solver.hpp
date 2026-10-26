@@ -262,6 +262,13 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t size() const noexcept { return nodes_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayPublicCatalogMemorySnapshot memory_snapshot() const noexcept;
+		// Packs a validated descriptor without requiring an in-memory catalog.
+		// External catalogs persist their action menu separately, so handle zero
+		// is the canonical packed form for that backend.
+		[[nodiscard]] static MultiwayPackedPublicNode pack_node(
+			const MultiwayPublicStateDescriptor& state,
+			std::uint32_t menu_handle = 0U,
+			MultiwayAdmissionDiagnostics* diagnostics = nullptr) noexcept;
 
 	private:
 		friend class MultiwaySolverCoordinator;
@@ -294,10 +301,6 @@ namespace texas::solver::multiway
 			const std::vector<MultiwayPublicStateDescriptor>& states,
 			std::vector<std::uint8_t>& new_state_flags,
 			std::vector<const MultiwayPackedPublicNode*>& existing_nodes) const;
-		[[nodiscard]] MultiwayPackedPublicNode pack_node(
-			const MultiwayPublicStateDescriptor& state,
-			std::uint32_t menu_handle,
-			MultiwayAdmissionDiagnostics* diagnostics) const noexcept;
 		[[nodiscard]] const MultiwayPackedPublicNode* node(MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] bool compatible_with_descriptor(
 			const MultiwayPackedPublicNode* packed,
