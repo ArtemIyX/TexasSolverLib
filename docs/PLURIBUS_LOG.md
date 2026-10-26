@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.7 - Route single-item admission through external batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Routed single public-state and sparse-row admission through prepared external admission, preserving validation and atomic manifest publication.
+- Avoided publishing a new generation for duplicate-only admission batches.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External request construction remains fail-closed; direct admission is compile-checked but not exercised through a live external coordinator. Checkpoint/export, scaling/pruning, and runtime monitoring remain outstanding.
+
 ## PB-12 Phase 5.23 - Merge external compact pages in worker order
 
 **Status:** Complete

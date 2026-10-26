@@ -1644,6 +1644,8 @@ namespace texas::solver::multiway
 				std::chrono::duration_cast<std::chrono::nanoseconds>(
 					std::chrono::steady_clock::now() - row_preflight_started)
 					.count());
+		if (external && new_state_count == 0U && new_row_count == 0U)
+			return;
 
 		const auto catalog_commit_started = std::chrono::steady_clock::now();
 		{
@@ -1741,6 +1743,11 @@ namespace texas::solver::multiway
 	void MultiwaySolverCoordinator::admit_public_state(const MultiwayPublicStateDescriptor& state)
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admit_public_state");
+		if (external_storage_ != nullptr)
+		{
+			admit_prepared_batch({ state }, { 0U }, {});
+			return;
+		}
 		{
 			std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 			if (admission_diagnostics_ != nullptr)
@@ -1807,6 +1814,11 @@ namespace texas::solver::multiway
 	void MultiwaySolverCoordinator::admit_infoset_row(const MultiwaySparseRowShape& shape)
 	{
 		TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.admit_infoset_row");
+		if (external_storage_ != nullptr)
+		{
+			admit_prepared_batch({}, {}, { shape });
+			return;
+		}
 		{
 			std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 			if (admission_diagnostics_ != nullptr)
