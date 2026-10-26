@@ -1,6 +1,7 @@
 #include "solver/multiway/abstraction/multiway_bucket_artifact.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/resolver/multiway_resolver.hpp"
 #include "solver/multiway/continuation/multiway_rollout_leaf.hpp"
@@ -458,6 +459,55 @@ TEST_CASE(multiway_resolver_default_mode_runs_a_clean_root_search_when_configure
 	EXPECT_TRUE(result.diagnostics.search_bitwise_deterministic);
 	EXPECT_TRUE(result.diagnostics.policy_normalized);
 	EXPECT_TRUE(is_legal_output(result, fixture.root.legal_actions));
+}
+
+TEST_CASE(multiway_resolver_uses_verified_mapped_sharded_blueprint)
+{
+	ResolverFixture fixture;
+	auto artifact = verified_root_artifact(fixture);
+	const auto bucket = artifact.snapshot.bucket;
+	const auto menu_action = fixture.root.legal_actions.front();
+	texas::MultiwayBlueprintRow row;
+	row.infoset = artifact.snapshot.infoset;
+	row.bucket = bucket;
+	row.action_menu_id = menu_action.action_menu_id;
+	row.actions = { { menu_action, 65535U } };
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(
+		fixture.identity, {}, 1U, 1U);
+	const auto shard_bound = 176U + 8U + 28U + 64U * 19U;
+	const auto layout = texas::make_multiway_full_blueprint_shard_layout(plan, shard_bound);
+	const std::vector<std::uint64_t> shard_actions{ 1U };
+	const auto path = std::filesystem::temp_directory_path() /
+		("texas_solver_resolver_sharded_" + std::to_string(
+			std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
+	{
+		texas::MultiwayFullBlueprintShardedStreamWriter writer(path, plan, layout, shard_actions);
+		texas::MultiwayFullBlueprintRowView view;
+		view.infoset = row.infoset;
+		view.bucket = row.bucket;
+		view.action_menu_id = row.action_menu_id;
+		view.actions = row.actions.data();
+		view.action_count = row.actions.size();
+		writer.write_row(view);
+		(void)writer.finish();
+	}
+	auto mapped_unique = texas::MultiwayMappedShardedBlueprintProvider::load_verified(
+		path, fixture.identity);
+	auto config = search_config(fixture);
+	config.verified_blueprint = std::make_shared<texas::MultiwayVerifiedBlueprintArtifact>(artifact);
+	config.mapped_full_blueprint = std::shared_ptr<const texas::MultiwayMappedShardedBlueprintProvider>(
+		std::move(mapped_unique));
+	auto request = fixture.request();
+	add_complete_search_ranges(&request);
+	const auto result = texas::MultiwayResolver(config).resolve(request);
+	EXPECT_EQ(result.diagnostics.status, texas::MultiwayResolverStatus::Solved);
+	EXPECT_EQ(result.diagnostics.search_engine,
+		texas::MultiwayResolverEngine::RootExternalSamplingMCCFR);
+	const auto manifest = texas::MultiwayFullBlueprintArtifacts::load_sharded_manifest(path,
+		fixture.identity);
+	std::filesystem::remove_all(path.parent_path() /
+		std::filesystem::u8path(manifest.shards.front().relative_path).parent_path());
+	std::filesystem::remove(path);
 }
 
 TEST_CASE(multiway_resolver_default_mode_uses_fallback_without_release_search_configuration)

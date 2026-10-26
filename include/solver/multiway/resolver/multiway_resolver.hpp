@@ -25,6 +25,7 @@ namespace texas::solver::multiway
 
 	struct MultiwayVerifiedBlueprintArtifact;
 	class MultiwayBlueprintStore;
+	class MultiwayMappedShardedBlueprintProvider;
 	class MultiwayDecisionSession;
 
 	// Single validated owner for all bounded release-search admission and
@@ -251,6 +252,7 @@ namespace texas::solver::multiway
 		std::shared_ptr<const MultiwayVerifiedBlueprintArtifact> verified_blueprint;
 		// Immutable arbitrary-state prior used only by request-local traversal.
 		std::shared_ptr<const MultiwayBlueprintStore> full_blueprint;
+		std::shared_ptr<const MultiwayMappedShardedBlueprintProvider> mapped_full_blueprint;
 		// Optional future-bucket artifact used by continuation leaves. Its
 		// registry identity must match the request model identity.
 		std::shared_ptr<const MultiwayFutureBucketArtifact> future_bucket_artifact;

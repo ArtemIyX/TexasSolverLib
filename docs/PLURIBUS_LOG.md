@@ -55,7 +55,7 @@
 ### Limitations
 
 - The provider maps all shard views at construction and verifies them then; OS file pages remain demand-paged, but per-shard view creation is not yet lazy.
-- Workflow evaluator selection is wired. Resolver configuration and mapped-provider memory telemetry remain outstanding.
+- Workflow evaluator selection and mapped provider memory accounting are wired. The resolver records the mapped view and sparse-index bounds in search preflight.
 
 ## PB-12 Phase 7.2 - Write and verify bounded blueprint shards
 
@@ -100,6 +100,7 @@
 - Shard planning metadata is included in private scratch estimates and reports. Export reports now distinguish total output bytes, temporary overlap, manifest bytes, and shard count.
 - Compact and float64 training fixtures exercise sharded trainer publication and confirm the aggregate policy-content hash matches materialized export.
 - The workflow evaluator dispatches shard manifests to the verified mapped provider. Repeated qualification matched materialized lookup counts, policy hash, and replay fingerprint.
+- Runtime resolver configuration accepts one mapped sharded provider and rejects representation ambiguity. Request identity mismatch still takes the resolver's verified fallback path.
 
 ### Files
 
@@ -126,6 +127,9 @@
 - `src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp`
 - `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
 - `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `include/solver/multiway/resolver/multiway_resolver.hpp`
+- `src/solver/multiway/resolver/multiway_resolver.cpp`
+- `tests/test_multiway_resolver.cpp`
 - `tests/test_multiway_artifact.cpp`
 - `tests/cmake/test_multiway_workflow_boundary.cmake`
 - `examples/multiway_workflow_main.cpp`
@@ -143,11 +147,12 @@
 - Focused CTest for `test_multiway_artifact`, `test_multiway_blueprint_training`, `test_multiway_qualification_reports`, and `test_multiway_workflow_boundary`: passed (4/4).
 - `texas_multiway_train` Debug build: passed.
 - Mapped-shard qualification fixture passed with identical hits, misses, action-menu mismatches, policy hash, and replay fingerprint.
+- Focused Debug build and CTest for `test_multiway_resolver`: passed (1/1), including runtime search with a verified mapped shard provider.
 - `git diff --check`: passed.
 
 ### Limitations
 
-- Resolver configuration does not yet accept mapped sharded artifacts. Old generation directories are retained after manifest replacement. The mapped provider verifies and maps all shard views at construction rather than creating each view lazily.
+- Old generation directories are retained after manifest replacement. The mapped provider verifies and maps all shard views at construction rather than creating each view lazily.
 
 ## PB-12 Phase 7.1 - Add bounded ordered external record iteration
 

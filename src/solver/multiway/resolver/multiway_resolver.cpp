@@ -279,7 +279,9 @@ namespace texas::solver::multiway
 
 		bool has_release_search_configuration(const MultiwayResolverConfig& config) noexcept
 		{
-			return has_runtime_search_configuration(config) && config.buckets != nullptr && config.verified_blueprint != nullptr && config.full_blueprint != nullptr;
+			return has_runtime_search_configuration(config) && config.buckets != nullptr &&
+				config.verified_blueprint != nullptr &&
+				(config.full_blueprint != nullptr || config.mapped_full_blueprint != nullptr);
 		}
 
 		void set_policy_provenance(
@@ -509,8 +511,14 @@ namespace texas::solver::multiway
 		{
 			MultiwayMemoryInputs inputs;
 			inputs.blueprint_index_bytes = config.full_blueprint == nullptr
-				? 0U
+				? (config.mapped_full_blueprint == nullptr
+					? 0U : config.mapped_full_blueprint->sparse_index_bytes())
 				: config.full_blueprint->memory_bytes();
+			if (config.mapped_full_blueprint != nullptr)
+			{
+				inputs.mapped_virtual_bytes = config.mapped_full_blueprint->mapped_virtual_bytes();
+				inputs.mapped_resident_allowance_bytes = inputs.mapped_virtual_bytes;
+			}
 			inputs.range_row_count = state.stacks().size();
 			inputs.range_entry_count = request.hero_range.size();
 			for (const auto& range : request.opponent_ranges)
@@ -632,6 +640,8 @@ namespace texas::solver::multiway
 				std::optional<MultiwayBlueprintPolicyProvider> blueprint_provider;
 				if (config.full_blueprint != nullptr)
 					blueprint_provider.emplace(*config.full_blueprint);
+				else if (config.mapped_full_blueprint != nullptr)
+					blueprint_provider.emplace(*config.mapped_full_blueprint);
 				MultiwayRootExternalSamplingTraversal traversal(
 					session.round().coordinator(), session.round().coordinator().root(), abstraction, *config.buckets,
 					&effective_leaf, config.runtime_limits.max_decision_depth,
@@ -844,6 +854,10 @@ namespace texas::solver::multiway
 		}
 		if (full_blueprint != nullptr)
 			full_blueprint->identity().validate();
+		if (mapped_full_blueprint != nullptr)
+			mapped_full_blueprint->identity().validate();
+		if (full_blueprint != nullptr && mapped_full_blueprint != nullptr)
+			throw std::invalid_argument("multiway resolver accepts one full blueprint representation");
 		if (continuation_selector != nullptr && !continuation_selector->valid())
 		{
 			throw std::invalid_argument("multiway resolver continuation selector is invalid");
@@ -1024,6 +1038,12 @@ namespace texas::solver::multiway
 				return result;
 			}
 			if (config_.full_blueprint != nullptr && config_.full_blueprint->identity() != request.blueprint_identity)
+			{
+				use_fallback(MultiwayResolverStatus::ArtifactMismatch);
+				return result;
+			}
+			if (config_.mapped_full_blueprint != nullptr &&
+				config_.mapped_full_blueprint->identity() != request.blueprint_identity)
 			{
 				use_fallback(MultiwayResolverStatus::ArtifactMismatch);
 				return result;
