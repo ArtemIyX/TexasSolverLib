@@ -357,6 +357,15 @@ TEST_CASE(multiway_export_disk_gate_reserves_publication_space_and_fails_closed)
 	const auto admitted = evaluate_multiway_export_disk_gate(100U, 50U, true, 250U);
 	EXPECT_EQ(admitted.status, MultiwayExportDiskGateStatus::Admitted);
 	EXPECT_EQ(admitted.required_free_bytes, 250U);
+	const auto bounded_shard = evaluate_multiway_export_disk_gate(
+		200U, 40U, 10U, true, 250U);
+	EXPECT_EQ(bounded_shard.status, MultiwayExportDiskGateStatus::Admitted);
+	EXPECT_EQ(bounded_shard.temporary_overlap_bytes, 40U);
+	EXPECT_EQ(bounded_shard.required_free_bytes, 250U);
+	const auto bounded_shard_insufficient = evaluate_multiway_export_disk_gate(
+		200U, 40U, 10U, true, 249U);
+	EXPECT_EQ(bounded_shard_insufficient.status, MultiwayExportDiskGateStatus::Rejected);
+	EXPECT_EQ(bounded_shard_insufficient.required_free_bytes, 250U);
 	const auto insufficient = evaluate_multiway_export_disk_gate(100U, 50U, true, 249U);
 	EXPECT_EQ(insufficient.status, MultiwayExportDiskGateStatus::Rejected);
 	EXPECT_EQ(insufficient.rejection_reason, MultiwayExportDiskRejectionReason::InsufficientFreeSpace);

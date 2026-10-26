@@ -440,6 +440,7 @@ namespace texas::solver::multiway
 		MultiwayExportDiskGateStatus status = MultiwayExportDiskGateStatus::NotChecked;
 		MultiwayExportDiskRejectionReason rejection_reason = MultiwayExportDiskRejectionReason::None;
 		std::uint64_t serialized_output_bytes = 0U;
+		std::uint64_t temporary_overlap_bytes = 0U;
 		std::uint64_t reserve_bytes = 0U;
 		std::uint64_t required_free_bytes = 0U;
 		std::uint64_t available_free_bytes = 0U;
@@ -454,6 +455,10 @@ namespace texas::solver::multiway
 	[[nodiscard]] MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
 		std::uint64_t serialized_output_bytes, std::uint64_t reserve_bytes,
 		bool available_free_bytes_available, std::uint64_t available_free_bytes) noexcept;
+	[[nodiscard]] MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
+		std::uint64_t serialized_output_bytes, std::uint64_t temporary_overlap_bytes,
+		std::uint64_t reserve_bytes, bool available_free_bytes_available,
+		std::uint64_t available_free_bytes) noexcept;
 
 	struct MultiwayExportObservedMemoryDelta
 	{

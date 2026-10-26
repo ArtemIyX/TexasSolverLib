@@ -95,6 +95,7 @@
 - Added disk gate status, required/available bytes, and reserve bytes to export telemetry reports.
 - Added boundary and output-preservation tests for disk gate rejection.
 - Added a deterministic sharded-output size estimator. Generation-directory names now have fixed-width components so preflight can account exactly for shard headers, manifest entries, paths, and the manifest trailer before publication.
+- Generalized disk-gate accounting to accept a bounded temporary overlap, while keeping the existing single-file two-copy gate behavior unchanged.
 
 ### Files
 
@@ -109,6 +110,9 @@
 - `include/solver/multiway/blueprint/multiway_artifact.hpp`
 - `src/solver/multiway/blueprint/multiway_artifact.cpp`
 - `tests/test_multiway_artifact.cpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `tests/test_multiway_memory.cpp`
 - `docs/PLURIBUS_LOG.md`
 
 ### Validation
@@ -116,6 +120,7 @@
 - Focused Debug build for `test_multiway_memory`, `test_multiway_blueprint_training`, and `test_multiway_qualification_reports`: passed.
 - Focused CTest covering those targets and `test_multiway_workflow_boundary`: passed (4/4).
 - Focused Debug build and CTest for `test_multiway_artifact`: passed (1/1); estimator bytes matched the generated two-shard output.
+- Focused Debug build and CTest for `test_multiway_memory`: passed (1/1), including bounded temporary-overlap admission/rejection boundaries.
 - `git diff --check`: passed.
 
 ### Limitations

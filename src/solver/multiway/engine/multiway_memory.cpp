@@ -895,8 +895,19 @@ namespace texas::solver::multiway
 		std::uint64_t serialized_output_bytes, std::uint64_t reserve_bytes,
 		bool available_free_bytes_available, std::uint64_t available_free_bytes) noexcept
 	{
+		return evaluate_multiway_export_disk_gate(serialized_output_bytes,
+			serialized_output_bytes, reserve_bytes, available_free_bytes_available,
+			available_free_bytes);
+	}
+
+	MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
+		std::uint64_t serialized_output_bytes, std::uint64_t temporary_overlap_bytes,
+		std::uint64_t reserve_bytes, bool available_free_bytes_available,
+		std::uint64_t available_free_bytes) noexcept
+	{
 		MultiwayExportDiskGateResult result;
 		result.serialized_output_bytes = serialized_output_bytes;
+		result.temporary_overlap_bytes = temporary_overlap_bytes;
 		result.reserve_bytes = reserve_bytes;
 		result.available_free_bytes = available_free_bytes;
 		if (!available_free_bytes_available)
@@ -906,7 +917,7 @@ namespace texas::solver::multiway
 			return result;
 		}
 		const auto publication_bytes = multiway_memory_saturating_add(
-			serialized_output_bytes, serialized_output_bytes);
+			serialized_output_bytes, temporary_overlap_bytes);
 		result.required_free_bytes = multiway_memory_saturating_add(
 			publication_bytes, reserve_bytes);
 		if (publication_bytes == std::numeric_limits<std::uint64_t>::max() ||
