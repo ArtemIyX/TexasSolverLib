@@ -115,6 +115,7 @@
 
 - Added fixed-width checksummed compact page records with separate `int32` regret and `uint64` strategy-mass arrays, fixed action-major page stride, identity validation, and before-image rollback.
 - Added a preallocated bounded typed page cache. Dirty capacity is capped by cache, WAL, and segment limits; pages must be pinned before mutation and cannot be evicted while pinned or dirty.
+- Added page-cache hit, miss, and eviction counters and verified the one-page cache remains within its configured byte bound.
 - Persisted the row page-ID allocator in the same sorted row-index store generation, restoring it after restart to avoid page-ID reuse.
 
 ### Files

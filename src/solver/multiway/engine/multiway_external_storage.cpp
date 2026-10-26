@@ -1176,6 +1176,7 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
 		if (auto* cached = find(page_id))
 		{
+			++page_cache_hits_;
 			if (cached->state_id != state.value || cached->seat != seat || cached->page_index != page_index ||
 				cached->bucket_count != bucket_count || cached->action_count != action_count)
 				throw std::invalid_argument("external compact page identity disagrees with row metadata");
@@ -1185,6 +1186,7 @@ namespace texas::solver::multiway
 			return { page_id, cached->regrets.data(), cached->strategy_masses.data(), bucket_count,
 				action_count, page_width_ };
 		}
+		++page_cache_misses_;
 		Page* selected = nullptr;
 		for (std::size_t offset = 0U; offset < pages_.size(); ++offset)
 		{
@@ -1198,6 +1200,7 @@ namespace texas::solver::multiway
 			}
 		}
 		if (selected == nullptr) throw std::length_error("external compact page cache has no clean unpinned page");
+		if (selected->valid) ++page_cache_evictions_;
 		selected->valid = false;
 		const auto found = store_->lookup(page_id, lookup_scratch_);
 		if (found)
@@ -1310,12 +1313,21 @@ namespace texas::solver::multiway
 	std::size_t MultiwayExternalCompactPages::memory_bytes() const noexcept
 	{
 		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) +
-			lookup_scratch_.capacity() + encode_scratch_.capacity();
+			lookup_scratch_.capacity() + encode_scratch_.capacity() + pages_.capacity() * sizeof(Page);
 		for (const auto& page : pages_)
-			result += sizeof(Page) + page.regrets.capacity() * sizeof(std::int32_t) +
+			result += page.regrets.capacity() * sizeof(std::int32_t) +
 				page.strategy_masses.capacity() * sizeof(std::uint64_t) +
 				page.before_regrets.capacity() * sizeof(std::int32_t) +
 				page.before_strategy_masses.capacity() * sizeof(std::uint64_t);
+		return result;
+	}
+
+	MultiwayExternalStorageStats MultiwayExternalCompactPages::stats() const
+	{
+		auto result = store_->stats();
+		result.page_cache_hits = page_cache_hits_;
+		result.page_cache_misses = page_cache_misses_;
+		result.page_cache_evictions = page_cache_evictions_;
 		return result;
 	}
 

@@ -49,6 +49,9 @@ namespace texas::solver::multiway
 		std::uint64_t disk_reads = 0U;
 		std::uint64_t cache_evictions = 0U;
 		std::uint64_t read_nanoseconds = 0U;
+		std::uint64_t page_cache_hits = 0U;
+		std::uint64_t page_cache_misses = 0U;
+		std::uint64_t page_cache_evictions = 0U;
 	};
 
 	// Fixed-width, append-only sorted runs. Callers serialize typed public-state,
@@ -191,7 +194,7 @@ namespace texas::solver::multiway
 		void abort_batch() noexcept;
 		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
-		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_->stats(); }
+		[[nodiscard]] MultiwayExternalStorageStats stats() const;
 	private:
 		struct Page
 		{
@@ -222,6 +225,9 @@ namespace texas::solver::multiway
 		std::size_t next_victim_ = 0U;
 		std::uint64_t batch_number_ = 0U;
 		std::uint64_t merge_fingerprint_ = 0U;
+		std::uint64_t page_cache_hits_ = 0U;
+		std::uint64_t page_cache_misses_ = 0U;
+		std::uint64_t page_cache_evictions_ = 0U;
 		bool batch_open_ = false;
 	};
 

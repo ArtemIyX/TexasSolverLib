@@ -232,6 +232,9 @@ TEST_CASE(multiway_external_compact_pages_commit_reopen_and_rollback)
 		view = pages.pin(1U, { 42U }, 3, 0U, 16U, 4U);
 		EXPECT_EQ(view.regrets[2U * view.action_stride + 7U], -12345);
 		pages.unpin(1U);
+		const auto stats = pages.stats();
+		EXPECT_EQ(stats.page_cache_misses, 1U);
+		EXPECT_EQ(stats.page_cache_hits, 2U);
 	}
 }
 
