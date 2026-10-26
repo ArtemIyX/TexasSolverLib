@@ -3,7 +3,7 @@ param(
     [ValidateRange(1, 16)]
     [int]$Workers = 8,
 
-    [ValidateRange(1, 100)]
+    [ValidateRange(1, 500)]
     [int]$Batches = 1,
 
     [ValidateRange(1, [int]::MaxValue)]
@@ -130,6 +130,7 @@ foreach ($requiredPath in @($executable, $sourceConfig, $bucketArtifact)) {
 $binaryFile = Get-Item -LiteralPath $executable
 $bucketFile = Get-Item -LiteralPath $bucketArtifact
 $binarySha256 = Get-FileSha256 -Path $executable
+$bucketSha256 = Get-FileSha256 -Path $bucketArtifact
 $embeddedProvenanceText = (& $executable --provenance 2>&1 | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($embeddedProvenanceText)) {
     throw "Executable provenance query failed: $executable"
@@ -154,6 +155,7 @@ $artifactIdentity = [ordered]@{
     bytes = [int64]$bucketFile.Length
     last_write_time_utc = $bucketFile.LastWriteTimeUtc.ToString('o')
     source_config_sha256 = $configSha256
+    bucket_sha256 = $bucketSha256
 }
 $buildIdentity = [ordered]@{
     git_commit = $gitCommit
@@ -189,7 +191,25 @@ Write-Output "[ram1000] config passed: schema_version=$($configValues['schema_ve
 Write-Output "[ram1000] config passed: seed=$($configValues['deterministic_seed']) configured_workers=$configWorkerCount source_trajectories_per_batch=$($configValues['trajectories_per_batch']) target_trajectories=$($configValues['target_trajectories'])"
 Write-Output "[ram1000] config passed: maximum_public_states=$($configValues['maximum_public_states']) maximum_sparse_rows=$($configValues['maximum_sparse_rows']) maximum_sparse_values=$($configValues['maximum_sparse_values'])"
 $expectedTrajectories = $Batches * $TrajectoriesPerBatch
+if (-not $configValues.ContainsKey('disk_space_requirement_bytes')) {
+    throw 'Configuration is missing disk_space_requirement_bytes'
+}
+$requiredFreeDiskBytes = [int64]$configValues['disk_space_requirement_bytes']
+$runStartedAtUtc = [DateTime]::UtcNow.ToString('o')
+function Get-AvailableRunDiskBytes {
+    $root = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($RunDirectory))
+    $drive = [System.IO.DriveInfo]::new($root)
+    if (-not $drive.IsReady) {
+        throw "Run output drive is unavailable: $root"
+    }
+    return [int64]$drive.AvailableFreeSpace
+}
+$initialAvailableDiskBytes = Get-AvailableRunDiskBytes
+if ($initialAvailableDiskBytes -lt $requiredFreeDiskBytes) {
+    throw "Insufficient free disk before training: available=$initialAvailableDiskBytes required=$requiredFreeDiskBytes"
+}
 Write-Output "[ram1000] run passed: batches=$Batches total_trajectories=$expectedTrajectories worker_override=$Workers pin_workers=$($PinWorkers.IsPresent)"
+Write-Output "[ram1000] disk preflight passed: available_bytes=$initialAvailableDiskBytes required_bytes=$requiredFreeDiskBytes"
 
 New-Item -ItemType Directory -Force -Path $RunDirectory | Out-Null
 $config = Join-Path $RunDirectory 'pilot_batch.cfg'
@@ -212,6 +232,7 @@ $updatedConfigText = Set-RunConfigValue $configText 'trajectories_per_batch' $Tr
 $updatedConfigText = Set-RunConfigValue $updatedConfigText 'dynamic_chunk_size' $DynamicChunkSize
 $updatedConfigText = Set-RunConfigValue $updatedConfigText 'placement_policy' $PlacementPolicy
 Set-Content -LiteralPath $config -Value $updatedConfigText -NoNewline
+$effectiveConfigSha256 = Get-FileSha256 -Path $config
 $checkpointDirectory = Join-Path $RunDirectory 'checkpoints'
 if ($effectiveCheckpointMode -eq 'enabled') {
     New-Item -ItemType Directory -Force -Path $checkpointDirectory | Out-Null
@@ -261,6 +282,10 @@ $systemMemoryReserveBytes = [int64]1536 * 1024 * 1024
 $systemMemoryGuardTriggered = $false
 $systemMemoryGuardSnapshot = $null
 $systemMemoryGuardReason = 'used_physical_memory_exceeded_total_minus_reserve'
+$diskGuardTriggered = $false
+$diskGuardSnapshot = $null
+$processTelemetryGuardTriggered = $false
+$processTelemetryGuardReason = 'process_working_set_telemetry_unavailable'
 $lastSystemMemoryCheck = Get-Date
 $lastProgressAt = Get-Date
 while (-not $process.HasExited) {
@@ -269,6 +294,22 @@ while (-not $process.HasExited) {
         $peakWorkingSetBytes = [Math]::Max($peakWorkingSetBytes, [int64]$sample.WorkingSet64)
         $now = Get-Date
         if (($now - $lastSystemMemoryCheck).TotalSeconds -ge 1) {
+            try {
+                $availableDiskBytes = Get-AvailableRunDiskBytes
+            } catch {
+                $availableDiskBytes = -1
+            }
+            if ($availableDiskBytes -lt $requiredFreeDiskBytes) {
+                $diskGuardTriggered = $true
+                $diskGuardSnapshot = [pscustomobject]@{
+                    status = if ($availableDiskBytes -lt 0) { 'unavailable' } else { 'rejected' }
+                    available_bytes = $availableDiskBytes
+                    required_bytes = $requiredFreeDiskBytes
+                }
+                Write-Output "[ram1000] disk guard rejected run: available_bytes=$availableDiskBytes required_bytes=$requiredFreeDiskBytes"
+                Stop-Process -Id $process.Id -Force
+                break
+            }
             try {
                 $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
             } catch {
@@ -328,15 +369,26 @@ while (-not $process.HasExited) {
             $lastProgressAt = $now
         }
     } catch {
+        if (-not $process.HasExited) {
+            $processTelemetryGuardTriggered = $true
+            Write-Output '[ram1000] process working-set telemetry unavailable; stopping trainer'
+            Stop-Process -Id $process.Id -Force
+            break
+        }
     }
     Start-Sleep -Milliseconds 200
 }
 
 $process.WaitForExit()
 $process.Refresh()
+$runEndedAtUtc = [DateTime]::UtcNow.ToString('o')
 $binarySha256After = Get-FileSha256 -Path $executable
 if ($binarySha256After -ne $binarySha256) {
     throw "Executable SHA-256 changed during run: before=$binarySha256 after=$binarySha256After"
+}
+$bucketSha256After = Get-FileSha256 -Path $bucketArtifact
+if ($bucketSha256After -ne $bucketSha256) {
+    throw "Bucket artifact SHA-256 changed during run: before=$bucketSha256 after=$bucketSha256After"
 }
 if ($systemMemoryGuardTriggered) {
     $guardEvidencePath = Join-Path $RunDirectory 'system_memory_guard.json'
@@ -352,6 +404,36 @@ if ($systemMemoryGuardTriggered) {
     } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $guardEvidencePath -Encoding UTF8
     Write-Output "[ram1000] system memory guard evidence=$guardEvidencePath"
     throw "Multiway system memory guard stopped the process: $systemMemoryGuardReason"
+}
+if ($diskGuardTriggered) {
+    $guardEvidencePath = Join-Path $RunDirectory 'disk_space_guard.json'
+    [ordered]@{
+        schema_version = 1
+        reason = 'free_disk_below_configured_requirement_or_telemetry_unavailable'
+        workload = [ordered]@{
+            workers = $Workers
+            batches = $Batches
+            trajectories_per_batch = $TrajectoriesPerBatch
+        }
+        snapshot = $diskGuardSnapshot
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $guardEvidencePath -Encoding UTF8
+    Write-Output "[ram1000] disk guard evidence=$guardEvidencePath"
+    throw 'Multiway disk-space guard stopped the process'
+}
+if ($processTelemetryGuardTriggered) {
+    $guardEvidencePath = Join-Path $RunDirectory 'process_telemetry_guard.json'
+    [ordered]@{
+        schema_version = 1
+        reason = $processTelemetryGuardReason
+        workload = [ordered]@{
+            workers = $Workers
+            batches = $Batches
+            trajectories_per_batch = $TrajectoriesPerBatch
+        }
+        peak_working_set_bytes = $peakWorkingSetBytes
+    } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $guardEvidencePath -Encoding UTF8
+    Write-Output "[ram1000] process telemetry guard evidence=$guardEvidencePath"
+    throw "Multiway process telemetry guard stopped the process: $processTelemetryGuardReason"
 }
 try {
     $processCpuNanoseconds = [int64]$process.TotalProcessorTime.Ticks * 100
@@ -497,6 +579,12 @@ $metricsPath = Join-Path $RunDirectory 'run_metrics.json'
     binary_source_commit = [string]$embeddedProvenance.binary_source_commit
     binary_dirty_state = [string]$embeddedProvenance.binary_dirty_state
     binary_sha256 = $binarySha256
+    bucket_sha256 = $bucketSha256
+    source_config_sha256 = $configSha256
+    effective_config_sha256 = $effectiveConfigSha256
+    started_at_utc = $runStartedAtUtc
+    ended_at_utc = $runEndedAtUtc
+    elapsed_seconds = ([DateTime]::Parse($runEndedAtUtc).ToUniversalTime() - [DateTime]::Parse($runStartedAtUtc).ToUniversalTime()).TotalSeconds
     binary_bytes = [int64]$binaryFile.Length
     binary_path = $executable
     binary_identity = [ordered]@{
@@ -528,6 +616,11 @@ $runManifestPath = Join-Path $RunDirectory 'run_manifest.json'
     binary_provenance = $embeddedProvenance
     binary = $buildIdentity
     artifact = $artifactIdentity
+    bucket_sha256 = $bucketSha256
+    source_config_sha256 = $configSha256
+    effective_config_sha256 = $effectiveConfigSha256
+    started_at_utc = $runStartedAtUtc
+    ended_at_utc = $runEndedAtUtc
     source_config_path = $sourceConfig
     workload = [ordered]@{
         workers = $Workers
