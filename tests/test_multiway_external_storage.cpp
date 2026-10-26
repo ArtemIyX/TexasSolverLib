@@ -257,6 +257,57 @@ TEST_CASE(multiway_external_batch_transaction_rolls_back_when_global_publish_fai
 	}
 }
 
+TEST_CASE(multiway_external_batch_transaction_keeps_published_generation_after_cleanup_failure)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const auto catalog_path = directory.path() / "catalog";
+	const auto rows_path = directory.path() / "rows";
+	const auto pages_path = directory.path() / "pages";
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(1U, 0x111U, { { 1U, { 1U, 2U, 3U, 4U } } });
+	}
+	MultiwayExternalGenerationManifest first{};
+	first.generation = 1U;
+	first.committed_batch_number = 1U;
+	first.merge_fingerprint = 0x111U;
+	first.catalog_generation = first.row_generation = first.page_generation = 1U;
+	first.public_state_count = first.row_count = first.page_count = 1U;
+	publish_multiway_external_generation(directory.path(), first, false);
+	MultiwayExternalBatchTransaction transaction(directory.path(), false);
+	transaction.begin_batch(2U, 0x222U);
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(2U, 0x222U, { { 2U, { 5U, 6U, 7U, 8U } } });
+	}
+	auto second = first;
+	second.generation = 2U;
+	second.committed_batch_number = 2U;
+	second.merge_fingerprint = 0x222U;
+	second.catalog_generation = second.row_generation = second.page_generation = 2U;
+	second.public_state_count = second.row_count = second.page_count = 2U;
+	const auto catalog_backup = directory.path() / "CATALOG_CURRENT.previous";
+	std::filesystem::remove(catalog_backup);
+	std::filesystem::create_directory(catalog_backup);
+	std::ofstream(catalog_backup / "held", std::ios::binary).put('x');
+	bool cleanup_failed = false;
+	try { transaction.commit_batch(second); }
+	catch (const std::runtime_error&) { cleanup_failed = true; }
+	EXPECT_TRUE(cleanup_failed);
+	MultiwayExternalBatchTransaction reopened(directory.path(), false);
+	EXPECT_EQ(reopened.current_manifest().committed_batch_number, 2U);
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		std::vector<std::uint8_t> payload;
+		EXPECT_TRUE(store.lookup(2U, payload));
+		EXPECT_EQ(store.generation(), 2U);
+	}
+}
+
 TEST_CASE(multiway_external_public_node_codec_is_packed_and_deterministic)
 {
 	using namespace texas::solver::multiway;

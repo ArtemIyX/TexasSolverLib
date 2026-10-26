@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.6 - Post-commit cleanup failure coverage
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added failure injection after the aggregate generation is published but before transaction backup cleanup completes.
+- Verified reopening selects the fully published generation and all three child stores expose the committed records.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator batch integration is still outstanding; this test covers transaction recovery in isolation.
+
 ## PB-12 Phase 5.5 - External cell differential fixture
 
 **Status:** Complete
