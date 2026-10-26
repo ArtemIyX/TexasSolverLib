@@ -14,6 +14,7 @@ namespace texas::solver::multiway
 	struct MultiwayPublicStateId;
 	struct MultiwayPublicStateDescriptor;
 	struct MultiwayActionDescriptor;
+	struct MultiwayInfosetId;
 	struct MultiwaySparseRowShape;
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA = 1U;
@@ -220,6 +221,18 @@ namespace texas::solver::multiway
 		std::uint8_t action_count = 0U;
 	};
 
+	class MultiwayExternalRowBinding
+	{
+	public:
+		MultiwayExternalRowBinding() = default;
+	private:
+		friend class MultiwayExternalRowIndex;
+		friend class MultiwayExternalCompactStorage;
+		std::uint64_t state_id_ = 0U;
+		std::int32_t seat_ = -1;
+		MultiwayExternalRowMetadata row_{};
+	};
+
 	// Stores six seat rows in one fixed-width state record so the external index
 	// remains keyed by the full 64-bit public-state ID without truncation.
 	class MultiwayExternalRowIndex
@@ -232,6 +245,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool lookup(MultiwayPublicStateId state, std::int32_t seat,
 			MultiwayExternalRowMetadata& output) const;
 		[[nodiscard]] bool locate_bucket(MultiwayPublicStateId state, std::int32_t seat,
+			std::uint32_t bucket, MultiwayExternalRowPage& output) const;
+		[[nodiscard]] bool locate_bucket(const MultiwayExternalRowBinding& row,
 			std::uint32_t bucket, MultiwayExternalRowPage& output) const;
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
@@ -266,8 +281,8 @@ namespace texas::solver::multiway
 		void unpin(std::uint64_t page_id);
 		void mark_dirty(std::uint64_t page_id);
 		void commit_batch();
-		void abort_batch() noexcept;
-		void compact(bool retain_input_runs = false) { store_->compact(retain_input_runs); }
+		void abort_batch();
+		void compact(bool retain_input_runs = false);
 		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
@@ -305,6 +320,40 @@ namespace texas::solver::multiway
 		std::uint64_t page_cache_misses_ = 0U;
 		std::uint64_t page_cache_evictions_ = 0U;
 		bool batch_open_ = false;
+		mutable std::mutex mutex_;
+	};
+
+	// Fixed-point row/page adapter. The caller owns the aggregate transaction and
+	// must recreate this object after rollback so its component views are current.
+	class MultiwayExternalCompactStorage
+	{
+	public:
+		MultiwayExternalCompactStorage(MultiwayExternalStorageConfig row_config,
+			MultiwayExternalStorageConfig page_config, std::uint32_t page_width,
+			std::uint64_t page_cache_bytes);
+		void admit_rows(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+			const std::vector<MultiwaySparseRowShape>& rows);
+		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
+		[[nodiscard]] bool lookup_row(MultiwayInfosetId infoset,
+			MultiwayExternalRowBinding& output) const;
+		void apply_delta(const MultiwayExternalRowBinding& row, std::uint32_t bucket,
+			std::uint8_t action, double regret, double strategy_sum);
+		void regret_matched_strategy_into(const MultiwayExternalRowBinding& row,
+			std::uint32_t bucket, double* output, std::size_t output_size) const;
+		void average_strategy_into(const MultiwayExternalRowBinding& row,
+			std::uint32_t bucket, double* output, std::size_t output_size) const;
+		[[nodiscard]] bool action_below_regret(const MultiwayExternalRowBinding& row,
+			std::uint32_t bucket, std::uint8_t action, double threshold) const;
+		void commit_batch();
+		void abort_batch();
+		void compact(bool retain_input_runs = false);
+		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
+		[[nodiscard]] MultiwayExternalStorageStats stats() const { return pages_.stats(); }
+	private:
+		MultiwayExternalRowIndex rows_;
+		mutable MultiwayExternalCompactPages pages_;
+		std::uint64_t next_page_id_ = 1U;
+		std::uint32_t page_width_ = 0U;
 	};
 
 	// Coordinator-owned bounded page cache. Pinned page views contain raw cell

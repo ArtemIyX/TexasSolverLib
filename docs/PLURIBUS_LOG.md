@@ -1,5 +1,33 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.8 - Add external compact row adapter
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added deterministic sorted row admission and an external fixed-point row/page adapter sharing the reference compact arithmetic kernel.
+- Added differential tests for regret matching, average strategy, saturation, large strategy masses, page boundaries, and reopen behavior.
+- `ExternalCompactInt32` remains unavailable to solver execution. Coordinator batching, page pinning outside delta loops, and aggregate generation integration remain required.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, workflow config, and memory targets: passed.
+- Focused CTest for those targets: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This adapter is a storage primitive and is not integrated with coordinator merge/checkpoint/export paths; no large training job was run.
+
 ## PB-12 Phase 5.7 - Resolve external row buckets to pages
 
 **Status:** Complete

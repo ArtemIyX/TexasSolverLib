@@ -47,6 +47,9 @@ namespace texas::solver::multiway
 			std::uint8_t action, double regret, double strategy_sum);
 		void apply_delta(const MultiwaySparseRowMetadata& row, std::uint32_t bucket,
 			std::uint8_t action, double regret, double strategy_sum);
+		// Shared scalar kernel for both in-memory and external compact pages.
+		static void apply_delta_to_cells(std::int32_t& regret_cell,
+			std::uint64_t& strategy_mass_cell, double regret, double strategy_sum);
 		void scale_regrets(double factor);
 		[[nodiscard]] std::size_t scale_and_prune_regrets(
 			double factor, double threshold, double regret_floor) noexcept;

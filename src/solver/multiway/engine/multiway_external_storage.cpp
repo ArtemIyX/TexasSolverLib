@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 
 #include "core/atomic_publish.hpp"
@@ -1593,21 +1594,34 @@ namespace texas::solver::multiway
 		std::uint64_t& next_page_id)
 	{
 		if (rows.empty()) return;
+		constexpr std::uint64_t row_payload_bytes = 8U + 6U * 24U;
+		const auto wal_limit = store_.maximum_batch_bytes();
+		if (wal_limit < 48U + 2U * (8U + row_payload_bytes) ||
+			rows.size() > (wal_limit - 48U) / (8U + row_payload_bytes) - 1U)
+			throw std::length_error("external row admission exceeds its bounded WAL batch");
 		constexpr std::uint32_t row_magic = 0x3152574dU;
 		constexpr std::uint32_t row_schema = 1U;
+		std::vector<std::size_t> order(rows.size());
+		for (std::size_t index = 0U; index < order.size(); ++index) order[index] = index;
+		std::sort(order.begin(), order.end(), [&rows](std::size_t left, std::size_t right) {
+			const auto& a = rows[left].infoset;
+			const auto& b = rows[right].infoset;
+			return a.public_state.value != b.public_state.value
+				? a.public_state.value < b.public_state.value
+				: a.seat < b.seat;
+		});
 		std::vector<MultiwayExternalRecord> records;
 		records.reserve(rows.size() + 1U);
 		if (next_page_id != next_page_id_)
 			throw std::invalid_argument("external row page-id allocator does not match the durable generation");
 		auto candidate_next_page_id = next_page_id;
 		std::size_t cursor = 0U;
-		while (cursor < rows.size())
+		while (cursor < order.size())
 		{
-			const auto state_id = rows[cursor].infoset.public_state.value;
+			const auto& first_row = rows[order[cursor]];
+			const auto state_id = first_row.infoset.public_state.value;
 			if (state_id == 0U) throw std::invalid_argument("external row state id is invalid");
 			std::vector<std::uint8_t> payload(8U + 6U * 24U, 0U);
-			if (cursor != 0U && rows[cursor - 1U].infoset.public_state.value >= state_id)
-				throw std::invalid_argument("external rows must be sorted by state then seat");
 			if (!store_.lookup(state_id, payload))
 		{
 				for (unsigned shift = 0U; shift < 32U; shift += 8U)
@@ -1619,9 +1633,9 @@ namespace texas::solver::multiway
 			else if (read_u32(payload.data()) != row_magic || read_u32(payload.data() + 4U) != row_schema)
 				throw std::invalid_argument("external row metadata record schema is invalid");
 			std::int32_t prior_seat = -1;
-			while (cursor < rows.size() && rows[cursor].infoset.public_state.value == state_id)
+			while (cursor < order.size() && rows[order[cursor]].infoset.public_state.value == state_id)
 			{
-				const auto& row = rows[cursor];
+				const auto& row = rows[order[cursor]];
 				const auto seat = row.infoset.seat;
 				if (seat < 0 || seat >= 6 || seat <= prior_seat || row.bucket_count == 0U ||
 					row.action_count == 0U || row.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
@@ -1682,14 +1696,33 @@ namespace texas::solver::multiway
 		output.page_count = read_u32(payload.data() + slot + 16U);
 		if (output.action_count == 0U || output.bucket_count == 0U || output.first_page_id == 0U || output.page_count == 0U)
 			throw std::invalid_argument("external row metadata contains an invalid shape");
+		const auto expected_pages = (static_cast<std::uint64_t>(output.bucket_count) + page_width_ - 1U) / page_width_;
+		if (output.page_count != expected_pages ||
+			output.page_count > std::numeric_limits<std::uint64_t>::max() - output.first_page_id)
+			throw std::invalid_argument("external row metadata page range is inconsistent");
 		return true;
 	}
 
 	bool MultiwayExternalRowIndex::locate_bucket(MultiwayPublicStateId state,
 		std::int32_t seat, std::uint32_t bucket, MultiwayExternalRowPage& output) const
 	{
-		MultiwayExternalRowMetadata row{};
-		if (!lookup(state, seat, row) || bucket >= row.bucket_count) return false;
+		MultiwayExternalRowMetadata metadata{};
+		if (!lookup(state, seat, metadata)) return false;
+		MultiwayExternalRowBinding binding;
+		binding.state_id_ = state.value;
+		binding.seat_ = seat;
+		binding.row_ = metadata;
+		return locate_bucket(binding, bucket, output);
+	}
+
+	bool MultiwayExternalRowIndex::locate_bucket(const MultiwayExternalRowBinding& binding,
+		std::uint32_t bucket, MultiwayExternalRowPage& output) const
+	{
+		const auto& row = binding.row_;
+		if (binding.state_id_ == 0U || binding.seat_ < 0 || binding.seat_ >= 6 ||
+			row.bucket_count == 0U || row.action_count == 0U || row.first_page_id == 0U ||
+			row.page_count == 0U || bucket >= row.bucket_count)
+			return false;
 		const auto page_index = bucket / page_width_;
 		if (page_index >= row.page_count || page_index > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
 			throw std::invalid_argument("external row metadata does not cover its bucket range");
@@ -1816,6 +1849,7 @@ namespace texas::solver::multiway
 	void MultiwayExternalCompactPages::begin_batch(std::uint64_t batch_number,
 		std::uint64_t merge_fingerprint)
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
 		if (batch_open_ || batch_number == 0U)
 			throw std::logic_error("external compact page batch state is invalid");
 		for (const auto& page : pages_)
@@ -1830,6 +1864,7 @@ namespace texas::solver::multiway
 		std::uint64_t page_id, MultiwayPublicStateId state, std::int32_t seat,
 		std::uint32_t page_index, std::uint32_t bucket_count, std::uint8_t action_count)
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
 		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U ||
 			bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
@@ -1890,6 +1925,7 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalCompactPages::unpin(std::uint64_t page_id)
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
 		auto* page = find(page_id);
 		if (page == nullptr || page->pin_count == 0U)
 			throw std::invalid_argument("external compact page is not pinned");
@@ -1898,6 +1934,7 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalCompactPages::mark_dirty(std::uint64_t page_id)
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
 		if (!batch_open_) throw std::logic_error("external compact page mutation requires an open batch");
 		auto* page = find(page_id);
 		if (page == nullptr || page->pin_count == 0U)
@@ -1912,6 +1949,7 @@ namespace texas::solver::multiway
 
 	void MultiwayExternalCompactPages::commit_batch()
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
 		if (!batch_open_) throw std::logic_error("external compact page batch is not open");
 		std::vector<Page*> dirty;
 		dirty.reserve(pages_.size());
@@ -1953,8 +1991,9 @@ namespace texas::solver::multiway
 		batch_open_ = false;
 	}
 
-	void MultiwayExternalCompactPages::abort_batch() noexcept
+	void MultiwayExternalCompactPages::abort_batch()
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
 		if (!batch_open_) return;
 		for (auto& page : pages_)
 		{
@@ -1982,11 +2021,164 @@ namespace texas::solver::multiway
 
 	MultiwayExternalStorageStats MultiwayExternalCompactPages::stats() const
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
 		auto result = store_->stats();
 		result.page_cache_hits = page_cache_hits_;
 		result.page_cache_misses = page_cache_misses_;
 		result.page_cache_evictions = page_cache_evictions_;
 		return result;
+	}
+
+	void MultiwayExternalCompactPages::compact(bool retain_input_runs)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (const auto& page : pages_)
+			if (page.pin_count != 0U || page.dirty)
+				throw std::logic_error("external compact page compaction requires a clean cache");
+		store_->compact(retain_input_runs);
+	}
+
+	MultiwayExternalCompactStorage::MultiwayExternalCompactStorage(
+		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
+		std::uint32_t page_width, std::uint64_t page_cache_bytes)
+		: rows_(std::move(row_config), page_width),
+		  pages_(std::move(page_config), page_width, page_cache_bytes),
+		  next_page_id_(rows_.next_page_id()), page_width_(page_width)
+	{
+		if (page_width_ == 0U) throw std::invalid_argument("external compact storage page width is zero");
+	}
+
+	void MultiwayExternalCompactStorage::admit_rows(std::uint64_t batch_number,
+		std::uint64_t merge_fingerprint, const std::vector<MultiwaySparseRowShape>& rows)
+	{
+		rows_.append_batch(batch_number, merge_fingerprint, rows, next_page_id_);
+	}
+
+	void MultiwayExternalCompactStorage::begin_batch(std::uint64_t batch_number,
+		std::uint64_t merge_fingerprint)
+	{
+		pages_.begin_batch(batch_number, merge_fingerprint);
+	}
+
+	bool MultiwayExternalCompactStorage::lookup_row(MultiwayInfosetId infoset,
+		MultiwayExternalRowBinding& output) const
+	{
+		MultiwayExternalRowMetadata row{};
+		if (!rows_.lookup(infoset.public_state, infoset.seat, row)) return false;
+		output.state_id_ = infoset.public_state.value;
+		output.seat_ = infoset.seat;
+		output.row_ = row;
+		return true;
+	}
+
+	void MultiwayExternalCompactStorage::apply_delta(const MultiwayExternalRowBinding& binding,
+		std::uint32_t bucket, std::uint8_t action, double regret, double strategy_sum)
+	{
+		if (!std::isfinite(regret) || !std::isfinite(strategy_sum) || strategy_sum < 0.0)
+			throw std::invalid_argument("invalid external compact storage delta");
+		MultiwayExternalRowPage row_page{};
+		if (!rows_.locate_bucket(binding, bucket, row_page) ||
+			action >= row_page.action_count)
+			throw std::invalid_argument("external compact delta does not match an admitted row cell");
+		auto page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
+			row_page.page_index, row_page.bucket_count, row_page.action_count);
+		try
+		{
+			pages_.mark_dirty(row_page.page_id);
+			const auto cell = static_cast<std::size_t>(action) * page.action_stride + bucket % page_width_;
+			MultiwayCompactStorage::apply_delta_to_cells(
+				page.regrets[cell], page.strategy_masses[cell], regret, strategy_sum);
+		}
+		catch (...)
+		{
+			pages_.unpin(row_page.page_id);
+			throw;
+		}
+		pages_.unpin(row_page.page_id);
+	}
+
+	void MultiwayExternalCompactStorage::regret_matched_strategy_into(
+		const MultiwayExternalRowBinding& binding, std::uint32_t bucket,
+		double* output, std::size_t output_size) const
+	{
+		MultiwayExternalRowPage row_page{};
+		if (!rows_.locate_bucket(binding, bucket, row_page))
+			throw std::out_of_range("external compact regret strategy row or bucket is unavailable");
+		if (output == nullptr || output_size != row_page.action_count)
+			throw std::invalid_argument("external compact regret strategy output size mismatch");
+		auto page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
+			row_page.page_index, row_page.bucket_count, row_page.action_count);
+		Probability total = 0.0;
+		for (std::size_t action = 0U; action < output_size; ++action)
+		{
+			const auto cell = action * page.action_stride + bucket % page_width_;
+			output[action] = std::max(0.0, static_cast<double>(page.regrets[cell]) / 1024.0);
+			total += output[action];
+		}
+		if (total == 0.0)
+			std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
+		else
+			for (std::size_t action = 0U; action < output_size; ++action) output[action] /= total;
+		pages_.unpin(row_page.page_id);
+	}
+
+	void MultiwayExternalCompactStorage::average_strategy_into(
+		const MultiwayExternalRowBinding& binding, std::uint32_t bucket,
+		double* output, std::size_t output_size) const
+	{
+		MultiwayExternalRowPage row_page{};
+		if (!rows_.locate_bucket(binding, bucket, row_page))
+			throw std::out_of_range("external compact average strategy row or bucket is unavailable");
+		if (output == nullptr || output_size != row_page.action_count)
+			throw std::invalid_argument("external compact average strategy output size mismatch");
+		auto page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
+			row_page.page_index, row_page.bucket_count, row_page.action_count);
+		std::uint64_t total = 0U;
+		const auto local_bucket = bucket % page_width_;
+		for (std::size_t action = 0U; action < output_size; ++action)
+		{
+			const auto cell = action * page.action_stride + local_bucket;
+			output[action] = static_cast<double>(page.strategy_masses[cell]) /
+				static_cast<double>(MultiwayCompactStorage::kMassScale);
+			total += page.strategy_masses[cell];
+		}
+		if (total == 0U)
+			std::fill(output, output + output_size, 1.0 / static_cast<double>(output_size));
+		else
+			for (std::size_t action = 0U; action < output_size; ++action) output[action] /= static_cast<double>(total) /
+				static_cast<double>(MultiwayCompactStorage::kMassScale);
+		pages_.unpin(row_page.page_id);
+	}
+
+	bool MultiwayExternalCompactStorage::action_below_regret(const MultiwayExternalRowBinding& binding,
+		std::uint32_t bucket, std::uint8_t action, double threshold) const
+	{
+		MultiwayExternalRowPage row_page{};
+		if (!std::isfinite(threshold) || !rows_.locate_bucket(binding, bucket, row_page) ||
+			action >= row_page.action_count)
+			return false;
+		auto page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
+			row_page.page_index, row_page.bucket_count, row_page.action_count);
+		const auto cell = static_cast<std::size_t>(action) * page.action_stride + bucket % page_width_;
+		const auto below = static_cast<double>(page.regrets[cell]) / 1024.0 < threshold;
+		pages_.unpin(row_page.page_id);
+		return below;
+	}
+
+	void MultiwayExternalCompactStorage::commit_batch()
+	{
+		pages_.commit_batch();
+	}
+
+	void MultiwayExternalCompactStorage::abort_batch()
+	{
+		pages_.abort_batch();
+	}
+
+	void MultiwayExternalCompactStorage::compact(bool retain_input_runs)
+	{
+		rows_.compact(retain_input_runs);
+		pages_.compact(retain_input_runs);
 	}
 
 	MultiwayExternalPageCache::MultiwayExternalPageCache(MultiwayExternalRecordStore& store, std::uint64_t cache_bytes)

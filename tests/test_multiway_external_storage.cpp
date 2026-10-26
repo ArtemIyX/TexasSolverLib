@@ -463,13 +463,22 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 		catch (const std::invalid_argument&) { invalid_rejected = true; }
 		EXPECT_TRUE(invalid_rejected);
 		EXPECT_EQ(unchanged_page_id, 6U);
+		rows.append_batch(2U, 0x79U, {
+			{ { { 30U }, 0 }, 1U, 1U },
+			{ { { 25U }, 1 }, 1U, 1U },
+		}, next_page_id);
+		EXPECT_EQ(next_page_id, 8U);
 	}
 	MultiwayExternalRowIndex reopened(config(directory.path()), 16U);
-	EXPECT_EQ(reopened.next_page_id(), 6U);
+	EXPECT_EQ(reopened.next_page_id(), 8U);
 	MultiwayExternalRowMetadata metadata{};
 	EXPECT_TRUE(reopened.lookup({ 20U }, 2, metadata));
 	EXPECT_EQ(metadata.first_page_id, 5U);
 	EXPECT_EQ(metadata.page_count, 1U);
+	EXPECT_TRUE(reopened.lookup({ 25U }, 1, metadata));
+	EXPECT_EQ(metadata.first_page_id, 6U);
+	EXPECT_TRUE(reopened.lookup({ 30U }, 0, metadata));
+	EXPECT_EQ(metadata.first_page_id, 7U);
 }
 
 TEST_CASE(multiway_external_compact_pages_commit_reopen_and_rollback)
@@ -551,6 +560,71 @@ TEST_CASE(multiway_external_compact_pages_match_reference_cell_encoding)
 		EXPECT_EQ(persisted.strategy_masses[cell], reference_page.strategy_masses[cell]);
 	}
 	external.unpin(1U);
+}
+
+TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path() / "pages");
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	const auto row_config = config(directory.path() / "rows");
+	const MultiwaySparseRowShape shape{ { { 42U }, 3 }, 17U, 3U };
+	MultiwayCompactStorage reference(1U, 51U, 16U);
+	reference.admit_row(shape);
+	MultiwayExternalCompactStorage external(row_config, page_config, 16U, 16000U);
+	external.admit_rows(1U, 0xabcU, { shape });
+	MultiwayExternalRowBinding binding{};
+	EXPECT_TRUE(external.lookup_row(shape.infoset, binding));
+	external.begin_batch(1U, 0xabcU);
+	const std::array<MultiwayWorkerDelta, 6U> deltas = {{
+		{ shape.infoset, 0U, 0U, -2.5, 1.25, 0U },
+		{ shape.infoset, 0U, 1U, 3.0, 4.5, 1U },
+		{ shape.infoset, 15U, 1U, -0.75, 2.0, 2U },
+		{ shape.infoset, 16U, 2U, 1'900'000.0, 1'099'511'627'776.0, 3U },
+		{ shape.infoset, 16U, 2U, 200'000.0, 1'099'511'627'776.0, 4U },
+		{ shape.infoset, 16U, 0U, -2'500'000.0, 0.0, 5U },
+	}};
+	for (const auto& delta : deltas)
+	{
+		reference.apply_delta(delta.infoset, delta.bucket, delta.action, delta.regret, delta.strategy_sum);
+		external.apply_delta(binding, delta.bucket, delta.action, delta.regret, delta.strategy_sum);
+	}
+	external.commit_batch();
+	for (const auto bucket : { 0U, 15U, 16U })
+	{
+		std::array<double, 3U> expected_regret{};
+		std::array<double, 3U> actual_regret{};
+		std::array<double, 3U> expected_average{};
+		std::array<double, 3U> actual_average{};
+		reference.regret_matched_strategy_into(shape.infoset, bucket,
+			expected_regret.data(), expected_regret.size());
+		reference.average_strategy_into(shape.infoset, bucket,
+			expected_average.data(), expected_average.size());
+		external.regret_matched_strategy_into(binding, bucket,
+			actual_regret.data(), actual_regret.size());
+		external.average_strategy_into(binding, bucket,
+			actual_average.data(), actual_average.size());
+		for (std::size_t action = 0U; action < expected_regret.size(); ++action)
+		{
+			EXPECT_EQ(actual_regret[action], expected_regret[action]);
+			EXPECT_EQ(actual_average[action], expected_average[action]);
+		}
+	}
+	EXPECT_EQ(external.action_below_regret(binding, 16U, 2U, 0.0),
+		reference.action_below_regret(shape.infoset, 16U, 2U, 0.0));
+	MultiwayExternalCompactStorage reopened(row_config, page_config, 16U, 16000U);
+	MultiwayExternalRowBinding reopened_binding{};
+	EXPECT_TRUE(reopened.lookup_row(shape.infoset, reopened_binding));
+	std::array<double, 3U> reopened_policy{};
+	reopened.regret_matched_strategy_into(reopened_binding, 16U,
+		reopened_policy.data(), reopened_policy.size());
+	std::array<double, 3U> expected_policy{};
+	reference.regret_matched_strategy_into(shape.infoset, 16U,
+		expected_policy.data(), expected_policy.size());
+	for (std::size_t action = 0U; action < expected_policy.size(); ++action)
+		EXPECT_EQ(reopened_policy[action], expected_policy[action]);
 }
 
 TEST_CASE(multiway_external_record_store_compacts_deterministically)
