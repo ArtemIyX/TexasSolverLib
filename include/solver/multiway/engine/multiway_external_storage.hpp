@@ -204,6 +204,7 @@ namespace texas::solver::multiway
 			MultiwayPublicStateDescriptor& output) const;
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint64_t record_count() const noexcept { return store_.record_count(); }
+		[[nodiscard]] std::uint64_t generation() const { return store_.generation(); }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
 	private:
 		MultiwayExternalRecordStore store_;
@@ -257,6 +258,7 @@ namespace texas::solver::multiway
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
+		[[nodiscard]] std::uint64_t generation() const { return store_.generation(); }
 	private:
 		MultiwayExternalRecordStore store_;
 		std::uint32_t page_width_ = 0U;
@@ -287,8 +289,10 @@ namespace texas::solver::multiway
 		void unpin(std::uint64_t page_id);
 		void mark_dirty(std::uint64_t page_id);
 		void commit_batch();
+		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		void abort_batch();
 		void compact(bool retain_input_runs = false);
+		[[nodiscard]] std::uint64_t generation() const { return store_->generation(); }
 		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
@@ -354,6 +358,7 @@ namespace texas::solver::multiway
 		void admit_rows(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwaySparseRowShape>& rows);
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
+		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		[[nodiscard]] bool lookup_row(MultiwayInfosetId infoset,
 			MultiwayExternalRowBinding& output) const;
 		[[nodiscard]] PinnedBucket pin_bucket(const MultiwayExternalRowBinding& row,
@@ -379,12 +384,59 @@ namespace texas::solver::multiway
 		void abort_batch();
 		void compact(bool retain_input_runs = false);
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
+		[[nodiscard]] std::uint64_t row_generation() const { return rows_.generation(); }
+		[[nodiscard]] std::uint64_t page_generation() const { return pages_.generation(); }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return pages_.stats(); }
 	private:
 		MultiwayExternalRowIndex rows_;
 		mutable MultiwayExternalCompactPages pages_;
 		std::uint64_t next_page_id_ = 1U;
 		std::uint32_t page_width_ = 0U;
+	};
+
+	// Owns all external training components and publishes them through one
+	// aggregate manifest. Constructing this object recovers the transaction before
+	// opening the component stores.
+	class MultiwayExternalTrainingStorage
+	{
+	public:
+		MultiwayExternalTrainingStorage(std::filesystem::path directory,
+			MultiwayExternalStorageConfig catalog_config,
+			MultiwayExternalStorageConfig row_config,
+			MultiwayExternalStorageConfig page_config,
+			std::uint32_t page_width, std::uint64_t row_page_cache_bytes,
+			std::size_t maximum_ancestry_depth, bool synchronous_durability);
+		void begin_batch(std::uint64_t batch_number);
+		void append_catalog(std::uint64_t component_fingerprint,
+			const std::vector<MultiwayPackedPublicNode>& nodes,
+			const std::vector<MultiwayPublicStateDescriptor>& descriptors);
+		void admit_rows(std::uint64_t component_fingerprint,
+			const std::vector<MultiwaySparseRowShape>& rows);
+		void begin_page_batch();
+		void compact_components();
+		void commit_batch(std::uint64_t merge_fingerprint, std::uint64_t row_count);
+		void abort_batch();
+		[[nodiscard]] MultiwayExternalPublicCatalog& catalog() noexcept { return *catalog_; }
+		[[nodiscard]] MultiwayExternalCompactStorage& compact_storage() noexcept { return *compact_; }
+		[[nodiscard]] const MultiwayExternalGenerationManifest& current_manifest() const noexcept
+		{
+			return transaction_.current_manifest();
+		}
+	private:
+		void open_components();
+		std::filesystem::path directory_;
+		MultiwayExternalStorageConfig catalog_config_;
+		MultiwayExternalStorageConfig row_config_;
+		MultiwayExternalStorageConfig page_config_;
+		std::uint32_t page_width_ = 0U;
+		std::uint64_t row_page_cache_bytes_ = 0U;
+		std::size_t maximum_ancestry_depth_ = 0U;
+		std::uint64_t batch_number_ = 0U;
+		bool page_batch_open_ = false;
+		bool synchronous_durability_ = true;
+		MultiwayExternalBatchTransaction transaction_;
+		std::unique_ptr<MultiwayExternalPublicCatalog> catalog_;
+		std::unique_ptr<MultiwayExternalCompactStorage> compact_;
 	};
 
 	// Coordinator-owned bounded page cache. Pinned page views contain raw cell

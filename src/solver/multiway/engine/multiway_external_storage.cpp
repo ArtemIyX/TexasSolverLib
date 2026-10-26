@@ -2030,6 +2030,14 @@ namespace texas::solver::multiway
 		batch_open_ = false;
 	}
 
+	void MultiwayExternalCompactPages::set_merge_fingerprint(std::uint64_t merge_fingerprint)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (!batch_open_ || merge_fingerprint == 0U)
+			throw std::invalid_argument("external compact page merge fingerprint is invalid");
+		merge_fingerprint_ = merge_fingerprint;
+	}
+
 	void MultiwayExternalCompactPages::abort_batch()
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -2312,6 +2320,11 @@ namespace texas::solver::multiway
 		pages_.commit_batch();
 	}
 
+	void MultiwayExternalCompactStorage::set_merge_fingerprint(std::uint64_t merge_fingerprint)
+	{
+		pages_.set_merge_fingerprint(merge_fingerprint);
+	}
+
 	void MultiwayExternalCompactStorage::abort_batch()
 	{
 		pages_.abort_batch();
@@ -2321,6 +2334,119 @@ namespace texas::solver::multiway
 	{
 		rows_.compact(retain_input_runs);
 		pages_.compact(retain_input_runs);
+	}
+
+	MultiwayExternalTrainingStorage::MultiwayExternalTrainingStorage(
+		std::filesystem::path directory, MultiwayExternalStorageConfig catalog_config,
+		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
+		std::uint32_t page_width, std::uint64_t row_page_cache_bytes,
+		std::size_t maximum_ancestry_depth, bool synchronous_durability)
+		: directory_(std::move(directory)), catalog_config_(std::move(catalog_config)),
+		  row_config_(std::move(row_config)), page_config_(std::move(page_config)),
+		  page_width_(page_width), row_page_cache_bytes_(row_page_cache_bytes),
+		  maximum_ancestry_depth_(maximum_ancestry_depth),
+		  synchronous_durability_(synchronous_durability),
+		  transaction_(directory_, synchronous_durability)
+	{
+		if (directory_.empty() || page_width_ == 0U || row_page_cache_bytes_ == 0U ||
+			maximum_ancestry_depth_ == 0U ||
+			catalog_config_.directory.lexically_normal() != (directory_ / "catalog").lexically_normal() ||
+			row_config_.directory.lexically_normal() != (directory_ / "rows").lexically_normal() ||
+			page_config_.directory.lexically_normal() != (directory_ / "pages").lexically_normal() ||
+			catalog_config_.synchronous_durability != synchronous_durability_ ||
+			row_config_.synchronous_durability != synchronous_durability_ ||
+			page_config_.synchronous_durability != synchronous_durability_)
+			throw std::invalid_argument("external training storage component paths or bounds are invalid");
+		open_components();
+	}
+
+	void MultiwayExternalTrainingStorage::open_components()
+	{
+		catalog_ = std::make_unique<MultiwayExternalPublicCatalog>(
+			catalog_config_, maximum_ancestry_depth_);
+		compact_ = std::make_unique<MultiwayExternalCompactStorage>(
+			row_config_, page_config_, page_width_, row_page_cache_bytes_);
+	}
+
+	void MultiwayExternalTrainingStorage::begin_batch(std::uint64_t batch_number)
+	{
+		if (batch_number_ != 0U || batch_number == 0U)
+			throw std::logic_error("external training storage batch state is invalid");
+		transaction_.begin_batch(batch_number, 0U);
+		batch_number_ = batch_number;
+	}
+
+	void MultiwayExternalTrainingStorage::append_catalog(std::uint64_t component_fingerprint,
+		const std::vector<MultiwayPackedPublicNode>& nodes,
+		const std::vector<MultiwayPublicStateDescriptor>& descriptors)
+	{
+		if (batch_number_ == 0U || component_fingerprint == 0U || nodes.size() != descriptors.size())
+			throw std::invalid_argument("external training catalog batch is invalid");
+		if (!nodes.empty())
+			catalog_->append_batch(batch_number_, component_fingerprint, nodes, descriptors);
+	}
+
+	void MultiwayExternalTrainingStorage::admit_rows(std::uint64_t component_fingerprint,
+		const std::vector<MultiwaySparseRowShape>& rows)
+	{
+		if (batch_number_ == 0U || component_fingerprint == 0U)
+			throw std::invalid_argument("external training row batch is invalid");
+		compact_->admit_rows(batch_number_, component_fingerprint, rows);
+	}
+
+	void MultiwayExternalTrainingStorage::begin_page_batch()
+	{
+		if (batch_number_ == 0U || page_batch_open_)
+			throw std::logic_error("external training page batch state is invalid");
+		compact_->begin_batch(batch_number_, 0U);
+		page_batch_open_ = true;
+	}
+
+	void MultiwayExternalTrainingStorage::compact_components()
+	{
+		if (batch_number_ == 0U || page_batch_open_)
+			throw std::logic_error("external training compaction requires a clean pre-page batch boundary");
+		catalog_->compact(true);
+		compact_->compact(true);
+	}
+
+	void MultiwayExternalTrainingStorage::commit_batch(
+		std::uint64_t merge_fingerprint, std::uint64_t row_count)
+	{
+		if (batch_number_ == 0U || !page_batch_open_ || merge_fingerprint == 0U)
+			throw std::logic_error("external training batch is not ready to commit");
+		compact_->set_merge_fingerprint(merge_fingerprint);
+		compact_->commit_batch();
+		transaction_.set_merge_fingerprint(merge_fingerprint);
+		const auto& current = transaction_.current_manifest();
+		if (current.generation == std::numeric_limits<std::uint64_t>::max())
+			throw std::overflow_error("external training generation overflows");
+		MultiwayExternalGenerationManifest next{};
+		next.generation = current.generation + 1U;
+		next.committed_batch_number = batch_number_;
+		next.merge_fingerprint = merge_fingerprint;
+		next.catalog_generation = catalog_->generation();
+		next.public_state_count = catalog_->record_count();
+		next.row_generation = compact_->row_generation();
+		next.row_count = row_count;
+		next.page_generation = compact_->page_generation();
+		next.page_count = compact_->next_page_id() - 1U;
+		next.content_hash = 0U;
+		transaction_.commit_batch(next);
+		batch_number_ = 0U;
+		page_batch_open_ = false;
+	}
+
+	void MultiwayExternalTrainingStorage::abort_batch()
+	{
+		if (batch_number_ == 0U) return;
+		if (compact_ != nullptr) compact_->abort_batch();
+		catalog_.reset();
+		compact_.reset();
+		transaction_.abort_batch();
+		batch_number_ = 0U;
+		page_batch_open_ = false;
+		open_components();
 	}
 
 	MultiwayExternalPageCache::MultiwayExternalPageCache(MultiwayExternalRecordStore& store, std::uint64_t cache_bytes)

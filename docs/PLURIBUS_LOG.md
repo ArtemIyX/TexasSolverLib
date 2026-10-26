@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.14 - Coordinate typed external training components
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added `MultiwayExternalTrainingStorage`, which recovers the aggregate transaction before opening catalog, row, and page components.
+- Added a typed batch lifecycle for catalog append, row admission, page updates, bounded compaction, final fingerprint publication, manifest counts, and rollback/reopen after child publication.
+- Added commit/reopen and abort/recovery coverage across the typed components. Synchronization mode must match across the aggregate and all child stores.
+- The solver coordinator does not yet select this facade, and workflow execution remains fail-closed.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, and workflow config targets: passed.
+- Focused CTest: passed (3/3).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator admission and merge are not yet wired to the facade; no large training job was run.
+
 ## PB-12 Phase 5.13 - Finalize merge identity before aggregate commit
 
 **Status:** Complete
