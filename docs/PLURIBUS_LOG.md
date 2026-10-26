@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 External checkpoint-only export follow-up
+
+**Status:** Complete
+**Completed:** 2026-10-26
+**Implementation commits:** `3e6895e7 PB-12 Multiway: Allow checkpoint-only export` through `ab4d0392 PB-12 Multiway: Skip incomplete export-only snapshots`
+
+- Added an explicit `--batches 0 --resume` path that preflights conservatively, writes a distinct checkpoint, and proceeds to export without running trajectories.
+- Disabled cold/steady batch phase snapshot collections for this path because no batches run; live working-set, private-commit, system-memory, disk, and export gates remain active.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed after commit `ab4d0392`.
+- Authorized external 1K training log records 1,000 trajectories and zero discarded.
+- Zero-batch checkpoint resume was stopped after about 62 minutes in checkpoint segment verification. It processed zero trajectories, produced no report or blueprint, and did not change the original `TRAINING_CURRENT` (112 bytes, timestamp unchanged).
+
+### Limitations
+
+- Export and differential equivalence remain unverified. Checkpoint restore rehashes thousands of small retained segment files and did not finish within the bounded validation attempt.
+- No larger pilot or 50M feasibility claim was made.
+
 ## PB-12 External catalog bounded admission
 
 **Status:** Complete
@@ -26,7 +51,7 @@
 
 ### Limitations
 
-- The external export and deterministic differential comparison remain unverified. The authorized 1K run was not repeated after its checkpoint because resume started another batch and could exceed the authorized trajectory count.
+- The external export and deterministic differential comparison remain unverified; see the checkpoint-only export follow-up above.
 - No larger pilot or 50M feasibility claim was made.
 
 ## PB-12 Phase 8 - Report external storage runtime metrics
