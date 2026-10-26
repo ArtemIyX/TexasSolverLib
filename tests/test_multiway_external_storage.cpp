@@ -207,6 +207,8 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	const auto path = directory.path() / "checkpoint.manifest";
+	const auto storage_directory = directory.path() / "storage";
+	std::filesystem::create_directory(storage_directory);
 	MultiwayExternalCheckpointManifest checkpoint{};
 	checkpoint.model_identity_hash = 11U;
 	checkpoint.workflow_identity_hash = 12U;
@@ -214,17 +216,18 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	checkpoint.schedule_hash = 14U;
 	checkpoint.completed_trajectories = 500U;
 	checkpoint.generation = { 7U, 6U, 15U, 4U, 3U, 5U, 2U, 8U, 9U, 10U, 16U };
-	save_multiway_external_checkpoint_manifest(path, checkpoint, false);
-	const auto loaded = load_multiway_external_checkpoint_manifest(path, 11U, 12U, 13U, 14U,
-		checkpoint.generation);
+	publish_multiway_external_generation(storage_directory, checkpoint.generation, false);
+	save_multiway_external_checkpoint_manifest(path, storage_directory, checkpoint, false);
+	const auto loaded = load_multiway_external_checkpoint_manifest(path, storage_directory,
+		11U, 12U, 13U, 14U);
 	EXPECT_EQ(loaded.backend_schema, MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA);
 	EXPECT_EQ(loaded.completed_trajectories, 500U);
 	EXPECT_EQ(loaded.generation.content_hash, 16U);
 	bool model_mismatch_rejected = false;
 	try
 	{
-		static_cast<void>(load_multiway_external_checkpoint_manifest(path, 99U, 12U, 13U, 14U,
-			checkpoint.generation));
+		static_cast<void>(load_multiway_external_checkpoint_manifest(path, storage_directory,
+			99U, 12U, 13U, 14U));
 	}
 	catch (const std::invalid_argument&) { model_mismatch_rejected = true; }
 	EXPECT_TRUE(model_mismatch_rejected);
@@ -233,11 +236,16 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	bool generation_mismatch_rejected = false;
 	try
 	{
-		static_cast<void>(load_multiway_external_checkpoint_manifest(path, 11U, 12U, 13U, 14U,
-			newer_generation));
+		auto committed_newer_generation = newer_generation;
+		committed_newer_generation.committed_batch_number = 7U;
+		committed_newer_generation.merge_fingerprint = 17U;
+		publish_multiway_external_generation(storage_directory, committed_newer_generation, false);
+		static_cast<void>(load_multiway_external_checkpoint_manifest(path, storage_directory,
+			11U, 12U, 13U, 14U));
 	}
 	catch (const std::invalid_argument&) { generation_mismatch_rejected = true; }
 	EXPECT_TRUE(generation_mismatch_rejected);
+	publish_multiway_external_generation(storage_directory, checkpoint.generation, false);
 	{
 		std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
 		file.seekg(-1, std::ios::end);
@@ -250,8 +258,8 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	bool checksum_mismatch_rejected = false;
 	try
 	{
-		static_cast<void>(load_multiway_external_checkpoint_manifest(path, 11U, 12U, 13U, 14U,
-			checkpoint.generation));
+		static_cast<void>(load_multiway_external_checkpoint_manifest(path, storage_directory,
+			11U, 12U, 13U, 14U));
 	}
 	catch (const std::invalid_argument&) { checksum_mismatch_rejected = true; }
 	EXPECT_TRUE(checksum_mismatch_rejected);
@@ -262,26 +270,28 @@ TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_pr
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	const auto path = directory.path() / "checkpoint.manifest";
+	const auto storage_directory = directory.path() / "storage";
+	std::filesystem::create_directory(storage_directory);
 	MultiwayExternalCheckpointManifest checkpoint{};
 	checkpoint.model_identity_hash = 11U;
 	checkpoint.workflow_identity_hash = 12U;
 	checkpoint.storage_identity_hash = 13U;
 	checkpoint.schedule_hash = 14U;
 	checkpoint.generation = { 7U, 6U, 15U, 4U, 3U, 5U, 2U, 8U, 9U, 10U, 16U };
-	save_multiway_external_checkpoint_manifest(path, checkpoint, false);
+	publish_multiway_external_generation(storage_directory, checkpoint.generation, false);
+	save_multiway_external_checkpoint_manifest(path, storage_directory, checkpoint, false);
 	auto next = checkpoint;
-	next.generation.generation = 8U;
-	next.generation.content_hash = 17U;
+	next.completed_trajectories = 600U;
 	bool publication_failed = false;
 	try
 	{
-		save_multiway_external_checkpoint_manifest(path, next, false, { true });
+		save_multiway_external_checkpoint_manifest(path, storage_directory, next, false, { true });
 	}
 	catch (const std::runtime_error&) { publication_failed = true; }
 	EXPECT_TRUE(publication_failed);
 	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
-	const auto loaded = load_multiway_external_checkpoint_manifest(path, 11U, 12U, 13U, 14U,
-		checkpoint.generation);
+	const auto loaded = load_multiway_external_checkpoint_manifest(path, storage_directory,
+		11U, 12U, 13U, 14U);
 	EXPECT_EQ(loaded.generation.generation, 7U);
 }
 

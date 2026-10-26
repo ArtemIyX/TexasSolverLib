@@ -519,16 +519,31 @@ namespace texas::solver::multiway
 
 	void save_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
+		const std::filesystem::path& external_storage_directory,
 		const MultiwayExternalCheckpointManifest& manifest,
 		bool synchronous_durability,
 		MultiwayExternalCheckpointWriteOptions options)
 	{
 		const auto& generation = manifest.generation;
-		if (path.empty() || manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA ||
+		MultiwayExternalGenerationManifest current_generation{};
+		if (path.empty() || external_storage_directory.empty() ||
+			!load_multiway_external_generation(external_storage_directory, current_generation) ||
+			manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA ||
 			manifest.model_identity_hash == 0U || manifest.workflow_identity_hash == 0U ||
 			manifest.storage_identity_hash == 0U || manifest.schedule_hash == 0U ||
 			generation.generation == 0U || generation.committed_batch_number == 0U ||
 			generation.merge_fingerprint == 0U ||
+			generation.generation != current_generation.generation ||
+			generation.committed_batch_number != current_generation.committed_batch_number ||
+			generation.merge_fingerprint != current_generation.merge_fingerprint ||
+			generation.catalog_generation != current_generation.catalog_generation ||
+			generation.public_state_count != current_generation.public_state_count ||
+			generation.row_generation != current_generation.row_generation ||
+			generation.row_count != current_generation.row_count ||
+			generation.page_generation != current_generation.page_generation ||
+			generation.page_count != current_generation.page_count ||
+			generation.logical_value_count != current_generation.logical_value_count ||
+			generation.content_hash != current_generation.content_hash ||
 			((generation.row_count == 0U) != (generation.logical_value_count == 0U)))
 			throw std::invalid_argument("external checkpoint manifest identity is invalid");
 		std::vector<std::uint8_t> bytes{ 'T','X','M','W','C','P','6','1' };
@@ -579,11 +594,11 @@ namespace texas::solver::multiway
 
 	MultiwayExternalCheckpointManifest load_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
+		const std::filesystem::path& external_storage_directory,
 		std::uint64_t expected_model_identity_hash,
 		std::uint64_t expected_workflow_identity_hash,
 		std::uint64_t expected_storage_identity_hash,
-		std::uint64_t expected_schedule_hash,
-		const MultiwayExternalGenerationManifest& current_generation)
+		std::uint64_t expected_schedule_hash)
 	{
 		constexpr std::size_t kSerializedBytes = 152U;
 		std::error_code error;
@@ -624,6 +639,10 @@ namespace texas::solver::multiway
 		generation.page_count = read_field();
 		generation.logical_value_count = read_field();
 		generation.content_hash = read_field();
+		MultiwayExternalGenerationManifest current_generation{};
+		if (external_storage_directory.empty() ||
+			!load_multiway_external_generation(external_storage_directory, current_generation))
+			throw std::invalid_argument("external checkpoint storage generation is missing");
 		const auto same_generation = [&]() {
 			return generation.generation == current_generation.generation &&
 				generation.committed_batch_number == current_generation.committed_batch_number &&

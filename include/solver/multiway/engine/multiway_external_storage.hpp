@@ -94,16 +94,17 @@ namespace texas::solver::multiway
 
 	void save_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
+		const std::filesystem::path& external_storage_directory,
 		const MultiwayExternalCheckpointManifest& manifest,
 		bool synchronous_durability,
 		MultiwayExternalCheckpointWriteOptions options = {});
 	[[nodiscard]] MultiwayExternalCheckpointManifest load_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
+		const std::filesystem::path& external_storage_directory,
 		std::uint64_t expected_model_identity_hash,
 		std::uint64_t expected_workflow_identity_hash,
 		std::uint64_t expected_storage_identity_hash,
-		std::uint64_t expected_schedule_hash,
-		const MultiwayExternalGenerationManifest& current_generation);
+		std::uint64_t expected_schedule_hash);
 
 	void publish_multiway_external_generation(const std::filesystem::path& directory,
 		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability);
