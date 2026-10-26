@@ -2938,6 +2938,73 @@ namespace texas::solver::multiway
 		return true;
 	}
 
+	bool MultiwayExternalRowIndex::visit_ordered_rows(
+		OrderedRowVisitor visitor, void* context) const
+	{
+		if (visitor == nullptr)
+			throw std::invalid_argument("external ordered-row visitor is missing");
+		struct VisitorContext
+		{
+			OrderedRowVisitor visitor;
+			void* context;
+			std::uint32_t page_width;
+		};
+		VisitorContext visitor_context{ visitor, context, page_width_ };
+		const auto visit_record = [](void* opaque, std::uint64_t state_id,
+			const std::uint8_t* payload, std::size_t payload_size) {
+			auto& current = *static_cast<VisitorContext*>(opaque);
+			constexpr std::size_t row_payload_size = 8U + 6U * 24U;
+			constexpr std::uint32_t row_magic = 0x3152574dU;
+			constexpr std::uint32_t row_schema = 1U;
+			if (payload == nullptr || payload_size != row_payload_size ||
+				read_u32(payload) != row_magic || read_u32(payload + 4U) != row_schema)
+				throw std::invalid_argument("external ordered row record schema is invalid");
+			if (state_id == 0U)
+			{
+				if (read_u64(payload + 8U) == 0U)
+					throw std::invalid_argument("external ordered row page allocator is invalid");
+				for (std::size_t index = 16U; index < row_payload_size; ++index)
+					if (payload[index] != 0U)
+						throw std::invalid_argument("external ordered row allocator reserved bytes are nonzero");
+				return true;
+			}
+			bool found_row = false;
+			for (std::int32_t seat = 0; seat < 6; ++seat)
+			{
+				const auto slot = 8U + static_cast<std::size_t>(seat) * 24U;
+				if (payload[slot] == 0U)
+				{
+					for (std::size_t index = slot + 1U; index < slot + 24U; ++index)
+						if (payload[index] != 0U)
+							throw std::invalid_argument("external ordered row absent-seat metadata is nonzero");
+					continue;
+				}
+				if (payload[slot] != 1U || payload[slot + 2U] != 0U ||
+					payload[slot + 3U] != 0U || read_u32(payload + slot + 20U) != 0U)
+					throw std::invalid_argument("external ordered row seat flags are invalid");
+				MultiwayExternalRowMetadata row{};
+				row.action_count = payload[slot + 1U];
+				row.bucket_count = read_u32(payload + slot + 4U);
+				row.first_page_id = read_u64(payload + slot + 8U);
+				row.page_count = read_u32(payload + slot + 16U);
+				const auto expected_pages = (static_cast<std::uint64_t>(row.bucket_count) +
+					current.page_width - 1U) / current.page_width;
+				if (row.action_count == 0U || row.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS ||
+					row.bucket_count == 0U || row.first_page_id == 0U || row.page_count == 0U ||
+					row.page_count != expected_pages ||
+					row.page_count > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
+					throw std::invalid_argument("external ordered row shape is invalid");
+				found_row = true;
+				if (!current.visitor(current.context, MultiwayPublicStateId{ state_id }, seat, row))
+					return false;
+			}
+			if (!found_row)
+				throw std::invalid_argument("external ordered row record has no seat rows");
+			return true;
+		};
+		return store_.visit_ordered_records(visit_record, &visitor_context);
+	}
+
 	bool MultiwayExternalRowIndex::locate_bucket(MultiwayPublicStateId state,
 		std::int32_t seat, std::uint32_t bucket, MultiwayExternalRowPage& output) const
 	{

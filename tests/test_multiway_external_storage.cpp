@@ -98,6 +98,13 @@ namespace
 		std::size_t stop_after = std::numeric_limits<std::size_t>::max();
 	};
 
+	struct OrderedRowCapture
+	{
+		std::vector<std::uint64_t> state_ids;
+		std::vector<std::int32_t> seats;
+		std::vector<texas::solver::multiway::MultiwayExternalRowMetadata> rows;
+	};
+
 	bool capture_ordered_record(void* context, std::uint64_t key,
 		const std::uint8_t* payload, std::size_t payload_size)
 	{
@@ -105,6 +112,17 @@ namespace
 		capture.keys.push_back(key);
 		capture.payloads.emplace_back(payload, payload + payload_size);
 		return capture.keys.size() < capture.stop_after;
+	}
+
+	bool capture_ordered_row(void* context,
+		texas::solver::multiway::MultiwayPublicStateId state_id, std::int32_t seat,
+		const texas::solver::multiway::MultiwayExternalRowMetadata& row)
+	{
+		auto& capture = *static_cast<OrderedRowCapture*>(context);
+		capture.state_ids.push_back(state_id.value);
+		capture.seats.push_back(seat);
+		capture.rows.push_back(row);
+		return true;
 	}
 }
 
@@ -1181,6 +1199,18 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 	EXPECT_EQ(metadata.first_page_id, 6U);
 	EXPECT_TRUE(reopened.lookup({ 30U }, 0, metadata));
 	EXPECT_EQ(metadata.first_page_id, 7U);
+	OrderedRowCapture ordered_rows;
+	EXPECT_TRUE(reopened.visit_ordered_rows(capture_ordered_row, &ordered_rows));
+	EXPECT_EQ(ordered_rows.state_ids.size(), 5U);
+	EXPECT_EQ(ordered_rows.state_ids[0], 10U);
+	EXPECT_EQ(ordered_rows.seats[0], 0);
+	EXPECT_EQ(ordered_rows.state_ids[1], 10U);
+	EXPECT_EQ(ordered_rows.seats[1], 1);
+	EXPECT_EQ(ordered_rows.state_ids[2], 20U);
+	EXPECT_EQ(ordered_rows.seats[2], 2);
+	EXPECT_EQ(ordered_rows.state_ids[3], 25U);
+	EXPECT_EQ(ordered_rows.state_ids[4], 30U);
+	EXPECT_EQ(ordered_rows.rows[1].bucket_count, 17U);
 }
 
 TEST_CASE(multiway_external_compact_pages_commit_reopen_and_rollback)

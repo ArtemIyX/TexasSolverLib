@@ -368,12 +368,17 @@ namespace texas::solver::multiway
 	class MultiwayExternalRowIndex
 	{
 	public:
+		using OrderedRowVisitor = bool (*)(void*, MultiwayPublicStateId, std::int32_t,
+			const MultiwayExternalRowMetadata&);
+
 		MultiwayExternalRowIndex(MultiwayExternalStorageConfig config,
 			std::uint32_t page_width);
 		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwaySparseRowShape>& rows, std::uint64_t& next_page_id);
 		[[nodiscard]] bool lookup(MultiwayPublicStateId state, std::int32_t seat,
 			MultiwayExternalRowMetadata& output) const;
+		[[nodiscard]] bool visit_ordered_rows(OrderedRowVisitor visitor,
+			void* context) const;
 		[[nodiscard]] bool locate_bucket(MultiwayPublicStateId state, std::int32_t seat,
 			std::uint32_t bucket, MultiwayExternalRowPage& output) const;
 		[[nodiscard]] bool locate_bucket(const MultiwayExternalRowBinding& row,

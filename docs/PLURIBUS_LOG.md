@@ -7,6 +7,7 @@
 
 - Added an ordered-record callback API that k-way merges the configured bounded number of immutable runs, emits ascending unique keys, and selects the newest value for duplicate keys.
 - The iterator rejects run counts above configured compaction fan-in and borrows payload bytes only during the callback. It does not materialize the full record set.
+- Added row-index iteration that validates row metadata and emits state/seat rows in canonical order while preserving the same run and payload bounds.
 - Added deterministic tests before and after compaction, newest-run precedence, ascending order, and callback early-stop behavior.
 - Verified iteration rejects run counts above the configured fan-in before reading records.
 
@@ -25,7 +26,7 @@
 
 ### Limitations
 
-- The iterator is a storage primitive; blueprint row/page export and sharding are not yet connected.
+- The iterator remains a storage primitive; blueprint page export and sharding are not yet connected.
 
 ## PB-12 Phase 6.1 - Add external checkpoint manifest codec
 
