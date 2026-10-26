@@ -1,5 +1,33 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 - Guarded 500K qualification
+
+**Status:** Stopped at configured public-state capacity
+**Completed:** 2026-10-26
+**Implementation commit:** `0b9f683 PB-12 Multiway: Prepare guarded 500K qualification`
+
+- Added a versioned 500K sizing profile and extended the guarded runner to 500 batches. Existing table and memory limits were preserved.
+- Ran the requested 500K workload with 8 unpinned workers, fixed scheduling, and checkpointing enabled. It stopped after 58,000 accepted trajectories with zero discards because public-state admission exceeded the 4,000,000-state limit.
+- The terminal evidence manifest and report record 3,971,363 public states, 1,565,562 sparse rows, and 61,306,003 sparse values. No checkpoint or final blueprint was produced.
+
+### Files
+
+- `configs/multiway/f1_qualification_500k_v1.cfg`
+- `scripts/run/run_multiway_ram_1000.ps1`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
+- RelWithDebInfo training binary rebuilt with clean source provenance matching PB-12.
+- Bucket inspection matched the configured identity and payload hash.
+- Training report reader found the terminal report; the run failed its 500K target at the public-state capacity gate.
+
+### Limitations
+
+- 1M and 5M are not qualified under the current 4M public-state cap. No 1M, 5M, or 50M run was started.
+- No checkpoint or blueprint exists to load or validate. Increasing capacity requires a separate memory and system-reserve review.
+
 ## Restore PB-9 worker-scaling findings
 
 **Status:** Complete
