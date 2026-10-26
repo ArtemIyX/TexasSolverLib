@@ -12,7 +12,8 @@
 namespace texas::solver::multiway
 {
 
-	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_PUBLIC_STATES = 8'000'000U;
+	// Configuration ceiling; runtime memory and working-set gates remain authoritative.
+	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_PUBLIC_STATES = 34'000'000U;
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_SPARSE_ROWS = 8'000'000U;
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_SPARSE_VALUES = 200'000'000U;
 	inline constexpr std::uint64_t MULTIWAY_WORKFLOW_MAX_STREAM_ENTRIES_PER_WORKER = 1'000'000U;
