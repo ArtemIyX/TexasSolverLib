@@ -106,6 +106,7 @@ namespace texas::solver::multiway
 		std::uint64_t merge_fingerprint_ = 0U;
 		std::uint32_t previous_manifest_flags_ = 0U;
 		std::array<std::uint64_t, 3U> previous_component_generations_{};
+		std::array<std::uint64_t, 3U> previous_component_batch_numbers_{};
 		bool batch_open_ = false;
 	};
 
@@ -129,6 +130,7 @@ namespace texas::solver::multiway
 		void compact(bool retain_input_runs = false);
 		[[nodiscard]] std::uint64_t generation() const;
 		[[nodiscard]] std::uint64_t record_count() const;
+		[[nodiscard]] std::uint64_t last_batch_number() const;
 		[[nodiscard]] std::uint64_t content_hash() const;
 		[[nodiscard]] std::size_t cache_capacity_records() const noexcept;
 		[[nodiscard]] std::size_t cache_bytes() const noexcept;
@@ -309,6 +311,9 @@ namespace texas::solver::multiway
 		MultiwayExternalCompactPages(MultiwayExternalStorageConfig config,
 			std::uint32_t page_width, std::uint64_t cache_bytes);
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
+		[[nodiscard]] std::uint64_t next_batch_number() const;
+		// Returns an empty view for allocated but untouched pages.
+		[[nodiscard]] PageView pin_existing(std::uint64_t page_id);
 		[[nodiscard]] PageView pin(std::uint64_t page_id, MultiwayPublicStateId state,
 			std::int32_t seat, std::uint32_t page_index, std::uint32_t bucket_count,
 			std::uint8_t action_count);
@@ -385,6 +390,7 @@ namespace texas::solver::multiway
 		void admit_rows(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwaySparseRowShape>& rows);
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
+		void flush_page_batch_and_continue();
 		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		[[nodiscard]] bool lookup_row(MultiwayInfosetId infoset,
 			MultiwayExternalRowBinding& output) const;
@@ -401,6 +407,11 @@ namespace texas::solver::multiway
 		void unpin_bucket(PinnedBucket& bucket) const;
 		void apply_delta(const MultiwayExternalRowBinding& row, std::uint32_t bucket,
 			std::uint8_t action, double regret, double strategy_sum);
+		void scale_regrets(double factor);
+		[[nodiscard]] std::size_t scale_and_prune_regrets(
+			double factor, double threshold, double regret_floor);
+		[[nodiscard]] std::size_t prune_negative_regrets(
+			double threshold = 0.0, double regret_floor = 0.0);
 		void regret_matched_strategy_into(const MultiwayExternalRowBinding& row,
 			std::uint32_t bucket, double* output, std::size_t output_size) const;
 		void average_strategy_into(const MultiwayExternalRowBinding& row,
@@ -420,6 +431,8 @@ namespace texas::solver::multiway
 		mutable MultiwayExternalCompactPages pages_;
 		std::uint64_t next_page_id_ = 1U;
 		std::uint32_t page_width_ = 0U;
+		std::uint64_t page_batch_number_ = 0U;
+		std::uint64_t page_batch_fingerprint_ = 0U;
 	};
 
 	// Owns all external training components and publishes them through one

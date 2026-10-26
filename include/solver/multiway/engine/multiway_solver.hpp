@@ -972,7 +972,7 @@ namespace texas::solver::multiway
 			const std::vector<double>& baseline_strategy_sums) const;
 		void scale_regrets(double factor);
 		[[nodiscard]] std::size_t scale_and_prune_regrets(
-			double factor, double threshold, double regret_floor) noexcept;
+			double factor, double threshold, double regret_floor);
 		void record_terminal_visit() noexcept;
 		void record_leaf_visit() noexcept;
 		void record_missing_lookup() noexcept;
@@ -998,7 +998,7 @@ namespace texas::solver::multiway
 			MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
 			double threshold) const;
 		[[nodiscard]] std::size_t prune_negative_regrets(
-			double threshold = 0.0, double regret_floor = 0.0) noexcept;
+			double threshold = 0.0, double regret_floor = 0.0);
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return compact_storage_.get(); }
 		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return public_catalog_; }

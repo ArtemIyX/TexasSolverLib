@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <limits>
 #include <queue>
@@ -48,6 +49,68 @@ namespace texas::solver::multiway
 		constexpr std::size_t kCatalogMenuBytes = kCatalogMenuHeaderBytes +
 			MULTIWAY_MAX_ABSTRACTED_ACTIONS * kCatalogMenuActionBytes + kCatalogMenuChecksumBytes;
 		constexpr std::array<std::uint8_t, 8U> kTransactionWalMagic = { 'T','X','M','W','B','A','T','1' };
+
+	template <typename Transform, typename Flush>
+	std::size_t transform_external_regrets(
+		MultiwayExternalCompactPages& pages,
+		std::uint64_t next_page_id,
+		Transform&& transform,
+		Flush&& flush_page_batch)
+	{
+		std::size_t changed = 0U;
+		std::size_t dirty_pages = 0U;
+		for (std::uint64_t page_id = 1U; page_id < next_page_id; ++page_id)
+		{
+			auto page = pages.pin_existing(page_id);
+			if (page.page_id == 0U)
+				continue;
+			bool pinned = true;
+			try
+			{
+				bool page_changed = false;
+				for (std::size_t action = 0U; action < page.action_count; ++action)
+				{
+					for (std::size_t bucket = 0U; bucket < page.bucket_count; ++bucket)
+					{
+						const auto regret = page.regrets[action * page.action_stride + bucket];
+						auto candidate = regret;
+						(void)transform(candidate);
+						page_changed = page_changed || candidate != regret;
+					}
+				}
+				if (!page_changed)
+				{
+					pages.unpin(page_id);
+					pinned = false;
+					continue;
+				}
+				pages.mark_dirty(page_id);
+				for (std::size_t action = 0U; action < page.action_count; ++action)
+				{
+					for (std::size_t bucket = 0U; bucket < page.bucket_count; ++bucket)
+					{
+						auto& regret = page.regrets[action * page.action_stride + bucket];
+						changed += transform(regret) ? 1U : 0U;
+					}
+				}
+				pages.unpin(page_id);
+				pinned = false;
+				++dirty_pages;
+				if (dirty_pages == pages.page_capacity())
+				{
+					flush_page_batch();
+					dirty_pages = 0U;
+				}
+			}
+			catch (...)
+			{
+				if (pinned)
+					pages.unpin(page_id);
+				throw;
+			}
+		}
+		return changed;
+	}
 		constexpr std::array<const char*, 3U> kComponentNames = { "catalog", "rows", "pages" };
 		constexpr std::array<const char*, 3U> kBackupNames = {
 			"CATALOG_CURRENT.previous", "ROWS_CURRENT.previous", "PAGES_CURRENT.previous" };
@@ -477,6 +540,7 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external batch transaction identity is invalid");
 		previous_manifest_flags_ = 0U;
 		previous_component_generations_ = {};
+		previous_component_batch_numbers_ = {};
 		const auto wal = directory_ / "TRAINING_BATCH.wal";
 		const auto temp = directory_ / "TRAINING_BATCH.tmp";
 		if (std::filesystem::exists(wal) || std::filesystem::exists(temp))
@@ -489,6 +553,7 @@ namespace texas::solver::multiway
 			if (error) throw std::runtime_error("external batch component directory cannot be created");
 			const auto info = read_component_manifest(component);
 			previous_component_generations_[index] = info.generation;
+			previous_component_batch_numbers_[index] = info.last_batch_number;
 			const auto backup = directory_ / kBackupNames[index];
 			if (std::filesystem::exists(backup))
 			{
@@ -547,9 +612,16 @@ namespace texas::solver::multiway
 		for (std::size_t index = 0U; index < kComponentNames.size(); ++index)
 		{
 			const auto info = read_component_manifest(directory_ / kComponentNames[index]);
-			if (info.generation != expected_generations[index] ||
-				(info.exists && info.last_batch_number > batch_number_) ||
-				(info.generation != previous_component_generations_[index] && info.last_batch_number != batch_number_))
+			const bool generation_changed = info.generation != previous_component_generations_[index];
+			const bool page_component = index == 2U;
+			const auto previous_batch = previous_component_batch_numbers_[index];
+			const bool batch_number_valid = info.last_batch_number >= previous_batch &&
+				(page_component || info.last_batch_number <= batch_number_) &&
+				(!generation_changed || info.last_batch_number == previous_batch ||
+					(page_component ? info.last_batch_number > previous_batch
+						: info.last_batch_number == batch_number_)) &&
+				(generation_changed || info.last_batch_number == previous_batch);
+			if (info.generation != expected_generations[index] || !batch_number_valid)
 				throw std::invalid_argument("external component generation does not match the batch commit");
 		}
 		publish_multiway_external_generation(directory_, manifest, synchronous_durability_);
@@ -1998,6 +2070,58 @@ namespace texas::solver::multiway
 		batch_open_ = true;
 	}
 
+	std::uint64_t MultiwayExternalCompactPages::next_batch_number() const
+	{
+		const auto last = store_->last_batch_number();
+		if (last == std::numeric_limits<std::uint64_t>::max())
+			throw std::overflow_error("external compact page batch number overflows");
+		return last + 1U;
+	}
+
+	MultiwayExternalCompactPages::PageView MultiwayExternalCompactPages::pin_existing(
+		std::uint64_t page_id)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (page_id == 0U)
+			throw std::invalid_argument("external compact page id is invalid");
+		if (auto* cached = find(page_id))
+		{
+			++page_cache_hits_;
+			if (cached->pin_count == std::numeric_limits<std::uint32_t>::max())
+				throw std::overflow_error("external compact page pin count overflows");
+			++cached->pin_count;
+			return { page_id, cached->regrets.data(), cached->strategy_masses.data(),
+				cached->bucket_count, cached->action_count, page_width_ };
+		}
+		++page_cache_misses_;
+		if (!store_->lookup(page_id, lookup_scratch_))
+			return {};
+		Page* selected = nullptr;
+		for (std::size_t offset = 0U; offset < pages_.size(); ++offset)
+		{
+			const auto index = (next_victim_ + offset) % pages_.size();
+			auto& candidate = pages_[index];
+			if (!candidate.valid || (candidate.pin_count == 0U && !candidate.dirty))
+			{
+				selected = &candidate;
+				next_victim_ = (index + 1U) % pages_.size();
+				break;
+			}
+		}
+		if (selected == nullptr)
+			throw std::length_error("external compact page cache has no clean unpinned page");
+		if (selected->valid) ++page_cache_evictions_;
+		selected->valid = false;
+		decode_page(lookup_scratch_.data(), *selected);
+		if (selected->page_id != page_id)
+			throw std::invalid_argument("external compact page key disagrees with its record");
+		selected->valid = true;
+		selected->dirty = false;
+		selected->pin_count = 1U;
+		return { page_id, selected->regrets.data(), selected->strategy_masses.data(),
+			selected->bucket_count, selected->action_count, page_width_ };
+	}
+
 	MultiwayExternalCompactPages::PageView MultiwayExternalCompactPages::pin(
 		std::uint64_t page_id, MultiwayPublicStateId state, std::int32_t seat,
 		std::uint32_t page_index, std::uint32_t bucket_count, std::uint8_t action_count)
@@ -2208,7 +2332,28 @@ namespace texas::solver::multiway
 	void MultiwayExternalCompactStorage::begin_batch(std::uint64_t batch_number,
 		std::uint64_t merge_fingerprint)
 	{
-		pages_.begin_batch(batch_number, merge_fingerprint);
+		if (batch_number == 0U)
+			throw std::invalid_argument("external compact page batch number is zero");
+		page_batch_number_ = std::max(batch_number, pages_.next_batch_number());
+		page_batch_fingerprint_ = merge_fingerprint;
+		pages_.begin_batch(page_batch_number_, page_batch_fingerprint_);
+	}
+
+	void MultiwayExternalCompactStorage::flush_page_batch_and_continue()
+	{
+		if (page_batch_fingerprint_ == 0U)
+		{
+			auto hash = kHashOffset;
+			texas::core::fingerprint::append_u64(hash, 0x5041474553554242ULL);
+			texas::core::fingerprint::append_u64(hash, page_batch_number_);
+			const auto fingerprint = texas::core::fingerprint::finish(hash);
+			pages_.set_merge_fingerprint(fingerprint == 0U ? 1U : fingerprint);
+		}
+		pages_.commit_batch();
+		if (page_batch_number_ == std::numeric_limits<std::uint64_t>::max())
+			throw std::overflow_error("external compact page batch number overflows");
+		++page_batch_number_;
+		pages_.begin_batch(page_batch_number_, page_batch_fingerprint_);
 	}
 
 	bool MultiwayExternalCompactStorage::lookup_row(MultiwayInfosetId infoset,
@@ -2349,6 +2494,62 @@ namespace texas::solver::multiway
 			throw;
 		}
 		unpin_bucket(pinned);
+	}
+
+	void MultiwayExternalCompactStorage::scale_regrets(double factor)
+	{
+		if (!std::isfinite(factor) || factor <= 0.0 || factor > 1.0)
+			throw std::invalid_argument("external compact regret discount must be finite and in (0, 1]");
+		(void)transform_external_regrets(pages_, next_page_id_, [factor](std::int32_t& regret) {
+			const auto before = regret;
+			regret = static_cast<std::int32_t>(std::clamp<long long>(
+				std::llround(static_cast<double>(regret) * factor),
+				MultiwayCompactStorage::kRegretMin, MultiwayCompactStorage::kRegretMax));
+			return regret != before;
+		}, [this] { flush_page_batch_and_continue(); });
+	}
+
+	std::size_t MultiwayExternalCompactStorage::scale_and_prune_regrets(
+		double factor, double threshold, double regret_floor)
+	{
+		if (!std::isfinite(factor) || factor <= 0.0 || factor > 1.0)
+			return 0U;
+		if (threshold > 0.0)
+			throw std::invalid_argument("external compact positive regret thresholds require dense page enumeration");
+		const auto floor_value = std::clamp<long long>(std::llround(regret_floor * 1024.0),
+			MultiwayCompactStorage::kRegretMin, MultiwayCompactStorage::kRegretMax);
+		const auto threshold_value = std::clamp<long long>(std::llround(threshold * 1024.0),
+			MultiwayCompactStorage::kRegretMin, MultiwayCompactStorage::kRegretMax);
+		return transform_external_regrets(pages_, next_page_id_, [=](std::int32_t& regret) {
+			regret = static_cast<std::int32_t>(std::clamp<long long>(
+				std::llround(static_cast<double>(regret) * factor),
+				MultiwayCompactStorage::kRegretMin, MultiwayCompactStorage::kRegretMax));
+			if (regret < threshold_value)
+			{
+				regret = static_cast<std::int32_t>(std::max(floor_value, threshold_value));
+				return true;
+			}
+			return false;
+		}, [this] { flush_page_batch_and_continue(); });
+	}
+
+	std::size_t MultiwayExternalCompactStorage::prune_negative_regrets(
+		double threshold, double regret_floor)
+	{
+		if (threshold > 0.0)
+			throw std::invalid_argument("external compact positive regret thresholds require dense page enumeration");
+		const auto floor_value = std::clamp<long long>(std::llround(regret_floor * 1024.0),
+			MultiwayCompactStorage::kRegretMin, MultiwayCompactStorage::kRegretMax);
+		const auto threshold_value = std::clamp<long long>(std::llround(threshold * 1024.0),
+			MultiwayCompactStorage::kRegretMin, MultiwayCompactStorage::kRegretMax);
+		return transform_external_regrets(pages_, next_page_id_, [=](std::int32_t& regret) {
+			if (regret < threshold_value)
+			{
+				regret = static_cast<std::int32_t>(std::max(floor_value, threshold_value));
+				return true;
+			}
+			return false;
+		}, [this] { flush_page_batch_and_continue(); });
 	}
 
 	void MultiwayExternalCompactStorage::regret_matched_strategy_into(
@@ -2789,6 +2990,7 @@ namespace texas::solver::multiway
 
 	std::uint64_t MultiwayExternalRecordStore::generation() const { std::lock_guard<std::mutex> lock(mutex_); return generation_; }
 	std::uint64_t MultiwayExternalRecordStore::record_count() const { std::lock_guard<std::mutex> lock(mutex_); return record_count_; }
+	std::uint64_t MultiwayExternalRecordStore::last_batch_number() const { std::lock_guard<std::mutex> lock(mutex_); return last_batch_number_; }
 	std::uint64_t MultiwayExternalRecordStore::content_hash() const
 	{
 		std::lock_guard<std::mutex> lock(mutex_);

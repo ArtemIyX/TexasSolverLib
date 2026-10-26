@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.27 - Bound external page mutation batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added deterministic page-ID traversal for external regret scaling and zero-or-negative-threshold pruning, with page updates committed in cache-bounded component subbatches under the aggregate transaction manifest.
+- External coordinator merges now flush a page when the ordered delta stream moves to another page, preserving worker order while allowing a cache smaller than the dirty page set.
+- Relaxed component validation only for monotonic page subbatches and compaction generations. The outer transaction still restores the prior component manifests on failure.
+- Verified repeated page subbatches, fan-in compaction, scale/prune differential behavior, and rollback after a prior page subbatch was already published.
+- Positive pruning thresholds fail closed because implicit zero pages are not yet enumerable; sparse external pruning with threshold zero matches CompactInt32.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver`, `test_multiway_external_storage`, and `test_multiway_blueprint_training`: passed.
+- Focused CTest: passed (3/3).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External traversal/training remain fail-closed. Positive-threshold pruning and large-scale behavior remain unvalidated; no training job was run.
+
 ## PB-12 Phase 4.10 - Reopen committed external coordinator generation
 
 **Status:** Complete

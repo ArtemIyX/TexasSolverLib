@@ -730,6 +730,47 @@ namespace texas::solver::multiway
 			return config;
 		}
 
+		std::uint64_t external_regret_batch_fingerprint(
+			std::uint64_t operation, const double* values, std::size_t count) noexcept
+		{
+			auto hash = texas::core::fingerprint::FNV1A_OFFSET;
+			texas::core::fingerprint::append_u64(hash, operation);
+			for (std::size_t index = 0U; index < count; ++index)
+			{
+				std::uint64_t bits = 0U;
+				static_assert(sizeof(bits) == sizeof(values[index]), "double width must be 64 bits");
+				std::memcpy(&bits, &values[index], sizeof(bits));
+				texas::core::fingerprint::append_u64(hash, bits);
+			}
+			const auto result = texas::core::fingerprint::finish(hash);
+			return result == 0U ? 1U : result;
+		}
+
+		template <typename Operation>
+		auto commit_external_regret_batch(
+			MultiwayExternalTrainingStorage& storage,
+			std::uint64_t fingerprint,
+			Operation&& operation)
+		{
+			const auto& current = storage.current_manifest();
+			const auto row_count = current.row_count;
+			const auto logical_value_count = current.logical_value_count;
+			storage.begin_batch(storage.next_batch_number());
+			try
+			{
+				storage.begin_page_batch();
+				auto result = operation(storage.compact_storage());
+				storage.commit_batch(fingerprint, row_count, logical_value_count);
+				return result;
+			}
+			catch (...)
+			{
+				try { storage.abort_batch(); }
+				catch (...) {}
+				throw;
+			}
+		}
+
 	} // namespace
 
 	void MultiwayRootSnapshot::validate() const
@@ -2113,7 +2154,10 @@ namespace texas::solver::multiway
 		MultiwayExternalCompactStorage::PinnedBucket external_pinned;
 		const auto pin_external_bucket = [&](const MultiwayExternalRowBinding& row, std::uint32_t bucket) {
 			if (external_pinned.owner != nullptr)
+			{
 				external_storage_->compact_storage().unpin_bucket(external_pinned);
+				external_storage_->compact_storage().flush_page_batch_and_continue();
+			}
 			auto pinned = external_storage_->compact_storage().pin_bucket(row, bucket, true);
 			external_pinned.owner = pinned.owner;
 			external_pinned.page = pinned.page;
@@ -2387,6 +2431,18 @@ namespace texas::solver::multiway
 
 	void MultiwaySolverCoordinator::scale_regrets(double factor)
 	{
+		if (external_storage_ != nullptr)
+		{
+			std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+			const double values[] = { factor };
+			const auto fingerprint = external_regret_batch_fingerprint(0x5343414c45524547ULL, values, 1U);
+			(void)commit_external_regret_batch(*external_storage_, fingerprint,
+				[factor](MultiwayExternalCompactStorage& storage) {
+					storage.scale_regrets(factor);
+					return 0U;
+				});
+			return;
+		}
 		if (compact_storage_ != nullptr)
 		{
 			compact_storage_->scale_regrets(factor);
@@ -2396,8 +2452,18 @@ namespace texas::solver::multiway
 	}
 
 	std::size_t MultiwaySolverCoordinator::scale_and_prune_regrets(
-		double factor, double threshold, double regret_floor) noexcept
+		double factor, double threshold, double regret_floor)
 	{
+		if (external_storage_ != nullptr)
+		{
+			std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+			const double values[] = { factor, threshold, regret_floor };
+			const auto fingerprint = external_regret_batch_fingerprint(0x5343414c4550524eULL, values, 3U);
+			return commit_external_regret_batch(*external_storage_, fingerprint,
+				[factor, threshold, regret_floor](MultiwayExternalCompactStorage& storage) {
+					return storage.scale_and_prune_regrets(factor, threshold, regret_floor);
+				});
+		}
 		if (compact_storage_ != nullptr)
 		{
 			return compact_storage_->scale_and_prune_regrets(factor, threshold, regret_floor);
@@ -2523,8 +2589,18 @@ namespace texas::solver::multiway
 	}
 
 	std::size_t MultiwaySolverCoordinator::prune_negative_regrets(
-		double threshold, double regret_floor) noexcept
+		double threshold, double regret_floor)
 	{
+		if (external_storage_ != nullptr)
+		{
+			std::unique_lock<std::shared_mutex> lock(traversal_mutex_);
+			const double values[] = { threshold, regret_floor };
+			const auto fingerprint = external_regret_batch_fingerprint(0x5052554e45524547ULL, values, 2U);
+			return commit_external_regret_batch(*external_storage_, fingerprint,
+				[threshold, regret_floor](MultiwayExternalCompactStorage& storage) {
+					return storage.prune_negative_regrets(threshold, regret_floor);
+				});
+		}
 		if (compact_storage_ != nullptr)
 			return compact_storage_->prune_negative_regrets(threshold, regret_floor);
 		return storage_.prune_negative_regrets(threshold, regret_floor);
