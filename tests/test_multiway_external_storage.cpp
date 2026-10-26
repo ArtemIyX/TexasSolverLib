@@ -612,6 +612,26 @@ TEST_CASE(multiway_external_public_node_codec_is_packed_and_deterministic)
 	EXPECT_TRUE(!decode_external_public_node(encoded.data(), encoded.size(), decoded));
 }
 
+TEST_CASE(multiway_external_catalog_rejects_over_limit_batch_before_append)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto bounded_config = config(directory.path());
+	const auto record_width = static_cast<std::uint64_t>(external_public_catalog_record_size()) + 8U;
+	bounded_config.maximum_wal_bytes = 48U + record_width;
+	bounded_config.segment_target_bytes = 2U * record_width;
+	MultiwayPackedPublicNode first{};
+	first.id.value = 1U;
+	MultiwayPackedPublicNode second{};
+	second.id.value = 2U;
+	MultiwayExternalPublicCatalog catalog(bounded_config, 4U);
+	bool bounded_rejection = false;
+	try { catalog.append_batch(1U, 0x77U, { first, second }); }
+	catch (const std::length_error&) { bounded_rejection = true; }
+	EXPECT_TRUE(bounded_rejection);
+	EXPECT_EQ(catalog.record_count(), 0U);
+}
+
 TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_restart)
 {
 	using namespace texas::solver::multiway;

@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.8 - Preflight external catalog and row batch bounds
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added WAL and segment-size checks before allocating catalog record buffers.
+- Added segment-size preflight to row admission, alongside its existing WAL bound.
+- Added a regression asserting oversized catalog admission rejects without publishing records.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_external_storage` and `test_multiway_solver`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Admission batches larger than the configured WAL or segment are rejected; deterministic multi-chunk admission is not implemented.
+
 ## PB-12 Phase 4.7 - Route single-item admission through external batches
 
 **Status:** Complete

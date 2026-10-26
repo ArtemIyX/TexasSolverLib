@@ -1479,6 +1479,11 @@ namespace texas::solver::multiway
 		const auto new_count = new_state_flags == nullptr ? states.size() : static_cast<std::size_t>(
 			std::count(new_state_flags->begin(), new_state_flags->end(), 1U));
 		if (new_count == 0U) return;
+		const auto record_width = checked_add(external_public_catalog_record_size(), 8U);
+		const auto wal_limit = store_.maximum_batch_bytes();
+		if (wal_limit < 48U || new_count > (wal_limit - 48U) / record_width ||
+			new_count > store_.segment_target_bytes() / record_width)
+			throw std::length_error("external public catalog admission exceeds its bounded WAL or segment");
 		std::vector<MultiwayExternalRecord> records;
 		records.reserve(new_count);
 		std::vector<std::uint8_t> node_bytes;
@@ -1715,9 +1720,12 @@ namespace texas::solver::multiway
 		if (rows.empty()) return;
 		constexpr std::uint64_t row_payload_bytes = 8U + 6U * 24U;
 		const auto wal_limit = store_.maximum_batch_bytes();
-		if (wal_limit < 48U + 2U * (8U + row_payload_bytes) ||
-			rows.size() > (wal_limit - 48U) / (8U + row_payload_bytes) - 1U)
-			throw std::length_error("external row admission exceeds its bounded WAL batch");
+		const auto row_record_width = 8U + row_payload_bytes;
+		const auto segment_record_capacity = store_.segment_target_bytes() / row_record_width;
+		if (wal_limit < 48U + 2U * row_record_width ||
+			rows.size() > (wal_limit - 48U) / row_record_width - 1U ||
+			segment_record_capacity == 0U || rows.size() > segment_record_capacity - 1U)
+			throw std::length_error("external row admission exceeds its bounded WAL or segment");
 		constexpr std::uint32_t row_magic = 0x3152574dU;
 		constexpr std::uint32_t row_schema = 1U;
 		std::vector<std::size_t> order(rows.size());
