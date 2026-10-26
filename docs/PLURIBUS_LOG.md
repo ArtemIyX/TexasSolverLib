@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.20 - Invalidate missing external row bindings
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- A failed external row lookup now clears its output binding instead of leaving a previous row identity and page range available to callers.
+- Added regression coverage that performs a successful lookup followed by a missing-row lookup and checks the binding is invalidated.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External row bindings are not yet consumed by `MultiwaySolverCoordinator`.
+
 ## PB-12 Phase 4.7 - Append classified external catalog batches
 
 **Status:** Complete

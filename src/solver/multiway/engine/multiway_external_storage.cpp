@@ -2172,7 +2172,11 @@ namespace texas::solver::multiway
 		MultiwayExternalRowBinding& output) const
 	{
 		MultiwayExternalRowMetadata row{};
-		if (!rows_.lookup(infoset.public_state, infoset.seat, row)) return false;
+		if (!rows_.lookup(infoset.public_state, infoset.seat, row))
+		{
+			output = {};
+			return false;
+		}
 		output.state_id_ = infoset.public_state.value;
 		output.owner_ = &rows_;
 		output.seat_ = infoset.seat;

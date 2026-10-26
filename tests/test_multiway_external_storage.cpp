@@ -346,6 +346,10 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		auto page = storage.compact_storage().pin_bucket(binding, 1U, true);
 		storage.compact_storage().apply_delta(page, 1U, 2.0, 3.0);
 		storage.compact_storage().unpin_bucket(page);
+		EXPECT_TRUE(!storage.compact_storage().lookup_row({ { 99U }, 0 }, binding));
+		EXPECT_EQ(binding.public_state().value, 0U);
+		EXPECT_EQ(binding.seat(), -1);
+		EXPECT_EQ(binding.bucket_count(), 0U);
 		storage.commit_batch(0xabcU, 1U);
 		EXPECT_EQ(storage.current_manifest().generation, 1U);
 		EXPECT_EQ(storage.current_manifest().public_state_count, 1U);
