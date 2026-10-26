@@ -17,6 +17,7 @@ namespace texas::solver::multiway
 	struct MultiwayInfosetId;
 	struct MultiwaySparseRowShape;
 	class MultiwayExternalRowIndex;
+	class MultiwayExternalRowBinding;
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA = 1U;
 	[[nodiscard]] std::size_t external_public_node_record_size() noexcept;
@@ -140,7 +141,8 @@ namespace texas::solver::multiway
 		const std::filesystem::path& external_storage_directory,
 		const MultiwayExternalCheckpointManifest& manifest,
 		bool synchronous_durability,
-		MultiwayExternalCheckpointWriteOptions options = {});
+		MultiwayExternalCheckpointWriteOptions options = {},
+		std::uint64_t disk_reserve_bytes = 0U);
 	[[nodiscard]] MultiwayExternalCheckpointManifest load_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
 		const std::filesystem::path& external_storage_directory,
@@ -368,8 +370,7 @@ namespace texas::solver::multiway
 	class MultiwayExternalRowIndex
 	{
 	public:
-		using OrderedRowVisitor = bool (*)(void*, MultiwayPublicStateId, std::int32_t,
-			const MultiwayExternalRowMetadata&);
+		using OrderedRowVisitor = bool (*)(void*, const MultiwayExternalRowBinding&);
 
 		MultiwayExternalRowIndex(MultiwayExternalStorageConfig config,
 			std::uint32_t page_width);

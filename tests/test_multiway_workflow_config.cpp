@@ -108,15 +108,23 @@ TEST_CASE(multiway_workflow_config_binds_external_storage_identity_and_resources
 	EXPECT_EQ(round_trip.fingerprint(), config.fingerprint());
 	EXPECT_EQ(round_trip.storage_backend, std::string("ExternalCompactInt32"));
 	EXPECT_EQ(round_trip.storage_directory, std::filesystem::path("external-store"));
+	EXPECT_TRUE(config.external_storage_fingerprint() != 0U);
 	const auto preflight = preflight_multiway_workflow(config, 0U, 1U);
-	EXPECT_TRUE(!preflight.accepted);
-	EXPECT_EQ(std::string(preflight.rejected_category), std::string("storage backend"));
+	EXPECT_TRUE(preflight.accepted);
+	EXPECT_EQ(std::string(preflight.rejected_category), std::string("none"));
 	EXPECT_EQ(preflight.memory.estimate.ledger.external_storage_cache_bytes, 12288U);
 	EXPECT_EQ(preflight.memory.estimate.ledger.external_storage_scratch_bytes, 69632U);
 	EXPECT_EQ(preflight.memory.estimate.ledger.external_storage_disk_reserve_bytes, 1000000U);
 	auto modified = text;
 	modified.replace(modified.find("row_page_cache_bytes=8192"), std::strlen("row_page_cache_bytes=8192"), "row_page_cache_bytes=8193");
 	EXPECT_TRUE(parse_multiway_workflow_config(modified).fingerprint() != config.fingerprint());
+	EXPECT_TRUE(parse_multiway_workflow_config(modified).external_storage_fingerprint() !=
+		config.external_storage_fingerprint());
+	MultiwayWorkflowResourceLimits disk_limits;
+	disk_limits.max_disk_space_requirement_bytes = config.disk_space_requirement_bytes +
+		config.maximum_wal_bytes + config.segment_target_bytes +
+		2U * config.compaction_scratch_bytes + config.disk_reserve_bytes - 1U;
+	EXPECT_THROW(config.validate(disk_limits), std::invalid_argument);
 }
 
 TEST_CASE(multiway_workflow_config_rejects_external_storage_without_bounded_resources)

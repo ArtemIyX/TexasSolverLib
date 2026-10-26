@@ -97,6 +97,7 @@ namespace texas::solver::multiway
 		void validate(const MultiwayWorkflowResourceLimits& resource_limits) const;
 		[[nodiscard]] bool capacities_resolved() const noexcept;
 		[[nodiscard]] std::uint64_t fingerprint() const noexcept;
+		[[nodiscard]] std::uint64_t external_storage_fingerprint() const;
 		[[nodiscard]] std::uint64_t resolved_regret_delta_capacity() const noexcept;
 		[[nodiscard]] std::uint64_t resolved_continuation_delta_capacity() const noexcept;
 		[[nodiscard]] std::uint64_t resolved_discovery_public_state_capacity() const noexcept;

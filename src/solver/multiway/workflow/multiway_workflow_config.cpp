@@ -120,9 +120,20 @@ namespace texas::solver::multiway
 		reject_above(disk_space_requirement_bytes, resource_limits.max_disk_space_requirement_bytes, "disk_space_requirement_bytes");
 		reject_above(disk_reserve_bytes, resource_limits.max_disk_space_requirement_bytes, "disk_reserve_bytes");
 		if (storage_backend == "ExternalCompactInt32" &&
-			(disk_space_requirement_bytes > std::numeric_limits<std::uint64_t>::max() - disk_reserve_bytes ||
-				disk_space_requirement_bytes + disk_reserve_bytes > resource_limits.max_disk_space_requirement_bytes))
-			throw std::invalid_argument("external storage disk requirement plus reserve exceeds resource limit");
+			([&]() {
+				auto required = disk_space_requirement_bytes;
+				const auto add = [&required](std::uint64_t value) {
+					if (value > std::numeric_limits<std::uint64_t>::max() - required)
+						return false;
+					required += value;
+					return true;
+				};
+				return !add(maximum_wal_bytes) || !add(segment_target_bytes) ||
+					compaction_scratch_bytes > std::numeric_limits<std::uint64_t>::max() / 2U ||
+					!add(compaction_scratch_bytes * 2U) || !add(disk_reserve_bytes) ||
+					required > resource_limits.max_disk_space_requirement_bytes;
+			})())
+			throw std::invalid_argument("external storage live, WAL, compaction, and reserve bytes exceed disk resource limit");
 		reject_above(process_memory_limit_bytes, resource_limits.max_process_memory_limit_bytes, "process_memory_limit_bytes");
 		reject_above(process_working_set_limit_bytes, resource_limits.max_process_working_set_limit_bytes, "process_working_set_limit_bytes");
 		reject_above(process_working_set_resident_allowance_bytes, resource_limits.max_process_working_set_resident_allowance_bytes, "process_working_set_resident_allowance_bytes");
@@ -248,12 +259,6 @@ namespace texas::solver::multiway
 		result.accepted = result.memory.status != MultiwayMemoryStatus::Rejected;
 		result.rejected_category = result.accepted ? "none" : result.memory.rejected_category;
 		result.message = result.accepted ? "workflow resource preflight admitted" : result.memory.message;
-		if (config.storage_backend == "ExternalCompactInt32")
-		{
-			result.accepted = false;
-			result.rejected_category = "storage backend";
-			result.message = "ExternalCompactInt32 storage is not ready for solver execution";
-		}
 		return result;
 	}
 
@@ -322,6 +327,26 @@ namespace texas::solver::multiway
 		append(process_memory_limit_bytes);
 		append(process_working_set_limit_bytes);
 		append(process_working_set_resident_allowance_bytes);
+		return core::fingerprint::finish(hash);
+	}
+
+	std::uint64_t MultiwayWorkflowConfig::external_storage_fingerprint() const
+	{
+		if (storage_backend != "ExternalCompactInt32")
+			throw std::invalid_argument("external storage identity requires ExternalCompactInt32");
+		auto hash = core::fingerprint::FNV1A_OFFSET;
+		const auto append = [&hash](std::uint64_t value) noexcept { core::fingerprint::append_u64(hash, value); };
+		const auto directory = storage_directory.lexically_normal().generic_u8string();
+		for (const auto character : directory)
+			core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
+		append(public_catalog_cache_bytes);
+		append(row_page_cache_bytes);
+		append(maximum_wal_bytes);
+		append(segment_target_bytes);
+		append(compaction_fan_in);
+		append(compaction_scratch_bytes);
+		append(disk_reserve_bytes);
+		append(synchronous_durability ? 1U : 0U);
 		return core::fingerprint::finish(hash);
 	}
 

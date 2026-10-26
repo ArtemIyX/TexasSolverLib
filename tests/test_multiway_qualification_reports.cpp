@@ -148,6 +148,16 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 		identity
 	};
 	auto report = make_multiway_training_report(status, 77U, evidence, 0U, 1'000U);
+	report.storage_backend = "ExternalCompactInt32";
+	report.checkpoint_schema_version = 6U;
+	report.external_checkpoint_generation = 9U;
+	report.external_checkpoint_segment_count = 12U;
+	report.external_storage_identity_hash = 987U;
+	report.external_storage_disk_preflight_bytes = 1000U;
+	report.external_storage_cache_bytes = 200U;
+	report.external_storage_wal_limit_bytes = 300U;
+	report.external_storage_compaction_scratch_bytes = 400U;
+	report.external_storage_disk_reserve_bytes = 500U;
 	EXPECT_EQ(report.training_wall_nanoseconds, 100U);
 	EXPECT_EQ(report.scheduler_mode, MultiwaySchedulerMode::Dynamic);
 	EXPECT_EQ(report.dynamic_chunk_size, 8U);
@@ -288,6 +298,12 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	const std::string text((std::istreambuf_iterator<char>(input)), {});
 	input.close();
 	EXPECT_TRUE(text.find("\"checkpoint_bytes\": 123") != std::string::npos);
+	EXPECT_TRUE(text.find("\"storage_backend\": \"ExternalCompactInt32\"") != std::string::npos);
+	EXPECT_TRUE(text.find("\"checkpoint_schema_version\": 6") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_checkpoint_generation\": 9") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_checkpoint_segment_count\": 12") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_storage_identity_hash\": 987") != std::string::npos);
+	EXPECT_TRUE(text.find("\"external_storage_disk_preflight_bytes\": 1000") != std::string::npos);
 	EXPECT_TRUE(text.find("\"training_wall_nanoseconds\": 100") != std::string::npos);
 	EXPECT_TRUE(text.find("\"checkpoint_wall_nanoseconds\": 200") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_wall_nanoseconds\": 300") != std::string::npos);

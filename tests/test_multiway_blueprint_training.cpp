@@ -6,6 +6,7 @@
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
 #include "test_harness.hpp"
 
@@ -75,7 +76,8 @@ namespace
 		return static_cast<texas::Value>(request.betting->contributions[traverser] - request.betting->current_bet);
 	}
 
-	texas::MultiwaySolverLimits export_limits(texas::MultiwaySolverLimits::StorageBackend backend)
+	texas::MultiwaySolverLimits export_limits(texas::MultiwaySolverLimits::StorageBackend backend,
+		const std::filesystem::path& external_directory = {})
 	{
 		texas::MultiwaySolverLimits limits;
 		limits.worker_count = 1U;
@@ -87,13 +89,25 @@ namespace
 		limits.max_discovery_entries = 8192U;
 		limits.max_batches = 32U;
 		limits.storage_backend = backend;
+		if (backend == texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			limits.external_storage.directory = external_directory;
+			limits.external_storage.public_catalog_cache_bytes = 4096U;
+			limits.external_storage.row_page_cache_bytes = 2U * 1024U * 1024U;
+			limits.external_storage.maximum_wal_bytes = 1024U * 1024U;
+			limits.external_storage.segment_target_bytes = 1024U * 1024U;
+			limits.external_storage.compaction_fan_in = 4U;
+			limits.external_storage.compaction_scratch_bytes = 1024U * 1024U;
+			limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+		}
 		return limits;
 	}
 
-	texas::MultiwayModelIdentity export_identity(texas::MultiwaySolverLimits::StorageBackend backend)
+	texas::MultiwayModelIdentity export_identity(texas::MultiwaySolverLimits::StorageBackend backend,
+		const std::filesystem::path& external_directory = {})
 	{
 		texas::MultiwayBlueprintTrainingConfig config;
-		config.limits = export_limits(backend);
+		config.limits = export_limits(backend, external_directory);
 		return config.identity();
 	}
 
@@ -111,8 +125,9 @@ namespace
 
 		explicit StreamingExportFixture(
 			texas::MultiwaySolverLimits::StorageBackend backend,
-			texas::MultiwayWorkingSetMonitor monitor = {})
-			: root(export_root(abstraction)), request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend)), coordinator(request), buckets({ texas::MultiwayBucketTable(export_identity(backend), texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) }), evaluator{ export_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }), trainer(export_identity(backend), runner, coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor)
+			texas::MultiwayWorkingSetMonitor monitor = {},
+			const std::filesystem::path& external_directory = {})
+			: root(export_root(abstraction)), request(root, [] { texas::MultiwayCFRConfig cfr; cfr.player_count = 3U; return cfr; }(), export_limits(backend, external_directory)), coordinator(request), buckets({ texas::MultiwayBucketTable(export_identity(backend, external_directory), texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) }), evaluator{ export_leaf, nullptr }, traversal(coordinator, request.root(), abstraction, buckets, &evaluator, 1U), runner(traversal, coordinator, 1U, texas::MultiwayWorkerStreamCapacities{ 2048U, 2048U, 8192U, 8192U }), trainer(export_identity(backend, external_directory), runner, coordinator, {}, 0x77U, 1U, 0U, {}, {}, {}, nullptr, nullptr, monitor)
 		{
 		}
 	};
@@ -186,6 +201,87 @@ TEST_CASE(multiway_training_identity_binds_storage_backend)
 	auto compact = reference;
 	compact.limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
 	EXPECT_TRUE(reference.identity() != compact.identity());
+}
+
+TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_export)
+{
+	using namespace texas::solver::multiway;
+	const auto base = std::filesystem::temp_directory_path() /
+		("texas_solver_external_training_resume_" + std::to_string(
+			std::chrono::steady_clock::now().time_since_epoch().count()));
+	const auto storage_directory = base / "storage";
+	const auto checkpoint_path = base / "latest.mwec";
+	const auto policy_path = base / "resumed.mwfb";
+	const auto reference_storage = base / "reference_storage";
+	const auto reference_policy_path = base / "reference.mwfb";
+	const auto backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	const auto identity = export_identity(backend, storage_directory);
+	constexpr std::uint64_t workflow_hash = 0x7182U;
+	constexpr std::uint64_t storage_hash = 0x8293U;
+	MultiwayWorkingSetMonitor sharded_monitor;
+	sharded_monitor.single_file_blueprint_limit_bytes = 1U;
+	sharded_monitor.shard_max_serialized_bytes = 1024U * 1024U;
+	MultiwayExternalCheckpointManifest checkpoint;
+	{
+		StreamingExportFixture first(backend, {}, storage_directory);
+		try
+		{
+			first.trainer.run_batches(1U, 4U, 0x77U);
+			checkpoint = first.trainer.save_external_checkpoint_atomic(
+				checkpoint_path, workflow_hash, storage_hash);
+		}
+		catch (const std::exception& error)
+		{
+			throw std::runtime_error(std::string("first external batch/checkpoint: ") + error.what());
+		}
+	}
+	MultiwayExternalCheckpointManifest restored;
+	try
+	{
+		restored = restore_multiway_external_checkpoint(
+		checkpoint_path, storage_directory, identity.combined_hash, workflow_hash,
+		storage_hash, MultiwayBlueprintIterationSchedule{}.identity(), true);
+	}
+	catch (const std::exception& error)
+	{
+		throw std::runtime_error(std::string("external manifest restore: ") + error.what());
+	}
+	EXPECT_EQ(restored.completed_batches, 1U);
+	EXPECT_EQ(restored.completed_trajectories, 4U);
+	std::uint64_t resumed_policy_hash = 0U;
+	try
+	{
+		StreamingExportFixture resumed(backend, sharded_monitor, storage_directory);
+		try { resumed.trainer.resume_from_external_checkpoint(restored, workflow_hash, storage_hash); }
+		catch (const std::exception& error) { throw std::runtime_error(std::string("resume: ") + error.what()); }
+		EXPECT_EQ(resumed.trainer.batches(), 1U);
+		try { resumed.trainer.run_batches(1U, 4U, 0x77U); }
+		catch (const std::exception& error) { throw std::runtime_error(std::string("resumed batch: ") + error.what()); }
+		MultiwayFullBlueprintExportResult output;
+		try { output = resumed.trainer.save_full_policy_atomic(policy_path); }
+		catch (const std::exception& error) { throw std::runtime_error(std::string("resumed export: ") + error.what()); }
+		EXPECT_TRUE(output.sharded);
+		resumed_policy_hash = output.policy_content_hash;
+	}
+	catch (const std::exception& error)
+	{
+		throw std::runtime_error(std::string("external resume/export: ") + error.what());
+	}
+	std::uint64_t uninterrupted_policy_hash = 0U;
+	try
+	{
+		StreamingExportFixture uninterrupted(backend, sharded_monitor, reference_storage);
+		uninterrupted.trainer.run_batches(2U, 4U, 0x77U);
+		const auto output = uninterrupted.trainer.save_full_policy_atomic(reference_policy_path);
+		EXPECT_TRUE(output.sharded);
+		uninterrupted_policy_hash = output.policy_content_hash;
+	}
+	catch (const std::exception& error)
+	{
+		throw std::runtime_error(std::string("external uninterrupted/export: ") + error.what());
+	}
+	EXPECT_EQ(resumed_policy_hash, uninterrupted_policy_hash);
+	std::filesystem::remove_all(base);
 }
 
 TEST_CASE(multiway_training_identity_ignores_run_horizon_for_resume)

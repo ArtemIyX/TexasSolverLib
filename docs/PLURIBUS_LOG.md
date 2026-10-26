@@ -1,5 +1,46 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phases 6–8 - Integrate external training checkpoints and workflow
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added schema-6 external checkpoint save/resume with model, workflow, storage, and schedule identity checks. Existing schema-5 load/save remains on the compact backend.
+- Enabled the external backend in training, added storage-path alias checks, disk preflight, disk planning, and external storage provenance.
+- Kept external export ordered and bounded; callbacks now use the visited row binding without a redundant index lookup.
+- Added backend/checkpoint/disk/cache configuration fields to training reports.
+- Added deterministic external checkpoint/resume/export equivalence and disk/preflight/report coverage.
+
+### Files
+
+- `examples/multiway_workflow_main.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused CTest: `test_multiway_blueprint_training`, `test_multiway_external_storage`, `test_multiway_qualification_reports`, and `test_multiway_workflow_config` passed (4/4).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- No training workflow or large pilot was run. No 50M feasibility claim is made.
+- Report output includes configured external resource budgets and checkpoint generation/segment count; cache hit/miss and compaction amplification telemetry remain unreported.
+- External checkpoint files reference local immutable segments; a portable archive command is not included.
+
 ## PB-12 Phase 8.4 - Report private-commit guard state
 
 **Status:** Complete

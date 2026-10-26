@@ -136,6 +136,16 @@ namespace texas::solver::multiway
 		bool unattributed_private_bytes_available = false;
 		std::uint64_t unattributed_private_bytes = 0U;
 		std::uint64_t checkpoint_bytes = 0U;
+		std::string storage_backend = "CompactInt32";
+		std::uint32_t checkpoint_schema_version = 5U;
+		std::uint64_t external_checkpoint_generation = 0U;
+		std::uint64_t external_checkpoint_segment_count = 0U;
+		std::uint64_t external_storage_identity_hash = 0U;
+		std::uint64_t external_storage_disk_preflight_bytes = 0U;
+		std::uint64_t external_storage_cache_bytes = 0U;
+		std::uint64_t external_storage_wal_limit_bytes = 0U;
+		std::uint64_t external_storage_compaction_scratch_bytes = 0U;
+		std::uint64_t external_storage_disk_reserve_bytes = 0U;
 		std::uint64_t checkpoint_planned_bytes = 0U;
 		std::uint64_t checkpoint_scratch_bytes = 0U;
 		std::uint64_t checkpoint_payload_hash = 0U;

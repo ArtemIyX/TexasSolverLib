@@ -109,16 +109,15 @@ namespace texas::solver::multiway
 					const MultiwayExternalTrainingStorage* storage;
 				};
 				Context context{ &plan, external };
-				const auto visit_row = [](void* opaque, MultiwayPublicStateId state,
-					std::int32_t seat, const MultiwayExternalRowMetadata& metadata) {
+				const auto visit_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
 					auto& current = *static_cast<Context*>(opaque);
 					MultiwaySparseRowShape shape{};
-					shape.infoset = { state, static_cast<core::PlayerId>(seat) };
-					shape.bucket_count = metadata.bucket_count;
-					shape.action_count = metadata.action_count;
+					shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
+					shape.bucket_count = binding.bucket_count();
+					shape.action_count = binding.action_count();
 					std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
 					std::size_t action_count = 0U;
-					if (!current.storage->catalog().lookup_menu(state, actions.data(), actions.size(), action_count))
+					if (!current.storage->catalog().lookup_menu(shape.infoset.public_state, actions.data(), actions.size(), action_count))
 						throw std::invalid_argument("external blueprint row has no published action menu");
 					const MultiwayPackedMenuView menu{ actions.data(),
 						static_cast<std::uint8_t>(action_count), actions[0].action_menu_id };
@@ -555,8 +554,6 @@ namespace texas::solver::multiway
 	{
 		identity_.validate();
 		schedule_.validate();
-		if (coordinator_->limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
-			throw std::invalid_argument("ExternalCompactInt32 is not ready for blueprint training");
 		if (deterministic_seed_ == 0U)
 		{
 			throw std::invalid_argument("multiway blueprint trainer requires a non-zero deterministic seed");
@@ -1151,13 +1148,12 @@ namespace texas::solver::multiway
 				const decltype(add_shape)* add_shape;
 				};
 				Context context{ &add_shape };
-				const auto count_external_row = [](void* opaque, MultiwayPublicStateId state,
-					std::int32_t seat, const MultiwayExternalRowMetadata& metadata) {
+				const auto count_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
 					auto& current = *static_cast<Context*>(opaque);
 					MultiwaySparseRowShape shape{};
-					shape.infoset = { state, static_cast<core::PlayerId>(seat) };
-					shape.bucket_count = metadata.bucket_count;
-					shape.action_count = metadata.action_count;
+					shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
+					shape.bucket_count = binding.bucket_count();
+					shape.action_count = binding.action_count();
 					(*current.add_shape)(shape);
 					return true;
 				};
@@ -1357,24 +1353,20 @@ namespace texas::solver::multiway
 				MultiwayQuantizedRootAction* actions;
 			};
 			Context context{ external, writer.get(), sharded_writer.get(), strategy.data(), actions.data() };
-			const auto write_external_row = [](void* opaque, MultiwayPublicStateId state,
-				std::int32_t seat, const MultiwayExternalRowMetadata& metadata) {
+			const auto write_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
 				auto& current = *static_cast<Context*>(opaque);
 				MultiwaySparseRowShape shape{};
-				shape.infoset = { state, static_cast<core::PlayerId>(seat) };
-				shape.bucket_count = metadata.bucket_count;
-				shape.action_count = metadata.action_count;
+				shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
+				shape.bucket_count = binding.bucket_count();
+				shape.action_count = binding.action_count();
 				std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> menu_actions{};
 				std::size_t action_count = 0U;
-				if (!current.storage->catalog().lookup_menu(state, menu_actions.data(),
+				if (!current.storage->catalog().lookup_menu(shape.infoset.public_state, menu_actions.data(),
 					menu_actions.size(), action_count))
 					throw std::invalid_argument("external blueprint row has no published action menu");
 				const MultiwayPackedMenuView menu{ menu_actions.data(),
 					static_cast<std::uint8_t>(action_count), menu_actions[0].action_menu_id };
 				validate_export_menu(shape, menu);
-				MultiwayExternalRowBinding binding;
-				if (!current.storage->compact_storage().lookup_row(shape.infoset, binding))
-					throw std::invalid_argument("external blueprint row index changed during export");
 				for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
 				{
 					current.storage->compact_storage().average_strategy_into(
@@ -1469,6 +1461,23 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path) const
 	{
 		MultiwayDurationRecorder checkpoint_duration(status_.checkpoint_wall_nanoseconds);
+		const auto process_memory = working_set_monitor_.observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.observer(working_set_monitor_.observer_context);
+		status_.working_set_gate = evaluate_multiway_working_set_runtime(
+			process_memory, working_set_monitor_.gate);
+		if (status_.working_set_gate.blocked())
+			throw std::runtime_error(std::string("training checkpoint process gate rejected: ") +
+				status_.working_set_gate.rejected_category);
+		const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.system_memory_observer(
+				working_set_monitor_.system_memory_observer_context);
+		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
+			system_memory, working_set_monitor_.system_memory_guard);
+		if (status_.system_memory_guard.blocked())
+			throw std::runtime_error(std::string("training checkpoint system memory gate rejected: ") +
+				status_.system_memory_guard.rejected_category);
 		auto lease = coordinator_->acquire_checkpoint_lease();
 		const auto training = make_metadata(status_, schedule_, deterministic_seed_);
 		const auto coverage = coverage_manifest();
@@ -1491,6 +1500,60 @@ namespace texas::solver::multiway
 		auto result = MultiwayTrainingCheckpointArtifacts::save_atomic_streamed(path, source, &telemetry);
 		result.telemetry = telemetry;
 		return result;
+	}
+
+	MultiwayExternalCheckpointManifest MultiwayBlueprintTrainer::save_external_checkpoint_atomic(
+		const std::filesystem::path& path,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash) const
+	{
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 ||
+			workflow_identity_hash == 0U || storage_identity_hash == 0U)
+			throw std::invalid_argument("external checkpoint requires the external backend and verified identities");
+		MultiwayDurationRecorder checkpoint_duration(status_.checkpoint_wall_nanoseconds);
+		const auto process_memory = working_set_monitor_.observer == nullptr
+			? capture_multiway_process_memory_snapshot()
+			: working_set_monitor_.observer(working_set_monitor_.observer_context);
+		status_.working_set_gate = evaluate_multiway_working_set_runtime(
+			process_memory, working_set_monitor_.gate);
+		if (status_.working_set_gate.blocked())
+			throw std::runtime_error(std::string("external checkpoint process gate rejected: ") +
+				status_.working_set_gate.rejected_category);
+		const auto system_memory = working_set_monitor_.system_memory_observer == nullptr
+			? capture_multiway_system_memory_snapshot()
+			: working_set_monitor_.system_memory_observer(
+				working_set_monitor_.system_memory_observer_context);
+		status_.system_memory_guard = evaluate_multiway_system_memory_guard(
+			system_memory, working_set_monitor_.system_memory_guard);
+		if (status_.system_memory_guard.blocked())
+			throw std::runtime_error(std::string("external checkpoint system memory gate rejected: ") +
+				status_.system_memory_guard.rejected_category);
+		auto lease = coordinator_->acquire_checkpoint_lease();
+		if (lease.external_storage() == nullptr)
+			throw std::logic_error("external checkpoint lease has no external storage");
+		const auto& external = coordinator_->limits().external_storage;
+		auto manifest = make_multiway_external_checkpoint_manifest(
+			external.directory, identity_.combined_hash, workflow_identity_hash,
+			storage_identity_hash, schedule_.identity(), status_.trajectories);
+		manifest.completed_batches = status_.batches;
+		manifest.pruned_negative_regrets = status_.pruned_negative_regrets;
+		manifest.late_window_start_batch = status_.late_window_start_batch;
+		manifest.terminal_visits = status_.terminal_visits;
+		manifest.leaf_visits = status_.leaf_visits;
+		manifest.missing_lookup_requests = status_.missing_lookup_requests;
+		manifest.preflop_rows = status_.preflop_rows;
+		manifest.flop_rows = status_.flop_rows;
+		manifest.turn_rows = status_.turn_rows;
+		manifest.river_rows = status_.river_rows;
+		manifest.street_visits = status_.street_visits;
+		manifest.linear_iteration_weighting = schedule_.linear_iteration_weighting ? 1U : 0U;
+		manifest.discounting_enabled = schedule_.discount_regrets ? 1U : 0U;
+		manifest.negative_regret_pruning_enabled = schedule_.prune_negative_regrets ? 1U : 0U;
+		manifest.late_window_baseline = late_window_baseline_;
+		save_multiway_external_checkpoint_manifest(
+			path, external.directory, manifest, external.synchronous_durability, {},
+			external.disk_reserve_bytes);
+		return manifest;
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainer::checkpoint() const
@@ -1601,6 +1664,41 @@ namespace texas::solver::multiway
 		status_.street_visits = diagnostics.street_visits;
 	}
 
+	void MultiwayBlueprintTrainer::resume_from_external_checkpoint(
+		const MultiwayExternalCheckpointManifest& checkpoint,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash)
+	{
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 ||
+			checkpoint.model_identity_hash != identity_.combined_hash ||
+			checkpoint.workflow_identity_hash != workflow_identity_hash ||
+			checkpoint.storage_identity_hash != storage_identity_hash ||
+			checkpoint.schedule_hash != schedule_.identity() ||
+			checkpoint.completed_trajectories < checkpoint.completed_batches ||
+			checkpoint.linear_iteration_weighting != (schedule_.linear_iteration_weighting ? 1U : 0U) ||
+			checkpoint.discounting_enabled != (schedule_.discount_regrets ? 1U : 0U) ||
+			checkpoint.negative_regret_pruning_enabled != (schedule_.prune_negative_regrets ? 1U : 0U))
+			throw std::invalid_argument("external checkpoint identity or schedule does not match the trainer");
+		status_.batches = checkpoint.completed_batches;
+		status_.trajectories = checkpoint.completed_trajectories;
+		status_.pruned_negative_regrets = checkpoint.pruned_negative_regrets;
+		status_.late_window_start_batch = checkpoint.late_window_start_batch;
+		status_.late_window_active = !checkpoint.late_window_baseline.empty();
+		status_.terminal_visits = checkpoint.terminal_visits;
+		status_.leaf_visits = checkpoint.leaf_visits;
+		status_.missing_lookup_requests = checkpoint.missing_lookup_requests;
+		status_.preflop_rows = checkpoint.preflop_rows;
+		status_.flop_rows = checkpoint.flop_rows;
+		status_.turn_rows = checkpoint.turn_rows;
+		status_.river_rows = checkpoint.river_rows;
+		status_.street_visits = checkpoint.street_visits;
+		status_.visited_public_descriptors = checkpoint.generation.public_state_count;
+		status_.admitted_rows = checkpoint.generation.row_count;
+		status_.admitted_action_cells = checkpoint.generation.logical_value_count;
+		status_.merged_stream_fingerprint = checkpoint.generation.merge_fingerprint;
+		late_window_baseline_ = checkpoint.late_window_baseline;
+	}
+
 	MultiwayBlueprintTrainingSession::MultiwayBlueprintTrainingSession(
 		MultiwayBlueprintTrainingConfig config,
 		MultiwayRootSnapshot root,
@@ -1610,8 +1708,6 @@ namespace texas::solver::multiway
 	{
 		config_.validate();
 		root_.validate();
-		if (config_.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
-			throw std::invalid_argument("ExternalCompactInt32 is not ready for blueprint training");
 		const auto identity = config_.identity();
 		// Bucket artifacts carry their producer model identity. Runtime training
 		// identity adds schedule/worker fields and is intentionally separate.
@@ -1693,6 +1789,15 @@ namespace texas::solver::multiway
 		trainer_->resume_from_checkpoint(checkpoint);
 	}
 
+	void MultiwayBlueprintTrainingSession::resume_from_external_checkpoint(
+		const MultiwayExternalCheckpointManifest& checkpoint,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash)
+	{
+		trainer_->resume_from_external_checkpoint(checkpoint, workflow_identity_hash,
+			storage_identity_hash);
+	}
+
 	MultiwayBlueprintSnapshot MultiwayBlueprintTrainingSession::export_policy(
 		MultiwayBlueprintPolicyKind policy_kind) const
 	{
@@ -1726,6 +1831,15 @@ namespace texas::solver::multiway
 		const std::filesystem::path& path) const
 	{
 		return trainer_->save_checkpoint_atomic(path);
+	}
+
+	MultiwayExternalCheckpointManifest MultiwayBlueprintTrainingSession::save_external_checkpoint_atomic(
+		const std::filesystem::path& path,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash) const
+	{
+		return trainer_->save_external_checkpoint_atomic(path, workflow_identity_hash,
+			storage_identity_hash);
 	}
 
 	MultiwayBlueprintTrainingCheckpoint MultiwayBlueprintTrainingSession::checkpoint() const

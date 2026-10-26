@@ -1007,7 +1007,8 @@ namespace texas::solver::multiway
 		const std::filesystem::path& external_storage_directory,
 		const MultiwayExternalCheckpointManifest& manifest,
 		bool synchronous_durability,
-		MultiwayExternalCheckpointWriteOptions options)
+		MultiwayExternalCheckpointWriteOptions options,
+		std::uint64_t disk_reserve_bytes)
 	{
 		const auto& generation = manifest.generation;
 		MultiwayExternalGenerationManifest current_generation{};
@@ -1108,6 +1109,23 @@ namespace texas::solver::multiway
 		auto checksum = kHashOffset;
 		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
 		append_u64(bytes, texas::core::fingerprint::finish(checksum));
+		if (disk_reserve_bytes != 0U)
+		{
+			if (bytes.size() > (std::numeric_limits<std::uint64_t>::max() - disk_reserve_bytes) / 2U)
+				throw std::length_error("external checkpoint disk requirement overflows");
+			const auto required = disk_reserve_bytes + 2U * static_cast<std::uint64_t>(bytes.size());
+			std::error_code disk_error;
+			const auto storage_space = std::filesystem::space(external_storage_directory, disk_error);
+			if (disk_error || storage_space.available < required)
+				throw std::runtime_error("external checkpoint storage disk preflight rejected");
+			const auto checkpoint_directory = path.parent_path().empty()
+				? std::filesystem::current_path(disk_error) : path.parent_path();
+			if (disk_error)
+				throw std::runtime_error("external checkpoint destination disk telemetry is unavailable");
+			const auto checkpoint_space = std::filesystem::space(checkpoint_directory, disk_error);
+			if (disk_error || checkpoint_space.available < required)
+				throw std::runtime_error("external checkpoint destination disk preflight rejected");
+		}
 		const auto pin_id = checkpoint_pin_id(path, manifest.storage_identity_hash);
 		for (std::size_t component = 0U; component < segment_references.size(); ++component)
 		{
@@ -2948,8 +2966,9 @@ namespace texas::solver::multiway
 			OrderedRowVisitor visitor;
 			void* context;
 			std::uint32_t page_width;
+			const MultiwayExternalRowIndex* owner;
 		};
-		VisitorContext visitor_context{ visitor, context, page_width_ };
+		VisitorContext visitor_context{ visitor, context, page_width_, this };
 		const auto visit_record = [](void* opaque, std::uint64_t state_id,
 			const std::uint8_t* payload, std::size_t payload_size) {
 			auto& current = *static_cast<VisitorContext*>(opaque);
@@ -2995,7 +3014,12 @@ namespace texas::solver::multiway
 					row.page_count > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
 					throw std::invalid_argument("external ordered row shape is invalid");
 				found_row = true;
-				if (!current.visitor(current.context, MultiwayPublicStateId{ state_id }, seat, row))
+				MultiwayExternalRowBinding binding;
+				binding.owner_ = current.owner;
+				binding.state_id_ = state_id;
+				binding.seat_ = seat;
+				binding.row_ = row;
+				if (!current.visitor(current.context, binding))
 					return false;
 			}
 			if (!found_row)

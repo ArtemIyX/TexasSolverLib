@@ -115,13 +115,13 @@ namespace
 	}
 
 	bool capture_ordered_row(void* context,
-		texas::solver::multiway::MultiwayPublicStateId state_id, std::int32_t seat,
-		const texas::solver::multiway::MultiwayExternalRowMetadata& row)
+		const texas::solver::multiway::MultiwayExternalRowBinding& binding)
 	{
 		auto& capture = *static_cast<OrderedRowCapture*>(context);
-		capture.state_ids.push_back(state_id.value);
-		capture.seats.push_back(seat);
-		capture.rows.push_back(row);
+		capture.state_ids.push_back(binding.public_state().value);
+		capture.seats.push_back(binding.seat());
+		capture.rows.push_back({ binding.bucket_count(), binding.action_count(),
+			binding.first_page_id(), binding.page_count() });
 		return true;
 	}
 }
@@ -509,6 +509,9 @@ TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_pr
 	catch (const std::runtime_error&) { publication_failed = true; }
 	EXPECT_TRUE(publication_failed);
 	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+	EXPECT_THROW(save_multiway_external_checkpoint_manifest(
+		path, storage_directory, next, false, {}, std::numeric_limits<std::uint64_t>::max()),
+		std::length_error);
 	const auto loaded = load_multiway_external_checkpoint_manifest(path, storage_directory,
 		11U, 12U, 13U, 14U);
 	EXPECT_EQ(loaded.generation.generation, 7U);

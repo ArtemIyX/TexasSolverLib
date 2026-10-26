@@ -900,6 +900,16 @@ namespace texas::solver::multiway
 						  ? ",\n  \"unattributed_private_bytes\": " + std::to_string(report.unattributed_private_bytes)
 						  : std::string{})
 			   << ",\n  \"checkpoint_bytes\": " << report.checkpoint_bytes
+		   << ",\n  \"storage_backend\": \"" << report.storage_backend << "\""
+		   << ",\n  \"checkpoint_schema_version\": " << report.checkpoint_schema_version
+		   << ",\n  \"external_checkpoint_generation\": " << report.external_checkpoint_generation
+		   << ",\n  \"external_checkpoint_segment_count\": " << report.external_checkpoint_segment_count
+		   << ",\n  \"external_storage_identity_hash\": " << report.external_storage_identity_hash
+		   << ",\n  \"external_storage_disk_preflight_bytes\": " << report.external_storage_disk_preflight_bytes
+		   << ",\n  \"external_storage_cache_bytes\": " << report.external_storage_cache_bytes
+		   << ",\n  \"external_storage_wal_limit_bytes\": " << report.external_storage_wal_limit_bytes
+		   << ",\n  \"external_storage_compaction_scratch_bytes\": " << report.external_storage_compaction_scratch_bytes
+		   << ",\n  \"external_storage_disk_reserve_bytes\": " << report.external_storage_disk_reserve_bytes
 			   << ",\n  \"checkpoint_planned_bytes\": " << report.checkpoint_planned_bytes
 			   << ",\n  \"checkpoint_scratch_bytes\": " << report.checkpoint_scratch_bytes
 			   << ",\n  \"checkpoint_payload_hash\": " << report.checkpoint_payload_hash

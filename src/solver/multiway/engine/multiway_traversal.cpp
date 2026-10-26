@@ -989,8 +989,6 @@ namespace texas::solver::multiway
 	{
 		root.validate();
 		pruning_.validate();
-		if (coordinator.limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
-			throw std::invalid_argument("ExternalCompactInt32 is not ready for traversal execution");
 		if (root.public_state.betting.street < Street::Preflop || root.public_state.betting.street > Street::River)
 		{
 			throw std::invalid_argument("multiway root traversal requires a valid street");
@@ -1789,8 +1787,6 @@ namespace texas::solver::multiway
 		: traversal_(std::move(traversal)), coordinator_(&coordinator), worker_count_(worker_count), stream_capacities_(capacities), profile_mode_(profile_mode), placement_config_(placement), immutable_epochs_(immutable_epochs), scheduler_mode_(scheduler_mode), dynamic_chunk_size_(dynamic_chunk_size)
 	{
 		placement_config_.validate();
-		if (coordinator.limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
-			throw std::invalid_argument("ExternalCompactInt32 is not ready for batch execution");
 		if (worker_count_ == 0U || stream_capacities_.regret_delta_entries == 0U || stream_capacities_.continuation_delta_entries == 0U)
 		{
 			throw std::invalid_argument("multiway root batch runner requires positive worker limits");
