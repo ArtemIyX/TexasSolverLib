@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.7 - Resolve external row buckets to pages
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a bounded row-index operation that resolves an infoset bucket to its stable page ID, page index, in-page bucket count, and action count.
+- Covered the final short page and out-of-range bucket behavior, providing a single cold-boundary lookup before callers pin a page.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This resolver is not yet called from coordinator traversal or merge paths.
+
 ## PB-12 Phase 4.7 - Reconstruct external catalog descriptors
 
 **Status:** Complete

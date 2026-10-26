@@ -1685,6 +1685,22 @@ namespace texas::solver::multiway
 		return true;
 	}
 
+	bool MultiwayExternalRowIndex::locate_bucket(MultiwayPublicStateId state,
+		std::int32_t seat, std::uint32_t bucket, MultiwayExternalRowPage& output) const
+	{
+		MultiwayExternalRowMetadata row{};
+		if (!lookup(state, seat, row) || bucket >= row.bucket_count) return false;
+		const auto page_index = bucket / page_width_;
+		if (page_index >= row.page_count || page_index > std::numeric_limits<std::uint64_t>::max() - row.first_page_id)
+			throw std::invalid_argument("external row metadata does not cover its bucket range");
+		const auto first_bucket = static_cast<std::uint64_t>(page_index) * page_width_;
+		const auto page_bucket_count = std::min<std::uint64_t>(page_width_,
+			static_cast<std::uint64_t>(row.bucket_count) - first_bucket);
+		output = { row.first_page_id + page_index, page_index,
+			static_cast<std::uint32_t>(page_bucket_count), row.action_count };
+		return true;
+	}
+
 	std::size_t MultiwayExternalCompactPages::page_payload_size() const noexcept
 	{
 		return kPageRecordHeaderBytes +

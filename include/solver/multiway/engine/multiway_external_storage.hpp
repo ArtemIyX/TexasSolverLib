@@ -212,6 +212,14 @@ namespace texas::solver::multiway
 		std::uint32_t page_count = 0U;
 	};
 
+	struct MultiwayExternalRowPage
+	{
+		std::uint64_t page_id = 0U;
+		std::uint32_t page_index = 0U;
+		std::uint32_t bucket_count = 0U;
+		std::uint8_t action_count = 0U;
+	};
+
 	// Stores six seat rows in one fixed-width state record so the external index
 	// remains keyed by the full 64-bit public-state ID without truncation.
 	class MultiwayExternalRowIndex
@@ -223,6 +231,8 @@ namespace texas::solver::multiway
 			const std::vector<MultiwaySparseRowShape>& rows, std::uint64_t& next_page_id);
 		[[nodiscard]] bool lookup(MultiwayPublicStateId state, std::int32_t seat,
 			MultiwayExternalRowMetadata& output) const;
+		[[nodiscard]] bool locate_bucket(MultiwayPublicStateId state, std::int32_t seat,
+			std::uint32_t bucket, MultiwayExternalRowPage& output) const;
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }

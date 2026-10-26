@@ -443,6 +443,13 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 		EXPECT_EQ(metadata.action_count, 2U);
 		EXPECT_EQ(metadata.first_page_id, 3U);
 		EXPECT_EQ(metadata.page_count, 2U);
+		MultiwayExternalRowPage page{};
+		EXPECT_TRUE(rows.locate_bucket({ 10U }, 1, 16U, page));
+		EXPECT_EQ(page.page_id, 4U);
+		EXPECT_EQ(page.page_index, 1U);
+		EXPECT_EQ(page.bucket_count, 1U);
+		EXPECT_EQ(page.action_count, 2U);
+		EXPECT_TRUE(!rows.locate_bucket({ 10U }, 1, 17U, page));
 		EXPECT_TRUE(!rows.lookup({ 10U }, 5, metadata));
 		std::uint64_t unchanged_page_id = 6U;
 		bool invalid_rejected = false;
