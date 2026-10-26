@@ -695,7 +695,12 @@ TEST_CASE(multiway_solver_external_coordinator_admits_merges_and_rolls_back)
 	MultiwayCFRConfig cfr;
 	cfr.player_count = 2;
 	MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(valid_root(), cfr, limits));
+	auto reference_limits = valid_limits();
+	reference_limits.storage_backend = MultiwaySolverLimits::StorageBackend::CompactInt32;
+	reference_limits.compact_page_width = limits.compact_page_width;
+	MultiwaySolverCoordinator reference(MultiwaySolveRequest(valid_root(), cfr, reference_limits));
 	coordinator.admit_infoset_row(root_row());
+	reference.admit_infoset_row(root_row());
 	EXPECT_TRUE(coordinator.has_infoset_row(root_infoset()));
 	coordinator.admit_infoset_row(root_row());
 	std::array<double, 3U> strategy{};
@@ -708,8 +713,12 @@ TEST_CASE(multiway_solver_external_coordinator_admits_merges_and_rolls_back)
 	EXPECT_TRUE(second.try_append(delta(1U, 2.0, 2.0, 1U)));
 	first.sort_fixed_order();
 	second.sort_fixed_order();
+	reference.merge_worker_streams({ first, second });
 	coordinator.merge_worker_streams({ first, second });
 	coordinator.regret_matched_strategy_into(root_infoset(), 0U, strategy.data(), strategy.size());
+	std::array<double, 3U> reference_strategy{};
+	reference.regret_matched_strategy_into(root_infoset(), 0U, reference_strategy.data(), reference_strategy.size());
+	EXPECT_EQ(strategy, reference_strategy);
 	EXPECT_NEAR(strategy[0], 1.0 / 3.0, 0.0);
 	EXPECT_NEAR(strategy[1], 2.0 / 3.0, 0.0);
 	EXPECT_EQ(strategy[2], 0.0);

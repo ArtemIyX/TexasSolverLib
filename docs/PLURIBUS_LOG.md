@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.25 - Compare external coordinator merge to CompactInt32
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the tiny coordinator integration fixture to apply identical ordered worker streams to `ExternalCompactInt32` and `CompactInt32` and compare resulting root strategy values exactly.
+- The first comparison correctly exposed that the fixture's default backend was Float64; selecting CompactInt32 made the intended fixed-point differential pass.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This compares one deterministic row and one merge batch. It does not validate external traversal, checkpoint/export, or 50M feasibility.
+
 ## PB-12 Phase 5.24 - Exercise external coordinator integration
 
 **Status:** Complete
