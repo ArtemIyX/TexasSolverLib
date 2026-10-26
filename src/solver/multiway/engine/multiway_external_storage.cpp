@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 
 #include "core/atomic_publish.hpp"
 #include "core/fingerprint.hpp"
@@ -34,6 +35,10 @@ namespace texas::solver::multiway
 		constexpr std::uint64_t kHashOffset = texas::core::fingerprint::FNV1A_OFFSET;
 		constexpr std::uint32_t kNodeRecordMagic = 0x314e574dU;
 		constexpr std::size_t kNodeRecordBytes = 225U;
+		constexpr std::uint32_t kPageRecordMagic = 0x3150574dU;
+		constexpr std::uint32_t kPageRecordSchema = 1U;
+		constexpr std::size_t kPageRecordHeaderBytes = 40U;
+		constexpr std::size_t kPageRecordChecksumBytes = 8U;
 
 		void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
 		{
@@ -927,6 +932,16 @@ namespace texas::solver::multiway
 	{
 		if (page_width_ == 0U)
 			throw std::invalid_argument("external row index requires a positive page width");
+		std::vector<std::uint8_t> allocator;
+		if (store_.lookup(0U, allocator))
+		{
+			if (allocator.size() != 8U + 6U * 24U || read_u32(allocator.data()) != 0x3152574dU ||
+				read_u32(allocator.data() + 4U) != 1U || read_u64(allocator.data() + 8U) == 0U)
+				throw std::invalid_argument("external row page-id allocator record is invalid");
+			next_page_id_ = read_u64(allocator.data() + 8U);
+		}
+		else if (store_.record_count() != 0U)
+			throw std::invalid_argument("external row index is missing its page-id allocator record");
 	}
 
 	void MultiwayExternalRowIndex::append_batch(std::uint64_t batch_number,
@@ -937,7 +952,9 @@ namespace texas::solver::multiway
 		constexpr std::uint32_t row_magic = 0x3152574dU;
 		constexpr std::uint32_t row_schema = 1U;
 		std::vector<MultiwayExternalRecord> records;
-		records.reserve(rows.size());
+		records.reserve(rows.size() + 1U);
+		if (next_page_id != next_page_id_)
+			throw std::invalid_argument("external row page-id allocator does not match the durable generation");
 		auto candidate_next_page_id = next_page_id;
 		std::size_t cursor = 0U;
 		while (cursor < rows.size())
@@ -962,7 +979,8 @@ namespace texas::solver::multiway
 			{
 				const auto& row = rows[cursor];
 				const auto seat = row.infoset.seat;
-				if (seat < 0 || seat >= 6 || seat <= prior_seat || row.bucket_count == 0U || row.action_count == 0U)
+				if (seat < 0 || seat >= 6 || seat <= prior_seat || row.bucket_count == 0U ||
+					row.action_count == 0U || row.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 					throw std::invalid_argument("external row metadata batch has invalid seat, order, or shape");
 				prior_seat = seat;
 				const auto slot = 8U + static_cast<std::size_t>(seat) * 24U;
@@ -986,8 +1004,18 @@ namespace texas::solver::multiway
 			}
 			records.push_back({ state_id, std::move(payload) });
 		}
+		std::vector<std::uint8_t> allocator_payload(8U + 6U * 24U, 0U);
+		for (unsigned shift = 0U; shift < 32U; shift += 8U)
+		{
+			allocator_payload[shift / 8U] = static_cast<std::uint8_t>(row_magic >> shift);
+			allocator_payload[4U + shift / 8U] = static_cast<std::uint8_t>(row_schema >> shift);
+		}
+		for (unsigned shift = 0U; shift < 64U; shift += 8U)
+			allocator_payload[8U + shift / 8U] = static_cast<std::uint8_t>(candidate_next_page_id >> shift);
+		records.insert(records.begin(), { 0U, std::move(allocator_payload) });
 		store_.append_batch(batch_number, merge_fingerprint, records);
 		next_page_id = candidate_next_page_id;
+		next_page_id_ = candidate_next_page_id;
 		store_.compact();
 	}
 
@@ -1012,6 +1040,283 @@ namespace texas::solver::multiway
 		if (output.action_count == 0U || output.bucket_count == 0U || output.first_page_id == 0U || output.page_count == 0U)
 			throw std::invalid_argument("external row metadata contains an invalid shape");
 		return true;
+	}
+
+	std::size_t MultiwayExternalCompactPages::page_payload_size() const noexcept
+	{
+		return kPageRecordHeaderBytes +
+			MULTIWAY_MAX_ABSTRACTED_ACTIONS * static_cast<std::size_t>(page_width_) * 12U +
+			kPageRecordChecksumBytes;
+	}
+
+	MultiwayExternalCompactPages::MultiwayExternalCompactPages(
+		MultiwayExternalStorageConfig config, std::uint32_t page_width,
+		std::uint64_t cache_bytes)
+		: page_width_(page_width)
+	{
+		if (page_width_ == 0U || cache_bytes > std::numeric_limits<std::size_t>::max())
+			throw std::invalid_argument("external compact pages require bounded positive dimensions");
+		const auto payload = kPageRecordHeaderBytes +
+			MULTIWAY_MAX_ABSTRACTED_ACTIONS * static_cast<std::uint64_t>(page_width_) * 12U +
+			kPageRecordChecksumBytes;
+		if (payload > std::numeric_limits<std::size_t>::max() || payload > std::numeric_limits<std::uint32_t>::max())
+			throw std::length_error("external compact page payload width overflows");
+		const auto store_cache_bytes = payload + 1024U;
+		if (cache_bytes <= store_cache_bytes + 2U * payload)
+			throw std::invalid_argument("external compact page cache cannot hold one working page");
+		config.cache_bytes = store_cache_bytes;
+		store_cache_budget_bytes_ = store_cache_bytes;
+		store_ = std::make_unique<MultiwayExternalRecordStore>(config, static_cast<std::size_t>(payload));
+		lookup_scratch_.resize(static_cast<std::size_t>(payload));
+		encode_scratch_.reserve(static_cast<std::size_t>(payload));
+		const auto cells = MULTIWAY_MAX_ABSTRACTED_ACTIONS * static_cast<std::size_t>(page_width_);
+		constexpr auto bytes_per_cell = 2U * sizeof(std::int32_t) + 2U * sizeof(std::uint64_t);
+		if (cells > (std::numeric_limits<std::size_t>::max() - sizeof(Page)) / bytes_per_cell)
+			throw std::length_error("external compact page cache cell arena overflows size_t");
+		const auto page_memory = sizeof(Page) + cells * bytes_per_cell;
+		const auto scratch_bytes = lookup_scratch_.capacity() + encode_scratch_.capacity();
+		if (cache_bytes <= store_cache_bytes + scratch_bytes)
+			throw std::invalid_argument("external compact page cache cannot hold fixed scratch");
+		const auto page_budget = cache_bytes - store_cache_bytes - scratch_bytes;
+		auto capacity = page_budget / page_memory;
+		const auto record_width = payload + 8U;
+		capacity = std::min<std::uint64_t>(capacity, (config.maximum_wal_bytes - 48U) / record_width);
+		capacity = std::min<std::uint64_t>(capacity, config.segment_target_bytes / record_width);
+		if (capacity == 0U || capacity > std::numeric_limits<std::size_t>::max())
+			throw std::invalid_argument("external compact page cache cannot hold a committable page");
+		pages_.resize(static_cast<std::size_t>(capacity));
+		for (auto& page : pages_)
+		{
+			page.regrets.resize(cells);
+			page.strategy_masses.resize(cells);
+			page.before_regrets.resize(cells);
+			page.before_strategy_masses.resize(cells);
+		}
+		if (memory_bytes() > cache_bytes)
+			throw std::length_error("external compact page allocation exceeds its configured cache bound");
+	}
+
+	MultiwayExternalCompactPages::Page* MultiwayExternalCompactPages::find(std::uint64_t page_id) noexcept
+	{
+		for (auto& page : pages_)
+			if (page.valid && page.page_id == page_id) return &page;
+		return nullptr;
+	}
+
+	void MultiwayExternalCompactPages::decode_page(const std::uint8_t* bytes, Page& page) const
+	{
+		if (read_u32(bytes) != kPageRecordMagic || read_u32(bytes + 4U) != kPageRecordSchema)
+			throw std::invalid_argument("external compact page schema is invalid");
+		auto hash = kHashOffset;
+		for (std::size_t index = 0U; index + kPageRecordChecksumBytes < page_payload_size(); ++index)
+			texas::core::fingerprint::append_u8(hash, bytes[index]);
+		if (texas::core::fingerprint::finish(hash) != read_u64(bytes + page_payload_size() - kPageRecordChecksumBytes))
+			throw std::invalid_argument("external compact page checksum is invalid");
+		std::size_t cursor = 8U;
+		page.page_id = read_u64(bytes + cursor); cursor += 8U;
+		page.state_id = read_u64(bytes + cursor); cursor += 8U;
+		page.seat = read_i32(bytes + cursor); cursor += 4U;
+		page.page_index = read_u32(bytes + cursor); cursor += 4U;
+		page.bucket_count = read_u32(bytes + cursor); cursor += 4U;
+		page.action_count = bytes[cursor++];
+		if (bytes[cursor] != 0U || bytes[cursor + 1U] != 0U || bytes[cursor + 2U] != 0U)
+			throw std::invalid_argument("external compact page reserved bytes are invalid");
+		cursor += 3U;
+		for (auto& value : page.regrets) { value = read_i32(bytes + cursor); cursor += 4U; }
+		for (auto& value : page.strategy_masses) { value = read_u64(bytes + cursor); cursor += 8U; }
+		if (cursor + kPageRecordChecksumBytes != page_payload_size() || page.page_id == 0U ||
+			page.state_id == 0U || page.seat < 0 || page.seat >= 6 || page.bucket_count == 0U ||
+			page.bucket_count > page_width_ || page.action_count == 0U ||
+			page.action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+			throw std::invalid_argument("external compact page identity or shape is invalid");
+	}
+
+	void MultiwayExternalCompactPages::encode_page(const Page& page,
+		std::vector<std::uint8_t>& bytes) const
+	{
+		bytes.clear();
+		bytes.reserve(page_payload_size());
+		append_u32(bytes, kPageRecordMagic);
+		append_u32(bytes, kPageRecordSchema);
+		append_u64(bytes, page.page_id);
+		append_u64(bytes, page.state_id);
+		append_i32(bytes, page.seat);
+		append_u32(bytes, page.page_index);
+		append_u32(bytes, page.bucket_count);
+		bytes.push_back(page.action_count);
+		bytes.insert(bytes.end(), 3U, 0U);
+		for (const auto value : page.regrets) append_i32(bytes, value);
+		for (const auto value : page.strategy_masses) append_u64(bytes, value);
+		auto hash = kHashOffset;
+		for (const auto byte : bytes) texas::core::fingerprint::append_u8(hash, byte);
+		append_u64(bytes, texas::core::fingerprint::finish(hash));
+		if (bytes.size() != page_payload_size())
+			throw std::logic_error("external compact page codec width changed without a schema update");
+	}
+
+	void MultiwayExternalCompactPages::begin_batch(std::uint64_t batch_number,
+		std::uint64_t merge_fingerprint)
+	{
+		if (batch_open_ || batch_number == 0U)
+			throw std::logic_error("external compact page batch state is invalid");
+		for (const auto& page : pages_)
+			if (page.dirty || page.pin_count != 0U)
+				throw std::logic_error("external compact page cache is not at a clean batch boundary");
+		batch_number_ = batch_number;
+		merge_fingerprint_ = merge_fingerprint;
+		batch_open_ = true;
+	}
+
+	MultiwayExternalCompactPages::PageView MultiwayExternalCompactPages::pin(
+		std::uint64_t page_id, MultiwayPublicStateId state, std::int32_t seat,
+		std::uint32_t page_index, std::uint32_t bucket_count, std::uint8_t action_count)
+	{
+		if (page_id == 0U || state.value == 0U || seat < 0 || seat >= 6 || bucket_count == 0U ||
+			bucket_count > page_width_ || action_count == 0U || action_count > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+			throw std::invalid_argument("external compact page lookup identity or shape is invalid");
+		if (auto* cached = find(page_id))
+		{
+			if (cached->state_id != state.value || cached->seat != seat || cached->page_index != page_index ||
+				cached->bucket_count != bucket_count || cached->action_count != action_count)
+				throw std::invalid_argument("external compact page identity disagrees with row metadata");
+			if (cached->pin_count == std::numeric_limits<std::uint32_t>::max())
+				throw std::overflow_error("external compact page pin count overflows");
+			++cached->pin_count;
+			return { page_id, cached->regrets.data(), cached->strategy_masses.data(), bucket_count,
+				action_count, page_width_ };
+		}
+		Page* selected = nullptr;
+		for (std::size_t offset = 0U; offset < pages_.size(); ++offset)
+		{
+			const auto index = (next_victim_ + offset) % pages_.size();
+			auto& candidate = pages_[index];
+			if (!candidate.valid || (candidate.pin_count == 0U && !candidate.dirty))
+			{
+				selected = &candidate;
+				next_victim_ = (index + 1U) % pages_.size();
+				break;
+			}
+		}
+		if (selected == nullptr) throw std::length_error("external compact page cache has no clean unpinned page");
+		selected->valid = false;
+		const auto found = store_->lookup(page_id, lookup_scratch_);
+		if (found)
+		{
+			decode_page(lookup_scratch_.data(), *selected);
+			if (selected->page_id != page_id || selected->state_id != state.value || selected->seat != seat ||
+				selected->page_index != page_index || selected->bucket_count != bucket_count ||
+				selected->action_count != action_count)
+				throw std::invalid_argument("external compact page identity disagrees with requested row");
+		}
+		else
+		{
+			std::fill(selected->regrets.begin(), selected->regrets.end(), 0);
+			std::fill(selected->strategy_masses.begin(), selected->strategy_masses.end(), 0U);
+			selected->page_id = page_id;
+			selected->state_id = state.value;
+			selected->seat = seat;
+			selected->page_index = page_index;
+			selected->bucket_count = bucket_count;
+			selected->action_count = action_count;
+		}
+		selected->valid = true;
+		selected->dirty = false;
+		selected->pin_count = 1U;
+		return { page_id, selected->regrets.data(), selected->strategy_masses.data(), bucket_count,
+			action_count, page_width_ };
+	}
+
+	void MultiwayExternalCompactPages::unpin(std::uint64_t page_id)
+	{
+		auto* page = find(page_id);
+		if (page == nullptr || page->pin_count == 0U)
+			throw std::invalid_argument("external compact page is not pinned");
+		--page->pin_count;
+	}
+
+	void MultiwayExternalCompactPages::mark_dirty(std::uint64_t page_id)
+	{
+		if (!batch_open_) throw std::logic_error("external compact page mutation requires an open batch");
+		auto* page = find(page_id);
+		if (page == nullptr || page->pin_count == 0U)
+			throw std::invalid_argument("external compact page mutation requires a pinned page");
+		if (!page->dirty)
+		{
+			std::copy(page->regrets.begin(), page->regrets.end(), page->before_regrets.begin());
+			std::copy(page->strategy_masses.begin(), page->strategy_masses.end(), page->before_strategy_masses.begin());
+			page->dirty = true;
+		}
+	}
+
+	void MultiwayExternalCompactPages::commit_batch()
+	{
+		if (!batch_open_) throw std::logic_error("external compact page batch is not open");
+		std::vector<Page*> dirty;
+		dirty.reserve(pages_.size());
+		for (auto& page : pages_)
+		{
+			if (page.pin_count != 0U) throw std::logic_error("external compact page batch cannot commit pinned pages");
+			if (page.dirty) dirty.push_back(&page);
+		}
+		if (dirty.empty())
+		{
+			batch_open_ = false;
+			return;
+		}
+		std::sort(dirty.begin(), dirty.end(), [](const Page* left, const Page* right) { return left->page_id < right->page_id; });
+		const auto prior_generation = store_->generation();
+		try
+		{
+			std::vector<MultiwayExternalRecord> records;
+			records.reserve(dirty.size());
+			for (const auto* page : dirty)
+			{
+				encode_page(*page, encode_scratch_);
+				records.push_back({ page->page_id, encode_scratch_ });
+			}
+			store_->append_batch(batch_number_, merge_fingerprint_, records);
+		}
+		catch (...)
+		{
+			if (store_->generation() > prior_generation)
+			{
+				for (auto* page : dirty) page->dirty = false;
+				batch_open_ = false;
+			}
+			else
+				abort_batch();
+			throw;
+		}
+		for (auto* page : dirty) page->dirty = false;
+		batch_open_ = false;
+		store_->compact();
+	}
+
+	void MultiwayExternalCompactPages::abort_batch() noexcept
+	{
+		if (!batch_open_) return;
+		for (auto& page : pages_)
+		{
+			if (page.dirty)
+			{
+				std::copy(page.before_regrets.begin(), page.before_regrets.end(), page.regrets.begin());
+				std::copy(page.before_strategy_masses.begin(), page.before_strategy_masses.end(), page.strategy_masses.begin());
+				page.dirty = false;
+			}
+		}
+		batch_open_ = false;
+	}
+
+	std::size_t MultiwayExternalCompactPages::memory_bytes() const noexcept
+	{
+		std::size_t result = static_cast<std::size_t>(store_cache_budget_bytes_) +
+			lookup_scratch_.capacity() + encode_scratch_.capacity();
+		for (const auto& page : pages_)
+			result += sizeof(Page) + page.regrets.capacity() * sizeof(std::int32_t) +
+				page.strategy_masses.capacity() * sizeof(std::uint64_t) +
+				page.before_regrets.capacity() * sizeof(std::int32_t) +
+				page.before_strategy_masses.capacity() * sizeof(std::uint64_t);
+		return result;
 	}
 
 	MultiwayExternalPageCache::MultiwayExternalPageCache(MultiwayExternalRecordStore& store, std::uint64_t cache_bytes)

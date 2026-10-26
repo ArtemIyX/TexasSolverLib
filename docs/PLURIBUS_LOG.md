@@ -108,6 +108,32 @@
 
 - Fixed accumulator cell pages are not implemented, and the row index is not connected to coordinator admission. External solver execution remains rejected.
 
+## PB-12 Phase 5.2 - Bounded external compact page cache
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added fixed-width checksummed compact page records with separate `int32` regret and `uint64` strategy-mass arrays, fixed action-major page stride, identity validation, and before-image rollback.
+- Added a preallocated bounded typed page cache. Dirty capacity is capped by cache, WAL, and segment limits; pages must be pinned before mutation and cannot be evicted while pinned or dirty.
+- Persisted the row page-ID allocator in the same sorted row-index store generation, restoring it after restart to avoid page-ID reuse.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Row/page stores remain primitives and are not connected to coordinator row admission or worker merge. No in-memory differential solver fixture has been run; external execution remains rejected.
+
 ## PB-12 Phase 2.3 - Packed mapped table views
 
 **Status:** Complete

@@ -174,7 +174,7 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 		EXPECT_EQ(metadata.first_page_id, 3U);
 		EXPECT_EQ(metadata.page_count, 2U);
 		EXPECT_TRUE(!rows.lookup({ 10U }, 5, metadata));
-		std::uint64_t unchanged_page_id = 500U;
+		std::uint64_t unchanged_page_id = 6U;
 		bool invalid_rejected = false;
 		try
 		{
@@ -185,13 +185,54 @@ TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_
 		}
 		catch (const std::invalid_argument&) { invalid_rejected = true; }
 		EXPECT_TRUE(invalid_rejected);
-		EXPECT_EQ(unchanged_page_id, 500U);
+		EXPECT_EQ(unchanged_page_id, 6U);
 	}
 	MultiwayExternalRowIndex reopened(config(directory.path()), 16U);
+	EXPECT_EQ(reopened.next_page_id(), 6U);
 	MultiwayExternalRowMetadata metadata{};
 	EXPECT_TRUE(reopened.lookup({ 20U }, 2, metadata));
 	EXPECT_EQ(metadata.first_page_id, 5U);
 	EXPECT_EQ(metadata.page_count, 1U);
+}
+
+TEST_CASE(multiway_external_compact_pages_commit_reopen_and_rollback)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.cache_bytes = 10000U;
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	{
+		MultiwayExternalCompactPages pages(page_config, 16U, page_config.cache_bytes);
+		EXPECT_EQ(pages.page_capacity(), 1U);
+		EXPECT_TRUE(pages.memory_bytes() <= page_config.cache_bytes);
+		pages.begin_batch(1U, 0xabcdefU);
+		auto view = pages.pin(1U, { 42U }, 3, 0U, 16U, 4U);
+		EXPECT_EQ(view.regrets[2U * view.action_stride + 7U], 0);
+		EXPECT_EQ(view.strategy_masses[1U * view.action_stride + 5U], 0U);
+		pages.mark_dirty(1U);
+		view.regrets[2U * view.action_stride + 7U] = -12345;
+		view.strategy_masses[1U * view.action_stride + 5U] = 0xfedcba9876543210ULL;
+		pages.unpin(1U);
+		pages.commit_batch();
+	}
+	{
+		MultiwayExternalCompactPages pages(page_config, 16U, page_config.cache_bytes);
+		auto view = pages.pin(1U, { 42U }, 3, 0U, 16U, 4U);
+		EXPECT_EQ(view.regrets[2U * view.action_stride + 7U], -12345);
+		EXPECT_EQ(view.strategy_masses[1U * view.action_stride + 5U], 0xfedcba9876543210ULL);
+		pages.unpin(1U);
+		pages.begin_batch(2U, 0x123456U);
+		view = pages.pin(1U, { 42U }, 3, 0U, 16U, 4U);
+		pages.mark_dirty(1U);
+		view.regrets[2U * view.action_stride + 7U] = 999;
+		pages.unpin(1U);
+		pages.abort_batch();
+		view = pages.pin(1U, { 42U }, 3, 0U, 16U, 4U);
+		EXPECT_EQ(view.regrets[2U * view.action_stride + 7U], -12345);
+		pages.unpin(1U);
+	}
 }
 
 TEST_CASE(multiway_external_record_store_compacts_deterministically)

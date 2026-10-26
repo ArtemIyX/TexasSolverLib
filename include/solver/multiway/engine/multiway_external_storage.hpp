@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -156,9 +157,72 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool lookup(MultiwayPublicStateId state, std::int32_t seat,
 			MultiwayExternalRowMetadata& output) const;
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
+		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
 	private:
 		MultiwayExternalRecordStore store_;
 		std::uint32_t page_width_ = 0U;
+		std::uint64_t next_page_id_ = 1U;
+	};
+
+	class MultiwayExternalCompactPages
+	{
+	public:
+		struct PageView
+		{
+			// Cell pointers remain valid only until the matching unpin. Action stride
+			// is fixed to the configured page width, including the final short page.
+			std::uint64_t page_id = 0U;
+			std::int32_t* regrets = nullptr;
+			std::uint64_t* strategy_masses = nullptr;
+			std::uint32_t bucket_count = 0U;
+			std::uint8_t action_count = 0U;
+			std::uint32_t action_stride = 0U;
+		};
+
+		MultiwayExternalCompactPages(MultiwayExternalStorageConfig config,
+			std::uint32_t page_width, std::uint64_t cache_bytes);
+		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
+		[[nodiscard]] PageView pin(std::uint64_t page_id, MultiwayPublicStateId state,
+			std::int32_t seat, std::uint32_t page_index, std::uint32_t bucket_count,
+			std::uint8_t action_count);
+		void unpin(std::uint64_t page_id);
+		void mark_dirty(std::uint64_t page_id);
+		void commit_batch();
+		void abort_batch() noexcept;
+		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
+		[[nodiscard]] std::size_t memory_bytes() const noexcept;
+		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_->stats(); }
+	private:
+		struct Page
+		{
+			std::uint64_t page_id = 0U;
+			std::uint64_t state_id = 0U;
+			std::int32_t seat = -1;
+			std::uint32_t page_index = 0U;
+			std::uint32_t bucket_count = 0U;
+			std::uint8_t action_count = 0U;
+			std::uint32_t pin_count = 0U;
+			bool valid = false;
+			bool dirty = false;
+			std::vector<std::int32_t> regrets;
+			std::vector<std::uint64_t> strategy_masses;
+			std::vector<std::int32_t> before_regrets;
+			std::vector<std::uint64_t> before_strategy_masses;
+		};
+		[[nodiscard]] Page* find(std::uint64_t page_id) noexcept;
+		[[nodiscard]] std::size_t page_payload_size() const noexcept;
+		void decode_page(const std::uint8_t* bytes, Page& page) const;
+		void encode_page(const Page& page, std::vector<std::uint8_t>& bytes) const;
+		std::unique_ptr<MultiwayExternalRecordStore> store_;
+		std::uint32_t page_width_ = 0U;
+		std::vector<Page> pages_;
+		std::vector<std::uint8_t> lookup_scratch_;
+		std::vector<std::uint8_t> encode_scratch_;
+		std::uint64_t store_cache_budget_bytes_ = 0U;
+		std::size_t next_victim_ = 0U;
+		std::uint64_t batch_number_ = 0U;
+		std::uint64_t merge_fingerprint_ = 0U;
+		bool batch_open_ = false;
 	};
 
 	// Coordinator-owned bounded page cache. Pinned page views contain raw cell
