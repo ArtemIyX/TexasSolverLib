@@ -110,6 +110,16 @@ namespace texas::solver::multiway
 		bool leave_pending_journal_for_recovery_test = false;
 	};
 
+	// Captures the currently published aggregate generation without exporting
+	// catalog, row, or cell data into process memory.
+	[[nodiscard]] MultiwayExternalCheckpointManifest make_multiway_external_checkpoint_manifest(
+		const std::filesystem::path& external_storage_directory,
+		std::uint64_t model_identity_hash,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash,
+		std::uint64_t schedule_hash,
+		std::uint64_t completed_trajectories);
+
 	void save_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
 		const std::filesystem::path& external_storage_directory,

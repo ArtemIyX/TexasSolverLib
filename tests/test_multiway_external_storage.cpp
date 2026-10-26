@@ -304,6 +304,40 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	EXPECT_TRUE(checksum_mismatch_rejected);
 }
 
+TEST_CASE(multiway_external_checkpoint_capture_uses_published_generation_without_payload_export)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalGenerationManifest generation{};
+	generation.generation = 9U;
+	generation.committed_batch_number = 6U;
+	generation.merge_fingerprint = 41U;
+	generation.catalog_generation = 7U;
+	generation.public_state_count = 12U;
+	generation.row_generation = 8U;
+	generation.row_count = 3U;
+	generation.page_generation = 9U;
+	generation.page_count = 4U;
+	generation.logical_value_count = 16U;
+	generation.content_hash = 55U;
+	write_empty_component_manifests(directory.path(), generation);
+	publish_multiway_external_generation(directory.path(), generation, false);
+
+	const auto checkpoint = make_multiway_external_checkpoint_manifest(
+		directory.path(), 11U, 12U, 13U, 14U, 500U);
+	EXPECT_EQ(checkpoint.model_identity_hash, 11U);
+	EXPECT_EQ(checkpoint.workflow_identity_hash, 12U);
+	EXPECT_EQ(checkpoint.storage_identity_hash, 13U);
+	EXPECT_EQ(checkpoint.schedule_hash, 14U);
+	EXPECT_EQ(checkpoint.completed_trajectories, 500U);
+	EXPECT_EQ(checkpoint.wal_generation, generation.committed_batch_number);
+	EXPECT_EQ(checkpoint.generation.content_hash, generation.content_hash);
+	EXPECT_TRUE(checkpoint.segments[0].empty());
+
+	EXPECT_THROW(make_multiway_external_checkpoint_manifest(
+		directory.path(), 0U, 12U, 13U, 14U, 500U), std::invalid_argument);
+}
+
 TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_prior_file)
 {
 	using namespace texas::solver::multiway;

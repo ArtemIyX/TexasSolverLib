@@ -947,6 +947,44 @@ namespace texas::solver::multiway
 		}
 	}
 
+	MultiwayExternalCheckpointManifest make_multiway_external_checkpoint_manifest(
+		const std::filesystem::path& external_storage_directory,
+		std::uint64_t model_identity_hash,
+		std::uint64_t workflow_identity_hash,
+		std::uint64_t storage_identity_hash,
+		std::uint64_t schedule_hash,
+		std::uint64_t completed_trajectories)
+	{
+		MultiwayExternalGenerationManifest generation{};
+		std::array<std::uint64_t, 3U> component_generations{};
+		std::array<std::uint32_t, 3U> component_payload_bytes{};
+		std::array<std::uint64_t, 3U> component_last_batch_numbers{};
+		if (external_storage_directory.empty() || model_identity_hash == 0U ||
+			workflow_identity_hash == 0U || storage_identity_hash == 0U || schedule_hash == 0U ||
+			!load_multiway_external_generation(external_storage_directory, generation) ||
+			generation.generation == 0U || generation.committed_batch_number == 0U ||
+			generation.merge_fingerprint == 0U)
+			throw std::invalid_argument("external checkpoint capture identity is invalid");
+		auto segments = load_checkpoint_segment_references(external_storage_directory,
+			&component_generations, &component_payload_bytes, &component_last_batch_numbers);
+		if (component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation,
+			generation.row_generation, generation.page_generation })
+			throw std::invalid_argument("external checkpoint components do not match the published generation");
+
+		MultiwayExternalCheckpointManifest checkpoint{};
+		checkpoint.model_identity_hash = model_identity_hash;
+		checkpoint.workflow_identity_hash = workflow_identity_hash;
+		checkpoint.storage_identity_hash = storage_identity_hash;
+		checkpoint.schedule_hash = schedule_hash;
+		checkpoint.completed_trajectories = completed_trajectories;
+		checkpoint.wal_generation = generation.committed_batch_number;
+		checkpoint.generation = generation;
+		checkpoint.component_payload_bytes = component_payload_bytes;
+		checkpoint.component_last_batch_numbers = component_last_batch_numbers;
+		checkpoint.segments = std::move(segments);
+		return checkpoint;
+	}
+
 	void save_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
 		const std::filesystem::path& external_storage_directory,
