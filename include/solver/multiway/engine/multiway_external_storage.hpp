@@ -8,6 +8,16 @@
 
 namespace texas::solver::multiway
 {
+	struct MultiwayPackedPublicNode;
+
+	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA = 1U;
+	[[nodiscard]] std::size_t external_public_node_record_size() noexcept;
+
+	// Explicit little-endian codec. The on-disk form never depends on C++ padding.
+	void encode_external_public_node(const MultiwayPackedPublicNode& node,
+		std::vector<std::uint8_t>& output);
+	[[nodiscard]] bool decode_external_public_node(const std::uint8_t* bytes,
+		std::size_t size, MultiwayPackedPublicNode& output) noexcept;
 	struct MultiwayExternalStorageConfig
 	{
 		std::filesystem::path directory;

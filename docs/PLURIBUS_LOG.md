@@ -36,6 +36,30 @@
 - Public-state catalog and sparse row/cell stores are not yet connected to the coordinator. External execution remains rejected; the current memory ledger is conservative and does not establish large-scale feasibility.
 - Crash injection currently covers partial WAL rollback and committed-WAL replay after segment failure, not every publication boundary.
 
+## PB-12 Phase 4.1 - Packed public-node record codec
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a versioned 225-byte little-endian codec for packed public nodes. The format is independent of compiler struct padding and rejects invalid counts, enums, and boolean fields.
+- Added deterministic round-trip and schema-corruption coverage. Catalog segment/index integration remains outstanding.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The codec is not yet used by a durable public catalog. External execution remains rejected.
+
 ## PB-12 Phase 2.3 - Packed mapped table views
 
 **Status:** Complete

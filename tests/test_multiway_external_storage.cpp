@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_external_storage.hpp"
+#include "solver/multiway/engine/multiway_solver.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -76,6 +77,51 @@ TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 		EXPECT_TRUE(reopened.cache_capacity_records() > 0U);
 		EXPECT_TRUE(reopened.cache_bytes() <= config(directory.path()).cache_bytes);
 	}
+}
+
+TEST_CASE(multiway_external_public_node_codec_is_packed_and_deterministic)
+{
+	using namespace texas::solver::multiway;
+	MultiwayPackedPublicNode node{};
+	node.id.value = 0x0102030405060708ULL;
+	node.parent_id.value = 17U;
+	node.canonical_history_id = 0x8877665544332211ULL;
+	node.betting.seat_count = 6U;
+	node.betting.current_player = 4;
+	node.betting.last_aggressor = 2;
+	node.betting.current_bet = 1200;
+	node.betting.last_full_raise_size = 600;
+	node.betting.big_blind = 100;
+	node.betting.street = texas::core::Street::Turn;
+	node.betting.stacks[0] = 50000;
+	node.betting.folded[3] = 1U;
+	node.board = { 1U, 2U, 3U, 4U, 5U };
+	node.board_count = 5U;
+	node.board_runout.remaining_board_cards = 1U;
+	node.board_runout.chance_only_runout = true;
+	node.incoming_kind = MultiwayPublicParentEdgeKind::BettingAction;
+	node.incoming_action.action_index = 3U;
+	node.incoming_action.target_street_contribution = 1200;
+	node.incoming_action.action_menu_id = 0x123456789ULL;
+	node.incoming_actor = 4;
+	node.dealt_card = 7U;
+	node.dealt_cards = { 7U, 8U, 9U };
+	node.dealt_card_count = 3U;
+	node.transition_board = { 1U, 2U, 3U, 4U, 5U };
+	node.transition_board_count = 5U;
+	node.legal_menu_handle = 19U;
+
+	std::vector<std::uint8_t> encoded;
+	encode_external_public_node(node, encoded);
+	EXPECT_EQ(encoded.size(), external_public_node_record_size());
+	EXPECT_TRUE(encoded.size() < sizeof(MultiwayPackedPublicNode));
+	MultiwayPackedPublicNode decoded{};
+	EXPECT_TRUE(decode_external_public_node(encoded.data(), encoded.size(), decoded));
+	std::vector<std::uint8_t> reencoded;
+	encode_external_public_node(decoded, reencoded);
+	EXPECT_TRUE(reencoded == encoded);
+	encoded[0] ^= 1U;
+	EXPECT_TRUE(!decode_external_public_node(encoded.data(), encoded.size(), decoded));
 }
 
 TEST_CASE(multiway_external_record_store_compacts_deterministically)

@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_external_storage.hpp"
+#include "solver/multiway/engine/multiway_solver.hpp"
 
 #include "core/atomic_publish.hpp"
 #include "core/fingerprint.hpp"
@@ -31,6 +32,8 @@ namespace texas::solver::multiway
 		constexpr std::array<std::uint8_t, 8U> kWalMagic = { 'T','X','M','W','W','A','L','1' };
 		constexpr std::uint32_t kSchema = 1U;
 		constexpr std::uint64_t kHashOffset = texas::core::fingerprint::FNV1A_OFFSET;
+		constexpr std::uint32_t kNodeRecordMagic = 0x314e574dU;
+		constexpr std::size_t kNodeRecordBytes = 225U;
 
 		void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
 		{
@@ -50,6 +53,23 @@ namespace texas::solver::multiway
 			std::uint64_t result = 0U;
 			for (unsigned shift = 0U; shift < 64U; shift += 8U) result |= static_cast<std::uint64_t>(bytes[shift / 8U]) << shift;
 			return result;
+		}
+		void append_i32(std::vector<std::uint8_t>& bytes, int value)
+		{
+			static_assert(sizeof(int) == sizeof(std::int32_t), "packed node integer width changed");
+			const auto signed_value = static_cast<std::int64_t>(value);
+			const auto bits = static_cast<std::uint32_t>(signed_value < 0
+				? (static_cast<std::uint64_t>(signed_value + (1LL << 32U)))
+				: static_cast<std::uint64_t>(signed_value));
+			append_u32(bytes, bits);
+		}
+		int read_i32(const std::uint8_t* bytes)
+		{
+			const auto bits = read_u32(bytes);
+			const auto value = bits <= static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max())
+				? static_cast<std::int64_t>(bits)
+				: static_cast<std::int64_t>(bits) - (1LL << 32U);
+			return static_cast<int>(value);
 		}
 		void write_u64(std::ostream& out, std::uint64_t value)
 		{
@@ -86,6 +106,126 @@ namespace texas::solver::multiway
 			}
 			if (!input.eof()) throw std::runtime_error("external storage run read failed");
 		}
+	}
+
+	void encode_external_public_node(const MultiwayPackedPublicNode& node,
+		std::vector<std::uint8_t>& output)
+	{
+		if (node.id.value == 0U || node.betting.seat_count > node.betting.stacks.size() ||
+			node.board_count > node.board.size() || node.dealt_card_count > node.dealt_cards.size() ||
+			node.transition_board_count > node.transition_board.size() ||
+			static_cast<std::uint8_t>(node.betting.street) > static_cast<std::uint8_t>(core::Street::Showdown) ||
+			static_cast<std::uint8_t>(node.incoming_kind) > static_cast<std::uint8_t>(MultiwayPublicParentEdgeKind::StreetTransition) ||
+			static_cast<std::uint8_t>(node.incoming_action.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn))
+			throw std::invalid_argument("packed public node exceeds its fixed record bounds");
+		for (const auto value : node.betting.folded) if (value > 1U) throw std::invalid_argument("packed public node has invalid folded flags");
+		for (const auto value : node.betting.all_in) if (value > 1U) throw std::invalid_argument("packed public node has invalid all-in flags");
+		for (const auto value : node.betting.may_raise) if (value > 1U) throw std::invalid_argument("packed public node has invalid raise flags");
+		for (const auto value : node.betting.pending) if (value > 1U) throw std::invalid_argument("packed public node has invalid pending flags");
+		for (const auto value : node.betting.has_acted) if (value > 1U) throw std::invalid_argument("packed public node has invalid acted flags");
+		output.clear();
+		output.reserve(240U);
+		append_u32(output, kNodeRecordMagic);
+		append_u32(output, MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA);
+		append_u64(output, node.id.value);
+		append_u64(output, node.parent_id.value);
+		append_u64(output, node.canonical_history_id);
+		for (const auto value : node.betting.stacks) append_i32(output, value);
+		for (const auto value : node.betting.contributions) append_i32(output, value);
+		for (const auto value : node.betting.street_contributions) append_i32(output, value);
+		for (const auto value : node.betting.folded) output.push_back(value);
+		for (const auto value : node.betting.all_in) output.push_back(value);
+		for (const auto value : node.betting.may_raise) output.push_back(value);
+		for (const auto value : node.betting.pending) output.push_back(value);
+		for (const auto value : node.betting.has_acted) output.push_back(value);
+		for (const auto value : node.betting.bet_faced_when_acted) append_i32(output, value);
+		output.push_back(node.betting.seat_count);
+		append_i32(output, node.betting.current_player);
+		append_i32(output, node.betting.last_aggressor);
+		append_i32(output, node.betting.current_bet);
+		append_i32(output, node.betting.last_full_raise_size);
+		append_i32(output, node.betting.big_blind);
+		output.push_back(static_cast<std::uint8_t>(node.betting.street));
+		output.insert(output.end(), node.board.begin(), node.board.end());
+		output.push_back(node.board_count);
+		output.push_back(node.board_runout.remaining_board_cards);
+		output.push_back(node.board_runout.chance_only_runout ? 1U : 0U);
+		output.push_back(static_cast<std::uint8_t>(node.incoming_kind));
+		output.push_back(static_cast<std::uint8_t>(node.incoming_action.action));
+		append_u32(output, node.incoming_action.action_index);
+		append_i32(output, node.incoming_action.target_street_contribution);
+		append_u64(output, node.incoming_action.action_menu_id);
+		append_i32(output, node.incoming_actor);
+		output.push_back(node.dealt_card);
+		output.insert(output.end(), node.dealt_cards.begin(), node.dealt_cards.end());
+		output.push_back(node.dealt_card_count);
+		output.insert(output.end(), node.transition_board.begin(), node.transition_board.end());
+		output.push_back(node.transition_board_count);
+		append_u32(output, node.legal_menu_handle);
+		if (output.size() != kNodeRecordBytes)
+			throw std::logic_error("packed public node codec width changed without a schema update");
+	}
+
+	std::size_t external_public_node_record_size() noexcept
+	{
+		return kNodeRecordBytes;
+	}
+
+	bool decode_external_public_node(const std::uint8_t* bytes, std::size_t size,
+		MultiwayPackedPublicNode& output) noexcept
+	{
+		if (bytes == nullptr || size < 8U || read_u32(bytes) != kNodeRecordMagic ||
+			read_u32(bytes + 4U) != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA)
+			return false;
+		if (size != kNodeRecordBytes) return false;
+		MultiwayPackedPublicNode node{};
+		std::size_t cursor = 8U;
+		const auto get_u32 = [&]() { const auto value = read_u32(bytes + cursor); cursor += 4U; return value; };
+		const auto get_i32 = [&]() { const auto value = read_i32(bytes + cursor); cursor += 4U; return value; };
+		const auto get_u64 = [&]() { const auto value = read_u64(bytes + cursor); cursor += 8U; return value; };
+		node.id.value = get_u64(); node.parent_id.value = get_u64(); node.canonical_history_id = get_u64();
+		for (auto& value : node.betting.stacks) value = get_i32();
+		for (auto& value : node.betting.contributions) value = get_i32();
+		for (auto& value : node.betting.street_contributions) value = get_i32();
+		for (auto& value : node.betting.folded) value = bytes[cursor++];
+		for (auto& value : node.betting.all_in) value = bytes[cursor++];
+		for (auto& value : node.betting.may_raise) value = bytes[cursor++];
+		for (auto& value : node.betting.pending) value = bytes[cursor++];
+		for (auto& value : node.betting.has_acted) value = bytes[cursor++];
+		for (auto& value : node.betting.bet_faced_when_acted) value = get_i32();
+		node.betting.seat_count = bytes[cursor++];
+		node.betting.current_player = get_i32(); node.betting.last_aggressor = get_i32();
+		node.betting.current_bet = get_i32(); node.betting.last_full_raise_size = get_i32(); node.betting.big_blind = get_i32();
+		node.betting.street = static_cast<core::Street>(bytes[cursor++]);
+		std::copy_n(bytes + cursor, node.board.size(), node.board.begin()); cursor += node.board.size();
+		node.board_count = bytes[cursor++];
+		node.board_runout.remaining_board_cards = bytes[cursor++];
+		if (bytes[cursor] > 1U) return false;
+		node.board_runout.chance_only_runout = bytes[cursor++] != 0U;
+		node.incoming_kind = static_cast<MultiwayPublicParentEdgeKind>(bytes[cursor++]);
+		node.incoming_action.action = static_cast<MultiwayAction>(bytes[cursor++]);
+		node.incoming_action.action_index = get_u32();
+		node.incoming_action.target_street_contribution = get_i32();
+		node.incoming_action.action_menu_id = get_u64();
+		node.incoming_actor = get_i32(); node.dealt_card = bytes[cursor++];
+		std::copy_n(bytes + cursor, node.dealt_cards.size(), node.dealt_cards.begin()); cursor += node.dealt_cards.size();
+		node.dealt_card_count = bytes[cursor++];
+		std::copy_n(bytes + cursor, node.transition_board.size(), node.transition_board.begin()); cursor += node.transition_board.size();
+		node.transition_board_count = bytes[cursor++]; node.legal_menu_handle = get_u32();
+		if (cursor != size || node.id.value == 0U || node.betting.seat_count > node.betting.stacks.size() ||
+			node.board_count > node.board.size() || node.dealt_card_count > node.dealt_cards.size() ||
+			node.transition_board_count > node.transition_board.size() ||
+			static_cast<std::uint8_t>(node.betting.street) > static_cast<std::uint8_t>(core::Street::Showdown) ||
+			static_cast<std::uint8_t>(node.incoming_kind) > static_cast<std::uint8_t>(MultiwayPublicParentEdgeKind::StreetTransition) ||
+			static_cast<std::uint8_t>(node.incoming_action.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn))
+			return false;
+		for (const auto value : node.betting.folded) if (value > 1U) return false;
+		for (const auto value : node.betting.all_in) if (value > 1U) return false;
+		for (const auto value : node.betting.may_raise) if (value > 1U) return false;
+		for (const auto value : node.betting.pending) if (value > 1U) return false;
+		for (const auto value : node.betting.has_acted) if (value > 1U) return false;
+		output = node;
+		return true;
 	}
 
 	void MultiwayExternalStorageConfig::validate(std::size_t payload_bytes) const
