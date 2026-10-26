@@ -1065,6 +1065,16 @@ namespace
 						static_cast<std::uint64_t>(component.size()));
 			}
 		};
+		const bool export_only_resume = batches == 0U && !resume_path.empty();
+		if (export_only_resume)
+		{
+			config.process_memory_snapshots.enabled = false;
+			config.process_memory_snapshots.count = 0U;
+			config.process_memory_snapshots.completed = false;
+			config.memory_subsystem_snapshots.enabled = false;
+			config.memory_subsystem_snapshots.count = 0U;
+			config.memory_subsystem_snapshots.completed = false;
+		}
 		MultiwayBlueprintTrainingSession session(config, root, buckets);
 		log_line("worker pool constructed: requested=" + std::to_string(workers.requested) + " effective=" + std::to_string(workers.effective));
 		if (!resume_path.empty())
