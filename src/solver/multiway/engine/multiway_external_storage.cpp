@@ -205,7 +205,8 @@ namespace texas::solver::multiway
 		return { generation, last_batch_number, true };
 	}
 	void write_transaction_wal(const std::filesystem::path& directory,
-		const TransactionWal& transaction, bool synchronous_durability)
+		const TransactionWal& transaction, bool synchronous_durability,
+		bool replace_existing = false)
 	{
 		std::vector<std::uint8_t> bytes(kTransactionWalMagic.begin(), kTransactionWalMagic.end());
 		append_u32(bytes, 1U);
@@ -217,7 +218,9 @@ namespace texas::solver::multiway
 		append_u64(bytes, texas::core::fingerprint::finish(checksum));
 		const auto temp = directory / "TRAINING_BATCH.tmp";
 		const auto wal = directory / "TRAINING_BATCH.wal";
-		if (std::filesystem::exists(temp) || std::filesystem::exists(wal))
+		if (std::filesystem::exists(temp) ||
+			(!replace_existing && std::filesystem::exists(wal)) ||
+			(replace_existing && !std::filesystem::exists(wal)))
 			throw std::runtime_error("external transaction already has a pending journal");
 		std::ofstream output(temp, std::ios::binary | std::ios::trunc);
 		if (!output) throw std::runtime_error("external transaction journal cannot be opened");
@@ -246,7 +249,7 @@ namespace texas::solver::multiway
 		if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + 32U))
 			throw std::invalid_argument("external transaction journal checksum is invalid");
 		TransactionWal result{ read_u32(bytes.data() + 12U), read_u64(bytes.data() + 16U), read_u64(bytes.data() + 24U) };
-		if ((result.previous_flags & ~7U) != 0U || result.batch_number == 0U || result.merge_fingerprint == 0U)
+		if ((result.previous_flags & ~7U) != 0U || result.batch_number == 0U)
 			throw std::invalid_argument("external transaction journal fields are invalid");
 		return result;
 	}
@@ -459,7 +462,7 @@ namespace texas::solver::multiway
 	void MultiwayExternalBatchTransaction::begin_batch(
 		std::uint64_t batch_number, std::uint64_t merge_fingerprint)
 	{
-		if (batch_open_ || batch_number == 0U || merge_fingerprint == 0U ||
+		if (batch_open_ || batch_number == 0U ||
 			batch_number <= current_.committed_batch_number ||
 			current_.generation == std::numeric_limits<std::uint64_t>::max())
 			throw std::invalid_argument("external batch transaction identity is invalid");
@@ -509,6 +512,19 @@ namespace texas::solver::multiway
 		batch_number_ = batch_number;
 		merge_fingerprint_ = merge_fingerprint;
 		batch_open_ = true;
+	}
+
+	void MultiwayExternalBatchTransaction::set_merge_fingerprint(
+		std::uint64_t merge_fingerprint)
+	{
+		if (!batch_open_ || merge_fingerprint == 0U ||
+			(merge_fingerprint_ != 0U && merge_fingerprint_ != merge_fingerprint))
+			throw std::invalid_argument("external batch merge fingerprint cannot be finalized");
+		if (merge_fingerprint_ == merge_fingerprint) return;
+		write_transaction_wal(directory_,
+			{ previous_manifest_flags_, batch_number_, merge_fingerprint },
+			synchronous_durability_, true);
+		merge_fingerprint_ = merge_fingerprint;
 	}
 
 	void MultiwayExternalBatchTransaction::commit_batch(

@@ -89,6 +89,7 @@ namespace texas::solver::multiway
 		MultiwayExternalBatchTransaction(std::filesystem::path directory,
 			bool synchronous_durability);
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
+		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		void commit_batch(const MultiwayExternalGenerationManifest& manifest);
 		void abort_batch();
 		[[nodiscard]] const MultiwayExternalGenerationManifest& current_manifest() const noexcept { return current_; }

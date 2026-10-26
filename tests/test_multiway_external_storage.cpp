@@ -215,7 +215,7 @@ TEST_CASE(multiway_external_batch_transaction_publishes_one_verified_commit_poin
 	first.catalog_generation = first.row_generation = first.page_generation = 1U;
 	publish_multiway_external_generation(directory.path(), first, false);
 	MultiwayExternalBatchTransaction transaction(directory.path(), false);
-	transaction.begin_batch(2U, 0x222U);
+	transaction.begin_batch(2U, 0U);
 	for (const auto& path : { catalog_path, rows_path, pages_path })
 	{
 		MultiwayExternalRecordStore store(config(path), 4U);
@@ -227,6 +227,7 @@ TEST_CASE(multiway_external_batch_transaction_publishes_one_verified_commit_poin
 	second.merge_fingerprint = 0x222U;
 	second.catalog_generation = second.row_generation = second.page_generation = 2U;
 	second.public_state_count = second.row_count = second.page_count = 2U;
+	transaction.set_merge_fingerprint(0x222U);
 	transaction.commit_batch(second);
 	EXPECT_TRUE(!transaction.batch_open());
 	EXPECT_EQ(transaction.current_manifest().generation, 2U);
@@ -279,6 +280,38 @@ TEST_CASE(multiway_external_batch_transaction_rolls_back_when_global_publish_fai
 		EXPECT_TRUE(!store.lookup(2U, payload));
 		EXPECT_EQ(store.generation(), 1U);
 	}
+}
+
+TEST_CASE(multiway_external_batch_transaction_recovers_unfinalized_merge_fingerprint)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const auto catalog_path = directory.path() / "catalog";
+	const auto rows_path = directory.path() / "rows";
+	const auto pages_path = directory.path() / "pages";
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(1U, 0x111U, { { 1U, { 1U, 2U, 3U, 4U } } });
+	}
+	MultiwayExternalGenerationManifest first{};
+	first.generation = 1U;
+	first.committed_batch_number = 1U;
+	first.merge_fingerprint = 0x111U;
+	first.catalog_generation = first.row_generation = first.page_generation = 1U;
+	publish_multiway_external_generation(directory.path(), first, false);
+	{
+		MultiwayExternalBatchTransaction transaction(directory.path(), false);
+		transaction.begin_batch(2U, 0U);
+		MultiwayExternalRecordStore rows(config(rows_path), 4U);
+		rows.append_batch(2U, 0x222U, { { 2U, { 5U, 6U, 7U, 8U } } });
+	}
+	MultiwayExternalBatchTransaction recovered(directory.path(), false);
+	EXPECT_EQ(recovered.current_manifest().committed_batch_number, 1U);
+	MultiwayExternalRecordStore rows(config(rows_path), 4U);
+	std::vector<std::uint8_t> payload;
+	EXPECT_TRUE(!rows.lookup(2U, payload));
+	EXPECT_EQ(rows.generation(), 1U);
 }
 
 TEST_CASE(multiway_external_batch_transaction_keeps_published_generation_after_cleanup_failure)

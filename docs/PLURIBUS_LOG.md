@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.13 - Finalize merge identity before aggregate commit
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Allowed the aggregate transaction to begin with a pending merge fingerprint and atomically finalize the WAL identity once deterministic merge processing has produced the fingerprint.
+- Added commit coverage for delayed finalization and restart recovery coverage proving an unfinalized batch rolls back to the previous component generations.
+- The aggregate transaction is still not wired into the coordinator batch lifecycle.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator batch transaction integration remains outstanding; no large training job was run.
+
 ## PB-12 Phase 4.9 - Add caller-buffer record lookups
 
 **Status:** Complete
