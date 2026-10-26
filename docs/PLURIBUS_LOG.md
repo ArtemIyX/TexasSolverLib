@@ -2,18 +2,22 @@
 
 ## PB-12 - Guarded 500K qualification
 
-**Status:** Stopped at configured public-state capacity
+**Status:** Stopped by capacity and memory gates
 **Completed:** 2026-10-26
-**Implementation commit:** `0b9f683 PB-12 Multiway: Prepare guarded 500K qualification`
+**Implementation commits:** `0b9f683`, `1fc46d4`, `2565c6c`
 
-- Added a versioned 500K sizing profile and extended the guarded runner to 500 batches. Existing table and memory limits were preserved.
-- Ran the requested 500K workload with 8 unpinned workers, fixed scheduling, and checkpointing enabled. It stopped after 58,000 accepted trajectories with zero discards because public-state admission exceeded the 4,000,000-state limit.
-- The terminal evidence manifest and report record 3,971,363 public states, 1,565,562 sparse rows, and 61,306,003 sparse values. No checkpoint or final blueprint was produced.
+- Added versioned 500K sizing profiles and extended the guarded runner to 500 batches. The first profile retained the 4,000,000 public-state cap.
+- The first guarded 500K run stopped after 58,000 accepted trajectories with zero discards because public-state admission exceeded that cap. It recorded 3,971,363 states, 1,565,562 sparse rows, and 61,306,003 sparse values.
+- The v2 profile raised the public-state ceiling to 34,000,000. The config parser ceiling was raised to match, with a boundary test. The retry then stopped at memory preflight before any batch: estimated working set 69,933,107,152 bytes exceeded the unchanged 51,539,607,552-byte limit.
+- Both terminal manifests and the logs were preserved. Neither attempt produced a checkpoint or final blueprint.
 
 ### Files
 
 - `configs/multiway/f1_qualification_500k_v1.cfg`
+- `configs/multiway/f1_qualification_500k_v2.cfg`
 - `scripts/run/run_multiway_ram_1000.ps1`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `tests/test_multiway_workflow_config.cpp`
 - `docs/PLURIBUS_LOG.md`
 
 ### Validation
@@ -21,12 +25,13 @@
 - `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed.
 - RelWithDebInfo training binary rebuilt with clean source provenance matching PB-12.
 - Bucket inspection matched the configured identity and payload hash.
-- Training report reader found the terminal report; the run failed its 500K target at the public-state capacity gate.
+- Debug full build and compact CTest passed after the config ceiling change.
+- The v2 run passed provenance and disk preflight, then the training memory preflight rejected the configured workload before training.
 
 ### Limitations
 
-- 1M and 5M are not qualified under the current 4M public-state cap. No 1M, 5M, or 50M run was started.
-- No checkpoint or blueprint exists to load or validate. Increasing capacity requires a separate memory and system-reserve review.
+- 500K remains unqualified. The configured 34M public-state profile exceeds the current memory gates; no 1M, 5M, or 50M run was started.
+- No checkpoint or blueprint exists to load or validate. Further work requires a larger-memory system or a memory-footprint reduction, with the existing guards retained.
 
 ## Restore PB-9 worker-scaling findings
 
