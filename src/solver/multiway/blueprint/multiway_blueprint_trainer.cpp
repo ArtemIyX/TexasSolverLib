@@ -509,6 +509,8 @@ namespace texas::solver::multiway
 	{
 		identity_.validate();
 		schedule_.validate();
+		if (coordinator_->limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+			throw std::invalid_argument("ExternalCompactInt32 is not ready for blueprint training");
 		if (deterministic_seed_ == 0U)
 		{
 			throw std::invalid_argument("multiway blueprint trainer requires a non-zero deterministic seed");
@@ -1341,6 +1343,8 @@ namespace texas::solver::multiway
 	{
 		config_.validate();
 		root_.validate();
+		if (config_.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+			throw std::invalid_argument("ExternalCompactInt32 is not ready for blueprint training");
 		const auto identity = config_.identity();
 		// Bucket artifacts carry their producer model identity. Runtime training
 		// identity adds schedule/worker fields and is intentionally separate.

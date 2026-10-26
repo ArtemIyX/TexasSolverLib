@@ -837,8 +837,6 @@ namespace texas::solver::multiway
 		}
 		cfr_config_.validate();
 		limits_.validate();
-		if (limits_.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
-			throw std::invalid_argument("ExternalCompactInt32 is not ready for solver execution");
 		if (cfr_config_.player_count != root_.seat_order.size())
 		{
 			throw std::invalid_argument("multiway CFR configuration must match the root seat count");

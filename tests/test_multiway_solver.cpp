@@ -9,15 +9,47 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 namespace
 {
+	class ExternalCoordinatorDirectory
+	{
+	public:
+		ExternalCoordinatorDirectory()
+		{
+			const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+			path_ = std::filesystem::temp_directory_path() /
+				("texassolver_external_coordinator_" + std::to_string(stamp));
+			std::error_code error;
+			owned_ = std::filesystem::create_directory(path_, error);
+			if (error || !owned_)
+				throw std::runtime_error("external coordinator test directory cannot be created");
+		}
+
+		~ExternalCoordinatorDirectory()
+		{
+			if (owned_)
+			{
+				std::error_code ignored;
+				std::filesystem::remove_all(path_, ignored);
+			}
+		}
+
+		[[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
+
+	private:
+		std::filesystem::path path_;
+		bool owned_ = false;
+	};
 
 	constexpr std::uint8_t card(std::uint8_t rank, std::uint8_t suit)
 	{
@@ -622,7 +654,7 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	EXPECT_EQ(checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
 }
 
-TEST_CASE(multiway_solver_external_backend_remains_fail_closed_until_coordinator_integration)
+TEST_CASE(multiway_solver_request_accepts_external_storage_configuration)
 {
 	auto limits = valid_limits();
 	limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
@@ -636,7 +668,63 @@ TEST_CASE(multiway_solver_external_backend_remains_fail_closed_until_coordinator
 	limits.external_storage.disk_reserve_bytes = 4096U;
 	texas::MultiwayCFRConfig cfr;
 	cfr.player_count = 2;
-	EXPECT_THROW(texas::MultiwaySolveRequest(valid_root(), cfr, limits), std::invalid_argument);
+	texas::MultiwaySolveRequest request(valid_root(), cfr, limits);
+	EXPECT_EQ(request.limits().storage_backend,
+		texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32);
+}
+
+TEST_CASE(multiway_solver_external_coordinator_admits_merges_and_rolls_back)
+{
+	using texas::MultiwayWorkerDeltaStream;
+	using texas::MultiwaySolverCoordinator;
+	using texas::MultiwaySolveRequest;
+	using texas::MultiwayCFRConfig;
+	using texas::MultiwaySolverLimits;
+	ExternalCoordinatorDirectory directory;
+	auto limits = valid_limits();
+	limits.storage_backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.external_storage.directory = directory.path();
+	limits.external_storage.public_catalog_cache_bytes = 65536U;
+	limits.external_storage.row_page_cache_bytes = 65536U;
+	limits.external_storage.maximum_wal_bytes = 65536U;
+	limits.external_storage.segment_target_bytes = 65536U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 65536U;
+	limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	limits.external_storage.synchronous_durability = false;
+	MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(valid_root(), cfr, limits));
+	coordinator.admit_infoset_row(root_row());
+	EXPECT_TRUE(coordinator.has_infoset_row(root_infoset()));
+	coordinator.admit_infoset_row(root_row());
+	std::array<double, 3U> strategy{};
+	coordinator.regret_matched_strategy_into(root_infoset(), 0U, strategy.data(), strategy.size());
+	EXPECT_EQ(strategy, (std::array<double, 3U>{ 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 }));
+
+	MultiwayWorkerDeltaStream first(0U, 2U);
+	MultiwayWorkerDeltaStream second(1U, 2U);
+	EXPECT_TRUE(first.try_append(delta(0U, 1.0, 1.0, 0U)));
+	EXPECT_TRUE(second.try_append(delta(1U, 2.0, 2.0, 1U)));
+	first.sort_fixed_order();
+	second.sort_fixed_order();
+	coordinator.merge_worker_streams({ first, second });
+	coordinator.regret_matched_strategy_into(root_infoset(), 0U, strategy.data(), strategy.size());
+	EXPECT_NEAR(strategy[0], 1.0 / 3.0, 0.0);
+	EXPECT_NEAR(strategy[1], 2.0 / 3.0, 0.0);
+	EXPECT_EQ(strategy[2], 0.0);
+
+	MultiwayWorkerDeltaStream valid(0U, 1U);
+	MultiwayWorkerDeltaStream invalid(1U, 1U);
+	EXPECT_TRUE(valid.try_append(delta(0U, 3.0, 3.0, 2U)));
+	EXPECT_TRUE(invalid.try_append(delta(3U, 4.0, 4.0, 3U)));
+	valid.sort_fixed_order();
+	invalid.sort_fixed_order();
+	EXPECT_THROW(coordinator.merge_worker_streams({ valid, invalid }), std::invalid_argument);
+	coordinator.regret_matched_strategy_into(root_infoset(), 0U, strategy.data(), strategy.size());
+	EXPECT_NEAR(strategy[0], 1.0 / 3.0, 0.0);
+	EXPECT_NEAR(strategy[1], 2.0 / 3.0, 0.0);
+	EXPECT_EQ(strategy[2], 0.0);
 }
 
 TEST_CASE(multiway_public_catalog_packs_external_node_without_catalog_state)

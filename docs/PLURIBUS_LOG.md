@@ -1,5 +1,34 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.24 - Exercise external coordinator integration
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Moved external-backend rejection from request construction to solver execution boundaries, allowing direct coordinator-level storage validation while traversal, search, blueprint training, and lookup qualification remain fail-closed.
+- Added a small coordinator fixture covering idempotent row admission, fixed-order worker merge, and rollback after a late invalid delta.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `src/solver/multiway/session/multiway_search_session.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `tests/test_multiway_solver.cpp`
+- `tests/test_multiway_search_session.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver`, `test_multiway_search_session`, `test_multiway_external_storage`, and `test_multiway_workflow_config`: passed.
+- Focused CTest: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External traversal/training execution, checkpointing, export, and runtime monitoring remain fail-closed or outstanding. No scaling job was run.
+
 ## PB-12 Phase 4.9 - Fail closed after compaction errors
 
 **Status:** Complete

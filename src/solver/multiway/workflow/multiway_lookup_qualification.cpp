@@ -38,6 +38,8 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway lookup qualification inputs are incompatible");
 		}
+		if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+			throw std::invalid_argument("ExternalCompactInt32 is not ready for lookup qualification");
 		MultiwayBlueprintStore store(blueprint.identity, blueprint.rows);
 		MultiwayBlueprintPolicyProvider provider(store);
 		MultiwaySolveRequest request(root, config.cfr, config.limits);

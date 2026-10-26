@@ -298,6 +298,25 @@ TEST_CASE(multiway_search_session_rejects_invalid_postflop_dependencies)
 		std::invalid_argument);
 }
 
+TEST_CASE(multiway_search_session_keeps_external_backend_fail_closed)
+{
+	const auto root = make_root(texas::core::Street::Preflop);
+	auto solver_limits = limits();
+	solver_limits.storage_backend = texas::solver::multiway::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	solver_limits.external_storage.directory = "external-search-session-fixture";
+	solver_limits.external_storage.public_catalog_cache_bytes = 4096U;
+	solver_limits.external_storage.row_page_cache_bytes = 8192U;
+	solver_limits.external_storage.maximum_wal_bytes = 65536U;
+	solver_limits.external_storage.segment_target_bytes = 65536U;
+	solver_limits.external_storage.compaction_fan_in = 2U;
+	solver_limits.external_storage.compaction_scratch_bytes = 65536U;
+	solver_limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	texas::solver::multiway::MultiwayCFRConfig cfr;
+	cfr.player_count = 2U;
+	const texas::solver::multiway::MultiwaySolveRequest request(root, cfr, solver_limits);
+	EXPECT_THROW(texas::solver::multiway::MultiwaySearchSession(request, { nullptr }, 1U), std::invalid_argument);
+}
+
 TEST_CASE(multiway_search_session_permits_preflop_without_bucket_registry)
 {
 	const auto root = make_root(texas::core::Street::Preflop);
