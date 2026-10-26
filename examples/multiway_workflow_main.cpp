@@ -892,7 +892,7 @@ namespace
 		config.limits.max_continuation_delta_entries_per_worker = static_cast<std::size_t>(workflow.resolved_continuation_delta_capacity());
 		config.limits.max_discovery_public_states_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_public_state_capacity());
 		config.limits.max_discovery_rows_per_worker = static_cast<std::size_t>(workflow.resolved_discovery_row_capacity());
-		config.limits.max_batches = batches;
+		config.limits.max_batches = preflight_batches;
 		config.limits.storage_backend = workflow.storage_backend == "CompactInt32"
 			? MultiwaySolverLimits::StorageBackend::CompactInt32
 			: MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
