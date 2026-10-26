@@ -154,6 +154,46 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 	EXPECT_EQ(found.parent_id.value, root.id.value);
 }
 
+TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_ranges)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	std::uint64_t next_page_id = 1U;
+	{
+		MultiwayExternalRowIndex rows(config(directory.path()), 16U);
+		rows.append_batch(1U, 0x77U, {
+			{ { { 10U }, 0 }, 17U, 3U },
+			{ { { 10U }, 1 }, 17U, 2U },
+			{ { { 20U }, 2 }, 16U, 1U },
+		}, next_page_id);
+		EXPECT_EQ(next_page_id, 6U);
+		MultiwayExternalRowMetadata metadata{};
+		EXPECT_TRUE(rows.lookup({ 10U }, 1, metadata));
+		EXPECT_EQ(metadata.bucket_count, 17U);
+		EXPECT_EQ(metadata.action_count, 2U);
+		EXPECT_EQ(metadata.first_page_id, 3U);
+		EXPECT_EQ(metadata.page_count, 2U);
+		EXPECT_TRUE(!rows.lookup({ 10U }, 5, metadata));
+		std::uint64_t unchanged_page_id = 500U;
+		bool invalid_rejected = false;
+		try
+		{
+			rows.append_batch(2U, 0x78U, {
+				{ { { 30U }, 0 }, 1U, 1U },
+				{ { { 30U }, 6 }, 1U, 1U },
+			}, unchanged_page_id);
+		}
+		catch (const std::invalid_argument&) { invalid_rejected = true; }
+		EXPECT_TRUE(invalid_rejected);
+		EXPECT_EQ(unchanged_page_id, 500U);
+	}
+	MultiwayExternalRowIndex reopened(config(directory.path()), 16U);
+	MultiwayExternalRowMetadata metadata{};
+	EXPECT_TRUE(reopened.lookup({ 20U }, 2, metadata));
+	EXPECT_EQ(metadata.first_page_id, 5U);
+	EXPECT_EQ(metadata.page_count, 1U);
+}
+
 TEST_CASE(multiway_external_record_store_compacts_deterministically)
 {
 	using namespace texas::solver::multiway;

@@ -10,6 +10,7 @@ namespace texas::solver::multiway
 {
 	struct MultiwayPackedPublicNode;
 	struct MultiwayPublicStateId;
+	struct MultiwaySparseRowShape;
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA = 1U;
 	[[nodiscard]] std::size_t external_public_node_record_size() noexcept;
@@ -133,6 +134,31 @@ namespace texas::solver::multiway
 	private:
 		MultiwayExternalRecordStore store_;
 		std::size_t maximum_ancestry_depth_ = 0U;
+	};
+
+	struct MultiwayExternalRowMetadata
+	{
+		std::uint32_t bucket_count = 0U;
+		std::uint8_t action_count = 0U;
+		std::uint64_t first_page_id = 0U;
+		std::uint32_t page_count = 0U;
+	};
+
+	// Stores six seat rows in one fixed-width state record so the external index
+	// remains keyed by the full 64-bit public-state ID without truncation.
+	class MultiwayExternalRowIndex
+	{
+	public:
+		MultiwayExternalRowIndex(MultiwayExternalStorageConfig config,
+			std::uint32_t page_width);
+		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+			const std::vector<MultiwaySparseRowShape>& rows, std::uint64_t& next_page_id);
+		[[nodiscard]] bool lookup(MultiwayPublicStateId state, std::int32_t seat,
+			MultiwayExternalRowMetadata& output) const;
+		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
+	private:
+		MultiwayExternalRecordStore store_;
+		std::uint32_t page_width_ = 0U;
 	};
 
 	// Coordinator-owned bounded page cache. Pinned page views contain raw cell

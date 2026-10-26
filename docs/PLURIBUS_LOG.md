@@ -84,6 +84,30 @@
 
 - This catalog primitive is not wired into `MultiwaySolverCoordinator` or its hot lookup paths. Existing solver execution remains on in-memory storage; the explicit external mode remains rejected.
 
+## PB-12 Phase 5.1 - External row metadata index
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added fixed-width state records containing per-seat row shape and deterministic page ID ranges. The index retains all 64 bits of the public-state key and supports later seat-row additions by publishing a newer state record.
+- Row admission validates ordering and shape, bounds generated page identities, and advances the caller's page counter only after the metadata batch is committed.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Fixed accumulator cell pages are not implemented, and the row index is not connected to coordinator admission. External solver execution remains rejected.
+
 ## PB-12 Phase 2.3 - Packed mapped table views
 
 **Status:** Complete

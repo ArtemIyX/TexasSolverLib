@@ -921,6 +921,99 @@ namespace texas::solver::multiway
 		return !parent_first_output.empty();
 	}
 
+	MultiwayExternalRowIndex::MultiwayExternalRowIndex(
+		MultiwayExternalStorageConfig config, std::uint32_t page_width)
+		: store_(std::move(config), 8U + 6U * 24U), page_width_(page_width)
+	{
+		if (page_width_ == 0U)
+			throw std::invalid_argument("external row index requires a positive page width");
+	}
+
+	void MultiwayExternalRowIndex::append_batch(std::uint64_t batch_number,
+		std::uint64_t merge_fingerprint, const std::vector<MultiwaySparseRowShape>& rows,
+		std::uint64_t& next_page_id)
+	{
+		if (rows.empty()) return;
+		constexpr std::uint32_t row_magic = 0x3152574dU;
+		constexpr std::uint32_t row_schema = 1U;
+		std::vector<MultiwayExternalRecord> records;
+		records.reserve(rows.size());
+		auto candidate_next_page_id = next_page_id;
+		std::size_t cursor = 0U;
+		while (cursor < rows.size())
+		{
+			const auto state_id = rows[cursor].infoset.public_state.value;
+			if (state_id == 0U) throw std::invalid_argument("external row state id is invalid");
+			std::vector<std::uint8_t> payload(8U + 6U * 24U, 0U);
+			if (cursor != 0U && rows[cursor - 1U].infoset.public_state.value >= state_id)
+				throw std::invalid_argument("external rows must be sorted by state then seat");
+			if (!store_.lookup(state_id, payload))
+		{
+				for (unsigned shift = 0U; shift < 32U; shift += 8U)
+				{
+					payload[shift / 8U] = static_cast<std::uint8_t>(row_magic >> shift);
+					payload[4U + shift / 8U] = static_cast<std::uint8_t>(row_schema >> shift);
+				}
+			}
+			else if (read_u32(payload.data()) != row_magic || read_u32(payload.data() + 4U) != row_schema)
+				throw std::invalid_argument("external row metadata record schema is invalid");
+			std::int32_t prior_seat = -1;
+			while (cursor < rows.size() && rows[cursor].infoset.public_state.value == state_id)
+			{
+				const auto& row = rows[cursor];
+				const auto seat = row.infoset.seat;
+				if (seat < 0 || seat >= 6 || seat <= prior_seat || row.bucket_count == 0U || row.action_count == 0U)
+					throw std::invalid_argument("external row metadata batch has invalid seat, order, or shape");
+				prior_seat = seat;
+				const auto slot = 8U + static_cast<std::size_t>(seat) * 24U;
+				if (payload[slot] != 0U)
+					throw std::invalid_argument("external row index cannot append an existing infoset");
+				const auto page_count64 = (static_cast<std::uint64_t>(row.bucket_count) + page_width_ - 1U) / page_width_;
+				if (page_count64 > std::numeric_limits<std::uint32_t>::max() || candidate_next_page_id == 0U ||
+					page_count64 > std::numeric_limits<std::uint64_t>::max() - candidate_next_page_id)
+					throw std::overflow_error("external row page identity overflows");
+				payload[slot] = 1U;
+				payload[slot + 1U] = row.action_count;
+				for (unsigned shift = 0U; shift < 32U; shift += 8U)
+					payload[slot + 4U + shift / 8U] = static_cast<std::uint8_t>(row.bucket_count >> shift);
+			for (unsigned shift = 0U; shift < 64U; shift += 8U)
+				payload[slot + 8U + shift / 8U] = static_cast<std::uint8_t>(candidate_next_page_id >> shift);
+			const auto page_count = static_cast<std::uint32_t>(page_count64);
+			for (unsigned shift = 0U; shift < 32U; shift += 8U)
+				payload[slot + 16U + shift / 8U] = static_cast<std::uint8_t>(page_count >> shift);
+			candidate_next_page_id = checked_add(candidate_next_page_id, page_count64);
+			++cursor;
+			}
+			records.push_back({ state_id, std::move(payload) });
+		}
+		store_.append_batch(batch_number, merge_fingerprint, records);
+		next_page_id = candidate_next_page_id;
+		store_.compact();
+	}
+
+	bool MultiwayExternalRowIndex::lookup(MultiwayPublicStateId state,
+		std::int32_t seat, MultiwayExternalRowMetadata& output) const
+	{
+		if (state.value == 0U || seat < 0 || seat >= 6) return false;
+		std::vector<std::uint8_t> payload;
+		if (!store_.lookup(state.value, payload)) return false;
+		if (payload.size() != 8U + 6U * 24U || read_u32(payload.data()) != 0x3152574dU ||
+			read_u32(payload.data() + 4U) != 1U)
+			throw std::invalid_argument("external row metadata record schema is invalid");
+		const auto slot = 8U + static_cast<std::size_t>(seat) * 24U;
+		if (payload[slot] == 0U) return false;
+		if (payload[slot] != 1U || payload[slot + 2U] != 0U || payload[slot + 3U] != 0U ||
+			read_u32(payload.data() + slot + 20U) != 0U)
+			throw std::invalid_argument("external row metadata flags or reserved fields are invalid");
+		output.action_count = payload[slot + 1U];
+		output.bucket_count = read_u32(payload.data() + slot + 4U);
+		output.first_page_id = read_u64(payload.data() + slot + 8U);
+		output.page_count = read_u32(payload.data() + slot + 16U);
+		if (output.action_count == 0U || output.bucket_count == 0U || output.first_page_id == 0U || output.page_count == 0U)
+			throw std::invalid_argument("external row metadata contains an invalid shape");
+		return true;
+	}
+
 	MultiwayExternalPageCache::MultiwayExternalPageCache(MultiwayExternalRecordStore& store, std::uint64_t cache_bytes)
 		: store_(&store), payload_bytes_(store.payload_bytes()), lookup_scratch_(payload_bytes_, 0U)
 	{
