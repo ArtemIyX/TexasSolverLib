@@ -372,6 +372,11 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		auto dirty_page = reopened.compact_storage().pin_bucket(child_binding, 0U, true);
 		reopened.compact_storage().apply_delta(dirty_page, 0U, 1.0, 1.0);
 		reopened.compact_storage().unpin_bucket(dirty_page);
+		std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
+		bool publication_failed = false;
+		try { reopened.commit_batch(0xdefU, 2U); }
+		catch (const std::runtime_error&) { publication_failed = true; }
+		EXPECT_TRUE(publication_failed);
 		reopened.abort_batch();
 		EXPECT_EQ(reopened.current_manifest().generation, 1U);
 		EXPECT_TRUE(!reopened.catalog().contains(child.id));

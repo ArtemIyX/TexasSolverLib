@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.15 - Inject aggregate publish failure through typed stores
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the typed external-storage transaction test to fail aggregate manifest publication after child page data has committed.
+- Verified explicit abort restores the prior manifest and removes both the new catalog record and row metadata.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The facade remains outside the solver coordinator; no large training job was run.
+
 ## PB-12 Phase 5.14 - Coordinate typed external training components
 
 **Status:** Complete
