@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 3.4 - Attach external storage to coordinator
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added optional external training storage ownership to `MultiwaySolverCoordinator` and deterministic component path/resource construction.
+- External mode no longer allocates reference sparse-row or public-catalog capacity, and seeds/verifies the root generation at coordinator construction.
+- Reserved 512 bytes of the configured row/page cache for the row-index cache; the remaining configured bytes bound the page cache.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug builds for `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator admission, traversal lookups, merge, checkpoint, and export do not yet use this owned storage; external solver requests remain fail-closed.
+
 ## PB-12 Phase 3.3 - Seed external root generation
 
 **Status:** Complete

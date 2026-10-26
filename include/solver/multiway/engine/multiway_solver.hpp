@@ -21,6 +21,7 @@ namespace texas::solver::multiway
 {
 
 	class MultiwayCompactStorage;
+	class MultiwayExternalTrainingStorage;
 	struct MultiwayMemoryComponent;
 	struct MultiwayPublicCatalogMemorySnapshot;
 	struct MultiwaySparseStorageMemorySnapshot;
@@ -1038,6 +1039,7 @@ namespace texas::solver::multiway
 		MultiwaySolveRequest request_;
 		MultiwaySparseRowStorage storage_;
 		std::unique_ptr<MultiwayCompactStorage> compact_storage_;
+		std::unique_ptr<MultiwayExternalTrainingStorage> external_storage_;
 		MultiwayPublicCatalog public_catalog_;
 		std::vector<const MultiwayWorkerDeltaStream*> merge_stream_views_;
 		std::vector<std::size_t> merge_stream_cursors_;

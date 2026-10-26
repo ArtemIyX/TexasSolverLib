@@ -1,5 +1,6 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/fingerprint.hpp"
 #include "games/multiway_fixed.hpp"
@@ -687,6 +688,22 @@ namespace texas::solver::multiway
 			return exact_values + request.limits().max_sparse_values;
 		}
 
+		MultiwayExternalStorageConfig external_component_config(
+			const MultiwaySolverLimits::ExternalStorage& external,
+			const std::filesystem::path& component, std::uint64_t cache_bytes)
+		{
+			MultiwayExternalStorageConfig config;
+			config.directory = external.directory / component;
+			config.cache_bytes = cache_bytes;
+			config.maximum_wal_bytes = external.maximum_wal_bytes;
+			config.segment_target_bytes = external.segment_target_bytes;
+			config.compaction_fan_in = external.compaction_fan_in;
+			config.compaction_scratch_bytes = external.compaction_scratch_bytes;
+			config.disk_reserve_bytes = external.disk_reserve_bytes;
+			config.synchronous_durability = external.synchronous_durability;
+			return config;
+		}
+
 	} // namespace
 
 	void MultiwayRootSnapshot::validate() const
@@ -1185,12 +1202,38 @@ namespace texas::solver::multiway
 		: root_policy_(std::move(root_policy)), root_values_(std::move(root_values)), diagnostics_(std::move(diagnostics)) {}
 
 	MultiwaySolverCoordinator::MultiwaySolverCoordinator(const MultiwaySolveRequest& request)
-		: request_(request), storage_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32 ? 0U : request.limits().max_sparse_rows, request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32 ? 0U : checked_sparse_value_capacity(request)), public_catalog_(request.limits().max_public_states)
+		: request_(request),
+		  storage_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::Float64Reference
+			  ? request.limits().max_sparse_rows : 0U,
+			  request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::Float64Reference
+			  ? checked_sparse_value_capacity(request) : 0U),
+		  public_catalog_(request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
+			  ? 0U : request.limits().max_public_states)
 	{
 		if (request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32)
 		{
 			compact_storage_ = std::make_unique<MultiwayCompactStorage>(
 				request.limits().max_sparse_rows, checked_sparse_value_capacity(request), request.limits().compact_page_width);
+		}
+		if (request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			constexpr std::uint64_t kRowIndexCacheBytes = 512U;
+			const auto& external = request.limits().external_storage;
+			if (external.row_page_cache_bytes <= kRowIndexCacheBytes)
+				throw std::invalid_argument("external row/page cache is below the bounded row-index requirement");
+			auto catalog_config = external_component_config(external, "catalog",
+				external.public_catalog_cache_bytes);
+			auto row_config = external_component_config(external, "rows",
+				kRowIndexCacheBytes);
+			auto page_config = external_component_config(external, "pages",
+				external.row_page_cache_bytes - kRowIndexCacheBytes);
+			const auto ancestry_depth = std::min<std::size_t>(
+				request.limits().max_public_states, 4096U);
+			external_storage_ = std::make_unique<MultiwayExternalTrainingStorage>(
+				external.directory, std::move(catalog_config), std::move(row_config),
+				std::move(page_config), request.limits().compact_page_width,
+				external.row_page_cache_bytes - kRowIndexCacheBytes,
+				ancestry_depth, external.synchronous_durability);
 		}
 		merge_stream_views_.reserve(request.limits().worker_count);
 		merge_stream_cursors_.reserve(request.limits().worker_count);
@@ -1208,7 +1251,10 @@ namespace texas::solver::multiway
 		admission_state_current_players_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_state_next_node_kinds_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_state_menu_handles_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
-		admit_public_state(request_.root().public_state);
+		if (external_storage_ != nullptr)
+			external_storage_->initialize_root(request_.root().public_state);
+		else
+			admit_public_state(request_.root().public_state);
 	}
 
 	MultiwayCoordinatorMemorySnapshot MultiwaySolverCoordinator::memory_snapshot() const noexcept
