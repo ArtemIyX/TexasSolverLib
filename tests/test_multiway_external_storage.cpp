@@ -415,6 +415,12 @@ TEST_CASE(multiway_external_public_catalog_persists_action_menus)
 	EXPECT_TRUE(reopened.lookup_menu(root.id, actions.data(), actions.size(), action_count));
 	EXPECT_EQ(action_count, 2U);
 	EXPECT_EQ(actions[0].action_menu_id, 0xabcU);
+	MultiwayPublicStateDescriptor reconstructed{};
+	EXPECT_TRUE(reopened.reconstruct(root.id, reconstructed));
+	EXPECT_EQ(reconstructed.id.value, descriptor.id.value);
+	EXPECT_EQ(reconstructed.legal_actions.size(), descriptor.legal_actions.size());
+	for (std::size_t index = 0U; index < descriptor.legal_actions.size(); ++index)
+		EXPECT_EQ(reconstructed.legal_actions[index], descriptor.legal_actions[index]);
 	EXPECT_EQ(external_public_catalog_record_size(), external_public_node_record_size() + 156U);
 }
 

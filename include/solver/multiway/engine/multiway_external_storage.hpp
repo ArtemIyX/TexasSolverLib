@@ -194,6 +194,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const;
 		[[nodiscard]] bool reconstruct_chain(MultiwayPublicStateId id,
 			std::vector<MultiwayPackedPublicNode>& parent_first_output) const;
+		[[nodiscard]] bool reconstruct(MultiwayPublicStateId id,
+			MultiwayPublicStateDescriptor& output) const;
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint64_t record_count() const noexcept { return store_.record_count(); }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }

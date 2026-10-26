@@ -1506,6 +1506,70 @@ namespace texas::solver::multiway
 		return !parent_first_output.empty();
 	}
 
+	bool MultiwayExternalPublicCatalog::reconstruct(MultiwayPublicStateId id,
+		MultiwayPublicStateDescriptor& output) const
+	{
+		std::vector<MultiwayPackedPublicNode> packed_chain;
+		if (!reconstruct_chain(id, packed_chain)) return false;
+		const auto& packed = packed_chain.back();
+		MultiwayPublicStateDescriptor descriptor{};
+		descriptor.id = packed.id;
+		descriptor.parent_id = packed.parent_id;
+		descriptor.canonical_history_id = packed.canonical_history_id;
+		descriptor.board_runout = packed.board_runout;
+		descriptor.board.assign(packed.board.begin(), packed.board.begin() + packed.board_count);
+		descriptor.incoming_edge.kind = packed.incoming_kind;
+		descriptor.incoming_edge.action = packed.incoming_action;
+		descriptor.incoming_edge.dealt_card = packed.dealt_card;
+		descriptor.incoming_edge.dealt_cards.assign(
+			packed.dealt_cards.begin(), packed.dealt_cards.begin() + packed.dealt_card_count);
+		descriptor.incoming_edge.transition_board.assign(
+			packed.transition_board.begin(), packed.transition_board.begin() + packed.transition_board_count);
+		auto& betting = descriptor.betting;
+		betting.current_player = packed.betting.current_player;
+		betting.last_aggressor = packed.betting.last_aggressor;
+		betting.current_bet = packed.betting.current_bet;
+		betting.last_full_raise_size = packed.betting.last_full_raise_size;
+		betting.big_blind = packed.betting.big_blind;
+		betting.street = packed.betting.street;
+		const auto seat_count = packed.betting.seat_count;
+		betting.stacks.assign(packed.betting.stacks.begin(), packed.betting.stacks.begin() + seat_count);
+		betting.contributions.assign(packed.betting.contributions.begin(), packed.betting.contributions.begin() + seat_count);
+		betting.street_contributions.assign(packed.betting.street_contributions.begin(), packed.betting.street_contributions.begin() + seat_count);
+		betting.bet_faced_when_acted.assign(
+			packed.betting.bet_faced_when_acted.begin(), packed.betting.bet_faced_when_acted.begin() + seat_count);
+		betting.folded.resize(seat_count);
+		betting.all_in.resize(seat_count);
+		betting.may_raise.resize(seat_count);
+		betting.pending.resize(seat_count);
+		betting.has_acted.resize(seat_count);
+		for (std::size_t seat = 0U; seat < seat_count; ++seat)
+		{
+			betting.folded[seat] = packed.betting.folded[seat] != 0U;
+			betting.all_in[seat] = packed.betting.all_in[seat] != 0U;
+			betting.may_raise[seat] = packed.betting.may_raise[seat] != 0U;
+			betting.pending[seat] = packed.betting.pending[seat] != 0U;
+			betting.has_acted[seat] = packed.betting.has_acted[seat] != 0U;
+		}
+		descriptor.legal_actions.resize(MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+		std::size_t action_count = 0U;
+		if (!lookup_menu(packed.id, descriptor.legal_actions.data(), descriptor.legal_actions.size(), action_count))
+			return false;
+		descriptor.legal_actions.resize(action_count);
+		for (std::size_t index = 1U; index < packed_chain.size(); ++index)
+		{
+			const auto& ancestor = packed_chain[index];
+			if (ancestor.incoming_kind == MultiwayPublicParentEdgeKind::BettingAction)
+			{
+				auto action = ancestor.incoming_action;
+				action.action_index = 0U;
+				descriptor.history.push_back({ ancestor.incoming_actor, action });
+			}
+		}
+		output = std::move(descriptor);
+		return true;
+	}
+
 	MultiwayExternalRowIndex::MultiwayExternalRowIndex(
 		MultiwayExternalStorageConfig config, std::uint32_t page_width)
 		: store_(std::move(config), 8U + 6U * 24U), page_width_(page_width)

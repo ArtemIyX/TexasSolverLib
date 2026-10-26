@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.7 - Reconstruct external catalog descriptors
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added cold-boundary reconstruction of a full public-state descriptor from a bounded parent chain, including betting state, board and incoming edge, restored action menu, and chronological betting history.
+- Verified descriptor menu fields survive catalog reopen and reconstruction.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator still uses the in-memory public catalog. External descriptor reconstruction is not yet on the runtime path.
+
 ## PB-12 Phase 4.6 - Persist external catalog action menus
 
 **Status:** Complete
