@@ -16,6 +16,7 @@ namespace texas::solver::multiway
 	struct MultiwayActionDescriptor;
 	struct MultiwayInfosetId;
 	struct MultiwaySparseRowShape;
+	class MultiwayExternalRowIndex;
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA = 1U;
 	[[nodiscard]] std::size_t external_public_node_record_size() noexcept;
@@ -228,6 +229,7 @@ namespace texas::solver::multiway
 	private:
 		friend class MultiwayExternalRowIndex;
 		friend class MultiwayExternalCompactStorage;
+		const MultiwayExternalRowIndex* owner_ = nullptr;
 		std::uint64_t state_id_ = 0U;
 		std::int32_t seat_ = -1;
 		MultiwayExternalRowMetadata row_{};

@@ -5,7 +5,7 @@
 **Status:** Complete
 **Completed:** 2026-10-26
 
-- Added deterministic sorted row admission and an external fixed-point row/page adapter sharing the reference compact arithmetic kernel.
+- Added deterministic sorted row admission and an owner-validated external fixed-point row/page adapter sharing the reference compact arithmetic kernel.
 - Added differential tests for regret matching, average strategy, saturation, large strategy masses, page boundaries, and reopen behavior.
 - `ExternalCompactInt32` remains unavailable to solver execution. Coordinator batching, page pinning outside delta loops, and aggregate generation integration remain required.
 

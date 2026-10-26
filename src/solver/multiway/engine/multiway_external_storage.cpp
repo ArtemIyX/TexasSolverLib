@@ -1709,6 +1709,7 @@ namespace texas::solver::multiway
 		MultiwayExternalRowMetadata metadata{};
 		if (!lookup(state, seat, metadata)) return false;
 		MultiwayExternalRowBinding binding;
+		binding.owner_ = this;
 		binding.state_id_ = state.value;
 		binding.seat_ = seat;
 		binding.row_ = metadata;
@@ -1719,7 +1720,7 @@ namespace texas::solver::multiway
 		std::uint32_t bucket, MultiwayExternalRowPage& output) const
 	{
 		const auto& row = binding.row_;
-		if (binding.state_id_ == 0U || binding.seat_ < 0 || binding.seat_ >= 6 ||
+		if (binding.owner_ != this || binding.state_id_ == 0U || binding.seat_ < 0 || binding.seat_ >= 6 ||
 			row.bucket_count == 0U || row.action_count == 0U || row.first_page_id == 0U ||
 			row.page_count == 0U || bucket >= row.bucket_count)
 			return false;
@@ -2066,6 +2067,7 @@ namespace texas::solver::multiway
 		MultiwayExternalRowMetadata row{};
 		if (!rows_.lookup(infoset.public_state, infoset.seat, row)) return false;
 		output.state_id_ = infoset.public_state.value;
+		output.owner_ = &rows_;
 		output.seat_ = infoset.seat;
 		output.row_ = row;
 		return true;
@@ -2102,6 +2104,8 @@ namespace texas::solver::multiway
 		double* output, std::size_t output_size) const
 	{
 		MultiwayExternalRowPage row_page{};
+		if (binding.owner_ != &rows_)
+			throw std::invalid_argument("external compact row binding belongs to another storage object");
 		if (!rows_.locate_bucket(binding, bucket, row_page))
 			throw std::out_of_range("external compact regret strategy row or bucket is unavailable");
 		if (output == nullptr || output_size != row_page.action_count)
@@ -2127,6 +2131,8 @@ namespace texas::solver::multiway
 		double* output, std::size_t output_size) const
 	{
 		MultiwayExternalRowPage row_page{};
+		if (binding.owner_ != &rows_)
+			throw std::invalid_argument("external compact row binding belongs to another storage object");
 		if (!rows_.locate_bucket(binding, bucket, row_page))
 			throw std::out_of_range("external compact average strategy row or bucket is unavailable");
 		if (output == nullptr || output_size != row_page.action_count)

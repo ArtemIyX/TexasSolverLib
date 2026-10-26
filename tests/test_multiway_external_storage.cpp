@@ -625,6 +625,14 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 		expected_policy.data(), expected_policy.size());
 	for (std::size_t action = 0U; action < expected_policy.size(); ++action)
 		EXPECT_EQ(reopened_policy[action], expected_policy[action]);
+	bool foreign_binding_rejected = false;
+	try
+	{
+		external.regret_matched_strategy_into(reopened_binding, 16U,
+			reopened_policy.data(), reopened_policy.size());
+	}
+	catch (const std::invalid_argument&) { foreign_binding_rejected = true; }
+	EXPECT_TRUE(foreign_binding_rejected);
 }
 
 TEST_CASE(multiway_external_record_store_compacts_deterministically)
