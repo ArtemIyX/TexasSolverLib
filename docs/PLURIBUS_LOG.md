@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.26 - Verify external multirow coordinator equivalence
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the compact coordinator fixture with an external catalog, root and child rows, parent-linked state reconstruction, and identical worker deltas across both backends.
+- Verified reconstructed child identity/history and exact root/child regret-matched strategy equality with CompactInt32 after the ordered merge.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The test covers one parent/child pair and a small merge batch. Restart, checkpoint/export, runtime execution, and scale feasibility remain unproven.
+
 ## PB-12 Phase 5.25 - Compare external coordinator merge to CompactInt32
 
 **Status:** Complete

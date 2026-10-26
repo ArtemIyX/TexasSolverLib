@@ -766,16 +766,37 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 		texas::MultiwaySolveRequest(valid_root(), cfr, compact_limits));
 	texas::MultiwaySolverCoordinator reference(
 		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
+	ExternalCoordinatorDirectory external_directory;
+	auto external_limits = valid_limits();
+	external_limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	external_limits.external_storage.directory = external_directory.path();
+	external_limits.external_storage.public_catalog_cache_bytes = 65536U;
+	external_limits.external_storage.row_page_cache_bytes = 65536U;
+	external_limits.external_storage.maximum_wal_bytes = 65536U;
+	external_limits.external_storage.segment_target_bytes = 65536U;
+	external_limits.external_storage.compaction_fan_in = 2U;
+	external_limits.external_storage.compaction_scratch_bytes = 65536U;
+	external_limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	external_limits.external_storage.synchronous_durability = false;
+	texas::MultiwaySolverCoordinator external(
+		texas::MultiwaySolveRequest(valid_root(), cfr, external_limits));
 	const texas::MultiwaySparseRowShape child_row = {
 		{ child.id, child.betting.current_player }, 2U,
 		static_cast<std::uint8_t>(child.legal_actions.size())
 	};
 	compact.admit_public_state(child);
 	reference.admit_public_state(child);
+	external.admit_public_state(child);
 	compact.admit_infoset_row(root_row());
 	reference.admit_infoset_row(root_row());
+	external.admit_infoset_row(root_row());
 	compact.admit_infoset_row(child_row);
 	reference.admit_infoset_row(child_row);
+	external.admit_infoset_row(child_row);
+	const auto* external_child = external.find_public_state(child.id);
+	EXPECT_TRUE(external_child != nullptr);
+	EXPECT_EQ(external_child->id, child.id);
+	EXPECT_EQ(external_child->history, child.history);
 
 	texas::MultiwayWorkerDeltaStream first(0U, 2U);
 	texas::MultiwayWorkerDeltaStream second(1U, 2U);
@@ -785,6 +806,7 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 	second.sort_fixed_order();
 	compact.merge_worker_streams({ first, second });
 	reference.merge_worker_streams({ first, second });
+	external.merge_worker_streams({ first, second });
 
 	const auto compact_checkpoint = compact.checkpoint();
 	const auto reference_checkpoint = reference.checkpoint();
@@ -797,6 +819,18 @@ TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canoni
 	}
 	EXPECT_EQ(compact_checkpoint.storage.regrets, reference_checkpoint.storage.regrets);
 	EXPECT_EQ(compact_checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
+	std::array<double, 3U> compact_strategy{};
+	std::array<double, 3U> external_strategy{};
+	compact.regret_matched_strategy_into(root_infoset(), 0U, compact_strategy.data(), compact_strategy.size());
+	external.regret_matched_strategy_into(root_infoset(), 0U, external_strategy.data(), external_strategy.size());
+	EXPECT_EQ(external_strategy, compact_strategy);
+	std::vector<double> compact_child_strategy(child.legal_actions.size());
+	std::vector<double> external_child_strategy(child.legal_actions.size());
+	compact.regret_matched_strategy_into(child_row.infoset, 1U,
+		compact_child_strategy.data(), compact_child_strategy.size());
+	external.regret_matched_strategy_into(child_row.infoset, 1U,
+		external_child_strategy.data(), external_child_strategy.size());
+	EXPECT_EQ(external_child_strategy, compact_child_strategy);
 }
 
 TEST_CASE(multiway_solver_live_root_uses_distinct_exact_private_hand_rows)
