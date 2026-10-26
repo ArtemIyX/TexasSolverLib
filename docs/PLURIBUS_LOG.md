@@ -1,5 +1,62 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 0–1 - Repair memory accounting
+
+**Status:** Complete
+**Completed:** 2026-10-26
+**Implementation commit:** `f1db9b4 PB-12 (memory) Multiway: Correct training estimates`
+
+- Replaced the synthetic 1 KiB public-state charge with packed node, sorted index, menu, and admission-scratch capacity terms. Added catalog and compact-storage reallocation peaks, page metadata, and exact coordinator pending-merge cell sizing.
+- Replaced output-sized checkpoint/export private estimates with stream scratch bounds. Added distinct file-cache and disk-output ledger fields, and bumped the estimate schema to version 3.
+- Added deterministic 4M/34M sizing fixtures. The 34M fixture retains the 5M-row/100M-cell profile and rejects the unchanged 51,539,607,552-byte working-set gate after a 15.95 GB post-validation baseline. No training workflow ran.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `include/solver/multiway/engine/multiway_compact_storage.hpp`
+- `src/solver/multiway/engine/multiway_compact_storage.cpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_p7_memory_contracts.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/test_multiway_storage_sizing.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused memory, storage sizing, qualification report, and P7 memory contract tests passed.
+- `scripts/python/full_build.py`: build passed; all 118 CTest tests passed.
+- No training, benchmark, or pilot workload was run.
+
+### Limitations
+
+- 34M conservatism is supported by synthetic maximum-capacity accounting, not a measured 34M runtime peak or feasibility claim. External storage, disk admission integration, and runtime reconciliation remain in later phases.
+
+## PB-12 - 50M memory investigation and implementation plan
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Documented the 4M admission failure, 34M preflight rejection, measured mapping residency, checkpoint/export peaks, and current 50M architecture limits.
+- Defined a bounded out-of-core design, corrected memory-accounting requirements, compact bucket format, durable checkpoint/export strategy, focused tests, and staged validation gates.
+
+### Files
+
+- `docs/pb12_50m_memory_scaling_plan.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Documentation diff reviewed. No build, test, benchmark, or training job was run because this task changed documentation only.
+
+### Limitations
+
+- Implementation has not started. No 500K, 1M, 5M, or 50M workload was run or authorized.
+
 ## PB-12 - Guarded 500K qualification
 
 **Status:** Stopped by capacity and memory gates
