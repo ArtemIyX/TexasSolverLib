@@ -194,6 +194,11 @@ namespace texas::solver::multiway
 		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayPackedPublicNode>& nodes,
 			const std::vector<MultiwayPublicStateDescriptor>& descriptors);
+		// Batch-boundary lookup for coordinator admission. The caller supplies
+		// reusable buffers; outputs are resized to the sorted candidate batch.
+		void classify_batch(const std::vector<MultiwayPublicStateDescriptor>& states,
+			std::vector<std::uint8_t>& new_state_flags,
+			std::vector<MultiwayPackedPublicNode>& existing_nodes) const;
 		[[nodiscard]] bool lookup(MultiwayPublicStateId id, MultiwayPackedPublicNode& output) const;
 		[[nodiscard]] bool lookup_menu(MultiwayPublicStateId id,
 			MultiwayActionDescriptor* output, std::size_t output_capacity,

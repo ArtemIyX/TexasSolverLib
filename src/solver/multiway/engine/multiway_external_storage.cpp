@@ -1364,6 +1364,23 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external public catalog requires a positive ancestry depth bound");
 	}
 
+	void MultiwayExternalPublicCatalog::classify_batch(
+		const std::vector<MultiwayPublicStateDescriptor>& states,
+		std::vector<std::uint8_t>& new_state_flags,
+		std::vector<MultiwayPackedPublicNode>& existing_nodes) const
+	{
+		new_state_flags.assign(states.size(), 1U);
+		existing_nodes.assign(states.size(), MultiwayPackedPublicNode{});
+		for (std::size_t index = 0U; index < states.size(); ++index)
+		{
+			if (states[index].id.value == 0U ||
+				(index != 0U && states[index - 1U].id.value >= states[index].id.value))
+				throw std::invalid_argument("external public-state classification requires sorted unique nonzero ids");
+			if (lookup(states[index].id, existing_nodes[index]))
+				new_state_flags[index] = 0U;
+		}
+	}
+
 	void MultiwayExternalPublicCatalog::append_batch(std::uint64_t batch_number,
 		std::uint64_t merge_fingerprint, const std::vector<MultiwayPackedPublicNode>& nodes)
 	{

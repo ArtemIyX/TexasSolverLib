@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.6 - Classify external catalog batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added reusable-buffer classification of sorted public-state candidate batches against the external catalog, returning existing packed records and new-state flags for coordinator preflight.
+- Rejects zero, duplicate, or unsorted IDs before classifying; tests cover existing and missing entries.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Catalog batch classification is not yet called by `MultiwaySolverCoordinator`; solver execution remains fail-closed for the external backend.
+
 ## PB-12 Phase 5.18 - Freeze external execution gate
 
 **Status:** Complete

@@ -530,6 +530,24 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 		catalog.append_batch(1U, 0x44U, { root, child });
 		EXPECT_EQ(catalog.record_count(), 2U);
 		EXPECT_TRUE(catalog.contains(child.id));
+		MultiwayPublicStateDescriptor root_candidate{};
+		root_candidate.id = root.id;
+		MultiwayPublicStateDescriptor child_candidate{};
+		child_candidate.id = child.id;
+		MultiwayPublicStateDescriptor new_candidate{};
+		new_candidate.id.value = 3U;
+		std::vector<std::uint8_t> new_flags;
+		std::vector<MultiwayPackedPublicNode> existing_nodes;
+		catalog.classify_batch({ root_candidate, child_candidate, new_candidate },
+			new_flags, existing_nodes);
+		EXPECT_EQ(new_flags, (std::vector<std::uint8_t>{ 0U, 0U, 1U }));
+		EXPECT_EQ(existing_nodes[0].id.value, root.id.value);
+		EXPECT_EQ(existing_nodes[1].id.value, child.id.value);
+		EXPECT_EQ(existing_nodes[2].id.value, 0U);
+		bool unsorted_rejected = false;
+		try { catalog.classify_batch({ child_candidate, root_candidate }, new_flags, existing_nodes); }
+		catch (const std::invalid_argument&) { unsorted_rejected = true; }
+		EXPECT_TRUE(unsorted_rejected);
 		std::vector<MultiwayPackedPublicNode> chain;
 		EXPECT_TRUE(catalog.reconstruct_chain(child.id, chain));
 		EXPECT_EQ(chain.size(), 2U);
