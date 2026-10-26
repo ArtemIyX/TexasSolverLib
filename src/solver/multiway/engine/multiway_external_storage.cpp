@@ -39,6 +39,23 @@ namespace texas::solver::multiway
 		constexpr std::uint32_t kPageRecordSchema = 1U;
 		constexpr std::size_t kPageRecordHeaderBytes = 40U;
 		constexpr std::size_t kPageRecordChecksumBytes = 8U;
+		constexpr std::array<std::uint8_t, 8U> kTransactionWalMagic = { 'T','X','M','W','B','A','T','1' };
+		constexpr std::array<const char*, 3U> kComponentNames = { "catalog", "rows", "pages" };
+		constexpr std::array<const char*, 3U> kBackupNames = {
+			"CATALOG_CURRENT.previous", "ROWS_CURRENT.previous", "PAGES_CURRENT.previous" };
+
+		struct ComponentManifestInfo
+		{
+			std::uint64_t generation = 0U;
+			std::uint64_t last_batch_number = 0U;
+			bool exists = false;
+		};
+		struct TransactionWal
+		{
+			std::uint32_t previous_flags = 0U;
+			std::uint64_t batch_number = 0U;
+			std::uint64_t merge_fingerprint = 0U;
+		};
 
 		void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
 		{
@@ -97,6 +114,124 @@ namespace texas::solver::multiway
 		{
 			return directory / ("run_" + std::to_string(generation) + suffix);
 		}
+		void sync_file_path(const std::filesystem::path& path)
+		{
+#ifdef _WIN32
+			const auto handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
+				nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+			if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("external transaction file cannot be opened for flush");
+			const auto flushed = FlushFileBuffers(handle);
+			CloseHandle(handle);
+			if (!flushed) throw std::runtime_error("external transaction file flush failed");
+#else
+			const auto descriptor = open(path.c_str(), O_RDONLY);
+			if (descriptor < 0) throw std::runtime_error("external transaction file cannot be opened for flush");
+			const auto flushed = fsync(descriptor);
+			close(descriptor);
+			if (flushed != 0) throw std::runtime_error("external transaction file flush failed");
+#endif
+		}
+		void sync_directory_path(const std::filesystem::path& path)
+		{
+#ifdef _WIN32
+			(void)path;
+#else
+			const auto descriptor = open(path.c_str(), O_RDONLY | O_DIRECTORY);
+			if (descriptor < 0) throw std::runtime_error("external transaction directory cannot be opened for flush");
+			const auto flushed = fsync(descriptor);
+			close(descriptor);
+			if (flushed != 0) throw std::runtime_error("external transaction directory flush failed");
+#endif
+		}
+		ComponentManifestInfo read_component_manifest(const std::filesystem::path& component_directory)
+		{
+			const auto path = component_directory / "CURRENT";
+			std::error_code error;
+			if (!std::filesystem::exists(path, error))
+			{
+				if (error) throw std::runtime_error("external component manifest cannot be inspected");
+				return {};
+			}
+			const auto file_bytes = std::filesystem::file_size(path, error);
+			if (error || file_bytes < 48U) throw std::invalid_argument("external component manifest size is invalid");
+			std::ifstream input(path, std::ios::binary);
+			std::array<std::uint8_t, 40U> header{};
+			input.read(reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+			if (!input || !std::equal(kManifestMagic.begin(), kManifestMagic.end(), header.begin()) ||
+				read_u32(header.data() + 8U) != kSchema)
+				throw std::invalid_argument("external component manifest header is invalid");
+			const auto generation = read_u64(header.data() + 16U);
+			const auto run_count = read_u64(header.data() + 24U);
+			const auto last_batch_number = read_u64(header.data() + 32U);
+			if (run_count > (std::numeric_limits<std::uint64_t>::max() - 48U) / 24U ||
+				48U + run_count * 24U != file_bytes)
+				throw std::invalid_argument("external component manifest run table size is invalid");
+			auto checksum = kHashOffset;
+			std::array<char, 64U * 1024U> buffer{};
+			std::uint64_t remaining = file_bytes - 8U;
+			input.clear();
+			input.seekg(0);
+			while (remaining != 0U)
+			{
+				const auto request = static_cast<std::streamsize>(std::min<std::uint64_t>(remaining, buffer.size()));
+				input.read(buffer.data(), request);
+				if (!input) throw std::invalid_argument("external component manifest is truncated");
+				for (std::streamsize index = 0; index < request; ++index)
+					texas::core::fingerprint::append_u8(checksum, static_cast<std::uint8_t>(buffer[static_cast<std::size_t>(index)]));
+				remaining -= static_cast<std::uint64_t>(request);
+			}
+		std::array<std::uint8_t, 8U> checksum_bytes{};
+		input.read(reinterpret_cast<char*>(checksum_bytes.data()), checksum_bytes.size());
+		if (!input || texas::core::fingerprint::finish(checksum) != read_u64(checksum_bytes.data()))
+			throw std::invalid_argument("external component manifest checksum is invalid");
+		return { generation, last_batch_number, true };
+	}
+	void write_transaction_wal(const std::filesystem::path& directory,
+		const TransactionWal& transaction, bool synchronous_durability)
+	{
+		std::vector<std::uint8_t> bytes(kTransactionWalMagic.begin(), kTransactionWalMagic.end());
+		append_u32(bytes, 1U);
+		append_u32(bytes, transaction.previous_flags);
+		append_u64(bytes, transaction.batch_number);
+		append_u64(bytes, transaction.merge_fingerprint);
+		auto checksum = kHashOffset;
+		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
+		append_u64(bytes, texas::core::fingerprint::finish(checksum));
+		const auto temp = directory / "TRAINING_BATCH.tmp";
+		const auto wal = directory / "TRAINING_BATCH.wal";
+		if (std::filesystem::exists(temp) || std::filesystem::exists(wal))
+			throw std::runtime_error("external transaction already has a pending journal");
+		std::ofstream output(temp, std::ios::binary | std::ios::trunc);
+		if (!output) throw std::runtime_error("external transaction journal cannot be opened");
+		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		output.flush();
+		if (!output) throw std::runtime_error("external transaction journal write failed");
+		output.close();
+		if (synchronous_durability) sync_file_path(temp);
+		texas::core::publish_atomic_replace(temp, wal, "external transaction journal publish failed",
+			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+		if (synchronous_durability) sync_directory_path(directory);
+	}
+	TransactionWal read_transaction_wal(const std::filesystem::path& path)
+	{
+		if (std::filesystem::file_size(path) != 40U)
+			throw std::invalid_argument("external transaction journal size is invalid");
+		std::array<std::uint8_t, 40U> bytes{};
+		std::ifstream input(path, std::ios::binary);
+		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		if (!input || !std::equal(kTransactionWalMagic.begin(), kTransactionWalMagic.end(), bytes.begin()) ||
+			read_u32(bytes.data() + 8U) != 1U)
+			throw std::invalid_argument("external transaction journal header is invalid");
+		auto checksum = kHashOffset;
+		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+			texas::core::fingerprint::append_u8(checksum, bytes[index]);
+		if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + 32U))
+			throw std::invalid_argument("external transaction journal checksum is invalid");
+		TransactionWal result{ read_u32(bytes.data() + 12U), read_u64(bytes.data() + 16U), read_u64(bytes.data() + 24U) };
+		if ((result.previous_flags & ~7U) != 0U || result.batch_number == 0U || result.merge_fingerprint == 0U)
+			throw std::invalid_argument("external transaction journal fields are invalid");
+		return result;
+	}
 		void append_file_hash(std::uint64_t& hash, const std::filesystem::path& path)
 		{
 			std::ifstream input(path, std::ios::binary);
@@ -282,6 +417,211 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external training manifest identity is invalid");
 		manifest = decoded;
 		return true;
+	}
+
+	MultiwayExternalBatchTransaction::MultiwayExternalBatchTransaction(
+		std::filesystem::path directory, bool synchronous_durability)
+		: directory_(std::move(directory)), synchronous_durability_(synchronous_durability)
+	{
+		if (directory_.empty()) throw std::invalid_argument("external batch transaction directory is empty");
+		std::error_code error;
+		std::filesystem::create_directories(directory_, error);
+		if (error || !std::filesystem::is_directory(directory_, error) || error)
+			throw std::runtime_error("external batch transaction directory is unavailable");
+		if (!load_multiway_external_generation(directory_, current_))
+			current_ = {};
+		recover_pending_batch();
+	}
+
+	void MultiwayExternalBatchTransaction::begin_batch(
+		std::uint64_t batch_number, std::uint64_t merge_fingerprint)
+	{
+		if (batch_open_ || batch_number == 0U || merge_fingerprint == 0U ||
+			batch_number <= current_.committed_batch_number ||
+			current_.generation == std::numeric_limits<std::uint64_t>::max())
+			throw std::invalid_argument("external batch transaction identity is invalid");
+		previous_manifest_flags_ = 0U;
+		previous_component_generations_ = {};
+		const auto wal = directory_ / "TRAINING_BATCH.wal";
+		const auto temp = directory_ / "TRAINING_BATCH.tmp";
+		if (std::filesystem::exists(wal) || std::filesystem::exists(temp))
+			throw std::runtime_error("external batch transaction has an unrecovered journal");
+		for (std::size_t index = 0U; index < kComponentNames.size(); ++index)
+		{
+			const auto component = directory_ / kComponentNames[index];
+			std::error_code error;
+			std::filesystem::create_directories(component, error);
+			if (error) throw std::runtime_error("external batch component directory cannot be created");
+			const auto info = read_component_manifest(component);
+			previous_component_generations_[index] = info.generation;
+			const auto backup = directory_ / kBackupNames[index];
+			if (std::filesystem::exists(backup))
+			{
+				std::filesystem::remove(backup, error);
+				if (error) throw std::runtime_error("stale external component backup cannot be removed");
+			}
+			const auto current = component / "CURRENT";
+			if (info.exists)
+			{
+				std::filesystem::copy_file(current, backup);
+				if (synchronous_durability_) sync_file_path(backup);
+				previous_manifest_flags_ |= (1U << index);
+			}
+		}
+		if (synchronous_durability_) sync_directory_path(directory_);
+		try
+		{
+			write_transaction_wal(directory_, { previous_manifest_flags_, batch_number, merge_fingerprint },
+				synchronous_durability_);
+		}
+		catch (...)
+		{
+			std::error_code ignored;
+			for (const auto* name : kBackupNames) std::filesystem::remove(directory_ / name, ignored);
+			std::filesystem::remove(temp, ignored);
+			std::filesystem::remove(wal, ignored);
+			previous_manifest_flags_ = 0U;
+			throw;
+		}
+		batch_number_ = batch_number;
+		merge_fingerprint_ = merge_fingerprint;
+		batch_open_ = true;
+	}
+
+	void MultiwayExternalBatchTransaction::commit_batch(
+		const MultiwayExternalGenerationManifest& manifest)
+	{
+		if (!batch_open_ || manifest.generation != current_.generation + 1U ||
+			manifest.committed_batch_number != batch_number_ || manifest.merge_fingerprint != merge_fingerprint_)
+			throw std::invalid_argument("external batch commit does not match its begin record");
+		const std::array<std::uint64_t, 3U> expected_generations = {
+			manifest.catalog_generation, manifest.row_generation, manifest.page_generation };
+		for (std::size_t index = 0U; index < kComponentNames.size(); ++index)
+		{
+			const auto info = read_component_manifest(directory_ / kComponentNames[index]);
+			if (info.generation != expected_generations[index] ||
+				(info.exists && info.last_batch_number > batch_number_) ||
+				(info.generation != previous_component_generations_[index] && info.last_batch_number != batch_number_))
+				throw std::invalid_argument("external component generation does not match the batch commit");
+		}
+		publish_multiway_external_generation(directory_, manifest, synchronous_durability_);
+		current_ = manifest;
+		batch_open_ = false;
+		clear_pending_batch();
+	}
+
+	void MultiwayExternalBatchTransaction::abort_batch()
+	{
+		if (!batch_open_) return;
+		rollback_pending_batch(previous_manifest_flags_);
+		batch_open_ = false;
+		batch_number_ = 0U;
+		merge_fingerprint_ = 0U;
+		previous_manifest_flags_ = 0U;
+		if (!load_multiway_external_generation(directory_, current_)) current_ = {};
+	}
+
+	void MultiwayExternalBatchTransaction::recover_pending_batch()
+	{
+		const auto wal = directory_ / "TRAINING_BATCH.wal";
+		if (!std::filesystem::exists(wal))
+		{
+			const auto temp = directory_ / "TRAINING_BATCH.tmp";
+			if (std::filesystem::exists(temp))
+			{
+				std::error_code error;
+				std::filesystem::remove(temp, error);
+				if (error) throw std::runtime_error("incomplete external transaction journal cannot be removed");
+			}
+			return;
+		}
+		const auto pending = read_transaction_wal(wal);
+		if (pending.batch_number <= current_.committed_batch_number)
+		{
+			if (pending.batch_number == current_.committed_batch_number &&
+				pending.merge_fingerprint != current_.merge_fingerprint)
+				throw std::invalid_argument("external transaction journal conflicts with the committed manifest");
+			clear_pending_batch();
+			return;
+		}
+		batch_number_ = pending.batch_number;
+		merge_fingerprint_ = pending.merge_fingerprint;
+		previous_manifest_flags_ = pending.previous_flags;
+		rollback_pending_batch(pending.previous_flags);
+	}
+
+	void MultiwayExternalBatchTransaction::rollback_pending_batch(std::uint32_t previous_manifest_flags)
+	{
+		MultiwayExternalGenerationManifest committed{};
+		const auto has_manifest = load_multiway_external_generation(directory_, committed);
+		if (has_manifest && committed.committed_batch_number >= batch_number_ &&
+			committed.committed_batch_number != 0U)
+		{
+			if (committed.committed_batch_number == batch_number_ && committed.merge_fingerprint != merge_fingerprint_)
+				throw std::invalid_argument("external batch journal conflicts with the published generation");
+			current_ = committed;
+			clear_pending_batch();
+			return;
+		}
+		for (std::size_t index = 0U; index < kComponentNames.size(); ++index)
+		{
+			const auto component = directory_ / kComponentNames[index];
+			std::error_code error;
+			const auto current = component / "CURRENT";
+			const auto backup = directory_ / kBackupNames[index];
+			if ((previous_manifest_flags & (1U << index)) != 0U)
+			{
+				if (!std::filesystem::exists(backup))
+					throw std::runtime_error("external transaction rollback manifest backup is missing");
+				const auto restore_temp = component / "CURRENT.restore.tmp";
+				if (std::filesystem::exists(restore_temp))
+				{
+					std::filesystem::remove(restore_temp, error);
+					if (error) throw std::runtime_error("external transaction restore temporary cannot be cleared");
+				}
+				std::filesystem::copy_file(backup, restore_temp);
+				if (synchronous_durability_) sync_file_path(restore_temp);
+				texas::core::publish_atomic_replace(restore_temp, current,
+					"external component manifest rollback failed",
+					texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+			}
+			else
+			{
+				std::filesystem::remove(current, error);
+				if (error) throw std::runtime_error("new external component manifest cannot be rolled back");
+			}
+			for (const auto* name : { "BATCH.wal", "CURRENT.tmp", "CURRENT.restore.tmp" })
+			{
+				std::filesystem::remove(component / name, error);
+				if (error) throw std::runtime_error("external component transaction temporary cannot be removed");
+			}
+			if (synchronous_durability_) sync_directory_path(component);
+		}
+		std::error_code error;
+		std::filesystem::remove(directory_ / "TRAINING_CURRENT.tmp", error);
+		if (error) throw std::runtime_error("external training manifest temporary cannot be removed");
+		current_ = {};
+		(void)load_multiway_external_generation(directory_, current_);
+		clear_pending_batch();
+	}
+
+	void MultiwayExternalBatchTransaction::clear_pending_batch()
+	{
+		std::error_code error;
+		for (const auto* name : { "TRAINING_BATCH.wal", "TRAINING_BATCH.tmp" })
+		{
+			std::filesystem::remove(directory_ / name, error);
+			if (error) throw std::runtime_error("external transaction journal cannot be removed");
+		}
+		for (const auto* name : kBackupNames)
+		{
+			std::filesystem::remove(directory_ / name, error);
+			if (error) throw std::runtime_error("external transaction backup cannot be removed");
+		}
+		if (synchronous_durability_) sync_directory_path(directory_);
+		batch_number_ = 0U;
+		merge_fingerprint_ = 0U;
+		previous_manifest_flags_ = 0U;
 	}
 
 	bool decode_external_public_node(const std::uint8_t* bytes, std::size_t size,
@@ -852,7 +1192,7 @@ namespace texas::solver::multiway
 		return texas::core::fingerprint::finish(hash);
 	}
 
-	void MultiwayExternalRecordStore::compact()
+	void MultiwayExternalRecordStore::compact(bool retain_input_runs)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (runs_.size() < config_.compaction_fan_in) return;
@@ -951,12 +1291,13 @@ namespace texas::solver::multiway
 		next_runs.push_back(merged);
 		publish_manifest(next_runs, next_generation, last_batch_number_);
 		flush_directory();
-		for (std::size_t index = 0U; index < input_count; ++index)
-		{
-			std::error_code ignored;
-			std::filesystem::remove(runs_[input_start + index].data_path, ignored);
-			std::filesystem::remove(runs_[input_start + index].index_path, ignored);
-		}
+		if (!retain_input_runs)
+			for (std::size_t index = 0U; index < input_count; ++index)
+			{
+				std::error_code ignored;
+				std::filesystem::remove(runs_[input_start + index].data_path, ignored);
+				std::filesystem::remove(runs_[input_start + index].index_path, ignored);
+			}
 		runs_.swap(next_runs);
 		generation_ = next_generation;
 		record_count_ = record_count_ - total_records + compacted_count;
@@ -990,7 +1331,6 @@ namespace texas::solver::multiway
 			records.push_back({ nodes[index].id.value, payload });
 		}
 		store_.append_batch(batch_number, merge_fingerprint, records);
-		store_.compact();
 	}
 
 	bool MultiwayExternalPublicCatalog::lookup(MultiwayPublicStateId id,
@@ -1124,7 +1464,6 @@ namespace texas::solver::multiway
 		store_.append_batch(batch_number, merge_fingerprint, records);
 		next_page_id = candidate_next_page_id;
 		next_page_id_ = candidate_next_page_id;
-		store_.compact();
 	}
 
 	bool MultiwayExternalRowIndex::lookup(MultiwayPublicStateId state,
@@ -1400,7 +1739,6 @@ namespace texas::solver::multiway
 		}
 		for (auto* page : dirty) page->dirty = false;
 		batch_open_ = false;
-		store_->compact();
 	}
 
 	void MultiwayExternalCompactPages::abort_batch() noexcept

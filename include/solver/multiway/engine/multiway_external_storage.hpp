@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <array>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -73,6 +74,34 @@ namespace texas::solver::multiway
 	[[nodiscard]] bool load_multiway_external_generation(const std::filesystem::path& directory,
 		MultiwayExternalGenerationManifest& manifest);
 
+	// Coordinates root/catalog, root/rows, and root/pages CURRENT manifests
+	// through one durable commit point. Construct this before opening child stores
+	// on restart. Callers hold the exclusive coordinator batch boundary and
+	// recreate child stores after abort because their in-memory views may be stale.
+	class MultiwayExternalBatchTransaction
+	{
+	public:
+		MultiwayExternalBatchTransaction(std::filesystem::path directory,
+			bool synchronous_durability);
+		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
+		void commit_batch(const MultiwayExternalGenerationManifest& manifest);
+		void abort_batch();
+		[[nodiscard]] const MultiwayExternalGenerationManifest& current_manifest() const noexcept { return current_; }
+		[[nodiscard]] bool batch_open() const noexcept { return batch_open_; }
+	private:
+		void recover_pending_batch();
+		void rollback_pending_batch(std::uint32_t previous_manifest_flags);
+		void clear_pending_batch();
+		std::filesystem::path directory_;
+		bool synchronous_durability_ = true;
+		MultiwayExternalGenerationManifest current_{};
+		std::uint64_t batch_number_ = 0U;
+		std::uint64_t merge_fingerprint_ = 0U;
+		std::uint32_t previous_manifest_flags_ = 0U;
+		std::array<std::uint64_t, 3U> previous_component_generations_{};
+		bool batch_open_ = false;
+	};
+
 	// Fixed-width, append-only sorted runs. Callers serialize typed public-state,
 	// row, or page records explicitly and keep this API at coordinator boundaries.
 	class MultiwayExternalRecordStore
@@ -86,7 +115,9 @@ namespace texas::solver::multiway
 		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayExternalRecord>& records);
 		[[nodiscard]] bool lookup(std::uint64_t key, std::vector<std::uint8_t>& payload) const;
-		void compact();
+		// During a multi-store transaction, retain old input runs until the
+		// aggregate manifest commits. Call compact(false) afterward to reclaim them.
+		void compact(bool retain_input_runs = false);
 		[[nodiscard]] std::uint64_t generation() const;
 		[[nodiscard]] std::uint64_t record_count() const;
 		[[nodiscard]] std::size_t cache_capacity_records() const noexcept;
@@ -152,6 +183,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const;
 		[[nodiscard]] bool reconstruct_chain(MultiwayPublicStateId id,
 			std::vector<MultiwayPackedPublicNode>& parent_first_output) const;
+		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint64_t record_count() const noexcept { return store_.record_count(); }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
 	private:
@@ -178,6 +210,7 @@ namespace texas::solver::multiway
 			const std::vector<MultiwaySparseRowShape>& rows, std::uint64_t& next_page_id);
 		[[nodiscard]] bool lookup(MultiwayPublicStateId state, std::int32_t seat,
 			MultiwayExternalRowMetadata& output) const;
+		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
 	private:
@@ -211,6 +244,7 @@ namespace texas::solver::multiway
 		void mark_dirty(std::uint64_t page_id);
 		void commit_batch();
 		void abort_batch() noexcept;
+		void compact(bool retain_input_runs = false) { store_->compact(retain_input_runs); }
 		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;

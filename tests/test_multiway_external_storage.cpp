@@ -130,6 +130,132 @@ TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
 	EXPECT_TRUE(corruption_rejected);
 }
 
+TEST_CASE(multiway_external_batch_transaction_rolls_back_partial_component_publication)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const auto catalog_path = directory.path() / "catalog";
+	const auto rows_path = directory.path() / "rows";
+	const auto pages_path = directory.path() / "pages";
+	const std::vector<MultiwayExternalRecord> initial = { { 1U, { 1U, 2U, 3U, 4U } } };
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(1U, 0x111U, initial);
+	}
+	MultiwayExternalGenerationManifest first{};
+	first.generation = 1U;
+	first.committed_batch_number = 1U;
+	first.merge_fingerprint = 0x111U;
+	first.catalog_generation = first.row_generation = first.page_generation = 1U;
+	first.public_state_count = first.row_count = first.page_count = 1U;
+	publish_multiway_external_generation(directory.path(), first, false);
+	{
+		MultiwayExternalBatchTransaction transaction(directory.path(), false);
+		transaction.begin_batch(2U, 0x222U);
+		for (const auto& path : { catalog_path, rows_path })
+		{
+			MultiwayExternalRecordStore store(config(path), 4U);
+			store.append_batch(2U, 0x222U, { { 2U, { 5U, 6U, 7U, 8U } } });
+		}
+	}
+	MultiwayExternalBatchTransaction recovered(directory.path(), false);
+	EXPECT_EQ(recovered.current_manifest().committed_batch_number, 1U);
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		std::vector<std::uint8_t> payload;
+		EXPECT_TRUE(store.lookup(1U, payload));
+		EXPECT_TRUE(!store.lookup(2U, payload));
+		EXPECT_EQ(store.generation(), 1U);
+	}
+}
+
+TEST_CASE(multiway_external_batch_transaction_publishes_one_verified_commit_point)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const auto catalog_path = directory.path() / "catalog";
+	const auto rows_path = directory.path() / "rows";
+	const auto pages_path = directory.path() / "pages";
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(1U, 0x111U, { { 1U, { 1U, 2U, 3U, 4U } } });
+	}
+	MultiwayExternalGenerationManifest first{};
+	first.generation = 1U;
+	first.committed_batch_number = 1U;
+	first.merge_fingerprint = 0x111U;
+	first.catalog_generation = first.row_generation = first.page_generation = 1U;
+	publish_multiway_external_generation(directory.path(), first, false);
+	MultiwayExternalBatchTransaction transaction(directory.path(), false);
+	transaction.begin_batch(2U, 0x222U);
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(2U, 0x222U, { { 2U, { 5U, 6U, 7U, 8U } } });
+	}
+	auto second = first;
+	second.generation = 2U;
+	second.committed_batch_number = 2U;
+	second.merge_fingerprint = 0x222U;
+	second.catalog_generation = second.row_generation = second.page_generation = 2U;
+	second.public_state_count = second.row_count = second.page_count = 2U;
+	transaction.commit_batch(second);
+	EXPECT_TRUE(!transaction.batch_open());
+	EXPECT_EQ(transaction.current_manifest().generation, 2U);
+	MultiwayExternalBatchTransaction reopened(directory.path(), false);
+	EXPECT_EQ(reopened.current_manifest().committed_batch_number, 2U);
+}
+
+TEST_CASE(multiway_external_batch_transaction_rolls_back_when_global_publish_fails)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const auto catalog_path = directory.path() / "catalog";
+	const auto rows_path = directory.path() / "rows";
+	const auto pages_path = directory.path() / "pages";
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(1U, 0x111U, { { 1U, { 1U, 2U, 3U, 4U } } });
+	}
+	MultiwayExternalGenerationManifest first{};
+	first.generation = 1U;
+	first.committed_batch_number = 1U;
+	first.merge_fingerprint = 0x111U;
+	first.catalog_generation = first.row_generation = first.page_generation = 1U;
+	publish_multiway_external_generation(directory.path(), first, false);
+	MultiwayExternalBatchTransaction transaction(directory.path(), false);
+	transaction.begin_batch(2U, 0x222U);
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		store.append_batch(2U, 0x222U, { { 2U, { 5U, 6U, 7U, 8U } } });
+	}
+	auto second = first;
+	second.generation = 2U;
+	second.committed_batch_number = 2U;
+	second.merge_fingerprint = 0x222U;
+	second.catalog_generation = second.row_generation = second.page_generation = 2U;
+	std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
+	bool commit_rejected = false;
+	try { transaction.commit_batch(second); }
+	catch (const std::runtime_error&) { commit_rejected = true; }
+	EXPECT_TRUE(commit_rejected);
+	transaction.abort_batch();
+	MultiwayExternalBatchTransaction reopened(directory.path(), false);
+	EXPECT_EQ(reopened.current_manifest().committed_batch_number, 1U);
+	for (const auto& path : { catalog_path, rows_path, pages_path })
+	{
+		MultiwayExternalRecordStore store(config(path), 4U);
+		std::vector<std::uint8_t> payload;
+		EXPECT_TRUE(!store.lookup(2U, payload));
+		EXPECT_EQ(store.generation(), 1U);
+	}
+}
+
 TEST_CASE(multiway_external_public_node_codec_is_packed_and_deterministic)
 {
 	using namespace texas::solver::multiway;
@@ -314,6 +440,30 @@ TEST_CASE(multiway_external_record_store_compacts_deterministically)
 	right_data.read(right_bytes.data(), right_bytes.size());
 	EXPECT_EQ(left_data.gcount(), right_data.gcount());
 	EXPECT_TRUE(std::equal(left_bytes.begin(), left_bytes.begin() + left_data.gcount(), right_bytes.begin()));
+}
+
+TEST_CASE(multiway_external_compaction_can_retain_previous_runs_until_commit)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	{
+		MultiwayExternalRecordStore store(config(directory.path()), 4U);
+		store.append_batch(1U, 1U, records(1U));
+		store.append_batch(2U, 2U, records(8U));
+		store.compact(true);
+		EXPECT_EQ(store.generation(), 3U);
+		EXPECT_TRUE(std::filesystem::exists(directory.path() / "run_1.dat"));
+		EXPECT_TRUE(std::filesystem::exists(directory.path() / "run_2.dat"));
+		EXPECT_TRUE(std::filesystem::exists(directory.path() / "run_3.dat"));
+	}
+	{
+		MultiwayExternalRecordStore reopened(config(directory.path()), 4U);
+		EXPECT_EQ(reopened.record_count(), 4U);
+		EXPECT_TRUE(!std::filesystem::exists(directory.path() / "run_1.dat"));
+		EXPECT_TRUE(!std::filesystem::exists(directory.path() / "run_2.dat"));
+		std::vector<std::uint8_t> payload;
+		EXPECT_TRUE(reopened.lookup(10U, payload));
+	}
 }
 
 TEST_CASE(multiway_external_record_store_compaction_keeps_newest_page_version)

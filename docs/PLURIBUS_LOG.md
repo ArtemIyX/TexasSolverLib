@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.4 - External multi-store batch transaction
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a root-level batch journal and backup protocol that recovers catalog, row-index, and page-store `CURRENT` manifests as one generation before child stores reopen.
+- Added aggregate-manifest commit validation and rollback tests for partial child publication and failed global publication.
+- Added opt-in input-run retention during deterministic compaction so component generations can be compacted before the aggregate commit without breaking rollback.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The coordinator does not yet use this transaction or external stores. External solver execution remains fail-closed. Runtime crash injection and filesystem durability behavior remain platform dependent.
+
 ## PB-12 Phase 3 foundation - External storage contracts
 
 **Status:** Complete
