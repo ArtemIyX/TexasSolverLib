@@ -586,10 +586,18 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 		{ shape.infoset, 16U, 2U, 200'000.0, 1'099'511'627'776.0, 4U },
 		{ shape.infoset, 16U, 0U, -2'500'000.0, 0.0, 5U },
 	}};
-	for (const auto& delta : deltas)
+	std::size_t delta_index = 0U;
+	while (delta_index < deltas.size())
 	{
-		reference.apply_delta(delta.infoset, delta.bucket, delta.action, delta.regret, delta.strategy_sum);
-		external.apply_delta(binding, delta.bucket, delta.action, delta.regret, delta.strategy_sum);
+		auto pinned = external.pin_bucket(binding, deltas[delta_index].bucket);
+		const auto bucket = deltas[delta_index].bucket;
+		while (delta_index < deltas.size() && deltas[delta_index].bucket == bucket)
+		{
+			const auto& delta = deltas[delta_index++];
+			reference.apply_delta(delta.infoset, delta.bucket, delta.action, delta.regret, delta.strategy_sum);
+			external.apply_delta(pinned, delta.action, delta.regret, delta.strategy_sum);
+		}
+		external.unpin_bucket(pinned);
 	}
 	external.commit_batch();
 	for (const auto bucket : { 0U, 15U, 16U })

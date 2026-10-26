@@ -2073,30 +2073,62 @@ namespace texas::solver::multiway
 		return true;
 	}
 
-	void MultiwayExternalCompactStorage::apply_delta(const MultiwayExternalRowBinding& binding,
-		std::uint32_t bucket, std::uint8_t action, double regret, double strategy_sum)
+	MultiwayExternalCompactStorage::PinnedBucket MultiwayExternalCompactStorage::pin_bucket(
+		const MultiwayExternalRowBinding& binding, std::uint32_t bucket) const
 	{
-		if (!std::isfinite(regret) || !std::isfinite(strategy_sum) || strategy_sum < 0.0)
-			throw std::invalid_argument("invalid external compact storage delta");
 		MultiwayExternalRowPage row_page{};
-		if (!rows_.locate_bucket(binding, bucket, row_page) ||
-			action >= row_page.action_count)
-			throw std::invalid_argument("external compact delta does not match an admitted row cell");
-		auto page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
+		if (!rows_.locate_bucket(binding, bucket, row_page))
+			throw std::out_of_range("external compact row or bucket is unavailable");
+		PinnedBucket result;
+		result.owner = this;
+		result.local_bucket = bucket % page_width_;
+		result.page = pages_.pin(row_page.page_id, { binding.state_id_ }, binding.seat_,
 			row_page.page_index, row_page.bucket_count, row_page.action_count);
 		try
 		{
 			pages_.mark_dirty(row_page.page_id);
-			const auto cell = static_cast<std::size_t>(action) * page.action_stride + bucket % page_width_;
-			MultiwayCompactStorage::apply_delta_to_cells(
-				page.regrets[cell], page.strategy_masses[cell], regret, strategy_sum);
 		}
 		catch (...)
 		{
 			pages_.unpin(row_page.page_id);
 			throw;
 		}
-		pages_.unpin(row_page.page_id);
+		return result;
+	}
+
+	void MultiwayExternalCompactStorage::apply_delta(PinnedBucket& bucket,
+		std::uint8_t action, double regret, double strategy_sum)
+	{
+		if (bucket.owner != this || bucket.page.page_id == 0U ||
+			bucket.local_bucket >= bucket.page.bucket_count || action >= bucket.page.action_count)
+			throw std::invalid_argument("external compact pinned bucket is invalid");
+		const auto cell = static_cast<std::size_t>(action) * bucket.page.action_stride + bucket.local_bucket;
+		MultiwayCompactStorage::apply_delta_to_cells(
+			bucket.page.regrets[cell], bucket.page.strategy_masses[cell], regret, strategy_sum);
+	}
+
+	void MultiwayExternalCompactStorage::unpin_bucket(PinnedBucket& bucket) const
+	{
+		if (bucket.owner != this || bucket.page.page_id == 0U)
+			throw std::invalid_argument("external compact pinned bucket is invalid");
+		pages_.unpin(bucket.page.page_id);
+		bucket = {};
+	}
+
+	void MultiwayExternalCompactStorage::apply_delta(const MultiwayExternalRowBinding& binding,
+		std::uint32_t bucket, std::uint8_t action, double regret, double strategy_sum)
+	{
+		auto pinned = pin_bucket(binding, bucket);
+		try
+		{
+			apply_delta(pinned, action, regret, strategy_sum);
+		}
+		catch (...)
+		{
+			unpin_bucket(pinned);
+			throw;
+		}
+		unpin_bucket(pinned);
 	}
 
 	void MultiwayExternalCompactStorage::regret_matched_strategy_into(

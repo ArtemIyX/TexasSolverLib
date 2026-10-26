@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.9 - Pin external pages at bucket boundaries
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a pinned writable bucket view so callers can resolve and load a page before processing its ordered action deltas.
+- Differential fixture now applies contiguous bucket groups through one pin while preserving the original delta order and matches the reference accumulator.
+- The coordinator does not yet select this adapter; external execution remains disabled pending integration with admission, merge transactions, checkpointing, and export.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, workflow config, and memory targets: passed.
+- Focused CTest for those targets: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- No coordinator or training workflow integration; no large training job was run.
+
 ## PB-12 Phase 5.8 - Add external compact row adapter
 
 **Status:** Complete

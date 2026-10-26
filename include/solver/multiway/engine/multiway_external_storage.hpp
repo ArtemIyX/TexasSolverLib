@@ -330,6 +330,13 @@ namespace texas::solver::multiway
 	class MultiwayExternalCompactStorage
 	{
 	public:
+		struct PinnedBucket
+		{
+			const MultiwayExternalCompactStorage* owner = nullptr;
+			MultiwayExternalCompactPages::PageView page{};
+			std::uint32_t local_bucket = 0U;
+		};
+
 		MultiwayExternalCompactStorage(MultiwayExternalStorageConfig row_config,
 			MultiwayExternalStorageConfig page_config, std::uint32_t page_width,
 			std::uint64_t page_cache_bytes);
@@ -338,6 +345,11 @@ namespace texas::solver::multiway
 		void begin_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint);
 		[[nodiscard]] bool lookup_row(MultiwayInfosetId infoset,
 			MultiwayExternalRowBinding& output) const;
+		[[nodiscard]] PinnedBucket pin_bucket(const MultiwayExternalRowBinding& row,
+			std::uint32_t bucket) const;
+		void apply_delta(PinnedBucket& bucket, std::uint8_t action,
+			double regret, double strategy_sum);
+		void unpin_bucket(PinnedBucket& bucket) const;
 		void apply_delta(const MultiwayExternalRowBinding& row, std::uint32_t bucket,
 			std::uint8_t action, double regret, double strategy_sum);
 		void regret_matched_strategy_into(const MultiwayExternalRowBinding& row,
