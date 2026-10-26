@@ -617,6 +617,23 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	EXPECT_EQ(checkpoint.storage.strategy_sums, reference_checkpoint.storage.strategy_sums);
 }
 
+TEST_CASE(multiway_solver_external_backend_remains_fail_closed_until_coordinator_integration)
+{
+	auto limits = valid_limits();
+	limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.external_storage.directory = "external_training_fixture";
+	limits.external_storage.public_catalog_cache_bytes = 4096U;
+	limits.external_storage.row_page_cache_bytes = 4096U;
+	limits.external_storage.maximum_wal_bytes = 4096U;
+	limits.external_storage.segment_target_bytes = 4096U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 4096U;
+	limits.external_storage.disk_reserve_bytes = 4096U;
+	texas::MultiwayCFRConfig cfr;
+	cfr.player_count = 2;
+	EXPECT_THROW(texas::MultiwaySolveRequest(valid_root(), cfr, limits), std::invalid_argument);
+}
+
 TEST_CASE(multiway_solver_compact_checkpoint_matches_float64_for_multiple_canonical_rows)
 {
 	const auto child = checked_action_child_public_state();

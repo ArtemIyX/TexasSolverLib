@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.18 - Freeze external execution gate
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a solver contract test proving valid-looking `ExternalCompactInt32` limits still fail closed until coordinator integration is complete.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External execution remains intentionally unavailable; no training workflow was run.
+
 ## PB-12 Phase 5.17 - Verify deterministic generation hashes
 
 **Status:** Complete
