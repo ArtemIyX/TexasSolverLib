@@ -120,7 +120,7 @@ namespace
 				  << "  --quiet                Disable console logs and progress\n";
 		if (workflow == Workflow::Train)
 		{
-			std::cout << "  --batches <integer>    Bounded training batch count\n"
+			std::cout << "  --batches <integer>    Bounded training batch count (0 with --resume exports the checkpoint)\n"
 					  << "  --input <path>         Verified bucket artifact\n"
 					  << "  --output <path>        Full blueprint artifact\n"
 					  << "  --report <path>        JSON training report\n"
@@ -646,6 +646,7 @@ namespace
 
 	int run_train(const std::filesystem::path& config_path, std::filesystem::path input_path,
 		std::filesystem::path output_path, std::uint64_t batches,
+		bool batches_specified,
 		std::filesystem::path report_path,
 		std::filesystem::path checkpoint_dir,
 		std::filesystem::path resume_path,
@@ -690,12 +691,12 @@ namespace
 			report_path = workflow.training_report_path;
 		if (checkpoint_dir.empty())
 			checkpoint_dir = workflow.training_checkpoint_dir;
-		if (batches == 0U)
+		if (!batches_specified)
 			batches = workflow.training_batches;
 		if (worker_override == 0U)
 			worker_override = workflow.training_worker_count;
-		if (batches == 0U || input_path.empty() || output_path.empty())
-			throw std::invalid_argument("train requires input_path, output_path, and batches");
+		if ((batches == 0U && resume_path.empty()) || input_path.empty() || output_path.empty())
+			throw std::invalid_argument("train requires input_path, output_path, and batches; zero batches require --resume");
 		const auto path_policy = make_default_multiway_workflow_path_policy();
 		input_path = authorize_multiway_workflow_path(
 			path_policy, input_path, MultiwayWorkflowPathKind::InputFile);
@@ -1406,6 +1407,7 @@ namespace
 		std::filesystem::path machine_report;
 		std::int32_t exit_code = -1;
 		std::uint64_t batches = 0U;
+		bool batches_specified = false;
 		std::uint64_t duplicates = 0U;
 		std::uint32_t threads = (std::min)(texas::solver::multiway::MULTIWAY_BUCKET_DEFAULT_THREADS,
 			texas::solver::multiway::multiway_bucket_physical_core_count());
@@ -1474,7 +1476,10 @@ namespace
 				if (argument == "--artifacts")
 					artifacts_path = argv[index];
 				if (argument == "--batches")
+				{
 					batches = std::stoull(argv[index]);
+					batches_specified = true;
+				}
 				if (argument == "--duplicates")
 					duplicates = std::stoull(argv[index]);
 				if (argument == "--threads")
@@ -1626,7 +1631,8 @@ namespace
 		}
 		if (workflow == Workflow::Train && !config_path.empty())
 		{
-			return run_train(config_path, input_path, output_path, batches, report_path, checkpoint_dir,
+			return run_train(config_path, input_path, output_path, batches, batches_specified,
+				report_path, checkpoint_dir,
 				resume_path, threads_specified ? threads : 0U, pin_workers, progress_enabled,
 				training_progress_interval, progress_memory, progress_speed, scheduler_mode, scheduler_specified,
 				dynamic_chunk_size, dynamic_chunk_size_specified, authorize_50m_stage);
