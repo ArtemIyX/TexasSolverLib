@@ -18,6 +18,9 @@
 #include "solver/multiway/workflow/multiway_workflow_path_policy.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "core/canonical_combo.hpp"
+#include "logging/config.hpp"
+#include "logging/log.hpp"
+#include "logging/progress.hpp"
 #include "util/tracy.hpp"
 
 #include <filesystem>
@@ -104,6 +107,14 @@ namespace
 				  << "  --config <path>       Versioned workflow configuration\n"
 				  << "  --seed <integer>       Deterministic seed\n";
 		std::cout << "  --tiny                 Run the bounded disk qualification pipeline\n";
+		std::cout << "  --log-config <path>    TOML logging configuration\n"
+				  << "  --log-level <level>    Logging threshold\n"
+				  << "  --log-file <path>      Enable rotating general log file\n"
+				  << "  --log-color <mode>     auto, always, or never\n"
+				  << "  --no-console-log       Disable console logging\n"
+				  << "  --no-file-log          Disable general file logging\n"
+				  << "  --no-log               Disable all logging sinks\n"
+				  << "  --quiet                Disable console logs and progress\n";
 		if (workflow == Workflow::Train)
 		{
 			std::cout << "  --batches <integer>    Bounded training batch count\n"
@@ -571,7 +582,7 @@ namespace
 		std::uint64_t starting_batches = 0U;
 		std::uint64_t requested_batches = 0U;
 		std::uint32_t effective_workers = 0U;
-		std::ofstream* log = nullptr;
+		texas::logging::Progress* live_progress = nullptr;
 		std::uint64_t starting_trajectories = 0U;
 		std::uint64_t last_reported_trajectories = 0U;
 		std::chrono::steady_clock::time_point started_at{};
@@ -589,6 +600,7 @@ namespace
 		if (completed_batches == 0U || (completed_batches % progress.interval != 0U && completed_batches != progress.requested_batches))
 			return;
 		const auto now = std::chrono::steady_clock::now();
+		double overall_rate = 0.0;
 		const auto line = std::string("training progress: batches_completed=") + std::to_string(completed_batches) + "/" + std::to_string(progress.requested_batches) + " trajectories=" + std::to_string(status.trajectories) + " discarded=" + std::to_string(status.discarded_trajectories) + " effective_workers=" + std::to_string(progress.effective_workers);
 		auto output_line = line;
 		if (progress.show_memory)
@@ -611,14 +623,22 @@ namespace
 			if (interval_seconds > 0.0)
 				output_line += " interval_trajectories_per_second=" + std::to_string(static_cast<double>(interval_trajectories) / interval_seconds);
 			if (overall_seconds > 0.0)
+			{
 				output_line += " overall_trajectories_per_second=" + std::to_string(static_cast<double>(overall_trajectories) / overall_seconds);
+				overall_rate = static_cast<double>(overall_trajectories) / overall_seconds;
+			}
 			progress.last_reported_trajectories = status.trajectories;
 			progress.last_reported_at = now;
 		}
-		std::cout << output_line << std::endl;
-		if (progress.log != nullptr)
-			*progress.log << output_line << '\n'
-						  << std::flush;
+		if (progress.live_progress != nullptr)
+		{
+			progress.live_progress->update(completed_batches)
+				.field("trajectories", status.trajectories)
+				.field("workers", progress.effective_workers);
+			if (overall_rate > 0.0)
+				progress.live_progress->rate(overall_rate);
+		}
+		texas::logging::write_training_audit(output_line);
 	}
 
 	int run_train(const std::filesystem::path& config_path, std::filesystem::path input_path,
@@ -731,15 +751,11 @@ namespace
 		};
 		if (resume_path.empty() && reaches_50m(0U) && !authorize_50m_stage)
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
-		if (!log_path.parent_path().empty())
-			std::filesystem::create_directories(log_path.parent_path());
-		std::ofstream log(log_path, std::ios::app);
-		if (!log)
+		if (!texas::logging::configure_training_audit(log_path))
 			throw std::runtime_error("cannot open training log");
-		const auto log_line = [&log](const std::string& line) {
-			std::cout << line << std::endl;
-			log << line << '\n'
-				<< std::flush;
+		const auto log_line = [](const std::string& line) {
+			TEXAS_LOG_INFO(Workflow, "{}", line);
+			texas::logging::write_training_audit(line);
 		};
 		const auto binary = multiway_binary_provenance();
 		const auto* run_checkout_commit = std::getenv("TEXASSOLVER_RUN_CHECKOUT_COMMIT");
@@ -898,6 +914,9 @@ namespace
 		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
 		const auto progress_started_at = std::chrono::steady_clock::now();
+		auto live_progress = progress_enabled
+			? texas::logging::Progress::start("training progress", batches)
+			: texas::logging::Progress{};
 		MultiwayTrainingProgressContext progress_context{
 			progress_enabled,
 			progress_memory,
@@ -906,7 +925,7 @@ namespace
 			session.status().batches,
 			batches,
 			workers.effective,
-			&log,
+			&live_progress,
 			session.status().trajectories,
 			session.status().trajectories,
 			progress_started_at,
@@ -952,6 +971,7 @@ namespace
 						session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
 					}
 					const auto checkpoint_start = std::chrono::steady_clock::now();
+					texas::logging::flush();
 					const auto checkpoint = session.save_checkpoint_atomic(checkpoint_path);
 					last_checkpoint_write = checkpoint;
 					checkpoint_telemetry.accumulate(checkpoint.telemetry);
@@ -1222,6 +1242,17 @@ namespace
 		for (int index = 1; index < argc; ++index)
 		{
 			const std::string_view argument(argv[index]);
+			if (argument == "--no-console-log" || argument == "--no-file-log" || argument == "--no-log" || argument == "--quiet")
+				continue;
+			if (argument == "--log-config" || argument == "--log-level" || argument == "--log-file" || argument == "--log-color")
+			{
+				if (!consume_value(index, argc, argv, argument))
+				{
+					std::cerr << argument << " requires a value\n";
+					return EXIT_FAILURE;
+				}
+				continue;
+			}
 			if (argument == "--help")
 			{
 				print_help(name, workflow);
@@ -1435,6 +1466,41 @@ int main(int argc, char** argv) noexcept
 	{
 		if (argc > 1 && std::string_view(argv[1]) == "--provenance")
 			return print_binary_provenance();
+		bool help_requested = false;
+		for (int index = 1; index < argc; ++index)
+			help_requested = help_requested || std::string_view(argv[index]) == "--help";
+		texas::logging::Config logging_config;
+		if (!help_requested)
+		{
+			texas::logging::BootstrapError option_error;
+			const auto overrides = texas::logging::scan_logging_options(argc, argv, option_error);
+			if (!option_error.reason.empty())
+			{
+				std::cerr << "logging option error: " << option_error.key << ": " << option_error.reason << "\n";
+				return EXIT_FAILURE;
+			}
+			auto environment = texas::logging::process_environment();
+			auto config_path = texas::logging::select_config_path(environment, overrides);
+			auto loaded = config_path.empty() ? texas::logging::ConfigLoadResult{} : texas::logging::load_config(config_path);
+			if (!loaded.ok)
+			{
+				std::cerr << "logging configuration error: " << loaded.error.key << ": " << loaded.error.reason << "\n";
+				return EXIT_FAILURE;
+			}
+			loaded = texas::logging::merge_config(std::move(loaded.config), environment, overrides);
+			if (!loaded.ok)
+			{
+				std::cerr << "logging configuration error: " << loaded.error.key << ": " << loaded.error.reason << "\n";
+				return EXIT_FAILURE;
+			}
+			logging_config = std::move(loaded.config);
+		}
+		texas::logging::LoggingSession logging_session(logging_config);
+		if (!logging_session.ok())
+		{
+			std::cerr << "logging initialization failed: " << logging_session.message() << "\n";
+			return EXIT_FAILURE;
+		}
 		const std::string_view executable = argc == 0 ? "multiway" : argv[0];
 		const auto slash = executable.find_last_of("/\\");
 		auto name = executable.substr(slash == std::string_view::npos ? 0 : slash + 1);
