@@ -461,6 +461,21 @@ namespace texas::solver::multiway
 		// it permits a checkpoint to resume with a different remaining batch count.
 		append_u64(runtime_hash, static_cast<std::uint8_t>(limits.storage_backend));
 		append_u64(runtime_hash, limits.compact_page_width);
+		if (limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+		{
+			const auto storage_directory = limits.external_storage.directory.lexically_normal().generic_u8string();
+			append_u64(runtime_hash, storage_directory.size());
+			for (const auto character : storage_directory)
+				texas::core::fingerprint::append_u8(runtime_hash, static_cast<std::uint8_t>(character));
+			append_u64(runtime_hash, limits.external_storage.public_catalog_cache_bytes);
+			append_u64(runtime_hash, limits.external_storage.row_page_cache_bytes);
+			append_u64(runtime_hash, limits.external_storage.maximum_wal_bytes);
+			append_u64(runtime_hash, limits.external_storage.segment_target_bytes);
+			append_u64(runtime_hash, limits.external_storage.compaction_fan_in);
+			append_u64(runtime_hash, limits.external_storage.compaction_scratch_bytes);
+			append_u64(runtime_hash, limits.external_storage.disk_reserve_bytes);
+			append_u64(runtime_hash, limits.external_storage.synchronous_durability ? 1U : 0U);
+		}
 		append_u64(runtime_hash, limits.discovery_public_state_capacity());
 		append_u64(runtime_hash, limits.discovery_row_capacity());
 		append_u64(runtime_hash, immutable_batch_epochs ? 1U : 0U);

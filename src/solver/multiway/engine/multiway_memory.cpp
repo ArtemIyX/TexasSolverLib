@@ -1288,12 +1288,19 @@ namespace texas::solver::multiway
 					result.estimate.sparse_value_bytes));
 		result.estimate.file_cache_allowance_bytes = inputs.file_cache_allowance_bytes;
 		result.estimate.disk_output_bytes = inputs.disk_output_bytes;
+		result.estimate.external_storage_cache_bytes = inputs.external_storage_cache_bytes;
+		result.estimate.external_storage_scratch_bytes = inputs.external_storage_scratch_bytes;
+		result.estimate.external_storage_disk_reserve_bytes = inputs.external_storage_disk_reserve_bytes;
 		result.estimate.configured_capacity_growth_bytes = checked_add(
-			checked_add(root_stage, row_stage), delta_stage);
+			checked_add(checked_add(root_stage, row_stage), delta_stage),
+			checked_add(result.estimate.external_storage_cache_bytes, result.estimate.external_storage_scratch_bytes));
 		result.estimate.ledger.compact_reallocation_peak_bytes = result.estimate.compact_reallocation_peak_bytes;
 		result.estimate.ledger.public_catalog_reallocation_peak_bytes = result.estimate.public_catalog_reallocation_peak_bytes;
 		result.estimate.ledger.file_cache_allowance_bytes = result.estimate.file_cache_allowance_bytes;
 		result.estimate.ledger.disk_output_bytes = result.estimate.disk_output_bytes;
+		result.estimate.ledger.external_storage_cache_bytes = result.estimate.external_storage_cache_bytes;
+		result.estimate.ledger.external_storage_scratch_bytes = result.estimate.external_storage_scratch_bytes;
+		result.estimate.ledger.external_storage_disk_reserve_bytes = result.estimate.external_storage_disk_reserve_bytes;
 		result.estimate.ledger.configured_capacity_growth_bytes = result.estimate.configured_capacity_growth_bytes;
 		result.estimate.additional_private_capacity_bytes = inputs.retained_capacity_known
 			? inputs.retained_capacity_bytes

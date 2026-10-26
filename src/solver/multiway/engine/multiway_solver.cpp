@@ -766,6 +766,15 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("multiway solver limits require non-zero batch and compact page budgets");
 		}
+		if (storage_backend != StorageBackend::Float64Reference && storage_backend != StorageBackend::CompactInt32 &&
+			storage_backend != StorageBackend::ExternalCompactInt32)
+			throw std::invalid_argument("multiway solver storage backend is invalid");
+		if (storage_backend == StorageBackend::ExternalCompactInt32 &&
+			(external_storage.directory.empty() || external_storage.public_catalog_cache_bytes == 0U ||
+				external_storage.row_page_cache_bytes == 0U || external_storage.maximum_wal_bytes == 0U ||
+				external_storage.segment_target_bytes == 0U || external_storage.compaction_fan_in < 2U ||
+				external_storage.compaction_scratch_bytes == 0U || external_storage.disk_reserve_bytes == 0U))
+			throw std::invalid_argument("external compact storage requires a directory and positive bounded resources");
 	}
 
 	MultiwaySolveRequest::MultiwaySolveRequest(
@@ -785,6 +794,8 @@ namespace texas::solver::multiway
 		}
 		cfr_config_.validate();
 		limits_.validate();
+		if (limits_.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+			throw std::invalid_argument("ExternalCompactInt32 is not ready for solver execution");
 		if (cfr_config_.player_count != root_.seat_order.size())
 		{
 			throw std::invalid_argument("multiway CFR configuration must match the root seat count");

@@ -740,6 +740,9 @@ namespace texas::solver::multiway
 			   << ", \"existing_private_committed_bytes\": " << report.memory_ledger.existing_private_committed_bytes
 			   << ", \"additional_private_capacity_bytes\": " << report.memory_ledger.additional_private_capacity_bytes
 			   << ", \"compact_reallocation_peak_bytes\": " << report.memory_ledger.compact_reallocation_peak_bytes
+			   << ", \"external_storage_cache_bytes\": " << report.memory_ledger.external_storage_cache_bytes
+			   << ", \"external_storage_scratch_bytes\": " << report.memory_ledger.external_storage_scratch_bytes
+			   << ", \"external_storage_disk_reserve_bytes\": " << report.memory_ledger.external_storage_disk_reserve_bytes
 			   << ", \"public_catalog_reallocation_peak_bytes\": " << report.memory_ledger.public_catalog_reallocation_peak_bytes
 			   << ", \"file_cache_allowance_bytes\": " << report.memory_ledger.file_cache_allowance_bytes
 			   << ", \"disk_output_bytes\": " << report.memory_ledger.disk_output_bytes

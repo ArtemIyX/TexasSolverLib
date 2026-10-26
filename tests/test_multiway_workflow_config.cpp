@@ -90,6 +90,43 @@ TEST_CASE(multiway_workflow_config_rejects_unknown_and_duplicate_keys)
 	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(std::string(valid_config) + "schema_version=1\n"), std::invalid_argument);
 }
 
+TEST_CASE(multiway_workflow_config_binds_external_storage_identity_and_resources)
+{
+	using namespace texas::solver::multiway;
+	auto text = std::string(valid_config);
+	text.replace(text.find("storage_backend=CompactInt32"), std::strlen("storage_backend=CompactInt32"),
+		"storage_backend=ExternalCompactInt32");
+	text += "storage_directory=external-store\npublic_catalog_cache_bytes=4096\nrow_page_cache_bytes=8192\n"
+		"maximum_wal_bytes=65536\nsegment_target_bytes=65536\ncompaction_fan_in=2\n"
+		"compaction_scratch_bytes=4096\ndisk_reserve_bytes=1000000\nsynchronous_durability=false\n"
+		"maximum_public_states=1000\nmaximum_sparse_values=10000\n"
+		"worker_delta_capacity=10000\ndiscovery_capacity=1000\ntrajectories_per_batch=10\ncheckpoint_interval=1\n"
+		"disk_space_requirement_bytes=1000000\nprocess_memory_limit_bytes=1000000000\n";
+	text.replace(text.find("maximum_sparse_rows=UNRESOLVED"), std::strlen("maximum_sparse_rows=UNRESOLVED"), "maximum_sparse_rows=1000");
+	const auto config = parse_multiway_workflow_config(text);
+	const auto round_trip = parse_multiway_workflow_config(serialize_multiway_workflow_config(config));
+	EXPECT_EQ(round_trip.fingerprint(), config.fingerprint());
+	EXPECT_EQ(round_trip.storage_backend, std::string("ExternalCompactInt32"));
+	EXPECT_EQ(round_trip.storage_directory, std::filesystem::path("external-store"));
+	const auto preflight = preflight_multiway_workflow(config, 0U, 1U);
+	EXPECT_TRUE(!preflight.accepted);
+	EXPECT_EQ(std::string(preflight.rejected_category), std::string("storage backend"));
+	EXPECT_EQ(preflight.memory.estimate.ledger.external_storage_cache_bytes, 12288U);
+	EXPECT_EQ(preflight.memory.estimate.ledger.external_storage_scratch_bytes, 69632U);
+	EXPECT_EQ(preflight.memory.estimate.ledger.external_storage_disk_reserve_bytes, 1000000U);
+	auto modified = text;
+	modified.replace(modified.find("row_page_cache_bytes=8192"), std::strlen("row_page_cache_bytes=8192"), "row_page_cache_bytes=8193");
+	EXPECT_TRUE(parse_multiway_workflow_config(modified).fingerprint() != config.fingerprint());
+}
+
+TEST_CASE(multiway_workflow_config_rejects_external_storage_without_bounded_resources)
+{
+	auto text = std::string(valid_config);
+	text.replace(text.find("storage_backend=CompactInt32"), std::strlen("storage_backend=CompactInt32"),
+		"storage_backend=ExternalCompactInt32");
+	EXPECT_THROW(texas::solver::multiway::parse_multiway_workflow_config(text), std::invalid_argument);
+}
+
 TEST_CASE(multiway_workflow_config_fingerprint_binds_semantic_fields)
 {
 	const auto first = texas::solver::multiway::parse_multiway_workflow_config(valid_config);

@@ -1,5 +1,41 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 3 foundation - External storage contracts
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added an explicitly selected `ExternalCompactInt32` configuration with bounded catalog/page caches, WAL, segments, compaction scratch, disk reserve, and durability settings. Included its resource identity in configuration fingerprints and reports.
+- Added a fixed-width sorted-run store with checksummed generation manifests, batch WAL recovery, atomic publication, deterministic compaction, disk-reserve checks, and a bounded pinned page cache. External solver execution and preflight remain fail-closed until catalog and row integration is complete.
+
+### Files
+
+- `CMakeLists.txt`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/workflow/multiway_workflow_config.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `src/solver/multiway/workflow/multiway_workflow_config.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_workflow_config.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Public-state catalog and sparse row/cell stores are not yet connected to the coordinator. External execution remains rejected; the current memory ledger is conservative and does not establish large-scale feasibility.
+- Crash injection currently covers partial WAL rollback and committed-WAL replay after segment failure, not every publication boundary.
+
 ## PB-12 Phase 2.3 - Packed mapped table views
 
 **Status:** Complete

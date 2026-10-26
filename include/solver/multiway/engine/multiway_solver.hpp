@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <array>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <shared_mutex>
 #include <optional>
@@ -365,7 +366,20 @@ namespace texas::solver::multiway
 		enum class StorageBackend : std::uint8_t
 		{
 			Float64Reference,
-			CompactInt32
+			CompactInt32,
+			ExternalCompactInt32
+		};
+		struct ExternalStorage
+		{
+			std::filesystem::path directory;
+			std::uint64_t public_catalog_cache_bytes = 0U;
+			std::uint64_t row_page_cache_bytes = 0U;
+			std::uint64_t maximum_wal_bytes = 0U;
+			std::uint64_t segment_target_bytes = 0U;
+			std::uint32_t compaction_fan_in = 0U;
+			std::uint64_t compaction_scratch_bytes = 0U;
+			std::uint64_t disk_reserve_bytes = 0U;
+			bool synchronous_durability = true;
 		};
 		std::uint64_t seed = 1;
 		std::uint32_t worker_count = 1;
@@ -377,6 +391,7 @@ namespace texas::solver::multiway
 		std::uint32_t max_batches = 64;
 		StorageBackend storage_backend = StorageBackend::Float64Reference;
 		std::uint32_t compact_page_width = 16U;
+		ExternalStorage external_storage{};
 		// Per-worker bounded discovery entries. Zero preserves callers that do
 		// not enable immutable discovery epochs.
 		std::size_t max_discovery_entries = 0;

@@ -52,6 +52,15 @@ namespace texas::solver::multiway
 		MultiwayBlueprintConfig model;
 		std::uint32_t preflop_classes = 0U;
 		std::string storage_backend;
+		std::filesystem::path storage_directory;
+		std::uint64_t public_catalog_cache_bytes = 0U;
+		std::uint64_t row_page_cache_bytes = 0U;
+		std::uint64_t maximum_wal_bytes = 0U;
+		std::uint64_t segment_target_bytes = 0U;
+		std::uint32_t compaction_fan_in = 0U;
+		std::uint64_t compaction_scratch_bytes = 0U;
+		std::uint64_t disk_reserve_bytes = 0U;
+		bool synchronous_durability = true;
 		std::uint32_t max_decision_depth = 0U;
 		std::uint32_t max_public_chance_depth = 0U;
 		std::uint64_t deterministic_seed = 0U;

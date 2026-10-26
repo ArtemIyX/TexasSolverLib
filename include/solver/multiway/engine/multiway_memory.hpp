@@ -519,6 +519,9 @@ namespace texas::solver::multiway
 		std::uint64_t public_catalog_action_capacity = 0U;
 		std::uint64_t public_catalog_admission_scratch_bytes = 0U;
 		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t external_storage_cache_bytes = 0U;
+		std::uint64_t external_storage_scratch_bytes = 0U;
+		std::uint64_t external_storage_disk_reserve_bytes = 0U;
 		std::uint64_t file_cache_allowance_bytes = 0U;
 		std::uint64_t disk_output_bytes = 0U;
 		// Task A snapshots taken after immutable artifacts are loaded. These
@@ -577,6 +580,9 @@ namespace texas::solver::multiway
 		std::uint64_t existing_private_committed_bytes = 0U;
 		std::uint64_t additional_private_capacity_bytes = 0U;
 		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t external_storage_cache_bytes = 0U;
+		std::uint64_t external_storage_scratch_bytes = 0U;
+		std::uint64_t external_storage_disk_reserve_bytes = 0U;
 		std::uint64_t public_catalog_reallocation_peak_bytes = 0U;
 		std::uint64_t file_cache_allowance_bytes = 0U;
 		std::uint64_t disk_output_bytes = 0U;
@@ -625,6 +631,9 @@ namespace texas::solver::multiway
 		std::uint64_t existing_private_committed_bytes = 0U;
 		std::uint64_t additional_private_capacity_bytes = 0U;
 		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t external_storage_cache_bytes = 0U;
+		std::uint64_t external_storage_scratch_bytes = 0U;
+		std::uint64_t external_storage_disk_reserve_bytes = 0U;
 		std::uint64_t public_catalog_reallocation_peak_bytes = 0U;
 		std::uint64_t file_cache_allowance_bytes = 0U;
 		std::uint64_t disk_output_bytes = 0U;

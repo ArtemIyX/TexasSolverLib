@@ -164,6 +164,7 @@ set(TEXASSOLVER_PUBLIC_HEADERS
     include/solver/multiway/session/multiway_search_session.hpp
     include/solver/multiway/engine/multiway_solver.hpp
     include/solver/multiway/engine/multiway_compact_storage.hpp
+    include/solver/multiway/engine/multiway_external_storage.hpp
     include/solver/multiway/abstraction/multiway_terminal_adapter.hpp
     include/solver/multiway/engine/multiway_traversal.hpp
     include/solver/generic/parallel_dcfr.hpp
@@ -290,6 +291,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/session/multiway_search_session.cpp
     src/solver/multiway/engine/multiway_solver.cpp
     src/solver/multiway/engine/multiway_compact_storage.cpp
+    src/solver/multiway/engine/multiway_external_storage.cpp
     src/solver/multiway/engine/multiway_public_catalog.cpp
     src/solver/multiway/abstraction/multiway_terminal_adapter.cpp
     src/solver/multiway/engine/multiway_traversal.cpp
