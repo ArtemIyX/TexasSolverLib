@@ -1,5 +1,34 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 External catalog bounded admission
+
+**Status:** Complete
+**Completed:** 2026-10-26
+**Implementation commit:** `2ec880bf PB-12 Multiway: Chunk external catalog writes`
+
+- Split sorted public-catalog admissions into deterministic chunks bounded by the configured WAL and segment limits.
+- Kept all descriptor validation ahead of writes and retained the aggregate training manifest as the transaction boundary.
+- Added chunked catalog restart, training commit, and rollback coverage.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external storage, solver, blueprint training, and checkpoint equivalence CTest: passed (4/4).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed.
+- Compact 1K run: 1,000 accepted, zero discarded; peak RSS 23,495,393,280 bytes.
+- External run: training log records 1,000 trajectories and zero discarded. The run was interrupted during blueprint publication, so no final report or export hash was produced.
+
+### Limitations
+
+- The external export and deterministic differential comparison remain unverified. The authorized 1K run was not repeated after its checkpoint because resume started another batch and could exceed the authorized trajectory count.
+- No larger pilot or 50M feasibility claim was made.
+
 ## PB-12 Phase 8 - Report external storage runtime metrics
 
 **Status:** Complete
