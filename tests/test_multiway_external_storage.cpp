@@ -90,6 +90,22 @@ namespace
 		return { { start, { static_cast<std::uint8_t>(start), 0xa5U, 0x5aU, 0xffU } },
 			{ start + 2U, { static_cast<std::uint8_t>(start + 2U), 0xa5U, 0x5aU, 0xffU } } };
 	}
+
+	struct OrderedRecordCapture
+	{
+		std::vector<std::uint64_t> keys;
+		std::vector<std::vector<std::uint8_t>> payloads;
+		std::size_t stop_after = std::numeric_limits<std::size_t>::max();
+	};
+
+	bool capture_ordered_record(void* context, std::uint64_t key,
+		const std::uint8_t* payload, std::size_t payload_size)
+	{
+		auto& capture = *static_cast<OrderedRecordCapture*>(context);
+		capture.keys.push_back(key);
+		capture.payloads.emplace_back(payload, payload + payload_size);
+		return capture.keys.size() < capture.stop_after;
+	}
 }
 
 TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
@@ -122,6 +138,38 @@ TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 		EXPECT_TRUE(reopened.cache_capacity_records() > 0U);
 		EXPECT_TRUE(reopened.cache_bytes() <= config(directory.path()).cache_bytes);
 	}
+}
+
+TEST_CASE(multiway_external_record_store_visits_latest_records_in_bounded_key_order)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 2U);
+	store.append_batch(1U, 0x111U, { { 1U, { 1U, 10U } }, { 4U, { 4U, 10U } } });
+	store.append_batch(2U, 0x222U, { { 3U, { 3U, 20U } }, { 4U, { 4U, 20U } } });
+
+	OrderedRecordCapture before_compaction;
+	EXPECT_TRUE(store.visit_ordered_records(capture_ordered_record, &before_compaction));
+	EXPECT_EQ(before_compaction.keys.size(), 3U);
+	EXPECT_EQ(before_compaction.keys[0], 1U);
+	EXPECT_EQ(before_compaction.keys[1], 3U);
+	EXPECT_EQ(before_compaction.keys[2], 4U);
+	EXPECT_EQ(before_compaction.payloads[2][1], 20U);
+
+	OrderedRecordCapture stopped;
+	stopped.stop_after = 1U;
+	EXPECT_EQ(store.visit_ordered_records(capture_ordered_record, &stopped), false);
+	EXPECT_EQ(stopped.keys.size(), 1U);
+
+	store.compact();
+	OrderedRecordCapture after_compaction;
+	EXPECT_TRUE(store.visit_ordered_records(capture_ordered_record, &after_compaction));
+	EXPECT_EQ(after_compaction.keys, before_compaction.keys);
+	EXPECT_EQ(after_compaction.payloads, before_compaction.payloads);
+	store.append_batch(3U, 0x333U, { { 5U, { 5U, 30U } } });
+	store.append_batch(4U, 0x444U, { { 6U, { 6U, 40U } } });
+	EXPECT_THROW(store.visit_ordered_records(capture_ordered_record, &after_compaction),
+		std::runtime_error);
 }
 
 TEST_CASE(multiway_external_record_store_uses_bounded_constant_time_cache_slots)

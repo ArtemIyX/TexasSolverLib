@@ -1930,6 +1930,109 @@ namespace texas::solver::multiway
 		return lookup_unlocked(key, payload, payload_size);
 	}
 
+	bool MultiwayExternalRecordStore::visit_ordered_records(
+		OrderedRecordVisitor visitor, void* context) const
+	{
+		if (visitor == nullptr)
+			throw std::invalid_argument("external ordered-record visitor is missing");
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (failed_)
+			throw std::runtime_error("external storage is unavailable after a failed batch");
+		if (runs_.size() > config_.compaction_fan_in)
+			throw std::runtime_error("external ordered iteration requires bounded run fan-in");
+		if (runs_.empty())
+			return true;
+
+		struct Cursor
+		{
+			std::ifstream index;
+			std::ifstream data;
+			std::uint64_t generation = 0U;
+			std::uint64_t count = 0U;
+			std::uint64_t position = 0U;
+			std::uint64_t key = 0U;
+			std::uint64_t previous_key = 0U;
+			bool has_previous_key = false;
+			std::vector<std::uint8_t> payload;
+		};
+		struct Item
+		{
+			std::uint64_t key;
+			std::uint64_t generation;
+			std::size_t cursor;
+		};
+		const auto greater = [](const Item& left, const Item& right) {
+			return left.key > right.key || (left.key == right.key &&
+				(left.generation < right.generation ||
+					(left.generation == right.generation && left.cursor > right.cursor)));
+		};
+		std::vector<Cursor> cursors(runs_.size());
+		std::priority_queue<Item, std::vector<Item>, decltype(greater)> queue(greater);
+		const auto read_next = [&](std::size_t cursor_index) {
+			auto& cursor = cursors[cursor_index];
+			std::array<std::uint8_t, 8U> index_key{};
+			cursor.index.read(reinterpret_cast<char*>(index_key.data()),
+				static_cast<std::streamsize>(index_key.size()));
+			if (!cursor.index)
+				throw std::runtime_error("external ordered index run is truncated");
+			cursor.key = read_u64(index_key.data());
+			std::array<std::uint8_t, 8U> data_key{};
+			cursor.data.read(reinterpret_cast<char*>(data_key.data()),
+				static_cast<std::streamsize>(data_key.size()));
+			if (!cursor.data || read_u64(data_key.data()) != cursor.key)
+				throw std::invalid_argument("external ordered index and data keys disagree");
+			cursor.data.read(reinterpret_cast<char*>(cursor.payload.data()),
+				static_cast<std::streamsize>(payload_bytes_));
+			if (!cursor.data || (cursor.has_previous_key && cursor.previous_key >= cursor.key))
+				throw std::invalid_argument("external ordered run keys are not strictly increasing");
+			cursor.previous_key = cursor.key;
+			cursor.has_previous_key = true;
+			return true;
+		};
+		for (std::size_t index = 0U; index < runs_.size(); ++index)
+		{
+			auto& cursor = cursors[index];
+			const auto& run = runs_[index];
+			cursor.index.open(run.index_path, std::ios::binary);
+			cursor.data.open(run.data_path, std::ios::binary);
+			cursor.generation = run.generation;
+			cursor.count = run.record_count;
+			cursor.payload.resize(payload_bytes_);
+			if (!cursor.index || !cursor.data || cursor.count == 0U)
+				throw std::runtime_error("external ordered run cannot be opened");
+			read_next(index);
+			queue.push({ cursor.key, cursor.generation, index });
+		}
+		std::vector<std::size_t> consumed;
+		consumed.reserve(runs_.size());
+		while (!queue.empty())
+		{
+			const auto item = queue.top();
+			queue.pop();
+			consumed.clear();
+			consumed.push_back(item.cursor);
+			while (!queue.empty() && queue.top().key == item.key)
+			{
+				consumed.push_back(queue.top().cursor);
+				queue.pop();
+			}
+			const auto& newest = cursors[item.cursor];
+			if (!visitor(context, item.key, newest.payload.data(), payload_bytes_))
+				return false;
+			for (const auto cursor_index : consumed)
+			{
+				auto& cursor = cursors[cursor_index];
+				++cursor.position;
+				if (cursor.position < cursor.count)
+				{
+					read_next(cursor_index);
+					queue.push({ cursor.key, cursor.generation, cursor_index });
+				}
+			}
+		}
+		return true;
+	}
+
 	bool MultiwayExternalRecordStore::lookup_unlocked(std::uint64_t key,
 		std::uint8_t* payload, std::size_t payload_size) const
 	{

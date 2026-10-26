@@ -203,6 +203,9 @@ namespace texas::solver::multiway
 	class MultiwayExternalRecordStore
 	{
 	public:
+		using OrderedRecordVisitor = bool (*)(void*, std::uint64_t,
+			const std::uint8_t*, std::size_t);
+
 		MultiwayExternalRecordStore(MultiwayExternalStorageConfig config, std::size_t payload_bytes);
 		~MultiwayExternalRecordStore();
 		MultiwayExternalRecordStore(const MultiwayExternalRecordStore&) = delete;
@@ -213,6 +216,11 @@ namespace texas::solver::multiway
 		[[nodiscard]] bool lookup(std::uint64_t key, std::vector<std::uint8_t>& payload) const;
 		[[nodiscard]] bool lookup(std::uint64_t key, std::uint8_t* payload,
 			std::size_t payload_size) const;
+		// Visits unique keys in ascending order. Payload storage is borrowed and
+		// valid only for the duration of the callback. Run fan-in is bounded by
+		// the configured compaction fan-in; larger sets fail closed.
+		[[nodiscard]] bool visit_ordered_records(OrderedRecordVisitor visitor,
+			void* context) const;
 		// During a multi-store transaction, retain old input runs until the
 		// aggregate manifest commits. Call compact(false) afterward to reclaim them.
 		void compact(bool retain_input_runs = false);

@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 7.1 - Add bounded ordered external record iteration
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added an ordered-record callback API that k-way merges the configured bounded number of immutable runs, emits ascending unique keys, and selects the newest value for duplicate keys.
+- The iterator rejects run counts above configured compaction fan-in and borrows payload bytes only during the callback. It does not materialize the full record set.
+- Added deterministic tests before and after compaction, newest-run precedence, ascending order, and callback early-stop behavior.
+- Verified iteration rejects run counts above the configured fan-in before reading records.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build of `test_multiway_external_storage`: passed.
+- Focused CTest `^test_multiway_external_storage$`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The iterator is a storage primitive; blueprint row/page export and sharding are not yet connected.
+
 ## PB-12 Phase 6.1 - Add external checkpoint manifest codec
 
 **Status:** In progress
