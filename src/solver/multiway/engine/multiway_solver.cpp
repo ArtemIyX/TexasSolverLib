@@ -2289,7 +2289,10 @@ namespace texas::solver::multiway
 		MultiwayPublicStateId id) const
 	{
 		thread_local MultiwayPublicStateDescriptor scratch;
-		if (!public_catalog_.reconstruct(id, scratch))
+		const auto found = external_storage_ != nullptr
+			? external_storage_->catalog().reconstruct(id, scratch)
+			: public_catalog_.reconstruct(id, scratch);
+		if (!found)
 			return nullptr;
 		if (admission_diagnostics_ != nullptr)
 			++admission_diagnostics_->descriptor_reconstructions;
@@ -2312,7 +2315,7 @@ namespace texas::solver::multiway
 		}
 	}
 
-	bool MultiwaySolverCoordinator::has_public_state(MultiwayPublicStateId id) const noexcept
+	bool MultiwaySolverCoordinator::has_public_state(MultiwayPublicStateId id) const
 	{
 		std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 		if (admission_diagnostics_ != nullptr)
@@ -2320,9 +2323,11 @@ namespace texas::solver::multiway
 		return has_public_state_epoch(id);
 	}
 
-	bool MultiwaySolverCoordinator::has_public_state_epoch(MultiwayPublicStateId id) const noexcept
+	bool MultiwaySolverCoordinator::has_public_state_epoch(MultiwayPublicStateId id) const
 	{
-		return public_catalog_.contains(id);
+		return external_storage_ != nullptr
+			? external_storage_->catalog().contains(id)
+			: public_catalog_.contains(id);
 	}
 
 	MultiwaySolverCoordinator::ExportLease MultiwaySolverCoordinator::acquire_export_lease() const

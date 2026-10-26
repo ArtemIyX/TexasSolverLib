@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 3.5 - Route coordinator state reads through external catalog
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Coordinator state reconstruction and existence checks now select the external catalog when configured.
+- Removed `noexcept` from those checks because bounded external index operations can fail.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest `test_multiway_solver`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Prepared admission, row access, merge, and external workflow execution remain incomplete and fail closed.
+
 ## PB-12 Phase 5.21 - Persist exact external logical value counts
 
 **Status:** Complete

@@ -947,10 +947,10 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& right) noexcept;
 		void admit_infoset_row(const MultiwaySparseRowShape& shape);
 		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const noexcept;
-		// Epoch queries are lock-free and valid only while the coordinator's
-		// immutable batch epoch is not being mutated.
+		// Reference-backend checks are lock-free during a sealed epoch. External
+		// catalog checks may perform bounded index lookups at batch boundaries.
 		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const noexcept;
-		[[nodiscard]] bool has_public_state_epoch(MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] bool has_public_state_epoch(MultiwayPublicStateId id) const;
 		void regret_matched_strategy_into(
 			MultiwayInfosetId infoset,
 			std::uint32_t bucket,
@@ -1013,7 +1013,7 @@ namespace texas::solver::multiway
 			return merge_tournament_.capacity();
 		}
 		[[nodiscard]] const MultiwayRootSnapshot& root() const noexcept { return request_.root(); }
-		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const noexcept;
+		[[nodiscard]] bool has_public_state(MultiwayPublicStateId id) const;
 		[[nodiscard]] const MultiwayPublicStateDescriptor* find_public_state(
 			MultiwayPublicStateId id) const noexcept;
 		[[nodiscard]] MultiwayCoordinatorCheckpoint checkpoint() const;
