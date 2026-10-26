@@ -245,6 +245,7 @@ set(TEXASSOLVER_SOURCES
     src/solver/multiway/blueprint/multiway_training_checkpoint_artifact.cpp
     src/solver/multiway/blueprint/multiway_blueprint_config.cpp
     src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp
+    src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp
     src/solver/multiway/blueprint/multiway_blueprint_store.cpp
     src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp
     src/solver/multiway/abstraction/multiway_bucket_artifact.cpp

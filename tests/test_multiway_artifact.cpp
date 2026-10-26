@@ -1,5 +1,6 @@
 #include "core/atomic_publish.hpp"
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_store.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "test_harness.hpp"
@@ -216,15 +217,21 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 	using namespace texas::solver::multiway;
 	const auto identity = snapshot().identity;
 	auto rows = full_rows(identity);
-	const auto plan = make_multiway_full_blueprint_stream_plan(identity, {}, 2U, 2U);
+	rows[0].actions[0].probability = 30000U;
+	rows[0].actions.push_back({ { texas::MultiwayAction::Call, 1U, 0, rows[0].action_menu_id }, 35535U });
+	const auto plan = make_multiway_full_blueprint_stream_plan(identity, {}, 2U, 3U);
 	const auto manifest_path = artifact_path("sharded_manifest");
 	const auto shard_bound = 176U + 8U + 28U + 64U * 19U;
 	const auto result = MultiwayFullBlueprintArtifacts::save_atomic_sharded_streaming(
 		manifest_path, plan, shard_bound, &produce_full_row, &rows);
 	const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(manifest_path, identity);
 	MultiwayFullBlueprintArtifacts::verify_sharded_artifact(manifest_path, identity);
+	const auto mapped = MultiwayMappedShardedBlueprintProvider::load_verified(manifest_path, identity);
+	MultiwayBlueprintPolicyProvider mapped_provider(*mapped);
+	MultiwayBlueprintStore in_memory_store(identity, rows);
+	MultiwayBlueprintPolicyProvider in_memory_provider(in_memory_store);
 	EXPECT_EQ(result.row_count, std::uint64_t{ 2U });
-	EXPECT_EQ(result.action_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.action_count, std::uint64_t{ 3U });
 	EXPECT_EQ(result.shard_count, std::uint64_t{ 2U });
 	EXPECT_EQ(result.manifest_bytes, std::filesystem::file_size(manifest_path));
 	EXPECT_EQ(result.serialized_bytes,
@@ -234,6 +241,41 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 	EXPECT_EQ(manifest.shards.size(), std::size_t{ 2U });
 	EXPECT_EQ(manifest.shards[0].range.first_row, std::uint64_t{ 0U });
 	EXPECT_EQ(manifest.shards[1].range.first_row, std::uint64_t{ 1U });
+	EXPECT_TRUE(mapped->mapped_virtual_bytes() >= result.serialized_bytes - result.manifest_bytes);
+	EXPECT_TRUE(mapped->sparse_index_bytes() > 0U);
+	for (const auto& row : rows)
+	{
+		std::array<texas::Probability, 64U> mapped_output{};
+		std::array<texas::Probability, 64U> in_memory_output{};
+		std::array<MultiwayActionDescriptor, 64U> legal_actions{};
+		for (std::size_t index = 0U; index < row.actions.size(); ++index)
+			legal_actions[index] = row.actions[index].action;
+		const auto mapped_status = mapped_provider.strategy_into(row.infoset, row.bucket,
+			legal_actions.data(), row.actions.size(), mapped_output.data());
+		const auto in_memory_status = in_memory_provider.strategy_into(row.infoset, row.bucket,
+			legal_actions.data(), row.actions.size(), in_memory_output.data());
+		EXPECT_EQ(mapped_status, in_memory_status);
+		EXPECT_EQ(mapped_status, MultiwayBlueprintLookupStatus::Hit);
+		for (std::size_t index = 0U; index < row.actions.size(); ++index)
+			EXPECT_EQ(mapped_output[index], in_memory_output[index]);
+	}
+	{
+		std::array<texas::Probability, 64U> mapped_output{};
+		std::array<texas::Probability, 64U> in_memory_output{};
+		std::array<MultiwayActionDescriptor, 2U> wrong_menu{
+			rows[0].actions[0].action, rows[0].actions[1].action };
+		const std::array<MultiwayActionDescriptor, 2U> legal_actions{
+			rows[0].actions[0].action, rows[0].actions[1].action };
+		++wrong_menu[0].action_menu_id;
+		EXPECT_EQ(mapped_provider.strategy_into(rows[0].infoset, rows[0].bucket,
+			wrong_menu.data(), wrong_menu.size(), mapped_output.data()), MultiwayBlueprintLookupStatus::IncompatibleMenu);
+		EXPECT_EQ(in_memory_provider.strategy_into(rows[0].infoset, rows[0].bucket,
+			wrong_menu.data(), wrong_menu.size(), in_memory_output.data()), MultiwayBlueprintLookupStatus::IncompatibleMenu);
+		EXPECT_EQ(mapped_provider.strategy_into(rows[0].infoset, 99U,
+			legal_actions.data(), legal_actions.size(), mapped_output.data()), MultiwayBlueprintLookupStatus::MissingBucket);
+		EXPECT_EQ(mapped_provider.strategy_into({ { 45U }, 0 }, 0U,
+			legal_actions.data(), legal_actions.size(), mapped_output.data()), MultiwayBlueprintLookupStatus::Missing);
+	}
 
 	const auto previous_manifest = read_bytes(manifest_path);
 	MultiwayFullBlueprintStreamOptions failure_options;
@@ -246,6 +288,7 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 	const auto shard_path = manifest_path.parent_path() / std::filesystem::u8path(manifest.shards[0].relative_path);
 	std::filesystem::remove(shard_path);
 	EXPECT_THROW(MultiwayFullBlueprintArtifacts::verify_sharded_artifact(manifest_path, identity), std::runtime_error);
+	EXPECT_THROW(MultiwayMappedShardedBlueprintProvider::load_verified(manifest_path, identity), std::runtime_error);
 	std::filesystem::remove_all(shard_path.parent_path());
 	std::filesystem::remove(manifest_path);
 
@@ -262,6 +305,8 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 	}
 	EXPECT_THROW(MultiwayFullBlueprintArtifacts::verify_sharded_artifact(corrupt_manifest_path, identity),
 		std::runtime_error);
+	EXPECT_THROW(MultiwayMappedShardedBlueprintProvider::load_verified(corrupt_manifest_path, identity),
+		std::invalid_argument);
 	std::filesystem::remove_all(corrupt_shard_path.parent_path());
 	std::filesystem::remove(corrupt_manifest_path);
 }

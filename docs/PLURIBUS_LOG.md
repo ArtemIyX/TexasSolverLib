@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 7.2 - Add mapped sharded policy lookup
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a read-only mapped provider that validates each shard's schema, metadata, row order, action values, payload hash, and aggregate policy hash before serving lookups.
+- Built a sparse row-offset index capped at 262,144 entries. Lookup decodes mapped rows into fixed action scratch and matches the existing `MultiwayBlueprintPolicyProvider` statuses and probabilities without per-row materialization.
+- Exposed mapped virtual bytes and sparse-index bytes for resource reporting.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_policy_provider.cpp`
+- `src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp`
+- `CMakeLists.txt`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_artifact` and `test_multiway_blueprint_store`: passed.
+- Focused CTest for those targets: passed (2/2).
+- Lookup tests compare hits, probabilities, missing infosets, missing buckets, and incompatible menus with the in-memory provider. Missing and corrupt shard loading fails closed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- The provider maps all shard views at construction and verifies them then; OS file pages remain demand-paged, but per-shard view creation is not yet lazy.
+- The provider is not yet wired into workflow selection or memory telemetry reports.
+
 ## PB-12 Phase 7.2 - Write and verify bounded blueprint shards
 
 **Status:** In progress
