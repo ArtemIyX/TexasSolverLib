@@ -2336,6 +2336,14 @@ namespace texas::solver::multiway
 		pages_.compact(retain_input_runs);
 	}
 
+	std::uint64_t MultiwayExternalCompactStorage::content_hash() const
+	{
+		auto hash = kHashOffset;
+		texas::core::fingerprint::append_u64(hash, rows_.content_hash());
+		texas::core::fingerprint::append_u64(hash, pages_.content_hash());
+		return texas::core::fingerprint::finish(hash);
+	}
+
 	MultiwayExternalTrainingStorage::MultiwayExternalTrainingStorage(
 		std::filesystem::path directory, MultiwayExternalStorageConfig catalog_config,
 		MultiwayExternalStorageConfig row_config, MultiwayExternalStorageConfig page_config,
@@ -2431,10 +2439,18 @@ namespace texas::solver::multiway
 		next.row_count = row_count;
 		next.page_generation = compact_->page_generation();
 		next.page_count = compact_->next_page_id() - 1U;
-		next.content_hash = 0U;
+		next.content_hash = content_hash();
 		transaction_.commit_batch(next);
 		batch_number_ = 0U;
 		page_batch_open_ = false;
+	}
+
+	std::uint64_t MultiwayExternalTrainingStorage::content_hash() const
+	{
+		auto hash = kHashOffset;
+		texas::core::fingerprint::append_u64(hash, catalog_->content_hash());
+		texas::core::fingerprint::append_u64(hash, compact_->content_hash());
+		return texas::core::fingerprint::finish(hash);
 	}
 
 	void MultiwayExternalTrainingStorage::abort_batch()
@@ -2599,6 +2615,20 @@ namespace texas::solver::multiway
 
 	std::uint64_t MultiwayExternalRecordStore::generation() const { std::lock_guard<std::mutex> lock(mutex_); return generation_; }
 	std::uint64_t MultiwayExternalRecordStore::record_count() const { std::lock_guard<std::mutex> lock(mutex_); return record_count_; }
+	std::uint64_t MultiwayExternalRecordStore::content_hash() const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		auto hash = kHashOffset;
+		texas::core::fingerprint::append_u64(hash, generation_);
+		texas::core::fingerprint::append_u64(hash, record_count_);
+		for (const auto& run : runs_)
+		{
+			texas::core::fingerprint::append_u64(hash, run.generation);
+			texas::core::fingerprint::append_u64(hash, run.record_count);
+			texas::core::fingerprint::append_u64(hash, run.content_hash);
+		}
+		return texas::core::fingerprint::finish(hash);
+	}
 	std::size_t MultiwayExternalRecordStore::cache_capacity_records() const noexcept { return cache_capacity_; }
 	std::size_t MultiwayExternalRecordStore::cache_bytes() const noexcept { return cache_capacity_ * (payload_bytes_ + sizeof(CacheEntry) + 8U); }
 	MultiwayExternalStorageStats MultiwayExternalRecordStore::stats() const

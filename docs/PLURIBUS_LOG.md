@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.16 - Hash external component generations
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added deterministic aggregate content identity from the catalog, row, and page run checksums to each published training generation.
+- Verified identity survives reopen and remains unchanged after failed manifest publication and abort.
+- This is a durable component-run hash, not the canonical in-memory policy-content hash.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The external facade remains outside the solver coordinator; workflow execution remains fail-closed.
+
 ## PB-12 Phase 5.15 - Inject aggregate publish failure through typed stores
 
 **Status:** Complete

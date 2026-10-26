@@ -128,6 +128,7 @@ namespace texas::solver::multiway
 		void compact(bool retain_input_runs = false);
 		[[nodiscard]] std::uint64_t generation() const;
 		[[nodiscard]] std::uint64_t record_count() const;
+		[[nodiscard]] std::uint64_t content_hash() const;
 		[[nodiscard]] std::size_t cache_capacity_records() const noexcept;
 		[[nodiscard]] std::size_t cache_bytes() const noexcept;
 		[[nodiscard]] std::size_t payload_bytes() const noexcept { return payload_bytes_; }
@@ -206,6 +207,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t record_count() const noexcept { return store_.record_count(); }
 		[[nodiscard]] std::uint64_t generation() const { return store_.generation(); }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
+		[[nodiscard]] std::uint64_t content_hash() const { return store_.content_hash(); }
 	private:
 		MultiwayExternalRecordStore store_;
 		std::size_t maximum_ancestry_depth_ = 0U;
@@ -259,6 +261,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
 		[[nodiscard]] std::uint64_t generation() const { return store_.generation(); }
+		[[nodiscard]] std::uint64_t content_hash() const { return store_.content_hash(); }
 	private:
 		MultiwayExternalRecordStore store_;
 		std::uint32_t page_width_ = 0U;
@@ -293,6 +296,7 @@ namespace texas::solver::multiway
 		void abort_batch();
 		void compact(bool retain_input_runs = false);
 		[[nodiscard]] std::uint64_t generation() const { return store_->generation(); }
+		[[nodiscard]] std::uint64_t content_hash() const { return store_->content_hash(); }
 		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
@@ -386,6 +390,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
 		[[nodiscard]] std::uint64_t row_generation() const { return rows_.generation(); }
 		[[nodiscard]] std::uint64_t page_generation() const { return pages_.generation(); }
+		[[nodiscard]] std::uint64_t content_hash() const;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return pages_.stats(); }
 	private:
 		MultiwayExternalRowIndex rows_;
@@ -422,6 +427,7 @@ namespace texas::solver::multiway
 		{
 			return transaction_.current_manifest();
 		}
+		[[nodiscard]] std::uint64_t content_hash() const;
 	private:
 		void open_components();
 		std::filesystem::path directory_;

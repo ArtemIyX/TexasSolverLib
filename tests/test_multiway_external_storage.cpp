@@ -327,6 +327,7 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 	MultiwayPublicStateDescriptor descriptor{};
 	descriptor.id = node.id;
 	const MultiwaySparseRowShape shape{ { node.id, 0 }, 2U, 2U };
+	std::uint64_t committed_content_hash = 0U;
 	{
 		MultiwayExternalTrainingStorage storage(directory.path(), catalog_config,
 			row_config, page_config, 16U, 65536U, 8U, false);
@@ -344,11 +345,14 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		EXPECT_EQ(storage.current_manifest().public_state_count, 1U);
 		EXPECT_EQ(storage.current_manifest().row_count, 1U);
 		EXPECT_EQ(storage.current_manifest().page_count, 1U);
+		EXPECT_TRUE(storage.current_manifest().content_hash != 0U);
+		committed_content_hash = storage.current_manifest().content_hash;
 	}
 	{
 		MultiwayExternalTrainingStorage reopened(directory.path(), catalog_config,
 			row_config, page_config, 16U, 65536U, 8U, false);
 		EXPECT_EQ(reopened.current_manifest().committed_batch_number, 1U);
+		EXPECT_EQ(reopened.current_manifest().content_hash, committed_content_hash);
 		EXPECT_TRUE(reopened.catalog().contains(node.id));
 		MultiwayExternalRowBinding binding{};
 		EXPECT_TRUE(reopened.compact_storage().lookup_row(shape.infoset, binding));
@@ -379,6 +383,7 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		EXPECT_TRUE(publication_failed);
 		reopened.abort_batch();
 		EXPECT_EQ(reopened.current_manifest().generation, 1U);
+		EXPECT_EQ(reopened.current_manifest().content_hash, committed_content_hash);
 		EXPECT_TRUE(!reopened.catalog().contains(child.id));
 		EXPECT_TRUE(!reopened.compact_storage().lookup_row(child_shape.infoset, child_binding));
 	}
