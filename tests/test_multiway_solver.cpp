@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/engine/multiway_memory.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
@@ -589,6 +590,7 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 {
 	auto limits = valid_limits();
 	limits.storage_backend = texas::MultiwaySolverLimits::StorageBackend::CompactInt32;
+	limits.max_sparse_values = 4096U;
 	texas::MultiwayCFRConfig cfr;
 	cfr.player_count = 2;
 	texas::MultiwaySolverCoordinator coordinator(
@@ -599,6 +601,8 @@ TEST_CASE(multiway_solver_compact_backend_routes_admission_merge_and_export)
 	texas::MultiwaySolverCoordinator reference(
 		texas::MultiwaySolveRequest(valid_root(), cfr, reference_limits));
 	reference.admit_infoset_row(root_row());
+	EXPECT_TRUE(coordinator.memory_snapshot().merge_scratch.retained_capacity_bytes <
+		limits.max_sparse_values * texas::MultiwaySolverCoordinator::pending_merge_cell_size());
 	texas::MultiwayWorkerDeltaStream first(0, 1U);
 	texas::MultiwayWorkerDeltaStream second(1, 1U);
 	EXPECT_TRUE(first.try_append(delta(0U, 1.0, 2.0)));

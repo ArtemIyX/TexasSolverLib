@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.23 - Merge external compact pages in worker order
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added an external merge transaction that preserves the existing deterministic k-way worker stream order and fixed-point update arithmetic.
+- The merge resolves each row at its infoset boundary and keeps a writable page pinned across sorted bucket/action updates; it aborts the page and manifest batch on failure.
+- Removed graph-sized pending-cell reservation from compact backends; only Float64Reference uses that scratch buffer.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External request construction remains fail-closed, so coordinator external merge is compile-checked but cannot yet be exercised end to end. Runtime monitoring, checkpoint/export, and non-prepared row admission remain outstanding.
+
 ## PB-12 Phase 5.22 - Read external row pages at decision boundaries
 
 **Status:** Complete

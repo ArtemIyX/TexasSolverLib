@@ -1264,8 +1264,10 @@ namespace texas::solver::multiway
 		merge_stream_views_.reserve(request.limits().worker_count);
 		merge_stream_cursors_.reserve(request.limits().worker_count);
 		merge_tournament_.reserve(request.limits().worker_count);
-		// Pending cells are bounded by the admitted sparse value capacity.
-		pending_merge_cells_.reserve(request.limits().max_sparse_values);
+		// Only the Float64 reference merge buffers merged cells. Compact backends
+		// update rows in place and must not reserve graph-sized pending scratch.
+		if (request.limits().storage_backend == MultiwaySolverLimits::StorageBackend::Float64Reference)
+			pending_merge_cells_.reserve(request.limits().max_sparse_values);
 		admission_processed_states_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_new_states_.reserve(std::min<std::size_t>(256U, request.limits().max_public_states));
 		admission_new_rows_.reserve(std::min<std::size_t>(256U, request.limits().max_sparse_rows));
@@ -2042,6 +2044,27 @@ namespace texas::solver::multiway
 		if (path != MultiwayDeltaMergePath::Reference && path != MultiwayDeltaMergePath::Tournament)
 			throw std::invalid_argument("multiway merge path is invalid");
 
+		struct ExternalMergeAbortGuard
+		{
+			MultiwayExternalTrainingStorage* storage = nullptr;
+			bool active = false;
+			~ExternalMergeAbortGuard() noexcept
+			{
+				if (active)
+					try { storage->abort_batch(); }
+					catch (...) {}
+			}
+		};
+		ExternalMergeAbortGuard external_abort;
+		if (external_storage_ != nullptr)
+		{
+			external_storage_->begin_batch(external_storage_->next_batch_number());
+			external_abort.storage = external_storage_.get();
+			external_abort.active = true;
+			external_storage_->compact_components();
+			external_storage_->begin_page_batch();
+		}
+
 		pending_merge_cells_.clear();
 		merge_stream_cursors_.resize(streams.size());
 		std::fill(merge_stream_cursors_.begin(), merge_stream_cursors_.end(), 0U);
@@ -2074,10 +2097,25 @@ namespace texas::solver::multiway
 		double cell_regret = 0.0;
 		double cell_strategy_sum = 0.0;
 		const MultiwaySparseRowMetadata* compact_cell_row = nullptr;
+		MultiwayExternalRowBinding external_row;
+		MultiwayInfosetId external_row_infoset{};
+		bool have_external_row = false;
+		MultiwayExternalCompactStorage::PinnedBucket external_pinned;
+		const auto pin_external_bucket = [&](const MultiwayExternalRowBinding& row, std::uint32_t bucket) {
+			if (external_pinned.owner != nullptr)
+				external_storage_->compact_storage().unpin_bucket(external_pinned);
+			auto pinned = external_storage_->compact_storage().pin_bucket(row, bucket, true);
+			external_pinned.owner = pinned.owner;
+			external_pinned.page = pinned.page;
+			external_pinned.local_bucket = pinned.local_bucket;
+			external_pinned.writable = pinned.writable;
+			pinned.owner = nullptr;
+			pinned.page = {};
+		};
 		std::uint64_t previous_trajectory = 0U;
 		bool have_trajectory = false;
 		const auto flush_cell = [&] {
-			if (!have_cell || compact_storage_ != nullptr)
+			if (!have_cell || compact_storage_ != nullptr || external_storage_ != nullptr)
 				return;
 			const auto* row = storage_.metadata(cell_infoset);
 			if (row == nullptr || cell_bucket >= row->shape.bucket_count || cell_action >= row->shape.action_count)
@@ -2127,7 +2165,25 @@ namespace texas::solver::multiway
 				cell_infoset = delta.infoset;
 				cell_bucket = delta.bucket;
 				cell_action = delta.action;
-				if (compact_storage_ == nullptr)
+				if (external_storage_ != nullptr)
+				{
+					if (!have_external_row || external_row_infoset != delta.infoset)
+					{
+						if (!external_storage_->compact_storage().lookup_row(delta.infoset, external_row))
+							throw std::invalid_argument("multiway delta does not match an admitted external row");
+						external_row_infoset = delta.infoset;
+						have_external_row = true;
+					}
+					if (delta.bucket >= external_row.bucket_count() || delta.action >= external_row.action_count())
+						throw std::invalid_argument("multiway delta does not match an admitted external row cell");
+					const auto page_id = external_row.first_page_id() +
+						(delta.bucket / request_.limits().compact_page_width);
+					if (external_pinned.owner == nullptr || external_pinned.page.page_id != page_id)
+						pin_external_bucket(external_row, delta.bucket);
+					else
+						external_pinned.local_bucket = delta.bucket % request_.limits().compact_page_width;
+				}
+				else if (compact_storage_ == nullptr)
 				{
 					const auto* row = storage_.metadata(delta.infoset);
 					if (row == nullptr || delta.bucket >= row->shape.bucket_count || delta.action >= row->shape.action_count)
@@ -2155,7 +2211,12 @@ namespace texas::solver::multiway
 			}
 			previous_trajectory = delta.trajectory_id;
 			have_trajectory = true;
-			if (compact_storage_ != nullptr)
+			if (external_storage_ != nullptr)
+			{
+				external_storage_->compact_storage().apply_delta(
+					external_pinned, delta.action, delta.regret, delta.strategy_sum);
+			}
+			else if (compact_storage_ != nullptr)
 			{
 				compact_storage_->apply_delta(*compact_cell_row, delta.bucket, delta.action,
 					delta.regret, delta.strategy_sum);
@@ -2181,14 +2242,25 @@ namespace texas::solver::multiway
 			++merged_count;
 		}
 		flush_cell();
+		if (external_pinned.owner != nullptr)
+			external_storage_->compact_storage().unpin_bucket(external_pinned);
 
 		for (const auto& cell : pending_merge_cells_)
 		{
 			storage_.regret_[cell.index] = cell.regret;
 			storage_.strategy_sum_[cell.index] = cell.strategy_sum;
 		}
+		const auto merged_stream_fingerprint = stream_fingerprint == 0U ? 1U : stream_fingerprint;
+		if (external_storage_ != nullptr)
+		{
+			const auto& current = external_storage_->current_manifest();
+			external_storage_->commit_batch(
+				merged_stream_fingerprint,
+				current.row_count, current.logical_value_count);
+			external_abort.active = false;
+		}
 		diagnostics_.worker_delta_entries_merged += delta_count;
-		diagnostics_.last_merged_stream_fingerprint = stream_fingerprint == 0U ? 1U : stream_fingerprint;
+		diagnostics_.last_merged_stream_fingerprint = merged_stream_fingerprint;
 	}
 
 	MultiwayRootPolicy MultiwaySolverCoordinator::export_root_policy() const
