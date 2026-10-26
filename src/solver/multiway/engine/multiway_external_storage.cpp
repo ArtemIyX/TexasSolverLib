@@ -2112,6 +2112,11 @@ namespace texas::solver::multiway
 		if (page_width_ == 0U) throw std::invalid_argument("external compact storage page width is zero");
 	}
 
+	MultiwayPublicStateId MultiwayExternalRowBinding::public_state() const noexcept
+	{
+		return { state_id_ };
+	}
+
 	void MultiwayExternalCompactStorage::admit_rows(std::uint64_t batch_number,
 		std::uint64_t merge_fingerprint, const std::vector<MultiwaySparseRowShape>& rows)
 	{

@@ -238,6 +238,12 @@ namespace texas::solver::multiway
 	{
 	public:
 		MultiwayExternalRowBinding() = default;
+		[[nodiscard]] MultiwayPublicStateId public_state() const noexcept;
+		[[nodiscard]] std::int32_t seat() const noexcept { return seat_; }
+		[[nodiscard]] std::uint32_t bucket_count() const noexcept { return row_.bucket_count; }
+		[[nodiscard]] std::uint8_t action_count() const noexcept { return row_.action_count; }
+		[[nodiscard]] std::uint64_t first_page_id() const noexcept { return row_.first_page_id; }
+		[[nodiscard]] std::uint32_t page_count() const noexcept { return row_.page_count; }
 	private:
 		friend class MultiwayExternalRowIndex;
 		friend class MultiwayExternalCompactStorage;

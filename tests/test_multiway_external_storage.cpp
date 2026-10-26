@@ -337,6 +337,12 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		storage.begin_page_batch();
 		MultiwayExternalRowBinding binding{};
 		EXPECT_TRUE(storage.compact_storage().lookup_row(shape.infoset, binding));
+		EXPECT_EQ(binding.public_state(), node.id);
+		EXPECT_EQ(binding.seat(), 0);
+		EXPECT_EQ(binding.bucket_count(), shape.bucket_count);
+		EXPECT_EQ(binding.action_count(), shape.action_count);
+		EXPECT_EQ(binding.first_page_id(), 1U);
+		EXPECT_EQ(binding.page_count(), 1U);
 		auto page = storage.compact_storage().pin_bucket(binding, 1U, true);
 		storage.compact_storage().apply_delta(page, 1U, 2.0, 3.0);
 		storage.compact_storage().unpin_bucket(page);

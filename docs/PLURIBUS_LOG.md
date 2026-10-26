@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.19 - Expose external row binding metadata
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added read-only row identity, seat, shape, and page-range accessors to the opaque external row binding so coordinator preflight can compare admitted row shapes without loading or retaining row indexes.
+- Added focused checks for the binding returned by external row lookup.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator admission and merge do not yet consume the binding metadata.
+
 ## PB-12 Phase 3.2 - Pack public nodes without catalog retention
 
 **Status:** Complete
