@@ -1,13 +1,14 @@
 # Pluribus Roadmap Progress Log
 
-## PB-12 Phase 7.2 - Add deterministic bounded shard layout
+## PB-12 Phase 7.2 - Write and verify bounded blueprint shards
 
 **Status:** In progress
 **Completed:** 2026-10-26
 
-- Added deterministic contiguous row ranges with a worst-case serialized-size bound based on the schema maximum of 64 actions per row.
-- Validates canonical, complete, non-overlapping ranges and rejects bounds that cannot fit one maximum-size row.
-- This is the layout primitive only. Shard files, manifest publication, and lazy mapped lookup remain outstanding.
+- Added deterministic contiguous row ranges with a worst-case serialized-size bound based on the schema maximum of 64 actions per row, and bounded the manifest to 65,536 shards.
+- Added a two-pass streaming shard writer. It records per-shard payload hashes and counts, computes the overall policy-content hash, writes each standard schema-2 shard into a unique generation directory, then atomically publishes the manifest last.
+- Added a streaming verifier for manifest identity/hash, safe relative paths, shard identity/schema, row ordering, per-shard payload hashes/counts, and aggregate policy hash. It reads one shard at a time.
+- A manifest-publication failure test confirms the prior manifest remains byte-for-byte intact; missing and corrupt shard tests reject the generation.
 
 ### Files
 
@@ -24,7 +25,8 @@
 
 ### Limitations
 
-- This does not yet write shard artifacts or enable lazy lookup.
+- Lazy mapped lookup is not implemented. The writer performs two producer passes, so producers must be deterministic and repeatable; the implementation checks policy-content hashes across passes.
+- Sharded writing is exposed as an artifact API but is not yet wired into the trainer's export selection or disk preflight.
 
 ## PB-12 Phase 7.3 - Add blueprint export disk preflight
 

@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace texas::solver::multiway
@@ -107,6 +108,32 @@ namespace texas::solver::multiway
 		void validate(const MultiwayFullBlueprintStreamPlan& plan) const;
 	};
 
+	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION = 1U;
+	inline constexpr std::uint64_t MULTIWAY_FULL_BLUEPRINT_MAX_SHARDS = 65'536U;
+
+	struct MultiwayFullBlueprintShardReference
+	{
+		std::string relative_path;
+		MultiwayFullBlueprintShardRange range{};
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t payload_hash = 0U;
+	};
+
+	struct MultiwayFullBlueprintShardManifest
+	{
+		std::uint32_t schema_version = MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION;
+		MultiwayModelIdentity identity{};
+		MultiwayBlueprintTrainingMetadata training{};
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t maximum_serialized_bytes = 0U;
+		std::uint64_t policy_content_hash = 0U;
+		std::vector<MultiwayFullBlueprintShardReference> shards;
+
+		void validate() const;
+	};
+
 	[[nodiscard]] MultiwayFullBlueprintStreamPlan make_multiway_full_blueprint_stream_plan(
 		const MultiwayModelIdentity& identity,
 		const MultiwayBlueprintTrainingMetadata& training,
@@ -148,7 +175,8 @@ namespace texas::solver::multiway
 		None = 0U,
 		Write,
 		Close,
-		Publication
+		Publication,
+		ManifestPublication
 	};
 
 	struct MultiwayFullBlueprintStreamOptions
@@ -165,6 +193,17 @@ namespace texas::solver::multiway
 		std::uint64_t serialized_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t policy_content_hash = 0U;
+		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
+	};
+
+	struct MultiwayFullBlueprintShardedStreamResult
+	{
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t policy_content_hash = 0U;
+		std::uint64_t shard_count = 0U;
+		std::uint64_t manifest_bytes = 0U;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
 
@@ -200,6 +239,19 @@ namespace texas::solver::multiway
 				MultiwayFullBlueprintRowView& row,
 				void* context),
 			void* context = nullptr);
+		[[nodiscard]] static MultiwayFullBlueprintShardedStreamResult save_atomic_sharded_streaming(
+			const std::filesystem::path& manifest_path,
+			const MultiwayFullBlueprintStreamPlan& plan,
+			std::uint64_t maximum_shard_bytes,
+			bool (*produce_row)(std::uint64_t index, MultiwayFullBlueprintRowView& row, void* context),
+			void* context = nullptr,
+			MultiwayFullBlueprintStreamOptions options = {});
+		[[nodiscard]] static MultiwayFullBlueprintShardManifest load_sharded_manifest(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity);
+		static void verify_sharded_artifact(
+			const std::filesystem::path& manifest_path,
+			const MultiwayModelIdentity& expected_identity);
 		[[nodiscard]] static MultiwayFullBlueprintArtifact load_verified(
 			const std::filesystem::path& path,
 			const MultiwayModelIdentity& expected_identity);

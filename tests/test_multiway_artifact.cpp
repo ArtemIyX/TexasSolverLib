@@ -204,6 +204,66 @@ TEST_CASE(multiway_full_blueprint_shard_layout_is_deterministic_and_worst_case_b
 	EXPECT_THROW(invalid.validate(plan), std::invalid_argument);
 	EXPECT_THROW(make_multiway_full_blueprint_shard_layout(plan, fixed_bytes + maximum_row_bytes - 1U),
 		std::invalid_argument);
+	const auto excessive_plan = make_multiway_full_blueprint_stream_plan(
+		snapshot().identity, {}, MULTIWAY_FULL_BLUEPRINT_MAX_SHARDS + 1U,
+		MULTIWAY_FULL_BLUEPRINT_MAX_SHARDS + 1U);
+	EXPECT_THROW(make_multiway_full_blueprint_shard_layout(excessive_plan,
+		fixed_bytes + maximum_row_bytes), std::length_error);
+}
+
+TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_last)
+{
+	using namespace texas::solver::multiway;
+	const auto identity = snapshot().identity;
+	auto rows = full_rows(identity);
+	const auto plan = make_multiway_full_blueprint_stream_plan(identity, {}, 2U, 2U);
+	const auto manifest_path = artifact_path("sharded_manifest");
+	const auto shard_bound = 176U + 8U + 28U + 64U * 19U;
+	const auto result = MultiwayFullBlueprintArtifacts::save_atomic_sharded_streaming(
+		manifest_path, plan, shard_bound, &produce_full_row, &rows);
+	const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(manifest_path, identity);
+	MultiwayFullBlueprintArtifacts::verify_sharded_artifact(manifest_path, identity);
+	EXPECT_EQ(result.row_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.action_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.shard_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.manifest_bytes, std::filesystem::file_size(manifest_path));
+	EXPECT_EQ(result.serialized_bytes,
+		manifest.shards[0].serialized_bytes + manifest.shards[1].serialized_bytes + result.manifest_bytes);
+	EXPECT_EQ(result.policy_content_hash, MultiwayFullBlueprintArtifacts::policy_content_hash(
+		MultiwayFullBlueprintArtifact{ MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION, identity, {}, rows, 0U }));
+	EXPECT_EQ(manifest.shards.size(), std::size_t{ 2U });
+	EXPECT_EQ(manifest.shards[0].range.first_row, std::uint64_t{ 0U });
+	EXPECT_EQ(manifest.shards[1].range.first_row, std::uint64_t{ 1U });
+
+	const auto previous_manifest = read_bytes(manifest_path);
+	MultiwayFullBlueprintStreamOptions failure_options;
+	failure_options.failure_point = MultiwayFullBlueprintStreamFailurePoint::ManifestPublication;
+	EXPECT_THROW(MultiwayFullBlueprintArtifacts::save_atomic_sharded_streaming(
+		manifest_path, plan, shard_bound, &produce_full_row,
+		&rows, failure_options), std::runtime_error);
+	EXPECT_EQ(read_bytes(manifest_path), previous_manifest);
+
+	const auto shard_path = manifest_path.parent_path() / std::filesystem::u8path(manifest.shards[0].relative_path);
+	std::filesystem::remove(shard_path);
+	EXPECT_THROW(MultiwayFullBlueprintArtifacts::verify_sharded_artifact(manifest_path, identity), std::runtime_error);
+	std::filesystem::remove_all(shard_path.parent_path());
+	std::filesystem::remove(manifest_path);
+
+	const auto corrupt_manifest_path = artifact_path("sharded_corrupt_manifest");
+	(void)MultiwayFullBlueprintArtifacts::save_atomic_sharded_streaming(
+		corrupt_manifest_path, plan, shard_bound, &produce_full_row, &rows);
+	const auto corrupt_manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(
+		corrupt_manifest_path, identity);
+	const auto corrupt_shard_path = corrupt_manifest_path.parent_path() /
+		std::filesystem::u8path(corrupt_manifest.shards[0].relative_path);
+	{
+		std::fstream corrupt(corrupt_shard_path, std::ios::binary | std::ios::in | std::ios::out);
+		corrupt.put('X');
+	}
+	EXPECT_THROW(MultiwayFullBlueprintArtifacts::verify_sharded_artifact(corrupt_manifest_path, identity),
+		std::runtime_error);
+	std::filesystem::remove_all(corrupt_shard_path.parent_path());
+	std::filesystem::remove(corrupt_manifest_path);
 }
 
 TEST_CASE(multiway_full_blueprint_incremental_hash_matches_materialized_hash)
