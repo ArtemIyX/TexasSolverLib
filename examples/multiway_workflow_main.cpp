@@ -3,6 +3,7 @@
 #include "solver/multiway/blueprint/multiway_artifact.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway/blueprint/multiway_blueprint_config.hpp"
 #include "solver/multiway/abstraction/multiway_future_bucket.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_catalog.hpp"
@@ -1113,8 +1114,6 @@ namespace
 		}
 		const auto identity = make_multiway_model_identity(workflow.model);
 		const auto buckets = load_multiway_bucket_registry(buckets_path);
-		const auto blueprint = MultiwayFullBlueprintArtifacts::load_verified(
-			blueprint_path, identity);
 		MultiwayBlueprintTrainingConfig config;
 		config.blueprint = workflow.model;
 		config.bucket_profile.flop_bucket_count = workflow.model.flop_bucket_count;
@@ -1151,10 +1150,26 @@ namespace
 			config.blueprint.action_abstraction_version, config.blueprint.terminal_model_version);
 		const auto evidence = make_evidence_header(
 			MULTIWAY_LOOKUP_QUALIFICATION_SCHEMA_VERSION, config.identity(), workflow.fingerprint());
-		auto report = qualify_multiway_required_lookups(
-			config, root, buckets, blueprint, trajectories, evidence);
-		const auto repeat = qualify_multiway_required_lookups(
-			config, root, buckets, blueprint, trajectories, evidence);
+		MultiwayLookupQualificationReport report;
+		MultiwayLookupQualificationReport repeat;
+		if (MultiwayFullBlueprintArtifacts::is_sharded_manifest(blueprint_path))
+		{
+			const auto blueprint = MultiwayMappedShardedBlueprintProvider::load_verified(
+				blueprint_path, identity);
+			report = qualify_multiway_required_lookups(
+				config, root, buckets, *blueprint, trajectories, evidence);
+			repeat = qualify_multiway_required_lookups(
+				config, root, buckets, *blueprint, trajectories, evidence);
+		}
+		else
+		{
+			const auto blueprint = MultiwayFullBlueprintArtifacts::load_verified(
+				blueprint_path, identity);
+			report = qualify_multiway_required_lookups(
+				config, root, buckets, blueprint, trajectories, evidence);
+			repeat = qualify_multiway_required_lookups(
+				config, root, buckets, blueprint, trajectories, evidence);
+		}
 		report.second_replay_fingerprint = repeat.replay_fingerprint;
 		if (!output.parent_path().empty())
 			std::filesystem::create_directories(output.parent_path());

@@ -145,12 +145,14 @@ string(FIND "${trainer_text}" "const auto plan = make_export_plan(" plan_positio
 string(FIND "${trainer_text}" "const auto before_export = working_set_monitor_.export_process_observer" process_snapshot_position)
 string(FIND "${trainer_text}" "evaluate_multiway_export_process_gate(" process_gate_position)
 string(FIND "${trainer_text}" "evaluate_multiway_export_system_gate(" system_gate_position)
-string(FIND "${trainer_text}" "MultiwayFullBlueprintStreamWriter writer(path, stream_plan)" writer_position)
+string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan)" writer_position)
+string(FIND "${trainer_text}" "make_unique<MultiwayFullBlueprintShardedStreamWriter>(" sharded_writer_position)
 if(lease_position EQUAL -1 OR plan_position EQUAL -1 OR process_snapshot_position EQUAL -1 OR
-   process_gate_position EQUAL -1 OR system_gate_position EQUAL -1 OR writer_position EQUAL -1 OR
+   process_gate_position EQUAL -1 OR system_gate_position EQUAL -1 OR writer_position EQUAL -1 OR sharded_writer_position EQUAL -1 OR
    lease_position GREATER plan_position OR plan_position GREATER process_snapshot_position OR
    process_snapshot_position GREATER process_gate_position OR process_gate_position GREATER writer_position OR
-   system_gate_position GREATER writer_position)
+   system_gate_position GREATER writer_position OR process_gate_position GREATER sharded_writer_position OR
+   system_gate_position GREATER sharded_writer_position)
     message(FATAL_ERROR "streaming export must admit lease, plan, snapshots, and gates before temp creation")
 endif()
 

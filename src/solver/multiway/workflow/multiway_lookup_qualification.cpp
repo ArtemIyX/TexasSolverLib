@@ -11,6 +11,53 @@
 
 namespace texas::solver::multiway
 {
+	namespace
+	{
+		MultiwayLookupQualificationReport qualify_with_provider(
+			const MultiwayBlueprintTrainingConfig& config,
+			const MultiwayRootSnapshot& root,
+			const MultiwayBucketRegistry& buckets,
+			const MultiwayBlueprintPolicyProvider& provider,
+			const MultiwayModelIdentity& blueprint_identity,
+			std::uint64_t policy_content_hash,
+			std::uint64_t trajectory_count,
+			MultiwayEvidenceHeader evidence)
+		{
+			config.validate();
+			root.validate();
+			if (trajectory_count == 0U || blueprint_identity != config.identity() ||
+				buckets.identity() != config.identity() || policy_content_hash == 0U)
+				throw std::invalid_argument("multiway lookup qualification inputs are incompatible");
+			if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+				throw std::invalid_argument("ExternalCompactInt32 is not ready for lookup qualification");
+			MultiwaySolveRequest request(root, config.cfr, config.limits);
+			MultiwaySolverCoordinator coordinator(request);
+			MultiwayActionAbstraction action_abstraction(config.action_abstraction);
+			MultiwayRootExternalSamplingTraversal traversal(
+				coordinator, root, action_abstraction, buckets, nullptr,
+				config.max_decision_depth, config.max_public_chance_depth, &provider);
+			MultiwayWorkerDeltaStream stream(0U, config.limits.regret_delta_capacity());
+			MultiwayBlueprintLookupAudit audit;
+			for (std::uint64_t trajectory = 0U; trajectory < trajectory_count; ++trajectory)
+			{
+				stream.rewind(0U);
+				if (!traversal.run(
+						traversal.traverser_for_trajectory(trajectory), trajectory,
+						multiway_deterministic_trajectory_seed(config.deterministic_seed, trajectory),
+						stream, 1.0, nullptr, nullptr, 0U, &audit))
+					throw std::runtime_error("multiway lookup qualification discarded a trajectory");
+			}
+			MultiwayLookupQualificationReport report;
+			report.evidence = evidence;
+			report.lookup_hits = audit.lookup_hits;
+			report.missing_infosets = audit.missing_infosets;
+			report.missing_buckets = audit.missing_buckets;
+			report.action_menu_mismatches = audit.action_menu_mismatches;
+			report.policy_content_hash = policy_content_hash;
+			report.replay_fingerprint = audit.fingerprint();
+			return report;
+		}
+	}
 
 	void MultiwayLookupQualificationReport::validate() const
 	{
@@ -34,42 +81,29 @@ namespace texas::solver::multiway
 		config.validate();
 		root.validate();
 		blueprint.validate();
-		if (trajectory_count == 0U || blueprint.identity != config.identity() || buckets.identity() != config.identity())
-		{
+		if (trajectory_count == 0U || blueprint.identity != config.identity() ||
+			buckets.identity() != config.identity())
 			throw std::invalid_argument("multiway lookup qualification inputs are incompatible");
-		}
 		if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
 			throw std::invalid_argument("ExternalCompactInt32 is not ready for lookup qualification");
 		MultiwayBlueprintStore store(blueprint.identity, blueprint.rows);
 		MultiwayBlueprintPolicyProvider provider(store);
-		MultiwaySolveRequest request(root, config.cfr, config.limits);
-		MultiwaySolverCoordinator coordinator(request);
-		MultiwayActionAbstraction action_abstraction(config.action_abstraction);
-		MultiwayRootExternalSamplingTraversal traversal(
-			coordinator, root, action_abstraction, buckets, nullptr,
-			config.max_decision_depth, config.max_public_chance_depth, &provider);
-		MultiwayWorkerDeltaStream stream(0U, config.limits.regret_delta_capacity());
-		MultiwayBlueprintLookupAudit audit;
-		for (std::uint64_t trajectory = 0U; trajectory < trajectory_count; ++trajectory)
-		{
-			stream.rewind(0U);
-			if (!traversal.run(
-					traversal.traverser_for_trajectory(trajectory), trajectory,
-					multiway_deterministic_trajectory_seed(config.deterministic_seed, trajectory),
-					stream, 1.0, nullptr, nullptr, 0U, &audit))
-			{
-				throw std::runtime_error("multiway lookup qualification discarded a trajectory");
-			}
-		}
-		MultiwayLookupQualificationReport report;
-		report.evidence = evidence;
-		report.lookup_hits = audit.lookup_hits;
-		report.missing_infosets = audit.missing_infosets;
-		report.missing_buckets = audit.missing_buckets;
-		report.action_menu_mismatches = audit.action_menu_mismatches;
-		report.policy_content_hash = MultiwayFullBlueprintArtifacts::policy_content_hash(blueprint);
-		report.replay_fingerprint = audit.fingerprint();
-		return report;
+		return qualify_with_provider(config, root, buckets, provider, blueprint.identity,
+			MultiwayFullBlueprintArtifacts::policy_content_hash(blueprint), trajectory_count,
+			evidence);
+	}
+
+	MultiwayLookupQualificationReport qualify_multiway_required_lookups(
+		const MultiwayBlueprintTrainingConfig& config,
+		const MultiwayRootSnapshot& root,
+		const MultiwayBucketRegistry& buckets,
+		const MultiwayMappedShardedBlueprintProvider& blueprint,
+		std::uint64_t trajectory_count,
+		MultiwayEvidenceHeader evidence)
+	{
+		MultiwayBlueprintPolicyProvider provider(blueprint);
+		return qualify_with_provider(config, root, buckets, provider, blueprint.identity(),
+			blueprint.policy_content_hash(), trajectory_count, evidence);
 	}
 
 	void save_multiway_lookup_qualification_report_atomic(

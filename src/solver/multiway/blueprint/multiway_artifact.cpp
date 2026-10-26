@@ -1362,6 +1362,19 @@ namespace texas::solver::multiway
 		return manifest;
 	}
 
+	bool MultiwayFullBlueprintArtifacts::is_sharded_manifest(
+		const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		if (!input)
+			throw std::runtime_error("multiway blueprint artifact cannot be opened");
+		std::array<char, kShardedBlueprintMagic.size()> magic{};
+		input.read(magic.data(), static_cast<std::streamsize>(magic.size()));
+		if (input.gcount() != static_cast<std::streamsize>(magic.size()))
+			throw std::runtime_error("multiway blueprint artifact header is truncated");
+		return magic == kShardedBlueprintMagic;
+	}
+
 	void MultiwayFullBlueprintArtifacts::verify_sharded_artifact(
 		const std::filesystem::path& manifest_path,
 		const MultiwayModelIdentity& expected_identity)

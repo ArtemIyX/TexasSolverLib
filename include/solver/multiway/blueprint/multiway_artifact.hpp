@@ -281,6 +281,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] static MultiwayFullBlueprintShardManifest load_sharded_manifest(
 			const std::filesystem::path& manifest_path,
 			const MultiwayModelIdentity& expected_identity);
+		[[nodiscard]] static bool is_sharded_manifest(
+			const std::filesystem::path& path);
 		static void verify_sharded_artifact(
 			const std::filesystem::path& manifest_path,
 			const MultiwayModelIdentity& expected_identity);

@@ -53,6 +53,8 @@ namespace texas::solver::multiway
 			Probability* output) const noexcept;
 		[[nodiscard]] std::uint64_t mapped_virtual_bytes() const noexcept;
 		[[nodiscard]] std::uint64_t sparse_index_bytes() const noexcept;
+		[[nodiscard]] const MultiwayModelIdentity& identity() const noexcept;
+		[[nodiscard]] std::uint64_t policy_content_hash() const noexcept;
 
 	private:
 		struct Impl;

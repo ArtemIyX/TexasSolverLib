@@ -55,7 +55,7 @@
 ### Limitations
 
 - The provider maps all shard views at construction and verifies them then; OS file pages remain demand-paged, but per-shard view creation is not yet lazy.
-- The provider is not yet wired into workflow selection or memory telemetry reports.
+- Workflow evaluator selection is wired. Resolver configuration and mapped-provider memory telemetry remain outstanding.
 
 ## PB-12 Phase 7.2 - Write and verify bounded blueprint shards
 
@@ -99,6 +99,7 @@
 - Trainer export now selects sharding above the configured 56 GiB single-file bound, calculates deterministic per-shard action totals before opening output, and uses exact total output plus maximum temporary shard bytes for disk admission.
 - Shard planning metadata is included in private scratch estimates and reports. Export reports now distinguish total output bytes, temporary overlap, manifest bytes, and shard count.
 - Compact and float64 training fixtures exercise sharded trainer publication and confirm the aggregate policy-content hash matches materialized export.
+- The workflow evaluator dispatches shard manifests to the verified mapped provider. Repeated qualification matched materialized lookup counts, policy hash, and replay fingerprint.
 
 ### Files
 
@@ -121,6 +122,12 @@
 - `src/solver/multiway/workflow/multiway_training_report.cpp`
 - `tests/test_multiway_blueprint_training.cpp`
 - `tests/test_multiway_qualification_reports.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp`
+- `src/solver/multiway/blueprint/multiway_mapped_sharded_blueprint_provider.cpp`
+- `include/solver/multiway/workflow/multiway_lookup_qualification.hpp`
+- `src/solver/multiway/workflow/multiway_lookup_qualification.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
 - `examples/multiway_workflow_main.cpp`
 - `docs/PLURIBUS_LOG.md`
 
@@ -132,12 +139,15 @@
 - Focused Debug build and CTest for `test_multiway_memory`: passed (1/1), including bounded temporary-overlap admission/rejection boundaries.
 - Focused Debug builds for `test_multiway_blueprint_training`, `test_multiway_memory`, and `test_multiway_qualification_reports`: passed.
 - Focused CTest for those targets: passed (3/3), including sharded trainer policy-hash equivalence and report serialization.
+- Focused Debug build for `test_multiway_artifact`, `test_multiway_blueprint_training`, and `texas_multiway_train`: passed.
+- Focused CTest for `test_multiway_artifact`, `test_multiway_blueprint_training`, `test_multiway_qualification_reports`, and `test_multiway_workflow_boundary`: passed (4/4).
 - `texas_multiway_train` Debug build: passed.
+- Mapped-shard qualification fixture passed with identical hits, misses, action-menu mismatches, policy hash, and replay fingerprint.
 - `git diff --check`: passed.
 
 ### Limitations
 
-- Workflow consumers do not yet select mapped sharded artifacts, and old generation directories are retained after manifest replacement. The mapped provider verifies and maps all shard views at construction rather than creating each view lazily.
+- Resolver configuration does not yet accept mapped sharded artifacts. Old generation directories are retained after manifest replacement. The mapped provider verifies and maps all shard views at construction rather than creating each view lazily.
 
 ## PB-12 Phase 7.1 - Add bounded ordered external record iteration
 

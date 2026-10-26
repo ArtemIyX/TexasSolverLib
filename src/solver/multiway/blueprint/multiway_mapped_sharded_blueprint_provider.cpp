@@ -269,6 +269,8 @@ namespace texas::solver::multiway
 			std::uint64_t row_count = 0U;
 		};
 		std::vector<Shard> shards;
+		MultiwayModelIdentity identity{};
+		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t mapped_bytes = 0U;
 		std::uint64_t index_bytes = 0U;
 	};
@@ -287,6 +289,8 @@ namespace texas::solver::multiway
 	{
 		const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(manifest_path, expected_identity);
 		auto impl = std::make_unique<Impl>();
+		impl->identity = manifest.identity;
+		impl->policy_content_hash = manifest.policy_content_hash;
 		impl->shards.reserve(manifest.shards.size());
 		const auto shard_count = static_cast<std::uint64_t>(manifest.shards.size());
 		const auto index_slots = kSparseIndexLimit > shard_count ? kSparseIndexLimit - shard_count : 1U;
@@ -495,6 +499,17 @@ namespace texas::solver::multiway
 	std::uint64_t MultiwayMappedShardedBlueprintProvider::sparse_index_bytes() const noexcept
 	{
 		return impl_ == nullptr ? 0U : impl_->index_bytes;
+	}
+
+	const MultiwayModelIdentity& MultiwayMappedShardedBlueprintProvider::identity() const noexcept
+	{
+		static const MultiwayModelIdentity empty{};
+		return impl_ == nullptr ? empty : impl_->identity;
+	}
+
+	std::uint64_t MultiwayMappedShardedBlueprintProvider::policy_content_hash() const noexcept
+	{
+		return impl_ == nullptr ? 0U : impl_->policy_content_hash;
 	}
 
 } // namespace texas::solver::multiway

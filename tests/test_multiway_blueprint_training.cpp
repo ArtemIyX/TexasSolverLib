@@ -1,10 +1,12 @@
 #include "solver/multiway/blueprint/multiway_blueprint_trainer.hpp"
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
+#include "solver/multiway/blueprint/multiway_blueprint_policy_provider.hpp"
 #include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "solver/multiway/abstraction/multiway_bucket_model.hpp"
 #include "solver/multiway/abstraction/multiway_public_builder.hpp"
 #include "solver/multiway/engine/multiway_traversal.hpp"
+#include "solver/multiway/workflow/multiway_lookup_qualification.hpp"
 #include "test_harness.hpp"
 
 #include <stdexcept>
@@ -513,6 +515,67 @@ TEST_CASE(multiway_streaming_export_selects_bounded_shards_and_preserves_policy_
 	const auto generation_directory = path.parent_path() /
 		std::filesystem::u8path(manifest.shards.front().relative_path).parent_path();
 	std::filesystem::remove_all(generation_directory);
+	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_sharded_workflow_lookup_matches_materialized_qualification)
+{
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	auto artifact = fixture.trainer.export_full_policy();
+	texas::MultiwayBlueprintTrainingConfig config;
+	config.rules.player_count = 3U;
+	config.blueprint.player_count = 3U;
+	config.cfr.player_count = 3U;
+	config.limits = export_limits(texas::MultiwaySolverLimits::StorageBackend::CompactInt32);
+	artifact.identity = config.identity();
+	artifact.payload_hash = texas::MultiwayFullBlueprintArtifacts::payload_hash(artifact);
+	texas::MultiwayBucketRegistry qualification_buckets({ texas::MultiwayBucketTable(
+		artifact.identity, texas::Street::River, kExportBoard, 1U, export_bucket_assignments()) });
+	std::uint64_t action_count = 0U;
+	for (const auto& row : artifact.rows)
+		action_count += row.actions.size();
+	const auto plan = texas::make_multiway_full_blueprint_stream_plan(
+		artifact.identity, artifact.training, artifact.rows.size(), action_count);
+	const auto shard_bound = 176U + 8U + 28U + 64U * 19U;
+	const auto layout = texas::make_multiway_full_blueprint_shard_layout(plan, shard_bound);
+	std::vector<std::uint64_t> shard_actions(layout.ranges.size(), 0U);
+	for (std::size_t row_index = 0U; row_index < artifact.rows.size(); ++row_index)
+		shard_actions[row_index / layout.maximum_rows_per_shard] += artifact.rows[row_index].actions.size();
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_sharded_qualification_" +
+		std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
+	{
+		texas::MultiwayFullBlueprintShardedStreamWriter writer(path, plan, layout, shard_actions);
+		for (const auto& row : artifact.rows)
+		{
+			texas::MultiwayFullBlueprintRowView view;
+			view.infoset = row.infoset;
+			view.bucket = row.bucket;
+			view.action_menu_id = row.action_menu_id;
+			view.actions = row.actions.data();
+			view.action_count = row.actions.size();
+			writer.write_row(view);
+		}
+		(void)writer.finish();
+	}
+	const auto mapped = texas::MultiwayMappedShardedBlueprintProvider::load_verified(path, artifact.identity);
+	texas::MultiwayEvidenceHeader evidence;
+	evidence.schema_version = texas::MULTIWAY_LOOKUP_QUALIFICATION_SCHEMA_VERSION;
+	evidence.profile_kind = texas::MultiwayWorkflowProfileKind::Acceptance;
+	evidence.producer.model_identity = artifact.identity;
+	const auto in_memory = texas::qualify_multiway_required_lookups(
+		config, fixture.root, qualification_buckets, artifact, 8U, evidence);
+	const auto sharded = texas::qualify_multiway_required_lookups(
+		config, fixture.root, qualification_buckets, *mapped, 8U, evidence);
+	EXPECT_EQ(sharded.lookup_hits, in_memory.lookup_hits);
+	EXPECT_EQ(sharded.missing_infosets, in_memory.missing_infosets);
+	EXPECT_EQ(sharded.missing_buckets, in_memory.missing_buckets);
+	EXPECT_EQ(sharded.action_menu_mismatches, in_memory.action_menu_mismatches);
+	EXPECT_EQ(sharded.policy_content_hash, in_memory.policy_content_hash);
+	EXPECT_EQ(sharded.replay_fingerprint, in_memory.replay_fingerprint);
+	const auto manifest = texas::MultiwayFullBlueprintArtifacts::load_sharded_manifest(path, artifact.identity);
+	std::filesystem::remove_all(path.parent_path() /
+		std::filesystem::u8path(manifest.shards.front().relative_path).parent_path());
 	std::filesystem::remove(path);
 }
 

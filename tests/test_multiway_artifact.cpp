@@ -130,6 +130,7 @@ TEST_CASE(multiway_full_blueprint_schema2_matches_checked_in_golden_bytes)
 	};
 	const auto path = artifact_path("schema2_golden");
 	texas::MultiwayFullBlueprintArtifacts::save_atomic(path, artifact);
+	EXPECT_TRUE(!texas::MultiwayFullBlueprintArtifacts::is_sharded_manifest(path));
 	auto expected = hex_bytes(
 		"4D57464230303032020000000100000000000000010000000000000001000000000000000100000000000000010000000000"
 		"0000010000000000000001000000000000000100000000000000010000000000000001000000000000000100000000000000"
@@ -227,6 +228,7 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 		plan, shard_layout, manifest_path);
 	const auto result = MultiwayFullBlueprintArtifacts::save_atomic_sharded_streaming(
 		manifest_path, plan, shard_bound, &produce_full_row, &rows);
+	EXPECT_TRUE(MultiwayFullBlueprintArtifacts::is_sharded_manifest(manifest_path));
 	const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(manifest_path, identity);
 	MultiwayFullBlueprintArtifacts::verify_sharded_artifact(manifest_path, identity);
 	const auto mapped = MultiwayMappedShardedBlueprintProvider::load_verified(manifest_path, identity);
