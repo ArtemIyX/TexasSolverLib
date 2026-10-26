@@ -1077,6 +1077,8 @@ namespace texas::solver::multiway
 	{
 		if (hard_limit_bytes == 0U && resident_allowance_bytes != 0U)
 			throw std::invalid_argument("working-set resident allowance requires a hard limit");
+		if (private_commit_limit_bytes != 0U && private_commit_limit_bytes < hard_limit_bytes)
+			throw std::invalid_argument("private-commit limit must be at least the working-set limit");
 	}
 
 	void MultiwayWorkingSetMonitor::validate() const
@@ -1139,6 +1141,12 @@ namespace texas::solver::multiway
 		result.phase = MultiwayWorkingSetGatePhase::Runtime;
 		result.hard_limit_bytes = config.hard_limit_bytes;
 		result.resident_allowance_bytes = config.resident_allowance_bytes;
+		result.observed_private_commit_bytes = snapshot.private_committed_available
+			? snapshot.private_committed_bytes
+			: (snapshot.peak_private_committed_available ? snapshot.peak_private_committed_bytes : 0U);
+		if (snapshot.private_committed_available && snapshot.peak_private_committed_available)
+			result.observed_private_commit_bytes = std::max(result.observed_private_commit_bytes,
+				snapshot.peak_private_committed_bytes);
 		result.observed_working_set_bytes = snapshot.current_working_set_available
 			? snapshot.current_working_set_bytes
 			: (snapshot.peak_working_set_available ? snapshot.peak_working_set_bytes : 0U);
@@ -1157,6 +1165,22 @@ namespace texas::solver::multiway
 			result.status = MultiwayWorkingSetGateStatus::Unavailable;
 			result.rejected_category = "process working set telemetry";
 			result.message = "working-set metric unavailable";
+			return result;
+		}
+		if (config.private_commit_limit_bytes != 0U &&
+			!snapshot.private_committed_available && !snapshot.peak_private_committed_available)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Unavailable;
+			result.rejected_category = "private commit telemetry";
+			result.message = "private-commit metric unavailable";
+			return result;
+		}
+		if (config.private_commit_limit_bytes != 0U &&
+			result.observed_private_commit_bytes > config.private_commit_limit_bytes)
+		{
+			result.status = MultiwayWorkingSetGateStatus::Rejected;
+			result.rejected_category = "process private commit";
+			result.message = "observed private commit exceeds hard gate";
 			return result;
 		}
 		if (result.compared_working_set_bytes > config.hard_limit_bytes || result.compared_working_set_bytes == std::numeric_limits<std::uint64_t>::max())

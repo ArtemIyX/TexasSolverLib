@@ -609,6 +609,29 @@ TEST_CASE(multiway_memory_preflight_drops_optional_cache_before_operating_cap)
 		texas::MultiwayMemoryAdmissionStage::WorkerDeltas);
 }
 
+TEST_CASE(multiway_working_set_runtime_gate_checks_private_commit_and_fails_closed)
+{
+	using namespace texas::solver::multiway;
+	MultiwayWorkingSetGateConfig config{ 48U, 0U, 64U };
+	MultiwayProcessMemorySnapshot snapshot;
+	snapshot.current_working_set_available = true;
+	snapshot.current_working_set_bytes = 40U;
+	const auto missing = evaluate_multiway_working_set_runtime(snapshot, config);
+	EXPECT_EQ(missing.status, MultiwayWorkingSetGateStatus::Unavailable);
+	EXPECT_EQ(std::string(missing.rejected_category), std::string("private commit telemetry"));
+
+	snapshot.private_committed_available = true;
+	snapshot.private_committed_bytes = 65U;
+	const auto over_limit = evaluate_multiway_working_set_runtime(snapshot, config);
+	EXPECT_EQ(over_limit.status, MultiwayWorkingSetGateStatus::Rejected);
+	EXPECT_EQ(std::string(over_limit.rejected_category), std::string("process private commit"));
+
+	snapshot.private_committed_bytes = 60U;
+	const auto admitted = evaluate_multiway_working_set_runtime(snapshot, config);
+	EXPECT_EQ(admitted.status, MultiwayWorkingSetGateStatus::Admitted);
+	EXPECT_EQ(admitted.observed_private_commit_bytes, 60U);
+}
+
 TEST_CASE(multiway_memory_preflight_stops_before_rejected_row_allocation)
 {
 	const auto roomy = texas::preflight_multiway_memory(

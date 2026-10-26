@@ -898,7 +898,8 @@ namespace
 		config.memory_subsystem_snapshots = memory_subsystem_snapshots;
 		config.working_set_monitor.gate = {
 			workflow.process_working_set_limit_bytes,
-			workflow.process_working_set_resident_allowance_bytes
+			workflow.process_working_set_resident_allowance_bytes,
+			MULTIWAY_COMPAT_PROCESS_WORKING_SET_LIMIT_BYTES
 		};
 		config.working_set_monitor.system_memory_guard = {
 			true, MULTIWAY_DEFAULT_SYSTEM_MEMORY_RESERVE_BYTES

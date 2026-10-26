@@ -762,6 +762,7 @@ namespace texas::solver::multiway
 	{
 		std::uint64_t hard_limit_bytes = MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES;
 		std::uint64_t resident_allowance_bytes = 0U;
+		std::uint64_t private_commit_limit_bytes = 0U;
 
 		void validate() const;
 	};
@@ -776,6 +777,7 @@ namespace texas::solver::multiway
 		std::uint64_t estimated_working_set_bytes = 0U;
 		std::uint64_t compared_working_set_bytes = 0U;
 		std::uint64_t observed_working_set_bytes = 0U;
+		std::uint64_t observed_private_commit_bytes = 0U;
 		const char* rejected_category = "none";
 		const char* message = "disabled";
 

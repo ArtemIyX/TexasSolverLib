@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 8.3 - Fail closed on private-commit telemetry
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added an independent runtime private-commit ceiling to the working-set monitor. Training workflow samples must provide current or peak private-commit telemetry; missing telemetry blocks execution.
+- Configured the workflow with the existing 64 GiB process ceiling. The existing 48 GiB working-set gate remains active.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_memory.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build for `test_multiway_memory` and `texas_multiway_train`: passed.
+- Focused CTest for `test_multiway_memory`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This gate does not enable `ExternalCompactInt32` workflow training; external checkpoint/resume and full disk preflight integration remain incomplete.
+
 ## PB-12 Phase 7.2 - Add incremental sharded writer
 
 **Status:** In progress
