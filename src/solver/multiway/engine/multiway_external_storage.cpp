@@ -517,6 +517,72 @@ namespace texas::solver::multiway
 		return true;
 	}
 
+	namespace
+	{
+		std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U>
+		load_checkpoint_segment_references(const std::filesystem::path& storage_directory,
+			std::array<std::uint64_t, 3U>* component_generations = nullptr)
+		{
+			std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U> references;
+			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
+			{
+				const auto path = storage_directory / kComponentNames[component] / "CURRENT";
+				std::ifstream input(path, std::ios::binary);
+				if (!input) throw std::invalid_argument("external checkpoint component manifest is missing");
+				std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
+					std::istreambuf_iterator<char>());
+				constexpr std::size_t fixed_bytes = 48U;
+				if (bytes.size() < fixed_bytes ||
+					!std::equal(kManifestMagic.begin(), kManifestMagic.end(), bytes.begin()) ||
+					read_u32(bytes.data() + 8U) != kSchema)
+					throw std::invalid_argument("external checkpoint component manifest header is invalid");
+				if (component_generations != nullptr)
+					(*component_generations)[component] = read_u64(bytes.data() + 16U);
+				const auto run_count = read_u64(bytes.data() + 24U);
+				if (run_count > (bytes.size() - fixed_bytes) / 24U ||
+					bytes.size() != fixed_bytes + run_count * 24U)
+					throw std::invalid_argument("external checkpoint component run count is invalid");
+				auto checksum = kHashOffset;
+				for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+					texas::core::fingerprint::append_u8(checksum, bytes[index]);
+				if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + bytes.size() - 8U))
+					throw std::invalid_argument("external checkpoint component manifest checksum is invalid");
+				auto& component_refs = references[component];
+				component_refs.reserve(static_cast<std::size_t>(run_count));
+				std::size_t cursor = 40U;
+				std::uint64_t previous_generation = 0U;
+				for (std::uint64_t run = 0U; run < run_count; ++run)
+				{
+					MultiwayExternalCheckpointManifest::SegmentReference reference{};
+					reference.generation = read_u64(bytes.data() + cursor); cursor += 8U;
+					reference.record_count = read_u64(bytes.data() + cursor); cursor += 8U;
+					reference.content_hash = read_u64(bytes.data() + cursor); cursor += 8U;
+					if (reference.generation <= previous_generation || reference.record_count == 0U)
+						throw std::invalid_argument("external checkpoint component runs are not ordered");
+					previous_generation = reference.generation;
+					component_refs.push_back(reference);
+				}
+			}
+			return references;
+		}
+
+		bool same_checkpoint_segments(
+			const std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U>& left,
+			const std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U>& right)
+		{
+			for (std::size_t component = 0U; component < left.size(); ++component)
+			{
+				if (left[component].size() != right[component].size()) return false;
+				for (std::size_t run = 0U; run < left[component].size(); ++run)
+					if (left[component][run].generation != right[component][run].generation ||
+						left[component][run].record_count != right[component][run].record_count ||
+						left[component][run].content_hash != right[component][run].content_hash)
+						return false;
+			}
+			return true;
+		}
+	}
+
 	void save_multiway_external_checkpoint_manifest(
 		const std::filesystem::path& path,
 		const std::filesystem::path& external_storage_directory,
@@ -527,11 +593,18 @@ namespace texas::solver::multiway
 		const auto& generation = manifest.generation;
 		MultiwayExternalGenerationManifest current_generation{};
 		if (path.empty() || external_storage_directory.empty() ||
-			!load_multiway_external_generation(external_storage_directory, current_generation) ||
+			!load_multiway_external_generation(external_storage_directory, current_generation))
+			throw std::invalid_argument("external checkpoint manifest identity is invalid");
+		std::array<std::uint64_t, 3U> component_generations{};
+		const auto segment_references = load_checkpoint_segment_references(
+			external_storage_directory, &component_generations);
+		if (
 			manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA ||
 			manifest.model_identity_hash == 0U || manifest.workflow_identity_hash == 0U ||
 			manifest.storage_identity_hash == 0U || manifest.schedule_hash == 0U ||
 			generation.generation == 0U || generation.committed_batch_number == 0U ||
+			manifest.wal_generation != generation.committed_batch_number ||
+			manifest.wal_committed_offset != 0U ||
 			generation.merge_fingerprint == 0U ||
 			generation.generation != current_generation.generation ||
 			generation.committed_batch_number != current_generation.committed_batch_number ||
@@ -544,6 +617,8 @@ namespace texas::solver::multiway
 			generation.page_count != current_generation.page_count ||
 			generation.logical_value_count != current_generation.logical_value_count ||
 			generation.content_hash != current_generation.content_hash ||
+			component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation,
+				generation.row_generation, generation.page_generation } ||
 			((generation.row_count == 0U) != (generation.logical_value_count == 0U)))
 			throw std::invalid_argument("external checkpoint manifest identity is invalid");
 		std::vector<std::uint8_t> bytes{ 'T','X','M','W','C','P','6','1' };
@@ -554,6 +629,8 @@ namespace texas::solver::multiway
 		append_u64(bytes, manifest.storage_identity_hash);
 		append_u64(bytes, manifest.schedule_hash);
 		append_u64(bytes, manifest.completed_trajectories);
+		append_u64(bytes, generation.committed_batch_number);
+		append_u64(bytes, 0U);
 		append_u64(bytes, generation.generation);
 		append_u64(bytes, generation.committed_batch_number);
 		append_u64(bytes, generation.merge_fingerprint);
@@ -565,6 +642,16 @@ namespace texas::solver::multiway
 		append_u64(bytes, generation.page_count);
 		append_u64(bytes, generation.logical_value_count);
 		append_u64(bytes, generation.content_hash);
+		for (const auto& component : segment_references)
+		{
+			append_u64(bytes, component.size());
+			for (const auto& segment : component)
+			{
+				append_u64(bytes, segment.generation);
+				append_u64(bytes, segment.record_count);
+				append_u64(bytes, segment.content_hash);
+			}
+		}
 		auto checksum = kHashOffset;
 		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
 		append_u64(bytes, texas::core::fingerprint::finish(checksum));
@@ -600,12 +687,12 @@ namespace texas::solver::multiway
 		std::uint64_t expected_storage_identity_hash,
 		std::uint64_t expected_schedule_hash)
 	{
-		constexpr std::size_t kSerializedBytes = 152U;
+		constexpr std::size_t kMinimumSerializedBytes = 192U;
 		std::error_code error;
 		const auto length = std::filesystem::file_size(path, error);
-		if (error || length != kSerializedBytes)
+		if (error || length < kMinimumSerializedBytes || length > std::numeric_limits<std::size_t>::max())
 			throw std::invalid_argument("external checkpoint manifest size is invalid");
-		std::array<std::uint8_t, kSerializedBytes> bytes{};
+		std::vector<std::uint8_t> bytes(static_cast<std::size_t>(length));
 		std::ifstream input(path, std::ios::binary);
 		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
 		constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','C','P','6','1' };
@@ -627,6 +714,8 @@ namespace texas::solver::multiway
 		decoded.storage_identity_hash = read_field();
 		decoded.schedule_hash = read_field();
 		decoded.completed_trajectories = read_field();
+		decoded.wal_generation = read_field();
+		decoded.wal_committed_offset = read_field();
 		auto& generation = decoded.generation;
 		generation.generation = read_field();
 		generation.committed_batch_number = read_field();
@@ -639,6 +728,27 @@ namespace texas::solver::multiway
 		generation.page_count = read_field();
 		generation.logical_value_count = read_field();
 		generation.content_hash = read_field();
+		for (auto& component : decoded.segments)
+		{
+			if (cursor > bytes.size() - 8U || bytes.size() - 8U - cursor < 8U)
+				throw std::invalid_argument("external checkpoint segment list is truncated");
+			const auto count = read_field();
+			if (count > (bytes.size() - 8U - cursor) / 24U)
+				throw std::invalid_argument("external checkpoint segment count is invalid");
+			component.reserve(static_cast<std::size_t>(count));
+			std::uint64_t previous_generation = 0U;
+			for (std::uint64_t index = 0U; index < count; ++index)
+			{
+				MultiwayExternalCheckpointManifest::SegmentReference reference{};
+				reference.generation = read_field();
+				reference.record_count = read_field();
+				reference.content_hash = read_field();
+				if (reference.generation <= previous_generation || reference.record_count == 0U)
+					throw std::invalid_argument("external checkpoint segment ordering is invalid");
+				previous_generation = reference.generation;
+				component.push_back(reference);
+			}
+		}
 		MultiwayExternalGenerationManifest current_generation{};
 		if (external_storage_directory.empty() ||
 			!load_multiway_external_generation(external_storage_directory, current_generation))
@@ -656,7 +766,16 @@ namespace texas::solver::multiway
 				generation.logical_value_count == current_generation.logical_value_count &&
 				generation.content_hash == current_generation.content_hash;
 		};
-		if (cursor != bytes.size() - 8U || expected_model_identity_hash == 0U ||
+		std::array<std::uint64_t, 3U> component_generations{};
+		const auto current_segments = load_checkpoint_segment_references(
+			external_storage_directory, &component_generations);
+		if (cursor != bytes.size() - 8U ||
+			decoded.wal_generation != generation.committed_batch_number ||
+			decoded.wal_committed_offset != 0U ||
+			!same_checkpoint_segments(decoded.segments, current_segments) ||
+			component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation,
+				generation.row_generation, generation.page_generation } ||
+			expected_model_identity_hash == 0U ||
 			expected_workflow_identity_hash == 0U || expected_storage_identity_hash == 0U ||
 			expected_schedule_hash == 0U || decoded.model_identity_hash != expected_model_identity_hash ||
 			decoded.workflow_identity_hash != expected_workflow_identity_hash ||

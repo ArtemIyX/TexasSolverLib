@@ -44,6 +44,46 @@ namespace
 		return { path, 4096U, 4096U, 4096U, 2U, 8192U, 1U, false };
 	}
 
+	void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
+	{
+		for (unsigned shift = 0U; shift < 32U; shift += 8U)
+			bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+	}
+
+	void append_u64(std::vector<std::uint8_t>& bytes, std::uint64_t value)
+	{
+		for (unsigned shift = 0U; shift < 64U; shift += 8U)
+			bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+	}
+
+	void write_empty_component_manifests(const std::filesystem::path& directory,
+		const texas::solver::multiway::MultiwayExternalGenerationManifest& generation)
+	{
+		const std::array<std::pair<const char*, std::uint64_t>, 3U> components = {{
+			{ "catalog", generation.catalog_generation },
+			{ "rows", generation.row_generation },
+			{ "pages", generation.page_generation },
+		}};
+		for (const auto& component : components)
+		{
+			const auto component_directory = directory / component.first;
+			std::filesystem::create_directories(component_directory);
+			std::vector<std::uint8_t> bytes{ 'T','X','M','W','E','X','T','1' };
+			append_u32(bytes, 1U);
+			append_u32(bytes, 8U);
+			append_u64(bytes, component.second);
+			append_u64(bytes, 0U);
+			append_u64(bytes, generation.committed_batch_number);
+			auto hash = texas::core::fingerprint::FNV1A_OFFSET;
+			for (const auto byte : bytes)
+				texas::core::fingerprint::append_u8(hash, byte);
+			append_u64(bytes, texas::core::fingerprint::finish(hash));
+			std::ofstream output(component_directory / "CURRENT", std::ios::binary);
+			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			if (!output) throw std::runtime_error("test component manifest cannot be written");
+		}
+	}
+
 	std::vector<texas::solver::multiway::MultiwayExternalRecord> records(std::uint64_t start)
 	{
 		using texas::solver::multiway::MultiwayExternalRecord;
@@ -216,6 +256,8 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	checkpoint.schedule_hash = 14U;
 	checkpoint.completed_trajectories = 500U;
 	checkpoint.generation = { 7U, 6U, 15U, 4U, 3U, 5U, 2U, 8U, 9U, 10U, 16U };
+	checkpoint.wal_generation = 6U;
+	write_empty_component_manifests(storage_directory, checkpoint.generation);
 	publish_multiway_external_generation(storage_directory, checkpoint.generation, false);
 	save_multiway_external_checkpoint_manifest(path, storage_directory, checkpoint, false);
 	const auto loaded = load_multiway_external_checkpoint_manifest(path, storage_directory,
@@ -239,12 +281,14 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 		auto committed_newer_generation = newer_generation;
 		committed_newer_generation.committed_batch_number = 7U;
 		committed_newer_generation.merge_fingerprint = 17U;
+		write_empty_component_manifests(storage_directory, committed_newer_generation);
 		publish_multiway_external_generation(storage_directory, committed_newer_generation, false);
 		static_cast<void>(load_multiway_external_checkpoint_manifest(path, storage_directory,
 			11U, 12U, 13U, 14U));
 	}
 	catch (const std::invalid_argument&) { generation_mismatch_rejected = true; }
 	EXPECT_TRUE(generation_mismatch_rejected);
+	write_empty_component_manifests(storage_directory, checkpoint.generation);
 	publish_multiway_external_generation(storage_directory, checkpoint.generation, false);
 	{
 		std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
@@ -278,6 +322,8 @@ TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_pr
 	checkpoint.storage_identity_hash = 13U;
 	checkpoint.schedule_hash = 14U;
 	checkpoint.generation = { 7U, 6U, 15U, 4U, 3U, 5U, 2U, 8U, 9U, 10U, 16U };
+	checkpoint.wal_generation = 6U;
+	write_empty_component_manifests(storage_directory, checkpoint.generation);
 	publish_multiway_external_generation(storage_directory, checkpoint.generation, false);
 	save_multiway_external_checkpoint_manifest(path, storage_directory, checkpoint, false);
 	auto next = checkpoint;

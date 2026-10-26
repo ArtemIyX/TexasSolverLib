@@ -78,13 +78,22 @@ namespace texas::solver::multiway
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA = 6U;
 	struct MultiwayExternalCheckpointManifest
 	{
+		struct SegmentReference
+		{
+			std::uint64_t generation = 0U;
+			std::uint64_t record_count = 0U;
+			std::uint64_t content_hash = 0U;
+		};
 		std::uint32_t backend_schema = MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA;
 		std::uint64_t model_identity_hash = 0U;
 		std::uint64_t workflow_identity_hash = 0U;
 		std::uint64_t storage_identity_hash = 0U;
 		std::uint64_t schedule_hash = 0U;
 		std::uint64_t completed_trajectories = 0U;
+		std::uint64_t wal_generation = 0U;
+		std::uint64_t wal_committed_offset = 0U;
 		MultiwayExternalGenerationManifest generation{};
+		std::array<std::vector<SegmentReference>, 3U> segments;
 	};
 
 	struct MultiwayExternalCheckpointWriteOptions
