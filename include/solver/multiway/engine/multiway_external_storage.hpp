@@ -12,10 +12,13 @@ namespace texas::solver::multiway
 {
 	struct MultiwayPackedPublicNode;
 	struct MultiwayPublicStateId;
+	struct MultiwayPublicStateDescriptor;
+	struct MultiwayActionDescriptor;
 	struct MultiwaySparseRowShape;
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA = 1U;
 	[[nodiscard]] std::size_t external_public_node_record_size() noexcept;
+	[[nodiscard]] std::size_t external_public_catalog_record_size() noexcept;
 
 	// Explicit little-endian codec. The on-disk form never depends on C++ padding.
 	void encode_external_public_node(const MultiwayPackedPublicNode& node,
@@ -177,9 +180,17 @@ namespace texas::solver::multiway
 	public:
 		MultiwayExternalPublicCatalog(MultiwayExternalStorageConfig config,
 			std::size_t maximum_ancestry_depth);
+		// This overload stores an empty menu. Use the descriptor overload when
+		// nodes have legal actions.
 		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayPackedPublicNode>& nodes);
+		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+			const std::vector<MultiwayPackedPublicNode>& nodes,
+			const std::vector<MultiwayPublicStateDescriptor>& descriptors);
 		[[nodiscard]] bool lookup(MultiwayPublicStateId id, MultiwayPackedPublicNode& output) const;
+		[[nodiscard]] bool lookup_menu(MultiwayPublicStateId id,
+			MultiwayActionDescriptor* output, std::size_t output_capacity,
+			std::size_t& action_count) const;
 		[[nodiscard]] bool contains(MultiwayPublicStateId id) const;
 		[[nodiscard]] bool reconstruct_chain(MultiwayPublicStateId id,
 			std::vector<MultiwayPackedPublicNode>& parent_first_output) const;

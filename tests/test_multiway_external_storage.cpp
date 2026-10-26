@@ -1,6 +1,7 @@
 #include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
+#include "solver/multiway/abstraction/multiway_action_abstraction.hpp"
 #include "test_harness.hpp"
 
 #include <algorithm>
@@ -372,6 +373,9 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 		EXPECT_EQ(chain.size(), 2U);
 		EXPECT_EQ(chain[0].id.value, root.id.value);
 		EXPECT_EQ(chain[1].id.value, child.id.value);
+		std::size_t empty_menu_count = 99U;
+		EXPECT_TRUE(catalog.lookup_menu(child.id, nullptr, 0U, empty_menu_count));
+		EXPECT_EQ(empty_menu_count, 0U);
 		bool duplicate_rejected = false;
 		try { catalog.append_batch(2U, 0x45U, { child }); }
 		catch (const std::invalid_argument&) { duplicate_rejected = true; }
@@ -381,6 +385,37 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 	MultiwayPackedPublicNode found{};
 	EXPECT_TRUE(reopened.lookup(child.id, found));
 	EXPECT_EQ(found.parent_id.value, root.id.value);
+}
+
+TEST_CASE(multiway_external_public_catalog_persists_action_menus)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayPackedPublicNode root{};
+	root.id.value = 11U;
+	root.legal_menu_handle = 4U;
+	MultiwayPublicStateDescriptor descriptor{};
+	descriptor.id = root.id;
+	descriptor.legal_actions = {
+		{ texas::games::multiway::MultiwayAction::Check, 0U, 100, 0xabcU },
+		{ texas::games::multiway::MultiwayAction::Bet, 1U, 300, 0xabcU } };
+	{
+		MultiwayExternalPublicCatalog catalog(config(directory.path()), 8U);
+		catalog.append_batch(1U, 0x55U, { root }, { descriptor });
+		std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
+		std::size_t action_count = 0U;
+		EXPECT_TRUE(catalog.lookup_menu(root.id, actions.data(), actions.size(), action_count));
+		EXPECT_EQ(action_count, descriptor.legal_actions.size());
+		for (std::size_t index = 0U; index < action_count; ++index)
+			EXPECT_EQ(actions[index], descriptor.legal_actions[index]);
+	}
+	MultiwayExternalPublicCatalog reopened(config(directory.path()), 8U);
+	std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
+	std::size_t action_count = 0U;
+	EXPECT_TRUE(reopened.lookup_menu(root.id, actions.data(), actions.size(), action_count));
+	EXPECT_EQ(action_count, 2U);
+	EXPECT_EQ(actions[0].action_menu_id, 0xabcU);
+	EXPECT_EQ(external_public_catalog_record_size(), external_public_node_record_size() + 156U);
 }
 
 TEST_CASE(multiway_external_row_index_preserves_full_ids_and_deterministic_page_ranges)

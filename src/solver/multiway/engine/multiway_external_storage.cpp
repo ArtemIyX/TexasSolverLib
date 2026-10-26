@@ -35,10 +35,17 @@ namespace texas::solver::multiway
 		constexpr std::uint64_t kHashOffset = texas::core::fingerprint::FNV1A_OFFSET;
 		constexpr std::uint32_t kNodeRecordMagic = 0x314e574dU;
 		constexpr std::size_t kNodeRecordBytes = 225U;
+		constexpr std::uint32_t kCatalogMenuMagic = 0x314d574dU;
+		constexpr std::uint32_t kCatalogMenuSchema = 1U;
+		constexpr std::size_t kCatalogMenuHeaderBytes = 12U;
+		constexpr std::size_t kCatalogMenuActionBytes = 17U;
+		constexpr std::size_t kCatalogMenuChecksumBytes = 8U;
 		constexpr std::uint32_t kPageRecordMagic = 0x3150574dU;
 		constexpr std::uint32_t kPageRecordSchema = 1U;
 		constexpr std::size_t kPageRecordHeaderBytes = 40U;
 		constexpr std::size_t kPageRecordChecksumBytes = 8U;
+		constexpr std::size_t kCatalogMenuBytes = kCatalogMenuHeaderBytes +
+			MULTIWAY_MAX_ABSTRACTED_ACTIONS * kCatalogMenuActionBytes + kCatalogMenuChecksumBytes;
 		constexpr std::array<std::uint8_t, 8U> kTransactionWalMagic = { 'T','X','M','W','B','A','T','1' };
 		constexpr std::array<const char*, 3U> kComponentNames = { "catalog", "rows", "pages" };
 		constexpr std::array<const char*, 3U> kBackupNames = {
@@ -309,6 +316,11 @@ namespace texas::solver::multiway
 	std::size_t external_public_node_record_size() noexcept
 	{
 		return kNodeRecordBytes;
+	}
+
+	std::size_t external_public_catalog_record_size() noexcept
+	{
+		return kNodeRecordBytes + kCatalogMenuBytes;
 	}
 
 	void publish_multiway_external_generation(const std::filesystem::path& directory,
@@ -1306,7 +1318,7 @@ namespace texas::solver::multiway
 
 	MultiwayExternalPublicCatalog::MultiwayExternalPublicCatalog(
 		MultiwayExternalStorageConfig config, std::size_t maximum_ancestry_depth)
-		: store_(std::move(config), external_public_node_record_size()),
+		: store_(std::move(config), external_public_catalog_record_size()),
 		  maximum_ancestry_depth_(maximum_ancestry_depth)
 	{
 		if (maximum_ancestry_depth_ == 0U)
@@ -1319,16 +1331,91 @@ namespace texas::solver::multiway
 		if (nodes.empty()) return;
 		std::vector<MultiwayExternalRecord> records;
 		records.reserve(nodes.size());
+		std::vector<std::uint8_t> node_bytes;
 		std::vector<std::uint8_t> payload;
 		for (std::size_t index = 0U; index < nodes.size(); ++index)
 		{
 			if (nodes[index].id.value == 0U ||
+				nodes[index].legal_menu_handle != 0U ||
 				(index != 0U && nodes[index - 1U].id.value >= nodes[index].id.value))
-				throw std::invalid_argument("external public catalog batch must be sorted by unique state id");
+				throw std::invalid_argument("external menu-less catalog batch requires sorted unique states with menu handle zero");
 			if (contains(nodes[index].id))
 				throw std::invalid_argument("external public catalog cannot append an existing state id");
-			encode_external_public_node(nodes[index], payload);
+			encode_external_public_node(nodes[index], node_bytes);
+			payload = node_bytes;
+			append_u32(payload, kCatalogMenuMagic);
+			append_u32(payload, kCatalogMenuSchema);
+			append_u32(payload, 0U);
+			payload.resize(external_public_catalog_record_size() - kCatalogMenuChecksumBytes, 0U);
+			auto checksum = kHashOffset;
+			for (std::size_t byte = node_bytes.size(); byte < payload.size(); ++byte)
+				texas::core::fingerprint::append_u8(checksum, payload[byte]);
+			append_u64(payload, texas::core::fingerprint::finish(checksum));
 			records.push_back({ nodes[index].id.value, payload });
+		}
+		store_.append_batch(batch_number, merge_fingerprint, records);
+	}
+
+	void MultiwayExternalPublicCatalog::append_batch(std::uint64_t batch_number,
+		std::uint64_t merge_fingerprint, const std::vector<MultiwayPackedPublicNode>& nodes,
+		const std::vector<MultiwayPublicStateDescriptor>& descriptors)
+	{
+		if (nodes.size() != descriptors.size())
+			throw std::invalid_argument("external public catalog descriptors do not match packed nodes");
+		if (nodes.empty()) return;
+		std::vector<MultiwayExternalRecord> records;
+		records.reserve(nodes.size());
+		std::vector<std::uint8_t> node_bytes;
+		std::vector<std::uint8_t> payload;
+		for (std::size_t index = 0U; index < nodes.size(); ++index)
+		{
+			const auto& node = nodes[index];
+			const auto& descriptor = descriptors[index];
+			if (node.id.value == 0U || descriptor.id != node.id ||
+				(index != 0U && nodes[index - 1U].id.value >= node.id.value) ||
+				descriptor.legal_actions.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+				throw std::invalid_argument("external public catalog batch has invalid identity, order, or menu size");
+			if (contains(node.id))
+				throw std::invalid_argument("external public catalog cannot append an existing state id");
+			for (std::size_t action = 0U; action < descriptor.legal_actions.size(); ++action)
+			{
+				const auto& item = descriptor.legal_actions[action];
+				if (static_cast<std::uint8_t>(item.action) > static_cast<std::uint8_t>(MultiwayAction::AllIn) ||
+					item.action_index != action || item.target_street_contribution < 0 || item.action_menu_id == 0U ||
+					(action != 0U && (item.action_menu_id != descriptor.legal_actions.front().action_menu_id ||
+						static_cast<std::uint8_t>(item.action) < static_cast<std::uint8_t>(descriptor.legal_actions[action - 1U].action) ||
+						(item.action == descriptor.legal_actions[action - 1U].action &&
+							item.target_street_contribution <= descriptor.legal_actions[action - 1U].target_street_contribution))))
+					throw std::invalid_argument("external public catalog action menu is not canonical");
+			}
+			auto external_node = node;
+			external_node.legal_menu_handle = 0U;
+			encode_external_public_node(external_node, node_bytes);
+			payload = node_bytes;
+			const auto menu_start = payload.size();
+			append_u32(payload, kCatalogMenuMagic);
+			append_u32(payload, kCatalogMenuSchema);
+			append_u32(payload, static_cast<std::uint32_t>(descriptor.legal_actions.size()));
+			for (std::size_t action = 0U; action < MULTIWAY_MAX_ABSTRACTED_ACTIONS; ++action)
+			{
+				if (action < descriptor.legal_actions.size())
+				{
+					const auto& item = descriptor.legal_actions[action];
+					payload.push_back(static_cast<std::uint8_t>(item.action));
+					append_u32(payload, item.action_index);
+					append_i32(payload, item.target_street_contribution);
+					append_u64(payload, item.action_menu_id);
+				}
+				else
+					payload.insert(payload.end(), kCatalogMenuActionBytes, 0U);
+			}
+			auto checksum = kHashOffset;
+			for (std::size_t byte = menu_start; byte < payload.size(); ++byte)
+				texas::core::fingerprint::append_u8(checksum, payload[byte]);
+			append_u64(payload, texas::core::fingerprint::finish(checksum));
+			if (payload.size() != external_public_catalog_record_size())
+				throw std::logic_error("external catalog record width changed without a schema update");
+			records.push_back({ node.id.value, payload });
 		}
 		store_.append_batch(batch_number, merge_fingerprint, records);
 	}
@@ -1339,7 +1426,52 @@ namespace texas::solver::multiway
 		if (id.value == 0U) return false;
 		std::vector<std::uint8_t> payload;
 		if (!store_.lookup(id.value, payload)) return false;
-		return decode_external_public_node(payload.data(), payload.size(), output) && output.id == id;
+		return payload.size() == external_public_catalog_record_size() &&
+			decode_external_public_node(payload.data(), external_public_node_record_size(), output) && output.id == id;
+	}
+
+	bool MultiwayExternalPublicCatalog::lookup_menu(MultiwayPublicStateId id,
+		MultiwayActionDescriptor* output, std::size_t output_capacity, std::size_t& action_count) const
+	{
+		action_count = 0U;
+		if (id.value == 0U) return false;
+		std::vector<std::uint8_t> payload;
+		if (!store_.lookup(id.value, payload) || payload.size() != external_public_catalog_record_size()) return false;
+		const auto* menu = payload.data() + external_public_node_record_size();
+		if (read_u32(menu) != kCatalogMenuMagic || read_u32(menu + 4U) != kCatalogMenuSchema)
+			throw std::invalid_argument("external public catalog menu header is invalid");
+		const auto count = read_u32(menu + 8U);
+		if (count > MULTIWAY_MAX_ABSTRACTED_ACTIONS || count > output_capacity || (count != 0U && output == nullptr))
+			throw std::invalid_argument("external public catalog menu output or count is invalid");
+		auto checksum = kHashOffset;
+		for (std::size_t byte = 0U; byte < kCatalogMenuBytes - kCatalogMenuChecksumBytes; ++byte)
+			texas::core::fingerprint::append_u8(checksum, menu[byte]);
+		if (texas::core::fingerprint::finish(checksum) !=
+			read_u64(menu + kCatalogMenuBytes - kCatalogMenuChecksumBytes))
+			throw std::invalid_argument("external public catalog menu checksum is invalid");
+		const auto* action_bytes = menu + kCatalogMenuHeaderBytes;
+		std::uint64_t menu_id = 0U;
+		for (std::size_t index = 0U; index < MULTIWAY_MAX_ABSTRACTED_ACTIONS; ++index)
+		{
+			const auto* item = action_bytes + index * kCatalogMenuActionBytes;
+			if (index >= count)
+			{
+				for (std::size_t byte = 0U; byte < kCatalogMenuActionBytes; ++byte)
+					if (item[byte] != 0U) throw std::invalid_argument("external public catalog menu padding is invalid");
+				continue;
+			}
+			const auto action_kind = item[0];
+			const auto action_index = read_u32(item + 1U);
+			const auto target = read_i32(item + 5U);
+			const auto current_menu_id = read_u64(item + 9U);
+			if (action_kind > static_cast<std::uint8_t>(MultiwayAction::AllIn) || action_index != index ||
+				target < 0 || current_menu_id == 0U || (index != 0U && current_menu_id != menu_id))
+				throw std::invalid_argument("external public catalog action record is invalid");
+			menu_id = current_menu_id;
+			output[index] = { static_cast<MultiwayAction>(action_kind), action_index, target, current_menu_id };
+		}
+		action_count = count;
+		return true;
 	}
 
 	bool MultiwayExternalPublicCatalog::contains(MultiwayPublicStateId id) const

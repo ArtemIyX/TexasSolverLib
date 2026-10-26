@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.6 - Persist external catalog action menus
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended external catalog records with a versioned, checksummed fixed-width legal-action menu payload, so packed nodes no longer depend on an in-memory menu handle after restart.
+- Added descriptor-based append and bounded caller-buffer lookup. Retained the standalone packed-node codec; the node-only catalog append path is explicitly menu-less.
+- External catalog records are now 381 bytes: the 225-byte node codec plus a 156-byte menu record.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build for external storage, workflow config, solver, and memory tests: passed.
+- Focused CTest for external storage, workflow config, solver, and memory: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Catalog action-menu persistence is a storage primitive only. Coordinator admission, descriptor reconstruction, and external backend runtime selection remain unintegrated and fail-closed.
+
 ## PB-12 Phase 5.6 - Post-commit cleanup failure coverage
 
 **Status:** Complete
