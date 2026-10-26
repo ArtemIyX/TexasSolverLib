@@ -1,5 +1,33 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.6 - Commit prepared admission batches externally
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added external catalog classification, row-shape preflight, append, deterministic component compaction, and atomic generation publication to prepared coordinator admission.
+- External row and logical-value totals are read from the committed manifest and advanced with checked coordinator capacity limits.
+- Added a catalog classification overload that uses one fixed packed-node scratch record rather than materializing one packed node per candidate.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The request-level external execution gate remains. This milestone does not validate traversal row/page access or external merge integration.
+
 ## PB-12 Phase 3.5 - Route coordinator state reads through external catalog
 
 **Status:** Complete

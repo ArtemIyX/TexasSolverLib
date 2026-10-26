@@ -516,6 +516,32 @@ namespace texas::solver::multiway
 			return hash == 0U ? 1U : hash;
 		}
 
+		std::uint64_t admission_batch_fingerprint(
+			std::uint64_t batch_number,
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			const std::vector<std::uint8_t>& new_state_flags,
+			const std::vector<MultiwaySparseRowShape>& rows) noexcept
+		{
+			std::uint64_t hash = 1469598103934665603ULL;
+			hash_u64(batch_number, hash);
+			hash_u64(states.size(), hash);
+			for (std::size_t index = 0U; index < states.size(); ++index)
+			{
+				hash_u64(states[index].id.value, hash);
+				hash_u64(states[index].parent_id.value, hash);
+				hash_u64(new_state_flags[index], hash);
+			}
+			hash_u64(rows.size(), hash);
+			for (const auto& row : rows)
+			{
+				hash_u64(row.infoset.public_state.value, hash);
+				hash_u64(static_cast<std::uint64_t>(static_cast<std::int64_t>(row.infoset.seat)), hash);
+				hash_u64(row.bucket_count, hash);
+				hash_u64(row.action_count, hash);
+			}
+			return hash == 0U ? 1U : hash;
+		}
+
 		struct PublicStateValidationMetadata
 		{
 			std::uint64_t canonical_menu_id = 0U;
@@ -1368,7 +1394,10 @@ namespace texas::solver::multiway
 		const auto classification_started = std::chrono::steady_clock::now();
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.classify_public_states");
-			public_catalog_.classify_new_states(public_states, admission_new_states_, admission_existing_nodes_);
+			if (external_storage_ != nullptr)
+				external_storage_->catalog().classify_batch(public_states, admission_new_states_);
+			else
+				public_catalog_.classify_new_states(public_states, admission_new_states_, admission_existing_nodes_);
 		}
 		if (admission_diagnostics_ != nullptr)
 			admission_diagnostics_->state_catalog_classification_nanoseconds += static_cast<std::uint64_t>(
@@ -1397,15 +1426,18 @@ namespace texas::solver::multiway
 					++admission_diagnostics_->existing_public_state_checks;
 					++admission_diagnostics_->packed_public_state_compatibility_checks;
 				}
-				if (!public_catalog_.compatible_with_descriptor(admission_existing_nodes_[state_index], state))
+				MultiwayPublicStateDescriptor existing;
+				const bool compatible = external_storage_ != nullptr
+					? external_storage_->catalog().reconstruct(state.id, existing) &&
+						public_state_candidates_compatible(existing, state)
+					: public_catalog_.compatible_with_descriptor(admission_existing_nodes_[state_index], state);
+				if (!compatible)
 				{
-					MultiwayPublicStateDescriptor existing;
-					if (!public_catalog_.reconstruct(state.id, existing))
+					if (external_storage_ == nullptr && !public_catalog_.reconstruct(state.id, existing))
 						throw std::logic_error("multiway public state conflict could not reconstruct catalog state");
 					throw_conflicting_public_state_descriptors(existing, state);
 				}
-				const auto* existing = admission_existing_nodes_[state_index];
-				if (existing == nullptr)
+				if (external_storage_ == nullptr && admission_existing_nodes_[state_index] == nullptr)
 					throw std::logic_error("multiway public state classification lost its catalog node");
 				admission_state_fixed_states_[state_index] = make_multiway_fixed_state(state.betting);
 				record_state_metadata(state_index, PublicStateValidationMetadata{ state.legal_actions.empty() ? 0U : state.legal_actions.front().action_menu_id, static_cast<std::uint8_t>(state.legal_actions.size()), static_cast<std::uint8_t>(state.betting.street), state.betting.current_player, admission_state_fixed_states_[state_index].next_node_kind() });
@@ -1428,7 +1460,10 @@ namespace texas::solver::multiway
 					std::chrono::duration_cast<std::chrono::nanoseconds>(
 						std::chrono::steady_clock::now() - validation_started)
 						.count());
-			if (public_catalog_.size() >= request_.limits().max_public_states || new_state_count >= request_.limits().max_public_states - public_catalog_.size())
+			const auto catalog_size = external_storage_ != nullptr
+				? static_cast<std::size_t>(external_storage_->current_manifest().public_state_count)
+				: public_catalog_.size();
+			if (catalog_size >= request_.limits().max_public_states || new_state_count >= request_.limits().max_public_states - catalog_size)
 				throw std::length_error("multiway public-state admission exceeds configured capacity");
 			if (state.parent_id.value != 0U)
 			{
@@ -1450,7 +1485,10 @@ namespace texas::solver::multiway
 				}
 				else
 				{
-					if (public_catalog_.reconstruct(state.parent_id, existing_parent))
+					const auto found_parent = external_storage_ != nullptr
+						? external_storage_->catalog().reconstruct(state.parent_id, existing_parent)
+						: public_catalog_.reconstruct(state.parent_id, existing_parent);
+					if (found_parent)
 					{
 						if (admission_diagnostics_ != nullptr)
 							++admission_diagnostics_->parent_catalog_resolutions;
@@ -1483,7 +1521,10 @@ namespace texas::solver::multiway
 
 		const auto row_preflight_started = std::chrono::steady_clock::now();
 		const auto compact = compact_storage_ != nullptr;
-		const auto current_row_count = compact ? compact_storage_->row_count() : storage_.row_count();
+		const auto external = external_storage_ != nullptr;
+		const auto current_row_count = external
+			? static_cast<std::size_t>(external_storage_->current_manifest().row_count)
+			: (compact ? compact_storage_->row_count() : storage_.row_count());
 		const auto& new_rows = admission_new_rows_;
 		const auto& new_row_streets = admission_new_row_streets_;
 		auto& row_state_indexes = admission_row_state_indexes_;
@@ -1516,7 +1557,9 @@ namespace texas::solver::multiway
 					++admission_diagnostics_->row_batch_state_resolutions;
 				state = &public_states[state_index];
 			}
-			else if (public_catalog_.node(shape.infoset.public_state) != nullptr && public_catalog_.reconstruct(shape.infoset.public_state, existing_state))
+			else if ((external
+					? external_storage_->catalog().reconstruct(shape.infoset.public_state, existing_state)
+					: public_catalog_.node(shape.infoset.public_state) != nullptr && public_catalog_.reconstruct(shape.infoset.public_state, existing_state)))
 			{
 				if (admission_diagnostics_ != nullptr)
 				{
@@ -1558,10 +1601,14 @@ namespace texas::solver::multiway
 				throw std::invalid_argument("multiway row action count must match its public action menu");
 			if (shape.infoset == request_.root().root_infoset && request_.root().root_bucket >= shape.bucket_count)
 				throw std::invalid_argument("multiway root bucket must fit its admitted sparse row");
-			const auto existing = compact ? compact_storage_->metadata(shape.infoset) : storage_.metadata(shape.infoset);
-			if (existing != nullptr)
+			const auto* existing = compact ? compact_storage_->metadata(shape.infoset) : storage_.metadata(shape.infoset);
+			MultiwayExternalRowBinding external_existing;
+			const bool external_row_exists = external && external_storage_->compact_storage().lookup_row(shape.infoset, external_existing);
+			if (existing != nullptr || external_row_exists)
 			{
-				if (existing->shape.bucket_count != shape.bucket_count || existing->shape.action_count != shape.action_count)
+				const auto existing_buckets = external_row_exists ? external_existing.bucket_count() : existing->shape.bucket_count;
+				const auto existing_actions = external_row_exists ? external_existing.action_count() : existing->shape.action_count;
+				if (existing_buckets != shape.bucket_count || existing_actions != shape.action_count)
 					throw std::invalid_argument("multiway sparse row shape conflicts");
 				continue;
 			}
@@ -1582,8 +1629,12 @@ namespace texas::solver::multiway
 		}
 		if (current_row_count > request_.limits().max_sparse_rows || new_row_count > request_.limits().max_sparse_rows - current_row_count)
 			throw std::length_error("multiway sparse row admission exceeds configured capacity");
-		const auto current_value_count = compact ? compact_storage_->value_count() : storage_.value_count();
-		const auto value_capacity = compact ? compact_storage_->configured_cell_capacity() : storage_.value_capacity_limit();
+		const auto current_value_count = external
+			? static_cast<std::size_t>(external_storage_->current_manifest().logical_value_count)
+			: (compact ? compact_storage_->value_count() : storage_.value_count());
+		const auto value_capacity = external
+			? request_.limits().max_sparse_values
+			: (compact ? compact_storage_->configured_cell_capacity() : storage_.value_capacity_limit());
 		if (current_value_count > value_capacity || new_value_count > value_capacity - current_value_count)
 			throw std::length_error("multiway prepared row admission exceeds configured value capacity");
 		if (admission_diagnostics_ != nullptr)
@@ -1595,15 +1646,16 @@ namespace texas::solver::multiway
 		const auto catalog_commit_started = std::chrono::steady_clock::now();
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.catalog_commit");
-			public_catalog_.admit_batch(
-				public_states,
-				new_states,
-				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds,
-				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_menu_lookup_nanoseconds,
-				admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_merge_nanoseconds,
-				admission_diagnostics_,
-				&admission_state_menu_keys_,
-				&admission_state_menu_handles_);
+			if (!external)
+				public_catalog_.admit_batch(
+					public_states,
+					new_states,
+					admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_insertion_nanoseconds,
+					admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_menu_lookup_nanoseconds,
+					admission_diagnostics_ == nullptr ? nullptr : &admission_diagnostics_->catalog_index_merge_nanoseconds,
+					admission_diagnostics_,
+					&admission_state_menu_keys_,
+					&admission_state_menu_handles_);
 		}
 		diagnostics_.public_states_admitted += static_cast<std::uint64_t>(new_state_count);
 		if (admission_diagnostics_ != nullptr)
@@ -1615,7 +1667,37 @@ namespace texas::solver::multiway
 		const auto storage_commit_started = std::chrono::steady_clock::now();
 		{
 			TEXASSOLVER_TRACY_ZONE_SCOPED("mw.coordinator.storage_commit");
-			if (compact)
+			if (external)
+			{
+				const auto batch_number = external_storage_->next_batch_number();
+				const auto fingerprint = admission_batch_fingerprint(
+					batch_number, public_states, new_states, rows);
+				external_storage_->begin_batch(batch_number);
+				try
+				{
+					if (new_state_count != 0U)
+						external_storage_->append_discovered_catalog(fingerprint, public_states, new_states);
+					std::vector<MultiwaySparseRowShape> admitted_rows;
+					admitted_rows.reserve(new_row_count);
+					for (std::size_t row_index = 0U; row_index < rows.size(); ++row_index)
+						if (new_rows[row_index] != 0U)
+							admitted_rows.push_back(rows[row_index]);
+					if (!admitted_rows.empty())
+						external_storage_->admit_rows(fingerprint, admitted_rows);
+					external_storage_->compact_components();
+					external_storage_->begin_page_batch();
+					const auto next_row_count = static_cast<std::uint64_t>(current_row_count) + new_row_count;
+					const auto next_value_count = static_cast<std::uint64_t>(current_value_count) + new_value_count;
+					external_storage_->commit_batch(fingerprint, next_row_count, next_value_count);
+				}
+				catch (...)
+				{
+					try { external_storage_->abort_batch(); }
+					catch (...) {}
+					throw;
+				}
+			}
+			else if (compact)
 				compact_storage_->admit_rows(rows, new_rows);
 			else
 				storage_.admit_rows(rows, new_rows);

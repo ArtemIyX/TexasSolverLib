@@ -204,6 +204,8 @@ namespace texas::solver::multiway
 		void classify_batch(const std::vector<MultiwayPublicStateDescriptor>& states,
 			std::vector<std::uint8_t>& new_state_flags,
 			std::vector<MultiwayPackedPublicNode>& existing_nodes) const;
+		void classify_batch(const std::vector<MultiwayPublicStateDescriptor>& states,
+			std::vector<std::uint8_t>& new_state_flags) const;
 		[[nodiscard]] bool lookup(MultiwayPublicStateId id, MultiwayPackedPublicNode& output) const;
 		[[nodiscard]] bool lookup_menu(MultiwayPublicStateId id,
 			MultiwayActionDescriptor* output, std::size_t output_capacity,

@@ -637,6 +637,9 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 		catalog.classify_batch({ root_candidate, child_candidate, new_candidate },
 			new_flags, existing_nodes);
 		EXPECT_EQ(new_flags, (std::vector<std::uint8_t>{ 0U, 0U, 1U }));
+		std::vector<std::uint8_t> bounded_flags;
+		catalog.classify_batch({ root_candidate, child_candidate, new_candidate }, bounded_flags);
+		EXPECT_EQ(bounded_flags, new_flags);
 		EXPECT_EQ(existing_nodes[0].id.value, root.id.value);
 		EXPECT_EQ(existing_nodes[1].id.value, child.id.value);
 		EXPECT_EQ(existing_nodes[2].id.value, 0U);
