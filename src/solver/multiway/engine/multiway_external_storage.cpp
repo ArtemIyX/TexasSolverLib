@@ -517,6 +517,136 @@ namespace texas::solver::multiway
 		return true;
 	}
 
+	void save_multiway_external_checkpoint_manifest(
+		const std::filesystem::path& path,
+		const MultiwayExternalCheckpointManifest& manifest,
+		bool synchronous_durability,
+		MultiwayExternalCheckpointWriteOptions options)
+	{
+		const auto& generation = manifest.generation;
+		if (path.empty() || manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA ||
+			manifest.model_identity_hash == 0U || manifest.workflow_identity_hash == 0U ||
+			manifest.storage_identity_hash == 0U || manifest.schedule_hash == 0U ||
+			generation.generation == 0U || generation.committed_batch_number == 0U ||
+			generation.merge_fingerprint == 0U ||
+			((generation.row_count == 0U) != (generation.logical_value_count == 0U)))
+			throw std::invalid_argument("external checkpoint manifest identity is invalid");
+		std::vector<std::uint8_t> bytes{ 'T','X','M','W','C','P','6','1' };
+		append_u32(bytes, MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA);
+		append_u32(bytes, manifest.backend_schema);
+		append_u64(bytes, manifest.model_identity_hash);
+		append_u64(bytes, manifest.workflow_identity_hash);
+		append_u64(bytes, manifest.storage_identity_hash);
+		append_u64(bytes, manifest.schedule_hash);
+		append_u64(bytes, manifest.completed_trajectories);
+		append_u64(bytes, generation.generation);
+		append_u64(bytes, generation.committed_batch_number);
+		append_u64(bytes, generation.merge_fingerprint);
+		append_u64(bytes, generation.catalog_generation);
+		append_u64(bytes, generation.public_state_count);
+		append_u64(bytes, generation.row_generation);
+		append_u64(bytes, generation.row_count);
+		append_u64(bytes, generation.page_generation);
+		append_u64(bytes, generation.page_count);
+		append_u64(bytes, generation.logical_value_count);
+		append_u64(bytes, generation.content_hash);
+		auto checksum = kHashOffset;
+		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
+		append_u64(bytes, texas::core::fingerprint::finish(checksum));
+		const auto temporary = std::filesystem::path(path.string() + ".tmp");
+		if (std::filesystem::exists(temporary))
+			throw std::runtime_error("external checkpoint manifest temporary path already exists");
+		struct TemporaryFileCleanup
+		{
+			std::filesystem::path path;
+			~TemporaryFileCleanup() noexcept { std::error_code ignored; std::filesystem::remove(path, ignored); }
+		} cleanup{ temporary };
+		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+		if (!output) throw std::runtime_error("external checkpoint manifest cannot be opened");
+		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		output.flush();
+		if (!output) throw std::runtime_error("external checkpoint manifest write failed");
+		output.close();
+		if (synchronous_durability) sync_file_path(temporary);
+		if (options.fail_before_publication)
+			throw std::runtime_error("injected external checkpoint manifest publication failure");
+		texas::core::publish_atomic_replace(temporary, path,
+			"external checkpoint manifest publish failed",
+			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+		if (synchronous_durability)
+			sync_directory_path(path.parent_path().empty() ? std::filesystem::path(".") : path.parent_path());
+	}
+
+	MultiwayExternalCheckpointManifest load_multiway_external_checkpoint_manifest(
+		const std::filesystem::path& path,
+		std::uint64_t expected_model_identity_hash,
+		std::uint64_t expected_workflow_identity_hash,
+		std::uint64_t expected_storage_identity_hash,
+		std::uint64_t expected_schedule_hash,
+		const MultiwayExternalGenerationManifest& current_generation)
+	{
+		constexpr std::size_t kSerializedBytes = 152U;
+		std::error_code error;
+		const auto length = std::filesystem::file_size(path, error);
+		if (error || length != kSerializedBytes)
+			throw std::invalid_argument("external checkpoint manifest size is invalid");
+		std::array<std::uint8_t, kSerializedBytes> bytes{};
+		std::ifstream input(path, std::ios::binary);
+		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','C','P','6','1' };
+		if (!input || !std::equal(magic.begin(), magic.end(), bytes.begin()) ||
+			read_u32(bytes.data() + 8U) != MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA ||
+			read_u32(bytes.data() + 12U) != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA)
+			throw std::invalid_argument("external checkpoint manifest header is invalid");
+		auto checksum = kHashOffset;
+		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+			texas::core::fingerprint::append_u8(checksum, bytes[index]);
+		if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + bytes.size() - 8U))
+			throw std::invalid_argument("external checkpoint manifest checksum is invalid");
+		MultiwayExternalCheckpointManifest decoded{};
+		decoded.backend_schema = read_u32(bytes.data() + 12U);
+		std::size_t cursor = 16U;
+		const auto read_field = [&]() { const auto value = read_u64(bytes.data() + cursor); cursor += 8U; return value; };
+		decoded.model_identity_hash = read_field();
+		decoded.workflow_identity_hash = read_field();
+		decoded.storage_identity_hash = read_field();
+		decoded.schedule_hash = read_field();
+		decoded.completed_trajectories = read_field();
+		auto& generation = decoded.generation;
+		generation.generation = read_field();
+		generation.committed_batch_number = read_field();
+		generation.merge_fingerprint = read_field();
+		generation.catalog_generation = read_field();
+		generation.public_state_count = read_field();
+		generation.row_generation = read_field();
+		generation.row_count = read_field();
+		generation.page_generation = read_field();
+		generation.page_count = read_field();
+		generation.logical_value_count = read_field();
+		generation.content_hash = read_field();
+		const auto same_generation = [&]() {
+			return generation.generation == current_generation.generation &&
+				generation.committed_batch_number == current_generation.committed_batch_number &&
+				generation.merge_fingerprint == current_generation.merge_fingerprint &&
+				generation.catalog_generation == current_generation.catalog_generation &&
+				generation.public_state_count == current_generation.public_state_count &&
+				generation.row_generation == current_generation.row_generation &&
+				generation.row_count == current_generation.row_count &&
+				generation.page_generation == current_generation.page_generation &&
+				generation.page_count == current_generation.page_count &&
+				generation.logical_value_count == current_generation.logical_value_count &&
+				generation.content_hash == current_generation.content_hash;
+		};
+		if (cursor != bytes.size() - 8U || expected_model_identity_hash == 0U ||
+			expected_workflow_identity_hash == 0U || expected_storage_identity_hash == 0U ||
+			expected_schedule_hash == 0U || decoded.model_identity_hash != expected_model_identity_hash ||
+			decoded.workflow_identity_hash != expected_workflow_identity_hash ||
+			decoded.storage_identity_hash != expected_storage_identity_hash ||
+			decoded.schedule_hash != expected_schedule_hash || !same_generation())
+			throw std::invalid_argument("external checkpoint manifest identity or generation mismatch");
+		return decoded;
+	}
+
 	MultiwayExternalBatchTransaction::MultiwayExternalBatchTransaction(
 		std::filesystem::path directory, bool synchronous_durability)
 		: directory_(std::move(directory)), synchronous_durability_(synchronous_durability)

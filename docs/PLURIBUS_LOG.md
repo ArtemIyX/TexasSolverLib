@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 6.1 - Add external checkpoint manifest codec
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a separate schema-6 external checkpoint manifest containing backend schema, model/workflow/storage identity hashes, schedule identity, completed trajectories, and the complete committed external generation identity.
+- Added atomic manifest publication, checksums, injected pre-publication failure, and verification against expected identities and the currently committed generation.
+- Kept the existing schema-5 monolithic checkpoint artifact reader and writer unchanged.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This codec verifies only the exact generation still published as current. Immutable run retention, restoring an older pinned generation, and workflow resume integration remain outstanding.
+- No training workflow was run.
+
 ## PB-12 Phases 3-5 - Validate external compact storage integration
 
 **Status:** Complete

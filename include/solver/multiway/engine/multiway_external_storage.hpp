@@ -75,6 +75,36 @@ namespace texas::solver::multiway
 		std::uint64_t content_hash = 0U;
 	};
 
+	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_CHECKPOINT_SCHEMA = 6U;
+	struct MultiwayExternalCheckpointManifest
+	{
+		std::uint32_t backend_schema = MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA;
+		std::uint64_t model_identity_hash = 0U;
+		std::uint64_t workflow_identity_hash = 0U;
+		std::uint64_t storage_identity_hash = 0U;
+		std::uint64_t schedule_hash = 0U;
+		std::uint64_t completed_trajectories = 0U;
+		MultiwayExternalGenerationManifest generation{};
+	};
+
+	struct MultiwayExternalCheckpointWriteOptions
+	{
+		bool fail_before_publication = false;
+	};
+
+	void save_multiway_external_checkpoint_manifest(
+		const std::filesystem::path& path,
+		const MultiwayExternalCheckpointManifest& manifest,
+		bool synchronous_durability,
+		MultiwayExternalCheckpointWriteOptions options = {});
+	[[nodiscard]] MultiwayExternalCheckpointManifest load_multiway_external_checkpoint_manifest(
+		const std::filesystem::path& path,
+		std::uint64_t expected_model_identity_hash,
+		std::uint64_t expected_workflow_identity_hash,
+		std::uint64_t expected_storage_identity_hash,
+		std::uint64_t expected_schedule_hash,
+		const MultiwayExternalGenerationManifest& current_generation);
+
 	void publish_multiway_external_generation(const std::filesystem::path& directory,
 		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability);
 	[[nodiscard]] bool load_multiway_external_generation(const std::filesystem::path& directory,
