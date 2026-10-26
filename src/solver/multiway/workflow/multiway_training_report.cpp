@@ -427,6 +427,11 @@ namespace texas::solver::multiway
 			   << ",\n  \"export_process_gate_reason\": \"" << multiway_export_process_rejection_reason_name(report.export_telemetry.process_gate.rejection_reason) << "\""
 			   << ",\n  \"export_process_gate_limit_bytes\": " << report.export_telemetry.process_gate.hard_limit_bytes
 			   << ",\n  \"export_process_gate_estimated_peak_bytes\": " << report.export_telemetry.process_gate.compared_process_working_set_bytes
+			   << ",\n  \"export_disk_gate_status\": " << static_cast<unsigned>(report.export_telemetry.disk_gate.status)
+			   << ",\n  \"export_disk_gate_reason\": " << static_cast<unsigned>(report.export_telemetry.disk_gate.rejection_reason)
+			   << ",\n  \"export_disk_gate_required_free_bytes\": " << report.export_telemetry.disk_gate.required_free_bytes
+			   << ",\n  \"export_disk_gate_available_free_bytes\": " << report.export_telemetry.disk_gate.available_free_bytes
+			   << ",\n  \"export_disk_gate_reserve_bytes\": " << report.export_telemetry.disk_gate.reserve_bytes
 			   << ",\n  \"export_process_current_working_set_bytes\": " << report.export_telemetry.process_estimate.current_working_set_bytes
 			   << ",\n  \"export_process_order_index_bytes\": " << report.export_telemetry.process_estimate.order_index_bytes
 			   << ",\n  \"export_process_strategy_scratch_bytes\": " << report.export_telemetry.process_estimate.strategy_scratch_bytes

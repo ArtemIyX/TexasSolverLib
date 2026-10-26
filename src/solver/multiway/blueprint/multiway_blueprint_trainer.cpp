@@ -1135,6 +1135,48 @@ namespace texas::solver::multiway
 			plan.order_index_bytes,
 			plan.compact_direct_order
 		};
+		std::uint64_t available_disk_bytes = 0U;
+		bool disk_space_available = false;
+		std::error_code directory_error;
+		const auto output_directory = path.parent_path().empty()
+			? std::filesystem::current_path(directory_error)
+			: path.parent_path();
+		if (!directory_error)
+		{
+			if (working_set_monitor_.export_disk_space_observer != nullptr)
+			{
+				disk_space_available = working_set_monitor_.export_disk_space_observer(
+					working_set_monitor_.export_observer_context,
+					output_directory,
+					available_disk_bytes);
+			}
+			else
+			{
+				std::error_code disk_error;
+				if (std::filesystem::is_directory(output_directory, disk_error) && !disk_error)
+				{
+					const auto space = std::filesystem::space(output_directory, disk_error);
+					if (!disk_error)
+					{
+						available_disk_bytes = space.available;
+						disk_space_available = true;
+					}
+				}
+			}
+		}
+		const auto external_disk_reserve = coordinator_->limits().storage_backend ==
+			MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
+			? coordinator_->limits().external_storage.disk_reserve_bytes
+			: 0U;
+		telemetry.disk_gate = evaluate_multiway_export_disk_gate(
+			plan.serialized_bytes, external_disk_reserve,
+			disk_space_available, available_disk_bytes);
+		if (telemetry.disk_gate.blocked())
+		{
+			status_.failed = true;
+			status_.export_telemetry = telemetry;
+			throw std::runtime_error("multiway blueprint export disk preflight rejected");
+		}
 		auto export_gate = working_set_monitor_.export_gate;
 		if (export_gate.process.mapped_residency_allowance_bytes == 0U)
 			export_gate.process.mapped_residency_allowance_bytes = status_.memory_ledger.mapped_resident_allowance_bytes;

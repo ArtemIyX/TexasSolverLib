@@ -1,5 +1,37 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 7.3 - Add blueprint export disk preflight
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a fail-closed export disk gate that checks free space for temporary plus final publication and the configured external-store reserve before creating the stream writer temporary file.
+- Missing disk telemetry and arithmetic overflow reject export. A test observer makes disk-boundary behavior deterministic.
+- Added disk gate status, required/available bytes, and reserve bytes to export telemetry reports.
+- Added boundary and output-preservation tests for disk gate rejection.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_memory.hpp`
+- `src/solver/multiway/engine/multiway_memory.cpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_memory.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_memory`, `test_multiway_blueprint_training`, and `test_multiway_qualification_reports`: passed.
+- Focused CTest covering those targets and `test_multiway_workflow_boundary`: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Sharded export and lazy shard lookup remain outstanding.
+
 ## PB-12 Phase 7.1 - Add bounded ordered external record iteration
 
 **Status:** In progress

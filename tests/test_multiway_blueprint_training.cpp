@@ -133,6 +133,13 @@ namespace
 		return snapshot;
 	}
 
+	bool export_disk_space_observer(const void*, const std::filesystem::path&,
+		std::uint64_t& available_bytes) noexcept
+	{
+		available_bytes = 1U;
+		return true;
+	}
+
 	texas::MultiwaySystemMemorySnapshot rejected_system_memory_observer(const void*) noexcept
 	{
 		texas::MultiwaySystemMemorySnapshot snapshot;
@@ -499,6 +506,29 @@ TEST_CASE(multiway_streaming_export_process_gate_rejects_before_temp_creation)
 	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
 	EXPECT_EQ(fixture.trainer.status().export_telemetry.process_gate.rejection_reason,
 		texas::MultiwayExportProcessRejectionReason::ProcessLimitExceeded);
+	std::filesystem::remove(path);
+}
+
+TEST_CASE(multiway_streaming_export_disk_gate_rejects_before_temp_creation)
+{
+	texas::MultiwayWorkingSetMonitor monitor;
+	monitor.export_disk_space_observer = export_disk_space_observer;
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_disk_gate_" +
+		std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+	{
+		std::ofstream previous(path, std::ios::binary);
+		previous << "previous-blueprint";
+	}
+	std::filesystem::remove(path.string() + ".tmp");
+	EXPECT_THROW(fixture.trainer.save_full_policy_atomic(path), std::runtime_error);
+	EXPECT_EQ(read_bytes(path), std::string("previous-blueprint"));
+	EXPECT_TRUE(!std::filesystem::exists(path.string() + ".tmp"));
+	EXPECT_EQ(fixture.trainer.status().export_telemetry.disk_gate.status,
+		texas::MultiwayExportDiskGateStatus::Rejected);
+	EXPECT_EQ(fixture.trainer.status().export_telemetry.disk_gate.rejection_reason,
+		texas::MultiwayExportDiskRejectionReason::InsufficientFreeSpace);
 	std::filesystem::remove(path);
 }
 

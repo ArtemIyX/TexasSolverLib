@@ -156,7 +156,8 @@ endif()
 
 foreach(report_field "export_serialized_bytes" "export_result_bytes" "export_result_payload_hash"
         "export_duration_nanoseconds" "export_publication_mode" "export_process_gate_reason"
-        "export_system_gate_reason")
+        "export_system_gate_reason" "export_disk_gate_status"
+        "export_disk_gate_required_free_bytes" "export_disk_gate_available_free_bytes")
     string(FIND "${report_text}" "${report_field}" report_field_position)
     if(report_field_position EQUAL -1)
         message(FATAL_ERROR "training report is missing export field: ${report_field}")

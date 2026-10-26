@@ -181,6 +181,10 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	report.export_telemetry.process_gate.hard_limit_bytes = 500U;
 	report.export_telemetry.process_gate.compared_process_working_set_bytes = 200U;
 	report.export_telemetry.system_gate.status = MultiwayExportGateStatus::Disabled;
+	report.export_telemetry.disk_gate.status = MultiwayExportDiskGateStatus::Admitted;
+	report.export_telemetry.disk_gate.serialized_output_bytes = 321U;
+	report.export_telemetry.disk_gate.required_free_bytes = 642U;
+	report.export_telemetry.disk_gate.available_free_bytes = 1000U;
 	report.export_telemetry.result_bytes = 321U;
 	report.export_telemetry.payload_hash = 654U;
 	report.export_telemetry.policy_content_hash = 655U;
@@ -290,6 +294,9 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"public_catalog_export_nanoseconds\": 12") != std::string::npos);
 	EXPECT_TRUE(text.find("\"public_state_bytes\": 34") != std::string::npos);
 	EXPECT_TRUE(text.find("\"blueprint_bytes\": 789") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_disk_gate_status\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_disk_gate_required_free_bytes\": 642") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_disk_gate_available_free_bytes\": 1000") != std::string::npos);
 	EXPECT_TRUE(text.find("\"requested_worker_count\": 16") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_preflight_estimate_bytes\": 999") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_estimate_schema_version\": 3") != std::string::npos);

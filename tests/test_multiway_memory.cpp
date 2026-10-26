@@ -351,6 +351,25 @@ TEST_CASE(multiway_export_memory_gates_saturate_and_fail_closed)
 	EXPECT_EQ(system_gate.rejection_reason, MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryUnavailable);
 }
 
+TEST_CASE(multiway_export_disk_gate_reserves_publication_space_and_fails_closed)
+{
+	using namespace texas::solver::multiway;
+	const auto admitted = evaluate_multiway_export_disk_gate(100U, 50U, true, 250U);
+	EXPECT_EQ(admitted.status, MultiwayExportDiskGateStatus::Admitted);
+	EXPECT_EQ(admitted.required_free_bytes, 250U);
+	const auto insufficient = evaluate_multiway_export_disk_gate(100U, 50U, true, 249U);
+	EXPECT_EQ(insufficient.status, MultiwayExportDiskGateStatus::Rejected);
+	EXPECT_EQ(insufficient.rejection_reason, MultiwayExportDiskRejectionReason::InsufficientFreeSpace);
+	const auto unavailable = evaluate_multiway_export_disk_gate(100U, 0U, false, 0U);
+	EXPECT_EQ(unavailable.status, MultiwayExportDiskGateStatus::Unavailable);
+	EXPECT_EQ(unavailable.rejection_reason, MultiwayExportDiskRejectionReason::FreeSpaceUnavailable);
+	const auto overflow = evaluate_multiway_export_disk_gate(
+		std::numeric_limits<std::uint64_t>::max(), 0U, true,
+		std::numeric_limits<std::uint64_t>::max());
+	EXPECT_EQ(overflow.status, MultiwayExportDiskGateStatus::Rejected);
+	EXPECT_EQ(overflow.rejection_reason, MultiwayExportDiskRejectionReason::RequiredSpaceOverflow);
+}
+
 TEST_CASE(multiway_export_memory_gates_honor_process_and_system_boundaries)
 {
 	using namespace texas::solver::multiway;

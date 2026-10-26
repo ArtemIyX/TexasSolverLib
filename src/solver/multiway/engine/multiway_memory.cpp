@@ -891,6 +891,41 @@ namespace texas::solver::multiway
 		return result;
 	}
 
+	MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
+		std::uint64_t serialized_output_bytes, std::uint64_t reserve_bytes,
+		bool available_free_bytes_available, std::uint64_t available_free_bytes) noexcept
+	{
+		MultiwayExportDiskGateResult result;
+		result.serialized_output_bytes = serialized_output_bytes;
+		result.reserve_bytes = reserve_bytes;
+		result.available_free_bytes = available_free_bytes;
+		if (!available_free_bytes_available)
+		{
+			result.status = MultiwayExportDiskGateStatus::Unavailable;
+			result.rejection_reason = MultiwayExportDiskRejectionReason::FreeSpaceUnavailable;
+			return result;
+		}
+		const auto publication_bytes = multiway_memory_saturating_add(
+			serialized_output_bytes, serialized_output_bytes);
+		result.required_free_bytes = multiway_memory_saturating_add(
+			publication_bytes, reserve_bytes);
+		if (publication_bytes == std::numeric_limits<std::uint64_t>::max() ||
+			result.required_free_bytes == std::numeric_limits<std::uint64_t>::max())
+		{
+			result.status = MultiwayExportDiskGateStatus::Rejected;
+			result.rejection_reason = MultiwayExportDiskRejectionReason::RequiredSpaceOverflow;
+			return result;
+		}
+		if (available_free_bytes < result.required_free_bytes)
+		{
+			result.status = MultiwayExportDiskGateStatus::Rejected;
+			result.rejection_reason = MultiwayExportDiskRejectionReason::InsufficientFreeSpace;
+			return result;
+		}
+		result.status = MultiwayExportDiskGateStatus::Admitted;
+		return result;
+	}
+
 	MultiwayExportObservedMemoryDelta observe_multiway_export_memory_delta(
 		const MultiwayProcessMemorySnapshot& before,
 		const MultiwayProcessMemorySnapshot& after) noexcept
@@ -963,7 +998,14 @@ namespace texas::solver::multiway
 			return;
 		if (!plan.valid() || !scratch.valid() || !process_estimate.valid() || !system_before.valid() || !system_after.valid() || !observed_delta.valid() || process_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION || system_gate.schema_version != MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION || static_cast<unsigned>(process_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) || static_cast<unsigned>(system_gate.status) > static_cast<unsigned>(MultiwayExportGateStatus::Unavailable) || static_cast<unsigned>(process_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportProcessRejectionReason::ProcessLimitExceeded) || static_cast<unsigned>(system_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportSystemRejectionReason::AvailablePhysicalMemoryInsufficient) || static_cast<unsigned>(publication_mode) > static_cast<unsigned>(core::AtomicPublishMode::BackupRename))
 			throw std::invalid_argument("invalid multiway export telemetry values");
-		if (succeeded && (process_gate.blocked() || system_gate.blocked() || result_bytes != plan.serialized_bytes || payload_hash == 0U || policy_content_hash == 0U || publication_mode == core::AtomicPublishMode::Unknown))
+		if (static_cast<unsigned>(disk_gate.status) > static_cast<unsigned>(MultiwayExportDiskGateStatus::Unavailable) || static_cast<unsigned>(disk_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportDiskRejectionReason::InsufficientFreeSpace))
+			throw std::invalid_argument("invalid multiway export disk gate telemetry");
+		if (disk_gate.status == MultiwayExportDiskGateStatus::Admitted &&
+			(disk_gate.serialized_output_bytes != plan.serialized_bytes ||
+				disk_gate.required_free_bytes < disk_gate.serialized_output_bytes ||
+				disk_gate.available_free_bytes < disk_gate.required_free_bytes))
+			throw std::invalid_argument("admitted multiway export disk telemetry is inconsistent");
+		if (succeeded && (process_gate.blocked() || system_gate.blocked() || disk_gate.status != MultiwayExportDiskGateStatus::Admitted || result_bytes != plan.serialized_bytes || payload_hash == 0U || policy_content_hash == 0U || publication_mode == core::AtomicPublishMode::Unknown))
 			throw std::invalid_argument("successful multiway export telemetry is incomplete");
 	}
 

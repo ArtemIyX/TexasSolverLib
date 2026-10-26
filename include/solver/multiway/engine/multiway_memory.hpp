@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 
 namespace texas::solver::multiway
 {
@@ -418,6 +419,42 @@ namespace texas::solver::multiway
 		}
 	};
 
+	enum class MultiwayExportDiskGateStatus : std::uint8_t
+	{
+		NotChecked = 0U,
+		Admitted = 1U,
+		Rejected = 2U,
+		Unavailable = 3U,
+	};
+
+	enum class MultiwayExportDiskRejectionReason : std::uint8_t
+	{
+		None = 0U,
+		FreeSpaceUnavailable = 1U,
+		RequiredSpaceOverflow = 2U,
+		InsufficientFreeSpace = 3U,
+	};
+
+	struct MultiwayExportDiskGateResult
+	{
+		MultiwayExportDiskGateStatus status = MultiwayExportDiskGateStatus::NotChecked;
+		MultiwayExportDiskRejectionReason rejection_reason = MultiwayExportDiskRejectionReason::None;
+		std::uint64_t serialized_output_bytes = 0U;
+		std::uint64_t reserve_bytes = 0U;
+		std::uint64_t required_free_bytes = 0U;
+		std::uint64_t available_free_bytes = 0U;
+
+		[[nodiscard]] bool blocked() const noexcept
+		{
+			return status == MultiwayExportDiskGateStatus::Rejected ||
+				status == MultiwayExportDiskGateStatus::Unavailable;
+		}
+	};
+
+	[[nodiscard]] MultiwayExportDiskGateResult evaluate_multiway_export_disk_gate(
+		std::uint64_t serialized_output_bytes, std::uint64_t reserve_bytes,
+		bool available_free_bytes_available, std::uint64_t available_free_bytes) noexcept;
+
 	struct MultiwayExportObservedMemoryDelta
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
@@ -485,6 +522,7 @@ namespace texas::solver::multiway
 		MultiwaySystemMemorySnapshot system_before{};
 		MultiwaySystemMemorySnapshot system_after{};
 		MultiwayExportSystemGateResult system_gate{};
+		MultiwayExportDiskGateResult disk_gate{};
 		MultiwayExportObservedMemoryDelta observed_delta{};
 		std::uint64_t result_bytes = 0U;
 		std::uint64_t payload_hash = 0U;
@@ -743,6 +781,8 @@ namespace texas::solver::multiway
 
 	using MultiwayProcessMemoryObserver = MultiwayProcessMemorySnapshot (*)(const void*) noexcept;
 	using MultiwaySystemMemoryObserver = MultiwaySystemMemorySnapshot (*)(const void*) noexcept;
+	using MultiwayExportDiskSpaceObserver = bool (*)(const void*,
+		const std::filesystem::path&, std::uint64_t&) noexcept;
 
 	struct MultiwayWorkingSetMonitor
 	{
@@ -752,6 +792,7 @@ namespace texas::solver::multiway
 		MultiwayExportMemoryGateConfig export_gate{};
 		MultiwayProcessMemoryObserver export_process_observer = nullptr;
 		MultiwaySystemMemoryObserver export_system_observer = nullptr;
+		MultiwayExportDiskSpaceObserver export_disk_space_observer = nullptr;
 		MultiwaySystemMemoryGuardConfig system_memory_guard{};
 		MultiwaySystemMemoryObserver system_memory_observer = nullptr;
 		const void* export_observer_context = nullptr;
