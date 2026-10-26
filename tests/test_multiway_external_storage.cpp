@@ -589,7 +589,7 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 	std::size_t delta_index = 0U;
 	while (delta_index < deltas.size())
 	{
-		auto pinned = external.pin_bucket(binding, deltas[delta_index].bucket);
+		auto pinned = external.pin_bucket(binding, deltas[delta_index].bucket, true);
 		const auto bucket = deltas[delta_index].bucket;
 		while (delta_index < deltas.size() && deltas[delta_index].bucket == bucket)
 		{
@@ -633,6 +633,22 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 		expected_policy.data(), expected_policy.size());
 	for (std::size_t action = 0U; action < expected_policy.size(); ++action)
 		EXPECT_EQ(reopened_policy[action], expected_policy[action]);
+	auto reopened_pinned = reopened.pin_bucket(reopened_binding, 16U, false);
+	std::array<double, 3U> pinned_policy{};
+	reopened.regret_matched_strategy_into(reopened_pinned,
+		pinned_policy.data(), pinned_policy.size());
+	for (std::size_t action = 0U; action < expected_policy.size(); ++action)
+		EXPECT_EQ(pinned_policy[action], expected_policy[action]);
+	EXPECT_EQ(reopened.action_below_regret(reopened_pinned, 2U, 0.0),
+		reference.action_below_regret(shape.infoset, 16U, 2U, 0.0));
+	bool read_only_update_rejected = false;
+	try
+	{
+		reopened.apply_delta(reopened_pinned, 2U, 1.0, 0.0);
+	}
+	catch (const std::invalid_argument&) { read_only_update_rejected = true; }
+	EXPECT_TRUE(read_only_update_rejected);
+	reopened.unpin_bucket(reopened_pinned);
 	bool foreign_binding_rejected = false;
 	try
 	{

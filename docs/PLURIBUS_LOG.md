@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.10 - Add read-only external bucket leases
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added explicit read-only and writable page leases. Read leases support regret policy, average strategy, and pruning checks without repeating row lookup or page loading across the action menu.
+- Writable leases mark a page dirty once and preserve ordered fixed-point delta application. Tests reject mutation through a read-only lease and compare pinned queries with the in-memory reference.
+- Coordinator selection and aggregate batch transaction integration remain outstanding; external solver execution remains disabled.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage, solver, workflow config, and memory targets: passed.
+- Focused CTest for those targets: passed (4/4).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Leases are not yet used by the coordinator; no large training job was run.
+
 ## PB-12 Phase 5.9 - Pin external pages at bucket boundaries
 
 **Status:** Complete
