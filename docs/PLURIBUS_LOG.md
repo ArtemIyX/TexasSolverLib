@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## Restore PB-9 worker-scaling findings
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Restored the final pre-deletion PB-9 multiway training scaling report from Git history.
+- Repaired the existing README documentation link without changing its target.
+
+### Files
+
+- `docs/pb9_multiway_training_scaling_findings.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Restored file blob matches commit `b1c4263` exactly.
+- `git diff --check`: passed.
+- Builds and tests were not run because this change restores Markdown documentation only.
+
+### Limitations
+
+- None identified.
+
 ## PB-10 - Complete TexasLogging application logging
 
 **Status:** Complete
