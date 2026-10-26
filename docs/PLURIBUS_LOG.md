@@ -6,7 +6,8 @@
 **Completed:** 2026-10-26
 
 - Added a separate schema-6 external checkpoint manifest containing backend schema, model/workflow/storage identity hashes, schedule identity, completed trajectories, WAL generation/offset, the complete committed external generation, and per-component immutable run identities and hashes.
-- Added atomic manifest publication, checksums, injected pre-publication failure, and verification against expected identities, component generations/run lists, and the currently committed generation.
+- Added atomic manifest publication, checksums, injected pre-publication failure, verification against expected identities and component run lists, and retention pins installed before manifest publication.
+- Compaction and orphan cleanup preserve pinned runs. Releasing pins requires the checkpoint manifest to be removed first, then obsolete runs are reclaimed at the next store open/cleanup boundary.
 - Kept the existing schema-5 monolithic checkpoint artifact reader and writer unchanged.
 
 ### Files
@@ -24,7 +25,7 @@
 
 ### Limitations
 
-- This codec verifies only the exact generation still published as current. It records immutable run identities but does not pin them, restore an older generation, or integrate workflow resume yet.
+- This codec verifies only the exact generation still published as current. It pins referenced runs but does not restore an older generation or integrate workflow resume yet.
 - No training workflow was run.
 
 ## PB-12 Phases 3-5 - Validate external compact storage integration

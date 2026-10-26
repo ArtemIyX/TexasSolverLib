@@ -341,6 +341,54 @@ TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_pr
 	EXPECT_EQ(loaded.generation.generation, 7U);
 }
 
+TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const std::array<std::filesystem::path, 3U> component_paths = {
+		directory.path() / "catalog", directory.path() / "rows", directory.path() / "pages" };
+	for (const auto& component_path : component_paths)
+	{
+		MultiwayExternalRecordStore store(config(component_path), 4U);
+		store.append_batch(1U, 1U, records(1U));
+		store.append_batch(2U, 2U, records(8U));
+	}
+	MultiwayExternalGenerationManifest generation{};
+	generation.generation = 1U;
+	generation.committed_batch_number = 2U;
+	generation.merge_fingerprint = 2U;
+	generation.catalog_generation = generation.row_generation = generation.page_generation = 2U;
+	generation.content_hash = 3U;
+	publish_multiway_external_generation(directory.path(), generation, false);
+	MultiwayExternalCheckpointManifest checkpoint{};
+	checkpoint.model_identity_hash = 11U;
+	checkpoint.workflow_identity_hash = 12U;
+	checkpoint.storage_identity_hash = 13U;
+	checkpoint.schedule_hash = 14U;
+	checkpoint.generation = generation;
+	checkpoint.wal_generation = generation.committed_batch_number;
+	const auto checkpoint_path = directory.path() / "checkpoint.manifest";
+	save_multiway_external_checkpoint_manifest(checkpoint_path, directory.path(), checkpoint, false);
+	{
+		MultiwayExternalRecordStore store(config(component_paths[0]), 4U);
+		store.append_batch(3U, 3U, records(20U));
+		store.compact();
+		EXPECT_EQ(store.generation(), 4U);
+		EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_2.dat"));
+	}
+	MultiwayExternalRecordStore reopened(config(component_paths[0]), 4U);
+	EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_1.dat"));
+	EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_2.dat"));
+	std::vector<std::uint8_t> payload;
+	EXPECT_TRUE(reopened.lookup(10U, payload));
+	EXPECT_EQ(payload[0], 10U);
+	std::filesystem::remove(checkpoint_path);
+	release_multiway_external_checkpoint_manifest_pins(checkpoint_path, directory.path(), 13U, false);
+	MultiwayExternalRecordStore after_release(config(component_paths[0]), 4U);
+	EXPECT_TRUE(!std::filesystem::exists(component_paths[0] / "run_2.dat"));
+	EXPECT_EQ(after_release.record_count(), 6U);
+}
+
 TEST_CASE(multiway_external_batch_transaction_rolls_back_partial_component_publication)
 {
 	using namespace texas::solver::multiway;

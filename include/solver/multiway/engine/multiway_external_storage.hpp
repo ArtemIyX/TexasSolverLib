@@ -114,6 +114,11 @@ namespace texas::solver::multiway
 		std::uint64_t expected_workflow_identity_hash,
 		std::uint64_t expected_storage_identity_hash,
 		std::uint64_t expected_schedule_hash);
+	void release_multiway_external_checkpoint_manifest_pins(
+		const std::filesystem::path& checkpoint_path,
+		const std::filesystem::path& external_storage_directory,
+		std::uint64_t storage_identity_hash,
+		bool synchronous_durability);
 
 	void publish_multiway_external_generation(const std::filesystem::path& directory,
 		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability);

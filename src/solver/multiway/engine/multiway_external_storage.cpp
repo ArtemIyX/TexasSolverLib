@@ -224,6 +224,115 @@ namespace texas::solver::multiway
 			if (flushed != 0) throw std::runtime_error("external transaction directory flush failed");
 #endif
 		}
+		std::filesystem::path checkpoint_pin_path(const std::filesystem::path& directory,
+			std::uint64_t pin_id)
+		{
+			return directory / ("CHECKPOINT_" + std::to_string(pin_id) + ".PIN");
+		}
+		std::uint64_t checkpoint_pin_id(const std::filesystem::path& checkpoint_path,
+			std::uint64_t storage_identity_hash)
+		{
+			auto hash = kHashOffset;
+			for (const auto character : checkpoint_path.lexically_normal().string())
+				texas::core::fingerprint::append_u8(hash, static_cast<std::uint8_t>(character));
+			texas::core::fingerprint::append_u64(hash, storage_identity_hash);
+			auto result = texas::core::fingerprint::finish(hash);
+			return result == 0U ? 1U : result;
+		}
+		std::vector<MultiwayExternalCheckpointManifest::SegmentReference> read_checkpoint_pin(
+			const std::filesystem::path& path)
+		{
+			std::ifstream input(path, std::ios::binary);
+			if (!input) throw std::invalid_argument("external checkpoint pin cannot be opened");
+			std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
+				std::istreambuf_iterator<char>());
+			constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','P','I','N','1' };
+			constexpr std::size_t header_bytes = 20U;
+			if (bytes.size() < header_bytes || !std::equal(magic.begin(), magic.end(), bytes.begin()) ||
+				read_u32(bytes.data() + 8U) != 1U)
+				throw std::invalid_argument("external checkpoint pin header is invalid");
+			const auto count = read_u64(bytes.data() + 12U);
+			if (bytes.size() < header_bytes + 8U ||
+				count > (bytes.size() - header_bytes - 8U) / 24U ||
+				bytes.size() != header_bytes + count * 24U + 8U)
+				throw std::invalid_argument("external checkpoint pin segment count is invalid");
+			auto checksum = kHashOffset;
+			for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+				texas::core::fingerprint::append_u8(checksum, bytes[index]);
+			if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + bytes.size() - 8U))
+				throw std::invalid_argument("external checkpoint pin checksum is invalid");
+			std::vector<MultiwayExternalCheckpointManifest::SegmentReference> references;
+			references.reserve(static_cast<std::size_t>(count));
+			std::size_t cursor = 20U;
+			std::uint64_t previous_generation = 0U;
+			for (std::uint64_t index = 0U; index < count; ++index)
+			{
+				MultiwayExternalCheckpointManifest::SegmentReference reference{};
+				reference.generation = read_u64(bytes.data() + cursor); cursor += 8U;
+				reference.record_count = read_u64(bytes.data() + cursor); cursor += 8U;
+				reference.content_hash = read_u64(bytes.data() + cursor); cursor += 8U;
+				if (reference.generation <= previous_generation || reference.record_count == 0U)
+					throw std::invalid_argument("external checkpoint pin runs are not ordered");
+				previous_generation = reference.generation;
+				references.push_back(reference);
+			}
+			return references;
+		}
+		std::vector<std::uint64_t> load_pinned_run_generations(
+			const std::filesystem::path& directory)
+		{
+			std::vector<std::uint64_t> generations;
+			for (const auto& entry : std::filesystem::directory_iterator(directory))
+			{
+				if (!entry.is_regular_file())
+					throw std::invalid_argument("external storage directory contains a non-file entry");
+				const auto name = entry.path().filename().string();
+				if (name.rfind("CHECKPOINT_", 0U) != 0U || name.size() < 14U || name.substr(name.size() - 4U) != ".PIN")
+					continue;
+				const auto references = read_checkpoint_pin(entry.path());
+				for (const auto& reference : references) generations.push_back(reference.generation);
+			}
+			std::sort(generations.begin(), generations.end());
+			generations.erase(std::unique(generations.begin(), generations.end()), generations.end());
+			return generations;
+		}
+		void write_checkpoint_pin(const std::filesystem::path& directory, std::uint64_t pin_id,
+			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& references,
+			bool synchronous_durability)
+		{
+			std::vector<std::uint8_t> bytes{ 'T','X','M','W','P','I','N','1' };
+			append_u32(bytes, 1U);
+			append_u64(bytes, references.size());
+			for (const auto& reference : references)
+			{
+				append_u64(bytes, reference.generation);
+				append_u64(bytes, reference.record_count);
+				append_u64(bytes, reference.content_hash);
+			}
+			auto hash = kHashOffset;
+			for (const auto byte : bytes) texas::core::fingerprint::append_u8(hash, byte);
+			append_u64(bytes, texas::core::fingerprint::finish(hash));
+			const auto destination = checkpoint_pin_path(directory, pin_id);
+			const auto temporary = std::filesystem::path(destination.string() + ".tmp");
+			if (std::filesystem::exists(temporary))
+				throw std::runtime_error("external checkpoint pin temporary path already exists");
+			struct TemporaryFileCleanup
+			{
+				std::filesystem::path path;
+				~TemporaryFileCleanup() noexcept { std::error_code ignored; std::filesystem::remove(path, ignored); }
+			} cleanup{ temporary };
+			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+			if (!output) throw std::runtime_error("external checkpoint pin cannot be opened");
+			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			output.flush();
+			if (!output) throw std::runtime_error("external checkpoint pin write failed");
+			output.close();
+			if (synchronous_durability) sync_file_path(temporary);
+			texas::core::publish_atomic_replace(temporary, destination,
+				"external checkpoint pin publish failed",
+				texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+			if (synchronous_durability) sync_directory_path(directory);
+		}
 		ComponentManifestInfo read_component_manifest(const std::filesystem::path& component_directory)
 		{
 			const auto path = component_directory / "CURRENT";
@@ -581,6 +690,36 @@ namespace texas::solver::multiway
 			}
 			return true;
 		}
+
+		std::vector<MultiwayExternalCheckpointManifest::SegmentReference> merge_checkpoint_pins(
+			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& previous,
+			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& current)
+		{
+			auto combined = previous;
+			for (const auto& reference : current)
+			{
+				const auto found = std::lower_bound(combined.begin(), combined.end(), reference.generation,
+					[](const auto& item, std::uint64_t generation) { return item.generation < generation; });
+				if (found != combined.end() && found->generation == reference.generation)
+				{
+					if (found->record_count != reference.record_count || found->content_hash != reference.content_hash)
+						throw std::invalid_argument("external checkpoint pin generation identity conflicts");
+				}
+				else
+					combined.insert(found, reference);
+			}
+			return combined;
+		}
+
+		bool checkpoint_pin_contains(
+			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& pin,
+			const MultiwayExternalCheckpointManifest::SegmentReference& reference)
+		{
+			const auto found = std::lower_bound(pin.begin(), pin.end(), reference.generation,
+				[](const auto& item, std::uint64_t generation) { return item.generation < generation; });
+			return found != pin.end() && found->generation == reference.generation &&
+				found->record_count == reference.record_count && found->content_hash == reference.content_hash;
+		}
 	}
 
 	void save_multiway_external_checkpoint_manifest(
@@ -655,6 +794,16 @@ namespace texas::solver::multiway
 		auto checksum = kHashOffset;
 		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
 		append_u64(bytes, texas::core::fingerprint::finish(checksum));
+		const auto pin_id = checkpoint_pin_id(path, manifest.storage_identity_hash);
+		for (std::size_t component = 0U; component < segment_references.size(); ++component)
+		{
+			const auto component_directory = external_storage_directory / kComponentNames[component];
+			const auto pin_path = checkpoint_pin_path(component_directory, pin_id);
+			auto references_to_pin = segment_references[component];
+			if (std::filesystem::exists(pin_path))
+				references_to_pin = merge_checkpoint_pins(read_checkpoint_pin(pin_path), references_to_pin);
+			write_checkpoint_pin(component_directory, pin_id, references_to_pin, synchronous_durability);
+		}
 		const auto temporary = std::filesystem::path(path.string() + ".tmp");
 		if (std::filesystem::exists(temporary))
 			throw std::runtime_error("external checkpoint manifest temporary path already exists");
@@ -677,6 +826,30 @@ namespace texas::solver::multiway
 			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
 		if (synchronous_durability)
 			sync_directory_path(path.parent_path().empty() ? std::filesystem::path(".") : path.parent_path());
+		for (std::size_t component = 0U; component < segment_references.size(); ++component)
+			write_checkpoint_pin(external_storage_directory / kComponentNames[component], pin_id,
+				segment_references[component], synchronous_durability);
+	}
+
+	void release_multiway_external_checkpoint_manifest_pins(
+		const std::filesystem::path& checkpoint_path,
+		const std::filesystem::path& external_storage_directory,
+		std::uint64_t storage_identity_hash,
+		bool synchronous_durability)
+	{
+		if (checkpoint_path.empty() || external_storage_directory.empty() || storage_identity_hash == 0U)
+			throw std::invalid_argument("external checkpoint pin release identity is invalid");
+		std::error_code error;
+		if (std::filesystem::exists(checkpoint_path, error) || error)
+			throw std::invalid_argument("external checkpoint pins cannot be released while the checkpoint exists");
+		const auto pin_id = checkpoint_pin_id(checkpoint_path, storage_identity_hash);
+		for (const auto* component : kComponentNames)
+		{
+			const auto directory = external_storage_directory / component;
+			std::filesystem::remove(checkpoint_pin_path(directory, pin_id), error);
+			if (error) throw std::runtime_error("external checkpoint pin cannot be released");
+			if (synchronous_durability) sync_directory_path(directory);
+		}
 	}
 
 	MultiwayExternalCheckpointManifest load_multiway_external_checkpoint_manifest(
@@ -769,6 +942,16 @@ namespace texas::solver::multiway
 		std::array<std::uint64_t, 3U> component_generations{};
 		const auto current_segments = load_checkpoint_segment_references(
 			external_storage_directory, &component_generations);
+		const auto pin_id = checkpoint_pin_id(path, expected_storage_identity_hash);
+		for (std::size_t component = 0U; component < decoded.segments.size(); ++component)
+		{
+			const auto pin_path = checkpoint_pin_path(
+				external_storage_directory / kComponentNames[component], pin_id);
+			const auto pin = read_checkpoint_pin(pin_path);
+			for (const auto& reference : decoded.segments[component])
+				if (!checkpoint_pin_contains(pin, reference))
+					throw std::invalid_argument("external checkpoint segment is not retained");
+		}
 		if (cursor != bytes.size() - 8U ||
 			decoded.wal_generation != generation.committed_batch_number ||
 			decoded.wal_committed_offset != 0U ||
@@ -1103,7 +1286,12 @@ namespace texas::solver::multiway
 				for (const auto& entry : std::filesystem::directory_iterator(config_.directory))
 				{
 					const auto name = entry.path().filename().string();
-					if (name != "BATCH.wal" && name != "CURRENT.tmp" && name.rfind("run_", 0U) != 0U)
+					const bool checkpoint_pin = name.rfind("CHECKPOINT_", 0U) == 0U &&
+						name.size() >= 14U && name.substr(name.size() - 4U) == ".PIN";
+					const bool checkpoint_pin_temp = name.rfind("CHECKPOINT_", 0U) == 0U &&
+						name.size() >= 18U && name.substr(name.size() - 8U) == ".PIN.tmp";
+					if (name != "BATCH.wal" && name != "CURRENT.tmp" && !checkpoint_pin && !checkpoint_pin_temp &&
+						name.rfind("run_", 0U) != 0U)
 						throw std::invalid_argument("external storage directory contains an unrecognized file without a manifest");
 				}
 			}
@@ -1429,13 +1617,22 @@ namespace texas::solver::multiway
 	void MultiwayExternalRecordStore::cleanup_orphans()
 	{
 		bool removed = false;
+		const auto pinned_generations = load_pinned_run_generations(config_.directory);
 		for (const auto& entry : std::filesystem::directory_iterator(config_.directory))
 		{
 			if (!entry.is_regular_file()) throw std::invalid_argument("external storage directory contains a non-file entry");
 			const auto name = entry.path().filename().string();
 			if (name == "CURRENT" || name == "BATCH.wal") continue;
 			bool keep = false;
-			if (name.rfind("run_", 0U) == 0U)
+			if (name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 14U && name.substr(name.size() - 4U) == ".PIN")
+			{
+				(void)read_checkpoint_pin(entry.path());
+				keep = true;
+			}
+			else if (name.rfind("CHECKPOINT_", 0U) == 0U && name.size() >= 18U &&
+				name.substr(name.size() - 8U) == ".PIN.tmp")
+				keep = false;
+			else if (name.rfind("run_", 0U) == 0U)
 			{
 				const auto separator = name.find('.', 4U);
 				if (separator == std::string::npos) throw std::invalid_argument("external storage run filename is invalid");
@@ -1451,6 +1648,8 @@ namespace texas::solver::multiway
 				if ((suffix == ".dat" || suffix == ".idx") && run_generation <= generation_)
 					for (const auto& run : runs_)
 						if ((suffix == ".dat" && entry.path() == run.data_path) || (suffix == ".idx" && entry.path() == run.index_path)) keep = true;
+				if ((suffix == ".dat" || suffix == ".idx") &&
+					std::binary_search(pinned_generations.begin(), pinned_generations.end(), run_generation)) keep = true;
 			}
 			else if (name != "CURRENT.tmp")
 				throw std::invalid_argument("external storage directory contains an unrecognized file");
@@ -1701,12 +1900,18 @@ namespace texas::solver::multiway
 		publish_manifest(next_runs, next_generation, last_batch_number_);
 		flush_directory();
 		if (!retain_input_runs)
+		{
+			const auto pinned_generations = load_pinned_run_generations(config_.directory);
 			for (std::size_t index = 0U; index < input_count; ++index)
 			{
+				const auto run_generation = runs_[input_start + index].generation;
+				if (std::binary_search(pinned_generations.begin(), pinned_generations.end(), run_generation))
+					continue;
 				std::error_code ignored;
 				std::filesystem::remove(runs_[input_start + index].data_path, ignored);
 				std::filesystem::remove(runs_[input_start + index].index_path, ignored);
 			}
+		}
 		runs_.swap(next_runs);
 		generation_ = next_generation;
 		record_count_ = record_count_ - total_records + compacted_count;
