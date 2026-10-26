@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.17 - Verify deterministic generation hashes
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a two-directory fixture that repeats the same catalog, row, and cell batch and checks both external generations publish identical content hashes.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The external facade remains outside the solver coordinator; this verifies deterministic generation identity, not cross-backend policy equivalence.
+
 ## PB-12 Phase 5.16 - Hash external component generations
 
 **Status:** Complete

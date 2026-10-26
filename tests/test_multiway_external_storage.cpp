@@ -389,6 +389,37 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 	}
 }
 
+TEST_CASE(multiway_external_training_generation_hash_is_deterministic)
+{
+	using namespace texas::solver::multiway;
+	const auto run = [] {
+		TestDirectory directory;
+		auto catalog_config = config(directory.path() / "catalog");
+		auto row_config = config(directory.path() / "rows");
+		auto page_config = config(directory.path() / "pages");
+		page_config.compaction_scratch_bytes = 32768U;
+		MultiwayPackedPublicNode node{};
+		node.id.value = 1U;
+		MultiwayPublicStateDescriptor descriptor{};
+		descriptor.id = node.id;
+		const MultiwaySparseRowShape shape{ { node.id, 0 }, 2U, 2U };
+		MultiwayExternalTrainingStorage storage(directory.path(), catalog_config,
+			row_config, page_config, 16U, 65536U, 8U, false);
+		storage.begin_batch(1U);
+		storage.append_catalog(0x101U, { node }, { descriptor });
+		storage.admit_rows(0x102U, { shape });
+		storage.begin_page_batch();
+		MultiwayExternalRowBinding binding{};
+		EXPECT_TRUE(storage.compact_storage().lookup_row(shape.infoset, binding));
+		auto page = storage.compact_storage().pin_bucket(binding, 1U, true);
+		storage.compact_storage().apply_delta(page, 1U, 2.0, 3.0);
+		storage.compact_storage().unpin_bucket(page);
+		storage.commit_batch(0xabcU, 1U);
+		return storage.current_manifest().content_hash;
+	};
+	EXPECT_EQ(run(), run());
+}
+
 TEST_CASE(multiway_external_batch_transaction_keeps_published_generation_after_cleanup_failure)
 {
 	using namespace texas::solver::multiway;
