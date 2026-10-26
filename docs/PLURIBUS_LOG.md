@@ -1,5 +1,35 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phases 3-5 - Validate external compact storage integration
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Validated the explicit `ExternalCompactInt32` backend and its external catalog, row index, compact page cache, batch WAL, aggregate generation manifest, and bounded deterministic compaction against the `CompactInt32` reference fixtures.
+- Kept external workflow execution fail-closed. This work does not raise workflow capacities or claim large-cardinality feasibility.
+- Strengthened rollback coverage from a prior committed nonempty page generation, then ran full repository validation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build and CTest for solver, external storage, and blueprint training: passed (3/3).
+- `scripts/python/full_build.py` via `scripts/codex_powershell.ps1`: passed; full Debug build and CTest passed (119/119).
+- `git diff --check`: passed.
+
+### Limitations
+
+- No training workflow or large pilot was run.
+- Filesystem kill points at every transaction step and target-machine scale measurements remain outside this validation; later checkpoint/export integration is not included.
+
 ## PB-12 Phase 5.28 - Verify rollback to committed page generation
 
 **Status:** Complete
