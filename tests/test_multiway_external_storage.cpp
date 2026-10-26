@@ -93,11 +93,14 @@ TEST_CASE(multiway_external_record_store_uses_bounded_constant_time_cache_slots)
 	store.append_batch(1U, 0x55U, records(10U));
 	std::vector<std::uint8_t> payload;
 	EXPECT_TRUE(store.lookup(10U, payload));
+	std::array<std::uint8_t, 4U> fixed_payload{};
+	EXPECT_TRUE(store.lookup(10U, fixed_payload.data(), fixed_payload.size()));
+	EXPECT_EQ(fixed_payload[0], payload[0]);
 	EXPECT_TRUE(store.lookup(12U, payload));
 	EXPECT_TRUE(store.lookup(12U, payload));
 	const auto stats = store.stats();
 	EXPECT_EQ(stats.cache_misses, 2U);
-	EXPECT_EQ(stats.cache_hits, 1U);
+	EXPECT_EQ(stats.cache_hits, 2U);
 	EXPECT_EQ(stats.cache_evictions, 1U);
 }
 

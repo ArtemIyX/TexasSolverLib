@@ -913,19 +913,29 @@ namespace texas::solver::multiway
 
 	bool MultiwayExternalRecordStore::lookup(std::uint64_t key, std::vector<std::uint8_t>& payload) const
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
-		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
-		return lookup_unlocked(key, payload);
+		payload.resize(payload_bytes_);
+		return lookup(key, payload.data(), payload.size());
 	}
 
-	bool MultiwayExternalRecordStore::lookup_unlocked(std::uint64_t key, std::vector<std::uint8_t>& payload) const
+	bool MultiwayExternalRecordStore::lookup(std::uint64_t key, std::uint8_t* payload,
+		std::size_t payload_size) const
+	{
+		if (payload == nullptr || payload_size != payload_bytes_)
+			throw std::invalid_argument("external lookup output buffer has the wrong size");
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
+		return lookup_unlocked(key, payload, payload_size);
+	}
+
+	bool MultiwayExternalRecordStore::lookup_unlocked(std::uint64_t key,
+		std::uint8_t* payload, std::size_t payload_size) const
 	{
 		++stats_.lookups;
 		auto& entry = cache_[external_cache_slot(key, cache_.size())];
 		if (entry.valid && entry.key == key)
 		{
 			++stats_.cache_hits;
-			payload = entry.payload;
+			std::copy_n(entry.payload.data(), payload_size, payload);
 			return true;
 		}
 		++stats_.cache_misses;
@@ -933,11 +943,11 @@ namespace texas::solver::multiway
 		for (auto run = runs_.rbegin(); run != runs_.rend(); ++run)
 		{
 			++stats_.disk_reads;
-			if (!lookup_run(*run, key, payload)) continue;
+			if (!lookup_run(*run, key, payload, payload_size)) continue;
 			auto& entry = cache_[external_cache_slot(key, cache_.size())];
 			if (entry.valid) ++stats_.cache_evictions;
 			entry.key = key; entry.valid = true;
-			std::copy(payload.begin(), payload.end(), entry.payload.begin());
+			std::copy_n(payload, payload_size, entry.payload.data());
 			stats_.read_nanoseconds += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
 			return true;
 		}
@@ -945,7 +955,8 @@ namespace texas::solver::multiway
 		return false;
 	}
 
-	bool MultiwayExternalRecordStore::lookup_run(const Run& run, std::uint64_t key, std::vector<std::uint8_t>& payload) const
+	bool MultiwayExternalRecordStore::lookup_run(const Run& run, std::uint64_t key,
+		std::uint8_t* payload, std::size_t payload_size) const
 	{
 		std::ifstream index(run.index_path, std::ios::binary);
 		if (!index) throw std::runtime_error("external index run cannot be opened");
@@ -971,8 +982,7 @@ namespace texas::solver::multiway
 		if (!data) throw std::runtime_error("external data segment cannot be opened");
 		const auto width = payload_bytes_ + 8U;
 		data.seekg(static_cast<std::streamoff>(first * width + 8U));
-		payload.resize(payload_bytes_);
-		data.read(reinterpret_cast<char*>(payload.data()), static_cast<std::streamsize>(payload.size()));
+		data.read(reinterpret_cast<char*>(payload), static_cast<std::streamsize>(payload_size));
 		if (!data) throw std::runtime_error("external data segment is truncated");
 		return true;
 	}
@@ -1692,8 +1702,8 @@ namespace texas::solver::multiway
 		std::int32_t seat, MultiwayExternalRowMetadata& output) const
 	{
 		if (state.value == 0U || seat < 0 || seat >= 6) return false;
-		std::vector<std::uint8_t> payload;
-		if (!store_.lookup(state.value, payload)) return false;
+		std::array<std::uint8_t, 8U + 6U * 24U> payload{};
+		if (!store_.lookup(state.value, payload.data(), payload.size())) return false;
 		if (payload.size() != 8U + 6U * 24U || read_u32(payload.data()) != 0x3152574dU ||
 			read_u32(payload.data() + 4U) != 1U)
 			throw std::invalid_argument("external row metadata record schema is invalid");

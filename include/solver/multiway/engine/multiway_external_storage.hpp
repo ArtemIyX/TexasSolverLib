@@ -120,6 +120,8 @@ namespace texas::solver::multiway
 		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayExternalRecord>& records);
 		[[nodiscard]] bool lookup(std::uint64_t key, std::vector<std::uint8_t>& payload) const;
+		[[nodiscard]] bool lookup(std::uint64_t key, std::uint8_t* payload,
+			std::size_t payload_size) const;
 		// During a multi-store transaction, retain old input runs until the
 		// aggregate manifest commits. Call compact(false) afterward to reclaim them.
 		void compact(bool retain_input_runs = false);
@@ -152,8 +154,10 @@ namespace texas::solver::multiway
 		void cleanup_orphans();
 		void recover_wal();
 		void publish_manifest(const std::vector<Run>& runs, std::uint64_t next_generation, std::uint64_t last_batch_number);
-		[[nodiscard]] bool lookup_unlocked(std::uint64_t key, std::vector<std::uint8_t>& payload) const;
-		[[nodiscard]] bool lookup_run(const Run& run, std::uint64_t key, std::vector<std::uint8_t>& payload) const;
+		[[nodiscard]] bool lookup_unlocked(std::uint64_t key, std::uint8_t* payload,
+			std::size_t payload_size) const;
+		[[nodiscard]] bool lookup_run(const Run& run, std::uint64_t key,
+			std::uint8_t* payload, std::size_t payload_size) const;
 		[[nodiscard]] std::uint64_t run_hash(const Run& run) const;
 		void check_disk_reserve(std::uint64_t additional_bytes) const;
 		void write_wal(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
