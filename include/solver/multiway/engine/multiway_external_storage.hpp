@@ -229,6 +229,10 @@ namespace texas::solver::multiway
 
 		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayExternalRecord>& records);
+		// Append another bounded sorted run for the same outer training batch.
+		// The aggregate training manifest is the atomic publication boundary.
+		void append_batch_continuation(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+			const std::vector<MultiwayExternalRecord>& records);
 		[[nodiscard]] bool lookup(std::uint64_t key, std::vector<std::uint8_t>& payload) const;
 		[[nodiscard]] bool lookup(std::uint64_t key, std::uint8_t* payload,
 			std::size_t payload_size) const;
@@ -269,6 +273,8 @@ namespace texas::solver::multiway
 		};
 
 		void load_manifest();
+		void append_batch_impl(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+			const std::vector<MultiwayExternalRecord>& records, bool allow_same_batch);
 		void cleanup_orphans();
 		void recover_wal();
 		void publish_manifest(const std::vector<Run>& runs, std::uint64_t next_generation, std::uint64_t last_batch_number);

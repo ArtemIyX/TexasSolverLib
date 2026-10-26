@@ -808,6 +808,9 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
 	auto catalog_config = config(directory.path() / "catalog");
+	const auto catalog_record_width = static_cast<std::uint64_t>(external_public_catalog_record_size()) + 8U;
+	catalog_config.maximum_wal_bytes = 48U + catalog_record_width;
+	catalog_config.segment_target_bytes = catalog_record_width;
 	auto row_config = config(directory.path() / "rows");
 	auto page_config = config(directory.path() / "pages");
 	page_config.compaction_scratch_bytes = 32768U;
@@ -815,13 +818,15 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 	node.id.value = 1U;
 	MultiwayPublicStateDescriptor descriptor{};
 	descriptor.id = node.id;
+	MultiwayPublicStateDescriptor second_descriptor{};
+	second_descriptor.id.value = 2U;
 	const MultiwaySparseRowShape shape{ { node.id, 0 }, 2U, 2U };
 	std::uint64_t committed_content_hash = 0U;
 	{
 		MultiwayExternalTrainingStorage storage(directory.path(), catalog_config,
 			row_config, page_config, 16U, 65536U, 8U, false);
 		storage.begin_batch(1U);
-		storage.append_discovered_catalog(0x101U, { descriptor }, { 1U });
+		storage.append_discovered_catalog(0x101U, { descriptor, second_descriptor }, { 1U, 1U });
 		storage.admit_rows(0x102U, { shape });
 		storage.begin_page_batch();
 		MultiwayExternalRowBinding binding{};
@@ -841,7 +846,7 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		EXPECT_EQ(binding.bucket_count(), 0U);
 		storage.commit_batch(0xabcU, 1U, 4U);
 		EXPECT_EQ(storage.current_manifest().generation, 1U);
-		EXPECT_EQ(storage.current_manifest().public_state_count, 1U);
+		EXPECT_EQ(storage.current_manifest().public_state_count, 2U);
 		EXPECT_EQ(storage.current_manifest().row_count, 1U);
 		EXPECT_EQ(storage.current_manifest().page_count, 1U);
 		EXPECT_EQ(storage.current_manifest().logical_value_count, 4U);
@@ -863,12 +868,16 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		EXPECT_EQ(average[1], 1.0);
 		reopened.begin_batch(2U);
 		MultiwayPackedPublicNode child{};
-		child.id.value = 2U;
+		child.id.value = 3U;
 		child.parent_id = node.id;
 		MultiwayPublicStateDescriptor child_descriptor{};
 		child_descriptor.id = child.id;
+		MultiwayPublicStateDescriptor second_child_descriptor{};
+		second_child_descriptor.id.value = 4U;
+		second_child_descriptor.parent_id = node.id;
 		const MultiwaySparseRowShape child_shape{ { child.id, 1 }, 1U, 1U };
-		reopened.append_discovered_catalog(0x201U, { child_descriptor }, { 1U });
+		reopened.append_discovered_catalog(0x201U,
+			{ child_descriptor, second_child_descriptor }, { 1U, 1U });
 		reopened.admit_rows(0x202U, { child_shape });
 		reopened.begin_page_batch();
 		MultiwayExternalRowBinding child_binding{};
@@ -885,6 +894,7 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		EXPECT_EQ(reopened.current_manifest().generation, 1U);
 		EXPECT_EQ(reopened.current_manifest().content_hash, committed_content_hash);
 		EXPECT_TRUE(!reopened.catalog().contains(child.id));
+		EXPECT_TRUE(!reopened.catalog().contains(second_child_descriptor.id));
 		EXPECT_TRUE(!reopened.compact_storage().lookup_row(child_shape.infoset, child_binding));
 	}
 }
@@ -1050,7 +1060,7 @@ TEST_CASE(multiway_external_public_node_codec_is_packed_and_deterministic)
 	EXPECT_TRUE(!decode_external_public_node(encoded.data(), encoded.size(), decoded));
 }
 
-TEST_CASE(multiway_external_catalog_rejects_over_limit_batch_before_append)
+TEST_CASE(multiway_external_catalog_splits_batches_to_wal_and_segment_bounds)
 {
 	using namespace texas::solver::multiway;
 	TestDirectory directory;
@@ -1063,11 +1073,21 @@ TEST_CASE(multiway_external_catalog_rejects_over_limit_batch_before_append)
 	MultiwayPackedPublicNode second{};
 	second.id.value = 2U;
 	MultiwayExternalPublicCatalog catalog(bounded_config, 4U);
-	bool bounded_rejection = false;
-	try { catalog.append_batch(1U, 0x77U, { first, second }); }
-	catch (const std::length_error&) { bounded_rejection = true; }
-	EXPECT_TRUE(bounded_rejection);
-	EXPECT_EQ(catalog.record_count(), 0U);
+	catalog.append_batch(1U, 0x77U, { first, second });
+	EXPECT_EQ(catalog.record_count(), 2U);
+	EXPECT_EQ(catalog.generation(), 2U);
+	MultiwayPackedPublicNode loaded{};
+	EXPECT_TRUE(catalog.lookup(first.id, loaded));
+	EXPECT_EQ(loaded.id, first.id);
+	EXPECT_TRUE(catalog.lookup(second.id, loaded));
+	EXPECT_EQ(loaded.id, second.id);
+	{
+		MultiwayExternalPublicCatalog reopened(bounded_config, 4U);
+		EXPECT_EQ(reopened.record_count(), 2U);
+		EXPECT_EQ(reopened.generation(), 2U);
+		EXPECT_TRUE(reopened.lookup(second.id, loaded));
+		EXPECT_EQ(loaded.id, second.id);
+	}
 }
 
 TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_restart)

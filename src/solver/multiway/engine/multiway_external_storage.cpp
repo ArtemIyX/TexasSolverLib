@@ -1875,9 +1875,23 @@ namespace texas::solver::multiway
 		std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 		const std::vector<MultiwayExternalRecord>& records)
 	{
+		append_batch_impl(batch_number, merge_fingerprint, records, false);
+	}
+
+	void MultiwayExternalRecordStore::append_batch_continuation(
+		std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+		const std::vector<MultiwayExternalRecord>& records)
+	{
+		append_batch_impl(batch_number, merge_fingerprint, records, true);
+	}
+
+	void MultiwayExternalRecordStore::append_batch_impl(
+		std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+		const std::vector<MultiwayExternalRecord>& records, bool allow_same_batch)
+	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		if (failed_) throw std::runtime_error("external storage is unavailable after a failed batch");
-		if (batch_number <= last_batch_number_ || records.empty())
+		if ((allow_same_batch ? batch_number < last_batch_number_ : batch_number <= last_batch_number_) || records.empty())
 			throw std::invalid_argument("external storage batch number must increase and contain records");
 		for (std::size_t index = 0U; index < records.size(); ++index)
 		{
@@ -2562,18 +2576,30 @@ namespace texas::solver::multiway
 		std::uint64_t merge_fingerprint, const std::vector<MultiwayPackedPublicNode>& nodes)
 	{
 		if (nodes.empty()) return;
-		std::vector<MultiwayExternalRecord> records;
-		records.reserve(nodes.size());
-		std::vector<std::uint8_t> node_bytes;
-		std::vector<std::uint8_t> payload;
+		const auto record_width = checked_add(external_public_catalog_record_size(), 8U);
+		const auto wal_limit = store_.maximum_batch_bytes();
+		if (wal_limit < 48U)
+			throw std::length_error("external public catalog WAL cannot hold one record");
+		const auto max_records = std::min((wal_limit - 48U) / record_width,
+			store_.segment_target_bytes() / record_width);
+		if (max_records == 0U)
+			throw std::length_error("external public catalog segment cannot hold one record");
+		const auto chunk_capacity = static_cast<std::size_t>(std::min<std::uint64_t>(
+			max_records, std::numeric_limits<std::size_t>::max()));
 		for (std::size_t index = 0U; index < nodes.size(); ++index)
 		{
-			if (nodes[index].id.value == 0U ||
-				nodes[index].legal_menu_handle != 0U ||
+			if (nodes[index].id.value == 0U || nodes[index].legal_menu_handle != 0U ||
 				(index != 0U && nodes[index - 1U].id.value >= nodes[index].id.value))
 				throw std::invalid_argument("external menu-less catalog batch requires sorted unique states with menu handle zero");
 			if (contains(nodes[index].id))
 				throw std::invalid_argument("external public catalog cannot append an existing state id");
+		}
+		std::vector<MultiwayExternalRecord> records;
+		records.reserve(chunk_capacity);
+		std::vector<std::uint8_t> node_bytes;
+		std::vector<std::uint8_t> payload;
+		for (std::size_t index = 0U; index < nodes.size(); ++index)
+		{
 			encode_external_public_node(nodes[index], node_bytes);
 			payload = node_bytes;
 			append_u32(payload, kCatalogMenuMagic);
@@ -2585,8 +2611,13 @@ namespace texas::solver::multiway
 				texas::core::fingerprint::append_u8(checksum, payload[byte]);
 			append_u64(payload, texas::core::fingerprint::finish(checksum));
 			records.push_back({ nodes[index].id.value, payload });
+			if (records.size() == chunk_capacity)
+			{
+				store_.append_batch_continuation(batch_number, merge_fingerprint, records);
+				records.clear();
+			}
 		}
-		store_.append_batch(batch_number, merge_fingerprint, records);
+		if (!records.empty()) store_.append_batch_continuation(batch_number, merge_fingerprint, records);
 	}
 
 	void MultiwayExternalPublicCatalog::append_batch(std::uint64_t batch_number,
@@ -2633,13 +2664,14 @@ namespace texas::solver::multiway
 		if (new_count == 0U) return;
 		const auto record_width = checked_add(external_public_catalog_record_size(), 8U);
 		const auto wal_limit = store_.maximum_batch_bytes();
-		if (wal_limit < 48U || new_count > (wal_limit - 48U) / record_width ||
-			new_count > store_.segment_target_bytes() / record_width)
-			throw std::length_error("external public catalog admission exceeds its bounded WAL or segment");
-		std::vector<MultiwayExternalRecord> records;
-		records.reserve(new_count);
-		std::vector<std::uint8_t> node_bytes;
-		std::vector<std::uint8_t> payload;
+		if (wal_limit < 48U)
+			throw std::length_error("external public catalog WAL cannot hold one record");
+		const auto max_records = std::min((wal_limit - 48U) / record_width,
+			store_.segment_target_bytes() / record_width);
+		if (max_records == 0U)
+			throw std::length_error("external public catalog segment cannot hold one record");
+		const auto chunk_capacity = static_cast<std::size_t>(std::min<std::uint64_t>(
+			max_records, std::numeric_limits<std::size_t>::max()));
 		std::uint64_t previous_id = 0U;
 		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
@@ -2665,6 +2697,18 @@ namespace texas::solver::multiway
 							item.target_street_contribution <= descriptor.legal_actions[action - 1U].target_street_contribution))))
 					throw std::invalid_argument("external public catalog action menu is not canonical");
 			}
+		}
+		std::vector<MultiwayExternalRecord> records;
+		records.reserve(chunk_capacity);
+		std::vector<std::uint8_t> node_bytes;
+		std::vector<std::uint8_t> payload;
+		for (std::size_t index = 0U; index < states.size(); ++index)
+		{
+			if (new_state_flags != nullptr && (*new_state_flags)[index] == 0U) continue;
+			const auto& descriptor = states[index];
+			const auto node = packed_nodes == nullptr
+				? MultiwayPublicCatalog::pack_node(descriptor)
+				: (*packed_nodes)[index];
 			auto external_node = node;
 			external_node.legal_menu_handle = 0U;
 			encode_external_public_node(external_node, node_bytes);
@@ -2693,8 +2737,13 @@ namespace texas::solver::multiway
 			if (payload.size() != external_public_catalog_record_size())
 				throw std::logic_error("external catalog record width changed without a schema update");
 			records.push_back({ node.id.value, payload });
+			if (records.size() == chunk_capacity)
+			{
+				store_.append_batch_continuation(batch_number, merge_fingerprint, records);
+				records.clear();
+			}
 		}
-		store_.append_batch(batch_number, merge_fingerprint, records);
+		if (!records.empty()) store_.append_batch_continuation(batch_number, merge_fingerprint, records);
 	}
 
 	bool MultiwayExternalPublicCatalog::lookup(MultiwayPublicStateId id,
