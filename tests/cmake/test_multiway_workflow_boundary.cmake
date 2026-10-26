@@ -16,6 +16,13 @@ if(target_position EQUAL -1)
     message(FATAL_ERROR "missing complete multiway research target generator")
 endif()
 
+foreach(logging_field "TexasSolver::logging" "TEXAS_LOG_INFO" "Progress::start" "configure_training_audit")
+    string(FIND "${cmake_text}${source_text}" "${logging_field}" logging_position)
+    if(logging_position EQUAL -1)
+        message(FATAL_ERROR "workflow logging integration is missing ${logging_field}")
+    endif()
+endforeach()
+
 foreach(option "--help" "--config" "--seed")
     string(FIND "${source_text}" "${option}" option_position)
     if(option_position EQUAL -1)
