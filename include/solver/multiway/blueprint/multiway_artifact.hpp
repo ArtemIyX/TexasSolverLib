@@ -227,6 +227,27 @@ namespace texas::solver::multiway
 		std::unique_ptr<Impl> impl_;
 	};
 
+	class MultiwayFullBlueprintShardedStreamWriter
+	{
+	public:
+		MultiwayFullBlueprintShardedStreamWriter(
+			const std::filesystem::path& manifest_path,
+			const MultiwayFullBlueprintStreamPlan& plan,
+			MultiwayFullBlueprintShardLayout layout,
+			std::vector<std::uint64_t> shard_action_counts,
+			MultiwayFullBlueprintStreamOptions options = {});
+		~MultiwayFullBlueprintShardedStreamWriter();
+		MultiwayFullBlueprintShardedStreamWriter(const MultiwayFullBlueprintShardedStreamWriter&) = delete;
+		MultiwayFullBlueprintShardedStreamWriter& operator=(const MultiwayFullBlueprintShardedStreamWriter&) = delete;
+
+		void write_row(const MultiwayFullBlueprintRowView& row);
+		[[nodiscard]] MultiwayFullBlueprintShardedStreamResult finish();
+
+	private:
+		struct Impl;
+		std::unique_ptr<Impl> impl_;
+	};
+
 	class MultiwayFullBlueprintArtifacts
 	{
 	public:

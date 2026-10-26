@@ -311,6 +311,33 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 	std::filesystem::remove(corrupt_manifest_path);
 }
 
+TEST_CASE(multiway_full_blueprint_sharded_writer_accepts_ordered_rows_without_materializing_them)
+{
+	using namespace texas::solver::multiway;
+	const auto identity = snapshot().identity;
+	auto rows = full_rows(identity);
+	rows[0].actions[0].probability = 30000U;
+	rows[0].actions.push_back({ { texas::MultiwayAction::Call, 1U, 0, rows[0].action_menu_id }, 35535U });
+	const auto plan = make_multiway_full_blueprint_stream_plan(identity, {}, 2U, 3U);
+	const auto maximum_shard_bytes = 176U + 8U + 28U + 64U * 19U;
+	const auto layout = make_multiway_full_blueprint_shard_layout(plan, maximum_shard_bytes);
+	const auto manifest_path = artifact_path("incremental_sharded_manifest");
+	MultiwayFullBlueprintShardedStreamWriter writer(manifest_path, plan, layout, { 2U, 1U });
+	for (const auto& row : rows)
+		writer.write_row(MultiwayFullBlueprintRowView(row));
+	const auto result = writer.finish();
+	MultiwayFullBlueprintArtifacts::verify_sharded_artifact(manifest_path, identity);
+	EXPECT_EQ(result.row_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.action_count, std::uint64_t{ 3U });
+	EXPECT_EQ(result.shard_count, std::uint64_t{ 2U });
+	EXPECT_EQ(result.policy_content_hash, MultiwayFullBlueprintArtifacts::policy_content_hash(
+		MultiwayFullBlueprintArtifact{ MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION, identity, {}, rows, 0U }));
+	const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(manifest_path, identity);
+	std::filesystem::remove_all(manifest_path.parent_path() / std::filesystem::u8path(
+		manifest.shards[0].relative_path).parent_path());
+	std::filesystem::remove(manifest_path);
+}
+
 TEST_CASE(multiway_full_blueprint_incremental_hash_matches_materialized_hash)
 {
 	const auto identity = snapshot().identity;

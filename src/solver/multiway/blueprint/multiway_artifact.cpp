@@ -940,6 +940,213 @@ namespace texas::solver::multiway
 		return { impl_->row_count, impl_->action_count, impl_->encoder.encoded_bytes(), payload_hash, impl_->policy_hasher.finish(), publication_mode };
 	}
 
+	struct MultiwayFullBlueprintShardedStreamWriter::Impl
+	{
+		Impl(const std::filesystem::path& destination_path,
+			const MultiwayFullBlueprintStreamPlan& stream_plan,
+			MultiwayFullBlueprintShardLayout shard_layout,
+			std::vector<std::uint64_t> per_shard_action_counts,
+			MultiwayFullBlueprintStreamOptions stream_options)
+			: manifest_path(destination_path), plan(stream_plan), layout(std::move(shard_layout)),
+			  shard_action_counts(std::move(per_shard_action_counts)), options(stream_options)
+		{
+			plan.validate();
+			layout.validate(plan);
+			if (manifest_path.empty() || plan.row_count == 0U || !options.require_strict_row_order ||
+				shard_action_counts.size() != layout.ranges.size())
+				throw std::invalid_argument("multiway sharded stream writer configuration is invalid");
+			std::uint64_t total_actions = 0U;
+			for (std::size_t index = 0U; index < shard_action_counts.size(); ++index)
+			{
+				const auto rows = layout.ranges[index].row_count;
+				const auto maximum_actions = checked_multiply(rows, MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW,
+					"multiway shard action capacity overflows");
+				if (shard_action_counts[index] < rows || shard_action_counts[index] > maximum_actions)
+					throw std::invalid_argument("multiway shard action count is outside the row bounds");
+				total_actions = checked_add(total_actions, shard_action_counts[index],
+					"multiway shard action total overflows");
+			}
+			if (total_actions != plan.action_count)
+				throw std::invalid_argument("multiway shard action counts do not match the stream plan");
+
+			std::error_code directory_error;
+			const auto parent = manifest_path.parent_path().empty()
+				? std::filesystem::current_path(directory_error)
+				: manifest_path.parent_path();
+			if (directory_error || !std::filesystem::is_directory(parent, directory_error) || directory_error)
+				throw std::runtime_error("multiway blueprint shard output directory is unavailable");
+			static std::atomic<std::uint64_t> generation_sequence{ 0U };
+			bool created = false;
+			for (std::uint32_t attempt = 0U; attempt < 1024U; ++attempt)
+			{
+				generation_name = manifest_path.filename().string() + ".shards-" +
+					std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "-" +
+					std::to_string(generation_sequence.fetch_add(1U, std::memory_order_relaxed));
+				generation_directory = parent / generation_name;
+				if (std::filesystem::create_directory(generation_directory, directory_error))
+				{
+					created = true;
+					break;
+				}
+				if (directory_error)
+					throw std::runtime_error("multiway blueprint shard generation directory cannot be created");
+			}
+			if (!created)
+				throw std::runtime_error("multiway blueprint shard generation name is unavailable");
+			directory_cleanup = std::make_unique<TemporaryDirectoryCleanup>(generation_directory);
+
+			manifest.identity = plan.identity;
+			manifest.training = plan.training;
+			manifest.row_count = plan.row_count;
+			manifest.action_count = plan.action_count;
+			manifest.maximum_serialized_bytes = layout.maximum_serialized_bytes;
+			manifest.shards.reserve(layout.ranges.size());
+			policy_hasher.begin(plan.row_count);
+		}
+
+		void begin_shard()
+		{
+			const auto range = layout.ranges[current_shard];
+			const auto shard_plan = make_multiway_full_blueprint_stream_plan(
+				plan.identity, plan.training, range.row_count, shard_action_counts[current_shard]);
+			shard_name = "shard-" + std::to_string(current_shard) + ".mwfb";
+			shard_writer = std::make_unique<MultiwayFullBlueprintStreamWriter>(
+				generation_directory / shard_name, shard_plan, options);
+			current_shard_rows = 0U;
+		}
+
+		void finish_shard()
+		{
+			const auto result = shard_writer->finish();
+			if (result.serialized_bytes > layout.maximum_serialized_bytes)
+				throw std::length_error("multiway full blueprint shard exceeds its byte bound");
+			total_serialized_bytes = checked_add(total_serialized_bytes, result.serialized_bytes,
+				"multiway blueprint sharded output size overflows");
+			const auto relative = (std::filesystem::path(generation_name) / shard_name).generic_u8string();
+			manifest.shards.push_back({ relative, layout.ranges[current_shard], result.action_count,
+				result.serialized_bytes, result.payload_hash });
+			shard_writer.reset();
+			++current_shard;
+		}
+
+		std::filesystem::path manifest_path;
+		MultiwayFullBlueprintStreamPlan plan;
+		MultiwayFullBlueprintShardLayout layout;
+		std::vector<std::uint64_t> shard_action_counts;
+		MultiwayFullBlueprintStreamOptions options;
+		MultiwayFullBlueprintShardManifest manifest;
+		MultiwayFullBlueprintPolicyContentHasher policy_hasher;
+		std::unique_ptr<TemporaryDirectoryCleanup> directory_cleanup;
+		std::unique_ptr<MultiwayFullBlueprintStreamWriter> shard_writer;
+		std::filesystem::path generation_directory;
+		std::string generation_name;
+		std::string shard_name;
+		RowKey previous_key{};
+		bool has_previous_key = false;
+		bool finished = false;
+		std::size_t current_shard = 0U;
+		std::uint64_t current_shard_rows = 0U;
+		std::uint64_t row_count = 0U;
+		std::uint64_t action_count = 0U;
+		std::uint64_t total_serialized_bytes = 0U;
+	};
+
+	MultiwayFullBlueprintShardedStreamWriter::MultiwayFullBlueprintShardedStreamWriter(
+		const std::filesystem::path& manifest_path,
+		const MultiwayFullBlueprintStreamPlan& plan,
+		MultiwayFullBlueprintShardLayout layout,
+		std::vector<std::uint64_t> shard_action_counts,
+		MultiwayFullBlueprintStreamOptions options)
+		: impl_(std::make_unique<Impl>(manifest_path, plan, std::move(layout),
+			std::move(shard_action_counts), options))
+	{
+	}
+
+	MultiwayFullBlueprintShardedStreamWriter::~MultiwayFullBlueprintShardedStreamWriter() = default;
+
+	void MultiwayFullBlueprintShardedStreamWriter::write_row(const MultiwayFullBlueprintRowView& row)
+	{
+		if (impl_ == nullptr || impl_->finished || impl_->row_count >= impl_->plan.row_count ||
+			impl_->current_shard >= impl_->layout.ranges.size())
+			throw std::logic_error("multiway sharded blueprint stream is closed or complete");
+		validate_row(row);
+		const auto key = row_key(row);
+		if (impl_->has_previous_key && !row_key_less(impl_->previous_key, key))
+			throw std::invalid_argument("multiway sharded blueprint rows are not strictly ordered");
+		if (impl_->shard_writer == nullptr)
+			impl_->begin_shard();
+		impl_->policy_hasher.append_row(row);
+		impl_->shard_writer->write_row(row);
+		impl_->previous_key = key;
+		impl_->has_previous_key = true;
+		++impl_->row_count;
+		++impl_->current_shard_rows;
+		impl_->action_count = checked_add(impl_->action_count, row.action_count,
+			"multiway sharded blueprint action count overflows");
+		if (impl_->current_shard_rows == impl_->layout.ranges[impl_->current_shard].row_count)
+			impl_->finish_shard();
+	}
+
+	MultiwayFullBlueprintShardedStreamResult MultiwayFullBlueprintShardedStreamWriter::finish()
+	{
+		if (impl_ == nullptr || impl_->finished || impl_->row_count != impl_->plan.row_count ||
+			impl_->action_count != impl_->plan.action_count || impl_->current_shard != impl_->layout.ranges.size())
+			throw std::invalid_argument("multiway sharded blueprint stream counts do not match its plan");
+		impl_->manifest.policy_content_hash = impl_->policy_hasher.finish();
+		impl_->manifest.validate();
+		const auto manifest_hash = shard_manifest_hash(impl_->manifest);
+		const auto temporary_manifest = impl_->manifest_path.string() + ".tmp." + impl_->generation_name;
+		TemporaryFileCleanup manifest_cleanup(temporary_manifest);
+		{
+			std::ofstream out(temporary_manifest, std::ios::binary | std::ios::trunc);
+			if (!out)
+				throw std::runtime_error("multiway blueprint shard manifest temporary cannot be opened");
+			out.write(kShardedBlueprintMagic.data(), static_cast<std::streamsize>(kShardedBlueprintMagic.size()));
+			portable::write_u32(out, impl_->manifest.schema_version);
+			write_identity(out, impl_->manifest.identity);
+			write_training(out, impl_->manifest.training);
+			portable::write_u64(out, impl_->manifest.row_count);
+			portable::write_u64(out, impl_->manifest.action_count);
+			portable::write_u64(out, impl_->manifest.maximum_serialized_bytes);
+			portable::write_u64(out, impl_->manifest.policy_content_hash);
+			portable::write_u64(out, impl_->manifest.shards.size());
+			for (const auto& shard : impl_->manifest.shards)
+			{
+				portable::write_u32(out, static_cast<std::uint32_t>(shard.relative_path.size()));
+				out.write(shard.relative_path.data(), static_cast<std::streamsize>(shard.relative_path.size()));
+				portable::write_u64(out, shard.range.first_row);
+				portable::write_u64(out, shard.range.row_count);
+				portable::write_u64(out, shard.action_count);
+				portable::write_u64(out, shard.serialized_bytes);
+				portable::write_u64(out, shard.payload_hash);
+			}
+			portable::write_u64(out, manifest_hash);
+			out.close();
+			if (!out)
+				throw std::runtime_error("multiway blueprint shard manifest write failed");
+		}
+		std::error_code size_error;
+		const auto manifest_bytes = std::filesystem::file_size(temporary_manifest, size_error);
+		if (size_error)
+			throw std::runtime_error("multiway blueprint shard manifest size cannot be determined");
+		const auto total_bytes = checked_add(impl_->total_serialized_bytes, manifest_bytes,
+			"multiway blueprint sharded output size overflows");
+		if (impl_->options.failure_point == MultiwayFullBlueprintStreamFailurePoint::ManifestPublication)
+			throw std::runtime_error("injected multiway blueprint shard manifest publication failure");
+		const auto publication_mode = texas::core::publish_atomic_replace(
+			temporary_manifest, impl_->manifest_path,
+			"multiway blueprint shard manifest publish failed",
+			texas::core::AtomicPublishFallbackPolicy::RejectCopyFallback);
+		if (publication_mode == texas::core::AtomicPublishMode::CopyFallback)
+			throw std::runtime_error("multiway blueprint shard manifest publication was not atomic");
+		manifest_cleanup.active = false;
+		impl_->directory_cleanup->active = false;
+		impl_->finished = true;
+		return { impl_->row_count, impl_->action_count, total_bytes,
+			impl_->manifest.policy_content_hash,
+			static_cast<std::uint64_t>(impl_->manifest.shards.size()), manifest_bytes, publication_mode };
+	}
+
 	MultiwayFullBlueprintStreamResult MultiwayFullBlueprintArtifacts::save_atomic_streaming(
 		const std::filesystem::path& path,
 		const MultiwayFullBlueprintStreamPlan& plan,
@@ -1001,129 +1208,22 @@ namespace texas::solver::multiway
 		if (action_total != plan.action_count)
 			throw std::invalid_argument("multiway full blueprint shard plan action count is inconsistent");
 		const auto expected_policy_hash = first_pass_hasher.finish();
-
-		std::error_code directory_error;
-		const auto parent = manifest_path.parent_path().empty()
-			? std::filesystem::current_path(directory_error)
-			: manifest_path.parent_path();
-		if (directory_error || !std::filesystem::is_directory(parent, directory_error) || directory_error)
-			throw std::runtime_error("multiway blueprint shard output directory is unavailable");
-		static std::atomic<std::uint64_t> generation_sequence{ 0U };
-		std::filesystem::path generation_directory;
-		std::string generation_name;
-		bool directory_created = false;
-		for (std::uint32_t attempt = 0U; attempt < 1024U; ++attempt)
-		{
-			generation_name = manifest_path.filename().string() + ".shards-" +
-				std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "-" +
-				std::to_string(generation_sequence.fetch_add(1U, std::memory_order_relaxed));
-			generation_directory = parent / generation_name;
-			if (std::filesystem::create_directory(generation_directory, directory_error))
-			{
-				directory_created = true;
-				break;
-			}
-			if (directory_error)
-				throw std::runtime_error("multiway blueprint shard generation directory cannot be created");
-		}
-		if (!directory_created)
-			throw std::runtime_error("multiway blueprint shard generation name is unavailable");
-		TemporaryDirectoryCleanup directory_cleanup(generation_directory);
-
-		MultiwayFullBlueprintShardManifest manifest;
-		manifest.identity = plan.identity;
-		manifest.training = plan.training;
-		manifest.row_count = plan.row_count;
-		manifest.action_count = plan.action_count;
-		manifest.maximum_serialized_bytes = maximum_shard_bytes;
-		manifest.policy_content_hash = expected_policy_hash;
-		manifest.shards.reserve(layout.ranges.size());
+		MultiwayFullBlueprintShardedStreamWriter writer(
+			manifest_path, plan, layout, std::move(shard_actions), options);
 		MultiwayFullBlueprintPolicyContentHasher second_pass_hasher;
 		second_pass_hasher.begin(plan.row_count);
-		std::uint64_t total_bytes = 0U;
-		for (std::size_t shard_index = 0U; shard_index < layout.ranges.size(); ++shard_index)
+		for (std::uint64_t index = 0U; index < plan.row_count; ++index)
 		{
-			const auto& range = layout.ranges[shard_index];
-			const auto shard_plan = make_multiway_full_blueprint_stream_plan(
-				plan.identity, plan.training, range.row_count, shard_actions[shard_index]);
-			const auto shard_name = "shard-" + std::to_string(shard_index) + ".mwfb";
-			const auto shard_path = generation_directory / shard_name;
-			MultiwayFullBlueprintStreamWriter writer(shard_path, shard_plan, options);
-			for (std::uint64_t offset = 0U; offset < range.row_count; ++offset)
-			{
-				MultiwayFullBlueprintRowView row;
-				const auto global_index = range.first_row + offset;
-				if (!produce_row(global_index, row, context))
-					throw std::runtime_error("multiway full blueprint shard writing row production failed");
-				validate_row(row);
-				second_pass_hasher.append_row(row);
-				writer.write_row(row);
-			}
-			const auto result = writer.finish();
-			if (result.serialized_bytes > maximum_shard_bytes)
-				throw std::length_error("multiway full blueprint shard exceeds its byte bound");
-			total_bytes = checked_add(total_bytes, result.serialized_bytes,
-				"multiway full blueprint sharded output size overflows");
-			MultiwayFullBlueprintShardReference reference;
-			reference.relative_path = (std::filesystem::path(generation_name) / shard_name).generic_u8string();
-			reference.range = range;
-			reference.action_count = result.action_count;
-			reference.serialized_bytes = result.serialized_bytes;
-			reference.payload_hash = result.payload_hash;
-			manifest.shards.push_back(std::move(reference));
+			MultiwayFullBlueprintRowView row;
+			if (!produce_row(index, row, context))
+				throw std::runtime_error("multiway full blueprint shard writing row production failed");
+			validate_row(row);
+			second_pass_hasher.append_row(row);
+			writer.write_row(row);
 		}
 		if (second_pass_hasher.finish() != expected_policy_hash)
 			throw std::runtime_error("multiway full blueprint rows changed between shard planning and writing");
-		manifest.validate();
-
-		const auto manifest_hash = shard_manifest_hash(manifest);
-		const auto temporary_manifest = manifest_path.string() + ".tmp." + generation_name;
-		TemporaryFileCleanup manifest_cleanup(temporary_manifest);
-		{
-			std::ofstream out(temporary_manifest, std::ios::binary | std::ios::trunc);
-			if (!out)
-				throw std::runtime_error("multiway blueprint shard manifest temporary cannot be opened");
-			out.write(kShardedBlueprintMagic.data(), static_cast<std::streamsize>(kShardedBlueprintMagic.size()));
-			portable::write_u32(out, manifest.schema_version);
-			write_identity(out, manifest.identity);
-			write_training(out, manifest.training);
-			portable::write_u64(out, manifest.row_count);
-			portable::write_u64(out, manifest.action_count);
-			portable::write_u64(out, manifest.maximum_serialized_bytes);
-			portable::write_u64(out, manifest.policy_content_hash);
-			portable::write_u64(out, manifest.shards.size());
-			for (const auto& shard : manifest.shards)
-			{
-				portable::write_u32(out, static_cast<std::uint32_t>(shard.relative_path.size()));
-				out.write(shard.relative_path.data(), static_cast<std::streamsize>(shard.relative_path.size()));
-				portable::write_u64(out, shard.range.first_row);
-				portable::write_u64(out, shard.range.row_count);
-				portable::write_u64(out, shard.action_count);
-				portable::write_u64(out, shard.serialized_bytes);
-				portable::write_u64(out, shard.payload_hash);
-			}
-			portable::write_u64(out, manifest_hash);
-			out.close();
-			if (!out)
-				throw std::runtime_error("multiway blueprint shard manifest write failed");
-		}
-		std::error_code manifest_size_error;
-		const auto manifest_bytes = std::filesystem::file_size(temporary_manifest, manifest_size_error);
-		if (manifest_size_error)
-			throw std::runtime_error("multiway blueprint shard manifest size cannot be determined");
-		total_bytes = checked_add(total_bytes, manifest_bytes,
-			"multiway blueprint sharded output size overflows");
-		if (options.failure_point == MultiwayFullBlueprintStreamFailurePoint::ManifestPublication)
-			throw std::runtime_error("injected multiway blueprint shard manifest publication failure");
-		const auto publication_mode = texas::core::publish_atomic_replace(
-			temporary_manifest, manifest_path, "multiway blueprint shard manifest publish failed",
-			texas::core::AtomicPublishFallbackPolicy::RejectCopyFallback);
-		if (publication_mode == texas::core::AtomicPublishMode::CopyFallback)
-			throw std::runtime_error("multiway blueprint shard manifest publication was not atomic");
-		manifest_cleanup.active = false;
-		directory_cleanup.active = false;
-		return { plan.row_count, plan.action_count, total_bytes, expected_policy_hash,
-			static_cast<std::uint64_t>(manifest.shards.size()), manifest_bytes, publication_mode };
+		return writer.finish();
 	}
 
 	void MultiwayFullBlueprintArtifacts::save_atomic(

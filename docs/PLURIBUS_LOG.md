@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 7.2 - Add incremental sharded writer
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added a sequential sharded writer that accepts ordered row views directly, opens one shard writer at a time, and publishes the manifest only after all shards finish.
+- Per-shard action counts are validated up front; each shard enforces its exact row/action counts and worst-case byte bound.
+- Refactored the repeatable-producer sharded helper to use the same writer and manifest publication path.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_artifact`: passed.
+- Focused CTest for `test_multiway_artifact`: passed (1/1).
+- Tests cover sequential multi-shard writing, exact aggregate policy hash, and manifest verification.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Trainer selection, exact sharded disk preflight, and workflow report integration remain outstanding.
+
 ## PB-12 Phase 7.2 - Add mapped sharded policy lookup
 
 **Status:** In progress
