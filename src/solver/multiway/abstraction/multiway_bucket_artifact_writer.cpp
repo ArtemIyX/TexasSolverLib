@@ -53,7 +53,7 @@ namespace texas::solver::multiway
 		}
 		std::uint32_t assignment_width(std::uint32_t bucket_count) noexcept
 		{
-			return bucket_count <= 0xffU ? 1U : bucket_count <= 0xffffU ? 2U : 4U;
+			return bucket_count <= 0x100U ? 1U : bucket_count <= 0x10000U ? 2U : 4U;
 		}
 		void hash_u64(std::uint64_t& hash, std::uint64_t value) noexcept
 		{

@@ -55,6 +55,9 @@ namespace texas::solver::multiway
 	[[nodiscard]] bool is_multiway_canonical_board(
 		core::Street street,
 		const std::vector<std::uint8_t>& board) noexcept;
+	[[nodiscard]] bool is_multiway_canonical_board(
+		core::Street street,
+		MultiwayBoardView board) noexcept;
 	[[nodiscard]] MultiwayBucketFeatures make_multiway_bucket_features(
 		core::Street street,
 		const std::vector<std::uint8_t>& canonical_board,

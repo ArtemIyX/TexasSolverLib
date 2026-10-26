@@ -1,5 +1,36 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 2.3 - Packed mapped table views
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Replaced schema-5 per-table board vectors with 40-byte non-owning views and made registry lookup binary-search the mapped, sorted directory. Kept schema-4 mapped record loading and stable `MultiwayBucketTable` references.
+- Accounted the mapped view vector and one shared model identity separately, and reject schema-5 mappings whose table metadata allocation would exceed 128 MiB. The deterministic full-catalog sizing test verifies `table_count * sizeof(MultiwayBucketTable) + sizeof(MultiwayModelIdentity)` remains below that limit.
+- Resolved sentinel collisions at full 256- and 65,536-bucket widths by deriving blocked assignments from the board and canonical combo index. Verified the highest valid bucket decodes correctly at each width transition.
+- Added exhaustive assignment and lookup comparisons across schema-4 owned/mapped and schema-5 owned/mapped fixtures, plus duplicate-directory, offset-overflow, hash, and identity rejection cases.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `include/solver/multiway/abstraction/multiway_bucket_model.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_model.cpp`
+- `tests/test_multiway_bucket_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused build and CTest for bucket artifact, generation, and model: passed (3/3).
+- Earlier related focused CTest for bucket catalog, future bucket, range belief, search session, solver, artifact, and artifact preflight: passed (7/7).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all 118 CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- The 128 MiB metadata result is a deterministic view-vector capacity formula, not a target-machine residency measurement. No large bucket catalog generation or target-machine benchmark was run.
+
 ## PB-12 Phase 2.2 - Stream schema 5 bucket artifacts
 
 **Status:** Complete
@@ -25,7 +56,6 @@
 
 ### Limitations
 
-- Mapped loading still retains one table object and board vector per table. The packed mapped directory is not yet used as the registry's lookup index, so the under-128-MiB metadata target is unproven.
 - No target-machine residency measurement or large artifact qualification was run.
 
 ## PB-12 Phase 2.1 - Schema 5 compact bucket encoding
@@ -35,7 +65,7 @@
 
 - Added schema-5 directory and assignment sections with width-selected little-endian assignments, reserved invalid sentinels, section hashes, and table identity checks.
 - Retained schema-4 deserialization and mapped loading. Schema-5 inspection validates through the mapped loader and reports content hashes.
-- Exhaustively compared all 1,326 hole assignments for the three canonical fixture tables across schema 4 and schema 5. Verified width boundaries at 255/256 and 65,535/65,536 buckets, schema-5 mapping, and section hash rejection.
+- Exhaustively compared all 1,326 hole assignments for the three canonical fixture tables across schema 4 and schema 5. Verified width transitions at 256/257 and 65,536/65,537 buckets, schema-5 mapping, and section hash rejection.
 
 ### Files
 
@@ -54,7 +84,6 @@
 
 ### Limitations
 
-- The loader still expands the packed directory into a vector of table objects and per-board vectors. The mapped-array lookup and metadata-under-128-MiB acceptance test remain outstanding.
 - No large artifact generation or target-machine residency measurement was run.
 
 ## PB-12 Phase 0–1 - Repair memory accounting
