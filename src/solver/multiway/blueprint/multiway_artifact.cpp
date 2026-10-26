@@ -58,6 +58,14 @@ namespace texas::solver::multiway
 			return left * right;
 		}
 
+		std::string fixed_width_u64(std::uint64_t value)
+		{
+			auto digits = std::to_string(value);
+			if (digits.size() > 20U)
+				throw std::length_error("multiway shard generation component is too large");
+			return std::string(20U - digits.size(), '0') + digits;
+		}
+
 		void write_identity(std::ofstream& out, const MultiwayModelIdentity& identity)
 		{
 			visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) {
@@ -616,6 +624,53 @@ namespace texas::solver::multiway
 		return layout;
 	}
 
+	MultiwayFullBlueprintShardedSizeEstimate estimate_multiway_full_blueprint_sharded_size(
+		const MultiwayFullBlueprintStreamPlan& plan,
+		const MultiwayFullBlueprintShardLayout& layout,
+		const std::filesystem::path& manifest_path)
+	{
+		plan.validate();
+		layout.validate(plan);
+		if (manifest_path.empty() || layout.ranges.empty())
+			throw std::invalid_argument("multiway sharded size estimate requires a destination and shards");
+
+		MultiwayFullBlueprintShardedSizeEstimate estimate;
+		const auto shard_overhead = checked_add(kSerializedHeaderBytes, kSerializedTrailerBytes,
+			"multiway shard size estimate overflows");
+		estimate.shard_bytes = checked_add(plan.serialized_bytes,
+			checked_multiply(static_cast<std::uint64_t>(layout.ranges.size() - 1U), shard_overhead,
+				"multiway shard size estimate overflows"),
+			"multiway shard size estimate overflows");
+
+		std::uint64_t identity_fields = 0U;
+		visit_multiway_model_identity_fields(plan.identity, [&](std::uint64_t) { ++identity_fields; });
+		estimate.manifest_bytes = checked_add(112U,
+			checked_multiply(identity_fields, sizeof(std::uint64_t),
+				"multiway manifest size estimate overflows"),
+			"multiway manifest size estimate overflows");
+		const auto filename_bytes = manifest_path.filename().generic_u8string().size();
+		const auto generation_name_bytes = checked_add(filename_bytes, 49U,
+			"multiway shard path estimate overflows");
+		for (std::size_t index = 0U; index < layout.ranges.size(); ++index)
+		{
+			std::uint64_t digits = 1U;
+			for (auto value = index; value >= 10U; value /= 10U)
+				++digits;
+			const auto relative_path_bytes = checked_add(generation_name_bytes,
+				checked_add(12U, digits, "multiway shard path estimate overflows"),
+				"multiway shard path estimate overflows");
+			if (relative_path_bytes > std::numeric_limits<std::uint32_t>::max())
+				throw std::length_error("multiway shard path exceeds manifest format");
+			const auto shard_entry_bytes = checked_add(44U, relative_path_bytes,
+				"multiway manifest size estimate overflows");
+			estimate.manifest_bytes = checked_add(estimate.manifest_bytes, shard_entry_bytes,
+				"multiway manifest size estimate overflows");
+		}
+		estimate.total_bytes = checked_add(estimate.shard_bytes, estimate.manifest_bytes,
+			"multiway sharded output size estimate overflows");
+		return estimate;
+	}
+
 	void MultiwayFullBlueprintShardManifest::validate() const
 	{
 		if (schema_version != MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION ||
@@ -979,10 +1034,11 @@ namespace texas::solver::multiway
 			bool created = false;
 			for (std::uint32_t attempt = 0U; attempt < 1024U; ++attempt)
 			{
-				generation_name = manifest_path.filename().string() + ".shards-" +
-					std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "-" +
-					std::to_string(generation_sequence.fetch_add(1U, std::memory_order_relaxed));
-				generation_directory = parent / generation_name;
+				generation_name = manifest_path.filename().u8string() + ".shards-" +
+					fixed_width_u64(static_cast<std::uint64_t>(
+						std::chrono::steady_clock::now().time_since_epoch().count())) + "-" +
+					fixed_width_u64(generation_sequence.fetch_add(1U, std::memory_order_relaxed));
+				generation_directory = parent / std::filesystem::u8path(generation_name);
 				if (std::filesystem::create_directory(generation_directory, directory_error))
 				{
 					created = true;

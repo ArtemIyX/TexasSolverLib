@@ -108,6 +108,13 @@ namespace texas::solver::multiway
 		void validate(const MultiwayFullBlueprintStreamPlan& plan) const;
 	};
 
+	struct MultiwayFullBlueprintShardedSizeEstimate
+	{
+		std::uint64_t shard_bytes = 0U;
+		std::uint64_t manifest_bytes = 0U;
+		std::uint64_t total_bytes = 0U;
+	};
+
 	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SHARD_MANIFEST_SCHEMA_VERSION = 1U;
 	inline constexpr std::uint64_t MULTIWAY_FULL_BLUEPRINT_MAX_SHARDS = 65'536U;
 
@@ -143,6 +150,10 @@ namespace texas::solver::multiway
 	[[nodiscard]] MultiwayFullBlueprintShardLayout make_multiway_full_blueprint_shard_layout(
 		const MultiwayFullBlueprintStreamPlan& plan,
 		std::uint64_t maximum_serialized_bytes);
+	[[nodiscard]] MultiwayFullBlueprintShardedSizeEstimate estimate_multiway_full_blueprint_sharded_size(
+		const MultiwayFullBlueprintStreamPlan& plan,
+		const MultiwayFullBlueprintShardLayout& layout,
+		const std::filesystem::path& manifest_path);
 
 	class MultiwayFullBlueprintPayloadHasher
 	{

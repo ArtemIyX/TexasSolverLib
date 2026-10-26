@@ -222,6 +222,9 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 	const auto plan = make_multiway_full_blueprint_stream_plan(identity, {}, 2U, 3U);
 	const auto manifest_path = artifact_path("sharded_manifest");
 	const auto shard_bound = 176U + 8U + 28U + 64U * 19U;
+	const auto shard_layout = make_multiway_full_blueprint_shard_layout(plan, shard_bound);
+	const auto size_estimate = estimate_multiway_full_blueprint_sharded_size(
+		plan, shard_layout, manifest_path);
 	const auto result = MultiwayFullBlueprintArtifacts::save_atomic_sharded_streaming(
 		manifest_path, plan, shard_bound, &produce_full_row, &rows);
 	const auto manifest = MultiwayFullBlueprintArtifacts::load_sharded_manifest(manifest_path, identity);
@@ -234,6 +237,10 @@ TEST_CASE(multiway_full_blueprint_sharded_stream_publishes_verified_manifest_las
 	EXPECT_EQ(result.action_count, std::uint64_t{ 3U });
 	EXPECT_EQ(result.shard_count, std::uint64_t{ 2U });
 	EXPECT_EQ(result.manifest_bytes, std::filesystem::file_size(manifest_path));
+	EXPECT_EQ(size_estimate.manifest_bytes, result.manifest_bytes);
+	EXPECT_EQ(size_estimate.shard_bytes,
+		manifest.shards[0].serialized_bytes + manifest.shards[1].serialized_bytes);
+	EXPECT_EQ(size_estimate.total_bytes, result.serialized_bytes);
 	EXPECT_EQ(result.serialized_bytes,
 		manifest.shards[0].serialized_bytes + manifest.shards[1].serialized_bytes + result.manifest_bytes);
 	EXPECT_EQ(result.policy_content_hash, MultiwayFullBlueprintArtifacts::policy_content_hash(
