@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.8 - Bound external record cache lookup work
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Replaced per-lookup linear scans across the record cache with deterministic direct-mapped slots, keeping cache memory within its configured capacity.
+- Added a one-record cache fixture verifying deterministic collision replacement and hit, miss, and eviction counters.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Cache storage remains a primitive not yet wired into coordinator public-state lookup.
+
 ## PB-12 Phase 5.12 - Make pinned bucket handles move-only
 
 **Status:** Complete

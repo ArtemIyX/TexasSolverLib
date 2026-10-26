@@ -169,7 +169,6 @@ namespace texas::solver::multiway
 		std::uint64_t last_batch_number_ = 0U;
 		std::vector<Run> runs_;
 		mutable std::vector<CacheEntry> cache_;
-		mutable std::size_t next_cache_entry_ = 0U;
 		mutable MultiwayExternalStorageStats stats_{};
 		bool failed_ = false;
 		mutable std::mutex mutex_;

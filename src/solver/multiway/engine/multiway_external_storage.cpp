@@ -111,6 +111,16 @@ namespace texas::solver::multiway
 				throw std::length_error("external storage byte count overflows uint64");
 			return left + right;
 		}
+		std::size_t external_cache_slot(std::uint64_t key, std::size_t capacity) noexcept
+		{
+			auto mixed = key;
+			mixed ^= mixed >> 30U;
+			mixed *= 0xbf58476d1ce4e5b9ULL;
+			mixed ^= mixed >> 27U;
+			mixed *= 0x94d049bb133111ebULL;
+			mixed ^= mixed >> 31U;
+			return static_cast<std::size_t>(mixed % capacity);
+		}
 		std::uint64_t record_bytes(std::uint64_t count, std::size_t payload_bytes)
 		{
 			const auto width = checked_add(8U, payload_bytes);
@@ -881,9 +891,11 @@ namespace texas::solver::multiway
 			generation_ = next_generation;
 			record_count_ = checked_add(record_count_, records.size());
 			last_batch_number_ = batch_number;
-			for (auto& cached : cache_)
-				for (const auto& record : records)
-					if (cached.valid && cached.key == record.key) cached.valid = false;
+			for (const auto& record : records)
+			{
+				auto& cached = cache_[external_cache_slot(record.key, cache_.size())];
+				if (cached.valid && cached.key == record.key) cached.valid = false;
+			}
 			flush_directory();
 			std::error_code ignored;
 			std::filesystem::remove(config_.directory / "BATCH.wal", ignored);
@@ -909,20 +921,20 @@ namespace texas::solver::multiway
 	bool MultiwayExternalRecordStore::lookup_unlocked(std::uint64_t key, std::vector<std::uint8_t>& payload) const
 	{
 		++stats_.lookups;
-		for (const auto& entry : cache_)
-			if (entry.valid && entry.key == key)
-			{
-				++stats_.cache_hits;
-				payload = entry.payload;
-				return true;
-			}
+		auto& entry = cache_[external_cache_slot(key, cache_.size())];
+		if (entry.valid && entry.key == key)
+		{
+			++stats_.cache_hits;
+			payload = entry.payload;
+			return true;
+		}
 		++stats_.cache_misses;
 		const auto started = std::chrono::steady_clock::now();
 		for (auto run = runs_.rbegin(); run != runs_.rend(); ++run)
 		{
 			++stats_.disk_reads;
 			if (!lookup_run(*run, key, payload)) continue;
-			auto& entry = cache_[next_cache_entry_++ % cache_.size()];
+			auto& entry = cache_[external_cache_slot(key, cache_.size())];
 			if (entry.valid) ++stats_.cache_evictions;
 			entry.key = key; entry.valid = true;
 			std::copy(payload.begin(), payload.end(), entry.payload.begin());

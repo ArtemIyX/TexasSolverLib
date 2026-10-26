@@ -82,6 +82,25 @@ TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 	}
 }
 
+TEST_CASE(multiway_external_record_store_uses_bounded_constant_time_cache_slots)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto settings = config(directory.path());
+	settings.cache_bytes = 64U;
+	MultiwayExternalRecordStore store(settings, 4U);
+	EXPECT_EQ(store.cache_capacity_records(), 1U);
+	store.append_batch(1U, 0x55U, records(10U));
+	std::vector<std::uint8_t> payload;
+	EXPECT_TRUE(store.lookup(10U, payload));
+	EXPECT_TRUE(store.lookup(12U, payload));
+	EXPECT_TRUE(store.lookup(12U, payload));
+	const auto stats = store.stats();
+	EXPECT_EQ(stats.cache_misses, 2U);
+	EXPECT_EQ(stats.cache_hits, 1U);
+	EXPECT_EQ(stats.cache_evictions, 1U);
+}
+
 TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
 {
 	using namespace texas::solver::multiway;
