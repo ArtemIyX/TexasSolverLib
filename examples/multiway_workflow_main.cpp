@@ -731,6 +731,9 @@ namespace
 			? (resume_path.empty() ? std::filesystem::path{} : resume_path)
 			: authorize_multiway_workflow_path(
 				  checkpoint_output_policy, checkpoint_dir / "latest.bin", MultiwayWorkflowPathKind::OutputFile);
+		if (batches == 0U && !resume_path.empty() &&
+			(checkpoint_path.empty() || checkpoint_path == resume_path))
+			throw std::invalid_argument("checkpoint-only resume requires a distinct checkpoint output path");
 		if (!checkpoint_path.empty() && (checkpoint_path == input_path || checkpoint_path == output_path || checkpoint_path == report_path || checkpoint_path == log_path))
 			throw std::invalid_argument("training checkpoint path aliases a training artifact");
 		if (!resume_path.empty() && (resume_path == input_path || resume_path == output_path || resume_path == report_path || resume_path == log_path))
@@ -1074,8 +1077,6 @@ namespace
 				session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
 					resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
 		}
-		if (batches == 0U && !resume_path.empty())
-			session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
 		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
 		const auto progress_started_at = std::chrono::steady_clock::now();
@@ -1101,7 +1102,7 @@ namespace
 		MultiwayTrainingCheckpointWriteResult last_checkpoint_write{};
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};
-		bool checkpoint_snapshots_recorded = batches == 0U && !resume_path.empty();
+		bool checkpoint_snapshots_recorded = false;
 		const auto publish_training_failure = [&]() {
 			auto failure_report = make_multiway_training_report(
 				session.status(), session.status().merged_stream_fingerprint,
@@ -1119,6 +1120,32 @@ namespace
 		};
 		try
 		{
+			if (remaining_batches == 0U && !resume_path.empty())
+			{
+				if (!checkpoint_path.parent_path().empty())
+					std::filesystem::create_directories(checkpoint_path.parent_path());
+				session.record_process_memory_snapshot(MultiwayMemoryPhase::BeforeCheckpoint);
+				const auto checkpoint_start = std::chrono::steady_clock::now();
+				texas::logging::flush();
+				if (config.limits.storage_backend == MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+				{
+					external_resume = session.save_external_checkpoint_atomic(checkpoint_path,
+						workflow_identity_hash, storage_identity_hash);
+					checkpoint_bytes = static_cast<std::uint64_t>(std::filesystem::file_size(checkpoint_path));
+				}
+				else
+				{
+					last_checkpoint_write = session.save_checkpoint_atomic(checkpoint_path);
+					checkpoint_telemetry.accumulate(last_checkpoint_write.telemetry);
+					checkpoint_bytes = last_checkpoint_write.serialized_bytes;
+				}
+				checkpoint_write_nanoseconds += static_cast<std::uint64_t>(
+					std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::steady_clock::now() - checkpoint_start)
+						.count());
+				session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
+				checkpoint_snapshots_recorded = true;
+			}
 			while (remaining_batches != 0U)
 			{
 				const auto next = std::min(remaining_batches, workflow.checkpoint_interval);
