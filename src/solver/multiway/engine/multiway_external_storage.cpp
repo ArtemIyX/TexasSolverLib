@@ -176,6 +176,114 @@ namespace texas::solver::multiway
 		return kNodeRecordBytes;
 	}
 
+	void publish_multiway_external_generation(const std::filesystem::path& directory,
+		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability)
+	{
+		if (directory.empty() || manifest.generation == 0U || manifest.committed_batch_number == 0U ||
+			manifest.merge_fingerprint == 0U)
+			throw std::invalid_argument("external generation manifest identity is invalid");
+		std::vector<std::uint8_t> bytes{ 'T','X','M','W','G','E','N','1' };
+		append_u32(bytes, 1U);
+		append_u32(bytes, 0U);
+		append_u64(bytes, manifest.generation);
+		append_u64(bytes, manifest.committed_batch_number);
+		append_u64(bytes, manifest.merge_fingerprint);
+		append_u64(bytes, manifest.catalog_generation);
+		append_u64(bytes, manifest.public_state_count);
+		append_u64(bytes, manifest.row_generation);
+		append_u64(bytes, manifest.row_count);
+		append_u64(bytes, manifest.page_generation);
+		append_u64(bytes, manifest.page_count);
+		append_u64(bytes, manifest.content_hash);
+		auto checksum = kHashOffset;
+		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
+		append_u64(bytes, texas::core::fingerprint::finish(checksum));
+		const auto temp = directory / "TRAINING_CURRENT.tmp";
+		const auto current = directory / "TRAINING_CURRENT";
+		if (std::filesystem::exists(temp))
+			throw std::runtime_error("external training manifest temporary path already exists");
+		std::ofstream output(temp, std::ios::binary | std::ios::trunc);
+		if (!output) throw std::runtime_error("external training manifest cannot be opened");
+		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		output.flush();
+		if (!output) throw std::runtime_error("external training manifest write failed");
+		output.close();
+		if (synchronous_durability)
+		{
+#ifdef _WIN32
+			const auto handle = CreateFileW(temp.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+				OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+			if (handle == INVALID_HANDLE_VALUE) throw std::runtime_error("external training manifest cannot be opened for flush");
+			const auto flushed = FlushFileBuffers(handle);
+			CloseHandle(handle);
+			if (!flushed) throw std::runtime_error("external training manifest flush failed");
+#else
+			const auto descriptor = open(temp.c_str(), O_RDONLY);
+			if (descriptor < 0) throw std::runtime_error("external training manifest cannot be opened for flush");
+			const auto flushed = fsync(descriptor);
+			close(descriptor);
+			if (flushed != 0) throw std::runtime_error("external training manifest flush failed");
+#endif
+		}
+		texas::core::publish_atomic_replace(temp, current, "external training manifest publish failed",
+			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+		if (synchronous_durability)
+		{
+#ifndef _WIN32
+			const auto descriptor = open(directory.c_str(), O_RDONLY | O_DIRECTORY);
+			if (descriptor < 0) throw std::runtime_error("external training directory cannot be opened for flush");
+			const auto flushed = fsync(descriptor);
+			close(descriptor);
+			if (flushed != 0) throw std::runtime_error("external training directory flush failed");
+#endif
+		}
+	}
+
+	bool load_multiway_external_generation(const std::filesystem::path& directory,
+		MultiwayExternalGenerationManifest& manifest)
+	{
+		const auto path = directory / "TRAINING_CURRENT";
+		std::error_code error;
+		if (!std::filesystem::exists(path, error))
+		{
+			if (error) throw std::runtime_error("external training manifest cannot be inspected");
+			return false;
+		}
+		constexpr std::size_t manifest_size = 104U;
+		if (std::filesystem::file_size(path, error) != manifest_size || error)
+			throw std::invalid_argument("external training manifest size is invalid");
+		std::array<std::uint8_t, manifest_size> bytes{};
+		std::ifstream input(path, std::ios::binary);
+		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		constexpr std::array<std::uint8_t, 8U> magic = { 'T','X','M','W','G','E','N','1' };
+		if (!input || !std::equal(magic.begin(), magic.end(), bytes.begin()) ||
+			read_u32(bytes.data() + 8U) != 1U || read_u32(bytes.data() + 12U) != 0U)
+			throw std::invalid_argument("external training manifest header is invalid");
+		auto checksum = kHashOffset;
+		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+			texas::core::fingerprint::append_u8(checksum, bytes[index]);
+		if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + bytes.size() - 8U))
+			throw std::invalid_argument("external training manifest checksum is invalid");
+		MultiwayExternalGenerationManifest decoded{};
+		std::size_t cursor = 16U;
+		const auto read_field = [&]() { const auto value = read_u64(bytes.data() + cursor); cursor += 8U; return value; };
+		decoded.generation = read_field();
+		decoded.committed_batch_number = read_field();
+		decoded.merge_fingerprint = read_field();
+		decoded.catalog_generation = read_field();
+		decoded.public_state_count = read_field();
+		decoded.row_generation = read_field();
+		decoded.row_count = read_field();
+		decoded.page_generation = read_field();
+		decoded.page_count = read_field();
+		decoded.content_hash = read_field();
+		if (cursor != bytes.size() - 8U || decoded.generation == 0U ||
+			decoded.committed_batch_number == 0U || decoded.merge_fingerprint == 0U)
+			throw std::invalid_argument("external training manifest identity is invalid");
+		manifest = decoded;
+		return true;
+	}
+
 	bool decode_external_public_node(const std::uint8_t* bytes, std::size_t size,
 		MultiwayPackedPublicNode& output) noexcept
 	{

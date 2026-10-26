@@ -79,6 +79,57 @@ TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 	}
 }
 
+TEST_CASE(multiway_external_generation_manifest_is_atomic_and_checksummed)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalGenerationManifest first{};
+	first.generation = 1U;
+	first.committed_batch_number = 7U;
+	first.merge_fingerprint = 0x1234U;
+	first.catalog_generation = 2U;
+	first.public_state_count = 100U;
+	first.row_generation = 3U;
+	first.row_count = 40U;
+	first.page_generation = 4U;
+	first.page_count = 75U;
+	first.content_hash = 0x9876U;
+	publish_multiway_external_generation(directory.path(), first, false);
+	MultiwayExternalGenerationManifest loaded{};
+	EXPECT_TRUE(load_multiway_external_generation(directory.path(), loaded));
+	EXPECT_EQ(loaded.generation, first.generation);
+	EXPECT_EQ(loaded.committed_batch_number, first.committed_batch_number);
+	EXPECT_EQ(loaded.public_state_count, first.public_state_count);
+	EXPECT_EQ(loaded.page_count, first.page_count);
+	EXPECT_EQ(loaded.content_hash, first.content_hash);
+
+	auto second = first;
+	second.generation = 2U;
+	second.committed_batch_number = 8U;
+	std::ofstream(directory.path() / "TRAINING_CURRENT.tmp", std::ios::binary).put('x');
+	bool publication_rejected = false;
+	try { publish_multiway_external_generation(directory.path(), second, false); }
+	catch (const std::runtime_error&) { publication_rejected = true; }
+	EXPECT_TRUE(publication_rejected);
+	EXPECT_TRUE(load_multiway_external_generation(directory.path(), loaded));
+	EXPECT_EQ(loaded.generation, first.generation);
+
+	std::error_code ignored;
+	std::filesystem::remove(directory.path() / "TRAINING_CURRENT.tmp", ignored);
+	{
+		std::fstream current(directory.path() / "TRAINING_CURRENT", std::ios::binary | std::ios::in | std::ios::out);
+		char byte = 0;
+		current.read(&byte, 1);
+		byte ^= 1;
+		current.seekp(0);
+		current.write(&byte, 1);
+	}
+	bool corruption_rejected = false;
+	try { load_multiway_external_generation(directory.path(), loaded); }
+	catch (const std::invalid_argument&) { corruption_rejected = true; }
+	EXPECT_TRUE(corruption_rejected);
+}
+
 TEST_CASE(multiway_external_public_node_codec_is_packed_and_deterministic)
 {
 	using namespace texas::solver::multiway;

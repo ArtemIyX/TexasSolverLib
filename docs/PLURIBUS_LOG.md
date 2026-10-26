@@ -135,6 +135,30 @@
 
 - Row/page stores remain primitives and are not connected to coordinator row admission or worker merge. No in-memory differential solver fixture has been run; external execution remains rejected.
 
+## PB-12 Phase 5.3 - Aggregate generation manifest format
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a fixed-width checksummed top-level manifest record for committed batch identity and catalog, row, and page generation/count references. Publication uses an atomic replace and optional durable file/directory flush.
+- Added round-trip, checksum rejection, and failed-publication preservation tests.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- The aggregate manifest is not yet the coordinator's commit point. Catalog, row, and page stores still publish independently; external execution remains rejected until a recovery-safe multi-store batch transaction is integrated.
+
 ## PB-12 Phase 2.3 - Packed mapped table views
 
 **Status:** Complete

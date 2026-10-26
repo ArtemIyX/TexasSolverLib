@@ -54,6 +54,25 @@ namespace texas::solver::multiway
 		std::uint64_t page_cache_evictions = 0U;
 	};
 
+	struct MultiwayExternalGenerationManifest
+	{
+		std::uint64_t generation = 0U;
+		std::uint64_t committed_batch_number = 0U;
+		std::uint64_t merge_fingerprint = 0U;
+		std::uint64_t catalog_generation = 0U;
+		std::uint64_t public_state_count = 0U;
+		std::uint64_t row_generation = 0U;
+		std::uint64_t row_count = 0U;
+		std::uint64_t page_generation = 0U;
+		std::uint64_t page_count = 0U;
+		std::uint64_t content_hash = 0U;
+	};
+
+	void publish_multiway_external_generation(const std::filesystem::path& directory,
+		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability);
+	[[nodiscard]] bool load_multiway_external_generation(const std::filesystem::path& directory,
+		MultiwayExternalGenerationManifest& manifest);
+
 	// Fixed-width, append-only sorted runs. Callers serialize typed public-state,
 	// row, or page records explicitly and keep this API at coordinator boundaries.
 	class MultiwayExternalRecordStore
