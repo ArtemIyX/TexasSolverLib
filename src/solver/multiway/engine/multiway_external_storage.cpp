@@ -10,6 +10,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <queue>
@@ -35,6 +36,7 @@ namespace texas::solver::multiway
 		constexpr std::array<std::uint8_t, 8U> kWalMagic = { 'T','X','M','W','W','A','L','1' };
 		constexpr std::uint32_t kSchema = 1U;
 		constexpr std::uint64_t kHashOffset = texas::core::fingerprint::FNV1A_OFFSET;
+		constexpr std::uint32_t kCheckpointTrainingExtensionMagic = 0x31544d57U;
 		constexpr std::uint32_t kNodeRecordMagic = 0x314e574dU;
 		constexpr std::size_t kNodeRecordBytes = 225U;
 		constexpr std::uint32_t kCatalogMenuMagic = 0x314d574dU;
@@ -149,6 +151,21 @@ namespace texas::solver::multiway
 			std::uint64_t result = 0U;
 			for (unsigned shift = 0U; shift < 64U; shift += 8U) result |= static_cast<std::uint64_t>(bytes[shift / 8U]) << shift;
 			return result;
+		}
+		void append_f64(std::vector<std::uint8_t>& bytes, double value)
+		{
+			static_assert(sizeof(double) == sizeof(std::uint64_t), "checkpoint double width changed");
+			std::uint64_t bits = 0U;
+			std::memcpy(&bits, &value, sizeof(bits));
+			append_u64(bytes, bits);
+		}
+		double read_f64(const std::uint8_t* bytes)
+		{
+			static_assert(sizeof(double) == sizeof(std::uint64_t), "checkpoint double width changed");
+			const auto bits = read_u64(bytes);
+			double value = 0.0;
+			std::memcpy(&value, &bits, sizeof(value));
+			return value;
 		}
 		void append_i32(std::vector<std::uint8_t>& bytes, int value)
 		{
@@ -1007,6 +1024,8 @@ namespace texas::solver::multiway
 			manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA ||
 			manifest.model_identity_hash == 0U || manifest.workflow_identity_hash == 0U ||
 			manifest.storage_identity_hash == 0U || manifest.schedule_hash == 0U ||
+			manifest.completed_batches >= generation.committed_batch_number ||
+			manifest.completed_trajectories < manifest.completed_batches ||
 			generation.generation == 0U || generation.committed_batch_number == 0U ||
 			manifest.wal_generation != generation.committed_batch_number ||
 			manifest.wal_committed_offset != 0U ||
@@ -1024,6 +1043,10 @@ namespace texas::solver::multiway
 			generation.content_hash != current_generation.content_hash ||
 			component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation,
 				generation.row_generation, generation.page_generation } ||
+			manifest.linear_iteration_weighting > 1U || manifest.discounting_enabled > 1U ||
+			manifest.negative_regret_pruning_enabled > 1U ||
+			std::any_of(manifest.late_window_baseline.begin(), manifest.late_window_baseline.end(),
+				[](double value) { return !std::isfinite(value); }) ||
 			((generation.row_count == 0U) != (generation.logical_value_count == 0U)))
 			throw std::invalid_argument("external checkpoint manifest identity is invalid");
 		std::vector<std::uint8_t> bytes{ 'T','X','M','W','C','P','6','1' };
@@ -1062,6 +1085,26 @@ namespace texas::solver::multiway
 				append_u64(bytes, segment.content_hash);
 			}
 		}
+		append_u32(bytes, kCheckpointTrainingExtensionMagic);
+		append_u32(bytes, 1U);
+		append_u64(bytes, manifest.completed_batches);
+		append_u64(bytes, manifest.pruned_negative_regrets);
+		append_u64(bytes, manifest.late_window_start_batch);
+		append_u64(bytes, manifest.terminal_visits);
+		append_u64(bytes, manifest.leaf_visits);
+		append_u64(bytes, manifest.missing_lookup_requests);
+		append_u64(bytes, manifest.preflop_rows);
+		append_u64(bytes, manifest.flop_rows);
+		append_u64(bytes, manifest.turn_rows);
+		append_u64(bytes, manifest.river_rows);
+		for (const auto visits : manifest.street_visits)
+			append_u64(bytes, visits);
+		append_u32(bytes, static_cast<std::uint32_t>(manifest.linear_iteration_weighting) |
+			(static_cast<std::uint32_t>(manifest.discounting_enabled) << 8U) |
+			(static_cast<std::uint32_t>(manifest.negative_regret_pruning_enabled) << 16U));
+		append_u64(bytes, manifest.late_window_baseline.size());
+		for (const auto value : manifest.late_window_baseline)
+			append_f64(bytes, value);
 		auto checksum = kHashOffset;
 		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
 		append_u64(bytes, texas::core::fingerprint::finish(checksum));
@@ -1202,6 +1245,47 @@ namespace texas::solver::multiway
 					throw std::invalid_argument("external checkpoint segment ordering is invalid");
 				previous_generation = reference.generation;
 				component.push_back(reference);
+			}
+		}
+		if (cursor != bytes.size() - 8U)
+		{
+			constexpr std::size_t kTrainingExtensionFixedBytes = 4U + 4U + 14U * 8U + 4U + 8U;
+			if (bytes.size() - 8U - cursor < kTrainingExtensionFixedBytes ||
+				read_u32(bytes.data() + cursor) != kCheckpointTrainingExtensionMagic ||
+				read_u32(bytes.data() + cursor + 4U) != 1U)
+				throw std::invalid_argument("external checkpoint training metadata extension is invalid");
+			cursor += 8U;
+			decoded.completed_batches = read_field();
+			decoded.pruned_negative_regrets = read_field();
+			decoded.late_window_start_batch = read_field();
+			decoded.terminal_visits = read_field();
+			decoded.leaf_visits = read_field();
+			decoded.missing_lookup_requests = read_field();
+			decoded.preflop_rows = read_field();
+			decoded.flop_rows = read_field();
+			decoded.turn_rows = read_field();
+			decoded.river_rows = read_field();
+			for (auto& visits : decoded.street_visits)
+				visits = read_field();
+			const auto flags = read_u32(bytes.data() + cursor);
+			cursor += 4U;
+			if ((flags & 0xff000000U) != 0U || (flags & 0xffU) > 1U ||
+				((flags >> 8U) & 0xffU) > 1U || ((flags >> 16U) & 0xffU) > 1U)
+				throw std::invalid_argument("external checkpoint training flags are invalid");
+			decoded.linear_iteration_weighting = static_cast<std::uint8_t>(flags & 0xffU);
+			decoded.discounting_enabled = static_cast<std::uint8_t>((flags >> 8U) & 0xffU);
+			decoded.negative_regret_pruning_enabled = static_cast<std::uint8_t>((flags >> 16U) & 0xffU);
+			const auto baseline_count = read_field();
+			if (baseline_count > (bytes.size() - 8U - cursor) / 8U)
+				throw std::invalid_argument("external checkpoint late-window baseline count is invalid");
+			decoded.late_window_baseline.reserve(static_cast<std::size_t>(baseline_count));
+			for (std::uint64_t index = 0U; index < baseline_count; ++index)
+			{
+				const auto value = read_f64(bytes.data() + cursor);
+				cursor += 8U;
+				if (!std::isfinite(value))
+					throw std::invalid_argument("external checkpoint late-window baseline is non-finite");
+				decoded.late_window_baseline.push_back(value);
 			}
 		}
 		if (external_storage_directory.empty())

@@ -254,7 +254,22 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	checkpoint.workflow_identity_hash = 12U;
 	checkpoint.storage_identity_hash = 13U;
 	checkpoint.schedule_hash = 14U;
+	checkpoint.completed_batches = 5U;
 	checkpoint.completed_trajectories = 500U;
+	checkpoint.pruned_negative_regrets = 3U;
+	checkpoint.late_window_start_batch = 4U;
+	checkpoint.terminal_visits = 501U;
+	checkpoint.leaf_visits = 502U;
+	checkpoint.missing_lookup_requests = 2U;
+	checkpoint.preflop_rows = 1U;
+	checkpoint.flop_rows = 2U;
+	checkpoint.turn_rows = 3U;
+	checkpoint.river_rows = 4U;
+	checkpoint.street_visits = { 10U, 20U, 30U, 40U };
+	checkpoint.linear_iteration_weighting = 1U;
+	checkpoint.discounting_enabled = 1U;
+	checkpoint.negative_regret_pruning_enabled = 0U;
+	checkpoint.late_window_baseline = { 0.25, 0.75 };
 	checkpoint.generation = { 7U, 6U, 15U, 4U, 3U, 5U, 2U, 8U, 9U, 10U, 16U };
 	checkpoint.wal_generation = 6U;
 	write_empty_component_manifests(storage_directory, checkpoint.generation);
@@ -263,8 +278,31 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	const auto loaded = load_multiway_external_checkpoint_manifest(path, storage_directory,
 		11U, 12U, 13U, 14U);
 	EXPECT_EQ(loaded.backend_schema, MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA);
+	EXPECT_EQ(loaded.completed_batches, 5U);
 	EXPECT_EQ(loaded.completed_trajectories, 500U);
+	EXPECT_EQ(loaded.pruned_negative_regrets, 3U);
+	EXPECT_EQ(loaded.late_window_start_batch, 4U);
+	EXPECT_EQ(loaded.terminal_visits, 501U);
+	EXPECT_EQ(loaded.leaf_visits, 502U);
+	EXPECT_EQ(loaded.missing_lookup_requests, 2U);
+	EXPECT_EQ(loaded.preflop_rows, 1U);
+	EXPECT_EQ(loaded.flop_rows, 2U);
+	EXPECT_EQ(loaded.turn_rows, 3U);
+	EXPECT_EQ(loaded.river_rows, 4U);
+	EXPECT_EQ(loaded.street_visits[0], 10U);
+	EXPECT_EQ(loaded.street_visits[3], 40U);
+	EXPECT_EQ(loaded.linear_iteration_weighting, 1U);
+	EXPECT_EQ(loaded.discounting_enabled, 1U);
+	EXPECT_EQ(loaded.negative_regret_pruning_enabled, 0U);
+	EXPECT_EQ(loaded.late_window_baseline.size(), 2U);
+	EXPECT_NEAR(loaded.late_window_baseline[0], 0.25, 0.0);
+	EXPECT_NEAR(loaded.late_window_baseline[1], 0.75, 0.0);
 	EXPECT_EQ(loaded.generation.content_hash, 16U);
+	auto inconsistent_progress = checkpoint;
+	inconsistent_progress.completed_batches = checkpoint.generation.committed_batch_number;
+	EXPECT_THROW(save_multiway_external_checkpoint_manifest(
+		directory.path() / "invalid.manifest", storage_directory, inconsistent_progress, false),
+		std::invalid_argument);
 	bool model_mismatch_rejected = false;
 	try
 	{
@@ -336,6 +374,46 @@ TEST_CASE(multiway_external_checkpoint_capture_uses_published_generation_without
 
 	EXPECT_THROW(make_multiway_external_checkpoint_manifest(
 		directory.path(), 0U, 12U, 13U, 14U, 500U), std::invalid_argument);
+}
+
+TEST_CASE(multiway_external_checkpoint_manifest_loads_legacy_schema6_without_training_extension)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	const auto path = directory.path() / "checkpoint.manifest";
+	MultiwayExternalCheckpointManifest checkpoint{};
+	checkpoint.model_identity_hash = 11U;
+	checkpoint.workflow_identity_hash = 12U;
+	checkpoint.storage_identity_hash = 13U;
+	checkpoint.schedule_hash = 14U;
+	checkpoint.completed_trajectories = 20U;
+	checkpoint.generation = { 3U, 2U, 15U, 2U, 2U, 2U, 1U, 2U, 2U, 4U, 16U };
+	checkpoint.wal_generation = 2U;
+	write_empty_component_manifests(directory.path(), checkpoint.generation);
+	publish_multiway_external_generation(directory.path(), checkpoint.generation, false);
+	save_multiway_external_checkpoint_manifest(path, directory.path(), checkpoint, false);
+
+	std::ifstream input(path, std::ios::binary);
+	std::vector<std::uint8_t> legacy((std::istreambuf_iterator<char>(input)),
+		std::istreambuf_iterator<char>());
+	constexpr std::size_t kTrainingExtensionBytes = 132U;
+	EXPECT_TRUE(legacy.size() > kTrainingExtensionBytes + 8U);
+	legacy.resize(legacy.size() - kTrainingExtensionBytes - 8U);
+	auto checksum = texas::core::fingerprint::FNV1A_OFFSET;
+	for (const auto byte : legacy)
+		texas::core::fingerprint::append_u8(checksum, byte);
+	append_u64(legacy, texas::core::fingerprint::finish(checksum));
+	std::ofstream output(path, std::ios::binary | std::ios::trunc);
+	output.write(reinterpret_cast<const char*>(legacy.data()),
+		static_cast<std::streamsize>(legacy.size()));
+	EXPECT_TRUE(static_cast<bool>(output));
+	output.close();
+
+	const auto loaded = load_multiway_external_checkpoint_manifest(path, directory.path(),
+		11U, 12U, 13U, 14U);
+	EXPECT_EQ(loaded.completed_trajectories, 20U);
+	EXPECT_EQ(loaded.completed_batches, 0U);
+	EXPECT_TRUE(loaded.late_window_baseline.empty());
 }
 
 TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_prior_file)

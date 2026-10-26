@@ -10,6 +10,7 @@
 - Compaction and orphan cleanup preserve pinned runs. A schema-6 manifest can verify its prior runs after the current component manifests advance. Releasing pins requires removing the checkpoint first; obsolete runs are reclaimed at the next store open/cleanup boundary.
 - Added rollback-journaled restore of an older pinned generation. Component `CURRENT` manifests publish first; the aggregate generation publishes last. Startup recovery completes a published restore or reinstates the previous component and aggregate manifests.
 - Added a metadata-only capture helper that reads the aggregate and component manifests to produce a complete checkpoint descriptor without loading record payloads.
+- Extended schema-6 manifests with trainer batch/visit/pruning counters, schedule flags, street coverage, and the late-window strategy-sum baseline. The reader defaults these fields when loading earlier schema-6 manifests.
 - Kept the existing schema-5 monolithic checkpoint artifact reader and writer unchanged.
 
 ### Files
@@ -24,6 +25,7 @@
 - Debug build of `test_multiway_external_storage`: passed.
 - Focused CTest covers manifest corruption/publication failure, run pin retention/release, restore to an older generation, immediate partial-publication rollback, and startup recovery from an interrupted restore journal: passed (1/1).
 - Focused Debug build and CTest after adding metadata-only checkpoint capture: passed (1/1).
+- Focused Debug build and CTest after adding resumable training metadata and legacy schema-6 extension coverage: passed (1/1).
 - `git diff --check`: passed.
 
 ### Limitations
