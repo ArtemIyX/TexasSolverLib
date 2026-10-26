@@ -622,6 +622,7 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 	}
 	EXPECT_EQ(external.action_below_regret(binding, 16U, 2U, 0.0),
 		reference.action_below_regret(shape.infoset, 16U, 2U, 0.0));
+	external.compact();
 	MultiwayExternalCompactStorage reopened(row_config, page_config, 16U, 16000U);
 	MultiwayExternalRowBinding reopened_binding{};
 	EXPECT_TRUE(reopened.lookup_row(shape.infoset, reopened_binding));

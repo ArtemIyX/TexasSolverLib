@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.11 - Verify external row and page compaction
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Extended the deterministic accumulator differential fixture to compact both external row and cell stores before reopening.
+- Verified reopened regret and average policies retain exact reference values after compaction.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This verifies storage-level compaction only; coordinator integration and full phase acceptance remain outstanding.
+
 ## PB-12 Phase 5.10 - Add read-only external bucket leases
 
 **Status:** Complete
