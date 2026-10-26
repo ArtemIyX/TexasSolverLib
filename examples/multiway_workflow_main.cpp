@@ -1099,7 +1099,7 @@ namespace
 		MultiwayTrainingCheckpointWriteResult last_checkpoint_write{};
 		std::uint64_t checkpoint_write_nanoseconds = 0U;
 		MultiwayCheckpointTelemetry checkpoint_telemetry{};
-		bool checkpoint_snapshots_recorded = false;
+		bool checkpoint_snapshots_recorded = batches == 0U && !resume_path.empty();
 		const auto publish_training_failure = [&]() {
 			auto failure_report = make_multiway_training_report(
 				session.status(), session.status().merged_stream_fingerprint,
