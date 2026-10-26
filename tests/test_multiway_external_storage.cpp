@@ -1006,6 +1006,25 @@ TEST_CASE(multiway_external_record_store_compacts_deterministically)
 	EXPECT_TRUE(std::equal(left_bytes.begin(), left_bytes.begin() + left_data.gcount(), right_bytes.begin()));
 }
 
+TEST_CASE(multiway_external_record_store_fails_closed_after_compaction_read_failure)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 4U);
+	store.append_batch(1U, 1U, records(1U));
+	store.append_batch(2U, 2U, records(8U));
+	std::filesystem::remove(directory.path() / "run_1.dat");
+	bool compaction_failed = false;
+	try { store.compact(); }
+	catch (const std::runtime_error&) { compaction_failed = true; }
+	EXPECT_TRUE(compaction_failed);
+	std::vector<std::uint8_t> payload;
+	bool later_lookup_failed_closed = false;
+	try { static_cast<void>(store.lookup(1U, payload)); }
+	catch (const std::runtime_error&) { later_lookup_failed_closed = true; }
+	EXPECT_TRUE(later_lookup_failed_closed);
+}
+
 TEST_CASE(multiway_external_compaction_can_retain_previous_runs_until_commit)
 {
 	using namespace texas::solver::multiway;

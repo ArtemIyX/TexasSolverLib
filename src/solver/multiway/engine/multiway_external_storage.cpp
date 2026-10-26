@@ -1268,6 +1268,15 @@ namespace texas::solver::multiway
 			output_bytes = checked_add(output_bytes, record_bytes(runs_[input_start + index].record_count, payload_bytes_));
 		}
 		check_disk_reserve(checked_add(output_bytes, record_bytes(total_records, 0U)));
+		struct CompactionFailureLatch
+		{
+			bool& failed;
+			bool complete = false;
+			~CompactionFailureLatch() noexcept
+			{
+				if (!complete) failed = true;
+			}
+		} failure_latch{ failed_ };
 		const auto next_generation = generation_ + 1U;
 		const auto data_path = run_path(config_.directory, next_generation, ".dat");
 		const auto index_path = run_path(config_.directory, next_generation, ".idx");
@@ -1362,6 +1371,7 @@ namespace texas::solver::multiway
 		generation_ = next_generation;
 		record_count_ = record_count_ - total_records + compacted_count;
 		flush_directory();
+		failure_latch.complete = true;
 	}
 
 	MultiwayExternalPublicCatalog::MultiwayExternalPublicCatalog(

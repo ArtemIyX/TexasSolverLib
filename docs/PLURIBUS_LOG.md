@@ -1,5 +1,29 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.9 - Fail closed after compaction errors
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Made external record stores unavailable after a compaction failure that occurs after disk-space preflight, preventing stale in-memory run metadata from serving further operations.
+- Added failure-injection coverage for a missing compaction input and verified subsequent lookup fails closed.
+
+### Files
+
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_external_storage` and `test_multiway_solver`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Recovery from this in-process failure requires reopening the component store; automatic repair is deferred.
+
 ## PB-12 Phase 4.8 - Preflight external catalog and row batch bounds
 
 **Status:** Complete
