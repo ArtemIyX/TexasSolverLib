@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.7 - Append classified external catalog batches
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added catalog and aggregate-facade APIs that append validated descriptor batches using admission flags, packing records directly without a separate packed-node vector.
+- Verifies sorted unique state IDs, flag values, duplicate new IDs, and that states marked existing are present in the durable catalog.
+- Preserved the existing packed-node overload without adding a batch-sized flags allocation.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_external_storage`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- `MultiwaySolverCoordinator` does not yet call the external catalog admission API; external execution remains fail-closed.
+
 ## PB-12 Phase 5.19 - Expose external row binding metadata
 
 **Status:** Complete

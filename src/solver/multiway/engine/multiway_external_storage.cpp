@@ -1418,21 +1418,60 @@ namespace texas::solver::multiway
 	{
 		if (nodes.size() != descriptors.size())
 			throw std::invalid_argument("external public catalog descriptors do not match packed nodes");
-		if (nodes.empty()) return;
+		append_discovered_batch_impl(batch_number, merge_fingerprint, descriptors,
+			nullptr, &nodes);
+	}
+
+	void MultiwayExternalPublicCatalog::append_discovered_batch(
+		std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+		const std::vector<MultiwayPublicStateDescriptor>& states,
+		const std::vector<std::uint8_t>& new_state_flags)
+	{
+		append_discovered_batch_impl(batch_number, merge_fingerprint, states,
+			&new_state_flags, nullptr);
+	}
+
+	void MultiwayExternalPublicCatalog::append_discovered_batch_impl(
+		std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+		const std::vector<MultiwayPublicStateDescriptor>& states,
+		const std::vector<std::uint8_t>* new_state_flags,
+		const std::vector<MultiwayPackedPublicNode>* packed_nodes)
+	{
+		if ((new_state_flags != nullptr && states.size() != new_state_flags->size()) ||
+			(packed_nodes != nullptr && packed_nodes->size() != states.size()))
+			throw std::invalid_argument("external public catalog discovery batch dimensions mismatch");
+		for (std::size_t index = 0U; index < states.size(); ++index)
+			if (states[index].id.value == 0U ||
+				(index != 0U && states[index - 1U].id.value >= states[index].id.value))
+				throw std::invalid_argument("external public catalog discovery states must be sorted and unique");
+		if (new_state_flags != nullptr && std::any_of(new_state_flags->begin(), new_state_flags->end(),
+			[](std::uint8_t flag) { return flag > 1U; }))
+			throw std::invalid_argument("external public catalog discovery flags are invalid");
+		if (new_state_flags != nullptr)
+			for (std::size_t index = 0U; index < states.size(); ++index)
+				if ((*new_state_flags)[index] == 0U && !contains(states[index].id))
+					throw std::invalid_argument("external public catalog classified a missing state as existing");
+		const auto new_count = new_state_flags == nullptr ? states.size() : static_cast<std::size_t>(
+			std::count(new_state_flags->begin(), new_state_flags->end(), 1U));
+		if (new_count == 0U) return;
 		std::vector<MultiwayExternalRecord> records;
-		records.reserve(nodes.size());
+		records.reserve(new_count);
 		std::vector<std::uint8_t> node_bytes;
 		std::vector<std::uint8_t> payload;
-		for (std::size_t index = 0U; index < nodes.size(); ++index)
+		std::uint64_t previous_id = 0U;
+		for (std::size_t index = 0U; index < states.size(); ++index)
 		{
-			const auto& node = nodes[index];
-			const auto& descriptor = descriptors[index];
-			if (node.id.value == 0U || descriptor.id != node.id ||
-				(index != 0U && nodes[index - 1U].id.value >= node.id.value) ||
+			if (new_state_flags != nullptr && (*new_state_flags)[index] == 0U) continue;
+			const auto& descriptor = states[index];
+			const auto node = packed_nodes == nullptr
+				? MultiwayPublicCatalog::pack_node(descriptor)
+				: (*packed_nodes)[index];
+			if (node.id.value == 0U || descriptor.id != node.id || node.id.value <= previous_id ||
 				descriptor.legal_actions.size() > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
 				throw std::invalid_argument("external public catalog batch has invalid identity, order, or menu size");
 			if (contains(node.id))
 				throw std::invalid_argument("external public catalog cannot append an existing state id");
+			previous_id = node.id.value;
 			for (std::size_t action = 0U; action < descriptor.legal_actions.size(); ++action)
 			{
 				const auto& item = descriptor.legal_actions[action];
@@ -2414,6 +2453,18 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external training catalog batch is invalid");
 		if (!nodes.empty())
 			catalog_->append_batch(batch_number_, component_fingerprint, nodes, descriptors);
+	}
+
+	void MultiwayExternalTrainingStorage::append_discovered_catalog(
+		std::uint64_t component_fingerprint,
+		const std::vector<MultiwayPublicStateDescriptor>& states,
+		const std::vector<std::uint8_t>& new_state_flags)
+	{
+		if (batch_number_ == 0U || component_fingerprint == 0U ||
+			states.size() != new_state_flags.size())
+			throw std::invalid_argument("external training catalog discovery batch is invalid");
+		catalog_->append_discovered_batch(batch_number_, component_fingerprint,
+			states, new_state_flags);
 	}
 
 	void MultiwayExternalTrainingStorage::admit_rows(std::uint64_t component_fingerprint,

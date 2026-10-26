@@ -194,6 +194,10 @@ namespace texas::solver::multiway
 		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
 			const std::vector<MultiwayPackedPublicNode>& nodes,
 			const std::vector<MultiwayPublicStateDescriptor>& descriptors);
+		void append_discovered_batch(std::uint64_t batch_number,
+			std::uint64_t merge_fingerprint,
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			const std::vector<std::uint8_t>& new_state_flags);
 		// Batch-boundary lookup for coordinator admission. The caller supplies
 		// reusable buffers; outputs are resized to the sorted candidate batch.
 		void classify_batch(const std::vector<MultiwayPublicStateDescriptor>& states,
@@ -214,6 +218,11 @@ namespace texas::solver::multiway
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
 		[[nodiscard]] std::uint64_t content_hash() const { return store_.content_hash(); }
 	private:
+		void append_discovered_batch_impl(std::uint64_t batch_number,
+			std::uint64_t merge_fingerprint,
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			const std::vector<std::uint8_t>* new_state_flags,
+			const std::vector<MultiwayPackedPublicNode>* packed_nodes);
 		MultiwayExternalRecordStore store_;
 		std::size_t maximum_ancestry_depth_ = 0U;
 	};
@@ -426,6 +435,9 @@ namespace texas::solver::multiway
 		void append_catalog(std::uint64_t component_fingerprint,
 			const std::vector<MultiwayPackedPublicNode>& nodes,
 			const std::vector<MultiwayPublicStateDescriptor>& descriptors);
+		void append_discovered_catalog(std::uint64_t component_fingerprint,
+			const std::vector<MultiwayPublicStateDescriptor>& states,
+			const std::vector<std::uint8_t>& new_state_flags);
 		void admit_rows(std::uint64_t component_fingerprint,
 			const std::vector<MultiwaySparseRowShape>& rows);
 		void begin_page_batch();

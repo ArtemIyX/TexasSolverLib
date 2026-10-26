@@ -332,7 +332,7 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		MultiwayExternalTrainingStorage storage(directory.path(), catalog_config,
 			row_config, page_config, 16U, 65536U, 8U, false);
 		storage.begin_batch(1U);
-		storage.append_catalog(0x101U, { node }, { descriptor });
+		storage.append_discovered_catalog(0x101U, { descriptor }, { 1U });
 		storage.admit_rows(0x102U, { shape });
 		storage.begin_page_batch();
 		MultiwayExternalRowBinding binding{};
@@ -374,7 +374,7 @@ TEST_CASE(multiway_external_training_storage_commits_components_atomically)
 		MultiwayPublicStateDescriptor child_descriptor{};
 		child_descriptor.id = child.id;
 		const MultiwaySparseRowShape child_shape{ { child.id, 1 }, 1U, 1U };
-		reopened.append_catalog(0x201U, { child }, { child_descriptor });
+		reopened.append_discovered_catalog(0x201U, { child_descriptor }, { 1U });
 		reopened.admit_rows(0x202U, { child_shape });
 		reopened.begin_page_batch();
 		MultiwayExternalRowBinding child_binding{};
@@ -550,6 +550,16 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 		EXPECT_EQ(existing_nodes[0].id.value, root.id.value);
 		EXPECT_EQ(existing_nodes[1].id.value, child.id.value);
 		EXPECT_EQ(existing_nodes[2].id.value, 0U);
+		catalog.append_discovered_batch(2U, 0x46U,
+			{ root_candidate, child_candidate, new_candidate }, new_flags);
+		EXPECT_EQ(catalog.record_count(), 3U);
+		EXPECT_TRUE(catalog.contains(new_candidate.id));
+		MultiwayPublicStateDescriptor missing_candidate{};
+		missing_candidate.id.value = 4U;
+		bool stale_classification_rejected = false;
+		try { catalog.append_discovered_batch(3U, 0x47U, { missing_candidate }, { 0U }); }
+		catch (const std::invalid_argument&) { stale_classification_rejected = true; }
+		EXPECT_TRUE(stale_classification_rejected);
 		bool unsorted_rejected = false;
 		try { catalog.classify_batch({ child_candidate, root_candidate }, new_flags, existing_nodes); }
 		catch (const std::invalid_argument&) { unsorted_rejected = true; }
@@ -563,7 +573,7 @@ TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_resta
 		EXPECT_TRUE(catalog.lookup_menu(child.id, nullptr, 0U, empty_menu_count));
 		EXPECT_EQ(empty_menu_count, 0U);
 		bool duplicate_rejected = false;
-		try { catalog.append_batch(2U, 0x45U, { child }); }
+		try { catalog.append_batch(3U, 0x45U, { child }); }
 		catch (const std::invalid_argument&) { duplicate_rejected = true; }
 		EXPECT_TRUE(duplicate_rejected);
 	}
@@ -587,7 +597,10 @@ TEST_CASE(multiway_external_public_catalog_persists_action_menus)
 		{ texas::games::multiway::MultiwayAction::Bet, 1U, 300, 0xabcU } };
 	{
 		MultiwayExternalPublicCatalog catalog(config(directory.path()), 8U);
-		catalog.append_batch(1U, 0x55U, { root }, { descriptor });
+		catalog.append_discovered_batch(1U, 0x55U, { descriptor }, { 1U });
+		MultiwayPackedPublicNode packed{};
+		EXPECT_TRUE(catalog.lookup(root.id, packed));
+		EXPECT_EQ(packed.legal_menu_handle, 0U);
 		std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
 		std::size_t action_count = 0U;
 		EXPECT_TRUE(catalog.lookup_menu(root.id, actions.data(), actions.size(), action_count));
