@@ -1082,6 +1082,7 @@ namespace texas::solver::multiway
 
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return coordinator_->storage_; }
 		[[nodiscard]] const MultiwayCompactStorage* compact_storage() const noexcept { return coordinator_->compact_storage_.get(); }
+		[[nodiscard]] const MultiwayExternalTrainingStorage* external_storage() const noexcept { return coordinator_->external_storage_.get(); }
 		[[nodiscard]] const MultiwayPublicCatalog& public_catalog() const noexcept { return coordinator_->public_catalog_; }
 		[[nodiscard]] const MultiwaySolveDiagnostics& diagnostics() const noexcept { return coordinator_->diagnostics_; }
 

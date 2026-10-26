@@ -495,6 +495,8 @@ namespace texas::solver::multiway
 		void set_merge_fingerprint(std::uint64_t merge_fingerprint);
 		[[nodiscard]] bool lookup_row(MultiwayInfosetId infoset,
 			MultiwayExternalRowBinding& output) const;
+		[[nodiscard]] bool visit_ordered_rows(
+			MultiwayExternalRowIndex::OrderedRowVisitor visitor, void* context) const;
 		[[nodiscard]] PinnedBucket pin_bucket(const MultiwayExternalRowBinding& row,
 			std::uint32_t bucket, bool writable) const;
 		void apply_delta(PinnedBucket& bucket, std::uint8_t action,
@@ -565,7 +567,9 @@ namespace texas::solver::multiway
 			std::uint64_t logical_value_count);
 		void abort_batch();
 		[[nodiscard]] MultiwayExternalPublicCatalog& catalog() noexcept { return *catalog_; }
+		[[nodiscard]] const MultiwayExternalPublicCatalog& catalog() const noexcept { return *catalog_; }
 		[[nodiscard]] MultiwayExternalCompactStorage& compact_storage() noexcept { return *compact_; }
+		[[nodiscard]] const MultiwayExternalCompactStorage& compact_storage() const noexcept { return *compact_; }
 		[[nodiscard]] const MultiwayExternalGenerationManifest& current_manifest() const noexcept
 		{
 			return transaction_.current_manifest();

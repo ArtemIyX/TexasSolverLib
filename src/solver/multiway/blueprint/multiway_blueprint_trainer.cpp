@@ -2,6 +2,7 @@
 #include "solver/multiway/blueprint/multiway_checkpoint.hpp"
 #include "solver/multiway/blueprint/multiway_training_checkpoint_artifact.hpp"
 #include "solver/multiway/engine/multiway_compact_storage.hpp"
+#include "solver/multiway/engine/multiway_external_storage.hpp"
 #include "solver/multiway/engine/multiway_memory.hpp"
 #include "games/multiway_state.hpp"
 #include "core/fingerprint.hpp"
@@ -95,6 +96,51 @@ namespace texas::solver::multiway
 			std::vector<std::uint32_t>& order)
 		{
 			const auto* compact = lease.compact_storage();
+			const auto* external = lease.external_storage();
+			if (external != nullptr)
+			{
+				MultiwayFullBlueprintExportPlan plan;
+				plan.identity = identity;
+				plan.training = training;
+				plan.compact_direct_order = true;
+				struct Context
+				{
+					MultiwayFullBlueprintExportPlan* plan;
+					const MultiwayExternalTrainingStorage* storage;
+				};
+				Context context{ &plan, external };
+				const auto visit_row = [](void* opaque, MultiwayPublicStateId state,
+					std::int32_t seat, const MultiwayExternalRowMetadata& metadata) {
+					auto& current = *static_cast<Context*>(opaque);
+					MultiwaySparseRowShape shape{};
+					shape.infoset = { state, static_cast<core::PlayerId>(seat) };
+					shape.bucket_count = metadata.bucket_count;
+					shape.action_count = metadata.action_count;
+					std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
+					std::size_t action_count = 0U;
+					if (!current.storage->catalog().lookup_menu(state, actions.data(), actions.size(), action_count))
+						throw std::invalid_argument("external blueprint row has no published action menu");
+					const MultiwayPackedMenuView menu{ actions.data(),
+						static_cast<std::uint8_t>(action_count), actions[0].action_menu_id };
+					validate_export_menu(shape, menu);
+					current.plan->shape_count = checked_export_add(current.plan->shape_count, 1U);
+					current.plan->row_count = checked_export_add(
+						current.plan->row_count, shape.bucket_count);
+					current.plan->action_count = checked_export_add(current.plan->action_count,
+						checked_export_multiply(shape.bucket_count, shape.action_count));
+					return true;
+				};
+				if (!external->compact_storage().visit_ordered_rows(visit_row, &context) ||
+					plan.shape_count != external->current_manifest().row_count ||
+					plan.action_count != external->current_manifest().logical_value_count)
+					throw std::invalid_argument("external blueprint counts disagree with the committed generation");
+				const auto stream = make_multiway_full_blueprint_stream_plan(
+					plan.identity, plan.training, plan.row_count, plan.action_count);
+				plan.serialized_bytes = stream.serialized_bytes;
+				plan.validate();
+				order.clear();
+				return plan;
+			}
 			const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
 			if (rows.size() > std::numeric_limits<std::uint32_t>::max())
 				throw std::overflow_error("multiway full blueprint export shape index overflows");
@@ -1135,6 +1181,7 @@ namespace texas::solver::multiway
 		}
 		MultiwayFullBlueprintStreamWriter writer(path, stream_plan);
 		const auto* compact = lease.compact_storage();
+		const auto* external = lease.external_storage();
 		const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
 		const auto emit_shape = [&](const MultiwaySparseRowShape& shape) {
 			const auto menu = lease.public_catalog().packed_menu(shape.infoset.public_state);
@@ -1157,7 +1204,54 @@ namespace texas::solver::multiway
 				writer.write_row(row);
 			}
 		};
-		if (compact != nullptr)
+		if (external != nullptr)
+		{
+			struct Context
+			{
+				const MultiwayExternalTrainingStorage* storage;
+				MultiwayFullBlueprintStreamWriter* writer;
+				Probability* strategy;
+				MultiwayQuantizedRootAction* actions;
+			};
+			Context context{ external, &writer, strategy.data(), actions.data() };
+			const auto write_external_row = [](void* opaque, MultiwayPublicStateId state,
+				std::int32_t seat, const MultiwayExternalRowMetadata& metadata) {
+				auto& current = *static_cast<Context*>(opaque);
+				MultiwaySparseRowShape shape{};
+				shape.infoset = { state, static_cast<core::PlayerId>(seat) };
+				shape.bucket_count = metadata.bucket_count;
+				shape.action_count = metadata.action_count;
+				std::array<MultiwayActionDescriptor, MULTIWAY_MAX_ABSTRACTED_ACTIONS> menu_actions{};
+				std::size_t action_count = 0U;
+				if (!current.storage->catalog().lookup_menu(state, menu_actions.data(),
+					menu_actions.size(), action_count))
+					throw std::invalid_argument("external blueprint row has no published action menu");
+				const MultiwayPackedMenuView menu{ menu_actions.data(),
+					static_cast<std::uint8_t>(action_count), menu_actions[0].action_menu_id };
+				validate_export_menu(shape, menu);
+				MultiwayExternalRowBinding binding;
+				if (!current.storage->compact_storage().lookup_row(shape.infoset, binding))
+					throw std::invalid_argument("external blueprint row index changed during export");
+				for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
+				{
+					current.storage->compact_storage().average_strategy_into(
+						binding, bucket, current.strategy, shape.action_count);
+					quantize_compact_strategy(current.strategy, shape.action_count, menu,
+						current.actions);
+					MultiwayFullBlueprintRowView row;
+					row.infoset = shape.infoset;
+					row.bucket = bucket;
+					row.action_menu_id = menu.action_menu_id;
+					row.actions = current.actions;
+					row.action_count = shape.action_count;
+					current.writer->write_row(row);
+				}
+				return true;
+			};
+			if (!external->compact_storage().visit_ordered_rows(write_external_row, &context))
+				throw std::runtime_error("external blueprint ordered export stopped unexpectedly");
+		}
+		else if (compact != nullptr)
 		{
 			for (const auto& metadata : rows)
 				emit_shape(metadata.shape);

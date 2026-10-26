@@ -8,6 +8,7 @@
 - Added an ordered-record callback API that k-way merges the configured bounded number of immutable runs, emits ascending unique keys, and selects the newest value for duplicate keys.
 - The iterator rejects run counts above configured compaction fan-in and borrows payload bytes only during the callback. It does not materialize the full record set.
 - Added row-index iteration that validates row metadata and emits state/seat rows in canonical order while preserving the same run and payload bounds.
+- Connected the ordered iterator to trainer export planning and the existing atomic stream writer. Planning verifies external sparse-row and logical-cell counts against the committed generation; output visits one row and one bucket at a time with fixed action scratch.
 - Added deterministic tests before and after compaction, newest-run precedence, ascending order, and callback early-stop behavior.
 - Verified iteration rejects run counts above the configured fan-in before reading records.
 
@@ -22,11 +23,12 @@
 
 - Focused Debug build of `test_multiway_external_storage`: passed.
 - Focused CTest `^test_multiway_external_storage$`: passed (1/1).
+- Debug build and focused CTest for `test_multiway_blueprint_training`: passed (1/1) after external ordered-export wiring.
 - `git diff --check`: passed.
 
 ### Limitations
 
-- The iterator remains a storage primitive; blueprint page export and sharding are not yet connected.
+- The session still rejects `ExternalCompactInt32`, so the connected export branch is compile-validated but not exercised end to end. Disk-space preflight and deterministic sharding remain outstanding.
 
 ## PB-12 Phase 6.1 - Add external checkpoint manifest codec
 

@@ -3465,6 +3465,12 @@ namespace texas::solver::multiway
 		return true;
 	}
 
+	bool MultiwayExternalCompactStorage::visit_ordered_rows(
+		MultiwayExternalRowIndex::OrderedRowVisitor visitor, void* context) const
+	{
+		return rows_.visit_ordered_rows(visitor, context);
+	}
+
 	MultiwayExternalCompactStorage::PinnedBucket::PinnedBucket(PinnedBucket&& other) noexcept
 		: owner(other.owner), page(other.page), local_bucket(other.local_bucket), writable(other.writable)
 	{
