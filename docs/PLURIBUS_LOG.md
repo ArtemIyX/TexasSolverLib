@@ -1,5 +1,55 @@
 # Pluribus Roadmap Progress Log
 
+## PB-10 - Complete TexasLogging application logging
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added the non-installed `TexasSolver::logging` target with strict TOML configuration, category and sink filtering, rotation, append-only training audit output, terminal-safe progress rendering, and compile-time/runtime disable paths.
+- Integrated multiway workflow logging while preserving workflow files, reports, exit codes, progress options, machine-readable streams, and solver package boundaries.
+- Added focused logging, progress, disabled-mode, package-boundary, source-classification, and workflow-boundary coverage.
+
+### Files
+
+- `CMakeLists.txt`
+- `README.md`
+- `vcpkg.json`
+- `config/logging.example.toml`
+- `include/logging/config.hpp`
+- `include/logging/log.hpp`
+- `include/logging/progress.hpp`
+- `src/logging/config.cpp`
+- `src/logging/config_stub.cpp`
+- `src/logging/log.cpp`
+- `src/logging/log_stub.cpp`
+- `src/logging/progress.cpp`
+- `src/logging/progress_stub.cpp`
+- `src/logging/terminal.cpp`
+- `src/logging/terminal.hpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_logging.cpp`
+- `tests/test_logging_config.cpp`
+- `tests/test_logging_disabled.cpp`
+- `tests/test_logging_progress.cpp`
+- `tests/cmake/test_multiway_workflow_boundary.cmake`
+- `tests/cmake/test_package_config_contract.cmake`
+- `tests/cmake/test_source_classification.cmake`
+- `docs/application_and_script_io.md`
+- `docs/texas_logging.md`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Enabled focused CTest: 7/7 passed; concurrent progress test repeated 20/20.
+- Enabled workflow and logging targets built successfully.
+- Logging-off workflow and disabled logging targets built successfully; logging-off focused CTest: 4/4 passed, with only `test_logging_disabled` registered among logging tests.
+- `python scripts/python/full_build.py`: build passed and all 117 CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Progress remains a single synchronous line; Unicode width handling, structured JSON logs, network sinks, runtime category registration, and asynchronous logging remain deferred.
+
 ## Security remediation findings
 
 **Status:** Complete

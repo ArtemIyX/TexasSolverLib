@@ -142,7 +142,7 @@ Public headers and source files use mirrored ownership paths. The stable install
 - Git submodule support
 - Python 3 for repository helper scripts
 
-No vcpkg packages are currently required. The fixed-size poker hand evaluator is included as a Git submodule.
+The application logging target uses vcpkg packages `spdlog` and `tomlplusplus`. The fixed-size poker hand evaluator is included as a Git submodule. The installed solver package remains independent of these application-only dependencies.
 
 ## Clone
 
@@ -198,6 +198,7 @@ powershell -ExecutionPolicy Bypass -File scripts\codex_powershell.ps1 cmake --bu
 | `TEXASSOLVER_BUILD_RESEARCH_EXAMPLES` | `OFF` | Build multiway workflows and benchmark executables; requires examples |
 | `TEXASSOLVER_BUILD_LEGACY_RESEARCH` | `OFF` | Build the legacy vector DCFR reference library |
 | `TEXASSOLVER_BUILD_HUNL_FIXED_RESEARCH` | `OFF` | Build fixed-private sampled HUNL reference kernels |
+| `TEXASSOLVER_ENABLE_LOGGING` | `ON` | Build the internal application logging target |
 
 ## Use as a CMake package
 
@@ -234,6 +235,10 @@ The full example is [examples/solve_kuhn.cpp](examples/solve_kuhn.cpp).
 ## Examples and workflow executables
 
 With `TEXASSOLVER_BUILD_EXAMPLES=ON`, `texas_solver_example` demonstrates the small public API.
+
+## Application logging
+
+Research workflow executables link the internal `TexasSolver::logging` target. Start with `config/logging.example.toml` and pass `--log-config path/to/logging.toml`; no file is discovered automatically. A minimal application uses `LoggingSession` and `TEXAS_LOG_INFO(Workflow, "started")`. See [TexasLogging](docs/texas_logging.md) for configuration, console/file sinks, progress, environment variables, and disable modes.
 
 With `TEXASSOLVER_BUILD_RESEARCH_EXAMPLES=ON`, CMake also creates:
 
