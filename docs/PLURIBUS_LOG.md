@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.28 - Verify rollback to committed page generation
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Strengthened the bounded external page merge rollback fixture to first commit nonzero root and child page values.
+- A later merge flushes an ordered page subbatch before rejecting an invalid action. The test verifies the failed merge restores the previously committed one-hot strategies.
+- Current page subbatch commits append records without compacting/deleting prior component runs, so this test covers rollback across published page subbatches without relying on cleanup behavior.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1; 72 cases).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This does not inject process termination or filesystem failures during aggregate manifest publication.
+- No training workflow was run.
+
 ## PB-12 Phase 5.27 - Bound external page mutation batches
 
 **Status:** Complete

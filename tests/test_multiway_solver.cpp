@@ -828,10 +828,19 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	coordinator.admit_public_state(child);
 	coordinator.admit_infoset_row(root_row());
 	coordinator.admit_infoset_row(child_row);
+	// Establish a committed nonempty generation so a later aborted batch proves
+	// that aggregate rollback restores real page data, not only an empty store.
+	MultiwayWorkerDeltaStream seed(0U, 2U);
+	MultiwayWorkerDeltaStream seed_empty(1U, 2U);
+	EXPECT_TRUE(seed.try_append(delta(0U, 1.0, 1.0, 0U)));
+	EXPECT_TRUE(seed.try_append({ child_row.infoset, 0U, 0U, 1.0, 1.0, 1U }));
+	seed.sort_fixed_order();
+	seed_empty.sort_fixed_order();
+	coordinator.merge_worker_streams({ seed, seed_empty });
 	MultiwayWorkerDeltaStream valid(0U, 3U);
 	MultiwayWorkerDeltaStream empty(1U, 3U);
-	EXPECT_TRUE(valid.try_append(delta(0U, 1.0, 1.0, 0U)));
-	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 0U, 1.0, 1.0, 1U }));
+	EXPECT_TRUE(valid.try_append(delta(1U, 1.0, 1.0, 2U)));
+	EXPECT_TRUE(valid.try_append({ child_row.infoset, 0U, 1U, 1.0, 1.0, 3U }));
 	EXPECT_TRUE(valid.try_append({ child_row.infoset, 1U, 255U, 1.0, 1.0, 2U }));
 	valid.sort_fixed_order();
 	empty.sort_fixed_order();
@@ -839,12 +848,13 @@ TEST_CASE(multiway_solver_external_bounded_page_merge_rolls_back_flushed_subbatc
 	std::array<double, 3U> root_strategy{};
 	coordinator.regret_matched_strategy_into(root_infoset(), 0U,
 		root_strategy.data(), root_strategy.size());
-	EXPECT_EQ(root_strategy, (std::array<double, 3U>{ 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0 }));
+	EXPECT_EQ(root_strategy, (std::array<double, 3U>{ 1.0, 0.0, 0.0 }));
 	std::vector<double> child_strategy(child.legal_actions.size());
 	coordinator.regret_matched_strategy_into(child_row.infoset, 0U,
 		child_strategy.data(), child_strategy.size());
-	for (const auto probability : child_strategy)
-		EXPECT_EQ(probability, 1.0 / static_cast<double>(child_strategy.size()));
+	EXPECT_EQ(child_strategy[0], 1.0);
+	for (std::size_t action = 1U; action < child_strategy.size(); ++action)
+		EXPECT_EQ(child_strategy[action], 0.0);
 }
 
 TEST_CASE(multiway_public_catalog_packs_external_node_without_catalog_state)
