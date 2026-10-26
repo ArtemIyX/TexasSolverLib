@@ -8,6 +8,10 @@
 
 namespace texas::solver::multiway
 {
+	std::size_t MultiwayCompactStorage::page_metadata_size() noexcept
+	{
+		return sizeof(PageMetadata);
+	}
 
 	namespace
 	{

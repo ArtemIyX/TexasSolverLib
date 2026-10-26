@@ -739,6 +739,10 @@ namespace texas::solver::multiway
 			   << ", \"existing_working_set_bytes\": " << report.memory_ledger.existing_working_set_bytes
 			   << ", \"existing_private_committed_bytes\": " << report.memory_ledger.existing_private_committed_bytes
 			   << ", \"additional_private_capacity_bytes\": " << report.memory_ledger.additional_private_capacity_bytes
+			   << ", \"compact_reallocation_peak_bytes\": " << report.memory_ledger.compact_reallocation_peak_bytes
+			   << ", \"public_catalog_reallocation_peak_bytes\": " << report.memory_ledger.public_catalog_reallocation_peak_bytes
+			   << ", \"file_cache_allowance_bytes\": " << report.memory_ledger.file_cache_allowance_bytes
+			   << ", \"disk_output_bytes\": " << report.memory_ledger.disk_output_bytes
 			   << ", \"mapped_virtual_bytes\": " << report.memory_ledger.mapped_virtual_bytes
 			   << ", \"mapped_resident_allowance_bytes\": " << report.memory_ledger.mapped_resident_allowance_bytes
 			   << ", \"checkpoint_transient_bytes\": " << report.memory_ledger.checkpoint_transient_bytes
@@ -758,6 +762,7 @@ namespace texas::solver::multiway
 			   << ", \"mapped_bucket_artifact_bytes\": " << report.memory_ledger.mapped_bucket_artifact_bytes
 			   << ", \"public_catalog_bytes\": " << report.memory_ledger.public_catalog_bytes
 			   << ", \"row_metadata_bytes\": " << report.memory_ledger.row_metadata_bytes
+			   << ", \"page_metadata_bytes\": " << report.memory_ledger.page_metadata_bytes
 			   << ", \"regret_page_bytes\": " << report.memory_ledger.regret_page_bytes
 			   << ", \"worker_stream_bytes\": " << report.memory_ledger.worker_stream_bytes
 			   << ", \"discovery_stream_bytes\": " << report.memory_ledger.discovery_stream_bytes

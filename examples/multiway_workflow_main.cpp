@@ -783,15 +783,34 @@ namespace
 			std::filesystem::create_directories(output_path.parent_path());
 		const auto identity = make_multiway_model_identity(workflow.model);
 		const auto estimated_blueprint_bytes = estimate_full_blueprint_bytes(workflow);
+		MultiwayExportPlanMemoryValues export_scratch_plan;
+		export_scratch_plan.shape_count = 1U;
+		export_scratch_plan.row_count = 1U;
+		export_scratch_plan.action_count = MULTIWAY_MAX_ABSTRACTED_ACTIONS;
+		export_scratch_plan.serialized_bytes = estimated_blueprint_bytes;
+		export_scratch_plan.compact_direct_order = true;
+		const auto export_scratch = make_multiway_export_scratch_estimate(
+			export_scratch_plan, MultiwayExportProcessGateConfig{});
+		const auto checkpoint_state_indexes = multiway_memory_saturating_capacity_bytes(
+			static_cast<std::size_t>(workflow.maximum_public_states), 2U * sizeof(std::uint32_t));
+		const auto checkpoint_row_indexes = multiway_memory_saturating_capacity_bytes(
+			static_cast<std::size_t>(workflow.maximum_sparse_rows), sizeof(std::uint32_t));
+		const auto checkpoint_scratch_bytes = multiway_memory_saturating_add(
+			multiway_memory_saturating_add(checkpoint_state_indexes, checkpoint_row_indexes),
+			MULTIWAY_DEFAULT_CHECKPOINT_WRITER_BUFFER_BYTES);
+		const auto& memory_baseline = process_memory_snapshots.snapshots[process_memory_snapshots.count - 1U];
+		const auto artifact_process_estimate = multiway_memory_saturating_add(
+			memory_baseline.current_working_set_available ? memory_baseline.current_working_set_bytes : 0U,
+			export_scratch.total_bytes);
 		log_line("training initialization: running artifact preflight");
 		preflight_multiway_artifact({ output_path,
 			output_temporary,
 			{},
 			identity,
 			1U,
-			estimated_blueprint_bytes,
+			export_scratch.total_bytes,
 			workflow.disk_space_requirement_bytes,
-			estimated_blueprint_bytes,
+			artifact_process_estimate,
 			workflow.process_memory_limit_bytes });
 		log_line("training initialization: constructing training configuration");
 		MultiwayBlueprintTrainingConfig config;
@@ -838,7 +857,6 @@ namespace
 				MultiwayMemoryPhase::BeforeMemoryPreflight,
 				capture_multiway_memory_subsystems(&buckets, nullptr, nullptr)))
 			throw std::logic_error("multiway subsystem memory snapshot phase order is invalid");
-		const auto& memory_baseline = process_memory_snapshots.snapshots[process_memory_snapshots.count - 1U];
 		memory_inputs.existing_working_set_bytes = memory_baseline.current_working_set_available
 			? memory_baseline.current_working_set_bytes
 			: 0U;
@@ -857,9 +875,10 @@ namespace
 		}
 		memory_inputs.range_row_count = workflow.model.player_count;
 		memory_inputs.range_entry_count = static_cast<std::uint64_t>(workflow.model.player_count) * core::CANONICAL_HOLE_COMBINATION_COUNT;
-		memory_inputs.export_action_capacity = workflow.maximum_sparse_values;
-		memory_inputs.checkpoint_peak_bytes = estimated_blueprint_bytes;
-		memory_inputs.export_peak_bytes = estimated_blueprint_bytes;
+		memory_inputs.checkpoint_peak_bytes = checkpoint_scratch_bytes;
+		memory_inputs.export_peak_bytes = export_scratch.total_bytes;
+		memory_inputs.file_cache_allowance_bytes = estimated_blueprint_bytes;
+		memory_inputs.disk_output_bytes = estimated_blueprint_bytes;
 		const auto memory_preflight = preflight_multiway_memory(
 			config.limits,
 			{ warning_bytes, workflow.process_memory_limit_bytes, operating_bytes },

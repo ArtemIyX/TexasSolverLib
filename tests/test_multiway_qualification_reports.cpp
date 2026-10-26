@@ -85,6 +85,11 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	status.memory_ledger.existing_working_set_bytes = 111U;
 	status.memory_ledger.existing_private_committed_bytes = 222U;
 	status.memory_ledger.additional_private_capacity_bytes = 333U;
+	status.memory_ledger.compact_reallocation_peak_bytes = 334U;
+	status.memory_ledger.public_catalog_reallocation_peak_bytes = 338U;
+	status.memory_ledger.file_cache_allowance_bytes = 335U;
+	status.memory_ledger.disk_output_bytes = 336U;
+	status.memory_ledger.page_metadata_bytes = 337U;
 	status.memory_ledger.mapped_virtual_bytes = 444U;
 	status.memory_ledger.mapped_resident_allowance_bytes = 555U;
 	status.memory_ledger.checkpoint_transient_bytes = 666U;
@@ -287,9 +292,14 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"blueprint_bytes\": 789") != std::string::npos);
 	EXPECT_TRUE(text.find("\"requested_worker_count\": 16") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_preflight_estimate_bytes\": 999") != std::string::npos);
-	EXPECT_TRUE(text.find("\"memory_estimate_schema_version\": 2") != std::string::npos);
+	EXPECT_TRUE(text.find("\"memory_estimate_schema_version\": 3") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_estimated_private_peak_bytes\": 888") != std::string::npos);
 	EXPECT_TRUE(text.find("\"memory_estimated_working_set_peak_bytes\": 999") != std::string::npos);
+	EXPECT_TRUE(text.find("\"compact_reallocation_peak_bytes\": 334") != std::string::npos);
+	EXPECT_TRUE(text.find("\"public_catalog_reallocation_peak_bytes\": 338") != std::string::npos);
+	EXPECT_TRUE(text.find("\"file_cache_allowance_bytes\": 335") != std::string::npos);
+	EXPECT_TRUE(text.find("\"disk_output_bytes\": 336") != std::string::npos);
+	EXPECT_TRUE(text.find("\"page_metadata_bytes\": 337") != std::string::npos);
 	EXPECT_TRUE(text.find("\"process_working_set_limit_bytes\": 64") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_abort_phase\": 2") != std::string::npos);
 	EXPECT_TRUE(text.find("\"working_set_gate_rejected_category\": \"process working set\"") != std::string::npos);

@@ -87,6 +87,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::size_t active_cell_count() const noexcept { return regrets_.size(); }
 		[[nodiscard]] std::size_t configured_cell_capacity() const noexcept { return max_values_; }
+		[[nodiscard]] static std::size_t page_metadata_size() noexcept;
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayCompactStorageMemorySnapshot memory_snapshot() const noexcept;
 

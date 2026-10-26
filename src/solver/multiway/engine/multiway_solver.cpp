@@ -23,6 +23,10 @@
 
 namespace texas::solver::multiway
 {
+	std::size_t MultiwaySolverCoordinator::pending_merge_cell_size() noexcept
+	{
+		return sizeof(PendingMergeCell);
+	}
 	MultiwayDeltaMergePath select_multiway_delta_merge_path(std::size_t stream_count) noexcept
 	{
 		return stream_count > MULTIWAY_DELTA_TOURNAMENT_STREAM_THRESHOLD

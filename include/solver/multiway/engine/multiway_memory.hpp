@@ -35,7 +35,7 @@ namespace texas::solver::multiway
 	inline constexpr std::size_t MULTIWAY_MEMORY_PHASE_COUNT = 13U;
 	inline constexpr std::uint32_t MULTIWAY_PROCESS_MEMORY_SCHEMA_VERSION = 2U;
 	inline constexpr std::uint32_t MULTIWAY_MEMORY_SUBSYSTEM_SCHEMA_VERSION = 1U;
-	inline constexpr std::uint32_t MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION = 2U;
+	inline constexpr std::uint32_t MULTIWAY_MEMORY_ESTIMATE_SCHEMA_VERSION = 3U;
 	inline constexpr std::uint32_t MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION = 1U;
 	inline constexpr std::size_t MULTIWAY_MEMORY_MAX_WORKERS = 16U;
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_PROCESS_WORKING_SET_LIMIT_BYTES =
@@ -278,6 +278,7 @@ namespace texas::solver::multiway
 
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORTER_HEADROOM_BYTES = 64ULL * 1024ULL * 1024ULL;
 	inline constexpr std::uint64_t MULTIWAY_DEFAULT_EXPORT_ENCODER_BUFFER_BYTES = 1ULL * 1024ULL * 1024ULL;
+	inline constexpr std::uint64_t MULTIWAY_DEFAULT_CHECKPOINT_WRITER_BUFFER_BYTES = 64ULL * 1024ULL;
 
 	struct MultiwayExportProcessEstimate
 	{
@@ -512,6 +513,14 @@ namespace texas::solver::multiway
 
 	struct MultiwayMemoryInputs
 	{
+		// Capacity bounds for the packed public catalog. Zero menu/action bounds
+		// select the conservative per-state defaults used by preflight.
+		std::uint64_t public_catalog_menu_capacity = 0U;
+		std::uint64_t public_catalog_action_capacity = 0U;
+		std::uint64_t public_catalog_admission_scratch_bytes = 0U;
+		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t file_cache_allowance_bytes = 0U;
+		std::uint64_t disk_output_bytes = 0U;
 		// Task A snapshots taken after immutable artifacts are loaded. These
 		// baselines already include resident pages of the loaded mapping.
 		std::uint64_t existing_working_set_bytes = 0U;
@@ -539,10 +548,27 @@ namespace texas::solver::multiway
 		std::uint64_t continuation_scratch_bytes_per_worker = 0U;
 		std::uint64_t continuation_cache_bytes = 0U;
 		std::uint64_t export_action_capacity = 0U;
+		// Scratch only. Serialized output bytes belong to disk_output_bytes.
 		std::uint64_t checkpoint_peak_bytes = 0U;
 		std::uint64_t export_peak_bytes = 0U;
 		std::uint64_t allocator_overhead_bytes = 0U;
 	};
+
+	struct MultiwayCatalogCapacityEstimate
+	{
+		std::uint64_t node_bytes = 0U;
+		std::uint64_t index_bytes = 0U;
+		std::uint64_t menu_header_bytes = 0U;
+		std::uint64_t menu_action_bytes = 0U;
+		std::uint64_t admission_scratch_bytes = 0U;
+		std::uint64_t reallocation_peak_bytes = 0U;
+		std::uint64_t total_bytes = 0U;
+	};
+
+	[[nodiscard]] MultiwayCatalogCapacityEstimate estimate_multiway_catalog_capacity(
+		std::uint64_t state_capacity,
+		std::uint64_t menu_capacity,
+		std::uint64_t action_capacity) noexcept;
 
 	struct MultiwayMemoryLedger
 	{
@@ -550,6 +576,10 @@ namespace texas::solver::multiway
 		std::uint64_t existing_working_set_bytes = 0U;
 		std::uint64_t existing_private_committed_bytes = 0U;
 		std::uint64_t additional_private_capacity_bytes = 0U;
+		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t public_catalog_reallocation_peak_bytes = 0U;
+		std::uint64_t file_cache_allowance_bytes = 0U;
+		std::uint64_t disk_output_bytes = 0U;
 		std::uint64_t mapped_virtual_bytes = 0U;
 		std::uint64_t mapped_resident_allowance_bytes = 0U;
 		std::uint64_t checkpoint_transient_bytes = 0U;
@@ -571,6 +601,7 @@ namespace texas::solver::multiway
 		std::uint64_t mapped_bucket_artifact_bytes = 0U;
 		std::uint64_t public_catalog_bytes = 0U;
 		std::uint64_t row_metadata_bytes = 0U;
+		std::uint64_t page_metadata_bytes = 0U;
 		std::uint64_t regret_page_bytes = 0U;
 		std::uint64_t worker_stream_bytes = 0U;
 		std::uint64_t discovery_stream_bytes = 0U;
@@ -593,6 +624,10 @@ namespace texas::solver::multiway
 		std::uint64_t existing_working_set_bytes = 0U;
 		std::uint64_t existing_private_committed_bytes = 0U;
 		std::uint64_t additional_private_capacity_bytes = 0U;
+		std::uint64_t compact_reallocation_peak_bytes = 0U;
+		std::uint64_t public_catalog_reallocation_peak_bytes = 0U;
+		std::uint64_t file_cache_allowance_bytes = 0U;
+		std::uint64_t disk_output_bytes = 0U;
 		std::uint64_t mapped_virtual_bytes = 0U;
 		std::uint64_t mapped_resident_allowance_bytes = 0U;
 		std::uint64_t checkpoint_transient_bytes = 0U;
@@ -604,6 +639,7 @@ namespace texas::solver::multiway
 		std::uint64_t actual_retained_capacity_bytes = 0U;
 		std::uint64_t public_state_bytes = 0;
 		std::uint64_t sparse_row_bytes = 0;
+		std::uint64_t compact_page_bytes = 0U;
 		std::uint64_t sparse_value_bytes = 0;
 		std::uint64_t blueprint_index_bytes = 0U;
 		std::uint64_t range_row_bytes = 0U;

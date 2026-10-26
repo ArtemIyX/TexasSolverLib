@@ -33,12 +33,12 @@ namespace
 
 	std::uint64_t root_bytes(const texas::MultiwayMemoryEstimate& estimate)
 	{
-		return estimate.public_state_bytes + estimate.blueprint_index_bytes + estimate.range_row_bytes + estimate.future_bucket_cache_bytes + estimate.off_tree_menu_bytes + estimate.export_bytes;
+		return estimate.public_state_bytes + estimate.public_catalog_reallocation_peak_bytes + estimate.blueprint_index_bytes + estimate.range_row_bytes + estimate.future_bucket_cache_bytes + estimate.off_tree_menu_bytes + estimate.export_bytes;
 	}
 
 	std::uint64_t row_bytes(const texas::MultiwayMemoryEstimate& estimate)
 	{
-		return estimate.sparse_row_bytes + estimate.sparse_value_bytes;
+		return estimate.sparse_row_bytes + estimate.compact_page_bytes + estimate.sparse_value_bytes + estimate.compact_reallocation_peak_bytes;
 	}
 
 } // namespace
@@ -136,10 +136,11 @@ TEST_CASE(multiway_p7_memory_no_optional_cache_is_not_marked_admitted)
 	EXPECT_TRUE(!result.degraded);
 }
 
-TEST_CASE(multiway_p7_memory_public_state_estimate_uses_one_kib_per_state)
+TEST_CASE(multiway_p7_memory_public_state_estimate_uses_packed_catalog_capacity)
 {
 	const auto result = baseline();
-	EXPECT_EQ(result.estimate.public_state_bytes, 4U * 1024U);
+	EXPECT_EQ(result.estimate.public_state_bytes,
+		texas::solver::multiway::estimate_multiway_catalog_capacity(4U, 4U, 32U).total_bytes);
 }
 
 TEST_CASE(multiway_p7_memory_sparse_row_metadata_is_accounted)
@@ -250,13 +251,11 @@ TEST_CASE(multiway_p7_memory_merge_scratch_is_nonzero)
 	EXPECT_TRUE(baseline().estimate.merge_scratch_bytes > 0U);
 }
 
-TEST_CASE(multiway_p7_memory_export_accounts_for_two_probability_buffers)
+TEST_CASE(multiway_p7_memory_streamed_export_has_no_materialized_output_buffer)
 {
 	texas::MultiwayMemoryInputs inputs;
 	inputs.export_action_capacity = 3U;
-	EXPECT_EQ(
-		baseline(inputs).estimate.export_bytes,
-		3U * 2U * static_cast<std::uint64_t>(sizeof(texas::MultiwayRootActionProbability)));
+	EXPECT_EQ(baseline(inputs).estimate.export_bytes, 0U);
 }
 
 TEST_CASE(multiway_p7_memory_mandatory_total_excludes_optional_cache)

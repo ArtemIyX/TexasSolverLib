@@ -988,6 +988,7 @@ namespace texas::solver::multiway
 		{
 			return static_cast<std::size_t>(request_.limits().worker_count) * request_.limits().regret_delta_capacity();
 		}
+		[[nodiscard]] static std::size_t pending_merge_cell_size() noexcept;
 		[[nodiscard]] std::size_t merge_tournament_scratch_capacity() const noexcept
 		{
 			return merge_tournament_.capacity();

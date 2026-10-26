@@ -1116,6 +1116,50 @@ namespace texas::solver::multiway
 		return preflight_multiway_memory(limits, budget, MultiwayMemoryInputs{});
 	}
 
+	MultiwayCatalogCapacityEstimate estimate_multiway_catalog_capacity(
+		std::uint64_t state_capacity,
+		std::uint64_t menu_capacity,
+		std::uint64_t action_capacity) noexcept
+	{
+		struct StateIndexLayout { MultiwayPublicStateId id; std::size_t node_index; };
+		struct MenuIndexLayout { std::uint64_t key; std::uint32_t handle; };
+		struct PendingMenuIndexLayout { std::uint64_t key; std::uint32_t pending_index; };
+		MultiwayCatalogCapacityEstimate result;
+		if (state_capacity > std::numeric_limits<std::size_t>::max() ||
+			menu_capacity > std::numeric_limits<std::size_t>::max() ||
+			action_capacity > std::numeric_limits<std::size_t>::max())
+		{
+			result.node_bytes = result.index_bytes = result.menu_header_bytes =
+				result.menu_action_bytes = result.admission_scratch_bytes = result.total_bytes = std::numeric_limits<std::uint64_t>::max();
+			return result;
+		}
+		result.node_bytes = multiway_memory_saturating_capacity_bytes(
+			static_cast<std::size_t>(state_capacity), sizeof(MultiwayPackedPublicNode));
+		result.index_bytes = multiway_memory_saturating_capacity_bytes(
+			static_cast<std::size_t>(state_capacity), sizeof(StateIndexLayout));
+		result.index_bytes = multiway_memory_saturating_add(result.index_bytes,
+			multiway_memory_saturating_capacity_bytes(static_cast<std::size_t>(menu_capacity), sizeof(MenuIndexLayout)));
+		result.menu_header_bytes = multiway_memory_saturating_capacity_bytes(
+			static_cast<std::size_t>(menu_capacity), sizeof(std::vector<MultiwayActionDescriptor>));
+		result.menu_action_bytes = multiway_memory_saturating_capacity_bytes(
+			static_cast<std::size_t>(action_capacity), sizeof(MultiwayActionDescriptor));
+		const auto per_state_scratch = sizeof(std::vector<MultiwayActionDescriptor>) +
+			MULTIWAY_MAX_ABSTRACTED_ACTIONS * sizeof(MultiwayActionDescriptor) + sizeof(std::uint64_t) +
+			2U * sizeof(std::uint32_t) + 2U * sizeof(StateIndexLayout);
+		result.admission_scratch_bytes = multiway_memory_saturating_capacity_bytes(
+			static_cast<std::size_t>(state_capacity), per_state_scratch);
+		result.admission_scratch_bytes = multiway_memory_saturating_add(result.admission_scratch_bytes,
+			multiway_memory_saturating_capacity_bytes(static_cast<std::size_t>(menu_capacity),
+				2U * sizeof(PendingMenuIndexLayout)));
+		result.reallocation_peak_bytes = std::max(result.node_bytes,
+			std::max(result.index_bytes, result.menu_header_bytes));
+		result.total_bytes = multiway_memory_saturating_add(result.node_bytes, result.index_bytes);
+		result.total_bytes = multiway_memory_saturating_add(result.total_bytes, result.menu_header_bytes);
+		result.total_bytes = multiway_memory_saturating_add(result.total_bytes, result.menu_action_bytes);
+		result.total_bytes = multiway_memory_saturating_add(result.total_bytes, result.admission_scratch_bytes);
+		return result;
+	}
+
 	MultiwayMemoryPreflight preflight_multiway_memory(
 		const MultiwaySolverLimits& limits,
 		MultiwayMemoryBudget budget,
@@ -1164,12 +1208,19 @@ namespace texas::solver::multiway
 		result.estimate.ledger.checkpoint_transient_bytes = inputs.checkpoint_peak_bytes;
 		result.estimate.ledger.export_transient_bytes = inputs.export_peak_bytes;
 		result.estimate.ledger.actual_retained_capacity_bytes = result.estimate.actual_retained_capacity_bytes;
-		// Public descriptors contain vectors. Reserve a conservative 1 KiB per
-		// admitted state before the packed catalog replaces this compatibility
-		// representation.
-		result.estimate.public_state_bytes = checked_multiply(limits.max_public_states, 1024U);
+		const auto state_capacity = static_cast<std::uint64_t>(limits.max_public_states);
+		const auto menu_capacity = inputs.public_catalog_menu_capacity != 0U
+			? inputs.public_catalog_menu_capacity : state_capacity;
+		const auto action_capacity = inputs.public_catalog_action_capacity != 0U
+			? inputs.public_catalog_action_capacity : checked_multiply(state_capacity, MULTIWAY_MAX_ABSTRACTED_ACTIONS);
+		const auto catalog = estimate_multiway_catalog_capacity(state_capacity, menu_capacity, action_capacity);
+		result.estimate.public_state_bytes = checked_add(catalog.total_bytes, inputs.public_catalog_admission_scratch_bytes);
+		result.estimate.public_catalog_reallocation_peak_bytes = catalog.reallocation_peak_bytes;
 		result.estimate.sparse_row_bytes = checked_multiply(
 			limits.max_sparse_rows, static_cast<std::uint64_t>(sizeof(MultiwaySparseRowMetadata)));
+		if (limits.storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32)
+			result.estimate.compact_page_bytes = checked_multiply(
+				limits.max_sparse_values, MultiwayCompactStorage::page_metadata_size());
 		const auto value_bytes_per_cell = limits.storage_backend == MultiwaySolverLimits::StorageBackend::CompactInt32
 			? static_cast<std::uint64_t>(sizeof(std::int32_t) + sizeof(std::uint64_t))
 			: 2U * static_cast<std::uint64_t>(sizeof(double));
@@ -1204,16 +1255,16 @@ namespace texas::solver::multiway
 			checked_multiply(aggregate_public_states, sizeof(MultiwayPublicStateDescriptor)),
 			checked_multiply(aggregate_rows, sizeof(MultiwaySparseRowShape)));
 		result.estimate.merge_scratch_bytes = checked_add(
-			checked_multiply(
+			checked_multiply(limits.max_sparse_values, MultiwaySolverCoordinator::pending_merge_cell_size()),
+			checked_add(checked_multiply(
 				aggregate_regret_entries,
 				static_cast<std::uint64_t>(sizeof(MultiwayWorkerDelta) + 3U * sizeof(std::uint64_t) + sizeof(void*))),
-			checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta)));
-		result.estimate.export_bytes = checked_multiply(
-			inputs.export_action_capacity,
-			2U * static_cast<std::uint64_t>(sizeof(MultiwayRootActionProbability)));
+			checked_multiply(aggregate_continuation_entries, sizeof(MultiwayContinuationDelta))));
+		result.estimate.export_bytes = 0U; // Streamed export uses fixed scratch; output is disk/cache pressure.
 		result.estimate.continuation_cache_bytes = inputs.continuation_cache_bytes;
 		result.estimate.ledger.public_catalog_bytes = result.estimate.public_state_bytes;
 		result.estimate.ledger.row_metadata_bytes = result.estimate.sparse_row_bytes;
+		result.estimate.ledger.page_metadata_bytes = result.estimate.compact_page_bytes;
 		result.estimate.ledger.regret_page_bytes = result.estimate.sparse_value_bytes;
 		result.estimate.ledger.worker_stream_bytes = result.estimate.worker_delta_bytes;
 		result.estimate.ledger.discovery_stream_bytes = result.estimate.discovery_stream_bytes;
@@ -1224,13 +1275,25 @@ namespace texas::solver::multiway
 			checked_add(
 				checked_add(result.estimate.range_row_bytes, result.estimate.future_bucket_cache_bytes),
 				checked_add(result.estimate.off_tree_menu_bytes, result.estimate.export_bytes)));
-		const auto row_stage = checked_add(
-			result.estimate.sparse_row_bytes, result.estimate.sparse_value_bytes);
+		const auto row_stage = checked_add(result.estimate.sparse_row_bytes,
+			checked_add(result.estimate.compact_page_bytes, result.estimate.sparse_value_bytes));
 		const auto delta_stage = checked_add(
 			checked_add(checked_add(result.estimate.worker_delta_bytes, result.estimate.discovery_stream_bytes), result.estimate.merge_scratch_bytes),
 			result.estimate.continuation_scratch_bytes);
+		result.estimate.compact_reallocation_peak_bytes = inputs.compact_reallocation_peak_bytes != 0U
+			? inputs.compact_reallocation_peak_bytes
+			: checked_add(
+				checked_multiply(result.estimate.sparse_row_bytes, 2U),
+				checked_add(checked_multiply(result.estimate.compact_page_bytes, 2U),
+					result.estimate.sparse_value_bytes));
+		result.estimate.file_cache_allowance_bytes = inputs.file_cache_allowance_bytes;
+		result.estimate.disk_output_bytes = inputs.disk_output_bytes;
 		result.estimate.configured_capacity_growth_bytes = checked_add(
 			checked_add(root_stage, row_stage), delta_stage);
+		result.estimate.ledger.compact_reallocation_peak_bytes = result.estimate.compact_reallocation_peak_bytes;
+		result.estimate.ledger.public_catalog_reallocation_peak_bytes = result.estimate.public_catalog_reallocation_peak_bytes;
+		result.estimate.ledger.file_cache_allowance_bytes = result.estimate.file_cache_allowance_bytes;
+		result.estimate.ledger.disk_output_bytes = result.estimate.disk_output_bytes;
 		result.estimate.ledger.configured_capacity_growth_bytes = result.estimate.configured_capacity_growth_bytes;
 		result.estimate.additional_private_capacity_bytes = inputs.retained_capacity_known
 			? inputs.retained_capacity_bytes
@@ -1238,13 +1301,17 @@ namespace texas::solver::multiway
 		result.estimate.ledger.additional_private_capacity_bytes = result.estimate.additional_private_capacity_bytes;
 		const auto private_peak_without_optional_cache = checked_add(
 			checked_add(
-				checked_add(existing_private_committed_bytes, result.estimate.additional_private_capacity_bytes),
+				checked_add(existing_private_committed_bytes,
+					checked_add(result.estimate.additional_private_capacity_bytes,
+						checked_add(result.estimate.public_catalog_reallocation_peak_bytes, result.estimate.compact_reallocation_peak_bytes))),
 				transient_peak),
 			inputs.allocator_overhead_bytes);
 		const auto working_set_peak_without_optional_cache = checked_add(
 			checked_add(
 				checked_add(
-					checked_add(existing_working_set_bytes, result.estimate.additional_private_capacity_bytes),
+					checked_add(existing_working_set_bytes,
+						checked_add(result.estimate.additional_private_capacity_bytes,
+							checked_add(result.estimate.public_catalog_reallocation_peak_bytes, result.estimate.compact_reallocation_peak_bytes))),
 					mapped_resident_allowance_bytes),
 				transient_peak),
 			inputs.allocator_overhead_bytes);
@@ -1264,9 +1331,11 @@ namespace texas::solver::multiway
 		result.estimate.peak_rss_bytes = result.estimate.estimated_working_set_peak_bytes;
 
 		const auto root_private_stage = checked_add(
-			checked_add(existing_private_committed_bytes, root_stage), inputs.allocator_overhead_bytes);
+			checked_add(existing_private_committed_bytes,
+				checked_add(root_stage, result.estimate.public_catalog_reallocation_peak_bytes)), inputs.allocator_overhead_bytes);
 		const auto root_working_set_stage = checked_add(
-			checked_add(checked_add(existing_working_set_bytes, root_stage), mapped_resident_allowance_bytes),
+			checked_add(checked_add(existing_working_set_bytes,
+				checked_add(root_stage, result.estimate.public_catalog_reallocation_peak_bytes)), mapped_resident_allowance_bytes),
 			inputs.allocator_overhead_bytes);
 		const auto root_admission_bytes = std::max(root_private_stage, root_working_set_stage);
 		if (root_admission_bytes > budget.operating_bytes || root_admission_bytes >= budget.reject_bytes)
@@ -1277,8 +1346,10 @@ namespace texas::solver::multiway
 			return result;
 		}
 		result.highest_admitted_stage = MultiwayMemoryAdmissionStage::Root;
-		const auto through_rows_private = checked_add(root_private_stage, row_stage);
-		const auto through_rows_working_set = checked_add(root_working_set_stage, row_stage);
+		const auto through_rows_private = checked_add(root_private_stage,
+			checked_add(row_stage, result.estimate.compact_reallocation_peak_bytes));
+		const auto through_rows_working_set = checked_add(root_working_set_stage,
+			checked_add(row_stage, result.estimate.compact_reallocation_peak_bytes));
 		const auto through_rows = std::max(through_rows_private, through_rows_working_set);
 		if (through_rows > budget.operating_bytes || through_rows >= budget.reject_bytes)
 		{
