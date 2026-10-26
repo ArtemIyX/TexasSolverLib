@@ -259,6 +259,7 @@ namespace texas::solver::multiway
 		std::uint64_t serialized_bytes = 0U;
 		std::uint64_t order_index_bytes = 0U;
 		bool compact_direct_order = false;
+		std::uint64_t sharding_metadata_bytes = 0U;
 
 		[[nodiscard]] bool valid() const noexcept;
 	};
@@ -267,6 +268,7 @@ namespace texas::solver::multiway
 	{
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
 		std::uint64_t order_index_bytes = 0U;
+		std::uint64_t sharding_metadata_bytes = 0U;
 		std::uint64_t strategy_scratch_bytes = 0U;
 		std::uint64_t action_scratch_bytes = 0U;
 		std::uint64_t encoder_buffer_bytes = 0U;
@@ -286,6 +288,7 @@ namespace texas::solver::multiway
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
 		std::uint64_t current_working_set_bytes = 0U;
 		std::uint64_t order_index_bytes = 0U;
+		std::uint64_t sharding_metadata_bytes = 0U;
 		std::uint64_t strategy_scratch_bytes = 0U;
 		std::uint64_t action_scratch_bytes = 0U;
 		std::uint64_t encoder_buffer_bytes = 0U;
@@ -520,6 +523,9 @@ namespace texas::solver::multiway
 		std::uint32_t schema_version = MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION;
 		bool attempted = false;
 		bool succeeded = false;
+		bool sharded_output = false;
+		std::uint64_t shard_count = 0U;
+		std::uint64_t manifest_bytes = 0U;
 		MultiwayExportPlanMemoryValues plan{};
 		MultiwayExportScratchEstimate scratch{};
 		MultiwayExportProcessEstimate process_estimate{};
@@ -791,6 +797,8 @@ namespace texas::solver::multiway
 
 	struct MultiwayWorkingSetMonitor
 	{
+		std::uint64_t single_file_blueprint_limit_bytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
+		std::uint64_t shard_max_serialized_bytes = 1024ULL * 1024ULL * 1024ULL;
 		MultiwayWorkingSetGateConfig gate{};
 		MultiwayProcessMemoryObserver observer = nullptr;
 		const void* observer_context = nullptr;

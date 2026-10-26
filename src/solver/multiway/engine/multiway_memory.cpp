@@ -635,7 +635,7 @@ namespace texas::solver::multiway
 
 	bool MultiwayExportScratchEstimate::valid() const noexcept
 	{
-		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (total_bytes == std::numeric_limits<std::uint64_t>::max() || total_bytes >= order_index_bytes && total_bytes >= strategy_scratch_bytes && total_bytes >= action_scratch_bytes && total_bytes >= encoder_buffer_bytes && total_bytes >= exporter_headroom_bytes);
+		return schema_version == MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION && (total_bytes == std::numeric_limits<std::uint64_t>::max() || total_bytes >= order_index_bytes && total_bytes >= sharding_metadata_bytes && total_bytes >= strategy_scratch_bytes && total_bytes >= action_scratch_bytes && total_bytes >= encoder_buffer_bytes && total_bytes >= exporter_headroom_bytes);
 	}
 
 	bool MultiwayExportProcessEstimate::valid() const noexcept
@@ -681,6 +681,7 @@ namespace texas::solver::multiway
 	{
 		MultiwayExportScratchEstimate result;
 		result.order_index_bytes = plan.order_index_bytes;
+		result.sharding_metadata_bytes = plan.sharding_metadata_bytes;
 		result.strategy_scratch_bytes = multiway_memory_saturating_capacity_bytes(
 			MULTIWAY_MAX_ABSTRACTED_ACTIONS, sizeof(Probability));
 		result.action_scratch_bytes = multiway_memory_saturating_capacity_bytes(
@@ -693,6 +694,7 @@ namespace texas::solver::multiway
 			result.total_bytes = next;
 		};
 		add(result.order_index_bytes);
+		add(result.sharding_metadata_bytes);
 		add(result.strategy_scratch_bytes);
 		add(result.action_scratch_bytes);
 		add(result.encoder_buffer_bytes);
@@ -710,6 +712,7 @@ namespace texas::solver::multiway
 		result.current_working_set_available = snapshot.current_working_set_available;
 		result.current_working_set_bytes = snapshot.current_working_set_bytes;
 		result.order_index_bytes = scratch.order_index_bytes;
+		result.sharding_metadata_bytes = scratch.sharding_metadata_bytes;
 		result.strategy_scratch_bytes = scratch.strategy_scratch_bytes;
 		result.action_scratch_bytes = scratch.action_scratch_bytes;
 		result.encoder_buffer_bytes = scratch.encoder_buffer_bytes;
@@ -723,6 +726,7 @@ namespace texas::solver::multiway
 		};
 		add(result.current_working_set_bytes);
 		add(result.order_index_bytes);
+		add(result.sharding_metadata_bytes);
 		add(result.strategy_scratch_bytes);
 		add(result.action_scratch_bytes);
 		add(result.encoder_buffer_bytes);
@@ -1012,11 +1016,14 @@ namespace texas::solver::multiway
 		if (static_cast<unsigned>(disk_gate.status) > static_cast<unsigned>(MultiwayExportDiskGateStatus::Unavailable) || static_cast<unsigned>(disk_gate.rejection_reason) > static_cast<unsigned>(MultiwayExportDiskRejectionReason::InsufficientFreeSpace))
 			throw std::invalid_argument("invalid multiway export disk gate telemetry");
 		if (disk_gate.status == MultiwayExportDiskGateStatus::Admitted &&
-			(disk_gate.serialized_output_bytes != plan.serialized_bytes ||
+			((sharded_output ? disk_gate.serialized_output_bytes < plan.serialized_bytes :
+				disk_gate.serialized_output_bytes != plan.serialized_bytes) ||
 				disk_gate.required_free_bytes < disk_gate.serialized_output_bytes ||
 				disk_gate.available_free_bytes < disk_gate.required_free_bytes))
 			throw std::invalid_argument("admitted multiway export disk telemetry is inconsistent");
-		if (succeeded && (process_gate.blocked() || system_gate.blocked() || disk_gate.status != MultiwayExportDiskGateStatus::Admitted || result_bytes != plan.serialized_bytes || payload_hash == 0U || policy_content_hash == 0U || publication_mode == core::AtomicPublishMode::Unknown))
+		if (sharded_output != (shard_count != 0U) || (!sharded_output && manifest_bytes != 0U))
+			throw std::invalid_argument("multiway export shard telemetry is inconsistent");
+		if (succeeded && (process_gate.blocked() || system_gate.blocked() || disk_gate.status != MultiwayExportDiskGateStatus::Admitted || result_bytes != disk_gate.serialized_output_bytes || (!sharded_output && (result_bytes != plan.serialized_bytes || payload_hash == 0U)) || policy_content_hash == 0U || publication_mode == core::AtomicPublishMode::Unknown))
 			throw std::invalid_argument("successful multiway export telemetry is incomplete");
 	}
 
@@ -1077,6 +1084,8 @@ namespace texas::solver::multiway
 		gate.validate();
 		export_gate.validate();
 		system_memory_guard.validate();
+		if (single_file_blueprint_limit_bytes == 0U || shard_max_serialized_bytes == 0U)
+			throw std::invalid_argument("multiway blueprint export file bounds must be nonzero");
 		if (observer == nullptr && observer_context != nullptr)
 			throw std::invalid_argument("working-set observer context requires an observer");
 		if (export_process_observer == nullptr && export_system_observer == nullptr && export_observer_context != nullptr)

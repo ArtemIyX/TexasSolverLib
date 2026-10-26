@@ -431,9 +431,16 @@ namespace texas::solver::multiway
 			   << ",\n  \"export_disk_gate_reason\": " << static_cast<unsigned>(report.export_telemetry.disk_gate.rejection_reason)
 			   << ",\n  \"export_disk_gate_required_free_bytes\": " << report.export_telemetry.disk_gate.required_free_bytes
 			   << ",\n  \"export_disk_gate_available_free_bytes\": " << report.export_telemetry.disk_gate.available_free_bytes
+			   << ",\n  \"export_disk_gate_output_bytes\": " << report.export_telemetry.disk_gate.serialized_output_bytes
+			   << ",\n  \"export_disk_gate_temporary_overlap_bytes\": " << report.export_telemetry.disk_gate.temporary_overlap_bytes
 			   << ",\n  \"export_disk_gate_reserve_bytes\": " << report.export_telemetry.disk_gate.reserve_bytes
+			   << ",\n  \"export_sharded_output\": " << (report.export_telemetry.sharded_output ? "true" : "false")
+			   << ",\n  \"export_shard_count\": " << report.export_telemetry.shard_count
+			   << ",\n  \"export_manifest_bytes\": " << report.export_telemetry.manifest_bytes
+			   << ",\n  \"export_sharding_metadata_bytes\": " << report.export_telemetry.plan.sharding_metadata_bytes
 			   << ",\n  \"export_process_current_working_set_bytes\": " << report.export_telemetry.process_estimate.current_working_set_bytes
 			   << ",\n  \"export_process_order_index_bytes\": " << report.export_telemetry.process_estimate.order_index_bytes
+			   << ",\n  \"export_process_sharding_metadata_bytes\": " << report.export_telemetry.process_estimate.sharding_metadata_bytes
 			   << ",\n  \"export_process_strategy_scratch_bytes\": " << report.export_telemetry.process_estimate.strategy_scratch_bytes
 			   << ",\n  \"export_process_action_scratch_bytes\": " << report.export_telemetry.process_estimate.action_scratch_bytes
 			   << ",\n  \"export_process_encoder_buffer_bytes\": " << report.export_telemetry.process_estimate.encoder_buffer_bytes

@@ -487,6 +487,35 @@ TEST_CASE(multiway_streaming_export_float64_uses_bounded_order_indexes_and_match
 	std::filesystem::remove(materialized_path);
 }
 
+TEST_CASE(multiway_streaming_export_selects_bounded_shards_and_preserves_policy_hash)
+{
+	texas::MultiwayWorkingSetMonitor monitor;
+	monitor.single_file_blueprint_limit_bytes = 1U;
+	monitor.shard_max_serialized_bytes = 176U + 8U + 28U + 64U * 19U;
+	StreamingExportFixture fixture(texas::MultiwaySolverLimits::StorageBackend::CompactInt32, monitor);
+	fixture.trainer.run_batches(1U, 4U, 0x77U);
+	const auto materialized = fixture.trainer.export_full_policy();
+	const auto path = std::filesystem::temp_directory_path() / ("texas_solver_streaming_sharded_" +
+		std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".mwfb");
+	const auto result = fixture.trainer.save_full_policy_atomic(path);
+	const auto& telemetry = fixture.trainer.status().export_telemetry;
+	EXPECT_TRUE(result.sharded);
+	EXPECT_EQ(result.shard_count, std::uint64_t{ 1U });
+	EXPECT_EQ(result.policy_content_hash,
+		texas::MultiwayFullBlueprintArtifacts::policy_content_hash(materialized));
+	EXPECT_EQ(result.serialized_bytes, telemetry.disk_gate.serialized_output_bytes);
+	EXPECT_EQ(result.manifest_bytes, std::filesystem::file_size(path));
+	EXPECT_EQ(telemetry.shard_count, result.shard_count);
+	EXPECT_TRUE(telemetry.disk_gate.temporary_overlap_bytes <= monitor.shard_max_serialized_bytes);
+	texas::MultiwayFullBlueprintArtifacts::verify_sharded_artifact(path, result.plan.identity);
+	const auto manifest = texas::MultiwayFullBlueprintArtifacts::load_sharded_manifest(path,
+		result.plan.identity);
+	const auto generation_directory = path.parent_path() /
+		std::filesystem::u8path(manifest.shards.front().relative_path).parent_path();
+	std::filesystem::remove_all(generation_directory);
+	std::filesystem::remove(path);
+}
+
 TEST_CASE(multiway_streaming_export_process_gate_rejects_before_temp_creation)
 {
 	texas::MultiwayWorkingSetMonitor monitor;

@@ -244,6 +244,10 @@ namespace texas::solver::multiway
 		std::uint64_t payload_hash = 0U;
 		std::uint64_t policy_content_hash = 0U;
 		std::uint64_t peak_scratch_bytes = 0U;
+		std::uint64_t serialized_bytes = 0U;
+		std::uint64_t shard_count = 0U;
+		std::uint64_t manifest_bytes = 0U;
+		bool sharded = false;
 		core::AtomicPublishMode publication_mode = core::AtomicPublishMode::Unknown;
 	};
 

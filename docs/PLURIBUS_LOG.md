@@ -96,6 +96,9 @@
 - Added boundary and output-preservation tests for disk gate rejection.
 - Added a deterministic sharded-output size estimator. Generation-directory names now have fixed-width components so preflight can account exactly for shard headers, manifest entries, paths, and the manifest trailer before publication.
 - Generalized disk-gate accounting to accept a bounded temporary overlap, while keeping the existing single-file two-copy gate behavior unchanged.
+- Trainer export now selects sharding above the configured 56 GiB single-file bound, calculates deterministic per-shard action totals before opening output, and uses exact total output plus maximum temporary shard bytes for disk admission.
+- Shard planning metadata is included in private scratch estimates and reports. Export reports now distinguish total output bytes, temporary overlap, manifest bytes, and shard count.
+- Compact and float64 training fixtures exercise sharded trainer publication and confirm the aggregate policy-content hash matches materialized export.
 
 ### Files
 
@@ -113,6 +116,12 @@
 - `include/solver/multiway/engine/multiway_memory.hpp`
 - `src/solver/multiway/engine/multiway_memory.cpp`
 - `tests/test_multiway_memory.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `examples/multiway_workflow_main.cpp`
 - `docs/PLURIBUS_LOG.md`
 
 ### Validation
@@ -121,11 +130,14 @@
 - Focused CTest covering those targets and `test_multiway_workflow_boundary`: passed (4/4).
 - Focused Debug build and CTest for `test_multiway_artifact`: passed (1/1); estimator bytes matched the generated two-shard output.
 - Focused Debug build and CTest for `test_multiway_memory`: passed (1/1), including bounded temporary-overlap admission/rejection boundaries.
+- Focused Debug builds for `test_multiway_blueprint_training`, `test_multiway_memory`, and `test_multiway_qualification_reports`: passed.
+- Focused CTest for those targets: passed (3/3), including sharded trainer policy-hash equivalence and report serialization.
+- `texas_multiway_train` Debug build: passed.
 - `git diff --check`: passed.
 
 ### Limitations
 
-- Trainer selection and sharded disk-gate integration remain outstanding. Lazy shard view creation also remains outstanding.
+- Workflow consumers do not yet select mapped sharded artifacts, and old generation directories are retained after manifest replacement. The mapped provider verifies and maps all shard views at construction rather than creating each view lazily.
 
 ## PB-12 Phase 7.1 - Add bounded ordered external record iteration
 

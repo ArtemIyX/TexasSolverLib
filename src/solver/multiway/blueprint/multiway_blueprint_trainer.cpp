@@ -1120,12 +1120,94 @@ namespace texas::solver::multiway
 		const auto plan = make_export_plan(lease, identity_, training, order);
 		const auto stream_plan = make_multiway_full_blueprint_stream_plan(
 			plan.identity, plan.training, plan.row_count, plan.action_count);
+		const bool sharded_output = plan.row_count != 0U && plan.serialized_bytes >
+			working_set_monitor_.single_file_blueprint_limit_bytes;
+		MultiwayFullBlueprintShardLayout shard_layout;
+		std::vector<std::uint64_t> shard_action_counts;
+		MultiwayFullBlueprintShardedSizeEstimate sharded_size{};
+		std::uint64_t shard_temporary_peak_bytes = 0U;
+		if (sharded_output)
+		{
+			shard_layout = make_multiway_full_blueprint_shard_layout(
+				stream_plan, working_set_monitor_.shard_max_serialized_bytes);
+			shard_action_counts.resize(shard_layout.ranges.size(), 0U);
+			std::uint64_t next_row = 0U;
+			const auto add_shape = [&](const MultiwaySparseRowShape& shape) {
+				for (std::uint32_t bucket = 0U; bucket < shape.bucket_count; ++bucket)
+				{
+					const auto shard_index = static_cast<std::size_t>(
+						next_row / shard_layout.maximum_rows_per_shard);
+					shard_action_counts[shard_index] = checked_export_add(
+						shard_action_counts[shard_index], shape.action_count);
+					++next_row;
+				}
+			};
+			const auto* compact_for_plan = lease.compact_storage();
+			const auto* external_for_plan = lease.external_storage();
+			if (external_for_plan != nullptr)
+			{
+				struct Context
+				{
+				const decltype(add_shape)* add_shape;
+				};
+				Context context{ &add_shape };
+				const auto count_external_row = [](void* opaque, MultiwayPublicStateId state,
+					std::int32_t seat, const MultiwayExternalRowMetadata& metadata) {
+					auto& current = *static_cast<Context*>(opaque);
+					MultiwaySparseRowShape shape{};
+					shape.infoset = { state, static_cast<core::PlayerId>(seat) };
+					shape.bucket_count = metadata.bucket_count;
+					shape.action_count = metadata.action_count;
+					(*current.add_shape)(shape);
+					return true;
+				};
+				if (!external_for_plan->compact_storage().visit_ordered_rows(count_external_row, &context))
+					throw std::runtime_error("external blueprint shard planning stopped unexpectedly");
+			}
+			else
+			{
+				const auto& export_rows = compact_for_plan != nullptr
+					? compact_for_plan->rows() : lease.storage().rows();
+				if (compact_for_plan != nullptr)
+				{
+					for (const auto& metadata : export_rows)
+						add_shape(metadata.shape);
+				}
+				else
+				{
+					for (const auto index : order)
+						add_shape(export_rows[index].shape);
+				}
+			}
+			if (next_row != plan.row_count)
+				throw std::invalid_argument("multiway blueprint shard planning row count changed");
+			sharded_size = estimate_multiway_full_blueprint_sharded_size(
+				stream_plan, shard_layout, path);
+			for (std::size_t index = 0U; index < shard_layout.ranges.size(); ++index)
+			{
+				const auto range = shard_layout.ranges[index];
+				const auto shard_plan = make_multiway_full_blueprint_stream_plan(
+					plan.identity, plan.training, range.row_count, shard_action_counts[index]);
+				shard_temporary_peak_bytes = std::max(shard_temporary_peak_bytes,
+					shard_plan.serialized_bytes);
+			}
+		}
 		std::array<Probability, MULTIWAY_MAX_ABSTRACTED_ACTIONS> strategy{};
 		std::array<MultiwayQuantizedRootAction, MULTIWAY_MAX_ABSTRACTED_ACTIONS> actions{};
+		const auto sharding_metadata_bytes = sharded_output
+			? checked_export_add(
+				checked_export_multiply(static_cast<std::uint64_t>(shard_layout.ranges.capacity()),
+					sizeof(MultiwayFullBlueprintShardRange)),
+				checked_export_multiply(static_cast<std::uint64_t>(shard_action_counts.capacity()),
+					sizeof(std::uint64_t)))
+			: 0U;
 		const auto peak_scratch_bytes = checked_export_add(
-			checked_export_add(plan.order_index_bytes, sizeof(strategy)), sizeof(actions));
+			checked_export_add(checked_export_add(plan.order_index_bytes, sizeof(strategy)),
+				sizeof(actions)), sharding_metadata_bytes);
 		MultiwayExportTelemetry telemetry;
 		telemetry.attempted = true;
+		telemetry.sharded_output = sharded_output;
+		telemetry.shard_count = sharded_output ? shard_layout.ranges.size() : 0U;
 		telemetry.plan = {
 			MULTIWAY_EXPORT_TELEMETRY_SCHEMA_VERSION,
 			plan.shape_count,
@@ -1135,6 +1217,7 @@ namespace texas::solver::multiway
 			plan.order_index_bytes,
 			plan.compact_direct_order
 		};
+		telemetry.plan.sharding_metadata_bytes = sharding_metadata_bytes;
 		std::uint64_t available_disk_bytes = 0U;
 		bool disk_space_available = false;
 		std::error_code directory_error;
@@ -1168,9 +1251,12 @@ namespace texas::solver::multiway
 			MultiwaySolverLimits::StorageBackend::ExternalCompactInt32
 			? coordinator_->limits().external_storage.disk_reserve_bytes
 			: 0U;
+		const auto disk_output_bytes = sharded_output
+			? sharded_size.total_bytes : plan.serialized_bytes;
+		telemetry.manifest_bytes = sharded_output ? sharded_size.manifest_bytes : 0U;
 		telemetry.disk_gate = evaluate_multiway_export_disk_gate(
-			plan.serialized_bytes, external_disk_reserve,
-			disk_space_available, available_disk_bytes);
+			disk_output_bytes, sharded_output ? shard_temporary_peak_bytes : disk_output_bytes,
+			external_disk_reserve, disk_space_available, available_disk_bytes);
 		if (telemetry.disk_gate.blocked())
 		{
 			status_.failed = true;
@@ -1204,14 +1290,16 @@ namespace texas::solver::multiway
 		telemetry.process_estimate = make_multiway_export_process_estimate(
 			telemetry.plan, before_export, export_gate.process);
 		status_.memory_ledger.export_scratch_bytes = telemetry.scratch.total_bytes;
-		status_.memory_ledger.export_output_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_output_bytes = disk_output_bytes;
 		status_.memory_ledger.export_process_peak_bytes = telemetry.process_estimate.estimated_process_export_peak_bytes;
 		record_export_memory_snapshot(MultiwayMemoryPhase::BeforeExport, before_export, export_component());
 		telemetry.process_gate = evaluate_multiway_export_process_gate(
 			telemetry.plan, before_export, export_gate.process);
+		auto system_cache_plan = telemetry.plan;
+		system_cache_plan.serialized_bytes = disk_output_bytes;
 		telemetry.system_gate = evaluate_multiway_export_system_gate(
-			telemetry.plan, telemetry.scratch, telemetry.system_before, export_gate.system);
-		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+			system_cache_plan, telemetry.scratch, telemetry.system_before, export_gate.system);
+		status_.memory_ledger.export_system_cache_allowance_bytes = disk_output_bytes;
 		if (telemetry.process_gate.blocked() || telemetry.system_gate.blocked())
 		{
 			status_.failed = true;
@@ -1221,7 +1309,19 @@ namespace texas::solver::multiway
 				: multiway_export_system_rejection_reason_name(telemetry.system_gate.rejection_reason);
 			throw std::runtime_error(std::string("multiway blueprint export memory gate rejected: ") + reason);
 		}
-		MultiwayFullBlueprintStreamWriter writer(path, stream_plan);
+		std::unique_ptr<MultiwayFullBlueprintStreamWriter> writer;
+		std::unique_ptr<MultiwayFullBlueprintShardedStreamWriter> sharded_writer;
+		if (sharded_output)
+			sharded_writer = std::make_unique<MultiwayFullBlueprintShardedStreamWriter>(
+				path, stream_plan, std::move(shard_layout), std::move(shard_action_counts));
+		else
+			writer = std::make_unique<MultiwayFullBlueprintStreamWriter>(path, stream_plan);
+		const auto write_row = [&](const MultiwayFullBlueprintRowView& row) {
+			if (sharded_output)
+				sharded_writer->write_row(row);
+			else
+				writer->write_row(row);
+		};
 		const auto* compact = lease.compact_storage();
 		const auto* external = lease.external_storage();
 		const auto& rows = compact != nullptr ? compact->rows() : lease.storage().rows();
@@ -1243,7 +1343,7 @@ namespace texas::solver::multiway
 				row.action_menu_id = menu.action_menu_id;
 				row.actions = actions.data();
 				row.action_count = shape.action_count;
-				writer.write_row(row);
+				write_row(row);
 			}
 		};
 		if (external != nullptr)
@@ -1252,10 +1352,11 @@ namespace texas::solver::multiway
 			{
 				const MultiwayExternalTrainingStorage* storage;
 				MultiwayFullBlueprintStreamWriter* writer;
+				MultiwayFullBlueprintShardedStreamWriter* sharded_writer;
 				Probability* strategy;
 				MultiwayQuantizedRootAction* actions;
 			};
-			Context context{ external, &writer, strategy.data(), actions.data() };
+			Context context{ external, writer.get(), sharded_writer.get(), strategy.data(), actions.data() };
 			const auto write_external_row = [](void* opaque, MultiwayPublicStateId state,
 				std::int32_t seat, const MultiwayExternalRowMetadata& metadata) {
 				auto& current = *static_cast<Context*>(opaque);
@@ -1286,7 +1387,10 @@ namespace texas::solver::multiway
 					row.action_menu_id = menu.action_menu_id;
 					row.actions = current.actions;
 					row.action_count = shape.action_count;
-					current.writer->write_row(row);
+					if (current.sharded_writer != nullptr)
+						current.sharded_writer->write_row(row);
+					else
+						current.writer->write_row(row);
 				}
 				return true;
 			};
@@ -1303,7 +1407,27 @@ namespace texas::solver::multiway
 			for (const auto index : order)
 				emit_shape(rows[index].shape);
 		}
-		const auto stream_result = writer.finish();
+		MultiwayFullBlueprintStreamResult stream_result{};
+		std::uint64_t result_bytes = 0U;
+		std::uint64_t result_manifest_bytes = 0U;
+		std::uint64_t result_shard_count = 0U;
+		if (sharded_output)
+		{
+			const auto result = sharded_writer->finish();
+			stream_result.row_count = result.row_count;
+			stream_result.action_count = result.action_count;
+			stream_result.serialized_bytes = result.serialized_bytes;
+			stream_result.policy_content_hash = result.policy_content_hash;
+			stream_result.publication_mode = result.publication_mode;
+			result_bytes = result.serialized_bytes;
+			result_manifest_bytes = result.manifest_bytes;
+			result_shard_count = result.shard_count;
+		}
+		else
+		{
+			stream_result = writer->finish();
+			result_bytes = stream_result.serialized_bytes;
+		}
 		const auto after_export = working_set_monitor_.export_process_observer == nullptr
 			? capture_multiway_process_memory_snapshot()
 			: working_set_monitor_.export_process_observer(working_set_monitor_.export_observer_context);
@@ -1311,10 +1435,10 @@ namespace texas::solver::multiway
 			? capture_multiway_system_memory_snapshot()
 			: working_set_monitor_.export_system_observer(working_set_monitor_.export_observer_context);
 		telemetry.observed_delta = observe_multiway_export_memory_delta(before_export, after_export);
-		status_.memory_ledger.export_system_cache_allowance_bytes = telemetry.plan.serialized_bytes;
+		status_.memory_ledger.export_system_cache_allowance_bytes = disk_output_bytes;
 		status_.memory_ledger.export_observed_before_working_set_bytes = telemetry.observed_delta.before_working_set_bytes;
 		status_.memory_ledger.export_observed_after_working_set_bytes = telemetry.observed_delta.after_working_set_bytes;
-		telemetry.result_bytes = stream_result.serialized_bytes;
+		telemetry.result_bytes = result_bytes;
 		telemetry.payload_hash = stream_result.payload_hash;
 		telemetry.policy_content_hash = stream_result.policy_content_hash;
 		telemetry.duration_nanoseconds = static_cast<std::uint64_t>(
@@ -1322,6 +1446,9 @@ namespace texas::solver::multiway
 				std::chrono::steady_clock::now() - export_started)
 				.count());
 		telemetry.publication_mode = stream_result.publication_mode;
+		telemetry.sharded_output = sharded_output;
+		telemetry.shard_count = result_shard_count;
+		telemetry.manifest_bytes = result_manifest_bytes;
 		telemetry.succeeded = true;
 		status_.export_telemetry = telemetry;
 		record_export_memory_snapshot(MultiwayMemoryPhase::AfterExport, after_export, export_component());
@@ -1330,6 +1457,10 @@ namespace texas::solver::multiway
 		result.payload_hash = stream_result.payload_hash;
 		result.policy_content_hash = stream_result.policy_content_hash;
 		result.peak_scratch_bytes = peak_scratch_bytes;
+		result.serialized_bytes = result_bytes;
+		result.shard_count = result_shard_count;
+		result.manifest_bytes = result_manifest_bytes;
+		result.sharded = sharded_output;
 		result.publication_mode = stream_result.publication_mode;
 		return result;
 	}

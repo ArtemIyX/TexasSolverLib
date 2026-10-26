@@ -295,6 +295,10 @@ TEST_CASE(multiway_training_report_preserves_discard_telemetry)
 	EXPECT_TRUE(text.find("\"public_state_bytes\": 34") != std::string::npos);
 	EXPECT_TRUE(text.find("\"blueprint_bytes\": 789") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_disk_gate_status\": 1") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_disk_gate_output_bytes\": 321") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_disk_gate_temporary_overlap_bytes\": 0") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_sharded_output\": false") != std::string::npos);
+	EXPECT_TRUE(text.find("\"export_shard_count\": 0") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_disk_gate_required_free_bytes\": 642") != std::string::npos);
 	EXPECT_TRUE(text.find("\"export_disk_gate_available_free_bytes\": 1000") != std::string::npos);
 	EXPECT_TRUE(text.find("\"requested_worker_count\": 16") != std::string::npos);
