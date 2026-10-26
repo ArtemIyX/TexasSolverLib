@@ -275,19 +275,14 @@ TEST_CASE(multiway_external_checkpoint_manifest_round_trips_and_rejects_identity
 	EXPECT_TRUE(model_mismatch_rejected);
 	auto newer_generation = checkpoint.generation;
 	++newer_generation.generation;
-	bool generation_mismatch_rejected = false;
-	try
-	{
-		auto committed_newer_generation = newer_generation;
-		committed_newer_generation.committed_batch_number = 7U;
-		committed_newer_generation.merge_fingerprint = 17U;
-		write_empty_component_manifests(storage_directory, committed_newer_generation);
-		publish_multiway_external_generation(storage_directory, committed_newer_generation, false);
-		static_cast<void>(load_multiway_external_checkpoint_manifest(path, storage_directory,
-			11U, 12U, 13U, 14U));
-	}
-	catch (const std::invalid_argument&) { generation_mismatch_rejected = true; }
-	EXPECT_TRUE(generation_mismatch_rejected);
+	auto committed_newer_generation = newer_generation;
+	committed_newer_generation.committed_batch_number = 7U;
+	committed_newer_generation.merge_fingerprint = 17U;
+	write_empty_component_manifests(storage_directory, committed_newer_generation);
+	publish_multiway_external_generation(storage_directory, committed_newer_generation, false);
+	const auto older = load_multiway_external_checkpoint_manifest(path, storage_directory,
+		11U, 12U, 13U, 14U);
+	EXPECT_EQ(older.generation.generation, 7U);
 	write_empty_component_manifests(storage_directory, checkpoint.generation);
 	publish_multiway_external_generation(storage_directory, checkpoint.generation, false);
 	{
@@ -382,8 +377,56 @@ TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 	std::vector<std::uint8_t> payload;
 	EXPECT_TRUE(reopened.lookup(10U, payload));
 	EXPECT_EQ(payload[0], 10U);
+	const auto restored_checkpoint = load_multiway_external_checkpoint_manifest(
+		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U);
+	EXPECT_EQ(restored_checkpoint.generation.generation, 1U);
+	MultiwayExternalGenerationManifest advanced{};
+	advanced.generation = 2U;
+	advanced.committed_batch_number = 3U;
+	advanced.merge_fingerprint = 3U;
+	advanced.catalog_generation = 4U;
+	advanced.row_generation = advanced.page_generation = 2U;
+	advanced.content_hash = 4U;
+	publish_multiway_external_generation(directory.path(), advanced, false);
+	bool partial_restore_failed = false;
+	try
+	{
+		static_cast<void>(restore_multiway_external_checkpoint(
+			checkpoint_path, directory.path(), 11U, 12U, 13U, 14U, false, { 1U, false }));
+	}
+	catch (const std::runtime_error&) { partial_restore_failed = true; }
+	EXPECT_TRUE(partial_restore_failed);
+	MultiwayExternalGenerationManifest after_failed_restore{};
+	EXPECT_TRUE(load_multiway_external_generation(directory.path(), after_failed_restore));
+	EXPECT_EQ(after_failed_restore.generation, 2U);
+	bool interrupted_restore = false;
+	try
+	{
+		static_cast<void>(restore_multiway_external_checkpoint(
+			checkpoint_path, directory.path(), 11U, 12U, 13U, 14U, false, { 1U, false, true }));
+	}
+	catch (const std::runtime_error&) { interrupted_restore = true; }
+	EXPECT_TRUE(interrupted_restore);
+	MultiwayExternalBatchTransaction recovered_restore(directory.path(), false);
+	EXPECT_EQ(recovered_restore.current_manifest().generation, 2U);
+	const auto restored = restore_multiway_external_checkpoint(
+		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U, false);
+	EXPECT_EQ(restored.generation.generation, 1U);
+	MultiwayExternalGenerationManifest live{};
+	EXPECT_TRUE(load_multiway_external_generation(directory.path(), live));
+	EXPECT_EQ(live.generation, 1U);
+	{
+		MultiwayExternalRecordStore old_generation(config(component_paths[0]), 4U);
+		EXPECT_EQ(old_generation.generation(), 2U);
+		EXPECT_EQ(old_generation.record_count(), 4U);
+	}
 	std::filesystem::remove(checkpoint_path);
 	release_multiway_external_checkpoint_manifest_pins(checkpoint_path, directory.path(), 13U, false);
+	{
+		MultiwayExternalRecordStore old_generation(config(component_paths[0]), 4U);
+		old_generation.append_batch(3U, 3U, records(20U));
+		old_generation.compact();
+	}
 	MultiwayExternalRecordStore after_release(config(component_paths[0]), 4U);
 	EXPECT_TRUE(!std::filesystem::exists(component_paths[0] / "run_2.dat"));
 	EXPECT_EQ(after_release.record_count(), 6U);

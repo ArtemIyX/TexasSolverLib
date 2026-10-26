@@ -114,6 +114,9 @@ namespace texas::solver::multiway
 		constexpr std::array<const char*, 3U> kComponentNames = { "catalog", "rows", "pages" };
 		constexpr std::array<const char*, 3U> kBackupNames = {
 			"CATALOG_CURRENT.previous", "ROWS_CURRENT.previous", "PAGES_CURRENT.previous" };
+		constexpr std::array<const char*, 4U> kCheckpointRestoreBackupNames = {
+			"CHECKPOINT_CATALOG.previous", "CHECKPOINT_ROWS.previous",
+			"CHECKPOINT_PAGES.previous", "CHECKPOINT_TRAINING.previous" };
 
 		struct ComponentManifestInfo
 		{
@@ -425,6 +428,219 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("external transaction journal fields are invalid");
 		return result;
 	}
+	struct CheckpointRestoreWal
+	{
+		std::uint32_t previous_flags = 0U;
+		MultiwayExternalGenerationManifest target{};
+		std::array<std::uint64_t, 3U> component_manifest_hashes{};
+	};
+	constexpr std::array<std::uint8_t, 8U> kCheckpointRestoreWalMagic = {
+		'T','X','M','W','R','S','T','1' };
+	void write_checkpoint_restore_wal(const std::filesystem::path& directory,
+		const CheckpointRestoreWal& wal, bool synchronous_durability)
+	{
+		std::vector<std::uint8_t> bytes(kCheckpointRestoreWalMagic.begin(), kCheckpointRestoreWalMagic.end());
+		append_u32(bytes, 1U);
+		append_u32(bytes, wal.previous_flags);
+		append_u64(bytes, wal.target.generation);
+		append_u64(bytes, wal.target.content_hash);
+		append_u64(bytes, wal.target.catalog_generation);
+		append_u64(bytes, wal.target.row_generation);
+		append_u64(bytes, wal.target.page_generation);
+		for (const auto hash : wal.component_manifest_hashes) append_u64(bytes, hash);
+		auto checksum = kHashOffset;
+		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
+		append_u64(bytes, texas::core::fingerprint::finish(checksum));
+		const auto temporary = directory / "CHECKPOINT_RESTORE.wal.tmp";
+		const auto destination = directory / "CHECKPOINT_RESTORE.wal";
+		if (std::filesystem::exists(temporary) || std::filesystem::exists(destination))
+			throw std::runtime_error("external checkpoint restore already has a pending journal");
+		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+		if (!output) throw std::runtime_error("external checkpoint restore journal cannot be opened");
+		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		output.flush();
+		if (!output) throw std::runtime_error("external checkpoint restore journal write failed");
+		output.close();
+		if (synchronous_durability) sync_file_path(temporary);
+		texas::core::publish_atomic_replace(temporary, destination,
+			"external checkpoint restore journal publish failed",
+			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+		if (synchronous_durability) sync_directory_path(directory);
+	}
+	CheckpointRestoreWal read_checkpoint_restore_wal(const std::filesystem::path& path)
+	{
+		constexpr std::size_t bytes_size = 88U;
+		if (std::filesystem::file_size(path) != bytes_size)
+			throw std::invalid_argument("external checkpoint restore journal size is invalid");
+		std::array<std::uint8_t, bytes_size> bytes{};
+		std::ifstream input(path, std::ios::binary);
+		input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		if (!input || !std::equal(kCheckpointRestoreWalMagic.begin(), kCheckpointRestoreWalMagic.end(), bytes.begin()) ||
+			read_u32(bytes.data() + 8U) != 1U)
+			throw std::invalid_argument("external checkpoint restore journal header is invalid");
+		auto checksum = kHashOffset;
+		for (std::size_t index = 0U; index < bytes.size() - 8U; ++index)
+			texas::core::fingerprint::append_u8(checksum, bytes[index]);
+		if (texas::core::fingerprint::finish(checksum) != read_u64(bytes.data() + bytes.size() - 8U))
+			throw std::invalid_argument("external checkpoint restore journal checksum is invalid");
+		CheckpointRestoreWal result{};
+		result.previous_flags = read_u32(bytes.data() + 12U);
+		result.target.generation = read_u64(bytes.data() + 16U);
+		result.target.content_hash = read_u64(bytes.data() + 24U);
+		result.target.catalog_generation = read_u64(bytes.data() + 32U);
+		result.target.row_generation = read_u64(bytes.data() + 40U);
+		result.target.page_generation = read_u64(bytes.data() + 48U);
+		for (std::size_t component = 0U; component < result.component_manifest_hashes.size(); ++component)
+			result.component_manifest_hashes[component] = read_u64(bytes.data() + 56U + component * 8U);
+		if ((result.previous_flags & ~15U) != 0U || result.target.generation == 0U)
+			throw std::invalid_argument("external checkpoint restore journal fields are invalid");
+		return result;
+	}
+	void cleanup_checkpoint_restore(const std::filesystem::path& directory)
+	{
+		std::error_code error;
+		for (const auto* name : kCheckpointRestoreBackupNames)
+		{
+			std::filesystem::remove(directory / name, error);
+			if (error) throw std::runtime_error("external checkpoint restore backup cannot be removed");
+		}
+		std::filesystem::remove(directory / "CHECKPOINT_RESTORE.wal", error);
+		if (error) throw std::runtime_error("external checkpoint restore journal cannot be removed");
+		for (const auto* name : { "CHECKPOINT_RESTORE.wal.tmp", "TRAINING_CURRENT.tmp",
+			"CHECKPOINT_TRAINING_ROLLBACK.tmp" })
+		{
+			std::filesystem::remove(directory / name, error);
+			if (error) throw std::runtime_error("external checkpoint restore temporary journal cannot be removed");
+		}
+		for (const auto* component : kComponentNames)
+			for (const auto* name : { "CHECKPOINT_CURRENT.tmp", "CHECKPOINT_ROLLBACK.tmp" })
+			{
+				std::filesystem::remove(directory / component / name, error);
+				if (error) throw std::runtime_error("external checkpoint component temporary cannot be removed");
+			}
+	}
+	std::vector<std::uint8_t> encode_checkpoint_component_manifest(
+		std::uint32_t payload_bytes, std::uint64_t generation, std::uint64_t last_batch_number,
+		const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& references)
+	{
+		std::vector<std::uint8_t> bytes(kManifestMagic.begin(), kManifestMagic.end());
+		append_u32(bytes, kSchema);
+		append_u32(bytes, payload_bytes);
+		append_u64(bytes, generation);
+		append_u64(bytes, references.size());
+		append_u64(bytes, last_batch_number);
+		for (const auto& reference : references)
+		{
+			append_u64(bytes, reference.generation);
+			append_u64(bytes, reference.record_count);
+			append_u64(bytes, reference.content_hash);
+		}
+		auto checksum = kHashOffset;
+		for (const auto byte : bytes) texas::core::fingerprint::append_u8(checksum, byte);
+		append_u64(bytes, texas::core::fingerprint::finish(checksum));
+		return bytes;
+	}
+	void publish_checkpoint_component_manifest(const std::filesystem::path& component_directory,
+		const std::vector<std::uint8_t>& bytes, bool synchronous_durability)
+	{
+		const auto temporary = component_directory / "CHECKPOINT_CURRENT.tmp";
+		const auto destination = component_directory / "CURRENT";
+		if (std::filesystem::exists(temporary))
+			throw std::runtime_error("external checkpoint component temporary path already exists");
+		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+		if (!output) throw std::runtime_error("external checkpoint component manifest cannot be opened");
+		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		output.flush();
+		if (!output) throw std::runtime_error("external checkpoint component manifest write failed");
+		output.close();
+		if (synchronous_durability) sync_file_path(temporary);
+		texas::core::publish_atomic_replace(temporary, destination,
+			"external checkpoint component manifest publish failed",
+			texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+		if (synchronous_durability) sync_directory_path(component_directory);
+	}
+	void recover_checkpoint_restore(const std::filesystem::path& directory, bool synchronous_durability)
+	{
+		const auto wal_path = directory / "CHECKPOINT_RESTORE.wal";
+		if (!std::filesystem::exists(wal_path))
+		{
+			cleanup_checkpoint_restore(directory);
+			return;
+		}
+		const auto wal = read_checkpoint_restore_wal(wal_path);
+		MultiwayExternalGenerationManifest published{};
+		const bool has_generation = load_multiway_external_generation(directory, published);
+		bool target_is_published = has_generation && published.generation == wal.target.generation &&
+			published.content_hash == wal.target.content_hash;
+		const std::array<std::uint64_t, 3U> target_component_generations = {
+			wal.target.catalog_generation, wal.target.row_generation, wal.target.page_generation };
+		for (std::size_t component = 0U; target_is_published && component < kComponentNames.size(); ++component)
+		{
+			try
+			{
+				const auto component_directory = directory / kComponentNames[component];
+				const auto current_manifest = component_directory / "CURRENT";
+				if (read_component_manifest(component_directory).generation != target_component_generations[component])
+				{
+					target_is_published = false;
+					continue;
+				}
+				std::ifstream input(current_manifest, std::ios::binary);
+				std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(input)),
+					std::istreambuf_iterator<char>());
+				if (!input.eof() && input.fail())
+					throw std::runtime_error("external checkpoint component manifest cannot be read");
+				auto hash = kHashOffset;
+				for (const auto byte : bytes) texas::core::fingerprint::append_u8(hash, byte);
+				target_is_published = texas::core::fingerprint::finish(hash) ==
+					wal.component_manifest_hashes[component];
+			}
+			catch (...) { target_is_published = false; }
+		}
+		if (!target_is_published)
+		{
+			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
+			{
+				const auto component_directory = directory / kComponentNames[component];
+				const auto current = component_directory / "CURRENT";
+				const auto backup = directory / kCheckpointRestoreBackupNames[component];
+				if ((wal.previous_flags & (1U << component)) != 0U)
+				{
+					const auto temporary = component_directory / "CHECKPOINT_ROLLBACK.tmp";
+					std::filesystem::copy_file(backup, temporary, std::filesystem::copy_options::overwrite_existing);
+					if (synchronous_durability) sync_file_path(temporary);
+					texas::core::publish_atomic_replace(temporary, current,
+						"external checkpoint rollback failed",
+						texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+				}
+				else
+				{
+					std::error_code error;
+					std::filesystem::remove(current, error);
+					if (error) throw std::runtime_error("external checkpoint rollback manifest cannot be removed");
+				}
+			}
+			const auto training_current = directory / "TRAINING_CURRENT";
+			const auto training_backup = directory / kCheckpointRestoreBackupNames[3];
+			if ((wal.previous_flags & 8U) != 0U)
+			{
+				const auto temporary = directory / "CHECKPOINT_TRAINING_ROLLBACK.tmp";
+				std::filesystem::copy_file(training_backup, temporary, std::filesystem::copy_options::overwrite_existing);
+				if (synchronous_durability) sync_file_path(temporary);
+				texas::core::publish_atomic_replace(temporary, training_current,
+					"external checkpoint rollback failed",
+					texas::core::AtomicPublishFallbackPolicy::RejectNonAtomicFallback);
+			}
+			else
+			{
+				std::error_code error;
+				std::filesystem::remove(training_current, error);
+				if (error) throw std::runtime_error("external checkpoint rollback generation cannot be removed");
+			}
+		}
+		cleanup_checkpoint_restore(directory);
+		if (synchronous_durability) sync_directory_path(directory);
+	}
 		void append_file_hash(std::uint64_t& hash, const std::filesystem::path& path)
 		{
 			std::ifstream input(path, std::ios::binary);
@@ -630,7 +846,9 @@ namespace texas::solver::multiway
 	{
 		std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U>
 		load_checkpoint_segment_references(const std::filesystem::path& storage_directory,
-			std::array<std::uint64_t, 3U>* component_generations = nullptr)
+			std::array<std::uint64_t, 3U>* component_generations = nullptr,
+			std::array<std::uint32_t, 3U>* component_payload_bytes = nullptr,
+			std::array<std::uint64_t, 3U>* component_last_batch_numbers = nullptr)
 		{
 			std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U> references;
 			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
@@ -647,6 +865,10 @@ namespace texas::solver::multiway
 					throw std::invalid_argument("external checkpoint component manifest header is invalid");
 				if (component_generations != nullptr)
 					(*component_generations)[component] = read_u64(bytes.data() + 16U);
+				if (component_payload_bytes != nullptr)
+					(*component_payload_bytes)[component] = read_u32(bytes.data() + 12U);
+				if (component_last_batch_numbers != nullptr)
+					(*component_last_batch_numbers)[component] = read_u64(bytes.data() + 32U);
 				const auto run_count = read_u64(bytes.data() + 24U);
 				if (run_count > (bytes.size() - fixed_bytes) / 24U ||
 					bytes.size() != fixed_bytes + run_count * 24U)
@@ -673,22 +895,6 @@ namespace texas::solver::multiway
 				}
 			}
 			return references;
-		}
-
-		bool same_checkpoint_segments(
-			const std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U>& left,
-			const std::array<std::vector<MultiwayExternalCheckpointManifest::SegmentReference>, 3U>& right)
-		{
-			for (std::size_t component = 0U; component < left.size(); ++component)
-			{
-				if (left[component].size() != right[component].size()) return false;
-				for (std::size_t run = 0U; run < left[component].size(); ++run)
-					if (left[component][run].generation != right[component][run].generation ||
-						left[component][run].record_count != right[component][run].record_count ||
-						left[component][run].content_hash != right[component][run].content_hash)
-						return false;
-			}
-			return true;
 		}
 
 		std::vector<MultiwayExternalCheckpointManifest::SegmentReference> merge_checkpoint_pins(
@@ -720,6 +926,25 @@ namespace texas::solver::multiway
 			return found != pin.end() && found->generation == reference.generation &&
 				found->record_count == reference.record_count && found->content_hash == reference.content_hash;
 		}
+
+		bool verify_checkpoint_segment(const std::filesystem::path& directory,
+			const MultiwayExternalCheckpointManifest::SegmentReference& reference,
+			std::uint32_t payload_bytes)
+		{
+			const auto data_path = run_path(directory, reference.generation, ".dat");
+			const auto index_path = run_path(directory, reference.generation, ".idx");
+			std::error_code error;
+			if (!std::filesystem::is_regular_file(data_path, error) || error) return false;
+			if (!std::filesystem::is_regular_file(index_path, error) || error) return false;
+			const auto expected_data = record_bytes(reference.record_count, payload_bytes);
+			if (std::filesystem::file_size(data_path) != expected_data ||
+				std::filesystem::file_size(index_path) != record_bytes(reference.record_count, 0U))
+				return false;
+			auto hash = kHashOffset;
+			append_file_hash(hash, index_path);
+			append_file_hash(hash, data_path);
+			return texas::core::fingerprint::finish(hash) == reference.content_hash;
+		}
 	}
 
 	void save_multiway_external_checkpoint_manifest(
@@ -735,8 +960,11 @@ namespace texas::solver::multiway
 			!load_multiway_external_generation(external_storage_directory, current_generation))
 			throw std::invalid_argument("external checkpoint manifest identity is invalid");
 		std::array<std::uint64_t, 3U> component_generations{};
+		std::array<std::uint32_t, 3U> component_payload_bytes{};
+		std::array<std::uint64_t, 3U> component_last_batch_numbers{};
 		const auto segment_references = load_checkpoint_segment_references(
-			external_storage_directory, &component_generations);
+			external_storage_directory, &component_generations,
+			&component_payload_bytes, &component_last_batch_numbers);
 		if (
 			manifest.backend_schema != MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA ||
 			manifest.model_identity_hash == 0U || manifest.workflow_identity_hash == 0U ||
@@ -781,6 +1009,11 @@ namespace texas::solver::multiway
 		append_u64(bytes, generation.page_count);
 		append_u64(bytes, generation.logical_value_count);
 		append_u64(bytes, generation.content_hash);
+		for (std::size_t component = 0U; component < component_generations.size(); ++component)
+		{
+			append_u32(bytes, component_payload_bytes[component]);
+			append_u64(bytes, component_last_batch_numbers[component]);
+		}
 		for (const auto& component : segment_references)
 		{
 			append_u64(bytes, component.size());
@@ -860,7 +1093,7 @@ namespace texas::solver::multiway
 		std::uint64_t expected_storage_identity_hash,
 		std::uint64_t expected_schedule_hash)
 	{
-		constexpr std::size_t kMinimumSerializedBytes = 192U;
+		constexpr std::size_t kMinimumSerializedBytes = 228U;
 		std::error_code error;
 		const auto length = std::filesystem::file_size(path, error);
 		if (error || length < kMinimumSerializedBytes || length > std::numeric_limits<std::size_t>::max())
@@ -901,6 +1134,17 @@ namespace texas::solver::multiway
 		generation.page_count = read_field();
 		generation.logical_value_count = read_field();
 		generation.content_hash = read_field();
+		for (std::size_t component = 0U; component < decoded.component_payload_bytes.size(); ++component)
+		{
+			if (cursor > bytes.size() - 8U || bytes.size() - 8U - cursor < 12U)
+				throw std::invalid_argument("external checkpoint component metadata is truncated");
+			decoded.component_payload_bytes[component] = read_u32(bytes.data() + cursor);
+			cursor += 4U;
+			decoded.component_last_batch_numbers[component] = read_field();
+			if (decoded.component_payload_bytes[component] == 0U ||
+				decoded.component_last_batch_numbers[component] == 0U)
+				throw std::invalid_argument("external checkpoint component metadata is invalid");
+		}
 		for (auto& component : decoded.segments)
 		{
 			if (cursor > bytes.size() - 8U || bytes.size() - 8U - cursor < 8U)
@@ -922,26 +1166,8 @@ namespace texas::solver::multiway
 				component.push_back(reference);
 			}
 		}
-		MultiwayExternalGenerationManifest current_generation{};
-		if (external_storage_directory.empty() ||
-			!load_multiway_external_generation(external_storage_directory, current_generation))
-			throw std::invalid_argument("external checkpoint storage generation is missing");
-		const auto same_generation = [&]() {
-			return generation.generation == current_generation.generation &&
-				generation.committed_batch_number == current_generation.committed_batch_number &&
-				generation.merge_fingerprint == current_generation.merge_fingerprint &&
-				generation.catalog_generation == current_generation.catalog_generation &&
-				generation.public_state_count == current_generation.public_state_count &&
-				generation.row_generation == current_generation.row_generation &&
-				generation.row_count == current_generation.row_count &&
-				generation.page_generation == current_generation.page_generation &&
-				generation.page_count == current_generation.page_count &&
-				generation.logical_value_count == current_generation.logical_value_count &&
-				generation.content_hash == current_generation.content_hash;
-		};
-		std::array<std::uint64_t, 3U> component_generations{};
-		const auto current_segments = load_checkpoint_segment_references(
-			external_storage_directory, &component_generations);
+		if (external_storage_directory.empty())
+			throw std::invalid_argument("external checkpoint storage directory is missing");
 		const auto pin_id = checkpoint_pin_id(path, expected_storage_identity_hash);
 		for (std::size_t component = 0U; component < decoded.segments.size(); ++component)
 		{
@@ -949,23 +1175,124 @@ namespace texas::solver::multiway
 				external_storage_directory / kComponentNames[component], pin_id);
 			const auto pin = read_checkpoint_pin(pin_path);
 			for (const auto& reference : decoded.segments[component])
-				if (!checkpoint_pin_contains(pin, reference))
+				if (!checkpoint_pin_contains(pin, reference) ||
+					!verify_checkpoint_segment(external_storage_directory / kComponentNames[component],
+						reference, decoded.component_payload_bytes[component]))
 					throw std::invalid_argument("external checkpoint segment is not retained");
 		}
 		if (cursor != bytes.size() - 8U ||
+			generation.generation == 0U || generation.committed_batch_number == 0U ||
+			generation.merge_fingerprint == 0U ||
+			((generation.row_count == 0U) != (generation.logical_value_count == 0U)) ||
 			decoded.wal_generation != generation.committed_batch_number ||
 			decoded.wal_committed_offset != 0U ||
-			!same_checkpoint_segments(decoded.segments, current_segments) ||
-			component_generations != std::array<std::uint64_t, 3U>{ generation.catalog_generation,
-				generation.row_generation, generation.page_generation } ||
+			decoded.component_payload_bytes[0] == 0U ||
+			decoded.component_payload_bytes[1] == 0U ||
+			decoded.component_payload_bytes[2] == 0U ||
 			expected_model_identity_hash == 0U ||
 			expected_workflow_identity_hash == 0U || expected_storage_identity_hash == 0U ||
 			expected_schedule_hash == 0U || decoded.model_identity_hash != expected_model_identity_hash ||
 			decoded.workflow_identity_hash != expected_workflow_identity_hash ||
 			decoded.storage_identity_hash != expected_storage_identity_hash ||
-			decoded.schedule_hash != expected_schedule_hash || !same_generation())
+			decoded.schedule_hash != expected_schedule_hash)
 			throw std::invalid_argument("external checkpoint manifest identity or generation mismatch");
 		return decoded;
+	}
+
+	MultiwayExternalCheckpointManifest restore_multiway_external_checkpoint(
+		const std::filesystem::path& checkpoint_path,
+		const std::filesystem::path& external_storage_directory,
+		std::uint64_t expected_model_identity_hash,
+		std::uint64_t expected_workflow_identity_hash,
+		std::uint64_t expected_storage_identity_hash,
+		std::uint64_t expected_schedule_hash,
+		bool synchronous_durability,
+		MultiwayExternalCheckpointRestoreOptions options)
+	{
+		if (checkpoint_path.empty() || external_storage_directory.empty() ||
+			options.fail_after_component_publications > kComponentNames.size())
+			throw std::invalid_argument("external checkpoint restore failure point is invalid");
+		recover_checkpoint_restore(external_storage_directory, synchronous_durability);
+		auto checkpoint = load_multiway_external_checkpoint_manifest(checkpoint_path,
+			external_storage_directory, expected_model_identity_hash,
+			expected_workflow_identity_hash, expected_storage_identity_hash,
+			expected_schedule_hash);
+		if (std::filesystem::exists(external_storage_directory / "TRAINING_BATCH.wal") ||
+			std::filesystem::exists(external_storage_directory / "TRAINING_BATCH.tmp"))
+			throw std::runtime_error("external checkpoint restore requires a committed batch boundary");
+		std::uint32_t previous_flags = 0U;
+		bool journal_published = false;
+		try
+		{
+			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
+			{
+				const auto component_directory = external_storage_directory / kComponentNames[component];
+				std::filesystem::create_directories(component_directory);
+				const auto current = component_directory / "CURRENT";
+				if (std::filesystem::exists(current))
+				{
+					const auto backup = external_storage_directory / kCheckpointRestoreBackupNames[component];
+					if (std::filesystem::exists(backup))
+						throw std::runtime_error("external checkpoint restore has a stale component backup");
+					std::filesystem::copy_file(current, backup);
+					if (synchronous_durability) sync_file_path(backup);
+					previous_flags |= 1U << component;
+				}
+			}
+			const auto current_generation = external_storage_directory / "TRAINING_CURRENT";
+			if (std::filesystem::exists(current_generation))
+			{
+				const auto backup = external_storage_directory / kCheckpointRestoreBackupNames[3];
+				if (std::filesystem::exists(backup))
+					throw std::runtime_error("external checkpoint restore has a stale generation backup");
+				std::filesystem::copy_file(current_generation, backup);
+				if (synchronous_durability) sync_file_path(backup);
+				previous_flags |= 8U;
+			}
+			if (synchronous_durability) sync_directory_path(external_storage_directory);
+			std::array<std::vector<std::uint8_t>, 3U> target_component_manifests;
+			std::array<std::uint64_t, 3U> target_component_hashes{};
+			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
+			{
+				const auto target_component_generation = component == 0U
+					? checkpoint.generation.catalog_generation
+					: (component == 1U ? checkpoint.generation.row_generation : checkpoint.generation.page_generation);
+				target_component_manifests[component] = encode_checkpoint_component_manifest(
+					checkpoint.component_payload_bytes[component], target_component_generation,
+					checkpoint.component_last_batch_numbers[component], checkpoint.segments[component]);
+				auto hash = kHashOffset;
+				for (const auto byte : target_component_manifests[component])
+					texas::core::fingerprint::append_u8(hash, byte);
+				target_component_hashes[component] = texas::core::fingerprint::finish(hash);
+			}
+			write_checkpoint_restore_wal(external_storage_directory,
+				{ previous_flags, checkpoint.generation, target_component_hashes }, synchronous_durability);
+			journal_published = true;
+			for (std::size_t component = 0U; component < kComponentNames.size(); ++component)
+			{
+				publish_checkpoint_component_manifest(
+					external_storage_directory / kComponentNames[component],
+					target_component_manifests[component], synchronous_durability);
+				if (options.fail_after_component_publications == component + 1U)
+					throw std::runtime_error("injected external checkpoint component publication failure");
+			}
+			if (options.fail_before_aggregate_publication)
+				throw std::runtime_error("injected external checkpoint generation publication failure");
+			publish_multiway_external_generation(external_storage_directory,
+				checkpoint.generation, synchronous_durability);
+			recover_checkpoint_restore(external_storage_directory, synchronous_durability);
+			return checkpoint;
+		}
+		catch (...)
+		{
+			if (options.leave_pending_journal_for_recovery_test)
+				throw;
+			if (journal_published || std::filesystem::exists(external_storage_directory / "CHECKPOINT_RESTORE.wal"))
+				recover_checkpoint_restore(external_storage_directory, synchronous_durability);
+			else
+				cleanup_checkpoint_restore(external_storage_directory);
+			throw;
+		}
 	}
 
 	MultiwayExternalBatchTransaction::MultiwayExternalBatchTransaction(
@@ -977,6 +1304,7 @@ namespace texas::solver::multiway
 		std::filesystem::create_directories(directory_, error);
 		if (error || !std::filesystem::is_directory(directory_, error) || error)
 			throw std::runtime_error("external batch transaction directory is unavailable");
+		recover_checkpoint_restore(directory_, synchronous_durability_);
 		if (!load_multiway_external_generation(directory_, current_))
 			current_ = {};
 		recover_pending_batch();

@@ -7,7 +7,8 @@
 
 - Added a separate schema-6 external checkpoint manifest containing backend schema, model/workflow/storage identity hashes, schedule identity, completed trajectories, WAL generation/offset, the complete committed external generation, and per-component immutable run identities and hashes.
 - Added atomic manifest publication, checksums, injected pre-publication failure, verification against expected identities and component run lists, and retention pins installed before manifest publication.
-- Compaction and orphan cleanup preserve pinned runs. Releasing pins requires the checkpoint manifest to be removed first, then obsolete runs are reclaimed at the next store open/cleanup boundary.
+- Compaction and orphan cleanup preserve pinned runs. A schema-6 manifest can verify its prior runs after the current component manifests advance. Releasing pins requires removing the checkpoint first; obsolete runs are reclaimed at the next store open/cleanup boundary.
+- Added rollback-journaled restore of an older pinned generation. Component `CURRENT` manifests publish first; the aggregate generation publishes last. Startup recovery completes a published restore or reinstates the previous component and aggregate manifests.
 - Kept the existing schema-5 monolithic checkpoint artifact reader and writer unchanged.
 
 ### Files
@@ -20,12 +21,12 @@
 ### Validation
 
 - Debug build of `test_multiway_external_storage`: passed.
-- Focused CTest: passed (1/1).
+- Focused CTest covers manifest corruption/publication failure, run pin retention/release, restore to an older generation, immediate partial-publication rollback, and startup recovery from an interrupted restore journal: passed (1/1).
 - `git diff --check`: passed.
 
 ### Limitations
 
-- This codec verifies only the exact generation still published as current. It pins referenced runs but does not restore an older generation or integrate workflow resume yet.
+- Schema-6 manifest restore is a storage API only; workflow checkpoint scheduling/resume integration and real process-kill testing remain outstanding.
 - No training workflow was run.
 
 ## PB-12 Phases 3-5 - Validate external compact storage integration

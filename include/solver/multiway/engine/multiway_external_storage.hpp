@@ -93,12 +93,21 @@ namespace texas::solver::multiway
 		std::uint64_t wal_generation = 0U;
 		std::uint64_t wal_committed_offset = 0U;
 		MultiwayExternalGenerationManifest generation{};
+		std::array<std::uint32_t, 3U> component_payload_bytes{};
+		std::array<std::uint64_t, 3U> component_last_batch_numbers{};
 		std::array<std::vector<SegmentReference>, 3U> segments;
 	};
 
 	struct MultiwayExternalCheckpointWriteOptions
 	{
 		bool fail_before_publication = false;
+	};
+
+	struct MultiwayExternalCheckpointRestoreOptions
+	{
+		std::uint32_t fail_after_component_publications = 0U;
+		bool fail_before_aggregate_publication = false;
+		bool leave_pending_journal_for_recovery_test = false;
 	};
 
 	void save_multiway_external_checkpoint_manifest(
@@ -119,6 +128,15 @@ namespace texas::solver::multiway
 		const std::filesystem::path& external_storage_directory,
 		std::uint64_t storage_identity_hash,
 		bool synchronous_durability);
+	[[nodiscard]] MultiwayExternalCheckpointManifest restore_multiway_external_checkpoint(
+		const std::filesystem::path& checkpoint_path,
+		const std::filesystem::path& external_storage_directory,
+		std::uint64_t expected_model_identity_hash,
+		std::uint64_t expected_workflow_identity_hash,
+		std::uint64_t expected_storage_identity_hash,
+		std::uint64_t expected_schedule_hash,
+		bool synchronous_durability,
+		MultiwayExternalCheckpointRestoreOptions options = {});
 
 	void publish_multiway_external_generation(const std::filesystem::path& directory,
 		const MultiwayExternalGenerationManifest& manifest, bool synchronous_durability);
