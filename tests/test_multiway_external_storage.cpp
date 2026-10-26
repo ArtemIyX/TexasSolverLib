@@ -1,4 +1,5 @@
 #include "solver/multiway/engine/multiway_external_storage.hpp"
+#include "solver/multiway/engine/multiway_compact_storage.hpp"
 #include "solver/multiway/engine/multiway_solver.hpp"
 #include "test_harness.hpp"
 
@@ -413,6 +414,44 @@ TEST_CASE(multiway_external_compact_pages_commit_reopen_and_rollback)
 		EXPECT_EQ(stats.page_cache_misses, 1U);
 		EXPECT_EQ(stats.page_cache_hits, 2U);
 	}
+}
+
+TEST_CASE(multiway_external_compact_pages_match_reference_cell_encoding)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	auto page_config = config(directory.path());
+	page_config.cache_bytes = 10000U;
+	page_config.maximum_wal_bytes = 65536U;
+	page_config.segment_target_bytes = 65536U;
+	const MultiwaySparseRowShape shape{ { { 42U }, 3 }, 16U, 4U };
+	MultiwayCompactStorage reference(1U, 64U, 16U);
+	reference.admit_row(shape);
+	MultiwayExternalCompactPages external(page_config, 16U, page_config.cache_bytes);
+	external.begin_batch(1U, 0xabcU);
+	auto page = external.pin(1U, { 42U }, 3, 0U, 16U, 4U);
+	const auto* row = reference.metadata(shape.infoset);
+	const std::array<std::array<double, 2U>, 4U> deltas = {{
+		{{ -1.25, 0.5 }}, {{ 2.0, 3.25 }}, {{ -0.75, 1.0 }}, {{ 4.5, 2.0 }} }};
+	for (std::uint8_t action = 0U; action < shape.action_count; ++action)
+	{
+		reference.apply_delta(*row, 7U, action, deltas[action][0], deltas[action][1]);
+		const auto cell = static_cast<std::size_t>(action) * page.action_stride + 7U;
+		page.regrets[cell] = static_cast<std::int32_t>(page.regrets[cell] + deltas[action][0] * 1024.0);
+		page.strategy_masses[cell] += static_cast<std::uint64_t>(deltas[action][1] * MultiwayCompactStorage::kMassScale);
+	}
+	external.mark_dirty(1U);
+	external.unpin(1U);
+	external.commit_batch();
+	const auto reference_page = reference.checkpoint_page(0U);
+	auto persisted = external.pin(1U, { 42U }, 3, 0U, 16U, 4U);
+	for (std::uint8_t action = 0U; action < shape.action_count; ++action)
+	{
+		const auto cell = static_cast<std::size_t>(action) * persisted.action_stride + 7U;
+		EXPECT_EQ(persisted.regrets[cell], reference_page.regrets[cell]);
+		EXPECT_EQ(persisted.strategy_masses[cell], reference_page.strategy_masses[cell]);
+	}
+	external.unpin(1U);
 }
 
 TEST_CASE(multiway_external_record_store_compacts_deterministically)

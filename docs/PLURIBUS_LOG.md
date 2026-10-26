@@ -1,5 +1,27 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.5 - External cell differential fixture
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a deterministic per-cell comparison between external compact pages and unchanged `MultiwayCompactStorage` for exact fixed-point regret and strategy-mass inputs.
+- The fixture checks action-major cell offsets, negative regrets, persisted values, and the full-width `uint64` strategy-mass representation.
+
+### Files
+
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This proves page encoding and persistence against the reference for a bounded fixture. Coordinator merge routing and batch-level worker-delta equivalence remain unimplemented.
+
 ## PB-12 Phase 5.4 - External multi-store batch transaction
 
 **Status:** Complete
