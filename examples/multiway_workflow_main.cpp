@@ -1074,6 +1074,8 @@ namespace
 				session.resume_from_checkpoint(MultiwayTrainingCheckpointArtifacts::load_verified(
 					resume_path, config.identity(), config.schedule.identity(), config.deterministic_seed));
 		}
+		if (batches == 0U && !resume_path.empty())
+			session.record_process_memory_snapshot(MultiwayMemoryPhase::AfterCheckpoint);
 		if (!authorize_50m_stage && reaches_50m(session.status().trajectories))
 			throw std::invalid_argument("50M qualification stage is gated; pass --authorize-50m after explicit approval");
 		const auto progress_started_at = std::chrono::steady_clock::now();
