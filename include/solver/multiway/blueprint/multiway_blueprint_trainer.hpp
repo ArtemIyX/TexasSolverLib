@@ -19,6 +19,7 @@ namespace texas::solver::multiway
 {
 	struct MultiwayTrainingCheckpointWriteResult;
 	struct MultiwayExternalCheckpointManifest;
+	struct MultiwayExternalStorageTelemetry;
 
 	enum class MultiwayTrainingCapacityStage : std::uint8_t
 	{
@@ -326,6 +327,7 @@ namespace texas::solver::multiway
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry() const;
 		[[nodiscard]] MultiwayBlueprintSnapshot publish(
 			MultiwayBlueprintPolicyKind policy_kind = MultiwayBlueprintPolicyKind::WeightedAverage) const;
 		void resume_from_root_policy(const MultiwayBlueprintSnapshot& snapshot);
@@ -395,6 +397,7 @@ namespace texas::solver::multiway
 			std::uint64_t workflow_identity_hash,
 			std::uint64_t storage_identity_hash) const;
 		[[nodiscard]] MultiwayBlueprintTrainingCheckpoint checkpoint() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry external_storage_telemetry() const;
 		void record_process_memory_snapshot(MultiwayMemoryPhase phase);
 
 	private:

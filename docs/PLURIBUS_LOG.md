@@ -1,5 +1,41 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 8 - Report external storage runtime metrics
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added report-boundary snapshots for record and page cache hits, misses, and evictions.
+- Counted logical compaction read/write bytes and reported their ratios against current live segment bytes. Counters are explicitly scoped to the current process.
+- Reported live run/index segment bytes separately from checkpoint-pinned retired segment bytes. Missing or unreadable pinned segments fail the snapshot.
+- Added deterministic counter, compaction-byte, retained-segment, report JSON, and invalid-amplification tests.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `include/solver/multiway/blueprint/multiway_blueprint_trainer.hpp`
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `include/solver/multiway/workflow/multiway_training_report.hpp`
+- `src/solver/multiway/workflow/multiway_training_report.cpp`
+- `examples/multiway_workflow_main.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `tests/test_multiway_blueprint_training.cpp`
+- `tests/test_multiway_qualification_reports.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug CTest: external storage, blueprint training, and qualification reports passed (3/3).
+- `scripts/codex_powershell.ps1 python scripts/python/full_build.py`: passed; all CTest tests passed.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Compaction counters cover logical `.dat` and `.idx` bytes and reset on process start; they exclude manifest, WAL, temporary-file, and filesystem read-ahead traffic.
+- Disk metrics report run/index segment files only. They exclude WAL, manifests, temporary files, and unrelated files in the storage directory.
+- No training workflow or pilot was run.
+
 ## PB-12 Phases 6–8 - Integrate external training checkpoints and workflow
 
 **Status:** Complete

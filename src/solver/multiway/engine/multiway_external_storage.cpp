@@ -194,6 +194,23 @@ namespace texas::solver::multiway
 				throw std::length_error("external storage byte count overflows uint64");
 			return left + right;
 		}
+		void add_storage_stats(MultiwayExternalStorageStats& target,
+			const MultiwayExternalStorageStats& source)
+		{
+			target.lookups = checked_add(target.lookups, source.lookups);
+			target.cache_hits = checked_add(target.cache_hits, source.cache_hits);
+			target.cache_misses = checked_add(target.cache_misses, source.cache_misses);
+			target.disk_reads = checked_add(target.disk_reads, source.disk_reads);
+			target.cache_evictions = checked_add(target.cache_evictions, source.cache_evictions);
+			target.read_nanoseconds = checked_add(target.read_nanoseconds, source.read_nanoseconds);
+			target.page_cache_hits = checked_add(target.page_cache_hits, source.page_cache_hits);
+			target.page_cache_misses = checked_add(target.page_cache_misses, source.page_cache_misses);
+			target.page_cache_evictions = checked_add(target.page_cache_evictions, source.page_cache_evictions);
+			target.compaction_read_bytes = checked_add(target.compaction_read_bytes,
+				source.compaction_read_bytes);
+			target.compaction_written_bytes = checked_add(target.compaction_written_bytes,
+				source.compaction_written_bytes);
+		}
 		std::size_t external_cache_slot(std::uint64_t key, std::size_t capacity) noexcept
 		{
 			auto mixed = key;
@@ -2372,10 +2389,15 @@ namespace texas::solver::multiway
 		const auto input_start = runs_.size() - input_count;
 		std::uint64_t total_records = 0U;
 		std::uint64_t output_bytes = 0U;
+		std::uint64_t input_bytes = 0U;
 		for (std::size_t index = 0U; index < input_count; ++index)
 		{
-			total_records = checked_add(total_records, runs_[input_start + index].record_count);
-			output_bytes = checked_add(output_bytes, record_bytes(runs_[input_start + index].record_count, payload_bytes_));
+			const auto& run = runs_[input_start + index];
+			total_records = checked_add(total_records, run.record_count);
+			output_bytes = checked_add(output_bytes, record_bytes(run.record_count, payload_bytes_));
+			input_bytes = checked_add(input_bytes,
+				checked_add(record_bytes(run.record_count, payload_bytes_),
+					record_bytes(run.record_count, 0U)));
 		}
 		check_disk_reserve(checked_add(output_bytes, record_bytes(total_records, 0U)));
 		struct CompactionFailureLatch
@@ -2486,6 +2508,10 @@ namespace texas::solver::multiway
 		runs_.swap(next_runs);
 		generation_ = next_generation;
 		record_count_ = record_count_ - total_records + compacted_count;
+		stats_.compaction_read_bytes = checked_add(stats_.compaction_read_bytes, input_bytes);
+		stats_.compaction_written_bytes = checked_add(stats_.compaction_written_bytes,
+			checked_add(record_bytes(compacted_count, payload_bytes_),
+				record_bytes(compacted_count, 0U)));
 		flush_directory();
 		failure_latch.complete = true;
 	}
@@ -3768,6 +3794,23 @@ namespace texas::solver::multiway
 		pages_.compact(retain_input_runs);
 	}
 
+	MultiwayExternalStorageStats MultiwayExternalCompactStorage::stats() const
+	{
+		auto result = rows_.stats();
+		add_storage_stats(result, pages_.stats());
+		return result;
+	}
+
+	MultiwayExternalDiskUsage MultiwayExternalCompactStorage::disk_usage() const
+	{
+		const auto rows = rows_.disk_usage();
+		const auto pages = pages_.disk_usage();
+		return {
+			checked_add(rows.live_segment_bytes, pages.live_segment_bytes),
+			checked_add(rows.retained_segment_bytes, pages.retained_segment_bytes)
+		};
+	}
+
 	std::uint64_t MultiwayExternalCompactStorage::content_hash() const
 	{
 		auto hash = kHashOffset;
@@ -3949,6 +3992,20 @@ namespace texas::solver::multiway
 		texas::core::fingerprint::append_u64(hash, catalog_->content_hash());
 		texas::core::fingerprint::append_u64(hash, compact_->content_hash());
 		return texas::core::fingerprint::finish(hash);
+	}
+
+	MultiwayExternalStorageTelemetry MultiwayExternalTrainingStorage::telemetry() const
+	{
+		MultiwayExternalStorageTelemetry result{};
+		add_storage_stats(result.stats, catalog_->stats());
+		add_storage_stats(result.stats, compact_->stats());
+		const auto catalog_usage = catalog_->disk_usage();
+		const auto compact_usage = compact_->disk_usage();
+		result.disk_usage.live_segment_bytes = checked_add(catalog_usage.live_segment_bytes,
+			compact_usage.live_segment_bytes);
+		result.disk_usage.retained_segment_bytes = checked_add(catalog_usage.retained_segment_bytes,
+			compact_usage.retained_segment_bytes);
+		return result;
 	}
 
 	void MultiwayExternalTrainingStorage::abort_batch()
@@ -4134,6 +4191,37 @@ namespace texas::solver::multiway
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
 		return stats_;
+	}
+
+	MultiwayExternalDiskUsage MultiwayExternalRecordStore::disk_usage() const
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		MultiwayExternalDiskUsage result{};
+		const auto add_run_bytes = [](std::uint64_t& total, const std::filesystem::path& path) {
+			std::error_code error;
+			const auto bytes = std::filesystem::file_size(path, error);
+			if (error)
+				throw std::runtime_error("external storage segment size is unavailable");
+			total = checked_add(total, bytes);
+		};
+		for (const auto& run : runs_)
+		{
+			add_run_bytes(result.live_segment_bytes, run.data_path);
+			add_run_bytes(result.live_segment_bytes, run.index_path);
+		}
+		const auto pinned_generations = load_pinned_run_generations(config_.directory);
+		for (const auto generation : pinned_generations)
+		{
+			const auto active = std::lower_bound(runs_.begin(), runs_.end(), generation,
+				[](const Run& run, std::uint64_t value) { return run.generation < value; });
+			if (active != runs_.end() && active->generation == generation)
+				continue;
+			add_run_bytes(result.retained_segment_bytes,
+				run_path(config_.directory, generation, ".dat"));
+			add_run_bytes(result.retained_segment_bytes,
+				run_path(config_.directory, generation, ".idx"));
+		}
+		return result;
 	}
 
 } // namespace texas::solver::multiway

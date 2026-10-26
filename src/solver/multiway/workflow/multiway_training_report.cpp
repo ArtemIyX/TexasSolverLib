@@ -88,6 +88,13 @@ namespace texas::solver::multiway
 		{
 			throw std::invalid_argument("invalid multiway training report");
 		}
+		if (!std::isfinite(external_storage_compaction_read_amplification) ||
+			!std::isfinite(external_storage_compaction_write_amplification) ||
+			external_storage_compaction_read_amplification < 0.0 ||
+			external_storage_compaction_write_amplification < 0.0 ||
+			(external_storage_counter_scope != "not_available" &&
+				external_storage_counter_scope != "current_process"))
+			throw std::invalid_argument("invalid external storage compaction amplification");
 		if (!multiway_scheduler_mode_valid(scheduler_mode) || dynamic_chunk_size == 0U || scheduler_policy_version == 0U || static_block_scheduler_version == 0U || partition_version == 0U || merge_order_version == 0U)
 		{
 			throw std::invalid_argument("invalid multiway scheduler evidence");
@@ -910,6 +917,19 @@ namespace texas::solver::multiway
 		   << ",\n  \"external_storage_wal_limit_bytes\": " << report.external_storage_wal_limit_bytes
 		   << ",\n  \"external_storage_compaction_scratch_bytes\": " << report.external_storage_compaction_scratch_bytes
 		   << ",\n  \"external_storage_disk_reserve_bytes\": " << report.external_storage_disk_reserve_bytes
+		   << ",\n  \"external_storage_cache_hits\": " << report.external_storage_cache_hits
+		   << ",\n  \"external_storage_cache_misses\": " << report.external_storage_cache_misses
+		   << ",\n  \"external_storage_cache_evictions\": " << report.external_storage_cache_evictions
+		   << ",\n  \"external_storage_page_cache_hits\": " << report.external_storage_page_cache_hits
+		   << ",\n  \"external_storage_page_cache_misses\": " << report.external_storage_page_cache_misses
+		   << ",\n  \"external_storage_page_cache_evictions\": " << report.external_storage_page_cache_evictions
+		   << ",\n  \"external_storage_compaction_read_bytes\": " << report.external_storage_compaction_read_bytes
+		   << ",\n  \"external_storage_compaction_written_bytes\": " << report.external_storage_compaction_written_bytes
+		   << ",\n  \"external_storage_compaction_read_amplification\": " << report.external_storage_compaction_read_amplification
+		   << ",\n  \"external_storage_compaction_write_amplification\": " << report.external_storage_compaction_write_amplification
+		   << ",\n  \"external_storage_live_segment_bytes\": " << report.external_storage_live_segment_bytes
+		   << ",\n  \"external_storage_retained_segment_bytes\": " << report.external_storage_retained_segment_bytes
+		   << ",\n  \"external_storage_counter_scope\": \"" << report.external_storage_counter_scope << "\""
 			   << ",\n  \"checkpoint_planned_bytes\": " << report.checkpoint_planned_bytes
 			   << ",\n  \"checkpoint_scratch_bytes\": " << report.checkpoint_scratch_bytes
 			   << ",\n  \"checkpoint_payload_hash\": " << report.checkpoint_payload_hash

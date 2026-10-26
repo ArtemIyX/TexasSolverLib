@@ -59,6 +59,20 @@ namespace texas::solver::multiway
 		std::uint64_t page_cache_hits = 0U;
 		std::uint64_t page_cache_misses = 0U;
 		std::uint64_t page_cache_evictions = 0U;
+		std::uint64_t compaction_read_bytes = 0U;
+		std::uint64_t compaction_written_bytes = 0U;
+	};
+
+	struct MultiwayExternalDiskUsage
+	{
+		std::uint64_t live_segment_bytes = 0U;
+		std::uint64_t retained_segment_bytes = 0U;
+	};
+
+	struct MultiwayExternalStorageTelemetry
+	{
+		MultiwayExternalStorageStats stats{};
+		MultiwayExternalDiskUsage disk_usage{};
 	};
 
 	struct MultiwayExternalGenerationManifest
@@ -234,6 +248,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t cache_bytes() const noexcept;
 		[[nodiscard]] std::size_t payload_bytes() const noexcept { return payload_bytes_; }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
+		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const;
 		[[nodiscard]] std::uint64_t maximum_batch_bytes() const noexcept { return config_.maximum_wal_bytes; }
 		[[nodiscard]] std::uint64_t segment_target_bytes() const noexcept { return config_.segment_target_bytes; }
 
@@ -319,6 +334,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t record_count() const noexcept { return store_.record_count(); }
 		[[nodiscard]] std::uint64_t generation() const { return store_.generation(); }
 		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
+		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const { return store_.disk_usage(); }
 		[[nodiscard]] std::uint64_t content_hash() const { return store_.content_hash(); }
 	private:
 		void append_discovered_batch_impl(std::uint64_t batch_number,
@@ -384,6 +400,8 @@ namespace texas::solver::multiway
 			std::uint32_t bucket, MultiwayExternalRowPage& output) const;
 		[[nodiscard]] bool locate_bucket(const MultiwayExternalRowBinding& row,
 			std::uint32_t bucket, MultiwayExternalRowPage& output) const;
+		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
+		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const { return store_.disk_usage(); }
 		void compact(bool retain_input_runs = false) { store_.compact(retain_input_runs); }
 		[[nodiscard]] std::uint32_t page_width() const noexcept { return page_width_; }
 		[[nodiscard]] std::uint64_t next_page_id() const noexcept { return next_page_id_; }
@@ -430,6 +448,7 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::size_t page_capacity() const noexcept { return pages_.size(); }
 		[[nodiscard]] std::size_t memory_bytes() const noexcept;
 		[[nodiscard]] MultiwayExternalStorageStats stats() const;
+		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const { return store_->disk_usage(); }
 	private:
 		struct Page
 		{
@@ -529,7 +548,8 @@ namespace texas::solver::multiway
 		[[nodiscard]] std::uint64_t row_generation() const { return rows_.generation(); }
 		[[nodiscard]] std::uint64_t page_generation() const { return pages_.generation(); }
 		[[nodiscard]] std::uint64_t content_hash() const;
-		[[nodiscard]] MultiwayExternalStorageStats stats() const { return pages_.stats(); }
+		[[nodiscard]] MultiwayExternalStorageStats stats() const;
+		[[nodiscard]] MultiwayExternalDiskUsage disk_usage() const;
 	private:
 		MultiwayExternalRowIndex rows_;
 		mutable MultiwayExternalCompactPages pages_;
@@ -576,6 +596,7 @@ namespace texas::solver::multiway
 			return transaction_.current_manifest();
 		}
 		[[nodiscard]] std::uint64_t content_hash() const;
+		[[nodiscard]] MultiwayExternalStorageTelemetry telemetry() const;
 	private:
 		void open_components();
 		std::filesystem::path directory_;

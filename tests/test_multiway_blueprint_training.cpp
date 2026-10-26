@@ -227,6 +227,9 @@ TEST_CASE(multiway_external_training_checkpoint_resume_matches_uninterrupted_exp
 		try
 		{
 			first.trainer.run_batches(1U, 4U, 0x77U);
+			const auto external_telemetry = first.trainer.external_storage_telemetry();
+			EXPECT_TRUE(external_telemetry.disk_usage.live_segment_bytes > 0U);
+			EXPECT_TRUE(external_telemetry.stats.page_cache_misses > 0U);
 			checkpoint = first.trainer.save_external_checkpoint_atomic(
 				checkpoint_path, workflow_hash, storage_hash);
 		}

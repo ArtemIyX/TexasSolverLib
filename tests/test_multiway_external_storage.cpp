@@ -158,6 +158,28 @@ TEST_CASE(multiway_external_record_store_round_trips_and_recovers_batches)
 	}
 }
 
+TEST_CASE(multiway_external_storage_reports_cache_compaction_and_disk_metrics)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayExternalRecordStore store(config(directory.path()), 4U);
+	store.append_batch(1U, 0x111U, records(10U));
+	store.append_batch(2U, 0x222U, records(20U));
+	std::vector<std::uint8_t> payload;
+	EXPECT_TRUE(store.lookup(10U, payload));
+	EXPECT_TRUE(store.lookup(10U, payload));
+	const auto cache_stats = store.stats();
+	EXPECT_TRUE(cache_stats.cache_hits > 0U);
+	EXPECT_TRUE(cache_stats.cache_misses > 0U);
+	store.compact();
+	const auto compacted_stats = store.stats();
+	EXPECT_EQ(compacted_stats.compaction_read_bytes, 80U);
+	EXPECT_EQ(compacted_stats.compaction_written_bytes, 80U);
+	const auto usage = store.disk_usage();
+	EXPECT_EQ(usage.live_segment_bytes, 80U);
+	EXPECT_EQ(usage.retained_segment_bytes, 0U);
+}
+
 TEST_CASE(multiway_external_record_store_visits_latest_records_in_bounded_key_order)
 {
 	using namespace texas::solver::multiway;
@@ -555,6 +577,11 @@ TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 	MultiwayExternalRecordStore reopened(config(component_paths[0]), 4U);
 	EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_1.dat"));
 	EXPECT_TRUE(std::filesystem::exists(component_paths[0] / "run_2.dat"));
+	const auto usage = reopened.disk_usage();
+	EXPECT_TRUE(usage.live_segment_bytes > 0U);
+	EXPECT_EQ(usage.retained_segment_bytes,
+		std::filesystem::file_size(component_paths[0] / "run_2.dat") +
+		std::filesystem::file_size(component_paths[0] / "run_2.idx"));
 	std::vector<std::uint8_t> payload;
 	EXPECT_TRUE(reopened.lookup(10U, payload));
 	EXPECT_EQ(payload[0], 10U);

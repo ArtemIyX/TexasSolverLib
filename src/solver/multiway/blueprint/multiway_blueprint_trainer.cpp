@@ -1577,6 +1577,17 @@ namespace texas::solver::multiway
 		return result;
 	}
 
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainer::external_storage_telemetry() const
+	{
+		if (coordinator_->limits().storage_backend != MultiwaySolverLimits::StorageBackend::ExternalCompactInt32)
+			throw std::logic_error("external storage telemetry requires ExternalCompactInt32");
+		const auto lease = coordinator_->acquire_export_lease();
+		const auto* external = lease.external_storage();
+		if (external == nullptr)
+			throw std::logic_error("external storage telemetry has no external storage");
+		return external->telemetry();
+	}
+
 	MultiwayBlueprintSnapshot MultiwayBlueprintTrainer::publish(MultiwayBlueprintPolicyKind policy_kind) const
 	{
 		auto metadata = make_metadata(status_, schedule_, deterministic_seed_);
@@ -1847,6 +1858,11 @@ namespace texas::solver::multiway
 		auto result = trainer_->checkpoint();
 		checkpoint_buffers_ = result.coordinator.memory_snapshot();
 		return result;
+	}
+
+	MultiwayExternalStorageTelemetry MultiwayBlueprintTrainingSession::external_storage_telemetry() const
+	{
+		return trainer_->external_storage_telemetry();
 	}
 
 	void MultiwayBlueprintTrainingSession::record_process_memory_snapshot(MultiwayMemoryPhase phase)

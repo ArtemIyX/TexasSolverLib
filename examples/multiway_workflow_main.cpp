@@ -1011,7 +1011,8 @@ namespace
 				workflow_identity_hash, storage_identity_hash, config.schedule.identity(),
 				workflow.synchronous_durability);
 		}
-		const auto populate_storage_report = [&](MultiwayTrainingReport& report) {
+		const auto populate_storage_report = [&](MultiwayTrainingReport& report,
+			const MultiwayBlueprintTrainingSession* active_session) {
 			report.storage_backend = workflow.storage_backend;
 			report.checkpoint_schema_version = config.limits.storage_backend ==
 				MultiwaySolverLimits::StorageBackend::ExternalCompactInt32 ?
@@ -1026,6 +1027,29 @@ namespace
 			report.external_storage_wal_limit_bytes = workflow.maximum_wal_bytes;
 			report.external_storage_compaction_scratch_bytes = workflow.compaction_scratch_bytes;
 			report.external_storage_disk_reserve_bytes = workflow.disk_reserve_bytes;
+			if (active_session != nullptr)
+			{
+				const auto telemetry = active_session->external_storage_telemetry();
+				report.external_storage_counter_scope = "current_process";
+				report.external_storage_cache_hits = telemetry.stats.cache_hits;
+				report.external_storage_cache_misses = telemetry.stats.cache_misses;
+				report.external_storage_cache_evictions = telemetry.stats.cache_evictions;
+				report.external_storage_page_cache_hits = telemetry.stats.page_cache_hits;
+				report.external_storage_page_cache_misses = telemetry.stats.page_cache_misses;
+				report.external_storage_page_cache_evictions = telemetry.stats.page_cache_evictions;
+				report.external_storage_compaction_read_bytes = telemetry.stats.compaction_read_bytes;
+				report.external_storage_compaction_written_bytes = telemetry.stats.compaction_written_bytes;
+				report.external_storage_live_segment_bytes = telemetry.disk_usage.live_segment_bytes;
+				report.external_storage_retained_segment_bytes = telemetry.disk_usage.retained_segment_bytes;
+				if (telemetry.disk_usage.live_segment_bytes != 0U)
+				{
+					const auto live_bytes = static_cast<double>(telemetry.disk_usage.live_segment_bytes);
+					report.external_storage_compaction_read_amplification =
+						static_cast<double>(telemetry.stats.compaction_read_bytes) / live_bytes;
+					report.external_storage_compaction_write_amplification =
+						static_cast<double>(telemetry.stats.compaction_written_bytes) / live_bytes;
+				}
+			}
 			if (external_resume.has_value())
 			{
 				report.external_checkpoint_generation = external_resume->generation.generation;
@@ -1080,7 +1104,7 @@ namespace
 					config.identity(), workflow.fingerprint()),
 				workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 			failure_report.checkpoint_bytes = checkpoint_bytes;
-			populate_storage_report(failure_report);
+			populate_storage_report(failure_report, &session);
 			failure_report.checkpoint_write_nanoseconds = checkpoint_write_nanoseconds;
 			failure_report.checkpoint_telemetry = checkpoint_telemetry;
 			failure_report.failed = true;
@@ -1159,6 +1183,7 @@ namespace
 		if (status.discarded_trajectories != 0U || status.preflop_rows == 0U || status.flop_rows == 0U || status.turn_rows == 0U || status.river_rows == 0U || status.terminal_visits == 0U)
 		{
 			training_report.failed = true;
+			populate_storage_report(training_report, &session);
 			save_multiway_training_report_atomic(
 				report_path.empty() ? output_path.string() + ".json" : report_path,
 				training_report);
@@ -1192,7 +1217,7 @@ namespace
 				config.identity(), workflow.fingerprint()),
 			workflow.process_memory_limit_bytes, wrapper_elapsed_nanoseconds());
 		training_report.checkpoint_bytes = checkpoint_bytes;
-		populate_storage_report(training_report);
+		populate_storage_report(training_report, &session);
 		training_report.checkpoint_planned_bytes = last_checkpoint_write.plan.serialized_bytes;
 		training_report.checkpoint_scratch_bytes = last_checkpoint_write.peak_scratch_bytes;
 		training_report.checkpoint_payload_hash = last_checkpoint_write.payload_hash;
