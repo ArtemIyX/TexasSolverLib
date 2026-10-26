@@ -1,5 +1,28 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 4.10 - Reopen committed external coordinator generation
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a bounded external coordinator fixture that commits a parent-linked public state, root/child row metadata, and worker deltas, closes the coordinator, then reopens the same generation.
+- Verified restored public-state reconstruction, row presence, and root/child strategy values after reopening.
+
+### Files
+
+- `tests/test_multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug build of `test_multiway_solver`: passed.
+- Focused CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This validates clean close/reopen of one committed generation, not failure-point recovery or large catalog scaling.
+
 ## PB-12 Phase 5.26 - Verify external multirow coordinator equivalence
 
 **Status:** Complete

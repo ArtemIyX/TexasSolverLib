@@ -736,6 +736,67 @@ TEST_CASE(multiway_solver_external_coordinator_admits_merges_and_rolls_back)
 	EXPECT_EQ(strategy[2], 0.0);
 }
 
+TEST_CASE(multiway_solver_external_coordinator_reopens_committed_rows_and_states)
+{
+	using texas::MultiwayCFRConfig;
+	using texas::MultiwaySolveRequest;
+	using texas::MultiwaySolverCoordinator;
+	using texas::MultiwaySolverLimits;
+	using texas::MultiwayWorkerDeltaStream;
+	ExternalCoordinatorDirectory directory;
+	auto limits = valid_limits();
+	limits.storage_backend = MultiwaySolverLimits::StorageBackend::ExternalCompactInt32;
+	limits.external_storage.directory = directory.path();
+	limits.external_storage.public_catalog_cache_bytes = 65536U;
+	limits.external_storage.row_page_cache_bytes = 65536U;
+	limits.external_storage.maximum_wal_bytes = 65536U;
+	limits.external_storage.segment_target_bytes = 65536U;
+	limits.external_storage.compaction_fan_in = 2U;
+	limits.external_storage.compaction_scratch_bytes = 65536U;
+	limits.external_storage.disk_reserve_bytes = 1024U * 1024U;
+	limits.external_storage.synchronous_durability = false;
+	MultiwayCFRConfig cfr;
+	cfr.player_count = 2U;
+	const auto root = valid_root();
+	const auto child = checked_action_child_public_state();
+	const texas::MultiwaySparseRowShape child_row = {
+		{ child.id, child.betting.current_player }, 2U,
+		static_cast<std::uint8_t>(child.legal_actions.size())
+	};
+	{
+		MultiwaySolverCoordinator coordinator(MultiwaySolveRequest(root, cfr, limits));
+		coordinator.admit_public_state(child);
+		coordinator.admit_infoset_row(root_row());
+		coordinator.admit_infoset_row(child_row);
+		MultiwayWorkerDeltaStream stream(0U, 2U);
+		MultiwayWorkerDeltaStream empty_stream(1U, 2U);
+		EXPECT_TRUE(stream.try_append(delta(0U, 1.0, 2.0, 0U)));
+		EXPECT_TRUE(stream.try_append({ child_row.infoset, 1U, 0U, 2.0, 3.0, 1U }));
+		stream.sort_fixed_order();
+		empty_stream.sort_fixed_order();
+		coordinator.merge_worker_streams({ stream, empty_stream });
+	}
+	{
+		MultiwaySolverCoordinator reopened(MultiwaySolveRequest(root, cfr, limits));
+		EXPECT_TRUE(reopened.has_public_state(child.id));
+		EXPECT_TRUE(reopened.has_infoset_row(root_infoset()));
+		EXPECT_TRUE(reopened.has_infoset_row(child_row.infoset));
+		const auto* reconstructed = reopened.find_public_state(child.id);
+		EXPECT_TRUE(reconstructed != nullptr);
+		EXPECT_EQ(reconstructed->history, child.history);
+		std::array<double, 3U> root_strategy{};
+		reopened.regret_matched_strategy_into(root_infoset(), 0U,
+			root_strategy.data(), root_strategy.size());
+		EXPECT_EQ(root_strategy, (std::array<double, 3U>{ 1.0, 0.0, 0.0 }));
+		std::vector<double> child_strategy(child.legal_actions.size());
+		reopened.regret_matched_strategy_into(child_row.infoset, 1U,
+			child_strategy.data(), child_strategy.size());
+		EXPECT_EQ(child_strategy[0], 1.0);
+		for (std::size_t action = 1U; action < child_strategy.size(); ++action)
+			EXPECT_EQ(child_strategy[action], 0.0);
+	}
+}
+
 TEST_CASE(multiway_public_catalog_packs_external_node_without_catalog_state)
 {
 	const auto state = valid_root().public_state;
