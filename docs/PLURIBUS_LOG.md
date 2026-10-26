@@ -1,5 +1,33 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 2.2 - Stream schema 5 bucket artifacts
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Kept resumable schema-4 staging records, then converted them at finish to schema 5 using an assignment scratch file and one bounded directory buffer. Newly published streaming artifacts now use the selected 1/2/4-byte assignment width.
+- Preserved ordered worker publication, progress hashes, resume behavior, and atomic final publication. Conversion validates canonical board order and assignment ranges.
+- Generation tests confirm identical schema-5 output for serial and parallel writers and equivalent mapped inspection hashes.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact_writer.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `tests/test_multiway_bucket_generation.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused artifact and generation targets built successfully.
+- CTest `multiway_bucket_artifact` and `multiway_bucket_generation`: passed after final edits.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Mapped loading still retains one table object and board vector per table. The packed mapped directory is not yet used as the registry's lookup index, so the under-128-MiB metadata target is unproven.
+- No target-machine residency measurement or large artifact qualification was run.
+
 ## PB-12 Phase 2.1 - Schema 5 compact bucket encoding
 
 **Status:** Complete
@@ -14,7 +42,6 @@
 - `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
 - `include/solver/multiway/abstraction/multiway_bucket_model.hpp`
 - `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
-- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
 - `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
 - `tests/test_multiway_bucket_artifact.cpp`
 - `docs/PLURIBUS_LOG.md`
@@ -22,14 +49,13 @@
 ### Validation
 
 - `compact_build.py --target test_multiway_bucket_artifact --target test_multiway_bucket_generation --parallel 6`: passed.
-- CTest `multiway_bucket_artifact` and `multiway_bucket_generation`: passed after final edits.
+- CTest `multiway_bucket_artifact` and `multiway_bucket_generation`: passed.
 - `git diff --check`: passed.
 
 ### Limitations
 
-- Streaming catalog generation still writes schema 4. Schema 5 is produced by the in-memory registry serializer; the streaming writer must be redesigned before Phase 2 is complete.
-- Mapped loading still retains one table object and board vector per table. The packed mapped directory is not yet used as the registry's lookup index, so the under-128-MiB metadata target is unproven.
-- No target-machine residency measurement or large artifact qualification was run.
+- The loader still expands the packed directory into a vector of table objects and per-board vectors. The mapped-array lookup and metadata-under-128-MiB acceptance test remain outstanding.
+- No large artifact generation or target-machine residency measurement was run.
 
 ## PB-12 Phase 0–1 - Repair memory accounting
 

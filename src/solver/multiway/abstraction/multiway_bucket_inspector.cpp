@@ -441,6 +441,14 @@ namespace texas::solver::multiway
 				(static_cast<std::uint32_t>(header[6]) << 16U) | (static_cast<std::uint32_t>(header[7]) << 24U) : 0U;
 			if (schema == MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION)
 			{
+				if (callback && interval == 0U)
+					throw std::invalid_argument("bucket inspection progress interval is zero");
+				if (callback)
+				{
+					input.seekg(112, std::ios::beg);
+					const auto total = get_u32(input);
+					callback(0U, total);
+				}
 				auto result = inspect_multiway_bucket_artifact(path, expected, std::move(callback), interval);
 				result.hash_mode = options.hash_mode;
 				return result;

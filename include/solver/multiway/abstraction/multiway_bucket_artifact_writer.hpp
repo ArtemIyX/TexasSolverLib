@@ -48,6 +48,7 @@ namespace texas::solver::multiway
 		MultiwayBucketArtifactWriter() = default;
 		std::filesystem::path temporary_path_;
 		std::ofstream output_;
+		MultiwayModelIdentity identity_{};
 		MultiwayBucketArtifactProgress progress_{};
 		std::uint64_t expected_table_count_ = 0U;
 		bool finished_ = false;
