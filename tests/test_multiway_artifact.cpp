@@ -174,6 +174,38 @@ TEST_CASE(multiway_full_blueprint_materialized_and_streamed_bytes_match)
 	std::filesystem::remove(streamed_path);
 }
 
+TEST_CASE(multiway_full_blueprint_shard_layout_is_deterministic_and_worst_case_bounded)
+{
+	using namespace texas::solver::multiway;
+	const auto plan = make_multiway_full_blueprint_stream_plan(snapshot().identity, {}, 5U, 5U);
+	constexpr std::uint64_t fixed_bytes = 176U + 8U;
+	constexpr std::uint64_t maximum_row_bytes = 28U + 64U * 19U;
+	const auto byte_bound = fixed_bytes + 2U * maximum_row_bytes;
+	const auto first = make_multiway_full_blueprint_shard_layout(plan, byte_bound);
+	const auto second = make_multiway_full_blueprint_shard_layout(plan, byte_bound);
+	EXPECT_EQ(first.maximum_rows_per_shard, std::uint64_t{ 2U });
+	EXPECT_EQ(first.ranges.size(), std::size_t{ 3U });
+	EXPECT_EQ(first.ranges[0].first_row, std::uint64_t{ 0U });
+	EXPECT_EQ(first.ranges[0].row_count, std::uint64_t{ 2U });
+	EXPECT_EQ(first.ranges[1].first_row, std::uint64_t{ 2U });
+	EXPECT_EQ(first.ranges[1].row_count, std::uint64_t{ 2U });
+	EXPECT_EQ(first.ranges[2].first_row, std::uint64_t{ 4U });
+	EXPECT_EQ(first.ranges[2].row_count, std::uint64_t{ 1U });
+	EXPECT_EQ(first.ranges.size(), second.ranges.size());
+	for (std::size_t index = 0U; index < first.ranges.size(); ++index)
+	{
+		EXPECT_EQ(first.ranges[index].first_row, second.ranges[index].first_row);
+		EXPECT_EQ(first.ranges[index].row_count, second.ranges[index].row_count);
+		EXPECT_TRUE(fixed_bytes + first.ranges[index].row_count * maximum_row_bytes <= byte_bound);
+	}
+	first.validate(plan);
+	auto invalid = first;
+	invalid.ranges[1].first_row += 1U;
+	EXPECT_THROW(invalid.validate(plan), std::invalid_argument);
+	EXPECT_THROW(make_multiway_full_blueprint_shard_layout(plan, fixed_bytes + maximum_row_bytes - 1U),
+		std::invalid_argument);
+}
+
 TEST_CASE(multiway_full_blueprint_incremental_hash_matches_materialized_hash)
 {
 	const auto identity = snapshot().identity;

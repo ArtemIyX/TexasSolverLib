@@ -26,7 +26,7 @@ namespace texas::solver::multiway
 		constexpr std::array<char, 8> kManifestMagic = { 'M', 'W', 'M', 'F', '0', '0', '0', '4' };
 		constexpr std::array<char, 8> kFullBlueprintMagic = { 'M', 'W', 'F', 'B', '0', '0', '0', '2' };
 		constexpr std::uint64_t kFullBlueprintOperatingBytes = 56ULL * 1024ULL * 1024ULL * 1024ULL;
-		constexpr std::size_t kMaximumActionsPerRow = 64U;
+		constexpr std::size_t kMaximumActionsPerRow = MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW;
 		constexpr std::size_t kStreamBufferBytes = 64U * 1024U;
 		constexpr std::uint64_t kSerializedHeaderBytes = 176U;
 		constexpr std::uint64_t kSerializedRowFixedBytes = 28U;
@@ -464,6 +464,75 @@ namespace texas::solver::multiway
 		plan.serialized_bytes = serialized_size(row_count, action_count);
 		plan.validate();
 		return plan;
+	}
+
+	void MultiwayFullBlueprintShardLayout::validate(
+		const MultiwayFullBlueprintStreamPlan& plan) const
+	{
+		plan.validate();
+		const auto fixed_bytes = checked_add(
+			kSerializedHeaderBytes, kSerializedTrailerBytes,
+			"multiway blueprint shard fixed size overflows");
+		const auto worst_case_row_bytes = checked_add(
+			kSerializedRowFixedBytes,
+			checked_multiply(MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW,
+				kSerializedActionBytes, "multiway blueprint shard row size overflows"),
+			"multiway blueprint shard row size overflows");
+		if (maximum_serialized_bytes < fixed_bytes || maximum_rows_per_shard == 0U ||
+			maximum_rows_per_shard > (maximum_serialized_bytes - fixed_bytes) / worst_case_row_bytes)
+			throw std::invalid_argument("multiway blueprint shard layout exceeds its byte bound");
+		const auto expected_count = plan.row_count == 0U ? 0U :
+			1U + (plan.row_count - 1U) / maximum_rows_per_shard;
+		if (expected_count != ranges.size())
+			throw std::invalid_argument("multiway blueprint shard layout has invalid range count");
+		std::uint64_t next_row = 0U;
+		for (std::size_t index = 0U; index < ranges.size(); ++index)
+		{
+			const auto& range = ranges[index];
+			const auto expected_rows = std::min(maximum_rows_per_shard, plan.row_count - next_row);
+			if (range.first_row != next_row || range.row_count != expected_rows || range.row_count == 0U)
+				throw std::invalid_argument("multiway blueprint shard ranges are not canonical");
+			next_row = checked_add(next_row, range.row_count,
+				"multiway blueprint shard range overflows");
+		}
+		if (next_row != plan.row_count)
+			throw std::invalid_argument("multiway blueprint shard layout does not cover all rows");
+	}
+
+	MultiwayFullBlueprintShardLayout make_multiway_full_blueprint_shard_layout(
+		const MultiwayFullBlueprintStreamPlan& plan,
+		std::uint64_t maximum_serialized_bytes)
+	{
+		plan.validate();
+		const auto fixed_bytes = checked_add(
+			kSerializedHeaderBytes, kSerializedTrailerBytes,
+			"multiway blueprint shard fixed size overflows");
+		const auto worst_case_row_bytes = checked_add(
+			kSerializedRowFixedBytes,
+			checked_multiply(MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW,
+				kSerializedActionBytes, "multiway blueprint shard row size overflows"),
+			"multiway blueprint shard row size overflows");
+		if (maximum_serialized_bytes < fixed_bytes ||
+			(maximum_serialized_bytes - fixed_bytes) / worst_case_row_bytes == 0U)
+			throw std::invalid_argument("multiway blueprint shard byte bound cannot fit one maximum row");
+
+		MultiwayFullBlueprintShardLayout layout;
+		layout.maximum_serialized_bytes = maximum_serialized_bytes;
+		layout.maximum_rows_per_shard = (maximum_serialized_bytes - fixed_bytes) / worst_case_row_bytes;
+		const auto shard_count = plan.row_count == 0U ? 0U :
+			1U + (plan.row_count - 1U) / layout.maximum_rows_per_shard;
+		if (shard_count > layout.ranges.max_size())
+			throw std::length_error("multiway blueprint shard count exceeds addressable memory");
+		layout.ranges.reserve(static_cast<std::size_t>(shard_count));
+		for (std::uint64_t first_row = 0U; first_row < plan.row_count;)
+		{
+			const auto rows = std::min(layout.maximum_rows_per_shard, plan.row_count - first_row);
+			layout.ranges.push_back({ first_row, rows });
+			first_row = checked_add(first_row, rows,
+				"multiway blueprint shard range overflows");
+		}
+		layout.validate(plan);
+		return layout;
 	}
 
 	void MultiwayFullBlueprintPayloadHasher::begin(

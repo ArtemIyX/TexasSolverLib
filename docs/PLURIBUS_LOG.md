@@ -1,5 +1,31 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 7.2 - Add deterministic bounded shard layout
+
+**Status:** In progress
+**Completed:** 2026-10-26
+
+- Added deterministic contiguous row ranges with a worst-case serialized-size bound based on the schema maximum of 64 actions per row.
+- Validates canonical, complete, non-overlapping ranges and rejects bounds that cannot fit one maximum-size row.
+- This is the layout primitive only. Shard files, manifest publication, and lazy mapped lookup remain outstanding.
+
+### Files
+
+- `include/solver/multiway/blueprint/multiway_artifact.hpp`
+- `src/solver/multiway/blueprint/multiway_artifact.cpp`
+- `tests/test_multiway_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for `test_multiway_artifact`: passed.
+- Focused CTest for `test_multiway_artifact`: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This does not yet write shard artifacts or enable lazy lookup.
+
 ## PB-12 Phase 7.3 - Add blueprint export disk preflight
 
 **Status:** In progress

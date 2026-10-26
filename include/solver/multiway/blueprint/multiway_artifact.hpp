@@ -49,6 +49,7 @@ namespace texas::solver::multiway
 
 	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_SCHEMA_VERSION = 2U;
 	inline constexpr std::uint32_t MULTIWAY_POLICY_CONTENT_HASH_VERSION = 1U;
+	inline constexpr std::uint32_t MULTIWAY_FULL_BLUEPRINT_MAX_ACTIONS_PER_ROW = 64U;
 
 	// Full runtime lookup payload. It is independent of the compact root
 	// snapshot so hosts can retain the latter as a compatible fallback.
@@ -91,11 +92,30 @@ namespace texas::solver::multiway
 		void validate() const;
 	};
 
+	struct MultiwayFullBlueprintShardRange
+	{
+		std::uint64_t first_row = 0U;
+		std::uint64_t row_count = 0U;
+	};
+
+	struct MultiwayFullBlueprintShardLayout
+	{
+		std::uint64_t maximum_serialized_bytes = 0U;
+		std::uint64_t maximum_rows_per_shard = 0U;
+		std::vector<MultiwayFullBlueprintShardRange> ranges;
+
+		void validate(const MultiwayFullBlueprintStreamPlan& plan) const;
+	};
+
 	[[nodiscard]] MultiwayFullBlueprintStreamPlan make_multiway_full_blueprint_stream_plan(
 		const MultiwayModelIdentity& identity,
 		const MultiwayBlueprintTrainingMetadata& training,
 		std::uint64_t row_count,
 		std::uint64_t action_count);
+
+	[[nodiscard]] MultiwayFullBlueprintShardLayout make_multiway_full_blueprint_shard_layout(
+		const MultiwayFullBlueprintStreamPlan& plan,
+		std::uint64_t maximum_serialized_bytes);
 
 	class MultiwayFullBlueprintPayloadHasher
 	{
