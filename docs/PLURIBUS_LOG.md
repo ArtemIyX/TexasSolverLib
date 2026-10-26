@@ -60,6 +60,30 @@
 
 - The codec is not yet used by a durable public catalog. External execution remains rejected.
 
+## PB-12 Phase 4.2 - Durable public catalog primitive
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added a sorted append-only external catalog over fixed node records, duplicate-ID rejection, deterministic compaction at batch boundaries, and bounded iterative parent-chain reconstruction.
+- Verified lookup and parent-first reconstruction after reopening the generation manifest.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused external-storage build and CTest: passed (1/1).
+- `git diff --check`: passed.
+
+### Limitations
+
+- This catalog primitive is not wired into `MultiwaySolverCoordinator` or its hot lookup paths. Existing solver execution remains on in-memory storage; the explicit external mode remains rejected.
+
 ## PB-12 Phase 2.3 - Packed mapped table views
 
 **Status:** Complete

@@ -9,6 +9,7 @@
 namespace texas::solver::multiway
 {
 	struct MultiwayPackedPublicNode;
+	struct MultiwayPublicStateId;
 
 	inline constexpr std::uint32_t MULTIWAY_EXTERNAL_NODE_RECORD_SCHEMA = 1U;
 	[[nodiscard]] std::size_t external_public_node_record_size() noexcept;
@@ -112,6 +113,26 @@ namespace texas::solver::multiway
 		mutable MultiwayExternalStorageStats stats_{};
 		bool failed_ = false;
 		mutable std::mutex mutex_;
+	};
+
+	// Durable, sorted public-node catalog. It stores only packed fixed-width node
+	// records and reconstructs ancestry iteratively into caller-owned bounded space.
+	class MultiwayExternalPublicCatalog
+	{
+	public:
+		MultiwayExternalPublicCatalog(MultiwayExternalStorageConfig config,
+			std::size_t maximum_ancestry_depth);
+		void append_batch(std::uint64_t batch_number, std::uint64_t merge_fingerprint,
+			const std::vector<MultiwayPackedPublicNode>& nodes);
+		[[nodiscard]] bool lookup(MultiwayPublicStateId id, MultiwayPackedPublicNode& output) const;
+		[[nodiscard]] bool contains(MultiwayPublicStateId id) const;
+		[[nodiscard]] bool reconstruct_chain(MultiwayPublicStateId id,
+			std::vector<MultiwayPackedPublicNode>& parent_first_output) const;
+		[[nodiscard]] std::uint64_t record_count() const noexcept { return store_.record_count(); }
+		[[nodiscard]] MultiwayExternalStorageStats stats() const { return store_.stats(); }
+	private:
+		MultiwayExternalRecordStore store_;
+		std::size_t maximum_ancestry_depth_ = 0U;
 	};
 
 	// Coordinator-owned bounded page cache. Pinned page views contain raw cell

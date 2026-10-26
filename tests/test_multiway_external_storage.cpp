@@ -124,6 +124,36 @@ TEST_CASE(multiway_external_public_node_codec_is_packed_and_deterministic)
 	EXPECT_TRUE(!decode_external_public_node(encoded.data(), encoded.size(), decoded));
 }
 
+TEST_CASE(multiway_external_public_catalog_reconstructs_parent_first_after_restart)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	MultiwayPackedPublicNode root{};
+	root.id.value = 1U;
+	MultiwayPackedPublicNode child{};
+	child.id.value = 2U;
+	child.parent_id.value = root.id.value;
+	{
+		MultiwayExternalPublicCatalog catalog(config(directory.path()), 8U);
+		catalog.append_batch(1U, 0x44U, { root, child });
+		EXPECT_EQ(catalog.record_count(), 2U);
+		EXPECT_TRUE(catalog.contains(child.id));
+		std::vector<MultiwayPackedPublicNode> chain;
+		EXPECT_TRUE(catalog.reconstruct_chain(child.id, chain));
+		EXPECT_EQ(chain.size(), 2U);
+		EXPECT_EQ(chain[0].id.value, root.id.value);
+		EXPECT_EQ(chain[1].id.value, child.id.value);
+		bool duplicate_rejected = false;
+		try { catalog.append_batch(2U, 0x45U, { child }); }
+		catch (const std::invalid_argument&) { duplicate_rejected = true; }
+		EXPECT_TRUE(duplicate_rejected);
+	}
+	MultiwayExternalPublicCatalog reopened(config(directory.path()), 8U);
+	MultiwayPackedPublicNode found{};
+	EXPECT_TRUE(reopened.lookup(child.id, found));
+	EXPECT_EQ(found.parent_id.value, root.id.value);
+}
+
 TEST_CASE(multiway_external_record_store_compacts_deterministically)
 {
 	using namespace texas::solver::multiway;

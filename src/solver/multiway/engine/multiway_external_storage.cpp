@@ -850,6 +850,77 @@ namespace texas::solver::multiway
 		flush_directory();
 	}
 
+	MultiwayExternalPublicCatalog::MultiwayExternalPublicCatalog(
+		MultiwayExternalStorageConfig config, std::size_t maximum_ancestry_depth)
+		: store_(std::move(config), external_public_node_record_size()),
+		  maximum_ancestry_depth_(maximum_ancestry_depth)
+	{
+		if (maximum_ancestry_depth_ == 0U)
+			throw std::invalid_argument("external public catalog requires a positive ancestry depth bound");
+	}
+
+	void MultiwayExternalPublicCatalog::append_batch(std::uint64_t batch_number,
+		std::uint64_t merge_fingerprint, const std::vector<MultiwayPackedPublicNode>& nodes)
+	{
+		if (nodes.empty()) return;
+		std::vector<MultiwayExternalRecord> records;
+		records.reserve(nodes.size());
+		std::vector<std::uint8_t> payload;
+		for (std::size_t index = 0U; index < nodes.size(); ++index)
+		{
+			if (nodes[index].id.value == 0U ||
+				(index != 0U && nodes[index - 1U].id.value >= nodes[index].id.value))
+				throw std::invalid_argument("external public catalog batch must be sorted by unique state id");
+			if (contains(nodes[index].id))
+				throw std::invalid_argument("external public catalog cannot append an existing state id");
+			encode_external_public_node(nodes[index], payload);
+			records.push_back({ nodes[index].id.value, payload });
+		}
+		store_.append_batch(batch_number, merge_fingerprint, records);
+		store_.compact();
+	}
+
+	bool MultiwayExternalPublicCatalog::lookup(MultiwayPublicStateId id,
+		MultiwayPackedPublicNode& output) const
+	{
+		if (id.value == 0U) return false;
+		std::vector<std::uint8_t> payload;
+		if (!store_.lookup(id.value, payload)) return false;
+		return decode_external_public_node(payload.data(), payload.size(), output) && output.id == id;
+	}
+
+	bool MultiwayExternalPublicCatalog::contains(MultiwayPublicStateId id) const
+	{
+		MultiwayPackedPublicNode node{};
+		return lookup(id, node);
+	}
+
+	bool MultiwayExternalPublicCatalog::reconstruct_chain(MultiwayPublicStateId id,
+		std::vector<MultiwayPackedPublicNode>& parent_first_output) const
+	{
+		parent_first_output.clear();
+		parent_first_output.reserve(maximum_ancestry_depth_);
+		MultiwayPublicStateId current = id;
+		while (current.value != 0U)
+		{
+			if (parent_first_output.size() == maximum_ancestry_depth_)
+			{
+				parent_first_output.clear();
+				return false;
+			}
+			MultiwayPackedPublicNode node{};
+			if (!lookup(current, node))
+			{
+				parent_first_output.clear();
+				return false;
+			}
+			current = node.parent_id;
+			parent_first_output.push_back(node);
+		}
+		std::reverse(parent_first_output.begin(), parent_first_output.end());
+		return !parent_first_output.empty();
+	}
+
 	MultiwayExternalPageCache::MultiwayExternalPageCache(MultiwayExternalRecordStore& store, std::uint64_t cache_bytes)
 		: store_(&store), payload_bytes_(store.payload_bytes()), lookup_scratch_(payload_bytes_, 0U)
 	{
