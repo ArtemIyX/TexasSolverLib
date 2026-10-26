@@ -791,7 +791,9 @@ namespace
 		(void)checkpoint_temporary;
 		if (!workflow.capacities_resolved())
 			throw std::invalid_argument("train requires a sizing-frozen workflow configuration");
-		const auto resource_preflight = preflight_multiway_workflow(workflow, worker_override, batches);
+		const auto preflight_batches = batches == 0U ? 1U : batches;
+		const auto resource_preflight = preflight_multiway_workflow(
+			workflow, worker_override, preflight_batches);
 		if (!resource_preflight.accepted)
 			throw std::runtime_error(std::string("training resource preflight rejected: category=") + resource_preflight.rejected_category + "; " + resource_preflight.message + "; requested_trajectories=" + std::to_string(resource_preflight.requested_training_trajectories) + "; estimated_memory_bytes=" + std::to_string(resource_preflight.memory.estimate.total_bytes));
 		const auto reaches_50m = [&](std::uint64_t starting_trajectories) {
