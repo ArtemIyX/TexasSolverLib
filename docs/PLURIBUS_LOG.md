@@ -1,5 +1,32 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.22 - Read external row pages at decision boundaries
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Routed coordinator row existence and regret-matched strategy reads through external row bindings and pinned pages.
+- Batched pruning threshold checks so traversal resolves and pins a row page once per decision node, then scans its actions without index or filesystem work in the action loop.
+- Added fixed-size pinned-page equivalence checks against CompactInt32 arithmetic.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_solver.hpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `src/solver/multiway/engine/multiway_traversal.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Debug builds of `test_multiway_solver` and `test_multiway_external_storage`: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- External training remains fail-closed. Coordinator merge writes and runtime external execution are not yet integrated.
+
 ## PB-12 Phase 4.6 - Commit prepared admission batches externally
 
 **Status:** Complete

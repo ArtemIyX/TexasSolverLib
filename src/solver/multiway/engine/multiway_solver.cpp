@@ -1904,14 +1904,19 @@ namespace texas::solver::multiway
 		}
 	}
 
-	bool MultiwaySolverCoordinator::has_infoset_row(MultiwayInfosetId infoset) const noexcept
+	bool MultiwaySolverCoordinator::has_infoset_row(MultiwayInfosetId infoset) const
 	{
 		std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
 		return has_infoset_row_epoch(infoset);
 	}
 
-	bool MultiwaySolverCoordinator::has_infoset_row_epoch(MultiwayInfosetId infoset) const noexcept
+	bool MultiwaySolverCoordinator::has_infoset_row_epoch(MultiwayInfosetId infoset) const
 	{
+		if (external_storage_ != nullptr)
+		{
+			MultiwayExternalRowBinding binding;
+			return external_storage_->compact_storage().lookup_row(infoset, binding);
+		}
 		return compact_storage_ != nullptr ? compact_storage_->has_row(infoset) : storage_.has_row(infoset);
 	}
 
@@ -1925,6 +1930,14 @@ namespace texas::solver::multiway
 		if (compact_storage_ != nullptr)
 		{
 			compact_storage_->regret_matched_strategy_into(infoset, bucket, output, output_size);
+			return;
+		}
+		if (external_storage_ != nullptr)
+		{
+			MultiwayExternalRowBinding row;
+			if (!external_storage_->compact_storage().lookup_row(infoset, row))
+				throw std::out_of_range("multiway external strategy row is unavailable");
+			external_storage_->compact_storage().regret_matched_strategy_into(row, bucket, output, output_size);
 			return;
 		}
 		storage_.regret_matched_strategy_into(infoset, bucket, output, output_size);
@@ -1950,9 +1963,16 @@ namespace texas::solver::multiway
 
 	bool MultiwaySolverCoordinator::action_below_regret(
 		MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
-		double threshold) const noexcept
+		double threshold) const
 	{
 		std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+		if (external_storage_ != nullptr)
+		{
+			MultiwayExternalRowBinding row;
+			if (!external_storage_->compact_storage().lookup_row(infoset, row))
+				return false;
+			return external_storage_->compact_storage().action_below_regret(row, bucket, action, threshold);
+		}
 		return compact_storage_ != nullptr
 			? compact_storage_->action_below_regret(infoset, bucket, action, threshold)
 			: storage_.action_below_regret(infoset, bucket, action, threshold);
@@ -2345,6 +2365,14 @@ namespace texas::solver::multiway
 			compact_storage_->regret_matched_strategy_into(infoset, bucket, output, output_size);
 			return;
 		}
+		if (external_storage_ != nullptr)
+		{
+			MultiwayExternalRowBinding row;
+			if (!external_storage_->compact_storage().lookup_row(infoset, row))
+				throw std::out_of_range("multiway external strategy row is unavailable");
+			external_storage_->compact_storage().regret_matched_strategy_into(row, bucket, output, output_size);
+			return;
+		}
 		storage_.regret_matched_strategy_into(infoset, bucket, output, output_size);
 	}
 
@@ -2352,11 +2380,64 @@ namespace texas::solver::multiway
 		MultiwayInfosetId infoset,
 		std::uint32_t bucket,
 		std::uint8_t action,
-		double threshold) const noexcept
+		double threshold) const
 	{
+		if (external_storage_ != nullptr)
+		{
+			MultiwayExternalRowBinding row;
+			if (!external_storage_->compact_storage().lookup_row(infoset, row))
+				return false;
+			return external_storage_->compact_storage().action_below_regret(row, bucket, action, threshold);
+		}
 		return compact_storage_ != nullptr
 			? compact_storage_->action_below_regret(infoset, bucket, action, threshold)
 			: storage_.action_below_regret(infoset, bucket, action, threshold);
+	}
+
+	void MultiwaySolverCoordinator::actions_below_regret_locked(
+		MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+		bool* output, std::size_t output_size) const
+	{
+		if (output == nullptr || output_size == 0U || output_size > MULTIWAY_MAX_ABSTRACTED_ACTIONS)
+			throw std::invalid_argument("multiway regret threshold output is invalid");
+		if (external_storage_ != nullptr)
+		{
+			MultiwayExternalRowBinding row;
+			if (!external_storage_->compact_storage().lookup_row(infoset, row))
+			{
+				std::fill(output, output + output_size, false);
+				return;
+			}
+			if (output_size != row.action_count())
+				throw std::invalid_argument("multiway external regret threshold output size mismatch");
+			auto pinned = external_storage_->compact_storage().pin_bucket(row, bucket, false);
+			for (std::size_t action = 0U; action < output_size; ++action)
+				output[action] = external_storage_->compact_storage().action_below_regret(
+					pinned, static_cast<std::uint8_t>(action), threshold);
+			external_storage_->compact_storage().unpin_bucket(pinned);
+			return;
+		}
+		for (std::size_t action = 0U; action < output_size; ++action)
+			output[action] = compact_storage_ != nullptr
+				? compact_storage_->action_below_regret(infoset, bucket,
+					static_cast<std::uint8_t>(action), threshold)
+				: storage_.action_below_regret(infoset, bucket,
+					static_cast<std::uint8_t>(action), threshold);
+	}
+
+	void MultiwaySolverCoordinator::actions_below_regret_epoch(
+		MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+		bool* output, std::size_t output_size) const
+	{
+		actions_below_regret_locked(infoset, bucket, threshold, output, output_size);
+	}
+
+	void MultiwaySolverCoordinator::actions_below_regret(
+		MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+		bool* output, std::size_t output_size) const
+	{
+		std::shared_lock<std::shared_mutex> lock(traversal_mutex_);
+		actions_below_regret_locked(infoset, bucket, threshold, output, output_size);
 	}
 
 	std::size_t MultiwaySolverCoordinator::prune_negative_regrets(

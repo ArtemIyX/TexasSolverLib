@@ -946,10 +946,10 @@ namespace texas::solver::multiway
 			const MultiwayPublicStateDescriptor& left,
 			const MultiwayPublicStateDescriptor& right) noexcept;
 		void admit_infoset_row(const MultiwaySparseRowShape& shape);
-		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const noexcept;
+		[[nodiscard]] bool has_infoset_row(MultiwayInfosetId infoset) const;
 		// Reference-backend checks are lock-free during a sealed epoch. External
-		// catalog checks may perform bounded index lookups at batch boundaries.
-		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const noexcept;
+		// row checks resolve one bounded index record per decision node.
+		[[nodiscard]] bool has_infoset_row_epoch(MultiwayInfosetId infoset) const;
 		[[nodiscard]] bool has_public_state_epoch(MultiwayPublicStateId id) const;
 		void regret_matched_strategy_into(
 			MultiwayInfosetId infoset,
@@ -987,10 +987,16 @@ namespace texas::solver::multiway
 			std::size_t output_size) const;
 		[[nodiscard]] bool action_below_regret_epoch(
 			MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
-			double threshold) const noexcept;
+			double threshold) const;
+		void actions_below_regret_epoch(
+			MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+			bool* output, std::size_t output_size) const;
+		void actions_below_regret(
+			MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+			bool* output, std::size_t output_size) const;
 		[[nodiscard]] bool action_below_regret(
 			MultiwayInfosetId infoset, std::uint32_t bucket, std::uint8_t action,
-			double threshold) const noexcept;
+			double threshold) const;
 		[[nodiscard]] std::size_t prune_negative_regrets(
 			double threshold = 0.0, double regret_floor = 0.0) noexcept;
 		[[nodiscard]] const MultiwaySparseRowStorage& storage() const noexcept { return storage_; }
@@ -1035,6 +1041,9 @@ namespace texas::solver::multiway
 		void merge_worker_streams_locked(
 			const std::vector<const MultiwayWorkerDeltaStream*>& streams,
 			MultiwayDeltaMergePath path);
+		void actions_below_regret_locked(
+			MultiwayInfosetId infoset, std::uint32_t bucket, double threshold,
+			bool* output, std::size_t output_size) const;
 
 		MultiwaySolveRequest request_;
 		MultiwaySparseRowStorage storage_;

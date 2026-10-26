@@ -936,6 +936,11 @@ TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 		EXPECT_EQ(pinned_policy[action], expected_policy[action]);
 	EXPECT_EQ(reopened.action_below_regret(reopened_pinned, 2U, 0.0),
 		reference.action_below_regret(shape.infoset, 16U, 2U, 0.0));
+	std::array<bool, 3U> pinned_thresholds{};
+	for (std::uint8_t action = 0U; action < pinned_thresholds.size(); ++action)
+		pinned_thresholds[action] = reopened.action_below_regret(reopened_pinned, action, 0.0);
+	for (std::uint8_t action = 0U; action < pinned_thresholds.size(); ++action)
+		EXPECT_EQ(pinned_thresholds[action], reference.action_below_regret(shape.infoset, 16U, action, 0.0));
 	bool read_only_update_rejected = false;
 	try
 	{
