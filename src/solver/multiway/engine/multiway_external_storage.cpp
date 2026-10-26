@@ -2073,6 +2073,15 @@ namespace texas::solver::multiway
 		return true;
 	}
 
+	MultiwayExternalCompactStorage::PinnedBucket::PinnedBucket(PinnedBucket&& other) noexcept
+		: owner(other.owner), page(other.page), local_bucket(other.local_bucket), writable(other.writable)
+	{
+		other.owner = nullptr;
+		other.page = {};
+		other.local_bucket = 0U;
+		other.writable = false;
+	}
+
 	MultiwayExternalCompactStorage::PinnedBucket MultiwayExternalCompactStorage::pin_bucket(
 		const MultiwayExternalRowBinding& binding, std::uint32_t bucket, bool writable) const
 	{
@@ -2166,7 +2175,10 @@ namespace texas::solver::multiway
 		if (bucket.owner != this || bucket.page.page_id == 0U)
 			throw std::invalid_argument("external compact pinned bucket is invalid");
 		pages_.unpin(bucket.page.page_id);
-		bucket = {};
+		bucket.owner = nullptr;
+		bucket.page = {};
+		bucket.local_bucket = 0U;
+		bucket.writable = false;
 	}
 
 	void MultiwayExternalCompactStorage::apply_delta(const MultiwayExternalRowBinding& binding,

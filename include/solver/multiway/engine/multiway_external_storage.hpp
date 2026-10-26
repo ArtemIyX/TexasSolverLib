@@ -332,6 +332,12 @@ namespace texas::solver::multiway
 	public:
 		struct PinnedBucket
 		{
+			PinnedBucket() = default;
+			PinnedBucket(const PinnedBucket&) = delete;
+			PinnedBucket& operator=(const PinnedBucket&) = delete;
+			PinnedBucket(PinnedBucket&& other) noexcept;
+			PinnedBucket& operator=(PinnedBucket&&) = delete;
+
 			const MultiwayExternalCompactStorage* owner = nullptr;
 			MultiwayExternalCompactPages::PageView page{};
 			std::uint32_t local_bucket = 0U;

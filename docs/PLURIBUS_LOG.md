@@ -1,5 +1,30 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 5.12 - Make pinned bucket handles move-only
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Made external pinned bucket handles move-only so copied handles cannot double-unpin a cache page.
+- Added a compile-time ownership contract assertion to the external storage test.
+
+### Files
+
+- `include/solver/multiway/engine/multiway_external_storage.hpp`
+- `src/solver/multiway/engine/multiway_external_storage.cpp`
+- `tests/test_multiway_external_storage.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Focused Debug build for external storage and solver targets: passed.
+- Focused CTest: passed (2/2).
+- `git diff --check`: passed.
+
+### Limitations
+
+- Coordinator integration remains outstanding; no large training job was run.
+
 ## PB-12 Phase 5.11 - Verify external row and page compaction
 
 **Status:** Complete

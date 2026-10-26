@@ -11,6 +11,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -565,6 +566,8 @@ TEST_CASE(multiway_external_compact_pages_match_reference_cell_encoding)
 TEST_CASE(multiway_external_compact_storage_matches_reference_batch_arithmetic)
 {
 	using namespace texas::solver::multiway;
+	static_assert(!std::is_copy_constructible<MultiwayExternalCompactStorage::PinnedBucket>::value,
+		"pinned external bucket handles must not duplicate cache pins");
 	TestDirectory directory;
 	auto page_config = config(directory.path() / "pages");
 	page_config.maximum_wal_bytes = 65536U;
