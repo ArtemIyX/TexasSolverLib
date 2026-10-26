@@ -1,5 +1,36 @@
 # Pluribus Roadmap Progress Log
 
+## PB-12 Phase 2.1 - Schema 5 compact bucket encoding
+
+**Status:** Complete
+**Completed:** 2026-10-26
+
+- Added schema-5 directory and assignment sections with width-selected little-endian assignments, reserved invalid sentinels, section hashes, and table identity checks.
+- Retained schema-4 deserialization and mapped loading. Schema-5 inspection validates through the mapped loader and reports content hashes.
+- Exhaustively compared all 1,326 hole assignments for the three canonical fixture tables across schema 4 and schema 5. Verified width boundaries at 255/256 and 65,535/65,536 buckets, schema-5 mapping, and section hash rejection.
+
+### Files
+
+- `include/solver/multiway/abstraction/multiway_bucket_artifact.hpp`
+- `include/solver/multiway/abstraction/multiway_bucket_model.hpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_artifact_writer.cpp`
+- `src/solver/multiway/abstraction/multiway_bucket_inspector.cpp`
+- `tests/test_multiway_bucket_artifact.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- `compact_build.py --target test_multiway_bucket_artifact --target test_multiway_bucket_generation --parallel 6`: passed.
+- CTest `multiway_bucket_artifact` and `multiway_bucket_generation`: passed after final edits.
+- `git diff --check`: passed.
+
+### Limitations
+
+- Streaming catalog generation still writes schema 4. Schema 5 is produced by the in-memory registry serializer; the streaming writer must be redesigned before Phase 2 is complete.
+- Mapped loading still retains one table object and board vector per table. The packed mapped directory is not yet used as the registry's lookup index, so the under-128-MiB metadata target is unproven.
+- No target-machine residency measurement or large artifact qualification was run.
+
 ## PB-12 Phase 0–1 - Repair memory accounting
 
 **Status:** Complete

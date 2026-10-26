@@ -26,6 +26,35 @@ namespace
 		};
 	}
 
+	void append_u32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
+	{
+		for (unsigned shift = 0U; shift < 32U; shift += 8U) bytes.push_back(static_cast<std::uint8_t>(value >> shift));
+	}
+
+	std::uint32_t read_u32(const std::vector<std::uint8_t>& bytes, std::size_t offset)
+	{
+		return static_cast<std::uint32_t>(bytes[offset]) | (static_cast<std::uint32_t>(bytes[offset + 1U]) << 8U) |
+			(static_cast<std::uint32_t>(bytes[offset + 2U]) << 16U) | (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
+	}
+
+	std::vector<std::uint8_t> schema4_bytes(const texas::solver::multiway::MultiwayBucketRegistry& registry)
+	{
+		const auto compact = texas::solver::multiway::serialize_multiway_bucket_registry(registry);
+		std::vector<std::uint8_t> legacy(compact.begin(), compact.begin() + 4U + 4U + 13U * 8U);
+		legacy[4] = 4U; legacy[5] = legacy[6] = legacy[7] = 0U;
+		append_u32(legacy, static_cast<std::uint32_t>(registry.tables().size()));
+		for (const auto& table : registry.tables())
+		{
+			legacy.push_back(static_cast<std::uint8_t>(table.street()));
+			legacy.push_back(static_cast<std::uint8_t>(table.canonical_board().size()));
+			legacy.insert(legacy.end(), table.canonical_board().begin(), table.canonical_board().end());
+			append_u32(legacy, table.bucket_count());
+			for (std::size_t id = 0U; id < texas::solver::multiway::MULTIWAY_HOLE_COMBINATION_COUNT; ++id)
+				append_u32(legacy, table.assignment_at(id));
+		}
+		return legacy;
+	}
+
 } // namespace
 
 TEST_CASE(multiway_bucket_artifact_builds_canonical_coverage_with_baseline_counts)
@@ -63,6 +92,78 @@ TEST_CASE(multiway_bucket_artifact_round_trips_and_rejects_corruption)
 
 	bytes.pop_back();
 	EXPECT_THROW(texas::solver::multiway::deserialize_multiway_bucket_registry(bytes), std::invalid_argument);
+}
+
+TEST_CASE(multiway_bucket_artifact_schema4_and_schema5_match_exhaustive_assignments)
+{
+	const auto source = texas::solver::multiway::build_multiway_baseline_bucket_registry(identity(), boards());
+	const auto schema4 = texas::solver::multiway::deserialize_multiway_bucket_registry(schema4_bytes(source));
+	const auto schema5 = texas::solver::multiway::deserialize_multiway_bucket_registry(texas::solver::multiway::serialize_multiway_bucket_registry(source));
+	for (const auto& board : boards())
+	{
+		const auto& reference = source.table(board.street, board.canonical_board);
+		const auto& old_table = schema4.table(board.street, board.canonical_board);
+		const auto& compact_table = schema5.table(board.street, board.canonical_board);
+		for (std::size_t id = 0U; id < texas::solver::multiway::MULTIWAY_HOLE_COMBINATION_COUNT; ++id)
+		{
+			EXPECT_EQ(old_table.assignment_at(id), reference.assignment_at(id));
+			EXPECT_EQ(compact_table.assignment_at(id), reference.assignment_at(id));
+		}
+	}
+}
+
+TEST_CASE(multiway_bucket_artifact_selects_width_at_reserved_sentinel_boundaries)
+{
+	for (const auto fixture : std::array<std::pair<std::uint32_t, std::uint32_t>, 4>{
+		std::pair<std::uint32_t, std::uint32_t>{255U, 1U}, {256U, 2U}, {65535U, 2U}, {65536U, 4U}})
+	{
+		auto table = texas::solver::multiway::build_multiway_baseline_bucket_table(
+			identity(), texas::core::Street::Flop, boards()[0].canonical_board);
+		std::vector<std::uint32_t> values(table.assignments().begin(), table.assignments().end());
+		table = texas::solver::multiway::MultiwayBucketTable(identity(), texas::core::Street::Flop,
+			boards()[0].canonical_board, fixture.first, std::move(values));
+		texas::solver::multiway::MultiwayBucketRegistry registry({std::move(table)});
+		const auto bytes = texas::solver::multiway::serialize_multiway_bucket_registry(registry);
+		EXPECT_EQ(read_u32(bytes, 116U), fixture.second);
+		const auto path = std::filesystem::temp_directory_path() / "texas_solver_bucket_width_test.bin";
+		{
+			std::ofstream output(path, std::ios::binary | std::ios::trunc);
+			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+		}
+		{
+			const auto mapped = texas::solver::multiway::load_multiway_bucket_registry(path);
+			const auto& expected = registry.table(texas::core::Street::Flop, boards()[0].canonical_board);
+			const auto& actual = mapped.table(texas::core::Street::Flop, boards()[0].canonical_board);
+			for (std::size_t id = 0U; id < texas::solver::multiway::MULTIWAY_HOLE_COMBINATION_COUNT; ++id)
+				EXPECT_EQ(actual.assignment_at(id), expected.assignment_at(id));
+		}
+		std::filesystem::remove(path);
+	}
+}
+
+TEST_CASE(multiway_bucket_artifact_rejects_bad_schema5_section_hash)
+{
+	const auto source = texas::solver::multiway::build_multiway_baseline_bucket_registry(identity(), boards());
+	auto bytes = texas::solver::multiway::serialize_multiway_bucket_registry(source);
+	bytes.back() ^= 0x1U;
+	EXPECT_THROW(texas::solver::multiway::deserialize_multiway_bucket_registry(bytes), std::invalid_argument);
+}
+
+TEST_CASE(multiway_bucket_artifact_inspector_reads_schema5_content)
+{
+	const auto source = texas::solver::multiway::build_multiway_baseline_bucket_registry(identity(), boards());
+	const auto bytes = texas::solver::multiway::serialize_multiway_bucket_registry(source);
+	const auto path = std::filesystem::temp_directory_path() / "texas_solver_bucket_inspect_schema5_test.bin";
+	{
+		std::ofstream output(path, std::ios::binary | std::ios::trunc);
+		output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+	}
+	const auto inspected = texas::solver::multiway::inspect_multiway_bucket_artifact(path, identity());
+	EXPECT_EQ(inspected.flop_tables, 1U);
+	EXPECT_EQ(inspected.turn_tables, 1U);
+	EXPECT_EQ(inspected.river_tables, 1U);
+	EXPECT_EQ(inspected.live_assignments, 3U * 1326U - (150U + 198U + 245U));
+	std::filesystem::remove(path);
 }
 
 TEST_CASE(multiway_bucket_artifact_stream_load_matches_memory_deserializer)

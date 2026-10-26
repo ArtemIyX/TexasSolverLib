@@ -63,7 +63,10 @@ namespace texas::solver::multiway
 		if (!output_)
 			throw std::runtime_error("cannot open bucket artifact temporary file");
 		output_.write("MWBK", 4);
-		write_u32(output_, MULTIWAY_BUCKET_ARTIFACT_SCHEMA_VERSION);
+		// The streaming record writer still emits the schema-4 record stream.
+		// Schema 5 is written by serialize_multiway_bucket_registry until this
+		// writer can stage its packed directory and width-selected assignments.
+		write_u32(output_, MULTIWAY_BUCKET_ARTIFACT_SCHEMA_V4);
 		visit_multiway_model_identity_fields(identity, [&](std::uint64_t field) { write_u64(output_, field); });
 		write_u32(output_, static_cast<std::uint32_t>(expected_table_count_));
 		progress_.payload_hash = core::fingerprint::FNV1A_OFFSET;

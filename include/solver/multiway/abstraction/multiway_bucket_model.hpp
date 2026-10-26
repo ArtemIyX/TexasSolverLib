@@ -51,8 +51,13 @@ namespace texas::solver::multiway
 		{
 			if (mapped_assignments_ == nullptr)
 				return assignments_[index];
-			const auto* p = mapped_assignments_ + index * 4U;
-			return static_cast<std::uint32_t>(p[0]) | (static_cast<std::uint32_t>(p[1]) << 8U) | (static_cast<std::uint32_t>(p[2]) << 16U) | (static_cast<std::uint32_t>(p[3]) << 24U);
+			const auto* p = mapped_assignments_ + index * mapped_assignment_width_;
+			std::uint32_t value = 0U;
+			for (std::uint8_t byte = 0U; byte < mapped_assignment_width_; ++byte)
+				value |= static_cast<std::uint32_t>(p[byte]) << (byte * 8U);
+			if (mapped_assignment_width_ < 4U && value == ((1U << (mapped_assignment_width_ * 8U)) - 1U))
+				return MULTIWAY_INVALID_BUCKET;
+			return value;
 		}
 		[[nodiscard]] std::size_t assignment_count() const noexcept
 		{
@@ -72,6 +77,7 @@ namespace texas::solver::multiway
 		std::uint64_t table_identity_ = 0U;
 		std::vector<std::uint32_t> assignments_;
 		const std::uint8_t* mapped_assignments_ = nullptr;
+		std::uint8_t mapped_assignment_width_ = 4U;
 		friend class MultiwayBucketRegistry;
 		friend MultiwayBucketRegistry load_multiway_bucket_registry(
 			const std::filesystem::path& path,
