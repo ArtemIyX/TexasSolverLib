@@ -8,15 +8,18 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <limits>
 #include <queue>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <thread>
 
 #ifdef _WIN32
 	#ifndef NOMINMAX
@@ -979,6 +982,68 @@ namespace texas::solver::multiway
 			append_file_hash(hash, data_path);
 			return texas::core::fingerprint::finish(hash) == reference.content_hash;
 		}
+
+		bool verify_checkpoint_segments(
+			const std::filesystem::path& directory,
+			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& references,
+			const std::vector<MultiwayExternalCheckpointManifest::SegmentReference>& pin,
+			std::uint32_t payload_bytes)
+		{
+			constexpr std::size_t kMaximumWorkers = 4U;
+			if (references.empty()) return true;
+			const auto worker_count = std::min(kMaximumWorkers, references.size());
+			if (worker_count == 1U)
+				return checkpoint_pin_contains(pin, references.front()) &&
+					verify_checkpoint_segment(directory, references.front(), payload_bytes);
+
+			std::atomic<std::size_t> next_reference{ 0U };
+			std::atomic<bool> valid{ true };
+			std::array<std::exception_ptr, kMaximumWorkers> worker_errors{};
+			std::vector<std::thread> workers;
+			workers.reserve(worker_count);
+			const auto validate = [&](std::size_t worker_index) {
+				while (valid.load(std::memory_order_relaxed))
+				{
+					const auto index = next_reference.fetch_add(1U, std::memory_order_relaxed);
+					if (index >= references.size()) return;
+					try
+					{
+						if (!checkpoint_pin_contains(pin, references[index]) ||
+							!verify_checkpoint_segment(directory, references[index], payload_bytes))
+						{
+							valid.store(false, std::memory_order_relaxed);
+							return;
+						}
+					}
+					catch (...)
+					{
+						worker_errors[worker_index] = std::current_exception();
+						valid.store(false, std::memory_order_relaxed);
+						return;
+					}
+				}
+			};
+			const auto join_workers = [&]() noexcept {
+				for (auto& worker : workers)
+					if (worker.joinable()) worker.join();
+			};
+			try
+			{
+				for (std::size_t index = 1U; index < worker_count; ++index)
+					workers.emplace_back(validate, index);
+			}
+			catch (...)
+			{
+				valid.store(false, std::memory_order_relaxed);
+				join_workers();
+				throw;
+			}
+			validate(0U);
+			join_workers();
+			for (const auto& error : worker_errors)
+				if (error) std::rethrow_exception(error);
+			return valid.load(std::memory_order_relaxed);
+		}
 	}
 
 	MultiwayExternalCheckpointManifest make_multiway_external_checkpoint_manifest(
@@ -1331,11 +1396,10 @@ namespace texas::solver::multiway
 			const auto pin_path = checkpoint_pin_path(
 				external_storage_directory / kComponentNames[component], pin_id);
 			const auto pin = read_checkpoint_pin(pin_path);
-			for (const auto& reference : decoded.segments[component])
-				if (!checkpoint_pin_contains(pin, reference) ||
-					!verify_checkpoint_segment(external_storage_directory / kComponentNames[component],
-						reference, decoded.component_payload_bytes[component]))
-					throw std::invalid_argument("external checkpoint segment is not retained");
+			if (!verify_checkpoint_segments(
+				external_storage_directory / kComponentNames[component],
+				decoded.segments[component], pin, decoded.component_payload_bytes[component]))
+				throw std::invalid_argument("external checkpoint segment is not retained");
 		}
 		if (cursor != bytes.size() - 8U ||
 			generation.generation == 0U || generation.committed_batch_number == 0U ||

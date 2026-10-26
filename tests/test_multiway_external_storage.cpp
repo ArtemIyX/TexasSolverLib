@@ -539,6 +539,58 @@ TEST_CASE(multiway_external_checkpoint_manifest_publication_failure_preserves_pr
 	EXPECT_EQ(loaded.generation.generation, 7U);
 }
 
+TEST_CASE(multiway_external_checkpoint_parallel_segment_validation_rejects_corruption)
+{
+	using namespace texas::solver::multiway;
+	TestDirectory directory;
+	constexpr std::uint64_t kBatchCount = 12U;
+	const std::array<std::filesystem::path, 3U> component_paths = {
+		directory.path() / "catalog", directory.path() / "rows", directory.path() / "pages" };
+	std::array<std::uint64_t, 3U> component_generations{};
+	for (std::size_t component = 0U; component < component_paths.size(); ++component)
+	{
+		MultiwayExternalRecordStore store(config(component_paths[component]), 4U);
+		for (std::uint64_t batch = 1U; batch <= kBatchCount; ++batch)
+			store.append_batch(batch, batch, records(batch * 10U));
+		component_generations[component] = store.generation();
+	}
+	MultiwayExternalGenerationManifest generation{};
+	generation.generation = 1U;
+	generation.committed_batch_number = kBatchCount;
+	generation.merge_fingerprint = 99U;
+	generation.catalog_generation = component_generations[0];
+	generation.public_state_count = kBatchCount;
+	generation.row_generation = component_generations[1];
+	generation.row_count = kBatchCount;
+	generation.page_generation = component_generations[2];
+	generation.page_count = kBatchCount;
+	generation.logical_value_count = kBatchCount;
+	generation.content_hash = 100U;
+	publish_multiway_external_generation(directory.path(), generation, false);
+	const auto checkpoint_path = directory.path() / "checkpoint.manifest";
+	auto checkpoint = make_multiway_external_checkpoint_manifest(
+		directory.path(), 11U, 12U, 13U, 14U, 1000U);
+	EXPECT_TRUE(checkpoint.segments[2].size() >= 4U);
+	save_multiway_external_checkpoint_manifest(checkpoint_path, directory.path(), checkpoint, false);
+	const auto loaded = load_multiway_external_checkpoint_manifest(
+		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U);
+	EXPECT_EQ(loaded.segments[2].size(), checkpoint.segments[2].size());
+
+	const auto corrupted_segment = component_paths[2] /
+		("run_" + std::to_string(checkpoint.segments[2].back().generation) + ".dat");
+	std::fstream file(corrupted_segment, std::ios::binary | std::ios::in | std::ios::out);
+	char byte = 0;
+	file.read(&byte, 1);
+	EXPECT_TRUE(static_cast<bool>(file));
+	byte ^= 0x01;
+	file.seekp(0);
+	file.write(&byte, 1);
+	EXPECT_TRUE(static_cast<bool>(file));
+	file.close();
+	EXPECT_THROW(load_multiway_external_checkpoint_manifest(
+		checkpoint_path, directory.path(), 11U, 12U, 13U, 14U), std::invalid_argument);
+}
+
 TEST_CASE(multiway_external_checkpoint_pins_runs_during_compaction)
 {
 	using namespace texas::solver::multiway;
