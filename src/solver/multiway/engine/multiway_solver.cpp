@@ -71,11 +71,6 @@ namespace texas::solver::multiway
 			throw std::invalid_argument("multiway public state has an invalid board street");
 		}
 
-		bool same_board(const std::vector<std::uint8_t>& left, const std::vector<std::uint8_t>& right) noexcept
-		{
-			return left == right;
-		}
-
 		bool same_card_set(const std::vector<std::uint8_t>& left, const std::vector<std::uint8_t>& right) noexcept
 		{
 			if (left.size() != right.size())

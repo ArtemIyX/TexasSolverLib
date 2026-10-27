@@ -1,5 +1,26 @@
 # Pluribus Roadmap Progress Log
 
+## Fix GCC blueprint export compilation
+
+**Status:** Complete
+**Completed:** 2026-10-27
+
+- Renamed the shard-planning callback context member to avoid GCC's name lookup error and removed the unused `same_board` helper.
+
+### Files
+
+- `src/solver/multiway/blueprint/multiway_blueprint_trainer.cpp`
+- `src/solver/multiway/engine/multiway_solver.cpp`
+- `docs/PLURIBUS_LOG.md`
+
+### Validation
+
+- Reviewed the focused C++ diff and checked for the conflicting declaration and removed helper. No builds or tests were run because the project skills require an explicit request.
+
+### Limitations
+
+- Ubuntu Debug and Release CI builds remain unverified.
+
 ## Bound rollout board copies before scratch writes
 
 **Status:** Complete

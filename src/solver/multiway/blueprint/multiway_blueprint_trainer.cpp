@@ -1214,7 +1214,7 @@ namespace texas::solver::multiway
 			{
 				struct Context
 				{
-					const decltype(add_shape)* add_shape;
+					const decltype(add_shape)* add_shape_callback;
 				};
 				Context context{ &add_shape };
 				const auto count_external_row = [](void* opaque, const MultiwayExternalRowBinding& binding) {
@@ -1223,7 +1223,7 @@ namespace texas::solver::multiway
 					shape.infoset = { binding.public_state(), static_cast<core::PlayerId>(binding.seat()) };
 					shape.bucket_count = binding.bucket_count();
 					shape.action_count = binding.action_count();
-					(*current.add_shape)(shape);
+					(*current.add_shape_callback)(shape);
 					return true;
 				};
 				if (!external_for_plan->compact_storage().visit_ordered_rows(count_external_row, &context))
